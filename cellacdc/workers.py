@@ -339,6 +339,13 @@ class SegForLostIDsWorker(QObject):
         args_new = self.guiWin.SegForLostIDsSettings['args_new']
 
         model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new)
+        if model is None:
+            self.logger.info('Segmentation model was not initialized correctly!')
+            self.signals.critical.emit(
+                (self, 'Segmentation model was not initialized correctly!')
+            )
+            self.signals.finished.emit(self)
+            return
         if self._debug:
             try:
                 model.setupLogger(self.guiwin.logger)

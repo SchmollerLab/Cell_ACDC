@@ -610,7 +610,11 @@ class segmWin(QMainWindow):
         if self.secondChannelName is not None:
             init_kwargs['is_rgb'] = True
         
-        self.model = myutils.init_segm_model(acdcSegment, self.posData, init_kwargs) 
+        self.model = myutils.init_segm_model(acdcSegment, self.posData, init_kwargs)
+        if self.model is None:
+            self.logger.info('Segmentation model was not initialized correctly!')
+            self.processStopped()
+            return
         try:
             self.model.setupLogger(self.logger)
         except Exception as e:

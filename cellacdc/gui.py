@@ -15932,7 +15932,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.titleLabel.setText('Segmentation process cancelled.')
                 return
             
-            model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)            
+            model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+            if model is None:
+                self.logger.info('Segmentation process cancelled.')
+                self.titleLabel.setText('Segmentation process cancelled.')
+                return            
             try:
                 model.setupLogger(self.logger)
             except Exception as e:
@@ -16126,7 +16130,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.titleLabel.setText('Segmentation process cancelled.')
             return
 
-        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs) 
+        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+        if model is None:
+            self.logger.info('Segmentation process cancelled.')
+            self.titleLabel.setText('Segmentation process cancelled.')
+            return
         try:
             model.setupLogger(self.logger)
         except Exception as e:
@@ -16368,7 +16376,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
             
         self.model_kwargs = win.model_kwargs
-        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs) 
+        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+        if model is None:
+            self.logger.info('Segmentation process cancelled.')
+            self.titleLabel.setText('Segmentation process cancelled.')
+            return
         try:
             model.setupLogger(self.logger)
         except Exception as e:

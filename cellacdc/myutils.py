@@ -3788,7 +3788,7 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     txt_directML = html_utils.paragraph(f"""
         Check out {direct_ml_href}, and {torch_directml_href} for more info.<br>
         Only supported on Windows 10/11 with Python 3.8-3.12.<br>
-        Click the <b>Proceed without DirectML</b> button to install DirectML.
+        Click the <b>Install DirectML</b> button to install DirectML.
         <br><br>
         """)
     
@@ -3843,12 +3843,23 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     if msg.clickedButton == proceedButton:
         return True
 
-def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None):
+def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cuda=False):
     if not use_gpu:
         return True
-
+    
+    ask_for_cuda = False
+    if cuda:
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                ask_for_cuda = True
+            if not torch.cuda.device_count() > 0:
+                ask_for_cuda = True
+        except ModuleNotFoundError:
+            ask_for_cuda = True
+            
     frameworks = _available_frameworks(model_name)
-    ask_installs = set()
+    ask_installs = set() if not ask_for_cuda else {'cuda'}
     framework_available = False
     for framework, model_compatible in frameworks.items():
         if not model_compatible:
@@ -3877,7 +3888,7 @@ def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None):
             framework_available = True
             break
     
-    if framework_available:
+    if framework_available and not ask_for_cuda:
         return True
     
     elif do_not_warn:
@@ -4104,6 +4115,10 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
 
     except Exception as e:
         model = acdcSegment.Model(segm_data, **init_kwargs)
+        
+    if hasattr(model, 'init_successful'):
+        if not model.init_successful:
+            return None
     return model
 
 def _parse_bool_str(value):
