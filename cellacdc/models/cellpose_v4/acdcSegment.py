@@ -86,7 +86,7 @@ class Model(CellposeBaseModel):
             directml_gpu,
             gpu, device)
     
-        self.init_successful = False
+        self.init_successful = True
     
     def _get_eval_kwargs_v4(
             self,
