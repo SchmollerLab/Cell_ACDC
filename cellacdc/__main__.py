@@ -63,7 +63,7 @@ def run_gui():
     from ._run import (
         _setup_gui_libraries, 
         _setup_symlink_app_name_macos,
-        _setup_numpy
+        _setup_numpy, download_model_params
     )
     
     _setup_symlink_app_name_macos()
@@ -71,6 +71,8 @@ def run_gui():
     _setup_gui_libraries()
     
     _setup_numpy()
+    
+    download_model_params()
     
     from qtpy import QtGui, QtWidgets, QtCore
     # from . import qrc_resources

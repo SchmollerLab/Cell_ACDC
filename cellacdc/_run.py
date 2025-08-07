@@ -299,7 +299,124 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
         else:
             input(note_text)
         exit()
+    
+def download_model_params():
+    print("Downloading specified models...")
+    from .config import parser_args
+    if parser_args['cpModelsDownload'] or parser_args['AllModelsDownload']:
+        print('[INFO]: Downloading Cellpose models...')
+        from cellpose import models
+        model_names = ["cyto", "cyto2", "cyto3", "nuclei"]
 
+        try:
+            # download size model weights
+
+            from cellpose.models import size_model_path, model_path
+            for model_name in model_names:
+                print(f'[INFO]: Downloading {model_name} model weights...')
+                try:
+                    size_model_path(model_name)
+                    model_path(model_name)
+                except Exception as e:
+                    print(
+                        f'[WARNING]: Failed to download {model_name} model weights. '
+                    )
+                    print(e)
+                    pass
+            
+            from cellpose.denoise import MODEL_NAMES
+            for model_name in MODEL_NAMES:
+                print(f'[INFO]: Downloading {model_name} model weights...')
+                try:
+                    model_path(model_name)
+                except Exception as e:
+                    print(
+                        f'[WARNING]: Failed to download {model_name} model weights. '
+                    )
+                    if model_name in ["oneclick_per_cyto2", 
+                                      "oneclick_seg_cyto2", 
+                                      "oneclick_rec_cyto2",
+                                      "oneclick_per_nuclei",
+                                      "oneclick_seg_nuclei",
+                                      "oneclick_rec_nuclei"]:
+                        print(f' This model is not available for download. ')
+                    print(e)
+                    pass
+        except Exception as e:
+            print(
+                '[WARNING]: Failed to download Cellpose model weights. '
+            )
+            print(e)
+            pass
+    if parser_args['StarDistModelsDownload'] or parser_args['AllModelsDownload']:
+        print('[INFO]: Downloading StarDist models...')
+        try:
+            from cellacdc.models import STARDIST_MODELS
+            from stardist.models import StarDist2D, StarDist3D
+            for model_type in [StarDist2D, StarDist3D]:
+                for model_name in STARDIST_MODELS:
+                    print(f'[INFO]: Downloading {model_name} model weights...')
+                    try:
+                        model_type.from_pretrained(model_name)
+                    except Exception as e:
+                        print(
+                            f'[WARNING]: Failed to download {model_name} model weights. '
+                        )
+                        print(e)
+                        pass
+        except Exception as e:
+            print(
+                '[WARNING]: Failed to download StarDist model weights. '
+            )
+            print(e)
+            pass
+    if parser_args['YeaZModelsDownload'] or parser_args['AllModelsDownload']:
+        print('[INFO]: Downloading YeaZ models...')
+        from cellacdc.myutils import _download_yeaz_models
+        try:
+            _download_yeaz_models()
+        except Exception as e:
+            print(
+                '[WARNING]: Failed to download YeaZ model weights. '
+            )
+            print(e)
+            pass
+    if parser_args['DeepSeaModelsDownload'] or parser_args['AllModelsDownload']:
+        print('[INFO]: Downloading DeepSea models...')
+        from cellacdc.myutils import _download_deepsea_models
+        try:
+            _download_deepsea_models()
+        except Exception as e:
+            print(
+                '[WARNING]: Failed to download DeepSea model weights. '
+            )
+            print(e)
+            pass
+
+    if parser_args['TrackastraModelsDownload'] or parser_args['AllModelsDownload']:
+        print('[INFO]: Downloading TrackAstra models...')
+        # from cellacdc.myutils import _download_trackastra_models
+        from trackastra.model import Trackastra
+        try:
+            from cellacdc.trackers.Trackastra import get_pretrained_model_names
+            model_names = get_pretrained_model_names()
+            for model_name in model_names:
+                print(f'[INFO]: Downloading {model_name} model weights...')
+                try:
+                    Trackastra.from_pretrained(model_name)
+                except Exception as e:
+                    print(
+                        f'[WARNING]: Failed to download {model_name} model weights. '
+                    )
+                    print(e)
+                    pass
+        except Exception as e:
+            print(
+                '[WARNING]: Failed to download TrackAstra model weights. '
+            )
+            print(e)
+            pass
+                
 def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     from qtpy import QtCore
     if QtCore.QCoreApplication.instance() is not None:
@@ -413,6 +530,8 @@ def run_cli(ini_filepath):
     logger, logs_path, log_path, log_filename = myutils.setupLogger(
         module='cli', logs_path=None
     )
+    
+    download_model_params()
     
     logger.info(f'Reading workflow file "{ini_filepath}"...')
     from cellacdc import load

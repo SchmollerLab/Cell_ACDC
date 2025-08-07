@@ -99,6 +99,28 @@ tensorflow = [
 pytorch = [
     "torchvision",
 ]
+cellpose3 = [
+    "cellpose<4.0.0",
+]
+stardist = [
+    "tensorflow<2.17",
+    "numpy<2.0.0",
+    "stardist",
+]
+yeaz = [
+    "yeaz",
+]
+
+trackastra = [
+    "trackastra",
+]
+
+deepsea = [
+    "torch",
+    "deepsea",
+    "munkres",
+]
+
 all = [
     "PyQt6",
     "torchvision",
