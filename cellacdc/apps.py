@@ -6651,7 +6651,13 @@ class PostProcessSegmDialog(QBaseDialog):
         self.sigValueChanged.emit(lab, delObjs)
         
     def apply(self, origLab=None):
-        self.mainWin.warnEditingWithCca_df('post-processing segmentation mask')
+        self.mainWin.warnEditingWithCca_df(
+            'post-processing segmentation mask', update_images=False
+        )
+        ccaAnnotRemoved = self.mainWin.removeCcaAnnotationsCurrentFrame()
+        if ccaAnnotRemoved:
+            self.mainWin.updateAllImages()
+
 
         if origLab is None:
             origLab = self.origLab.copy()

@@ -21354,6 +21354,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
         
         self.resetWillDivideInfo()
+        
+    def removeCcaAnnotationsCurrentFrame(self):
+        posData = self.data[self.pos_i]
+        posData.cca_df = None
+        
+        posData.allData_li[posData.frame_i].pop('cca_df', None)
+        posData.allData_li[posData.frame_i].pop('cca_df_checker', None)
+        
+        df = posData.allData_li[posData.frame_i]['acdc_df']
+        if df is None:
+            # No more saved info to delete
+            return False
+
+        if 'cell_cycle_stage' not in df.columns:
+            # No cell cycle info present
+            return False
+
+        df = df.drop(columns=self.cca_df_colnames)
+        posData.allData_li[posData.frame_i]['acdc_df'] = df
+        
+        return True
     
     def resetFutureCcaColCurrentFrame(self):
         posData = self.data[self.pos_i]
@@ -24970,22 +24991,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+        
         if acdc_df is None:
             if update_images:
                 self.updateAllImages()
             return True
-        else:
-            if 'cell_cycle_stage' not in acdc_df.columns:
-                if update_images:
-                    self.updateAllImages()
-                return True
+        elif 'cell_cycle_stage' not in acdc_df.columns:
+            if update_images:
+                self.updateAllImages()
+            return True
             
         action = self.warnEditingWithAnnotActions.get(editTxt, None)
-        if action is not None:
-            if not action.isChecked():
-                if update_images:
-                    self.updateAllImages()
-                return True
+        if action is not None and not action.isChecked():
+            if update_images:
+                self.updateAllImages()
+            return True
 
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
