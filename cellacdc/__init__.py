@@ -521,21 +521,40 @@ def exception_handler_cli(func):
                 raise err
         return result
     return inner_function
+    
+def _exception_handler_clean_progress(self):
+    try:
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+    except AttributeError:
+        pass
 
 def exception_handler(func):
-    """Decorator to handle class methods exceptions and show a critical error message.
-    """
+    """Decorator to handle class methods exceptions and show a critical error message."""
     @wraps(func)
     def inner_function(self, *args, **kwargs):
         try:
             result = func(self, *args, **kwargs)
-        except Exception as e:
-            try:
-                if self.progressWin is not None:
-                    self.progressWin.workerFinished = True
-                    self.progressWin.close()
-            except AttributeError:
-                pass
+        except TypeError as e:
+            # Only handle the specific Qt slot error
+            msg = str(e)
+            if (
+                "takes 1 positional argument but 2 were given" in msg
+                and len(args) > 0
+            ):
+                try:
+                    # Remove only the last argument (assumed to be from Qt)
+                    filtered_args = args[:-1]
+                    result = func(self, *filtered_args, **kwargs)
+                except Exception:
+                    _exception_handler_clean_progress(self)
+                    result = _critical_exception_gui(self, func.__name__)
+            else:
+                _exception_handler_clean_progress(self)
+                result = _critical_exception_gui(self, func.__name__)
+        except Exception:
+            _exception_handler_clean_progress(self)
             result = _critical_exception_gui(self, func.__name__)
         return result
     return inner_function
