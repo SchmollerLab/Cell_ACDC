@@ -155,7 +155,7 @@ def _setup_symlink_app_name_macos():
             printl(traceback.format_exc())
             print('[WARNING]: Failed at creating Cell-ACDC symlink')
 
-def _setup_gui_libraries(caller_name='Cell-ACDC'):
+def _setup_gui_libraries(caller_name='Cell-ACDC', exit_at_end=True):
     from . import try_input_install_package, is_conda_env
     warn_restart = False
     
@@ -286,19 +286,37 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
         )
         warn_restart = True
     
-    if warn_restart:
-        print('*'*60)
+    if not warn_restart:
+        return warn_restart
+    
+    if not exit_at_end:
+        return warn_restart
+    
+    _exit_on_setup(caller_name=caller_name)
+    
+    return warn_restart
+
+def _exit_on_setup(caller_name='Cell-ACDC'):
+    print('*'*60)
+    note_text = (
+        f'[NOTE]: {caller_name} had to install the required libraries. '
+    )
+    note_text = (
+        f'{note_text}'
+        'Please, re-start the software. Thank you for your patience! '
+    )
+    
+    from .config import parser_args
+    if parser_args['yes']:
+        print(note_text)
+    else:
         note_text = (
-            f'[NOTE]: {caller_name} had to install the required GUI libraries. '
-            'Please, re-start the software. Thank you for your patience! '
+            f'{note_text}'
             '(Press any key to exit). '
         )
-        from .config import parser_args
-        if parser_args['yes']:
-            print(note_text)
-        else:
-            input(note_text)
-        exit()
+        input(note_text)
+        
+    exit()
     
 def download_model_params():
     print("Downloading specified models...")
