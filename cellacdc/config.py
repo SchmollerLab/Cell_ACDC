@@ -101,6 +101,49 @@ try:
         metavar='PATH_TO_INSTALL_DETAILS',
         help=('Path of the "install_details.json" file')
     )
+    
+    ap.add_argument(
+        '--cpModelsDownload',
+        action='store_true',
+        help=('Whether to download cellpose models'),
+        # metavar='CP_MODELS_DOWNLOAD_FLAG'
+    )
+
+    ap.add_argument(
+        '--YeaZModelsDownload',
+        action='store_true',
+        help=('Whether to download YeaZ models'),
+        # metavar='YEAZ_MODELS_DOWNLOAD_FLAG'
+    )
+
+    ap.add_argument(
+        '--DeepSeaModelsDownload',
+        action='store_true',
+        help=('Whether to download DeepSea models'),
+        # metavar='DEEPSEA_MODELS_DOWNLOAD_FLAG'
+    )
+
+    ap.add_argument(
+        '--StarDistModelsDownload',
+        action='store_true',
+        help=('Whether to download StarDist models'),
+        # metavar='STARDIST_MODELS_DOWNLOAD_FLAG'
+    )
+
+    ap.add_argument(
+        '--TrackastraModelsDownload',
+        action='store_true',
+        help=('Whether to download Trackastra models'),
+        # metavar='TRACKASTRA_MODELS_DOWNLOAD_FLAG'
+    )
+    
+    ap.add_argument(
+        '--AllModelsDownload',
+        action='store_true',
+        help=(
+            'Whether to download models for Cellpose, YeaZ, DeepSea, StarDist, Trackastra.'
+        ),
+    )
 
     # Add dummy argument for stupid Jupyter
     # ap.add_argument('-f')
@@ -125,6 +168,7 @@ try:
                 f'{parser_args["install_details"]}. Error: {e}'
             )
             parser_args['install_details'] = {}
+            
                     
 except Exception as err:
     import pdb; pdb.set_trace()
