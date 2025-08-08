@@ -516,7 +516,7 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
         qrc_resources_scheme = import_module('cellacdc.qrc_resources_dark')
         qt_resource_data_scheme = qrc_resources_scheme.qt_resource_data
     
-    if qt_resource_data_scheme != qrc_resources.qt_resource_data:
+    if qt_resource_data_scheme != acdc_qrc_resources.qt_resource_data:
         from . import _copy_qrc_resources_file
         proceed = _copy_qrc_resources_file(qrc_resources_scheme_path)
         if not proceed:
