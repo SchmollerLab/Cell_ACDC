@@ -3098,35 +3098,51 @@ class select_exp_folder:
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:
-            is_prepped = False
+            is_bkgr_roi_info_present = False
+            is_aligned = False
+            is_cropped = False
+            is_roi_info_present = False
             are_zslices_selected = False
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, 'Images')
             filenames = myutils.listdir(images_path)
             for filename in filenames:
                 if filename.endswith('dataPrepROIs_coords.csv'):
-                    is_prepped = True
-                    break
+                    is_roi_info_present = True
+                    filepath = os.path.join(images_path, filename)
+                    df = pd.read_csv(filepath, index_col='description')
+                    is_cropped = (df.loc[['cropped'], 'value'] > 0).any()
                 elif filename.endswith('dataPrep_bkgrROIs.json'):
-                    is_prepped = True
-                    break
+                    is_bkgr_roi_info_present = True
                 elif filename.endswith('aligned.npz'):
-                    is_prepped = True
-                    break
+                    is_aligned = True
                 elif filename.endswith('align_shift.npy'):
-                    is_prepped = True
-                    break
+                    is_aligned = True
                 elif filename.endswith('bkgrRoiData.npz'):
-                    is_prepped = True
-                    break
+                    is_cropped = True
                 elif filename.endswith('segmInfo.csv'):
                     are_zslices_selected = True
-            if is_prepped:
-                values.append(f'{pos} (already prepped)')
-            elif are_zslices_selected:
-                values.append(f'{pos} (z-slices selected)')
-            else:
+            
+            is_bkgr_roi_info_present
+            is_cropped
+            is_roi_info_present
+            
+            info_txt = f'{pos} ('
+            if are_zslices_selected:
+                info_txt = f'{info_txt} z-slices selected,'
+            if is_aligned:
+                info_txt = f'{info_txt} aligned,'
+            if is_roi_info_present:
+                info_txt = f'{info_txt} ROI info present,'
+            if is_bkgr_roi_info_present:
+                info_txt = f'{info_txt} bkgr ROI info present,'
+            if is_cropped:
+                info_txt = f'{info_txt} cropped'
+            
+            if info_txt.endswith('(')
                 values.append(pos)
+            else:
+                values.append(f'{info_txt})')
         self.values = values
         return values
 
