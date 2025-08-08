@@ -66,7 +66,7 @@ from warnings import simplefilter
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 
 # NOTE: Enable icons
-from . import qrc_resources
+from . import acdc_qrc_resources
 
 # Custom modules
 from . import exception_handler, disableWindow

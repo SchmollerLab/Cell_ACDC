@@ -28,7 +28,7 @@ sys.path.append(cellacdc_path)
 from .. import prompts, load, myutils, apps, html_utils, widgets
 from .. import recentPaths_path, cellacdc_path, settings_folderpath
 
-from .. import qrc_resources
+from .. import acdc_qrc_resources
 
 if os.name == 'nt':
     try:

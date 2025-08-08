@@ -501,7 +501,7 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     from ._palettes import getPaletteColorScheme, setToolTipStyleSheet
     from ._palettes import get_color_scheme
     from . import qrc_resources_path
-    from . import qrc_resources
+    from . import acdc_qrc_resources
     from . import printl
     
     # Check if there are new icons --> replace qrc_resources.py
