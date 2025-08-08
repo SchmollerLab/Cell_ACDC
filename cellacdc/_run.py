@@ -517,9 +517,17 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
         qt_resource_data_scheme = qrc_resources_scheme.qt_resource_data
     
     if qt_resource_data_scheme != qrc_resources.qt_resource_data:
-        # When we add new icons the qrc_resources.py file needs to be replaced
-        shutil.copyfile(qrc_resources_scheme_path, qrc_resources_path)
-    
+        from . import _copy_qrc_resources_file
+        proceed = _copy_qrc_resources_file(qrc_resources_scheme_path)
+        if not proceed:
+            print('-'*100)
+            print(
+                'Cell-ACDC had to reset the GUI icons. '
+                'Please re-start the application. Thank you for your patience!'
+            )
+            print('-'*100)
+            exit()
+            
     from . import load
     scheme = get_color_scheme()
     palette = getPaletteColorScheme(app.palette(), scheme=scheme)
