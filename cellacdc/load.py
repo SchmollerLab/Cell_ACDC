@@ -3139,7 +3139,7 @@ class select_exp_folder:
             if is_cropped:
                 info_txt = f'{info_txt} cropped'
             
-            if info_txt.endswith('(')
+            if info_txt.endswith('('):
                 values.append(pos)
             else:
                 values.append(f'{info_txt})')
