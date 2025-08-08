@@ -212,15 +212,20 @@ does_qrc_resources_exists = (
     or os.path.exists(qrc_resources_user_path)
 )
 
-def _copy_qrc_resources_file(qrc_resources_scheme_path):
+def _copy_qrc_resources_file(
+        src_qrc_resources_scheme_path: os.PathLike,
+        dst_qrc_resources_path: os.PathLike = qrc_resources_path, 
+        user_dst_qrc_resources_path: os.PathLike = qrc_resources_user_path
+    ):
     try:
-        shutil.copyfile(qrc_resources_scheme_path, qrc_resources_path)
+        shutil.copyfile(src_qrc_resources_scheme_path, dst_qrc_resources_path)
         return True
     except Exception as err:
         # Copy to user folder because copying to cell-acdc location failed 
         # possibly PermissionError
-        shutil.copyfile(qrc_resources_scheme_path, qrc_resources_user_path)
-        qrc_resources_path = qrc_resources_user_path
+        shutil.copyfile(
+            src_qrc_resources_scheme_path, user_dst_qrc_resources_path
+        )
         return False
 
 # Set default qrc resources
