@@ -3189,6 +3189,23 @@ class dataPrepWin(QMainWindow):
         if not self.saveAction.isEnabled():
             return True
         
+        isCropped = False
+        for p, posData in enumerate(self.data):
+            data = posData.img_data            
+            allCropsData = []
+            for cropROI in posData.cropROIs:
+                croppedData, SizeZ = self.crop(data, posData, cropROI)
+                allCropsData.append(croppedData)
+
+            isCropped = any(
+                [cropped.shape != data.shape for cropped in allCropsData]
+            )
+            if isCropped:
+                break
+        
+        if not isCropped:
+            return True
+        
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             You seem to have cropping information that you did not save.<br><br> 
