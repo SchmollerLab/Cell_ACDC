@@ -80,7 +80,6 @@ def run_gui():
         _exit_on_setup()
     
     from qtpy import QtGui, QtWidgets, QtCore
-    # from . import qrc_resources
 
     if os.name == 'nt':
         try:

@@ -18,7 +18,7 @@ from . import GUI_INSTALLED
 if GUI_INSTALLED:
     from qtpy.QtWidgets import QFileDialog
     from . import widgets
-    from . import qrc_resources
+    from . import acdc_qrc_resources
     from . import _run
 
 from . import load, cca_df_colnames

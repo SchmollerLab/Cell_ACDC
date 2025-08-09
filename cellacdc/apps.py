@@ -72,7 +72,7 @@ from . import load, prompts, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, settings_folderpath, config
 from . import preproc_recipes_path, segm_recipes_path
 from . import is_conda_env
-from . import qrc_resources, printl
+from . import acdc_qrc_resources, printl
 from . import colors
 from . import issues_url
 from . import myutils

@@ -501,7 +501,7 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     from ._palettes import getPaletteColorScheme, setToolTipStyleSheet
     from ._palettes import get_color_scheme
     from . import qrc_resources_path
-    from . import qrc_resources
+    from . import acdc_qrc_resources
     from . import printl
     
     # Check if there are new icons --> replace qrc_resources.py
@@ -516,10 +516,18 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
         qrc_resources_scheme = import_module('cellacdc.qrc_resources_dark')
         qt_resource_data_scheme = qrc_resources_scheme.qt_resource_data
     
-    if qt_resource_data_scheme != qrc_resources.qt_resource_data:
-        # When we add new icons the qrc_resources.py file needs to be replaced
-        shutil.copyfile(qrc_resources_scheme_path, qrc_resources_path)
-    
+    if qt_resource_data_scheme != acdc_qrc_resources.qt_resource_data:
+        from . import _copy_qrc_resources_file
+        proceed = _copy_qrc_resources_file(qrc_resources_scheme_path)
+        if not proceed:
+            print('-'*100)
+            print(
+                'Cell-ACDC had to reset the GUI icons. '
+                'Please re-start the application. Thank you for your patience!'
+            )
+            print('-'*100)
+            exit()
+            
     from . import load
     scheme = get_color_scheme()
     palette = getPaletteColorScheme(app.palette(), scheme=scheme)

@@ -59,7 +59,7 @@ from . import exception_handler
 from . import user_profile_path
 from . import cellacdc_path
 
-from . import qrc_resources
+from . import acdc_qrc_resources
 
 try:
     import spotmax
