@@ -3894,8 +3894,8 @@ def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cu
     elif do_not_warn:
         return False, False
     
-    proceed, gpu_availible = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
-    return proceed, gpu_availible
+    proceed, gpu_available = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
+    return proceed, gpu_available
 
 
 def _available_frameworks(model_name):
