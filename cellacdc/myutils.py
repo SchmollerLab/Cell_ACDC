@@ -3816,7 +3816,7 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     )
 
     if msg.cancel:
-        return False
+        return False, False
     
     if msg.clickedButton == directMLButton:
         py_ver = sys.version_info
@@ -3828,22 +3828,22 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
                 return_outcome=True,
             )
             purge_module('torch')
-            return success
+            return success, True
         else:
             msg = widgets.myMessageBox()
             msg.warning(
                 qparent, 'DirectML not supported', 
                 'DirectML is only supported on Python 3.8-3.12 and Windows 10/11',
             )
-            return False
+            return False, False
 
     if msg.clickedButton == stopButton:
-        return False
+        return False, False
 
     if msg.clickedButton == proceedButton:
-        return True
+        return True, False
 
-def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cuda=False):
+def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cuda=False, return_gpu=False):
     if not use_gpu:
         return True
     
@@ -3889,13 +3889,13 @@ def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cu
             break
     
     if framework_available and not ask_for_cuda:
-        return True
+        return True, True
     
     elif do_not_warn:
-        return False
+        return False, False
     
-    proceed = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
-    return proceed
+    proceed, gpu_availible = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
+    return proceed, gpu_availible
 
 
 def _available_frameworks(model_name):
