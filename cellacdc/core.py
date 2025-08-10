@@ -252,7 +252,8 @@ def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
         try:
             lab[obj.slice][obj.image] = newIDs[idx]
         except OverflowError:
-            lab = lab.astype(np.uint32) # id
+            # it should be uint32 already but sometimes it was not
+            lab = lab.astype(np.uint32) 
             lab[obj.slice][obj.image] = newIDs[idx]
     return lab
 
