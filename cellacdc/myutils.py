@@ -3845,7 +3845,10 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
 
 def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cuda=False, return_gpu=False):
     if not use_gpu:
-        return True
+        if return_gpu:
+            return True, False
+        else:
+            return True
     
     ask_for_cuda = False
     if cuda:
