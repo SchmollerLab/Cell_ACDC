@@ -249,7 +249,11 @@ def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
             # Skip assigning ID to same ID
             continue
 
-        lab[obj.slice][obj.image] = newIDs[idx]
+        try:
+            lab[obj.slice][obj.image] = newIDs[idx]
+        except OverflowError:
+            lab = lab.astype(np.uint32) # id
+            lab[obj.slice][obj.image] = newIDs[idx]
     return lab
 
 def post_process_segm(labels, return_delIDs=False, **kwargs):
