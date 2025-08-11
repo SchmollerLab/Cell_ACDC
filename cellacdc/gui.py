@@ -29964,13 +29964,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if mode == 'Cell cycle analysis':
             proceed = self.askSaveLastVisitedCcaMode(isQuickSave=isQuickSave)
             if not proceed:
+                self.abortSavingInitialisation()
+                self.setDisabled(False, keepDisabled=False)
+                self.activateWindow()
                 return
         else:
             proceed = self.askSaveLastVisitedSegmMode(isQuickSave=isQuickSave)
             if not proceed:
+                self.abortSavingInitialisation()
+                self.setDisabled(False, keepDisabled=False)
+                self.activateWindow()
                 return
+        
         append_name_og_whitelist, proceed, do_not_save_og_whitelist = self.askSaveOriginalSegm(isQuickSave=isQuickSave)
         if not proceed:
+            self.abortSavingInitialisation()
             self.setDisabled(False, keepDisabled=False)
             self.activateWindow()
             return
