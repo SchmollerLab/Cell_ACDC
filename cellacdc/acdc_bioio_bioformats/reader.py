@@ -192,7 +192,7 @@ class OMEXML:
         with open(filepath, 'w') as file:
             file.write(str(self))
     
-    def init_from_file(self, filepath):
+    def init_from_file(self, filepath, image_filepath):
         with open(filepath, 'r') as file:
             txt = file.read()
         

@@ -272,7 +272,9 @@ class bioFormatsWorker(QObject):
         metadata_filepath = os.path.join(
             bioio_sample_data_folderpath, 'metadata.txt'
         )
-        metadata = bioformats.OMEXML().init_from_file(metadata_filepath)
+        metadata = bioformats.OMEXML().init_from_file(
+            metadata_filepath, rawFilePath
+        )
         return metadata, metadataXML
         
     
