@@ -25,5 +25,15 @@ EXTENSION_PACKAGE_MAPPER = {
     '.dir': 'bioio-sldy',
 }
 
+EXTENSION_BIOIMAGE_KWARGS_MAPPER = {
+    '.czi': {'use_aicspylibczi': True},
+}
+
+EXTENSION_METADATA_ATTR_MAPPER = {
+    '.czi': {
+        'TimeIncrement': 'standard_metadata.timelapse_interval.total_seconds()'
+    }
+}
+
 from .reader import ImageReader, get_omexml_metadata, OMEXML, Metadata
 from . import _utils
