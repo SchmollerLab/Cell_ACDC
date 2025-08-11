@@ -65,9 +65,6 @@ pg.setConfigOption('imageAxisOrder', 'row-major')
 from warnings import simplefilter
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 
-# NOTE: Enable icons
-from . import acdc_qrc_resources
-
 # Custom modules
 from . import exception_handler, disableWindow
 from . import base_cca_dict, lineage_tree_cols, lineage_tree_cols_std_val

@@ -34,9 +34,6 @@ from qtpy.compat import getexistingdirectory
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 
-# NOTE: Enable icons
-from . import acdc_qrc_resources
-
 # Custom modules
 from . import exception_handler
 from . import load, prompts, apps, core, myutils
