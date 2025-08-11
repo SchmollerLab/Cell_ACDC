@@ -35,7 +35,7 @@ import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 
 # NOTE: Enable icons
-from . import qrc_resources
+from . import acdc_qrc_resources
 
 # Custom modules
 from . import exception_handler

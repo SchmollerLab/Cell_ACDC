@@ -58,7 +58,7 @@ import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 
 from . import myutils, measurements, is_mac, is_win, html_utils, is_linux
-from . import qrc_resources, printl, settings_folderpath
+from . import acdc_qrc_resources, printl, settings_folderpath
 from . import colors, config
 from . import html_path
 from . import _palettes

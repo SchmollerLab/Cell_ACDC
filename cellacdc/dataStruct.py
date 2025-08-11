@@ -37,7 +37,7 @@ from qtpy import QtGui
 # a separate process that doesn't have a parent package
 from . import issues_url
 from . import exception_handler
-from . import qrc_resources
+from . import acdc_qrc_resources
 from . import apps, myutils, widgets, html_utils, printl
 from . import load, settings_csv_path
 from . import _palettes

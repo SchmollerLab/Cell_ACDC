@@ -35,7 +35,7 @@ from .. import workers
 from .. import cellacdc_path, recentPaths_path, settings_folderpath
 from .. import io
 
-from .. import qrc_resources
+from .. import acdc_qrc_resources
 
 if os.name == 'nt':
     try:
