@@ -3892,13 +3892,22 @@ def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cu
             break
     
     if framework_available and not ask_for_cuda:
-        return True, True
-    
+        if return_gpu:
+            return True, True
+        else:
+            return True
+
     elif do_not_warn:
-        return False, False
+        if return_gpu:
+            return False, False
+        else:
+            return False
     
     proceed, gpu_available = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
-    return proceed, gpu_available
+    if return_gpu
+        return proceed, gpu_available
+    else:
+        return proceed
 
 
 def _available_frameworks(model_name):
