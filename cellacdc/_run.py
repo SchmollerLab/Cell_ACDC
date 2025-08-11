@@ -573,12 +573,16 @@ def _setup_numpy(caller_name='Cell-ACDC'):
     
     numpy_versions = []
     url = "https://pypi.org/pypi/numba/json"
-    with urllib.request.urlopen(url) as response:
-        data = json.load(response)
-        requires_dist = data["info"].get("requires_dist", [])
-        numpy_versions = [
-            req for req in requires_dist if "numpy" in req.lower()
-        ]
+    try:
+        with urllib.request.urlopen(url) as response:
+            data = json.load(response)
+            requires_dist = data["info"].get("requires_dist", [])
+            numpy_versions = [
+                req for req in requires_dist if "numpy" in req.lower()
+            ]
+    except urllib.error.URLError as e:
+        print(f"Could not update np: {e}")
+        return
     
     if not numpy_versions:
         print(
