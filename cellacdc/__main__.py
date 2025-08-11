@@ -117,8 +117,7 @@ def run_gui():
     app, splashScreen = _run._setup_app(splashscreen=True)
 
     from cellacdc import myutils, printl
-    from cellacdc import qrc_resources
-
+    
     print('Launching application...')
 
     from cellacdc._main import mainWin

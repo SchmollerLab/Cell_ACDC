@@ -25,7 +25,7 @@ from .. import gui, dataStruct, myutils, cite_url, html_utils, urls, widgets
 from .. import _palettes
 
 # NOTE: Enable icons
-from .. import qrc_resources, cellacdc_path, settings_folderpath
+from .. import cellacdc_path, settings_folderpath
 
 if os.name == 'nt':
     try:

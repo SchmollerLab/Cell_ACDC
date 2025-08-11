@@ -18,7 +18,6 @@ from ..myutils import get_git_pull_checkout_cellacdc_version_commands
 from ..myutils import get_info_version_text
 from .. import widgets, myutils
 from .. import html_utils, printl
-from .. import acdc_qrc_resources
 from .. import cellacdc_path
 
 class QDialogAbout(QDialog):

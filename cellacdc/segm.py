@@ -31,7 +31,7 @@ import qtpy.compat
 
 # Custom modules
 from . import prompts, load, myutils, apps, core, dataPrep, widgets
-from . import acdc_qrc_resources, html_utils, printl
+from . import html_utils, printl
 from . import exception_handler
 from . import workers
 from . import recentPaths_path
