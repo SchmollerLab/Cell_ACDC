@@ -1,5 +1,6 @@
 import os
 import re
+import ast
 
 from typing import Literal
 
@@ -5051,3 +5052,23 @@ def sort_IDs_dist(rps, point=None, ID=None):
     sorted_ids = sorted(zip(dist_matrix, IDs))
     sorted_ids = [ID for _, ID in sorted_ids]
     return sorted_ids
+
+def safe_get_or_call(obj, path: str):
+    """Safely get nested attributes or call methods with literal args from a string path."""
+    expr = ast.parse(path, mode='eval').body
+
+    def _eval(node, current_obj):
+        if isinstance(node, ast.Attribute):
+            return getattr(_eval(node.value, current_obj), node.attr)
+        elif isinstance(node, ast.Call):
+            func = _eval(node.func, current_obj)
+            args = [ast.literal_eval(arg) for arg in node.args]
+            kwargs = {kw.arg: ast.literal_eval(kw.value) for kw in node.keywords}
+            return func(*args, **kwargs)
+        elif isinstance(node, ast.Name):
+            # First name in chain is assumed to be from `obj`
+            return getattr(current_obj, node.id)
+        else:
+            raise ValueError(f"Unsupported syntax: {ast.dump(node)}")
+
+    return _eval(expr, obj)

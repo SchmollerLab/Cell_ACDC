@@ -4,7 +4,10 @@ import re
 import numpy as np
 
 from .. import printl
+from ..myutils import safe_get_or_call
 from . import install, EXTENSION_PACKAGE_MAPPER
+from . import EXTENSION_BIOIMAGE_KWARGS_MAPPER
+from . import EXTENSION_METADATA_ATTR_MAPPER
 
 def set_reader(image_filepath, **kwargs):
     if 'reader' in kwargs:
@@ -12,7 +15,11 @@ def set_reader(image_filepath, **kwargs):
     
     _, ext = os.path.splitext(image_filepath)
     if ext in EXTENSION_PACKAGE_MAPPER:
-        return kwargs
+        all_kwargs = {
+            **kwargs, 
+            **EXTENSION_BIOIMAGE_KWARGS_MAPPER.get(ext, {})
+        }
+        return all_kwargs
     
     try:
         import bioio_bioformats
@@ -99,7 +106,21 @@ class Metadata:
 class Channel:
     pass
 
-class Pixels:
+class Node:
+    def __init__(self, image_filepath, bioimage_class):
+        _, ext = os.path.splitext(image_filepath)
+        self._node = {}
+        if ext not in EXTENSION_METADATA_ATTR_MAPPER:
+            return
+        
+        name_expression_mapper = EXTENSION_METADATA_ATTR_MAPPER[ext]
+        for name, expression in name_expression_mapper.items():
+            self._node[name] = safe_get_or_call(bioimage_class, expression)
+        
+    def get(self, name):
+        return self._node[name]
+
+class Pixels:    
     def Channel(self, c: int):
         channel = Channel()
         channel.Name = self.channel_names[c]
@@ -141,10 +162,14 @@ class OMEXML:
         with ImageReader(image_filepath, qparent=qparent) as bioio_image:
             self.bioimage = bioio_image._bioioimage
         
-        self.Pixels = Pixels()
-        self.Pixels.channel_names = self.bioimage.channel_names 
+        self._init_Pixels(image_filepath)
         
         return self
+    
+    def _init_Pixels(self, image_filepath):
+        self.Pixels = Pixels()
+        self.Pixels.node = Node(image_filepath, self.bioimage)
+        self.Pixels.channel_names = self.bioimage.channel_names 
     
     def __str__(self):
         self.image()
@@ -198,8 +223,7 @@ class OMEXML:
             self.channel_names, self.image_count
         )
         
-        self.Pixels = Pixels()
-        self.Pixels.channel_names = self.bioimage.channel_names
+        self._init_Pixels(image_filepath)
         
         return self
     
