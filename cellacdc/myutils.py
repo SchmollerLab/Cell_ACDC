@@ -3984,7 +3984,7 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     )
 
     if msg.cancel:
-        return False
+        return False, False
     
     if msg.clickedButton == directMLButton:
         py_ver = sys.version_info
@@ -3996,24 +3996,27 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
                 return_outcome=True,
             )
             purge_module('torch')
-            return success
+            return success, True
         else:
             msg = widgets.myMessageBox()
             msg.warning(
                 qparent, 'DirectML not supported', 
                 'DirectML is only supported on Python 3.8-3.12 and Windows 10/11',
             )
-            return False
+            return False, False
 
     if msg.clickedButton == stopButton:
-        return False
+        return False, False
 
     if msg.clickedButton == proceedButton:
-        return True
+        return True, False
 
-def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cuda=False):
+def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cuda=False, directML=False, return_available_gpu_type=False):
     if not use_gpu:
-        return True
+        if return_available_gpu_type:
+            return True, []
+        else:
+            return True
     
     ask_for_cuda = False
     if cuda:
@@ -4025,10 +4028,24 @@ def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cu
                 ask_for_cuda = True
         except ModuleNotFoundError:
             ask_for_cuda = True
+    
+    ask_for_directML = False
+    if directML:
+        if is_win:
+            try:
+                import torch_directml
+                if not torch_directml.is_available():
+                    ask_for_directML = True
+            except ModuleNotFoundError:
+                ask_for_directML = True
             
     frameworks = _available_frameworks(model_name)
     ask_installs = set() if not ask_for_cuda else {'cuda'}
+    ask_installs.update(
+        {'directML'} if ask_for_directML else set()
+    )
     framework_available = False
+    available_frameworks_list = []
     for framework, model_compatible in frameworks.items():
         if not model_compatible:
             continue
@@ -4040,7 +4057,7 @@ def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cu
                 ask_installs.add('cuda')
             else:
                 framework_available = True
-                break
+                available_frameworks_list.append('cuda')
         elif framework == 'directML':
             if is_win:
                 try:
@@ -4049,21 +4066,32 @@ def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cu
                         ask_installs.add('directML')
                     else:
                         framework_available = True
-                        break
+                        available_frameworks_list.append('directML')
                 except ModuleNotFoundError:
                     ask_installs.add('directML')
         elif is_mac_arm64:
             framework_available = True
             break
     
-    if framework_available and not ask_for_cuda:
-        return True
-    
+    if framework_available and not ask_for_cuda and not ask_for_directML:
+        if return_available_gpu_type:
+            return True, available_frameworks_list
+        else:
+            return True
+
     elif do_not_warn:
-        return False
+        if return_available_gpu_type:
+            return False, available_frameworks_list
+        else:
+            return False
     
-    proceed = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
-    return proceed
+    proceed, directML_installed = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
+    if return_available_gpu_type:
+        if directML_installed:
+            available_frameworks_list.append('directML')
+        return proceed, available_frameworks_list
+    else:
+        return proceed
 
 
 def _available_frameworks(model_name):

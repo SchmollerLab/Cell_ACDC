@@ -1337,14 +1337,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.viewLinTreeInfoButton.clicked.connect(self.viewLinTreeInfoAction)
     
 
-        modes_availible = [
+        modes_available = [
             'Segmentation and Tracking',
             'Cell cycle analysis',
             'Viewer',
             'Custom annotations',
             'Normal division: Lineage tree'
         ]
-        self.modeItems = modes_availible
+        self.modeItems = modes_available
 
         self.modeActionGroup = QActionGroup(self.modeMenu)
         for mode in self.modeItems:
