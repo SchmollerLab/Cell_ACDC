@@ -4046,7 +4046,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.imgGrad.setImageItem(self.img1)
         self.img1.lutItem = self.imgGrad
         self.imgGrad.sigRescaleIntes.connect(self.rescaleIntensitiesLut)
-        self.ax1.addItem(self.img1)
+        self.ax1.addImageItem(self.img1)
 
         # Right image
         self.img2 = widgets.labImageItem()
@@ -12609,7 +12609,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             }
             self.autoIDcheckbox.setChecked(False)
             self.warnLostCellsAction.setChecked(False)
-            xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
             hoverID = self.getLastHoveredID()
             if hoverID == 0:
                 win = apps.QLineEditDialog(
@@ -14038,10 +14037,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            self.setFrameNavigationDisabled(
-                False, 'Viewing original labels'
-            )
-
+            self.ax1.setHighlighted(True)
 
         if not self.isDataLoaded:
             self.logger.warning(
