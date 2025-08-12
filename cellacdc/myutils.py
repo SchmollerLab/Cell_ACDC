@@ -2892,6 +2892,13 @@ def check_install_nnInteractive():
     import nnInteractive
     importlib.reload(nnInteractive)
 
+def check_install_microsam():
+    check_install_package(
+        'micro-sam', 
+        pypi_name='micro_sam', 
+        installer='conda'
+    )
+
 def check_install_yeaz():
     check_install_torch()
     check_install_package('yeaz')
