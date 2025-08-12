@@ -9478,7 +9478,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
     def updateDelROIinFutureFrames(self, roi: pg.ROI):
         posData = self.data[self.pos_i]
-        update_images = False
+        restore_current_frame = False
         
         roiState = roi.getState()
         # Restore deleted IDs from already visited future frames
@@ -9486,6 +9486,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         delROIs_info = posData.allData_li[current_frame_i]['delROIs_info']
         idx = delROIs_info['rois'].index(roi)       
         delROIs_info['state'][idx] = roiState
+        
+        self.store_data()
         
         for i in range(posData.frame_i+1, posData.SizeT):
             delROIs_info = posData.allData_li[i]['delROIs_info']
@@ -9500,18 +9502,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             posData.allData_li[i]['labels'] = posData.lab
             self.get_data()
             self.store_data(autosave=False)
-            update_images = True
+            restore_current_frame = True
+        
+        if not restore_current_frame:
+            return
         
         # Back to current frame
         posData.frame_i = current_frame_i
         posData.lab = posData.allData_li[posData.frame_i]['labels']                   
         self.get_data()
         self.store_data()
-        
-        if not update_images:
-            return
-        
-        # self.updateAllImages()
     
     # @exec_time
     def getPolygonBrush(self, yxc2, Y, X):
