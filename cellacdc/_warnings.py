@@ -174,6 +174,47 @@ def warn_download_bioformats_jar_failed(jar_dst_filepath, qparent=None):
     )
     return msg.cancel
 
+def warn_segment_for_lost_IDs_first_frame(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        The segmentation for lost IDs is not available on the first frame.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Not available on first frame', txt, 
+    )
+    return msg.cancel
+
+def warnPromptSegmentPointsLayerNotInit(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        The points layer was not initialized!<br><br>
+        To initialize it, please, deactivate and reactivate the 
+        <code>Magic prompts</code> button in the top toolbar.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Points layer not initialized', txt, 
+    )
+    return msg.cancel
+
+def warnPromptSegmentModelNotInit(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        Promptable model was not initialized!<br><br>
+        To initialize it, please, click on the <codeSelect the promptable 
+        model to use</code> button in the <code>Magic prompts</code> 
+        toolbar.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Promptable model not initialized', txt, 
+    )
+    return msg.cancel
+
 def warnNotEnoughG1Cells(numCellsG1, frame_i, numNewCells, qparent=None):
     from cellacdc import widgets
     if numCellsG1 == 0:

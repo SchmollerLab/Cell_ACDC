@@ -38,7 +38,7 @@ from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient,
-    QImage, QCursor
+    QImage, QCursor, QPicture
 )
 from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -69,6 +69,7 @@ from . import annotate
 from . import urls
 from . import _core
 from . import QtScoped
+from . import prompts
 from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER
 from . import _base_widgets
@@ -1632,6 +1633,15 @@ class FolderPathControl(filePathControl):
             **kwargs
         )
 
+class CsvFilePathControl(filePathControl):
+    def __init__(self, **kwargs):
+        super().__init__(
+            browseFolder=False,
+            fileManagerTitle='Select a CSV file',
+            validExtensions={'CSV files': ['.csv', '.CSV']},
+            **kwargs
+        )
+
 class QHWidgetSpacer(QWidget):
     def __init__(self, width=10, parent=None) -> None:
         super().__init__(parent)
@@ -2933,8 +2943,8 @@ def macShortcutToWindows(shortcut: str):
     return s
 
 class ToolBar(QToolBar):
-    def __init__(self, *args) -> None:
-        super().__init__(*args)
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
         
         self.widgetsWithShortcut = {}
         
@@ -2964,6 +2974,24 @@ class ToolBar(QToolBar):
         self.addAction(action)
         return action
 
+    def addComboBox(self, items=None, label=''):
+        combobox = ComboBox()
+        
+        if items is not None:
+            combobox.addItems(items)
+            
+        if label:
+            combobox.label = QLabel(label)
+            combobox.labelAction = self.addWidget(combobox.label)
+        
+        combobox.action = self.addWidget(combobox)
+        return combobox
+
+    def addLabel(self, text=''):
+        label = QLabel(text)
+        label.action = self.addWidget(label)
+        return label
+    
 class ManualTrackingToolBar(ToolBar):
     sigIDchanged = Signal(int)
     sigDisableGhost = Signal()
@@ -3175,6 +3203,7 @@ class ManualBackgroundToolBar(ToolBar):
 
 class rightClickToolButton(QToolButton):
     sigRightClick = Signal(object)
+    sigLeftClick = Signal(object, object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -3182,8 +3211,54 @@ class rightClickToolButton(QToolButton):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
+            self.sigLeftClick.emit(self, event)
         elif event.button() == Qt.MouseButton.RightButton:
             self.sigRightClick.emit(event)
+
+class SavePointsLayerButton(rightClickToolButton):
+    sigRenameTableAction = Signal(object, str)
+    
+    def __init__(self, table_endname, parent=None):
+        super().__init__(parent=parent)
+        self.setIcon(QIcon(':file-save.svg'))
+        
+        self.table_endname = table_endname
+        
+        self.setToolTip(
+            "Save annotated points in the CSV file ending "
+            f"with '{self.table_endname}.csv'"
+        )
+                
+        self.sigRightClick.connect(self.showContextMenu)
+    
+    def showContextMenu(self, event):
+        contextMenu = QMenu(self)
+        contextMenu.addSeparator()
+        
+        renameAction = QAction('Rename points layer table')
+        renameAction.triggered.connect(self.renameTable)
+        contextMenu.addAction(renameAction)
+        
+        contextMenu.exec(event.globalPos())
+    
+    def renameTable(self):
+        win = apps.filenameDialog(
+            parent=self,
+            title='Rename points layer table file',
+            allowEmpty=False,
+            defaultEntry=self.table_endname,
+            ext='.csv',
+        )
+        win.exec_()
+        if win.cancel:
+            return
+        
+        self.table_endname = win.entryText
+        self.setToolTip(
+            "Save annotated points in the CSV file ending "
+            f"with '{self.table_endname}.csv'"
+        )
+        self.sigRenameTableAction.emit(self, self.table_endname)
 
 class ToolButtonCustomColor(rightClickToolButton):
     def __init__(self, symbol, color='r', parent=None):
@@ -3877,6 +3952,7 @@ class SpinBox(QSpinBox):
         self.setMinimum(-2**31)
         self._valueChangedFunction = None
         self.disableKeyPress = disableKeyPress
+        self._linkedWidget = None
     
     def mousePressEvent(self, event) -> None:
         super().mousePressEvent(event)
@@ -3915,6 +3991,11 @@ class SpinBox(QSpinBox):
         self._valueChangedFunction = function
         self.valueChanged.connect(function)
     
+    def setValue(self, value, setLinkedWidget=True):
+        super().setValue(value)
+        if self._linkedWidget is not None and setLinkedWidget:
+            self._linkedWidget.setValue(value)
+    
     def setValueNoEmit(self, value):
         if self._valueChangedFunction is None:
             self.setValue(value)
@@ -3929,6 +4010,9 @@ class SpinBox(QSpinBox):
     
     def wheelEvent(self, event):
         event.ignore()
+    
+    def setLinkedValueWidget(self, widget):
+        self._linkedWidget = widget
 
 class ReadOnlyLineEdit(QLineEdit):
     def __init__(self, parent=None):
@@ -3943,6 +4027,15 @@ class ReadOnlyLineEdit(QLineEdit):
         if a1.type() == QEvent.Type.FocusIn:
             return True
         return super().eventFilter(a0, a1)
+
+    def setValue(self, value):
+        self.setText(str(value))
+    
+    def value(self, casting_func: callable = None):
+        text = self.text()
+        if casting_func is not None:
+            return casting_func(text)
+        return text
 
 class FloatLineEdit(QLineEdit):
     valueChanged = Signal(float)
@@ -7440,10 +7533,62 @@ class ImShowPlotItem(pg.PlotItem):
         # clicking it.
         # If autorange is enabled, it is called everytime the brush or eraser 
         # scatter plot items touches the border causing flickering
+        self.disableAutoRange()
         self.autoBtn.mode = 'manual'
         self.invertY(True)
         self.setAspectLocked(True)
         self.addImageItem(kargs.get('imageItem'))
+        
+        self._selected = False
+        self.selectingRects = []
+    
+    def isSelected(self):
+        return self._selected
+    
+    def setSelected(
+            self, selected: bool, 
+            xlim=(-np.inf, np.inf), 
+            ylim=(-np.inf, np.inf)
+        ):
+        if selected == self._selected:
+            return
+        
+        if selected:
+            ((xmin, xmax), (ymin, ymax)) = self.viewRange()
+            ylim_min, ylim_max = ylim
+            xlim_min, xlim_max = xlim
+            
+            xmin = max(xlim_min, xmin)
+            xmax = min(xlim_max, xmax)
+            ymin = max(ylim_min, ymin)
+            ymax = min(ylim_max, ymax)
+            
+            w = xmax - xmin
+            h = ymax - ymin
+            
+            bs = round(((w + h) / 2) * 0.02)
+            if bs < 1:
+                bs = 1
+            
+            rect_left = RectItem(QRectF(xmin, ymin, bs, h))
+            rect_top = RectItem(QRectF(xmin+bs, ymin, w-bs-bs, bs))
+            rect_right = RectItem(QRectF(xmax-bs, ymin, bs, h))
+            rect_bottom = RectItem(QRectF(xmin+bs, ymax-bs, w-bs-bs, bs))
+            self.selectingRects.append(rect_left)
+            self.selectingRects.append(rect_top)
+            self.selectingRects.append(rect_right)
+            self.selectingRects.append(rect_bottom)
+            
+            self.addItem(rect_left)
+            self.addItem(rect_top)
+            self.addItem(rect_right)
+            self.addItem(rect_bottom)
+        else:
+            for rect in self.selectingRects:
+                self.removeItem(rect)
+            self.selectingRects = []
+        
+        self._selected = selected
     
     def addImageItem(self, imageItem):
         self.imageItem = imageItem
@@ -7489,6 +7634,8 @@ class ImShowPlotItem(pg.PlotItem):
 
 class _ImShowImageItem(pg.ImageItem):
     sigDataHover = Signal(str)
+    sigHoverEvent = Signal(object, object)
+    sigMousePressEvent = Signal(object, object)
 
     def __init__(self, idx) -> None:
         super().__init__()
@@ -7502,6 +7649,10 @@ class _ImShowImageItem(pg.ImageItem):
         except Exception as err:
             return
     
+    def mousePressEvent(self, event):
+        self.sigMousePressEvent.emit(self, event)
+        super().mousePressEvent(event)
+    
     def setOtherImagesCursors(self, cursors):
         self._cursors = cursors
     
@@ -7513,7 +7664,7 @@ class _ImShowImageItem(pg.ImageItem):
             cursor.setData([], [])
     
     def setImage(self, *args, **kwargs):
-        super().setImage(*args, **kwargs)
+        super().setImage(*args, **kwargs)                
         if not args:
             return
         image = args[0]
@@ -7522,6 +7673,8 @@ class _ImShowImageItem(pg.ImageItem):
         self._numLevels = self._imageMax - self._imageMin
     
     def hoverEvent(self, event):
+        self.sigHoverEvent.emit(self, event)
+        
         if event.isExit():
             self.clearCursors()
             self.sigDataHover.emit('')
@@ -7549,13 +7702,22 @@ class _ImShowImageItem(pg.ImageItem):
                 continue
             
             cursor.setData([x], [y])
-            
 
 class ImShow(QBaseWindow):
-    def __init__(self, parent=None, link_scrollbars=True, infer_rgb=True):
+    def __init__(
+            self, 
+            parent=None, 
+            link_scrollbars=True, 
+            infer_rgb=True, 
+            figure_title='',
+            selectable_images=False
+        ):
         super().__init__(parent=parent)
         self._linkedScrollbars = link_scrollbars
         self._infer_rgb = infer_rgb
+        self._figure_title = figure_title
+        self._selectable_images = True
+        self.selected_idx = None
 
         self._autoLevels = True
 
@@ -7582,10 +7744,14 @@ class ImShow(QBaseWindow):
         imageItem = scrollbar.imageItem
         img = self._get2Dimg(imageItem, scrollbar.image)
         imageItem.setImage(img, autoLevels=self._autoLevels)
+        
+        overlayLab = self._get2DlabOverlay(imageItem)
+        if overlayLab is not None:
+            imageItem.labImageItem.setImage(overlayLab, autoLevels=False)
+        
         self.setPointsVisible(imageItem)
 
         self.updateIDs()
-
 
         if not self._linkedScrollbars:
             return
@@ -7617,10 +7783,42 @@ class ImShow(QBaseWindow):
                 image = image[scrollbar.value()]
         return image
     
+    def _get2DlabOverlay(self, imageItem):
+        try:
+            lab = imageItem.lab
+        except Exception as err:
+            return 
+        
+        for scrollbar in imageItem.ScrollBars:
+            if scrollbar.maxProjCheckbox.isChecked():
+                lab = lab.max(axis=0)
+            else:
+                lab = lab[scrollbar.value()]
+        
+        return lab
+    
+    def isObjVisible(self, obj, imageItem):
+        if len(obj.centroid) == 2:
+            return True
+        
+        z_scrollbar = imageItem.ScrollBars[-1]
+        if z_scrollbar.maxProjCheckbox.isChecked():
+            return True
+        
+        z_slice = z_scrollbar.value()
+        min_z, min_y, min_x, max_z, max_y, max_x = obj.bbox
+        if z_slice >= min_z and z_slice < max_z:
+            return True
+
+        return False
+    
     def onMaxProjToggled(self, checked, scrollbar):
         imageItem = scrollbar.imageItem
         img = self._get2Dimg(imageItem, scrollbar.image)
         imageItem.setImage(img, autoLevels=self._autoLevels)
+        overlayLab = self._get2DlabOverlay(imageItem)
+        if overlayLab is not None:
+            imageItem.labImageItem.setImage(overlayLab, autoLevels=False)
         self.setPointsVisible(imageItem)
         if not self._linkedScrollbars:
             return
@@ -7643,6 +7841,8 @@ class ImShow(QBaseWindow):
             pass
         finally:
             self._linkedScrollbars = True
+        
+        self.updateIDs()
 
     def setPointsVisible(self, imageItem):
         if not hasattr(imageItem, 'pointsItems'):
@@ -7683,6 +7883,18 @@ class ImShow(QBaseWindow):
         nrows = nrows if nrows > 0 else 1
         ncols = max_ncols if len(images) > max_ncols else len(images)
         
+        if color_scheme == 'light':
+            color = 'black'
+        else:
+            color = 'white'
+            
+        self.titleLabel = pg.LabelItem(
+            justify='center', color=color, size='14pt'
+        )
+        self.titleLabel.setText(self._figure_title)
+        self.graphicLayout.addItem(self.titleLabel, row=0, col=0, colspan=ncols)
+        start_row = 1
+        
         # Check if additional rows are needed for the scrollbars
         max_ndim = max([image.ndim for image in images])
         if max_ndim > 4:
@@ -7698,7 +7910,8 @@ class ImShow(QBaseWindow):
         self.ImageItems = []
         self.ScrollBars = []
         i = 0
-        for row in rows_range:
+        for r in rows_range:
+            row = r + start_row
             for col in range(ncols):
                 try:
                     image = images[i]
@@ -7713,6 +7926,13 @@ class ImShow(QBaseWindow):
 
                 imageItem = _ImShowImageItem(i)
                 plot.addImageItem(imageItem)
+                imageItem.plot = plot
+                imageItem.sigHoverEvent.connect(
+                    self.onImageItemHoverEvent
+                )
+                imageItem.sigMousePressEvent.connect(
+                    self.onImageItemMousePressEvent
+                )
                 self.ImageItems.append(imageItem)
                 imageItem.gridPos = (row, col)
                 imageItem.ScrollBars = []
@@ -7742,6 +7962,32 @@ class ImShow(QBaseWindow):
         
         self._layout.addWidget(self.graphicLayout)
     
+    def onImageItemMousePressEvent(self, imageItem, event):
+        if not self._selectable_images:
+            return
+        
+        plot = imageItem.plot
+        if not plot.isSelected():
+            return
+        
+        self.selected_idx = self.PlotItems.index(plot)
+        event.ignore()
+        self.close()
+    
+    def onImageItemHoverEvent(self, imageItem, event):
+        if not self._selectable_images:
+            return
+        
+        modifiers = QGuiApplication.keyboardModifiers()
+        isCtrl = modifiers == Qt.ControlModifier
+        plot = imageItem.plot
+        Y, X = imageItem.image.shape[:2]
+        plot.setSelected(
+            isCtrl and not event.isExit(), 
+            xlim=(0, X), 
+            ylim=(0, Y)
+        )
+        
     def setupTitles(self, *titles):
         color = 'k' if self._colorScheme == 'light' else 'w'
         for plot, title in zip(self.PlotItems, titles):
@@ -7755,7 +8001,11 @@ class ImShow(QBaseWindow):
             plot.autoRange()
     
     def showImages(
-            self, *images, luts=None, autoLevels=True, 
+            self, *images, 
+            labels_overlays: np.ndarray | List[np.ndarray]=None,
+            luts=None, 
+            labels_overlays_luts=None,
+            autoLevels=True, 
             autoLevelsOnScroll=False
         ):
         images = [np.squeeze(img) for img in images]
@@ -7768,6 +8018,30 @@ class ImShow(QBaseWindow):
                     f'Input image has {image.ndim} dimensions. '
                     'Only 2-D, 3-D, and 4-D images are supported'
                 )
+        
+        if isinstance(labels_overlays, np.ndarray):
+            labels_overlays = [labels_overlays]
+        
+        if isinstance(labels_overlays_luts, np.ndarray):
+            labels_overlays_luts = [labels_overlays_luts]
+        
+        if (
+                labels_overlays_luts is not None 
+                and labels_overlays is not None
+                and (len(labels_overlays_luts) != len(labels_overlays))
+            ):
+            raise TypeError(
+                f'Number of lables_overlays_luts is {len(labels_overlays_luts)}, '
+                f'while number of labels_overaly is {len(labels_overlays)}. '
+                'Pass `None` if you want to use default lut for the labels_overlays.'
+            )
+        
+        if labels_overlays is not None and (len(labels_overlays) != len(images)):
+            raise TypeError(
+                f'Number of images is {len(images)}, '
+                f'while number of labels_overaly is {len(labels_overlays)}. '
+                'Pass `None` if you do not need overlaid labeles.'
+            )
         
         for i, (image, imageItem) in enumerate(zip(images, self.ImageItems)):
             if luts is not None:
@@ -7783,7 +8057,7 @@ class ImShow(QBaseWindow):
                 image.ndim == 2
                 or (image.ndim == 3 and (is_rgb or is_rgba))
             )
-
+            
             if does_not_require_scrollbars:
                 imageItem.setImage(image, autoLevels=self._autoLevels)
             else:
@@ -7794,6 +8068,43 @@ class ImShow(QBaseWindow):
                     scrollbar.setValue(int(scrollbar.maximum()/2))
 
             imageItem.sigDataHover.connect(self.updateStatusBarLabel)
+            
+            if labels_overlays is None:
+                continue
+            
+            lab_overlay = labels_overlays[i]            
+            if lab_overlay is None:
+                continue
+            
+            if lab_overlay.shape != image.shape:
+                raise TypeError(
+                    f'`lab_overlay` at index {i} has shape '
+                    f'{lab_overlay.shape} which is different '
+                    f'from image shape {image.shape}. '
+                    'The image and the `lab_overlay` must '
+                    'have the same shape.'
+                )
+            
+            plot = imageItem.plot
+            labImageItem = pg.ImageItem()
+            labImageItem.setOpacity(0.4)
+            plot.addImageItem(labImageItem)
+            
+            if labels_overlays_luts is not None:
+                labels_overlays_lut = labels_overlays_luts[i]
+            else:
+                labels_overlays_lut = self._getDefaultLabelsOverlayLut(
+                    lab_overlay
+                )
+            
+            labImageItem.setLookupTable(labels_overlays_lut)
+            labImageItem.setLevels([0, len(labels_overlays_lut)])
+            
+            imageItem.lab = lab_overlay
+            imageItem.labImageItem = labImageItem
+            
+            overlayLab = self._get2DlabOverlay(imageItem)
+            labImageItem.setImage(overlayLab, autoLevels=False)
 
         # Share axis between images with same X, Y shape
         all_shapes = [image.shape[-2:] for image in images]
@@ -7810,6 +8121,15 @@ class ImShow(QBaseWindow):
             for plot in plots:
                 plot.vb.setYLink(plots[0].vb)
                 plot.vb.setXLink(plots[0].vb)
+    
+    def _getDefaultLabelsOverlayLut(self, lab_overlay):
+        IDs = [obj.label for obj in skimage.measure.regionprops(lab_overlay)]
+        n_objs = len(IDs)
+        lut = np.zeros((n_objs+1, 4), dtype=np.uint8)
+        rgbas = colors.plt_colormap_to_pg_lut('tab20', ncolors=n_objs)
+        np.random.shuffle(rgbas)
+        lut[1:] = rgbas
+        return lut
     
     def _createPointsScatterItem(self, group, data=None):
         cmap = matplotlib.colormaps['jet_r']
@@ -7945,17 +8265,35 @@ class ImShow(QBaseWindow):
                 continue
             plotTextItems = self.textItems[i]
             imageItem = self.ImageItems[i]
-            lab = imageItem.image
+            try:
+                if init:
+                    # 3D labels (if 3D)
+                    lab = imageItem.lab
+                else:
+                    lab = imageItem.labImageItem.image
+            except Exception as err:
+                lab = imageItem.image
+            
             rp = skimage.measure.regionprops(lab)
             for obj in rp:
                 textItem = plotTextItems.get(obj.label)
                 yc, xc = obj.centroid[-2:]
                 if textItem is None:
-                    textItem = pg.TextItem(text='', anchor=(0.5,0.5), color='r')
+                    textItem = pg.TextItem(
+                        text='', anchor=(0.5,0.5), color='r'
+                    )
                     plotItem.addItem(textItem)
                     plotTextItems[obj.label] = textItem
-                textItem.setText(str(obj.label))
+
+                if self.isObjVisible(obj, imageItem):
+                    text = str(obj.label)
+                else:
+                    text = ''
+                
+                textItem.setText(text)
                 textItem.setPos(xc, yc)
+            
+            # plotItem.enableAutoRange()
 
     def clearLabels(self):
         for textItems in self.textItems:
@@ -7965,7 +8303,9 @@ class ImShow(QBaseWindow):
     def updateIDs(self):
         self.clearLabels()
         try:
-            self.annotateObjectIDs(annotate_labels_idxs=self.annotate_labels_idxs)
+            self.annotateObjectIDs(
+                annotate_labels_idxs=self.annotate_labels_idxs
+            )
         except Exception as err:
             pass
 
@@ -8996,6 +9336,8 @@ class SamInputPointsWidget(QWidget):
             self.lineEntry.setText(endname)
 
 class PointsScatterPlotItem(pg.ScatterPlotItem):
+    sigHoverEntered = Signal(object, object, object)
+    
     def __init__(self, *args, ax=None, **kwargs):
         self.textItem = annotate.TextAnnotationsScatterItem(
             size=12, anchor=(1.0, 1.0)
@@ -9010,7 +9352,17 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
         self._font.setPixelSize(12)
         self.drawIds = True
         self.ax = ax
+        self.sigHovered.connect(self.onHover)
+        self.lastHoveredPoint = None
+    
+    def onHover(self, item, points, event):
+        if len(points) == 0:
+            return
         
+        if self.lastHoveredPoint != points[0]:
+            self.sigHoverEntered.emit(item, points, event)
+            self.lastHoveredPoint = points[0]
+    
     def setData(self, *args, **kwargs):
         self.clearTextItems()
         super().setData(*args, **kwargs)
@@ -9852,7 +10204,7 @@ class WhitelistIDsToolbar(ToolBar):
     sigLoadOGLabs = Signal()
     sigTrackOGagainstPreviousFrame = Signal(bool)
     
-    def __init__(self, addNewIDToggleState,*args) -> None:
+    def __init__(self, addNewIDToggleState, *args) -> None:
         super().__init__(*args)
 
         whitelistLineEditLabel = QLabel('Whitelist IDs: ')
@@ -9969,6 +10321,213 @@ class WhitelistIDsToolbar(ToolBar):
         )
         msg.information(self, 'White list IDs', txt)
 
+class MagicPromptsToolbar(ToolBar):
+    sigPromptTypeChanged = Signal(object, str)
+    sigComputeOnZoom = Signal(object)
+    sigComputeOnImage = Signal(object)
+    sigClearPoints = Signal(object)
+    sigClearPointsOnZmom = Signal(object)
+    sigInitSelectedModel = Signal(
+        str, object, list, list, str, object
+    )
+    sigViewModelParams = Signal(
+        str, object, list, list, str, object, object, object
+    )
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self._parent = parent
+        
+        prompt_types = (
+            'Points',
+        )
+        
+        self.selectModelAction = self.addButton(':select-list.svg')
+        self.selectModelAction.setToolTip(
+            'Select the promptable model to use'
+        )
+        
+        self.viewModelParamsAction = self.addButton(':view.svg')
+        self.viewModelParamsAction.setToolTip(
+            'View the currently selected model parameters'
+        )
+        self.viewModelParamsAction.setDisabled(True)
+        
+        self.addSeparator()
+        
+        self.promptTypeCombobox = self.addComboBox(
+            prompt_types, label='Prompt type: ',
+        )
+        
+        self.addSeparator()
+        
+        self.computeOnZoomAction = self.addButton(':compute-zoom.svg')
+        self.computeOnZoomAction.setToolTip(
+            'Compute the segmentation on the zoomed area of the image '
+            '(faster)'
+        )
+        
+        self.computeAction = self.addButton(':compute.svg')
+        self.computeAction.setToolTip(
+            'Compute the segmentation on the whole image'
+        )
+        
+        self.clearPointsAction = self.addButton(':clear-points.svg')
+        self.clearPointsAction.setToolTip(
+            'Clear all points'
+        )
+        self.clearPointsAction.setDisabled(True)
+        
+        self.clearPointsActionOnZoom = self.addButton(':clear-points-zoom.svg')
+        self.clearPointsActionOnZoom.setToolTip(
+            'Clear all points on the zoomed area of the image'
+        )
+        self.clearPointsActionOnZoom.setDisabled(True)
+        
+        self.addSeparator()
+        
+        self.infoAction = self.addButton(':info.svg')
+        self.infoAction.setToolTip(
+            'Show instructions how to use promptable models'
+        )
+        
+        self.addSeparator()
+        
+        self.infoAction.triggered.connect(self.showHelp)
+        self.selectModelAction.triggered.connect(self.selectModel)
+        self.viewModelParamsAction.triggered.connect(self.viewModelParams)
+        self.promptTypeCombobox.sigTextChanged.connect(
+            self.emitPromptTypeChanged
+        )
+        self.computeOnZoomAction.triggered.connect(
+            self.emitSigComputeOnZoom
+        )
+        self.computeAction.triggered.connect(
+            self.emitSigComputeOnImage
+        )
+        self.clearPointsAction.triggered.connect(
+            self.emitSigClearPoints
+        )
+        self.clearPointsActionOnZoom.triggered.connect(
+            self.emitSigClearPointsOnZoom
+        )
+    
+    def showHelp(self):
+        msg = myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            This toolbar allows you to use <b>promptable models for 
+            segmentation</b>.<br><br>
+            
+            To use a promptable model, first <b>select the model</b> by clicking on the 
+            "Select model" button.<br>
+            This will open a dialog where you can select the model to use.<br><br>
+            
+            After selecting the model, you can <b>view the model parameters</b> 
+            by clicking on the "View model parameters" button.<br><br>
+            
+            To add points to the image, make sure you have points layer correctly 
+            initialised. You should see controls<br>
+            called "Left-click ID" and "Right-click ID".<br><br>
+            
+            You can <b>add points</b> for a new object by left-clicking on the image, 
+            while you can add points<br>
+            for the same object by right-clicking. 
+            To <b>delete a point</b>, click on it again.<br><br>
+            
+            To change the right-click ID, 
+            you can either type in the corresponding control,<br>
+            or type the object id on the keyboard followed by "Enter".<br><br>
+            
+            To add <b>negative prompts</b> (i.e., for the background), use the 
+            same action you use to delete objects<br>
+            (default is middle-click on Windows and Cmd+Click on MacOS).<br><br>
+            Note that you can also add object-specific negative prompts (i.e., 
+            they affect only that object)<br>
+            by adding the negative prompt on the newly segmented object 
+            directly.<br><br>
+            
+            Once you are happy with the added points, click either the 
+            "<b>Compute on zoomed area</b>"<br>
+            button or the "<b>Compute on whole image</b>" button.<br><br>
+            
+            Finally, you can <b>clear all points</b> by clicking on the 
+            "Clear points" button.<br><br>
+            
+            Note that you can also save the points by clicking on the 
+            "<b>Save points</b>" button to load them later and start from 
+            where you left.<br><br>
+        """)  
+        msg.information(
+            self, 'Promptable models help', txt
+        )  
+        
+    
+    def emitSigClearPoints(self):
+        self.sigClearPoints.emit(self)
+    
+    def emitSigClearPointsOnZoom(self):
+        self.sigClearPointsOnZmom.emit(self)
+    
+    def emitSigComputeOnZoom(self):
+        self.sigComputeOnZoom.emit(self)
+    
+    def emitSigComputeOnImage(self):
+        self.sigComputeOnImage.emit(self)
+    
+    def selectModel(self):
+        win = apps.SelectPromptableModelDialog(parent=self._parent)
+        win.exec_()
+        if win.cancel:
+            print('Promptable model selection cancelled')
+            return
+        
+        model_name = win.model_name
+        print(f'Importing promptable model {model_name}...')
+        
+        acdcPromptSegment = myutils.import_promptable_segment_module(model_name)
+        init_argspecs, segment_argspecs = myutils.getModelArgSpec(
+            acdcPromptSegment
+        )
+        
+        try:
+            help_url = acdcPromptSegment.url_help()
+        except AttributeError:
+            help_url = None
+        
+        self._model_name = model_name
+        self._acdcPromptSegment = acdcPromptSegment
+        self._init_argspecs = init_argspecs
+        self._segment_argspecs = segment_argspecs
+        self._help_url = help_url
+        
+        self.sigInitSelectedModel.emit(
+            model_name, 
+            acdcPromptSegment,
+            init_argspecs, 
+            segment_argspecs,
+            help_url,
+            self
+        )
+    
+    def setInitializedModel(self, init_kwargs, segment_kwargs):
+        self._init_kwargs = init_kwargs
+        self._segment_kwargs = segment_kwargs
+    
+    def viewModelParams(self):
+        self.sigViewModelParams.emit(
+            self._model_name,
+            self._acdcPromptSegment,
+            self._init_argspecs,
+            self._segment_argspecs,
+            self._help_url,
+            self._init_kwargs,
+            self._segment_kwargs,
+            self
+        )
+    
+    def emitPromptTypeChanged(self, text):
+        self.sigPromptTypeChanged.emit(self, text)
 
 class KeySequenceFromText(QKeySequence):
     def __init__(self, text: str):
@@ -10068,3 +10627,126 @@ class TimeWidget(QGroupBox):
     
     def emitValueChanged(self, value):
         self.sigValueChanged.emit(self.values())
+
+class PointsLayersToolbar(ToolBar):
+    sigAddPointsLayer = Signal()
+    
+    def __init__(self, name='Points layers', parent=None):
+        
+        super().__init__(name, parent)
+        
+        self.guiWin = parent
+        
+        self.setContextMenuPolicy(Qt.PreventContextMenu)
+        
+        self.addPointsLayerAction = self.addButton(':addPointsLayer.svg')
+        
+        self.addSeparator()
+        
+        self.pointsLayersLabel = self.addLabel('Points layers: ')
+        
+        self.addPointsLayerAction.triggered.connect(
+            self.emitAddPointsLayer
+        )
+    
+    def emitAddPointsLayer(self):
+        self.sigAddPointsLayer.emit()
+    
+    def fromActionToDataFrame(self, action, posData, isSegm3D=False):
+        df = pd.DataFrame(
+            columns=['frame_i', 'Cell_ID', 'z', 'y', 'x', 'id']
+        )
+        frames_vals = []
+        IDs = []
+        zz = []
+        yy = []
+        xx = []
+        ids = []
+        pointsDataPos = action.pointsData[self.guiWin.pos_i]
+        for frame_i, framePointsData in pointsDataPos.items():
+            if posData.SizeZ > 1:
+                for z, zSlicePointsData in framePointsData.items():
+                    yyxx = zip(
+                        zSlicePointsData['y'], zSlicePointsData['x']
+                    )
+                    for y, x in yyxx:
+                        if isSegm3D:
+                            ID = posData.lab[int(z), int(y), int(x)]
+                        else:
+                            ID = posData.lab[int(y), int(x)]
+                        frames_vals.append(frame_i)
+                        IDs.append(ID)
+                        zz.append(z)
+                        yy.append(y)
+                        xx.append(x)
+                    ids.extend(zSlicePointsData['id'])
+            else:
+                yyxx = zip(framePointsData['y'], framePointsData['x'])
+                for y, x in yyxx:
+                    ID = posData.lab[int(y), int(x)]
+                    frames_vals.append(frame_i)
+                    IDs.append(ID)
+                    yy.append(y)
+                    xx.append(x)
+                ids.extend(framePointsData['id'])
+        df['frame_i'] = frames_vals
+        df['Cell_ID'] = IDs
+        df['y'] = yy
+        df['x'] = xx
+        df['id'] = ids
+        if zz:
+            df['z'] = zz
+        
+        return df
+
+class PromptableModelPointsLayerToolbar(PointsLayersToolbar):
+    def __init__(self, name='Promptable model points layers', parent=None):
+        super().__init__(name, parent=parent)
+        
+        self.isPointsLayerInit = False
+        
+        self.addPointsLayerAction.setDisabled(True)
+        self.addPointsLayerAction.setVisible(False)
+    
+    def pointsLayerDf(self, posData, isSegm3D=False):
+        for action in self.actions()[1:]:
+            if not hasattr(action, 'button'):
+                continue
+            
+            df = self.fromActionToDataFrame(
+                action, posData, isSegm3D=isSegm3D
+            )
+            return df
+    
+    def scatterItem(self):
+        for action in self.actions()[1:]:
+            if not hasattr(action, 'button'):
+                continue
+            
+            return action.scatterItem
+
+class RectItem(pg.GraphicsObject):
+    def __init__(self, rect, pen=None, brush=(255, 0, 0, 100), parent=None):
+        super().__init__(parent)
+        self._rect = rect
+        self._pen = pg.mkPen(pen)
+        self._brush = pg.mkBrush(brush)
+        self.picture = QPicture()
+        self._generate_picture()
+
+    @property
+    def rect(self):
+        return self._rect
+
+    def _generate_picture(self):
+        painter = QPainter(self.picture)
+        painter.setPen(self._pen)
+        painter.setBrush(self._brush )
+        painter.drawRect(self._rect)
+        painter.end()
+
+    def paint(self, painter, option, widget=None):
+        painter.drawPicture(0, 0, self.picture)
+
+    def boundingRect(self):
+        return QRectF(self.picture.boundingRect())

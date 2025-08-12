@@ -370,6 +370,37 @@ def askSamLoadEmbeddings(
         onlyLoadEmbed = msg.clickedButton == loadOnlyEmbedButton
     return loadEmbed, onlyLoadEmbed, msg.cancel
 
+def init_prompt_model_params(
+        posData, model_name, init_params, segment_params, 
+        qparent=None, help_url=None, init_last_params=False, 
+        ini_filename=None
+    ):
+    out = {}
+    
+    segm_files = load.get_segm_files(posData.images_path)
+    existingSegmEndnames = load.get_endnames(
+        posData.basename, segm_files
+    )
+    win = apps.QDialogModelParams(
+        init_params,
+        segment_params,
+        model_name, 
+        parent=qparent,
+        url=help_url, 
+        initLastParams=init_last_params, 
+        posData=posData,
+        segmFileEndnames=existingSegmEndnames,
+        df_metadata=posData.metadata_df,
+        addPreProcessParams=False,
+        addPostProcessParams=False,
+        ini_filename=ini_filename,
+        add_additional_segm_params=False
+    )
+    win.setChannelNames(posData.chNames)
+    out['win'] = win
+    win.exec_()
+    return out
+
 def init_segm_model_params(
         posData, model_name, init_params, segment_params, 
         qparent=None, help_url=None, init_last_params=False, 

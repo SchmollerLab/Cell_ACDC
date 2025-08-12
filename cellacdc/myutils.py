@@ -2,7 +2,8 @@ import os
 import re
 import ast
 
-from typing import Literal
+import typing
+from typing import Literal, List, Callable, Tuple, Dict
 
 import pathlib
 import difflib
@@ -28,8 +29,7 @@ import numpy as np
 import pandas as pd
 import skimage
 import inspect
-import typing
-from typing import List, Callable, Tuple
+
 import traceback
 import itertools
 from packaging import version as packaging_version
@@ -53,7 +53,8 @@ from . import core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
 from . import cellacdc_path, printl, acdc_fiji_path, logs_path, acdc_ffmpeg_path
 from . import user_profile_path, recentPaths_path
-from . import models_list_file_path
+from . import models_list_file_path, models_path
+from . import promptable_models_list_file_path, promptable_models_path
 from . import github_home_url
 from . import try_input_install_package
 from . import _warnings
@@ -167,16 +168,32 @@ def trim_path(path, depth=3, start_with_dots=True):
     else:
         return rel_path
 
+def get_add_custom_prompt_model_instructions():
+    init_sh = html_utils.init_sh
+    segment_sh = html_utils.segment_sh
+    add_prompt_sh = html_utils.add_prompt_sh
+    href = f'<a href="{issues_url}">here</a>'
+    text = html_utils.paragraph(f"""
+    To use a custom prompt model, you need to create a Python file with the name 
+    <code>acdcPromptModel.py</code>.<br>
+    Note that the folder name where you place this file will be used as the 
+    model name.<br><br>
+    In this file, you will implement a class called <code>Model</code> with 
+    at least the <code>{init_sh}</code> to initialise the model,<br>
+    the <code>{add_prompt_sh}</code> method to add prompts (points, boxes, etc.) 
+    to the model, and the <code>{segment_sh}</code> method to run the 
+    segmentation.<br><br>
+    Have a look at the existing models in the <code>promptable_models</code> 
+    folder for examples.<br><br>
+    If it doesn't work, please report the issue {href} with the
+    code you wrote. Thanks!
+    """)
+    return text
+
 def get_add_custom_model_instructions():
-    url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
     user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
     href_user_manual = f'<a href="{user_manual_url}">user manual</a>'
-    href = f'<a href="{url}">here</a>'
-    models_path = os.path.join(cellacdc_path, 'models')
-    func_color = (111/255,66/255,205/255) # purplish
-    kwargs_color = (208/255,88/255,9/255) # reddish/orange
-    class_color = (215/255,58/255,73/255) # reddish
-    blue_color = (0/255,92/255,197/255) # blueish
+    href = f'<a href="{issues_url}">here</a>'
     class_sh = html_utils.class_sh
     def_sh = html_utils.def_sh
     kwargs_sh = html_utils.kwargs_sh
@@ -193,7 +210,7 @@ def get_add_custom_model_instructions():
     from_sh = html_utils.from_sh
     import_sh = html_utils.import_sh
     s = html_utils.paragraph(f"""
-    To use a custom model first <b>create a folder</b> with the same name of your model.<br><br>
+    To use a custom model first <b>create a folder</b> with the name of your model.<br><br>
     Inside this new folder create a file named <code>acdcSegment.py</code>.<br><br>
     In the <code>acdcSegment.py</code> file you will <b>implement the model class</b>.<br><br>
     Have a look at the other existing models, but essentially you have to create
@@ -218,7 +235,7 @@ def get_add_custom_model_instructions():
     If it doesn't work, please report the issue {href} with the
     code you wrote. Thanks.
     """)
-    return s, models_path
+    return s
 
 def is_iterable(item):
      try:
@@ -297,8 +314,18 @@ class Logger(logging.Logger):
         ):
         super().__init__(f'{name}-{module}', level=level)
         self._stdout = sys.stdout
-    
-    def write(self, text, log_to_file=True):
+        self._stderr = StdErr(logger=self)
+        sys.stderr = self._stderr
+        self._levelToName = {
+            50: "CRITICAL",
+            40: "ERROR",
+            30: "WARNING",
+            20: "INFO",
+            10: "DEBUG",
+            0: "NOTSET"
+        }
+        
+    def write(self, text, log_to_file=True, write_to_stdout=True):
         """Capture print statements, print to terminal and log text to 
         the open log file
 
@@ -308,8 +335,10 @@ class Logger(logging.Logger):
             Text to log
         log_to_file : bool, optional
             If True, call `info` method with `text`. Default is True
-        """        
-        self._stdout.write(text)
+        """     
+        if write_to_stdout:   
+            self._stdout.write(text)
+            
         if not log_to_file:
             return
         
@@ -326,9 +355,11 @@ class Logger(logging.Logger):
             handler.close()
             self.removeHandler(handler)
         sys.stdout = self._stdout
+        self._stderr.close()
     
     def __del__(self):
         sys.stdout = self._stdout
+        self._stderr.close()
     
     def info(self, text, *args, **kwargs):
         super().info(text, *args, **kwargs)
@@ -350,7 +381,7 @@ class Logger(logging.Logger):
             # log_to_file argument
             self.write(f'[WARNING]: {text}\n')
     
-    def error(self, text, *args, **kwargs):
+    def error(self, text, *args, write_traceback=True, **kwargs):
         super().error(text, *args, **kwargs)
         self.write(traceback.format_exc())
         try:
@@ -360,6 +391,14 @@ class Logger(logging.Logger):
             # triggers the TypeError because the patching function does not have 
             # log_to_file argument
             self.write(f'[ERROR]: {text}\n')
+    
+    def plain(self, text, write_to_stdout=False):
+        orig_formatters = [handler.formatter for handler in self.handlers]
+        for handler in self.handlers:
+            handler.setFormatter(logging.Formatter('%(message)s'))
+        self.write(text, write_to_stdout=write_to_stdout)
+        for handler in self.handlers:
+            handler.setFormatter(orig_formatters.pop(0))
     
     def critical(self, text, *args, **kwargs):
         super().critical(text, *args, **kwargs)
@@ -371,7 +410,7 @@ class Logger(logging.Logger):
             # log_to_file argument
             self.write(f'[CRITICAL]: {text}\n')
     
-    def exception(self, text, *args, **kwargs):
+    def exception(self, text, *args, write_traceback=True, **kwargs):
         super().exception(text, *args, **kwargs)
         self.write(traceback.format_exc())
         try:
@@ -384,12 +423,46 @@ class Logger(logging.Logger):
     
     def log(self, level, text):
         super().log(level, text)
-        levelName = logging.getLevelName(level)
+        levelName = self._levelToName.get(level, 'INFO')
         getattr(self, levelName.lower())(text)
-        # self.write(f'[{levelName}]: {text}\n', log_to_file=False)
     
     def flush(self):
         self._stdout.flush()
+
+class StdErr:
+    def __init__(self, logger: Logger=None):
+        self._sys_stderr = sys.stderr
+        self._err_msg_line_buffer = []
+        self._logger = logger
+    
+    def write(self, text: str):     
+        if text.startswith('Traceback'):
+            print('-'*100)
+            
+        self._sys_stderr.write(text)
+        
+        if not text:
+            return
+        
+        self._err_msg_line_buffer.append(text)
+        if not text.endswith('\n'):
+            return
+        
+        # If the line ends with a newline, flush the buffer
+        err_line = ''.join(self._err_msg_line_buffer)
+        if self._logger is not None:
+            self._logger.plain(err_line, write_to_stdout=False)
+        else:
+            print(err_line)
+        
+        self._err_msg_line_buffer = []
+            
+    def flush(self):
+        self._sys_stderr.flush()
+    
+    def close(self):
+        """Close the StdErr stream"""
+        sys.stderr = self._sys_stderr
 
 def delete_older_log_files(logs_path):
     if not os.path.exists(logs_path):
@@ -678,6 +751,18 @@ def store_custom_model_path(model_file_path):
         cp[model_name] = {}
     cp[model_name]['path'] = model_file_path
     with open(models_list_file_path, 'w') as configFile:
+        cp.write(configFile)
+
+def store_custom_promptable_model_path(promptable_model_file_path):
+    model_file_path = promptable_model_file_path.replace('\\', '/')
+    model_name = os.path.basename(os.path.dirname(model_file_path))
+    cp = config.ConfigParser()
+    if os.path.exists(promptable_models_list_file_path):
+        cp.read(promptable_models_list_file_path)
+    if model_name not in cp:
+        cp[model_name] = {}
+    cp[model_name]['path'] = model_file_path
+    with open(promptable_models_list_file_path, 'w') as configFile:
         cp.write(configFile)
 
 def check_git_installed(parent=None):
@@ -1028,7 +1113,28 @@ def listdir(path) -> List[str]:
         and not f.endswith('.new.npz')
     ])
 
-def insertModelArgSpect(
+def setDefaultValueArgSpecsFromKwargs(
+        params: List[ArgSpec], 
+        kwargs: Dict[str, object]
+    ):
+    new_params = []
+    for param in params:
+        new_value = kwargs.get(param.name)
+        if new_value is None:
+            new_params.append(param)
+            continue
+        
+        new_param = ArgSpec(
+            name=param.name, 
+            default=new_value, 
+            type=param.type, 
+            desc=param.desc,
+            docstring=param.docstring
+        )
+        new_params.append(new_param)
+    return new_params
+
+def insertModelArgSpec(
         params, param_name, param_value, param_type=None, desc='',
         docstring=''
     ):
@@ -2241,7 +2347,6 @@ def get_list_of_trackers():
     return natsorted(trackers)
 
 def get_list_of_models():
-    models_path = os.path.join(cellacdc_path, 'models')
     models = set()
     for name in listdir(models_path):
         _path = os.path.join(models_path, name)
@@ -2273,6 +2378,32 @@ def get_list_of_models():
     
     cp = config.ConfigParser()
     cp.read(models_list_file_path)
+    models.update(cp.sections())
+    return natsorted(list(models), key=str.casefold)
+
+def get_list_of_promptable_models():
+    models = set()
+    for name in listdir(promptable_models_path):
+        _path = os.path.join(promptable_models_path, name)
+        if not os.path.exists(_path):
+            continue
+        
+        if not os.path.isdir(_path):
+            continue
+        
+        if name.endswith('__'):
+            continue
+        
+        if not os.path.exists(os.path.join(_path, 'acdcPromptSegment.py')):
+            continue
+        
+        models.add(name)
+    
+    if not os.path.exists(promptable_models_list_file_path):
+        return natsorted(list(models), key=str.casefold)
+    
+    cp = config.ConfigParser()
+    cp.read(promptable_models_list_file_path)
     models.update(cp.sections())
     return natsorted(list(models), key=str.casefold)
 
@@ -2778,6 +2909,24 @@ def check_install_baby():
     )
     check_install_package('baby', pypi_name='baby-seg', import_pkg_name='baby')
 
+def check_install_nnInteractive():
+    check_install_package('huggingface-hub')
+    check_install_torch()
+    check_install_package('nnInteractive')
+    
+    purge_module('nnInteractive')
+
+    importlib.invalidate_caches()
+    import nnInteractive
+    importlib.reload(nnInteractive)
+
+def check_install_microsam():
+    check_install_package(
+        'micro-sam', 
+        pypi_name='micro_sam', 
+        installer='conda'
+    )
+
 def check_install_yeaz():
     check_install_torch()
     check_install_package('yeaz')
@@ -2980,11 +3129,11 @@ def check_install_package(
         If empty string, `pkg_name` will be installed instead. Default is ''
     note : str, optional
         Additional text to display to the user. Default is ''
-    parent : _type_, optional
+    parent : QObject, optional
         Calling QtWidget. Default is None
     raise_on_cancel : bool, optional
         Raise exception if processed cancelled. Default is True
-    logger_func : _type_, optional
+    logger_func : callable, optional
         Function used to log text. Default is print
     is_cli : bool, optional
         If True, message will be displayed in the terminal. 
@@ -3556,6 +3705,24 @@ def run_fiji_command(command=None, logger_func=print):
             continue
     return False
 
+def import_promptable_segment_module(model_name):
+    try:
+        acdcPromptSegment = import_module(
+            f'cellacdc.promptable_models.{model_name}.acdcPromptSegment'
+        )
+    except ModuleNotFoundError as e:
+        # Check if custom model
+        cp = config.ConfigParser()
+        cp.read(promptable_models_list_file_path)
+        model_path = cp[model_name]['path']
+        spec = importlib.util.spec_from_file_location(
+            'acdcPromptSegment', model_path
+        )
+        acdcPromptSegment = importlib.util.module_from_spec(spec)
+        sys.modules['acdcPromptSegment'] = acdcPromptSegment
+        spec.loader.exec_module(acdcPromptSegment)
+    return acdcPromptSegment
+
 def init_tracker(
         posData, trackerName, realTime=False, qparent=None, 
         return_init_params=False
@@ -4079,6 +4246,10 @@ def format_cca_manual_changes(changes: dict):
         txt = f'{txt}--------------------------------\n\n'
     return txt
 
+def init_prompt_segm_model(acdcPromptSegment, posData, init_kwargs):
+    model = acdcPromptSegment.Model(**init_kwargs)
+    return model
+    
 def init_segm_model(acdcSegment, posData, init_kwargs):
     segm_endname = init_kwargs.pop('segm_endname', 'None')
     if segm_endname != 'None':
@@ -4098,10 +4269,10 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
     else:
         segm_data = None
 
-    # Initialize input_points_df for SAM model
+    # Initialize input_points_df for models promptable with points
     input_points_filepath = init_kwargs.pop('input_points_path', '')
     if input_points_filepath:
-        input_points_df = init_sam_input_points_df(
+        input_points_df = init_input_points_df(
             posData, input_points_filepath
         )
         init_kwargs['input_points_df'] = input_points_df
@@ -4186,7 +4357,7 @@ def parse_model_params(model_argspecs, model_params):
 #     denoise_model = CellposeDenoiseModel(**init_params)
 #     return denoise_model, init_params, run_params
 
-def init_sam_input_points_df(posData, input_points_filepath):
+def init_input_points_df(posData, input_points_filepath):
     input_points_df = None
     if os.path.exists(input_points_filepath):
         input_points_df = pd.read_csv(input_points_filepath)

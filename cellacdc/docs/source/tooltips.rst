@@ -129,6 +129,12 @@
     :height: 16px
     :width: 16px
 
+.. |magicPromptsToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/magic-prompts.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/magic-prompts.svg 
+    :alt: magicPromptsToolButton icon
+    :height: 16px
+    :width: 16px
+
 .. |copyLostObjButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/copyContour.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/copyContour.svg
     :alt: copyLostObjButton icon
@@ -401,7 +407,8 @@ Edit tools: Segmentation and tracking
         * Starting to erase from a specific label will erase only that label (cursor is a circle with the color of the label).
         * To enforce erasing all objects no matter where you start from double-press "X" key. If double-press is successfull, then eraser button is red and eraser cursor always red.
 * **Curvature Tool (** |curvToolButton| **"C"):** Left-clicks for manual spline anchors, right button for drawing auto-contour.
-* **Magic Wand (** |wandToolButton| **"W"):** Left-click for single selection or left-click and then drag for continous selection.
+* **Magic Wand (** |wandToolButton| **"Ctrl+D"):** Create a new object using neighbouring pixels whose intensity is within a selected tolerance. Left-click for single selection or left-click and then drag for continous selection.
+* **Magic prompts (** |magicPromptsToolButton| **"W"):** Use promptable models (e.g., Segment Anything) to refine objects or generate new ones interactively with prompts (e.g., points). Prompts are added with both the left, right, and middle-click
 * **Copy lost contour (** |copyLostObjButton| **"V"):** Hover onto lost object contour --> right-click to copy the contour as a new object.
 * **Magic labeller (** |labelRoiButton| **"L"):** Draw a rectangular ROI around object(s) you want to segment. Draw with LEFT button to label with last used model. Draw with RIGHT button to choose a different segmentation model.
 * **Segment (** |segmentToolAction| **"R"):** Segment with last used model and last used parameters. If you never selected a segmentation model before, you will be asked to choose one and initialize its parameters.
