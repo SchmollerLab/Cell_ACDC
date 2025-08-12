@@ -45,7 +45,7 @@ def _install_tables(parent_software='Cell-ACDC'):
                 command_txt = conda_txt
                 alt_command_txt = pip_text
                 cmd_args = [command_txt]
-                alt_cmd_args1 =conda_list
+                alt_cmd_args1 = conda_list
                 alt_cmd_args2 = pip_list
                 pkg_mng = 'conda'
                 alt_pkg_mng = 'pip'
@@ -155,7 +155,7 @@ def _setup_symlink_app_name_macos():
             printl(traceback.format_exc())
             print('[WARNING]: Failed at creating Cell-ACDC symlink')
 
-def _setup_gui_libraries(caller_name='Cell-ACDC'):
+def _setup_gui_libraries(caller_name='Cell-ACDC', exit_at_end=True):
     from . import try_input_install_package, is_conda_env
     warn_restart = False
     
@@ -169,18 +169,18 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
     try:
         import qtpy
     except ModuleNotFoundError as e:
+        conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
+        conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
+        
+        command_txt = f'{pip_prefix} --upgrade qtpy'
+        
         txt = (
             f'{caller_name} needs to install the package `qtpy`.\n\n'
             f'You can let {caller_name} install it now, or you can abort '
-            'and install it manually with the command `pip install qtpy`.'
+            f'and install it manually with the command `{command_txt}`.'
         )
         print('-'*60)
         print(txt)
-
-        conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
-        conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
-
-        command_txt = f'{pip_prefix} --upgrade qtpy'
 
         while True:
             from .config import parser_args
@@ -192,9 +192,7 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
             if answer.lower() == 'y' or not answer:
                 import subprocess
                 cmd = pip_list + ['-U', 'qtpy']
-                subprocess.check_call(
-                    cmd
-                )
+                subprocess.check_call(cmd)
                 break
             elif answer.lower() == 'n':
                 raise e
@@ -288,20 +286,155 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
         )
         warn_restart = True
     
-    if warn_restart:
-        print('*'*60)
+    if not warn_restart:
+        return warn_restart
+    
+    if not exit_at_end:
+        return warn_restart
+    
+    _exit_on_setup(caller_name=caller_name)
+    
+    return warn_restart
+
+def _exit_on_setup(caller_name='Cell-ACDC'):
+    print('*'*60)
+    note_text = (
+        f'[NOTE]: {caller_name} had to install the required libraries. '
+    )
+    note_text = (
+        f'{note_text}'
+        'Please, re-start the software. Thank you for your patience! '
+    )
+    
+    from .config import parser_args
+    if parser_args['yes']:
+        print(note_text)
+    else:
         note_text = (
-            f'[NOTE]: {caller_name} had to install the required GUI libraries. '
-            'Please, re-start the software. Thank you for your patience! '
+            f'{note_text}'
             '(Press any key to exit). '
         )
-        from .config import parser_args
-        if parser_args['yes']:
-            print(note_text)
-        else:
-            input(note_text)
-        exit()
+        input(note_text)
+        
+    exit()
+    
+def download_model_params():
+    print("Downloading specified models...")
+    from .config import parser_args
+    if parser_args['cpModelsDownload'] or parser_args['AllModelsDownload']:
+        print('[INFO]: Downloading Cellpose models...')
+        from cellpose import models
+        model_names = ["cyto", "cyto2", "cyto3", "nuclei"]
 
+        try:
+            # download size model weights
+
+            from cellpose.models import size_model_path, model_path
+            for model_name in model_names:
+                print(f'[INFO]: Downloading {model_name} model weights...')
+                try:
+                    size_model_path(model_name)
+                    model_path(model_name)
+                except Exception as e:
+                    print(
+                        f'[WARNING]: Failed to download {model_name} model weights. '
+                    )
+                    print(e)
+                    pass
+            
+            from cellpose.denoise import MODEL_NAMES
+            for model_name in MODEL_NAMES:
+                print(f'[INFO]: Downloading {model_name} model weights...')
+                try:
+                    model_path(model_name)
+                except Exception as e:
+                    print(
+                        f'[WARNING]: Failed to download {model_name} model weights. '
+                    )
+                    if model_name in ["oneclick_per_cyto2", 
+                                      "oneclick_seg_cyto2", 
+                                      "oneclick_rec_cyto2",
+                                      "oneclick_per_nuclei",
+                                      "oneclick_seg_nuclei",
+                                      "oneclick_rec_nuclei"]:
+                        print(f' This model is not available for download. ')
+                    print(e)
+                    pass
+        except Exception as e:
+            print(
+                '[WARNING]: Failed to download Cellpose model weights. '
+            )
+            print(e)
+            pass
+    if parser_args['StarDistModelsDownload'] or parser_args['AllModelsDownload']:
+        print('[INFO]: Downloading StarDist models...')
+        try:
+            from cellacdc.models import STARDIST_MODELS
+            from stardist.models import StarDist2D, StarDist3D
+            for model_type in [StarDist2D, StarDist3D]:
+                for model_name in STARDIST_MODELS:
+                    print(f'[INFO]: Downloading {model_name} model weights...')
+                    try:
+                        model_type.from_pretrained(model_name)
+                    except Exception as e:
+                        print(
+                            f'[WARNING]: Failed to download {model_name} model weights. '
+                        )
+                        print(e)
+                        pass
+        except Exception as e:
+            print(
+                '[WARNING]: Failed to download StarDist model weights. '
+            )
+            print(e)
+            pass
+    if parser_args['YeaZModelsDownload'] or parser_args['AllModelsDownload']:
+        print('[INFO]: Downloading YeaZ models...')
+        from cellacdc.myutils import _download_yeaz_models
+        try:
+            _download_yeaz_models()
+        except Exception as e:
+            print(
+                '[WARNING]: Failed to download YeaZ model weights. '
+            )
+            print(e)
+            pass
+    if parser_args['DeepSeaModelsDownload'] or parser_args['AllModelsDownload']:
+        print('[INFO]: Downloading DeepSea models...')
+        from cellacdc.myutils import _download_deepsea_models
+        try:
+            _download_deepsea_models()
+        except Exception as e:
+            print(
+                '[WARNING]: Failed to download DeepSea model weights. '
+            )
+            print(e)
+            pass
+
+    if parser_args['TrackastraModelsDownload'] or parser_args['AllModelsDownload']:
+        print('[INFO]: Downloading TrackAstra models...')
+        # from cellacdc.myutils import _download_trackastra_models
+        from trackastra.model import Trackastra
+        try:
+            from cellacdc.trackers.Trackastra import get_pretrained_model_names
+            model_names = get_pretrained_model_names()
+            for model_name in model_names:
+                print(f'[INFO]: Downloading {model_name} model weights...')
+                try:
+                    Trackastra.from_pretrained(model_name)
+                except Exception as e:
+                    print(
+                        f'[WARNING]: Failed to download {model_name} model weights. '
+                    )
+                    print(e)
+                    pass
+        except Exception as e:
+            print(
+                '[WARNING]: Failed to download TrackAstra model weights. '
+            )
+            print(e)
+            pass
+                
 def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     from qtpy import QtCore
     if QtCore.QCoreApplication.instance() is not None:
@@ -368,7 +501,7 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     from ._palettes import getPaletteColorScheme, setToolTipStyleSheet
     from ._palettes import get_color_scheme
     from . import qrc_resources_path
-    from . import qrc_resources
+    from . import acdc_qrc_resources
     from . import printl
     
     # Check if there are new icons --> replace qrc_resources.py
@@ -383,10 +516,18 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
         qrc_resources_scheme = import_module('cellacdc.qrc_resources_dark')
         qt_resource_data_scheme = qrc_resources_scheme.qt_resource_data
     
-    if qt_resource_data_scheme != qrc_resources.qt_resource_data:
-        # When we add new icons the qrc_resources.py file needs to be replaced
-        shutil.copyfile(qrc_resources_scheme_path, qrc_resources_path)
-    
+    if qt_resource_data_scheme != acdc_qrc_resources.qt_resource_data:
+        from . import _copy_qrc_resources_file
+        proceed = _copy_qrc_resources_file(qrc_resources_scheme_path)
+        if not proceed:
+            print('-'*100)
+            print(
+                'Cell-ACDC had to reset the GUI icons. '
+                'Please re-start the application. Thank you for your patience!'
+            )
+            print('-'*100)
+            exit()
+            
     from . import load
     scheme = get_color_scheme()
     palette = getPaletteColorScheme(app.palette(), scheme=scheme)
@@ -416,6 +557,8 @@ def run_cli(ini_filepath):
         module='cli', logs_path=None
     )
     
+    download_model_params()
+    
     logger.info(f'Reading workflow file "{ini_filepath}"...')
     from cellacdc import load
     workflow_params = load.read_segm_workflow_from_config(ini_filepath)
@@ -429,4 +572,89 @@ def run_cli(ini_filepath):
     logger.info('**********************************************')
     
     
+def _setup_numpy(caller_name='Cell-ACDC'):
+    import urllib.request
+    import json
+    import re
     
+    from . import try_input_install_package
+    
+    numpy_versions = []
+    url = "https://pypi.org/pypi/numba/json"
+    try:
+        with urllib.request.urlopen(url) as response:
+            data = json.load(response)
+            requires_dist = data["info"].get("requires_dist", [])
+            numpy_versions = [
+                req for req in requires_dist if "numpy" in req.lower()
+            ]
+    except urllib.error.URLError as e:
+        print(f"Could not update np: {e}")
+        return
+    
+    if not numpy_versions:
+        print(
+            f'[WARNING]: Could not find NumPy version requirements for Numba. '
+            'Please, install the latest version of NumPy manually.'
+        )
+        return
+    
+    numpy_versions_txt = numpy_versions[0]
+    
+    max_version = re.findall(r'<=?(\d+\.\d+)', numpy_versions_txt)
+    min_version = re.findall(r'>=?(\d+\.\d+)', numpy_versions_txt)
+    if max_version:
+        max_version = max_version[0]
+    else:
+        max_version = ''
+        
+    if min_version:
+        min_version = min_version[0]
+    else:
+        min_version = ''
+    
+    import numpy
+    installed_numpy_version = numpy.__version__
+    is_numpy_version_within_range = myutils.is_pkg_version_within_range(
+        installed_numpy_version,
+        min_version=min_version,
+        max_version=max_version
+    )
+    
+    if is_numpy_version_within_range:
+        return
+    
+    conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
+    conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
+
+    command_txt = f'{pip_prefix} --upgrade "{numpy_versions_txt}"'
+    
+    txt = (
+        f'{caller_name} needs to upgrade the package `numpy`.\n\n'
+        f'The current version is {installed_numpy_version}, but it needs to be '
+        f'between {min_version} and {max_version}.\n\n'
+        f'You can let {caller_name} install it now, or you can abort '
+        f'and install it manually with the command `{command_txt}`.'
+    )
+    print('-'*60)
+    print(txt)
+    
+    while True:
+        from .config import parser_args
+        if parser_args['yes']:
+            answer = 'y'
+        else:
+            answer = try_input_install_package('qtpy', command_txt)
+        
+        if answer.lower() == 'y' or not answer:
+            import subprocess
+            cmd = pip_list + ['-U', numpy_versions_txt]
+            subprocess.check_call(cmd)
+            break
+        elif answer.lower() == 'n':
+            raise ModuleNotFoundError(f'Numba requires {numpy_versions_txt} ')
+        else:
+            print(
+                f'"{answer}" is not a valid answer. '
+                'Type "y" for "yes", or "n" for "no".'
+            )

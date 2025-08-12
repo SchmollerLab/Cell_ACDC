@@ -249,7 +249,12 @@ def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
             # Skip assigning ID to same ID
             continue
 
-        lab[obj.slice][obj.image] = newIDs[idx]
+        try:
+            lab[obj.slice][obj.image] = newIDs[idx]
+        except OverflowError:
+            # it should be uint32 already but sometimes it was not
+            lab = lab.astype(np.uint32) 
+            lab[obj.slice][obj.image] = newIDs[idx]
     return lab
 
 def post_process_segm(labels, return_delIDs=False, **kwargs):
@@ -1298,7 +1303,7 @@ def cca_df_to_acdc_df(cca_df, rp, acdc_df=None):
 
 class LineageTree:
     def __init__(self, acdc_df, logging_func=print, debug=False) -> None:
-        acdc_df = load.pd_bool_to_int(acdc_df).reset_index()
+        acdc_df = load.pd_bool_and_float_to_int(acdc_df, colsToCastInt=[]).reset_index()
         acdc_df = self._normalize_gen_num(acdc_df).reset_index()
         acdc_df = acdc_df.drop(columns=['index', 'level_0'], errors='ignore')
         self.acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
@@ -2165,6 +2170,9 @@ class SegmKernel(_WorkflowKernel):
         self.model = myutils.init_segm_model(
             acdcSegment, posData, self.init_model_kwargs
         )
+        if self.model is None:
+            # The model was not initialized correctly
+            return
         self.is_segment3DT_available = any(
             [name=='segment3DT' for name in dir(self.model)]
         )
@@ -2412,6 +2420,12 @@ class SegmKernel(_WorkflowKernel):
 
         if self.model is None:
             self.init_segm_model(posData)
+        
+        if self.model is None:
+            self.logger_func(
+                f'\nSegmentation model {self.model_name} was not initialized!'
+            )
+            return
         
         """Segmentation routine"""
         self.logger_func(f'\nSegmenting with {self.model_name}...')

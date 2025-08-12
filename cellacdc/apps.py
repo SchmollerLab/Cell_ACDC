@@ -72,7 +72,7 @@ from . import load, prompts, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, settings_folderpath, config
 from . import preproc_recipes_path, segm_recipes_path
 from . import is_conda_env
-from . import qrc_resources, printl
+from . import printl
 from . import colors
 from . import issues_url
 from . import myutils
@@ -6858,7 +6858,13 @@ class PostProcessSegmDialog(QBaseDialog):
         self.sigValueChanged.emit(lab, delObjs)
         
     def apply(self, origLab=None):
-        self.mainWin.warnEditingWithCca_df('post-processing segmentation mask')
+        self.mainWin.warnEditingWithCca_df(
+            'post-processing segmentation mask', update_images=False
+        )
+        ccaAnnotRemoved = self.mainWin.removeCcaAnnotationsCurrentFrame()
+        if ccaAnnotRemoved:
+            self.mainWin.updateAllImages()
+
 
         if origLab is None:
             origLab = self.origLab.copy()
@@ -10948,11 +10954,18 @@ class QDialogModelParams(QDialog):
 
         self.setWindowTitle(f'{model_name} parameters')
 
+        # Create main vertical layout and horizontal layout for two columns
         mainLayout = QVBoxLayout()
-        buttonsLayout = QHBoxLayout()
-
+        
+        gridLayout = QGridLayout()
+        self.gridLayout = gridLayout
+        
         loadFunc = self.loadLastSelection
         
+        self.paramsGroupPosMapper = {}
+        
+        # LEFT COLUMN: Preprocessing and Init params
+        row, col = 0, 0
         preProcessLayout = None
         self.preProcessParamsWidget = None
         if addPreProcessParams:
@@ -10965,8 +10978,14 @@ class QDialogModelParams(QDialog):
             self.preProcessParamsWidget.sigLoadRecipe.connect(
                 self.loadPreprocRecipe
             )
-            preProcessLayout.addWidget(widgets.QHLine())
+            gridLayout.addLayout(preProcessLayout, row, col, 1, 2)
+            self.paramsGroupPosMapper[self.preProcessParamsWidget] = (row, col)
+            gridLayout.addItem(QSpacerItem(10, 5), 0, col+1)
+            # gridLayout.setColumnMinimumWidth(col+1, 15)
+            col += 2 
         
+        # Center COLUMN: Init, Segmentation/Eval and Post-processing params
+        row = 0
         self.initParamsScrollArea = widgets.ScrollArea()
         initParamsScrollAreaLayout = QVBoxLayout()
         self.initParamsScrollArea.setVerticalLayout(initParamsScrollAreaLayout)
@@ -10989,6 +11008,15 @@ class QDialogModelParams(QDialog):
         )
         
         initParamsScrollAreaLayout.addWidget(initGroupBox)
+        
+        initParamsLayout = QVBoxLayout()
+        initParamsLayout.addWidget(QLabel(f'<b>{initGroupBox.title()}</b>'))
+        initGroupBox.setTitle('')
+        initParamsLayout.addWidget(self.initParamsScrollArea)
+        self.paramsGroupPosMapper[self.initParamsScrollArea] = (row, col)
+        initParamsLayout.addLayout(initButtonsLayout)
+        gridLayout.addLayout(initParamsLayout, row, col)
+        row += 1
 
         self.segmentParamsScrollArea = None
         if not self.skipSegmentation:
@@ -11023,11 +11051,25 @@ class QDialogModelParams(QDialog):
                 partial(loadFunc, section, self.argsWidgets)
             )
             segmentParamsScrollAreaLayout.addWidget(segmentGroupBox)
+            
+            segmentParamsLayout = QVBoxLayout()
+            segmentParamsLayout.addWidget(
+                QLabel(f'<b>{segmentGroupBox.title()}</b>')
+            )
+            segmentGroupBox.setTitle('')
+            segmentParamsLayout.addWidget(self.segmentParamsScrollArea)
+            segmentParamsLayout.addLayout(segmentButtonsLayout)
+            gridLayout.addLayout(segmentParamsLayout, row, col)
+            self.paramsGroupPosMapper[self.segmentParamsScrollArea] = (row, col)
+            row += 1
 
+        gridLayout.addItem(QSpacerItem(10, 5), 0, col+1)
+        col += 2 
+        
+        # Buttons layout (spans both columns)
+        buttonsLayout = QHBoxLayout()
         cancelButton = widgets.cancelPushButton(' Cancel ')
         okButton = widgets.okPushButton(' Ok ')
-            # infoButton = widgets.infoPushButton(' Help... ')
-            # restoreDefaultButton = widgets.reloadPushButton('Restore default')
         
         enableLoadingSavingRecipe = (
             not is_tracker and (addPreProcessParams or addPostProcessParams)
@@ -11057,6 +11099,7 @@ class QDialogModelParams(QDialog):
 
         self.okButton = okButton            
         
+        # Extra params in right column
         self.extraArgsWidgets = None
         self.extraParamsScrollArea = None
         if extraParams is not None:
@@ -11087,14 +11130,22 @@ class QDialogModelParams(QDialog):
             )
 
             extraParamsScrollAreaLayout.addWidget(self.extraGroupBox)
-
-        self.postProcessGroupbox = None
-        postProcessLayout = None
-        self.seeHereLabel = None
-        if addPostProcessParams:
-            postProcessLayout = QVBoxLayout()
-            postProcessLayout.addWidget(widgets.QHLine())
             
+            extraParamsLayout = QVBoxLayout()
+            extraParamsLayout.addWidget(QLabel(f'<b>{self.extraGroupBox.title()}</b>'))
+            self.extraGroupBox.setTitle('')
+            extraParamsLayout.addWidget(self.extraParamsScrollArea)
+            extraParamsLayout.addLayout(extraButtonsLayout)
+            self.paramsGroupPosMapper[self.extraParamsScrollArea] = (row, col)
+            gridLayout.addLayout(extraParamsLayout, row, col)
+            row += 1
+
+        # Post-processing in right-most column
+        row = 0
+        self.postProcessGroupbox = None
+        self.seeHereLabel = None
+        thirdColumnLayout = QVBoxLayout()
+        if addPostProcessParams:            
             # Add minimum size spinbox which is valid for all models
             postProcessGroupbox = PostProcessSegmParams(
                 'Post-processing segmentation parameters', posData,
@@ -11104,9 +11155,7 @@ class QDialogModelParams(QDialog):
             postProcessGroupbox.setChecked(False)
             self.postProcessGroupbox = postProcessGroupbox
 
-            # scrollAreaLayout.addSpacing(15)
-            # scrollAreaLayout.addStretch(1)
-            postProcessLayout.addWidget(postProcessGroupbox)
+            thirdColumnLayout.addWidget(postProcessGroupbox)
 
             postProcDefaultButton = widgets.reloadPushButton('Restore default')
             postProcLoadLastSelButton = widgets.OpenFilePushButton(
@@ -11120,76 +11169,32 @@ class QDialogModelParams(QDialog):
             postProcLoadLastSelButton.clicked.connect(
                 self.loadLastSelectionPostProcess
             )
-            postProcessLayout.addLayout(postProcButtonsLayout)
+            thirdColumnLayout.addLayout(postProcButtonsLayout)
+            thirdColumnLayout.addSpacing(15)
 
             if url is not None:
                 self.seeHereLabel = self.createSeeHereLabel(url)
-                postProcessLayout.addWidget(
+                thirdColumnLayout.addWidget(
                     self.seeHereLabel, alignment=Qt.AlignCenter
                 )
             
-            postProcessLayout.addWidget(widgets.QHLine())
+            self.paramsGroupPosMapper[self.preProcessParamsWidget] = (row, col)
 
-        row = 0
-        if preProcessLayout is not None:
-            mainLayout.addLayout(preProcessLayout)
-            mainLayout.setStretch(row, 1)
-            row += 1
-        
-        mainLayout.addWidget(QLabel(f'<b>{initGroupBox.title()}</b>'))
-        initGroupBox.setTitle('')
-        row += 1
-        mainLayout.addWidget(self.initParamsScrollArea)
-        stretch = initGroupBox.layout().rowCount()
-        mainLayout.setStretch(row, stretch)
-        row += 1
-        
-        mainLayout.addLayout(initButtonsLayout)
-        mainLayout.setStretch(row, 0)
-        row += 1
-        
-        if not self.skipSegmentation:
-            mainLayout.addWidget(QLabel(f'<b>{segmentGroupBox.title()}</b>'))
-            segmentGroupBox.setTitle('')
-            row += 1
-            mainLayout.addWidget(self.segmentParamsScrollArea)
-            stretch = segmentGroupBox.layout().rowCount()
-            mainLayout.setStretch(row, stretch)
-            row += 1
-        
-            mainLayout.addLayout(segmentButtonsLayout)
-            mainLayout.setStretch(row, 0)
-            row += 1
-        
-        if extraParams is not None:
-            mainLayout.addWidget(QLabel(f'<b>{self.extraGroupBox.title()}</b>'))
-            self.extraGroupBox.setTitle('')
-            row += 1
-            mainLayout.addWidget(self.extraParamsScrollArea)
-            stretch = self.extraGroupBox.layout().rowCount()
-            mainLayout.setStretch(row, stretch)
-            row += 1
-            
-            mainLayout.addLayout(extraButtonsLayout)
-            mainLayout.setStretch(row, 0)
-            row += 1
-        
+        # Additional segmentation params in right column
         self.additionalSegmGroupbox = None
-        if not is_tracker and add_additional_segm_params:
-            mainLayout.addWidget(widgets.QHLine())
-            row += 1
+        if add_additional_segm_params:
+            thirdColumnLayout.addWidget(widgets.QHLine())
             additionalSegmGroupbox = self.getAdditionalSegmParams()
-            mainLayout.addWidget(additionalSegmGroupbox)
-            mainLayout.setStretch(row, 0)
+            thirdColumnLayout.addWidget(additionalSegmGroupbox)
             self.additionalSegmGroupbox = additionalSegmGroupbox
-            row += 1
+            self.paramsGroupPosMapper[self.additionalSegmGroupbox] = (row, col)
         
-        if postProcessLayout is not None:
-            mainLayout.addSpacing(10)
-            mainLayout.addLayout(postProcessLayout)
-            mainLayout.setStretch(row, 0)
-            row += 1
-            
+        thirdColumnLayout.addStretch(1)
+        gridLayout.addLayout(thirdColumnLayout, row, col)
+        row += 1
+        
+        # Add everything to main layout
+        mainLayout.addLayout(gridLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
 
@@ -11197,7 +11202,7 @@ class QDialogModelParams(QDialog):
         if self.configPars is None:
             initLoadLastSelButton.setDisabled(True)
             segmentLoadLastSelButton.setDisabled(True)
-            if postProcessLayout is not None:
+            if self.postProcessGroupbox is not None:
                 postProcLoadLastSelButton.setDisabled(True)
 
         if initLastParams:
@@ -11208,7 +11213,7 @@ class QDialogModelParams(QDialog):
             if self.extraArgsWidgets is not None:
                 extraLoadLastSelButton.click()
         
-            if postProcessLayout is not None:
+            if self.postProcessGroupbox is not None:
                 postProcLoadLastSelButton.click()
 
         try:
@@ -12135,38 +12140,59 @@ class QDialogModelParams(QDialog):
     
     def showEvent(self, event) -> None:
         buttonHeight = self.okButton.minimumSizeHint().height()
-        height = (
+        heightInitParams = (
             self.initParamsScrollArea.minimumHeightNoScrollbar()
-            + 70 + buttonHeight
         )
+        heightLeft = 70 + buttonHeight
+        heightCenter = heightInitParams
+        heightRight = 0
         if self.segmentParamsScrollArea is not None:
-            height += (
+            heightSegmentParams = (
                 self.segmentParamsScrollArea.minimumHeightNoScrollbar()
-                + 70 + buttonHeight
             )
+            heightCenter += (heightSegmentParams+ 70 + buttonHeight)
+            
+            rowInitParams, _ = self.paramsGroupPosMapper[self.initParamsScrollArea]
+            rowSegmParams, _ = self.paramsGroupPosMapper[self.segmentParamsScrollArea]
+            
+            optimalStretch = min(1, round(heightSegmentParams/heightInitParams))
+            self.gridLayout.setRowStretch(rowInitParams, 1)
+            self.gridLayout.setRowStretch(rowSegmParams, optimalStretch)
+            
         if self.extraParamsScrollArea is not None:
-            height += (
+            heightRight += (
                 self.extraParamsScrollArea.minimumHeightNoScrollbar()
                 + 70 + buttonHeight
             )
             
+        
         if self.additionalSegmGroupbox is not None:
-            height += self.additionalSegmGroupbox.minimumSizeHint().height()
-            height += buttonHeight
+            heightRight += self.additionalSegmGroupbox.minimumSizeHint().height()
+            heightRight += buttonHeight
         if self.preProcessParamsWidget is not None:
-            height += self.preProcessParamsWidget.minimumSizeHint().height()
-            height += buttonHeight
+            heightPreprocParams = (
+                self.preProcessParamsWidget.minimumSizeHint().height()
+            )
+            heightLeft += heightPreprocParams
+            heightLeft += buttonHeight
         if self.postProcessGroupbox is not None:
-            height += self.postProcessGroupbox.minimumSizeHint().height()
-            height += buttonHeight
+            heightRight += self.postProcessGroupbox.minimumSizeHint().height()
+            heightRight += buttonHeight
         if self.seeHereLabel is not None:
-            height += self.seeHereLabel.minimumSizeHint().height()
-        height += buttonHeight
-        self.move(self.pos().x(), 20)
+            heightRight += self.seeHereLabel.minimumSizeHint().height()
+        height = max(heightLeft, heightRight, heightCenter)
         screenHeight = self.screen().size().height()
+        screenGeom = self.screen().geometry()
+        screenLeft = screenGeom.left()
+        screenRight = screenGeom.right()
+        screenCenter = (screenLeft + screenRight) / 2
+        width = self.sizeHint().width()
+        windowLeft = int(screenCenter - width/2)
+        self.move(windowLeft, 20)
+        
         if height >= screenHeight - 150:
             height = screenHeight - 150
-        self.resize(self.width(), height)
+        self.resize(width, height)
 
 class downloadModel:
     def __init__(self, model_name, parent=None):
@@ -14764,7 +14790,7 @@ class InstallPyTorchDialog(QBaseDialog):
         
         row += 1
         self.pkgManagerCombobox = QComboBox()
-        self.pkgManagerCombobox.addItems(['Conda', 'Pip'])
+        self.pkgManagerCombobox.addItems(['Pip'])
         if not is_conda_env():
             self.pkgManagerCombobox.setCurrentText('Pip')
             self.pkgManagerCombobox.setDisabled(True)
@@ -15605,6 +15631,14 @@ class PreProcessParamsWidget(QWidget):
         
         mainLayout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(mainLayout)
+    
+    def stepSizeHeightHint(self):
+        stepWidgets = self.stepsWidgets[1]
+        height = (
+            stepWidgets['stepLabel'].minimumSizeHint().height()
+            + stepWidgets['selector'].minimumSizeHint().height()
+        )
+        return height
     
     def setChecked(self, checked):
         self.groupbox.setChecked(checked)

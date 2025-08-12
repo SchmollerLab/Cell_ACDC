@@ -30,7 +30,10 @@ def _check_install_extra_format_dependency(
         qparent=None
     ):
     
-    _, ext = os.path.splitext(image_filepath)
+    if image_filepath.endswith('.ome.tiff'):
+        ext = '.ome.tiff'
+    else:
+        _, ext = os.path.splitext(image_filepath)
     package_name = EXTENSION_PACKAGE_MAPPER.get(ext)
     
     if package_name is None:

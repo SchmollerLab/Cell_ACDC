@@ -151,13 +151,13 @@ class Model:
             tqdm_pbar.emit(1)
         return image
 
-    def segment3DT(
-            self, timelapse3D, thresh_val=0.0, min_distance=10, signals=None
-        ):        
-        lab = self._segment_img_3D(
-            timelapse3D, thresh_val=thresh_val, min_distance=min_distance
-        )
-        return lab
+    # def segment3DT(
+    #         self, timelapse3D, thresh_val=0.0, min_distance=10, signals=None
+    #     ):        
+    #     lab = self._segment_img_3D(
+    #         timelapse3D, thresh_val=thresh_val, min_distance=min_distance
+    #     )
+    #     return lab
     
     def segment(self, image, thresh_val=0.0, min_distance=10):
         if image.ndim == 3:

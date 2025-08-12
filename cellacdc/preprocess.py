@@ -75,7 +75,7 @@ def remove_hot_pixels(
         if progress:
             pbar.close()
     else:
-        filtered[z] = skimage.morphology.opening(img)
+        filtered = skimage.morphology.opening(image)
     return filtered
 
 def gaussian_filter(
@@ -552,6 +552,7 @@ def rescale_intensities(
         image = skimage.exposure.rescale_intensity(
             image, in_range='image', out_range=(0, 1)
         )
+        in_range = (in_range_low, in_range_high) # which now will be in (0, 1)
     elif in_range_how == 'absolute':
         in_range = (in_range_low, in_range_high)
         

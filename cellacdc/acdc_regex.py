@@ -1,5 +1,7 @@
 import re
 
+RE_SPLIT_SPACES_IGNORE_QUOTES = re.compile(r'''((?:[^ "']|"[^"]*"|'[^']*')+)''')
+
 def float_regex(allow_negative=True, left_chars='', include_nan=False):
     pattern = r'[-+]?[0-9]*\.?[0-9]*[eE]?[\-+]?[0-9]+'
     if left_chars:

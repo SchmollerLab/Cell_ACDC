@@ -31,7 +31,7 @@ import qtpy.compat
 
 # Custom modules
 from . import prompts, load, myutils, apps, core, dataPrep, widgets
-from . import qrc_resources, html_utils, printl
+from . import html_utils, printl
 from . import exception_handler
 from . import workers
 from . import recentPaths_path
@@ -602,7 +602,7 @@ class segmWin(QMainWindow):
         
         # Initialize model
         use_gpu = init_kwargs.get('gpu', False)
-        proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
+        proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
         if not proceed:
             self.processStopped()
             return
@@ -610,7 +610,11 @@ class segmWin(QMainWindow):
         if self.secondChannelName is not None:
             init_kwargs['is_rgb'] = True
         
-        self.model = myutils.init_segm_model(acdcSegment, self.posData, init_kwargs) 
+        self.model = myutils.init_segm_model(acdcSegment, self.posData, init_kwargs)
+        if self.model is None:
+            self.logger.info('Segmentation model was not initialized correctly!')
+            self.processStopped()
+            return
         try:
             self.model.setupLogger(self.logger)
         except Exception as e:

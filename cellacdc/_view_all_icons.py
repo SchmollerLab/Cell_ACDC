@@ -5,17 +5,6 @@ import shutil
 SCHEME = 'dark' 
 FLAT = True
 
-cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-qrc_resources_light_path = os.path.join(cellacdc_path, 'qrc_resources_light.py')
-qrc_resources_dark_path = os.path.join(cellacdc_path, 'qrc_resources_dark.py')
-qrc_resources_path = os.path.join(cellacdc_path, 'qrc_resources.py')
-os.remove(qrc_resources_path)
-
-if SCHEME == 'dark' and os.path.exists(qrc_resources_dark_path):
-    shutil.copyfile(qrc_resources_dark_path, qrc_resources_path)
-elif SCHEME == 'light' and os.path.exists(qrc_resources_light_path):
-    shutil.copyfile(qrc_resources_light_path, qrc_resources_path)
-
 from qtpy.QtGui import QIcon
 from qtpy.QtCore import Qt, QSize
 from qtpy.QtWidgets import (

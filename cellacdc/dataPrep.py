@@ -34,9 +34,6 @@ from qtpy.compat import getexistingdirectory
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 
-# NOTE: Enable icons
-from . import qrc_resources
-
 # Custom modules
 from . import exception_handler
 from . import load, prompts, apps, core, myutils
@@ -3133,6 +3130,23 @@ class dataPrepWin(QMainWindow):
         self.saveAlignedWorkerLoop = QEventLoop(self)
         self.saveAlignedWorkerLoop.exec_()
     
+    def removeAlignShiftsFile(self):
+        for posData in self.data:
+            posData = self.data[self.pos_i]
+            if posData.align_shifts_path is None:
+                continue
+            
+            if not os.path.exists(posData.align_shifts_path):
+                continue
+            
+            self.logger.info(
+                f'Removing align shifts file: {posData.align_shifts_path}'
+            )
+            try:
+                os.remove(posData.align_shifts_path)
+            except Exception as e:
+                pass
+            
     def handleAlignedDataOnClosing(self):
         if not hasattr(self, 'tempFilesToMove'):
             return True
@@ -3145,6 +3159,7 @@ class dataPrepWin(QMainWindow):
             return False
         
         if not saveAligned:
+            self.removeAlignShiftsFile()
             return True
         
         cancel = self.warnSaveAlignedNotReversible()
@@ -3169,6 +3184,23 @@ class dataPrepWin(QMainWindow):
     
     def askCropAndSave(self):
         if not self.saveAction.isEnabled():
+            return True
+        
+        isCropped = False
+        for p, posData in enumerate(self.data):
+            data = posData.img_data            
+            allCropsData = []
+            for cropROI in posData.cropROIs:
+                croppedData, SizeZ = self.crop(data, posData, cropROI)
+                allCropsData.append(croppedData)
+
+            isCropped = any(
+                [cropped.shape != data.shape for cropped in allCropsData]
+            )
+            if isCropped:
+                break
+        
+        if not isCropped:
             return True
         
         msg = widgets.myMessageBox(wrapText=False)

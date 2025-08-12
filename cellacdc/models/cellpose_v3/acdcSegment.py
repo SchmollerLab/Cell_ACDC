@@ -97,6 +97,7 @@ class Model(CellposeBaseModel):
         """
         self.initConstants(is_rgb=is_rgb)
         self.batch_size = batch_size
+        self.init_successful = False
 
         out = myutils.translateStrNone(
             model_type, model_path, device, denoise_model, denoise_model_path
@@ -173,6 +174,8 @@ class Model(CellposeBaseModel):
             self,
             directml_gpu,
             gpu, device)
+        
+        self.init_successful = True
 
     def _get_eval_kwargs_v3(
             self,

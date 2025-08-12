@@ -14,8 +14,25 @@ if conda_prefix is not None:
 EXTENSION_PACKAGE_MAPPER = {
     '.czi': 'bioio-czi',
     '.dv': 'bioio-dv',
+    '.r3d': 'bioio-dv',
     '.lif': 'bioio-lif',
     '.nd2': 'bioio-nd2',
+    '.tif': 'bioio-tifffile', 
+    '.tiff': 'bioio-tifffile',
+    '.ome.tiff': 'bioio-ome-tiff',
+    '.zarr': 'bioio-ome-zarr',
+    '.sldy': 'bioio-sldy',
+    '.dir': 'bioio-sldy',
+}
+
+EXTENSION_BIOIMAGE_KWARGS_MAPPER = {
+    '.czi': {'use_aicspylibczi': True},
+}
+
+EXTENSION_METADATA_ATTR_MAPPER = {
+    '.czi': {
+        'TimeIncrement': 'standard_metadata.timelapse_interval.total_seconds()'
+    }
 }
 
 from .reader import ImageReader, get_omexml_metadata, OMEXML, Metadata

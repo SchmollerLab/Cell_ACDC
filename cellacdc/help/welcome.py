@@ -25,7 +25,7 @@ from .. import gui, dataStruct, myutils, cite_url, html_utils, urls, widgets
 from .. import _palettes
 
 # NOTE: Enable icons
-from .. import qrc_resources, cellacdc_path, settings_folderpath
+from .. import cellacdc_path, settings_folderpath
 
 if os.name == 'nt':
     try:
@@ -777,7 +777,7 @@ class welcomeWin(QWidget):
         openManualButton = widgets.showInFileManagerButton(
             ' Download and open user manual... '
         )
-        openManualButton.clicked.connect(myutils.showUserManual)
+        openManualButton.clicked.connect(myutils.browse_docs)
 
         buttonLayout = QHBoxLayout()
         buttonLayout.addWidget(openManualButton)
@@ -886,11 +886,21 @@ class welcomeWin(QWidget):
         self.df_settings.to_csv(self.df_settings_path)
 
     def openGUIsingleImage(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            After clicking "Ok" on this dialogue, the Cell-ACDC GUI from 
+            module 3 will open.<br><br>
+            You will then be asked to select an image file (e.g., .tif or .png), 
+            or a video file (e.g., .avi). 
+        """)
+        msg.information(
+            self, 'Test with my image', txt
+        )
+        
         if self.mainWin is not None:
             self.mainWin.launchGui()
             guiWin = self.mainWin.guiWins[-1]
             QTimer.singleShot(200, guiWin.openFile)
-            self.mainWin.guiWins[-1].openFile()
         else:
             self.guiWin = gui.guiWin(self.app)
             self.guiWin.showAndSetSize()
@@ -909,11 +919,7 @@ class welcomeWin(QWidget):
             self.guiWin.openFolder(exp_path=exp_path)
 
     def launchDataStruct(self, checked=True):
-        self.dataStructWin = dataStruct.createDataStructWin(
-            mainWin=self
-        )
-        self.dataStructWin.show()
-        self.dataStructWin.main()
+        self.mainWin.dataStructButton.click()
 
     def addPbar(self):
         self.QPbar = widgets.ProgressBar(self)
@@ -933,6 +939,8 @@ class welcomeWin(QWidget):
 
         if self.QPbar is None:
             self.addPbar()
+        else:
+            self.QPbar.setVisible(True)
 
         self.thread = QThread()
         self.worker = downloadWorker('time_lapse_2D')
@@ -940,7 +948,7 @@ class welcomeWin(QWidget):
         self.worker.progress.connect(self.downloadProgress)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.finished.connect(self.openGUIexample)
+        self.worker.finished.connect(self.downloadExampleWorkerFinished)
         self.thread.finished.connect(self.thread.deleteLater)
 
         self.thread.started.connect(self.worker.run)
@@ -954,19 +962,39 @@ class welcomeWin(QWidget):
         elif len_chunk == 0:
             self.QPbar.setValue(self.QPbar.maximum())
 
+    def downloadExampleWorkerFinished(self):
+        self.QPbar.setVisible(False)
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            Done!<br><br>
+            The example dataset has been downloaded to path below.<br><br>
+            Do you want to <b>open it in the GUI</b>?
+        """)
+        _, yesButton = msg.question(
+            self, 'Open downloaded dataset?', txt,
+            buttonsTexts=('No, thanks', 'Yes, please, open the GUI'),
+            commands=(self.worker.exp_path,),
+            path_to_browse=self.worker.exp_path
+        )
+        self.infoTextWidget.setText(
+            '<br><b>Example downloaded</b> to '
+            f'<code>{self.worker.exp_path}</code>.<br>'
+        )
+        if msg.clickedButton == yesButton:
+            self.openGUIexample()
+    
     def openGUIexample(self):
         txt = (
         f"""
         <p style="font-size:11px; font-family:ubuntu">
-            <br><b>Example downloaded</b> to {self.worker.exp_path}.<br>
+            <br><b>Example downloaded</b> to 
+            <code>{self.worker.exp_path}</code>.<br>
             Opening GUI...
         </p>
         """
         )
         self.infoTextWidget.setText(txt)
-        self.QPbar.setValue(self.QPbar.maximum())
         self.openGUIfolder(self.worker.exp_path)
-
 
     def test3DzStacksExample(self, checked=True):
         _, example_path, _, _ = myutils.get_examples_path('snapshots_3D')
@@ -981,6 +1009,8 @@ class welcomeWin(QWidget):
 
         if self.QPbar is None:
             self.addPbar()
+        else:
+            self.QPbar.setVisible(True)
 
         self.thread = QThread()
         self.worker = downloadWorker('snapshots_3D')
@@ -988,7 +1018,7 @@ class welcomeWin(QWidget):
         self.worker.progress.connect(self.downloadProgress)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.finished.connect(self.openGUIexample)
+        self.worker.finished.connect(self.downloadExampleWorkerFinished)
         self.thread.finished.connect(self.thread.deleteLater)
 
         self.thread.started.connect(self.worker.run)

@@ -19,6 +19,12 @@ from typing import Iterable
 KNOWN_EXTENSIONS = (
     '.tif', '.npz', '.npy', '.h5', '.json', '.csv', '.txt'
 )
+IMAGE_EXTENSIONS = (
+    '.tif', '.tiff', '.png', '.jpg', '.jpeg', '.bmp', '.gif',
+)
+VIDEO_EXTENSIONS = (
+    '.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv',
+)
 
 def _warn_ask_install_package(commands: Iterable[str], note_txt=''):
     open_str = '='*100
@@ -206,6 +212,22 @@ does_qrc_resources_exists = (
     or os.path.exists(qrc_resources_user_path)
 )
 
+def _copy_qrc_resources_file(
+        src_qrc_resources_scheme_path: os.PathLike,
+        dst_qrc_resources_path: os.PathLike = qrc_resources_path, 
+        user_dst_qrc_resources_path: os.PathLike = qrc_resources_user_path
+    ):
+    try:
+        shutil.copyfile(src_qrc_resources_scheme_path, dst_qrc_resources_path)
+        return True
+    except Exception as err:
+        # Copy to user folder because copying to cell-acdc location failed 
+        # possibly PermissionError
+        shutil.copyfile(
+            src_qrc_resources_scheme_path, user_dst_qrc_resources_path
+        )
+        return False
+
 # Set default qrc resources
 if not does_qrc_resources_exists:
     if scheme == 'light':
@@ -213,12 +235,8 @@ if not does_qrc_resources_exists:
     else:
         qrc_resources_scheme_path = qrc_resources_dark_path
     # Load default light mode
-    try:
-        shutil.copyfile(qrc_resources_scheme_path, qrc_resources_path)
-    except Exception as err:
-        # Copy to user folder because copying to cell-acdc location failed 
-        # possibly PermissionError
-        shutil.copyfile(qrc_resources_scheme_path, qrc_resources_user_path)
+    has_admin_rights = _copy_qrc_resources_file(qrc_resources_scheme_path)
+    if not has_admin_rights:
         qrc_resources_path = qrc_resources_user_path
 elif os.path.exists(qrc_resources_user_path):
     qrc_resources_path = qrc_resources_user_path
@@ -238,14 +256,14 @@ except Exception as err:
     raise err
 
 try:
-    # Import qrc_resources explicitly so that "from . import qrc_resouces" imports 
+    # Import qrc_resources explicitly so that "from . import acdc_qrc_resources" imports 
     # the variable defined here. Use importlib in case qrc_resouces.py is in 
     # user folder
     qrc_resouces_spec = importlib.util.spec_from_file_location(
         'qrc_resources', qrc_resources_path
     )
-    qrc_resources = importlib.util.module_from_spec(qrc_resouces_spec)
-    qrc_resouces_spec.loader.exec_module(qrc_resources)
+    acdc_qrc_resources = importlib.util.module_from_spec(qrc_resouces_spec)
+    qrc_resouces_spec.loader.exec_module(acdc_qrc_resources)
 except ModuleNotFoundError as err:
     # Cellacdc in the cli might not have qtpy --> ignore error
     pass
@@ -519,23 +537,56 @@ def exception_handler_cli(func):
                 raise err
         return result
     return inner_function
+    
+def _exception_handler_clean_progress(self):
+    try:
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+    except AttributeError:
+        pass
 
 def exception_handler(func):
-    """Decorator to handle class methods exceptions and show a critical error message.
-    """
+    """Decorator to handle class methods exceptions and show a critical error message."""
     @wraps(func)
     def inner_function(self, *args, **kwargs):
         try:
             result = func(self, *args, **kwargs)
-        except Exception as e:
-            try:
-                if self.progressWin is not None:
-                    self.progressWin.workerFinished = True
-                    self.progressWin.close()
-            except AttributeError:
-                pass
+        except TypeError as e:
+            # Only handle the specific Qt slot error
+            msg = str(e)
+            if (
+                "takes 1 positional argument but 2 were given" in msg
+                and len(args) > 0
+            ):
+                try:
+                    # Remove only the last argument (assumed to be from Qt)
+                    filtered_args = args[:-1]
+                    result = func(self, *filtered_args, **kwargs)
+                except Exception:
+                    _exception_handler_clean_progress(self)
+                    result = _critical_exception_gui(self, func.__name__)
+            else:
+                _exception_handler_clean_progress(self)
+                result = _critical_exception_gui(self, func.__name__)
+        except Exception:
+            _exception_handler_clean_progress(self)
             result = _critical_exception_gui(self, func.__name__)
         return result
+    return inner_function
+
+def disableWindow(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        self.setDisabled(True)
+        try:
+            result = func(self, *args, **kwargs)
+            return result
+        except Exception as err:
+            raise err
+        finally:
+            self.setDisabled(False)
+            self.activateWindow()
     return inner_function
 
 def ignore_exception(func):

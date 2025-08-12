@@ -35,8 +35,6 @@ from .. import workers
 from .. import cellacdc_path, recentPaths_path, settings_folderpath
 from .. import io
 
-from .. import qrc_resources
-
 if os.name == 'nt':
     try:
         # Set taskbar icon in windows

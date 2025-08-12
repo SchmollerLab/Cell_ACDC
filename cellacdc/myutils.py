@@ -1,5 +1,6 @@
 import os
 import re
+import ast
 
 import typing
 from typing import Literal, List, Callable, Tuple, Dict
@@ -492,7 +493,7 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
     version = read_version()
     release_date = get_date_from_version(version, package='cellacdc')
     py_ver = sys.version_info
-    env_folderpath = os.path.dirname(os.__file__)
+    env_folderpath = sys.prefix
     python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
     info_txts = [
         f'Version {version}',
@@ -529,6 +530,13 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
     formatted_info_txts.insert(0, '='*max_len)
     formatted_info_txts.append('='*max_len)
     info_txt = '\n'.join(formatted_info_txts)
+    
+    try:
+        from spotmax.utils import get_info_version_text as smax_info
+        smax_info_txt = smax_info(include_platform=False, is_cli=is_cli)
+        info_txt += '\n\n' + smax_info_txt
+    except ImportError:
+        pass
     
     return info_txt
 
@@ -1383,11 +1391,11 @@ def getDefault_SegmInfo_df(posData, filename):
 def get_examples_path(which):
     if which == 'time_lapse_2D':
         foldername = 'TimeLapse_2D'
-        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CaMdYXiwxxoq3Ts/download/TimeLapse_2D.zip'
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/KgJQtsQKZJnWZjL/download/TimeLapse_2D.zip'
         file_size = 45143552
     elif which == 'snapshots_3D':
         foldername = 'Multi_3D_zStack_Analysed'
-        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CXZDoQMANNrKL7a/download/Yeast_Analysed_multi3D_zStacks.zip'
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/3RNjGiPwKcdnGtj/download/Yeast_Analysed_multi3D_zStacks.zip'
         file_size = 124822528
     else:
         return ''
@@ -2804,7 +2812,7 @@ def check_cellpose_version(version: str):
             cancel = _warnings.warn_installing_different_cellpose_version(
                 version, installed_version
             )
-        if not compare_model_versions(
+        if not is_second_version_greater(
             min_target_versions_cp[str(major_requested)],
             installed_version
         ):
@@ -2821,8 +2829,15 @@ def purge_module(module_name):
     to_delete = [mod for mod in sys.modules if mod == module_name or mod.startswith(module_name + '.')]
     for mod in to_delete:
         del sys.modules[mod]
+        
+    importlib.invalidate_caches()
+    importlib.import_module(module_name)
+    if module_name in sys.modules:
+        importlib.reload(sys.modules[module_name])
+    else:
+        raise ModuleNotFoundError(f"Module '{module_name}' not found in sys.modules.")
 
-def compare_model_versions(
+def is_second_version_greater(
         target_version: str,
         current_version: str,
 ):
@@ -2834,6 +2849,23 @@ def compare_model_versions(
     current_version = packaging_version.parse(current_version)
     
     return current_version >= target_version
+
+def is_pkg_version_within_range(
+        package_version: str, min_version='', max_version=''
+    ):
+    package_version_number = packaging_version.parse(package_version)
+    is_greater_than_min = True
+    if min_version:
+        min_version_number = packaging_version.parse(min_version)
+        is_greater_than_min = package_version_number >= min_version_number
+    
+    is_less_than_max = True
+    if max_version:
+        max_version_number = packaging_version.parse(max_version)
+        is_less_than_max = package_version_number <= max_version_number
+    
+    return is_greater_than_min and is_less_than_max
+        
 
 def check_install_cellpose(
         version: Literal['2.0', '3.0', '4.0', 'any'] = '2.0', 
@@ -2867,10 +2899,6 @@ def check_install_cellpose(
     )
 
     purge_module('cellpose')
-
-    importlib.invalidate_caches()
-    import cellpose
-    importlib.reload(cellpose)
 
 def check_install_baby():
     check_install_package(
@@ -2970,8 +2998,12 @@ def install_package_conda(conda_pkg_name, channel='conda-forge'):
             'Cell-ACDC is not running in a `conda` environment.'
         )
     conda_prefix, pip_prefix = get_pip_conda_prefix()
+    conda_prefix = re.sub(
+        r'(-c\sconda-forge\s?|--channel=conda-forge\s?)', f'-c {channel} ', 
+        conda_prefix
+    )
 
-    command = f'{conda_prefix} -c {channel} -y {conda_pkg_name}'
+    command = f'{conda_prefix} -y {conda_pkg_name}'
     _subprocess_run_command(command)
 
 def _subprocess_run_command(command, shell=True, callback='check_call'):
@@ -3000,12 +3032,43 @@ def check_install_omnipose():
         install_package_conda('mahotas')
         _install_pip_package('omnipose-acdc')
 
-def _run_command(command, shell=True):
-    if command.find('conda') == -1:
-        args = command.split(' ')
+def _run_command(command: str | list[str], shell=False):
+    if not isinstance(command, (str, list)):
+        raise TypeError(
+            f'Command must be a string or a list of strings, not {type(command)}'
+        )
+    
+    command_str = None
+    if isinstance(command, str):
+        args_list = [command]
+        command_str = command
     else:
-        args = command
-    subprocess.check_call(args, shell=shell)
+        args_list = command
+        if len(command) == 1:
+            command_str = command[0]
+        
+    try:
+        subprocess.check_call(args_list, shell=shell)
+        return
+    except Exception as err:
+        pass
+    
+    if command_str is None:
+        return
+    
+    try:
+        subprocess.check_call(command_str, shell=shell)
+        return
+    except Exception as err:
+        pass
+    
+    try:
+        from . import acdc_regex
+        args = acdc_regex.RE_SPLIT_SPACES_IGNORE_QUOTES.split(command_str)[1::2]
+        subprocess.check_call(args, shell=shell)
+        return
+    except Exception as err:
+        pass
 
 def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
     try:
@@ -3030,9 +3093,6 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
     _run_command(command)    
     
     purge_module('torch')
-    importlib.invalidate_caches()
-    import torch
-    importlib.reload(torch)
 
 def check_install_package(
         pkg_name: str, 
@@ -3325,7 +3385,7 @@ def _install_pytorch_cli(
     logger_func(txt)
     questions = {
         'Choose your OS:': ('Windows', 'Mac', 'Linux'), 
-        'Package manager:': ('Conda', 'Pip'), 
+        'Package manager:': ('Pip'), 
         'Compute platform:': (
             'CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)'
         )
@@ -3440,7 +3500,7 @@ def _install_package_cli_msg(
     if installer == 'pip':
         install_command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        install_command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        install_command = f'{conda_prefix} {pkg_command}'
         
     separator = '-'*60
     txt = (
@@ -3489,16 +3549,15 @@ def _install_package_gui_msg(
         including_higher_version=including_higher_version
     )
     
-    command_html = pkg_command.lower().replace('<', '&lt;').replace('>', '&gt;')
-    
     conda_prefix, pip_prefix = get_pip_conda_prefix()
 
     if installer == 'pip':
         command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        command = f'{conda_prefix} {pkg_command}'
         
-
+    command_html = command.lower().replace('<', '&lt;').replace('>', '&gt;')
+    
     txt = html_utils.paragraph(f"""
         {caller_name} is going to <b>download and {install_text}</b>
         <code>{pkg_name}</code>.<br><br>
@@ -3515,7 +3574,7 @@ def _install_package_gui_msg(
     _, okButton = msg.information(
         parent, f'Install {pkg_name}', txt, 
         buttonsTexts=('Cancel', 'Ok'), 
-        commands=(command,)
+        commands=(command_html,)
     )
     return msg.clickedButton == okButton
 
@@ -3529,12 +3588,15 @@ def _install_tensorflow(max_version='', min_version=''):
     conda_prefix, pip_prefix = get_pip_conda_prefix()
 
     if is_mac and cpu == 'arm':
-        args = [f'{conda_prefix} -c conda-forge "{pkg_command}"']
+        args = [f'{conda_prefix} "{pkg_command}"']
         shell = True
     else:
         args = [sys.executable, '-m', 'pip', 'install', '-U', pkg_command]
         shell = False
     subprocess.check_call(args, shell=shell)
+    
+    # purge numpy
+    purge_module('numpy')
 
 def _install_segment_anything():
     args = [
@@ -3796,20 +3858,20 @@ def get_pip_conda_prefix(list_return=False):
         pass
 
     if no_cli_install:
-        conda_prefix = f'{conda_path} install -y -p {venv_path}'
+        conda_prefix = f'{conda_path} install -y -p {venv_path} -c conda-forge'
         exec_path = sys.executable
         if ' ' in exec_path:
             exec_path = f'"{exec_path}"'
         pip_prefix = f"{exec_path} -m pip install"
     else:
-        conda_prefix = 'conda install -y'
+        conda_prefix = 'conda install -y -c conda-forge'
         pip_prefix = 'pip install'
     
     pip_list = [sys.executable, '-m', 'pip', 'install']
     if no_cli_install:
-        conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'")]
+        conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'"), '-c', 'conda-forge']
     else:
-        conda_list = ['conda', 'install', '-y']
+        conda_list = ['conda', 'install', '-y', '-c', 'conda-forge']
     if list_return:
         return conda_list, pip_list
     else:
@@ -3851,20 +3913,50 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     pip_prefix = pip_prefix.replace('install -y', 'uninstall')
     txt_cuda = html_utils.paragraph(f"""
         Check out these instructions {cellpose_href}, and {torch_href}.<br>
-        We <b>highly recommend using Conda</b> to install PyTorch GPU.<br>
-        First, uninstall the CPU version of PyTorch with the following command:<br>
-        <code>{pip_prefix} uninstall torch</code>.<br>
+        First, uninstall the CPU version of PyTorch with the following command:<br><br>
+        <code>{pip_prefix} uninstall torch</code>.<br><br>
         Then, install the CUDA version required by your GPU with the follwing 
-        command (which installs version 11.6):<br>
-        <code>{conda_prefix} pytorch pytorch-cuda=11.6 -c conda-forge -c nvidia</code>
-        <br><br>
+        command (in this case 12.8):<br><br>
+        <code>{pip_prefix} torch torchvision torchaudio --index-url 
+        https://download.pytorch.org/whl/cu128</code>
+        <br>
         """)
+    
+    add_info = html_utils.to_admonition(
+        f"""
+        Pleae use the following table to find the correct link for the command.
+        You can check the CUDA  <br> version installed on your system with the
+        command <code>nvidia-smi</code> in the terminal.<br>
+
+        {html_utils.table_style_header}
+            <tr>
+                <th>CUDA Version</th>
+                <th>PyTorch Installation Link</th>
+            </tr>
+            <tr>
+                <td>CUDA 11.8</td>
+                <td><code>https://download.pytorch.org/whl/cu118</code></td>
+            </tr>
+            <tr>
+                <td>CUDA 12.6</td>
+                <td><code>https://download.pytorch.org/whl/cu126</code></td>
+            </tr>
+            <tr>
+                <td>CUDA 12.8</td>
+                <td><code>https://download.pytorch.org/whl/cu128</code></td>
+            </tr>
+        </table>
+        """,
+        "info"
+    )
+    
+    txt_cuda = f'{txt_cuda}{add_info}'
     
     txt_directML_title = html_utils.paragraph(f"<b>DirectML</b>", font_size='18px')
     txt_directML = html_utils.paragraph(f"""
         Check out {direct_ml_href}, and {torch_directml_href} for more info.<br>
         Only supported on Windows 10/11 with Python 3.8-3.12.<br>
-        Click the <b>Proceed without DirectML</b> button to install DirectML.
+        Click the <b>Install DirectML</b> button to install DirectML.
         <br><br>
         """)
     
@@ -3903,6 +3995,7 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
                 pypi_name = 'torch-directml',
                 return_outcome=True,
             )
+            purge_module('torch')
             return success
         else:
             msg = widgets.myMessageBox()
@@ -3918,12 +4011,23 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     if msg.clickedButton == proceedButton:
         return True
 
-def check_gpu_availible(model_name, use_gpu, qparent=None):
+def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cuda=False):
     if not use_gpu:
         return True
-
-    frameworks = _availible_frameworks(model_name)
-    ask_installs = set()
+    
+    ask_for_cuda = False
+    if cuda:
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                ask_for_cuda = True
+            if not torch.cuda.device_count() > 0:
+                ask_for_cuda = True
+        except ModuleNotFoundError:
+            ask_for_cuda = True
+            
+    frameworks = _available_frameworks(model_name)
+    ask_installs = set() if not ask_for_cuda else {'cuda'}
     framework_available = False
     for framework, model_compatible in frameworks.items():
         if not model_compatible:
@@ -3952,14 +4056,17 @@ def check_gpu_availible(model_name, use_gpu, qparent=None):
             framework_available = True
             break
     
-    if framework_available:
+    if framework_available and not ask_for_cuda:
         return True
+    
+    elif do_not_warn:
+        return False
     
     proceed = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
     return proceed
 
 
-def _availible_frameworks(model_name):
+def _available_frameworks(model_name):
     frameworks = {
 
     "cuda":(
@@ -4180,6 +4287,10 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
 
     except Exception as e:
         model = acdcSegment.Model(segm_data, **init_kwargs)
+        
+    if hasattr(model, 'init_successful'):
+        if not model.init_successful:
+            return None
     return model
 
 def _parse_bool_str(value):
@@ -4735,15 +4846,27 @@ def translateStrNone(*args):
     return args
 
 def get_pytorch_command():
+    """Get the command to install pytorch CPU or CUDA
+
+    Returns
+    -------
+    dict
+        Dictionary mapping OS to commands for installing PyTorch
+    
+    Notes
+    -----
+    As of Oct 2024, the `pytorch` channel on Anaconda was deprecated. 
+    See here https://github.com/pytorch/pytorch/issues/138506
+    """
     conda_prefix, pip_prefix = get_pip_conda_prefix()
 
     pytorch_commands = {
         'Windows': {
-            'Conda': {
-                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
-                'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
-                'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
-            },
+            # 'Conda': {
+            #     'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+            #     'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+            #     'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
+            # },
             'Pip': {
                 'CPU': f'{pip_prefix} torch torchvision',
                 'CUDA 11.8 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu118',
@@ -4751,11 +4874,11 @@ def get_pytorch_command():
             }
         },
         'Mac': {
-            'Conda': {
-                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
-                'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
-                'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
-            },
+            # 'Conda': {
+            #     'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+            #     'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
+            #     'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
+            # },
             'Pip': {
                 'CPU': f'{pip_prefix} torch torchvision',
                 'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
@@ -4763,11 +4886,11 @@ def get_pytorch_command():
             }
         },
         'Linux': {
-            'Conda': {
-                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
-                'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
-                'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
-            },
+            # 'Conda': {
+            #     'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+            #     'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+            #     'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
+            # },
             'Pip': {
                 'CPU': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cpu',
                 'CUDA 11.8 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu118',
@@ -4927,3 +5050,196 @@ def update_not_editable_package(package_name, package_info):
     except Exception as e:
         print(f"Error updating {package_name}: {e}")
         return False
+
+def try_kwargs(func, *args, **kwargs):
+    """
+    Attempt to call a function with the provided arguments and keyword arguments.
+    
+    If the function raises a TypeError due to unexpected keyword arguments, 
+    those arguments are dynamically removed, and the function is retried. 
+    This process continues until the function succeeds or no keyword arguments 
+    remain, in which case the exception is re-raised.
+    
+    Args:
+        func (Callable): The function to call.
+        *args: Positional arguments to pass to the function.
+        **kwargs: Keyword arguments to pass to the function.
+    
+    Returns:
+        Tuple[Any, List[str]]: A tuple containing:
+            - The result of the function call (or None if it fails).
+            - A list of keyword arguments that were removed.
+    
+    Raises:
+        ValueError: If a keyword argument mentioned in the error message 
+            is not found in the provided kwargs.
+        TypeError: If the function fails with a TypeError after all keyword 
+            arguments have been removed.
+    """
+    
+    kwargs = kwargs.copy()  # Create a copy to avoid modifying the original
+    removed_kwargs = []
+    pattern = r"unexpected keyword argument ['\"](\w+)['\"]"    
+    while True:
+        try:
+            return func(*args, **kwargs), removed_kwargs
+        except TypeError as e:
+            match = re.search(pattern, str(e))
+            if match:
+                kwarg_name = match.group(1)
+                if kwarg_name in kwargs:
+                    del kwargs[kwarg_name]
+                    removed_kwargs.append(kwarg_name)
+                else:
+                    raise ValueError(
+                        f"Keyword argument '{kwarg_name}' not found in kwargs."
+                    )
+            else:
+                raise e
+            
+            if len(kwargs) == 0:
+                print(f"Function {func.__name__} failed with TypeError: {e}")
+                raise e
+    
+def get_obj_by_label(rp, target_label):
+    """
+    Returns the object with the specified label from the given list of objects.
+
+    Parameters
+    ----------
+    rp : list
+        The list of objects to search through.
+    target_label : str
+        The label of the object to find.
+
+    Returns
+    -------
+    object
+        The object with the specified label, or None if not found.
+    """
+    for obj in rp:
+        if obj.label == target_label:
+            return obj
+    return None
+
+def find_distances_ID(rps, point=None, ID=None):
+    """
+    Calculate the distances between a given point and the centroids of a list of regionprops.
+
+    Parameters
+    ----------
+    rps : list
+        List of regionprops objects.
+    point : tuple, optional
+        The coordinates of the point. Defaults to None.
+    ID : int, optional
+        The label ID of the regionprops object. Defaults to None.
+
+    Returns
+    -------
+    numpy.ndarray
+        A matrix of distances between the point and the centroids.
+
+    Raises
+    ------
+    ValueError
+        If ID is not found in the list of regionprops (list of cells).
+    ValueError
+        If neither ID nor point is provided.
+    ValueError
+        If both ID and point are provided.
+    """
+
+    if ID is not None and point is None:
+        try:
+            point = [rp.centroid for rp in rps if rp.label == ID][0]
+        except IndexError:
+            raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
+
+    elif ID is None and point is None:
+        raise ValueError('Either ID or point must be provided.')
+
+    elif ID is not None and point is not None:
+        raise ValueError('Only one of ID or point must be provided.')
+    
+    point = point[::-1] # rp are in (y, x) format (or (z, y, x) for 3D data) so I need to reverse order
+    point = np.array([point])
+    centroids = np.array([rp.centroid for rp in rps])
+    diff = point[:, np.newaxis] - centroids
+    dist_matrix = np.linalg.norm(diff, axis=2)
+    return dist_matrix
+
+def sort_IDs_dist(rps, point=None, ID=None):
+    """Sorts the IDs of regionprops based on their distances to a given point.
+
+    Parameters
+    ----------
+    rps : list
+        A list of regionprops objects representing cells.
+    point : tuple, optional
+        The coordinates of the point to calculate distances from. 
+        If not provided, it will be calculated based on the given ID.
+    ID : int, optional
+        The ID of the regionprops object to calculate distances from. 
+        If this and point are both provided, or neither, an error will be 
+        raised.
+
+    Returns
+    -------
+    list
+        A sorted list of IDs based on their distances to the given point.
+
+    Raises
+    ------
+    ValueError
+        If ID is not found in the list of regionprops objects.
+    ValueError
+        If neither ID nor point is provided.
+    ValueError
+        If both ID and point are provided.
+
+    """
+    if ID is not None and point is None:
+        try:
+            point = [rp.centroid for rp in rps if rp.label == ID][0]
+        except IndexError:
+            raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
+
+    elif ID is None and point is None:
+        raise ValueError('Either ID or point must be provided.')
+
+    elif ID is not None and point is not None:
+        raise ValueError('Only one of ID or point must be provided.')
+    
+
+    IDs = [rp.label for rp in rps]
+    if len(IDs) == 0:
+        return []
+    elif len(IDs) == 1:
+        return IDs
+    dist_matrix = find_distances_ID(rps, point=point)        
+    dist_matrix = np.squeeze(dist_matrix)
+
+    sorted_ids = sorted(zip(dist_matrix, IDs))
+    sorted_ids = [ID for _, ID in sorted_ids]
+    return sorted_ids
+
+def safe_get_or_call(obj, path: str):
+    """Safely get nested attributes or call methods with literal args from a string path."""
+    expr = ast.parse(path, mode='eval').body
+
+    def _eval(node, current_obj):
+        if isinstance(node, ast.Attribute):
+            return getattr(_eval(node.value, current_obj), node.attr)
+        elif isinstance(node, ast.Call):
+            func = _eval(node.func, current_obj)
+            args = [ast.literal_eval(arg) for arg in node.args]
+            kwargs = {kw.arg: ast.literal_eval(kw.value) for kw in node.keywords}
+            return func(*args, **kwargs)
+        elif isinstance(node, ast.Name):
+            # First name in chain is assumed to be from `obj`
+            return getattr(current_obj, node.id)
+        else:
+            raise ValueError(f"Unsupported syntax: {ast.dump(node)}")
+
+    return _eval(expr, obj)

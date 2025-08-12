@@ -60,14 +60,26 @@ def main():
     run()
 
 def run_gui():
-    from ._run import _setup_gui_libraries, _setup_symlink_app_name_macos
+    from ._run import (
+        _setup_gui_libraries, 
+        _setup_symlink_app_name_macos,
+        _setup_numpy, 
+        download_model_params, 
+        _exit_on_setup
+    )
     
     _setup_symlink_app_name_macos()
     
-    _setup_gui_libraries()
+    requires_exit = _setup_gui_libraries(exit_at_end=False)
+    
+    _setup_numpy()
+    
+    download_model_params()
+    
+    if requires_exit:
+        _exit_on_setup()
     
     from qtpy import QtGui, QtWidgets, QtCore
-    # from . import qrc_resources
 
     if os.name == 'nt':
         try:
@@ -105,8 +117,7 @@ def run_gui():
     app, splashScreen = _run._setup_app(splashscreen=True)
 
     from cellacdc import myutils, printl
-    from cellacdc import qrc_resources
-
+    
     print('Launching application...')
 
     from cellacdc._main import mainWin

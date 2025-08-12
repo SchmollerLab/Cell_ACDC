@@ -39,6 +39,7 @@ if GUI_INSTALLED:
     from . import widgets
     from . import qrc_resources_path, qrc_resources_light_path
     from . import qrc_resources_dark_path
+    from . import whitelist
     
     
 import warnings
@@ -55,7 +56,7 @@ from . import cca_functions
 from . import sorted_cols
 from . import io
 from . import core
-from . import whitelist
+from . import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
 acdc_df_bool_cols = [
     'is_cell_dead',
@@ -64,6 +65,19 @@ acdc_df_bool_cols = [
 ]
 
 acdc_df_str_cols = {'cell_cycle_stage': str, 'relationship': str}
+
+acdc_df_int_cols = {
+    'frame_i': int,
+    'Cell_ID': int,
+    'generation_num': int,
+    'emerg_frame_i': int,
+    'division_frame_i': int,
+    'generation_num_tree': int,
+    'parent_ID_tree': int,
+    'root_ID_tree': int,
+    'sister_ID_tree': int,
+    'num_objects': int,
+}
 
 additional_metadata_path = os.path.join(settings_folderpath, 'additional_metadata.json')
 last_entries_metadata_path = os.path.join(settings_folderpath, 'last_entries_metadata.csv')
@@ -508,7 +522,7 @@ def _parse_loaded_acdc_df(acdc_df):
     # remove duplicates saved by mistake or bugs
     duplicated = acdc_df.index.duplicated(keep='first')
     acdc_df = acdc_df[~duplicated]
-    acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
+    acdc_df = pd_bool_and_float_to_int(acdc_df, acdc_df_bool_cols, colsToCastInt=[], inplace=True)
     acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
     return acdc_df
 
@@ -610,7 +624,7 @@ def _copy_acdc_dfs_to_temp_archive(
                     zip.open(csv_name), dtype=acdc_df_str_cols
                 )
             acdc_df = _ensure_acdc_df_latest_compatibility(acdc_df)
-            acdc_df = pd_bool_to_int(acdc_df, inplace=False)
+            acdc_df = pd_bool_and_float_to_int(acdc_df, inplace=False)
             compression_opts['archive_name'] = csv_name
             acdc_df.to_csv(
                 temp_zip_path, compression=compression_opts, mode='a'
@@ -643,7 +657,7 @@ def _store_acdc_df_archive(zip_path, acdc_df_to_store):
         
     
     compression_opts['archive_name'] = csv_name
-    acdc_df = pd_bool_to_int(acdc_df_to_store, inplace=False)
+    acdc_df = pd_bool_and_float_to_int(acdc_df_to_store, inplace=False)
     acdc_df.to_csv(temp_zip_path, compression=compression_opts, mode='a')
     shutil.move(temp_zip_path, zip_path)
     shutil.rmtree(temp_dirpath)
@@ -999,16 +1013,27 @@ def pd_int_to_bool(acdc_df, colsToCast=None):
             continue
     return acdc_df
 
-def pd_bool_to_int(acdc_df, colsToCast=None, csv_path=None, inplace=True):
+def pd_bool_and_float_to_int(acdc_df, colsToCastBool=None, colsToCastInt=None, csv_path=None, inplace=True):
     """
     Function used to convert "FALSE" strings and booleans to 0s and 1s
-    to avoid pandas interpreting as strings or numbers
+    to avoid pandas interpreting as strings or numbers.
+    Also converts floats to integers for integer columns.
+    To not convert columns, pass emptry list to colsToCastBool or colsToCastInt.
     """
     if not inplace:
         acdc_df = acdc_df.copy()
-    if colsToCast is None:
-        colsToCast = acdc_df_bool_cols
-    for col in colsToCast:   
+    if colsToCastBool is None:
+        colsToCastBool = acdc_df_bool_cols
+    if colsToCastInt is None:
+        colsToCastInt = acdc_df_int_cols
+        additional_sister_cols = [
+            col for col in acdc_df.columns if col.startswith('sister_ID_tree')
+        ]
+        additional_sister_cols = {
+            col: int for col in additional_sister_cols
+        }
+        colsToCastInt = {**colsToCastInt, **additional_sister_cols}
+    for col in acdc_df.columns:   
         try:
             series = acdc_df[col]
             notna_idx = series.notna()
@@ -1018,15 +1043,21 @@ def pd_bool_to_int(acdc_df, colsToCast=None, csv_path=None, inplace=True):
             isObject = pd.api.types.is_object_dtype(notna_series)
             isString = pd.api.types.is_string_dtype(notna_series)
             isBool = pd.api.types.is_bool_dtype(notna_series)
-            if isFloat or isBool:
-                acdc_df.loc[notna_idx, col] = acdc_df.loc[notna_idx, col].astype(int)
-            elif isString or isObject:
-                # Object data type can have mixed data types so we first convert
-                # to strings
-                acdc_df.loc[notna_idx, col] = acdc_df.loc[notna_idx, col].astype(str)
-                acdc_df.loc[notna_idx, col] = (
-                    acdc_df.loc[notna_idx, col].str.lower() == 'true'
-                ).astype(int)
+            if col in colsToCastBool:
+                if isFloat or isBool:
+                    acdc_df.loc[notna_idx, col] = acdc_df.loc[notna_idx, col].astype(int)
+                elif isString or isObject:
+                    # Object data type can have mixed data types so we first convert
+                    # to strings
+                    acdc_df.loc[notna_idx, col] = acdc_df.loc[notna_idx, col].astype(str)
+                    acdc_df.loc[notna_idx, col] = (
+                        acdc_df.loc[notna_idx, col].str.lower() == 'true'
+                    ).astype(int)
+            elif col in colsToCastInt:
+                nona_indx = acdc_df[col].notna()
+                acdc_df[col] = acdc_df[col].astype(float).fillna(0).astype(int).astype("string")
+                acdc_df.loc[~nona_indx, col] = ""
+                
         except KeyError:
             continue
         except Exception as e:
@@ -1308,18 +1339,24 @@ class loadData:
             self.img_data = np.squeeze(np.load(imgPath))
             self.dset = self.img_data
             self.img_data_shape = self.img_data.shape
-        else:
+        elif self.ext in IMAGE_EXTENSIONS:
             try:
                 self.img_data = np.squeeze(imread(imgPath))
                 self.dset = self.img_data
                 self.img_data_shape = self.img_data.shape
-            except ValueError:
+            except Exception as err:
+                traceback.print_exc()
+                self.criticalExtNotValid(signals=signals)
+        elif self.ext in VIDEO_EXTENSIONS: 
+            try:
                 self.img_data = self._loadVideo(imgPath)
                 self.dset = self.img_data
                 self.img_data_shape = self.img_data.shape
             except Exception as e:
                 traceback.print_exc()
                 self.criticalExtNotValid(signals=signals)
+        else:
+            self.criticalExtNotValid(signals=signals)
     
     def loadChannelData(self, channelName):
         if channelName == self.user_ch_name:
@@ -1920,7 +1957,7 @@ class loadData:
         if not save:
             return acdc_df
 
-        acdc_df = pd_bool_to_int(acdc_df, inplace=False)
+        acdc_df = pd_bool_and_float_to_int(acdc_df, inplace=False)
         if cca_dfs_attr:
             acdc_df.to_csv(self.acdc_output_csv_path)
             self.loadAcdcDf(self.acdc_output_csv_path)
@@ -2965,8 +3002,9 @@ class loadData:
             total_frames=self.SizeT,
         )
         whitelist_path = self.segm_npz_path.replace('.npz', '_whitelistIDs.json')
+        new_centroids_path = self.segm_npz_path.replace('.npz', '_new_centroids.json')
         success = self.whitelist.load(
-            whitelist_path, self.segm_data, self.allData_li
+            whitelist_path, new_centroids_path, self.segm_data, self.allData_li,
         )
         if self.log_func and success:
             filename = os.path.basename(whitelist_path)
@@ -3060,35 +3098,51 @@ class select_exp_folder:
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:
-            is_prepped = False
+            is_bkgr_roi_info_present = False
+            is_aligned = False
+            is_cropped = False
+            is_roi_info_present = False
             are_zslices_selected = False
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, 'Images')
             filenames = myutils.listdir(images_path)
             for filename in filenames:
                 if filename.endswith('dataPrepROIs_coords.csv'):
-                    is_prepped = True
-                    break
+                    is_roi_info_present = True
+                    filepath = os.path.join(images_path, filename)
+                    df = pd.read_csv(filepath, index_col='description')
+                    is_cropped = (df.loc[['cropped'], 'value'] > 0).any()
                 elif filename.endswith('dataPrep_bkgrROIs.json'):
-                    is_prepped = True
-                    break
+                    is_bkgr_roi_info_present = True
                 elif filename.endswith('aligned.npz'):
-                    is_prepped = True
-                    break
+                    is_aligned = True
                 elif filename.endswith('align_shift.npy'):
-                    is_prepped = True
-                    break
+                    is_aligned = True
                 elif filename.endswith('bkgrRoiData.npz'):
-                    is_prepped = True
-                    break
+                    is_cropped = True
                 elif filename.endswith('segmInfo.csv'):
                     are_zslices_selected = True
-            if is_prepped:
-                values.append(f'{pos} (already prepped)')
-            elif are_zslices_selected:
-                values.append(f'{pos} (z-slices selected)')
-            else:
+            
+            is_bkgr_roi_info_present
+            is_cropped
+            is_roi_info_present
+            
+            info_txt = f'{pos} ('
+            if are_zslices_selected:
+                info_txt = f'{info_txt} z-slices selected,'
+            if is_aligned:
+                info_txt = f'{info_txt} aligned,'
+            if is_roi_info_present:
+                info_txt = f'{info_txt} ROI info present,'
+            if is_bkgr_roi_info_present:
+                info_txt = f'{info_txt} bkgr ROI info present,'
+            if is_cropped:
+                info_txt = f'{info_txt} cropped'
+            
+            if info_txt.endswith('('):
                 values.append(pos)
+            else:
+                values.append(f'{info_txt})')
         self.values = values
         return values
 

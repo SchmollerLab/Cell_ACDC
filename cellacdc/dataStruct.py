@@ -37,7 +37,6 @@ from qtpy import QtGui
 # a separate process that doesn't have a parent package
 from . import issues_url
 from . import exception_handler
-from . import qrc_resources
 from . import apps, myutils, widgets, html_utils, printl
 from . import load, settings_csv_path
 from . import _palettes
@@ -272,7 +271,9 @@ class bioFormatsWorker(QObject):
         metadata_filepath = os.path.join(
             bioio_sample_data_folderpath, 'metadata.txt'
         )
-        metadata = bioformats.OMEXML().init_from_file(metadata_filepath)
+        metadata = bioformats.OMEXML().init_from_file(
+            metadata_filepath, rawFilePath
+        )
         return metadata, metadataXML
         
     
@@ -1768,11 +1769,21 @@ class createDataStructWin(QMainWindow):
 
     def instructMoveRawFiles(self):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        txt = html_utils.paragraph("""
-            Put all of the raw microscopy files from the <b>same experiment</b><br> 
+        tip_admon = html_utils.to_admonition(
+            'If you have a single gray-scale TIFF file, '
+            'placing into a folder called <code>Images</code> will be enough.',
+            admonition_type='tip',
+        )
+        txt = html_utils.paragraph(f"""
+            Put all of the raw microscopy files from the <b>same experiment</b>
             into an <b>empty folder</b> before closing this dialogue.<br><br>
 
-            Note that there should be <b>no other files</b> in this folder.
+            Note that there should be <b>no other files</b> in this folder.<br><br>
+            
+            Microscopy files are those files that are typically generated 
+            by the microscope, for example '.czi' (Zeiss), '.nd2' (Nikon), 
+            '.lif' (Leica), etc.<br><br>
+            {tip_admon}
         """
         )
         msg.information(
@@ -1810,6 +1821,22 @@ class createDataStructWin(QMainWindow):
 
         return msg.clickedButton == loadPosButton
     
+    def warnSelectedPathEmpty(self, raw_src_path):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            f"""
+            The selected folder (see below) is either <b>empty</b> 
+            or does not contain any files.<br><br>
+            Please select a folder that contains raw microscopy files.<br><br>
+            Thank you for your patience!
+            """
+        )
+        msg.warning(
+            self, 'Empty folder', txt, 
+            commands=(raw_src_path, ),
+            path_to_browse=raw_src_path
+        )
+    
     def checkFileFormat(self, raw_src_path):
         self.moveOtherFiles = False
         self.copyOtherFiles = False
@@ -1818,6 +1845,9 @@ class createDataStructWin(QMainWindow):
             filename for filename in ls
             if os.path.isfile(os.path.join(raw_src_path, filename))
         ]
+        if not files:
+            self.warnSelectedPathEmpty(raw_src_path)
+            return []
         all_ext = [
             os.path.splitext(filename)[1] for filename in ls
             if os.path.isfile(os.path.join(raw_src_path, filename))

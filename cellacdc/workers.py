@@ -197,10 +197,11 @@ class SegForLostIDsWorker(QObject):
     sigshowImageDebug = Signal(object)
     sigStoreData = Signal(bool)
     sigUpdateRP = Signal(bool, bool)
-    sigGetData = Signal()
+    # sigGetData = Signal()
     # sigGet2Dlab = Signal()
     # sigGetTrackedLostIDs = Signal()
     # sigGetBrushID = Signal()
+    sigSegForLostIDsWorkerAskInstallGPU = Signal(str, bool)
     sigTrackManuallyAddedObject = Signal(object, object, bool, bool)
 
     def __init__(self, guiWin, mutex, waitCond, debug=True):
@@ -236,15 +237,22 @@ class SegForLostIDsWorker(QObject):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
 
-    def emitSigGetData(self):
-        self.mutex.lock()
-        self.sigGetData.emit()
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
+    # def emitSigGetData(self):
+    #     self.mutex.lock()
+    #     self.sigGetData.emit()
+    #     self.waitCond.wait(self.mutex)
+    #     self.mutex.unlock()
 
     def emitSigAskInstallModel(self, model_name):
         self.mutex.lock()
         self.sigAskInstallModel.emit(model_name)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        
+    def emitSigAskInstallGPU(self, base_model_name, use_gpu):
+        self.mutex.lock()
+        self.sigSegForLostIDsWorkerAskInstallGPU.emit(base_model_name,
+                                                     use_gpu)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
     
@@ -289,26 +297,60 @@ class SegForLostIDsWorker(QObject):
         base_model_name = self.guiWin.SegForLostIDsSettings['base_model_name']
         idx = self.guiWin.modelNames.index(model_name)
         acdcSegment = self.guiWin.acdcSegment_li[idx]
+        
+        init_kwargs = self.guiWin.SegForLostIDsSettings['win'].init_kwargs
+        
+        use_gpu = init_kwargs.get('device_type', 'cpu') != 'cpu'
+        use_gpu = use_gpu or init_kwargs.get('use_gpu', False)
+        
+        self.emitSigAskInstallGPU(base_model_name, use_gpu)
+        
+        if not self.gpu_go:
+            self.signals.finished.emit(self)
+            return
+        
+        if not self.dont_force_cpu:
+            if 'device' in init_kwargs:
+                init_kwargs['device'] = 'cpu'
+            if 'use_gpu' in init_kwargs:
+                init_kwargs['use_gpu'] = False
 
         if acdcSegment is None or base_model_name != self.guiWin.local_seg_base_model_name:
-            self.logger.info(f'Importing {base_model_name}...')
-            self.emitSigAskInstallModel(base_model_name)
-            acdcSegment = myutils.import_segment_module(base_model_name)
-            self.guiWin.acdcSegment_li[idx] = acdcSegment
-            self.guiWin.local_seg_base_model_name = base_model_name  
+            try:
+                self.logger.info(f'Importing {base_model_name}...')
+                self.emitSigAskInstallModel(base_model_name)
+                acdcSegment = myutils.import_segment_module(base_model_name)
+                self.guiWin.acdcSegment_li[idx] = acdcSegment
+                self.guiWin.local_seg_base_model_name = base_model_name
+            except (IndexError, ImportError, KeyError) as e:
+                self.logger.warning(
+                    f'Cannot import {base_model_name} model. '
+                    'Please install it first.'
+                )
+                self.signals.critical.emit(
+                    (self, f'Cannot import {base_model_name} model. '
+                    'Please install it first.')
+                )
+                self.signals.finished.emit(self)
+                return
 
         win = self.guiWin.SegForLostIDsSettings['win']
         init_kwargs_new = self.guiWin.SegForLostIDsSettings['init_kwargs_new']
         args_new = self.guiWin.SegForLostIDsSettings['args_new']
 
         model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new)
+        if model is None:
+            self.logger.info('Segmentation model was not initialized correctly!')
+            self.signals.critical.emit(
+                (self, 'Segmentation model was not initialized correctly!')
+            )
+            self.signals.finished.emit(self)
+            return
         if self._debug:
             try:
                 model.setupLogger(self.guiwin.logger)
             except Exception as e:
                 pass
-
-        self.emitSigGetData()
 
         assigned_IDs = []
         missing_IDs_global = set()
@@ -318,19 +360,17 @@ class SegForLostIDsWorker(QObject):
 
         curr_img = self.guiWin.getDisplayedImg1()
         prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
-        prev_IDs = posData.allData_li[frame_i-1]['IDs']
+        prev_IDs = set(posData.allData_li[frame_i-1]['IDs'])
 
         # should probably not paly so much with posData.lab, instead handle stuff myself
         self.signals.initProgressBar.emit(2 * args_new['max_interations'])
-        new_labs = np.zeros([args_new['max_interations'], *posData.lab.shape], dtype=int)
-        for i in range(args_new['max_interations']):
-            self.emitSigGetData()
-            
+        new_labs = np.zeros([args_new['max_interations'], *posData.lab.shape], dtype=np.uint32)
+        for i in range(args_new['max_interations']):            
             curr_lab = self.guiWin.get_2Dlab(posData.lab)
             tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
             new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
 
-            missing_IDs = set(prev_IDs) - set(posData.IDs) - set(tracked_lost_IDs)
+            missing_IDs = prev_IDs - set(posData.IDs) - set(tracked_lost_IDs)
             missing_IDs_global.update(missing_IDs)
 
             assigned_IDs_prev = assigned_IDs.copy()
@@ -346,11 +386,9 @@ class SegForLostIDsWorker(QObject):
             bboxs_list.append(bboxs)
             posData.lab = new_lab
             self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
-            self.emitSigStoreData(autosave=False)
             newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
             self.emitTrackManuallyAddedObject(newly_assigned_IDs, True, False, False)
             new_labs[i] = posData.lab.copy()
-            self.emitSigStoreData(autosave=False)
             self.signals.progressBar.emit(1)
             
         if self._debug:
@@ -681,7 +719,7 @@ class LabelRoiWorker(QObject):
                 break
             elif self.started:
                 if self.isTimelapse:
-                    segmData = np.zeros(self.imageData.shape, dtype=np.uint16)
+                    segmData = np.zeros(self.imageData.shape, dtype=np.uint32)
                     for frame_i, img in enumerate(self.imageData):
                         if self.roiSecondChannel is not None:
                             secondChannelImg = self.roiSecondChannel[frame_i]
@@ -907,7 +945,8 @@ class AutoSaveWorker(QObject):
             if not np.any(lab):
                 continue
 
-            acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+            acdc_df = load.pd_bool_and_float_to_int(acdc_df, inplace=False, 
+                                                    colsToCastInt=[])
             acdc_df_li.append(acdc_df)
             key = (frame_i, posData.TimeIncrement*frame_i)
             keys.append(key)
@@ -1459,7 +1498,9 @@ class ComputeMetricsWorker(QObject):
                         except:
                             acdc_df = myutils.getBaseAcdcDf(rp)
                     
-                    acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+                    acdc_df = load.pd_bool_and_float_to_int(acdc_df, 
+                                                            inplace=False,
+                                                            colsToCastInt=[])
                     
                     try:
                         # if posData.fluo_data_dict:
@@ -5506,21 +5547,24 @@ class SaveProcessedDataWorker(QObject):
     def __init__(
             self, 
             allPosData: Iterable['load.loadData'], 
-            appended_text_filename: str
+            appended_text_filename: str,
+            ext: str = None
         ):
         QObject.__init__(self)
         self.allPosData = allPosData
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
         self.appended_text_filename = appended_text_filename
-    
+        self.ext = ext
+
     @worker_exception_handler
     def run(self):
         self.signals.initProgressBar.emit(0)
         for posData in self.allPosData:
+            ext_loc = self.ext if self.ext is not None else posData.ext
             processed_filename = (
                 f'{posData.basename}{posData.user_ch_name}_'
-                f'{self.appended_text_filename}{posData.ext}'
+                f'{self.appended_text_filename}{ext_loc}'
             )
             processed_filepath = os.path.join(
                 posData.images_path, processed_filename
@@ -6692,7 +6736,9 @@ class saveDataWorker(QObject):
                     # if frame_i == 9:
                     #     cols = list(base_cca_dict.keys())[:9]
                     #     printl(acdc_df[cols])
-                    acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+                    acdc_df = load.pd_bool_and_float_to_int(acdc_df, 
+                                                            inplace=False, 
+                                                            colsToCastInt=[])
                     rp = data_dict['regionprops']
                     acdc_df['num_objects'] = len(acdc_df)
                     if save_metrics:
@@ -6754,7 +6800,8 @@ class saveDataWorker(QObject):
             
             if posData.whitelist:
                 whitelistIDs_path = posData.segm_npz_path.replace('.npz', '_whitelistIDs.json')
-                posData.whitelist.save(whitelistIDs_path)
+                new_centroids_path = posData.segm_npz_path.replace('.npz', '_new_centroids.json')
+                posData.whitelist.save(whitelistIDs_path, new_centroids_path=new_centroids_path)
 
             if posData.segmInfo_df is not None:
                 try:

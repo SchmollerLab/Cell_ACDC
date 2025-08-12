@@ -50,6 +50,7 @@ class Model(CellposeBaseModel):
             Default is 8.
 
         """ 
+        self.init_successful = False
         self.initConstants()
         self.batch_size = batch_size
         model_type, model_path, device = myutils.translateStrNone(model_type, model_path, device)
@@ -84,6 +85,8 @@ class Model(CellposeBaseModel):
             self,
             directml_gpu,
             gpu, device)
+    
+        self.init_successful = True
     
     def _get_eval_kwargs_v4(
             self,
@@ -304,7 +307,7 @@ class Model(CellposeBaseModel):
             # interp=interp,
             min_size=min_size,
             cellprob_threshold=cellprob_threshold,
-            prev_kwar1gs=eval_kwargs
+            prev_kwargs=eval_kwargs
         )
 
         norm_kwargs = _get_normalize_params(

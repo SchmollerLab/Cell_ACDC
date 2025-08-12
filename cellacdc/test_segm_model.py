@@ -121,6 +121,8 @@ if segm_endname is not None:
 
 
 model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+if model is None:
+    sys.exit('Segmentation model was not initialized correctly!')
 is_segment3DT_available = any(
     [name=='segment3DT' for name in dir(model)]
 )
