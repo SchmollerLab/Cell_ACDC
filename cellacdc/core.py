@@ -2359,7 +2359,7 @@ class SegmKernel(_WorkflowKernel):
                         second_ch_data = second_ch_data[:, :, y0:y1, x0:x1]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
         else:
-            if posData.SizeZ > 1 and not self.isSegm3D:
+            if posData.SizeZ > 1 and not self.isSegm3D and not self.use3DdataFor2Dsegm:
                 img_data = posData.img_data
                 if self.second_channel_name is not None:
                     second_ch_data = secondChImgData
@@ -2391,7 +2391,7 @@ class SegmKernel(_WorkflowKernel):
                     img_data = np.median(img_data, axis=0)
                     if self.second_channel_name is not None:
                         second_ch_data[i] = np.median(second_ch_data, axis=0)
-            elif posData.SizeZ > 1 and self.isSegm3D:
+            elif posData.SizeZ > 1 and (self.isSegm3D or self.use3DdataFor2Dsegm):
                 # 3D segmentation on 3D z-stack
                 img_data = posData.img_data
                 if self.second_channel_name is not None:

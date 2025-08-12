@@ -10964,7 +10964,7 @@ class QDialogModelParams(QDialog):
         
         self.paramsGroupPosMapper = {}
         
-        # LEFT COLUMN: Preprocessing and Init params
+        # LEFT COLUMN: Preprocessing params
         row, col = 0, 0
         preProcessLayout = None
         self.preProcessParamsWidget = None
@@ -10984,8 +10984,9 @@ class QDialogModelParams(QDialog):
             # gridLayout.setColumnMinimumWidth(col+1, 15)
             col += 2 
         
-        # Center COLUMN: Init, Segmentation/Eval and Post-processing params
+        # Center COLUMN: Init, Segmentation/Eval
         row = 0
+        self.secondColLayout = QVBoxLayout()
         self.initParamsScrollArea = widgets.ScrollArea()
         initParamsScrollAreaLayout = QVBoxLayout()
         self.initParamsScrollArea.setVerticalLayout(initParamsScrollAreaLayout)
@@ -10993,6 +10994,7 @@ class QDialogModelParams(QDialog):
         initGroupBox, self.init_argsWidgets = self.createGroupParams(
             init_params, 'Parameters for model initialization'
         )
+        self.init_params = init_params
         initDefaultButton = widgets.reloadPushButton('Restore default')
         initLoadLastSelButton = widgets.OpenFilePushButton(
             'Load last parameters'
@@ -11013,10 +11015,9 @@ class QDialogModelParams(QDialog):
         initParamsLayout.addWidget(QLabel(f'<b>{initGroupBox.title()}</b>'))
         initGroupBox.setTitle('')
         initParamsLayout.addWidget(self.initParamsScrollArea)
-        self.paramsGroupPosMapper[self.initParamsScrollArea] = (row, col)
         initParamsLayout.addLayout(initButtonsLayout)
-        gridLayout.addLayout(initParamsLayout, row, col)
-        row += 1
+        self.secondColLayout.addLayout(initParamsLayout)
+        self.paramsGroupPosMapper[self.initParamsScrollArea] = (0, col)
 
         self.segmentParamsScrollArea = None
         if not self.skipSegmentation:
@@ -11036,6 +11037,7 @@ class QDialogModelParams(QDialog):
                 segment_params, runGroupboxTitle, 
                 addChannelSelector=True
             ) 
+            self.segment_params = segment_params
             self.segmentGroupBox = segmentGroupBox
             segmentDefaultButton = widgets.reloadPushButton('Restore default')
             segmentLoadLastSelButton = widgets.OpenFilePushButton(
@@ -11059,10 +11061,11 @@ class QDialogModelParams(QDialog):
             segmentGroupBox.setTitle('')
             segmentParamsLayout.addWidget(self.segmentParamsScrollArea)
             segmentParamsLayout.addLayout(segmentButtonsLayout)
-            gridLayout.addLayout(segmentParamsLayout, row, col)
-            self.paramsGroupPosMapper[self.segmentParamsScrollArea] = (row, col)
-            row += 1
+            self.secondColLayout.addLayout(segmentParamsLayout)
+            self.paramsGroupPosMapper[self.segmentParamsScrollArea] = (1, col)
 
+        gridLayout.addLayout(self.secondColLayout, row, col)
+        
         gridLayout.addItem(QSpacerItem(10, 5), 0, col+1)
         col += 2 
         
@@ -12155,9 +12158,15 @@ class QDialogModelParams(QDialog):
             rowInitParams, _ = self.paramsGroupPosMapper[self.initParamsScrollArea]
             rowSegmParams, _ = self.paramsGroupPosMapper[self.segmentParamsScrollArea]
             
-            optimalStretch = min(1, round(heightSegmentParams/heightInitParams))
-            self.gridLayout.setRowStretch(rowInitParams, 1)
-            self.gridLayout.setRowStretch(rowSegmParams, optimalStretch)
+            numInitParams = len(self.init_params)
+            numSegmentParams = len(self.segment_params)
+            
+            try:
+                segmentParamsStretch = max(1, round(numSegmentParams/numInitParams))
+            except ZeroDivisionError as err:
+                segmentParamsStretch = 1
+            self.secondColLayout.setStretch(rowInitParams, 1)
+            self.secondColLayout.setStretch(rowSegmParams, segmentParamsStretch)
             
         if self.extraParamsScrollArea is not None:
             heightRight += (
