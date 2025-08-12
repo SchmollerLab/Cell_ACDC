@@ -1058,6 +1058,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.checkableQButtonsGroup.addButton(self.labelRoiButton)
         self.widgetsWithShortcut['Label ROI'] = self.labelRoiButton
         # self.functionsNotTested3D.append(self.labelRoiButton)
+        
+        self.manualAnnotFutureButton = QToolButton(self)
+        self.manualAnnotFutureButton.setIcon(QIcon(":lock_id_annotate_future.svg"))
+        self.manualAnnotFutureButton.setCheckable(True)
+        self.manualAnnotFutureButton.setShortcut('Y')
+        self.manualAnnotFutureButton.action = editToolBar.addWidget(
+            self.manualAnnotFutureButton
+        )
+        self.checkableButtons.append(self.manualAnnotFutureButton)
+        self.widgetsWithShortcut['Manually annotate future frames'] = (
+            self.manualAnnotFutureButton
+        )
+        self.functionsNotTested3D.append(self.manualAnnotFutureButton)
 
         self.segmentToolAction = QAction('Segment with last used model', self)
         self.segmentToolAction.setIcon(QIcon(":segment.svg"))
@@ -2599,13 +2612,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.highLowResAction = widgets.CheckableAction(
             'High resolution text annotations'
         )
-        self.widgetsWithShortcut['High resolution'] = self.highLowResAction
-        self.highLowResAction.setShortcut('Y')
         highLowResTooltip = (
             'Resolution of the text annotations. High resolution results '
             'in slower update of the annotations.\n'
             'Not recommended with a number of segmented objects > 500.\n\n'
-            'Shortcut: "Y" key'
         )
         self.highLowResAction.setToolTip(highLowResTooltip)
         
@@ -3058,6 +3068,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.slideshowButton.toggled.connect(self.launchSlideshow)
         
         self.copyLostObjButton.toggled.connect(self.copyLostObjContour_cb)
+        self.manualAnnotFutureButton.toggled.connect(
+            self.manualAnnotFuture_cb
+        )
 
         self.segmSingleFrameMenu.triggered.connect(self.segmFrameCallback)
         self.segmVideoMenu.triggered.connect(self.segmVideoCallback)
@@ -4620,90 +4633,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # Brush and eraser are mutually exclusive but we want to keep the eraser
         # or brush ON and disable them temporarily to allow left-click with
         # separate ON
-        canErase = eraserON and not separateON and not dragImg
-        canBrush = brushON and not separateON and not dragImg
         canDelete = mode == 'Segmentation and Tracking' or self.isSnapshot
 
-        # Erase with brush and left click on the right image
-        # NOTE: contours, IDs and rp will be updated
-        # on gui_mouseReleaseEventImg2
-        if left_click and canErase:
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
-            Y, X = self.get_2Dlab(posData.lab).shape
-            # Store undo state before modifying stuff
-            self.storeUndoRedoStates(False, storeOnlyZoom=True)
-            self.yPressAx2, self.xPressAx2 = y, x
-            # Keep a global mask to compute which IDs got erased
-            self.erasedIDs = set()
-            lab_2D = self.get_2Dlab(posData.lab)
-            self.erasedID = self.getHoverID(xdata, ydata)
-
-            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
-
-            # Build eraser mask
-            mask = np.zeros(lab_2D.shape, bool)
-            mask[ymin:ymax, xmin:xmax][diskMask] = True
-
-            # If user double-pressed 'b' then erase over ALL labels
-            color = self.eraserButton.palette().button().color().name()
-            eraseOnlyOneID = (
-                color != self.doublePressKeyButtonColor
-                and self.erasedID != 0
-            )
-            if eraseOnlyOneID:
-                mask[lab_2D!=self.erasedID] = False
-
-            self.eraseOnlyOneID = eraseOnlyOneID
-
-            self.erasedIDs.update(lab_2D[mask])
-            self.setTempImg1Eraser(mask, init=True)
-            self.applyEraserMask(mask)
-            self.setImageImg2()
-
-            self.isMouseDragImg2 = True
-
-        # Paint with brush and left click on the right image
-        # NOTE: contours, IDs and rp will be updated
-        # on gui_mouseReleaseEventImg2
-        elif left_click and canBrush:
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
-            lab_2D = self.get_2Dlab(posData.lab)
-            Y, X = lab_2D.shape
-            # Store undo state before modifying stuff
-            self.storeUndoRedoStates(False, storeOnlyZoom=True)
-            self.yPressAx2, self.xPressAx2 = y, x
-
-            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
-            diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
-
-            ID = self.getHoverID(xdata, ydata)
-
-            if ID > 0:
-                self.ax2BrushID = ID
-                self.isNewID = False
-            else:
-                self.setBrushID()
-                self.ax2BrushID = posData.brushID
-                self.isNewID = True
-
-            self.updateLookuptable(lenNewLut=self.ax2BrushID+1)
-            self.isMouseDragImg2 = True
-
-            # Draw new objects
-            localLab = lab_2D[diskSlice]
-            mask = diskMask.copy()
-            if not self.isPowerBrush():
-                mask[localLab!=0] = False
-
-            self.applyBrushMask(mask, self.ax2BrushID, toLocalSlice=diskSlice)
-
-            self.setImageImg2(updateLookuptable=False)
-            self.lastHoverID = -1
-
         # Delete ID (set to 0)
-        elif middle_click and canDelete:
+        if middle_click and canDelete:
             t0 = time.perf_counter()
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
@@ -4774,6 +4707,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
             
             self.highlightLostNew()
+            
         # Separate bud or objects with same ID
         elif right_click and separateON:
             x, y = event.pos().x(), event.pos().y()
@@ -6370,49 +6304,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.updateAllImages()
             return
 
-        # Eraser mouse release --> update IDs and contours
-        if self.isMouseDragImg2 and self.eraserButton.isChecked():
-            self.isMouseDragImg2 = False
-            
-            # Update data (rp, etc)
-            self.update_rp(update_IDs=len(self.erasedIDs) > 0)
-
-            for ID in self.erasedIDs:
-                if ID not in posData.lab:
-                    if self.isSnapshot:
-                        self.fixCcaDfAfterEdit('Delete ID with eraser')
-                        self.updateAllImages()
-                    else:
-                        self.warnEditingWithCca_df('Delete ID with eraser')
-                    break
-
-        # Brush mouse release --> update IDs and contours
-        elif self.isMouseDragImg2 and self.brushButton.isChecked():
-            # t0 = time.perf_counter()
-            
-            self.isMouseDragImg2 = False
-            
-            self.fillHolesID(self.ax2BrushID, sender='brush')
-            
-            self.update_rp(update_IDs=self.isNewID, )
-
-            # t1 = time.perf_counter()
-            self.trackManuallyAddedObject(posData.brushID, self.isNewID)
-
-            # t2 = time.perf_counter()
-            # Update images
-            if self.isNewID:
-                editTxt = 'Add new ID with brush tool'
-                if self.isSnapshot:
-                    self.fixCcaDfAfterEdit(editTxt)
-                    self.updateAllImages()
-                else:
-                    self.warnEditingWithCca_df(editTxt)
-            else:
-                self.updateAllImages()
-
         # Move label mouse released, update move
-        elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
+        if self.isMovingLabel and self.moveLabelToolButton.isChecked():
             self.isMovingLabel = False
 
             # Update data (rp, etc)
@@ -6585,29 +6478,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
             self.tempLayerImg1.setImage(self.emptyLab)
             
-            posData = self.data[self.pos_i]
-            self.fillHolesID(posData.brushID, sender='brush')
-            
-            # Update data (rp, etc)
-            self.update_rp(update_IDs=self.isNewID,
-                           )
-            
-            # Repeat tracking
-            if self.autoIDcheckbox.isChecked():
-                self.trackManuallyAddedObject(posData.brushID, self.isNewID)
-
-            # Update images
-            if self.isNewID:
-                editTxt = 'Add new ID with brush tool'
-                if self.isSnapshot:
-                    self.fixCcaDfAfterEdit(editTxt)
-                    self.updateAllImages()
-                else:
-                    self.warnEditingWithCca_df(editTxt)
-            else:
-                self.updateAllImages()
-            
-            self.isNewID = False
+            self.brushReleased()
 
         # Wand tool release, add new object
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
@@ -9237,6 +9108,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 endFrame_i, oldIDnewIDMapper, includeUnvisited
             )
     
+    def getLastHoveredID(self):
+        if self.xHoverImg is None:
+            return 0
+        
+        xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
+        ID = self.currentLab2D[ydata, xdata]
+        return ID
+    
     def getHoverID(self, xdata, ydata):
         if not hasattr(self, 'diskMask'):
             return 0
@@ -11040,6 +10919,32 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.df_settings.at['brushAutoHide', 'value'] = val
         self.df_settings.to_csv(self.settings_csv_path)
 
+    def brushReleased(self):
+        posData = self.data[self.pos_i]
+        self.fillHolesID(posData.brushID, sender='brush')
+        
+        # Update data (rp, etc)
+        self.update_rp(update_IDs=self.isNewID,)
+        
+        # Repeat tracking
+        if self.autoIDcheckbox.isChecked():
+            self.trackManuallyAddedObject(posData.brushID, self.isNewID)
+        else:
+            self.update_rp(update_IDs=posData.brushID not in posData.IDs_idxs)
+
+        # Update images
+        if self.isNewID:
+            editTxt = 'Add new ID with brush tool'
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit(editTxt)
+                self.updateAllImages()
+            else:
+                self.warnEditingWithCca_df(editTxt)
+        else:
+            self.updateAllImages()
+        
+        self.isNewID = False
+    
     def addDelROI(self, event):       
         roi, key = self.createDelROI()
         self.addRoiToDelRoiInfo(roi)
@@ -12551,6 +12456,60 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.lostObjImage = np.zeros_like(self.currentLab2D)
         self.updateLostContoursImage(0)
     
+    def manualAnnotFuture_cb(self, checked):
+        posData = self.data[self.pos_i]
+        if checked:
+            self.store_data()
+            self.manualAnnotState = {
+                'editID': self.editIDspinbox.value(),
+                'isAutoID': self.autoIDcheckbox.isChecked(),
+                'doWarnLostObj': self.warnLostCellsAction.isChecked(),
+            }
+            self.autoIDcheckbox.setChecked(False)
+            self.warnLostCellsAction.setChecked(False)
+            xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
+            hoverID = self.getLastHoveredID()
+            if hoverID == 0:
+                win = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter the ID that you want to lock for future frames.',
+                    parent=self, 
+                    allowedValues=posData.IDs,
+                )
+                if win.cancel:
+                    self.manualAnnotFutureButton.setChecked(False)
+                    return
+                hoverID = win.EntryID
+            self.logger.info(
+                'Setting manual annotation for future frames with ID = '
+                f'{hoverID}, at frame n. {posData.frame_i+1}'
+            )
+            self.editIDspinbox.setValue(hoverID)
+            self.manualAnnotState['frame_i_to_restore'] = posData.frame_i
+            self.ax1.sigRangeChanged.connect(self.highlightManualAnnotMode)
+            self.ax1.setHighlighted(True)
+        else:
+            self.autoIDcheckbox.setChecked(self.manualAnnotState['isAutoID'])
+            self.editIDspinbox.setValue(self.manualAnnotState['editID'])
+            self.warnLostCellsAction.setChecked(
+                self.manualAnnotState['doWarnLostObj']
+            )
+            frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
+            if frame_to_restore is None:
+                return
+            
+            self.store_data()
+            self.logger.info(
+                f'Restoring view to frame n. {posData.frame_i+1}...'
+            )
+            posData.frame_i = frame_to_restore
+            self.get_data()
+            self.updateAllImages()
+            self.updateScrollbars()
+            self.ax1.sigRangeChanged.disconnect()
+            self.ax1.setHighlighted(False)
+    
     def copyLostObjectContour(self, ID: int):
         posData = self.data[self.pos_i]
         mask = self.lostObjImage == ID
@@ -12559,6 +12518,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.lostObjImage[mask] = 0
         self.set_2Dlab(lab2D)
     
+    def highlightManualAnnotMode(self, viewBox, viewRange):
+        self.ax1.setHighlighted(True)
+        
     def updateLostNewCurrentIDs(self):
         posData = self.data[self.pos_i]
         
@@ -18749,6 +18711,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             else:
                 self.manualBackgroundAction.setVisible(False)
                 self.manualBackgroundAction.setDisabled(True)
+            self.manualAnnotFutureButton.setDisabled(True)
+            self.manualAnnotFutureButton.action.setDisabled(True)
+            self.manualAnnotFutureButton.setVisible(False)
+            self.manualAnnotFutureButton.action.setVisible(False)
+            self.copyLostObjButton.setDisabled(True)
+            self.copyLostObjButton.action.setDisabled(True)
+            self.copyLostObjButton.setVisible(False)
+            self.copyLostObjButton.action.setVisible(False)
         else:
             self.imgGrad.rescaleAcrossTimeAction.setDisabled(False)
             self.annotateToolbar.setVisible(False)
@@ -18779,6 +18749,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
             self.labelsGrad.showNextFrameAction.setDisabled(False)  
+            self.manualAnnotFutureButton.setDisabled(False)
+            self.manualAnnotFutureButton.action.setDisabled(False)
+            self.manualAnnotFutureButton.setVisible(True)
+            self.manualAnnotFutureButton.action.setVisible(True)
+            self.copyLostObjButton.setDisabled(False)
+            self.copyLostObjButton.action.setDisabled(False)
+            self.copyLostObjButton.setVisible(True)
+            self.copyLostObjButton.action.setVisible(True)
         
         for ch, overlayItems in self.overlayLayersItems.items():
             imageItem, lutItem, alphaScrollBar = overlayItems
@@ -20575,7 +20553,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.restoreBrushID = posData.brushID
             # Set a new ID
             self.setBrushID()
-            self.ax2BrushID = posData.brushID
         else:
             # Shift released or hovering on ID in z+-1 
             # --> restore brush ID from before shift was pressed or from 
@@ -20587,7 +20564,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.changedID = posData.brushID
             # Restore ID   
             posData.brushID = self.restoreBrushID
-            self.ax2BrushID = self.restoreBrushID
                
         brushID = posData.brushID
         brushIDmask = self.get_2Dlab(posData.lab) == self.changedID

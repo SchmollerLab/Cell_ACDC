@@ -75,6 +75,7 @@
     <file alias="lock.svg">resources/icons/lock.svg</file>
     <file alias="lock_closed.svg">resources/icons/lock_closed.svg</file>
     <file alias="lock_open.svg">resources/icons/lock_open.svg</file>
+    <file alias="lock_id_annotate_future.svg">resources/icons/lock_id_annotate_future.svg</file>
     <file alias="manage_versions.svg">resources/icons/manage_versions.svg</file>
     <file alias="prep.svg">resources/icons/prep.svg</file>
     <file alias="auto-pilot.svg">resources/icons/auto-pilot.svg</file>

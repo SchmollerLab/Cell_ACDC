@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   id="Layer_1"
+   style="enable-background:new 0 0 34 34;"
+   version="1.1"
+   viewBox="0 0 34 34"
+   xml:space="preserve"
+   sodipodi:docname="lock_id_annotate_future.svg"
+   inkscape:version="1.3.2 (091e20e, 2023-11-25, custom)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"><sodipodi:namedview
+   id="namedview3"
+   pagecolor="#ffffff"
+   bordercolor="#000000"
+   borderopacity="0.25"
+   inkscape:showpageshadow="2"
+   inkscape:pageopacity="0.0"
+   inkscape:pagecheckerboard="0"
+   inkscape:deskcolor="#d1d1d1"
+   showguides="true"
+   inkscape:zoom="11.313709"
+   inkscape:cx="18.296387"
+   inkscape:cy="11.446291"
+   inkscape:window-width="1920"
+   inkscape:window-height="1137"
+   inkscape:window-x="1912"
+   inkscape:window-y="-8"
+   inkscape:window-maximized="1"
+   inkscape:current-layer="Layer_1" />
+  <defs
+   id="defs3051">
+    <style
+   type="text/css"
+   id="current-color-scheme">
+      .ColorScheme-Text {
+        color:#4d4d4d;
+      }
+      </style>
+  </defs>
+  
+    
+<path
+   style="fill:#4d4d4d;fill-opacity:1;stroke:#4d4d4d;stroke-width:0;stroke-linecap:butt;stroke-dasharray:none"
+   d="M 28.48974,9.8199006 25.989835,12.319806 V 29.610821 H 2.6573797 V 6.2783674 H 19.948394 l 2.499908,-2.499906 H 0.15747388 V 32.110726 H 28.48974 Z"
+   id="path3"
+   sodipodi:nodetypes="ccccccccccc" /><rect
+   style="fill:none;fill-opacity:1;stroke:#fa0000;stroke-width:0.903834;stroke-linecap:butt;stroke-dasharray:2.71151, 0.903834;stroke-dashoffset:0;stroke-opacity:1"
+   id="rect10"
+   width="11.508582"
+   height="11.060195"
+   x="5.697504"
+   y="14.920297" /><rect
+   style="fill:none;fill-opacity:1;stroke:#fa0000;stroke-width:0.903834;stroke-linecap:butt;stroke-dasharray:2.71151, 0.903834;stroke-dashoffset:0;stroke-opacity:1"
+   id="rect10-0"
+   width="11.508582"
+   height="11.060195"
+   x="22.039501"
+   y="14.920297" /><g
+   id="g4"
+   transform="matrix(1.1345432,0,0,1.1345432,-3.7120538,-0.5378538)"><g
+     id="g2">
+      <path
+   d="m 28.957,5.543 0.525,-0.525 c 0.69,-0.69 0.69,-1.81 0,-2.5 -0.69,-0.69 -1.81,-0.69 -2.5,0 l -0.525,0.525 z"
+   id="path2" />
+  </g><g
+     id="g3">
+  <polygon
+   points="25.043,4.457 14.475,15.025 14,18 16.975,17.525 27.543,6.957 "
+   id="polygon2" />
+  </g></g></svg>
