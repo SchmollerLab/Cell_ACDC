@@ -115,9 +115,16 @@ class Node:
         
         name_expression_mapper = EXTENSION_METADATA_ATTR_MAPPER[ext]
         for name, expression in name_expression_mapper.items():
-            self._node[name] = safe_get_or_call(bioimage_class, expression)
+            try:
+                self._node[name] = safe_get_or_call(bioimage_class, expression)
+            except Exception as err:
+                self._node[name] = None
         
     def get(self, name):
+        value = self._node.get(name)
+        if value is None:
+            raise ValueError(f"Node '{name}' not found in metadata.")
+        
         return self._node[name]
 
 class Pixels:    
