@@ -19218,7 +19218,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             else:
                 self.manualBackgroundAction.setVisible(False)
                 self.manualBackgroundAction.setDisabled(True)
-<<<<<<< HEAD
             self.manualAnnotFutureButton.setDisabled(True)
             self.manualAnnotFutureButton.action.setDisabled(True)
             self.manualAnnotFutureButton.setVisible(False)
@@ -19227,10 +19226,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.copyLostObjButton.action.setDisabled(True)
             self.copyLostObjButton.setVisible(False)
             self.copyLostObjButton.action.setVisible(False)
-=======
             self.segForLostIDsAction.setVisible(False)
             self.segForLostIDsAction.setDisabled(True)
->>>>>>> main
         else:
             self.imgGrad.rescaleAcrossTimeAction.setDisabled(False)
             self.annotateToolbar.setVisible(False)
@@ -19261,7 +19258,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
             self.labelsGrad.showNextFrameAction.setDisabled(False)  
-<<<<<<< HEAD
             self.manualAnnotFutureButton.setDisabled(False)
             self.manualAnnotFutureButton.action.setDisabled(False)
             self.manualAnnotFutureButton.setVisible(True)
@@ -19270,10 +19266,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.copyLostObjButton.action.setDisabled(False)
             self.copyLostObjButton.setVisible(True)
             self.copyLostObjButton.action.setVisible(True)
-=======
             self.segForLostIDsAction.setVisible(True)
             self.segForLostIDsAction.setDisabled(False)
->>>>>>> main
         
         for ch, overlayItems in self.overlayLayersItems.items():
             imageItem, lutItem, alphaScrollBar = overlayItems
