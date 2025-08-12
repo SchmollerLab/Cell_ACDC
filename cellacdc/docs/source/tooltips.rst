@@ -129,7 +129,17 @@
     :height: 16px
     :width: 16px
 
+<<<<<<< HEAD
 .. |copyLostObjButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/copyContour.svg
+=======
+.. |magicPromptsToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/magic-prompts.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/magic-prompts.svg 
+    :alt: magicPromptsToolButton icon
+    :height: 16px
+    :width: 16px
+
+.. |copyLostObjButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/copyContour.svg
+>>>>>>> main
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/copyContour.svg
     :alt: copyLostObjButton icon
     :height: 16px
@@ -407,7 +417,8 @@ Edit tools: Segmentation and tracking
         * Starting to erase from a specific label will erase only that label (cursor is a circle with the color of the label).
         * To enforce erasing all objects no matter where you start from double-press "X" key. If double-press is successfull, then eraser button is red and eraser cursor always red.
 * **Curvature Tool (** |curvToolButton| **"C"):** Left-clicks for manual spline anchors, right button for drawing auto-contour.
-* **Magic Wand (** |wandToolButton| **"W"):** Left-click for single selection or left-click and then drag for continous selection.
+* **Magic Wand (** |wandToolButton| **"Ctrl+D"):** Create a new object using neighbouring pixels whose intensity is within a selected tolerance. Left-click for single selection or left-click and then drag for continous selection.
+* **Magic prompts (** |magicPromptsToolButton| **"W"):** Use promptable models (e.g., Segment Anything) to refine objects or generate new ones interactively with prompts (e.g., points). Prompts are added with both the left, right, and middle-click
 * **Copy lost contour (** |copyLostObjButton| **"V"):** Hover onto lost object contour --> right-click to copy the contour as a new object.
 * **Manually annotate future frames (** |manualAnnotFutureButton| **"Y"):**
     1. Activate to automatically set the brush ID to the hovered ID. 

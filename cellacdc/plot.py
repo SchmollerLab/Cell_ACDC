@@ -40,6 +40,8 @@ def matplotlib_cmap_to_lut(
 
 def imshow(
         *images: Union[np.ndarray, dict], 
+        labels_overlays: np.ndarray | List[np.ndarray]=None,
+        labels_overlays_luts: np.ndarray | List[np.ndarray]=None,
         points_coords: np.ndarray=None, 
         points_coords_df: pd.DataFrame=None,
         points_groups: List[str]=None,
@@ -54,10 +56,12 @@ def imshow(
         axis_titles: Union[Iterable, None]=None, 
         parent=None, 
         window_title='Cell-ACDC image viewer',
+        figure_title='',
         color_scheme=None, 
         link_scrollbars=True,
         annotate_labels_idxs: List[int]=None,
         show_duplicated_cursor=True, 
+        selectable_images=False,
         infer_rgb=True,
         print_call_stack: bool=False
     ):
@@ -103,7 +107,9 @@ def imshow(
     win = widgets.ImShow(
         parent=parent, 
         link_scrollbars=link_scrollbars,
-        infer_rgb=infer_rgb
+        infer_rgb=infer_rgb,
+        figure_title=figure_title,
+        selectable_images=selectable_images,
     )
     win.setWindowTitle(window_title)
     if app is not None:
@@ -120,6 +126,8 @@ def imshow(
         win.setupTitles(*axis_titles)
     win.showImages(
         *casted_images, 
+        labels_overlays=labels_overlays,
+        labels_overlays_luts=labels_overlays_luts,
         luts=luts, 
         autoLevels=autoLevels, 
         autoLevelsOnScroll=autoLevelsOnScroll
@@ -133,7 +141,10 @@ def imshow(
         win.setPointsData(points_data)
     if show_duplicated_cursor:
         win.setupDuplicatedCursors()
-    win.annotateObjectIDs(annotate_labels_idxs=annotate_labels_idxs, init=True)
+    win.annotateObjectIDs(
+        annotate_labels_idxs=annotate_labels_idxs, 
+        init=True,
+    )
     win.run(block=block, showMaximised=showMaximised, screenToWindowRatio=0.8)
     return win
 

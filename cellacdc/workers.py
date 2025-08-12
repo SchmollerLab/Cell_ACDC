@@ -7009,3 +7009,57 @@ class relabelSequentialWorker(QObject):
 
         self.mutex.unlock()
         self.finished.emit()       
+
+class MagicPromptsWorker(QObject):
+    def __init__(
+            self, posData, image, df_points, model, model_segment_kwargs,
+            image_origin=(0, 0, 0), global_image=None
+        ):
+        QObject.__init__(self)
+        
+        self.signals = signals()
+        self.posData = posData
+        self.image = image
+        if global_image is not None:
+            self.global_image = global_image
+        else:
+            self.global_image = image
+        self.df_points = df_points
+        self.image_origin = image_origin
+        self.model = model
+        self.model_segment_kwargs = model_segment_kwargs
+    
+    @worker_exception_handler
+    def run(self):
+        from cellacdc.promptable_models import utils
+        
+        for row in self.df_points.itertuples():
+            prompt_id = row.id
+            point = (row.z, row.y, row.x)
+            print(f'Adding point prompt {point} with id = {prompt_id}...')
+            parent_obj_id = row.Cell_ID if row.Cell_ID == prompt_id else 0
+            self.model.add_prompt(
+                prompt=point, 
+                prompt_id=prompt_id, 
+                parent_obj_id=parent_obj_id,
+                image=self.image, 
+                image_origin=self.image_origin, 
+                prompt_type='point'
+            )
+        
+        lab_out = self.model.segment(
+            self.global_image, 
+            lab=self.posData.lab,
+            **self.model_segment_kwargs
+        )
+        edited_IDs = self.df_points['Cell_ID'].unique()
+
+        lab_new, lab_union, lab_interesection = (
+            utils.insert_model_output_into_labels(
+                self.posData.lab, 
+                lab_out, 
+                edited_IDs=edited_IDs
+            )
+        )
+        
+        self.signals.finished.emit((lab_new, lab_union, lab_interesection))

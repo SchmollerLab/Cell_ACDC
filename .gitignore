@@ -20,6 +20,7 @@ requirements_new.txt
 
 **/_test*.py
 **/weights_location_path.txt
+**/_test
 
 yeast_toolbox/
 

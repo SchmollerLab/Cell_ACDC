@@ -332,6 +332,7 @@ def printl(*objects, pretty=False, is_decorator=False, idx=1, **kwargs):
 parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')
 models_path = os.path.join(cellacdc_path, 'models')
+promptable_models_path = os.path.join(cellacdc_path, 'promptable_models')
 data_path = os.path.join(parent_path, 'data')
 resources_folderpath = os.path.join(cellacdc_path, 'resources')
 resources_filepath = os.path.join(cellacdc_path, 'resources_light.qrc')
@@ -340,6 +341,9 @@ acdc_fiji_path = os.path.join(user_profile_path, 'acdc-fiji')
 acdc_ffmpeg_path = os.path.join(user_profile_path, 'acdc-ffmpeg')
 resources_path = os.path.join(cellacdc_path, 'resources_light.qrc')
 models_list_file_path = os.path.join(settings_folderpath, 'custom_models_paths.ini')
+promptable_models_list_file_path = os.path.join(
+    settings_folderpath, 'custom_promptable_models_paths.ini'
+)
 recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
 preproc_recipes_path = os.path.join(settings_folderpath, 'preprocessing_recipes')
 segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')
@@ -481,7 +485,7 @@ def _critical_exception_gui(self, func_name):
         return
     
     if hasattr(self, 'logger'):
-        self.logger.exception(traceback_str)
+        self.logger.error(traceback_str)
     else:
         printl(traceback_str)
     

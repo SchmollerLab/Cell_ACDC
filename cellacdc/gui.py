@@ -5,17 +5,17 @@ import shutil
 import re
 import traceback
 import time
+from copy import deepcopy
 from datetime import datetime, timedelta
 import inspect
 import logging
 import uuid
 import json
-from collections import defaultdict
+from collections import defaultdict, Counter
 import psutil
 import zipfile
 from functools import partial
 from tqdm import tqdm
-from collections import Counter
 from natsort import natsorted
 from typing import Literal, Iterable, Dict, Any, List, Union, Tuple, Set
 
@@ -768,10 +768,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.segmVideoMenu.addSeparator()
         self.segmVideoMenu.addAction(self.addCustomModelVideoAction)
+        
+        self.segmWithPromptableModelMenu = SegmMenu.addMenu(
+            'Segment with promptable model'
+        )
+        
+        self.segmWithPromptableModelMenu.addAction(
+            self.segmWithPromptableModelAction
+        )
+        
+        self.segmWithPromptableModelMenu.addSeparator()
+        self.segmWithPromptableModelMenu.addAction(
+            self.addCustomPromptModelAction
+        )
 
-        # SegmMenu.addAction(self.SegmActionRW)
-        self.SegmActionRW.setVisible(False)
-        self.SegmActionRW.setDisabled(True)
         SegmMenu.addAction(self.EditSegForLostIDsSetSettings)
         SegmMenu.addAction(self.postProcessSegmAction)
         SegmMenu.addAction(self.autoSegmAction)
@@ -1006,11 +1016,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.wandToolButton = QToolButton(self)
         self.wandToolButton.setIcon(QIcon(":magic_wand.svg"))
         self.wandToolButton.setCheckable(True)
-        self.wandToolButton.setShortcut('W')
+        self.wandToolButton.setShortcut('Ctrl+D')
         self.wandToolButton.action = editToolBar.addWidget(self.wandToolButton)
         self.LeftClickButtons.append(self.wandToolButton)
         self.functionsNotTested3D.append(self.wandToolButton)
         self.widgetsWithShortcut['Magic wand'] = self.wandToolButton
+        
+        self.magicPromptsToolButton = QToolButton(self)
+        self.magicPromptsToolButton.setIcon(QIcon(":magic-prompts.svg"))
+        self.magicPromptsToolButton.setCheckable(True)
+        self.magicPromptsToolButton.setShortcut('W')
+        self.magicPromptsToolButton.action = editToolBar.addWidget(
+            self.magicPromptsToolButton
+        )
+        self.widgetsWithShortcut['Magic prompts'] = self.magicPromptsToolButton
         
         self.drawClearRegionButton = QToolButton(self)
         self.drawClearRegionButton.setCheckable(True)
@@ -1080,7 +1099,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.SegForLostIDsButton = QToolButton(self)
         self.SegForLostIDsButton.setIcon(QIcon(":addDelPolyLineRoi_cursor.svg"))
-        editToolBar.addWidget(self.SegForLostIDsButton)
+        self.segForLostIDsAction = editToolBar.addWidget(
+            self.SegForLostIDsButton
+        )
         self.SegForLostIDsButton.clicked.connect(self.SegForLostIDsAction)
 
         # self.SegForLostIDsButton.setShortcut('U')
@@ -2113,24 +2134,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.autoPilotZoomToObjToolbar.addWidget(toggle.label)
         self.autoPilotZoomToObjToolbar.addWidget(toggle)
         
-        self.pointsLayersToolbar = widgets.ToolBar("Points layers", self)
+        self.pointsLayersToolbars = []
+        
+        self.pointsLayersToolbar = widgets.PointsLayersToolbar(parent=self)
         self.pointsLayersToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
-        self.addToolBar(Qt.TopToolBarArea, self.pointsLayersToolbar)
-        self.addPointsLayerAction = QAction('Add points layer', self)
-        self.addPointsLayerAction.setIcon(QIcon(":addPointsLayer.svg"))
-        self.pointsLayersToolbar.addAction(self.addPointsLayerAction)
-        self.addPointsLayerAction.triggered.connect(
+        
+        self.pointsLayersToolbar.sigAddPointsLayer.connect(
             self.addPointsLayerTriggered
         )
-        self.pointsLayersToolbar.addWidget(QLabel('Points layers:  '))
-        # self.pointsLayersToolbar.setIconSize(QSize(16, 16))
+        
+        self.addToolBar(Qt.TopToolBarArea, self.pointsLayersToolbar)
+        
         self.pointsLayersToolbar.setVisible(False)
         self.pointsLayersToolbar.keepVisibleWhenActive = True
         self.controlToolBars.append(self.pointsLayersToolbar)
         
-        # closeToolbarAction.toolbars = (
-        #     self.pointsLayersToolbar, self.autoPilotZoomToObjToolbar
-        # )
+        self.pointsLayersToolbars.append(
+            self.pointsLayersToolbar
+        )
 
         self.manualTrackingToolbar = widgets.ManualTrackingToolBar(
             "Manual tracking controls", self
@@ -2184,6 +2205,63 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.addToolBar(Qt.TopToolBarArea, self.drawClearRegionToolbar)
         self.drawClearRegionToolbar.setVisible(False)
         self.controlToolBars.append(self.drawClearRegionToolbar)
+
+        try:
+            addNewIDToggleState = self.df_settings.at['addNewIDsWhitelistToggle', 'value'] == 'Yes'
+        except KeyError:
+            addNewIDToggleState = True
+        
+        self.whitelistIDsToolbar = widgets.WhitelistIDsToolbar(
+            addNewIDToggleState, self
+        )
+        for name, action in self.whitelistIDsToolbar.widgetsWithShortcut.items():
+            self.widgetsWithShortcut[name] = action
+        
+        self.addToolBar(Qt.TopToolBarArea, self.whitelistIDsToolbar)
+        self.whitelistIDsToolbar.setVisible(False)
+        self.controlToolBars.append(self.whitelistIDsToolbar)
+        
+        self.magicPromptsToolbar = widgets.MagicPromptsToolbar(self)
+        for name, action in self.magicPromptsToolbar.widgetsWithShortcut.items():
+            self.widgetsWithShortcut[name] = action
+        
+        self.magicPromptsToolbar.sigComputeOnZoom.connect(
+            self.magicPromptsComputeOnZoomTriggered
+        )
+        self.magicPromptsToolbar.sigComputeOnImage.connect(
+            self.magicPromptsComputeOnImageTriggered
+        )
+        self.magicPromptsToolbar.sigInitSelectedModel.connect(
+            self.magicPromptsInitModel
+        )
+        self.magicPromptsToolbar.sigViewModelParams.connect(
+            self.viewSetMagicPromptModelParams
+        )
+        self.magicPromptsToolbar.sigClearPoints.connect(
+            partial(self.magicPromptsClearPoints, only_zoom=False)
+        )
+        self.magicPromptsToolbar.sigClearPointsOnZmom.connect(
+            partial(self.magicPromptsClearPoints, only_zoom=True)
+        )
+        
+        self.addToolBar(Qt.TopToolBarArea, self.magicPromptsToolbar)
+        self.magicPromptsToolbar.setVisible(False)
+        self.magicPromptsToolbar.keepVisibleWhenActive = True
+        self.controlToolBars.append(self.magicPromptsToolbar)
+        
+        self.promptSegmentPointsLayerToolbar = (
+            widgets.PromptableModelPointsLayerToolbar(parent=self)
+        )
+        self.promptSegmentPointsLayerToolbar.setContextMenuPolicy(
+            Qt.PreventContextMenu
+        )
+        
+        self.addToolBar(Qt.TopToolBarArea, self.promptSegmentPointsLayerToolbar)
+        self.promptSegmentPointsLayerToolbar.setVisible(False)
+        
+        self.pointsLayersToolbars.append(
+            self.promptSegmentPointsLayerToolbar
+        )
         
         # Second level toolbar
         secondLevelToolbar = widgets.ToolBar("Second level toolbar", self)
@@ -2202,19 +2280,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         secondLevelToolbar.setMovable(False)
         self.secondLevelToolbar = secondLevelToolbar
         self.secondLevelToolbar.setVisible(False)
-
-        try:
-            addNewIDToggleState = self.df_settings.at['addNewIDsWhitelistToggle', 'value'] == 'Yes'
-        except KeyError:
-            addNewIDToggleState = True
-        
-        self.whitelistIDsToolbar = widgets.WhitelistIDsToolbar(addNewIDToggleState, self)
-        for name, action in self.whitelistIDsToolbar.widgetsWithShortcut.items():
-            self.widgetsWithShortcut[name] = action
-        
-        self.addToolBar(Qt.TopToolBarArea, self.whitelistIDsToolbar)
-        self.whitelistIDsToolbar.setVisible(False)
-        self.controlToolBars.append(self.whitelistIDsToolbar)
         
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
@@ -2356,11 +2421,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.wcLabel = QLabel('')
         self.statusbar.addPermanentWidget(self.wcLabel)
 
-        self.toggleTerminalButton = widgets.ToggleTerminalButton()
-        self.statusbar.addWidget(self.toggleTerminalButton)
-        self.toggleTerminalButton.sigClicked.connect(
-            self.gui_terminalButtonClicked
-        )
+        # self.toggleTerminalButton = widgets.ToggleTerminalButton()
+        # self.statusbar.addWidget(self.toggleTerminalButton)
+        # self.toggleTerminalButton.sigClicked.connect(
+        #     self.gui_terminalButtonClicked
+        # )
 
         self.statusBarLabel = QLabel('')
         self.statusbar.addWidget(self.statusBarLabel)
@@ -2482,14 +2547,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.addCustomModelFrameAction = QAction('Add custom model...', self)
         self.addCustomModelVideoAction = QAction('Add custom model...', self)
+        
+        self.segmWithPromptableModelAction = QAction(
+            'Select promptable model...', self
+        )
+        self.addCustomPromptModelAction = QAction(
+            'Add custom promptable model...', self
+        )
 
         self.segmActionsVideo = []
         for model_name in models:
             action = QAction(f"{model_name}...")
             self.segmActionsVideo.append(action)
             action.setDisabled(True)
-        self.SegmActionRW = QAction("Random walker...", self)
-        self.SegmActionRW.setDisabled(True)
 
         self.postProcessSegmAction = QAction(
             "Segmentation post-processing...", self
@@ -2852,6 +2922,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.addCustomModelFrameAction.callback = self.segmFrameCallback
         self.addCustomModelVideoAction.callback = self.segmVideoCallback
+        
+        self.addCustomPromptModelAction.triggered.connect(
+            self.showInstructionsCustomPromptModel
+        )
+        self.segmWithPromptableModelAction.triggered.connect(
+            self.segmWithPromptableModelActionTriggered
+        )
     
     def zProjLockViewToggled(self, checked):
         self.updateZproj(self.zProjComboBox.currentText())
@@ -3074,8 +3151,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.segmSingleFrameMenu.triggered.connect(self.segmFrameCallback)
         self.segmVideoMenu.triggered.connect(self.segmVideoCallback)
-
-        self.SegmActionRW.triggered.connect(self.randomWalkerSegm)
+        
         self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
         self.autoSegmAction.toggled.connect(self.autoSegm_cb)
         self.realTimeTrackingToggle.clicked.connect(self.realTimeTrackingClicked)
@@ -3100,6 +3176,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.curvToolButton.toggled.connect(self.curvTool_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
+        self.magicPromptsToolButton.toggled.connect(self.magicPrompts_cb)
         self.drawClearRegionButton.toggled.connect(self.drawClearRegion_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
         self.moveLabelToolButton.toggled.connect(self.moveLabelButtonToggled)
@@ -4165,16 +4242,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             pen=self.ax2_BrushCirclePen, tip=None
         )
         self.ax2.addItem(self.ax2_BrushCircle)
-
-        # Random walker markers colors
-        self.RWbkgrColor = (255,255,0)
-        self.RWforegrColor = (124,5,161)
-
-
-        # # Experimental: brush cursors
-        # self.eraserCursor = QCursor(QIcon(":eraser.svg").pixmap(30, 30))
-        # brushCursorPixmap = QIcon(":brush-cursor.png").pixmap(32, 32)
-        # self.brushCursor = QCursor(brushCursorPixmap, 16, 16)
 
         # Annotated metadata markers (ScatterPlotItem)
         self.ax2_binnedIDs_ScatterPlot = widgets.BaseScatterPlotItem()
@@ -6023,9 +6090,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not event.isExit()
             and noModifier
         )
+        magicPromptsON = self.magicPromptsToolButton.isChecked()
+        pointsLayerON = self.togglePointsLayerAction.isChecked()
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
         setAddPointCursor = (
-            self.togglePointsLayerAction.isChecked() 
+            (pointsLayerON or magicPromptsON)
             and addPointsByClickingButton is not None
             and not event.isExit()
             and noModifier
@@ -6074,6 +6143,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             'setManualBackgroundCursor': setManualBackgroundCursor,
             'setAddPointCursor': setAddPointCursor,
         }
+    
+    def warnAddingPointWithExistingId(self, point_id, table_endname=''):
+        posData = self.data[self.pos_i]
+        if not point_id in posData.IDs_idxs:
+            return True
+        
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = (f"""
+            Cell ID {point_id} <b>already exists</b>!<br><br>
+            Are you sure you want to add this point?
+        """)
+        if table_endname:
+            txt = (f"""
+                The loaded table <code>{table_endname}</code> has point id 
+                {point_id}.
+                <br><br>However, {txt}
+            """)
+        txt = html_utils.paragraph(txt)
+        _, _, yesButton = msg.warning(
+            self, f'Cell ID {point_id} already exist', txt,
+            buttonsTexts=(
+                'Cancel', 'No, do not add', f'Yes, add point id {point_id}'
+            )
+        )
+        return msg.clickedButton == yesButton
     
     def gui_hoverEventImg2(self, event):
         try:
@@ -6822,6 +6916,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         separateON = self.separateBudButton.isChecked()
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
         manualBackgroundON = self.manualBackgroundButton.isChecked()
+        magicPromptsON = self.magicPromptsToolButton.isChecked()
+        pointsLayerON = self.togglePointsLayerAction.isChecked()
         copyContourON = (
             self.copyLostObjButton.isChecked()
             and self.ax1_lostObjScatterItem.hoverLostID>0
@@ -6922,12 +7018,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
+            and not magicPromptsON
         )
         canBrush = (
             brushON and not curvToolON and not rulerON
             and not dragImgLeft and not eraserON and not wandON
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None and not drawClearRegionON
+            and not magicPromptsON
         )
         canErase = (
             eraserON and not curvToolON and not rulerON
@@ -6935,6 +7033,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
+            and not magicPromptsON
         )
         canRuler = (
             rulerON and not curvToolON and not brushON
@@ -6942,6 +7041,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
+            and not magicPromptsON
         )
         canWand = (
             wandON and not curvToolON and not brushON
@@ -6949,13 +7049,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
+            and not magicPromptsON
         )
         canPolyLine = (
             polyLineRoiON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
-            and not drawClearRegionON
+            and not drawClearRegionON and not magicPromptsON
         )
         canLabelRoi = (
             labelRoiON and not wandON and not curvToolON and not brushON
@@ -6963,7 +7064,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not keepObjON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not whitelistIDsON
+            and not whitelistIDsON and not magicPromptsON
         )
         canKeep = (
             keepObjON and not wandON and not curvToolON and not brushON
@@ -6971,7 +7072,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not whitelistIDsON
+            and not whitelistIDsON and not magicPromptsON
         )
         canWhitelistIDs = (
             whitelistIDsON and not wandON and not curvToolON and not brushON
@@ -6979,10 +7080,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not keepObjON
+            and not keepObjON and not magicPromptsON
         )
         canAddPoint = (
-            self.togglePointsLayerAction.isChecked()
+            (pointsLayerON or magicPromptsON)
             and addPointsByClickingButton is not None and not wandON 
             and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
@@ -6995,13 +7096,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
             and not keepObjON and not drawClearRegionON
+            and not magicPromptsON and not whitelistIDsON
         )
         canDrawClearRegion = (
             drawClearRegionON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
-            and not polyLineRoiON 
+            and not polyLineRoiON and not magicPromptsON
+            and not whitelistIDsON
+        )
+        canWand = (
+            magicPromptsON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+            and not polyLineRoiON and not labelRoiON
+            and addPointsByClickingButton is None
+            and not manualBackgroundON and not drawClearRegionON
+            and not wandON and not whitelistIDsON
         )
         
         # Enable dragging of the image window or the scalebar
@@ -7049,11 +7160,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         # Paint new IDs with brush and left click on the left image
         if left_click and canBrush:
-            # Store undo state before modifying stuff
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             lab_2D = self.get_2Dlab(posData.lab)
             Y, X = lab_2D.shape
+            
+            # Store undo state before modifying stuff
             self.storeUndoRedoStates(False, storeOnlyZoom=True)
 
             ID = self.getHoverID(xdata, ydata)
@@ -7151,26 +7263,38 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         elif canAddPoint:
             action = addPointsByClickingButton.action
+            self.storeUndoAddPoint(action)
             x, y = event.pos().x(), event.pos().y()
             hoveredPoints = action.scatterItem.pointsAt(event.pos())
             if hoveredPoints:
                 removed_id = self.removeClickedPoints(action, hoveredPoints)
-                addPointsByClickingButton.pointIdSpinbox.setValue(removed_id)
-                addPointsByClickingButton.pointIdSpinbox.removedId = removed_id
-            else:
-                if right_click:
-                    id = addPointsByClickingButton.pointIdSpinbox.value()
-                elif left_click:
-                    id = addPointsByClickingButton.pointIdSpinbox.value()
-                    id = self.getClickedPointNewId(
-                        action, id, addPointsByClickingButton.pointIdSpinbox
+                if not magicPromptsON:
+                    addPointsByClickingButton.pointIdSpinbox.setValue(removed_id)
+                    addPointsByClickingButton.pointIdSpinbox.removedId = (
+                        removed_id
                     )
-                    addPointsByClickingButton.pointIdSpinbox.setValue(id)
-                elif middle_click:
-                    id = 0
-                    addPointsByClickingButton.pointIdSpinbox.setValue(id)
-                self.addClickedPoint(action, x, y, id)
-            self.drawPointsLayers(computePointsLayers=False)
+                else:
+                    self.restorePrevPointIdRightClick(addPointsByClickingButton)
+                self.drawPointsLayers(computePointsLayers=False)
+            else:
+                point_id = self.getAddedPointId(
+                    magicPromptsON, addPointsByClickingButton, 
+                    right_click, left_click, middle_click
+                )
+                if point_id is None:
+                    return
+                
+                self.addClickedPoint(action, x, y, point_id)
+                self.drawPointsLayers(computePointsLayers=False)
+                
+                point_id = self.getClickedPointNewId(
+                    action, point_id, 
+                    addPointsByClickingButton.pointIdSpinbox,
+                    isMagicPrompts=magicPromptsON
+                )
+                addPointsByClickingButton.pointIdSpinbox.setValue(
+                    point_id, setLinkedWidget=False
+                )
         
         elif left_click and canDrawClearRegion:
             x, y = event.pos().x(), event.pos().y()
@@ -8234,7 +8358,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.df_settings.to_csv(self.settings_csv_path)
 
         if self.sender().text() == 'YeaZ':
-            msg = QMessageBox()
+            msg = widgets.myMessageBox(wrapText=False)
             info_txt = html_utils.paragraph(f"""
                 Note that YeaZ tracking algorithm tends to be sliglhtly more accurate
                 overall, but it is <b>less capable of detecting segmentation
@@ -8242,7 +8366,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 If you need to correct as many segmentation errors as possible
                 we recommend using Cell-ACDC tracking algorithm.
             """)
-            msg.information(self, 'Info about YeaZ', info_txt, msg.Ok)
+            msg.information(self, 'Info about YeaZ', info_txt)
         
         self.isRealTimeTrackerInitialized = False
         self.initRealTimeTracker()
@@ -12010,7 +12134,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         for action in self.segmActionsVideo:
             action.setEnabled(enabled)
 
-        self.SegmActionRW.setEnabled(enabled)
         self.relabelSequentialAction.setEnabled(enabled)
         self.repeatTrackingMenuAction.setEnabled(enabled)
         self.repeatTrackingVideoAction.setEnabled(enabled)
@@ -12240,7 +12363,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.manuallyEditCcaAction.setDisabled(True)
         for action in self.segmActions:
             action.setDisabled(True)
-        self.SegmActionRW.setDisabled(True)
         if posData.SizeT == 1:
             self.segmVideoMenu.setDisabled(True)
         self.postProcessSegmAction.setDisabled(True)
@@ -12264,7 +12386,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.viewCcaTableAction.setDisabled(False)
         for action in self.segmActions:
             action.setDisabled(False)
-        self.SegmActionRW.setDisabled(False)
 
         self.segmVideoMenu.setDisabled(True)
         self.trackingMenu.setDisabled(True)
@@ -12396,6 +12517,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if sender is not None:
             self.keepIDsButton.setChecked(False)
 
+    def connectLeftClickButtonsPointsLayersToolbar(self):
+        for toolbar in self.pointsLayersToolbars:
+            for action in toolbar.actions()[1:]:
+                if not hasattr(action, 'layerTypeIdx'):
+                    continue
+                if action.layerTypeIdx != 4:
+                    continue
+                action.button.toggled.connect(
+                    self.addPointsByClickingButtonToggled
+                )
+    
     def connectLeftClickButtons(self):
         self.brushButton.toggled.connect(self.Brush_cb)
         self.curvToolButton.toggled.connect(self.curvTool_cb)
@@ -12403,19 +12535,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
+        self.magicPromptsToolButton.toggled.connect(self.magicPrompts_cb)
         self.drawClearRegionButton.toggled.connect(self.drawClearRegion_cb)
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
         self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
         self.manualBackgroundButton.toggled.connect(self.manualBackground_cb)
         self.whitelistIDsButton.toggled.connect(self.whitelistIDs_cb)
-        for action in self.pointsLayersToolbar.actions()[1:]:
-            if not hasattr(action, 'layerTypeIdx'):
-                continue
-            if action.layerTypeIdx != 4:
-                continue
-            action.button.toggled.connect(
-                self.addPointsByClickingButtonToggled
-            )
+        self.connectLeftClickButtonsPointsLayersToolbar()
 
     def brushSize_cb(self, value):
         self.ax2_EraserCircle.setSize(value*2)
@@ -12440,11 +12566,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.uncheckLeftClickButtons(self.wandToolButton)
             self.connectLeftClickButtons()
             self.wandControlsToolbar.setVisible(True)
-            self.secondLevelToolbar.setVisible(False)
+            # self.secondLevelToolbar.setVisible(False)
         else:
             self.resetCursors()
-            self.secondLevelToolbar.setVisible(True)
+            # self.secondLevelToolbar.setVisible(True)
             self.wandControlsToolbar.setVisible(False)
+    
+    def magicPrompts_cb(self, checked):
+        if checked:
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.magicPromptsToolButton)
+            self.connectLeftClickButtons()
+            self.magicPromptsToolbar.setVisible(True)
+            self.promptSegmentPointsLayerToolbar.setVisible(True)
+            if not self.promptSegmentPointsLayerToolbar.isPointsLayerInit:
+                self.addPointsLayerTriggered(
+                    toolbar=self.promptSegmentPointsLayerToolbar
+                )
+        else:
+            self.resetCursors()
+            self.promptSegmentPointsLayerToolbar.setVisible(False)
+            self.magicPromptsToolbar.setVisible(False)
     
     def copyLostObjContour_cb(self, checked):
         self.copyLostObjToolbar.setVisible(checked)
@@ -13856,6 +13998,38 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         posData = self.data[self.pos_i]
         imshow(posData.lab, annotate_labels_idxs=[0])
     
+    def keyPressCheckSetSpinboxValue(self, event, spinbox):
+        """Check if the key pressed is a digit and set the spinbox value 
+        accordingly."""
+        try:
+            n = int(event.text())
+            if self.typingEditID:
+                value = int(f'{spinbox.value()}{n}')
+            else:
+                value = n
+                self.typingEditID = True
+            spinbox.setValue(value)
+            
+            try:
+                spinbox.timer.stop()
+            except Exception as err:
+                pass
+            
+            spinbox.timer = QTimer(spinbox)
+            spinbox.timer.timeout.connect(
+                self.editingSpinboxValueTimerCallback
+            )
+            spinbox.timer.start(2000)
+            spinbox.timer.setSingleShot(True)
+            success = True
+        except Exception as e:
+            # printl(traceback.format_exc())
+            success = False        
+        return success
+    
+    def editingSpinboxValueTimerCallback(self):
+        self.typingEditID = False
+    
     @exception_handler
     def keyPressEvent(self, ev):        
         ctrl = ev.modifiers() == Qt.ControlModifier
@@ -13921,49 +14095,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         isManualTrackingActive = self.manualTrackingButton.isChecked()
         isManualBackgroundActive = self.manualBackgroundButton.isChecked()
+        isTypingIDFunctionChecked = False
         if self.brushButton.isChecked() and not self.autoIDcheckbox.isChecked():
-            try:
-                n = int(ev.text())
-                if self.typingEditID:
-                    ID = int(f'{self.editIDspinbox.value()}{n}')
-                else:
-                    ID = n
-                    self.typingEditID = True
-                self.editIDspinbox.setValue(ID)
-            except Exception as e:
-                pass
+            success = self.keyPressCheckSetSpinboxValue(ev, self.editIDspinbox)
+            isTypingIDFunctionChecked = True
         
         if isManualTrackingActive:
-            try:
-                n = int(ev.text())
-                if self.typingEditID:
-                    ID = int(f'{self.manualTrackingToolbar.spinboxID.value()}{n}')
-                else:
-                    ID = n
-                    self.typingEditID = True
-                self.manualTrackingToolbar.spinboxID.setValue(ID)
-            except Exception as e:
-                pass
+            isTypingIDFunctionChecked = self.keyPressCheckSetSpinboxValue(
+                ev, self.manualTrackingToolbar.spinboxID
+            )
         
         elif isManualBackgroundActive:
-            try:
-                n = int(ev.text())
-                if self.typingEditID:
-                    ID = int(
-                        f'{self.manualBackgroundToolbar.spinboxID.value()}{n}'
-                    )
-                else:
-                    ID = n
-                    self.typingEditID = True
-                self.manualBackgroundToolbar.spinboxID.setValue(ID)
-            except Exception as e:
-                pass
+            isTypingIDFunctionChecked = self.keyPressCheckSetSpinboxValue(
+                ev, self.manualBackgroundToolbar.spinboxID
+            )
         
-        isTypingIDFunctionChecked = (
-            self.brushButton.isChecked() 
-            or isManualBackgroundActive
-            or isManualTrackingActive
-        )
+        addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+        if (
+                addPointsByClickingButton is not None 
+                and addPointsByClickingButton.toolbar.isVisible()
+            ):
+            isTypingIDFunctionChecked = self.keyPressCheckSetSpinboxValue(
+                ev, addPointsByClickingButton.rightClickIDSpinbox
+            )
         
         isBrushKey, isEraserKey = self.checkTriggerKeyPressShortcuts(ev)
         isExpandLabelActive = self.expandLabelToolButton.isChecked()
@@ -14567,6 +14721,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.enqAutosave()
 
     def undo(self):
+        addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+        if addPointsByClickingButton is not None:
+            done = self.undoAddPoint(addPointsByClickingButton.action)
+            if done:
+                return
+        
         if self.UndoCount == 0:
             # Store current state to enable redoing it
             self.addCurrentState()
@@ -14936,6 +15096,374 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.ghostMaskItemLeft.clear()
         self.ghostMaskItemRight.clear()
 
+    @disableWindow
+    def _importInitMagicPromptModel(
+            self, model_name, posData, win, acdcPromptSegment, toolbar
+        ):
+        self.logger.info(f'Initializing promptable model {model_name}...')
+        init_kwargs = win.init_kwargs
+        model = myutils.init_prompt_segm_model(
+            acdcPromptSegment, posData, win.init_kwargs
+        )
+        toolbar.model = model
+        toolbar.model_segment_kwargs = win.model_kwargs
+        toolbar.model_name = model_name
+        toolbar.viewModelParamsAction.setDisabled(False)
+        
+        self.magicPromptsToolbar.setInitializedModel(
+            init_kwargs, toolbar.model_segment_kwargs
+        )
+        
+        self.logger.info(
+            f'Promptable model {model_name} successfully initialised!'
+        )
+    
+    @exception_handler
+    def magicPromptsInitModel(
+            self, 
+            model_name, 
+            acdcPromptSegment,
+            init_argspecs, 
+            segment_argspecs,
+            help_url,
+            toolbar,
+        ):
+        posData = self.data[self.pos_i]
+        
+        out = prompts.init_prompt_model_params(
+            posData, model_name, init_argspecs, segment_argspecs, 
+            help_url=help_url, qparent=self, init_last_params=True
+        )
+        win = out.get('win')
+        if win.cancel:
+            self.logger.info(
+                f'Initialization of {model_name} promptable model cancelled.'
+            )
+            return
+        
+        self._importInitMagicPromptModel(
+            model_name, posData, win, acdcPromptSegment, toolbar
+        )
+    
+    def viewSetMagicPromptModelParams(
+            self, 
+            model_name, 
+            acdcPromptSegment,
+            init_argspecs, 
+            segment_argspecs,
+            help_url,
+            init_kwargs,
+            segment_kwargs,
+            toolbar
+        ):
+        posData = self.data[self.pos_i]
+        
+        init_argspecs = myutils.setDefaultValueArgSpecsFromKwargs(
+            init_argspecs, init_kwargs
+        )
+        segment_argspecs = myutils.setDefaultValueArgSpecsFromKwargs(
+            segment_argspecs, segment_kwargs
+        )
+        
+        out = prompts.init_prompt_model_params(
+            posData, model_name, init_argspecs, segment_argspecs, 
+            help_url=help_url, qparent=self, init_last_params=False
+        )
+        win = out.get('win')
+        if win.cancel:
+            return
+        
+        if win.model_kwargs != segment_kwargs or win.init_kwargs != init_kwargs:
+            self._importInitMagicPromptModel(
+                model_name, posData, win, acdcPromptSegment, toolbar
+            )
+    
+    def getMagicPromptsInputs(self, toolbar):
+        if not self.promptSegmentPointsLayerToolbar.isPointsLayerInit:
+            _warnings.warnPromptSegmentPointsLayerNotInit(qparent=self)
+            return
+        
+        if not self.magicPromptsToolbar.viewModelParamsAction.isEnabled():
+            _warnings.warnPromptSegmentModelNotInit(qparent=self)
+            return
+        
+        posData = self.data[self.pos_i]
+        image = self.getDisplayedZstack()
+        df_points = self.promptSegmentPointsLayerToolbar.pointsLayerDf(
+            posData, isSegm3D=self.isSegm3D
+        )
+        
+        self.logger.info(
+            f'Starting {toolbar.model_name} promptable segmentation with the '
+            f'following prompts:\n\n{df_points}'
+        )
+        
+        return image, df_points
+    
+    @disableWindow
+    def magicPromptsComputeOnZoomTriggered(self, toolbar):
+        inputs = self.getMagicPromptsInputs(toolbar)
+        if inputs is None:
+            self.logger.info(
+                '"Computing promptable segmentation on zoom" process cancelled.'
+            )
+            return
+        
+        posData = self.data[self.pos_i]
+        image, df_points = inputs
+        
+        ((xmin, xmax), (ymin, ymax)) = self.ax1.viewRange()
+        Y, X = image.shape[-2:]
+        
+        xmin = int(max(0, xmin))
+        xmax = int(min(X, xmax))
+        ymin = int(max(0, ymin))
+        ymax = int(min(Y, ymax))
+        
+        self.logger.info(
+            f'Zoom range: xmin={xmin}, xmax={xmax}, ymin={ymin}, ymax={ymax}'
+        )
+        
+        zoom_slice = (slice(ymin, ymax), slice(xmin, xmax))
+        
+        image = image[..., ymin:ymax, xmin:xmax]
+        image_origin = (0, ymin, xmin)
+        
+        df_points = df_points[df_points['y'] >= ymin]
+        df_points = df_points[df_points['x'] >= xmin]
+        df_points = df_points[df_points['y'] < ymax]
+        df_points = df_points[df_points['x'] < xmax]
+        
+        df_points['y'] -= ymin
+        df_points['x'] -= xmin
+        
+        df_points = df_points[ df_points['frame_i'] == posData.frame_i]
+        
+        self.logger.info(
+            f'Image origin = {image_origin}\n'
+            f'Image shape = {image.shape}'
+        )
+        
+        self.startMagicPromptsWorkerAndWait(
+            image, df_points, toolbar.model, toolbar.model_segment_kwargs, 
+            image_origin=image_origin, zoom_slice=zoom_slice
+        )
+    
+    def magicPromptsClearPoints(self, toolbar, only_zoom=False):
+        posData = self.data[self.pos_i]
+        scatterItem = self.promptSegmentPointsLayerToolbar.scatterItem()
+        action = scatterItem.action
+        
+        pointsDataPos = action.pointsData.get(self.pos_i)
+        if pointsDataPos is None:
+            return
+        
+        
+        
+        framePointsData = action.pointsData[self.pos_i].pop(
+            posData.frame_i, None
+        )
+        if framePointsData is None:
+            return
+        
+        if not only_zoom:
+            scatterItem.clear()
+            return
+        
+        ((xmin, xmax), (ymin, ymax)) = self.ax1.viewRange()
+        Y, X = posData.img_data.shape[-2:]
+        
+        xmin = int(max(0, xmin))
+        xmax = int(min(X, xmax))
+        ymin = int(max(0, ymin))
+        ymax = int(min(Y, ymax))
+        
+        if 'x' in framePointsData:
+            newFramePointsData = {'x': [], 'y': [], 'id': []}
+            xx = framePointsData['x']
+            yy = framePointsData['y']
+            ids = framePointsData['id']
+            for x, y, point_id in zip(xx, yy, ids):
+                if x < xmin or x >= xmax or y < ymin or y >= ymax:
+                    newFramePointsData['x'].append(x)
+                    newFramePointsData['y'].append(y)
+                    newFramePointsData['id'].append(point_id)
+        else:
+            newFramePointsData = {}
+            for z, zSliceFramePointsData in framePointsData.items():
+                newFramePointsData[z] = {'x': [], 'y': [], 'id': []}
+                xx = zSliceFramePointsData['x']
+                yy = zSliceFramePointsData['y']
+                ids = zSliceFramePointsData['id']
+                for x, y, point_id in zip(xx, yy, ids):
+                    if x < xmin or x >= xmax or y < ymin or y >= ymax:
+                        newFramePointsData[z]['x'].append(x)
+                        newFramePointsData[z]['y'].append(y)
+                        newFramePointsData[z]['id'].append(point_id)
+        
+        action.pointsData[self.pos_i][posData.frame_i] = newFramePointsData
+        self.drawPointsLayers()
+        
+    @disableWindow
+    def magicPromptsComputeOnImageTriggered(self, toolbar):
+        inputs = self.getMagicPromptsInputs(toolbar)
+        if inputs is None:
+            self.logger.info(
+                '"Computing promptable segmentation on entire image" '
+                'process cancelled.'
+            )
+            return
+
+        image, df_points = inputs
+        
+        self.startMagicPromptsWorkerAndWait(
+            image, df_points, toolbar.model
+        )
+    
+    def startMagicPromptsWorkerAndWait(
+            self, image, df_points, model, model_segment_kwargs, 
+            image_origin=(0, 0, 0), zoom_slice=None
+        ):
+        desc = (
+            'Running promptable segmentation model...'
+        )
+        self.logger.info(desc)
+        posData = self.data[self.pos_i]
+        
+        self.progressWin = apps.QDialogWorkerProgress(
+            title=desc, parent=self, pbarDesc=desc
+        )
+        self.progressWin.mainPbar.setMaximum(0)
+        self.progressWin.show(self.app)
+        
+        self.magicPromptsThread = QThread()
+        self.magicPromptsWorker = workers.MagicPromptsWorker(
+            posData, image, df_points, model, model_segment_kwargs, 
+            image_origin=image_origin,
+            global_image=posData.img_data[posData.frame_i]
+        )
+        
+        self.magicPromptsWorker.moveToThread(
+            self.magicPromptsThread
+        )
+        
+        self.magicPromptsWorker.signals.finished.connect(
+            self.magicPromptsThread.quit
+        )
+        self.magicPromptsWorker.signals.finished.connect(
+            self.magicPromptsWorker.deleteLater
+        )
+        self.magicPromptsThread.finished.connect(
+            self.magicPromptsThread.deleteLater
+        )
+        
+        self.magicPromptsWorker.signals.critical.connect(
+            self.magicPromptsWorkerCritical
+        )
+        self.magicPromptsWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.magicPromptsWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.magicPromptsWorker.signals.progress.connect(
+            self.workerProgress
+        )
+        self.magicPromptsWorker.signals.finished.connect(
+            partial(self.magicPromptsWorkerFinished, zoom_slice=zoom_slice)
+        )
+        
+        self.magicPromptsThread.started.connect(
+            self.magicPromptsWorker.run
+        )
+        self.magicPromptsThread.start()
+        
+        self.magicPromptsWorkerLoop = QEventLoop()
+        self.magicPromptsWorkerLoop.exec_()
+    
+    def magicPromptsWorkerCritical(self, error):
+        self.magicPromptsWorkerLoop.exit()
+        self.workerCritical(error)
+    
+    def magicPromptsWorkerFinished(self, output, zoom_slice=None):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+        self.magicPromptsWorkerLoop.exit()
+        
+        lab_new, lab_union, lab_interesection = output
+        
+        posData = self.data[self.pos_i]
+        
+        if zoom_slice is None:
+            zoom_slice = slice(None)
+        
+
+        images = (
+            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
+            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
+            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
+            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
+        )
+        labels_overlays = (
+            posData.lab[..., zoom_slice[0], zoom_slice[1]], 
+            lab_new[..., zoom_slice[0], zoom_slice[1]], 
+            lab_union[..., zoom_slice[0], zoom_slice[1]], 
+            lab_interesection[..., zoom_slice[0], zoom_slice[1]],
+        )
+        labels_overlays_lut = self.getLabelsImageLut()
+        labels_overlays_luts = (
+            labels_overlays_lut, 
+            labels_overlays_lut, 
+            labels_overlays_lut,
+            labels_overlays_lut,
+        )
+        
+        axis_titles = (
+            'Original masks', 
+            'New masks', 
+            'Union of original and new masks',
+            'Intersection of original and new masks'
+        )
+        from cellacdc.plot import imshow
+        promptSegmResultsWindow = imshow(
+            *images, 
+            labels_overlays=labels_overlays,
+            labels_overlays_luts=labels_overlays_luts,
+            axis_titles=axis_titles,
+            window_title='Promptable segmentation results',
+            figure_title='Ctrl+Click to select the result to use',
+            annotate_labels_idxs=[0, 1, 2, 3],
+            selectable_images=True, 
+            max_ncols=2,
+            lut='gray',
+            infer_rgb=False
+        )
+        if promptSegmResultsWindow.selected_idx is None:
+            self.logger.info(
+                'Selection of the promptable model segmentation '
+                'result cancelled.'
+            )
+            return
+        
+        if promptSegmResultsWindow.selected_idx == 0:
+            self.logger.info(
+                'No selection of a promptable model segmentation '
+                'result was made'
+            )
+            return
+
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False)
+        
+        results = (None, lab_new, lab_union, lab_interesection)
+        selected_idx = promptSegmResultsWindow.selected_idx
+        posData.allData_li[posData.frame_i]['labels'] = results[selected_idx]
+        self.get_data()
+        self.store_data(autosave=False)
+        self.updateAllImages()
+        
     def manualTracking_cb(self, checked):
         self.manualTrackingToolbar.setVisible(checked)
         if checked:
@@ -15012,30 +15540,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.askSegmParam = False
         else:
             self.segmModelName = None
-
-    def randomWalkerSegm(self):
-        # self.RWbkgrScatterItem = pg.ScatterPlotItem(
-        #     symbol='o', size=2,
-        #     brush=self.RWbkgrBrush,
-        #     pen=self.RWbkgrPen
-        # )
-        # self.ax1.addItem(self.RWbkgrScatterItem)
-        #
-        # self.RWforegrScatterItem = pg.ScatterPlotItem(
-        #     symbol='o', size=2,
-        #     brush=self.RWforegrBrush,
-        #     pen=self.RWforegrPen
-        # )
-        # self.ax1.addItem(self.RWforegrScatterItem)
-
-        # Store undo state before modifying stuff
-        self.storeUndoRedoStates(False)
-
-        self.segmModelName = 'randomWalker'
-        self.randomWalkerWin = apps.randomWalkerDialog(self)
-        self.randomWalkerWin.setFont(_font)
-        self.randomWalkerWin.show()
-        self.randomWalkerWin.setSize()
 
     def postProcessSegm(self, checked):
         if self.isSegm3D:
@@ -15850,10 +16354,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.model_kwargs = win.segment_kwargs
                 thresh_method = self.model_kwargs['threshold_method']
                 gauss_sigma = self.model_kwargs['gauss_sigma']
-                segment_params = myutils.insertModelArgSpect(
+                segment_params = myutils.insertModelArgSpec(
                     segment_params, 'threshold_method', thresh_method
                 )
-                segment_params = myutils.insertModelArgSpect(
+                segment_params = myutils.insertModelArgSpec(
                     segment_params, 'gauss_sigma', gauss_sigma
                 )
                 initLastParams = False
@@ -15973,9 +16477,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.model = model
         
-        if not askSegmParams:
-            self.updateSegmModelKwargs(model_name)
-        
         self.segmWorkerMutex = QMutex()
         self.segmWorkerWaitCond = QWaitCondition()
         self.thread = QThread()
@@ -16003,12 +16504,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         printl(img.shape, secondChImg.shape)
         imshow(img, secondChImg)
         self.segmWorkerWaitCond.wakeAll()
-    
-    def updateSegmModelKwargs(self, model_name):
-        if model_name == 'segment_anything':
-            # Update the input points dataframe if points layer is active
-            input_df = self.pointsLayerDataToDf(self.data[self.pos_i])
-            self.model_kwargs['input_points_df'] = input_df
     
     def selectZtoolZvalueChanged(self, whichZ, z):
         self.update_z_slice(z)
@@ -16903,7 +17398,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.drawManualTrackingGhost(self.xHoverImg, self.yHoverImg)
         self.drawManualBackgroundObj(self.xHoverImg, self.yHoverImg)
     
+    def clearUndoQueue(self):
+        posData = self.data[self.pos_i]
+        self.UndoCount = 0
+        self.redoAction.setEnabled(False)
+        self.undoAction.setEnabled(False)
+        posData.UndoRedoStates = [[] for _ in range(posData.SizeT)]
+        posData.UndoRedoCcaStates = [[] for _ in range(posData.SizeT)]
+        if hasattr(self, 'undoAddPointQueueMapper'):
+            self.undoAddPointQueueMapper = defaultdict(list)
+    
     def updatePos(self):
+        self.clearUndoQueue()
         self.setStatusBarLabel()
         self.checkManageVersions()
         self.removeAlldelROIsCurrentFrame()
@@ -18339,6 +18845,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             f'{sep}\nFiles present in the first Position folder loaded:\n\n'
             f'{files_format}\n{sep}'
         )
+        self.logger.info(f'Basename of the first Position: {posData.basename}')
         self.secondLevelToolbar.setVisible(True)
         self.updateImageValueFormatter()
         self.checkManageVersions()
@@ -18711,6 +19218,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             else:
                 self.manualBackgroundAction.setVisible(False)
                 self.manualBackgroundAction.setDisabled(True)
+<<<<<<< HEAD
             self.manualAnnotFutureButton.setDisabled(True)
             self.manualAnnotFutureButton.action.setDisabled(True)
             self.manualAnnotFutureButton.setVisible(False)
@@ -18719,6 +19227,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.copyLostObjButton.action.setDisabled(True)
             self.copyLostObjButton.setVisible(False)
             self.copyLostObjButton.action.setVisible(False)
+=======
+            self.segForLostIDsAction.setVisible(False)
+            self.segForLostIDsAction.setDisabled(True)
+>>>>>>> main
         else:
             self.imgGrad.rescaleAcrossTimeAction.setDisabled(False)
             self.annotateToolbar.setVisible(False)
@@ -18749,6 +19261,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
             self.labelsGrad.showNextFrameAction.setDisabled(False)  
+<<<<<<< HEAD
             self.manualAnnotFutureButton.setDisabled(False)
             self.manualAnnotFutureButton.action.setDisabled(False)
             self.manualAnnotFutureButton.setVisible(True)
@@ -18757,6 +19270,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.copyLostObjButton.action.setDisabled(False)
             self.copyLostObjButton.setVisible(True)
             self.copyLostObjButton.action.setVisible(True)
+=======
+            self.segForLostIDsAction.setVisible(True)
+            self.segForLostIDsAction.setDisabled(False)
+>>>>>>> main
         
         for ch, overlayItems in self.overlayLayersItems.items():
             imageItem, lutItem, alphaScrollBar = overlayItems
@@ -19175,12 +19692,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.clearCustomAnnot()
     
     def clearPointsLayers(self):
-        for action in self.pointsLayersToolbar.actions()[1:]:
-            try:
-                action.scatterItem.clear()
-                # action.pointsData = {}
-            except Exception as e:
-                continue
+        for toolbar in self.pointsLayersToolbars:
+            for action in toolbar.actions()[1:]:
+                try:
+                    action.scatterItem.clear()
+                except Exception as e:
+                    continue
 
     def clearOverlayLabelsItems(self):
         for segmEndname, drawMode in self.drawModeOverlayLabelsChannels.items():
@@ -19269,21 +19786,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if not self.autoSegmAction.isChecked():
-            # Compute segmentations that have an open window
-            if self.segmModelName == 'randomWalker':
-                self.randomWalkerWin.getImage()
-                self.randomWalkerWin.computeMarkers()
-                self.randomWalkerWin.computeSegm()
-                self.update_rp()
-                self.tracking(enforce=True)
-                if self.isSnapshot:
-                    self.fixCcaDfAfterEdit('Random Walker segmentation')
-                    self.updateAllImages()
-                else:
-                    self.warnEditingWithCca_df('Random Walker segmentation')
-                self.store_data()
-            else:
-                return
+            return
 
         self.repeatSegm(model_name=self.segmModelName)
 
@@ -21906,11 +22409,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.img2.setLevels([0, len(self.lut)])
         self.initLabelsImageItems()
     
-    def initLabelsImageItems(self):
+    def getLabelsImageLut(self):
         lut = np.zeros((len(self.lut), 4), dtype=np.uint8)
         lut[:,-1] = 255
         lut[:,:-1] = self.lut
         lut[0] = [0,0,0,0]
+        return lut
+    
+    def initLabelsImageItems(self):
+        lut = self.getLabelsImageLut()
         self.labelsLayerImg1.setLevels([0, len(lut)])
         self.labelsLayerRightImg.setLevels([0, len(lut)])
         self.labelsLayerImg1.setLookupTable(lut)
@@ -22443,7 +22950,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def askSaveAddedPoints(self):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
-            'Do you want to <b>save the anntoated points</b>?'
+            'Do you want to <b>save the annotated points</b>?'
         )
         _, noButton, yesButton = msg.question(
             self, 'Save?', txt,
@@ -22452,12 +22959,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if msg.clickedButton != yesButton:
             return
         
-        for action in self.pointsLayersToolbar.actions():
-            try:
-                if 'Save annotated' in action.text():
-                    action.trigger()
-            except Exception as err:
-                pass
+        for toolbar in self.pointsLayersToolbars:
+            for action in self.pointsLayersToolbar.actions():
+                try:
+                    if 'Save annotated' in action.text():
+                        action.trigger()
+                except Exception as err:
+                    pass
     
     def pointsLayerToggled(self, checked):
         if not checked:
@@ -22471,31 +22979,59 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.pointsLayersToolbar.setVisible(checked)
         self.autoPilotZoomToObjToolbar.setVisible(checked)
         if self.pointsLayersNeverToggled:
-            self.addPointsLayerAction.trigger()
+            self.pointsLayersToolbar.sigAddPointsLayer.emit()
         self.pointsLayersNeverToggled = False
         QTimer.singleShot(200, self.autoRange)
     
-    def addPointsLayerTriggered(self):
+    def addPointsLayerTriggered(self, checked=False, toolbar=None):
+        if toolbar is None:
+            toolbar = self.pointsLayersToolbar
+        
+        if self.addPointsWin is not None:
+            self.logger.info(
+                'Add points layer window is already open. Cannot add now.'
+            )
+            return
+        
+        onlyMouseClicks = toolbar==self.promptSegmentPointsLayerToolbar
         posData = self.data[self.pos_i]
         self.addPointsWin = apps.AddPointsLayerDialog(
-            channelNames=posData.chNames, imagesPath=posData.images_path, 
-            parent=self
+            channelNames=posData.chNames, 
+            imagesPath=posData.images_path, 
+            hideCentroidsSection=onlyMouseClicks,
+            hideWeightedCentroidsSection=onlyMouseClicks,
+            hideFromTableSection=onlyMouseClicks,
+            hideManualEntrySection=onlyMouseClicks,
+            hideWithMouseClicksSection=False,
+            parent=self,
         )
         cmap = matplotlib.colormaps['gist_rainbow']
         i = np.random.default_rng(seed=123).uniform()
-        for action in self.pointsLayersToolbar.actions()[1:]:
+        for action in toolbar.actions()[1:]:
             if not hasattr(action, 'layerTypeIdx'):
                 continue
             rgb = [round(c*255) for c in cmap(i)][:3]
             self.addPointsWin.appearanceGroupbox.colorButton.setColor(rgb)
             break
+        
         self.addPointsWin.sigCriticalReadTable.connect(self.logger.info)
         self.addPointsWin.sigLoadedTable.connect(self.logLoadedTablePointsLayer)
-        self.addPointsWin.sigClosed.connect(self.addPointsLayer)
+        self.addPointsWin.sigClosed.connect(
+            partial(self.addPointsLayer, toolbar=toolbar)
+        )
         self.addPointsWin.sigCheckClickEntryTableEndnameExists.connect(
             self.checkClickEntryTableEndnameExists
         )
         self.addPointsWin.show()
+        if self.addPointsWin.clickEntryRadiobutton.isChecked():
+            QTimer.singleShot(
+                200, 
+                partial(
+                    self.addPointsWin.sigCheckClickEntryTableEndnameExists.emit,
+                    self.addPointsWin.clickEntryTableEndname.text(), 
+                    False
+                )
+            )
     
     def logLoadedTablePointsLayer(self, df):
         separator = f'-'*100
@@ -22503,13 +23039,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.logger.info(text)
     
     def buttonAddPointsByClickingActive(self):
-        for action in self.pointsLayersToolbar.actions()[1:]:
-            if not hasattr(action, 'layerTypeIdx'):
-                continue
-            if action.layerTypeIdx == 4 and action.button.isChecked():
-                return action.button
+        for toolbar in self.pointsLayersToolbars:
+            for action in toolbar.actions()[1:]:
+                if not hasattr(action, 'layerTypeIdx'):
+                    continue
+                if action.layerTypeIdx == 4 and action.button.isChecked():
+                    return action.button
     
-    def setupAddPointsByClicking(self, toolButton, isLoadedDf):
+    def setupAddPointsByClicking(self, toolButton, isLoadedDf, toolbar):
         self.LeftClickButtons.append(toolButton)
         posData = self.data[self.pos_i]
         tableEndName = self.addPointsWin.clickEntryTableEndnameText
@@ -22518,9 +23055,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             tableEndName = tableEndName[len(posData.basename):]
             self.loadClickEntryDfs(tableEndName)
         
+        toolButton.toolbar = toolbar
         toolButton.clickEntryTableEndName = tableEndName
         self.checkableQButtonsGroup.addButton(toolButton)
         toolButton.toggled.connect(self.addPointsByClickingButtonToggled)
+
         self.addPointsByClickingButtonToggled(sender=toolButton)
         
         toolButton.setToolTip(tableEndName)
@@ -22528,35 +23067,127 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         pointIdSpinbox = widgets.SpinBox()
         pointIdSpinbox.setMinimum(0)
         pointIdSpinbox.setValue(1)
-        pointIdSpinbox.label = QLabel(' Point id: ')
-        pointIdSpinbox.labelAction = self.pointsLayersToolbar.addWidget(
-            pointIdSpinbox.label
-        )
-        pointIdSpinbox.action = self.pointsLayersToolbar.addWidget(
-            pointIdSpinbox
-        )
+        pointIdSpinbox.label = QLabel(' Left-click ID: ')
+        pointIdSpinbox.labelAction = toolbar.addWidget(pointIdSpinbox.label)
+        if toolbar == self.promptSegmentPointsLayerToolbar:
+            newID = self.setBrushID(return_val=True)
+            pointIdSpinbox.setValue(newID)
+        toolButton.actions.append(pointIdSpinbox.labelAction)
+        pointIdSpinbox.action = toolbar.addWidget(pointIdSpinbox)
+        toolButton.actions.append(pointIdSpinbox.action)
         pointIdSpinbox.toolButton = toolButton
         toolButton.pointIdSpinbox = pointIdSpinbox
         
-        saveAction = QAction(
-            QIcon(":file-save.svg"), 
-            "Save annotated points in the CSV file ending with 'tableEndName.csv'", 
-            self
+        rightClickIDSpinbox = widgets.SpinBox()
+        pointIdSpinbox.setLinkedValueWidget(rightClickIDSpinbox)
+        rightClickIDSpinbox.setMaximumWidth(pointIdSpinbox.sizeHint().width())
+        rightClickIDSpinbox.setValue(pointIdSpinbox.value())
+        rightClickIDSpinbox.setMinimum(0)
+        rightClickIDSpinbox.label = QLabel(' | Right-click ID: ')
+        rightClickIDSpinbox.labelAction = toolbar.addWidget(
+            rightClickIDSpinbox.label
         )
-        saveAction.triggered.connect(self.savePointsAddedByClicking)
+        toolButton.actions.append(rightClickIDSpinbox.labelAction)
+        rightClickIDSpinbox.action = toolbar.addWidget(rightClickIDSpinbox)
+        toolButton.actions.append(rightClickIDSpinbox.action)
+        rightClickIDSpinbox.toolButton = toolButton
+        toolButton.rightClickIDSpinbox = rightClickIDSpinbox
+        
+        saveToolbutton = widgets.SavePointsLayerButton(
+            tableEndName, parent=self
+        )
+        saveToolbutton.sigRenameTableAction.connect(
+            self.updatePointsLayerClickEntryTableEndname
+        )
+        saveToolbutton.sigLeftClick.connect(self.savePointsAddedByClicking)
+        saveAction = toolbar.addWidget(saveToolbutton)
+        saveToolbutton.action = saveAction
         saveAction.toolButton = toolButton
-        self.pointsLayersToolbar.addAction(saveAction)
+        toolButton.saveAction = saveAction
+        toolButton.saveToolbutton = saveToolbutton
+        
         toolButton.actions.append(saveAction)
         
-        vlineAction = self.pointsLayersToolbar.addWidget(widgets.QVLine())
-        spacerAction = self.pointsLayersToolbar.addWidget(
+        vlineAction = toolbar.addWidget(widgets.QVLine())
+        spacerAction = toolbar.addWidget(
             widgets.QHWidgetSpacer(width=5)
         )
         
         toolButton.actions.append(vlineAction)
         toolButton.actions.append(spacerAction)
         
-        self.pointsLayerClicksDfsToData(posData)
+        action = toolButton.action
+        scatterItem = action.scatterItem
+        scatterItem.sigHoverEntered.connect(
+            self.addPointsByClickingScatterItemHoverEntered
+        )
+        
+        self.pointsLayerClicksDfsToData(posData, toolbar=toolbar)
+    
+    def storeUndoAddPoint(self, action):
+        if not hasattr(self, 'undoAddPointQueueMapper'):
+            self.undoAddPointQueueMapper = defaultdict(list)
+
+        posData = self.data[self.pos_i]
+        pointsDataPos = action.pointsData.get(self.pos_i)
+        if pointsDataPos is None:
+            return
+        
+        state = deepcopy(pointsDataPos)
+        self.undoAddPointQueueMapper[action].append(state)
+        self.undoAction.setEnabled(True)
+        
+    def undoAddPoint(self, action):
+        undoAddPointQueue = self.undoAddPointQueueMapper.get(action)
+        if undoAddPointQueue is None:
+            return False
+        
+        if len(undoAddPointQueue) == 0:
+            return False
+        
+        posData = self.data[self.pos_i]
+        state = undoAddPointQueue.pop(-1)
+        action.pointsData[self.pos_i] = state
+        
+        self.drawPointsLayers(computePointsLayers=False)
+        
+        if len(self.undoAddPointQueueMapper[action]) == 0:
+           self.undoAction.setEnabled(True)
+        
+        return True
+    
+    def getAddedPointId(
+            self, isMagicPrompts, addPointsByClickingButton, 
+            right_click, left_click, middle_click
+        ):
+        action = addPointsByClickingButton.action
+        if right_click:
+            id = addPointsByClickingButton.rightClickIDSpinbox.value()
+        elif left_click:
+            id = addPointsByClickingButton.pointIdSpinbox.value()                        
+            id = self.getClickedPointNewId(
+                action, id, addPointsByClickingButton.pointIdSpinbox,
+                isMagicPrompts=isMagicPrompts
+            )
+            if isMagicPrompts:
+                proceed = self.warnAddingPointWithExistingId(id)
+                if not proceed:
+                    return
+            
+            addPointsByClickingButton.pointIdSpinbox.setValue(id)
+        elif middle_click:
+            id = 0
+        
+        return id
+    
+    def addPointsByClickingScatterItemHoverEntered(self, item, points, event):
+        point = points[0]
+        point_id = point.data()
+        toolButton = item.action.button
+        toolButton.rightClickIDSpinbox.prevId = (
+            toolButton.rightClickIDSpinbox.value()
+        )
+        toolButton.rightClickIDSpinbox.setValue(point_id)
     
     def autoPilotZoomToObjToggled(self, checked):
         if not checked:
@@ -22586,8 +23217,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             df.to_csv(tableFilepath, index=False)
     
     @exception_handler
-    def savePointsAddedByClicking(self):
-        toolButton = self.sender().toolButton
+    def savePointsAddedByClicking(self, button, event):
+        sender = button.action
+        
+        toolButton = sender.toolButton
         tableEndName = toolButton.clickEntryTableEndName
         
         self.logger.info(f'Saving _{tableEndName}.csv table...')
@@ -22597,34 +23230,47 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.logger.info(f'{tableEndName}.csv saved!')
         self.titleLabel.setText(f'{tableEndName}.csv saved!', color='g')
     
+    def updatePointsLayerClickEntryTableEndname(
+            self, saveToolbutton, table_endname
+        ):
+        saveAction = saveToolbutton.action
+        toolButton = saveAction.toolButton
+        toolButton.clickEntryTableEndName = table_endname
+        
+        self.logger.info(
+            f'Done. Click entry table endname updated to "{table_endname}"'
+        )
+    
     def pointsLayerDfsToData(self, posData):
         self.pointsLayerClicksDfsToData(posData)
     
     def pointsLayerLoadedDfsToData(self):
         posData = self.data[self.pos_i]
-        
-        for action in self.pointsLayersToolbar.actions()[1:]:
-            if not hasattr(action, 'loadedDfInfo'):
-                continue
-            
-            if action.loadedDfInfo is None:
-                continue
-            
-            endname = action.loadedDfInfo.get('endname')
-            if endname is None:
-                continue
-            
-            filename = f'{posData.basename}{endname}'
-            filepath = os.path.join(posData.images_path, filename)
-            if not os.path.exists(filepath):
-                action.pointsData = {}
-            
-            df = load.load_df_points_layer(filepath)
-            action.pointsData = load.loaded_df_to_points_data(
-                df, action.loadedDfInfo['t'], action.loadedDfInfo['z'], 
-                action.loadedDfInfo['y'], action.loadedDfInfo['x']
-            )
-            self.logLoadedTablePointsLayer(df)
+        for toolbar in self.pointsLayersToolbars:
+            for action in toolbar.actions()[1:]:
+                if not hasattr(action, 'loadedDfInfo'):
+                    continue
+                
+                if action.loadedDfInfo is None:
+                    continue
+                
+                endname = action.loadedDfInfo.get('endname')
+                if endname is None:
+                    continue
+                
+                filename = f'{posData.basename}{endname}'
+                filepath = os.path.join(posData.images_path, filename)
+                if not os.path.exists(filepath):
+                    action.pointsData[self.pos_i] = {}
+                
+                df = load.load_df_points_layer(filepath)
+                action.pointsData[self.pos_i] = (
+                    load.loaded_df_to_points_data(
+                        df, action.loadedDfInfo['t'], action.loadedDfInfo['z'], 
+                        action.loadedDfInfo['y'], action.loadedDfInfo['x']
+                    )
+                )
+                self.logLoadedTablePointsLayer(df)
             
     def setPointsLayerLoadedDfEndanme(self, action):
         if action.loadedDfInfo is None:
@@ -22650,15 +23296,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         action.button.setToolTip(endname)
     
-    def pointsLayerClicksDfsToData(self, posData):
-        for action in self.pointsLayersToolbar.actions()[1:]:
+    def pointsLayerClicksDfsToData(self, posData, toolbar=None):
+        if toolbar is None:
+            toolbar = self.pointsLayersToolbar
+        
+        for action in toolbar.actions()[1:]:
             if not hasattr(action, 'button'):
                 continue
             
             if not hasattr(action.button, 'clickEntryTableEndName'):
                 continue
             tableEndName = action.button.clickEntryTableEndName
-            action.pointsData = {}
+            action.pointsData[self.pos_i] = {}
             if posData.clickEntryPointsDfs.get(tableEndName) is None:
                 continue
             
@@ -22669,79 +23318,40 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 return
             
             for frame_i, df_frame in df.groupby('frame_i'):
-                action.pointsData[frame_i] = {}
+                action.pointsData[self.pos_i][frame_i] = {}
                 if posData.SizeZ > 1:
                     for z, df_zlice in df_frame.groupby('z'):
                         xx = df_zlice['x'].to_list()
                         yy = df_zlice['y'].to_list()
                         ids = df_zlice['id'].to_list()
-                        action.pointsData[frame_i][z] = {
+                        action.pointsData[self.pos_i][frame_i][z] = {
                             'x': xx, 'y': yy, 'id': ids
                         }
                 else:
                     xx = df_frame['x'].to_list()
                     yy = df_frame['y'].to_list()
                     ids = df_frame['id'].to_list()
-                    action.pointsData[frame_i] = {
+                    action.pointsData[self.pos_i][frame_i] = {
                         'x': xx, 'y': yy, 'id': ids
                     }
             
-    def pointsLayerDataToDf(self, posData, getOnlyActive=False):
+    def pointsLayerDataToDf(self, posData, getOnlyActive=False, toolbar=None):
         df = None
-        for action in self.pointsLayersToolbar.actions()[1:]:
-            if not hasattr(action, 'button'):
-                continue
-            if not hasattr(action.button, 'clickEntryTableEndName'):
-                continue
-            tableEndName = action.button.clickEntryTableEndName
-            # if posData.clickEntryPointsDfs.get(tableEndName) is None:
-            #     continue
-            if getOnlyActive and not action.button.isChecked():
-                continue
-            
-            df = pd.DataFrame(
-                columns=['frame_i', 'Cell_ID', 'z', 'y', 'x', 'id']
-            )
-            frames_vals = []
-            IDs = []
-            zz = []
-            yy = []
-            xx = []
-            ids = []
-            for frame_i, framePointsData in action.pointsData.items():
-                if posData.SizeZ > 1:
-                    for z, zSlicePointsData in framePointsData.items():
-                        yyxx = zip(
-                            zSlicePointsData['y'], zSlicePointsData['x']
-                        )
-                        for y, x in yyxx:
-                            if self.isSegm3D:
-                                ID = posData.lab[int(z), int(y), int(x)]
-                            else:
-                                ID = posData.lab[int(y), int(x)]
-                            frames_vals.append(frame_i)
-                            IDs.append(ID)
-                            zz.append(z)
-                            yy.append(y)
-                            xx.append(x)
-                        ids.extend(zSlicePointsData['id'])
-                else:
-                    yyxx = zip(framePointsData['y'], framePointsData['x'])
-                    for y, x in yyxx:
-                        ID = posData.lab[int(y), int(x)]
-                        frames_vals.append(frame_i)
-                        IDs.append(ID)
-                        yy.append(y)
-                        xx.append(x)
-                    ids.extend(framePointsData['id'])
-            df['frame_i'] = frames_vals
-            df['Cell_ID'] = IDs
-            df['y'] = yy
-            df['x'] = xx
-            df['id'] = ids
-            if zz:
-                df['z'] = zz
-            posData.clickEntryPointsDfs[tableEndName] = df
+        for toolbar in self.pointsLayersToolbars:
+            for action in toolbar.actions()[1:]:
+                if not hasattr(action, 'button'):
+                    continue
+                if not hasattr(action.button, 'clickEntryTableEndName'):
+                    continue
+                
+                tableEndName = action.button.clickEntryTableEndName
+                if getOnlyActive and not action.button.isChecked():
+                    continue
+                
+                df = toolbar.fromActionToDataFrame(
+                    action, posData, isSegm3D=self.isSegm3D
+                )
+                posData.clickEntryPointsDfs[tableEndName] = df
         return df
     
     def restartZoomAutoPilot(self):
@@ -22798,6 +23408,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             action = sender.action
             action.scatterItem.setVisible(False)
             return
+        
         self.disconnectLeftClickButtons()
         self.uncheckLeftClickButtons(sender)
         self.connectLeftClickButtons()
@@ -22842,7 +23453,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.autoPilotZoomToObjSpinBox.setValue(obj.label)
         self.zoomToObj(obj)        
         
-    def checkClickEntryTableEndnameExists(self, tableEndName, forceLoading=False):
+    def checkClickEntryTableEndnameExists(self, tableEndName, forceLoading):
         doesTableExists = False
         for posData in self.data:
             files = myutils.listdir(posData.images_path)
@@ -22869,11 +23480,32 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.loadClickEntryDfs(tableEndName)
 
+    def checkLoadedTableIds(self, toolbar):
+        if toolbar != self.promptSegmentPointsLayerToolbar:
+            return True
+        
+        for posData in self.data:
+            for tableEndName, df in posData.clickEntryPointsDfs.items():
+                for point_id in df['id'].values:
+                    if point_id in posData.IDs_idxs:
+                        proceed = self.warnAddingPointWithExistingId(
+                            point_id, table_endname=tableEndName
+                        )
+                        return proceed
+        
+        return True
+    
     @exception_handler
-    def addPointsLayer(self):
-        if self.addPointsWin.cancel:
+    def addPointsLayer(self, toolbar=None):
+        proceed = self.checkLoadedTableIds(toolbar)
+        
+        if self.addPointsWin.cancel or not proceed:
+            self.addPointsWin = None
             self.logger.info('Adding points layer cancelled.')
             return
+        
+        if toolbar is None:
+            toolbar = self.pointsLayersToolbar
         
         symbol = self.addPointsWin.symbol
         color = self.addPointsWin.color
@@ -22899,21 +23531,36 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         toolButton.toggled.connect(self.pointLayerToolbuttonToggled)
         toolButton.sigEditAppearance.connect(self.editPointsLayerAppearance)
         toolButton.sigShowIdsToggled.connect(self.showPointsLayerIdsToggled)
-        toolButton.sigRemove.connect(self.removePointsLayer)
+        toolButton.sigRemove.connect(
+            partial(self.removePointsLayer, toolbar=toolbar)
+        )
         
-        action = self.pointsLayersToolbar.addWidget(toolButton)
+        action = toolbar.addWidget(toolButton)
         action.state = self.addPointsWin.state()
 
         toolButton.action = action
         action.brushColor = (r,g,b,100)
+        action.brushColorId0 = (
+            *colors.hex_to_rgb(
+                colors.lighten_color(
+                    np.array(action.brushColor)/255, 0.3
+                )
+            ), 100
+        )
         action.penColor = (r,g,b)
+        action.penColorId0 = colors.lighten_color(
+            np.array(action.penColor)/255, 0.3
+        )
         action.pointSize = pointSize
         action.zRadius = zRadius
         action.button = toolButton
         action.scatterItem = scatterItem
+        scatterItem.action = action
         action.layerType = self.addPointsWin.layerType
         action.layerTypeIdx = self.addPointsWin.layerTypeIdx
-        action.pointsData = self.addPointsWin.pointsData
+        posData = self.data[self.pos_i]
+        action.pointsData = {}
+        action.pointsData[self.pos_i] = self.addPointsWin.pointsData
         action.snapToMax = False
         action.loadedDfInfo = self.addPointsWin.loadedDfInfo
         self.setPointsLayerLoadedDfEndanme(action)
@@ -22921,7 +23568,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.addPointsWin.layerType.startswith('Click to annotate point'):
             action.snapToMax = self.addPointsWin.snapToMaxToggle.isChecked()
             isLoadedDf = self.addPointsWin.clickEntryIsLoadedDf
-            self.setupAddPointsByClicking(toolButton, isLoadedDf)
+            self.setupAddPointsByClicking(
+                toolButton, isLoadedDf, toolbar=toolbar
+            )
             if self.addPointsWin.autoPilotToggle.isChecked():
                 self.autoPilotZoomToObjToggle.setChecked(True)
         
@@ -22929,6 +23578,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.loadPointsLayerWeighingData(action, weighingChannel)
 
         self.drawPointsLayers()
+        
+        if toolbar == self.promptSegmentPointsLayerToolbar:
+            self.promptSegmentPointsLayerToolbar.isPointsLayerInit = True
+            self.magicPromptsToolbar.clearPointsAction.setDisabled(False)
+            self.magicPromptsToolbar.clearPointsActionOnZoom.setDisabled(False)
+            QTimer.singleShot(
+                200, self.magicPromptsToolbar.selectModelAction.trigger
+            )
+        
+        self.addPointsWin = None
     
     def loadClickEntryDfs(self, tableEndName):
         for posData in self.data:
@@ -22943,11 +23602,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             if not os.path.exists(filepath):
                 continue
             
+            self.logger.info(f'Loading points from "{filepath}.csv"...')
             df = pd.read_csv(filepath)
             if 'id' not in df.columns:
                 df['id'] = range(1, len(df)+1)
             posData.clickEntryPointsDfs[tableEndName] = df
-            
+        
         try:
             self.addPointsWin.loadButton.confirmAction()
         except Exception as err:
@@ -22955,7 +23615,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     
     def removeClickedPoints(self, action, points):
         posData = self.data[self.pos_i]
-        framePointsData = action.pointsData[posData.frame_i]
+        framePointsData = action.pointsData[self.pos_i][posData.frame_i]
         if posData.SizeZ > 1:
             zProjHow = self.zProjComboBox.currentText()
             if zProjHow != 'single z-slice':
@@ -22978,29 +23638,55 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 framePointsData['y'].remove(y)
                 framePointsData['id'].remove(point.data())
             id = point.data()
+        
         return id
     
-    def getClickedPointNewId(self, action, current_id, pointIdSpinbox):
+    def restorePrevPointIdRightClick(self, addPointsByClickingButton):
+        # Try to restore the id that was there before hovering 
+        # because the hovering was required only to delete the 
+        # point
+        try:
+            prevId = addPointsByClickingButton.rightClickIDSpinbox.prevId
+            addPointsByClickingButton.rightClickIDSpinbox.setValue(prevId)
+        except Exception as err:
+            addPointsByClickingButton.rightClickIDSpinbox.prevId = None
+    
+    def getClickedPointNewId(
+            self, action, current_id, pointIdSpinbox, isMagicPrompts=False
+        ):
         removed_id = getattr(pointIdSpinbox, 'removedId', None)
         if removed_id is not None:
             pointIdSpinbox.removedId = None
             return removed_id
         
         posData = self.data[self.pos_i]
-        framePointsData = action.pointsData.get(posData.frame_i)
-        if framePointsData is None:
-            return 1
-        if posData.SizeZ > 1:
-            new_id = 1
-            for z_data in action.pointsData[posData.frame_i].values():
-                max_id = max(z_data.get('id', 0), default=0) + 1
-                if max_id > new_id:
-                    new_id = max_id
+        if isMagicPrompts:
+            is_already_new = self.isPointIdAlreadyNew(current_id, action)
+            if is_already_new:
+                return current_id
+            
+            new_ID = self.setBrushID(return_val=True)
+            new_id = max(current_id, new_ID) + 1
+            return new_id
         else:
-            new_id = max(framePointsData.get('id', 0), default=0) + 1
-        if current_id >= new_id:
-            return current_id
-        return new_id
+            pointsDataPos = action.pointsData.get(self.pos_i)
+            if pointsDataPos is None:
+                return 1
+            
+            framePointsData = pointsDataPos.get(posData.frame_i)
+            if framePointsData is None:
+                return 1
+            if posData.SizeZ > 1:
+                new_id = 1
+                for z_data in framePointsData.values():
+                    max_id = max(z_data.get('id', 0), default=0) + 1
+                    if max_id > new_id:
+                        new_id = max_id
+            else:
+                new_id = max(framePointsData.get('id', 0), default=0) + 1
+            if current_id >= new_id:
+                return current_id
+            return new_id
     
     def setHoverCircleAddPoint(self, x, y):
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
@@ -23012,10 +23698,40 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             size=action.pointSize
         )
     
+    def isPointIdAlreadyNew(self, point_id, action):
+        posData = self.data[self.pos_i]
+        if point_id in posData.IDs_idxs:
+            return False
+        
+        is_ID = point_id in posData.IDs_idxs
+        pointsDataPos = action.pointsData.get(self.pos_i)
+        if pointsDataPos is None:
+            return not is_ID
+        
+        framePointsData = pointsDataPos.get(posData.frame_i)
+        if framePointsData is None:
+            return not is_ID
+        
+        if 'x' not in framePointsData:
+            is_id_already_added = False
+            for z, z_data in framePointsData.items():
+                if point_id in z_data['id']:
+                    is_id_already_added = True
+                    break
+        else:
+            is_id_already_added = point_id in framePointsData['id']
+        
+        is_already_new = not is_ID and not is_id_already_added
+        return is_already_new
+        
     def addClickedPoint(self, action, x, y, id):
         x, y = round(x, 2), round(y, 2)
         posData = self.data[self.pos_i]
-        framePointsData = action.pointsData.get(posData.frame_i)
+        pointsDataPos = action.pointsData.get(self.pos_i)
+        if pointsDataPos is None:
+            action.pointsData[self.pos_i] = {}
+        
+        framePointsData = action.pointsData[self.pos_i].get(posData.frame_i)
         if action.snapToMax:
             radius = round(action.pointSize/2)
             rr, cc = skimage.draw.disk((round(y), round(x)), radius)
@@ -23025,41 +23741,48 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if framePointsData is None:
             if posData.SizeZ > 1:
                 zSlice = self.zSliceScrollBar.sliderPosition()
-                action.pointsData[posData.frame_i] = {
+                action.pointsData[self.pos_i][posData.frame_i] = {
                     zSlice: {'x': [x], 'y': [y], 'id': [id]}
                 }
             else:
-                action.pointsData[posData.frame_i] = {
+                action.pointsData[self.pos_i][posData.frame_i] = {
                     'x': [x], 'y': [y], 'id': [id]
                 }
         else:
             if posData.SizeZ > 1:
                 zSlice = self.zSliceScrollBar.sliderPosition()
-                z_data = action.pointsData[posData.frame_i].get(zSlice)
+                z_data = framePointsData.get(zSlice)
                 if z_data is None:
                     framePointsData[zSlice] = {'x': [x], 'y': [y], 'id': [id]}
                 else:
                     framePointsData[zSlice]['x'].append(x)
                     framePointsData[zSlice]['y'].append(y)
                     framePointsData[zSlice]['id'].append(id)
-                action.pointsData[posData.frame_i] = framePointsData
+                action.pointsData[self.pos_i][posData.frame_i] = (
+                    framePointsData
+                )
             else:
-                action.pointsData[posData.frame_i]['x'].append(x)
-                action.pointsData[posData.frame_i]['y'].append(y)
-                action.pointsData[posData.frame_i]['id'].append(id)
-    
+                pointsDataPos = action.pointsData[self.pos_i]
+                framePointsData = pointsDataPos[posData.frame_i]
+                pointsDataPos['x'].append(x)
+                pointsDataPos['y'].append(y)
+                pointsDataPos['id'].append(id)
+        
     def showPointsLayerIdsToggled(self, button, checked):
         button.action.scatterItem.drawIds = checked
         self.drawPointsLayers()
     
-    def removePointsLayer(self, button):
+    def removePointsLayer(self, button, toolbar=None):
         button.setChecked(False)
         button.action.scatterItem.setData([], [])
         button.action.loadedDfInfo = None
         self.ax1.removeItem(button.action.scatterItem)
-        self.pointsLayersToolbar.removeAction(button.action)
+        toolbar.removeAction(button.action)
         for action in button.actions:
-            self.pointsLayersToolbar.removeAction(action)
+            toolbar.removeAction(action)
+        
+        if toolbar == self.promptSegmentPointsLayerToolbar:
+            self.promptSegmentPointsLayerToolbar.isPointsLayerInit = False
     
     def editPointsLayerAppearance(self, button):
         win = apps.EditPointsLayerAppearanceDialog(parent=self)
@@ -23125,7 +23848,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # NOTE: if user requested to draw from table we load that in 
         # apps.AddPointsLayerDialog.ok_cb()
         posData = self.data[self.pos_i]
-        action.pointsData[posData.frame_i] = {}
+        action.pointsData[self.pos_i] = {posData.frame_i: {}}
         if hasattr(action, 'weighingData'):
             lab = posData.lab
             img = action.weighingData[self.pos_i][posData.frame_i]
@@ -23139,77 +23862,92 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             if len(centroid) == 3:
                 zc, yc, xc = centroid
                 z_int = round(zc)
-                if z_int not in action.pointsData[posData.frame_i]:
-                    action.pointsData[posData.frame_i][z_int] = {
+                if z_int not in action.pointsData[self.pos_i][posData.frame_i]:
+                    action.pointsData[self.pos_i][posData.frame_i][z_int] = {
                         'x': [xc], 'y': [yc]
                     }
                 else:
-                    z_data = action.pointsData[posData.frame_i][z_int]
+                    z_data = action.pointsData[self.pos_i][posData.frame_i][z_int]
                     z_data['x'].append(xc)
                     z_data['y'].append(yc)
             else:
                 yc, xc = centroid
-                if 'y' not in action.pointsData[posData.frame_i]:
-                    action.pointsData[posData.frame_i]['y'] = [yc]
-                    action.pointsData[posData.frame_i]['x'] = [xc]
+                if 'y' not in action.pointsData[self.pos_i][posData.frame_i]:
+                    action.pointsData[self.pos_i][posData.frame_i]['y'] = [yc]
+                    action.pointsData[self.pos_i][posData.frame_i]['x'] = [xc]
                 else:
-                    action.pointsData[posData.frame_i]['y'].append(yc)
-                    action.pointsData[posData.frame_i]['x'].append(xc)
+                    action.pointsData[self.pos_i][posData.frame_i]['y'].append(yc)
+                    action.pointsData[self.pos_i][posData.frame_i]['x'].append(xc)
     
     def drawPointsLayers(self, computePointsLayers=True):
         posData = self.data[self.pos_i]
-        for action in self.pointsLayersToolbar.actions()[1:]:
-            if not hasattr(action, 'layerTypeIdx'):
-                continue
+        for toolbar in self.pointsLayersToolbars:
+            for action in toolbar.actions()[1:]:
+                if not hasattr(action, 'layerTypeIdx'):
+                    continue
 
-            if action.layerTypeIdx < 2 and computePointsLayers:
-                self.getCentroidsPointsData(action)
+                if action.layerTypeIdx < 2 and computePointsLayers:
+                    self.getCentroidsPointsData(action)
 
-            if not action.button.isChecked():
-                continue
-            
-            if posData.frame_i not in action.pointsData:
-                if action.layerTypeIdx != 4:
-                    self.logger.info(
-                        f'Frame number {posData.frame_i+1} does not have any '
-                        f'"{action.layerType}" point to display.'
-                    )
-                continue
-            
-            framePointsData = action.pointsData[posData.frame_i]
-  
-            if 'x' not in framePointsData:
-                # 3D points
-                zProjHow = self.zProjComboBox.currentText()
-                isZslice = (zProjHow == 'single z-slice' and posData.SizeZ > 1)
-                if isZslice:
-                    xx, yy, ids = [], [], []
-                    zSlice = self.zSliceScrollBar.sliderPosition()
-                    zRadius = action.zRadius
-                    zRange = range(zSlice-zRadius, zSlice+zRadius+1)
-                    for z in zRange:
-                        z_data = framePointsData.get(z)
-                        if z_data is None:
-                            continue
-                        xx.extend(z_data['x'])
-                        yy.extend(z_data['y'])
-                        ids.extend(z_data['id'])
+                if not action.button.isChecked():
+                    continue
+                
+                if posData.frame_i not in action.pointsData.get(self.pos_i, set()):
+                    if action.layerTypeIdx != 4:
+                        self.logger.info(
+                            f'Frame number {posData.frame_i+1} does not have any '
+                            f'"{action.layerType}" point to display.'
+                        )
+                    continue
+                
+                framePointsData = action.pointsData[self.pos_i][posData.frame_i]
+    
+                if 'x' not in framePointsData:
+                    # 3D points
+                    zProjHow = self.zProjComboBox.currentText()
+                    isZslice = (zProjHow == 'single z-slice' and posData.SizeZ > 1)
+                    if isZslice:
+                        xx, yy, ids = [], [], []
+                        zSlice = self.zSliceScrollBar.sliderPosition()
+                        zRadius = action.zRadius
+                        zRange = range(zSlice-zRadius, zSlice+zRadius+1)
+                        for z in zRange:
+                            z_data = framePointsData.get(z)
+                            if z_data is None:
+                                continue
+                            xx.extend(z_data['x'])
+                            yy.extend(z_data['y'])
+                            ids.extend(z_data['id'])
+                    else:
+                        xx, yy, ids = [], [], []
+                        # z-projection --> draw all points
+                        for z, z_data in framePointsData.items():
+                            xx.extend(z_data['x'])
+                            yy.extend(z_data['y'])
+                            ids.extend(z_data['id'])
                 else:
-                    xx, yy, ids = [], [], []
-                    # z-projection --> draw all points
-                    for z, z_data in framePointsData.items():
-                        xx.extend(z_data['x'])
-                        yy.extend(z_data['y'])
-                        ids.extend(z_data['id'])
-            else:
-                # 2D segmentation
-                xx = framePointsData['x']
-                yy = framePointsData['y']
-                ids = framePointsData['id']
+                    # 2D segmentation
+                    xx = framePointsData['x']
+                    yy = framePointsData['y']
+                    ids = framePointsData['id']
 
-            xx = np.array(xx) # + 0.5
-            yy = np.array(yy) # + 0.5
-            action.scatterItem.setData(xx, yy, data=ids)
+                brushColors = [
+                    action.brushColor if id != 0 else action.brushColorId0
+                    for id in ids
+                ]
+                brushes = [pg.mkBrush(color) for color in brushColors]
+                
+                pensColor = [
+                    action.penColor if id != 0 else action.penColorId0
+                    for id in ids
+                ]
+                pens = [pg.mkPen(color) for color in pensColor]
+                
+                xx = np.array(xx) # + 0.5
+                yy = np.array(yy) # + 0.5
+                action.scatterItem.setData(
+                    xx, yy, data=ids, brush=brushes, pen=pens
+                )
 
     def overlay_cb(self, checked):
         self.UserNormAction, _, _ = self.getCheckNormAction()
@@ -23318,7 +24056,30 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.modelNames.append(modelName)
         self.models.append(None)
         self.sender().callback(customModelAction)
+    
+    def showInstructionsCustomPromptModel(self):
+        modelFilePath = apps.addCustomPromptModelMessages(QParent=self)
+        if modelFilePath is None:
+            self.logger.info('Adding custom promptable model process stopped.')
+            return
         
+        myutils.store_custom_promptable_model_path(modelFilePath)
+        
+        msg = widgets.myMessageBox(wrapText=False)
+        info_txt = html_utils.paragraph(f"""
+            Done!<br><br>
+            The custom promptable model has been added to the list of models.<br><br>
+            Use the <b>Magic prompts</b> button (top toolbar) to use it.<br><br>
+            Have fun!
+        """)
+        msg.information(self, 'Custom promptable model added', info_txt)
+    
+    def segmWithPromptableModelActionTriggered(self):
+        self.blinker = qutils.QControlBlink(
+            self.magicPromptsToolButton, qparent=self
+        )
+        self.blinker.start()
+    
     def setCheckedOverlayContextMenusActions(self, channelNames):
         for action in self.overlayContextMenu.actions():
             if action.text() in channelNames:
@@ -24932,9 +25693,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.update_cca_df_deletedIDs(posData, deleted_IDs)
 
         elif editTxt == 'Repeat segmentation':
-            posData.cca_df = self.getBaseCca_df()
-
-        elif editTxt == 'Random Walker segmentation':
             posData.cca_df = self.getBaseCca_df()
     
     def fixCcaDfAfterEdit(self, editTxt):
@@ -27474,7 +28232,54 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def reinitStoredSegmModels(self):
         self.models = [None]*len(self.models)
     
+    def checkAskSavePointsLayers(self):
+        for toolbar in self.pointsLayersToolbars:
+            for action in toolbar.actions()[1:]:
+                if not hasattr(action, 'layerTypeIdx'):
+                    continue
+                if action.layerTypeIdx != 4:
+                    continue
+                
+                scatterItem = action.scatterItem
+                xx, yy = scatterItem.getData()
+                
+                if xx is None:
+                    continue
+                
+                if len(xx) == 0:
+                    continue
+                
+                cancel = self.askSavePointsLayer(action)
+                if cancel:
+                    return cancel
+        
+        return False
+    
+    def askSavePointsLayer(self, action):
+        toolButton = action.button
+        tableEndName = toolButton.clickEntryTableEndName
+        saveAction = toolButton.saveAction
+        
+        txt = html_utils.paragraph(f"""
+            Do you want to <b>save</b> the points you added 
+            (table called <code>{tableEndName}.csv</code>)?
+        """
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        _, _, saveButton = msg.question(
+            self, 'Save points layer?', txt,
+            buttonsTexts=('Cancel', 'No, do not save', 'Yes, save points')
+        )
+        if msg.clickedButton == saveButton:
+            self.savePointsAddedByClicking(saveAction)
+        
+        return msg.cancel
+    
     def reInitGui(self):
+        cancel = self.checkAskSavePointsLayers()
+        if cancel:
+            return False
+        
         self.secondLevelToolbar.setVisible(False)
         
         self.gui_createLazyLoader()
@@ -27498,6 +28303,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.isDataLoaded = False
         self.retainSizeLutItems = False
         self.setMeasWinState = None
+        self.addPointsWin = None
         self.showPropsDockButton.setDisabled(True)
         self.lutItemsLayout.clear()
         self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)
@@ -27529,15 +28335,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.labelsLayerRightImg.setOpacity(alpha)
         self.lastTrackedFrameLabel.setText('')
         
+        self.promptSegmentPointsLayerToolbar.isPointsLayerInit = False
+        
         for action in self.askHowFutureFramesActions.values():
             action.setChecked(True)
             action.setDisabled(True)
+        
+        return True
     
     def reinitPointsLayers(self):
-        for action in self.pointsLayersToolbar.actions()[1:]:
-            self.pointsLayersToolbar.removeAction(action)
-        self.pointsLayersToolbar.setVisible(False)
-        self.autoPilotZoomToObjToolbar.setVisible(False)
+        for toolbar in self.pointsLayersToolbars:
+            for action in toolbar.actions()[1:]:
+                toolbar.removeAction(action)
+            toolbar.setVisible(False)
+            self.autoPilotZoomToObjToolbar.setVisible(False)
     
     def reinitWidgetsPos(self):
         pass
@@ -27651,7 +28462,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.openFolderAction.setEnabled(True)
             return
 
-        self.reInitGui()
+        proceed = self.reInitGui()
+        if not proceed:
+            self.openFolderAction.setEnabled(True)
+            return
 
         self.openFolderAction.setEnabled(False)
 
@@ -30286,6 +31100,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
     def setUncheckedPointsLayers(self):
         self.togglePointsLayerAction.setChecked(False)
+        self.magicPromptsToolButton.setChecked(False)
     
     def clearHighlightedID(self):
         try:
@@ -30307,15 +31122,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.keptIDsLineEdit, self.keepIDsConfirmAction
             )
             self.highlightHoverIDsKeptObj(0, 0, hoverID=0)
+            QTimer.singleShot(300, self.autoRange)
             return
 
         if self.brushButton.isChecked() and self.typingEditID:
             self.autoIDcheckbox.setChecked(True)
             self.typingEditID = False
+            QTimer.singleShot(300, self.autoRange)
             return
         
         if isTypingIDFunctionChecked and self.typingEditID:
             self.typingEditID = False
+            QTimer.singleShot(300, self.autoRange)
             return
         
         if self.labelRoiButton.isChecked() and self.isMouseDragImg1:
@@ -30323,6 +31141,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.labelRoiItem.setPos((0,0))
             self.labelRoiItem.setSize((0,0))
             self.freeRoiItem.clear()
+            QTimer.singleShot(300, self.autoRange)
             return
         
         self.setUncheckedAllButtons()
@@ -30337,6 +31156,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.polyLineRoi.clearPoints()
         except Exception as e:
             pass
+        QTimer.singleShot(300, self.autoRange)
     
     def askCloseAllWindows(self):
         txt = html_utils.paragraph("""
@@ -30367,6 +31187,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     
     def closeEvent(self, event):
         self.setDisabled(False)
+        cancel = self.checkAskSavePointsLayers()
+        if cancel:
+            event.ignore()
+            return
+    
         self.onEscape()
         self.saveWindowGeometry()
         
