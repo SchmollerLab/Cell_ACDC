@@ -612,14 +612,15 @@ def _initialize_image(image:np.ndarray,
 
 def check_directml_gpu_gpu(directml_gpu, gpu, ask_install=True):
     if ask_install:
-        proceed, gpu_available = myutils.check_gpu_available('cellpose_v3', use_gpu=(gpu or directml_gpu), cuda=gpu, return_gpu=True)
+        proceed, availible_frameworks_list = myutils.check_gpu_available('cellpose_v3', use_gpu=(gpu or directml_gpu), cuda=gpu, return_availible_gpu_type=True)
     else:
-        gpu_available = True
         proceed = True
+        availible_frameworks_list = ['cuda', 'directML']
 
-    if not gpu_available:
-        directml_gpu = False
+    if 'cuda' not in availible_frameworks_list:
         gpu = False
+    if 'directML' not in availible_frameworks_list:
+        directml_gpu = False
 
     if not proceed:
         return directml_gpu, gpu, proceed

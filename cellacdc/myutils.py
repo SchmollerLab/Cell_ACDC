@@ -3843,10 +3843,10 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     if msg.clickedButton == proceedButton:
         return True, False
 
-def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cuda=False, return_gpu=False):
+def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cuda=False, directML=False, return_availible_gpu_type=False):
     if not use_gpu:
-        if return_gpu:
-            return True, False
+        if return_availible_gpu_type:
+            return True, []
         else:
             return True
     
@@ -3860,10 +3860,24 @@ def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cu
                 ask_for_cuda = True
         except ModuleNotFoundError:
             ask_for_cuda = True
+    
+    ask_for_directML = False
+    if directML:
+        if is_win:
+            try:
+                import torch_directml
+                if not torch_directml.is_available():
+                    ask_for_directML = True
+            except ModuleNotFoundError:
+                ask_for_directML = True
             
     frameworks = _available_frameworks(model_name)
     ask_installs = set() if not ask_for_cuda else {'cuda'}
+    ask_installs.update(
+        {'directML'} if ask_for_directML else set()
+    )
     framework_available = False
+    availible_frameworks_list = []
     for framework, model_compatible in frameworks.items():
         if not model_compatible:
             continue
@@ -3875,7 +3889,7 @@ def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cu
                 ask_installs.add('cuda')
             else:
                 framework_available = True
-                break
+                availible_frameworks_list.append('cuda')
         elif framework == 'directML':
             if is_win:
                 try:
@@ -3884,28 +3898,30 @@ def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cu
                         ask_installs.add('directML')
                     else:
                         framework_available = True
-                        break
+                        availible_frameworks_list.append('directML')
                 except ModuleNotFoundError:
                     ask_installs.add('directML')
         elif is_mac_arm64:
             framework_available = True
             break
     
-    if framework_available and not ask_for_cuda:
-        if return_gpu:
-            return True, True
+    if framework_available and not ask_for_cuda and not ask_for_directML:
+        if return_availible_gpu_type:
+            return True, availible_frameworks_list
         else:
             return True
 
     elif do_not_warn:
-        if return_gpu:
-            return False, False
+        if return_availible_gpu_type:
+            return False, availible_frameworks_list
         else:
             return False
     
-    proceed, gpu_available = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
-    if return_gpu:
-        return proceed, gpu_available
+    proceed, directML_installed = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
+    if return_availible_gpu_type:
+        if directML_installed:
+            availible_frameworks_list.append('directML')
+        return proceed, availible_frameworks_list
     else:
         return proceed
 
