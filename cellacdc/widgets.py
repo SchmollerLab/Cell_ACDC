@@ -6504,6 +6504,9 @@ class MainPlotItem(pg.PlotItem):
         
         self.delRoiItems = {}
     
+    def setHighlighted(self, highlighted):
+        ...
+    
     def clear(self):
         super().clear()
         try:

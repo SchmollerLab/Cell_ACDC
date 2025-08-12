@@ -1,88 +1,88 @@
-.. |newAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/file-new.svg
+.. |newAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/file-new.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/file-new.svg 
     :alt: file-new icon
     :height: 16px
     :width: 16px
 
-.. |openFolderAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/folder-open.svg
+.. |openFolderAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/folder-open.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/folder-open.svg 
     :alt: folder-open icon
     :height: 16px
     :width: 16px
 
-.. |manageVersionsAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/manage_versions.svg
+.. |manageVersionsAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/manage_versions.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/manage_versions.svg 
     :alt: manageVersionsAction icon
     :height: 16px
     :width: 16px
 
-.. |saveAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/file-save.svg
+.. |saveAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/file-save.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/file-save.svg 
     :alt: saveAction icon
     :height: 16px
     :width: 16px
 
-.. |showInExplorerAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/drawer.svg
+.. |showInExplorerAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/drawer.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/drawer.svg 
     :alt: showInExplorerAction icon
     :height: 16px
     :width: 16px
 
-.. |undoAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/undo.svg
+.. |undoAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/undo.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/undo.svg
     :alt: undoAction icon
     :height: 16px
     :width: 16px
 
-.. |redoAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/redo.svg
+.. |redoAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/redo.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/redo.svg
     :alt: redoAction icon
     :height: 16px
     :width: 16px
 
-.. |findIdAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/find.svg
+.. |findIdAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/find.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/find.svg 
     :alt: findIdAction icon
     :height: 16px
     :width: 16px
 
-.. |autoPilotButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/find.svg
+.. |autoPilotButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/find.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/auto-pilot.svg 
     :alt: autoPilotButton icon
     :height: 16px
     :width: 16px
 
-.. |slideshowButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/eye-plus.svg
+.. |slideshowButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/eye-plus.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/eye-plus.svg 
     :alt: slideshowButton icon
     :height: 16px
     :width: 16px
 
-.. |skipToNewIdAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/skip_forward_new_ID.svg
+.. |skipToNewIdAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/skip_forward_new_ID.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/skip_forward_new_ID.svg 
     :alt: skipToNewIdAction icon
     :height: 16px
     :width: 16px
 
-.. |preprocessImageAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/filter_image.svg
+.. |preprocessImageAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/filter_image.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/filter_image.svg
     :alt: preprocessImageAction icon
     :height: 16px
     :width: 16px
 
-.. |overlayButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/overlay1.svg
+.. |overlayButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/overlay1.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/overlay1.svg
     :alt: overlayButton icon
     :height: 16px
     :width: 16px
 
-.. |countObjsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/count_objects.svg
+.. |countObjsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/count_objects.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/count_objects.svg
     :alt: countObjsButton icon
     :height: 16px
     :width: 16px
 
-.. |addPointsLayerAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addPointsLayer.svg
+.. |addPointsLayerAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/addPointsLayer.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addPointsLayer.svg 
     :alt: addPointsLayerAction icon
     :height: 16px
@@ -93,42 +93,45 @@
     :height: 16px
     :width: 16px
 
-.. |overlayLabelsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/overlay_labels.svg
+.. |overlayLabelsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/overlay_labels.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/overlay_labels.svg 
     :alt: overlayLabelsButton icon
     :height: 16px
     :width: 16px
 
-.. |rulerButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/ruler.svg
+.. |rulerButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/ruler.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/ruler.svg 
     :alt: rulerButton icon
     :height: 16px
     :width: 16px
 
-.. |brushButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/brush.svg
+.. |brushButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/brush.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/brush.svg 
     :alt: brushButton icon
     :height: 16px
     :width: 16px
 
-.. |eraserButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/eraser.svg
+.. |eraserButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/eraser.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/eraser.svg 
     :alt: eraserButton icon
     :height: 16px
     :width: 16px
 
-.. |curvToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/curvature-tool.svg
+.. |curvToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/curvature-tool.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/curvature-tool.svg 
     :alt: curvToolButton icon
     :height: 16px
     :width: 16px
 
-.. |wandToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/magic_wand.svg
+.. |wandToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/magic_wand.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/magic_wand.svg 
     :alt: wandToolButton icon
     :height: 16px
     :width: 16px
 
+<<<<<<< HEAD
+.. |copyLostObjButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/copyContour.svg
+=======
 .. |magicPromptsToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/magic-prompts.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/magic-prompts.svg 
     :alt: magicPromptsToolButton icon
@@ -136,175 +139,182 @@
     :width: 16px
 
 .. |copyLostObjButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/copyContour.svg
+>>>>>>> main
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/copyContour.svg
     :alt: copyLostObjButton icon
     :height: 16px
     :width: 16px
 
-.. |labelRoiButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/label_roi.svg
+.. |labelRoiButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/label_roi.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/label_roi.svg
     :alt: labelRoiButton icon
     :height: 16px
     :width: 16px
 
-.. |segmentToolAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/segment.svg
+.. |manualAnnotFutureButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/lock_id_annotate_future.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/lock_id_annotate_future.svg
+    :alt: manualAnnotFutureButton icon
+    :height: 16px
+    :width: 16px
+
+.. |segmentToolAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/segment.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/segment.svg 
     :alt: segmentToolAction icon
     :height: 16px
     :width: 16px
 
-.. |SegForLostIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addDelPolyLineRoi_cursor.svg
+.. |SegForLostIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/addDelPolyLineRoi_cursor.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addDelPolyLineRoi_cursor.svg
     :alt: SegForLostIDsButton icon
     :height: 16px
     :width: 16px
 
-.. |manualBackgroundButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/manual_background.svg
+.. |manualBackgroundButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/manual_background.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/manual_background.svg
     :alt: manualBackgroundButton icon
     :height: 16px
     :width: 16px
 
-.. |delObjsOutSegmMaskAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/del_objs_out_segm.svg
+.. |delObjsOutSegmMaskAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/del_objs_out_segm.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/del_objs_out_segm.svg 
     :alt: delObjsOutSegmMaskAction icon
     :height: 16px
     :width: 16px
 
-.. |hullContToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/hull.svg
+.. |hullContToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/hull.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/hull.svg
     :alt: hullContToolButton icon
     :height: 16px
     :width: 16px
 
-.. |fillHolesToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/fill_holes.svg
+.. |fillHolesToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/fill_holes.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/fill_holes.svg
     :alt: fillHolesToolButton icon
     :height: 16px
     :width: 16px
 
-.. |moveLabelToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/moveLabel.svg
+.. |moveLabelToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/moveLabel.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/moveLabel.svg
     :alt: moveLabelToolButton icon
     :height: 16px
     :width: 16px
 
-.. |expandLabelToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/expandLabel.svg
+.. |expandLabelToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/expandLabel.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/expandLabel.svg
     :alt: expandLabelToolButton icon
     :height: 16px
     :width: 16px
 
-.. |editIDbutton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/edit-id.svg
+.. |editIDbutton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/edit-id.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/edit-id.svg
     :alt: editIDbutton icon
     :height: 16px
     :width: 16px
 
-.. |separateBudButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/separate-bud.svg
+.. |separateBudButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/separate-bud.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/separate-bud.svg
     :alt: separateBudButton icon
     :height: 16px
     :width: 16px
 
-.. |mergeIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/merge-IDs.svg
+.. |mergeIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/merge-IDs.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/merge-IDs.svg
     :alt: mergeIDsButton icon
     :height: 16px
     :width: 16px
 
-.. |keepIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/keep_objects.svg
+.. |keepIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/keep_objects.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/keep_objects.svg
     :alt: keepIDsButton icon
     :height: 16px
     :width: 16px
 
-.. |whitelistIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/whitelist.svg
+.. |whitelistIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/whitelist.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/whitelist.svg
     :alt: whitelistIDsButton icon
     :height: 16px
     :width: 16px
 
-.. |binCellButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/bin.svg
+.. |binCellButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/bin.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/bin.svg
     :alt: binCellButton icon
     :height: 16px
     :width: 16px
 
-.. |ripCellButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/rip.svg
+.. |ripCellButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/rip.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/rip.svg
     :alt: ripCellButton icon
     :height: 16px
     :width: 16px
 
-.. |addDelRoiAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addDelRoi.svg
+.. |addDelRoiAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/addDelRoi.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addDelRoi.svg
     :alt: addDelRoiAction icon
     :height: 16px
     :width: 16px
 
-.. |drawClearRegionButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/clear_freehand_region.svg
+.. |drawClearRegionButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/clear_freehand_region.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/clear_freehand_region.svg
     :alt: drawClearRegionButton icon
     :height: 16px
     :width: 16px
 
-.. |addDelPolyLineRoiButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addDelPolyLineRoi.svg
+.. |addDelPolyLineRoiButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/addDelPolyLineRoi.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addDelPolyLineRoi.svg
     :alt: addDelPolyLineRoiButton icon
     :height: 16px
     :width: 16px
 
-.. |delBorderObjAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/delBorderObj.svg
+.. |delBorderObjAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/delBorderObj.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/delBorderObj.svg
     :alt: delBorderObjAction icon
     :height: 16px
     :width: 16px
 
-.. |repeatTrackingAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/repeat-tracking.svg
+.. |repeatTrackingAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/repeat-tracking.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/repeat-tracking.svg
     :alt: repeatTrackingAction icon
     :height: 16px
     :width: 16px
 
-.. |manualTrackingButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/manual_tracking.svg
+.. |manualTrackingButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/manual_tracking.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/manual_tracking.svg
     :alt: manualTrackingButton icon
     :height: 16px
     :width: 16px
 
 
-.. |reinitLastSegmFrameAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/reinitLastSegm.svg
+.. |reinitLastSegmFrameAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/reinitLastSegm.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/reinitLastSegm.svg
     :alt: reinitLastSegmFrameAction icon
     :height: 16px
     :width: 16px
 
-.. |assignBudMothButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/assign-motherbud.svg
+.. |assignBudMothButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/assign-motherbud.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/assign-motherbud.svg
     :alt: assignBudMothButton icon
     :height: 16px
     :width: 16px
 
-.. |setIsHistoryKnownButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/history.svg
+.. |setIsHistoryKnownButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/history.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/history.svg
     :alt: setIsHistoryKnownButton icon
     :height: 16px
     :width: 16px
 
-.. |assignBudMothAutoAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/autoAssign.svg
+.. |assignBudMothAutoAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/autoAssign.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/autoAssign.svg
     :alt: assignBudMothAutoAction icon
     :height: 16px
     :width: 16px
 
-.. |editCcaToolAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/edit_cca.svg
+.. |editCcaToolAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/edit_cca.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/edit_cca.svg
     :alt: editCcaToolAction icon
     :height: 16px
     :width: 16px
 
-.. |reInitCcaAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/reinitCca.svg
+.. |reInitCcaAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/reinitCca.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/reinitCca.svg
     :alt: reInitCcaAction icon
     :height: 16px
@@ -316,31 +326,31 @@
     :height: 16px
     :width: 16px
 
-.. |findNextMotherButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/magnGlass.svg
+.. |findNextMotherButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/magnGlass.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/magnGlass.svg
     :alt: magnGlass icon
     :height: 16px
     :width: 16px
 
-.. |unknownLineageButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/history.svg
+.. |unknownLineageButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/history.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/history.svg
     :alt: history icon
     :height: 16px
     :width: 16px
 
-.. |noToolLinTreeButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/arrow_cursor.svg
+.. |noToolLinTreeButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/arrow_cursor.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/arrow_cursor.svg
     :alt: arrow_cursor icon
     :height: 16px
     :width: 16px
 
-.. |propagateLinTreeButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/compute.svg
+.. |propagateLinTreeButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/compute.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/compute.svg
     :alt: compute icon
     :height: 16px
     :width: 16px
 
-.. |viewLinTreeInfoButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addCustomAnnotation.svg
+.. |viewLinTreeInfoButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/addCustomAnnotation.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addCustomAnnotation.svg
     :alt: addCustomAnnotation icon
     :height: 16px
@@ -410,6 +420,11 @@ Edit tools: Segmentation and tracking
 * **Magic Wand (** |wandToolButton| **"Ctrl+D"):** Create a new object using neighbouring pixels whose intensity is within a selected tolerance. Left-click for single selection or left-click and then drag for continous selection.
 * **Magic prompts (** |magicPromptsToolButton| **"W"):** Use promptable models (e.g., Segment Anything) to refine objects or generate new ones interactively with prompts (e.g., points). Prompts are added with both the left, right, and middle-click
 * **Copy lost contour (** |copyLostObjButton| **"V"):** Hover onto lost object contour --> right-click to copy the contour as a new object.
+* **Manually annotate future frames (** |manualAnnotFutureButton| **"Y"):**
+    1. Activate to automatically set the brush ID to the hovered ID. 
+       --> Warning about lost objects temporarily disabled
+    2. Annotate future frames
+    3. Deactivate to go back to the frame you were annotating before activating this tool.
 * **Magic labeller (** |labelRoiButton| **"L"):** Draw a rectangular ROI around object(s) you want to segment. Draw with LEFT button to label with last used model. Draw with RIGHT button to choose a different segmentation model.
 * **Segment (** |segmentToolAction| **"R"):** Segment with last used model and last used parameters. If you never selected a segmentation model before, you will be asked to choose one and initialize its parameters.
 * **Segmenting for lost IDs (** |SegForLostIDsButton| **):** Segment only a small cutout of the image around missing IDs based on the segmentation of the previous frame. Will always use cellpose model. Parameters can be adjusted in the top ribbon under Segment --> Edit settings for Segmenting lost IDs. In the settings menu, additional parameters can be set like padding and overlap threshold in addition to the model settings.
