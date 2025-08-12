@@ -6503,9 +6503,62 @@ class MainPlotItem(pg.PlotItem):
             self.infoTextItem.setPos(0,0)
         
         self.delRoiItems = {}
+        self.highlightingRectItems = None
+        self._imageItem = None
+    
+    def addHighlightingRectItems(self):
+        self.highlightingRectItems = {
+            'left': RectItem(QRectF()),
+            'right': RectItem(QRectF()),
+            'top': RectItem(QRectF()),
+            'bottom': RectItem(QRectF())
+        }
+        for rect in self.highlightingRectItems.values():
+            self.addItem(rect)
+    
+    def addImageItem(self, imageItem):
+        self._imageItem = imageItem
+        self.addItem(imageItem)
     
     def setHighlighted(self, highlighted):
-        ...
+        if self.highlightingRectItems is None:
+            self.addHighlightingRectItems()
+        
+        if not highlighted:
+            for rect in self.highlightingRectItems.values():
+                rect.setQRect(QRectF())
+            return
+        
+        ((xmin, xmax), (ymin, ymax)) = self.viewRange()
+        xmin = xmin if xmin >= 0 else 0
+        ymin = ymin if ymin >= 0 else 0
+        if self._imageItem is not None:
+            Y, X = self._imageItem.image.shape[:2]
+            xmax = min(xmax, X)
+            ymax = min(ymax, Y)
+        
+        w = xmax - xmin
+        h = ymax - ymin
+        
+        bs = round(((w + h) / 2) * 0.02)
+        if bs < 1:
+            bs = 1
+        
+        x0 = xmin
+        x1 = xmin + bs
+        x2 = xmax - bs
+        x3 = xmax
+        
+        y0 = ymin
+        y1 = ymin + bs
+        y2 = ymax - bs
+        y3 = ymax
+        
+        self.highlightingRectItems['left'].setRect(x0, y0, bs, y3-y0)
+        self.highlightingRectItems['top'].setRect(x1, y0, x3-x1, bs)
+        self.highlightingRectItems['right'].setRect(x2, y1, bs, y3-y1)
+        self.highlightingRectItems['bottom'].setRect(x1, y2, x2-x1, bs)
+        self.update()
     
     def clear(self):
         super().clear()
@@ -10737,6 +10790,16 @@ class RectItem(pg.GraphicsObject):
         self.picture = QPicture()
         self._generate_picture()
 
+    def setRect(self, x, y, width, height):
+        self._rect = QRectF(x, y, width, height)
+        self._generate_picture()
+        self.update()
+    
+    def setQRect(self, qrect):
+        self._rect = qrect
+        self._generate_picture()
+        self.update()
+    
     @property
     def rect(self):
         return self._rect
@@ -10744,7 +10807,7 @@ class RectItem(pg.GraphicsObject):
     def _generate_picture(self):
         painter = QPainter(self.picture)
         painter.setPen(self._pen)
-        painter.setBrush(self._brush )
+        painter.setBrush(self._brush)
         painter.drawRect(self._rect)
         painter.end()
 
