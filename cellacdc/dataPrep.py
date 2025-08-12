@@ -168,19 +168,19 @@ class dataPrepWin(QMainWindow):
             #     print('-'*20)
             #     print(yt, yt+h, yt+h>yt)
             #     print(xl, xl+w, xl+w>xl)
-        if event.key() == Qt.Key_Left:
+        if event.key() == Qt.Key_Left and self.navigateScrollbar.isEnabled():
             self.navigateScrollbar.triggerAction(
                 QAbstractSlider.SliderAction.SliderSingleStepSub
             )
-        elif event.key() == Qt.Key_Right:
+        elif event.key() == Qt.Key_Right and self.navigateScrollbar.isEnabled():
             self.navigateScrollbar.triggerAction(
                 QAbstractSlider.SliderAction.SliderSingleStepAdd
             )
-        elif event.key() == Qt.Key_Up:
+        elif event.key() == Qt.Key_Up and self.zSliceScrollBar.isEnabled():
             self.zSliceScrollBar.triggerAction(
                 QAbstractSlider.SliderAction.SliderSingleStepAdd
             )
-        elif event.key() == Qt.Key_Down:
+        elif event.key() == Qt.Key_Down and self.zSliceScrollBar.isEnabled():
             self.zSliceScrollBar.triggerAction(
                 QAbstractSlider.SliderAction.SliderSingleStepSub
             )
@@ -2166,15 +2166,16 @@ class dataPrepWin(QMainWindow):
 
     def save_segmInfo_df_pos(self):
         # Launch a separate thread to save to csv and keep gui responsive
-        self.thread = QThread()
-        self.worker = toCsvWorker()
-        self.worker.setData(self.data)
-        self.worker.moveToThread(self.thread)
-        self.thread.started.connect(self.worker.run)
-        self.worker.finished.connect(self.thread.quit)
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self.thread.deleteLater)
-        self.thread.start()
+        thread = QThread()
+        worker = toCsvWorker()
+        worker.setData(self.data)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+        self.saveSegmInfoWorkers.append((thread, worker))
 
     def useSameZ_fromHereBack(self, event):
         how = self.zProjComboBox.currentText()
@@ -2844,7 +2845,6 @@ class dataPrepWin(QMainWindow):
         # Connect events at the end of loading data process
         self.gui_connectGraphicsEvents()
         
-
         exp_path = self.data[self.pos_i].exp_path
         pos_foldernames = myutils.get_pos_foldernames(exp_path)
         if len(pos_foldernames) == 1:
@@ -2899,6 +2899,8 @@ class dataPrepWin(QMainWindow):
         
         self.freeRoiItem = None
         self.freeRoiMask = None
+        
+        self.saveSegmInfoWorkers = []
 
     def showAbout(self):
         self.aboutWin = about.QDialogAbout(parent=self)
