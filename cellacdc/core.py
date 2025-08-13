@@ -3957,3 +3957,18 @@ def apply_func_to_imgs(image:np.ndarray,
         printl(f"Processing time: {(t1 - t0)*1000:.2f} ms")
 
     return image_out
+
+
+def fill_holes_in_segmentation(labels):
+    filled = np.zeros_like(labels)
+    for obj in skimage.measure.regionprops(labels):
+        label_id = obj.label
+        mask_filled = scipy.ndimage.binary_fill_holes(obj.image)
+        
+        region = filled[obj.slice]
+        # Only fill where mask_filled is True and region is still background
+        fill_mask = mask_filled & (region == 0)
+        region[fill_mask] = label_id
+        filled[obj.slice] = region
+
+    return filled

@@ -173,6 +173,8 @@ def get_data_exception_handler(func):
                 also <b>saved in the following file</b>:<br><br>
                 {self.log_path}<br><br>
                 Please <b>send the log file</b> when reporting a bug, thanks!
+                <b>Please restart Cell-ACDC, we apologise for any inconvenience.</b><br><br>
+
             """)
 
             msg.critical(self, 'Critical error', err_msg)
@@ -30251,6 +30253,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             in the file<br>
             {self.log_path}<br><br>
             Please <b>send the log file</b> when reporting a bug, thanks!
+            <b>Please restart Cell-ACDC, we apologise for any inconvenience.</b><br><br>
+
         """)
         msg.addShowInFileManagerButton(self.logs_path, txt='Show log file...')
         msg.setDetailedText(traceback_format, visible=True)
