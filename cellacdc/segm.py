@@ -949,6 +949,12 @@ class segmWin(QMainWindow):
         self.exp_path = exp_path
         self.user_ch_file_paths = user_ch_file_paths
         self.user_ch_name = user_ch_name
+        
+        proceed = self.askSaveMeasurements()
+        if not proceed:
+            self.logger.info('Segmentation process interrupted.')
+            self.close()
+            return
 
         proceed = self.askRunNowOrSaveConfigFile()
         if not proceed:
@@ -1101,6 +1107,30 @@ class segmWin(QMainWindow):
         
         config_filepath = os.path.join(folder_path, config_filename)
         self._saveConfigurationFile(config_filepath)
+    
+    def askSaveMeasurements(self):
+        acdcOutputEndname = (
+            self.endFilenameSegm.replace('segm', 'acdc_output')
+            .replace('.npz', '.csv')
+        )
+        txt = html_utils.paragraph(f"""
+            Do you also want to <b>save measurements</b> in the 
+            <code>{acdcOutputEndname}</code> table after segmentation?
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        saveButton = widgets.savePushButton('Save measurements')
+        noSaveButton = widgets.noPushButton('Do not save measurements')
+        _, saveButton, noSaveButton = msg.question(
+            self, 'Save measurements?', txt, 
+            buttonsTexts=(
+                'Cancel', saveButton, noSaveButton
+            )
+        )
+        if msg.cancel:
+            return False
+        
+        self.doSaveMeasurements = msg.clickedButton == saveButton
+        return True
     
     def askRunNowOrSaveConfigFile(self):
         txt = html_utils.paragraph("""

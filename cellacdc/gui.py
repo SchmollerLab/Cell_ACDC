@@ -824,7 +824,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # Settings menu
         self.settingsMenu = QMenu("Settings", self)
         menuBar.addMenu(self.settingsMenu)
+        self.settingsMenu.addAction(self.invertBwAction)
         self.settingsMenu.addAction(self.toggleColorSchemeAction)
+        self.settingsMenu.addSeparator()
         self.settingsMenu.addAction(self.pxModeAction)
         self.settingsMenu.addAction(self.highLowResAction)
         self.settingsMenu.addAction(self.editShortcutsAction)
@@ -2887,6 +2889,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.nextAction.triggered.connect(self.nextActionTriggered)
         self.prevAction.triggered.connect(self.prevActionTriggered)
 
+        self.invertBwAction.toggled.connect(self.invertBw)
         self.toggleColorSchemeAction.triggered.connect(self.onToggleColorScheme)
         self.pxModeAction.clicked.connect(self.pxModeActionToggled)
         self.editShortcutsAction.triggered.connect(self.editShortcuts_cb)
@@ -3223,7 +3226,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
         self.addScaleBarAction.toggled.connect(self.addScaleBar)
         self.addTimestampAction.toggled.connect(self.addTimestamp)
-        self.invertBwAction.toggled.connect(self.invertBw)
         self.saveLabColormapAction.triggered.connect(self.saveLabelsColormap)
 
         self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
@@ -11512,11 +11514,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def invertBw(self, checked, update=True):
         self.invertBwAlreadyCalledOnce = True
         
-        self.labelsGrad.invertBwAction.toggled.disconnect()
+        try:
+            self.labelsGrad.invertBwAction.toggled.disconnect()
+        except Exception as err:
+            pass
+        
         self.labelsGrad.invertBwAction.setChecked(checked)
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
 
-        self.imgGrad.invertBwAction.toggled.disconnect()
+        try:
+            self.imgGrad.invertBwAction.toggled.disconnect()
+        except Exception as err:
+            pass
         self.imgGrad.invertBwAction.setChecked(checked)
         self.imgGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
 
@@ -11526,12 +11535,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.imgGradRight.setInvertedColorMaps(checked)
         self.imgGradRight.invertCurrentColormap(checked)
 
-        for items in self.overlayLayersItems.values():
-            lutItem = items[1]
-            lutItem.invertBwAction.toggled.disconnect()
-            lutItem.invertBwAction.setChecked(checked)
-            lutItem.invertBwAction.toggled.connect(self.setCheckedInvertBW)
-            lutItem.setInvertedColorMaps(checked)
+        if hasattr(self, 'overlayLayersItems'):
+            for items in self.overlayLayersItems.values():
+                lutItem = items[1]
+                lutItem.invertBwAction.toggled.disconnect()
+                lutItem.invertBwAction.setChecked(checked)
+                lutItem.invertBwAction.toggled.connect(self.setCheckedInvertBW)
+                lutItem.setInvertedColorMaps(checked)
 
         if self.slideshowWin is not None:
             self.slideshowWin.is_bw_inverted = checked
@@ -11554,6 +11564,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.ax2_BrushCirclePen = pg.mkPen(width=2)
             self.ax2_BrushCircleBrush = pg.mkBrush((255,255,255,50))
             self.titleColor = 'white'
+        
+        if not hasattr(self, 'textAnnot'):
+            return
         
         self.textAnnot[0].invertBlackAndWhite()
         self.textAnnot[1].invertBlackAndWhite()
