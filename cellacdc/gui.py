@@ -17963,7 +17963,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.navigateScrollBar.setMaximum(self.last_cca_frame_i+1)
                 self.navSpinBox.setMaximum(self.last_cca_frame_i+1)
             self.lastTrackedFrameLabel.setText(
-                f'Last cc annot. frame n. = {self.last_cca_frame_i+1}'
+                f'Last cc annot. frame n. = {self.navSpinBox.maximum()}'
             )
         elif mode == 'Normal division: Lineage tree':
             if self.lineage_tree is None:
