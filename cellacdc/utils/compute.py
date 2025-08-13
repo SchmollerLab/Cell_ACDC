@@ -23,11 +23,16 @@ favourite_func_metrics_csv_path = os.path.join(
 )
 
 class computeMeasurmentsUtilWin(QDialog):
-    def __init__(self, expPaths, app, parent=None):
+    def __init__(
+            self, expPaths, app, parent=None, segmEndname='', 
+            doRunComputation=True
+        ):
         super().__init__(parent)
         self.setWindowTitle('Compute measurements utility')
 
         self.parent = parent
+        
+        self.cancel = False
 
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
             module='utils.computeMeasurements'
@@ -42,6 +47,8 @@ class computeMeasurmentsUtilWin(QDialog):
         self.abort = False
         self.worker = None
         self.progressWin = None
+        self.endFilenameSegm = segmEndname
+        self.doRunComputation = doRunComputation
 
         mainLayout = QVBoxLayout()
 
@@ -76,7 +83,7 @@ class computeMeasurmentsUtilWin(QDialog):
     def showEvent(self, event):
         self.runWorker()
 
-    def runWorker(self):
+    def runWorker(self, showProgress=True):
         self.gui = gui.guiWin(self.app, parent=self.parent)
         self.gui.logger = self.logger
 
@@ -87,6 +94,9 @@ class computeMeasurmentsUtilWin(QDialog):
         self.progressWin.sigClosed.connect(self.progressWinClosed)
         self.progressWin.show(self.app)
 
+        if not showProgress:
+            self.progressWin.hide()
+        
         self.thread = QThread()
         self.worker = workers.ComputeMetricsWorker(self)
         self.worker.moveToThread(self.thread)
@@ -98,7 +108,12 @@ class computeMeasurmentsUtilWin(QDialog):
 
         self.worker.signals.progress.connect(self.workerProgress)
         self.worker.signals.critical.connect(self.workerCritical)
-        self.worker.signals.sigSelectSegmFiles.connect(self.selectSegmFileLoadData)
+        if not self.endFilenameSegm:
+            self.worker.signals.sigSelectSegmFiles.connect(
+                self.selectSegmFileLoadData
+            )
+        else:
+            self.worker.signals.sigSelectSegmFiles.connect(self.wakeUpWorkerThread)
         self.worker.signals.sigInitAddMetrics.connect(self.initAddMetricsWorker)
         self.worker.signals.sigPermissionError.connect(self.warnPermissionError)
         self.worker.signals.initProgressBar.connect(self.workerInitProgressbar)
@@ -110,6 +125,9 @@ class computeMeasurmentsUtilWin(QDialog):
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+    
+    def wakeUpWorkerThread(self, *args, **kwargs):
+        self.worker.waitCond.wakeAll()
     
     def warnErrors(
             self, standardMetricsErrors, customMetricsErrors, regionPropsErrors
@@ -265,6 +283,7 @@ class computeMeasurmentsUtilWin(QDialog):
     def abortWorkerMeasurementsWin(self):
         self.worker.abort = self.measurementsWin.cancel
         self.worker.waitCond.wakeAll()
+        self.cancel = True
 
     def startSaveDataWorker(self):
         self.gui.ch_names = self.posData.chNames
@@ -275,6 +294,12 @@ class computeMeasurmentsUtilWin(QDialog):
         self.gui.mutex = self.worker.mutex
         self.gui.waitCond = self.worker.waitCond
         self.gui.saveWin = self.progressWin
+        
+        if not self.doRunComputation:
+            self.worker.setup_done = True
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return
 
         self.gui.saveDataWorker = workers.saveDataWorker(self.gui)
 
@@ -356,11 +381,16 @@ class computeMeasurmentsUtilWin(QDialog):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
-        if worker.abort:
+            
+        if worker.setup_done:
+            txt = 'Measurements set up completed.'
+            self.logger.info(txt)
+        elif worker.abort:
             txt = 'Computing measurements ABORTED.'
             self.logger.info(txt)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             msg.warning(self, 'Process aborted', html_utils.paragraph(txt))
+        
         else:
             txt = 'Computing measurements completed.'
             self.logger.info(txt)

@@ -1226,6 +1226,7 @@ class ComputeMetricsWorker(QObject):
         QObject.__init__(self)
         self.signals = signals()
         self.abort = False
+        self.setup_done = False
         self.logger = workerLogger(self.signals.progress)
         self.mutex = QMutex()
         self.waitCond = QWaitCondition()

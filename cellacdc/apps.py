@@ -10097,7 +10097,7 @@ class manualSeparateGui(QMainWindow):
             self.curvAnchors.setData([], [])
             self.freeHandItem.setData([], [])
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
-            self.ok_cb()
+            self.ok_cb(True)
 
     def getOverlay(self):
         # Rescale intensity based on hist ticks values

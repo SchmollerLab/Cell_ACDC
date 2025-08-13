@@ -3957,3 +3957,20 @@ def apply_func_to_imgs(image:np.ndarray,
         printl(f"Processing time: {(t1 - t0)*1000:.2f} ms")
 
     return image_out
+
+class ComputeMeasurementsKernel(_WorkflowKernel):
+    def __init__(self, logger, log_path, is_cli):
+        super().__init__(logger, log_path, is_cli=is_cli)
+    
+    def set_metrics(
+            self, 
+            channel_names: list[str]
+        ):
+        self.chNamesToSkip = []
+        self.metricsToSkip = {chName:[] for chName in channel_names}
+        self.metricsToSave = {chName:[] for chName in channel_names}
+        self.calc_for_each_zslice_mapper = {}
+        self.calc_size_for_each_zslice = False
+    
+    def run():
+        ...

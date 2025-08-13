@@ -24,7 +24,8 @@ from qtpy.QtWidgets import (
     QStyleFactory, QWidget, QMessageBox, QTextEdit
 )
 from qtpy.QtCore import (
-    Qt, QEventLoop, Signal, QObject, QMutex, QWaitCondition, QThread
+    Qt, QEventLoop, Signal, QObject, QMutex, QWaitCondition, QThread, 
+    QTimer
 )
 from qtpy import QtGui
 import qtpy.compat
@@ -950,11 +951,11 @@ class segmWin(QMainWindow):
         self.user_ch_file_paths = user_ch_file_paths
         self.user_ch_name = user_ch_name
         
-        # proceed = self.askSaveMeasurements()
-        # if not proceed:
-        #     self.logger.info('Segmentation process interrupted.')
-        #     self.close()
-        #     return
+        proceed = self.askSaveMeasurements()
+        if not proceed:
+            self.logger.info('Segmentation process interrupted.')
+            self.close()
+            return
 
         proceed = self.askRunNowOrSaveConfigFile()
         if not proceed:
@@ -1118,19 +1119,55 @@ class segmWin(QMainWindow):
             <code>{acdcOutputEndname}</code> table after segmentation?
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        saveButton = widgets.savePushButton('Save measurements')
+        saveButton = widgets.savePushButton('Yes, save measurements')
         noSaveButton = widgets.noPushButton('Do not save measurements')
-        _, saveButton, noSaveButton = msg.question(
+        msg.question(
             self, 'Save measurements?', txt, 
             buttonsTexts=(
-                'Cancel', saveButton, noSaveButton
+                'Cancel', noSaveButton, saveButton
             )
         )
         if msg.cancel:
             return False
         
-        self.doSaveMeasurements = msg.clickedButton == saveButton
-        return True
+        if not msg.clickedButton == saveButton:
+            return True
+        
+        self.logger.info('Setting up measurements...')
+        
+        segmEndname = self.endFilenameSegm.replace('.npz', '')
+        images_path = os.path.dirname(self.user_ch_file_paths[0])
+        pos_path = os.path.dirname(images_path)
+        exp_path = os.path.dirname(pos_path)
+        pos_foldernames = [
+            os.path.basename(os.path.dirname(os.path.dirname(img_path))) 
+            for img_path in self.user_ch_file_paths
+        ]
+        selectedExpPaths = {exp_path: pos_foldernames}
+        
+        from .utils import compute as utilsCompute
+        self.calcMeasUtility = utilsCompute.computeMeasurmentsUtilWin(
+            selectedExpPaths, self.app, segmEndname=segmEndname, 
+            parent=self, doRunComputation=False
+        )
+        self.calcMeasUtility.runWorker(showProgress=False)
+        self.waitCalcMeasUtility()
+        
+        return not self.calcMeasUtility.cancel
+    
+    def waitCalcMeasUtility(self):
+        self.waitCalcMeasUtilityTimer = QTimer(self)
+        self.waitCalcMeasUtilityTimer.timeout.connect(
+            partial(self.checkCalcMeasUtilityFinished, self.calcMeasUtility)
+        )
+        self.waitCalcMeasUtilityTimer.start(100)
+        self.waitCalcMeasUtilityLoop = QEventLoop()
+        self.waitCalcMeasUtilityLoop.exec_()
+
+    def checkCalcMeasUtilityFinished(self, calcMeasUtility):
+        if calcMeasUtility.worker is None:
+            self.waitCalcMeasUtilityLoop.exit()
+            self.waitCalcMeasUtilityTimer.stop()
     
     def askRunNowOrSaveConfigFile(self):
         txt = html_utils.paragraph("""
