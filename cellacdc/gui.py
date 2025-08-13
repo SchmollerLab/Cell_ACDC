@@ -27193,6 +27193,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self, lost_IDs=None, new_IDs=None, IDs_with_holes=None, 
             tracked_lost_IDs=None
         ):
+        if self.manualAnnotFutureButton.isChecked():
+            lockedID = self.editIDspinbox.value()
+            frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
+            txt = (
+                f'Manually annotating ID {lockedID} '
+                f'since frame n. {frame_to_restore+1}'
+            )
+            htmlTxt = f'<font color="orange">{txt}</font>'
+            self.titleLabel.setText(htmlTxt)
+            return
+        
         mode = self.modeComboBox.currentText()
         try:
             posData = self.data[self.pos_i]

@@ -661,6 +661,19 @@ def addToRecentPaths(exp_path, logger=None):
     df.to_csv(recentPaths_path)
 
 def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
+    if not filenames:
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'Cell-ACDC could not find any files in the folder '
+            f'<b>{parent_path}</b>.<br><br>'
+            'Please make sure that the folder contains at least one image file.<br><br>'
+            'Thank you for your patience!'
+        )
+        msg.warning(parentQWidget, 'Selected folder is emppty', txt)
+        raise FileNotFoundError(
+            f'No files found in the folder {parent_path}. '
+        )
+            
     char = filenames[0][:2]
     startWithSameChar = all([f.startswith(char) for f in filenames])
     if not startWithSameChar:
@@ -1923,8 +1936,8 @@ def _write_model_location_to_txt(model_name):
     return os.path.expanduser(model_path)
 
 def determine_folder_type(folder_path):
-    is_pos_folder = os.path.basename(folder_path).find('Position_') != -1
-    is_images_folder = os.path.basename(folder_path) == 'Images'
+    is_pos_folder = is_pos_folderpath(folder_path)
+    is_images_folder = folder_path.endswith('Images') and listdir(folder_path)
     contains_images_folder = os.path.exists(
         os.path.join(folder_path, 'Images')
     )
@@ -1936,6 +1949,7 @@ def determine_folder_type(folder_path):
         # Folder created by loading an image
         is_images_folder = True
         folder_path = os.path.join(folder_path, 'Images')
+    
     return is_pos_folder, is_images_folder, folder_path
 
 def download_model(model_name):
@@ -4442,6 +4456,7 @@ def is_pos_folderpath(folderpath):
         re.search(r'^Position_(\d+)$', foldername) is not None
         and os.path.isdir(folderpath)
         and os.path.exists(os.path.join(folderpath, 'Images'))
+        and listdir(os.path.join(folderpath, 'Images'))
     )
     return is_valid_pos_folder
 
