@@ -12612,12 +12612,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             hoverID = self.getLastHoveredID()
             if hoverID == 0:
                 win = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter the ID that you want to lock for future frames.',
+                    title='Not hovering any ID',
+                    msg='You are not hovering on any ID.\n'
+                        'Enter the ID that you want to lock for future frames.',
                     parent=self, 
                     allowedValues=posData.IDs,
                 )
+                win.exec_()
                 if win.cancel:
                     self.manualAnnotFutureButton.setChecked(False)
                     return
@@ -27193,6 +27194,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self, lost_IDs=None, new_IDs=None, IDs_with_holes=None, 
             tracked_lost_IDs=None
         ):
+        if self.manualAnnotFutureButton.isChecked():
+            lockedID = self.editIDspinbox.value()
+            frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
+            txt = (
+                f'Manually annotating ID {lockedID} '
+                f'since frame n. {frame_to_restore+1}'
+            )
+            htmlTxt = f'<font color="orange">{txt}</font>'
+            self.titleLabel.setText(htmlTxt)
+            return
+        
         mode = self.modeComboBox.currentText()
         try:
             posData = self.data[self.pos_i]
