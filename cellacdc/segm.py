@@ -950,11 +950,11 @@ class segmWin(QMainWindow):
         self.user_ch_file_paths = user_ch_file_paths
         self.user_ch_name = user_ch_name
         
-        proceed = self.askSaveMeasurements()
-        if not proceed:
-            self.logger.info('Segmentation process interrupted.')
-            self.close()
-            return
+        # proceed = self.askSaveMeasurements()
+        # if not proceed:
+        #     self.logger.info('Segmentation process interrupted.')
+        #     self.close()
+        #     return
 
         proceed = self.askRunNowOrSaveConfigFile()
         if not proceed:
