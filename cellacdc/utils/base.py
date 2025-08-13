@@ -435,12 +435,55 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             self.progressWin.workerFinished = True
 
         try:
+            if isinstance(error, tuple):
+                worker, error = error
+            else:
+                worker = None
             raise error
         except:
             print('='*20)
-            self.worker.logger.log(traceback.format_exc())
+            if hasattr(self, 'worker'):
+                self.worker.logger.log(traceback.format_exc())
+            elif worker is not None and hasattr(worker, 'logger'):
+                worker.logger.log(traceback.format_exc())
+            elif hasattr(self, 'logger'):
+                self.logger.log(traceback.format_exc())
+            else:
+                print(traceback.format_exc())
             print('='*20)
             result = _critical_exception_gui(self, f'{self._title} utility')
+            # mutex and workerFinished handeling
+            if worker is not None:
+                try:
+                    worker.workerAborted()
+                except:
+                    pass
+                try:
+                    worker.progressWin.workerFinished = True
+                    worker.progressWin.close()
+                except:
+                    pass
+                try:
+                    worker.waitCond.wakeAll()
+                except:
+                    pass
+            if hasattr(self, 'worker'):
+                try:
+                    self.worker.workerAborted()
+                except:
+                    pass
+                try:
+                    self.worker.progressWin.workerFinished = True
+                    self.worker.progressWin.close()
+                except:
+                    pass
+                try:
+                    self.worker.waitCond.wakeAll()
+                except:
+                    pass
+
+            if self.progressWin is not None:
+                self.progressWin.close()
 
     def workerFinished(self, worker):
         if self.progressWin is not None:

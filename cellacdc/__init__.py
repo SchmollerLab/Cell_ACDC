@@ -513,6 +513,7 @@ def _critical_exception_gui(self, func_name):
         You can <b>report</b> this error by opening an issue
         on our {href}.<br><br>
         Please <b>send the log file</b> when reporting the error, thanks!<br><br>
+        <b>Please restart Cell-ACDC, we apologise for any inconvenience.</b><br><br>
         NOTE: the <b>log file</b> with the <b>error details</b> can be found 
         here:
     """)
