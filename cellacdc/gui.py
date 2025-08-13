@@ -12651,6 +12651,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.updateScrollbars()
             self.ax1.sigRangeChanged.disconnect()
             self.ax1.setHighlighted(False)
+            QTimer.singleShot(200, self.autoRange)
     
     def copyLostObjectContour(self, ID: int):
         posData = self.data[self.pos_i]
