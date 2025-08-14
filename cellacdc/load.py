@@ -1369,6 +1369,34 @@ class loadData:
         else:
             return
 
+    def init_segmInfo_df(self):
+        if self.SizeZ > 1 and self.segmInfo_df is not None:
+            if 'z_slice_used_gui' not in self.segmInfo_df.columns:
+                self.segmInfo_df['z_slice_used_gui'] = (
+                    self.segmInfo_df['z_slice_used_dataPrep']
+                )
+            if 'which_z_proj_gui' not in self.segmInfo_df.columns:
+                self.segmInfo_df['which_z_proj_gui'] = (
+                    self.segmInfo_df['which_z_proj']
+                )
+            self.segmInfo_df['resegmented_in_gui'] = False
+            self.segmInfo_df.to_csv(self.segmInfo_df_csv_path)
+
+        NO_segmInfo = (
+            self.segmInfo_df is None
+            or self.filename not in self.segmInfo_df.index
+        )
+        if NO_segmInfo and self.SizeZ > 1:
+            filename = self.filename
+            df = myutils.getDefault_SegmInfo_df(self, filename)
+            if self.segmInfo_df is None:
+                self.segmInfo_df = df
+            else:
+                self.segmInfo_df = pd.concat([df, self.segmInfo_df])
+                unique_idx = ~self.segmInfo_df.index.duplicated()
+                self.segmInfo_df = self.segmInfo_df[unique_idx]
+            self.segmInfo_df.to_csv(self.segmInfo_df_csv_path)
+    
     def _loadVideo(self, path):
         video = cv2.VideoCapture(path)
         num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))

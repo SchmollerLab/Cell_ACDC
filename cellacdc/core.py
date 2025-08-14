@@ -9,6 +9,7 @@ from importlib import import_module
 import numpy as np
 import math
 import cv2
+import re
 from collections import defaultdict
 import skimage.exposure
 import skimage.measure
@@ -41,6 +42,8 @@ from . import config
 from . import preprocess
 from .config import PREPROCESS_MAPPER
 from . import io
+from . import measurements
+from . import favourite_func_metrics_csv_path
 
 from ._types import (
     ChannelsDict
@@ -3962,15 +3965,788 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
     def __init__(self, logger, log_path, is_cli):
         super().__init__(logger, log_path, is_cli=is_cli)
     
-    def set_metrics(
-            self, 
-            channel_names: list[str]
-        ):
+    def set_img_paths(self, img_paths):
+        self.img_paths = img_paths
+    
+    def _set_metrics_func_from_posData(self, posData):
+        (metrics_func, all_metrics_names, custom_func_dict, total_metrics,
+        ch_indipend_custom_func_dict) = measurements.getMetricsFunc(posData)
+        self.metrics_func = metrics_func
+        self.all_metrics_names = all_metrics_names
+        self.total_metrics = total_metrics
+        self.custom_func_dict = custom_func_dict
+        self.ch_indipend_custom_func_dict = ch_indipend_custom_func_dict
+        self.mixed_channel_combine_metrics = []
+        self.channel_names = posData.chNames
+        self.not_loaded_channel_names = []
+    
+    def set_metrics_from_set_measurements_dialog(self, setMeasurementsDialog):
         self.chNamesToSkip = []
-        self.metricsToSkip = {chName:[] for chName in channel_names}
-        self.metricsToSave = {chName:[] for chName in channel_names}
+        self.metricsToSkip = {chName:[] for chName in self.ch_names}
+        self.metricsToSave = {chName:[] for chName in self.ch_names}
         self.calc_for_each_zslice_mapper = {}
         self.calc_size_for_each_zslice = False
+        
+        favourite_funcs = set()
+        last_selected_groupboxes_measurements = load.read_last_selected_gb_meas(
+            logger_func=self.logger.info
+        )
+        refChannel = setMeasurementsDialog.chNameGroupboxes[0].chName
+        if refChannel not in last_selected_groupboxes_measurements:
+            last_selected_groupboxes_measurements[refChannel] = []
+        # Remove unchecked metrics and load checked not loaded channels
+        for chNameGroupbox in setMeasurementsDialog.chNameGroupboxes:
+            chName = chNameGroupbox.chName
+            if not chNameGroupbox.isChecked():
+                # Skip entire channel
+                self.chNamesToSkip.append(chName)
+                continue
+            
+            self.calc_for_each_zslice_mapper[chName] = (
+                chNameGroupbox.isCalcForEachZsliceRequested()
+            )
+            last_selected_groupboxes_measurements[refChannel].append(
+                chNameGroupbox.title()
+            )
+            if chName in self.notLoadedChNames:
+                success = self.loadFluo_cb(fluo_channels=[chName])
+                if not success:
+                    continue
+            for checkBox in chNameGroupbox.checkBoxes:
+                colname = checkBox.text()
+                if not checkBox.isChecked():
+                    self.metricsToSkip[chName].append(colname)
+                else:
+                    self.metricsToSave[chName].append(colname)
+                    func_name = colname[len(chName):]
+                    favourite_funcs.add(func_name)
+
+        self.calc_size_for_each_zslice = (
+            setMeasurementsDialog.sizeMetricsQGBox.isCalcForEachZsliceRequested()
+        )
+        if not setMeasurementsDialog.sizeMetricsQGBox.isChecked():
+            self.sizeMetricsToSave = []
+        else:
+            self.sizeMetricsToSave = []
+            title = setMeasurementsDialog.sizeMetricsQGBox.title()
+            last_selected_groupboxes_measurements[refChannel].append(title)
+            for checkBox in setMeasurementsDialog.sizeMetricsQGBox.checkBoxes:
+                if checkBox.isChecked():
+                    self.sizeMetricsToSave.append(checkBox.text())
+                    favourite_funcs.add(checkBox.text())
+
+        if not setMeasurementsDialog.regionPropsQGBox.isChecked():
+            self.regionPropsToSave = ()
+        else:
+            self.regionPropsToSave = []
+            title = setMeasurementsDialog.regionPropsQGBox.title()
+            last_selected_groupboxes_measurements[refChannel].append(title)
+            for checkBox in setMeasurementsDialog.regionPropsQGBox.checkBoxes:
+                if checkBox.isChecked():
+                    self.regionPropsToSave.append(checkBox.text())
+                    favourite_funcs.add(checkBox.text())
+            self.regionPropsToSave = tuple(self.regionPropsToSave)
+
+        if setMeasurementsDialog.chIndipendCustomeMetricsQGBox is not None:
+            skipAll = (
+                not setMeasurementsDialog.chIndipendCustomeMetricsQGBox.isChecked()
+            )
+            if not skipAll:
+                title = setMeasurementsDialog.chIndipendCustomeMetricsQGBox.title()
+                last_selected_groupboxes_measurements[refChannel].append(title)
+            chIndipendCustomMetricsToSave = []
+            win = setMeasurementsDialog
+            checkBoxes = win.chIndipendCustomeMetricsQGBox.checkBoxes
+            for checkBox in checkBoxes:
+                if skipAll:
+                    continue
     
-    def run():
-        ...
+                if checkBox.isChecked():
+                    chIndipendCustomMetricsToSave.append(checkBox.text())           
+                    favourite_funcs.add(checkBox.text())
+            self.chIndipendCustomMetricsToSave = tuple(
+                chIndipendCustomMetricsToSave
+            )
+        
+        if setMeasurementsDialog.mixedChannelsCombineMetricsQGBox is not None:
+            skipAll = (
+                not setMeasurementsDialog.mixedChannelsCombineMetricsQGBox.isChecked()
+            )
+            if not skipAll:
+                title = setMeasurementsDialog.mixedChannelsCombineMetricsQGBox.title()
+                last_selected_groupboxes_measurements[refChannel].append(title)
+            mixedChCombineMetricsToSkip = []
+            win = setMeasurementsDialog
+            checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
+            for checkBox in checkBoxes:
+                if skipAll:
+                    mixedChCombineMetricsToSkip.append(checkBox.text())
+                elif not checkBox.isChecked():
+                    mixedChCombineMetricsToSkip.append(checkBox.text())
+                else:             
+                    favourite_funcs.add(checkBox.text())
+            self.mixedChCombineMetricsToSkip = tuple(mixedChCombineMetricsToSkip)
+
+        df_favourite_funcs = pd.DataFrame(
+            {'favourite_func_name': list(favourite_funcs)}
+        )
+        df_favourite_funcs.to_csv(favourite_func_metrics_csv_path)
+
+        load.save_last_selected_gb_meas(last_selected_groupboxes_measurements)
+    
+    def _init_metrics_to_save(self, posData):
+        posData.setLoadedChannelNames()
+
+        if self.metricsToSave is None:
+            # self.metricsToSave means that the user did not set 
+            # through setMeasurements dialog --> save all measurements
+            self.metricsToSave = {chName:[] for chName in posData.loadedChNames}
+            isManualBackgrPresent = posData.manualBackgroundLab is not None
+            for chName in posData.loadedChNames:
+                metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
+                    posData.SizeZ>1, chName, isSegm3D=self.isSegm3D,
+                    isManualBackgrPresent=isManualBackgrPresent
+                )
+                self.metricsToSave[chName].extend(metrics_desc.keys())
+                self.metricsToSave[chName].extend(bkgr_val_desc.keys())
+
+                custom_metrics_desc = measurements.custom_metrics_desc(
+                    posData.SizeZ>1, chName, posData=posData, 
+                    isSegm3D=self.isSegm3D, return_combine=False
+                )
+                self.metricsToSave[chName].extend(
+                    custom_metrics_desc.keys()
+                )
+        
+        # Get metrics parameters --> function name, how etc
+        self.metrics_func, _ = measurements.standard_metrics_func()
+        self.custom_func_dict = measurements.get_custom_metrics_func()
+        params = measurements.get_metrics_params(
+            self.metricsToSave, self.metrics_func, self.custom_func_dict
+        )
+        (bkgr_metrics_params, foregr_metrics_params, 
+        concentration_metrics_params, custom_metrics_params) = params
+        self.bkgr_metrics_params = bkgr_metrics_params
+        self.foregr_metrics_params = foregr_metrics_params
+        self.concentration_metrics_params = concentration_metrics_params
+        self.custom_metrics_params = custom_metrics_params
+        
+        self.ch_indipend_custom_func_dict = (
+            measurements.get_channel_indipendent_custom_metrics_func()
+        )
+        if not hasattr(self, 'chIndipendCustomMetricsToSave'):
+            self.chIndipendCustomMetricsToSave = list(
+                measurements.ch_indipend_custom_metrics_desc(
+                    posData.SizeZ>1, isSegm3D=self.isSegm3D,
+                ).keys()
+            )
+            
+        self.ch_indipend_custom_func_params = (
+            measurements.get_channel_indipend_custom_metrics_params(
+                self.ch_indipend_custom_func_dict,
+                self.chIndipendCustomMetricsToSave
+            )
+        )
+    
+    @exception_handler_cli
+    def run(
+            self,
+            img_path: os.PathLike,  
+            stop_frame_n: int=1,
+            end_filename_segm: str = '',
+            computeMetricsWorker=None
+        ):    
+        self.standardMetricsErrors = {}
+        self.customMetricsErrors = {}
+        self.regionPropsErrors = {}
+            
+        images_path = os.path.dirname(img_path)
+        exp_foldername = os.path.basename(
+            os.path.dirname(os.path.dirname(images_path))
+        )
+        basename, channel_names = myutils.getBasenameAndChNames(
+            images_path, useExt=('.tif', '.h5')
+        )
+        posData = load.loadData(img_path, channel_names[0])
+        
+        posData.getBasenameAndChNames(useExt=('.tif', '.h5'))
+        posData.buildPaths()
+        posData.loadImgData()
+
+        posData.loadOtherFiles(
+            load_segm_data=True,
+            load_acdc_df=True,
+            load_shifts=True,
+            loadSegmInfo=True,
+            load_delROIsInfo=True,
+            load_bkgr_data=True,
+            loadBkgrROIs=True,
+            load_last_tracked_i=True,
+            load_metadata=True,
+            load_customAnnot=True,
+            load_customCombineMetrics=True,
+            end_filename_segm=end_filename_segm,
+            load_dataPrep_ROIcoords=True
+        )
+        posData.labelSegmData()
+        if not posData.segmFound:
+            rel_path = (
+                f'...{os.sep}{exp_foldername}'
+                f'{os.sep}{posData.pos_foldername}'
+            )
+            self.logger.log(
+                f'Skipping "{rel_path}" '
+                f'because segm. file was not found.'
+            )
+            return
+        
+        self._set_metrics_func_from_posData(posData)
+        self.isSegm3D = posData.getIsSegm3D()
+        
+        # Allow single 2D/3D image
+        if posData.SizeT == 1:
+            posData.img_data = posData.img_data[np.newaxis]
+            posData.segm_data = posData.segm_data[np.newaxis]
+        
+        if computeMetricsWorker is not None:
+            computeMetricsWorker.mainWin.gui.data = [posData]
+            computeMetricsWorker.mainWin.gui.pos_i = 0
+            computeMetricsWorker.mainWin.gui.isSegm3D = self.isSegm3D
+            computeMetricsWorker.mutex.lock()
+            computeMetricsWorker.signals.sigInitAddMetrics.emit(
+                posData, computeMetricsWorker.allPosDataInputs
+            )
+            computeMetricsWorker.waitCond.wait(computeMetricsWorker.mutex)
+            computeMetricsWorker.mutex.unlock()
+            if computeMetricsWorker.abort:
+                computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
+                return
+
+        self.logger.log(
+            'Loaded paths:\n'
+            f'Segmentation file name: {os.path.basename(posData.segm_npz_path)}\n'
+            f'ACDC output file name: {os.path.basename(posData.acdc_output_csv_path)}'
+        )
+        
+        posData.init_segmInfo_df()
+        
+        if computeMetricsWorker is None:
+            self._compute_rotation_volume()
+        else:
+            computeMetricsWorker.mutex.lock()
+            computeMetricsWorker.emit(stop_frame_n, posData)
+            computeMetricsWorker.sigComputeVolume.emit(stop_frame_n, posData)
+            computeMetricsWorker.wait(computeMetricsWorker.mutex)
+            computeMetricsWorker.mutex.unlock()
+        
+        self._init_metrics_to_save(posData)
+    
+        if computeMetricsWorker is not None:
+            computeMetricsWorker.signals.initProgressBar.emit(stop_frame_n)
+        
+        posData.loadedChNames = []
+        for c, channel in enumerate(channel_names):
+            if channel in self.chNamesToSkip:
+                continue 
+            
+            if c == 0:
+                img_data = posData.img_data
+                filename = posData.filename
+                bkgrData = posData.bkgrData
+            else:
+                # Delay loading image data
+                filepath = load.get_filename_from_channel(
+                    images_path, channel
+                )
+                img_data, bkgrData = self._load_channel_data(filepath)
+                filename_ext = os.path.basename(filepath)
+                filename, _ = os.path.splitext(filename_ext)
+            
+            posData.loadedChNames.append(channel)
+            posData.loadedFluoChannels.add(channel)
+            posData.fluo_data_dict[filename] = img_data
+            posData.fluo_bkgrData_dict[filename] = bkgrData
+        
+        acdc_df_li = []
+        keys = []
+        for frame_i in range(stop_frame_n):
+            lab = posData.segm_data[frame_i]
+            if not np.any(lab):
+                # Empty segmentation mask --> skip
+                continue
+                
+            rp = skimage.measure.regionprops(lab)
+            posData.lab = lab
+            posData.rp = rp
+            
+            if posData.acdc_df is None:
+                acdc_df = myutils.getBaseAcdcDf(rp)
+            else:
+                try:
+                    acdc_df = posData.acdc_df.loc[frame_i].copy()
+                except:
+                    acdc_df = myutils.getBaseAcdcDf(rp)
+            
+            acdc_df = load.pd_bool_and_float_to_int(
+                acdc_df, inplace=False, colsToCastInt=[]
+            )
+            
+            try:
+                acdc_df = self._add_volume_metrics(acdc_df, rp, posData)
+                calc_metrics_addtional_args = self._init_calc_metrics(
+                    acdc_df, rp, frame_i, lab, posData
+                )
+                acdc_df = self._calc_metrics_iter_channels(
+                    self, acdc_df, rp, frame_i, lab, posData, 
+                    **calc_metrics_addtional_args
+                )
+                acdc_df_li.append(acdc_df)
+                key = (frame_i, posData.TimeIncrement*frame_i)
+                keys.append(key)
+            except Exception as error:
+                traceback_format = traceback.format_exc()
+                print('-'*30)      
+                self.logger.log(traceback_format)
+                print('-'*30)
+                self.standardMetricsErrors[str(error)] = traceback_format
+            
+            if frame_i > 0:
+                try:
+                    prev_data_dict = posData.allData_li[frame_i-1]
+                    prev_lab = posData.segm_data[frame_i-1]
+                    acdc_df = self._add_velocity_measurement(
+                        acdc_df, prev_lab, lab, posData
+                    )
+                except Exception as error:
+                    traceback_format = traceback.format_exc()
+                    print('-'*30)      
+                    self.logger.log(traceback_format)
+                    print('-'*30)
+                    self.standardMetricsErrors[str(error)] = traceback_format
+
+                if computeMetricsWorker is not None:
+                    computeMetricsWorker.signals.progressBar.emit(1)
+        
+        if not acdc_df_li:
+            print('-'*30)
+            self.logger.log(
+                'All selected positions in the experiment folder '
+                f'{exp_foldername} have EMPTY segmentation mask. '
+                'Metrics will not be saved.'
+            )
+            print('-'*30)
+            return
+        
+        all_frames_acdc_df = pd.concat(
+            acdc_df_li, keys=keys, names=['frame_i', 'time_seconds', 'Cell_ID']
+        )
+        self._add_combined_metrics(posData, all_frames_acdc_df)
+        all_frames_acdc_df = self._add_additional_metadata(
+            posData, all_frames_acdc_df, posData.segm_data
+        )
+        all_frames_acdc_df = self._add_derived_cell_cycle_columns(
+            all_frames_acdc_df
+        )
+        custom_annot_columns = posData.getCustomAnnotColumnNames()
+        self.logger.log(
+            f'Saving acdc_output to: "{posData.acdc_output_csv_path}"'
+        )
+        
+        self._save_acdc_df()
+    
+    def _save_acdc_df(
+            self, all_frames_acdc_df, posData, custom_annot_columns, 
+            computeMetricsWorker=None
+        ):
+        try:
+            load.save_acdc_df_file(
+                all_frames_acdc_df, posData.acdc_output_csv_path, 
+                custom_annot_columns=custom_annot_columns
+            )
+        except PermissionError:
+            traceback_str = traceback.format_exc()
+            if computeMetricsWorker is not None:
+                computeMetricsWorker.mutex.lock()
+                computeMetricsWorker.signals.sigPermissionError.emit(
+                    traceback_str, posData.acdc_output_csv_path
+                )
+                computeMetricsWorker.waitCond.wait(computeMetricsWorker.mutex)
+                computeMetricsWorker.mutex.unlock()
+                load.save_acdc_df_file(
+                    all_frames_acdc_df, posData.acdc_output_csv_path, 
+                    custom_annot_columns=custom_annot_columns
+                )
+        
+    def _load_channel_data(self, channel_path):
+        self.logger.info(f'Loading fluorescence image data from "{channel_path}"...')
+        bkgrData = None
+        posData = self.data[self.pos_i]
+        # Load overlay frames and align if needed
+        filename = os.path.basename(channel_path)
+        filename_noEXT, ext = os.path.splitext(filename)
+        if ext == '.npy' or ext == '.npz':
+            img_data = np.load(channel_path)
+            try:
+                img_data = np.squeeze(img_data['arr_0'])
+            except Exception as e:
+                img_data = np.squeeze(img_data)
+
+            # Load background data
+            bkgrData_path = os.path.join(
+                posData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
+            )
+            if os.path.exists(bkgrData_path):
+                bkgrData = np.load(bkgrData_path)
+        elif ext == '.tif' or ext == '.tiff':
+            aligned_filename = f'{filename_noEXT}_aligned.npz'
+            aligned_path = os.path.join(posData.images_path, aligned_filename)
+            if os.path.exists(aligned_path):
+                img_data = np.load(aligned_path)['arr_0']
+
+                # Load background data
+                bkgrData_path = os.path.join(
+                    posData.images_path, f'{aligned_filename}_bkgrRoiData.npz'
+                )
+                if os.path.exists(bkgrData_path):
+                    bkgrData = np.load(bkgrData_path)
+            else:
+                img_data = np.squeeze(skimage.io.imread(channel_path))
+
+                # Load background data
+                bkgrData_path = os.path.join(
+                    posData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
+                )
+                if os.path.exists(bkgrData_path):
+                    bkgrData = np.load(bkgrData_path)
+        else:
+            return None, None
+
+        return img_data, bkgrData
+    
+    def _add_volume_metrics(self, df, rp, posData):
+        PhysicalSizeY = posData.PhysicalSizeY
+        PhysicalSizeX = posData.PhysicalSizeX
+        yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
+        vox_to_fl_3D = PhysicalSizeY*PhysicalSizeX*posData.PhysicalSizeZ
+        
+        init_list = [-2]*len(rp)
+        IDs = init_list.copy()
+        IDs_vol_vox = init_list.copy()
+        IDs_area_pxl = init_list.copy()
+        IDs_vol_fl = init_list.copy()
+        IDs_area_um2 = init_list.copy()
+        if self.mainWin.isSegm3D:
+            IDs_vol_vox_3D = init_list.copy()
+            IDs_vol_fl_3D = init_list.copy()
+
+        for i, obj in enumerate(rp):
+            IDs[i] = obj.label
+            IDs_vol_vox[i] = obj.vol_vox
+            IDs_vol_fl[i] = obj.vol_fl
+            IDs_area_pxl[i] = obj.area
+            IDs_area_um2[i] = obj.area*yx_pxl_to_um2
+            if self.mainWin.isSegm3D:
+                IDs_vol_vox_3D[i] = obj.area
+                IDs_vol_fl_3D[i] = obj.area*vox_to_fl_3D
+            
+        df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
+        df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
+        df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
+        df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
+        if self.mainWin.isSegm3D:
+            df['cell_vol_vox_3D'] = pd.Series(
+                data=IDs_vol_vox_3D, index=IDs, dtype=float
+            )
+            df['cell_vol_fl_3D'] = pd.Series(
+                data=IDs_vol_fl_3D, index=IDs, dtype=float
+            )
+        return df
+    
+    def _init_calc_metrics(self, acdc_df, rp, frame_i, lab, posData):
+        yx_pxl_to_um2 = posData.PhysicalSizeY*posData.PhysicalSizeX
+        vox_to_fl_3D = (
+            posData.PhysicalSizeY*posData.PhysicalSizeX*posData.PhysicalSizeZ
+        )
+
+        manualBackgrLab = posData.manualBackgroundLab
+        manualBackgrRp = None
+        if manualBackgrLab is not None:
+            manualBackgrRp = skimage.measure.regionprops(manualBackgrLab)
+        isZstack = posData.SizeZ > 1
+        isSegm3D = self.isSegm3D
+        all_channels_metrics = self.metricsToSave
+        size_metrics_to_save = self.sizeMetricsToSave
+        regionprops_to_save = self.regionPropsToSave
+        custom_func_dict = self.custom_func_dict
+        
+        calc_size_for_each_zslice = self.calc_size_for_each_zslice
+
+        # Pre-populate columns with zeros
+        all_columns = list(size_metrics_to_save)
+        for channel, metrics in all_channels_metrics.items():
+            all_columns.extend(metrics)
+        all_columns.extend(regionprops_to_save)
+
+        df_shape = (len(acdc_df), len(all_columns))
+        data = np.zeros(df_shape)
+        df = pd.DataFrame(data=data, index=acdc_df.index, columns=all_columns)
+        # df = df.loc[:, ~df.columns.duplicated()].copy()
+        df = df.combine_first(acdc_df)
+
+        # Check if z-slice is present for 3D z-stack data
+        proceed = self._check_zSlice(posData, frame_i)
+        if not proceed:
+            return
+
+        df = measurements.add_size_metrics(
+            df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, 
+            vox_to_fl_3D, calc_size_for_each_zslice=calc_size_for_each_zslice
+        )
+        
+        # Get background masks
+        autoBkgr_masks = measurements.get_autoBkgr_mask(
+            lab, isSegm3D, posData, frame_i
+        )
+        # self._emitSigDebug((lab, frame_i, autoBkgr_masks))
+        
+        autoBkgr_mask, autoBkgr_mask_proj = autoBkgr_masks
+        dataPrepBkgrROI_mask = measurements.get_bkgrROI_mask(posData, isSegm3D)
+        
+        out = (
+            autoBkgr_mask, 
+            autoBkgr_mask_proj, 
+            dataPrepBkgrROI_mask,
+            manualBackgrRp
+        )
+    
+        return out
+        
+    def _calc_metrics_iter_channels(
+            self, acdc_df, rp, frame_i, lab, posData, autoBkgr_mask, 
+            autoBkgr_mask_proj, dataPrepBkgrROI_mask, manualBackgrRp
+        ):
+        all_channels_foregr_data = {}
+        all_channels_foregr_imgs = {}
+        all_channels_z_slices = {}
+        isSegm3D = self.isSegm3D
+        bkgr_metrics_params = self.bkgr_metrics_params
+        metrics_func = self.metrics_func
+        foregr_metrics_params = self.foregr_metrics_params
+        calc_for_each_zslice_mapper = self.calc_for_each_zslice_mapper
+        concentration_metrics_params = self.concentration_metrics_params
+        regionprops_to_save = self.regionPropsToSave
+        custom_metrics_params = self.custom_metrics_params
+        ch_indipend_custom_func_params = (
+            self.ch_indipend_custom_func_params
+        )
+        images_path = posData.images_path
+        
+        # Iterate channels
+        iter_channels = zip(
+            posData.loadedChNames, 
+            posData.fluo_data_dict.items()
+        )
+        for channel, (filename, channel_data) in iter_channels:
+            foregr_img = channel_data[frame_i]
+
+            # Get the z-slice if we have z-stacks
+            z = posData.zSliceSegmentation(filename, frame_i)
+            
+            # Get the background data
+            bkgr_data = measurements.get_bkgr_data(
+                foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
+                autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
+            )
+            
+            foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
+            
+            all_channels_foregr_data[channel] = foregr_data
+            all_channels_foregr_imgs[channel] = foregr_img
+            all_channels_z_slices[channel] = z
+
+            # Compute background values
+            df = measurements.add_bkgr_values(
+                df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
+                manualBackgrRp=manualBackgrRp, foregr_data=foregr_data
+            )
+
+            # Iterate objects and compute foreground metrics
+            df = measurements.add_foregr_standard_metrics(
+                df, rp, channel, foregr_data, 
+                foregr_metrics_params[channel], 
+                metrics_func, isSegm3D, 
+                lab, foregr_img, 
+                manualBackgrRp=manualBackgrRp,
+                z_slice=z
+            )
+
+            if not calc_for_each_zslice_mapper.get(channel, False):
+                continue
+            
+            # Repeat measureemnts for each z-slice
+            pbar_z = tqdm(
+                total=posData.SizeZ, desc='Computing for z-slices: ', 
+                ncols=100, leave=False, unit='z-slice'
+            )
+            for z in range(posData.SizeZ):
+                # Get the background data
+                bkgr_data = measurements.get_bkgr_data(
+                    foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
+                    autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
+                )
+                bkgr_data = {
+                    'autoBkgr': {'zSlice': bkgr_data['autoBkgr']['zSlice']},
+                    'dataPrepBkgr': {'zSlice': bkgr_data['dataPrepBkgr']['zSlice']}
+                }
+                
+                foregr_data = measurements.get_foregr_data(
+                    foregr_img, isSegm3D, z
+                )
+                foregr_data = {'zSlice': foregr_data['zSlice']}
+
+                # Compute background values
+                df = measurements.add_bkgr_values(
+                    df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
+                    manualBackgrRp=manualBackgrRp, foregr_data=foregr_data,
+                    text_to_append_to_col=str(z)
+                )
+
+                # Iterate objects and compute foreground metrics
+                df = measurements.add_foregr_standard_metrics(
+                    df, rp, channel, foregr_data, 
+                    foregr_metrics_params[channel], 
+                    metrics_func, isSegm3D, 
+                    lab, foregr_img, 
+                    manualBackgrRp=manualBackgrRp,
+                    z_slice=z, text_to_append_to_col=str(z)
+                )
+                pbar_z.update()
+            pbar_z.close()
+
+        df = measurements.add_concentration_metrics(
+            df, concentration_metrics_params
+        )
+        
+        # Add region properties
+        try:
+            df, rp_errors = measurements.add_regionprops_metrics(
+                df, lab, regionprops_to_save, logger_func=self.progress.emit
+            )
+            if rp_errors:
+                print('')
+                self.progress.emit(
+                    'WARNING: Some objects had the following errors:\n'
+                    f'{rp_errors}\n'
+                    'Region properties with errors were saved as `Not A Number`.'
+                )
+        except Exception as error:
+            traceback_format = traceback.format_exc()
+            self.regionPropsCritical.emit(traceback_format, str(error))
+
+        df = self.addCustomMetrics(
+            posData, frame_i, isSegm3D, df, rp, custom_metrics_params, 
+            lab, calc_for_each_zslice_mapper
+        )
+        
+        df = measurements.add_ch_indipend_custom_metrics(
+            df, rp, all_channels_foregr_data, 
+            ch_indipend_custom_func_params, 
+            isSegm3D, lab, all_channels_foregr_imgs, 
+            all_channels_z_slices=all_channels_z_slices,
+            customMetricsCritical=self.customMetricsCritical, 
+        )
+        
+        # Remove 0s columns
+        df = df.loc[:, (df != -2).any(axis=0)]
+
+        return df
+    
+    def _add_velocity_measurement(self, acdc_df, prev_lab, lab, posData):
+        if 'velocity_pixel' not in self.sizeMetricsToSave:
+            return acdc_df
+        
+        if 'velocity_um' not in self.sizeMetricsToSave:
+            spacing = None 
+        elif self.isSegm3D:
+            spacing = np.array([
+                posData.PhysicalSizeZ, 
+                posData.PhysicalSizeY, 
+                posData.PhysicalSizeX
+            ])
+        else:
+            spacing = np.array([
+                posData.PhysicalSizeY, 
+                posData.PhysicalSizeX
+            ])
+        velocities_pxl, velocities_um = compute_twoframes_velocity(
+            prev_lab, lab, spacing=spacing
+        )
+        acdc_df['velocity_pixel'] = velocities_pxl
+        acdc_df['velocity_um'] = velocities_um
+        return acdc_df
+    
+    def _add_combined_metrics(self, posData, df):
+        # Add channel specifc combined metrics (from equations and 
+        # from user_path_equations sections)
+        config = posData.combineMetricsConfig
+        for chName in posData.loadedChNames:
+            metricsToSkipChannel = self.mainWin.metricsToSkip.get(chName, [])
+            posDataEquations = config['equations']
+            userPathChEquations = config['user_path_equations']
+            for newColName, equation in posDataEquations.items():
+                if not newColName.startswith(chName):
+                    continue
+                if newColName in metricsToSkipChannel:
+                    continue
+                self._dfEvalEquation(df, newColName, equation)
+            for newColName, equation in userPathChEquations.items():
+                if not newColName.startswith(chName):
+                    continue
+                if newColName in metricsToSkipChannel:
+                    continue
+                self._dfEvalEquation(df, newColName, equation)
+
+        # Add mixed channels combined metrics
+        mixedChannelsEquations = config['mixed_channels_equations']
+        for newColName, equation in mixedChannelsEquations.items():
+            if newColName in self.mainWin.mixedChCombineMetricsToSkip:
+                continue
+            cols = re.findall(r'[A-Za-z0-9]+_[A-Za-z0-9_]+', equation)
+            if all([col in df.columns for col in cols]):
+                self._dfEvalEquation(df, newColName, equation)
+    
+    def _add_additional_metadata(
+            self, posData: load.loadData, df: pd.DataFrame, saved_segm_data
+        ):
+        for col, val in posData.additionalMetadataValues().items():
+            if col in df.columns:
+                df.pop(col)
+            df.insert(0, col, val)
+        
+        try:
+            df.pop('time_minutes')
+        except Exception as e:
+            pass
+        try:
+            df.pop('time_hours')
+        except Exception as e:
+            pass
+        try:
+            time_seconds = df.index.get_level_values('time_seconds')
+            df.insert(0, 'time_minutes', time_seconds/60)
+            df.insert(1, 'time_hours', time_seconds/3600)
+        except Exception as e:
+            pass
+        
+        df = self.addDisappearsBeforeEnd(df, saved_segm_data)
+        return df
+    
+    def _add_derived_cell_cycle_columns(self, all_frames_acdc_df):
+        try:
+            all_frames_acdc_df = cca_functions.add_derived_cell_cycle_columns(
+                all_frames_acdc_df.copy()
+            )
+        except Exception as err:
+            self.sigLog.emit(traceback.format_exc())
+        
+        return all_frames_acdc_df

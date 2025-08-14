@@ -344,6 +344,9 @@ models_list_file_path = os.path.join(settings_folderpath, 'custom_models_paths.i
 promptable_models_list_file_path = os.path.join(
     settings_folderpath, 'custom_promptable_models_paths.ini'
 )
+favourite_func_metrics_csv_path = os.path.join(
+    settings_folderpath, 'favourite_func_metrics.csv'
+)
 recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
 preproc_recipes_path = os.path.join(settings_folderpath, 'preprocessing_recipes')
 segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')

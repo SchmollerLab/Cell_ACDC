@@ -77,6 +77,7 @@ from . import measurements, printl
 from . import colors, annotate
 from . import user_manual_url
 from . import recentPaths_path, settings_folderpath, settings_csv_path
+from . import favourite_func_metrics_csv_path
 from . import qutils, autopilot, QtScoped
 from . import _palettes
 from . import transformation
@@ -91,7 +92,9 @@ from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger, ArgSpec
 from .help import welcome, about
-from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import normal_division_lineage_tree, reorg_sister_cells_for_export
+from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
+    normal_division_lineage_tree, reorg_sister_cells_for_export
+)
 from .plot import imshow
 from . import gui_utils
 
@@ -108,9 +111,6 @@ if os.name == 'nt':
 
 GREEN_HEX = _palettes.green()
 
-favourite_func_metrics_csv_path = os.path.join(
-    settings_folderpath, 'favourite_func_metrics.csv'
-)
 custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
 shortcut_filepath = os.path.join(settings_folderpath, 'shortcuts.ini')
 
@@ -19337,32 +19337,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 # posData is None when computing measurements with the utility
                 # and with timelapse data
                 continue
-            if posData.SizeZ > 1 and posData.segmInfo_df is not None:
-                if 'z_slice_used_gui' not in posData.segmInfo_df.columns:
-                    posData.segmInfo_df['z_slice_used_gui'] = (
-                        posData.segmInfo_df['z_slice_used_dataPrep']
-                    )
-                if 'which_z_proj_gui' not in posData.segmInfo_df.columns:
-                    posData.segmInfo_df['which_z_proj_gui'] = (
-                        posData.segmInfo_df['which_z_proj']
-                    )
-                posData.segmInfo_df['resegmented_in_gui'] = False
-                posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
-
-            NO_segmInfo = (
-                posData.segmInfo_df is None
-                or posData.filename not in posData.segmInfo_df.index
-            )
-            if NO_segmInfo and posData.SizeZ > 1:
-                filename = posData.filename
-                df = myutils.getDefault_SegmInfo_df(posData, filename)
-                if posData.segmInfo_df is None:
-                    posData.segmInfo_df = df
-                else:
-                    posData.segmInfo_df = pd.concat([df, posData.segmInfo_df])
-                    unique_idx = ~posData.segmInfo_df.index.duplicated()
-                    posData.segmInfo_df = posData.segmInfo_df[unique_idx]
-                posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+            posData.init_segmInfo_df()
 
     def connectScrollbars(self):
         self.t_label.show()
