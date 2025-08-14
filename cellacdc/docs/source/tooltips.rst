@@ -129,9 +129,6 @@
     :height: 16px
     :width: 16px
 
-<<<<<<< HEAD
-.. |copyLostObjButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/copyContour.svg
-=======
 .. |magicPromptsToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/magic-prompts.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/magic-prompts.svg 
     :alt: magicPromptsToolButton icon
@@ -139,7 +136,6 @@
     :width: 16px
 
 .. |copyLostObjButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/copyContour.svg
->>>>>>> main
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/copyContour.svg
     :alt: copyLostObjButton icon
     :height: 16px
