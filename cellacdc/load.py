@@ -325,16 +325,23 @@ def load_segm_file(images_path, end_name_segm_file='segm', return_path=False):
         file for file in myutils.listdir(images_path) 
         if file.endswith(end_name_segm_file)
     ]
-    if len(found_files) == 0:
-        segm_data = None
-        segm_filepath = ''
-    elif len(found_files) == 1:
-        segm_filepath = os.path.join(images_path, found_files[0])
-        segm_data = np.load(segm_filepath)['arr_0'].astype(np.uint32)
-    else:
-        found_files.sort(key=len)
-        segm_filepath = os.path.join(images_path, found_files[0])
-        segm_data = np.load(segm_filepath)['arr_0'].astype(np.uint32)
+    try:
+        if len(found_files) == 0:
+            segm_data = None
+            segm_filepath = ''
+        elif len(found_files) == 1:
+            segm_filepath = os.path.join(images_path, found_files[0])
+            segm_data = np.load(segm_filepath)['arr_0'].astype(np.uint32)
+        else:
+            found_files.sort(key=len)
+            segm_filepath = os.path.join(images_path, found_files[0])
+            segm_data = np.load(segm_filepath)['arr_0'].astype(np.uint32)
+    except OSError as e:
+        if str(e).find("[Errno 22] Invalid argument") != -1 and segm_filepath.find("OneDrive") != -1:
+            print(traceback.print_exc())
+            raise OSError("If the file is online only, and syncing is disabled, this file cannot be accessed.")
+        else:
+            raise e
     
     if return_path:
         return segm_data, segm_filepath

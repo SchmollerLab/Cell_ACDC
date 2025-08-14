@@ -3961,6 +3961,21 @@ def apply_func_to_imgs(image:np.ndarray,
 
     return image_out
 
+
+def fill_holes_in_segmentation(labels):
+    filled = np.zeros_like(labels)
+    for obj in skimage.measure.regionprops(labels):
+        label_id = obj.label
+        mask_filled = scipy.ndimage.binary_fill_holes(obj.image)
+        
+        region = filled[obj.slice]
+        # Only fill where mask_filled is True and region is still background
+        fill_mask = mask_filled & (region == 0)
+        region[fill_mask] = label_id
+        filled[obj.slice] = region
+
+    return filled
+
 class ComputeMeasurementsKernel(_WorkflowKernel):
     def __init__(self, logger, log_path, is_cli):
         super().__init__(logger, log_path, is_cli=is_cli)

@@ -49,6 +49,7 @@ from .utils import stack2Dinto3Dsegm as utilsStack2Dto3D
 from .utils import computeMultiChannel as utilsComputeMultiCh
 from .utils import applyTrackFromTable as utilsApplyTrackFromTab
 from .utils import applyTrackFromTrackMateXML as utilsApplyTrackFromTrackMate
+from .utils import fillHolesInSegm
 from .info import utilsInfo
 from . import is_win, is_linux, settings_folderpath, issues_url, is_mac
 from . import settings_csv_path
@@ -408,6 +409,7 @@ class mainWin(QMainWindow):
         segmMenu.addAction(self.createConnected3Dsegm)
         segmMenu.addAction(self.stack2Dto3DsegmAction)
         segmMenu.addAction(self.filterObjsFromTableAction)
+        segmMenu.addAction(self.fillHolesInSegmAction)
 
         trackingMenu = utilsMenu.addMenu('Tracking and lineage')
         trackingMenu.addAction(self.trackSubCellFeaturesAction)
@@ -745,7 +747,10 @@ class mainWin(QMainWindow):
         
         self.createConnected3Dsegm = QAction(
             'Create connected 3D segmentation mask from z-slices segmentation...'
-        ) 
+        )
+        self.fillHolesInSegmAction = QAction(
+            'Fill holes in segmentation masks...'
+        )
         self.filterObjsFromTableAction = QAction(
             'Filter segmented objects using a table of coordinates (e.g., centroids)...'
         ) 
@@ -855,6 +860,9 @@ class mainWin(QMainWindow):
         )
         self.stack2Dto3DsegmAction.triggered.connect(
             self.launchStack2Dto3DsegmActionUtil
+        )
+        self.fillHolesInSegmAction.triggered.connect(
+            self.launchFillHolesActionUtil
         )
         self.trackSubCellFeaturesAction.triggered.connect(
             self.launchTrackSubCellFeaturesUtil
@@ -1492,6 +1500,23 @@ class mainWin(QMainWindow):
         )
         self.connected3DsegmWin.show()
     
+    def launchFillHolesActionUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Fill holes in segmentation masks'
+        )
+        if selectedExpPaths is None:
+            return
+
+        title = 'Fill holes in segmentation masks'
+        infoText = 'Launching fill holes in segmentation masks process...'
+        progressDialogueTitle = 'Filling holes in segmentation masks'
+        self.fillHolesWin = fillHolesInSegm.fillHolesInSegm(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.fillHolesWin.show()
+
     def launchFilterObjsFromTableActionUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths(

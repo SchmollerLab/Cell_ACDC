@@ -10541,7 +10541,12 @@ class SelectSegmFileDialog(QDialog):
 
     def ok_cb(self, event=None):
         self.cancel = False
-        self.selectedItemText = self.listWidget.selectedItems()[0].text()
+        try:
+            self.selectedItemText = self.listWidget.selectedItems()[0].text()
+        except IndexError:
+            self.cancel = True
+            self.close()
+            return
         self.selectedItemIdx = self.items.index(self.selectedItemText)
         self.selectedItemTexts = [
             selectedItem.text() 

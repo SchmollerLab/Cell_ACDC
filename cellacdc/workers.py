@@ -6819,3 +6819,79 @@ class MagicPromptsWorker(QObject):
         )
         
         self.signals.finished.emit((lab_new, lab_union, lab_interesection))
+
+class FillHolesInSegWorker(BaseWorkerUtil):
+    sigAskAppendName = Signal(str)
+    sigAborted = Signal()
+    sigSelectSegmFiles = Signal(str, list)
+
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+        
+    def emitSelectSegmFiles(self, exp_path, pos_foldernames):
+        self.mutex.lock()
+        self.sigSelectSegmFiles.emit(exp_path, pos_foldernames)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    def emitAskAppendName(self, basename):
+        self.mutex.lock()
+        self.sigAskAppendName.emit(basename)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    @worker_exception_handler
+    def run(self):
+        expPaths = self.mainWin.expPaths
+        lab_paths_dict = dict()
+        unique_segm_files = set()
+        tot_segm_files = 0
+        for exp_path, pos_foldernames in expPaths.items():
+            abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
+            if abort:
+                self.sigAborted.emit()
+                return
+            for pos_folder in pos_foldernames:
+                imgs_path = os.path.join(exp_path, 
+                                         pos_folder, 
+                                         "Images")
+                lab_paths_dict[imgs_path] = self.endFilenameSegmTemp
+                tot_segm_files += len(self.endFilenameSegmTemp)
+                unique_segm_files.update(self.endFilenameSegmTemp)
+
+        self.logger.info('Filling holes in segmentation masks...')
+        abort = self.emitAskAppendName("/".join(unique_segm_files))
+        if abort:
+            self.sigAborted.emit()
+            return
+        self.signals.initProgressBar.emit(tot_segm_files)
+        for images_path, segm_file_names in lab_paths_dict.items():
+            for segm_file_name in segm_file_names:
+                segm_data, segm_data_path = load.load_segm_file(
+                    images_path, end_name_segm_file=segm_file_name, return_path=True
+                )
+                segm_data_shape = segm_data.shape
+                segm_data_ndim = len(segm_data_shape)
+                if segm_data_ndim == 2:
+                    segm_data = segm_data[np.newaxis, np.newaxis, ...]
+                elif segm_data_ndim == 3:
+                    segm_data = segm_data[np.newaxis, ...]
+                elif segm_data_ndim == 4:
+                    segm_data = segm_data
+                else:
+                    raise NotImplementedError(
+                        "This ndim is not supported!"
+                    )
+                for i, stack in enumerate(segm_data):
+                    for j, lab in enumerate(stack):
+                        segm_data[i, j] = core.fill_holes_in_segmentation(lab)
+                
+                segm_data_save_path = (segm_data_path
+                                       .replace(segm_file_name,
+                                                f"{segm_file_name}{self.appendedName}"))
+                io.savez_compressed(segm_data_save_path, segm_data)
+                self.signals.progressBar.emit(1)
+        self.signals.finished.emit(self)
