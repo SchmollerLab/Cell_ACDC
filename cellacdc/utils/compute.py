@@ -11,6 +11,8 @@ from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QStyle
 )
 
+from .base import NewThreadMultipleExpBaseUtil
+
 from .. import (
     widgets, apps, workers, html_utils, myutils,
     gui, cca_functions, load, printl
@@ -22,63 +24,26 @@ favourite_func_metrics_csv_path = os.path.join(
     settings_folderpath, 'favourite_func_metrics.csv'
 )
 
-class computeMeasurmentsUtilWin(QDialog):
+class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
     def __init__(
             self, expPaths, app, parent=None, segmEndname='', 
             doRunComputation=True
         ):
-        super().__init__(parent)
-        self.setWindowTitle('Compute measurements utility')
+        title = 'Compute measurements utility'
+        infoText = 'Computing measurements routine running...'
+        progressDialogueTitle = 'Computing measurements'
+        module = myutils.get_module_name(__file__)
+        super().__init__(
+            expPaths, app, title, module, infoText, progressDialogueTitle, 
+            parent=parent
+        )
 
         self.parent = parent
         
         self.cancel = False
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
-            module='utils.computeMeasurements'
-        )
-        self.logger = logger
-        self.log_path = log_path
-        self.log_filename = log_filename
-        self.logs_path = logs_path
-
-        self.expPaths = expPaths
-        self.app = app
-        self.abort = False
-        self.worker = None
-        self.progressWin = None
         self.endFilenameSegm = segmEndname
         self.doRunComputation = doRunComputation
-
-        mainLayout = QVBoxLayout()
-
-        infoLayout = QHBoxLayout()
-        infoTxt = html_utils.paragraph(
-            'Computing measurements routine running...'
-        )
-
-        iconLabel = QLabel(self)
-        standardIcon = getattr(QStyle, 'SP_MessageBoxInformation')
-        icon = self.style().standardIcon(standardIcon)
-        pixmap = icon.pixmap(60, 60)
-        iconLabel.setPixmap(pixmap)
-
-        infoLayout.addWidget(iconLabel)
-        infoLayout.addWidget(QLabel(infoTxt))
-
-        buttonsLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Abort')
-
-        buttonsLayout.addStretch(1)
-        buttonsLayout.addWidget(cancelButton)
-
-        cancelButton.clicked.connect(self.abortCallback)
-
-        mainLayout.addLayout(infoLayout)
-        mainLayout.addSpacing(20)
-        mainLayout.addLayout(buttonsLayout)
-
-        self.setLayout(mainLayout)
 
     def showEvent(self, event):
         self.runWorker()
@@ -367,15 +332,6 @@ class computeMeasurmentsUtilWin(QDialog):
             self.worker.abort = True
         else:
             self.close()
-
-    def workerCritical(self, error):
-        try:
-            raise error
-        except:
-            traceback_str = traceback.format_exc()
-            print('='*20)
-            self.worker.logger.log(traceback_str)
-            print('='*20)
 
     def workerFinished(self, worker):
         if self.progressWin is not None:

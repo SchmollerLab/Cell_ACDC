@@ -4249,9 +4249,10 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             self._compute_rotation_volume()
         else:
             computeMetricsWorker.mutex.lock()
-            computeMetricsWorker.emit(stop_frame_n, posData)
-            computeMetricsWorker.sigComputeVolume.emit(stop_frame_n, posData)
-            computeMetricsWorker.wait(computeMetricsWorker.mutex)
+            computeMetricsWorker.signals.sigComputeVolume.emit(
+                stop_frame_n, posData
+            )
+            computeMetricsWorker.waitCond.wait(computeMetricsWorker.mutex)
             computeMetricsWorker.mutex.unlock()
         
         self._init_metrics_to_save(posData)
