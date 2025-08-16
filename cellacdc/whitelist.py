@@ -1491,6 +1491,7 @@ class WhitelistGUIElements:
         if lab is not None and not rp:
             rp = skimage.measure.regionprops(lab)
         
+        changed_frame = False
         if lab is None:
             if debug:
                 printl('No lab and no rp provided.')
@@ -1502,6 +1503,7 @@ class WhitelistGUIElements:
                     self.store_data(autosave=False)
                     posData.frame_i = frame_i
                     self.get_data()
+                    changed_frame = True
                 rp = posData.rp
                 lab = posData.lab
         og_lab = posData.whitelist.originalLabs[frame_i]
@@ -1522,7 +1524,7 @@ class WhitelistGUIElements:
         posData.whitelist.originalLabs[frame_i] = og_lab
         posData.whitelist.originalLabsIDs[frame_i] = {obj.label for obj in skimage.measure.regionprops(og_lab)}
 
-        if frame_i != og_frame_i:
+        if changed_frame:
             posData.frame_i = og_frame_i
             self.get_data()
 
@@ -1787,6 +1789,8 @@ class WhitelistGUIElements:
 
         new_frame, update_frames_init = self.whitelistInitNewFrames(frame_i=frame_i)
 
+        if new_frame:
+            self.update_rp(wl_update=False)
         # if track_og_curr and not new_frame:
         #     self.whitelistTrackOGCurr(frame_i=frame_i, rp=curr_rp, lab=curr_lab)
 

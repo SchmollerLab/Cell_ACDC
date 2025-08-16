@@ -17621,7 +17621,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
             self.postProcessing()
             
-            self.whitelistPropagateIDs()
             if benchmark:
                 ts.append(time.perf_counter())
                 titles.append('whitelist stuff')
@@ -17677,6 +17676,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             if benchmark:
                 ts.append(time.perf_counter())
                 titles.append('initGhostObject')
+            self.whitelistPropagateIDs()
+
             self.zoomToCells()
             self.updateObjectCounts()
             if benchmark:
