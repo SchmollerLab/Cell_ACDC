@@ -581,7 +581,18 @@ def disableWindow(func):
     def inner_function(self, *args, **kwargs):
         self.setDisabled(True)
         try:
-            result = func(self, *args, **kwargs)
+            try:
+                result = func(self, *args, **kwargs)
+            except TypeError as e:
+                msg = str(e)
+                if (
+                    "takes 1 positional argument but 2 were given" in msg
+                    and len(args) > 0
+                ):
+                    filtered_args = args[:-1]
+                    result = func(self, *filtered_args, **kwargs)
+                else:
+                    raise e
             return result
         except Exception as err:
             raise err
