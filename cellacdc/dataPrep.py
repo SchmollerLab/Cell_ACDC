@@ -304,7 +304,8 @@ class dataPrepWin(QMainWindow):
         )
 
         self.startAction = QAction(QIcon(":start.svg"), "Start process!", self)
-        
+        self.startAction.setDisabled(True)
+
         self.setEnabledCropActions(False)
 
     def gui_createMenuBar(self):
