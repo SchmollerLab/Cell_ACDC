@@ -17620,16 +17620,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 titles.append('update preview')
 
             self.postProcessing()
-            
             if benchmark:
                 ts.append(time.perf_counter())
-                titles.append('whitelist stuff')
-            
+                titles.append('postprocessing')
             self.tracking(storeUndo=True, wl_update=False) # wl stuff handles later...
 
             if benchmark:
                 ts.append(time.perf_counter())
-                titles.append('postprocessing tracking')
+                titles.append('tracking')
 
             notEnoughG1Cells, proceed = self.attempt_auto_cca()
             if notEnoughG1Cells or not proceed:
@@ -17677,7 +17675,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 ts.append(time.perf_counter())
                 titles.append('initGhostObject')
             self.whitelistPropagateIDs()
-
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('whitelist stuff')
             self.zoomToCells()
             self.updateObjectCounts()
             if benchmark:
