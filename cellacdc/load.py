@@ -199,7 +199,7 @@ def save_segm_workflow_to_config(
     with open(filepath, 'w') as configfile:
         configPars.write(configfile)
 
-def read_segm_workflow_from_config(filepath):
+def read_segm_workflow_from_config(filepath) -> dict:
     configPars = config.ConfigParser()
     configPars.read(filepath)
     ini_items = {}
@@ -2012,13 +2012,13 @@ class loadData:
         return endname
     
     def getSegmEndname(self):
-        if not hasattr(self, 'acdc_output_csv_path'):
+        if not hasattr(self, 'segm_npz_path'):
             return
         
         if not hasattr(self, 'basename'):
             return
         
-        filename = os.path.basename(self.acdc_output_csv_path)
+        filename = os.path.basename(self.segm_npz_path)
         filename, _ = os.path.splitext(filename)
         endname = filename[len(self.basename):].lstrip('_')
         return endname
@@ -3741,3 +3741,39 @@ def askOpenCsvFile(
     if not isinstance(file_path, str):
         file_path = file_path[0]
     return file_path
+
+def read_measurements_workflow_from_config(filepath):
+    configPars = config.ConfigParser()
+    configPars.read(filepath)
+    options_that_are_lists = {
+        'channels', 
+        'calc_for_each_zslice_channels',
+        'size_metrics_to_save',
+        'regionprops_to_save',
+        'channel_indipendent_custom_metrics_to_save',
+        'mixed_combine_metrics_to_skip'
+    }
+    ini_items = {}
+    for section in configPars.sections():
+        options = dict(configPars[section])
+        ini_items[section] = {}
+        for option, value in options.items():
+            is_list = (
+                section == 'paths_to_segment'
+                or option in options_that_are_lists
+                or option.startswith('metrics_to_skip_')
+                or option.startswith('metrics_to_save_')
+            )
+            if is_list:
+                value = value.strip('\n')
+                value = value.split('\n')
+                ini_items[section][option] = value
+                continue
+            
+            if value.lower() == 'false':
+                value = False
+            elif value.lower() == 'true':
+                value = True
+            
+            ini_items[section][option] = value
+    return ini_items

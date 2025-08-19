@@ -1969,6 +1969,28 @@ class _WorkflowKernel:
         self.log_path = log_path
         self.is_cli = is_cli
     
+    @exception_handler_cli
+    def parse_paths(self, workflow_params):
+        paths_to_segm = workflow_params['paths_to_segment']['paths']
+        ch_name = workflow_params['initialization']['user_ch_name']
+        parsed_paths = []
+        for path in paths_to_segm:
+            if os.path.isfile(path):
+                parsed_paths.append(path)
+                continue
+            
+            images_paths = load.get_images_paths(path)
+            ch_filepaths = load.get_user_ch_paths(images_paths, ch_name)
+            parsed_paths.extend(ch_filepaths)
+        return parsed_paths
+
+    @exception_handler_cli
+    def parse_stop_frame_numbers(self, workflow_params):
+        stop_frames_param = (
+            workflow_params['paths_to_segment']['stop_frame_numbers']
+        )
+        return [int(n) for n in stop_frames_param]
+    
     def quit(self, error=None):
         if not self.is_cli and error is not None:
             raise error
@@ -2000,28 +2022,6 @@ class _WorkflowKernel:
 class SegmKernel(_WorkflowKernel):
     def __init__(self, logger, log_path, is_cli):
         super().__init__(logger, log_path, is_cli=is_cli)
-    
-    @exception_handler_cli
-    def parse_paths(self, workflow_params):
-        paths_to_segm = workflow_params['paths_to_segment']['paths']
-        ch_name = workflow_params['initialization']['user_ch_name']
-        parsed_paths = []
-        for path in paths_to_segm:
-            if os.path.isfile(path):
-                parsed_paths.append(path)
-                continue
-            
-            images_paths = load.get_images_paths(path)
-            ch_filepaths = load.get_user_ch_paths(images_paths, ch_name)
-            parsed_paths.extend(ch_filepaths)
-        return parsed_paths
-
-    @exception_handler_cli
-    def parse_stop_frame_numbers(self, workflow_params):
-        stop_frames_param = (
-            workflow_params['paths_to_segment']['stop_frame_numbers']
-        )
-        return [int(n) for n in stop_frames_param]
 
     @exception_handler_cli
     def parse_custom_postproc_features_grouped(self, workflow_params):
@@ -3980,8 +3980,30 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
     def __init__(self, logger, log_path, is_cli):
         super().__init__(logger, log_path, is_cli=is_cli)
     
-    def set_img_paths(self, img_paths):
-        self.img_paths = img_paths
+    def init_args(self, channel_names, end_filename_segm):
+        self.ch_names = channel_names
+        self.end_filename_segm = end_filename_segm
+        self.notLoadedChNames = []
+    
+    def log(self, message, level='info'):
+        try:
+            self.logger.log(message, level=level)
+            return
+        except Exception as err:
+            pass
+        
+        try:
+            self.logger.log(message)
+            return
+        except Exception as err:
+            pass
+        
+        try:
+            log_func = getattr(self.logger, level)
+            log_func.log(message)
+            return
+        except Exception as err:
+            pass
     
     def _set_metrics_func_from_posData(self, posData):
         (metrics_func, all_metrics_names, custom_func_dict, total_metrics,
@@ -3995,6 +4017,93 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.channel_names = posData.chNames
         self.not_loaded_channel_names = []
     
+    def _set_metrics_from_compute_metrics_worker(self, computeMetricsWorker):
+        guiWin = computeMetricsWorker.mainWin.gui
+        self.chNamesToSkip = guiWin.chNamesToSkip
+        self.metricsToSkip = guiWin.metricsToSkip
+        self.metricsToSave = guiWin.metricsToSave
+        self.calc_for_each_zslice_mapper = guiWin.calc_for_each_zslice_mapper
+        self.calc_size_for_each_zslice = guiWin.calc_size_for_each_zslice
+        self.sizeMetricsToSave = guiWin.sizeMetricsToSave
+        self.regionPropsToSave = guiWin.regionPropsToSave
+        self.chIndipendCustomMetricsToSave = guiWin.chIndipendCustomMetricsToSave
+        self.mixedChCombineMetricsToSkip = guiWin.mixedChCombineMetricsToSkip
+    
+    def to_workflow_config_params(self):
+        params = {
+            'channels': '\n'.join(self.ch_names), 
+            'end_filename_segm': self.endFilenameSegm
+        }
+        params['channel_names_to_skip'] = '\n'.join(self.chNamesToSkip)
+        calc_for_each_zslice = [
+            f'{channel},{value}' 
+            for channel, value in self.calc_for_each_zslice_mapper.items()
+        ]
+        params['calc_for_each_zslice_channels'] = '\n'.join(calc_for_each_zslice)
+        
+        for channel, colnames in self.metricsToSkip.items():
+            params[f'metrics_to_skip_{channel}'] = '\n'.join(colnames)
+        
+        for channel, colnames in self.metricsToSave.items():
+            params[f'metrics_to_save_{channel}'] = '\n'.join(colnames)
+        
+        params['calc_for_each_zslice_size'] = str(
+            self.calc_size_for_each_zslice
+        )
+        
+        params['size_metrics_to_save'] = '\n'.join(self.sizeMetricsToSave)
+        params['regionprops_to_save'] = '\n'.join(self.regionPropsToSave)
+        params['channel_indipendent_custom_metrics_to_save'] = (
+            '\n'.join(self.chIndipendCustomMetricsToSave)
+        )
+        params['mixed_combine_metrics_to_skip'] = (
+            '\n'.join(self.mixedChCombineMetricsToSkip)
+        )
+        
+        return params
+        
+    def set_metrics_from_workflow_config_params(self, config_params):
+        self.init_args(
+            config_params['channels'],
+            config_params['end_filename_segm']
+        )
+        
+        self.chNamesToSkip = config_params['channel_names_to_skip']
+        self.metricsToSkip = {chName:[] for chName in self.ch_names}
+        self.metricsToSave = {chName:[] for chName in self.ch_names}
+        self.calc_for_each_zslice_mapper = {}
+        self.calc_size_for_each_zslice = (
+            config_params['calc_for_each_zslice_size']
+        )
+        self.sizeMetricsToSave = config_params['size_metrics_to_save']
+        self.regionPropsToSave = config_params['regionprops_to_save']
+        self.chIndipendCustomMetricsToSave = (
+            config_params['channel_indipendent_custom_metrics_to_save']
+        )
+        self.mixedChCombineMetricsToSkip = (
+            config_params['mixed_combine_metrics_to_skip']
+        )
+        
+        for channel_value in config_params['calc_for_each_zslice_channels']:
+            channel, value = channel_value.split(',')
+            value = value.lower() == 'true'
+            self.calc_for_each_zslice_mapper[channel] = value
+        
+        for channel in self.ch_names:
+            metrics_to_skip = config_params.get(
+                f'metrics_to_skip_{channel}', ''
+            )
+            if metrics_to_skip:
+                self.metricsToSkip[channel] = metrics_to_skip.split('\n')
+            
+            metrics_to_save = config_params.get(
+                f'metrics_to_save_{channel}', ''
+            )
+            if metrics_to_save:
+                self.metricsToSave[channel] = metrics_to_save.split('\n')
+        
+        
+    
     def set_metrics_from_set_measurements_dialog(self, setMeasurementsDialog):
         self.chNamesToSkip = []
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
@@ -4004,7 +4113,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         
         favourite_funcs = set()
         last_selected_groupboxes_measurements = load.read_last_selected_gb_meas(
-            logger_func=self.logger.info
+            logger_func=self.log
         )
         refChannel = setMeasurementsDialog.chNameGroupboxes[0].chName
         if refChannel not in last_selected_groupboxes_measurements:
@@ -4163,18 +4272,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             )
         )
     
-    @exception_handler_cli
-    def run(
-            self,
-            img_path: os.PathLike,  
-            stop_frame_n: int=1,
-            end_filename_segm: str = '',
-            computeMetricsWorker=None
-        ):    
-        self.standardMetricsErrors = {}
-        self.customMetricsErrors = {}
-        self.regionPropsErrors = {}
-            
+    def _load_posData(self, img_path, end_filename_segm):
         images_path = os.path.dirname(img_path)
         exp_foldername = os.path.basename(
             os.path.dirname(os.path.dirname(images_path))
@@ -4209,13 +4307,12 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 f'...{os.sep}{exp_foldername}'
                 f'{os.sep}{posData.pos_foldername}'
             )
-            self.logger.log(
+            self.log(
                 f'Skipping "{rel_path}" '
                 f'because segm. file was not found.'
             )
             return
-        
-        self._set_metrics_func_from_posData(posData)
+    
         self.isSegm3D = posData.getIsSegm3D()
         
         # Allow single 2D/3D image
@@ -4223,42 +4320,11 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             posData.img_data = posData.img_data[np.newaxis]
             posData.segm_data = posData.segm_data[np.newaxis]
         
-        if computeMetricsWorker is not None:
-            computeMetricsWorker.mainWin.gui.data = [posData]
-            computeMetricsWorker.mainWin.gui.pos_i = 0
-            computeMetricsWorker.mainWin.gui.isSegm3D = self.isSegm3D
-            computeMetricsWorker.mutex.lock()
-            computeMetricsWorker.signals.sigInitAddMetrics.emit(
-                posData, computeMetricsWorker.allPosDataInputs
-            )
-            computeMetricsWorker.waitCond.wait(computeMetricsWorker.mutex)
-            computeMetricsWorker.mutex.unlock()
-            if computeMetricsWorker.abort:
-                computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
-                return
-
-        self.logger.log(
-            'Loaded paths:\n'
-            f'Segmentation file name: {os.path.basename(posData.segm_npz_path)}\n'
-            f'ACDC output file name: {os.path.basename(posData.acdc_output_csv_path)}'
-        )
-        
-        posData.init_segmInfo_df()
-        
-        if computeMetricsWorker is None:
-            self._compute_rotation_volume()
-        else:
-            computeMetricsWorker.mutex.lock()
-            computeMetricsWorker.signals.sigComputeVolume.emit(
-                stop_frame_n, posData
-            )
-            computeMetricsWorker.waitCond.wait(computeMetricsWorker.mutex)
-            computeMetricsWorker.mutex.unlock()
-        
-        self._init_metrics_to_save(posData)
+        return posData
     
-        if computeMetricsWorker is not None:
-            computeMetricsWorker.signals.initProgressBar.emit(stop_frame_n)
+    def _load_image_data(self, posData, channel_names):
+        if posData.fluo_data_dict:
+            return 
         
         posData.loadedChNames = []
         for c, channel in enumerate(channel_names):
@@ -4272,7 +4338,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             else:
                 # Delay loading image data
                 filepath = load.get_filename_from_channel(
-                    images_path, channel
+                    posData.images_path, channel
                 )
                 img_data, bkgrData = self._load_channel_data(filepath)
                 filename_ext = os.path.basename(filepath)
@@ -4282,10 +4348,76 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             posData.loadedFluoChannels.add(channel)
             posData.fluo_data_dict[filename] = img_data
             posData.fluo_bkgrData_dict[filename] = bkgrData
+    
+    def init_signals(self, computeMetricsWorker, saveDataWorker):
+        if saveDataWorker is not None:
+            self.customMetricsCritical = saveDataWorker.customMetricsCritical
+            self.regionPropsCritical = saveDataWorker.regionPropsCritical
+        
+        elif computeMetricsWorker is not None:
+            self.regionPropsCritical = computeMetricsWorker.regionPropsCritical
+    
+    @exception_handler_cli
+    def run(
+            self,
+            img_path: os.PathLike='',  
+            stop_frame_n: int=1,
+            end_filename_segm: str='',
+            computeMetricsWorker=None, 
+            saveDataWorker=None,
+            posData=None,
+            save_metrics=True
+        ):    
+        self.init_signals(computeMetricsWorker, saveDataWorker)
+                
+        if posData is None:
+            posData = self._load_posData()
+        
+        channel_names = posData.chNames
+        images_path = posData.images_path
+        exp_foldername = os.path.basename(posData.exp_path)
+        
+        self._set_metrics_func_from_posData(posData)
+        
+        if computeMetricsWorker is not None:
+            computeMetricsWorker.emitSigInitMetricsDialog(posData)
+            if computeMetricsWorker.abort:
+                computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
+                return
+            
+            self._set_metrics_from_compute_metrics_worker(computeMetricsWorker)
+            if self.setup_done:
+                computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
+                return
+        
+        self.log(
+            'Loaded paths:\n'
+            f'Segmentation file name: {os.path.basename(posData.segm_npz_path)}\n'
+            f'ACDC output file name: {os.path.basename(posData.acdc_output_csv_path)}'
+        )
+        
+        posData.init_segmInfo_df()
+        
+        if computeMetricsWorker is not None:
+            computeMetricsWorker.emitSigComputeVolume(posData, stop_frame_n)
+        else:
+            self._compute_rotation_volume()
+            
+        self._init_metrics_to_save(posData)
+    
+        if computeMetricsWorker is not None:
+            computeMetricsWorker.signals.initProgressBar.emit(stop_frame_n)
+        
+        self._load_image_data(posData, channel_names)
         
         acdc_df_li = []
         keys = []
         for frame_i in range(stop_frame_n):
+            if saveDataWorker is not None:
+                stop = saveDataWorker.checkAbort()
+                if stop:
+                    break
+                
             lab = posData.segm_data[frame_i]
             if not np.any(lab):
                 # Empty segmentation mask --> skip
@@ -4294,6 +4426,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             rp = skimage.measure.regionprops(lab)
             posData.lab = lab
             posData.rp = rp
+            
+            if saveDataWorker is not None:
+                saveDataWorker.saveManualBackgroundData(posData, frame_i)
             
             if posData.acdc_df is None:
                 acdc_df = myutils.getBaseAcdcDf(rp)
@@ -4309,43 +4444,67 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             
             try:
                 acdc_df = self._add_volume_metrics(acdc_df, rp, posData)
-                calc_metrics_addtional_args = self._init_calc_metrics(
-                    acdc_df, rp, frame_i, lab, posData
-                )
-                acdc_df = self._calc_metrics_iter_channels(
-                    self, acdc_df, rp, frame_i, lab, posData, 
-                    **calc_metrics_addtional_args
-                )
+                if save_metrics:
+                    calc_metrics_addtional_args = self._init_calc_metrics(
+                        acdc_df, rp, frame_i, lab, posData
+                    )
+                    acdc_df = self._calc_metrics_iter_channels(
+                        self, acdc_df, rp, frame_i, lab, posData, 
+                        **calc_metrics_addtional_args
+                    )
                 acdc_df_li.append(acdc_df)
                 key = (frame_i, posData.TimeIncrement*frame_i)
                 keys.append(key)
             except Exception as error:
                 traceback_format = traceback.format_exc()
                 print('-'*30)      
-                self.logger.log(traceback_format)
+                self.log(traceback_format)
                 print('-'*30)
-                self.standardMetricsErrors[str(error)] = traceback_format
-            
-            if frame_i > 0:
-                try:
-                    prev_data_dict = posData.allData_li[frame_i-1]
-                    prev_lab = posData.segm_data[frame_i-1]
-                    acdc_df = self._add_velocity_measurement(
-                        acdc_df, prev_lab, lab, posData
-                    )
-                except Exception as error:
-                    traceback_format = traceback.format_exc()
-                    print('-'*30)      
-                    self.logger.log(traceback_format)
-                    print('-'*30)
-                    self.standardMetricsErrors[str(error)] = traceback_format
-
                 if computeMetricsWorker is not None:
-                    computeMetricsWorker.signals.progressBar.emit(1)
+                    computeMetricsWorker.standardMetricsErrors[str(error)] = (
+                        traceback_format
+                    )
+                if saveDataWorker is not None:
+                    saveDataWorker.addMetricsCritical.emit(
+                        traceback_format, str(error)
+                    )
+            
+            if not save_metrics:
+                if saveDataWorker is not None:
+                    saveDataWorker.emitUpdateProgressBar()
+                continue
+            
+            if frame_i == 0:
+                if saveDataWorker is not None:
+                    saveDataWorker.emitUpdateProgressBar()
+                continue
+
+            try:
+                prev_data_dict = posData.allData_li[frame_i-1]
+                prev_lab = posData.segm_data[frame_i-1]
+                acdc_df = self._add_velocity_measurement(
+                    acdc_df, prev_lab, lab, posData
+                )
+            except Exception as error:
+                traceback_format = traceback.format_exc()
+                print('-'*30)      
+                self.log(traceback_format)
+                print('-'*30)
+                if computeMetricsWorker is not None:
+                    e = str(error)
+                    computeMetricsWorker.standardMetricsErrors[e] = (
+                        traceback_format
+                    )
+
+            if computeMetricsWorker is not None:
+                computeMetricsWorker.signals.progressBar.emit(1)
+            
+            if saveDataWorker is not None:
+                saveDataWorker.emitUpdateProgressBar()
         
         if not acdc_df_li:
             print('-'*30)
-            self.logger.log(
+            self.log(
                 'All selected positions in the experiment folder '
                 f'{exp_foldername} have EMPTY segmentation mask. '
                 'Metrics will not be saved.'
@@ -4356,45 +4515,88 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         all_frames_acdc_df = pd.concat(
             acdc_df_li, keys=keys, names=['frame_i', 'time_seconds', 'Cell_ID']
         )
-        self._add_combined_metrics(posData, all_frames_acdc_df)
+        if save_metrics:
+            self._add_combined_metrics(
+                posData, all_frames_acdc_df, saveDataWorker=saveDataWorker
+            )
+        
         all_frames_acdc_df = self._add_additional_metadata(
             posData, all_frames_acdc_df, posData.segm_data
+        )
+        all_frames_acdc_df = self._remove_deprecated_rows(
+            all_frames_acdc_df
         )
         all_frames_acdc_df = self._add_derived_cell_cycle_columns(
             all_frames_acdc_df
         )
+        all_frames_acdc_df = load._fix_will_divide(all_frames_acdc_df)
         custom_annot_columns = posData.getCustomAnnotColumnNames()
-        self.logger.log(
+        self.log(
             f'Saving acdc_output to: "{posData.acdc_output_csv_path}"'
         )
         
-        self._save_acdc_df()
+        self._save_acdc_df(
+            all_frames_acdc_df, posData, custom_annot_columns, 
+            computeMetricsWorker=computeMetricsWorker, 
+            saveDataWorker=saveDataWorker
+        )
+    
+    def _remove_deprecated_rows(self, df):
+        v1_2_4_rc25_deprecated_cols = [
+            'editIDclicked_x', 'editIDclicked_y',
+            'editIDnewID', 'editIDnewIDs'
+        ]
+        df = df.drop(columns=v1_2_4_rc25_deprecated_cols, errors='ignore')
+
+        # Remove old gui_ columns from version < v1.2.4.rc-7
+        gui_columns = df.filter(regex='gui_*').columns
+        df = df.drop(columns=gui_columns, errors='ignore')
+        cell_id_cols = df.filter(regex='Cell_ID.*').columns
+        df = df.drop(columns=cell_id_cols, errors='ignore')
+        time_seconds_cols = df.filter(regex='time_seconds.*').columns
+        df = df.drop(columns=time_seconds_cols, errors='ignore')
+        df = df.drop(columns='relative_ID_tree', errors='ignore')
+        df = df.drop(columns=['level_0', 'index'], errors='ignore')
+
+        return df
     
     def _save_acdc_df(
             self, all_frames_acdc_df, posData, custom_annot_columns, 
-            computeMetricsWorker=None
+            computeMetricsWorker=None, saveDataWorker=None
         ):
         try:
+            if saveDataWorker is not None:
+                load.store_copy_acdc_df(
+                    posData, posData.acdc_output_csv_path, 
+                    log_func=saveDataWorker.progress.emit
+                )
             load.save_acdc_df_file(
                 all_frames_acdc_df, posData.acdc_output_csv_path, 
                 custom_annot_columns=custom_annot_columns
             )
-        except PermissionError:
+            posData.acdc_df = all_frames_acdc_df
+        except PermissionError as error:
             traceback_str = traceback.format_exc()
             if computeMetricsWorker is not None:
-                computeMetricsWorker.mutex.lock()
-                computeMetricsWorker.signals.sigPermissionError.emit(
-                    traceback_str, posData.acdc_output_csv_path
+                computeMetricsWorker.emitSigPermissionErrorAndSave(
+                    posData, traceback_str, all_frames_acdc_df, 
+                    custom_annot_columns
                 )
-                computeMetricsWorker.waitCond.wait(computeMetricsWorker.mutex)
-                computeMetricsWorker.mutex.unlock()
-                load.save_acdc_df_file(
-                    all_frames_acdc_df, posData.acdc_output_csv_path, 
-                    custom_annot_columns=custom_annot_columns
+            
+            if saveDataWorker is not None:
+                saveDataWorker.emitSigPermissionErrorAndSave(
+                    all_frames_acdc_df, posData.acdc_output_csv_path,
+                    custom_annot_columns
                 )
+        except Exception as error:
+            if saveDataWorker is not None:
+                saveDataWorker.mutex.lock()
+                saveDataWorker.critical.emit(error)
+                saveDataWorker.waitCond.wait(saveDataWorker.mutex)
+                saveDataWorker.mutex.unlock()
         
     def _load_channel_data(self, channel_path):
-        self.logger.info(f'Loading fluorescence image data from "{channel_path}"...')
+        self.log(f'Loading fluorescence image data from "{channel_path}"...')
         bkgrData = None
         posData = self.data[self.pos_i]
         # Load overlay frames and align if needed
@@ -4451,7 +4653,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         IDs_area_pxl = init_list.copy()
         IDs_vol_fl = init_list.copy()
         IDs_area_um2 = init_list.copy()
-        if self.mainWin.isSegm3D:
+        if self.isSegm3D:
             IDs_vol_vox_3D = init_list.copy()
             IDs_vol_fl_3D = init_list.copy()
 
@@ -4461,7 +4663,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             IDs_vol_fl[i] = obj.vol_fl
             IDs_area_pxl[i] = obj.area
             IDs_area_um2[i] = obj.area*yx_pxl_to_um2
-            if self.mainWin.isSegm3D:
+            if self.isSegm3D:
                 IDs_vol_vox_3D[i] = obj.area
                 IDs_vol_fl_3D[i] = obj.area*vox_to_fl_3D
             
@@ -4469,7 +4671,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
         df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
         df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
-        if self.mainWin.isSegm3D:
+        if self.isSegm3D:
             df['cell_vol_vox_3D'] = pd.Series(
                 data=IDs_vol_vox_3D, index=IDs, dtype=float
             )
@@ -4536,7 +4738,48 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
     
         return out
+    
+    def _init_metrics(self, posData, isSegm3D):
+        self.chNamesToSkip = []
+        self.metricsToSkip = {}
+        self.calc_for_each_zslice_mapper = {}
+        self.calc_size_for_each_zslice = False
+        # At the moment we don't know how many channels the user will load -->
+        # we set the measurements to save either at setMeasurements dialog
+        # or at initMetricsToSave
+        self.metricsToSave = None
+        self.regionPropsToSave = measurements.get_props_names()
+        if isSegm3D:
+            self.regionPropsToSave = measurements.get_props_names_3D()
+        else:
+            self.regionPropsToSave = measurements.get_props_names()  
+
+        self.mixedChCombineMetricsToSkip = []
+        self.chIndipendCustomMetricsToSave = list(
+            measurements.ch_indipend_custom_metrics_desc(
+                posData.SizeZ>1, isSegm3D=isSegm3D,
+            ).keys()
+        )
+        self.sizeMetricsToSave = list(
+            measurements.get_size_metrics_desc(
+                isSegm3D, posData.SizeT>1
+            ).keys()
+        )
         
+        exp_path = posData.exp_path
+        posFoldernames = myutils.get_pos_foldernames(exp_path)
+        for pos in posFoldernames:
+            images_path = os.path.join(exp_path, pos, 'Images')
+            for file in myutils.listdir(images_path):
+                if not file.endswith('custom_combine_metrics.ini'):
+                    continue
+                filePath = os.path.join(images_path, file)
+                configPars = load.read_config_metrics(filePath)
+
+                posData.combineMetricsConfig = load.add_configPars_metrics(
+                    configPars, posData.combineMetricsConfig
+                )
+    
     def _calc_metrics_iter_channels(
             self, acdc_df, rp, frame_i, lab, posData, autoBkgr_mask, 
             autoBkgr_mask_proj, dataPrepBkgrROI_mask, manualBackgrRp
@@ -4701,12 +4944,12 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         acdc_df['velocity_um'] = velocities_um
         return acdc_df
     
-    def _add_combined_metrics(self, posData, df):
+    def _add_combined_metrics(self, posData, df, saveDataWorker=None):
         # Add channel specifc combined metrics (from equations and 
         # from user_path_equations sections)
         config = posData.combineMetricsConfig
         for chName in posData.loadedChNames:
-            metricsToSkipChannel = self.mainWin.metricsToSkip.get(chName, [])
+            metricsToSkipChannel = self.metricsToSkip.get(chName, [])
             posDataEquations = config['equations']
             userPathChEquations = config['user_path_equations']
             for newColName, equation in posDataEquations.items():
@@ -4714,22 +4957,45 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     continue
                 if newColName in metricsToSkipChannel:
                     continue
-                self._dfEvalEquation(df, newColName, equation)
+                self._df_eval_equation(
+                    df, newColName, equation, saveDataWorker=saveDataWorker
+                )
             for newColName, equation in userPathChEquations.items():
                 if not newColName.startswith(chName):
                     continue
                 if newColName in metricsToSkipChannel:
                     continue
-                self._dfEvalEquation(df, newColName, equation)
+                self._df_eval_equation(
+                    df, newColName, equation, saveDataWorker=saveDataWorker
+                )
 
         # Add mixed channels combined metrics
         mixedChannelsEquations = config['mixed_channels_equations']
         for newColName, equation in mixedChannelsEquations.items():
-            if newColName in self.mainWin.mixedChCombineMetricsToSkip:
+            if newColName in self.mixedChCombineMetricsToSkip:
                 continue
             cols = re.findall(r'[A-Za-z0-9]+_[A-Za-z0-9_]+', equation)
             if all([col in df.columns for col in cols]):
-                self._dfEvalEquation(df, newColName, equation)
+                self._df_eval_equation(
+                    df, newColName, equation, saveDataWorke=saveDataWorker
+                )
+    
+    def _df_eval_equation(self, df, newColName, expr, saveDataWorker=None):
+        try:
+            df[newColName] = df.eval(expr)
+        except pd.errors.UndefinedVariableError as error:
+            if saveDataWorker is not None:
+                saveDataWorker.sigCombinedMetricsMissingColumn.emit(
+                    str(error), newColName
+                )
+        
+        try:
+            df[newColName] = df.eval(expr)
+        except Exception as error:
+            if saveDataWorker is not None:
+                saveDataWorker.customMetricsCritical.emit(
+                    traceback.format_exc(), newColName
+                )
     
     def _add_additional_metadata(
             self, posData: load.loadData, df: pd.DataFrame, saved_segm_data
@@ -4754,8 +5020,46 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         except Exception as e:
             pass
         
-        df = self.addDisappearsBeforeEnd(df, saved_segm_data)
+        df = self._add_disappears_before_end(df, saved_segm_data)
         return df
+    
+    def _add_disappears_before_end(
+            self, acdc_df: pd.DataFrame, saved_segm_data
+        ):
+        acdc_df = acdc_df.drop('time_seconds', axis=1, errors='ignore')
+        acdc_df = (
+            acdc_df.reset_index()
+            .set_index(['frame_i', 'Cell_ID'])
+            .sort_index()
+        )
+        acdc_df['disappears_before_end'] = 0
+        for frame_i, lab in enumerate(saved_segm_data):
+            if frame_i == 0:
+                continue
+            
+            try:
+                df_frame = acdc_df.loc[frame_i]
+            except KeyError:
+                break
+                
+            prev_lab = saved_segm_data[frame_i-1]
+            prev_rp = skimage.measure.regionprops(prev_lab)
+            
+            curr_rp = skimage.measure.regionprops(lab)
+            curr_rp_mapper = {obj.label: obj for obj in curr_rp}
+            lost_IDs = []
+            for prev_obj in prev_rp:
+                if curr_rp_mapper.get(prev_obj.label) is None:
+                    lost_IDs.append(prev_obj.label)
+            
+            if 'parent_ID_tree' in df_frame.columns:
+                parent_IDs = set(df_frame['parent_ID_tree'].values)
+                lost_IDs = [ID for ID in lost_IDs if ID not in parent_IDs]
+            
+            idx = pd.IndexSlice[frame_i-1, lost_IDs]
+            acdc_df.loc[idx, 'disappears_before_end'] = 1
+                
+        return acdc_df
     
     def _add_derived_cell_cycle_columns(self, all_frames_acdc_df):
         try:

@@ -251,14 +251,12 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.cancel = True
 
     def startSaveDataWorker(self):
-        self.gui.ch_names = self.posData.chNames
-        self.gui.notLoadedChNames = []
-        self.gui.setMetricsFunc()
-        self.gui.mixedChCombineMetricsToSkip = []
-        self.gui._setMetrics(self.measurementsWin)
-        self.gui.mutex = self.worker.mutex
-        self.gui.waitCond = self.worker.waitCond
-        self.gui.saveWin = self.progressWin
+        self.worker.kernel.init_args(
+            self.posData.chNames, self.endFilenameSegm
+        )
+        self.worker.kernel.set_metrics_from_set_measurements_dialog(
+            self.measurementsWin
+        )
         
         if not self.doRunComputation:
             self.worker.setup_done = True

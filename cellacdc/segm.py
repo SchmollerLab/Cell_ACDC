@@ -121,15 +121,23 @@ class SegmWorker(QObject):
             use_freehand_ROI=mainWin.useFreeHandROI,
         )
     
-    def run_kernel(self, mainWin):
+    def run_kernels(self, mainWin):
         self.kernel.run(
             self.img_path, 
             self.stop_frame_n
         )
+        if self._measurements_kernel is None:
+            return
+        
+        self._measurements_kernel.run(
+            img_path=self.img_path, 
+            stop_frame_n=self.stop_frame_n, 
+            end_filename_segm=self.kernel.segm_endname,
+        )
 
     @workers.worker_exception_handler
     def run(self):
-        self.run_kernel(self.mainWin)
+        self.run_kernels(self.mainWin)
         self.signals.finished.emit(self)
     
 class segmWin(QMainWindow):
@@ -951,12 +959,14 @@ class segmWin(QMainWindow):
         self.user_ch_file_paths = user_ch_file_paths
         self.user_ch_name = user_ch_name
         
-        proceed = self.askSaveMeasurements()
+        proceed, measurements_kernel = self.askSaveMeasurements()
         if not proceed:
             self.logger.info('Segmentation process interrupted.')
             self.close()
             return
 
+        self._measurements_kernel = measurements_kernel
+        
         proceed = self.askRunNowOrSaveConfigFile()
         if not proceed:
             self.logger.info('Segmentation process interrupted.')
@@ -1059,6 +1069,11 @@ class segmWin(QMainWindow):
                 category_params['names'] = values
             ini_items[f'postprocess_features.{category}'] = category_params
 
+        if self._measurements_kernel is not None:
+            ini_items['measurements'] = (
+                self._measurements_kernel.to_workflow_config_params()
+            )
+        
         load.save_segm_workflow_to_config(
             filepath, ini_items, self.user_ch_file_paths, self.stopFrames
         )
@@ -1110,6 +1125,7 @@ class segmWin(QMainWindow):
         self._saveConfigurationFile(config_filepath)
     
     def askSaveMeasurements(self):
+        measurements_kernel = None
         acdcOutputEndname = (
             self.endFilenameSegm.replace('segm', 'acdc_output')
             .replace('.npz', '.csv')
@@ -1128,10 +1144,10 @@ class segmWin(QMainWindow):
             )
         )
         if msg.cancel:
-            return False
+            return False, measurements_kernel
         
         if not msg.clickedButton == saveButton:
-            return True
+            return True, measurements_kernel
         
         self.logger.info('Setting up measurements...')
         
@@ -1153,7 +1169,9 @@ class segmWin(QMainWindow):
         self.calcMeasUtility.runWorker(showProgress=False)
         self.waitCalcMeasUtility()
         
-        return not self.calcMeasUtility.cancel
+        measurements_kernel = self.calcMeasUtility.worker.kernel
+        
+        return not self.calcMeasUtility.cancel, measurements_kernel
     
     def waitCalcMeasUtility(self):
         self.waitCalcMeasUtilityTimer = QTimer(self)

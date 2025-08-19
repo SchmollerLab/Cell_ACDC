@@ -551,6 +551,27 @@ def run_segm_workflow(workflow_params, logger, log_path):
         pbar.update()
     pbar.close()
 
+def run_measurements_workflow(workflow_params, logger, log_path):
+    logger.info('Initializing measurements kernel...')
+    from cellacdc import core
+    kernel = core.ComputeMeasurementsKernel(logger, log_path, is_cli=True)
+    ch_filepaths = kernel.parse_paths(workflow_params)
+    stop_frame_nums = kernel.parse_stop_frame_numbers(workflow_params)
+    end_filename_segm = workflow_params['measurements']['end_filename_segm']
+    kernel.set_metrics_from_workflow_config_params(
+        workflow_params['measurements']
+    )
+    pbar = tqdm(total=len(ch_filepaths), ncols=100)
+    for ch_filepath, stop_frame_n in zip(ch_filepaths, stop_frame_nums):
+        logger.info(f'\nProcessing "{ch_filepath}"...')
+        kernel.run(
+            img_path=ch_filepath, 
+            stop_frame_n=stop_frame_n, 
+            end_filename_segm=end_filename_segm,
+        )
+        pbar.update()
+    pbar.close()
+
 def run_cli(ini_filepath):
     from cellacdc import myutils
     logger, logs_path, log_path, log_filename = myutils.setupLogger(
@@ -566,6 +587,13 @@ def run_cli(ini_filepath):
     
     if workflow_type == 'segmentation and/or tracking':
         run_segm_workflow(workflow_params, logger, log_path)
+    
+    if 'measurements' in workflow_params.keys():
+        logger.info('Loading measurements workflow...')
+        meas_workflow_params = load.read_measurements_workflow_from_config(
+            ini_filepath
+        )
+        run_measurements_workflow(meas_workflow_params, logger, log_path)
     
     logger.info('**********************************************')
     logger.info(f'Cell-ACDC command-line closed. {myutils.get_salute_string()}')
