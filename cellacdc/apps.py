@@ -11108,6 +11108,7 @@ class QDialogModelParams(QDialog):
         self.okButton = okButton            
         
         # Extra params in right column
+        row = 0
         self.extraArgsWidgets = None
         self.extraParamsScrollArea = None
         if extraParams is not None:
@@ -11149,7 +11150,6 @@ class QDialogModelParams(QDialog):
             row += 1
 
         # Post-processing in right-most column
-        row = 0
         self.postProcessGroupbox = None
         self.seeHereLabel = None
         thirdColumnLayout = QVBoxLayout()
