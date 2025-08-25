@@ -267,7 +267,7 @@ class Whitelist:
         bool
             True if there are original labels, False otherwise.
         """
-        if len(self.originalLabsIDs) <= frame_i or self.originalLabsIDs is None:
+        if len(self.originalLabsIDs) <= frame_i or self.originalLabsIDs is None or self.originalLabsIDs[frame_i] is None:
             return False
 
         return True
@@ -857,6 +857,8 @@ class Whitelist:
             if IDs_to_add:
                 if self.checkOriginalLabels(i):
                     IDs_og = self.originalLabsIDs[i]
+                    if IDs_og is None:
+                        IDs_og = set()
                 else:
                     IDs_og = set()
                 if frame_i == i:
