@@ -575,7 +575,10 @@ class Whitelist:
                 available_IDs = set()
             else:
                 available_IDs = self.originalLabsIDs[i]
-            new_wl = prev_wl.intersection(available_IDs)
+            if available_IDs is None:
+                new_wl = set()
+            else:
+                new_wl = prev_wl.intersection(available_IDs)
             if new_wl:
                 self.whitelistIDs[i] = new_wl
             else:
@@ -917,7 +920,7 @@ class WhitelistGUIElements:
             return True
 
     @disableWindow
-    def whitelistTrackOGagainstPreviousFrame_cb(self):
+    def whitelistTrackOGagainstPreviousFrame_cb(self, signal_slot=None):
         """Tracks the original labels against the previous frame.
         This is used as a callback for sigTrackOGagainstPreviousFrame signal
         """
