@@ -1333,13 +1333,13 @@ class ComputeMetricsWorker(QObject):
                 chName = posDataInputs['chName']
                 stopFrameNum = posDataInputs['stopFrameNum']
                 
-                kernel = core.ComputeMeasurementsKernel(
+                self.kernel = core.ComputeMeasurementsKernel(
                     self.logger, 
                     self.mainWin.log_path, 
                     False,
                 )
                 
-                kernel.run(
+                self.kernel.run(
                     img_path=file_path, 
                     stop_frame_n=stopFrameNum, 
                     end_filename_segm=self.mainWin.endFilenameSegm,
@@ -1397,7 +1397,7 @@ class ComputeMetricsWorker(QObject):
     def emitSigInitMetricsDialog(self, posData):
         self.mainWin.gui.data = [posData]
         self.mainWin.gui.pos_i = 0
-        self.mainWin.gui.isSegm3D = self.isSegm3D
+        self.mainWin.gui.isSegm3D = posData.getIsSegm3D()
         self.mutex.lock()
         self.signals.sigInitAddMetrics.emit(
             posData, self.allPosDataInputs

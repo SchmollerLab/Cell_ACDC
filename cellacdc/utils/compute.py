@@ -264,6 +264,10 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             self.worker.waitCond.wakeAll()
             return
 
+        self.gui.mutex = self.worker.mutex
+        self.gui.waitCond = self.worker.waitCond
+        self.gui.saveWin = self.progressWin
+        
         self.gui.saveDataWorker = workers.saveDataWorker(self.gui)
 
         self.gui.saveDataWorker.criticalPermissionError.connect(self.skipEvent)

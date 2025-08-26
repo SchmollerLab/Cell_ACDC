@@ -4017,18 +4017,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.channel_names = posData.chNames
         self.not_loaded_channel_names = []
     
-    def _set_metrics_from_compute_metrics_worker(self, computeMetricsWorker):
-        guiWin = computeMetricsWorker.mainWin.gui
-        self.chNamesToSkip = guiWin.chNamesToSkip
-        self.metricsToSkip = guiWin.metricsToSkip
-        self.metricsToSave = guiWin.metricsToSave
-        self.calc_for_each_zslice_mapper = guiWin.calc_for_each_zslice_mapper
-        self.calc_size_for_each_zslice = guiWin.calc_size_for_each_zslice
-        self.sizeMetricsToSave = guiWin.sizeMetricsToSave
-        self.regionPropsToSave = guiWin.regionPropsToSave
-        self.chIndipendCustomMetricsToSave = guiWin.chIndipendCustomMetricsToSave
-        self.mixedChCombineMetricsToSkip = guiWin.mixedChCombineMetricsToSkip
-    
     def to_workflow_config_params(self):
         params = {
             'channels': '\n'.join(self.ch_names), 
@@ -4102,8 +4090,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             if metrics_to_save:
                 self.metricsToSave[channel] = metrics_to_save.split('\n')
         
-        
-    
     def set_metrics_from_set_measurements_dialog(self, setMeasurementsDialog):
         self.chNamesToSkip = []
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
@@ -4355,7 +4341,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             self.regionPropsCritical = saveDataWorker.regionPropsCritical
         
         elif computeMetricsWorker is not None:
-            self.regionPropsCritical = computeMetricsWorker.regionPropsCritical
+            saveDataWorker = computeMetricsWorker.mainWin.gui.saveDataWorker
+            self.customMetricsCritical = saveDataWorker.customMetricsCritical
+            self.regionPropsCritical = saveDataWorker.regionPropsCritical
     
     @exception_handler_cli
     def run(
@@ -4367,11 +4355,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             saveDataWorker=None,
             posData=None,
             save_metrics=True
-        ):    
-        self.init_signals(computeMetricsWorker, saveDataWorker)
-                
+        ):      
         if posData is None:
-            posData = self._load_posData()
+            posData = self._load_posData(img_path, end_filename_segm)
         
         channel_names = posData.chNames
         images_path = posData.images_path
@@ -4385,10 +4371,11 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
                 return
             
-            self._set_metrics_from_compute_metrics_worker(computeMetricsWorker)
             if self.setup_done:
                 computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
                 return
+        
+        self.init_signals(computeMetricsWorker, saveDataWorker)
         
         self.log(
             'Loaded paths:\n'
