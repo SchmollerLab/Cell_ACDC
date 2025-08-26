@@ -204,7 +204,7 @@ class SegForLostIDsWorker(QObject):
     sigSegForLostIDsWorkerAskInstallGPU = Signal(str, bool)
     sigTrackManuallyAddedObject = Signal(object, object, bool, bool)
 
-    def __init__(self, guiWin, mutex, waitCond, debug=True):
+    def __init__(self, guiWin, mutex, waitCond, debug=False):
         QObject.__init__(self)
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
