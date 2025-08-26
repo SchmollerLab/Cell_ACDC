@@ -438,6 +438,7 @@ class SegForLostIDsWorker(QObject):
                             and obj.label not in original_IDs]
         
                 if self._debug or DEBUG:
+                    filtered_sizes = [(obj.label, obj.area) for obj in rp_model_lab if obj.label in filtered_IDs]
                     self.logger.info(f"Filtered sizes: {filtered_sizes}")
                 for label in filtered_IDs:
                     original_bbox_lab[box_model_lab == label] = label # here the stuff should be tracked, so we keep the ID!
