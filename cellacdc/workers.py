@@ -437,8 +437,8 @@ class SegForLostIDsWorker(QObject):
                             and obj.area < (1 + args_new['size_perc_diff']) * area_mean
                             and obj.label not in original_IDs]
         
-                filtered_sizes = [(obj.label, obj.area) for obj in rp_model_lab if obj.label in filtered_IDs]
-                print(filtered_sizes)
+                if self._debug or DEBUG:
+                    logging.debug(f"Filtered sizes: {filtered_sizes}")
                 for label in filtered_IDs:
                     original_bbox_lab[box_model_lab == label] = label # here the stuff should be tracked, so we keep the ID!
                 
