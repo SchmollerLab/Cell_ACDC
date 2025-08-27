@@ -422,6 +422,8 @@ class Logger(logging.Logger):
             self.write(f'[ERROR]: {text}\n')
     
     def log(self, level, text):
+        if not isinstance(level, int):
+            printl(level, text, type(level), type(text), sep='\n')
         super().log(level, text)
         levelName = self._levelToName.get(level, 'INFO')
         getattr(self, levelName.lower())(text)

@@ -570,16 +570,6 @@ def track_sub_cell_objects(
             cells_IDs_with_sub_obj.append(intersect_ID)
             tracked_sub_obj_original_IDs.append(sub_obj.label)
         
-        # assignments = []
-        # for sub_obj_ID, cell_ID in zip(tracked_sub_obj_original_IDs, cells_IDs_with_sub_obj):
-        #     assignments.append(f'  * {sub_obj_ID} --> {cell_ID}')
-        # assignments_format = '\n'.join(assignments)
-        # printl(f'Assignments in frame_i = {frame_i}:\n{assignments_format}')
-        # printl(f'Untracked sub-objs = {untracked_sub_objs_frame_i}')
-        # from acdctools.plot import imshow
-        # imshow(lab, subobj_segm_data[frame_i], lab_sub, tracked_lab_sub)
-        # import pdb; pdb.set_trace()
-        
         all_num_objects_per_cells.append(num_objects_per_cells)
         all_cells_IDs_with_sub_obj.append(cells_IDs_with_sub_obj)
         
@@ -3319,92 +3309,6 @@ def get_split_line_ref_points_img(img, slope, interc, xc, yc):
     
     return (x_ref_0, y_ref_0), (x_ref1, y_ref1)
 
-# def _compute_obj_to_all_objs_contour_dist_pairs(
-#         input, obj_contours=None, other_rp=None, 
-#         all_contours=None, max_distance=np.inf, calculated_pairs=None,
-#         pbar=None
-#     ):
-#     i, obj = input
-#     obj_contours = all_contours[(obj.label, None, False, False)]
-#     all_dist_to_other = {}
-#     for j, other_obj in enumerate(other_rp):
-#         if i == j:
-#             continue
-        
-#         already_paired_ID = calculated_pairs.get(other_obj.label, np.nan)
-#         if already_paired_ID == obj.label:
-#             continue
-        
-#         already_paired_ID = calculated_pairs.get(obj.label, np.nan)
-#         if already_paired_ID == other_obj.label:
-#             continue
-        
-#         calculated_pairs[obj.label] = other_obj.label
-#         calculated_pairs[other_obj.label] = obj.label
-        
-#         centroid_dist = math.dist(obj.centroid, other_obj.centroid)
-#         if centroid_dist > max_distance:
-#             continue
-        
-#         other_contours = all_contours[(other_obj.label, None, False, False)]
-#         min_dist, nearest_xy = nearest_point_2Dyx(
-#             obj_contours, other_contours
-#         )
-#         all_dist_to_other[(obj.label, other_obj.label)] = min_dist
-#         if pbar is not None:
-#             pbar.update()
-    
-#     return all_dist_to_other
-    
-
-# def _compute_all_obj_to_obj_contour_dist_pairs(
-#         all_contours: dict, rp, prev_rp=None, restrict_search=True
-#     ):
-#     if prev_rp is not None:
-#         prev_IDs = set([obj.label for obj in prev_rp])
-#         new_IDs = set([obj.label for obj in rp if obj.label not in prev_IDs])
-#         current_rp = [obj for obj in rp if obj.label not in new_IDs]
-#         other_rp = [obj for obj in rp if obj.label not in prev_IDs]
-#         num_cols = len(new_IDs)
-#     else:
-#         current_rp = rp
-#         other_rp = rp
-#         num_cols = len(current_rp)
-    
-#     max_distance = np.inf
-#     if restrict_search:
-#         max_distance = 3*np.max([obj.major_axis_length for obj in rp])
-    
-#     calculated_pairs = {}
-#     num_rows = len(current_rp)
-#     num_objs = len(rp)
-#     IDs = [obj.label for obj in rp]
-#     dist_matrix_df = pd.DataFrame(
-#         index=IDs, 
-#         columns=IDs, 
-#         data=np.full((num_objs, num_objs), np.inf)
-#     )
-#     pbar = tqdm(total=num_rows*num_cols, ncols=100, leave=False)
-#     with concurrent.futures.ThreadPoolExecutor() as executor:
-#         iterable = enumerate(current_rp)
-#         func = partial(
-#             _compute_obj_to_all_objs_contour_dist_pairs, 
-#             other_rp=other_rp,
-#             all_contours=all_contours,
-#             pbar=pbar,
-#             max_distance=max_distance,
-#             calculated_pairs=calculated_pairs
-#         )
-#         result = executor.map(func, iterable)
-#         for all_dist_to_other in result:
-#             printl(all_dist_to_other)
-#             for (i, j), min_dist in all_dist_to_other.items():
-#                 dist_matrix_df.loc[i, j] = min_dist
-    
-#     printl(dist_matrix_df)
-    
-#     return dist_matrix_df
-
 def _compute_obj_to_all_objs_contour_dist_pairs(
         input, all_objs_contours_arr=None, all_contours=None, pbar=None
     ):
@@ -3979,13 +3883,14 @@ def fill_holes_in_segmentation(labels):
 class ComputeMeasurementsKernel(_WorkflowKernel):
     def __init__(self, logger, log_path, is_cli):
         super().__init__(logger, log_path, is_cli=is_cli)
+        self.setup_done = False
     
     def init_args(self, channel_names, end_filename_segm):
         self.ch_names = channel_names
         self.end_filename_segm = end_filename_segm
         self.notLoadedChNames = []
     
-    def log(self, message, level='info'):
+    def log(self, message, level='INFO'):
         try:
             self.logger.log(message, level=level)
             return
@@ -4020,7 +3925,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
     def to_workflow_config_params(self):
         params = {
             'channels': '\n'.join(self.ch_names), 
-            'end_filename_segm': self.endFilenameSegm
+            'end_filename_segm': self.end_filename_segm
         }
         params['channel_names_to_skip'] = '\n'.join(self.chNamesToSkip)
         calc_for_each_zslice = [
@@ -4041,12 +3946,14 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         
         params['size_metrics_to_save'] = '\n'.join(self.sizeMetricsToSave)
         params['regionprops_to_save'] = '\n'.join(self.regionPropsToSave)
-        params['channel_indipendent_custom_metrics_to_save'] = (
-            '\n'.join(self.chIndipendCustomMetricsToSave)
-        )
-        params['mixed_combine_metrics_to_skip'] = (
-            '\n'.join(self.mixedChCombineMetricsToSkip)
-        )
+        if hasattr(self, 'chIndipendCustomMetricsToSave'):
+            params['channel_indipendent_custom_metrics_to_save'] = (
+                '\n'.join(self.chIndipendCustomMetricsToSave)
+            )
+        if hasattr(self, 'mixedChCombineMetricsToSkip'):
+            params['mixed_combine_metrics_to_skip'] = (
+                '\n'.join(self.mixedChCombineMetricsToSkip)
+            )
         
         return params
         
@@ -4065,12 +3972,15 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
         self.sizeMetricsToSave = config_params['size_metrics_to_save']
         self.regionPropsToSave = config_params['regionprops_to_save']
-        self.chIndipendCustomMetricsToSave = (
-            config_params['channel_indipendent_custom_metrics_to_save']
-        )
-        self.mixedChCombineMetricsToSkip = (
-            config_params['mixed_combine_metrics_to_skip']
-        )
+        if 'channel_indipendent_custom_metrics_to_save' in config_params:
+            self.chIndipendCustomMetricsToSave = (
+                config_params['channel_indipendent_custom_metrics_to_save']
+            )
+        
+        if 'mixed_combine_metrics_to_skip' in config_params:
+            self.mixedChCombineMetricsToSkip = (
+                config_params['mixed_combine_metrics_to_skip']
+            )
         
         for channel_value in config_params['calc_for_each_zslice_channels']:
             channel, value = channel_value.split(',')
@@ -4409,8 +4319,15 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             if not np.any(lab):
                 # Empty segmentation mask --> skip
                 continue
-                
-            rp = skimage.measure.regionprops(lab)
+            
+            if computeMetricsWorker is not None:
+                rp = posData.allData_li[frame_i]['regionprops']
+            elif saveDataWorker is not None:
+                rp = posData.allData_li[frame_i]['regionprops']
+            else:
+                rp = skimage.measure.regionprops(lab)
+                rp = self._calc_volume_metrics(rp, posData)
+            
             posData.lab = lab
             posData.rp = rp
             
@@ -4433,15 +4350,13 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 acdc_df = self._add_volume_metrics(acdc_df, rp, posData)
                 if save_metrics:
                     calc_metrics_addtional_args = self._init_calc_metrics(
-                        acdc_df, rp, frame_i, lab, posData
+                        acdc_df, rp, frame_i, lab, posData, 
+                        saveDataWorker=saveDataWorker
                     )
                     acdc_df = self._calc_metrics_iter_channels(
-                        self, acdc_df, rp, frame_i, lab, posData, 
-                        **calc_metrics_addtional_args
+                        acdc_df, rp, frame_i, lab, posData, 
+                        *calc_metrics_addtional_args
                     )
-                acdc_df_li.append(acdc_df)
-                key = (frame_i, posData.TimeIncrement*frame_i)
-                keys.append(key)
             except Exception as error:
                 traceback_format = traceback.format_exc()
                 print('-'*30)      
@@ -4461,9 +4376,13 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     saveDataWorker.emitUpdateProgressBar()
                 continue
             
+            key = (frame_i, posData.TimeIncrement*frame_i)
+            
             if frame_i == 0:
                 if saveDataWorker is not None:
                     saveDataWorker.emitUpdateProgressBar()
+                acdc_df_li.append(acdc_df)
+                keys.append(key)
                 continue
 
             try:
@@ -4482,6 +4401,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     computeMetricsWorker.standardMetricsErrors[e] = (
                         traceback_format
                     )
+            
+            acdc_df_li.append(acdc_df)
+            keys.append(key)
 
             if computeMetricsWorker is not None:
                 computeMetricsWorker.signals.progressBar.emit(1)
@@ -4502,6 +4424,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         all_frames_acdc_df = pd.concat(
             acdc_df_li, keys=keys, names=['frame_i', 'time_seconds', 'Cell_ID']
         )
+        
         if save_metrics:
             self._add_combined_metrics(
                 posData, all_frames_acdc_df, saveDataWorker=saveDataWorker
@@ -4584,8 +4507,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         
     def _load_channel_data(self, channel_path):
         self.log(f'Loading fluorescence image data from "{channel_path}"...')
+        images_path = os.path.dirname(channel_path)
         bkgrData = None
-        posData = self.data[self.pos_i]
         # Load overlay frames and align if needed
         filename = os.path.basename(channel_path)
         filename_noEXT, ext = os.path.splitext(filename)
@@ -4598,19 +4521,19 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
 
             # Load background data
             bkgrData_path = os.path.join(
-                posData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
+                images_path, f'{filename_noEXT}_bkgrRoiData.npz'
             )
             if os.path.exists(bkgrData_path):
                 bkgrData = np.load(bkgrData_path)
         elif ext == '.tif' or ext == '.tiff':
             aligned_filename = f'{filename_noEXT}_aligned.npz'
-            aligned_path = os.path.join(posData.images_path, aligned_filename)
+            aligned_path = os.path.join(images_path, aligned_filename)
             if os.path.exists(aligned_path):
                 img_data = np.load(aligned_path)['arr_0']
 
                 # Load background data
                 bkgrData_path = os.path.join(
-                    posData.images_path, f'{aligned_filename}_bkgrRoiData.npz'
+                    images_path, f'{aligned_filename}_bkgrRoiData.npz'
                 )
                 if os.path.exists(bkgrData_path):
                     bkgrData = np.load(bkgrData_path)
@@ -4619,7 +4542,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
 
                 # Load background data
                 bkgrData_path = os.path.join(
-                    posData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
+                    images_path, f'{filename_noEXT}_bkgrRoiData.npz'
                 )
                 if os.path.exists(bkgrData_path):
                     bkgrData = np.load(bkgrData_path)
@@ -4627,6 +4550,19 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             return None, None
 
         return img_data, bkgrData
+    
+    def _calc_volume_metrics(self, rp, posData):
+        self.logger.info('Computing cell volume...')
+        PhysicalSizeY = posData.PhysicalSizeY
+        PhysicalSizeX = posData.PhysicalSizeX
+        obj_iter = tqdm(rp, ncols=100, position=1, leave=False)
+        for i, obj in enumerate(obj_iter):
+            vol_vox, vol_fl = cca_functions._calc_rot_vol(
+                obj, PhysicalSizeY, PhysicalSizeX
+            )
+            obj.vol_vox = vol_vox
+            obj.vol_fl = vol_fl
+        return rp
     
     def _add_volume_metrics(self, df, rp, posData):
         PhysicalSizeY = posData.PhysicalSizeY
@@ -4667,7 +4603,55 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             )
         return df
     
-    def _init_calc_metrics(self, acdc_df, rp, frame_i, lab, posData):
+    def _check_zSlice(self, posData, frame_i, saveDataWorker=None):
+        if posData.SizeZ == 1:
+            return True
+        
+        # Iteare fluo channels and get 2D data from 3D if needed
+        filenames = posData.fluo_data_dict.keys()
+        for chName, filename in zip(posData.loadedChNames, filenames):
+            idx = (filename, frame_i)
+            try:
+                if posData.segmInfo_df.at[idx, 'resegmented_in_gui']:
+                    col = 'z_slice_used_gui'
+                else:
+                    col = 'z_slice_used_dataPrep'
+                z_slice = posData.segmInfo_df.at[idx, col]
+            except KeyError:
+                try:
+                    # Try to see if the user already selected z-slice in prev pos
+                    segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
+                    index_col = ['filename', 'frame_i']
+                    posData.segmInfo_df = segmInfo_df.set_index(index_col)
+                    col = 'z_slice_used_dataPrep'
+                    z_slice = posData.segmInfo_df.at[idx, col]
+                except KeyError as e:
+                    if saveDataWorker is not None:
+                        saveDataWorker.progress.emit(
+                            f'z-slice for channel "{chName}" absent. '
+                            'Follow instructions on pop-up dialogs.'
+                        )
+                        saveDataWorker.mutex.lock()
+                        saveDataWorker.askZsliceAbsent.emit(filename, posData)
+                        saveDataWorker.waitCond.wait(saveDataWorker.mutex)
+                        saveDataWorker.mutex.unlock()
+                        if saveDataWorker.abort:
+                            return False
+                        saveDataWorker.progress.emit(
+                            f'Saving (check terminal for additional progress info)...'
+                        )
+                        segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
+                        index_col = ['filename', 'frame_i']
+                        posData.segmInfo_df = segmInfo_df.set_index(index_col)
+                        col = 'z_slice_used_dataPrep'
+                        z_slice = posData.segmInfo_df.at[idx, col]
+                    else:
+                        raise e
+        return True
+    
+    def _init_calc_metrics(
+            self, acdc_df, rp, frame_i, lab, posData, saveDataWorker=None
+        ):
         yx_pxl_to_um2 = posData.PhysicalSizeY*posData.PhysicalSizeX
         vox_to_fl_3D = (
             posData.PhysicalSizeY*posData.PhysicalSizeX*posData.PhysicalSizeZ
@@ -4699,9 +4683,11 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         df = df.combine_first(acdc_df)
 
         # Check if z-slice is present for 3D z-stack data
-        proceed = self._check_zSlice(posData, frame_i)
+        proceed = self._check_zSlice(
+            posData, frame_i, saveDataWorker=saveDataWorker
+        )
         if not proceed:
-            return
+            return []
 
         df = measurements.add_size_metrics(
             df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, 
@@ -4767,6 +4753,67 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     configPars, posData.combineMetricsConfig
                 )
     
+    def _add_custom_metrics(
+            self, posData, frame_i, isSegm3D, df, rp, custom_metrics_params, 
+            lab, calc_for_each_zslice_mapper
+        ):
+        iter_channels = zip(
+            posData.loadedChNames, 
+            posData.fluo_data_dict.items()
+        )
+        # Add custom measurements
+        for channel, (filename, channel_data) in iter_channels:
+            foregr_img = channel_data[frame_i]
+            
+            iter_other_channels = zip(
+                posData.loadedChNames, 
+                posData.fluo_data_dict.items()
+            )
+            other_channels_foregr_imgs = {
+                ch:ch_data[frame_i] for ch, (_, ch_data) in iter_other_channels
+                if ch != channel
+            }
+            
+            # Get the z-slice if we have z-stacks
+            z = posData.zSliceSegmentation(filename, frame_i)
+            
+            foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
+            
+            df = measurements.add_custom_metrics(
+                df, rp, channel, foregr_data, 
+                custom_metrics_params[channel], 
+                isSegm3D, lab, foregr_img, 
+                other_channels_foregr_imgs,
+                z_slice=z,
+                customMetricsCritical=self.customMetricsCritical,
+            )
+            
+            if not calc_for_each_zslice_mapper.get(channel, False):
+                continue
+            
+            # Repeat measureemnts for each z-slice
+            pbar_z = tqdm(
+                total=posData.SizeZ, desc='Computing for z-slices: ', 
+                ncols=100, leave=False, unit='z-slice'
+            )
+            for z in range(posData.SizeZ):
+                foregr_data = measurements.get_foregr_data(
+                    foregr_img, isSegm3D, z
+                )
+                foregr_data = {'zSlice': foregr_data['zSlice']}
+                
+                df = measurements.add_custom_metrics(
+                    df, rp, channel, foregr_data, 
+                    custom_metrics_params[channel], 
+                    isSegm3D, lab, foregr_img, 
+                    other_channels_foregr_imgs,
+                    z_slice=z,
+                    text_to_append_to_col=str(z),
+                    customMetricsCritical=self.customMetricsCritical, 
+                )
+        
+        return df
+    
     def _calc_metrics_iter_channels(
             self, acdc_df, rp, frame_i, lab, posData, autoBkgr_mask, 
             autoBkgr_mask_proj, dataPrepBkgrROI_mask, manualBackgrRp
@@ -4811,14 +4858,14 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             all_channels_z_slices[channel] = z
 
             # Compute background values
-            df = measurements.add_bkgr_values(
-                df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
+            acdc_df = measurements.add_bkgr_values(
+                acdc_df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
                 manualBackgrRp=manualBackgrRp, foregr_data=foregr_data
             )
 
             # Iterate objects and compute foreground metrics
-            df = measurements.add_foregr_standard_metrics(
-                df, rp, channel, foregr_data, 
+            acdc_df = measurements.add_foregr_standard_metrics(
+                acdc_df, rp, channel, foregr_data, 
                 foregr_metrics_params[channel], 
                 metrics_func, isSegm3D, 
                 lab, foregr_img, 
@@ -4851,15 +4898,17 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 foregr_data = {'zSlice': foregr_data['zSlice']}
 
                 # Compute background values
-                df = measurements.add_bkgr_values(
-                    df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
-                    manualBackgrRp=manualBackgrRp, foregr_data=foregr_data,
+                acdc_df = measurements.add_bkgr_values(
+                    acdc_df, bkgr_data, bkgr_metrics_params[channel], 
+                    metrics_func,
+                    manualBackgrRp=manualBackgrRp, 
+                    foregr_data=foregr_data,
                     text_to_append_to_col=str(z)
                 )
 
                 # Iterate objects and compute foreground metrics
-                df = measurements.add_foregr_standard_metrics(
-                    df, rp, channel, foregr_data, 
+                acdc_df = measurements.add_foregr_standard_metrics(
+                    acdc_df, rp, channel, foregr_data, 
                     foregr_metrics_params[channel], 
                     metrics_func, isSegm3D, 
                     lab, foregr_img, 
@@ -4869,18 +4918,19 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 pbar_z.update()
             pbar_z.close()
 
-        df = measurements.add_concentration_metrics(
-            df, concentration_metrics_params
+        acdc_df = measurements.add_concentration_metrics(
+            acdc_df, concentration_metrics_params
         )
         
         # Add region properties
         try:
-            df, rp_errors = measurements.add_regionprops_metrics(
-                df, lab, regionprops_to_save, logger_func=self.progress.emit
+            acdc_df, rp_errors = measurements.add_regionprops_metrics(
+                acdc_df, lab, regionprops_to_save, 
+                logger_func=self.logger.log
             )
             if rp_errors:
                 print('')
-                self.progress.emit(
+                self.logger.log(
                     'WARNING: Some objects had the following errors:\n'
                     f'{rp_errors}\n'
                     'Region properties with errors were saved as `Not A Number`.'
@@ -4889,13 +4939,13 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             traceback_format = traceback.format_exc()
             self.regionPropsCritical.emit(traceback_format, str(error))
 
-        df = self.addCustomMetrics(
-            posData, frame_i, isSegm3D, df, rp, custom_metrics_params, 
+        acdc_df = self._add_custom_metrics(
+            posData, frame_i, isSegm3D, acdc_df, rp, custom_metrics_params, 
             lab, calc_for_each_zslice_mapper
         )
         
-        df = measurements.add_ch_indipend_custom_metrics(
-            df, rp, all_channels_foregr_data, 
+        acdc_df = measurements.add_ch_indipend_custom_metrics(
+            acdc_df, rp, all_channels_foregr_data, 
             ch_indipend_custom_func_params, 
             isSegm3D, lab, all_channels_foregr_imgs, 
             all_channels_z_slices=all_channels_z_slices,
@@ -4903,9 +4953,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
         
         # Remove 0s columns
-        df = df.loc[:, (df != -2).any(axis=0)]
+        acdc_df = acdc_df.loc[:, (acdc_df != -2).any(axis=0)]
 
-        return df
+        return acdc_df
     
     def _add_velocity_measurement(self, acdc_df, prev_lab, lab, posData):
         if 'velocity_pixel' not in self.sizeMetricsToSave:
@@ -5042,6 +5092,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             if 'parent_ID_tree' in df_frame.columns:
                 parent_IDs = set(df_frame['parent_ID_tree'].values)
                 lost_IDs = [ID for ID in lost_IDs if ID not in parent_IDs]
+            
+            if not lost_IDs:
+                continue
             
             idx = pd.IndexSlice[frame_i-1, lost_IDs]
             acdc_df.loc[idx, 'disappears_before_end'] = 1

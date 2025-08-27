@@ -44,6 +44,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
 
         self.endFilenameSegm = segmEndname
         self.doRunComputation = doRunComputation
+        self.isWorkerFinished = False
 
     def showEvent(self, event):
         self.runWorker()
@@ -299,7 +300,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.worker.waitCond.wakeAll()
 
     def computeVolumeRegionprop(self, end_frame_i, posData):
-        if 'cell_vol_vox' not in self.gui.sizeMetricsToSave:
+        if 'cell_vol_vox' not in self.worker.kernel.sizeMetricsToSave:
             return
 
         # We compute the cell volume in the main thread because calling
@@ -355,11 +356,11 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             msg.information(self, 'Process completed', html_utils.paragraph(txt))
 
-        self.worker = None
+        self.isWorkerFinished = True
         self.progressWin = None
         self.close()
 
     def workerProgress(self, text, loggerLevel='INFO'):
         if self.progressWin is not None:
             self.progressWin.logConsole.append(text)
-        self.logger.log(getattr(logging, loggerLevel), text)
+        self.logger.log(getattr(logging, loggerLevel.upper()), text)

@@ -1183,7 +1183,7 @@ class segmWin(QMainWindow):
         self.waitCalcMeasUtilityLoop.exec_()
 
     def checkCalcMeasUtilityFinished(self, calcMeasUtility):
-        if calcMeasUtility.worker is None:
+        if calcMeasUtility.isWorkerFinished:
             self.waitCalcMeasUtilityLoop.exit()
             self.waitCalcMeasUtilityTimer.stop()
     
