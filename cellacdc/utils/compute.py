@@ -1,6 +1,8 @@
 import os
 import traceback
 import logging
+from functools import partial
+import datetime
 
 import pandas as pd
 
@@ -49,7 +51,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
     def showEvent(self, event):
         self.runWorker()
 
-    def runWorker(self, showProgress=True):
+    def runWorker(self, showProgress=True, stopFrameNumber=None):
         self.gui = gui.guiWin(self.app, parent=self.parent)
         self.gui.logger = self.logger
 
@@ -79,18 +81,125 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
                 self.selectSegmFileLoadData
             )
         else:
-            self.worker.signals.sigSelectSegmFiles.connect(self.wakeUpWorkerThread)
+            self.worker.signals.sigSelectSegmFiles.connect(
+                self.wakeUpWorkerThread
+            )
         self.worker.signals.sigInitAddMetrics.connect(self.initAddMetricsWorker)
         self.worker.signals.sigPermissionError.connect(self.warnPermissionError)
         self.worker.signals.initProgressBar.connect(self.workerInitProgressbar)
         self.worker.signals.progressBar.connect(self.workerUpdateProgressbar)
         self.worker.signals.sigUpdatePbarDesc.connect(self.workerUpdatePbarDesc)
         self.worker.signals.sigComputeVolume.connect(self.computeVolumeRegionprop)
-        self.worker.signals.sigAskStopFrame.connect(self.workerAskStopFrame)
+        self.worker.signals.sigAskRunNow.connect(
+            self.askRunNowOrSaveToConfig
+        )
+        
+        if stopFrameNumber is None:
+            self.worker.signals.sigAskStopFrame.connect(self.workerAskStopFrame)
+        else:
+            self.worker.signals.sigSelectSegmFiles.connect(
+                partial(self.setStopFrame, stopFrameNumber=stopFrameNumber)
+            )
         self.worker.signals.sigErrorsReport.connect(self.warnErrors)
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+    
+    def askRunNowOrSaveToConfig(self, worker):
+        txt = html_utils.paragraph("""
+            Do you want to <b>compute the measurements now</b><br>
+            or save the  workflow to a <b>configuration file</b> and run it 
+            <b>later?</b><br><br>
+            With the configuration file you can also run the workflow on a<br>
+            computing cluster that does not support GUI elements 
+            (i.e., headless).<br>
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        saveButton = widgets.savePushButton('Save and run later')
+        runNowButton = widgets.playPushButton('Run now')
+        _, saveButton, runNowButton = msg.question(
+            self, 'Run workflow now?', txt, 
+            buttonsTexts=(
+                'Cancel', saveButton, runNowButton
+            )
+        )
+        if not msg.clickedButton == saveButton:
+            self.worker.abort = win.cancel
+            self.worker.waitCond.wakeAll()
+            return
+        
+        timestamp = datetime.datetime.now().strftime(
+            r'%Y-%m-%d_%H-%M'
+        )
+        win = apps.filenameDialog(
+            parent=self, 
+            ext='.ini', 
+            title='Insert filename for configuration file',
+            hintText='Insert filename for the configuration file',
+            allowEmpty=False, 
+            defaultEntry=f'{timestamp}_acdc_measurements_workflow'
+        )
+        win.exec_()
+        if win.cancel:
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return
+        
+        config_filename = win.filename
+        mostRecentPath = myutils.getMostRecentPath()
+        folder_path = apps.get_existing_directory(
+            allow_images_path=False,
+            parent=self, 
+            caption='Select folder where to save configuration file',
+            basedir=mostRecentPath,
+            # options=QFileDialog.DontUseNativeDialog
+        )
+        if not folder_path:
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return
+        
+        config_filepath = os.path.join(folder_path, config_filename)
+        kernel = self.worker.kernel
+        self.saveConfigurationFile(config_filepath, kernel)
+    
+    def saveConfigurationFile(self, config_filepath, kernel):
+        ini_items = {'workflow': {'type': 'measurements'}}
+        ini_items['measurements'] = kernel.to_workflow_config_params()
+        paths = []            
+        stopFrames = []
+        for pathInfo in self.worker.allPosDataInputs:
+            images_path = os.path.dirname(pathInfo['file_path'])
+            paths.append(images_path)
+            stopFrames.append(pathInfo['stopFrameNum'])
+        
+        load.save_workflow_to_config(
+            config_filepath, 
+            ini_items, 
+            paths, 
+            stopFrames,
+            type='measure'
+        )
+        self.worker.kernel.setup_done = True
+        
+        txt = html_utils.paragraph(
+            'Compute measurements workflow successfully saved to the following location:<br><br>'
+            f'<code>{config_filepath}</code><br><br>'
+            'You can run the workflow with the following command:'
+        )
+        command = f'acdc -p "{config_filepath}"'
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(
+            self, 'Workflow save', txt, 
+            commands=(command,),
+            path_to_browse=os.path.dirname(config_filepath)
+        )
+        
+        self.worker.waitCond.wakeAll()
+    
+    def setStopFrame(self, posDatas, stopFrameNumber=1):
+        for posData in self.posDatas:
+            posData.stopFrameNum = stopFrameNumber
     
     def wakeUpWorkerThread(self, *args, **kwargs):
         self.worker.waitCond.wakeAll()

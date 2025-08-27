@@ -133,6 +133,7 @@ class signals(QObject):
     sigSelectFile = Signal(str, str, str)
     sigAskCopyCca = Signal(str)
     sigSelectFilesWithText = Signal(str, object, str, object)
+    sigAskRunNow = Signal(object)
 
 class AutoPilotWorker(QObject):
     finished = Signal()
@@ -1318,9 +1319,9 @@ class ComputeMetricsWorker(QObject):
                     self.signals.finished.emit(self)
                     return
                 for p, posData in enumerate(posDatas):
-                    self.allPosDataInputs[p]['stopFrameNum'] = posData.stopFrameNum
-                # remove posDatas from memory for timelapse data
-                # del posDatas
+                    self.allPosDataInputs[p]['stopFrameNum'] = (
+                        posData.stopFrameNum
+                    )
             else:
                 for p, posData in enumerate(posDatas):
                     self.allPosDataInputs[p]['stopFrameNum'] = 1
@@ -1346,6 +1347,9 @@ class ComputeMetricsWorker(QObject):
                     computeMetricsWorker=self
                 )
 
+                if self.kernel.setup_done:
+                    return
+                
                 if self.abort:
                     self.signals.finished.emit(self)
                     return
@@ -1404,6 +1408,13 @@ class ComputeMetricsWorker(QObject):
         )
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
+    
+    def emitSigAskRunNow(self):
+        self.mutex.lock()
+        self.signals.sigAskRunNow.emit(self)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        
     
 class loadDataWorker(QObject):
     def __init__(self, mainWin, user_ch_file_paths, user_ch_name, firstPosData):

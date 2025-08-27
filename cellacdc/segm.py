@@ -1074,7 +1074,7 @@ class segmWin(QMainWindow):
                 self._measurements_kernel.to_workflow_config_params()
             )
         
-        load.save_segm_workflow_to_config(
+        load.save_workflow_to_config(
             filepath, ini_items, self.user_ch_file_paths, self.stopFrames
         )
         
@@ -1166,7 +1166,10 @@ class segmWin(QMainWindow):
             selectedExpPaths, self.app, segmEndname=segmEndname, 
             parent=self, doRunComputation=False
         )
-        self.calcMeasUtility.runWorker(showProgress=False)
+        self.calcMeasUtility.runWorker(
+            showProgress=False, 
+            stopFrameNumber=self.stopFrames[0]
+        )
         self.waitCalcMeasUtility()
         
         measurements_kernel = self.calcMeasUtility.worker.kernel

@@ -178,19 +178,22 @@ def migrate_models_paths(dst_path):
         with open(weight_location_txt_path, 'w') as txt:
             txt.write(model_location)
 
-def save_segm_workflow_to_config(
-        filepath, ini_items: dict, paths_to_segm: list, 
-        stop_frame_nums: list
+def save_workflow_to_config(
+        filepath, 
+        ini_items: dict, 
+        paths: list[str], 
+        stop_frame_nums: list[int],
+        type='segment'
     ):
-    paths_to_segm = [path.replace('\\', '/') for path in paths_to_segm]
-    paths_param = '\n'.join(paths_to_segm)
+    paths = [path.replace('\\', '/') for path in paths]
+    paths_param = '\n'.join(paths)
     paths_param = f'\n{paths_param}'
     configPars = config.ConfigParser()
-    configPars['paths_to_segment'] = {'paths': paths_param} 
+    configPars['paths_info'] = {'paths': paths_param} 
     
     stop_frames_param = '\n'.join([str(n) for n in stop_frame_nums])
     stop_frames_param = f'\n{stop_frames_param}'
-    configPars['paths_to_segment']['stop_frame_numbers'] = stop_frames_param
+    configPars['paths_info']['stop_frame_numbers'] = stop_frames_param
     
     for section, options in ini_items.items():
         configPars[section] = {}
@@ -207,7 +210,7 @@ def read_segm_workflow_from_config(filepath) -> dict:
         options = dict(configPars[section])
         ini_items[section] = {}
         for option, value in options.items():
-            if section == 'paths_to_segment':
+            if section == 'paths_info' or section == 'paths_to_segment':
                 value = value.strip('\n')
                 value = value.split('\n')
                 ini_items[section][option] = value
@@ -3759,7 +3762,7 @@ def read_measurements_workflow_from_config(filepath):
         ini_items[section] = {}
         for option, value in options.items():
             is_list = (
-                section == 'paths_to_segment'
+                section == 'paths_info'
                 or option in options_that_are_lists
                 or option.startswith('metrics_to_skip_')
                 or option.startswith('metrics_to_save_')

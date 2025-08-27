@@ -1961,7 +1961,7 @@ class _WorkflowKernel:
     
     @exception_handler_cli
     def parse_paths(self, workflow_params):
-        paths_to_segm = workflow_params['paths_to_segment']['paths']
+        paths_to_segm = workflow_params['paths_info']['paths']
         ch_name = workflow_params['initialization']['user_ch_name']
         parsed_paths = []
         for path in paths_to_segm:
@@ -1977,7 +1977,7 @@ class _WorkflowKernel:
     @exception_handler_cli
     def parse_stop_frame_numbers(self, workflow_params):
         stop_frames_param = (
-            workflow_params['paths_to_segment']['stop_frame_numbers']
+            workflow_params['paths_info']['stop_frame_numbers']
         )
         return [int(n) for n in stop_frames_param]
     
@@ -4284,7 +4284,13 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             if self.setup_done:
                 computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
                 return
-        
+
+            computeMetricsWorker.emitSigAskRunNow()
+            
+            if self.setup_done:
+                computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
+                return
+            
         self.init_signals(computeMetricsWorker, saveDataWorker)
         
         self.log(
@@ -4297,8 +4303,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         
         if computeMetricsWorker is not None:
             computeMetricsWorker.emitSigComputeVolume(posData, stop_frame_n)
-        else:
-            self._compute_rotation_volume()
             
         self._init_metrics_to_save(posData)
     
