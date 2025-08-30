@@ -1962,7 +1962,16 @@ class _WorkflowKernel:
     @exception_handler_cli
     def parse_paths(self, workflow_params):
         paths_to_segm = workflow_params['paths_info']['paths']
-        ch_name = workflow_params['initialization']['user_ch_name']
+        if 'initialization' in workflow_params:
+            ch_name = workflow_params['initialization']['user_ch_name']
+        elif 'measurements' in workflow_params:
+            ch_name = workflow_params['measurements']['channels'][0]
+        else:
+            printl(workflow_params, pretty=True)
+            raise KeyError(
+                'Cannot find channel name in workflow parameters. '
+                'See above.'
+            )
         parsed_paths = []
         for path in paths_to_segm:
             if os.path.isfile(path):
@@ -2022,8 +2031,7 @@ class SegmKernel(_WorkflowKernel):
             category = section.split('.')[-1]
             for option, value in options.items():
                 if option == 'names':
-                    values = value.strip('\n')
-                    values = value.split('\n')
+                    values = value.strip('\n').strip().split('\n')
                     custom_postproc_grouped_features[category] = values
                     continue
                 channel = option
@@ -3992,13 +4000,13 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 f'metrics_to_skip_{channel}', ''
             )
             if metrics_to_skip:
-                self.metricsToSkip[channel] = metrics_to_skip.split('\n')
+                self.metricsToSkip[channel] = metrics_to_skip
             
             metrics_to_save = config_params.get(
                 f'metrics_to_save_{channel}', ''
             )
             if metrics_to_save:
-                self.metricsToSave[channel] = metrics_to_save.split('\n')
+                self.metricsToSave[channel] = metrics_to_save
         
     def set_metrics_from_set_measurements_dialog(self, setMeasurementsDialog):
         self.chNamesToSkip = []

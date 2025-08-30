@@ -211,8 +211,7 @@ def read_segm_workflow_from_config(filepath) -> dict:
         ini_items[section] = {}
         for option, value in options.items():
             if section == 'paths_info' or section == 'paths_to_segment':
-                value = value.strip('\n')
-                value = value.split('\n')
+                value = value.strip('\n').strip().split('\n')
                 ini_items[section][option] = value
                 continue
             if value == 'False':
@@ -238,7 +237,7 @@ def read_segm_workflow_from_config(filepath) -> dict:
             ini_items[section][option] = value
     return ini_items
 
-def get_images_paths(self, folder_path):
+def get_images_paths(folder_path):
     folder_type = myutils.determine_folder_type(folder_path)     
     is_pos_folder, is_images_folder, folder_path = folder_type     
     if not is_pos_folder and not is_images_folder:
@@ -3768,8 +3767,7 @@ def read_measurements_workflow_from_config(filepath):
                 or option.startswith('metrics_to_save_')
             )
             if is_list:
-                value = value.strip('\n')
-                value = value.split('\n')
+                value = value.strip('\n').strip().split('\n')
                 ini_items[section][option] = value
                 continue
             
