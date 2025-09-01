@@ -204,7 +204,7 @@ class SegForLostIDsWorker(QObject):
     sigSegForLostIDsWorkerAskInstallGPU = Signal(str, bool)
     sigTrackManuallyAddedObject = Signal(object, object, bool, bool)
 
-    def __init__(self, guiWin, mutex, waitCond, debug=True):
+    def __init__(self, guiWin, mutex, waitCond, debug=False):
         QObject.__init__(self)
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
@@ -363,9 +363,9 @@ class SegForLostIDsWorker(QObject):
         prev_IDs = set(posData.allData_li[frame_i-1]['IDs'])
 
         # should probably not paly so much with posData.lab, instead handle stuff myself
-        self.signals.initProgressBar.emit(2 * args_new['max_interations'])
-        new_labs = np.zeros([args_new['max_interations'], *posData.lab.shape], dtype=np.uint32)
-        for i in range(args_new['max_interations']):            
+        self.signals.initProgressBar.emit(2 * args_new['max_iterations'])
+        new_labs = np.zeros([args_new['max_iterations'], *posData.lab.shape], dtype=np.uint32)
+        for i in range(args_new['max_iterations']):            
             curr_lab = self.guiWin.get_2Dlab(posData.lab)
             tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
             new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
@@ -397,7 +397,7 @@ class SegForLostIDsWorker(QObject):
 
         posData.lab = original_lab.copy()
 
-        area_mean = np.mean([obj.area for obj in posData.rp])
+        global_area_mean = np.mean([obj.area for obj in posData.rp])
         for IDs_bboxs, bboxs in zip(IDs_bboxs_list, bboxs_list):
             model_lab = new_labs[i]
             if self._debug:
@@ -408,6 +408,7 @@ class SegForLostIDsWorker(QObject):
 
                 box_x_min, box_x_max, box_y_min, box_y_max = bbox          
                 original_bbox_lab = original_lab[box_x_min:box_x_max, box_y_min:box_y_max]
+                original_bbox_lab_cleared_borders = skimage.segmentation.clear_border(original_bbox_lab)
                 box_model_lab = model_lab[box_x_min:box_x_max, box_y_min:box_y_max]
 
                 # original_bbox_lab[np.isin(original_bbox_lab, IDs)] = 0 should be a given. If not seg for lost IDs this recommended
@@ -416,19 +417,29 @@ class SegForLostIDsWorker(QObject):
 
                 rp_model_lab = skimage.measure.regionprops(box_model_lab)
                 rp_original_lab = skimage.measure.regionprops(original_bbox_lab)
+                rp_original_lab_cleared = skimage.measure.regionprops(original_bbox_lab_cleared_borders)
 
                 original_IDs = [obj.label for obj in rp_original_lab]
-
+                areas = [obj.area for obj in rp_original_lab_cleared]
+                if len(areas) > 0:
+                    area_mean = np.mean(areas)
+                else:
+                    area_mean = global_area_mean
                 if args_new['allow_only_tracked_cells']:
                     filtered_IDs = [obj.label for obj in rp_model_lab 
-                                if obj.area > args_new['size_perc_threshold'] * area_mean 
-                                and obj.label not in original_IDs
-                                and obj.label in missing_IDs_global]
+                            if obj.area > (1 - args_new['size_perc_diff']) * area_mean
+                            and obj.area < (1 + args_new['size_perc_diff']) * area_mean
+                            and obj.label not in original_IDs
+                            and obj.label in missing_IDs_global]
                 else:
                     filtered_IDs = [obj.label for obj in rp_model_lab 
-                                    if obj.area > args_new['size_perc_threshold'] * area_mean 
-                                    and obj.label not in original_IDs]
+                            if obj.area > (1 - args_new['size_perc_diff']) * area_mean
+                            and obj.area < (1 + args_new['size_perc_diff']) * area_mean
+                            and obj.label not in original_IDs]
         
+                if self._debug or DEBUG:
+                    filtered_sizes = [(obj.label, obj.area) for obj in rp_model_lab if obj.label in filtered_IDs]
+                    self.logger.info(f"Filtered sizes: {filtered_sizes}")
                 for label in filtered_IDs:
                     original_bbox_lab[box_model_lab == label] = label # here the stuff should be tracked, so we keep the ID!
                 
