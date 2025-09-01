@@ -363,9 +363,9 @@ class SegForLostIDsWorker(QObject):
         prev_IDs = set(posData.allData_li[frame_i-1]['IDs'])
 
         # should probably not paly so much with posData.lab, instead handle stuff myself
-        self.signals.initProgressBar.emit(2 * args_new['max_interations'])
-        new_labs = np.zeros([args_new['max_interations'], *posData.lab.shape], dtype=np.uint32)
-        for i in range(args_new['max_interations']):            
+        self.signals.initProgressBar.emit(2 * args_new['max_iterations'])
+        new_labs = np.zeros([args_new['max_iterations'], *posData.lab.shape], dtype=np.uint32)
+        for i in range(args_new['max_iterations']):            
             curr_lab = self.guiWin.get_2Dlab(posData.lab)
             tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
             new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)

@@ -7999,7 +7999,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                         'padding',
                         'size_perc_diff',
                         'distance_filler_growth',
-                        'max_interations',
+                        'max_iterations',
                         'allow_only_tracked_cells']
 
         extra_types = [float, float, float, float, int, bool]
@@ -8008,7 +8008,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         extra_desc = ['Overlap threshold with other already segemented cells over which newly segmented cells are discarded', 
                     'Padding of the box used for new segmentation around the segmentation from the previous frame', 
-                    'Relative size difference accaptable compared to previous frames',
+                    'Relative size difference acceptable compared to previous frames',
                     """Cells which are already segmented are filled with random noise sampled from background 
                     to ensure that they don't get segmented again. 
                     This parameter controls the additional padding around the already segmented cells.""",
