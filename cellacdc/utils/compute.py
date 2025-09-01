@@ -124,7 +124,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             )
         )
         if not msg.clickedButton == saveButton:
-            self.worker.abort = win.cancel
+            self.worker.abort = msg.cancel
             self.worker.waitCond.wakeAll()
             return
         
