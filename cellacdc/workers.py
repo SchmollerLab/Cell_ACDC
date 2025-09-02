@@ -40,6 +40,7 @@ from . import features, plot
 from . import core
 from . import cca_df_colnames, lineage_tree_cols, default_annot_df
 from . import cca_df_colnames_with_tree
+from . import cli
 from .utils import resize
 from .SingleCellSeg import single_cell_seg
 
