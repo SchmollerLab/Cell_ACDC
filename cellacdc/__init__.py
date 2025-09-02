@@ -659,3 +659,11 @@ error_down_str = f'\n{error_down_str}'
 binary_file_extensions = (
     ".png", ".pdf"
 )
+
+default_index_cols = (
+    'experiment_folderpath', 
+    'experiment_foldername', 
+    'Position_n', 
+    'frame_i', 
+    'Cell_ID'
+)

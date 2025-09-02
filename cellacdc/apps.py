@@ -4827,6 +4827,272 @@ class QDialogAutomaticThresholding(QBaseDialog):
             return
         self.segment3Dcheckbox.setChecked(section.getboolean('segment_3D_volume'))
 
+class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
+    def __init__(self, df: pd.DataFrame, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle('Select columns to combine into the output table')
+        
+        self.cancel = True
+        
+        self.columns = core.natsort_acdc_columns(df.columns)
+        self.operations = (
+            'Sum mother and bud', 
+            'Copy column from mother',
+        )
+        
+        self.mainLayout = QVBoxLayout()
+        
+        instructionsText = html_utils.paragraph("""
+            <b>Select which columns</b> and <b>how</b> you want to combine them 
+            into the output table.<br>
+        """)
+        self.mainLayout.addWidget(QLabel(instructionsText))
+        
+        settingsLayout = QGridLayout()    
+        
+        row = 0
+        settingsLayout.addWidget(widgets.QHLine(), row, 0, 1, 2)  
+        
+        row += 1
+        settingsLayout.addWidget(
+            QLabel('Copy all non-selected columns from mother cell'), row, 0
+        )
+        self.copyAllColsToggle = widgets.Toggle()
+        settingsLayout.addWidget(
+            self.copyAllColsToggle, row, 1, alignment=Qt.AlignLeft
+        )
+        
+        row += 1
+        settingsLayout.addWidget(widgets.QHLine(), row, 0, 1, 2) 
+        
+        self.mainLayout.addLayout(settingsLayout)
+        
+        scrollArea = widgets.ScrollArea()
+        scrollArea.setSpaceReservedVerticalScrollbar(True)
+        scrollWidget = QWidget()
+        scrollArea.setWidget(scrollWidget)
+        self.centralLayout = QGridLayout()
+        scrollWidget.setLayout(self.centralLayout)
+        
+        self.centralLayout.addWidget(QLabel('Grouping columns'), 0, 0)
+        self.centralLayout.addWidget(QLabel('Column'), 0, 1)
+        self.centralLayout.addWidget(QLabel('Operation'), 0, 2)
+        self.centralLayout.setRowStretch(0, 0)
+        
+        self.groupingColsListWidget = widgets.listWidget(
+            isMultipleSelection=True, 
+        )
+        self.groupingColsListWidget.addItems(self.columns)
+        self.centralLayout.addWidget(self.groupingColsListWidget, 1, 0, 2, 1)
+        
+        selector = widgets.ComboBox(self)
+        selector.addItems(self.columns)
+        operationCombobox = widgets.ComboBox(self)
+        operationCombobox.addItems(self.operations)
+        self.addSelectorButton = widgets.addPushButton()
+        
+        self.centralLayout.addWidget(selector, 1, 1)
+        self.centralLayout.addWidget(operationCombobox, 1, 2)
+        self.centralLayout.addWidget(self.addSelectorButton, 1, 3)
+        
+        self.centralLayout.setRowStretch(1, 1)
+        self.centralLayout.setRowStretch(2, 1)
+        
+        self.selectors = {1: (selector, operationCombobox)}
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        self.mainLayout.addWidget(scrollArea)
+        self.mainLayout.addSpacing(20)
+        self.mainLayout.addLayout(buttonsLayout)
+        
+        self.addSelectorButton.clicked.connect(self.addSelector)
+        selector.currentTextChanged.connect(
+            self.selectorTextChanged
+        )
+
+        self.setLayout(self.mainLayout)
+        self.setFont(font)
+    
+    def resetSelectorsStyles(self):
+        for selector, _ in self.selectors.values():
+            selector.setStyleSheet('')
+    
+    def selectorTextChanged(self, text):
+        self.resetSelectorsStyles()
+        selector = self.sender()
+        for other_selector, _ in self.selectors.values():
+            if other_selector == selector:
+                continue
+            
+            if selector.currentText() != other_selector.currentText():
+                continue
+            
+            self.setWarningStyleSelector(selector)
+            self.setWarningStyleSelector(other_selector)
+            
+    def addSelector(self):
+        row = len(self.selectors) + 1
+        
+        selector = widgets.ComboBox(self)
+        selector.addItems(self.columns)
+        selector.setCurrentIndex(len(self.selectors))
+        operationCombobox = widgets.ComboBox(self)
+        operationCombobox.addItems(self.operations)
+        delButton = widgets.delPushButton()
+        selector.delButton = delButton
+        delButton._row = row
+        
+        self.selectors[row] = (selector, operationCombobox)
+        
+        self.centralLayout.addWidget(selector, row, 1)
+        self.centralLayout.addWidget(operationCombobox, row, 2)
+        self.centralLayout.addWidget(delButton, row, 3)
+        
+        delButton.clicked.connect(self.removeSelector)
+        
+        self.centralLayout.removeWidget(self.groupingColsListWidget)
+        rowSpan = self.centralLayout.rowCount()
+        self.centralLayout.addWidget(
+            self.groupingColsListWidget, 1, 0, rowSpan, 1
+        )
+        self.centralLayout.setRowStretch(rowSpan, 1)
+        
+        selector.currentTextChanged.connect(
+            self.selectorTextChanged
+        )
+    
+    def removeSelector(self):
+        delButton = self.sender()
+        selector, operationCombobox = self.selectors.pop(delButton._row)
+        
+        self.centralLayout.removeWidget(selector)
+        self.centralLayout.removeWidget(operationCombobox)
+        self.centralLayout.removeWidget(delButton)
+        
+        resorted_selectors = {}
+        for i, (row, (sel, op)) in enumerate(self.selectors.items()):
+            if i == 0:
+                resorted_selectors[i+1] = (sel, op)
+                continue
+            
+            delButton = sel.delButton
+            delButton._row = i+1
+            self.centralLayout.removeWidget(sel)
+            self.centralLayout.removeWidget(op)
+            self.centralLayout.removeWidget(delButton)
+            self.centralLayout.addWidget(sel, i+1, 1)
+            self.centralLayout.addWidget(op, i+1, 2)
+            self.centralLayout.addWidget(delButton, i+1, 3)
+            
+            resorted_selectors[i+1] = (sel, op)
+        
+        self.selectors = resorted_selectors
+        
+        self.removeDuplicatedSelectedColumns()
+    
+    def sizeHint(self):
+        width = super().sizeHint().width()
+        height = super().sizeHint().height()
+        groupingColsWidth = widgets.get_min_width_for_no_scrollbar(
+            self.groupingColsListWidget
+        )
+        width += groupingColsWidth
+        return QSize(width, height)
+    
+    def checkDuplicatedSelectedColumns(self):
+        for selector, _ in self.selectors.values():
+            selector.setStyleSheet('background-color: none')
+            for other_selector, _ in self.selectors.values():
+                if other_selector == selector:
+                    continue
+                
+                if other_selector.currentText() != selector.currentText():
+                    continue
+                
+                self.warnDuplicatedSelectedColumns(selector, other_selector)
+                return False
+        
+        return True
+    
+    def setWarningStyleSelector(self, selector):
+        popup = selector.view()
+        palette = popup.palette()
+        text_color = palette.color(palette.ColorRole.Text)
+        warningStyleSheet = (f"""
+            QComboBox {{
+                color: black;
+                background-color: orange;  /* main area */
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {text_color.name()};
+            }}
+        """)
+        selector.setStyleSheet(warningStyleSheet)
+    
+    def warnDuplicatedSelectedColumns(self, selector1, selector2):
+        self.setWarningStyleSelector(selector1)
+        self.setWarningStyleSelector(selector2)
+        
+        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        txt = html_utils.paragraph(f"""
+            The following column has been selected more than once 
+            (highlighted in orange).<br><br>
+            <code>{selector1.currentText()}</code><br><br>
+            Please, select each column only once.<br><br>
+            Thank you for your patience!
+        """)
+        msg.warning(self, 'Duplicated selection', txt)
+    
+    
+    def checkGroupingColumnsNotSelected(self):
+        if self.groupingColsListWidget.selectedItems():
+            return True
+        
+        return self.warnGroupingColumnsNotSelected()
+    
+    def warnGroupingColumnsNotSelected(self):
+        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        txt = html_utils.paragraph(f"""
+            Are you sure you do not want to select any grouping column?<br><br>
+            Grouping columns are those needed to identify each unique 
+            Position folder.
+        """)
+        _, noButton, yesButton = msg.question(
+            self, 'No grouping columns selected?', txt,
+            buttonsTexts=(
+                'Cancel', 
+                'No, let me select grouping columns', 
+                'Yes, I do not need grouping columns'
+            )
+        )
+        return msg.clickedButton == yesButton
+    
+    def ok_cb(self):
+        proceed = self.checkDuplicatedSelectedColumns()
+        if not proceed:
+            return
+        
+        proceed = self.checkGroupingColumnsNotSelected()
+        if not proceed:
+            return
+        
+        self.selected_options = {
+            'grouping_columns': self.groupingColsListWidget.selectedItemsText(),
+            'column_operation_mapper': {
+                selector.currentText(): operationCombobox.currentText()
+                for selector, operationCombobox in self.selectors.values()
+            },
+            'do_copy_all_nonselected_columns': self.copyAllColsToggle.isChecked()
+        }
+        
+        self.cancel = False
+        self.close()
+
 class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
     def __init__(self, df, parent=None):
         super().__init__(parent)

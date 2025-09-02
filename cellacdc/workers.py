@@ -6381,3 +6381,20 @@ class FillHolesInSegWorker(BaseWorkerUtil):
                 io.savez_compressed(segm_data_save_path, segm_data)
                 self.signals.progressBar.emit(1)
         self.signals.finished.emit(self)
+
+class GenerateMotherBudTotalTableWorker(BaseWorkerUtil):
+    def __init__(
+            self, parentWin, input_csv_filepath, selected_options
+        ):
+        super().__init__(parentWin)
+        self.input_csv_filepath = input_csv_filepath
+        self.selected_options
+    
+    @worker_exception_handler
+    def run(self):
+        self.logger.log(f'Loading table "{self.input_csv_filepath}"...')  
+        self.signals.initProgressBar.emit(0)
+        
+        ...
+        
+        self.signals.finished.emit(self)

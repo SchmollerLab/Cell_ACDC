@@ -918,4 +918,56 @@ def get_IDs_gen_num_will_divide_wrong(global_cca_df):
     ))
     return IDs_will_divide_wrong
     
+def generate_mother_bud_total_df(
+        df, 
+        column_operation_mapper: dict[str, str], 
+        do_copy_all_nonselected_columns=True,
+        grouping_columns=None,
+    ):
+    if grouping_columns is None:
+        grouping_columns = []
+    
+    df_G1 = df[df['cell_cycle_stage'] == 'G1']
+    df_S = df[(df['cell_cycle_stage'] == 'S')]
+    df_S_bud = df_S[df_S['relationship'] == 'bud']
+    df_S_moth = df_S[df_S['relationship'] == 'mother']
+    
+    df_S_bud_relID = df_S_bud.reset_index().set_index(
+        [*grouping_columns, 'frame_i', 'relative_ID']
+    )
+    df_S_bud_relID.index.names = [*grouping_columns, 'frame_i', 'Cell_ID']
+    df_S_moth = df_S_moth.reset_index().set_index(
+        [*grouping_columns, 'frame_i', 'Cell_ID']
+    )
+    
+    columns_to_add = [
+        col for col, operation in column_operation_mapper.items() 
+        if 'sum' in operation.lower()
+    ]
+    
+    if do_copy_all_nonselected_columns:
+        df_S_tot = df_S_moth.copy()
+    else:
+        columns_to_keep = list(column_operation_mapper.keys())
+        df_S_tot = df_S_moth[columns_to_keep].copy()
+        df_G1 = df_G1[columns_to_keep].copy()
+        df_S_bud = df_S_bud[columns_to_keep].copy()
+        df_S_moth = df_S_moth[columns_to_keep].copy()
+    
+    df_S_tot[columns_to_add] = (
+        df_S_tot[columns_to_add] + df_S_bud_relID[columns_to_add]
+    )
+    
+    df_S_tot = df_S_tot.drop(columns='level_0', errors='ignore').reset_index()
+    df_S_moth = df_S_moth.drop(columns='level_0', errors='ignore').reset_index()
+    df_S_bud = df_S_bud.reset_index()
+    
+    final_df = pd.concat(
+        [df_G1, df_S_moth, df_S_bud, df_S_tot], 
+        keys=['G1', 'Mother', 'Bud', 'Total'],
+        ignore_index=True
+    )
+    
+    return final_df
+    
     

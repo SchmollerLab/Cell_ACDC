@@ -1764,6 +1764,13 @@ class ScrollArea(QScrollArea):
         self.isOnlyVertical = False
         self.dropArrowKeyEvents = dropArrowKeyEvents
     
+    def setSpaceReservedVerticalScrollbar(self, reserve: bool):
+        if not reserve:
+            self.setViewportMargins(0, 0, 0, 0)
+        else:
+            scrollbar_width = self.verticalScrollBar().sizeHint().width()
+            self.setViewportMargins(0, 0, scrollbar_width, 0)
+    
     def setVerticalLayout(self, layout, widget=None):
         if widget is None:
             self.containerWidget = QWidget()
@@ -1948,6 +1955,9 @@ class listWidget(QListWidget):
         for i in range(self.count()):
             item = self.item(i)
             item.setSizeHint(QSize(0, height))
+    
+    def selectedItemsText(self):
+        return [item.text() for item in self.selectedItems()]
 
 class OrderableListWidget(QWidget):
     sigEnterEvent = Signal(object)
@@ -8714,6 +8724,15 @@ class ComboBox(QComboBox):
         self._previousText = None
         self._valueChanged = False
         self.currentTextChanged.connect(self.emitTextChanged)
+        self.installEventFilter(self)
+    
+    def eventFilter(self, object, event) -> bool:
+        if object == self and event.type() == QEvent.Type.Wheel:
+            # Forward event to parent so QScrollArea can scroll
+            QApplication.sendEvent(self.parent(), event)
+            return True  # Consume for the combo itself
+        
+        return super().eventFilter(object, event)
     
     def text(self):
         return self.currentText()
@@ -10816,3 +10835,20 @@ class RectItem(pg.GraphicsObject):
 
     def boundingRect(self):
         return QRectF(self.picture.boundingRect())
+
+def get_min_width_for_no_scrollbar(list_widget: QListWidget) -> int:
+    """
+    Calculate the minimum width needed for the QListWidget
+    so that the horizontal scrollbar will not be required.
+    """
+    font_metrics = QFontMetrics(list_widget.font())
+    max_width = 0
+
+    for i in range(list_widget.count()):
+        item = list_widget.item(i)
+        text_width = font_metrics.horizontalAdvance(item.text())
+        max_width = max(max_width, text_width)
+
+    # Add padding for icon, scrollbar margin, and frame
+    padding = 30  # Adjust as needed (depends on style and icons)
+    return max_width + padding
