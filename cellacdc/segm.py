@@ -72,7 +72,7 @@ import time
 import numpy as np
 import pandas as pd
 
-from cellacdc import load, core, features
+from cellacdc import load, core, features, cli
 
 class SegmWorker(QObject):
     def __init__(
@@ -87,7 +87,7 @@ class SegmWorker(QObject):
     
     def init_kernel(self, mainWin):
         use_ROI = not mainWin.ROIdeactivatedByUser
-        self.kernel = core.SegmKernel(
+        self.kernel = cli.SegmKernel(
             mainWin.logger, mainWin.log_path, is_cli=False
         )
         self.kernel.init_args(

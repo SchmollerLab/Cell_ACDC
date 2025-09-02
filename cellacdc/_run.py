@@ -539,8 +539,8 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
 
 def run_segm_workflow(workflow_params, logger, log_path):
     logger.info('Initializing segmentation and tracking kernel...')
-    from cellacdc import core
-    kernel = core.SegmKernel(logger, log_path, is_cli=True)
+    from cellacdc import cli
+    kernel = cli.SegmKernel(logger, log_path, is_cli=True)
     kernel.init_args_from_params(workflow_params, logger.info)
     ch_filepaths = kernel.parse_paths(workflow_params)
     stop_frame_nums = kernel.parse_stop_frame_numbers(workflow_params)
@@ -553,8 +553,8 @@ def run_segm_workflow(workflow_params, logger, log_path):
 
 def run_measurements_workflow(workflow_params, logger, log_path):
     logger.info('Initializing measurements kernel...')
-    from cellacdc import core
-    kernel = core.ComputeMeasurementsKernel(logger, log_path, is_cli=True)
+    from cellacdc import cli
+    kernel = cli.ComputeMeasurementsKernel(logger, log_path, is_cli=True)
     ch_filepaths = kernel.parse_paths(workflow_params)
     stop_frame_nums = kernel.parse_stop_frame_numbers(workflow_params)
     end_filename_segm = workflow_params['measurements']['end_filename_segm']

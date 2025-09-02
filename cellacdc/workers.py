@@ -1334,7 +1334,7 @@ class ComputeMetricsWorker(QObject):
                 chName = posDataInputs['chName']
                 stopFrameNum = posDataInputs['stopFrameNum']
                 
-                self.kernel = core.ComputeMeasurementsKernel(
+                self.kernel = cli.ComputeMeasurementsKernel(
                     self.logger, 
                     self.mainWin.log_path, 
                     False,

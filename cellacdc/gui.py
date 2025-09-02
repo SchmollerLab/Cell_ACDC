@@ -88,6 +88,7 @@ from . import exporters
 from . import preprocess
 from . import io
 from . import whitelist
+from . import cli
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger, ArgSpec
@@ -19910,7 +19911,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def initMetrics(self):
         self.logger.info('Initializing measurements...')
         posData = self.data[self.pos_i]
-        self._measurements_kernel = core.ComputeMeasurementsKernel(
+        self._measurements_kernel = cli.ComputeMeasurementsKernel(
             self.logger, self.log_path, False
         )
         self._measurements_kernel.init_args(
