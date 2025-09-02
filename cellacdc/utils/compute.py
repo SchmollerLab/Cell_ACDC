@@ -1,6 +1,8 @@
 import os
 import traceback
 import logging
+from functools import partial
+import datetime
 
 import pandas as pd
 
@@ -10,6 +12,8 @@ from qtpy.QtCore import Signal, QThread
 from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QStyle
 )
+
+from .base import NewThreadMultipleExpBaseUtil
 
 from .. import (
     widgets, apps, workers, html_utils, myutils,
@@ -22,61 +26,32 @@ favourite_func_metrics_csv_path = os.path.join(
     settings_folderpath, 'favourite_func_metrics.csv'
 )
 
-class computeMeasurmentsUtilWin(QDialog):
-    def __init__(self, expPaths, app, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle('Compute measurements utility')
+class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
+    def __init__(
+            self, expPaths, app, parent=None, segmEndname='', 
+            doRunComputation=True
+        ):
+        title = 'Compute measurements utility'
+        infoText = 'Computing measurements routine running...'
+        progressDialogueTitle = 'Computing measurements'
+        module = myutils.get_module_name(__file__)
+        super().__init__(
+            expPaths, app, title, module, infoText, progressDialogueTitle, 
+            parent=parent
+        )
 
         self.parent = parent
+        
+        self.cancel = False
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
-            module='utils.computeMeasurements'
-        )
-        self.logger = logger
-        self.log_path = log_path
-        self.log_filename = log_filename
-        self.logs_path = logs_path
-
-        self.expPaths = expPaths
-        self.app = app
-        self.abort = False
-        self.worker = None
-        self.progressWin = None
-
-        mainLayout = QVBoxLayout()
-
-        infoLayout = QHBoxLayout()
-        infoTxt = html_utils.paragraph(
-            'Computing measurements routine running...'
-        )
-
-        iconLabel = QLabel(self)
-        standardIcon = getattr(QStyle, 'SP_MessageBoxInformation')
-        icon = self.style().standardIcon(standardIcon)
-        pixmap = icon.pixmap(60, 60)
-        iconLabel.setPixmap(pixmap)
-
-        infoLayout.addWidget(iconLabel)
-        infoLayout.addWidget(QLabel(infoTxt))
-
-        buttonsLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Abort')
-
-        buttonsLayout.addStretch(1)
-        buttonsLayout.addWidget(cancelButton)
-
-        cancelButton.clicked.connect(self.abortCallback)
-
-        mainLayout.addLayout(infoLayout)
-        mainLayout.addSpacing(20)
-        mainLayout.addLayout(buttonsLayout)
-
-        self.setLayout(mainLayout)
+        self.endFilenameSegm = segmEndname
+        self.doRunComputation = doRunComputation
+        self.isWorkerFinished = False
 
     def showEvent(self, event):
         self.runWorker()
 
-    def runWorker(self):
+    def runWorker(self, showProgress=True, stopFrameNumber=None):
         self.gui = gui.guiWin(self.app, parent=self.parent)
         self.gui.logger = self.logger
 
@@ -87,6 +62,9 @@ class computeMeasurmentsUtilWin(QDialog):
         self.progressWin.sigClosed.connect(self.progressWinClosed)
         self.progressWin.show(self.app)
 
+        if not showProgress:
+            self.progressWin.hide()
+        
         self.thread = QThread()
         self.worker = workers.ComputeMetricsWorker(self)
         self.worker.moveToThread(self.thread)
@@ -98,18 +76,133 @@ class computeMeasurmentsUtilWin(QDialog):
 
         self.worker.signals.progress.connect(self.workerProgress)
         self.worker.signals.critical.connect(self.workerCritical)
-        self.worker.signals.sigSelectSegmFiles.connect(self.selectSegmFileLoadData)
+        if not self.endFilenameSegm:
+            self.worker.signals.sigSelectSegmFiles.connect(
+                self.selectSegmFileLoadData
+            )
+        else:
+            self.worker.signals.sigSelectSegmFiles.connect(
+                self.wakeUpWorkerThread
+            )
         self.worker.signals.sigInitAddMetrics.connect(self.initAddMetricsWorker)
         self.worker.signals.sigPermissionError.connect(self.warnPermissionError)
         self.worker.signals.initProgressBar.connect(self.workerInitProgressbar)
         self.worker.signals.progressBar.connect(self.workerUpdateProgressbar)
         self.worker.signals.sigUpdatePbarDesc.connect(self.workerUpdatePbarDesc)
         self.worker.signals.sigComputeVolume.connect(self.computeVolumeRegionprop)
-        self.worker.signals.sigAskStopFrame.connect(self.workerAskStopFrame)
+        self.worker.signals.sigAskRunNow.connect(
+            self.askRunNowOrSaveToConfig
+        )
+        
+        if stopFrameNumber is None:
+            self.worker.signals.sigAskStopFrame.connect(self.workerAskStopFrame)
+        else:
+            self.worker.signals.sigSelectSegmFiles.connect(
+                partial(self.setStopFrame, stopFrameNumber=stopFrameNumber)
+            )
         self.worker.signals.sigErrorsReport.connect(self.warnErrors)
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+    
+    def askRunNowOrSaveToConfig(self, worker):
+        txt = html_utils.paragraph("""
+            Do you want to <b>compute the measurements now</b><br>
+            or save the  workflow to a <b>configuration file</b> and run it 
+            <b>later?</b><br><br>
+            With the configuration file you can also run the workflow on a<br>
+            computing cluster that does not support GUI elements 
+            (i.e., headless).<br>
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        saveButton = widgets.savePushButton('Save and run later')
+        runNowButton = widgets.playPushButton('Run now')
+        _, saveButton, runNowButton = msg.question(
+            self, 'Run workflow now?', txt, 
+            buttonsTexts=(
+                'Cancel', saveButton, runNowButton
+            )
+        )
+        if not msg.clickedButton == saveButton:
+            self.worker.abort = msg.cancel
+            self.worker.waitCond.wakeAll()
+            return
+        
+        timestamp = datetime.datetime.now().strftime(
+            r'%Y-%m-%d_%H-%M'
+        )
+        win = apps.filenameDialog(
+            parent=self, 
+            ext='.ini', 
+            title='Insert filename for configuration file',
+            hintText='Insert filename for the configuration file',
+            allowEmpty=False, 
+            defaultEntry=f'{timestamp}_acdc_measurements_workflow'
+        )
+        win.exec_()
+        if win.cancel:
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return
+        
+        config_filename = win.filename
+        mostRecentPath = myutils.getMostRecentPath()
+        folder_path = apps.get_existing_directory(
+            allow_images_path=False,
+            parent=self, 
+            caption='Select folder where to save configuration file',
+            basedir=mostRecentPath,
+            # options=QFileDialog.DontUseNativeDialog
+        )
+        if not folder_path:
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return
+        
+        config_filepath = os.path.join(folder_path, config_filename)
+        kernel = self.worker.kernel
+        self.saveConfigurationFile(config_filepath, kernel)
+    
+    def saveConfigurationFile(self, config_filepath, kernel):
+        ini_items = {'workflow': {'type': 'measurements'}}
+        ini_items['measurements'] = kernel.to_workflow_config_params()
+        paths = []            
+        stopFrames = []
+        for pathInfo in self.worker.allPosDataInputs:
+            images_path = os.path.dirname(pathInfo['file_path'])
+            paths.append(images_path)
+            stopFrames.append(pathInfo['stopFrameNum'])
+        
+        load.save_workflow_to_config(
+            config_filepath, 
+            ini_items, 
+            paths, 
+            stopFrames,
+            type='measure'
+        )
+        self.worker.kernel.setup_done = True
+        
+        txt = html_utils.paragraph(
+            'Compute measurements workflow successfully saved to the following location:<br><br>'
+            f'<code>{config_filepath}</code><br><br>'
+            'You can run the workflow with the following command:'
+        )
+        command = f'acdc -p "{config_filepath}"'
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(
+            self, 'Workflow save', txt, 
+            commands=(command,),
+            path_to_browse=os.path.dirname(config_filepath)
+        )
+        
+        self.worker.waitCond.wakeAll()
+    
+    def setStopFrame(self, posDatas, stopFrameNumber=1):
+        for posData in self.posDatas:
+            posData.stopFrameNum = stopFrameNumber
+    
+    def wakeUpWorkerThread(self, *args, **kwargs):
+        self.worker.waitCond.wakeAll()
     
     def warnErrors(
             self, standardMetricsErrors, customMetricsErrors, regionPropsErrors
@@ -265,17 +358,26 @@ class computeMeasurmentsUtilWin(QDialog):
     def abortWorkerMeasurementsWin(self):
         self.worker.abort = self.measurementsWin.cancel
         self.worker.waitCond.wakeAll()
+        self.cancel = True
 
     def startSaveDataWorker(self):
-        self.gui.ch_names = self.posData.chNames
-        self.gui.notLoadedChNames = []
-        self.gui.setMetricsFunc()
-        self.gui.mixedChCombineMetricsToSkip = []
-        self.gui._setMetrics(self.measurementsWin)
+        self.worker.kernel.init_args(
+            self.posData.chNames, self.endFilenameSegm
+        )
+        self.worker.kernel.set_metrics_from_set_measurements_dialog(
+            self.measurementsWin
+        )
+        
+        if not self.doRunComputation:
+            self.worker.setup_done = True
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return
+
         self.gui.mutex = self.worker.mutex
         self.gui.waitCond = self.worker.waitCond
         self.gui.saveWin = self.progressWin
-
+        
         self.gui.saveDataWorker = workers.saveDataWorker(self.gui)
 
         self.gui.saveDataWorker.criticalPermissionError.connect(self.skipEvent)
@@ -307,7 +409,7 @@ class computeMeasurmentsUtilWin(QDialog):
         self.worker.waitCond.wakeAll()
 
     def computeVolumeRegionprop(self, end_frame_i, posData):
-        if 'cell_vol_vox' not in self.gui.sizeMetricsToSave:
+        if 'cell_vol_vox' not in self.worker.kernel.sizeMetricsToSave:
             return
 
         # We compute the cell volume in the main thread because calling
@@ -343,35 +445,31 @@ class computeMeasurmentsUtilWin(QDialog):
         else:
             self.close()
 
-    def workerCritical(self, error):
-        try:
-            raise error
-        except:
-            traceback_str = traceback.format_exc()
-            print('='*20)
-            self.worker.logger.log(traceback_str)
-            print('='*20)
-
     def workerFinished(self, worker):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
-        if worker.abort:
+            
+        if worker.setup_done:
+            txt = 'Measurements set up completed.'
+            self.logger.info(txt)
+        elif worker.abort:
             txt = 'Computing measurements ABORTED.'
             self.logger.info(txt)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             msg.warning(self, 'Process aborted', html_utils.paragraph(txt))
+        
         else:
             txt = 'Computing measurements completed.'
             self.logger.info(txt)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             msg.information(self, 'Process completed', html_utils.paragraph(txt))
 
-        self.worker = None
+        self.isWorkerFinished = True
         self.progressWin = None
         self.close()
 
     def workerProgress(self, text, loggerLevel='INFO'):
         if self.progressWin is not None:
             self.progressWin.logConsole.append(text)
-        self.logger.log(getattr(logging, loggerLevel), text)
+        self.logger.log(getattr(logging, loggerLevel.upper()), text)

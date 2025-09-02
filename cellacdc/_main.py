@@ -1591,7 +1591,10 @@ class mainWin(QMainWindow):
         selectedExpPaths = self.getSelectedExpPaths('Compute measurements utility')
         if selectedExpPaths is None:
             return
+        
+        self._lauchCalcMetricsUtil(selectedExpPaths)
 
+    def _lauchCalcMetricsUtil(self, selectedExpPaths):
         self.calcMeasWin = utilsCompute.computeMeasurmentsUtilWin(
             selectedExpPaths, self.app, parent=self
         )

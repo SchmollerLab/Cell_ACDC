@@ -431,6 +431,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
 
     @exception_handler
     def workerCritical(self, error):
+        printl(error)
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
 

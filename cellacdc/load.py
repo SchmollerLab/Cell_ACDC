@@ -178,19 +178,22 @@ def migrate_models_paths(dst_path):
         with open(weight_location_txt_path, 'w') as txt:
             txt.write(model_location)
 
-def save_segm_workflow_to_config(
-        filepath, ini_items: dict, paths_to_segm: list, 
-        stop_frame_nums: list
+def save_workflow_to_config(
+        filepath, 
+        ini_items: dict, 
+        paths: list[str], 
+        stop_frame_nums: list[int],
+        type='segment'
     ):
-    paths_to_segm = [path.replace('\\', '/') for path in paths_to_segm]
-    paths_param = '\n'.join(paths_to_segm)
+    paths = [path.replace('\\', '/') for path in paths]
+    paths_param = '\n'.join(paths)
     paths_param = f'\n{paths_param}'
     configPars = config.ConfigParser()
-    configPars['paths_to_segment'] = {'paths': paths_param} 
+    configPars['paths_info'] = {'paths': paths_param} 
     
     stop_frames_param = '\n'.join([str(n) for n in stop_frame_nums])
     stop_frames_param = f'\n{stop_frames_param}'
-    configPars['paths_to_segment']['stop_frame_numbers'] = stop_frames_param
+    configPars['paths_info']['stop_frame_numbers'] = stop_frames_param
     
     for section, options in ini_items.items():
         configPars[section] = {}
@@ -199,7 +202,7 @@ def save_segm_workflow_to_config(
     with open(filepath, 'w') as configfile:
         configPars.write(configfile)
 
-def read_segm_workflow_from_config(filepath):
+def read_segm_workflow_from_config(filepath) -> dict:
     configPars = config.ConfigParser()
     configPars.read(filepath)
     ini_items = {}
@@ -207,9 +210,8 @@ def read_segm_workflow_from_config(filepath):
         options = dict(configPars[section])
         ini_items[section] = {}
         for option, value in options.items():
-            if section == 'paths_to_segment':
-                value = value.strip('\n')
-                value = value.split('\n')
+            if section == 'paths_info' or section == 'paths_to_segment':
+                value = value.strip('\n').strip().split('\n')
                 ini_items[section][option] = value
                 continue
             if value == 'False':
@@ -235,7 +237,7 @@ def read_segm_workflow_from_config(filepath):
             ini_items[section][option] = value
     return ini_items
 
-def get_images_paths(self, folder_path):
+def get_images_paths(folder_path):
     folder_type = myutils.determine_folder_type(folder_path)     
     is_pos_folder, is_images_folder, folder_path = folder_type     
     if not is_pos_folder and not is_images_folder:
@@ -1376,6 +1378,34 @@ class loadData:
         else:
             return
 
+    def init_segmInfo_df(self):
+        if self.SizeZ > 1 and self.segmInfo_df is not None:
+            if 'z_slice_used_gui' not in self.segmInfo_df.columns:
+                self.segmInfo_df['z_slice_used_gui'] = (
+                    self.segmInfo_df['z_slice_used_dataPrep']
+                )
+            if 'which_z_proj_gui' not in self.segmInfo_df.columns:
+                self.segmInfo_df['which_z_proj_gui'] = (
+                    self.segmInfo_df['which_z_proj']
+                )
+            self.segmInfo_df['resegmented_in_gui'] = False
+            self.segmInfo_df.to_csv(self.segmInfo_df_csv_path)
+
+        NO_segmInfo = (
+            self.segmInfo_df is None
+            or self.filename not in self.segmInfo_df.index
+        )
+        if NO_segmInfo and self.SizeZ > 1:
+            filename = self.filename
+            df = myutils.getDefault_SegmInfo_df(self, filename)
+            if self.segmInfo_df is None:
+                self.segmInfo_df = df
+            else:
+                self.segmInfo_df = pd.concat([df, self.segmInfo_df])
+                unique_idx = ~self.segmInfo_df.index.duplicated()
+                self.segmInfo_df = self.segmInfo_df[unique_idx]
+            self.segmInfo_df.to_csv(self.segmInfo_df_csv_path)
+    
     def _loadVideo(self, path):
         video = cv2.VideoCapture(path)
         num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -1984,13 +2014,13 @@ class loadData:
         return endname
     
     def getSegmEndname(self):
-        if not hasattr(self, 'acdc_output_csv_path'):
+        if not hasattr(self, 'segm_npz_path'):
             return
         
         if not hasattr(self, 'basename'):
             return
         
-        filename = os.path.basename(self.acdc_output_csv_path)
+        filename = os.path.basename(self.segm_npz_path)
         filename, _ = os.path.splitext(filename)
         endname = filename[len(self.basename):].lstrip('_')
         return endname
@@ -3713,3 +3743,38 @@ def askOpenCsvFile(
     if not isinstance(file_path, str):
         file_path = file_path[0]
     return file_path
+
+def read_measurements_workflow_from_config(filepath):
+    configPars = config.ConfigParser()
+    configPars.read(filepath)
+    options_that_are_lists = {
+        'channels', 
+        'calc_for_each_zslice_channels',
+        'size_metrics_to_save',
+        'regionprops_to_save',
+        'channel_indipendent_custom_metrics_to_save',
+        'mixed_combine_metrics_to_skip'
+    }
+    ini_items = {}
+    for section in configPars.sections():
+        options = dict(configPars[section])
+        ini_items[section] = {}
+        for option, value in options.items():
+            is_list = (
+                section == 'paths_info'
+                or option in options_that_are_lists
+                or option.startswith('metrics_to_skip_')
+                or option.startswith('metrics_to_save_')
+            )
+            if is_list:
+                value = value.strip('\n').strip().split('\n')
+                ini_items[section][option] = value
+                continue
+            
+            if value.lower() == 'false':
+                value = False
+            elif value.lower() == 'true':
+                value = True
+            
+            ini_items[section][option] = value
+    return ini_items

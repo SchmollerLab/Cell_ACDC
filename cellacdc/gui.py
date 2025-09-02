@@ -77,6 +77,7 @@ from . import measurements, printl
 from . import colors, annotate
 from . import user_manual_url
 from . import recentPaths_path, settings_folderpath, settings_csv_path
+from . import favourite_func_metrics_csv_path
 from . import qutils, autopilot, QtScoped
 from . import _palettes
 from . import transformation
@@ -87,11 +88,14 @@ from . import exporters
 from . import preprocess
 from . import io
 from . import whitelist
+from . import cli
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger, ArgSpec
 from .help import welcome, about
-from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import normal_division_lineage_tree, reorg_sister_cells_for_export
+from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
+    normal_division_lineage_tree, reorg_sister_cells_for_export
+)
 from .plot import imshow
 from . import gui_utils
 
@@ -108,9 +112,6 @@ if os.name == 'nt':
 
 GREEN_HEX = _palettes.green()
 
-favourite_func_metrics_csv_path = os.path.join(
-    settings_folderpath, 'favourite_func_metrics.csv'
-)
 custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
 shortcut_filepath = os.path.join(settings_folderpath, 'shortcuts.ini')
 
@@ -19340,32 +19341,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 # posData is None when computing measurements with the utility
                 # and with timelapse data
                 continue
-            if posData.SizeZ > 1 and posData.segmInfo_df is not None:
-                if 'z_slice_used_gui' not in posData.segmInfo_df.columns:
-                    posData.segmInfo_df['z_slice_used_gui'] = (
-                        posData.segmInfo_df['z_slice_used_dataPrep']
-                    )
-                if 'which_z_proj_gui' not in posData.segmInfo_df.columns:
-                    posData.segmInfo_df['which_z_proj_gui'] = (
-                        posData.segmInfo_df['which_z_proj']
-                    )
-                posData.segmInfo_df['resegmented_in_gui'] = False
-                posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
-
-            NO_segmInfo = (
-                posData.segmInfo_df is None
-                or posData.filename not in posData.segmInfo_df.index
-            )
-            if NO_segmInfo and posData.SizeZ > 1:
-                filename = posData.filename
-                df = myutils.getDefault_SegmInfo_df(posData, filename)
-                if posData.segmInfo_df is None:
-                    posData.segmInfo_df = df
-                else:
-                    posData.segmInfo_df = pd.concat([df, posData.segmInfo_df])
-                    unique_idx = ~posData.segmInfo_df.index.duplicated()
-                    posData.segmInfo_df = posData.segmInfo_df[unique_idx]
-                posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+            posData.init_segmInfo_df()
 
     def connectScrollbars(self):
         self.t_label.show()
@@ -19931,101 +19907,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.SegForLostIDsSettings =  {}
     
     def initMetricsToSave(self, posData):
-        posData.setLoadedChannelNames()
-
-        if self.metricsToSave is None:
-            # self.metricsToSave means that the user did not set 
-            # through setMeasurements dialog --> save all measurements
-            self.metricsToSave = {chName:[] for chName in posData.loadedChNames}
-            isManualBackgrPresent = posData.manualBackgroundLab is not None
-            for chName in posData.loadedChNames:
-                metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
-                    posData.SizeZ>1, chName, isSegm3D=self.isSegm3D,
-                    isManualBackgrPresent=isManualBackgrPresent
-                )
-                self.metricsToSave[chName].extend(metrics_desc.keys())
-                self.metricsToSave[chName].extend(bkgr_val_desc.keys())
-
-                custom_metrics_desc = measurements.custom_metrics_desc(
-                    posData.SizeZ>1, chName, posData=posData, 
-                    isSegm3D=self.isSegm3D, return_combine=False
-                )
-                self.metricsToSave[chName].extend(
-                    custom_metrics_desc.keys()
-                )
-        
-        # Get metrics parameters --> function name, how etc
-        self.metrics_func, _ = measurements.standard_metrics_func()
-        self.custom_func_dict = measurements.get_custom_metrics_func()
-        params = measurements.get_metrics_params(
-            self.metricsToSave, self.metrics_func, self.custom_func_dict
-        )
-        (bkgr_metrics_params, foregr_metrics_params, 
-        concentration_metrics_params, custom_metrics_params) = params
-        self.bkgr_metrics_params = bkgr_metrics_params
-        self.foregr_metrics_params = foregr_metrics_params
-        self.concentration_metrics_params = concentration_metrics_params
-        self.custom_metrics_params = custom_metrics_params
-        
-        self.ch_indipend_custom_func_dict = (
-            measurements.get_channel_indipendent_custom_metrics_func()
-        )
-        if not hasattr(self, 'chIndipendCustomMetricsToSave'):
-            self.chIndipendCustomMetricsToSave = list(
-                measurements.ch_indipend_custom_metrics_desc(
-                    posData.SizeZ>1, isSegm3D=self.isSegm3D,
-                ).keys()
-            )
-            
-        self.ch_indipend_custom_func_params = (
-            measurements.get_channel_indipend_custom_metrics_params(
-                self.ch_indipend_custom_func_dict,
-                self.chIndipendCustomMetricsToSave
-            )
-        )
+        self._measurements_kernel._init_metrics_to_save(posData)
 
     def initMetrics(self):
         self.logger.info('Initializing measurements...')
-        self.chNamesToSkip = []
-        self.metricsToSkip = {}
-        self.calc_for_each_zslice_mapper = {}
-        self.calc_size_for_each_zslice = False
-        # At the moment we don't know how many channels the user will load -->
-        # we set the measurements to save either at setMeasurements dialog
-        # or at initMetricsToSave
-        self.metricsToSave = None
-        self.regionPropsToSave = measurements.get_props_names()
-        if self.isSegm3D:
-            self.regionPropsToSave = measurements.get_props_names_3D()
-        else:
-            self.regionPropsToSave = measurements.get_props_names()  
-        
         posData = self.data[self.pos_i]
-        self.mixedChCombineMetricsToSkip = []
-        self.chIndipendCustomMetricsToSave = list(
-            measurements.ch_indipend_custom_metrics_desc(
-                posData.SizeZ>1, isSegm3D=self.isSegm3D,
-            ).keys()
+        self._measurements_kernel = cli.ComputeMeasurementsKernel(
+            self.logger, self.log_path, False
         )
-        
-        self.sizeMetricsToSave = list(
-            measurements.get_size_metrics_desc(
-                self.isSegm3D, posData.SizeT>1
-            ).keys()
+        self._measurements_kernel.init_args(
+            posData.chNames, posData.getSegmEndname()
         )
-        exp_path = posData.exp_path
-        posFoldernames = myutils.get_pos_foldernames(exp_path)
-        for pos in posFoldernames:
-            images_path = os.path.join(exp_path, pos, 'Images')
-            for file in myutils.listdir(images_path):
-                if not file.endswith('custom_combine_metrics.ini'):
-                    continue
-                filePath = os.path.join(images_path, file)
-                configPars = load.read_config_metrics(filePath)
-
-                posData.combineMetricsConfig = load.add_configPars_metrics(
-                    configPars, posData.combineMetricsConfig
-                )
+        self._measurements_kernel._init_metrics(posData, self.isSegm3D)
     
     def initPosAttr(self):
         exp_path = self.data[self.pos_i].exp_path
@@ -29812,118 +29705,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.measurementsWin = None
 
     def _setMetrics(self, measurementsWin):
-        self.chNamesToSkip = []
-        self.metricsToSkip = {chName:[] for chName in self.ch_names}
-        self.metricsToSave = {chName:[] for chName in self.ch_names}
-        self.calc_for_each_zslice_mapper = {}
-        self.calc_size_for_each_zslice = False
-        
-        favourite_funcs = set()
-        last_selected_groupboxes_measurements = load.read_last_selected_gb_meas(
-            logger_func=self.logger.info
+        self._measurements_kernel.set_metrics_from_set_measurements_dialog(
+            measurementsWin
         )
-        refChannel = measurementsWin.chNameGroupboxes[0].chName
-        if refChannel not in last_selected_groupboxes_measurements:
-            last_selected_groupboxes_measurements[refChannel] = []
-        # Remove unchecked metrics and load checked not loaded channels
-        for chNameGroupbox in measurementsWin.chNameGroupboxes:
-            chName = chNameGroupbox.chName
-            if not chNameGroupbox.isChecked():
-                # Skip entire channel
-                self.chNamesToSkip.append(chName)
-                continue
-            
-            self.calc_for_each_zslice_mapper[chName] = (
-                chNameGroupbox.isCalcForEachZsliceRequested()
-            )
-            last_selected_groupboxes_measurements[refChannel].append(
-                chNameGroupbox.title()
-            )
-            if chName in self.notLoadedChNames:
-                success = self.loadFluo_cb(fluo_channels=[chName])
-                if not success:
-                    continue
-            for checkBox in chNameGroupbox.checkBoxes:
-                colname = checkBox.text()
-                if not checkBox.isChecked():
-                    self.metricsToSkip[chName].append(colname)
-                else:
-                    self.metricsToSave[chName].append(colname)
-                    func_name = colname[len(chName):]
-                    favourite_funcs.add(func_name)
-
-        self.calc_size_for_each_zslice = (
-            measurementsWin.sizeMetricsQGBox.isCalcForEachZsliceRequested()
-        )
-        if not measurementsWin.sizeMetricsQGBox.isChecked():
-            self.sizeMetricsToSave = []
-        else:
-            self.sizeMetricsToSave = []
-            title = measurementsWin.sizeMetricsQGBox.title()
-            last_selected_groupboxes_measurements[refChannel].append(title)
-            for checkBox in measurementsWin.sizeMetricsQGBox.checkBoxes:
-                if checkBox.isChecked():
-                    self.sizeMetricsToSave.append(checkBox.text())
-                    favourite_funcs.add(checkBox.text())
-
-        if not measurementsWin.regionPropsQGBox.isChecked():
-            self.regionPropsToSave = ()
-        else:
-            self.regionPropsToSave = []
-            title = measurementsWin.regionPropsQGBox.title()
-            last_selected_groupboxes_measurements[refChannel].append(title)
-            for checkBox in measurementsWin.regionPropsQGBox.checkBoxes:
-                if checkBox.isChecked():
-                    self.regionPropsToSave.append(checkBox.text())
-                    favourite_funcs.add(checkBox.text())
-            self.regionPropsToSave = tuple(self.regionPropsToSave)
-
-        if measurementsWin.chIndipendCustomeMetricsQGBox is not None:
-            skipAll = (
-                not measurementsWin.chIndipendCustomeMetricsQGBox.isChecked()
-            )
-            if not skipAll:
-                title = measurementsWin.chIndipendCustomeMetricsQGBox.title()
-                last_selected_groupboxes_measurements[refChannel].append(title)
-            chIndipendCustomMetricsToSave = []
-            win = measurementsWin
-            checkBoxes = win.chIndipendCustomeMetricsQGBox.checkBoxes
-            for checkBox in checkBoxes:
-                if skipAll:
-                    continue
-    
-                if checkBox.isChecked():
-                    chIndipendCustomMetricsToSave.append(checkBox.text())           
-                    favourite_funcs.add(checkBox.text())
-            self.chIndipendCustomMetricsToSave = tuple(
-                chIndipendCustomMetricsToSave
-            )
-        
-        if measurementsWin.mixedChannelsCombineMetricsQGBox is not None:
-            skipAll = (
-                not measurementsWin.mixedChannelsCombineMetricsQGBox.isChecked()
-            )
-            if not skipAll:
-                title = measurementsWin.mixedChannelsCombineMetricsQGBox.title()
-                last_selected_groupboxes_measurements[refChannel].append(title)
-            mixedChCombineMetricsToSkip = []
-            win = measurementsWin
-            checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
-            for checkBox in checkBoxes:
-                if skipAll:
-                    mixedChCombineMetricsToSkip.append(checkBox.text())
-                elif not checkBox.isChecked():
-                    mixedChCombineMetricsToSkip.append(checkBox.text())
-                else:             
-                    favourite_funcs.add(checkBox.text())
-            self.mixedChCombineMetricsToSkip = tuple(mixedChCombineMetricsToSkip)
-
-        df_favourite_funcs = pd.DataFrame(
-            {'favourite_func_name': list(favourite_funcs)}
-        )
-        df_favourite_funcs.to_csv(favourite_func_metrics_csv_path)
-
-        load.save_last_selected_gb_meas(last_selected_groupboxes_measurements)
 
     def addCustomMetric(self, checked=False):
         txt = measurements.add_metrics_instructions()
@@ -29996,13 +29780,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
     def setMetricsFunc(self):
         posData = self.data[self.pos_i]
-        (metrics_func, all_metrics_names, custom_func_dict, total_metrics,
-        ch_indipend_custom_func_dict) = measurements.getMetricsFunc(posData)
-        self.metrics_func = metrics_func
-        self.all_metrics_names = all_metrics_names
-        self.total_metrics = total_metrics
-        self.custom_func_dict = custom_func_dict
-        self.ch_indipend_custom_func_dict = ch_indipend_custom_func_dict
+        self._measurements_kernel._set_metrics_func_from_posData(posData)
 
     def getLastTrackedFrame(self, posData):
         last_tracked_i = 0
@@ -30017,7 +29795,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return last_tracked_i
 
     def computeVolumeRegionprop(self):
-        if 'cell_vol_vox' not in self.sizeMetricsToSave:
+        if 'cell_vol_vox' not in self._measurements_kernel.sizeMetricsToSave:
             return
 
         # We compute the cell volume in the main thread because calling
