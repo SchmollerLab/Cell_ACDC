@@ -100,6 +100,11 @@ def nearest_nonzero_2D(a, y, x, max_dist=None, return_coords=False):
             return value
     r, c = np.nonzero(a)
     dist = ((r - y)**2 + (c - x)**2)
+    if dist.size == 0:
+        if return_coords:
+            return 0, 0, 0
+        else:
+            return 0
     if max_dist is not None:
         if dist.min() > max_dist:
             if return_coords:
