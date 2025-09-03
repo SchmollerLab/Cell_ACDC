@@ -1764,13 +1764,6 @@ class ScrollArea(QScrollArea):
         self.isOnlyVertical = False
         self.dropArrowKeyEvents = dropArrowKeyEvents
     
-    def setSpaceReservedVerticalScrollbar(self, reserve: bool):
-        if not reserve:
-            self.setViewportMargins(0, 0, 0, 0)
-        else:
-            scrollbar_width = self.verticalScrollBar().sizeHint().width()
-            self.setViewportMargins(0, 0, scrollbar_width, 0)
-    
     def setVerticalLayout(self, layout, widget=None):
         if widget is None:
             self.containerWidget = QWidget()
@@ -1934,6 +1927,11 @@ class listWidget(QListWidget):
     def setSelectedAll(self, selected):
         for i in range(self.count()):
             self.item(i).setSelected(selected)
+    
+    def setSelectedItems(self, itemsText):
+        for i in range(self.count()):
+            item = self.item(i)
+            item.setSelected(item.text() in itemsText)
     
     def addItems(self, labels) -> None:
         super().addItems(labels)        

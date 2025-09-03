@@ -40,9 +40,11 @@ class GenerateMothBudTotalUtil(base.MainThreadSinglePosUtilBase):
             filters='CSV (*.csv);;All Files (*)',
             basedir=myutils.getMostRecentPath()
         )[0]
-        if input_csv_filepath is None:
+        if input_csv_filepath is None or not input_csv_filepath:
             return False
 
+        myutils.addToRecentPaths(os.path.dirname(input_csv_filepath))
+        
         self.logger.info(f'Reading column names in table "{input_csv_filepath}"...')
 
         df = pd.read_csv(input_csv_filepath, nrows=2)
@@ -54,8 +56,10 @@ class GenerateMothBudTotalUtil(base.MainThreadSinglePosUtilBase):
         if win.cancel:
             return False
         
+        selected_options = win.selected_options
+        
         csv_filename = os.path.basename(input_csv_filepath)
-        csv_filename_noext, ext = os.path.splitext(csv_filename)[0]
+        csv_filename_noext, ext = os.path.splitext(csv_filename)
         win = apps.filenameDialog(
             ext='.csv',
             basename=f'{csv_filename_noext}_',
@@ -67,10 +71,13 @@ class GenerateMothBudTotalUtil(base.MainThreadSinglePosUtilBase):
         if win.cancel:
             return False
 
-        selected_options = win.selected_options
+        out_csv_filename = win.filename
+        out_csv_filepath = os.path.join(
+            os.path.dirname(input_csv_filepath), out_csv_filename
+        )
         
         self.worker = workers.GenerateMotherBudTotalTableWorker(
-            self, input_csv_filepath, selected_options
+            self, input_csv_filepath, selected_options, out_csv_filepath
         )
         if self.callbackOnFinished is not None:
             self.worker.signals.finished.connect(self.callbackOnFinished)

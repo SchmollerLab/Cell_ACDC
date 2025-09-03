@@ -1428,7 +1428,7 @@ class mainWin(QMainWindow):
         )
         self.genMothBudTotalTableWin.show()
         func = partial(
-            self._runGenerateMothBudTotTableUtil, self.applyTrackWin
+            self._runGenerateMothBudTotTableUtil, self.genMothBudTotalTableWin
         )
         QTimer.singleShot(200, func)
     

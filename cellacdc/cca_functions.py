@@ -23,6 +23,17 @@ if GUI_INSTALLED:
 from . import load, cca_df_colnames
 from . import myutils, prompts, html_utils, printl
 
+default_summable_columns = (
+    'cell_area_um2', 
+    'cell_vol_fl', 
+    'cell_vol_vox',
+    'cell_area_pxl', 
+    'num_spots', 
+    'ref_ch_vol_um3', 
+    'ref_ch_num_fragments', 
+    'ref_ch_vol_vox'
+)
+
 def configuration_dialog():
     app, _ = _run._setup_app(splashscreen=False)
     
@@ -923,6 +934,7 @@ def generate_mother_bud_total_df(
         column_operation_mapper: dict[str, str], 
         do_copy_all_nonselected_columns=True,
         grouping_columns=None,
+        entity_colname='entity'
     ):
     if grouping_columns is None:
         grouping_columns = []
@@ -965,6 +977,7 @@ def generate_mother_bud_total_df(
     final_df = pd.concat(
         [df_G1, df_S_moth, df_S_bud, df_S_tot], 
         keys=['G1', 'Mother', 'Bud', 'Total'],
+        names=[entity_colname],
         ignore_index=True
     )
     

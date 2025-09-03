@@ -88,6 +88,8 @@ from . import plot
 from . import urls
 from .acdc_regex import float_regex, is_alphanumeric_filename
 from . import _base_widgets
+from . import io
+from . import cca_functions
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -1503,7 +1505,7 @@ class filenameDialog(QDialog):
         
         self.allowEmpty = allowEmpty
         self.basename = basename
-        if ext.find('.') == -1:
+        if ext and not ext.startswith('.'):
             ext = f'.{ext}'
         self.ext = ext
 
@@ -4869,7 +4871,7 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
         self.mainLayout.addLayout(settingsLayout)
         
         scrollArea = widgets.ScrollArea()
-        scrollArea.setSpaceReservedVerticalScrollbar(True)
+        scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         scrollWidget = QWidget()
         scrollArea.setWidget(scrollWidget)
         self.centralLayout = QGridLayout()
@@ -4892,6 +4894,11 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
         operationCombobox.addItems(self.operations)
         self.addSelectorButton = widgets.addPushButton()
         
+        dummyButton = widgets.delPushButton()
+        dummyButton.setRetainSizeWhenHidden(True)
+        dummyButton.hide()
+        self.centralLayout.addWidget(dummyButton, 1, 4)
+        
         self.centralLayout.addWidget(selector, 1, 1)
         self.centralLayout.addWidget(operationCombobox, 1, 2)
         self.centralLayout.addWidget(self.addSelectorButton, 1, 3)
@@ -4903,6 +4910,24 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
+        saveSelectionButton = widgets.savePushButton(
+            'Save current selection'
+        )
+        buttonsLayout.insertWidget(3, saveSelectionButton)
+        
+        loadDefaultColsButton = widgets.reloadPushButton(
+            'Load default summable columns'
+        )
+        buttonsLayout.insertWidget(4, loadDefaultColsButton)
+        
+        loadPreviousSelButton = widgets.OpenFilePushButton(
+            'Load previous selection'
+        )
+        buttonsLayout.insertWidget(5, loadPreviousSelButton)
+        
+        saveSelectionButton.clicked.connect(self.saveSelection)
+        loadDefaultColsButton.clicked.connect(self.loadDefaultCols)
+        loadPreviousSelButton.clicked.connect(self.loadPreviousSelection)
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         
@@ -4917,6 +4942,142 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
 
         self.setLayout(self.mainLayout)
         self.setFont(font)
+    
+    def saveSelection(self):
+        saved_selections = io.get_saved_moth_bud_tot_selections()
+        existing_names = set(saved_selections.keys())
+        win = filenameDialog(
+            basename='',
+            ext='',
+            hintText='Insert a <b>name</b> for the current selection:',
+            existingNames=existing_names,
+            allowEmpty=False,
+            defaultEntry='mother_bud_total_columns_selection'
+        )
+        win.exec_()
+        if win.cancel:
+            return
+        
+        name = win.filename
+        saved_selections[name] = self.selectedOptions()
+        io.save_moth_bud_tot_selected_options(saved_selections)
+        
+        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        txt = html_utils.paragraph(f"""
+            Current selection saved with name <code>{name}</code>.
+        """)
+        msg.information(self, 'Selection saved', txt)
+
+    def loadDefaultCols(self):
+        from . import single_pos_index_cols
+        
+        grouping_cols = [
+            col for col in single_pos_index_cols if col in self.columns
+        ]
+        self.groupingColsListWidget.setSelectedItems(grouping_cols)
+        
+        column_operation_mapper = {
+            col: 'Sum mother and bud' 
+            for col in cca_functions.default_summable_columns
+        }
+        column_operation_mapper = {
+            col: op for col, op in column_operation_mapper.items()
+            if col in self.columns and op in self.operations
+        }
+        self.addSelectors(
+            len(column_operation_mapper), 
+            callback_on_finished=partial(
+                self.setSelectorValues, column_operation_mapper
+            )
+        )
+
+    def loadPreviousSelection(self):
+        saved_selections = io.get_saved_moth_bud_tot_selections()
+        if not saved_selections:
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            txt = html_utils.paragraph("""
+                There are no saved selections.
+            """)
+            msg.warning(self, 'No saved selections', txt)
+            return
+        
+        existing_names = natsorted(saved_selections.keys(), key=str.casefold)
+        
+        selectNameWin = widgets.QDialogListbox(
+            'Choose selection to load',
+            'Choose selection to load:\n',
+            existing_names, 
+            multiSelection=False, 
+            parent=self
+        )
+        selectNameWin.exec_()
+        if selectNameWin.cancel:
+            return
+        
+        self.loadOptions(saved_selections[selectNameWin.selectedItemsText[0]])
+    
+    def resetSelectors(self, callback_on_finished=None):
+        self.callback_on_finished = callback_on_finished
+        QTimer.singleShot(1, self._removeLastSelector)
+    
+    def _removeLastSelector(self):
+        if len(self.selectors) == 1:
+            if self.callback_on_finished is not None:
+                self.callback_on_finished()
+            return
+        
+        lastRow = max(self.selectors.keys())
+        lastSelector, _ = self.selectors[lastRow]
+        self.removeSelector(sender=lastSelector.delButton)
+        QTimer.singleShot(1, self._removeLastSelector)
+    
+    def addSelectors(self, number, callback_on_finished=None):
+        self.callback_on_finished = callback_on_finished
+        QTimer.singleShot(1, partial(self._addSelectorRecursive, number))
+    
+    def _addSelectorRecursive(self, number):
+        if len(self.selectors) == number:
+            if self.callback_on_finished is not None:
+                self.callback_on_finished()
+            return
+
+        self.addSelector()
+        QTimer.singleShot(1, partial(self._addSelectorRecursive, number))
+    
+    def loadOptions(self, options: dict):
+        if len(self.selectors) > 1:
+            self.resetSelectors(
+                callback_on_finished=partial(self.loadOptions, options)
+            )
+            return
+        
+        self.copyAllColsToggle.setChecked(
+            options.get('do_copy_all_nonselected_columns', False)
+        )
+        self.groupingColsListWidget.setSelectedItems(
+            options.get('grouping_columns', [])
+        )
+        column_operation_mapper = options.get('column_operation_mapper', {})
+        column_operation_mapper = {
+            col: op for col, op in column_operation_mapper.items()
+            if col in self.columns and op in self.operations
+        }
+        if len(column_operation_mapper) > 1:
+            self.addSelectors(
+                len(column_operation_mapper), 
+                callback_on_finished=partial(
+                    self.setSelectorValues, column_operation_mapper
+                )
+            )
+            return
+        
+        self.setSelectorValues(column_operation_mapper)
+    
+    def setSelectorValues(self, column_operation_mapper):
+        for i, (col, op) in enumerate(column_operation_mapper.items()):
+            selector, operationCombobox = self.selectors[i+1]
+            selector.setCurrentText(col)
+            operationCombobox.setCurrentText(op)                
     
     def resetSelectorsStyles(self):
         for selector, _ in self.selectors.values():
@@ -4953,6 +5114,9 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
         self.centralLayout.addWidget(operationCombobox, row, 2)
         self.centralLayout.addWidget(delButton, row, 3)
         
+        self.centralLayout.removeWidget(self.addSelectorButton)
+        self.centralLayout.addWidget(self.addSelectorButton, row, 4)
+        
         delButton.clicked.connect(self.removeSelector)
         
         self.centralLayout.removeWidget(self.groupingColsListWidget)
@@ -4966,8 +5130,12 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
             self.selectorTextChanged
         )
     
-    def removeSelector(self):
-        delButton = self.sender()
+    def removeSelector(self, checked=False, sender=None):
+        if sender is None:
+            delButton = self.sender()
+        else:
+            delButton = sender
+            
         selector, operationCombobox = self.selectors.pop(delButton._row)
         
         self.centralLayout.removeWidget(selector)
@@ -4991,9 +5159,12 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
             
             resorted_selectors[i+1] = (sel, op)
         
-        self.selectors = resorted_selectors
+        last_row = i+1
+        col = 4 if last_row > 1 else 3
+        self.centralLayout.removeWidget(self.addSelectorButton)
+        self.centralLayout.addWidget(self.addSelectorButton, i+1, col)
         
-        self.removeDuplicatedSelectedColumns()
+        self.selectors = resorted_selectors
     
     def sizeHint(self):
         width = super().sizeHint().width()
@@ -5072,6 +5243,17 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
         )
         return msg.clickedButton == yesButton
     
+    def selectedOptions(self):
+        selected_options = {
+            'grouping_columns': self.groupingColsListWidget.selectedItemsText(),
+            'column_operation_mapper': {
+                selector.currentText(): operationCombobox.currentText()
+                for selector, operationCombobox in self.selectors.values()
+            },
+            'do_copy_all_nonselected_columns': self.copyAllColsToggle.isChecked()
+        }
+        return selected_options
+    
     def ok_cb(self):
         proceed = self.checkDuplicatedSelectedColumns()
         if not proceed:
@@ -5081,14 +5263,7 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
         if not proceed:
             return
         
-        self.selected_options = {
-            'grouping_columns': self.groupingColsListWidget.selectedItemsText(),
-            'column_operation_mapper': {
-                selector.currentText(): operationCombobox.currentText()
-                for selector, operationCombobox in self.selectors.values()
-            },
-            'do_copy_all_nonselected_columns': self.copyAllColsToggle.isChecked()
-        }
+        self.selected_options = self.selectedOptions()
         
         self.cancel = False
         self.close()

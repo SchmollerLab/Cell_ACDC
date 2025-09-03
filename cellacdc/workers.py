@@ -6384,17 +6384,28 @@ class FillHolesInSegWorker(BaseWorkerUtil):
 
 class GenerateMotherBudTotalTableWorker(BaseWorkerUtil):
     def __init__(
-            self, parentWin, input_csv_filepath, selected_options
+            self, parentWin, input_csv_filepath, selected_options, 
+            out_csv_filepath
         ):
         super().__init__(parentWin)
         self.input_csv_filepath = input_csv_filepath
-        self.selected_options
+        self.selected_options = selected_options
+        self.out_csv_filepath = out_csv_filepath
     
     @worker_exception_handler
     def run(self):
         self.logger.log(f'Loading table "{self.input_csv_filepath}"...')  
         self.signals.initProgressBar.emit(0)
         
-        ...
+        input_df = pd.read_csv(self.input_csv_filepath)
+        
+        self.logger.log('Generating output table...')
+        out_df = cca_functions.generate_mother_bud_total_df(
+            input_df, **self.selected_options
+        )
+        
+        self.logger.log(f'Saving output table to "{self.out_csv_filepath}"...')  
+        
+        out_df.to_csv(self.out_csv_filepath)
         
         self.signals.finished.emit(self)
