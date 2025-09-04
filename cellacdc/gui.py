@@ -110,6 +110,10 @@ if os.name == 'nt':
     except Exception as e:
         pass
 
+AUTOSAVE_INTERVAL_MINUTES = 5
+autosave_interval_seconds = 300
+autosave_interval_ms = autosave_interval_seconds*1000
+
 GREEN_HEX = _palettes.green()
 
 custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
@@ -319,6 +323,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.whitelistAddNewIDsFrame = None
         self.whitelistOriginalIDs = None
         self.whyNavigateDisabled = set()
+        self.autoSaveTimer = QTimer()
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -14055,7 +14060,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            self.ax1.setHighlighted(True)
+            printl(self.autoSaveTimer.isActive())
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -21986,19 +21991,32 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def turnOffAutoSaveWorker(self):
         self.autoSaveToggle.setChecked(False)
     
+    def autoSaveTimerTimedOut(self):
+        self.autoSaveTimer.stop()
+        self.enqAutosave()
+    
     def enqAutosave(self):
+        worker, thread = self.autoSaveActiveWorkers[-1]
+        if worker.isSaving:
+            self.autoSaveTimer.timeout.connect(self.autoSaveTimerTimedOut)
+            self.autoSaveTimer.start(autosave_interval_ms)
+            return
+        
+        if self.autoSaveTimer.isActive():
+            return
+        
         posData = self.data[self.pos_i]  
         # if self.autoSaveToggle.isChecked():
         if not self.autoSaveActiveWorkers:
             self.gui_createAutoSaveWorker()
         
-        worker, thread = self.autoSaveActiveWorkers[-1]
+        
         if not self.statusBarLabel.text().endswith('Autosaving...'):
             self.statusBarLabel.setText(
                 f'{self.statusBarLabel.text()} | Autosaving...'
             )
         worker.enqueue(posData)
-    
+
     def enqCcaIntegrityChecker(self):
         if not self.ccaCheckerRunning:
             return

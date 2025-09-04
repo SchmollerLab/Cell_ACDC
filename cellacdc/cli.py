@@ -1151,7 +1151,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                         acdc_df = myutils.getBaseAcdcDf(rp)
             
             key = (frame_i, posData.TimeIncrement*frame_i)
-            acdc_df = load.pd_bool_and_float_to_int(
+            acdc_df = load.pd_bool_and_float_to_int_to_str(
                 acdc_df, inplace=False, colsToCastInt=[]
             )
             
