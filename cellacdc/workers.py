@@ -6010,6 +6010,38 @@ class saveDataWorker(QObject):
         self.progressBar.emit(1, -1, exec_time)
         self.time_last_pbar_update = t
     
+    def saveSegmData(self, posData, end_i, saved_segm_data):
+        self.progress.emit(f'Saving segmentation data for {posData.relPath}...')
+        for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
+            if self.saveWin.aborted:
+                self.finished.emit()
+                return
+
+            # Build saved_segm_data
+            lab = data_dict['labels']
+            if lab is None:
+                break
+            
+            posData.lab = lab
+
+            if posData.SizeT > 1:
+                saved_segm_data[frame_i] = lab
+            else:
+                saved_segm_data = lab
+                if 'manualBackgroundLab' in data_dict:
+                    manualBackgrData = data_dict['manualBackgroundLab']
+                    posData.saveManualBackgroundData(manualBackgrData)  
+            
+            # Save segmentation file
+            io.savez_compressed(
+                posData.segm_npz_path, np.squeeze(saved_segm_data)
+            )
+            posData.segm_data = saved_segm_data
+            try:
+                os.remove(posData.segm_npz_temp_path)
+            except Exception as e:
+                pass
+
     @worker_exception_handler
     def run(self):
         posToSave = self.mainWin.posToSave
@@ -6031,7 +6063,18 @@ class saveDataWorker(QObject):
                 if posData.pos_foldername not in posToSave:
                     self.progress.emit(f'Skipping {posData.relPath}')
                     continue
-
+            
+            last_tracked_i_path = posData.last_tracked_i_path
+            end_i = self.mainWin.save_until_frame_i
+            if end_i < len(posData.segm_data):
+                saved_segm_data = posData.segm_data
+            else:
+                frame_shape = posData.segm_data.shape[1:]
+                segm_shape = (end_i+1, *frame_shape)
+                saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
+                
+            self.saveSegmData(posData, end_i, saved_segm_data)
+            
             posData.saveCustomAnnotationParams()
             current_frame_i = posData.frame_i
 
@@ -6049,20 +6092,8 @@ class saveDataWorker(QObject):
             if p == 0:
                 self.progressBar.emit(0, numPosToSave*(last_tracked_i+1), 0)
 
-            segm_npz_path = posData.segm_npz_path
             acdc_output_csv_path = posData.acdc_output_csv_path
-            last_tracked_i_path = posData.last_tracked_i_path
-            end_i = self.mainWin.save_until_frame_i
-            if end_i < len(posData.segm_data):
-                saved_segm_data = posData.segm_data
-            else:
-                frame_shape = posData.segm_data.shape[1:]
-                segm_shape = (end_i+1, *frame_shape)
-                saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
-            npz_delROIs_info = {}
             delROIs_info_path = posData.delROIs_info_path
-            acdc_df_li = []
-            keys = []
 
             # Add segmented channel data for calc metrics if requested
             add_user_channel_data = True
@@ -6079,14 +6110,6 @@ class saveDataWorker(QObject):
 
             if not self.isQuickSave:
                 posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
-
-            # Save segmentation file
-            io.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
-            posData.segm_data = saved_segm_data
-            try:
-                os.remove(posData.segm_npz_temp_path)
-            except Exception as e:
-                pass
             
             posData.setLoadedChannelNames()
             self.mainWin.initMetricsToSave(posData)
@@ -6108,9 +6131,15 @@ class saveDataWorker(QObject):
                 posData.whitelist.saveOGLabs(og_save_path)
             
             if posData.whitelist:
-                whitelistIDs_path = posData.segm_npz_path.replace('.npz', '_whitelistIDs.json')
-                new_centroids_path = posData.segm_npz_path.replace('.npz', '_new_centroids.json')
-                posData.whitelist.save(whitelistIDs_path, new_centroids_path=new_centroids_path)
+                whitelistIDs_path = posData.segm_npz_path.replace(
+                    '.npz', '_whitelistIDs.json'
+                )
+                new_centroids_path = posData.segm_npz_path.replace(
+                    '.npz', '_new_centroids.json'
+                )
+                posData.whitelist.save(
+                    whitelistIDs_path, new_centroids_path=new_centroids_path
+                )
 
             if posData.segmInfo_df is not None:
                 try:

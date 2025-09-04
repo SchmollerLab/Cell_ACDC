@@ -1138,9 +1138,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             posData.lab = lab
             posData.rp = rp
             
-            if saveDataWorker is not None:
-                saveDataWorker.saveManualBackgroundData(posData, frame_i)
-            
             if acdc_df is None:
                 if posData.acdc_df is None:
                     acdc_df = myutils.getBaseAcdcDf(rp)
