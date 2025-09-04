@@ -1138,9 +1138,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             posData.lab = lab
             posData.rp = rp
             
-            if saveDataWorker is not None:
-                saveDataWorker.saveManualBackgroundData(posData, frame_i)
-            
             if acdc_df is None:
                 if posData.acdc_df is None:
                     acdc_df = myutils.getBaseAcdcDf(rp)
@@ -1151,7 +1148,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                         acdc_df = myutils.getBaseAcdcDf(rp)
             
             key = (frame_i, posData.TimeIncrement*frame_i)
-            acdc_df = load.pd_bool_and_float_to_int(
+            acdc_df = load.pd_bool_and_float_to_int_to_str(
                 acdc_df, inplace=False, colsToCastInt=[]
             )
             
@@ -1905,7 +1902,10 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 continue
             
             idx = pd.IndexSlice[frame_i-1, lost_IDs]
-            acdc_df.loc[idx, 'disappears_before_end'] = 1
+            try:
+                acdc_df.loc[idx, 'disappears_before_end'] = 1
+            except Exception as err:
+                printl(frame_i, lost_IDs)
                 
         return acdc_df
     

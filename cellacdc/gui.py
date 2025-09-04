@@ -110,6 +110,10 @@ if os.name == 'nt':
     except Exception as e:
         pass
 
+AUTOSAVE_INTERVAL_MINUTES = 5
+autosave_interval_seconds = 300
+autosave_interval_ms = autosave_interval_seconds*1000
+
 GREEN_HEX = _palettes.green()
 
 custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
@@ -319,6 +323,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.whitelistAddNewIDsFrame = None
         self.whitelistOriginalIDs = None
         self.whyNavigateDisabled = set()
+        self.autoSaveTimer = QTimer()
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -12271,10 +12276,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         prevMode = self.modeComboBox.previousText()
         self.annotateToolbar.setVisible(False)
         if prevMode != 'Viewer':
-            self.store_data(autosave=False)
+            self.store_data(autosave=True)
+            
         self.copyLostObjButton.setChecked(False)
         self.stopCcaIntegrityCheckerWorker()
-
+        self.setAutoSaveSegmentationEnabled(False)
         if prevMode == 'Normal division: Lineage tree':
             self.lin_tree_ask_changes()
             self.lineage_tree = None
@@ -12285,6 +12291,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.setEnabledCcaToolbar(enabled=False)
 
         if mode == 'Segmentation and Tracking':
+            self.setAutoSaveSegmentationEnabled(True)
             self.setSwitchViewedPlaneDisabled(True)
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
@@ -12329,10 +12336,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.setEnabledEditToolbarButton(enabled=False)
             self.setEnabledCcaToolbar(enabled=False)
             self.removeAlldelROIsCurrentFrame()
-            # currentMode = self.drawIDsContComboBox.currentText()
-            # self.drawIDsContComboBox.clear()
-            # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
-            # self.drawIDsContComboBox.setCurrentText(currentMode)
+            self.setStatusBarLabel()
             self.navigateScrollBar.setMaximum(posData.SizeT)
             self.navSpinBox.setMaximum(posData.SizeT)
             self.clearGhost()
@@ -14055,7 +14059,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            self.ax1.setHighlighted(True)
+            printl(self.autoSaveTimer.isActive())
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -21986,19 +21990,41 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def turnOffAutoSaveWorker(self):
         self.autoSaveToggle.setChecked(False)
     
+    def autoSaveTimerTimedOut(self):
+        self.autoSaveTimer.stop()
+        self.enqAutosave()
+    
     def enqAutosave(self):
-        posData = self.data[self.pos_i]  
-        # if self.autoSaveToggle.isChecked():
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Viewer':
+            if self.statusBarLabel.text().endswith('Autosaving...'):
+                self.statusBarLabel.setText(
+                    self.statusBarLabel.text().replace(' | Autosaving...', '')
+                )
+            return 
+        
         if not self.autoSaveActiveWorkers:
             self.gui_createAutoSaveWorker()
         
+        if not self.autoSaveActiveWorkers:
+            return
+        
         worker, thread = self.autoSaveActiveWorkers[-1]
+        if worker.isSaving:
+            self.autoSaveTimer.timeout.connect(self.autoSaveTimerTimedOut)
+            self.autoSaveTimer.start(autosave_interval_ms)
+            return
+        
+        if self.autoSaveTimer.isActive():
+            return
+        
+        posData = self.data[self.pos_i]          
         if not self.statusBarLabel.text().endswith('Autosaving...'):
             self.statusBarLabel.setText(
                 f'{self.statusBarLabel.text()} | Autosaving...'
             )
         worker.enqueue(posData)
-    
+
     def enqCcaIntegrityChecker(self):
         if not self.ccaCheckerRunning:
             return
@@ -30686,6 +30712,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.viewPreprocDataToggled
             )
     
+    def setAutoSaveSegmentationEnabled(self, enabled):
+        if not self.autoSaveActiveWorkers:
+            return
+        
+        worker, thread = self.autoSaveActiveWorkers[-1]
+        
+        if enabled:
+            worker.isAutoSaveON = self.autoSaveToggle.isChecked()
+        else:
+            worker.isAutoSaveON = False
+    
     def autoSaveToggled(self, checked):
         if not self.autoSaveActiveWorkers:
             self.gui_createAutoSaveWorker()
@@ -30694,11 +30731,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
         
         worker, thread = self.autoSaveActiveWorkers[-1]
-        worker.isAutoSaveON = checked
-        # self.autoSaveClose()
         
-        # if checked:
-        #     self.gui_createAutoSaveWorker()
+        mode = self.modeComboBox.currentText()
+        if mode != 'Segmentation and Tracking':
+            # Autosaving segmentation makes sense only in 
+            # "Segmentation and Tracking" mode
+            checked = False
+        
+        worker.isAutoSaveON = checked
     
     def ccaIntegrCheckerToggled(self, checked):
         self.df_settings.at['is_cca_integrity_checker_activated', 'value'] = (

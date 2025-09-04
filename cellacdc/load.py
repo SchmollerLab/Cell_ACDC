@@ -79,6 +79,13 @@ acdc_df_int_cols = {
     'num_objects': int,
 }
 
+acdc_df_dtype_id_checker_mapper = {
+    'float': pd.api.types.is_float_dtype,
+    'string': pd.api.types.is_string_dtype,
+    'object': pd.api.types.is_object_dtype,
+    'bool': pd.api.types.is_bool_dtype,
+}
+
 additional_metadata_path = os.path.join(settings_folderpath, 'additional_metadata.json')
 last_entries_metadata_path = os.path.join(settings_folderpath, 'last_entries_metadata.csv')
 last_selected_groupboxes_measurements_path = os.path.join(
@@ -88,6 +95,24 @@ channel_file_formats = (
     '_aligned.h5', '.h5', '_aligned.npz', '.tif'
 )
 ISO_TIMESTAMP_FORMAT = r'iso%Y%m%d%H%M%S'
+
+def _pd_cast_float_and_bool_to_int(df, col, notna_idx):
+    df.loc[notna_idx, col] = df.loc[notna_idx, col].astype(int)
+    return df
+
+def _pd_cast_string_to_int(df, col, notna_idx):
+    df.loc[notna_idx, col] = df.loc[notna_idx, col].astype(str)
+    df.loc[notna_idx, col] = (
+        df.loc[notna_idx, col].str.lower() == 'true'
+    ).astype(int)
+    return df
+
+acdc_df_dtype_id_func_mapper = {
+    'float': _pd_cast_float_and_bool_to_int,
+    'string': _pd_cast_string_to_int,
+    'object': _pd_cast_string_to_int,
+    'bool': _pd_cast_float_and_bool_to_int,
+}
 
 def read_json(json_path, logger_func=print, desc='custom annotations'):
     json_data = {}
@@ -531,7 +556,9 @@ def _parse_loaded_acdc_df(acdc_df):
     # remove duplicates saved by mistake or bugs
     duplicated = acdc_df.index.duplicated(keep='first')
     acdc_df = acdc_df[~duplicated]
-    acdc_df = pd_bool_and_float_to_int(acdc_df, acdc_df_bool_cols, colsToCastInt=[], inplace=True)
+    acdc_df = pd_bool_and_float_to_int_to_str(
+        acdc_df, acdc_df_bool_cols, colsToCastInt=[], inplace=True
+    )
     acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
     return acdc_df
 
@@ -633,7 +660,7 @@ def _copy_acdc_dfs_to_temp_archive(
                     zip.open(csv_name), dtype=acdc_df_str_cols
                 )
             acdc_df = _ensure_acdc_df_latest_compatibility(acdc_df)
-            acdc_df = pd_bool_and_float_to_int(acdc_df, inplace=False)
+            acdc_df = pd_bool_and_float_to_int_to_str(acdc_df, inplace=False)
             compression_opts['archive_name'] = csv_name
             acdc_df.to_csv(
                 temp_zip_path, compression=compression_opts, mode='a'
@@ -666,7 +693,7 @@ def _store_acdc_df_archive(zip_path, acdc_df_to_store):
         
     
     compression_opts['archive_name'] = csv_name
-    acdc_df = pd_bool_and_float_to_int(acdc_df_to_store, inplace=False)
+    acdc_df = pd_bool_and_float_to_int_to_str(acdc_df_to_store, inplace=False)
     acdc_df.to_csv(temp_zip_path, compression=compression_opts, mode='a')
     shutil.move(temp_zip_path, zip_path)
     shutil.rmtree(temp_dirpath)
@@ -1022,17 +1049,41 @@ def pd_int_to_bool(acdc_df, colsToCast=None):
             continue
     return acdc_df
 
-def pd_bool_and_float_to_int(acdc_df, colsToCastBool=None, colsToCastInt=None, csv_path=None, inplace=True):
-    """
-    Function used to convert "FALSE" strings and booleans to 0s and 1s
-    to avoid pandas interpreting as strings or numbers.
-    Also converts floats to integers for integer columns.
-    To not convert columns, pass emptry list to colsToCastBool or colsToCastInt.
+def pd_bool_and_float_to_int_to_str(
+        acdc_df, 
+        colsToCastBool=None, 
+        colsToCastInt=None, 
+        csv_path=None, 
+        inplace=True
+    ):
+    """Converts boolean columns to 0s and 1s, float columns to integers, 
+    and then to "string" to ensure smooth saving to CSV. Save to CSV if 
+    `csv_path` is not None.
+
+    Parameters
+    ----------
+    acdc_df : pd.DataFrame
+        Input dataframe to cast
+    colsToCastBool : Iterable of str, optional
+        Iterable of columns to cast to boolean. Default is None
+    colsToCastInt : Iterable of str, optional
+        Iterable of columns to cast to integer. Default is None
+    csv_path : str, optional
+        CSV file path to save the acdc_df. Default is None
+    inplace : bool, optional
+        If False, copy the acdc_df first. Default is True
+
+    Returns
+    -------
+    pd.DataFrame
+        The casted dataframe
     """
     if not inplace:
         acdc_df = acdc_df.copy()
+    
     if colsToCastBool is None:
         colsToCastBool = acdc_df_bool_cols
+    
     if colsToCastInt is None:
         colsToCastInt = acdc_df_int_cols
         additional_sister_cols = [
@@ -1041,39 +1092,50 @@ def pd_bool_and_float_to_int(acdc_df, colsToCastBool=None, colsToCastInt=None, c
         additional_sister_cols = {
             col: int for col in additional_sister_cols
         }
-        colsToCastInt = {**colsToCastInt, **additional_sister_cols}
-    for col in acdc_df.columns:   
+        colsToCastInt = ({**colsToCastInt, **additional_sister_cols}).keys()
+    
+    for col in colsToCastInt:
         try:
             series = acdc_df[col]
             notna_idx = series.notna()
-            notna_series = series.dropna()
-            isInt = pd.api.types.is_integer_dtype(notna_series)
-            isFloat = pd.api.types.is_float_dtype(notna_series)
-            isObject = pd.api.types.is_object_dtype(notna_series)
-            isString = pd.api.types.is_string_dtype(notna_series)
-            isBool = pd.api.types.is_bool_dtype(notna_series)
-            if col in colsToCastBool:
-                if isFloat or isBool:
-                    acdc_df.loc[notna_idx, col] = acdc_df.loc[notna_idx, col].astype(int)
-                elif isString or isObject:
-                    # Object data type can have mixed data types so we first convert
-                    # to strings
-                    acdc_df.loc[notna_idx, col] = acdc_df.loc[notna_idx, col].astype(str)
-                    acdc_df.loc[notna_idx, col] = (
-                        acdc_df.loc[notna_idx, col].str.lower() == 'true'
-                    ).astype(int)
-            elif col in colsToCastInt:
-                nona_indx = acdc_df[col].notna()
-                acdc_df[col] = acdc_df[col].astype(float).fillna(0).astype(int).astype("string")
-                acdc_df.loc[~nona_indx, col] = ""
-                
+            acdc_df[col] = (
+                acdc_df[col]
+                .astype(float)
+                .fillna(0)
+                .astype(int)
+                .astype("string")
+            )
+            acdc_df.loc[~notna_idx, col] = ""
         except KeyError:
             continue
         except Exception as e:
             printl(col)
             traceback.print_exc()
+    
+    for col in colsToCastBool:
+        try:
+            series = acdc_df[col]
+            notna_idx = series.notna()
+            notna_series = series.loc[notna_idx]
+            dtype_id = None
+            for dtype_id, dtype_checker in acdc_df_dtype_id_checker_mapper.items():
+                if dtype_checker(notna_series):
+                    break
+            
+            if dtype_id is None:
+                break
+            
+            casting_func = acdc_df_dtype_id_func_mapper[dtype_id]
+            acdc_df = casting_func(acdc_df, col, notna_idx)
+        except KeyError:
+            continue
+        except Exception as e:
+            printl(col)
+            traceback.print_exc()
+    
     if csv_path is not None:
         acdc_df.to_csv(csv_path)
+        
     return acdc_df
 
 def parse_metadata_csv_file(csv_filepath):
@@ -1994,7 +2056,7 @@ class loadData:
         if not save:
             return acdc_df
 
-        acdc_df = pd_bool_and_float_to_int(acdc_df, inplace=False)
+        acdc_df = pd_bool_and_float_to_int_to_str(acdc_df, inplace=False)
         if cca_dfs_attr:
             acdc_df.to_csv(self.acdc_output_csv_path)
             self.loadAcdcDf(self.acdc_output_csv_path)
