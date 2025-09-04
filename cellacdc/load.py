@@ -79,6 +79,13 @@ acdc_df_int_cols = {
     'num_objects': int,
 }
 
+acdc_df_dtype_id_checker_mapper = {
+    'float': pd.api.types.is_float_dtype,
+    'string': pd.api.types.is_string_dtype,
+    'object': pd.api.types.is_object_dtype,
+    'bool': pd.api.types.is_bool_dtype,
+}
+
 additional_metadata_path = os.path.join(settings_folderpath, 'additional_metadata.json')
 last_entries_metadata_path = os.path.join(settings_folderpath, 'last_entries_metadata.csv')
 last_selected_groupboxes_measurements_path = os.path.join(
@@ -88,6 +95,24 @@ channel_file_formats = (
     '_aligned.h5', '.h5', '_aligned.npz', '.tif'
 )
 ISO_TIMESTAMP_FORMAT = r'iso%Y%m%d%H%M%S'
+
+def _pd_cast_float_and_bool_to_int(df, col, notna_idx):
+    df.loc[notna_idx, col] = df.loc[notna_idx, col].astype(int)
+    return df
+
+def _pd_cast_string_to_int(df, col, notna_idx):
+    df.loc[notna_idx, col] = df.loc[notna_idx, col].astype(str)
+    df.loc[notna_idx, col] = (
+        df.loc[notna_idx, col].str.lower() == 'true'
+    ).astype(int)
+    return df
+
+acdc_df_dtype_id_func_mapper = {
+    'float': _pd_cast_float_and_bool_to_int,
+    'string': _pd_cast_string_to_int,
+    'object': _pd_cast_string_to_int,
+    'bool': _pd_cast_float_and_bool_to_int,
+}
 
 def read_json(json_path, logger_func=print, desc='custom annotations'):
     json_data = {}
@@ -1092,24 +1117,16 @@ def pd_bool_and_float_to_int_to_str(
             series = acdc_df[col]
             notna_idx = series.notna()
             notna_series = series.loc[notna_idx]
-            isFloat = pd.api.types.is_float_dtype(notna_series)
-            isObject = pd.api.types.is_object_dtype(notna_series)
-            isString = pd.api.types.is_string_dtype(notna_series)
-            isBool = pd.api.types.is_bool_dtype(notna_series)
-            if isFloat or isBool:
-                acdc_df.loc[notna_idx, col] = (
-                    acdc_df.loc[notna_idx, col]
-                    .astype(int)
-                )
-            elif isString or isObject:
-                # Object data type can have mixed data types so we first convert
-                # to strings
-                acdc_df.loc[notna_idx, col] = (
-                    acdc_df.loc[notna_idx, col].astype(str)
-                )
-                acdc_df.loc[notna_idx, col] = (
-                    acdc_df.loc[notna_idx, col].str.lower() == 'true'
-                ).astype(int)
+            dtype_id = None
+            for dtype_id, dtype_checker in acdc_df_dtype_id_checker_mapper.items():
+                if dtype_checker(notna_series):
+                    break
+            
+            if dtype_id is None:
+                break
+            
+            casting_func = acdc_df_dtype_id_func_mapper[dtype_id]
+            acdc_df = casting_func(acdc_df, col, notna_idx)
         except KeyError:
             continue
         except Exception as e:

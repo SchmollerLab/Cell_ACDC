@@ -12276,7 +12276,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         prevMode = self.modeComboBox.previousText()
         self.annotateToolbar.setVisible(False)
         if prevMode != 'Viewer':
-            self.store_data(autosave=False)
+            self.store_data(autosave=True)
+            
         self.copyLostObjButton.setChecked(False)
         self.stopCcaIntegrityCheckerWorker()
         self.setAutoSaveSegmentationEnabled(False)
@@ -12290,6 +12291,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.setEnabledCcaToolbar(enabled=False)
 
         if mode == 'Segmentation and Tracking':
+            self.setAutoSaveSegmentationEnabled(True)
             self.setSwitchViewedPlaneDisabled(True)
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
@@ -12306,7 +12308,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.store_cca_df()
             self.restorePrevAnnotOptions()
             self.whitelistViewOGIDs(False)
-            self.setAutoSaveSegmentationEnabled(True)
         elif mode == 'Cell cycle analysis':
             self.setSwitchViewedPlaneDisabled(True)
             self.startCcaIntegrityCheckerWorker()
@@ -21997,6 +21998,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.enqAutosave()
     
     def enqAutosave(self):
+        if not self.autoSaveActiveWorkers:
+            self.gui_createAutoSaveWorker()
+        
+        if not self.autoSaveActiveWorkers:
+            return
+        
         worker, thread = self.autoSaveActiveWorkers[-1]
         if worker.isSaving:
             self.autoSaveTimer.timeout.connect(self.autoSaveTimerTimedOut)
@@ -22006,12 +22013,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.autoSaveTimer.isActive():
             return
         
-        posData = self.data[self.pos_i]  
-        # if self.autoSaveToggle.isChecked():
-        if not self.autoSaveActiveWorkers:
-            self.gui_createAutoSaveWorker()
-        
-        
+        posData = self.data[self.pos_i]          
         if not self.statusBarLabel.text().endswith('Autosaving...'):
             self.statusBarLabel.setText(
                 f'{self.statusBarLabel.text()} | Autosaving...'
