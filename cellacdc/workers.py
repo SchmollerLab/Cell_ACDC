@@ -6084,7 +6084,8 @@ class saveDataWorker(QObject):
             self.mainWin._measurements_kernel.run(
                 posData=posData, 
                 stop_frame_n=end_i+1,
-                saveDataWorker=self
+                saveDataWorker=self,
+                save_metrics=self.mainWin.save_metrics and not self.isQuickSave
             )
             self.progress.emit(f'Saving {posData.relPath}')
 
@@ -6160,7 +6161,7 @@ class saveDataWorker(QObject):
             elif mode == 'Cell cycle analysis':
                 self.progress.emit(
                     'Saved cell cycle annotations until frame '
-                    f'number {last_tracked_i+1}'
+                    f'number {self.mainWin.last_cca_frame_i+1}'
                 )
             # self.progressBar.emit(1)
         if self.mainWin.isSnapshot:

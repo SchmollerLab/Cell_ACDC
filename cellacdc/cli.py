@@ -914,6 +914,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
     
     def _init_metrics_to_save(self, posData):
         posData.setLoadedChannelNames()
+        self.isSegm3D = posData.getIsSegm3D()
 
         if self.metricsToSave is None:
             # self.metricsToSave means that the user did not set 
@@ -1122,10 +1123,14 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 # Empty segmentation mask --> skip
                 continue
             
+            acdc_df = None
             if computeMetricsWorker is not None:
                 rp = posData.allData_li[frame_i]['regionprops']
             elif saveDataWorker is not None:
                 rp = posData.allData_li[frame_i]['regionprops']
+                acdc_df = posData.allData_li[frame_i]['acdc_df']
+                if acdc_df is None:
+                    continue
             else:
                 rp = skimage.measure.regionprops(lab)
                 rp = self._calc_volume_metrics(rp, posData)
@@ -1136,29 +1141,37 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             if saveDataWorker is not None:
                 saveDataWorker.saveManualBackgroundData(posData, frame_i)
             
-            if posData.acdc_df is None:
-                acdc_df = myutils.getBaseAcdcDf(rp)
-            else:
-                try:
-                    acdc_df = posData.acdc_df.loc[frame_i].copy()
-                except:
+            if acdc_df is None:
+                if posData.acdc_df is None:
                     acdc_df = myutils.getBaseAcdcDf(rp)
+                else:
+                    try:
+                        acdc_df = posData.acdc_df.loc[frame_i].copy()
+                    except:
+                        acdc_df = myutils.getBaseAcdcDf(rp)
             
+            key = (frame_i, posData.TimeIncrement*frame_i)
             acdc_df = load.pd_bool_and_float_to_int(
                 acdc_df, inplace=False, colsToCastInt=[]
             )
             
+            if not save_metrics:
+                if saveDataWorker is not None:
+                    saveDataWorker.emitUpdateProgressBar()
+                acdc_df_li.append(acdc_df)
+                keys.append(key)
+                continue
+            
             try:
                 acdc_df = self._add_volume_metrics(acdc_df, rp, posData)
-                if save_metrics:
-                    calc_metrics_addtional_args = self._init_calc_metrics(
-                        acdc_df, rp, frame_i, lab, posData, 
-                        saveDataWorker=saveDataWorker
-                    )
-                    acdc_df = self._calc_metrics_iter_channels(
-                        acdc_df, rp, frame_i, lab, posData, 
-                        *calc_metrics_addtional_args
-                    )
+                calc_metrics_addtional_args = self._init_calc_metrics(
+                    acdc_df, rp, frame_i, lab, posData, 
+                    saveDataWorker=saveDataWorker
+                )
+                acdc_df = self._calc_metrics_iter_channels(
+                    acdc_df, rp, frame_i, lab, posData, 
+                    *calc_metrics_addtional_args
+                )
             except Exception as error:
                 traceback_format = traceback.format_exc()
                 print('-'*30)      
@@ -1172,13 +1185,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     saveDataWorker.addMetricsCritical.emit(
                         traceback_format, str(error)
                     )
-            
-            if not save_metrics:
-                if saveDataWorker is not None:
-                    saveDataWorker.emitUpdateProgressBar()
-                continue
-            
-            key = (frame_i, posData.TimeIncrement*frame_i)
             
             if frame_i == 0:
                 if saveDataWorker is not None:

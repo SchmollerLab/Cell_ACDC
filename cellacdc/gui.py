@@ -21993,9 +21993,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.gui_createAutoSaveWorker()
         
         worker, thread = self.autoSaveActiveWorkers[-1]
-        self.statusBarLabel.setText(
-            f'{self.statusBarLabel.text()} | Autosaving...'
-        )
+        if not self.statusBarLabel.text().endswith('Autosaving...'):
+            self.statusBarLabel.setText(
+                f'{self.statusBarLabel.text()} | Autosaving...'
+            )
         worker.enqueue(posData)
     
     def enqCcaIntegrityChecker(self):
