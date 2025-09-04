@@ -12336,10 +12336,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.setEnabledEditToolbarButton(enabled=False)
             self.setEnabledCcaToolbar(enabled=False)
             self.removeAlldelROIsCurrentFrame()
-            # currentMode = self.drawIDsContComboBox.currentText()
-            # self.drawIDsContComboBox.clear()
-            # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
-            # self.drawIDsContComboBox.setCurrentText(currentMode)
+            self.setStatusBarLabel()
             self.navigateScrollBar.setMaximum(posData.SizeT)
             self.navSpinBox.setMaximum(posData.SizeT)
             self.clearGhost()
@@ -21998,6 +21995,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.enqAutosave()
     
     def enqAutosave(self):
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Viewer':
+            if self.statusBarLabel.text().endswith('Autosaving...'):
+                self.statusBarLabel.setText(
+                    self.statusBarLabel.text().replace(' | Autosaving...', '')
+                )
+            return 
+        
         if not self.autoSaveActiveWorkers:
             self.gui_createAutoSaveWorker()
         

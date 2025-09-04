@@ -6080,6 +6080,14 @@ class saveDataWorker(QObject):
             if not self.isQuickSave:
                 posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
 
+            # Save segmentation file
+            io.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
+            posData.segm_data = saved_segm_data
+            try:
+                os.remove(posData.segm_npz_temp_path)
+            except Exception as e:
+                pass
+            
             posData.setLoadedChannelNames()
             self.mainWin.initMetricsToSave(posData)
             
@@ -6091,13 +6099,7 @@ class saveDataWorker(QObject):
             )
             self.progress.emit(f'Saving {posData.relPath}')
 
-            # Save segmentation file
-            io.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
-            posData.segm_data = saved_segm_data
-            try:
-                os.remove(posData.segm_npz_temp_path)
-            except Exception as e:
-                pass
+            
 
             if not self.do_not_save_og_whitelist:
                 og_save_path = os.path.join(

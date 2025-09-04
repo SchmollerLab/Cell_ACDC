@@ -1905,7 +1905,10 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 continue
             
             idx = pd.IndexSlice[frame_i-1, lost_IDs]
-            acdc_df.loc[idx, 'disappears_before_end'] = 1
+            try:
+                acdc_df.loc[idx, 'disappears_before_end'] = 1
+            except Exception as err:
+                printl(frame_i, lost_IDs)
                 
         return acdc_df
     
