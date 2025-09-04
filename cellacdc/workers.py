@@ -959,7 +959,7 @@ class AutoSaveWorker(QObject):
                 continue
             
             acdc_df = load.pd_bool_and_float_to_int_to_str(
-                acdc_df, inplace=False
+                acdc_df, inplace=False, colsToCastInt=[]
             )
             
             acdc_df_li.append(acdc_df)

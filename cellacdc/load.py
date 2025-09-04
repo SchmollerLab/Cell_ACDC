@@ -531,7 +531,9 @@ def _parse_loaded_acdc_df(acdc_df):
     # remove duplicates saved by mistake or bugs
     duplicated = acdc_df.index.duplicated(keep='first')
     acdc_df = acdc_df[~duplicated]
-    acdc_df = pd_bool_and_float_to_int_to_str(acdc_df, acdc_df_bool_cols, colsToCastInt=[], inplace=True)
+    acdc_df = pd_bool_and_float_to_int_to_str(
+        acdc_df, acdc_df_bool_cols, colsToCastInt=[], inplace=True
+    )
     acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
     return acdc_df
 
