@@ -12279,7 +12279,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.store_data(autosave=False)
         self.copyLostObjButton.setChecked(False)
         self.stopCcaIntegrityCheckerWorker()
-
+        self.setAutoSaveSegmentationEnabled(False)
         if prevMode == 'Normal division: Lineage tree':
             self.lin_tree_ask_changes()
             self.lineage_tree = None
@@ -12306,6 +12306,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.store_cca_df()
             self.restorePrevAnnotOptions()
             self.whitelistViewOGIDs(False)
+            self.setAutoSaveSegmentationEnabled(True)
         elif mode == 'Cell cycle analysis':
             self.setSwitchViewedPlaneDisabled(True)
             self.startCcaIntegrityCheckerWorker()
@@ -30704,6 +30705,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.viewPreprocDataToggled
             )
     
+    def setAutoSaveSegmentationEnabled(self, enabled):
+        if not self.autoSaveActiveWorkers:
+            return
+        
+        worker, thread = self.autoSaveActiveWorkers[-1]
+        
+        if enabled:
+            worker.isAutoSaveON = self.autoSaveToggle.isChecked()
+        else:
+            worker.isAutoSaveON = False
+    
     def autoSaveToggled(self, checked):
         if not self.autoSaveActiveWorkers:
             self.gui_createAutoSaveWorker()
@@ -30712,11 +30724,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
         
         worker, thread = self.autoSaveActiveWorkers[-1]
-        worker.isAutoSaveON = checked
-        # self.autoSaveClose()
         
-        # if checked:
-        #     self.gui_createAutoSaveWorker()
+        mode = self.modeComboBox.currentText()
+        if mode != 'Segmentation and Tracking':
+            # Autosaving segmentation makes sense only in 
+            # "Segmentation and Tracking" mode
+            checked = False
+        
+        worker.isAutoSaveON = checked
     
     def ccaIntegrCheckerToggled(self, checked):
         self.df_settings.at['is_cca_integrity_checker_activated', 'value'] = (
