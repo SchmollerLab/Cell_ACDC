@@ -1055,6 +1055,7 @@ def pd_bool_and_float_to_int_to_str(
     """
     if not inplace:
         acdc_df = acdc_df.copy()
+    
     if colsToCastBool is None:
         colsToCastBool = acdc_df_bool_cols
     
@@ -1080,6 +1081,35 @@ def pd_bool_and_float_to_int_to_str(
                 .astype("string")
             )
             acdc_df.loc[~notna_idx, col] = ""
+        except KeyError:
+            continue
+        except Exception as e:
+            printl(col)
+            traceback.print_exc()
+    
+    for col in colsToCastBool:
+        try:
+            series = acdc_df[col]
+            notna_idx = series.notna()
+            notna_series = series.loc[notna_idx]
+            isFloat = pd.api.types.is_float_dtype(notna_series)
+            isObject = pd.api.types.is_object_dtype(notna_series)
+            isString = pd.api.types.is_string_dtype(notna_series)
+            isBool = pd.api.types.is_bool_dtype(notna_series)
+            if isFloat or isBool:
+                acdc_df.loc[notna_idx, col] = (
+                    acdc_df.loc[notna_idx, col]
+                    .astype(int)
+                )
+            elif isString or isObject:
+                # Object data type can have mixed data types so we first convert
+                # to strings
+                acdc_df.loc[notna_idx, col] = (
+                    acdc_df.loc[notna_idx, col].astype(str)
+                )
+                acdc_df.loc[notna_idx, col] = (
+                    acdc_df.loc[notna_idx, col].str.lower() == 'true'
+                ).astype(int)
         except KeyError:
             continue
         except Exception as e:
