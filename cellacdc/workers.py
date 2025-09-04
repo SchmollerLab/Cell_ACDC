@@ -6032,15 +6032,15 @@ class saveDataWorker(QObject):
                     manualBackgrData = data_dict['manualBackgroundLab']
                     posData.saveManualBackgroundData(manualBackgrData)  
             
-            # Save segmentation file
-            io.savez_compressed(
-                posData.segm_npz_path, np.squeeze(saved_segm_data)
-            )
-            posData.segm_data = saved_segm_data
-            try:
-                os.remove(posData.segm_npz_temp_path)
-            except Exception as e:
-                pass
+        # Save segmentation file
+        io.savez_compressed(
+            posData.segm_npz_path, np.squeeze(saved_segm_data)
+        )
+        posData.segm_data = saved_segm_data
+        try:
+            os.remove(posData.segm_npz_temp_path)
+        except Exception as e:
+            pass
 
     @worker_exception_handler
     def run(self):
