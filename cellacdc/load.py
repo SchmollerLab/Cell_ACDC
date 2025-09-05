@@ -3815,7 +3815,9 @@ def read_measurements_workflow_from_config(filepath):
         'size_metrics_to_save',
         'regionprops_to_save',
         'channel_indipendent_custom_metrics_to_save',
-        'mixed_combine_metrics_to_skip'
+        'mixed_combine_metrics_to_skip',
+        'channel_names_to_skip',
+        'channel_names_to_process'
     }
     ini_items = {}
     for section in configPars.sections():
@@ -3829,7 +3831,10 @@ def read_measurements_workflow_from_config(filepath):
                 or option.startswith('metrics_to_save_')
             )
             if is_list:
-                value = value.strip('\n').strip().split('\n')
+                if value:
+                    value = value.strip('\n').strip().split('\n')
+                else:
+                    value = []
                 ini_items[section][option] = value
                 continue
             

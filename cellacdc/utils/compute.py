@@ -106,6 +106,8 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.thread.start()
     
     def askRunNowOrSaveToConfig(self, worker):
+        self.worker.savedToWorkflow = False
+        
         txt = html_utils.paragraph("""
             Do you want to <b>compute the measurements now</b><br>
             or save the  workflow to a <b>configuration file</b> and run it 
@@ -149,7 +151,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         mostRecentPath = myutils.getMostRecentPath()
         folder_path = apps.get_existing_directory(
             allow_images_path=False,
-            parent=self, 
+            parent=self.progressWin, 
             caption='Select folder where to save configuration file',
             basedir=mostRecentPath,
             # options=QFileDialog.DontUseNativeDialog
@@ -162,7 +164,10 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         config_filepath = os.path.join(folder_path, config_filename)
         kernel = self.worker.kernel
         self.saveConfigurationFile(config_filepath, kernel)
-    
+        
+        self.worker.savedToWorkflow = True
+        self.worker.waitCond.wakeAll()
+        
     def saveConfigurationFile(self, config_filepath, kernel):
         ini_items = {'workflow': {'type': 'measurements'}}
         ini_items['measurements'] = kernel.to_workflow_config_params()
@@ -194,8 +199,6 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             commands=(command,),
             path_to_browse=os.path.dirname(config_filepath)
         )
-        
-        self.worker.waitCond.wakeAll()
     
     def setStopFrame(self, posDatas, stopFrameNumber=1):
         for posData in self.posDatas:

@@ -29735,6 +29735,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self._measurements_kernel.set_metrics_from_set_measurements_dialog(
             measurementsWin
         )
+        for ch in self._measurements_kernel.chNamesToProcess:
+            if ch not in self.notLoadedChNames:
+                continue
+            
+            success = self.loadFluo_cb(fluo_channels=[ch])
+            if not success:
+                continue
 
     def addCustomMetric(self, checked=False):
         txt = measurements.add_metrics_instructions()

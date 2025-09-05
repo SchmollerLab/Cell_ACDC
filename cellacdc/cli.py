@@ -726,6 +726,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             'end_filename_segm': self.end_filename_segm
         }
         params['channel_names_to_skip'] = '\n'.join(self.chNamesToSkip)
+        params['channel_names_to_process'] = '\n'.join(self.chNamesToProcess)
         calc_for_each_zslice = [
             f'{channel},{value}' 
             for channel, value in self.calc_for_each_zslice_mapper.items()
@@ -762,6 +763,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
         
         self.chNamesToSkip = config_params['channel_names_to_skip']
+        self.chNamesToProcess = config_params.get(
+            'channel_names_to_process', config_params['channels']
+        )
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
         self.metricsToSave = {chName:[] for chName in self.ch_names}
         self.calc_for_each_zslice_mapper = {}
@@ -800,6 +804,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         
     def set_metrics_from_set_measurements_dialog(self, setMeasurementsDialog):
         self.chNamesToSkip = []
+        self.chNamesToProcess = []
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
         self.metricsToSave = {chName:[] for chName in self.ch_names}
         self.calc_for_each_zslice_mapper = {}
@@ -820,16 +825,13 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 self.chNamesToSkip.append(chName)
                 continue
             
+            self.chNamesToProcess.append(chName)
             self.calc_for_each_zslice_mapper[chName] = (
                 chNameGroupbox.isCalcForEachZsliceRequested()
             )
             last_selected_groupboxes_measurements[refChannel].append(
                 chNameGroupbox.title()
             )
-            if chName in self.notLoadedChNames:
-                success = self.loadFluo_cb(fluo_channels=[chName])
-                if not success:
-                    continue
             for checkBox in chNameGroupbox.checkBoxes:
                 colname = checkBox.text()
                 if not checkBox.isChecked():
@@ -1045,6 +1047,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             posData.fluo_bkgrData_dict[filename] = bkgrData
     
     def init_signals(self, computeMetricsWorker, saveDataWorker):
+        self.customMetricsCritical = HeadlessSignal()
+        self.regionPropsCritical = HeadlessSignal()
+        
         if saveDataWorker is not None:
             self.customMetricsCritical = saveDataWorker.customMetricsCritical
             self.regionPropsCritical = saveDataWorker.regionPropsCritical
@@ -1063,7 +1068,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             computeMetricsWorker=None, 
             saveDataWorker=None,
             posData=None,
-            save_metrics=True
+            save_metrics=True,
+            do_init_metrics=True
         ):      
         if posData is None:
             posData = self._load_posData(img_path, end_filename_segm)
@@ -1074,7 +1080,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         
         self._set_metrics_func_from_posData(posData)
         
-        if computeMetricsWorker is not None:
+        if computeMetricsWorker is not None and do_init_metrics:
             computeMetricsWorker.emitSigInitMetricsDialog(posData)
             if computeMetricsWorker.abort:
                 computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
@@ -1085,10 +1091,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 return
 
             computeMetricsWorker.emitSigAskRunNow()
-            
-            if self.setup_done:
+            if computeMetricsWorker.abort or computeMetricsWorker.savedToWorkflow:
                 computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
-                return
+                return 
             
         self.init_signals(computeMetricsWorker, saveDataWorker)
         
@@ -1108,7 +1113,12 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         if computeMetricsWorker is not None:
             computeMetricsWorker.signals.initProgressBar.emit(stop_frame_n)
         
-        self._load_image_data(posData, channel_names)
+        channels_to_load = [
+            ch for ch in channel_names if not ch in self.chNamesToSkip 
+            and ch in self.chNamesToProcess
+        ]
+        
+        self._load_image_data(posData, channels_to_load)
         
         acdc_df_li = []
         keys = []
@@ -1132,6 +1142,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 if acdc_df is None:
                     continue
             else:
+                if frame_i == 0:
+                    self.log('\nComputing cell volume...')
                 rp = skimage.measure.regionprops(lab)
                 rp = self._calc_volume_metrics(rp, posData)
             
@@ -1170,10 +1182,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     *calc_metrics_addtional_args
                 )
             except Exception as error:
-                traceback_format = traceback.format_exc()
-                print('-'*30)      
-                self.log(traceback_format)
-                print('-'*30)
+                traceback_format = traceback.format_exc()    
+                self.log(f'\n{traceback_format}')
                 if computeMetricsWorker is not None:
                     computeMetricsWorker.standardMetricsErrors[str(error)] = (
                         traceback_format
@@ -1198,9 +1208,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 )
             except Exception as error:
                 traceback_format = traceback.format_exc()
-                print('-'*30)      
-                self.log(traceback_format)
-                print('-'*30)
+                self.log(f'\n{traceback_format}')
                 if computeMetricsWorker is not None:
                     e = str(error)
                     computeMetricsWorker.standardMetricsErrors[e] = (
@@ -1357,7 +1365,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         return img_data, bkgrData
     
     def _calc_volume_metrics(self, rp, posData):
-        self.logger.info('Computing cell volume...')
         PhysicalSizeY = posData.PhysicalSizeY
         PhysicalSizeX = posData.PhysicalSizeX
         obj_iter = tqdm(rp, ncols=100, position=1, leave=False)
@@ -1519,6 +1526,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
     
     def _init_metrics(self, posData, isSegm3D):
         self.chNamesToSkip = []
+        self.chNamesToProcess = []
         self.metricsToSkip = {}
         self.calc_for_each_zslice_mapper = {}
         self.calc_size_for_each_zslice = False
