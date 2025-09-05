@@ -50,6 +50,7 @@ from .utils import computeMultiChannel as utilsComputeMultiCh
 from .utils import applyTrackFromTable as utilsApplyTrackFromTab
 from .utils import applyTrackFromTrackMateXML as utilsApplyTrackFromTrackMate
 from .utils import fillHolesInSegm
+from .utils import generateMothBudTotalTable as utilsGenerateMothBudTotTable
 from .info import utilsInfo
 from . import is_win, is_linux, settings_folderpath, issues_url, is_mac
 from . import settings_csv_path
@@ -422,6 +423,7 @@ class mainWin(QMainWindow):
         measurementsMenu = utilsMenu.addMenu('Measurements')
         measurementsMenu.addAction(self.calcMetricsAcdcDf)
         measurementsMenu.addAction(self.combineMetricsMultiChannelAction) 
+        measurementsMenu.addAction(self.generateMothBudTotTableAction) 
         
         concatMenu = utilsMenu.addMenu('Concatenate')
         concatMenu.addAction(self.concatAcdcDfsAction)    
@@ -787,6 +789,9 @@ class mainWin(QMainWindow):
         self.combineMetricsMultiChannelAction = QAction(
             'Combine measurements from multiple segmentation files...'
         )
+        self.generateMothBudTotTableAction = QAction(
+            'Generate mothers, buds, and total cell table...'
+        )
         self.toSymDivAction = QAction(
             'Add lineage tree table to one or more experiments...'
         )
@@ -870,6 +875,9 @@ class mainWin(QMainWindow):
         self.combineMetricsMultiChannelAction.triggered.connect(
             self.launchCombineMeatricsMultiChanneliUtil
         )
+        self.generateMothBudTotTableAction.triggered.connect(
+            self.launchGenerateMothBudTotTableUtil
+        )        
         
         self.batchConverterAction.triggered.connect(
                 self.launchImageBatchConverter
@@ -1257,7 +1265,7 @@ class mainWin(QMainWindow):
         success = win.run(posPath)
         if not success:
             self.logger.info(
-                'Apply tracking info from TrackMate XML ABORTED by the user.'
+                'Apply tracking info from TrackMate XML cancelled by the user.'
             )
             win.close()  
     
@@ -1284,7 +1292,7 @@ class mainWin(QMainWindow):
         success = win.run(posPath)
         if not success:
             self.logger.info(
-                'Apply tracking info from tabular data ABORTED by the user.'
+                'Apply tracking info from tabular data cancelled by the user.'
             )
             win.close()          
         
@@ -1406,6 +1414,42 @@ class mainWin(QMainWindow):
             parent=self
         )
         self.toImageJroiWin.show()
+    
+    def launchGenerateMothBudTotTableUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        
+        title = 'Generate mothers, buds, and total cell table'
+        infoText = 'Launching generate mothers, buds, and total cell table...'
+        self.genMothBudTotalTableWin = (
+            utilsGenerateMothBudTotTable.GenerateMothBudTotalUtil(
+                self.app, title, infoText, parent=self, 
+                callbackOnFinished=self.generateMothBudTotTableFinished
+            )
+        )
+        self.genMothBudTotalTableWin.show()
+        func = partial(
+            self._runGenerateMothBudTotTableUtil, self.genMothBudTotalTableWin
+        )
+        QTimer.singleShot(200, func)
+    
+    def _runGenerateMothBudTotTableUtil(self, win):
+        success = win.run()
+        if not success:
+            self.logger.info(
+                'Generating mothers, buds, and total cell table cancelled by the user.'
+            )
+            win.close()  
+    
+    def generateMothBudTotTableFinished(self):
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = html_utils.paragraph(
+            'Generating mothers, buds, and total cell table completed.'
+        )
+        msg.information(self, 'Process completed', txt)
+        self.logger.info(
+            'Generating mothers, buds, and total cell table completed.'
+        )
+        self.genMothBudTotalTableWin.close()
     
     def launchCombineMeatricsMultiChanneliUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')

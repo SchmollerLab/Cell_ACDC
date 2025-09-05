@@ -28090,7 +28090,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self, 'Select image file', self.MostRecentPath,
                 "Image/Video Files (*.png *.tif *.tiff *.jpg *.jpeg *.mov *.avi *.mp4)"
                 ";;All Files (*)")[0]
-            if file_path == '':
+            if not file_path:
                 return
         dirpath = os.path.dirname(file_path)
         dirname = os.path.basename(dirpath)

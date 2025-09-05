@@ -353,6 +353,9 @@ segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
 data_structure_docs_url = 'https://cell-acdc.readthedocs.io/en/latest/data-structure.html'
+moth_bud_tot_selected_columns_filepath = os.path.join(
+    settings_folderpath, 'mother_bud_total_columns_selection.json'
+)
 
 # Use to get the acdc_output file name from `segm_filename` as 
 # `m = re.sub(segm_re_pattern, '_acdc_output', segm_filename)`
@@ -658,4 +661,17 @@ error_down_str = f'\n{error_down_str}'
 
 binary_file_extensions = (
     ".png", ".pdf"
+)
+
+default_index_cols = (
+    'experiment_folderpath', 
+    'experiment_foldername', 
+    'Position_n', 
+    'frame_i', 
+    'Cell_ID'
+)
+
+single_pos_index_cols = (
+    'experiment_folderpath', 
+    'Position_n'
 )

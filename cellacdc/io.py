@@ -3,10 +3,25 @@ import pathlib
 import sys
 import re
 import h5py
+import json
 import numpy as np
 import skimage.io
 
 from . import path, load, myutils, printl
+from . import moth_bud_tot_selected_columns_filepath
+
+def get_saved_moth_bud_tot_selections():
+    if not os.path.exists(moth_bud_tot_selected_columns_filepath):
+        return {}
+    
+    with open(moth_bud_tot_selected_columns_filepath) as file:
+        json_data = json.load(file)
+    
+    return json_data
+
+def save_moth_bud_tot_selected_options(selected_options):
+    with open(moth_bud_tot_selected_columns_filepath, mode='w') as file:
+        json.dump(selected_options, file, indent=2)
 
 def get_filepath_from_channel_name(images_path, channel_name):
     h5_aligned_path = ''

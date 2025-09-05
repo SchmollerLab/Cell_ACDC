@@ -2190,7 +2190,7 @@ class InitFijiMacro:
             caption='Select Fiji.app location', 
             filters='Application (*.app);;All Files (*)'
         )[0]
-        if filepath is None:
+        if not filepath:
             return
         
         from cellacdc import fiji_location_filepath

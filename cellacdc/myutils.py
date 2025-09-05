@@ -2342,7 +2342,7 @@ def get_list_of_real_time_trackers():
         if tracker in aliases:
             rt_trackers[i] = aliases[tracker]
 
-    return rt_trackers
+    return natsorted(rt_trackers, key=str.casefold)
 
 def get_list_of_trackers():
     trackers_path = os.path.join(cellacdc_path, 'trackers')
@@ -2360,7 +2360,7 @@ def get_list_of_trackers():
         
         if is_valid_tracker:
             trackers.append(name)
-    return natsorted(trackers)
+    return natsorted(trackers, key=str.casefold)
 
 def get_list_of_models():
     models = set()

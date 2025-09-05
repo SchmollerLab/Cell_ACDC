@@ -23,6 +23,8 @@ import skimage.segmentation
 import scipy.ndimage.morphology
 from itertools import product
 
+from natsort import natsorted
+
 from math import sqrt
 from scipy.stats import norm
 
@@ -44,6 +46,7 @@ from .config import PREPROCESS_MAPPER
 from . import io
 from . import measurements
 from . import favourite_func_metrics_csv_path
+from . import default_index_cols
 
 from ._types import (
     ChannelsDict
@@ -3238,3 +3241,22 @@ def fill_holes_in_segmentation(labels):
         filled[obj.slice] = region
 
     return filled
+
+def natsort_acdc_columns(
+        columns: Iterable[str], 
+        prepend_default_index_cols=True
+    ):
+    sorted_cols = natsorted(columns, key=str.casefold)
+    if not prepend_default_index_cols:
+        return sorted_cols
+    
+    cols_to_prepend = []
+    for col in default_index_cols:
+        if col not in sorted_cols:
+            continue
+        
+        sorted_cols.remove(col)
+        cols_to_prepend.append(col)
+    
+    sorted_cols = [*cols_to_prepend, *sorted_cols]
+    return sorted_cols
