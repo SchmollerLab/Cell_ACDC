@@ -137,7 +137,7 @@ class SegmWorker(QObject):
 
     @workers.worker_exception_handler
     def run(self):
-        self.run_kernels(self.mainWin)
+        self.run_kernels()
         self.signals.finished.emit(self)
     
 class segmWin(QMainWindow):
