@@ -121,15 +121,15 @@ class SegmWorker(QObject):
             use_freehand_ROI=mainWin.useFreeHandROI,
         )
     
-    def run_kernels(self, mainWin):
+    def run_kernels(self):
         self.kernel.run(
             self.img_path, 
             self.stop_frame_n
         )
-        if self._measurements_kernel is None:
+        if self.mainWin._measurements_kernel is None:
             return
         
-        self._measurements_kernel.run(
+        self.mainWin._measurements_kernel.run(
             img_path=self.img_path, 
             stop_frame_n=self.stop_frame_n, 
             end_filename_segm=self.kernel.segm_endname,
@@ -964,7 +964,6 @@ class segmWin(QMainWindow):
             self.logger.info('Segmentation process interrupted.')
             self.close()
             return
-
         self._measurements_kernel = measurements_kernel
         
         proceed = self.askRunNowOrSaveConfigFile()
