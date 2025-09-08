@@ -1340,6 +1340,12 @@ class ComputeMetricsWorker(QObject):
                 for p, posData in enumerate(posDatas):
                     self.allPosDataInputs[p]['stopFrameNum'] = 1
             
+            self.kernel = cli.ComputeMeasurementsKernel(
+                self.logger, 
+                self.mainWin.log_path, 
+                False,
+            )
+            
             # Iterate pos and calculate metrics
             numPos = len(self.allPosDataInputs)
             for p, posDataInputs in enumerate(self.allPosDataInputs):
@@ -1348,17 +1354,12 @@ class ComputeMetricsWorker(QObject):
                 chName = posDataInputs['chName']
                 stopFrameNum = posDataInputs['stopFrameNum']
                 
-                self.kernel = cli.ComputeMeasurementsKernel(
-                    self.logger, 
-                    self.mainWin.log_path, 
-                    False,
-                )
-                
                 self.kernel.run(
                     img_path=file_path, 
                     stop_frame_n=stopFrameNum, 
                     end_filename_segm=self.mainWin.endFilenameSegm,
-                    computeMetricsWorker=self
+                    computeMetricsWorker=self,
+                    do_init_metrics=p == 0,
                 )
 
                 if self.kernel.setup_done:

@@ -2024,8 +2024,10 @@ class SetMeasurementsDialog(QBaseDialog):
                     combCheckbox.toggled.connect(
                         self.mixedChannelsMetricToggled
                     )
+            row += 1
 
-        self.numberCols = current_col
+        self.last_row = row
+        self.last_col = current_col
 
         okButton = widgets.okPushButton('   Ok   ')
         cancelButton = widgets.cancelPushButton('Cancel')
@@ -2650,7 +2652,7 @@ class SetMeasurementsDialog(QBaseDialog):
             additionalCols, title='Additional columns', checkable=True
         )
         self.groupsLayout.addWidget(
-            self.nonMeasurementsGroupbox, 2, self.numberCols
+            self.nonMeasurementsGroupbox, 0, self.last_col+1, self.last_row+1, 1
         )
             
     
@@ -2755,7 +2757,7 @@ class SetMeasurementsDialog(QBaseDialog):
         screenTop = self.screen().geometry().y()
         h = screenHeight-200
         minColWith = screenWidth/5
-        w = minColWith*self.numberCols
+        w = minColWith*(self.last_col+1)
         xLeft = int((screenWidth-w)/2)
         if w > screenWidth:
             self.move(screenLeft+10, screenTop+50)
@@ -8499,18 +8501,13 @@ class selectPositionsMultiExp(QBaseDialog):
         self.selectedPaths = {}
         for item in self.treeWidget.selectedItems():
             if item.parent() is None:
-                exp_path = item.full_path
-                self.selectedPaths[exp_path] = self.expPaths[exp_path]
-            else:
-                parent = item.parent()
-                if parent.isSelected():
-                    # Already added all children
-                    continue
-                exp_path = parent.full_path
-                pos_folder = item.posFoldername
-                if exp_path not in self.selectedPaths:
-                    self.selectedPaths[exp_path] = []
-                self.selectedPaths[exp_path].append(pos_folder)
+                continue
+            parent = item.parent()
+            exp_path = parent.full_path
+            pos_folder = item.posFoldername
+            if exp_path not in self.selectedPaths:
+                self.selectedPaths[exp_path] = []
+            self.selectedPaths[exp_path].append(pos_folder)
 
         self.close()
 
