@@ -9,6 +9,7 @@ import torch
 from cellacdc import user_profile_path
 from cellacdc import myutils
 from cellacdc import printl
+from cellacdc.promptable_models.base import BaseModel
 
 from huggingface_hub import snapshot_download
 
@@ -18,7 +19,7 @@ class AvailableModels:
 class GPUorCPU:
     values = ['gpu', 'cpu']
 
-class Model:
+class Model(BaseModel):
     def __init__(
             self, 
             model_name: AvailableModels = 'nnInteractive_v1.0',
@@ -48,6 +49,8 @@ class Model:
             Number of CPU threads to use for the computation. 
             Default is `os.cpu_count()`, i.e., the maximum available CPU cores.
         """      
+        super().__init__()
+        
         from nnInteractive.inference.inference_session import (
             nnInteractiveInferenceSession
         )
@@ -79,18 +82,6 @@ class Model:
         model_path = os.path.join(download_dir, model_name)
         
         self.model.initialize_from_trained_model_folder(model_path)
-        
-        self.prompt_ids_image_mapper = {}
-        self.prompts = defaultdict(list)
-        self.negative_prompts = defaultdict(list)
-    
-    def _validate_prompt(self, prompt, prompt_type='point'):
-        if prompt_type == 'point':
-            prompt = tuple(prompt)
-            if len(prompt) != 3:
-                raise ValueError(
-                    "Point prompt must be a sequence of 3 coordinates (z, y, x)."
-                )
     
     def _validate_image(self, image):
         if image is None:
@@ -104,60 +95,6 @@ class Model:
             "Please provide a 3D image with (Z, Y, X) dimensions."
         )
     
-    def add_prompt(
-            self, 
-            prompt, 
-            prompt_id: int, 
-            *args, 
-            image=None, 
-            image_origin=(0, 0, 0),
-            parent_obj_id=0,
-            prompt_type='point', 
-            **kwargs
-        ):
-        """Add prompt to model
-
-        Parameters
-        ----------
-        prompt : np.ndarray
-            Prompt to add. If 'point', this should be a sequence of 3 coordinates
-            (z, y, x).
-        prompt_id : int
-            Unique identifier for the prompt. If 0, then it will be treated as a 
-            negative prompt (i.e., the background).
-        image : np.ndarray, optional
-            Image to which the prompt is associated. If None, the prompt will 
-            be associated to the entire image passed to the `segment` method.
-        image_origin : tuple of (z0, y0, x0) coordinates, optional
-            Origin of the image in the global image coordinate system. This 
-            is useful when you want to pass a crop of the image to the model, 
-            but still have the result inserted into the global image by 
-            the `segment` method. Default is (0, 0, 0).
-        parent_obj_id : int, optional
-            The ID of the parent object. If not 0, this will be used to assign 
-            negative prompts only to the parent object. 
-        prompt_type : {'point'}, optional
-            The type of prompt to add. Default is 'point'.
-        """             
-        self._validate_prompt(prompt, prompt_type=prompt_type)
-        self._validate_image(image)
-        
-        if prompt_id not in self.prompt_ids_image_mapper and prompt_id != 0:
-            self.prompt_ids_image_mapper[prompt_id] = (image, image_origin)
-        
-        if prompt_id != 0:
-            self.prompts[prompt_id].append(
-                (prompt, prompt_type) 
-            )
-        elif parent_obj_id != 0:
-            # Negative prompt for a specific parent object
-            self.negative_prompts[parent_obj_id].append(
-                (prompt, prompt_type)
-            )
-        else:
-            # Negative prompt for the background
-            self.negative_prompts[0].append((prompt, prompt_type))
-        
     def _add_object_prompts(self, prompt_id, is_negative=False):
         prompts = self.prompts[prompt_id]
         for prompt, prompt_type in prompts:
