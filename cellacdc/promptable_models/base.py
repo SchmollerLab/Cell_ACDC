@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 class BaseModel:
     def __init__(self, *args, **kwargs):
         self.prompt_ids_image_mapper = {}
