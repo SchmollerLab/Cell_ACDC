@@ -14828,7 +14828,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.enableSmartTrackAction.setChecked(True)
 
     @exception_handler
-    def repeatTrackingVideo(self):
+    def repeatTrackingVideo(self, checked=False):
         posData = self.data[self.pos_i]
         win = widgets.selectTrackerGUI(
             posData.SizeT, currentFrameNo=posData.frame_i+1
