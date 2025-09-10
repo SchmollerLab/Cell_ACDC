@@ -15120,8 +15120,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         ):
         self.logger.info(f'Initializing promptable model {model_name}...')
         init_kwargs = win.init_kwargs
-        model = myutils.init_prompt_segm_model(
-            acdcPromptSegment, posData, win.init_kwargs
+        model = self._initPromptSegmModel(
+            acdcPromptSegment, posData, init_kwargs
         )
         toolbar.model = model
         toolbar.model_segment_kwargs = win.model_kwargs
@@ -15135,6 +15135,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.logger.info(
             f'Promptable model {model_name} successfully initialised!'
         )
+    
+    @exception_handler
+    def _initPromptSegmModel(self, acdcPromptSegment, posData, init_kwargs):
+        model = myutils.init_prompt_segm_model(
+            acdcPromptSegment, posData, init_kwargs
+        )
+        return model
     
     @exception_handler
     def magicPromptsInitModel(

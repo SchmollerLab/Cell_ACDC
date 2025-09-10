@@ -1827,7 +1827,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             cols = re.findall(r'[A-Za-z0-9]+_[A-Za-z0-9_]+', equation)
             if all([col in df.columns for col in cols]):
                 self._df_eval_equation(
-                    df, newColName, equation, saveDataWorke=saveDataWorker
+                    df, newColName, equation, saveDataWorker=saveDataWorker
                 )
     
     def _df_eval_equation(self, df, newColName, expr, saveDataWorker=None):
