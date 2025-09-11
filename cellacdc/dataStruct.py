@@ -1601,13 +1601,12 @@ class createDataStructWin(QMainWindow):
             self.close()
             return
         
+        if not loadEntirePosIntoRam:
+            self._installLazyLoadModules()
+        
         self.loadEntirePosIntoRam = loadEntirePosIntoRam
 
         self.addToRecentPaths(exp_dst_path)
-
-        self.log(
-            'Starting a Java Virtual Machine...'
-        )
 
         self.addPbar()
         
@@ -1647,6 +1646,14 @@ class createDataStructWin(QMainWindow):
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
+    
+    def _installLazyLoadModules(self):
+        myutils.check_install_package(
+            'zarr',
+            installer='pip', 
+            is_cli=False,
+            parent=self,
+        )
     
     @exception_handler
     def workerCritical(self, error):
