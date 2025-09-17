@@ -702,8 +702,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             pass
         
         try:
-            log_func = getattr(self.logger, level)
-            log_func.log(message)
+            log_func = getattr(self.logger, level.lower())
+            log_func(message)
             return
         except Exception as err:
             pass
@@ -1079,7 +1079,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         exp_foldername = os.path.basename(posData.exp_path)
         
         self._set_metrics_func_from_posData(posData)
-        
+
         if computeMetricsWorker is not None and do_init_metrics:
             computeMetricsWorker.emitSigInitMetricsDialog(posData)
             if computeMetricsWorker.abort:
@@ -1128,7 +1128,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 if stop:
                     break
                 
-            lab = posData.segm_data[frame_i]
+            lab = posData.segm_data[frame_i]            
             if not np.any(lab):
                 # Empty segmentation mask --> skip
                 continue
@@ -1526,7 +1526,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
     
     def _init_metrics(self, posData, isSegm3D):
         self.chNamesToSkip = []
-        self.chNamesToProcess = []
+        loadedChannels = posData.setLoadedChannelNames(returnList=True)
+        self.chNamesToProcess = [posData.user_ch_name, *loadedChannels]
         self.metricsToSkip = {}
         self.calc_for_each_zslice_mapper = {}
         self.calc_size_for_each_zslice = False
