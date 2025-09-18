@@ -452,6 +452,8 @@ class mainWin(QMainWindow):
         
         self.settingsMenu = QMenu("&Settings", self)
         self.settingsMenu.addAction(self.changeUserProfileFolderPathAction)
+        self.settingsMenu.addAction(self.openUserProfileFolderAction)
+        self.settingsMenu.addAction(self.openSettingsFolderAction)
         self.settingsMenu.addAction(self.resetUserProfileFolderPathAction)
         menuBar.addMenu(self.settingsMenu)
 
@@ -466,6 +468,7 @@ class mainWin(QMainWindow):
         helpMenu.addAction(self.citeAction)
         helpMenu.addAction(self.contributeAction)
         helpMenu.addAction(self.showLogsAction)
+        helpMenu.addAction(self.openUserProfileFolderAction)
         helpMenu.addSeparator()
         helpMenu.addAction(self.aboutAction)
         if SPOTMAX_INSTALLED:
@@ -811,6 +814,8 @@ class mainWin(QMainWindow):
         self.citeAction = QAction('Cite us...')
         self.contributeAction = QAction('Contribute...')
         self.showLogsAction = QAction('Show log files...')
+        self.openUserProfileFolderAction = QAction('Open user profile path...')
+        self.openSettingsFolderAction = QAction('Open settings folder...')
         self.updateACDCAction = QAction('Update Cell-ACDC...')
         self.updateSPOTMAXAction = QAction('Update SpotMAX...')
         
@@ -900,6 +905,10 @@ class mainWin(QMainWindow):
         )
         self.recentPathsMenu.aboutToShow.connect(self.populateOpenRecent)
         self.showLogsAction.triggered.connect(self.showLogFiles)
+        self.openUserProfileFolderAction.triggered.connect(
+            self.openUserProfileFolder
+        )
+        self.openSettingsFolderAction.triggered.connect(self.openSettingsFolder)
         self.updateACDCAction.triggered.connect(self.launchUpdateACDC)
         if SPOTMAX_INSTALLED:
             self.updateSPOTMAXAction.triggered.connect(self.launchUpdateSpotmax)
@@ -911,6 +920,14 @@ class mainWin(QMainWindow):
         )
         
         self.debugAction.triggered.connect(self._debug)
+    
+    def openSettingsFolder(self):
+        from . import settings_folderpath
+        myutils.showInExplorer(settings_folderpath)
+    
+    def openUserProfileFolder(self):
+        from . import user_profile_path
+        myutils.showInExplorer(user_profile_path)
     
     def showLogFiles(self):
         logs_path = myutils.get_logs_path()
