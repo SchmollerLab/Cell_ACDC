@@ -502,6 +502,7 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
         f'Released on: {release_date}',
         f'Installed in "{cellacdc_path}"',
         f'Environment folder: "{env_folderpath}"',
+        f'User profile folder: "{user_profile_path}"',
         f'Python {python_version}',
         f'Platform: {platform.platform()}',
         f'System: {platform.system()}',

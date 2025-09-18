@@ -62,10 +62,15 @@ Top ribbon options include:
  
 * Settings
     * Allows manipulation of the **user profile** path.
-* Napari
+    * Open user profile folder path
+    * Open settings folder path
+* napari
     * View the Napari lineage tree. 
 * Help
     * Provides links to **user manuals and start up guide**, as well as a link to the **relevant paper** for citation and guides on how to contribute, viewing the **log files** and show **additional info** about Cell-ACDC, including the **installation path**.
+    * Update Cell-ACDC
+    * Show log files location
+    * Open user profile folder path
 
 Additional options include:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
