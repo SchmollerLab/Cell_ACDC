@@ -5968,7 +5968,8 @@ class saveDataWorker(QObject):
     def checkAbort(self):
         if self.saveWin.aborted:
             self.finished.emit()
-            return 
+            return True
+        return False
     
     def saveManualBackgroundData(self, posData, frame_i):
         data_dict = posData.allData_li[frame_i]
@@ -6038,6 +6039,10 @@ class saveDataWorker(QObject):
             posData.segm_npz_path, np.squeeze(saved_segm_data)
         )
         posData.segm_data = saved_segm_data
+        # Allow single 2D/3D image
+        if posData.SizeT == 1:
+            posData.segm_data = posData.segm_data[np.newaxis]
+        
         try:
             os.remove(posData.segm_npz_temp_path)
         except Exception as e:
@@ -6066,15 +6071,8 @@ class saveDataWorker(QObject):
                     continue
             
             last_tracked_i_path = posData.last_tracked_i_path
-            end_i = self.mainWin.save_until_frame_i
-            if end_i < len(posData.segm_data):
-                saved_segm_data = posData.segm_data
-            else:
-                frame_shape = posData.segm_data.shape[1:]
-                segm_shape = (end_i+1, *frame_shape)
-                saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
-                
-            self.saveSegmData(posData, end_i, saved_segm_data)
+            end_i = self.mainWin.save_until_frame_i                
+            self.saveSegmData(posData, end_i, posData.segm_data)
             
             posData.saveCustomAnnotationParams()
             current_frame_i = posData.frame_i
