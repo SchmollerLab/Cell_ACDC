@@ -50,8 +50,6 @@ class QDialogAbout(QDialog):
             txt = f'{txt}{paragraph}'
 
         titleLabel.setText(txt)
-
-        titleLabel.setText(txt)
         
         # '{next_version}.dev{distance}+{scm letter}{revision hash}'
         command, command_github = get_pip_install_cellacdc_version_command(

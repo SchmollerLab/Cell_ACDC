@@ -165,7 +165,7 @@ class Model(BaseModel):
                 input_=input_image,
                 ndim=ndim, 
                 verbose=verbose,
-                save_path=self.image_embeddings_zarr_path 
+                save_path=self.image_embeddings_zarr_path # If not None, and path exists, embeddings are loaded
             )
             
             import pdb; pdb.set_trace()
