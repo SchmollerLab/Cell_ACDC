@@ -491,7 +491,10 @@ def delete_older_log_files(logs_path):
         except Exception as err:
             continue
 
-def get_info_version_text(is_cli=False, cli_formatted_text=True):
+def get_info_version_text(
+        is_cli=False, 
+        cli_formatted_text=True
+    ):
     version = read_version()
     release_date = get_date_from_version(version, package='cellacdc')
     py_ver = sys.version_info
@@ -548,13 +551,6 @@ def _log_system_info(logger, log_path, is_cli=False, also_spotmax=False):
     info_txt = get_info_version_text(is_cli=is_cli)
     
     logger.info(info_txt)
-    
-    if not also_spotmax:
-        return
-    
-    from spotmax.utils import get_info_version_text as smax_info
-    smax_info_txt = smax_info(include_platform=False)
-    logger.info(smax_info_txt)
 
 def setupLogger(module='base', logs_path=None, caller='Cell-ACDC'):
     if logs_path is None:

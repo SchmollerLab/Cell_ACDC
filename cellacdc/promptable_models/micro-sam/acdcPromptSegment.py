@@ -152,7 +152,7 @@ class Model(BaseModel):
                 input_=input_image,
                 ndim=ndim,  # With RGB images, we should have channels last and must set ndim to 2.
                 verbose=verbose,
-                save_path=self.image_embeddings_zarr_path # If not None, and pathe exists, embeddings are loaded
+                save_path=self.image_embeddings_zarr_path # If not None, and path exists, embeddings are loaded
             )
             
             for z, img in enumerate(prompt_image):
