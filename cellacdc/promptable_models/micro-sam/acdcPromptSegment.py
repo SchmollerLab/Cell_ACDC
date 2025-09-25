@@ -10,6 +10,7 @@ import numpy as np
 from micro_sam.util import get_sam_model, precompute_image_embeddings
 from micro_sam.prompt_based_segmentation import segment_from_points
 
+from cellacdc import load
 from cellacdc.promptable_models.base import BaseModel
 
 class AvailableModels:
@@ -61,7 +62,14 @@ class Model(BaseModel):
             )
         
         if save_embeddings and image_embeddings_zarr_path is None:
-            ...
+            posData: load.loadData = kwargs.get('posData', None)
+            if posData is None:
+                raise ValueError(
+                    'If `save_embeddings` is True, '
+                    '`image_embeddings_zarr_path` must be provided.'
+                )
+            
+            image_embeddings_zarr_path = posData.microSamEmbeddingsZarrPath()
         
         self.image_embeddings_zarr_path = image_embeddings_zarr_path
     
@@ -151,13 +159,16 @@ class Model(BaseModel):
                 input_image = prompt_image[0]
                 ndim = 2
 
+            # If save_path is not None, and path exists, embeddings are loaded
             image_embeddings = precompute_image_embeddings(
                 predictor=self.predictor,
                 input_=input_image,
-                ndim=ndim,  # With RGB images, we should have channels last and must set ndim to 2.
+                ndim=ndim, 
                 verbose=verbose,
-                save_path=self.image_embeddings_zarr_path # If not None, and pathe exists, embeddings are loaded
+                save_path=self.image_embeddings_zarr_path 
             )
+            
+            import pdb; pdb.set_trace()
             
             for z, img in enumerate(prompt_image):
                 ...

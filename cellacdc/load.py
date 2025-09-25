@@ -2717,7 +2717,15 @@ class loadData:
         self.unsaved_acdc_df_autosave_path = os.path.join(
             temp_folder, unsaved_acdc_df_filename
         )
-        
+    
+    def microSamEmbeddingsZarrPath(self):
+        microsam_embeddings_path = (
+            self.segm_npz_path
+                .replace('_segm', '_microsam_embeddings')
+                .replace('.npz', '.zarr')
+            )
+        return microsam_embeddings_path
+    
     def buildPaths(self):
         if self.basename.endswith('_'):
             basename = self.basename

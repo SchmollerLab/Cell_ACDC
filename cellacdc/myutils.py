@@ -3221,7 +3221,7 @@ def check_install_package(
         if not proceed:
             if raise_on_cancel:
                 raise ModuleNotFoundError(
-                    f'User aborted {pkg_name} installation'
+                    f'User cancelled {pkg_name} installation'
                 )
             else:
                 return traceback.format_exc()
@@ -4291,7 +4291,7 @@ def format_cca_manual_changes(changes: dict):
     return txt
 
 def init_prompt_segm_model(acdcPromptSegment, posData, init_kwargs):
-    model = acdcPromptSegment.Model(**init_kwargs)
+    model = acdcPromptSegment.Model(**init_kwargs, posData=posData)
     return model
     
 def init_segm_model(acdcSegment, posData, init_kwargs):
