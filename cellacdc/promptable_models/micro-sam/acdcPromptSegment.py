@@ -25,6 +25,7 @@ class Model(BaseModel):
         model_type: AvailableModels = 'vit_b_lm',
         save_embeddings: bool = True,
         image_embeddings_zarr_path: os.PathLike = '',
+        **kwargs
     ):
         super().__init__()
         
@@ -58,6 +59,9 @@ class Model(BaseModel):
                 'In order to not save the embeddings, please, '
                 'provide an empty path.'
             )
+        
+        if save_embeddings and image_embeddings_zarr_path is None:
+            ...
         
         self.image_embeddings_zarr_path = image_embeddings_zarr_path
     
