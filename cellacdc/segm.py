@@ -1167,7 +1167,7 @@ class segmWin(QMainWindow):
         )
         self.calcMeasUtility.runWorker(
             showProgress=False, 
-            stopFrameNumber=self.stopFrames[0]
+            stopFrameNumber=self.stopFrames
         )
         self.waitCalcMeasUtility()
         

@@ -97,7 +97,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         if stopFrameNumber is None:
             self.worker.signals.sigAskStopFrame.connect(self.workerAskStopFrame)
         else:
-            self.worker.signals.sigSelectSegmFiles.connect(
+            self.worker.signals.sigAskStopFrame.connect(
                 partial(self.setStopFrame, stopFrameNumber=stopFrameNumber)
             )
         self.worker.signals.sigErrorsReport.connect(self.warnErrors)
@@ -201,8 +201,12 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         )
     
     def setStopFrame(self, posDatas, stopFrameNumber=1):
-        for posData in self.posDatas:
-            posData.stopFrameNum = stopFrameNumber
+        for p, posData in enumerate(posDatas):
+            if isinstance(stopFrameNumber, int):
+                stop_frame_n = stopFrameNumber
+            else:
+                stop_frame_n = stopFrameNumber[p]
+            posData.stopFrameNum = stop_frame_n
     
     def wakeUpWorkerThread(self, *args, **kwargs):
         self.worker.waitCond.wakeAll()
