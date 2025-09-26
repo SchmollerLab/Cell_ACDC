@@ -207,7 +207,9 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             else:
                 stop_frame_n = stopFrameNumber[p]
             posData.stopFrameNum = stop_frame_n
-    
+
+        self.worker.waitCond.wakeAll()
+        
     def wakeUpWorkerThread(self, *args, **kwargs):
         self.worker.waitCond.wakeAll()
     

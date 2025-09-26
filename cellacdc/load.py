@@ -1630,6 +1630,9 @@ class loadData:
         self.labelBoolSegm = labelBoolSegm
         self.bkgrDataExists = False
         ls = myutils.listdir(self.images_path)
+        
+        if end_filename_segm:
+            end_filename_segm = end_filename_segm.replace('.npz', '')
 
         linked_acdc_filename = None
         if end_filename_segm and load_acdc_df:
