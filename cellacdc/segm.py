@@ -133,7 +133,7 @@ class SegmWorker(QObject):
         self.mainWin._measurements_kernel.run(
             img_path=self.img_path, 
             stop_frame_n=self.stop_frame_n, 
-            end_filename_segm=self.kernel.segm_endname,
+            end_filename_segm=segm_endname,
         )
 
     @workers.worker_exception_handler

@@ -768,6 +768,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
         self.metricsToSave = {chName:[] for chName in self.ch_names}
+        self.mixedChCombineMetricsToSkip = []
         self.calc_for_each_zslice_mapper = {}
         self.calc_size_for_each_zslice = (
             config_params['calc_for_each_zslice_size']
@@ -888,6 +889,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 chIndipendCustomMetricsToSave
             )
         
+        self.mixedChCombineMetricsToSkip = []
         if setMeasurementsDialog.mixedChannelsCombineMetricsQGBox is not None:
             skipAll = (
                 not setMeasurementsDialog.mixedChannelsCombineMetricsQGBox.isChecked()
@@ -999,16 +1001,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             load_dataPrep_ROIcoords=True
         )
         posData.labelSegmData()
-        if not posData.segmFound:
-            rel_path = (
-                f'...{os.sep}{exp_foldername}'
-                f'{os.sep}{posData.pos_foldername}'
-            )
-            self.log(
-                f'Skipping "{rel_path}" '
-                f'because segm. file was not found.'
-            )
-            return
     
         self.isSegm3D = posData.getIsSegm3D()
         
@@ -1094,7 +1086,18 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             if computeMetricsWorker.abort or computeMetricsWorker.savedToWorkflow:
                 computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
                 return 
-            
+        
+        if not posData.segmFound:
+            rel_path = (
+                f'...{os.sep}{exp_foldername}'
+                f'{os.sep}{posData.pos_foldername}'
+            )
+            self.log(
+                f'Skipping "{rel_path}" '
+                f'because segm. file was not found.'
+            )
+            return
+        
         self.init_signals(computeMetricsWorker, saveDataWorker)
         
         self.log(
@@ -1201,7 +1204,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 continue
 
             try:
-                prev_data_dict = posData.allData_li[frame_i-1]
                 prev_lab = posData.segm_data[frame_i-1]
                 acdc_df = self._add_velocity_measurement(
                     acdc_df, prev_lab, lab, posData
