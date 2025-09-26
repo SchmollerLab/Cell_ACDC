@@ -129,6 +129,7 @@ class SegmWorker(QObject):
         if self.mainWin._measurements_kernel is None:
             return
         
+        segm_endname = self.kernel.segm_endname.replace('.npz', '')
         self.mainWin._measurements_kernel.run(
             img_path=self.img_path, 
             stop_frame_n=self.stop_frame_n, 
@@ -1125,6 +1126,10 @@ class segmWin(QMainWindow):
     
     def askSaveMeasurements(self):
         measurements_kernel = None
+        
+        if not self.save:
+            return True, measurements_kernel
+        
         acdcOutputEndname = (
             self.endFilenameSegm.replace('segm', 'acdc_output')
             .replace('.npz', '.csv')
