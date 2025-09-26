@@ -12152,6 +12152,7 @@ class QDialogModelParams(QDialog):
                 items = ArgSpec.type().values
                 defaultVal = str(ArgSpec.default)
                 combobox = widgets.AlphaNumericComboBox()
+                printl(items)
                 combobox.addItems(items)
                 combobox.setCurrentValue(defaultVal)
                 valueSetter = widgets.AlphaNumericComboBox.setCurrentValue

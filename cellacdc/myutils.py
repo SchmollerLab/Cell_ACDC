@@ -2935,8 +2935,9 @@ def check_install_nnInteractive():
 def check_install_microsam():
     check_install_package(
         'micro-sam', 
-        pypi_name='micro_sam', 
-        installer='conda'
+        pypi_name='git+https://github.com/computational-cell-analytics/micro-sam.git', 
+        import_pkg_name='micro_sam',
+        installer='pip'
     )
 
 def check_install_yeaz():
