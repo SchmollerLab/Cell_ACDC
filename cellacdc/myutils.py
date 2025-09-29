@@ -2943,6 +2943,52 @@ def check_install_microsam():
         import_pkg_name='micro_sam',
         installer='pip'
     )
+    check_install_torch()
+    check_install_package(
+        'NIFTy', 
+        pypi_name='nifty',
+        installer='pip',
+    )
+    check_install_package(
+        'Pooch', 
+        pypi_name='pooch',
+        installer='pip',
+    )
+    check_install_package(
+        'xxhash', 
+        pypi_name='xxhash',
+        installer='pip',
+    )
+    check_install_package(
+        'elf', 
+        pypi_name='git+https://github.com/constantinpape/elf.git',
+        installer='pip',
+    )
+    check_install_package(
+        'torch-em', 
+        pypi_name='git+https://github.com/constantinpape/torch-em.git',
+        installer='pip',
+    )
+    check_install_package(
+        'timm', 
+        pypi_name='timm',
+        installer='pip',
+    )
+    check_install_package(
+        'MobileSAM', 
+        pypi_name='git+https://github.com/ChaoningZhang/MobileSAM.git',
+        installer='pip',
+    )
+    check_install_package(
+        'Xarray', 
+        pypi_name='xarray',
+        installer='pip',
+    )
+    check_install_package(
+        'Zarr-Python', 
+        pypi_name='zarr',
+        installer='pip',
+    )
 
 def check_install_yeaz():
     check_install_torch()
