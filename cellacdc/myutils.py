@@ -2937,6 +2937,10 @@ def check_install_nnInteractive():
     importlib.reload(nnInteractive)
 
 def check_install_microsam():
+    # Already installed in Cell-ACDC:
+    # - imageio
+    # - scikit-image
+    # - scikit-learn
     check_install_package(
         'micro-sam', 
         pypi_name='git+https://github.com/computational-cell-analytics/micro-sam.git', 
@@ -2944,6 +2948,11 @@ def check_install_microsam():
         installer='pip'
     )
     check_install_torch()
+    check_install_package(
+        'VIGRA', 
+        pypi_name='vigra',
+        installer='conda',
+    )
     check_install_package(
         'NIFTy', 
         pypi_name='nifty',
@@ -2963,6 +2972,7 @@ def check_install_microsam():
         'elf', 
         pypi_name='git+https://github.com/constantinpape/elf.git',
         installer='pip',
+        install_dependencies=False
     )
     check_install_package(
         'torch-em', 
@@ -2974,11 +2984,11 @@ def check_install_microsam():
         pypi_name='timm',
         installer='pip',
     )
-    check_install_package(
-        'MobileSAM', 
-        pypi_name='git+https://github.com/ChaoningZhang/MobileSAM.git',
-        installer='pip',
-    )
+    # check_install_package(
+    #     'MobileSAM', 
+    #     pypi_name='git+https://github.com/ChaoningZhang/MobileSAM.git',
+    #     installer='pip',
+    # )
     check_install_package(
         'Xarray', 
         pypi_name='xarray',
@@ -3268,7 +3278,8 @@ def check_install_package(
             pkg_command=pypi_name, max_version=max_version, 
             min_version=min_version, installer=installer,
             include_higher_version=include_higher_version,
-            include_lower_version=include_lower_version
+            include_lower_version=include_lower_version,
+            install_dependencies=install_dependencies
         )
         if pypi_name:
             pkg_name = pypi_name
@@ -3297,7 +3308,10 @@ def check_install_package(
                     including_lower_version=include_lower_version,
                 )
                 if installer == 'pip':
-                    _install_pip_package(pkg_command, install_dependencies=install_dependencies)
+                    _install_pip_package(
+                        pkg_command, 
+                        install_dependencies=install_dependencies
+                    )
                 else:
                     install_package_conda(pkg_command)
         except Exception as e:
@@ -3414,7 +3428,8 @@ def _install_package_msg(
         is_cli=False, pkg_command='', logger_func=print, max_version='', 
         min_version='', installer: Literal['pip', 'conda']='pip',
         include_higher_version: bool = False,
-        include_lower_version: bool = False
+        include_lower_version: bool = False,
+        install_dependencies = True
     ):
     if is_cli:
         proceed = _install_package_cli_msg(
@@ -3423,7 +3438,8 @@ def _install_package_msg(
             min_version=min_version, logger_func=logger_func, 
             installer=installer,
             include_higher_version=include_higher_version,
-            include_lower_version=include_lower_version
+            include_lower_version=include_lower_version,
+            install_dependencies=install_dependencies
         )
     else:
         proceed = _install_package_gui_msg(
@@ -3432,7 +3448,8 @@ def _install_package_msg(
             max_version=max_version, min_version=min_version, 
             logger_func=logger_func, installer=installer,
             including_higher_version=include_higher_version,
-            including_lower_version=include_lower_version
+            including_lower_version=include_lower_version,
+            install_dependencies=install_dependencies
         )
     return proceed
 
@@ -3549,7 +3566,8 @@ def _install_package_cli_msg(
         logger_func=print, pkg_command='', max_version='', 
         min_version='', installer: Literal['pip', 'conda']='pip',
         include_lower_version=False,
-        include_higher_version=False
+        include_higher_version=False,
+        install_dependencies=True
     ):
     if not pkg_command:
         pkg_command = pkg_name
@@ -3566,6 +3584,9 @@ def _install_package_cli_msg(
         action = 'install'
     
     conda_prefix, pip_prefix = get_pip_conda_prefix()
+    
+    if installer == 'pip' and not install_dependencies:
+        f'{pip_prefix} --no-deps'
 
     if installer == 'pip':
         install_command = f'{pip_prefix} --upgrade {pkg_command}'
@@ -3600,7 +3621,8 @@ def _install_package_gui_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC', 
         pkg_command='', logger_func=None, max_version='', min_version='',
         including_lower_version=False, including_higher_version=False,
-        installer: Literal['pip', 'conda']='pip'
+        installer: Literal['pip', 'conda']='pip',
+        install_dependencies=True
     ):
     msg = widgets.myMessageBox(parent=parent)
     if upgrade:
@@ -3614,12 +3636,17 @@ def _install_package_gui_msg(
         pkg_command = pkg_name
     
     pkg_command = _get_pkg_command_pip_install(
-        pkg_command, max_version=max_version, min_version=min_version,
+        pkg_command, 
+        max_version=max_version, 
+        min_version=min_version,
         including_lower_version=including_lower_version,
         including_higher_version=including_higher_version
     )
     
     conda_prefix, pip_prefix = get_pip_conda_prefix()
+    
+    if installer == 'pip' and not install_dependencies:
+        f'{pip_prefix} --no-deps'
 
     if installer == 'pip':
         command = f'{pip_prefix} --upgrade {pkg_command}'
