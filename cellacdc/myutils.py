@@ -2951,16 +2951,19 @@ def check_install_microsam():
     check_install_package(
         'VIGRA', 
         pypi_name='vigra',
+        import_pkg_name='vigra',
         installer='conda',
     )
     check_install_package(
         'NIFTy', 
         pypi_name='nifty',
+        import_pkg_name='nifty',
         installer='pip',
     )
     check_install_package(
         'Pooch', 
         pypi_name='pooch',
+        import_pkg_name='pooch',
         installer='pip',
     )
     check_install_package(
@@ -2978,6 +2981,7 @@ def check_install_microsam():
         'torch-em', 
         pypi_name='git+https://github.com/constantinpape/torch-em.git',
         installer='pip',
+        import_pkg_name='torch_em',
     )
     check_install_package(
         'timm', 
@@ -2993,11 +2997,13 @@ def check_install_microsam():
         'Xarray', 
         pypi_name='xarray',
         installer='pip',
+        import_pkg_name='xarray',
     )
     check_install_package(
         'Zarr-Python', 
         pypi_name='zarr',
         installer='pip',
+        import_pkg_name='zarr',
     )
 
 def check_install_yeaz():
@@ -3586,7 +3592,7 @@ def _install_package_cli_msg(
     conda_prefix, pip_prefix = get_pip_conda_prefix()
     
     if installer == 'pip' and not install_dependencies:
-        f'{pip_prefix} --no-deps'
+        pip_prefix = f'{pip_prefix} --no-deps'
 
     if installer == 'pip':
         install_command = f'{pip_prefix} --upgrade {pkg_command}'
@@ -3646,8 +3652,8 @@ def _install_package_gui_msg(
     conda_prefix, pip_prefix = get_pip_conda_prefix()
     
     if installer == 'pip' and not install_dependencies:
-        f'{pip_prefix} --no-deps'
-
+        pip_prefix = f'{pip_prefix} --no-deps'
+    
     if installer == 'pip':
         command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
