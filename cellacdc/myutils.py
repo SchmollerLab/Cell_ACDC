@@ -912,9 +912,13 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
             pkg_path = spotmax_path
         commit_hash = re.findall(r'\+g([A-Za-z0-9]+)(\.d)?', version)[0][0]
         git_path = os.path.dirname(pkg_path)
-        command = f'git -C {git_path} show {commit_hash}'
+        command_args = ['git', '-C', git_path, 'show', commit_hash]
+        command = ' '.join(command_args)
         commit_log = _subprocess_run_command(
-            command, shell=False, callback='check_output'
+            command, 
+            shell=False, 
+            callback='check_output',
+            command_args=command_args
         )
         commit_log = commit_log.decode() 
         date_log = re.findall(r'Date:(.*) \+', commit_log)[0].strip()
@@ -3019,16 +3023,23 @@ def install_package_conda(conda_pkg_name, channel='conda-forge'):
     command = f'{conda_prefix} -y {conda_pkg_name}'
     _subprocess_run_command(command)
 
-def _subprocess_run_command(command, shell=True, callback='check_call'):
+def _subprocess_run_command(
+        command: str | list[str], 
+        shell=True, 
+        callback='check_call',
+        command_args=None
+    ):
     func = getattr(subprocess, callback)
     try:
         out = func(command, shell=shell)
     except Exception as err:
+        if command_args is None:
+            command_args = command.split()
         print(
             f'[WARNING]: Command `{command}` failed. '
-            f'Trying with `{command.split()}`...'
+            f'Trying with `{command_args}`...'
         )
-        out = func(command.split(), shell=shell)
+        out = func(command_args, shell=shell)
     
     return out
 
