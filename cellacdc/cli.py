@@ -809,7 +809,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.metricsToSave = {chName:[] for chName in self.ch_names}
         self.calc_for_each_zslice_mapper = {}
         self.calc_size_for_each_zslice = False
-        self.mixedChCombineMetricsToSkip = set()
         
         favourite_funcs = set()
         last_selected_groupboxes_measurements = load.read_last_selected_gb_meas(
