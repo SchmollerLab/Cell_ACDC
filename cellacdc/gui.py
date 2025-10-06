@@ -848,6 +848,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # Help menu
         helpMenu = menuBar.addMenu("&Help")
         helpMenu.addAction(self.openLogFileAction)
+        helpMenu.addAction(self.showLogFilesAction)
         helpMenu.addAction(self.tipsAction)
         helpMenu.addAction(self.UserManualAction)
         helpMenu.addSeparator()
@@ -2651,6 +2652,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.tipsAction = QAction("Tips and tricks...", self)
         self.UserManualAction = QAction("User Documentation...", self)
         self.openLogFileAction = QAction("Open log file...", self)
+        self.showLogFilesAction = QAction("Show log files...", self)
         self.aboutAction = QAction("About Cell-ACDC", self)
         # self.aboutAction = QAction("&About...", self)
 
@@ -2909,6 +2911,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
         self.UserManualAction.triggered.connect(myutils.browse_docs)
         self.openLogFileAction.triggered.connect(self.openLogFile)
+        self.showLogFilesAction.triggered.connect(self.showLogFiles)
         self.aboutAction.triggered.connect(self.showAbout)
         # Connect Open Recent to dynamically populate it
         # self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
@@ -30862,6 +30865,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def openLogFile(self):
         self.logger.info(f'Opening log file "{self.log_path}"...')
         myutils.showInExplorer(self.log_path)
+    
+    def showLogFiles(self):
+        log_files_path = os.path.dirname(self.log_path)
+        self.logger.info(f'Opening log files folder "{log_files_path}"...')
+        myutils.showInExplorer(log_files_path)
     
     def showTipsAndTricks(self):
         self.welcomeWin = welcome.welcomeWin()
