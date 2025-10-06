@@ -25,6 +25,7 @@ from collections import namedtuple, Counter
 from tqdm import tqdm
 import requests
 import zipfile
+import json
 import numpy as np
 import pandas as pd
 import skimage
@@ -902,13 +903,49 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
         pypi_releases_json = res_json['releases']
         version_json = pypi_releases_json[version][0]
         upload_time = version_json['upload_time_iso_8601']
-        date = datetime.datetime.strptime(upload_time, r'%Y-%m-%dT%H:%M:%S.%fZ')
+        date = datetime.datetime.strptime(
+            upload_time, r'%Y-%m-%dT%H:%M:%S.%fZ'
+        )
         date_str = date.strftime(r'%A %d %B %Y at %H:%M')
         return date_str
     except Exception as err:
         if debug:
             traceback.print_exc()
     
+    try:
+        # Locate the direct_url.json file for the package 
+        # installed with pip git+
+        dist = importlib.metadata.distribution(package)
+        dist_info_dir = dist._path  # internal path to .dist-info
+        direct_url_path = os.path.join(dist_info_dir, "direct_url.json")
+
+        with open(direct_url_path) as f:
+            data = json.load(f)
+
+        vcs_info = data["vcs_info"]
+        commit_id = vcs_info.get("commit_id")
+        url = data.get("url")
+
+        parts = url.split("github.com/")[1].split(".git")[0]
+        owner, repo = parts.split("/", 1)
+
+        # Query GitHub API for commit date
+        api_url = (
+            f"https://api.github.com/repos/{owner}/{repo}/commits/{commit_id}"
+        )
+        response = requests.get(api_url)
+        response.raise_for_status()
+
+        commit_data = response.json()
+        date_utc = commit_data["commit"]["committer"]["date"]
+        
+        date_str = format_commit_date_utc(date_utc)
+        
+        return date_str
+    except Exception as err:
+        if debug:
+            traceback.print_exc()
+            
     try:
         if package == 'cellacdc':
             pkg_path = cellacdc_path
@@ -5289,3 +5326,13 @@ def safe_get_or_call(obj, path: str):
             raise ValueError(f"Unsupported syntax: {ast.dump(node)}")
 
     return _eval(expr, obj)
+
+def format_commit_date_utc(utc_str):
+    # Parse the UTC date string (ISO 8601 format)
+    dt = datetime.datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
+    
+    # Convert to your local time zone (optional)
+    local_dt = dt.astimezone()  # removes UTC offset if local
+    
+    # Format nicely
+    return local_dt.strftime(r"%A %d %B %Y at %H:%M")
