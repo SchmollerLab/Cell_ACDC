@@ -14062,7 +14062,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.autoSaveTimer.isActive())
+            raise TypeError('Debug exception triggered by user.')
 
         if not self.isDataLoaded:
             self.logger.warning(
