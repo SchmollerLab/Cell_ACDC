@@ -178,7 +178,7 @@ class mainWin(QMainWindow):
 
         guiButton = QPushButton('  3. Launch GUI...')
         guiButton.setIcon(QIcon(':icon.ico'))
-        guiButton.setIconSize(QSize(iconSize,iconSize))
+        guiButton.setIconSize(QSize(iconSize, iconSize))
         guiButton.setFont(font)
         guiButton.clicked.connect(self.launchGui)
         self.guiButton = guiButton

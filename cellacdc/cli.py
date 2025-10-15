@@ -1007,7 +1007,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         # Allow single 2D/3D image
         if posData.SizeT == 1:
             posData.img_data = posData.img_data[np.newaxis]
-            posData.segm_data = posData.segm_data[np.newaxis]
+            
+            if posData.segm_data is not None:
+                posData.segm_data = posData.segm_data[np.newaxis]
         
         return posData
     
@@ -1030,6 +1032,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     posData.images_path, channel
                 )
                 img_data, bkgrData = self._load_channel_data(filepath)
+                if posData.SizeT == 1:
+                    img_data = img_data[np.newaxis]
+                    
                 filename_ext = os.path.basename(filepath)
                 filename, _ = os.path.splitext(filename_ext)
             
