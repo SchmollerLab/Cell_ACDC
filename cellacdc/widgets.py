@@ -8208,39 +8208,55 @@ class ImShow(QBaseWindow):
         ) 
         return item
 
-    def drawPointsFromDf(self, points_df, points_groups=None):
-        if isinstance(points_groups, str):
-            points_groups = [points_groups]
-            
-        if points_groups is None:
-            grouped = [('', points_df)]
-            groups = ['']
-        else:
-            grouped = points_df.groupby(points_groups)
-            groups = grouped.groups.keys()
+    def drawPointsFromDf(
+            self, 
+            points_df: pd.DataFrame | List[pd.DataFrame], 
+            points_groups=None
+        ):
+        if not isinstance(points_df, (list, tuple)):
+            points_df = [points_df]*len(self.PlotItems)
         
-        idxs_space = np.linspace(0, 1, len(groups))
-        self.group_to_idx_mapper = dict(zip(groups, idxs_space))
+        for p, df in enumerate(points_df):
+            if isinstance(points_groups, str):
+                points_groups = [points_groups]
+                
+            if points_groups is None:
+                grouped = [('', df)]
+                groups = ['']
+            else:
+                grouped = df.groupby(points_groups)
+                groups = grouped.groups.keys()
+            
+            idxs_space = np.linspace(0, 1, len(groups))
+            self.group_to_idx_mapper = dict(zip(groups, idxs_space))
 
-        for group, df in grouped:
-            yy = df['y'].values
-            xx = df['x'].values
-            points_coords = np.column_stack((yy, xx))
-            if 'z' in df.columns:
-                zz = df['z'].values
-                points_coords = np.column_stack((zz, points_coords))
-            if len(group) == 1:
-                group = group[0]
-            self.drawPoints(points_coords, group=group)
+            for group, df in grouped:
+                yy = df['y'].values
+                xx = df['x'].values
+                points_coords = np.column_stack((yy, xx))
+                if 'z' in df.columns:
+                    zz = df['z'].values
+                    points_coords = np.column_stack((zz, points_coords))
+                if len(group) == 1:
+                    group = group[0]
+                self.drawPoints(points_coords, group=group, idx=p)
     
-    def drawPoints(self, points_coords: np.ndarray, group=''):  
+    def drawPoints(self, points_coords: np.ndarray, group='', idx=None):  
         offset = 0.5 if np.issubdtype(points_coords.dtype, np.integer) else 0
         n_dim = points_coords.shape[1]
+        
+        if idx is not None:
+            PlotItems = [self.PlotItems[idx]]
+            ImageItems = [self.ImageItems[idx]]
+        else:
+            PlotItems = self.PlotItems
+            ImageItems = self.ImageItems
+        
         if n_dim == 2:
             zz = [0]*len(points_coords)
             self.points_coords = np.column_stack((zz, points_coords))
-            for p, plotItem in enumerate(self.PlotItems):
-                imageItem = self.ImageItems[p]
+            for p, plotItem in enumerate(PlotItems):
+                imageItem = ImageItems[p]
                 pointsItem = self._createPointsScatterItem(group, data=group)
                 pointsItem.z = 0
                 plotItem.addItem(pointsItem)
@@ -8250,8 +8266,8 @@ class ImShow(QBaseWindow):
                 imageItem.pointsItems = {group: [pointsItem]}
         elif n_dim == 3:
             self.points_coords = points_coords
-            for p, plotItem in enumerate(self.PlotItems):
-                imageItem = self.ImageItems[p]
+            for p, plotItem in enumerate(PlotItems):
+                imageItem = ImageItems[p]
                 imageItem.pointsItems = defaultdict(list)
                 scrollbar = imageItem.ScrollBars[0]
                 for first_coord in range(scrollbar.maximum()+1):
