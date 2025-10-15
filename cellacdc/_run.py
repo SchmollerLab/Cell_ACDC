@@ -480,7 +480,11 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
         class SplashScreen(QtWidgets.QSplashScreen):
             def __init__(self, logo_path, icon_path):
                 super().__init__()
-                self.setPixmap(QtGui.QPixmap(logo_path))
+                pixmap = QtGui.QPixmap(logo_path)
+                pixmap = pixmap.scaledToWidth(
+                    300, QtCore.Qt.SmoothTransformation
+                )
+                self.setPixmap(pixmap)
                 self.setWindowIcon(QIcon(icon_path))
                 self.setWindowFlags(
                     QtCore.Qt.WindowStaysOnTopHint 
