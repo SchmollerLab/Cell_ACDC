@@ -43,7 +43,7 @@ def imshow(
         labels_overlays: np.ndarray | List[np.ndarray]=None,
         labels_overlays_luts: np.ndarray | List[np.ndarray]=None,
         points_coords: np.ndarray=None, 
-        points_coords_df: pd.DataFrame=None,
+        points_coords_df: pd.DataFrame | List[pd.DataFrame]=None,
         points_groups: List[str]=None,
         points_data: Union[np.ndarray, pd.DataFrame, pd.Series]=None,
         hide_axes: bool=True, 
