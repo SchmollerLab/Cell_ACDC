@@ -113,15 +113,6 @@ class ArgWidget:
         if changeSig is not None:
             self.changeSig = changeSig
 
-class AcdcSPlashScreen(QSplashScreen):
-    def __init__(self):
-        super().__init__()
-        # self.showMessage('Test', color=Qt.white)
-        self.setPixmap(QPixmap(':logo.png'))
-    
-    def mousePressEvent(self, a0: QMouseEvent) -> None:
-        pass
-
 
 def addCustomModelMessages(QParent=None):
     modelFilePath = None
