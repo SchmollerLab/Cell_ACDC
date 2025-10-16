@@ -1650,8 +1650,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     pos_i, frame_i, z_slice = key
                     posData.combine_img_data[frame_i][z_slice] = processed_data
                     self.img1.updateMinMaxValuesCombinedData(
-                            self.data, pos_i, frame_i, z_slice
-                        )
+                        self.data, pos_i, frame_i, z_slice
+                    )
             elif n_dim_img == 3:
                 for key, processed_data in per_pos_data[pos_i]:
                     pos_i, frame_i, z_slice = key
@@ -13768,9 +13768,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if return_val:
             return posData.brushID
 
-    def equalizeHist(self):
-        # Store undo state before modifying stuff
-        self.storeUndoRedoStates(False, storeImage=True)
+    @disableWindow
+    def equalizeHist(self, checked=True):
+        self.img1.useEqualized = checked
+        
+        if not checked:
+            self.updateAllImages()
+            return
+
+        self.logger.info('Equalizing image histogram...')
+        for pos_i, _posData in enumerate(self.data):
+            n_dim_img = _posData.img_data.ndim
+            _posData.equalized_img_data = preprocess.PreprocessedData()
+            for frame_i, img_frame in enumerate(_posData.img_data):
+                if n_dim_img == 4:
+                    for z, img_z in enumerate(img_frame):
+                        eq_img = skimage.exposure.equalize_adapthist(img_z)
+                        _posData.equalized_img_data[frame_i][z] = eq_img
+                        self.img1.updateMinMaxValuesEqualizedData(
+                            self.data, pos_i, frame_i, z
+                        )
+                else:
+                    eq_img = skimage.exposure.equalize_adapthist(img_frame)
+                    _posData.equalized_img_data[frame_i] = eq_img
+                    self.img1.updateMinMaxValuesEqualizedData(
+                        self.data, pos_i, frame_i, None
+                    )
+                
         self.updateAllImages()
 
     def curvTool_cb(self, checked):
@@ -25307,6 +25331,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 #     'Pre-processed image not existing --> returning raw image'
                 # )
                 return self.getRawImageLayer0(frame_i)
+        elif self.equalizeHistPushButton.isChecked():
+            img = posData.equalized_img_data[frame_i]
+            if posData.SizeZ == 1:
+                return np.array(img)
+            
+            self.updateZsliceScrollbar(frame_i)
+            z_slice = self.z_slice_index()
+            img = img[z_slice]
+            return img
         else:
             return self.getRawImageLayer0(frame_i)
 
@@ -26238,8 +26271,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     
     def setImageImg1(self, image=None):
         img = self._getImageupdateAllImages(image=image)
-        if self.equalizeHistPushButton.isChecked():
-            img = skimage.exposure.equalize_adapthist(img)
         posData = self.data[self.pos_i]
         self.img1.setCurrentPosIndex(self.pos_i)
         self.img1.setCurrentFrameIndex(posData.frame_i)
