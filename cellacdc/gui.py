@@ -14175,7 +14175,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            raise TypeError('Debug exception triggered by user.')
+            posData = self.data[self.pos_i]
+            printl(posData.ol_data.keys())
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -22929,7 +22930,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 ol_data = {}
             for i, ol_ch in enumerate(ol_channels):
                 _, filename = self.getPathFromChName(ol_ch, posData)
-                ol_data[filename] = posData.ol_data_dict[filename].copy()                                  
+                ol_data[filename] = (
+                    posData.ol_data_dict[filename].copy()
+                )                        
                 self.addFluoChNameContextMenuAction(ol_ch)
             posData.ol_data = ol_data
 
@@ -24692,6 +24695,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         posData = self.data[self.pos_i]
         if posData.ol_data is None:
             return
+        
         for filename in posData.ol_data:
             chName = myutils.get_chname_from_basename(
                 filename, posData.basename, remove_ext=False
@@ -28768,10 +28772,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def overlayChannelToggled(self, checked):
         # Action toggled from overlayButton context menu
         channelName = self.sender().text()
+        posData = self.data[self.pos_i]
         if checked:
-            posData = self.data[self.pos_i]
             if channelName not in posData.loadedFluoChannels:
                 self.loadOverlayData([channelName], addToExisting=True)
+            else:
+                _, filename = self.getPathFromChName(channelName, posData)
+                posData.ol_data[filename] = (
+                    posData.ol_data_dict[filename].copy()
+                )
             
             self.checkedOverlayChannels.add(channelName)    
         else:
