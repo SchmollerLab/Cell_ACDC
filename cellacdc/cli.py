@@ -391,13 +391,14 @@ class SegmKernel(_WorkflowKernel):
             if posData.SizeZ > 1 and not self.isSegm3D and not self.use3DdataFor2Dsegm:
                 # 2D segmentation on 3D data over time
                 img_data = posData.img_data
+
                 if self.second_channel_name is not None:
                     second_ch_data_slice = secondChImgData[self.t0:stop_i]
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
-                    img_data = img_data[:, y0:y1, x0:x1]
+                    img_data = img_data[:, :, y0:y1, x0:x1]
                     if self.second_channel_name is not None:
-                        second_ch_data_slice = second_ch_data_slice[:, y0:y1, x0:x1]
+                        second_ch_data_slice = second_ch_data_slice[:, :, y0:y1, x0:x1]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
 
                 img_data_slice = img_data[self.t0:stop_i]
@@ -414,6 +415,7 @@ class SegmKernel(_WorkflowKernel):
                     i = z_info.Index
                     z = z_info.z_slice_used_dataPrep
                     zProjHow = z_info.which_z_proj
+                    printl(z_info, z_info.Index, stop_i)
                     img = img_data_slice[i]
                     if self.second_channel_name is not None:
                         second_ch_img = second_ch_data_slice[i]
