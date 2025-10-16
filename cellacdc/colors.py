@@ -216,6 +216,20 @@ def hex_to_rgb(hex):
         
     return tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))
 
+def hierarchical_weights(alphas):
+    alphas = np.array([1.0, *alphas])
+    weights = []
+    for i, a_ref in enumerate(alphas):        
+        weight = np.prod(1-alphas[i+1:]) * a_ref
+        weights.append(weight)
+        
+    return weights[::-1]
+
+def hierarchical_blend(images, weights):
+    # Stack all images and do weighted sum
+    stacked = np.stack(images, axis=0)  # shape: (N, H, W)
+    return np.tensordot(weights, stacked, axes=(0, 0))
+
 def merge_two_grayscale_imgs(
         img1, img2, rgb1, rgb2, alpha=0.5,
         brightness1=1.0, brightness2=1.0, dtype=np.uint8, 
@@ -293,3 +307,26 @@ def color_palette(name='Okabe_lto', **sns_color_palette_kwargs):
         return sns.color_palette(colors)
     
     return sns.color_palette(**sns_color_palette_kwargs)
+
+def grayscale_apply_lut(image, lut):
+    """
+    Map a grayscale image to RGBA using a lookup table.
+
+    Parameters
+    ----------
+    image : ndarray, shape (H, W)
+        Grayscale image with intensity values in [0, 1] or [0, 255].
+    lut : ndarray, shape (N, 4)
+        Lookup table of RGBA values (each channel in [0, 1] or [0, 255]).
+
+    Returns
+    -------
+    rgba : ndarray, shape (H, W, 4)
+        Colorized RGBA image.
+    """
+    # Normalize image to [0, N-1]
+    N = lut.shape[0]
+    img = np.clip(image, 0, 1) if image.dtype.kind == 'f' else image / 255.0
+    indices = np.clip((img * (N - 1)).astype(int), 0, N - 1)
+    rgba = lut[indices]
+    return rgba
