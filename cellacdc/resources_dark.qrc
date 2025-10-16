@@ -1,9 +1,9 @@
 <!DOCTYPE RCC><RCC version="1.0">
 <qresource>
     
-    <file alias="icon.ico">resources/icon.ico</file>
-    <file alias="logo.svg">resources/logo.svg</file>
-    <file alias="logo.png">resources/logo.png</file>
+    <file alias="icon.ico">resources/icon_v2.ico</file>
+    <file alias="logo.svg">resources/logo_v2.svg</file>
+    <file alias="logo.png">resources/logo_v2.png</file>
     <file alias="AICS_logo.svg">resources/icons/AICS_logo_dark.svg</file>
     <file alias="whitelist.svg">resources/icons/whitelist_dark.svg</file>
     <file alias="backspace.svg">resources/icons/math/backspace_dark.svg</file>
