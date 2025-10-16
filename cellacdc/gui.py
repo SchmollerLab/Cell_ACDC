@@ -13768,6 +13768,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if return_val:
             return posData.brushID
 
+    @disableWindow
     def equalizeHist(self, checked=True):
         self.img1.useEqualized = checked
         
