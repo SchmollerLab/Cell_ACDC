@@ -90,12 +90,20 @@ class tracker:
         if segm_video.ndim == 4:
             raise TypeError('4D tracking not supported by Trackastra yet.')
         
-        graph = self.model.track(
+        out = self.model.track(
             video_grayscale, segm_video, mode=linking_mode
         )
-        
-        df_ctc, tracked_video = graph_to_ctc(graph, segm_video)
-        
+        try:
+            df_ctc, tracked_video = graph_to_ctc(out, segm_video)
+        except Exception as e:
+            try:
+                graph = out[0]
+                df_ctc, tracked_video = graph_to_ctc(graph, segm_video)
+            except Exception as e2:
+                graph = out[1]
+                df_ctc, tracked_video = graph_to_ctc(graph, segm_video)
+            
+
         if prevent_deleting_objects:
             tracked_video = core.insert_missing_objects(
                 tracked_video, segm_video
