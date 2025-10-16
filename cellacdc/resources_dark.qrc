@@ -105,6 +105,7 @@
     <file alias="deselect_all.svg">resources/icons/deselect_all_dark.svg</file>
     <file alias="zoom_in.svg">resources/icons/zoom_in_dark.svg</file>
     <file alias="zoom_out.svg">resources/icons/zoom_out_dark.svg</file>
+    <file alias="zoom_rect.svg">resources/icons/zoom_rect_dark.svg</file>
     <file alias="reinitLastSegm.svg">resources/icons/reinitLastSegm_dark.svg</file>
     <file alias="merge-IDs.svg">resources/icons/merge-IDs_dark.svg</file>
     <file alias="overlay.svg">resources/icons/overlay1_dark.svg</file>

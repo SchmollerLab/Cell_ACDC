@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Dict, List, Union
 import os
 import sys
@@ -5369,10 +5369,10 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
 
 class ROI(pg.ROI):
     def __init__(
-            self, pos, size=..., angle=0, invertible=False, maxBounds=None, 
-            snapSize=1, scaleSnap=False, translateSnap=False, rotateSnap=False, 
-            parent=None, pen=None, hoverPen=None, handlePen=None, 
-            handleHoverPen=None, movable=True, rotatable=True, 
+            self, pos, size=pg.Point(1, 1), angle=0, invertible=False, 
+            maxBounds=None, snapSize=1, scaleSnap=False, translateSnap=False, 
+            rotateSnap=False, parent=None, pen=None, hoverPen=None, 
+            handlePen=None, handleHoverPen=None, movable=True, rotatable=True, 
             resizable=True, removable=False, aspectLocked=False
         ):
         super().__init__(
@@ -5400,7 +5400,32 @@ class ROI(pg.ROI):
             tmin, tmax = tRange
             _slice = (slice(tmin, tmax), *_slice)
         return _slice
+
+    def bbox(self):
+        x0, y0 = [int(round(c)) for c in self.pos()]
+        w, h = [int(round(c)) for c in self.size()]
+        xmin, xmax = x0, x0+w
+        if xmin > xmax:
+            xmin, xmax = xmax, xmin
+        ymin, ymax = y0, y0+h
+        if ymin > ymax:
+            ymin, ymax = ymax, ymin
         
+        return ymin, xmin, ymax, xmax
+
+class ZoomROI(ROI):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        self.viewRangesQueue = deque()
+        
+    def getLastRange(self):
+        xRange, yRange = self.viewRangesQueue.pop()
+        return xRange, yRange
+    
+    def storeLastRange(self, xRange, yRange):
+        self.viewRangesQueue.append((xRange, yRange))
+
 class DelROI(pg.ROI):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

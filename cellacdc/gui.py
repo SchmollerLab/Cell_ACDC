@@ -886,6 +886,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolBar)
         navigateToolBar.addAction(self.findIdAction)
+        
+        navigateToolBar.addWidget(self.zoomRectButton)
 
         self.slideshowButton = QToolButton(self)
         self.slideshowButton.setIcon(QIcon(":eye-plus.svg"))
@@ -964,7 +966,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.assignBudMothButton.setCheckable(True)
         self.assignBudMothButton.setShortcut('A')
         self.assignBudMothButton.setVisible(False)
-        self.assignBudMothButton.action = ccaToolBar.addWidget(self.assignBudMothButton)
+        self.assignBudMothButton.action = ccaToolBar.addWidget(
+            self.assignBudMothButton
+        )
         self.checkableButtons.append(self.assignBudMothButton)
         self.checkableQButtonsGroup.addButton(self.assignBudMothButton)
         self.functionsNotTested3D.append(self.assignBudMothButton)
@@ -976,7 +980,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setIsHistoryKnownButton.setCheckable(True)
         self.setIsHistoryKnownButton.setShortcut('U')
         self.setIsHistoryKnownButton.setVisible(False)
-        self.setIsHistoryKnownButton.action = ccaToolBar.addWidget(self.setIsHistoryKnownButton)
+        self.setIsHistoryKnownButton.action = ccaToolBar.addWidget(
+            self.setIsHistoryKnownButton
+        )
         self.checkableButtons.append(self.setIsHistoryKnownButton)
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
         self.functionsNotTested3D.append(self.setIsHistoryKnownButton)
@@ -2533,6 +2539,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.findIdAction.setIcon(QIcon(":find.svg"))
         self.findIdAction.setShortcut('Ctrl+F')
         
+        self.zoomRectButton = QToolButton(self)
+        self.zoomRectButton.setIcon(QIcon(":zoom_rect.svg"))
+        self.zoomRectButton.setCheckable(True)
+        self.zoomRectButton.setShortcut('Shift+Z')
+        self.LeftClickButtons.append(self.zoomRectButton)
+        self.checkableButtons.append(self.zoomRectButton)
+        self.checkableQButtonsGroup.addButton(self.zoomRectButton)
+        self.widgetsWithShortcut['Zoom to rectangular area'] = (
+            self.zoomRectButton
+        )
+        
         self.skipToNewIdAction = QAction(self)
         self.skipToNewIdAction.setIcon(QIcon(":skip_forward_new_ID.svg"))
         self.skipToNewIdAction.setShortcut(
@@ -3154,6 +3171,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.loadPosAction.triggered.connect(self.loadPosTriggered)
         # self.reloadAction.triggered.connect(self.reload_cb)
         self.findIdAction.triggered.connect(self.findID)
+        self.zoomRectButton.toggled.connect(self.zoomRectActionToggled)
         self.autoPilotButton.toggled.connect(self.autoPilotToggled)
         self.skipToNewIdAction.triggered.connect(self.skipForwardToNewID)        
         self.slideshowButton.toggled.connect(self.launchSlideshow)
@@ -4294,6 +4312,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.ax1, penColor='r', textColor='r'
         )
         self.manualBackgroundImageItem = pg.ImageItem()
+    
+    def gui_createZoomRectItem(self):
+        Y, X = self.currentLab2D.shape
+        # Label ROI rectangle
+        pen = pg.mkPen('r', width=3, style=Qt.DashLine)
+        self.zoomRectItem = widgets.ZoomROI(
+            (0,0), (0,0),
+            maxBounds=QRectF(QRect(0,0,X,Y)),
+            scaleSnap=True,
+            translateSnap=True,
+            pen=pen, hoverPen=pen
+        )
     
     def gui_createLabelRoiItem(self):
         Y, X = self.currentLab2D.shape
@@ -5585,7 +5615,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # Draw freehand clear region --> draw region
         elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
             self.freeRoiItem.addPoint(xdata, ydata)
-    
+        
+        # Label ROI dragging mouse --> draw ROI
+        elif self.isMouseDragImg1 and self.zoomRectButton.isChecked():
+            x0, y0 = self.zoomRectItem.pos()
+            w, h = (xdata-x0), (ydata-y0)
+            self.zoomRectItem.setSize((w, h))
+
     # @exec_time
     def fillHolesID(self, ID, sender='brush'):
         posData = self.data[self.pos_i]
@@ -6103,6 +6139,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not event.isExit()
             and noModifier
         )
+        setZoomRectCursor = (
+            self.zoomRectButton.isChecked() and not event.isExit()
+            and noModifier
+        )
         magicPromptsON = self.magicPromptsToolButton.isChecked()
         pointsLayerON = self.togglePointsLayerAction.isChecked()
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
@@ -6139,6 +6179,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.app.setOverrideCursor(Qt.PointingHandCursor)
         elif setAddPointCursor:
             self.app.setOverrideCursor(self.addPointsCursor)
+        elif setZoomRectCursor:
+            self.app.setOverrideCursor(Qt.CrossCursor)
         
         return {
             'setBrushCursor': setBrushCursor,
@@ -6155,6 +6197,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             'setManualTrackingCursor': setManualTrackingCursor,
             'setManualBackgroundCursor': setManualBackgroundCursor,
             'setAddPointCursor': setAddPointCursor,
+            'setZoomRectCursor': setZoomRectCursor
         }
     
     def warnAddingPointWithExistingId(self, point_id, table_endname=''):
@@ -6801,6 +6844,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
             self.freeRoiItem.closeCurve()
             self.clearObjsFreehandRegion()
+        
+        # Zoom rect mouse release 
+        elif self.isMouseDragImg1 and self.zoomRectButton.isChecked():
+            self.isMouseDragImg1 = False
+            self.zoomRectDone()
 
     def gui_clickedDelRoi(self, event, left_click, right_click):
         posData = self.data[self.pos_i]
@@ -6938,6 +6986,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         findNextMotherButtonON = self.findNextMotherButton.isChecked()
         unknownLineageButtonON = self.unknownLineageButton.isChecked()
         drawClearRegionON = self.drawClearRegionButton.isChecked()
+        zoomRectON = self.zoomRectButton.isChecked()
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -6965,6 +7014,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not middle_click and not keepObjON and not separateON
             and not manualBackgroundON and not drawClearRegionON
             and addPointsByClickingButton is None and not whitelistIDsON
+            and not zoomRectON
         )
         if isPanImageClick:
             dragImgLeft = True
@@ -7031,14 +7081,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not magicPromptsON
+            and not magicPromptsON and not zoomRectON
         )
         canBrush = (
             brushON and not curvToolON and not rulerON
             and not dragImgLeft and not eraserON and not wandON
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None and not drawClearRegionON
-            and not magicPromptsON
+            and not magicPromptsON and not zoomRectON
         )
         canErase = (
             eraserON and not curvToolON and not rulerON
@@ -7046,7 +7096,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not magicPromptsON
+            and not magicPromptsON and not zoomRectON
         )
         canRuler = (
             rulerON and not curvToolON and not brushON
@@ -7054,7 +7104,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not magicPromptsON
+            and not magicPromptsON and not zoomRectON
         )
         canWand = (
             wandON and not curvToolON and not brushON
@@ -7062,7 +7112,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not magicPromptsON
+            and not magicPromptsON and not zoomRectON
         )
         canPolyLine = (
             polyLineRoiON and not wandON and not curvToolON and not brushON
@@ -7070,6 +7120,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
             and not drawClearRegionON and not magicPromptsON
+            and not zoomRectON
         )
         canLabelRoi = (
             labelRoiON and not wandON and not curvToolON and not brushON
@@ -7078,6 +7129,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not whitelistIDsON and not magicPromptsON
+            and not zoomRectON
         )
         canKeep = (
             keepObjON and not wandON and not curvToolON and not brushON
@@ -7086,6 +7138,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not whitelistIDsON and not magicPromptsON
+            and not zoomRectON
         )
         canWhitelistIDs = (
             whitelistIDsON and not wandON and not curvToolON and not brushON
@@ -7094,6 +7147,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not keepObjON and not magicPromptsON
+            and not zoomRectON
         )
         canAddPoint = (
             (pointsLayerON or magicPromptsON)
@@ -7102,6 +7156,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON  and not keepObjON
             and not manualBackgroundON and not drawClearRegionON
+            and not zoomRectON
         )
         canAddManualBackgroundObj = (
             manualBackgroundON and not wandON and not curvToolON and not brushON
@@ -7110,6 +7165,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and addPointsByClickingButton is None
             and not keepObjON and not drawClearRegionON
             and not magicPromptsON and not whitelistIDsON
+            and not zoomRectON
         )
         canDrawClearRegion = (
             drawClearRegionON and not wandON and not curvToolON and not brushON
@@ -7117,7 +7173,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
             and not polyLineRoiON and not magicPromptsON
-            and not whitelistIDsON
+            and not whitelistIDsON and not zoomRectON
         )
         canWand = (
             magicPromptsON and not curvToolON and not brushON
@@ -7125,7 +7181,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not wandON and not whitelistIDsON
+            and not wandON and not whitelistIDsON and not zoomRectON
+        )
+        canZoomRect = (
+            zoomRectON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+            and not polyLineRoiON and not labelRoiON
+            and addPointsByClickingButton is None
+            and not manualBackgroundON and not drawClearRegionON
+            and not wandON and not whitelistIDsON and not magicPromptsON
         )
         
         # Enable dragging of the image window or the scalebar
@@ -7798,6 +7862,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 return
             
             self.annotate_unknown_lineage_action(posData, event, ydata, xdata)
+        
+        elif (left_click or right_click) and canZoomRect:
+            if left_click:
+                x, y = event.pos().x(), event.pos().y()
+                xdata, ydata = int(x), int(y)
+                
+                self.zoomRectItem.setPos((xdata, ydata))
+                
+                self.isMouseDragImg1 = True
+            else:
+                try:
+                    xRange, yRange = self.zoomRectItem.getLastRange()
+                    self.ax1.setRange(
+                        xRange=xRange, 
+                        yRange=yRange, 
+                        padding=0
+                    )
+                except Exception as err:
+                    QTimer.singleShot(100, self.autoRange)
 
     def repeat_click_and_backup(self, posData, event, ydata, xdata):
         """
@@ -8389,6 +8472,37 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if checked:
             self.autoPilotZoomToObjToggle.setChecked(False)
             self.autoPilotZoomToObjToggle.toggle()
+    
+    def zoomRectActionToggled(self, checked):
+        if checked:
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.sender())
+            self.connectLeftClickButtons()
+            self.ax1.addItem(self.zoomRectItem)
+        else:
+            self.zoomRectItem.setPos((0,0))
+            self.zoomRectItem.setSize((0,0))
+            self.ax1.removeItem(self.zoomRectItem)
+    
+    def zoomRectDone(self):
+        xRange, yRange = self.ax1.viewRange()
+        self.zoomRectItem.storeLastRange(xRange, yRange)
+        
+        ymin, xmin, ymax, xmax = self.zoomRectItem.bbox()
+        
+        self.zoomRectItem.setPos((0,0))
+        self.zoomRectItem.setSize((0,0))
+        
+        self.ax1.setRange(
+            xRange=(xmin, xmax), 
+            yRange=(ymin, ymax), 
+            padding=0
+        )
+    
+    def zoomRectCancelled(self):
+        self.isMouseDragImg1 = False
+        self.zoomRectItem.setPos((0,0))
+        self.zoomRectItem.setSize((0,0))
     
     def findID(self):
         posData = self.data[self.pos_i]
@@ -12507,8 +12621,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.zSliceScrollBar.setSliderPosition(nearest_nonzero_z)
         self.update_z_slice(nearest_nonzero_z)
 
-
-
     def disconnectLeftClickButtons(self):
         for button in self.LeftClickButtons:
             try:
@@ -12564,6 +12676,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
         self.manualBackgroundButton.toggled.connect(self.manualBackground_cb)
         self.whitelistIDsButton.toggled.connect(self.whitelistIDs_cb)
+        self.zoomRectButton.toggled.connect(self.zoomRectActionToggled)
         self.connectLeftClickButtonsPointsLayersToolbar()
 
     def brushSize_cb(self, value):
@@ -18987,6 +19100,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setMetricsFunc()
 
         self.gui_createLabelRoiItem()
+        self.gui_createZoomRectItem()
 
         self.titleLabel.setText(
             'Data successfully loaded.',
@@ -30996,6 +31110,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.labelRoiItem.setPos((0,0))
             self.labelRoiItem.setSize((0,0))
             self.freeRoiItem.clear()
+            QTimer.singleShot(300, self.autoRange)
+            return
+        
+        if self.zoomRectButton.isChecked():
+            self.zoomRectCancelled()
             QTimer.singleShot(300, self.autoRange)
             return
         

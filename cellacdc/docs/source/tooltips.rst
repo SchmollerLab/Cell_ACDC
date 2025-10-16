@@ -46,6 +46,12 @@
     :height: 16px
     :width: 16px
 
+.. |zoomRectButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/zoom_rect.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/zoom_rect.svg 
+    :alt: zoomRectButton icon
+    :height: 16px
+    :width: 16px
+
 .. |autoPilotButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/find.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/auto-pilot.svg 
     :alt: autoPilotButton icon
@@ -375,6 +381,7 @@ File control
 View options
 ------------
 * **Find ID (** |findIdAction| **"Ctrl+F"):** Find and highlight ID. Press "Esc" to clear highlighted object.
+* **Zoom to rectangle (** |zoomRectButton| **"Shift+Z"):** Draw a rectangular area with left-click in order to zoom to that area. Right-click to cycle back to previously zoomed areas.
 * **Open Slideshow (** |slideshowButton| **"Ctrl+W"):** Opens slideshow.
 * **Auto-pilot (** |autoPilotButton| **"Ctrl+Shift+A"):** Press arrow up/down or Page Up/Page Down to navigate and view segmented objects one by one.
 * **Skip forward to new object (** |skipToNewIdAction| **"Page up"):** Skip forward to the frame where a new object appears.
