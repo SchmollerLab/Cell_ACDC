@@ -6788,10 +6788,12 @@ class BaseImageItem(pg.ImageItem):
         self.minMaxValuesMapper = None
         self.minMaxValuesMapperPreproc = None
         self.minMaxValuesMapperCombined = None
+        self.minMaxValuesMapperEqualized = None
         self.pos_i = 0
         self.z = 0
         self.frame_i = 0
         self.usePreprocessed = False
+        self.useEqualized = False
         self.useCombined = False
         
         super().__init__(image, **kargs)
@@ -6827,6 +6829,21 @@ class BaseImageItem(pg.ImageItem):
                     self.minMaxValuesMapper[(pos_i, frame_i, z)] = (
                         np.nanmin(img), np.nanmax(img)
                     )
+    
+    def updateMinMaxValuesEqualizedData(
+            self, 
+            data: List['load.loadData'], 
+            pos_i: int, 
+            frame_i: int, 
+            z_slice: Union[int, str],
+        ):
+        if self.minMaxValuesMapperEqualized is None:
+            self.minMaxValuesMapperEqualized = {}
+
+        posData = data[pos_i]
+        img = posData.equalized_img_data[frame_i][z_slice]
+        key = (pos_i, frame_i, z_slice)
+        self.minMaxValuesMapperEqualized[key] = (np.nanmin(img), np.nanmax(img)) 
     
     def updateMinMaxValuesPreprocessedData(
             self, 
@@ -6872,6 +6889,8 @@ class BaseImageItem(pg.ImageItem):
             minMaxValuesMapper = self.minMaxValuesMapperPreproc
         elif self.useCombined and self.minMaxValuesMapperCombined is not None:
             minMaxValuesMapper = self.minMaxValuesMapperCombined
+        elif self.useEqualized and self.minMaxValuesMapperEqualized is not None:
+            minMaxValuesMapper = self.minMaxValuesMapperEqualized
         else:
             minMaxValuesMapper = self.minMaxValuesMapper
         
