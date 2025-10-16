@@ -744,7 +744,7 @@ class normal_division_lineage_tree:
                         parent_lines[Cell_info['parent_ID_tree']] = parent_line
                         break
                 else:
-                    raise ValueError(f"Parent ID {Cell_info['parent_ID_tree']} not found in lineage list at frame {i}.")
+                    raise ValueError(f"Parent ID {Cell_info['parent_ID_tree']} not found for cell {Cell_info['Cell_ID']}.")
             else:
                 parent_line = parent_lines[Cell_info['parent_ID_tree']]
 
@@ -873,10 +873,10 @@ class normal_division_lineage_tree:
             if 'generation_num_tree' not in df.columns:
                 continue
 
-            if ((df['generation_num_tree'] == 0).any()
-                or df['generation_num_tree'].isnull().any() 
-                or df["generation_num_tree"].isna().any() 
-                or df["generation_num_tree"].empty):
+            mask = (df['generation_num_tree'].isnull() | 
+                    df["generation_num_tree"].isna())
+
+            if mask.any() or df["generation_num_tree"].empty:
                 continue
 
             df = checked_reset_index_Cell_ID(df)
