@@ -13,6 +13,7 @@ DEBUG = False
 
 def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
                    denom:str='area_prev', IDs=None):
+    # maybe its faster to calculate IoU not via mask but via area1 / (area1 + area2 - intersection)
     IDs_prev = []
     if IDs_curr_untracked is None:
         IDs_curr_untracked = [obj.label for obj in rp]
@@ -36,8 +37,8 @@ def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
         )
 
     # prev_label_positions = {ID_prev: np.where(prev_lab == ID_prev)[0] for ID_prev in set(prev_lab) if ID_prev != 0}    
-    if denom == 'union':
-        temp_lab = np.zeros(lab.shape, dtype=bool)
+    # if denom == 'union':
+    #     temp_lab = np.zeros(lab.shape, dtype=bool)
     for j, obj_prev in enumerate(prev_rp):
         ID_prev = obj_prev.label
         IDs_prev.append(ID_prev)
@@ -60,10 +61,11 @@ def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
 
             if denom == 'union':
                 obj_curr = rp_mapper[intersect_ID]
-                temp_lab[obj_prev.slice][obj_prev.image] = True
-                temp_lab[obj_curr.slice][obj_curr.image] = True
-                denom_val = np.count_nonzero(temp_lab)
-                temp_lab[:] = False
+                # temp_lab[obj_prev.slice][obj_prev.image] = True
+                # temp_lab[obj_curr.slice][obj_curr.image] = True
+                # denom_val = np.count_nonzero(temp_lab)
+                # temp_lab[:] = False
+                denom_val = obj_prev.area + obj_curr.area - I
                 if denom_val == 0:
                     continue
             
