@@ -177,7 +177,7 @@ class mainWin(QMainWindow):
         modulesButtonsGroupBoxLayout.addWidget(segmButton)
 
         guiButton = QPushButton('  3. Launch GUI...')
-        guiButton.setIcon(QIcon(':icon.ico'))
+        guiButton.setIcon(QIcon(':logo.svg'))
         guiButton.setIconSize(QSize(iconSize, iconSize))
         guiButton.setFont(font)
         guiButton.clicked.connect(self.launchGui)
