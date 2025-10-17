@@ -218,6 +218,9 @@ def hex_to_rgb(hex):
 
 def hierarchical_weights(alphas):
     alphas = np.array([1.0, *alphas])
+    if len(alphas) == 0:
+        return alphas
+    
     weights = []
     for i, a_ref in enumerate(alphas):        
         weight = np.prod(1-alphas[i+1:]) * a_ref
@@ -226,6 +229,9 @@ def hierarchical_weights(alphas):
     return weights[::-1]
 
 def hierarchical_blend(images, weights):
+    if len(images) == 1:
+        return images[0]
+    
     # Stack all images and do weighted sum
     stacked = np.stack(images, axis=0)  # shape: (N, H, W)
     return np.tensordot(weights, stacked, axes=(0, 0))
