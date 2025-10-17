@@ -60,6 +60,7 @@ from . import github_home_url
 from . import try_input_install_package
 from . import _warnings
 from . import urls
+from . import qrc_resources_path
 from .models._cellpose_base import min_target_versions_cp
 
 ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
@@ -507,6 +508,7 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
         f'Python {python_version}',
         f'Platform: {platform.platform()}',
         f'System: {platform.system()}',
+        f'Icons from: "{qrc_resources_path}"',
     ]
     if GUI_INSTALLED and not is_cli:
         try:

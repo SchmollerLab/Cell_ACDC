@@ -1875,7 +1875,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.modeToolBar = modeToolBar
         
-        self.autoPilotZoomToObjToolbar = widgets.ToolBar("Auto-zoom to objects", self)
+        self.overlayToolbar = widgets.OverlayToolbar(parent=self)
+        self.addToolBar(Qt.TopToolBarArea, self.overlayToolbar)
+        self.overlayToolbar.setVisible(False)
+        self.overlayToolbar.sigSetTranspacency.connect(
+            self.setOverlayTransparency
+        )
+        
+        self.autoPilotZoomToObjToolbar = widgets.ToolBar(
+            "Auto-zoom to objects", self
+        )
         self.autoPilotZoomToObjToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.autoPilotZoomToObjToolbar.setMovable(False)
         self.addToolBar(Qt.TopToolBarArea, self.autoPilotZoomToObjToolbar)
@@ -3370,7 +3379,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.brushAutoFillCheckbox.toggled.connect(self.brushAutoFillToggled)
         self.brushAutoHideCheckbox.toggled.connect(self.brushAutoHideToggled)
 
-        self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
         self.imgGrad.sigAddScaleBar.connect(self.addScaleBarAction.setChecked)
         self.imgGrad.sigAddTimestamp.connect(self.addTimestampAction.setChecked)
         self.imgGrad.gradient.sigGradientChangeFinished.connect(
@@ -4078,6 +4086,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.img1.lutItem = self.imgGrad
         self.imgGrad.sigRescaleIntes.connect(self.rescaleIntensitiesLut)
         self.ax1.addImageItem(self.img1)
+        
+        # RGBA image for true transparency mode
+        self.rgbaImg1 = pg.ImageItem()
+        # self.rgbaImg1.setImage(self.emptyLab)
+        self.ax1.addImageItem(self.rgbaImg1)
 
         # Right image
         self.img2 = widgets.labImageItem()
@@ -7276,7 +7289,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
             self.setImageImg2(updateLookuptable=False)
 
-            img = self.img1.image.copy()
             how = self.drawIDsContComboBox.currentText()
             lab2D = self.get_2Dlab(posData.lab)
             self.globalBrushMask = np.zeros(lab2D.shape, dtype=bool)
@@ -11567,7 +11579,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def addTimestamp(self, checked):
         if checked:
             posData = self.data[self.pos_i]
-            Y, X = self.img1.image.shape
+            Y, X = self.img1.image.shape[:2]
             viewRange = self.ax1.viewRange()
             self.timestampDialog = apps.TimestampPropertiesDialog(parent=self)
             self.timestampDialog.show()
@@ -11594,7 +11606,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def addScaleBar(self, checked):
         if checked:
             posData = self.data[self.pos_i]
-            Y, X = self.img1.image.shape
+            Y, X = self.img1.image.shape[:2]
             viewRange = self.ax1.viewRange()
             self.scaleBarDialog = apps.ScaleBarPropertiesDialog(
                 X, Y, posData.PhysicalSizeX, parent=self
@@ -11623,7 +11635,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.timestamp.draw(posData.frame_i, **timeStampKwargs)
     
     def editScaleBarProperties(self, properties):
-        Y, X = self.img1.image.shape
+        Y, X = self.img1.image.shape[:2]
         posData = self.data[self.pos_i]
         win = apps.ScaleBarPropertiesDialog(
             X, Y, posData.PhysicalSizeX, parent=self, **properties
@@ -24021,11 +24033,54 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     xx, yy, data=ids, brush=brushes, pen=pens
                 )
 
+    def updateTransparentOverlayRgba(self, *args, **kwargs):
+        self.setOverlayImages()
+    
+    def setOverlayTransparency(self, transparent):
+        if transparent:
+            self.img1.setOpacity(0.0, applyToLinked=False)
+            self.rgbaImg1.setOpacity(1.0)
+            self.imgGrad.sigLookupTableChanged.connect(
+                self.updateTransparentOverlayRgba
+            )
+            self.imgGrad.sigLevelsChanged.connect(
+                self.updateTransparentOverlayRgba
+            )
+        else:
+            self.img1.setOpacity(0.5)
+            self.rgbaImg1.setOpacity(0.0)
+            self.imgGrad.sigLookupTableChanged.disconnect()
+            self.imgGrad.sigLevelsChanged.disconnect()
+        
+        for channel, items in self.overlayLayersItems.items():
+            imageItem, lutItem, alphaSB = items
+            if transparent:
+                alphaSB.valueChanged.disconnect()
+                alphaSB.valueChanged.connect(
+                    self.updateTransparentOverlayRgba
+                )
+                lutItem.sigLookupTableChanged.connect(
+                    self.updateTransparentOverlayRgba
+                )
+                lutItem.sigLevelsChanged.connect(
+                    self.updateTransparentOverlayRgba
+                )
+                imageItem.setOpacity(0)
+            else:
+                alphaSB.valueChanged.disconnect()
+                alphaSB.valueChanged.connect(self.setOpacityOverlayLayersItems)
+                imageItem.setOpacity(alphaSB.value()/alphaSB.maximum())
+                lutItem.sigLookupTableChanged.disconnect()
+                lutItem.sigLevelsChanged.disconnect()
+
+        self.setOverlayImages()
+        
     def overlay_cb(self, checked):
+        self.overlayToolbar.setVisible(checked)
+        
         self.UserNormAction, _, _ = self.getCheckNormAction()
         posData = self.data[self.pos_i]
         if checked:
-            self.setRetainSizePolicyLutItems()
             if posData.ol_data is None:
                 selectedChannels = self.askSelectOverlayChannel()
                 if selectedChannels is None:
@@ -24043,6 +24098,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.setOpacityOverlayLayersItems(0.5, imageItem=imageItem)
                 self.img1.setOpacity(0.5)
 
+            self.setRetainSizePolicyLutItems()
             self.normalizeRescale0to1Action.setChecked(True)
 
             self.updateAllImages()
@@ -24219,9 +24275,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         okButton = msg.warning(
             self, title, txt, buttonsTexts=('Ok')
         )
-
-    def imgGradLUT_cb(self, LUTitem):
-        pass
 
     def imgGradLUTfinished_cb(self):
         posData = self.data[self.pos_i]
@@ -24720,18 +24773,55 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if posData.ol_data is None:
             return
         
+        rgba_imgs_info = {}
         for filename in posData.ol_data:
             chName = myutils.get_chname_from_basename(
                 filename, posData.basename, remove_ext=False
             )
             if chName not in self.checkedOverlayChannels:
                 continue
-            imageItem = self.overlayLayersItems[chName][0]
+            
+            imageItem, lutItem, alphaSB = self.overlayLayersItems[chName]
 
             ol_img = self.getOlImg(filename, frame_i=frame_i)
 
-            self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
-            imageItem.setImage(ol_img)
+            if self.overlayToolbar.isTransparent():
+                alpha_val = alphaSB.value()/alphaSB.maximum()
+                ol_img = skimage.exposure.rescale_intensity(
+                    ol_img, out_range=(0.0, 1.0)
+                )
+                out_range_min, out_range_max = lutItem.getLevels()                
+                rgba_imgs_info[chName] = (ol_img, alpha_val, lutItem)
+            else:
+                self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
+                imageItem.setImage(ol_img)
+        
+        if not rgba_imgs_info:
+            return            
+        
+        alpha_values = [info[1] for info in rgba_imgs_info.values()]
+        weights = colors.hierarchical_weights(alpha_values)
+        
+        image1 = self._getImageupdateAllImages()
+        image1 = skimage.exposure.rescale_intensity(
+            image1, out_range=(0.0, 1.0)
+        )        
+        images = [image1, *[info[0] for info in rgba_imgs_info.values()]]
+        luts = [
+            self.imgGrad.gradient.getLookupTable(256, alpha=255)/255,
+            *[
+                info[2].gradient.getLookupTable(256, alpha=255)/255 
+                for info in rgba_imgs_info.values()
+            ]
+        ]
+        
+        images_rgba = []
+        for img, lut in zip(images, luts):
+            rgba = colors.grayscale_apply_lut(img, lut)            
+            images_rgba.append(rgba)
+        
+        rgba_merge = colors.hierarchical_blend(images_rgba, weights)        
+        self.rgbaImg1.setImage(rgba_merge)
         
     def initShortcuts(self):
         from . import config
@@ -28818,7 +28908,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.checkedOverlayChannels.remove(channelName)
             imageItem = self.overlayLayersItems[channelName][0]
             imageItem.clear()
+        
         self.setOverlayItemsVisible()
+        self.setRetainSizePolicyLutItems()
         self.updateAllImages()
 
     @exception_handler
@@ -30842,7 +30934,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setAllIDs()
         posData = self.data[self.pos_i]
         allIDs = posData.allIDs
-        img_shape = self.img1.image.shape
+        img_shape = self.img1.image.shape[:2]
         self.textAnnot[0].changeResolution(mode, allIDs, self.ax1, img_shape)
         self.textAnnot[1].changeResolution(mode, allIDs, self.ax2, img_shape)
         self.updateAllImages()

@@ -3000,6 +3000,13 @@ class ToolBar(QToolBar):
         label.action = self.addWidget(label)
         return label
     
+    def addCheckBox(self, text='', checked=False):
+        checkbox = QCheckBox(text)
+        checkbox.setChecked(checked)
+        checkbox.action = self.addWidget(checkbox)
+        return checkbox
+        
+    
 class ManualTrackingToolBar(ToolBar):
     sigIDchanged = Signal(int)
     sigDisableGhost = Signal()
@@ -6795,9 +6802,13 @@ class BaseImageItem(pg.ImageItem):
         self.usePreprocessed = False
         self.useEqualized = False
         self.useCombined = False
+        self._isRgba = False
         
         super().__init__(image, **kargs)
         self.autoLevelsEnabled = None
+    
+    def isRgba(self):
+        return self._isRgba
     
     def setEnableAutoLevels(self, enabled: bool):
         self.autoLevelsEnabled = enabled
@@ -6807,6 +6818,9 @@ class BaseImageItem(pg.ImageItem):
         ):
         if autoLevels is None:
             autoLevels = self.autoLevelsEnabled
+        
+        if image is not None and image.ndim == 3 and image.shape[2] in (3, 4):
+            self._isRgba = True
         
         super().setImage(image, autoLevels=autoLevels, **kargs)
         
@@ -6885,6 +6899,9 @@ class BaseImageItem(pg.ImageItem):
         self.z = z
     
     def quickMinMax(self, targetSize=1e6):
+        if self.isRgba():
+            return super().quickMinMax(targetSize=targetSize)
+            
         if self.usePreprocessed and self.minMaxValuesMapperPreproc is not None:
             minMaxValuesMapper = self.minMaxValuesMapperPreproc
         elif self.useCombined and self.minMaxValuesMapperCombined is not None:
@@ -7049,10 +7066,15 @@ class ParentImageItem(BaseImageItem):
             self.linkedImageItem.updateImage(*args, **kargs)
         return super().updateImage(*args, **kargs)
     
-    def setOpacity(self, value):
+    def setOpacity(self, value, applyToLinked=True):
         super().setOpacity(value)
-        if self.linkedImageItem is not None:
-            self.linkedImageItem.setOpacity(value)
+        if not applyToLinked:
+            return
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.setOpacity(value)
     
     def setLookupTable(self, lut):
         super().setLookupTable(lut)
@@ -10910,3 +10932,33 @@ def get_min_width_for_no_scrollbar(list_widget: QListWidget) -> int:
     # Add padding for icon, scrollbar margin, and frame
     padding = 30  # Adjust as needed (depends on style and icons)
     return max_width + padding
+
+class OverlayToolbar(ToolBar):
+    sigSetTranspacency = Signal(bool)
+    
+    def __init__(self, name='Overlay tools', parent=None):
+        
+        super().__init__(name, parent)
+        
+        self.guiWin = parent
+        
+        self.setContextMenuPolicy(Qt.PreventContextMenu)
+        
+        self.addSeparator()
+        
+        self.transparencyCheckbox = self.addCheckBox(text='True transparency')
+        
+        self.transparencyCheckbox.setToolTip(
+            'Activate to achieve true pixel-wise transparency where '
+            'the pixel intensity is 0 or set to 0 using the '
+            'LUT sliders on the left of the images.\n\n'
+            'Since it is significantly slower, we recommended to activate this '
+            'only if you need to export images for figures.'
+        )
+        
+        self.addSeparator()
+        
+        self.transparencyCheckbox.toggled.connect(self.sigSetTranspacency.emit)
+    
+    def isTransparent(self):
+        return self.transparencyCheckbox.isChecked()
