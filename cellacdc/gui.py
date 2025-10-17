@@ -6854,6 +6854,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.clickedOnBud = False
             self.BudMothTempLine.setData([], [])
         
+        # Draw clear region mouse release
         elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
             self.freeRoiItem.closeCurve()
             self.clearObjsFreehandRegion()
@@ -11279,7 +11280,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.polyLineRoi.handleSize = 7
         self.polyLineRoi.points = []
-        self.ax1.addItem(self.polyLineRoi)
+        key = uuid.uuid4()
+        self.ax1.addDelRoiItem(self.polyLineRoi, key)
     
     def addPointsPolyLineRoi(self, closed=False):
         self.polyLineRoi.setPoints(self.polyLineRoi.points, closed=closed)
@@ -25463,7 +25465,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         posData = self.data[self.pos_i]
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-        idx = delROIs_info['rois'].index(roi)
+        try:
+            idx = delROIs_info['rois'].index(roi)
+        except Exception as err:
+            try:
+                ax.removeDelRoiItem(roi)
+            except Exception as err:
+                pass
+            return
         delIDs = delROIs_info['delIDsROI'][idx]
         delMask = delROIs_info['delMasks'][idx]
         if how.find('nothing') != -1:
