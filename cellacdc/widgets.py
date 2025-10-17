@@ -7066,10 +7066,15 @@ class ParentImageItem(BaseImageItem):
             self.linkedImageItem.updateImage(*args, **kargs)
         return super().updateImage(*args, **kargs)
     
-    def setOpacity(self, value):
+    def setOpacity(self, value, applyToLinked=True):
         super().setOpacity(value)
-        if self.linkedImageItem is not None:
-            self.linkedImageItem.setOpacity(value)
+        if not applyToLinked:
+            return
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.setOpacity(value)
     
     def setLookupTable(self, lut):
         super().setLookupTable(lut)

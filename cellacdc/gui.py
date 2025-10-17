@@ -4086,6 +4086,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.img1.lutItem = self.imgGrad
         self.imgGrad.sigRescaleIntes.connect(self.rescaleIntensitiesLut)
         self.ax1.addImageItem(self.img1)
+        
+        # RGBA image for true transparency mode
+        self.rgbaImg1 = pg.ImageItem()
+        # self.rgbaImg1.setImage(self.emptyLab)
+        self.ax1.addImageItem(self.rgbaImg1)
 
         # Right image
         self.img2 = widgets.labImageItem()
@@ -7284,7 +7289,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
             self.setImageImg2(updateLookuptable=False)
 
-            img = self.img1.image.copy()
             how = self.drawIDsContComboBox.currentText()
             lab2D = self.get_2Dlab(posData.lab)
             self.globalBrushMask = np.zeros(lab2D.shape, dtype=bool)
@@ -11575,7 +11579,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def addTimestamp(self, checked):
         if checked:
             posData = self.data[self.pos_i]
-            Y, X = self.img1.image.shape
+            Y, X = self.img1.image.shape[:2]
             viewRange = self.ax1.viewRange()
             self.timestampDialog = apps.TimestampPropertiesDialog(parent=self)
             self.timestampDialog.show()
@@ -11602,7 +11606,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def addScaleBar(self, checked):
         if checked:
             posData = self.data[self.pos_i]
-            Y, X = self.img1.image.shape
+            Y, X = self.img1.image.shape[:2]
             viewRange = self.ax1.viewRange()
             self.scaleBarDialog = apps.ScaleBarPropertiesDialog(
                 X, Y, posData.PhysicalSizeX, parent=self
@@ -11631,7 +11635,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.timestamp.draw(posData.frame_i, **timeStampKwargs)
     
     def editScaleBarProperties(self, properties):
-        Y, X = self.img1.image.shape
+        Y, X = self.img1.image.shape[:2]
         posData = self.data[self.pos_i]
         win = apps.ScaleBarPropertiesDialog(
             X, Y, posData.PhysicalSizeX, parent=self, **properties
@@ -24033,7 +24037,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setOverlayImages()
     
     def setOverlayTransparency(self, transparent):
-        self.img1.setOpacity(1.0)
+        if transparent:
+            self.img1.setOpacity(0.0, applyToLinked=False)
+            self.rgbaImg1.setOpacity(1.0)
+            self.imgGrad.sigLookupTableChanged.connect(
+                self.updateTransparentOverlayRgba
+            )
+            self.imgGrad.sigLevelsChanged.connect(
+                self.updateTransparentOverlayRgba
+            )
+        else:
+            self.img1.setOpacity(0.5)
+            self.rgbaImg1.setOpacity(0.0)
+            self.imgGrad.sigLookupTableChanged.disconnect()
+            self.imgGrad.sigLevelsChanged.disconnect()
         
         for channel, items in self.overlayLayersItems.items():
             imageItem, lutItem, alphaSB = items
@@ -24042,14 +24059,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 alphaSB.valueChanged.connect(
                     self.updateTransparentOverlayRgba
                 )
-                
+                lutItem.sigLookupTableChanged.connect(
+                    self.updateTransparentOverlayRgba
+                )
+                lutItem.sigLevelsChanged.connect(
+                    self.updateTransparentOverlayRgba
+                )
                 imageItem.setOpacity(0)
             else:
                 alphaSB.valueChanged.disconnect()
                 alphaSB.valueChanged.connect(self.setOpacityOverlayLayersItems)
                 imageItem.setOpacity(alphaSB.value()/alphaSB.maximum())
+                lutItem.sigLookupTableChanged.disconnect()
+                lutItem.sigLevelsChanged.disconnect()
 
-        self.updateAllImages()
+        self.setOverlayImages()
         
     def overlay_cb(self, checked):
         self.overlayToolbar.setVisible(checked)
@@ -24796,12 +24820,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             rgba = colors.grayscale_apply_lut(img, lut)            
             images_rgba.append(rgba)
         
-        rgba_merge = colors.hierarchical_blend(images_rgba, weights)
-        
-        # if self.debug:
-        #     imshow(rgba_merge)
-        
-        self.img1.setImage(rgba_merge)
+        rgba_merge = colors.hierarchical_blend(images_rgba, weights)        
+        self.rgbaImg1.setImage(rgba_merge)
         
     def initShortcuts(self):
         from . import config
@@ -30914,7 +30934,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setAllIDs()
         posData = self.data[self.pos_i]
         allIDs = posData.allIDs
-        img_shape = self.img1.image.shape
+        img_shape = self.img1.image.shape[:2]
         self.textAnnot[0].changeResolution(mode, allIDs, self.ax1, img_shape)
         self.textAnnot[1].changeResolution(mode, allIDs, self.ax2, img_shape)
         self.updateAllImages()
