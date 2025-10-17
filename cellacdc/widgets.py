@@ -3325,6 +3325,44 @@ class ToolButtonCustomColor(rightClickToolButton):
         finally:
             p.end()
 
+class GradientToolButton(rightClickToolButton):
+    def __init__(self, colors=((255, 0, 0),), parent=None):
+        super().__init__(parent=parent)
+        self._qcolors = [pg.mkColor(c) for c in colors]
+        if len(self._qcolors) < 2:
+            self._qcolors.append(self._qcolors[0])
+    
+    def paintEvent(self, event):
+        super().paintEvent(event)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        pen = pg.mkPen(color=self._qcolors[-1], width=2)
+
+        pad = 7
+        
+        rect = self.rect().adjusted(pad, pad, -pad, -pad)  # A little padding
+
+        # Gradient: bottom to top
+        gradient = QLinearGradient(
+            QPointF(rect.bottomLeft()), QPointF(rect.topLeft())
+        )
+        
+         # Set color stops evenly distributed
+        num_colors = len(self._qcolors)
+        for i, color in enumerate(self._qcolors):
+            gradient.setColorAt(i / (num_colors - 1), color)
+        
+        if not self.isChecked():
+            painter.setOpacity(0.4)
+
+        painter.setBrush(gradient)
+        painter.setPen(pen)
+        painter.drawRect(rect)
+        
+        painter.end()
+
 class PointsLayerToolButton(ToolButtonCustomColor):
     sigEditAppearance = Signal(object)
     sigShowIdsToggled = Signal(object, bool)
@@ -5568,6 +5606,7 @@ class ToggleVisibilityCheckBox(QCheckBox):
 
 class myHistogramLUTitem(baseHistogramLUTitem):
     sigGradientMenuEvent = Signal(object)
+    sigGradientChanged = Signal(object)
     sigTickColorAccepted = Signal(object)
     sigAddScaleBar = Signal(bool)
     sigAddTimestamp = Signal(bool)
@@ -5728,6 +5767,10 @@ class myHistogramLUTitem(baseHistogramLUTitem):
     
     def emitAddTimestamp(self):
         self.sigAddTimestamp.emit(self.addTimestampAction.isChecked())
+    
+    def gradientChanged(self):
+        super().gradientChanged()
+        self.sigGradientChanged.emit(self)
     
     def gradientMenuEventFilter(self, object, event):
         if event.type() == QEvent.Type.MouseMove:
@@ -10946,7 +10989,9 @@ class OverlayToolbar(ToolBar):
         
         self.addSeparator()
         
-        self.transparencyCheckbox = self.addCheckBox(text='True transparency')
+        self.transparencyCheckbox = self.addCheckBox(
+            text='True transparency (RGBA composite)'
+        )
         
         self.transparencyCheckbox.setToolTip(
             'Activate to achieve true pixel-wise transparency where '
@@ -10958,7 +11003,57 @@ class OverlayToolbar(ToolBar):
         
         self.addSeparator()
         
+        self.singleChannelCheckbox = self.addCheckBox(
+            text='Single channel'
+        )
+        
+        self.singleChannelCheckbox.setToolTip(
+            'When single channel mode is activated, selecting a channel '
+            'will display only that channel in the overlay.'
+        )
+        
         self.transparencyCheckbox.toggled.connect(self.sigSetTranspacency.emit)
     
     def isTransparent(self):
         return self.transparencyCheckbox.isChecked()
+    
+    def isSingleChannel(self):
+        return self.singleChannelCheckbox.isChecked()
+
+class OverlayChannelToolButton(GradientToolButton):
+    def __init__(
+            self, 
+            channel_name: str, 
+            lut_item: myHistogramLUTitem, 
+            shortcut='0',
+            parent=None,
+        ):
+        super().__init__(
+            colors=lut_item.gradient.getLookupTable(256), 
+            parent=parent
+        )
+        self._channel_name = channel_name
+        
+        lut_item.sigGradientChanged.connect(self.updateColors)
+        
+        self.setToolTip(
+            f'Show/hide "{channel_name}" channel\n\n'
+            f'Shortcut: {shortcut}'
+        )
+        
+        self.setCheckable(True)
+    
+    def channelName(self):
+        return self._channel_name
+    
+    def updateColors(self, lut_item):
+        colors = lut_item.gradient.getLookupTable(256)
+        self._qcolors = [pg.mkColor(c) for c in colors]
+        self.update()
+    
+    def setVisible(self, visible: bool):
+        super().setVisible(visible)
+        if not hasattr(self, 'action'):
+            return
+        
+        self.action.setVisible(visible)
