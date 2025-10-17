@@ -1881,6 +1881,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.overlayToolbar.sigSetTranspacency.connect(
             self.setOverlayTransparency
         )
+        self.overlayToolbar.sigSetSingleChannel.connect(
+            self.setOverlaySingleChannel
+        )
         
         self.autoPilotZoomToObjToolbar = widgets.ToolBar(
             "Auto-zoom to objects", self
@@ -4389,8 +4392,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.allOverlayToolbuttonsByIdx = {
             0: self.baseLayerToolbutton
         }
-        self.overlayToolbar.addWidget(self.baseLayerToolbutton)
+        self.baseLayerToolbutton.action = (
+            self.overlayToolbar.addWidget(self.baseLayerToolbutton)
+        )
         self.overlayLayersItems = {}
+        self.overlayToolbarAreChannelsChecked = {}
         fluoChannels = [ch for ch in self.ch_names if ch != self.user_ch_name]
         for c, ch in enumerate(fluoChannels):
             overlayItems = self.getOverlayItems(ch, c+1)                
@@ -4402,7 +4408,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.allOverlayToolbuttons[ch] = toolbutton
             self.allOverlayToolbuttonsByIdx[c+1] = toolbutton
 
-        self.overlayToolbar.addSeparator()
+        self.overlayToolbuttonsSep = self.overlayToolbar.addSeparator()
         self.plotsCol = len(self.ch_names)
 
     def gui_getLostObjScatterItem(self):
@@ -24069,26 +24075,38 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     xx, yy, data=ids, brush=brushes, pen=pens
                 )
 
+    def setOverlaySingleChannel(self, *args, **kwargs):
+        if self.overlayToolbar.isSingleChannel():
+            self.overlayToolbarAreChannelsChecked = {
+                channel:toolbutton.isChecked() 
+                for channel, toolbutton in self.allOverlayToolbuttons.items()
+            }
+            firstActiveToolbutton = [
+                toolbutton for toolbutton in self.allOverlayToolbuttons.values()
+                if toolbutton.isChecked()
+            ][0]
+            firstActiveToolbutton.click()
+        else:
+            for ch, checked in self.overlayToolbarAreChannelsChecked.items():
+                toolbutton = self.allOverlayToolbuttons[ch]
+                toolbutton.setChecked(checked)
+            
+            self.setOverlayItemsOpacities()
+    
     def updateTransparentOverlayRgba(self, *args, **kwargs):
         self.setOverlayImages()
     
-    def setOverlayTransparency(self, transparent):
+    def setOverlayTransparency(self, transparent: bool):
+        self.rgbaImg1.setOpacity(float(transparent))
+        
         if transparent:
             self.img1.setOpacity(0.0, applyToLinked=False)
-            self.rgbaImg1.setOpacity(1.0)
             self.imgGrad.sigLookupTableChanged.connect(
                 self.updateTransparentOverlayRgba
             )
             self.imgGrad.sigLevelsChanged.connect(
                 self.updateTransparentOverlayRgba
             )
-            # self.ax1.addImageItem(self.rgbaImg1)
-        else:
-            self.img1.setOpacity(0.5)
-            self.rgbaImg1.setOpacity(0.0)
-            self.imgGrad.sigLookupTableChanged.disconnect()
-            self.imgGrad.sigLevelsChanged.disconnect()
-            # self.ax1.removeItem(self.rgbaImg1)
         
         for channel, items in self.overlayLayersItems.items():
             imageItem, lutItem, alphaSB = items[:3]
@@ -24104,13 +24122,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     self.updateTransparentOverlayRgba
                 )
                 imageItem.setOpacity(0)
-            else:
-                alphaSB.valueChanged.disconnect()
-                alphaSB.valueChanged.connect(self.setOpacityOverlayLayersItems)
-                imageItem.setOpacity(alphaSB.value()/alphaSB.maximum())
-                lutItem.sigLookupTableChanged.disconnect()
-                lutItem.sigLevelsChanged.disconnect()
 
+        if not transparent:
+            self.setOverlayItemsOpacities()
+        
         self.setOverlayImages()
         
     def overlay_cb(self, checked):
@@ -28511,6 +28526,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         return msg.cancel
     
+    def removeOverlayItems(self):
+        self.lutItemsLayout.clear()
+        
+        try:
+            for toolbutton in self.allOverlayToolbuttonsByIdx.values():
+                self.overlayToolbar.removeAction(toolbutton.action)
+            
+            self.overlayToolbuttonsSep.removeFromToolbar()
+        except Exception as err:
+            pass
+        
     def reInitGui(self):
         cancel = self.checkAskSavePointsLayers()
         if cancel:
@@ -28541,7 +28567,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setMeasWinState = None
         self.addPointsWin = None
         self.showPropsDockButton.setDisabled(True)
-        self.lutItemsLayout.clear()
+        self.removeOverlayItems()
         self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)
         
         self.reinitWidgetsPos()
@@ -29880,7 +29906,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if n_checked_buttons == 0 or self.overlayToolbar.isSingleChannel():
             # At least one button must be checked
             toolbutton.setChecked(True)
-            n_checked_buttons = 1
         
         if self.overlayToolbar.isSingleChannel():
             # Exclusive buttons 
@@ -29893,6 +29918,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.overlayToolbar.isTransparent():            
             self.setOverlayImages()
             return
+        
+        self.setOverlayItemsOpacities()
+    
+    def setOverlayItemsOpacities(self):
+        n_checked_buttons = (
+            sum([b.isChecked() for b in self.allOverlayToolbuttons.values()])
+        )
         
         isSingleChannel = (
             self.overlayToolbar.isSingleChannel()
@@ -29918,7 +29950,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             else:
                 op_val = 0.0
             
-            otherImageItem.setOpacity(op_val)
+            otherImageItem.setOpacity(op_val, applyToLinked=False)
             
             if alphaScrollbar is None:
                 continue

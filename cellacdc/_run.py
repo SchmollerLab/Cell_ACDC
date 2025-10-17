@@ -514,23 +514,39 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     if scheme == 'light':
         from . import qrc_resources_light_path as qrc_resources_scheme_path
         qrc_resources_scheme = import_module('cellacdc.qrc_resources_light')
-        qt_resource_data_scheme = qrc_resources_scheme.qt_resource_data
+        qrc_resource_data_scheme = qrc_resources_scheme.qt_resource_data
     else:
         from . import qrc_resources_dark_path as qrc_resources_scheme_path
         qrc_resources_scheme = import_module('cellacdc.qrc_resources_dark')
-        qt_resource_data_scheme = qrc_resources_scheme.qt_resource_data
+        qrc_resource_data_scheme = qrc_resources_scheme.qt_resource_data
     
-    if qt_resource_data_scheme != acdc_qrc_resources.qt_resource_data:
+    qrc_resource_version_required = 1
+    try:
+        qrc_resource_version_required = qrc_resources_scheme.version
+    except Exception as err:
+        pass
+    
+    current_qrc_resource_version = 1
+    try:
+        current_qrc_resource_version = acdc_qrc_resources.version
+    except Exception as err:
+        pass
+    
+    is_copy_qrc_required = (
+        qrc_resource_data_scheme != acdc_qrc_resources.qt_resource_data
+        or qrc_resource_version_required != current_qrc_resource_version
+    )
+    
+    if is_copy_qrc_required:
         from . import _copy_qrc_resources_file
-        proceed = _copy_qrc_resources_file(qrc_resources_scheme_path)
-        if not proceed:
-            print('-'*100)
-            print(
-                'Cell-ACDC had to reset the GUI icons. '
-                'Please re-start the application. Thank you for your patience!'
-            )
-            print('-'*100)
-            exit()
+        _copy_qrc_resources_file(qrc_resources_scheme_path)
+        print('*'*100)
+        print(
+            'Cell-ACDC had to update the GUI icons. '
+            'Please re-start the application. Thank you for your patience!'
+        )
+        print('^'*100)
+        exit()
             
     from . import load
     scheme = get_color_scheme()
