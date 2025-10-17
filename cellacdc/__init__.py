@@ -222,7 +222,8 @@ def _copy_qrc_resources_file(
         return True
     except Exception as err:
         # Copy to user folder because copying to cell-acdc location failed 
-        # possibly PermissionError
+        # possibly PermissionError --> return False to stop application 
+        # and prompt the user to restart Cell-ACDC
         shutil.copyfile(
             src_qrc_resources_scheme_path, user_dst_qrc_resources_path
         )

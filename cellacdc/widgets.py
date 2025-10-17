@@ -2950,6 +2950,31 @@ def macShortcutToWindows(shortcut: str):
     s = shortcut.replace('Command', 'Ctrl')
     return s
 
+class ToolBarSeparator:
+    def __init__(self, width=5, toolbar: QToolBar=None):
+        self._parts = (
+            QHWidgetSpacer(width=width), 
+            QVLine(),
+            QHWidgetSpacer(width=width)
+        )
+        self._actions = []
+        self._toolbar = None
+        if toolbar is not None:
+            self.addToToolbar(toolbar)
+    
+    def addToToolbar(self, toolbar):
+        self._toolbar = toolbar
+        for part in self._parts:
+            action = toolbar.addWidget(part)
+            self._actions.append(action)
+    
+    def removeFromToolbar(self):
+        if self._toolbar is None:
+            return
+        
+        for action in self._actions:
+            self._toolbar.removeAction(action)
+
 class ToolBar(QToolBar):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -2963,9 +2988,11 @@ class ToolBar(QToolBar):
                 break
     
     def addSeparator(self, width=5):
-        self.addWidget(QHWidgetSpacer(width=width))
-        self.addWidget(QVLine())
-        self.addWidget(QHWidgetSpacer(width=width))
+        separator = ToolBarSeparator(width=width, toolbar=self)
+        return separator
+    
+    def removeSeparator(self, separator):
+        separator.removeFromToolbar()
     
     def addSpinBox(self, label=''):
         spinbox = SpinBox(disableKeyPress=True)
@@ -5206,6 +5233,9 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
 
         # hide histogram tool
         self.vb.hide()
+        
+        # Disable moving the axis up and down
+        self.axis.unlinkFromView()
 
         # Disable histogram default context Menu event
         self.vb.raiseContextMenu = lambda x: None
@@ -7003,6 +7033,9 @@ class OverlayImageItem(pg.ImageItem):
             autoLevels = self.autoLevelsEnabled
         
         super().setImage(image, autoLevels=autoLevels, **kargs)
+        
+    def setOpacity(self, value, **kwargs):
+        super().setOpacity(value)
 
 class ParentImageItem(BaseImageItem):
     def __init__(
@@ -10978,6 +11011,7 @@ def get_min_width_for_no_scrollbar(list_widget: QListWidget) -> int:
 
 class OverlayToolbar(ToolBar):
     sigSetTranspacency = Signal(bool)
+    sigSetSingleChannel = Signal(bool)
     
     def __init__(self, name='Overlay tools', parent=None):
         
@@ -11013,6 +11047,9 @@ class OverlayToolbar(ToolBar):
         )
         
         self.transparencyCheckbox.toggled.connect(self.sigSetTranspacency.emit)
+        self.singleChannelCheckbox.toggled.connect(
+            self.sigSetSingleChannel.emit
+        )
     
     def isTransparent(self):
         return self.transparencyCheckbox.isChecked()

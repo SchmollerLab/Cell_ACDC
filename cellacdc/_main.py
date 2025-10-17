@@ -290,6 +290,7 @@ class mainWin(QMainWindow):
             )
             self.darkModeToggle.warnMessageBox = True
         self.setStatusBarRestartCellACDC()
+        self.darkModeToggle.setDisabled(True)
     
     def setStatusBarRestartCellACDC(self):
         self.statusBarLayout.addWidget(QLabel(html_utils.paragraph(
