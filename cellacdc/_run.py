@@ -538,14 +538,9 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     )
     
     if is_copy_qrc_required:
-        from . import _copy_qrc_resources_file
+        from . import _copy_qrc_resources_file, _warnings
         _copy_qrc_resources_file(qrc_resources_scheme_path)
-        print('*'*100)
-        print(
-            'Cell-ACDC had to update the GUI icons. '
-            'Please re-start the application. Thank you for your patience!'
-        )
-        print('^'*100)
+        _warnings.warnRestartAcdcIconsUpdated()
         exit()
             
     from . import load
