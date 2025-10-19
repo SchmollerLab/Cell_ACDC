@@ -17076,8 +17076,10 @@ class SetCustomLevelsLut(QBaseDialog):
     sigLevelsChanged = Signal(object)
     
     def __init__(
-            self, init_min_value=None, 
+            self, 
+            init_min_value=None, 
             init_max_value=None, 
+            minimum_min_value=0,
             maximum_max_value=None, 
             parent=None
         ):
@@ -17093,31 +17095,28 @@ class SetCustomLevelsLut(QBaseDialog):
             title='Mimimum', 
             title_loc='top', 
         )
-        self.minLevelSlider.setMinimum(0)
-        if init_max_value is not None:
-            self.minLevelSlider.setMaximum(init_max_value)
-
-        if maximum_max_value is not None:
-            self.minLevelSlider.setMaximum(maximum_max_value)
+        self.minLevelSlider.setMinimum(minimum_min_value)
             
         if init_min_value is not None:
             self.minLevelSlider.setValue(init_min_value)
+        
         layout.addWidget(self.minLevelSlider)
         
         self.maxLevelSlider = widgets.sliderWithSpinBox(
             title='Maximum', 
             title_loc='top', 
         )
-        self.maxLevelSlider.setMinimum(0)
+        self.maxLevelSlider.setMinimum(minimum_min_value)
         if init_max_value is not None:
             self.maxLevelSlider.setValue(init_max_value)
         
         if maximum_max_value is not None:
             self.maxLevelSlider.setMaximum(maximum_max_value)
+            self.minLevelSlider.setMaximum(maximum_max_value)
             
         layout.addWidget(self.maxLevelSlider)
         
-        self.maxLevelSlider.sigValueChange.connect(self.emitLevelsChanged)
+        self.minLevelSlider.sigValueChange.connect(self.emitLevelsChanged)
         self.maxLevelSlider.sigValueChange.connect(self.emitLevelsChanged)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()

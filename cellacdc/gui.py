@@ -3004,18 +3004,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             )
             return 
 
+        posData = self.data[self.pos_i]
         if imageItem is None:
             imageItem = self.img1
             channel = self.user_ch_name
+            image_data = posData.img_data
         else:
             channel = imageItem.channelName
+            _, filename = self.getPathFromChName(channel, posData)
+            image_data = posData.fluo_data_dict[filename]
         
         triggeredByUser = True
         if action is None:
             triggeredByUser = False
             action = imageItem.lutItem.rescaleActionGroup.checkedAction()
         
-        posData = self.data[self.pos_i]
         how = action.text()
         
         if how == 'Rescale each 2D image':
@@ -3035,30 +3038,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             levels_key = (how, posData.frame_i)
             levels = lutLevelsCh.get(levels_key)
             if levels is None:
-                image_data = posData.img_data[posData.frame_i]
                 levels = (image_data.min(), image_data.max())
             lutLevelsCh[levels_key] = levels
             imageItem.setLevels(levels)
         elif how == 'Rescale across time frames':            
             imageItem.setEnableAutoLevels(False)
-            
             levels_key = (how, None)
             levels = lutLevelsCh.get(levels_key)
             if levels is None:
-                image_data = posData.img_data
                 levels = (image_data.min(), image_data.max())
                 
             lutLevelsCh[levels_key] = levels
             imageItem.setLevels(levels)
         elif how == 'Choose custom levels...':
             if triggeredByUser:
-                image_data = posData.img_data
                 current_min, current_max = imageItem.getLevels() 
                 dtype_max = np.iinfo(image_data.dtype).max
+                max_value = image_data.max()
+                min_value = image_data.min()
                 win = apps.SetCustomLevelsLut(
                     init_min_value=current_min,
                     init_max_value=current_max,
-                    maximum_max_value=dtype_max,
+                    maximum_max_value=max_value,
+                    minimum_min_value=min_value,
                     parent=self
                 )
                 win.sigLevelsChanged.connect(
@@ -3079,7 +3081,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             levels_key = (how, None)
             levels = lutLevelsCh.get(levels_key)
             if levels is None:
-                image_data = posData.img_data
                 dtype_max = np.iinfo(image_data.dtype).max
                 levels = (0, dtype_max)
             lutLevelsCh[levels_key] = levels
@@ -14197,7 +14198,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         success = False
         try:
             n = int(event.text())
-            printl(n)
             toolbutton = self.allOverlayToolbuttonsByIdx.get(n, None)
             toolbutton.click()
             success = True
@@ -14246,8 +14246,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            posData = self.data[self.pos_i]
-            printl(posData.ol_data.keys())
+            printl(self.isDataLoaded)
 
         if not self.isDataLoaded:
             self.logger.warning(
