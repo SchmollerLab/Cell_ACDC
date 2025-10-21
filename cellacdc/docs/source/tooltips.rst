@@ -397,7 +397,7 @@ Edit tools: Segmentation and tracking
 -------------------------------------
 * **Brush (** |brushButton| **"B"):** 
     * Edit segmentation labels with a circular brush.
-    * Increase brush size with "UP/DOWN" arrows on the keyboard.  
+    * Increase/decrease brush size with "UP/DOWN" arrows on the keyboard.  
     * Default behaviour:
         * Painting on the background will create a new object.
         * Edit an existing label by starting to paint on the object (brush cursor changes color when hovering an existing label).
@@ -414,7 +414,7 @@ Edit tools: Segmentation and tracking
         * NOTE: use the power brush to draw ABOVE the existing objects.
 * **Eraser (** |eraserButton| **"X"):**
     * Erase segmentation objects with a circular eraser.
-    * Increase eraser size with "UP/DOWN" arrows on the keyboard.
+    * Increase/decrease eraser size with "UP/DOWN" arrows on the keyboard.
     * Default behaviour:
         * Starting to erase from the background (cursor is a red circle) will erase any labels you hover above.
         * Starting to erase from a specific label will erase only that label (cursor is a circle with the color of the label).
