@@ -8376,11 +8376,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 return False
             
             isRightDifferentAnnot = self.rightBottomGroupbox.isChecked()
-            areLinesRequestedRight = self.annotCcaInfoCheckboxRight.isChecked()
+            areLinesRequestedRight = (
+                self.annotCcaInfoCheckboxRight.isChecked()
+                or self.drawMothBudLinesCheckboxRight.isChecked()
+            )
+            
             if isRightDifferentAnnot and areLinesRequestedRight:
                 return True
         
-            areLinesRequestedLeft = self.drawMothBudLinesCheckboxRight.isChecked()
+            areLinesRequestedLeft = (
+                self.drawMothBudLinesCheckbox.isChecked()
+                or self.annotCcaInfoCheckbox.isChecked()
+            )
             if not isRightDifferentAnnot and areLinesRequestedLeft:
                 return True
         return False
@@ -22233,7 +22240,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.drawObjMothBudLines(obj, posData, ax=1)
 
     def drawObjMothBudLines(self, obj, posData, ax=0):
-        if not self.areMothBudLinesRequested(ax):
+        areMothBudLinesRequested = self.areMothBudLinesRequested(ax)
+        if not areMothBudLinesRequested:
             return
         
         if posData.cca_df is None:
