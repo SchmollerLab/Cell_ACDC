@@ -830,7 +830,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             
             self.chNamesToProcess.append(chName)
             self.calc_for_each_zslice_mapper[chName] = (
-                chNameGroupbox.isCalcForEachZsliceRequested()
+                chNameGroupbox.calcForEachZsliceRequested
             )
             last_selected_groupboxes_measurements[refChannel].append(
                 chNameGroupbox.title()
@@ -845,7 +845,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     favourite_funcs.add(func_name)
 
         self.calc_size_for_each_zslice = (
-            setMeasurementsDialog.sizeMetricsQGBox.isCalcForEachZsliceRequested()
+            setMeasurementsDialog.sizeMetricsQGBox.calcForEachZsliceRequested
         )
         if not setMeasurementsDialog.sizeMetricsQGBox.isChecked():
             self.sizeMetricsToSave = []
@@ -1509,7 +1509,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
         if not proceed:
             return []
-
+        
         df = measurements.add_size_metrics(
             df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, 
             vox_to_fl_3D, calc_size_for_each_zslice=calc_size_for_each_zslice
@@ -1656,7 +1656,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             self.ch_indipend_custom_func_params
         )
         images_path = posData.images_path
-        
+
         # Iterate channels
         iter_channels = zip(
             posData.loadedChNames, 

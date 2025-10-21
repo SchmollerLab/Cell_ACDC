@@ -4493,6 +4493,26 @@ def are_acdc_dfs_equal(df_left, df_right):
     return True
 
 def is_pos_folderpath(folderpath):
+    """Determine if a path is a valid Cell-ACDC Position folder
+
+    Parameters
+    ----------
+    folderpath : PathLike
+        Path to check
+
+    Returns
+    -------
+    bool
+        True if the path is a valid Cell-ACDC Position folder, False otherwise
+    
+    Notes
+    -----
+    A valid Cell-ACDC Position folder must:
+        - Have a name matching the pattern 'Position_<number>'
+        - Be a directory
+        - Contain an 'Images' subdirectory
+        - The 'Images' subdirectory must not be empty
+    """    
     foldername = os.path.basename(folderpath)
     is_valid_pos_folder = (
         re.search(r'^Position_(\d+)$', foldername) is not None

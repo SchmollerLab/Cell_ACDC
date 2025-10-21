@@ -90,6 +90,7 @@ from .acdc_regex import float_regex, is_alphanumeric_filename
 from . import _base_widgets
 from . import io
 from . import cca_functions
+from . import path
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -18062,3 +18063,186 @@ class QTreeDialog(QBaseDialog):
         self.selectedItem = self.treeWidget.currentItem()
         self.selectedText = self.selectedItem.text(0)
         self.close()
+
+class SelectFoldersToAnalyse(QBaseDialog):
+    def __init__(
+            self, parent=None, 
+            preSelectedPaths=None, 
+            onlyExpPaths=False, 
+            scanFolderTree=True,
+            instructionsText='Select experiment folders to analyse'
+        ):
+        super().__init__(parent)
+        
+        self.cancel = True
+        self.onlyExpPaths = onlyExpPaths
+        self.setWindowTitle('Select experiments to analyse')
+        self.scanTree = scanFolderTree
+        
+        mainLayout = QVBoxLayout()
+        
+        instructionsText = html_utils.paragraph(
+            f'{instructionsText}<br><br>'
+            'Drag and drop folders or click on <code>Add folder</code> button to '
+            '<b>add</b> as many <b>folders</b> '
+            'as needed.<br>', font_size='14px'
+        )
+        instructionsLabel = QLabel(instructionsText)
+        instructionsLabel.setAlignment(Qt.AlignCenter)
+        
+        infoText = html_utils.paragraph(            
+            'A <b>valid folder</b> is either a <b>Position</b> folder, '
+            'or an <b>experiment folder</b> (containing Position_n folders),<br>'
+            'or any folder that contains <b>multiple experiment folders</b>.<br><br>'
+            
+            'In the last case, Cell-ACDC will automatically scan the entire tree of '
+            'sub-directories<br>'
+            'and will add all experiments having the right folder structure.<br>',
+            font_size='12px'
+        )
+        infoLabel = QLabel(infoText)
+        infoLabel.setAlignment(Qt.AlignCenter)
+        
+        self.listWidget = widgets.listWidget()
+        self.listWidget.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
+        if preSelectedPaths is not None:
+            self.listWidget.addItems(preSelectedPaths)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        delButton = widgets.delPushButton('Remove selected path(s)')
+        browseButton = widgets.browseFileButton(
+            'Add folder...', openFolder=True, 
+            start_dir=myutils.getMostRecentPath()
+        )
+        
+        buttonsLayout.insertWidget(3, delButton)
+        buttonsLayout.insertWidget(4, browseButton)
+        
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        browseButton.sigPathSelected.connect(self.addFolderPath)
+        delButton.clicked.connect(self.removePaths)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addWidget(instructionsLabel)
+        mainLayout.addWidget(infoLabel)
+        mainLayout.addWidget(self.listWidget)
+        
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        mainLayout.addStretch(1)
+        
+        self.setLayout(mainLayout)
+        
+        self.setAcceptDrops(True)
+        
+        self.setFont(font)
+    
+    def dragEnterEvent(self, event):
+        event.acceptProposedAction()
+    
+    def dropEvent(self, event):
+        event.setDropAction(Qt.CopyAction)
+        for url in event.mimeData().urls():
+            dropped_path = url.toLocalFile()
+            if os.path.isfile(dropped_path):
+                dropped_path = os.path.dirname(dropped_path)
+            
+            QTimer.singleShot(50, partial(self.addFolderPath, dropped_path))
+    
+    def pathsList(self):
+        return [
+            self.listWidget.item(i).text().replace('\\', '/') 
+            for i in range(self.listWidget.count())
+        ]
+    
+    def expFolderToPosFoldernamesMapper(self):
+        expPathsPosFoldernamesMapper = {}
+        for selectedPath in self.pathsList():
+            pos_foldernames = myutils.get_pos_foldernames(
+                selectedPath, check_if_is_sub_folder=True
+            )
+            expPath = load.get_exp_path(selectedPath)
+            expPathsPosFoldernamesMapper[expPath] = pos_foldernames
+        return expPathsPosFoldernamesMapper
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.paths = self.pathsList()
+        self.selectedExpFolderToPosFoldernamesMapper = (
+            self.expFolderToPosFoldernamesMapper()
+        )
+        self.close()
+    
+    def warnNoValidPathsFound(self, selected_path):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            The selected path (see below) <b>does not contain any valid folder.</b><br><br>
+            Please, make sure to select a Position folder, the Images folder 
+            inside a Position folder, or any folder containing a Position folder 
+            as a sub-directory.<br><br>
+            Thank you for your patience!<br><br>
+            Selected path:
+        """)
+        msg.warning(
+            self, 'Training workflow generated', txt, 
+            commands=(f'{selected_path}',),
+            path_to_browse=selected_path
+        )
+    
+    def warnNoValidExpPaths(self, selected_path):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            The selected folder does 
+            <b>not contain any valid experiment folders</b>.
+        """)
+        command = selected_path.replace('\\', os.sep)
+        command = selected_path.replace('/', os.sep)
+        msg.warning(
+            self, 'No valid folders found', txt,
+            commands=(command,), 
+            path_to_browse=selected_path
+        )
+    
+    def addFolderPath(self, selected_path):
+        myutils.addToRecentPaths(selected_path)
+        
+        folder_type = myutils.determine_folder_type(selected_path)     
+        is_pos_folder, is_images_folder, folder_path = folder_type 
+        if is_pos_folder:
+            paths = [selected_path]
+        elif is_images_folder:
+            paths = [os.path.dirname(selected_path)]
+        elif self.scanTree:
+            print(f'Scanning selected folder "{selected_path}"...')
+            exp_paths = path.get_posfolderpaths_walk(selected_path)
+            if not exp_paths:
+                self.warnNoValidExpPaths(selected_path)
+                return
+            paths = exp_paths
+        else:
+            paths = [selected_path]
+        
+        if not paths:
+            self.warnNoValidPathsFound(selected_path)
+        
+        for selectedPath in paths:
+            if self.onlyExpPaths:
+                selectedPath = load.get_exp_path(selectedPath)
+            
+            selectedPath = selectedPath.replace('\\', '/')
+            if selectedPath in self.pathsList():
+                print(
+                    f'[WARNING]: The following path was already selected: '
+                    f'"{selectedPath}"'
+                )
+                return
+                
+            self.listWidget.addItem(selectedPath)
+    
+    def removePaths(self):
+        for item in self.listWidget.selectedItems():
+            row = self.listWidget.row(item)
+            self.listWidget.takeItem(row)
