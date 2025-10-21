@@ -538,8 +538,10 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     )
     
     if is_copy_qrc_required:
-        from . import _copy_qrc_resources_file, _warnings
-        _copy_qrc_resources_file(qrc_resources_scheme_path)
+        from . import _copy_qrc_resources_file, _warnings, qrc_resources_path
+        _copy_qrc_resources_file(
+            qrc_resources_scheme_path, qrc_resources_path
+        )
         _warnings.warnRestartAcdcIconsUpdated()
         exit()
             
