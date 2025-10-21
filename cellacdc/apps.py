@@ -90,6 +90,7 @@ from .acdc_regex import float_regex, is_alphanumeric_filename
 from . import _base_widgets
 from . import io
 from . import cca_functions
+from . import path
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -18063,10 +18064,13 @@ class QTreeDialog(QBaseDialog):
         self.selectedText = self.selectedItem.text(0)
         self.close()
 
-class SelectFolderToAnalyse(QBaseDialog):
+class SelectFoldersToAnalyse(QBaseDialog):
     def __init__(
-            self, parent=None, preSelectedPaths=None, onlyExpPaths=False, 
-            scanFolderTree=True
+            self, parent=None, 
+            preSelectedPaths=None, 
+            onlyExpPaths=False, 
+            scanFolderTree=True,
+            instructionsText='Select experiment folders to analyse'
         ):
         super().__init__(parent)
         
@@ -18078,9 +18082,9 @@ class SelectFolderToAnalyse(QBaseDialog):
         mainLayout = QVBoxLayout()
         
         instructionsText = html_utils.paragraph(
-            'Select experiment folders to analyse<br><br>'
-            'Drag and drop folders or click on <code>Browse</code> button to '
-            '<b>add</b> as many <b>paths</b> '
+            f'{instructionsText}<br><br>'
+            'Drag and drop folders or click on <code>Add folder</code> button to '
+            '<b>add</b> as many <b>folders</b> '
             'as needed.<br>', font_size='14px'
         )
         instructionsLabel = QLabel(instructionsText)
@@ -18154,14 +18158,27 @@ class SelectFolderToAnalyse(QBaseDialog):
             for i in range(self.listWidget.count())
         ]
     
+    def expFolderToPosFoldernamesMapper(self):
+        expPathsPosFoldernamesMapper = {}
+        for selectedPath in self.pathsList():
+            pos_foldernames = myutils.get_pos_foldernames(
+                selectedPath, check_if_is_sub_folder=True
+            )
+            expPath = load.get_exp_path(selectedPath)
+            expPathsPosFoldernamesMapper[expPath] = pos_foldernames
+        return expPathsPosFoldernamesMapper
+    
     def ok_cb(self):
         self.cancel = False
         self.paths = self.pathsList()
+        self.selectedExpFolderToPosFoldernamesMapper = (
+            self.expFolderToPosFoldernamesMapper()
+        )
         self.close()
     
     def warnNoValidPathsFound(self, selected_path):
-        msg = acdc_widgets.myMessageBox(wrapText=False)
-        txt = html_func.paragraph("""
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
             The selected path (see below) <b>does not contain any valid folder.</b><br><br>
             Please, make sure to select a Position folder, the Images folder 
             inside a Position folder, or any folder containing a Position folder 
@@ -18175,28 +18192,45 @@ class SelectFolderToAnalyse(QBaseDialog):
             path_to_browse=selected_path
         )
     
-    def addFolderPath(self, path):
-        myutils.addToRecentPaths(path)
+    def warnNoValidExpPaths(self, selected_path):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            The selected folder does 
+            <b>not contain any valid experiment folders</b>.
+        """)
+        command = selected_path.replace('\\', os.sep)
+        command = selected_path.replace('/', os.sep)
+        msg.warning(
+            self, 'No valid folders found', txt,
+            commands=(command,), 
+            path_to_browse=selected_path
+        )
+    
+    def addFolderPath(self, selected_path):
+        myutils.addToRecentPaths(selected_path)
         
-        folder_type = myutils.determine_folder_type(path)     
+        folder_type = myutils.determine_folder_type(selected_path)     
         is_pos_folder, is_images_folder, folder_path = folder_type 
         if is_pos_folder:
-            paths = [path]
+            paths = [selected_path]
         elif is_images_folder:
-            paths = [os.path.dirname(path)]
+            paths = [os.path.dirname(selected_path)]
         elif self.scanTree:
-            pathScanner = io.expFolderScanner(path)
-            pathScanner.getExpPaths(path)
-            paths = pathScanner.expPaths
+            print(f'Scanning selected folder "{selected_path}"...')
+            exp_paths = path.get_posfolderpaths_walk(selected_path)
+            if not exp_paths:
+                self.warnNoValidExpPaths(selected_path)
+                return
+            paths = exp_paths
         else:
-            paths = [path]
+            paths = [selected_path]
         
         if not paths:
-            self.warnNoValidPathsFound(path)
+            self.warnNoValidPathsFound(selected_path)
         
         for selectedPath in paths:
             if self.onlyExpPaths:
-                selectedPath = acdc_load.get_exp_path(selectedPath)
+                selectedPath = load.get_exp_path(selectedPath)
             
             selectedPath = selectedPath.replace('\\', '/')
             if selectedPath in self.pathsList():

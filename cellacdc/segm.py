@@ -346,26 +346,28 @@ class segmWin(QMainWindow):
         return msg.cancel, msg.clickedButton == yesButton, False
     
     def main(self):
-        self.getMostRecentPath()
-        exp_path = QFileDialog.getExistingDirectory(
-            self, 'Select experiment folder containing Position_n folders '
-                  'or specific Position_n folder', self.MostRecentPath)
-        self.addToRecentPaths(exp_path)
-
-        if exp_path == '':
+        selectFoldersWin = apps.SelectFoldersToAnalyse(
+            parent=self, 
+            instructionsText=
+                'Select experiment folders to analyse using '
+                'the same set of parameters',
+        )
+        selectFoldersWin.exec_()
+        if selectFoldersWin.cancel:
             self.processStopped()
             return
+        
+        expToPosFoldersMapper = (
+            selectFoldersWin.selectedExpFolderToPosFoldernamesMapper
+        )
 
         font = QtGui.QFont()
         font.setPixelSize(13)
 
-        self.setWindowTitle(f'Cell-ACDC - Segment - "{exp_path}"')
+        self.setWindowTitle('Cell-ACDC - Segmentation and Tracking workflow')
 
         self.addPbar()
         self.addlogTerminal()
-
-        folder_type = myutils.determine_folder_type(exp_path)
-        is_pos_folder, is_images_folder, exp_path = folder_type
 
         self.log('Loading data...')
         self.progressLabel.setText('Loading data...')
@@ -374,47 +376,13 @@ class segmWin(QMainWindow):
             which_channel='segm', allow_abort=True
         )
 
-        if not is_pos_folder and not is_images_folder:
-            select_folder = load.select_exp_folder()
-            values = select_folder.get_values_segmGUI(exp_path)
-            if not values:
-                txt = (
-                    'The selected folder:\n\n '
-                    f'{exp_path}\n\n'
-                    'is not a valid folder. '
-                    'Select a folder that contains the Position_n folders'
+        images_paths = []
+        for exp_path, pos_foldernames in expToPosFoldersMapper.items():
+            for pos_foldername in pos_foldernames:
+                images_path = os.path.join(
+                    exp_path, pos_foldername, 'Images'
                 )
-                msg = QMessageBox()
-                msg.critical(
-                    self, 'Incompatible folder', txt, msg.Ok
-                )
-                self.close()
-                return
-
-            if len(values)>1:
-                select_folder.QtPrompt(
-                    self, values, allow_abort=False, show=True, toggleMulti=True
-                )
-                if select_folder.was_aborted:
-                    self.processStopped()
-                    return
-                
-                pos_foldernames = select_folder.selected_pos
-            else:
-                pos_foldernames = select_folder.pos_foldernames
-
-            images_paths = [
-                os.path.join(exp_path, pos, 'Images')
-                for pos in pos_foldernames
-            ]
-
-        elif is_pos_folder:
-            pos_foldername = os.path.basename(exp_path)
-            exp_path = os.path.dirname(exp_path)
-            images_paths = [f'{exp_path}/{pos_foldername}/Images']
-
-        elif is_images_folder:
-            images_paths = [exp_path]
+                images_paths.append(images_path)
 
         user_ch_file_paths = []
         for images_path in images_paths:
