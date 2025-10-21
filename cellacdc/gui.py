@@ -24149,6 +24149,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 imageItem = self.overlayLayersItems[lastChannel][0]
                 self.setOpacityOverlayLayersItems(0.5, imageItem=imageItem)
                 self.img1.setOpacity(0.5)
+                self.setOverlayChannelsToolbuttonsChecked()
 
             self.setRetainSizePolicyLutItems()
             self.normalizeRescale0to1Action.setChecked(True)
@@ -24161,10 +24162,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.updateAllImages()
             self.updateImageValueFormatter()
             self.enableOverlayWidgets(False)
+            self.clearOverlayImageItems()
             
-            for items in self.overlayLayersItems.values():
-                imageItem = items[0]
-                imageItem.clear()
         
         self.setOverlayItemsVisible()
     
@@ -24821,6 +24820,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return obj_slice
     
     def setOverlayImages(self, frame_i=None):
+        if not self.overlayButton.isChecked():
+            return
+        
         posData = self.data[self.pos_i]
         if posData.ol_data is None:
             return
@@ -27045,8 +27047,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setImageImg1(image=image)       
         self.setImageImg2()
         
-        if self.overlayButton.isChecked():
-            self.setOverlayImages()
+        self.setOverlayImages()
 
         self.setOverlayLabelsItems()
         self.setOverlaySegmMasks()
@@ -28535,7 +28536,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.overlayToolbuttonsSep.removeFromToolbar()
         except Exception as err:
             pass
+    
+    def clearOverlayImageItems(self):
+        for items in self.overlayLayersItems.values():
+            imageItem = items[0]
+            imageItem.clear()
         
+        self.rgbaImg1.clear()
+    
     def reInitGui(self):
         cancel = self.checkAskSavePointsLayers()
         if cancel:
@@ -28989,6 +28997,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             imageItem = self.overlayLayersItems[channelName][0]
             imageItem.clear()
         
+        self.setOverlayChannelsToolbuttonsChecked()
         self.setOverlayItemsVisible()
         self.setRetainSizePolicyLutItems()
         self.updateAllImages()
@@ -29870,6 +29879,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             myutils.setRetainSizePolicy(lutItem, retain=True)
         QTimer.singleShot(300, self.autoRange)
 
+    def setOverlayChannelsToolbuttonsChecked(self):
+        for channel, items in self.overlayLayersItems.items():
+            _, lutItem, alphaSB, toolbutton = items[:4]
+            toolbutton.setChecked(
+                not self.overlayToolbar.isSingleChannel()
+                and channel in self.checkedOverlayChannels
+            )
+    
     def setOverlayItemsVisible(self):
         for channel, items in self.overlayLayersItems.items():
             _, lutItem, alphaSB, toolbutton = items[:4]
@@ -29878,19 +29895,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 alphaSB.hide()
                 alphaSB.label.hide()
                 toolbutton.setVisible(False)
-                toolbutton.setChecked(False)
             elif channel in self.checkedOverlayChannels:
                 lutItem.show()
                 alphaSB.show()
                 alphaSB.label.show()
                 toolbutton.setVisible(True)
-                toolbutton.setChecked(not self.overlayToolbar.isSingleChannel())
             else:
                 lutItem.hide()
                 alphaSB.hide()
                 alphaSB.label.hide()
                 toolbutton.setVisible(False)
-                toolbutton.setChecked(False)
 
     def overlayChannelToolbuttonClicked(self, checked=False, toolbutton=None):
         if toolbutton is None:
@@ -29949,6 +29963,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             else:
                 op_val = 0.0
             
+            printl(op_val, channel)
             otherImageItem.setOpacity(op_val, applyToLinked=False)
             
             if alphaScrollbar is None:
