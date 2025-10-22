@@ -4067,7 +4067,22 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     if msg.clickedButton == proceedButton:
         return True, False
 
-def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cuda=False, directML=False, return_available_gpu_type=False):
+def check_gpu_requested_segm_model(init_kwargs):
+    gpu = init_kwargs.get('gpu', False)
+    if gpu:
+        return True
+    
+    device_type = init_kwargs.get('device_type', 'cpu')
+    return device_type == 'gpu' or device_type == ''
+
+def check_gpu_available(
+        model_name, use_gpu, 
+        do_not_warn=False, 
+        qparent=None, 
+        cuda=False, 
+        directML=False, 
+        return_available_gpu_type=False
+    ):
     if not use_gpu:
         if return_available_gpu_type:
             return True, []
