@@ -298,7 +298,13 @@ class dataPrepWin(QMainWindow):
             QIcon(":file-save.svg"), "Crop and save", self)
         self.saveAction.setEnabled(False)
         self.saveAction.setToolTip(
-            'Save the prepped data.\n\n'
+            'Save the image data.\n\n'
+            'Saving is needed only to save the aligned (timelapse) and/or '
+            'cropped image data.\n\n'
+            'If you did not align and you do not need cropping, there is '
+            'no need to save. The information about the z-slice to use for '
+            'segmentation, the background ROIs, and the ROI has already '
+            'been saved automatically.\n\n'
             'If the button is disabled you need to click on the Start button '
             'first.'
         )
