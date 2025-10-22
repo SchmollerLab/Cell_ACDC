@@ -4081,7 +4081,6 @@ def check_gpu_available(
         directML=False, 
         return_available_gpu_type=False
     ):
-    printl(model_name, use_gpu)
     if not use_gpu:
         if return_available_gpu_type:
             return True, []
