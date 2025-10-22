@@ -103,8 +103,8 @@ class CellposeDenoiseModel(DenoiseModel):
         self.nstr = denoise_model.split('_')[-1] if denoise_model else None
 
         directml_gpu, gpu, proceed= check_directml_gpu_gpu(
-            directml_gpu, gpu, ask_install=ask_install_gpu
-            )
+            'cellpose_v3', directml_gpu, gpu, ask_install=ask_install_gpu
+        )
         
         if not proceed:
             return

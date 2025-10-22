@@ -610,13 +610,6 @@ class segmWin(QMainWindow):
         self.preproc_recipe = win.preproc_recipe
         self.reduce_memory_usage = win.reduceMemoryUsage
         
-        # Initialize model
-        use_gpu = init_kwargs.get('gpu', False)
-        proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
-        if not proceed:
-            self.processStopped()
-            return
-        
         if self.secondChannelName is not None:
             init_kwargs['is_rgb'] = True
         

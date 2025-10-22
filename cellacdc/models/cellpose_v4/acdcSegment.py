@@ -63,7 +63,7 @@ class Model(CellposeBaseModel):
             input_string=device_type,
         )
         directml_gpu, gpu, proceed = check_directml_gpu_gpu(
-            directml_gpu=directml_gpu, gpu=gpu,
+            'cellpose_v4', directml_gpu=directml_gpu, gpu=gpu,
         )
 
         if not proceed:
