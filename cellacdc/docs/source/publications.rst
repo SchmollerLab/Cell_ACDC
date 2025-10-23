@@ -6,6 +6,7 @@ In the following publications authors used Cell-ACDC to analyse microscopy data:
 .. raw:: html
 
     <ol>
+      <li>Proulx-Giraldeau, F. , et al. <i>Division Asymmetry Drives Cell Size Variability in Budding Yeast</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.22.683920">10.1101/2025.10.22.683920</a>.</li><br>
       <li>Kukhtevich, I. , et al. <i>The origin of septin ring size control in budding yeast</i>. <b>The EMBO Journal</b> (2025) DOI: <a href="https://doi.org/10.1038/s44318-025-00571-5">10.1038/s44318-025-00571-5</a>.</li><br>
       <li>Conti, M. M. , et al. <i>Dynamic phosphorylation of Hcm1 promotes fitness in chronic stress</i>. <b>PLOS Genetics</b> (2025) DOI: <a href="https://doi.org/10.1371/journal.pgen.1011874">10.1371/journal.pgen.1011874</a>.</li><br>
       <li>Dengler, L. , et al. <i>When mitochondria fall apart: Unbalanced mitochondrial segregation triggers loss of mtDNA in the absence of mitochondrial fusion</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.05.13.653688">10.1101/2025.05.13.653688</a>.</li><br>
