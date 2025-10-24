@@ -2660,7 +2660,11 @@ class SetMeasurementsDialog(QBaseDialog):
             chNameGroupbox.calcForEachZsliceRequested = (
                 chNameGroupbox.isCalcForEachZsliceRequested()
             )
-             
+        
+        self.sizeMetricsQGBox.calcForEachZsliceRequested = (
+            self.sizeMetricsQGBox.isCalcForEachZsliceRequested()
+        )
+        
         if self.allPos_acdc_df_cols is None:
             self.cancel = False
             self.close()
@@ -2680,10 +2684,7 @@ class SetMeasurementsDialog(QBaseDialog):
                     continue
                 if not checkBox.isChecked() and is_existing:
                     unchecked_existing_colnames.append(colname)
-        
-        self.sizeMetricsQGBox.calcForEachZsliceRequested = (
-            self.sizeMetricsQGBox.isCalcForEachZsliceRequested()
-        )
+    
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             colname = checkBox.text()
             is_existing = colname in existing_colnames
