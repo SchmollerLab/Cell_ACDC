@@ -21411,7 +21411,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 lab[zoom_slice] = zoom_lab
                 break
             
-            lab[z, *zoom_slice] = zoom_lab
+            lab[z, zoom_slice[0], zoom_slice[1]] = zoom_lab
         return lab
     
     def _get_data_unvisited(self, posData, debug=False,lin_tree_init=True,):
