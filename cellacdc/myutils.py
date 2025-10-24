@@ -508,9 +508,13 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
         f'Python {python_version}',
         f'Platform: {platform.platform()}',
         f'System: {platform.system()}',
-        f'Icons from: "{qrc_resources_path}"',
     ]
+    if is_linux:
+        distro_name = get_linux_distribution_name()
+        info_txts.append(f'Linux distribution: {distro_name}')
+    
     if GUI_INSTALLED and not is_cli:
+        info_txts.append(f'Icons from: "{qrc_resources_path}"')
         try:
             from qtpy import QtCore
             info_txts.append(f'Qt {QtCore.__version__}')
@@ -5373,3 +5377,24 @@ def format_commit_date_utc(utc_str):
     
     # Format nicely
     return local_dt.strftime(r"%A %d %B %Y at %H:%M")
+
+def get_linux_distribution_name():
+    import csv
+    RELEASE_DATA = {}
+    with open("/etc/os-release") as f:
+        reader = csv.reader(f, delimiter="=")
+        for row in reader:
+            if row:
+                RELEASE_DATA[row[0]] = row[1]
+    if RELEASE_DATA["ID"] in ["debian", "raspbian"]:
+        with open("/etc/debian_version") as f:
+            DEBIAN_VERSION = f.readline().strip()
+        major_version = DEBIAN_VERSION.split(".")[0]
+        version_split = RELEASE_DATA["VERSION"].split(" ", maxsplit=1)
+        if version_split[0] == major_version:
+            # Just major version shown, replace it with the full version
+            RELEASE_DATA["VERSION"] = " ".join([DEBIAN_VERSION] + version_split[1:])
+    
+    name_version = f'{RELEASE_DATA["NAME"]} {RELEASE_DATA["VERSION"]}'
+    
+    return name_version
