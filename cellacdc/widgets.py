@@ -6617,7 +6617,8 @@ class MainPlotItem(pg.PlotItem):
         
         self.delRoiItems = {}
         self.highlightingRectItems = None
-        self._imageItem = None
+        self._baseImageItem = None
+        self._imageItems = []
     
     def addHighlightingRectItems(self):
         self.highlightingRectItems = {
@@ -6629,8 +6630,13 @@ class MainPlotItem(pg.PlotItem):
         for rect in self.highlightingRectItems.values():
             self.addItem(rect)
     
+    def addBaseImageItem(self, baseImageItem):
+        self._baseImageItem = baseImageItem
+        self._imageItems.append(baseImageItem)
+        self.addItem(baseImageItem)
+    
     def addImageItem(self, imageItem):
-        self._imageItem = imageItem
+        self._imageItems.append(imageItem)
         self.addItem(imageItem)
     
     def setHighlighted(self, highlighted):
@@ -6645,8 +6651,8 @@ class MainPlotItem(pg.PlotItem):
         ((xmin, xmax), (ymin, ymax)) = self.viewRange()
         xmin = xmin if xmin >= 0 else 0
         ymin = ymin if ymin >= 0 else 0
-        if self._imageItem is not None:
-            Y, X = self._imageItem.image.shape[:2]
+        if self._baseImageItem is not None:
+            Y, X = self._baseImageItem.image.shape[:2]
             xmax = min(xmax, X)
             ymax = min(ymax, Y)
         
