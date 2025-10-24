@@ -510,7 +510,11 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
         f'System: {platform.system()}',
     ]
     if is_linux:
-        distro_name = get_linux_distribution_name()
+        try:
+            distro_name = get_linux_distribution_name()
+        except Exception as err:
+            distro_name = 'Undetermined'
+        
         info_txts.append(f'Linux distribution: {distro_name}')
     
     if GUI_INSTALLED and not is_cli:
