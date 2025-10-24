@@ -29970,8 +29970,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 op_val = alpha_value
             else:
                 op_val = 0.0
-            
-            printl(op_val, channel)
+
             otherImageItem.setOpacity(op_val, applyToLinked=False)
             
             if alphaScrollbar is None:
