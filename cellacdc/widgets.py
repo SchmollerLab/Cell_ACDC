@@ -3725,7 +3725,7 @@ class ShortcutLineEdit(QLineEdit):
         self.setAlignment(Qt.AlignCenter)
     
     def text(self):
-        text = macShortcutToWindows(text)
+        text = macShortcutToWindows(super().text())
         
         return text
     
