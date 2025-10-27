@@ -12841,6 +12841,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 return            
             
             self.store_data()
+            self.store_manual_annot_data()
             
             last_tracked_i_to_restore = self.manualAnnotState['last_tracked_i']
             self.manualAnnotRestoreLastTrackedFrame(last_tracked_i_to_restore)
@@ -12854,7 +12855,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.updateScrollbars()
             self.ax1.sigRangeChanged.disconnect()
             self.ax1.setHighlighted(False)
-            QTimer.singleShot(200, self.autoRange)
+            # QTimer.singleShot(200, self.autoRange)
         
         self.setManualAnnotModeEnabledTools(checked)
     
@@ -20448,6 +20449,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
                 
         return trackedID
+    
+    def store_manual_annot_data(
+            self, posData=None, data_frame_i=None    
+        ):
+        if posData is None:
+            posData = self.data[self.pos_i]
+        
+        if data_frame_i is None:
+            data_frame_i = posData.allData_li[posData.frame_i]
+        
+        if not self.isSegm3D:
+            lab = [posData.lab]
+        else:
+            lab = posData.lab
+            
+        for z, lab_2D in enumerate(lab):
+            zoom_lab, zoom_slice = transformation.crop_2D(
+                lab_2D, 
+                self.ax1.viewRange(), 
+                tolerance=10,
+                return_copy=False
+            )
+            data_frame_i['manually_edited_lab']['zoom_lab'][z] = zoom_lab
+            
+        data_frame_i['manually_edited_lab']['zoom_slice'] = zoom_slice
 
     @exception_handler
     def store_data(
@@ -20481,21 +20507,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             posData.IDs_idxs.copy()
         )
         if self.manualAnnotFutureButton.isChecked():
-            if not self.isSegm3D:
-                lab = [posData.lab]
-            else:
-                lab = posData.lab
-                
-            for z, lab_2D in enumerate(lab):
-                zoom_lab, zoom_slice = transformation.crop_2D(
-                    lab_2D, 
-                    self.ax1.viewRange(), 
-                    tolerance=10,
-                    return_copy=False
-                )
-                allData_li['manually_edited_lab']['zoom_lab'][z] = zoom_lab
-                
-            allData_li['manually_edited_lab']['zoom_slice'] = zoom_slice
+            self.store_manual_annot_data(
+                posData=posData, data_frame_i=allData_li    
+            )
         
         self.store_zslices_rp()
 
