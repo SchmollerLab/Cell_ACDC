@@ -3124,14 +3124,17 @@ class select_exp_folder:
             current=0, title='Select Position folder',
             CbLabel="Select folder to load:",
             showinexplorer_button=False, full_paths=None,
-            allow_abort=True, show=False, toggleMulti=False,
-            allowMultiSelection=True
+            allow_cancel=True, show=False, toggleMulti=False,
+            allowMultiSelection=True, 
+            informativeText='',
+            selectedValues=None
         ):
         from . import apps
         font = QtGui.QFont()
         font.setPixelSize(13)
         win = apps.QtSelectItems(
-            title, values, '', CbLabel=CbLabel, parent=parentQWidget,
+            title, values, informativeText, CbLabel=CbLabel, 
+            parent=parentQWidget,
             showInFileManagerPath=self.exp_path
         )
         win.setFont(font)
@@ -3143,8 +3146,10 @@ class select_exp_folder:
             win.multiPosButton.setDisabled(True)
         if toggleMulti:
             win.multiPosButton.setChecked(True)
+        if selectedValues is not None:
+            win.setSelectedItems(selectedValues)
         win.exec_()
-        self.was_aborted = win.cancel
+        self.cancel = win.cancel
         if not win.cancel:
             self.selected_pos = [
                 self.pos_foldernames[idx] for idx in win.selectedItemsIdx
@@ -3292,7 +3297,7 @@ class select_exp_folder:
 
     def on_closing(self):
         self.selected_pos = [None]
-        self.was_aborted = True
+        self.cancel = True
         self.root.quit()
         self.root.destroy()
         if self.allow_abort:

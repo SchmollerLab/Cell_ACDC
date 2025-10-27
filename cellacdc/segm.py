@@ -351,6 +351,7 @@ class segmWin(QMainWindow):
             instructionsText=
                 'Select experiment folders to analyse using '
                 'the same set of parameters',
+            askSelectPosFolders=True
         )
         selectFoldersWin.exec_()
         if selectFoldersWin.cancel:

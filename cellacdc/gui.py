@@ -28940,11 +28940,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return []
 
         if len(values) > 1:
-            select_folder.QtPrompt(self, values, allow_abort=False)
-            if select_folder.was_aborted:
+            select_folder.QtPrompt(self, values, allow_cancel=False)
+            if select_folder.cancel:
                 return []
         else:
-            select_folder.was_aborted = False
+            select_folder.cancel = False
             select_folder.selected_pos = select_folder.pos_foldernames
 
         images_paths = []
