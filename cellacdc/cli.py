@@ -415,7 +415,6 @@ class SegmKernel(_WorkflowKernel):
                     i = z_info.Index
                     z = z_info.z_slice_used_dataPrep
                     zProjHow = z_info.which_z_proj
-                    printl(z_info, z_info.Index, stop_i)
                     img = img_data_slice[i]
                     if self.second_channel_name is not None:
                         second_ch_img = second_ch_data_slice[i]
@@ -622,6 +621,7 @@ class SegmKernel(_WorkflowKernel):
                 lab_stack = core.post_process_segm(
                     lab_stack, **self.standard_postrocess_kwargs
                 )
+                printl(self.custom_postproc_features)
                 if self.custom_postproc_features:
                     lab_stack = features.custom_post_process_segm(
                         posData, self.custom_postproc_grouped_features, 

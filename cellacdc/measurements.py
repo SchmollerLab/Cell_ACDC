@@ -82,6 +82,29 @@ def getMetricsFunc(posData):
     )
     return out
 
+def get_metric_group_name(col_name: str):
+    size_metrics_names = set(get_size_metrics_desc(True, True).keys())
+    if col_name in size_metrics_names:
+        return 'size'
+    
+    props_names = get_props_names()
+    if col_name in props_names:
+        return 'regionprop'
+
+    ch_indip_custom_metrics_names = _get_ch_indipendent_custom_metrics_names()
+    if col_name in ch_indip_custom_metrics_names:
+        return 'ch_indipend_custom_metric'
+    
+    ch_indip_custom_metrics_names = _get_ch_indipendent_custom_metrics_names()
+    if col_name in ch_indip_custom_metrics_names:
+        return 'mixed_channels'
+
+    standard_metrics_names = set(_get_metrics_names().keys())
+    for col in standard_metrics_names:
+        if f'_{col_name}' in col:
+            channel_name = col_name.split(f'_{col_name}')[0]
+            return {'standard': channel_name}
+
 def get_all_metrics_names(include_custom=True):
     all_metrics_names = []
     size_metrics_names = list(get_size_metrics_desc(True, True).keys())
@@ -226,7 +249,7 @@ def _get_custom_metrics_names():
     custom_metrics_names = {func_name:func_name for func_name in keys}
     return custom_metrics_names
 
-def _get_ch_indipend_ent_custom_metrics_names():
+def _get_ch_indipendent_custom_metrics_names():
     custom_func_dict = get_channel_indipendent_custom_metrics_func()
     keys = custom_func_dict.keys()
     custom_metrics_names = {func_name:func_name for func_name in keys}
@@ -234,7 +257,7 @@ def _get_ch_indipend_ent_custom_metrics_names():
 
 def ch_indipend_custom_metrics_desc(isZstack, isSegm3D=False):
     how_3Dto2D, how_3Dto2D_desc = get_how_3Dto2D(isZstack, isSegm3D)
-    custom_metrics_names = _get_ch_indipend_ent_custom_metrics_names()
+    custom_metrics_names = _get_ch_indipendent_custom_metrics_names()
     custom_metrics_desc = {}
     for how, how_desc in zip(how_3Dto2D, how_3Dto2D_desc):
         for func_name, func_desc in custom_metrics_names.items():

@@ -257,7 +257,16 @@ def read_segm_workflow_from_config(filepath) -> dict:
                         continue
             
             elif section == 'custom_postprocess_features':
-                value = tuple([float(val) for val in value])
+                low, high = value.strip().strip('(').strip(')').split(',')
+                if low.strip().lower() == 'none':
+                    low = None
+                else:
+                    low = float(low)
+                if high.strip().lower() == 'none':
+                    high = None
+                else:
+                    high = float(high)
+                value = (low, high)
             
             ini_items[section][option] = value
     return ini_items

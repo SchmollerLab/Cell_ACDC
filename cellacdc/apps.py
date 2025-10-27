@@ -7144,6 +7144,7 @@ class PostProcessSegmParams(QGroupBox):
         self.minSize_SB.setValue(10)
         self.maxElongation_DSB.setValue(3)
         self.minObjSizeZ_SB.setValue(3)
+        self.selectedFeaturesDialog.groupbox.resetFields()
     
     def restoreFromKwargs(self, kwargs):
         for name, value in kwargs.items():
@@ -11742,11 +11743,11 @@ class QDialogModelParams(QDialog):
         browseButton.sigPathSelected.connect(
             partial(
                 self.entireRecipeIniFileSelected, 
-                selectRecipeWin=win
+                selectRecipeWin=win, 
+                sender=browseButton
             )
         )
         win.exec_()
-
         if win.cancel or not hasattr(win, 'selectedText'):
             print('Loading segmentation recipe cancelled.')
             return
@@ -11775,8 +11776,10 @@ class QDialogModelParams(QDialog):
         print('Done. Segmentation recipe loaded from:', recipe_filepath)
     
     def entireRecipeIniFileSelected(
-            self, recipe_filepath, selectRecipeWin=None
+            self, recipe_filepath, selectRecipeWin=None, sender=None
         ):
+        selectRecipeWin.selectedText = 'None'
+        selectRecipeWin.clickedButton = sender
         selectRecipeWin.selectedIniFilepath = recipe_filepath
         selectRecipeWin.cancel = False
         selectRecipeWin.close()
@@ -12402,6 +12405,9 @@ class QDialogModelParams(QDialog):
                     continue
 
     def loadLastSelectionPostProcess(self, checked=False, configPars=None):
+        if self.postProcessGroupbox is None:
+            return
+        
         postProcessSection = f'{self.model_name}.postprocess'
 
         if isinstance(configPars, bool):
@@ -12410,49 +12416,91 @@ class QDialogModelParams(QDialog):
         if configPars is None:
             configPars = self.configPars
 
+        if postProcessSection in configPars.sections():
+            try:
+                minSize = configPars.getint(
+                    postProcessSection, 'minSize', fallback=10
+                )
+            except ValueError:
+                minSize = 10
+
+            try:
+                minSolidity = configPars.getfloat(
+                    postProcessSection, 'minSolidity', fallback=0.5
+                )
+            except ValueError:
+                minSolidity = 0.5
+
+            try: 
+                maxElongation = configPars.getfloat(
+                    postProcessSection, 'maxElongation', fallback=3
+                )
+            except ValueError:
+                maxElongation = 3
+            
+            try:
+                minObjSizeZ = configPars.getint(
+                    postProcessSection, 'min_obj_no_zslices', fallback=3
+                )
+            except ValueError:
+                minObjSizeZ = 3
+            
+            kwargs = {
+                'min_solidity': minSolidity,
+                'min_area': minSize,
+                'max_elongation': maxElongation,
+                'min_obj_no_zslices': minObjSizeZ
+            }
+            self.postProcessGroupbox.restoreFromKwargs(kwargs)
+
+            applyPostProcessing = configPars.getboolean(
+                postProcessSection, 'applyPostProcessing'
+            )
+            self.postProcessGroupbox.setChecked(applyPostProcessing)
+
+        customPostProcessSection = f'{self.model_name}.custom_postprocess'
         if postProcessSection not in configPars.sections():
             return
-
-        try:
-            minSize = configPars.getint(
-                postProcessSection, 'minSize', fallback=10
-            )
-        except ValueError:
-            minSize = 10
-
-        try:
-            minSolidity = configPars.getfloat(
-                postProcessSection, 'minSolidity', fallback=0.5
-            )
-        except ValueError:
-            minSolidity = 0.5
-
-        try: 
-            maxElongation = configPars.getfloat(
-                postProcessSection, 'maxElongation', fallback=3
-            )
-        except ValueError:
-            maxElongation = 3
         
-        try:
-            minObjSizeZ = configPars.getint(
-                postProcessSection, 'min_obj_no_zslices', fallback=3
-            )
-        except ValueError:
-            minObjSizeZ = 3
-        
-        kwargs = {
-            'min_solidity': minSolidity,
-            'min_area': minSize,
-            'max_elongation': maxElongation,
-            'min_obj_no_zslices': minObjSizeZ
-        }
-        self.postProcessGroupbox.restoreFromKwargs(kwargs)
-
-        applyPostProcessing = configPars.getboolean(
-            postProcessSection, 'applyPostProcessing'
+        selectFeaturesWidget = (
+            self.postProcessGroupbox.selectedFeaturesDialog.groupbox
         )
-        self.postProcessGroupbox.setChecked(applyPostProcessing)
+        selectFeaturesWidget.resetFields()
+        f = 0
+        for col_name, value in configPars[customPostProcessSection].items():
+            low, high = value.split(',')
+            low = low.strip()
+            high = high.strip()
+            if f > 0:
+                selectFeaturesWidget.addFeatureField()
+
+            selector = selectFeaturesWidget.selectors[f]
+            selector.selectButton.setText(col_name)
+            selector.selectButton.setFlat(True)
+
+            feature_group = measurements.get_metric_group_name(col_name)
+            selector.featureGroup = feature_group
+
+            if low != 'None':
+                try:
+                    low_val = int(low)
+                except ValueError:
+                    low_val = float(low)
+
+                selector.lowRangeWidgets.checkbox.setChecked(True)
+                selector.lowRangeWidgets.spinbox.setValue(low_val)
+
+            if high != 'None':
+                try:
+                    high_val = int(high)
+                except ValueError:
+                    high_val = float(high)
+
+                selector.highRangeWidgets.checkbox.setChecked(True)
+                selector.highRangeWidgets.spinbox.setValue(high_val)
+
+            f += 1
+
 
     def createSeeHereLabel(self, url):
         htmlTxt = f'<a href=\"{url}">here</a>'
@@ -12597,6 +12645,28 @@ class QDialogModelParams(QDialog):
             postProcessConfig['applyPostProcessing'] = str(
                 self.postProcessGroupbox.isChecked()
             )
+        
+        custom_postproc_section = f'{self.model_name}.custom_postprocess'
+        configPars[custom_postproc_section] = {}
+        if self.postProcessGroupbox is not None:
+            selectFeaturesWidget = (
+                self.postProcessGroupbox.selectedFeaturesDialog.groupbox
+            )
+            for selector in selectFeaturesWidget.selectors:
+                col_name = selector.selectButton.text()
+                lowStr = 'None'
+                highStr = 'None'
+                if selector.lowRangeWidgets.checkbox.isChecked():
+                    lowVal = selector.lowRangeWidgets.spinbox.value()
+                    lowStr = str(lowVal)
+                if selector.highRangeWidgets.checkbox.isChecked():
+                    highVal = selector.highRangeWidgets.spinbox.value()
+                    highStr = str(highVal)
+                
+                configPars[custom_postproc_section][col_name] = (
+                    f'{lowStr}, {highStr}'
+                )
+
         
         return configPars
     
@@ -14461,12 +14531,22 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         delButton.selector = selector
+        selector.delButton = delButton
         for col, widget in enumerate(selector.widgets):
             relRow, col = widget['pos']
             self._layout.addWidget(widget['widget'], relRow+row, col)
         self._layout.addWidget(delButton, row, self.lastCol, 2, 1)
         self.selectors.append(selector)
         delButton.clicked.connect(self.removeFeatureField)
+    
+    def resetFields(self):
+        while len(self.selectors) > 1:
+            selector = self.selectors[-1]
+            selector.delButton.click()
+        firstSelector = self.selectors[0]
+        firstSelector.selectButton.setText('Click to select feature...')
+        firstSelector.lowRangeWidgets.checkbox.setChecked(False)
+        firstSelector.highRangeWidgets.checkbox.setChecked(False)
     
     def removeFeatureField(self):
         delButton = self.sender()
@@ -16300,7 +16380,8 @@ class PreProcessParamsWidget(QWidget):
         browseButton.sigPathSelected.connect(
             partial(
                 self.recipeIniFileSelected, 
-                selectRecipeWin=selectRecipeWin
+                selectRecipeWin=selectRecipeWin,
+                sender=browseButton
             )
         )
         selectRecipeWin.exec_()
@@ -16328,7 +16409,10 @@ class PreProcessParamsWidget(QWidget):
         
         self.loadRecipe(preprocConfigPars)
     
-    def recipeIniFileSelected(self, ini_filepath, selectRecipeWin=None):
+    def recipeIniFileSelected(
+            self, ini_filepath, selectRecipeWin=None, sender=None
+        ):
+        selectRecipeWin.clickedButton = sender
         selectRecipeWin.selectedIniFilepath = ini_filepath
         selectRecipeWin.cancel = False
         selectRecipeWin.close()
@@ -18164,6 +18248,7 @@ class QTreeDialog(QBaseDialog):
         super().show(block=block)
     
     def ok_cb(self):
+        self.clickedButton = self.sender()
         self.cancel = False
         self.selectedItem = self.treeWidget.currentItem()
         self.selectedText = self.selectedItem.text(0)
