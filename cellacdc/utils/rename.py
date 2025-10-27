@@ -128,8 +128,8 @@ class renameFilesWin(QMainWindow):
                 return
 
 
-            select_folder.QtPrompt(self, values, allow_abort=False, show=True)
-            if select_folder.was_aborted:
+            select_folder.QtPrompt(self, values, allow_cancel=False, show=True)
+            if select_folder.cancel:
                 abort = self.doAbort()
                 if abort:
                     self.close()

@@ -6253,7 +6253,7 @@ class QDialogMetadata(QDialog):
                 select_folder = load.select_exp_folder()
                 select_folder.pos_foldernames = pos_foldernames
                 select_folder.QtPrompt(
-                    self, pos_foldernames, allow_abort=False, toggleMulti=True
+                    self, pos_foldernames, allow_cancel=False, toggleMulti=True
                 )
                 pos_foldernames = select_folder.selected_pos
             for pos in pos_foldernames:
@@ -9949,6 +9949,16 @@ class QtSelectItems(QDialog):
 
         self.setFont(font)
 
+    def setSelectedItems(self, selectedItemsText):
+        if self.multiPosButton.isChecked():
+            for i in range(self.ListBox.count()):
+                item = self.ListBox.item(i)
+                if item.text() in selectedItemsText:
+                    item.setSelected(True)
+        else:
+            idx = self.items.index(selectedItemsText[0])
+            self.ComboBox.setCurrentIndex(idx)
+    
     def showInFileManager(self):
         selectedTexts, _ = self.getSelectedItems()
         folder = selectedTexts[0].split('(')[0].strip()
@@ -18260,7 +18270,8 @@ class SelectFoldersToAnalyse(QBaseDialog):
             preSelectedPaths=None, 
             onlyExpPaths=False, 
             scanFolderTree=True,
-            instructionsText='Select experiment folders to analyse'
+            instructionsText='Select experiment folders to analyse',
+            askSelectPosFolders=False
         ):
         super().__init__(parent)
         
@@ -18268,6 +18279,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
         self.onlyExpPaths = onlyExpPaths
         self.setWindowTitle('Select experiments to analyse')
         self.scanTree = scanFolderTree
+        self.askSelectPosFolders = askSelectPosFolders
         
         mainLayout = QVBoxLayout()
         
@@ -18396,6 +18408,39 @@ class SelectFoldersToAnalyse(QBaseDialog):
             path_to_browse=selected_path
         )
     
+    def parse_select_from_exp_paths(
+            self, exp_paths: dict[os.PathLike, Iterable[str]]
+        ):
+        if not self.askSelectPosFolders:
+            return list(exp_paths.keys())
+        
+        paths = []
+        for exp_path, pos_foldernames in exp_paths.items():
+            if len(pos_foldernames) == 1:
+                paths.append(exp_path)
+                continue
+            
+            informativeText = html_utils.paragraph(
+                'The following experiment folder<br><br>'
+                f'<code>{exp_path}</code><br><br>'
+                'contains multiple Position folders.<br><br>'
+                'Please, select which Position folder(s) you want to analyse:<br>'
+            )
+            select_folder = load.select_exp_folder()
+            values = select_folder.get_values_dataprep(exp_path)
+            select_folder.QtPrompt(
+                self, values, toggleMulti=True, 
+                informativeText=informativeText,
+                selectedValues=values
+            )
+            if select_folder.cancel:
+                continue
+            
+            for pos in select_folder.selected_pos:
+                paths.append(os.path.join(exp_path, pos))
+                
+        return paths
+    
     def addFolderPath(self, selected_path):
         myutils.addToRecentPaths(selected_path)
         
@@ -18411,7 +18456,8 @@ class SelectFoldersToAnalyse(QBaseDialog):
             if not exp_paths:
                 self.warnNoValidExpPaths(selected_path)
                 return
-            paths = exp_paths
+            
+            paths = self.parse_select_from_exp_paths(exp_paths)
         else:
             paths = [selected_path]
         

@@ -2969,8 +2969,8 @@ class dataPrepWin(QMainWindow):
                 self.openFolderAction.setEnabled(True)
                 return
 
-            select_folder.QtPrompt(self, values, allow_abort=False)
-            if select_folder.was_aborted:
+            select_folder.QtPrompt(self, values, allow_cancel=False)
+            if select_folder.cancel:
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')
@@ -2981,7 +2981,7 @@ class dataPrepWin(QMainWindow):
             for pos in select_folder.selected_pos:
                 images_paths.append(os.path.join(exp_path, pos, 'Images'))
 
-            if select_folder.was_aborted:
+            if select_folder.cancel:
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')

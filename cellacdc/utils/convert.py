@@ -144,8 +144,8 @@ class convertFileFormatWin(QMainWindow):
                 return
 
             if len(values) > 1:
-                select_folder.QtPrompt(self, values, allow_abort=False, show=True)
-                if select_folder.was_aborted:
+                select_folder.QtPrompt(self, values, allow_cancel=False, show=True)
+                if select_folder.cancel:
                     abort = self.doAbort()
                     if abort:
                         self.close()
