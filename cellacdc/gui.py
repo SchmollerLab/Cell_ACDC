@@ -621,6 +621,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         left_click = mouseEvent.button() == Qt.MouseButton.LeftButton
         return modifiers == Qt.AltModifier and left_click
 
+    def middleClickText(self):
+        if self.delObjAction is None and sys.platform == 'darwin':
+            return 'Command + Left Click'
+        
+        if self.delObjAction is None:
+            return 'Middle Click'
+        
+        delObjKeySequence, delObjQtButton = self.delObjAction
+        
+        if delObjQtButton == Qt.MouseButton.LeftButton:
+            buttonName = 'Left click'
+        elif delObjQtButton == Qt.MouseButton.RightButton:
+            buttonName = 'Right click'
+        else:
+            buttonName = 'Middle click'
+        
+        if delObjKeySequence is None:
+            return buttonName
+        
+        return f'{delObjKeySequence.toString()} + {buttonName}'
+    
     def isDefaultMiddleClick(self, mouseEvent, modifiers):
         if sys.platform == 'darwin':
             middle_click = (
@@ -6644,21 +6665,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.isMouseDragImg1 = False
 
             self.tempLayerImg1.setImage(self.emptyLab)
-
+        
             # Update data (rp, etc)
             self.update_rp()
 
-            for ID in self.erasedIDs:
-                if ID == 0:
-                    continue
-                if ID not in posData.IDs:
-                    if self.isSnapshot:
-                        self.fixCcaDfAfterEdit('Delete ID with eraser')
-                        self.updateAllImages()
-                    else:
-                        self.warnEditingWithCca_df('Delete ID with eraser')
-                    break
-            else:
+            doUpdateImages = self.checkWarnDeletedIDwithEraser()
+            
+            if doUpdateImages:
                 self.updateAllImages()
 
         # Brush button mouse release
@@ -14253,7 +14266,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.isDataLoaded)
+            self.instructHowDeleteID()
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -22463,6 +22476,62 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         for z, lab2d in enumerate(posData.lab):
             lab2d_rp = skimage.measure.regionprops(lab2d)
             posData.zSlicesRp[z] = {obj.label:obj for obj in lab2d_rp}
+    
+    def instructHowDeleteID(self):
+        if 'showInfoDeleteObject' not in self.df_settings.index:
+            self.df_settings.at['showInfoDeleteObject', 'value'] = 'Yes'
+        
+        showInfoDeleteObject = (
+            self.df_settings.at['showInfoDeleteObject', 'value'] == 'Yes'
+        )
+        if not showInfoDeleteObject:
+            return
+        
+        actionText = self.middleClickText()
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'You have deleted an object using the eraser tool.<br><br>'
+            'Did you know that you can use the "Delete object" action<br>'
+            'to <b>delete an object with a single click</b>?<br><br>'
+            f'To do so, use the following action: <code>{actionText}</code><br><br>'
+            'Note: You can also set a custom shortcut by going to the menu<br>'
+            '<code>Settings --&gt; Customise keyboard shortcuts...</code>.'
+        )
+        doNotShowAgainCheckbox = QCheckBox('Do not show again')
+        msg.information(
+            self, 'Delete objects with single click', txt,
+            widgets=doNotShowAgainCheckbox
+        )
+        
+        showInfoDeleteObjectValue = (
+            'No' if doNotShowAgainCheckbox.isChecked() else 'Yes'
+        )
+        self.df_settings.at['showInfoDeleteObject', 'value'] = (
+            showInfoDeleteObjectValue
+        )
+        self.df_settings.to_csv(settings_csv_path)
+        
+    
+    def checkWarnDeletedIDwithEraser(self):
+        posData = self.data[self.pos_i]
+        
+        for ID in self.erasedIDs:
+            if ID == 0:
+                continue
+            if ID in posData.IDs_idxs:
+                continue
+            
+            self.instructHowDeleteID()
+            
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit('Delete ID with eraser')
+                self.updateAllImages()
+            else:
+                self.warnEditingWithCca_df('Delete ID with eraser')
+            
+            return True
+        
+        return False
     
     @exception_handler
     def update_rp(

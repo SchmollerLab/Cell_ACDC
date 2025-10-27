@@ -2945,9 +2945,26 @@ class FormLayout(QGridLayout):
 def macShortcutToWindows(shortcut: str):
     if shortcut is None:
         return
-    s = shortcut.replace('Control', 'Meta')
-    s = shortcut.replace('Option', 'Alt')
-    s = shortcut.replace('Command', 'Ctrl')
+    
+    s = (shortcut
+        .replace('Control', 'Meta')
+        .replace('Option', 'Alt')
+        .replace('Command', 'Ctrl')
+    )
+    return s
+
+def windowsShortcutToMac(shortcut: str):
+    if shortcut is None:
+        return
+    
+    if not is_mac:
+        return shortcut
+    
+    s = (shortcut
+        .replace('Meta', 'Control')
+        .replace('Alt', 'Option')
+        .replace('Ctrl', 'Command')
+    )
     return s
 
 class ToolBarSeparator:
@@ -3708,21 +3725,12 @@ class ShortcutLineEdit(QLineEdit):
         self.setAlignment(Qt.AlignCenter)
     
     def text(self):
-        text = super().text()
-        if text == 'Command':
-            return 'Ctrl'
-        
-        if text == 'Option':
-            return 'Alt'
+        text = macShortcutToWindows(super().text())
         
         return text
     
     def setText(self, text):
-        if is_mac and text == 'Ctrl':
-            text = 'Command'
-        
-        if is_mac and text == 'Alt':
-            text = 'Option'
+        text = windowsShortcutToMac(text)
         
         super().setText(text)
         if not text:
@@ -10762,14 +10770,16 @@ class MagicPromptsToolbar(ToolBar):
 
 class KeySequenceFromText(QKeySequence):
     def __init__(self, text: str):
+        if isinstance(text, str):
+            text = macShortcutToWindows(text)
         super().__init__(text)
         self._text = text
     
     def toString(self):
         if isinstance(self._text, str):
-            return self._text
+            return windowsShortcutToMac(self._text)
         else:
-            return super().toString()
+            return windowsShortcutToMac(super().toString())
     
 def modifierKeyToText(modifierKey: int):
     if modifierKey == Qt.ControlModifier:
