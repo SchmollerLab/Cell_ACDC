@@ -11674,44 +11674,15 @@ class QDialogModelParams(QDialog):
         )
         msg.warning(self, 'No segmentation recipes found!', txt)
     
-    def loadEntireRecipe(self):
-        segm_recipes_path_model = os.path.join(
-            segm_recipes_path, self.model_name
-        )
-
-        if not os.path.exists(segm_recipes_path_model):
-            self.warningNoSegmRecipes()
+    def selectIniFileToLoadEntireRecipe(self):
+        import qtpy.compat
+        recipe_filepath = qtpy.compat.getopenfilename(
+            parent=self, 
+            caption='Select INI file to load entire recipe', 
+            filters='INI (*.ini);;All Files (*)'
+        )[0]
+        if not recipe_filepath:
             return
-    
-        recipe_files = os.listdir(segm_recipes_path_model)
-
-        if not recipe_files:
-            self.warningNoSegmRecipes()
-            return
-        
-        headerLabels = ['Name', 'Date Created']
-        items = []
-        for recipe_file in recipe_files:
-            cp = config.ConfigParser()
-            cp.read(os.path.join(segm_recipes_path_model, recipe_file))
-            date_created = cp['info']['created_on']
-            items.append((recipe_file, date_created))
-            
-        win = QTreeDialog(
-            items,
-            headerLabels=headerLabels,
-            title='Select a segmentation recipe to load',
-            infoText='Select a segmentation recipe to load:<br>',
-            path_to_browse=segm_recipes_path_model,
-        )
-        win.exec_()
-
-        if win.cancel or not hasattr(win, 'selectedText'):
-            print('Loading segmentation recipe cancelled.')
-            return
-        
-        recipe_filename = win.selectedText
-        recipe_filepath = os.path.join(segm_recipes_path_model, recipe_filename)
         
         self.loadRecipeFromFilepath(recipe_filepath)
         
@@ -11721,13 +11692,95 @@ class QDialogModelParams(QDialog):
         )
         msg = widgets.myMessageBox()
         msg.information(
-            self, 'Segmnentation recipe laoded!', txt, 
+            self, 'Segmentation recipe loaded!', txt, 
+            commands=(recipe_filepath,),
+            path_to_browse=os.path.dirname(recipe_filepath)
+        )
+        
+        print('Done. Segmentation recipe loaded from:', recipe_filepath)
+
+    def loadEntireRecipe(self):
+        segm_recipes_path_model = os.path.join(
+            segm_recipes_path, self.model_name
+        )
+
+        if not os.path.exists(segm_recipes_path_model):
+            # self.warningNoSegmRecipes()
+            self.selectIniFileToLoadEntireRecipe()
+            return
+    
+        recipe_files = os.listdir(segm_recipes_path_model)
+
+        if not recipe_files:
+            # self.warningNoSegmRecipes()
+            self.selectIniFileToLoadEntireRecipe()
+            return
+        
+        headerLabels = ['Name', 'Date Created']
+        items = []
+        for recipe_file in recipe_files:
+            cp = config.ConfigParser()
+            cp.read(os.path.join(segm_recipes_path_model, recipe_file))
+            date_created = cp['info']['created_on']
+            items.append((recipe_file, date_created))
+
+        browseButton = widgets.browseFileButton(
+            'Select INI file...',
+            title='Select INI file to load entire recipe',
+            openFolder=False,
+            start_dir=myutils.getMostRecentPath(),
+            ext={'INI': '.ini'}
+        )
+        win = QTreeDialog(
+            items,
+            headerLabels=headerLabels,
+            title='Select a segmentation recipe to load',
+            infoText='Select a segmentation recipe to load:<br>',
+            path_to_browse=segm_recipes_path_model,
+            additional_buttons=(browseButton, )
+        )
+        browseButton.sigPathSelected.connect(
+            partial(
+                self.entireRecipeIniFileSelected, 
+                selectRecipeWin=win
+            )
+        )
+        win.exec_()
+
+        if win.cancel or not hasattr(win, 'selectedText'):
+            print('Loading segmentation recipe cancelled.')
+            return
+        
+        if win.clickedButton == browseButton:
+            recipe_filepath = win.selectedIniFilepath
+        else:
+            recipe_filename = win.selectedText
+            recipe_filepath = os.path.join(
+                segm_recipes_path_model, recipe_filename
+            )
+        
+        self.loadRecipeFromFilepath(recipe_filepath)
+        
+        txt = html_utils.paragraph(
+            'Done!<br><br>'
+            'Segmentation recipe loaded from:'
+        )
+        msg = widgets.myMessageBox()
+        msg.information(
+            self, 'Segmentation recipe laoded!', txt, 
             commands=(recipe_filepath,),
             path_to_browse=os.path.dirname(recipe_filepath)
         )
         
         print('Done. Segmentation recipe loaded from:', recipe_filepath)
     
+    def entireRecipeIniFileSelected(
+            self, recipe_filepath, selectRecipeWin=None
+        ):
+        selectRecipeWin.selectedIniFilepath = recipe_filepath
+        selectRecipeWin.cancel = False
+        selectRecipeWin.close()
+
     def loadRecipeFromFilepath(self, recipe_filepath):
         cp = config.ConfigParser()
         cp.read(recipe_filepath)
@@ -16191,34 +16244,75 @@ class PreProcessParamsWidget(QWidget):
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(self, 'No recipes saved', text)
     
+    def selectIniFileToLoadRecipe(self):
+        import qtpy.compat
+        ini_filepath = qtpy.compat.getopenfilename(
+            parent=self, 
+            caption='Select INI file to load pre-processing recipe', 
+            filters='INI (*.ini);;All Files (*)'
+        )[0]
+        if not ini_filepath:
+            return
+        
+        cp = config.ConfigParser()
+        cp.read(ini_filepath)
+        preprocConfigPars = {}
+        for section in cp.sections():
+            if not section.startswith('acdc.preprocess'):
+                continue      
+            
+            preprocConfigPars[section] = cp[section]
+        
+        if not preprocConfigPars:
+            return
+        
+        self.loadRecipe(preprocConfigPars)
+
     def selectAndLoadRecipe(self):
-        availableRecipeFiles = os.listdir(preproc_recipes_path)
         availableRecipes = []
-        for file in os.listdir(preproc_recipes_path):
+        for file in myutils.listdir(preproc_recipes_path):
             if not file.startswith('preprocessing_recipe'):
                 continue
             endname = file.split('preprocessing_recipe_')[1]
             availableRecipes.append(endname)
         
         if not availableRecipes:
-            self.warnNoAvailableRecipesToLoad()
+            # self.warnNoAvailableRecipesToLoad()
+            self.selectIniFileToLoadRecipe()
             return
         
+        browseButton = widgets.browseFileButton(
+            'Select INI file...',
+            title='Select INI file to load pre-processing recipe',
+            openFolder=False,
+            start_dir=myutils.getMostRecentPath(),
+            ext={'INI': '.ini'}
+        )
         selectRecipeWin = widgets.QDialogListbox(
             'Select recipe',
             'Select recipe to load:\n',
             availableRecipes, 
             multiSelection=False, 
             allowEmptySelection=False,
-            parent=self
+            parent=self,
+            additionalButtons=(browseButton,)
+        )
+        browseButton.sigPathSelected.connect(
+            partial(
+                self.recipeIniFileSelected, 
+                selectRecipeWin=selectRecipeWin
+            )
         )
         selectRecipeWin.exec_()
         if selectRecipeWin.cancel:
             return
 
-        selected_endname = selectRecipeWin.selectedItemsText[0]
-        ini_filename = f'preprocessing_recipe_{selected_endname}'
-        ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
+        if selectRecipeWin.clickedButton == browseButton:
+            ini_filepath = selectRecipeWin.selectedIniFilepath
+        else:
+            selected_endname = selectRecipeWin.selectedItemsText[0]
+            ini_filename = f'preprocessing_recipe_{selected_endname}'
+            ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
         
         cp = config.ConfigParser()
         cp.read(ini_filepath)
@@ -16234,6 +16328,11 @@ class PreProcessParamsWidget(QWidget):
         
         self.loadRecipe(preprocConfigPars)
     
+    def recipeIniFileSelected(self, ini_filepath, selectRecipeWin=None):
+        selectRecipeWin.selectedIniFilepath = ini_filepath
+        selectRecipeWin.cancel = False
+        selectRecipeWin.close()
+
     def communicateSavingRecipeFinished(self, ini_filepath):
         text = html_utils.paragraph(
             'Done!<br><br>'
@@ -18006,7 +18105,8 @@ class QTreeDialog(QBaseDialog):
             parent=None, 
             infoText='Select item',
             title='Select item',
-            path_to_browse=None
+            path_to_browse=None,
+            additional_buttons=None,
         ):
         self.cancel = True
         super().__init__(parent)
@@ -18042,6 +18142,10 @@ class QTreeDialog(QBaseDialog):
             )
             browseButton.setPathToBrowse(path_to_browse)
             buttonsLayout.insertWidget(3, browseButton)
+
+        if additional_buttons is not None:
+            for btn in additional_buttons:
+                buttonsLayout.insertWidget(3, btn)
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
