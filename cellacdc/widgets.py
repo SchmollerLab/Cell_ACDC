@@ -754,7 +754,6 @@ class browseFileButton(PushButton):
         self._openFolder = openFolder
         self._file_types = 'All Files (*)'
         if ext is not None:
-            s = ''
             s_li = []
             for name, extensions in ext.items():
                 _s = ''
