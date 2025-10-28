@@ -25,6 +25,7 @@ from collections import namedtuple, Counter
 from tqdm import tqdm
 import requests
 import zipfile
+import json
 import numpy as np
 import pandas as pd
 import skimage
@@ -59,6 +60,7 @@ from . import github_home_url
 from . import try_input_install_package
 from . import _warnings
 from . import urls
+from . import qrc_resources_path
 from .models._cellpose_base import min_target_versions_cp
 
 ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
@@ -507,7 +509,16 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
         f'Platform: {platform.platform()}',
         f'System: {platform.system()}',
     ]
+    if is_linux:
+        try:
+            distro_name = get_linux_distribution_name()
+        except Exception as err:
+            distro_name = 'Undetermined'
+        
+        info_txts.append(f'Linux distribution: {distro_name}')
+    
     if GUI_INSTALLED and not is_cli:
+        info_txts.append(f'Icons from: "{qrc_resources_path}"')
         try:
             from qtpy import QtCore
             info_txts.append(f'Qt {QtCore.__version__}')
@@ -902,13 +913,49 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
         pypi_releases_json = res_json['releases']
         version_json = pypi_releases_json[version][0]
         upload_time = version_json['upload_time_iso_8601']
-        date = datetime.datetime.strptime(upload_time, r'%Y-%m-%dT%H:%M:%S.%fZ')
+        date = datetime.datetime.strptime(
+            upload_time, r'%Y-%m-%dT%H:%M:%S.%fZ'
+        )
         date_str = date.strftime(r'%A %d %B %Y at %H:%M')
         return date_str
     except Exception as err:
         if debug:
             traceback.print_exc()
     
+    try:
+        # Locate the direct_url.json file for the package 
+        # installed with pip git+
+        dist = importlib.metadata.distribution(package)
+        dist_info_dir = dist._path  # internal path to .dist-info
+        direct_url_path = os.path.join(dist_info_dir, "direct_url.json")
+
+        with open(direct_url_path) as f:
+            data = json.load(f)
+
+        vcs_info = data["vcs_info"]
+        commit_id = vcs_info.get("commit_id")
+        url = data.get("url")
+
+        parts = url.split("github.com/")[1].split(".git")[0]
+        owner, repo = parts.split("/", 1)
+
+        # Query GitHub API for commit date
+        api_url = (
+            f"https://api.github.com/repos/{owner}/{repo}/commits/{commit_id}"
+        )
+        response = requests.get(api_url)
+        response.raise_for_status()
+
+        commit_data = response.json()
+        date_utc = commit_data["commit"]["committer"]["date"]
+        
+        date_str = format_commit_date_utc(date_utc)
+        
+        return date_str
+    except Exception as err:
+        if debug:
+            traceback.print_exc()
+            
     try:
         if package == 'cellacdc':
             pkg_path = cellacdc_path
@@ -4028,7 +4075,22 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     if msg.clickedButton == proceedButton:
         return True, False
 
-def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None, cuda=False, directML=False, return_available_gpu_type=False):
+def check_gpu_requested_segm_model(init_kwargs):
+    gpu = init_kwargs.get('gpu', False)
+    if gpu:
+        return True
+    
+    device_type = init_kwargs.get('device_type', 'cpu')
+    return device_type == 'gpu' or device_type == ''
+
+def check_gpu_available(
+        model_name, use_gpu, 
+        do_not_warn=False, 
+        qparent=None, 
+        cuda=False, 
+        directML=False, 
+        return_available_gpu_type=False
+    ):
     if not use_gpu:
         if return_available_gpu_type:
             return True, []
@@ -4454,6 +4516,26 @@ def are_acdc_dfs_equal(df_left, df_right):
     return True
 
 def is_pos_folderpath(folderpath):
+    """Determine if a path is a valid Cell-ACDC Position folder
+
+    Parameters
+    ----------
+    folderpath : PathLike
+        Path to check
+
+    Returns
+    -------
+    bool
+        True if the path is a valid Cell-ACDC Position folder, False otherwise
+    
+    Notes
+    -----
+    A valid Cell-ACDC Position folder must:
+        - Have a name matching the pattern 'Position_<number>'
+        - Be a directory
+        - Contain an 'Images' subdirectory
+        - The 'Images' subdirectory must not be empty
+    """    
     foldername = os.path.basename(folderpath)
     is_valid_pos_folder = (
         re.search(r'^Position_(\d+)$', foldername) is not None
@@ -4817,7 +4899,8 @@ def get_empty_stored_data_dict():
             'delROIs_info': {
                     'rois': [], 'delMasks': [], 'delIDsROI': [], 'state': []
                 },
-            'IDs': []
+            'IDs': [],
+            'manually_edited_lab': {'zoom_lab': {}, 'zoom_slice': None}
         }
 
 def iterate_along_axes(arr, axes, arr_ndim=None):
@@ -5289,3 +5372,34 @@ def safe_get_or_call(obj, path: str):
             raise ValueError(f"Unsupported syntax: {ast.dump(node)}")
 
     return _eval(expr, obj)
+
+def format_commit_date_utc(utc_str):
+    # Parse the UTC date string (ISO 8601 format)
+    dt = datetime.datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
+    
+    # Convert to your local time zone (optional)
+    local_dt = dt.astimezone()  # removes UTC offset if local
+    
+    # Format nicely
+    return local_dt.strftime(r"%A %d %B %Y at %H:%M")
+
+def get_linux_distribution_name():
+    import csv
+    RELEASE_DATA = {}
+    with open("/etc/os-release") as f:
+        reader = csv.reader(f, delimiter="=")
+        for row in reader:
+            if row:
+                RELEASE_DATA[row[0]] = row[1]
+    if RELEASE_DATA["ID"] in ["debian", "raspbian"]:
+        with open("/etc/debian_version") as f:
+            DEBIAN_VERSION = f.readline().strip()
+        major_version = DEBIAN_VERSION.split(".")[0]
+        version_split = RELEASE_DATA["VERSION"].split(" ", maxsplit=1)
+        if version_split[0] == major_version:
+            # Just major version shown, replace it with the full version
+            RELEASE_DATA["VERSION"] = " ".join([DEBIAN_VERSION] + version_split[1:])
+    
+    name_version = f'{RELEASE_DATA["NAME"]} {RELEASE_DATA["VERSION"]}'
+    
+    return name_version

@@ -90,6 +90,7 @@ from .acdc_regex import float_regex, is_alphanumeric_filename
 from . import _base_widgets
 from . import io
 from . import cca_functions
+from . import path
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -112,15 +113,6 @@ class ArgWidget:
         self.valueGetter = valueGetter
         if changeSig is not None:
             self.changeSig = changeSig
-
-class AcdcSPlashScreen(QSplashScreen):
-    def __init__(self):
-        super().__init__()
-        # self.showMessage('Test', color=Qt.white)
-        self.setPixmap(QPixmap(':logo.png'))
-    
-    def mousePressEvent(self, a0: QMouseEvent) -> None:
-        pass
 
 
 def addCustomModelMessages(QParent=None):
@@ -2668,7 +2660,11 @@ class SetMeasurementsDialog(QBaseDialog):
             chNameGroupbox.calcForEachZsliceRequested = (
                 chNameGroupbox.isCalcForEachZsliceRequested()
             )
-             
+        
+        self.sizeMetricsQGBox.calcForEachZsliceRequested = (
+            self.sizeMetricsQGBox.isCalcForEachZsliceRequested()
+        )
+        
         if self.allPos_acdc_df_cols is None:
             self.cancel = False
             self.close()
@@ -2688,10 +2684,7 @@ class SetMeasurementsDialog(QBaseDialog):
                     continue
                 if not checkBox.isChecked() and is_existing:
                     unchecked_existing_colnames.append(colname)
-        
-        self.sizeMetricsQGBox.calcForEachZsliceRequested = (
-            self.sizeMetricsQGBox.isCalcForEachZsliceRequested()
-        )
+    
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             colname = checkBox.text()
             is_existing = colname in existing_colnames
@@ -6260,7 +6253,7 @@ class QDialogMetadata(QDialog):
                 select_folder = load.select_exp_folder()
                 select_folder.pos_foldernames = pos_foldernames
                 select_folder.QtPrompt(
-                    self, pos_foldernames, allow_abort=False, toggleMulti=True
+                    self, pos_foldernames, allow_cancel=False, toggleMulti=True
                 )
                 pos_foldernames = select_folder.selected_pos
             for pos in pos_foldernames:
@@ -7151,6 +7144,7 @@ class PostProcessSegmParams(QGroupBox):
         self.minSize_SB.setValue(10)
         self.maxElongation_DSB.setValue(3)
         self.minObjSizeZ_SB.setValue(3)
+        self.selectedFeaturesDialog.groupbox.resetFields()
     
     def restoreFromKwargs(self, kwargs):
         for name, value in kwargs.items():
@@ -9955,6 +9949,16 @@ class QtSelectItems(QDialog):
 
         self.setFont(font)
 
+    def setSelectedItems(self, selectedItemsText):
+        if self.multiPosButton.isChecked():
+            for i in range(self.ListBox.count()):
+                item = self.ListBox.item(i)
+                if item.text() in selectedItemsText:
+                    item.setSelected(True)
+        else:
+            idx = self.items.index(selectedItemsText[0])
+            self.ComboBox.setCurrentIndex(idx)
+    
     def showInFileManager(self):
         selectedTexts, _ = self.getSelectedItems()
         folder = selectedTexts[0].split('(')[0].strip()
@@ -11681,44 +11685,15 @@ class QDialogModelParams(QDialog):
         )
         msg.warning(self, 'No segmentation recipes found!', txt)
     
-    def loadEntireRecipe(self):
-        segm_recipes_path_model = os.path.join(
-            segm_recipes_path, self.model_name
-        )
-
-        if not os.path.exists(segm_recipes_path_model):
-            self.warningNoSegmRecipes()
+    def selectIniFileToLoadEntireRecipe(self):
+        import qtpy.compat
+        recipe_filepath = qtpy.compat.getopenfilename(
+            parent=self, 
+            caption='Select INI file to load entire recipe', 
+            filters='INI (*.ini);;All Files (*)'
+        )[0]
+        if not recipe_filepath:
             return
-    
-        recipe_files = os.listdir(segm_recipes_path_model)
-
-        if not recipe_files:
-            self.warningNoSegmRecipes()
-            return
-        
-        headerLabels = ['Name', 'Date Created']
-        items = []
-        for recipe_file in recipe_files:
-            cp = config.ConfigParser()
-            cp.read(os.path.join(segm_recipes_path_model, recipe_file))
-            date_created = cp['info']['created_on']
-            items.append((recipe_file, date_created))
-            
-        win = QTreeDialog(
-            items,
-            headerLabels=headerLabels,
-            title='Select a segmentation recipe to load',
-            infoText='Select a segmentation recipe to load:<br>',
-            path_to_browse=segm_recipes_path_model,
-        )
-        win.exec_()
-
-        if win.cancel or not hasattr(win, 'selectedText'):
-            print('Loading segmentation recipe cancelled.')
-            return
-        
-        recipe_filename = win.selectedText
-        recipe_filepath = os.path.join(segm_recipes_path_model, recipe_filename)
         
         self.loadRecipeFromFilepath(recipe_filepath)
         
@@ -11728,13 +11703,97 @@ class QDialogModelParams(QDialog):
         )
         msg = widgets.myMessageBox()
         msg.information(
-            self, 'Segmnentation recipe laoded!', txt, 
+            self, 'Segmentation recipe loaded!', txt, 
+            commands=(recipe_filepath,),
+            path_to_browse=os.path.dirname(recipe_filepath)
+        )
+        
+        print('Done. Segmentation recipe loaded from:', recipe_filepath)
+
+    def loadEntireRecipe(self):
+        segm_recipes_path_model = os.path.join(
+            segm_recipes_path, self.model_name
+        )
+
+        if not os.path.exists(segm_recipes_path_model):
+            # self.warningNoSegmRecipes()
+            self.selectIniFileToLoadEntireRecipe()
+            return
+    
+        recipe_files = os.listdir(segm_recipes_path_model)
+
+        if not recipe_files:
+            # self.warningNoSegmRecipes()
+            self.selectIniFileToLoadEntireRecipe()
+            return
+        
+        headerLabels = ['Name', 'Date Created']
+        items = []
+        for recipe_file in recipe_files:
+            cp = config.ConfigParser()
+            cp.read(os.path.join(segm_recipes_path_model, recipe_file))
+            date_created = cp['info']['created_on']
+            items.append((recipe_file, date_created))
+
+        browseButton = widgets.browseFileButton(
+            'Select INI file...',
+            title='Select INI file to load entire recipe',
+            openFolder=False,
+            start_dir=myutils.getMostRecentPath(),
+            ext={'INI': '.ini'}
+        )
+        win = QTreeDialog(
+            items,
+            headerLabels=headerLabels,
+            title='Select a segmentation recipe to load',
+            infoText='Select a segmentation recipe to load:<br>',
+            path_to_browse=segm_recipes_path_model,
+            additional_buttons=(browseButton, )
+        )
+        browseButton.sigPathSelected.connect(
+            partial(
+                self.entireRecipeIniFileSelected, 
+                selectRecipeWin=win, 
+                sender=browseButton
+            )
+        )
+        win.exec_()
+        if win.cancel or not hasattr(win, 'selectedText'):
+            print('Loading segmentation recipe cancelled.')
+            return
+        
+        if win.clickedButton == browseButton:
+            recipe_filepath = win.selectedIniFilepath
+        else:
+            recipe_filename = win.selectedText
+            recipe_filepath = os.path.join(
+                segm_recipes_path_model, recipe_filename
+            )
+        
+        self.loadRecipeFromFilepath(recipe_filepath)
+        
+        txt = html_utils.paragraph(
+            'Done!<br><br>'
+            'Segmentation recipe loaded from:'
+        )
+        msg = widgets.myMessageBox()
+        msg.information(
+            self, 'Segmentation recipe laoded!', txt, 
             commands=(recipe_filepath,),
             path_to_browse=os.path.dirname(recipe_filepath)
         )
         
         print('Done. Segmentation recipe loaded from:', recipe_filepath)
     
+    def entireRecipeIniFileSelected(
+            self, recipe_filepath, selectRecipeWin=None, sender=None
+        ):
+        selectRecipeWin.selectedText = 'None'
+        selectRecipeWin.clickedButton = sender
+        selectRecipeWin.selectedIniFilepath = recipe_filepath
+        selectRecipeWin.cancel = False
+        selectRecipeWin.close()
+
     def loadRecipeFromFilepath(self, recipe_filepath):
         cp = config.ConfigParser()
         cp.read(recipe_filepath)
@@ -12356,6 +12415,9 @@ class QDialogModelParams(QDialog):
                     continue
 
     def loadLastSelectionPostProcess(self, checked=False, configPars=None):
+        if self.postProcessGroupbox is None:
+            return
+        
         postProcessSection = f'{self.model_name}.postprocess'
 
         if isinstance(configPars, bool):
@@ -12364,49 +12426,91 @@ class QDialogModelParams(QDialog):
         if configPars is None:
             configPars = self.configPars
 
+        if postProcessSection in configPars.sections():
+            try:
+                minSize = configPars.getint(
+                    postProcessSection, 'minSize', fallback=10
+                )
+            except ValueError:
+                minSize = 10
+
+            try:
+                minSolidity = configPars.getfloat(
+                    postProcessSection, 'minSolidity', fallback=0.5
+                )
+            except ValueError:
+                minSolidity = 0.5
+
+            try: 
+                maxElongation = configPars.getfloat(
+                    postProcessSection, 'maxElongation', fallback=3
+                )
+            except ValueError:
+                maxElongation = 3
+            
+            try:
+                minObjSizeZ = configPars.getint(
+                    postProcessSection, 'min_obj_no_zslices', fallback=3
+                )
+            except ValueError:
+                minObjSizeZ = 3
+            
+            kwargs = {
+                'min_solidity': minSolidity,
+                'min_area': minSize,
+                'max_elongation': maxElongation,
+                'min_obj_no_zslices': minObjSizeZ
+            }
+            self.postProcessGroupbox.restoreFromKwargs(kwargs)
+
+            applyPostProcessing = configPars.getboolean(
+                postProcessSection, 'applyPostProcessing'
+            )
+            self.postProcessGroupbox.setChecked(applyPostProcessing)
+
+        customPostProcessSection = f'{self.model_name}.custom_postprocess'
         if postProcessSection not in configPars.sections():
             return
-
-        try:
-            minSize = configPars.getint(
-                postProcessSection, 'minSize', fallback=10
-            )
-        except ValueError:
-            minSize = 10
-
-        try:
-            minSolidity = configPars.getfloat(
-                postProcessSection, 'minSolidity', fallback=0.5
-            )
-        except ValueError:
-            minSolidity = 0.5
-
-        try: 
-            maxElongation = configPars.getfloat(
-                postProcessSection, 'maxElongation', fallback=3
-            )
-        except ValueError:
-            maxElongation = 3
         
-        try:
-            minObjSizeZ = configPars.getint(
-                postProcessSection, 'min_obj_no_zslices', fallback=3
-            )
-        except ValueError:
-            minObjSizeZ = 3
-        
-        kwargs = {
-            'min_solidity': minSolidity,
-            'min_area': minSize,
-            'max_elongation': maxElongation,
-            'min_obj_no_zslices': minObjSizeZ
-        }
-        self.postProcessGroupbox.restoreFromKwargs(kwargs)
-
-        applyPostProcessing = configPars.getboolean(
-            postProcessSection, 'applyPostProcessing'
+        selectFeaturesWidget = (
+            self.postProcessGroupbox.selectedFeaturesDialog.groupbox
         )
-        self.postProcessGroupbox.setChecked(applyPostProcessing)
+        selectFeaturesWidget.resetFields()
+        f = 0
+        for col_name, value in configPars[customPostProcessSection].items():
+            low, high = value.split(',')
+            low = low.strip()
+            high = high.strip()
+            if f > 0:
+                selectFeaturesWidget.addFeatureField()
+
+            selector = selectFeaturesWidget.selectors[f]
+            selector.selectButton.setText(col_name)
+            selector.selectButton.setFlat(True)
+
+            feature_group = measurements.get_metric_group_name(col_name)
+            selector.featureGroup = feature_group
+
+            if low != 'None':
+                try:
+                    low_val = int(low)
+                except ValueError:
+                    low_val = float(low)
+
+                selector.lowRangeWidgets.checkbox.setChecked(True)
+                selector.lowRangeWidgets.spinbox.setValue(low_val)
+
+            if high != 'None':
+                try:
+                    high_val = int(high)
+                except ValueError:
+                    high_val = float(high)
+
+                selector.highRangeWidgets.checkbox.setChecked(True)
+                selector.highRangeWidgets.spinbox.setValue(high_val)
+
+            f += 1
+
 
     def createSeeHereLabel(self, url):
         htmlTxt = f'<a href=\"{url}">here</a>'
@@ -12551,6 +12655,28 @@ class QDialogModelParams(QDialog):
             postProcessConfig['applyPostProcessing'] = str(
                 self.postProcessGroupbox.isChecked()
             )
+        
+        custom_postproc_section = f'{self.model_name}.custom_postprocess'
+        configPars[custom_postproc_section] = {}
+        if self.postProcessGroupbox is not None:
+            selectFeaturesWidget = (
+                self.postProcessGroupbox.selectedFeaturesDialog.groupbox
+            )
+            for selector in selectFeaturesWidget.selectors:
+                col_name = selector.selectButton.text()
+                lowStr = 'None'
+                highStr = 'None'
+                if selector.lowRangeWidgets.checkbox.isChecked():
+                    lowVal = selector.lowRangeWidgets.spinbox.value()
+                    lowStr = str(lowVal)
+                if selector.highRangeWidgets.checkbox.isChecked():
+                    highVal = selector.highRangeWidgets.spinbox.value()
+                    highStr = str(highVal)
+                
+                configPars[custom_postproc_section][col_name] = (
+                    f'{lowStr}, {highStr}'
+                )
+
         
         return configPars
     
@@ -14415,12 +14541,22 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         delButton.selector = selector
+        selector.delButton = delButton
         for col, widget in enumerate(selector.widgets):
             relRow, col = widget['pos']
             self._layout.addWidget(widget['widget'], relRow+row, col)
         self._layout.addWidget(delButton, row, self.lastCol, 2, 1)
         self.selectors.append(selector)
         delButton.clicked.connect(self.removeFeatureField)
+    
+    def resetFields(self):
+        while len(self.selectors) > 1:
+            selector = self.selectors[-1]
+            selector.delButton.click()
+        firstSelector = self.selectors[0]
+        firstSelector.selectButton.setText('Click to select feature...')
+        firstSelector.lowRangeWidgets.checkbox.setChecked(False)
+        firstSelector.highRangeWidgets.checkbox.setChecked(False)
     
     def removeFeatureField(self):
         delButton = self.sender()
@@ -16198,34 +16334,76 @@ class PreProcessParamsWidget(QWidget):
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(self, 'No recipes saved', text)
     
+    def selectIniFileToLoadRecipe(self):
+        import qtpy.compat
+        ini_filepath = qtpy.compat.getopenfilename(
+            parent=self, 
+            caption='Select INI file to load pre-processing recipe', 
+            filters='INI (*.ini);;All Files (*)'
+        )[0]
+        if not ini_filepath:
+            return
+        
+        cp = config.ConfigParser()
+        cp.read(ini_filepath)
+        preprocConfigPars = {}
+        for section in cp.sections():
+            if not section.startswith('acdc.preprocess'):
+                continue      
+            
+            preprocConfigPars[section] = cp[section]
+        
+        if not preprocConfigPars:
+            return
+        
+        self.loadRecipe(preprocConfigPars)
+
     def selectAndLoadRecipe(self):
-        availableRecipeFiles = os.listdir(preproc_recipes_path)
         availableRecipes = []
-        for file in os.listdir(preproc_recipes_path):
+        for file in myutils.listdir(preproc_recipes_path):
             if not file.startswith('preprocessing_recipe'):
                 continue
             endname = file.split('preprocessing_recipe_')[1]
             availableRecipes.append(endname)
         
         if not availableRecipes:
-            self.warnNoAvailableRecipesToLoad()
+            # self.warnNoAvailableRecipesToLoad()
+            self.selectIniFileToLoadRecipe()
             return
         
+        browseButton = widgets.browseFileButton(
+            'Select INI file...',
+            title='Select INI file to load pre-processing recipe',
+            openFolder=False,
+            start_dir=myutils.getMostRecentPath(),
+            ext={'INI': '.ini'}
+        )
         selectRecipeWin = widgets.QDialogListbox(
             'Select recipe',
             'Select recipe to load:\n',
             availableRecipes, 
             multiSelection=False, 
             allowEmptySelection=False,
-            parent=self
+            parent=self,
+            additionalButtons=(browseButton,)
+        )
+        browseButton.sigPathSelected.connect(
+            partial(
+                self.recipeIniFileSelected, 
+                selectRecipeWin=selectRecipeWin,
+                sender=browseButton
+            )
         )
         selectRecipeWin.exec_()
         if selectRecipeWin.cancel:
             return
 
-        selected_endname = selectRecipeWin.selectedItemsText[0]
-        ini_filename = f'preprocessing_recipe_{selected_endname}'
-        ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
+        if selectRecipeWin.clickedButton == browseButton:
+            ini_filepath = selectRecipeWin.selectedIniFilepath
+        else:
+            selected_endname = selectRecipeWin.selectedItemsText[0]
+            ini_filename = f'preprocessing_recipe_{selected_endname}'
+            ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
         
         cp = config.ConfigParser()
         cp.read(ini_filepath)
@@ -16241,6 +16419,14 @@ class PreProcessParamsWidget(QWidget):
         
         self.loadRecipe(preprocConfigPars)
     
+    def recipeIniFileSelected(
+            self, ini_filepath, selectRecipeWin=None, sender=None
+        ):
+        selectRecipeWin.clickedButton = sender
+        selectRecipeWin.selectedIniFilepath = ini_filepath
+        selectRecipeWin.cancel = False
+        selectRecipeWin.close()
+
     def communicateSavingRecipeFinished(self, ini_filepath):
         text = html_utils.paragraph(
             'Done!<br><br>'
@@ -17085,8 +17271,10 @@ class SetCustomLevelsLut(QBaseDialog):
     sigLevelsChanged = Signal(object)
     
     def __init__(
-            self, init_min_value=None, 
+            self, 
+            init_min_value=None, 
             init_max_value=None, 
+            minimum_min_value=0,
             maximum_max_value=None, 
             parent=None
         ):
@@ -17102,31 +17290,28 @@ class SetCustomLevelsLut(QBaseDialog):
             title='Mimimum', 
             title_loc='top', 
         )
-        self.minLevelSlider.setMinimum(0)
-        if init_max_value is not None:
-            self.minLevelSlider.setMaximum(init_max_value)
-
-        if maximum_max_value is not None:
-            self.minLevelSlider.setMaximum(maximum_max_value)
+        self.minLevelSlider.setMinimum(minimum_min_value)
             
         if init_min_value is not None:
             self.minLevelSlider.setValue(init_min_value)
+        
         layout.addWidget(self.minLevelSlider)
         
         self.maxLevelSlider = widgets.sliderWithSpinBox(
             title='Maximum', 
             title_loc='top', 
         )
-        self.maxLevelSlider.setMinimum(0)
+        self.maxLevelSlider.setMinimum(minimum_min_value)
         if init_max_value is not None:
             self.maxLevelSlider.setValue(init_max_value)
         
         if maximum_max_value is not None:
             self.maxLevelSlider.setMaximum(maximum_max_value)
+            self.minLevelSlider.setMaximum(maximum_max_value)
             
         layout.addWidget(self.maxLevelSlider)
         
-        self.maxLevelSlider.sigValueChange.connect(self.emitLevelsChanged)
+        self.minLevelSlider.sigValueChange.connect(self.emitLevelsChanged)
         self.maxLevelSlider.sigValueChange.connect(self.emitLevelsChanged)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
@@ -18014,7 +18199,8 @@ class QTreeDialog(QBaseDialog):
             parent=None, 
             infoText='Select item',
             title='Select item',
-            path_to_browse=None
+            path_to_browse=None,
+            additional_buttons=None,
         ):
         self.cancel = True
         super().__init__(parent)
@@ -18051,6 +18237,10 @@ class QTreeDialog(QBaseDialog):
             browseButton.setPathToBrowse(path_to_browse)
             buttonsLayout.insertWidget(3, browseButton)
 
+        if additional_buttons is not None:
+            for btn in additional_buttons:
+                buttonsLayout.insertWidget(3, btn)
+
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         
@@ -18068,7 +18258,227 @@ class QTreeDialog(QBaseDialog):
         super().show(block=block)
     
     def ok_cb(self):
+        self.clickedButton = self.sender()
         self.cancel = False
         self.selectedItem = self.treeWidget.currentItem()
         self.selectedText = self.selectedItem.text(0)
         self.close()
+
+class SelectFoldersToAnalyse(QBaseDialog):
+    def __init__(
+            self, parent=None, 
+            preSelectedPaths=None, 
+            onlyExpPaths=False, 
+            scanFolderTree=True,
+            instructionsText='Select experiment folders to analyse',
+            askSelectPosFolders=False
+        ):
+        super().__init__(parent)
+        
+        self.cancel = True
+        self.onlyExpPaths = onlyExpPaths
+        self.setWindowTitle('Select experiments to analyse')
+        self.scanTree = scanFolderTree
+        self.askSelectPosFolders = askSelectPosFolders
+        
+        mainLayout = QVBoxLayout()
+        
+        instructionsText = html_utils.paragraph(
+            f'{instructionsText}<br><br>'
+            'Drag and drop folders or click on <code>Add folder</code> button to '
+            '<b>add</b> as many <b>folders</b> '
+            'as needed.<br>', font_size='14px'
+        )
+        instructionsLabel = QLabel(instructionsText)
+        instructionsLabel.setAlignment(Qt.AlignCenter)
+        
+        infoText = html_utils.paragraph(            
+            'A <b>valid folder</b> is either a <b>Position</b> folder, '
+            'or an <b>experiment folder</b> (containing Position_n folders),<br>'
+            'or any folder that contains <b>multiple experiment folders</b>.<br><br>'
+            
+            'In the last case, Cell-ACDC will automatically scan the entire tree of '
+            'sub-directories<br>'
+            'and will add all experiments having the right folder structure.<br>',
+            font_size='12px'
+        )
+        infoLabel = QLabel(infoText)
+        infoLabel.setAlignment(Qt.AlignCenter)
+        
+        self.listWidget = widgets.listWidget()
+        self.listWidget.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
+        if preSelectedPaths is not None:
+            self.listWidget.addItems(preSelectedPaths)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        delButton = widgets.delPushButton('Remove selected path(s)')
+        browseButton = widgets.browseFileButton(
+            'Add folder...', openFolder=True, 
+            start_dir=myutils.getMostRecentPath()
+        )
+        
+        buttonsLayout.insertWidget(3, delButton)
+        buttonsLayout.insertWidget(4, browseButton)
+        
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        browseButton.sigPathSelected.connect(self.addFolderPath)
+        delButton.clicked.connect(self.removePaths)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addWidget(instructionsLabel)
+        mainLayout.addWidget(infoLabel)
+        mainLayout.addWidget(self.listWidget)
+        
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        mainLayout.addStretch(1)
+        
+        self.setLayout(mainLayout)
+        
+        self.setAcceptDrops(True)
+        
+        self.setFont(font)
+    
+    def dragEnterEvent(self, event):
+        event.acceptProposedAction()
+    
+    def dropEvent(self, event):
+        event.setDropAction(Qt.CopyAction)
+        for url in event.mimeData().urls():
+            dropped_path = url.toLocalFile()
+            if os.path.isfile(dropped_path):
+                dropped_path = os.path.dirname(dropped_path)
+            
+            QTimer.singleShot(50, partial(self.addFolderPath, dropped_path))
+    
+    def pathsList(self):
+        return [
+            self.listWidget.item(i).text().replace('\\', '/') 
+            for i in range(self.listWidget.count())
+        ]
+    
+    def expFolderToPosFoldernamesMapper(self):
+        expPathsPosFoldernamesMapper = {}
+        for selectedPath in self.pathsList():
+            pos_foldernames = myutils.get_pos_foldernames(
+                selectedPath, check_if_is_sub_folder=True
+            )
+            expPath = load.get_exp_path(selectedPath)
+            expPathsPosFoldernamesMapper[expPath] = pos_foldernames
+        return expPathsPosFoldernamesMapper
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.paths = self.pathsList()
+        self.selectedExpFolderToPosFoldernamesMapper = (
+            self.expFolderToPosFoldernamesMapper()
+        )
+        self.close()
+    
+    def warnNoValidPathsFound(self, selected_path):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            The selected path (see below) <b>does not contain any valid folder.</b><br><br>
+            Please, make sure to select a Position folder, the Images folder 
+            inside a Position folder, or any folder containing a Position folder 
+            as a sub-directory.<br><br>
+            Thank you for your patience!<br><br>
+            Selected path:
+        """)
+        msg.warning(
+            self, 'Training workflow generated', txt, 
+            commands=(f'{selected_path}',),
+            path_to_browse=selected_path
+        )
+    
+    def warnNoValidExpPaths(self, selected_path):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            The selected folder does 
+            <b>not contain any valid experiment folders</b>.
+        """)
+        command = selected_path.replace('\\', os.sep)
+        command = selected_path.replace('/', os.sep)
+        msg.warning(
+            self, 'No valid folders found', txt,
+            commands=(command,), 
+            path_to_browse=selected_path
+        )
+    
+    def parse_select_from_exp_paths(
+            self, exp_paths: dict[os.PathLike, Iterable[str]]
+        ):
+        if not self.askSelectPosFolders:
+            return list(exp_paths.keys())
+        
+        paths = []
+        for exp_path, pos_foldernames in exp_paths.items():
+            if len(pos_foldernames) == 1:
+                paths.append(exp_path)
+                continue
+            
+            informativeText = html_utils.paragraph(
+                'The following experiment folder<br><br>'
+                f'<code>{exp_path}</code><br><br>'
+                'contains multiple Position folders.<br><br>'
+                'Please, select which Position folder(s) you want to analyse:<br>'
+            )
+            select_folder = load.select_exp_folder()
+            values = select_folder.get_values_dataprep(exp_path)
+            select_folder.QtPrompt(
+                self, values, toggleMulti=True, 
+                informativeText=informativeText,
+                selectedValues=values
+            )
+            if select_folder.cancel:
+                continue
+            
+            for pos in select_folder.selected_pos:
+                paths.append(os.path.join(exp_path, pos))
+                
+        return paths
+    
+    def addFolderPath(self, selected_path):
+        myutils.addToRecentPaths(selected_path)
+        
+        folder_type = myutils.determine_folder_type(selected_path)     
+        is_pos_folder, is_images_folder, folder_path = folder_type 
+        if is_pos_folder:
+            paths = [selected_path]
+        elif is_images_folder:
+            paths = [os.path.dirname(selected_path)]
+        elif self.scanTree:
+            print(f'Scanning selected folder "{selected_path}"...')
+            exp_paths = path.get_posfolderpaths_walk(selected_path)
+            if not exp_paths:
+                self.warnNoValidExpPaths(selected_path)
+                return
+            
+            paths = self.parse_select_from_exp_paths(exp_paths)
+        else:
+            paths = [selected_path]
+        
+        if not paths:
+            self.warnNoValidPathsFound(selected_path)
+        
+        for selectedPath in paths:
+            if self.onlyExpPaths:
+                selectedPath = load.get_exp_path(selectedPath)
+            
+            selectedPath = selectedPath.replace('\\', '/')
+            if selectedPath in self.pathsList():
+                print(
+                    f'[WARNING]: The following path was already selected: '
+                    f'"{selectedPath}"'
+                )
+                return
+                
+            self.listWidget.addItem(selectedPath)
+    
+    def removePaths(self):
+        for item in self.listWidget.selectedItems():
+            row = self.listWidget.row(item)
+            self.listWidget.takeItem(row)

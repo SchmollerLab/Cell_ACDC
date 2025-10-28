@@ -137,10 +137,10 @@ class repeatDataPrepWindow(QDialog):
                 return
             if len(values) > 1:
                 select_folder.QtPrompt(
-                    self, values, allow_abort=False, toggleMulti=True,
+                    self, values, allow_cancel=False, toggleMulti=True,
                     CbLabel="Select Position folder(s) to process:"
                 )
-                if select_folder.was_aborted:
+                if select_folder.cancel:
                     self.logger.info(
                         'Process aborted by the user '
                         '(cancelled at Postion selection)'

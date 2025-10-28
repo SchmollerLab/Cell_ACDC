@@ -1,10 +1,9 @@
 <!DOCTYPE RCC><RCC version="1.0">
 <qresource>
     
-    <file alias="icon.ico">resources/icon.ico</file>
-    <file alias="logo.svg">resources/logo.svg</file>
-    <file alias="logo.png">resources/logo.png</file>
-    <file alias="splashImage.png">resources/splashImage.png</file>
+    <file alias="icon.ico">resources/icon_v2.ico</file>
+    <file alias="logo.svg">resources/logo_v2.svg</file>
+    <file alias="logo.png">resources/logo_v2.png</file>
     <file alias="AICS_logo.svg">resources/icons/AICS_logo.svg</file>
     <file alias="whitelist.svg">resources/icons/whitelist.svg</file>
     <file alias="backspace.svg">resources/icons/math/backspace.svg</file>
@@ -110,6 +109,7 @@
     <file alias="deselect_all.svg">resources/icons/deselect_all.svg</file>
     <file alias="zoom_in.svg">resources/icons/zoom_in.svg</file>
     <file alias="zoom_out.svg">resources/icons/zoom_out.svg</file>
+    <file alias="zoom_rect.svg">resources/icons/zoom_rect.svg</file>
     <file alias="reinitLastSegm.svg">resources/icons/reinitLastSegm.svg</file>
     <file alias="merge-IDs.svg">resources/icons/merge-IDs.svg</file>
     <file alias="overlay.svg">resources/icons/overlay1.svg</file>

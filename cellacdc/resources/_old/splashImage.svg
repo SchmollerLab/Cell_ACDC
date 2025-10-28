@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   version="1.1"
+   id="Layer_1"
+   x="0px"
+   y="0px"
+   viewBox="0 0 300 150"
+   xml:space="preserve"
+   sodipodi:docname="splashImage.svg"
+   inkscape:version="1.1.1 (3bf5ae0d25, 2021-09-20)"
+   inkscape:export-filename="G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\cellacdc\resources\logo.png"
+   inkscape:export-xdpi="300"
+   inkscape:export-ydpi="300"
+   width="300"
+   height="150"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata
+   id="metadata33"><rdf:RDF><cc:Work
+       rdf:about=""><dc:format>image/svg+xml</dc:format><dc:type
+         rdf:resource="http://purl.org/dc/dcmitype/StillImage" /></cc:Work></rdf:RDF></metadata><defs
+   id="defs31"><radialGradient
+     id="SVGID_1_"
+     cx="71.091797"
+     cy="18.0362"
+     r="14.5193"
+     gradientUnits="userSpaceOnUse"
+     xlink:href="#SVGID_2_">
+	<stop
+   offset="0"
+   style="stop-color:#FFF200"
+   id="stop11499" />
+	<stop
+   offset="1"
+   style="stop-color:#A97C50"
+   id="stop11501" />
+</radialGradient><marker
+     style="overflow:visible"
+     id="marker1526"
+     refX="0"
+     refY="0"
+     orient="auto"
+     inkscape:stockid="Arrow2Mend"
+     inkscape:isstock="true"><path
+       transform="scale(-0.6)"
+       d="M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z"
+       style="fill:#ff0000;fill-opacity:1;fill-rule:evenodd;stroke:#ff0000;stroke-width:0.625;stroke-linejoin:round;stroke-opacity:1"
+       id="path1524" /></marker><marker
+     style="overflow:visible"
+     id="Arrow2Send"
+     refX="0"
+     refY="0"
+     orient="auto"
+     inkscape:stockid="Arrow2Send"
+     inkscape:isstock="true"><path
+       transform="matrix(-0.3,0,0,-0.3,0.69,0)"
+       d="M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z"
+       style="fill:#ff0000;fill-opacity:1;fill-rule:evenodd;stroke:#ff0000;stroke-width:0.625;stroke-linejoin:round;stroke-opacity:1"
+       id="path893" /></marker><marker
+     style="overflow:visible"
+     id="marker1430"
+     refX="0"
+     refY="0"
+     orient="auto"
+     inkscape:stockid="Arrow1Send"
+     inkscape:isstock="true"><path
+       transform="matrix(-0.2,0,0,-0.2,-1.2,0)"
+       style="fill:#ff0000;fill-opacity:1;fill-rule:evenodd;stroke:#ff0000;stroke-width:1pt;stroke-opacity:1"
+       d="M 0,0 5,-5 -12.5,0 5,5 Z"
+       id="path1428" /></marker><marker
+     style="overflow:visible"
+     id="Arrow1Send"
+     refX="0"
+     refY="0"
+     orient="auto"
+     inkscape:stockid="Arrow1Send"
+     inkscape:isstock="true"><path
+       transform="matrix(-0.2,0,0,-0.2,-1.2,0)"
+       style="fill:#ff0000;fill-opacity:1;fill-rule:evenodd;stroke:#ff0000;stroke-width:1pt;stroke-opacity:1"
+       d="M 0,0 5,-5 -12.5,0 5,5 Z"
+       id="path875" /></marker><marker
+     style="overflow:visible"
+     id="TriangleOutS"
+     refX="0"
+     refY="0"
+     orient="auto"
+     inkscape:stockid="TriangleOutS"
+     inkscape:isstock="true"><path
+       transform="scale(0.2)"
+       style="fill:#ff0000;fill-opacity:1;fill-rule:evenodd;stroke:#ff0000;stroke-width:1pt;stroke-opacity:1"
+       d="M 5.77,0 -2.88,5 V -5 Z"
+       id="path1008" /></marker><marker
+     style="overflow:visible"
+     id="Arrow2Mend"
+     refX="0"
+     refY="0"
+     orient="auto"
+     inkscape:stockid="Arrow2Mend"
+     inkscape:isstock="true"><path
+       transform="scale(-0.6)"
+       d="M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z"
+       style="fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:0.625;stroke-linejoin:round;stroke-opacity:1"
+       id="path887" /></marker><radialGradient
+     inkscape:collect="always"
+     xlink:href="#SVGID_2_"
+     id="radialGradient34721"
+     gradientUnits="userSpaceOnUse"
+     gradientTransform="matrix(1,0,0,1.15,18.377987,17.807319)"
+     cx="42.675098"
+     cy="59.286201"
+     r="32.699501" /></defs><sodipodi:namedview
+   pagecolor="#ffffff"
+   bordercolor="#666666"
+   borderopacity="1"
+   objecttolerance="10"
+   gridtolerance="10"
+   guidetolerance="10"
+   inkscape:pageopacity="0"
+   inkscape:pageshadow="2"
+   inkscape:window-width="1920"
+   inkscape:window-height="1017"
+   id="namedview29"
+   showgrid="false"
+   inkscape:zoom="2.4181228"
+   inkscape:cx="75.058224"
+   inkscape:cy="13.853722"
+   inkscape:window-x="1912"
+   inkscape:window-y="-8"
+   inkscape:window-maximized="1"
+   inkscape:current-layer="Layer_1"
+   inkscape:pagecheckerboard="0" />
+<style
+   type="text/css"
+   id="style2">
+	.st0{fill:url(#SVGID_1_);stroke:#986828;stroke-width:0.5;stroke-miterlimit:10;}
+	.st1{fill:url(#SVGID_2_);stroke:#000000;stroke-width:0.5;stroke-miterlimit:10;}
+	.st2{fill:none;stroke:#ED2024;stroke-width:8;stroke-miterlimit:10;}
+	.st3{fill:none;stroke:#ED2024;stroke-width:8;stroke-miterlimit:10;stroke-dasharray:8.6115,6.4586;}
+</style>
+<radialGradient
+   id="SVGID_1_-1"
+   cx="71.091797"
+   cy="18.0362"
+   r="14.5193"
+   gradientUnits="userSpaceOnUse"
+   xlink:href="#SVGID_2_"
+   gradientTransform="translate(18.377987,26.700219)">
+	<stop
+   offset="0"
+   style="stop-color:#fffbe5;stop-opacity:1"
+   id="stop4" />
+	<stop
+   offset="1"
+   style="stop-color:#ff0028;stop-opacity:1"
+   id="stop6" />
+</radialGradient>
+
+<radialGradient
+   id="SVGID_2_"
+   cx="42.675098"
+   cy="59.286201"
+   r="32.699501"
+   gradientTransform="matrix(1,0,0,1.15,0,-8.8929)"
+   gradientUnits="userSpaceOnUse">
+	<stop
+   offset="0"
+   style="stop-color:#858585"
+   id="stop11" />
+	<stop
+   offset="1"
+   style="stop-color:#383838"
+   id="stop13" />
+</radialGradient>
+
+
+<rect
+   style="fill:#ededed;fill-opacity:1;fill-rule:evenodd;stroke:#323232;stroke-width:2;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:10"
+   id="rect34754"
+   width="258"
+   height="105.44379"
+   x="21"
+   y="22.278103"
+   rx="10.194048"
+   inkscape:export-filename="G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\cellacdc\resources\splashImage.png"
+   inkscape:export-xdpi="150"
+   inkscape:export-ydpi="150" /><path
+   class="st0"
+   d="m 98.977987,32.200219 c 5.800003,4.4 6.300003,13.6 1.100003,20.5 -5.200003,6.9 -14.200003,9 -20.000003,4.6 -5.8,-4.4 -6.4,-13.6 -1.2,-20.5 5.2,-6.9 14.2,-9 20.1,-4.6 z"
+   id="path9"
+   style="fill:url(#SVGID_1_-1);fill-opacity:1;stroke:#cd0000;stroke-opacity:1"
+   inkscape:export-filename="G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\cellacdc\resources\splashImage.png"
+   inkscape:export-xdpi="150"
+   inkscape:export-ydpi="150" /><path
+   class="st1"
+   d="m 77.477987,54.900219 c 14.6,7.7 19.2,27.9 10.1,45.100001 -9.1,17.2 -28.3,24.8 -42.9,17.1 -14.6,-7.7 -19.2,-27.900001 -10.2,-45.100001 9,-17.2 28.3,-24.9 43,-17.1 z"
+   id="path16"
+   style="fill:url(#radialGradient34721)"
+   inkscape:export-filename="G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\cellacdc\resources\splashImage.png"
+   inkscape:export-xdpi="150"
+   inkscape:export-ydpi="150" /><path
+   id="path1695"
+   style="fill:#ffe700;fill-opacity:1;stroke:#454545;stroke-width:1;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+   d="M 90.51244,43.111546 55.802196,73.860359 66.674737,75.489502 52.642227,99.259367 86.651789,69.614795 75.885726,67.902789 Z"
+   inkscape:export-filename="G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\cellacdc\resources\splashImage.png"
+   inkscape:export-xdpi="150"
+   inkscape:export-ydpi="150" /><text
+   xml:space="preserve"
+   style="font-size:32px;line-height:1.25;font-family:Arial;-inkscape-font-specification:Arial;fill:#3c3c3c;fill-opacity:1"
+   x="105.69049"
+   y="89.558899"
+   id="text2049"
+   inkscape:export-filename="G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\cellacdc\resources\splashImage.png"
+   inkscape:export-xdpi="150"
+   inkscape:export-ydpi="150"><tspan
+     sodipodi:role="line"
+     id="tspan2047"
+     x="105.69049"
+     y="89.558899"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:32px;font-family:sans-serif;-inkscape-font-specification:sans-serif;fill:#3c3c3c;fill-opacity:1">Cell-ACDC</tspan></text><text
+   xml:space="preserve"
+   style="font-size:10.6667px;line-height:1.25;font-family:Arial;-inkscape-font-specification:Arial"
+   x="224.22681"
+   y="40.001343"
+   id="text25403"
+   inkscape:export-filename="G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\cellacdc\resources\splashImage.png"
+   inkscape:export-xdpi="150"
+   inkscape:export-ydpi="150"><tspan
+     sodipodi:role="line"
+     id="tspan25401"
+     x="224.22681"
+     y="40.001343"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:10.6667px;font-family:sans-serif;-inkscape-font-specification:sans-serif;fill:#3c3c3c;fill-opacity:1">Cancel X</tspan></text></svg>

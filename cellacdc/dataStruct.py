@@ -45,6 +45,7 @@ from . import urls
 from . import acdc_fiji_path
 from . import fiji_macros
 from . import acdc_regex
+from . import io
 
 if os.name == 'nt':
     try:
@@ -1573,7 +1574,7 @@ class createDataStructWin(QMainWindow):
         self.log(
             'Checking file names of loaded files...'
         )
-        proceed = self.checkFileNames(rawFilenames, raw_src_path)
+        proceed, rawFilenames = self.checkFileNames(rawFilenames, raw_src_path)
         if not proceed:
             self.close()
             return
@@ -1914,20 +1915,50 @@ class createDataStructWin(QMainWindow):
                 msg = widgets.myMessageBox(wrapText=False)
                 txt = html_utils.paragraph(
                     f"""
-                    The filename <b>{file}</b> contains <b>invalid 
+                    The filename <code>{file}</code> contains <b>invalid 
                     characters</b>.<br><br>
                     Valid characters are letters, numbers, spaces, underscores 
                     and dashes.<br><br>
-                    Please rename the file and try again.<br><br>
+                    Please stop the process, <b>rename the file</b>, 
+                    and try again, or choose one of the options below.<br><br>
                     Thank you for your patience!
                     """
                 )
-                msg.critical(
-                    self, 'Invalid filename', txt, path_to_browse=raw_src_path
+                renameWithUnderscoresButton = widgets.editPushButton(
+                    'Rename file (replace invalid characters with "_")'
                 )
-                return False
+                renameWithDashesButton = widgets.editPushButton(
+                    'Rename file (replace invalid characters with "-")'
+                )
+                msg.warning(
+                    self, 'Invalid filename', txt, 
+                    path_to_browse=raw_src_path,
+                    buttonsTexts=(
+                        'Let me rename files myself', 
+                        renameWithUnderscoresButton, 
+                        renameWithDashesButton
+                    )
+                )
+                if msg.clickedButton == renameWithUnderscoresButton:
+                    self.log(
+                        'Renaming files to replace invalid characters with "_"...'
+                    )
+                    renamed_filenames = io.rename_files_replace_invalid_chars(
+                        raw_filenames, raw_src_path, replacement_char='_'
+                    )
+                    return True, renamed_filenames
+                elif msg.clickedButton == renameWithDashesButton:
+                    self.log(
+                        'Renaming files to replace invalid characters with "-"...'
+                    )
+                    renamed_filenames = io.rename_files_replace_invalid_chars(
+                        raw_filenames, raw_src_path, replacement_char='-'
+                    )
+                    return True, renamed_filenames
+                else:
+                    return False, []
 
-        return True
+        return True, raw_filenames
         
     def askActionWithOtherFiles(self, files, otherExt):
         self.moveOtherFiles = False

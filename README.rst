@@ -1,4 +1,4 @@
-.. |acdclogo| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/6bf8442b6a33d41fa9de09a2098c6c2b9efbcff1/cellacdc/resources/logo.svg
+.. |acdclogo| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/logo_v2.svg
    :width: 80
 
 |acdclogo| Welcome to Cell-ACDC!

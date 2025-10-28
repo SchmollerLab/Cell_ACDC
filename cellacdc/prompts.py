@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import sys
 
+from natsort import natsorted
+
 from . import GUI_INSTALLED
 
 if GUI_INSTALLED:
@@ -28,6 +30,71 @@ class select_channel_name:
         self.was_aborted = False
         self.allow_abort = allow_abort
 
+    def _get_available_channels_from_metadata(
+            self, metadata_csv_path, filenames, channelExt
+        ):
+        df = pd.read_csv(metadata_csv_path)
+        basename = None
+        channel_names = None
+        if 'Description' not in df.columns:
+            return []
+
+        channelNamesMask = df.Description.str.contains(r'channel_\d+_name')
+        channelNames = df[channelNamesMask]['values'].to_list()
+        try:
+            basename = df.set_index('Description').at['basename', 'values']
+        except Exception as e:
+            basename = None
+        if channelNames:
+            # There are channel names in metadata --> check that they 
+            # are still existing as files
+            channel_names = channelNames.copy()
+            for chName in channelNames:
+                chSaved = []
+                for file in filenames:
+                    patterns = (
+                        f'{chName}.tif', f'{chName}_aligned.npz'
+                    )
+                    ends = [p for p in patterns if file.endswith(p)]
+                    if ends:
+                        pattern = ends[0]
+                        chSaved.append(True)
+                        m = tuple(re.finditer(pattern, file))[-1]
+                        chName_idx = m.start()
+                        if basename is None:
+                            basename = file[:chName_idx]
+                        break
+                if not any(chSaved):
+                    channel_names.remove(chName)
+
+            if basename is not None:
+                self.basenameNotFound = False
+                self.basename = basename
+        elif channelNames and basename is not None:
+            self.basename = basename
+            self.basenameNotFound = False
+            channel_names = channelNames
+
+        if channel_names is None or basename is None:
+            return []
+        
+        # Add additional channels existing as file but not in metadata.csv
+        for file in filenames:
+            ends = [
+                ext for ext in channelExt if (file.endswith(ext) 
+                and not file.endswith('btrack_tracks.h5'))
+                and not file.endswith('edited.h5')
+            ]
+            if ends:
+                endName = file[len(basename):]
+                chName = endName.replace(ends[0], '')
+                if chName not in channel_names:
+                    channel_names.append(chName)
+        
+        channel_names = natsorted(channel_names)
+        
+        return channel_names
+    
     def get_available_channels(
             self, filenames, images_path, useExt=None,
             channelExt=('.tif', '_aligned.npz'), 
@@ -44,58 +111,10 @@ class select_channel_name:
         channel_names = set()
         basename = None
         if metadata_csv_path is not None:
-            df = pd.read_csv(metadata_csv_path)
-            basename = None
-            if 'Description' in df.columns:
-                channelNamesMask = df.Description.str.contains(r'channel_\d+_name')
-                channelNames = df[channelNamesMask]['values'].to_list()
-                try:
-                    basename = df.set_index('Description').at['basename', 'values']
-                except Exception as e:
-                    basename = None
-                if channelNames:
-                    # There are channel names in metadata --> check that they 
-                    # are still existing as files
-                    channel_names = channelNames.copy()
-                    for chName in channelNames:
-                        chSaved = []
-                        for file in filenames:
-                            patterns = (
-                                f'{chName}.tif', f'{chName}_aligned.npz'
-                            )
-                            ends = [p for p in patterns if file.endswith(p)]
-                            if ends:
-                                pattern = ends[0]
-                                chSaved.append(True)
-                                m = tuple(re.finditer(pattern, file))[-1]
-                                chName_idx = m.start()
-                                if basename is None:
-                                    basename = file[:chName_idx]
-                                break
-                        if not any(chSaved):
-                            channel_names.remove(chName)
-
-                    if basename is not None:
-                        self.basenameNotFound = False
-                        self.basename = basename
-                elif channelNames and basename is not None:
-                    self.basename = basename
-                    self.basenameNotFound = False
-                    channel_names = channelNames
-
-            if channel_names and basename is not None:
-                # Add additional channels existing as file but not in metadata.csv
-                for file in filenames:
-                    ends = [
-                        ext for ext in channelExt if (file.endswith(ext) 
-                        and not file.endswith('btrack_tracks.h5'))
-                        and not file.endswith('edited.h5')
-                    ]
-                    if ends:
-                        endName = file[len(basename):]
-                        chName = endName.replace(ends[0], '')
-                        if chName not in channel_names:
-                            channel_names.append(chName)
+            channel_names = self._get_available_channels_from_metadata(
+                metadata_csv_path, filenames, channelExt
+            )
+            if channel_names:
                 return channel_names, False
         
         # Find basename as intersection of filenames
@@ -167,6 +186,8 @@ class select_channel_name:
                     idx = is_phase_contr_li.index(True)
                     channel_names[0], channel_names[idx] = (
                                       channel_names[idx], channel_names[0])
+        
+        channel_names = natsorted(channel_names)
         
         return channel_names, any(basenameNotFound)
 

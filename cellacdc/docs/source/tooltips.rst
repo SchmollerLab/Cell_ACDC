@@ -46,6 +46,12 @@
     :height: 16px
     :width: 16px
 
+.. |zoomRectButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/zoom_rect.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/zoom_rect.svg 
+    :alt: zoomRectButton icon
+    :height: 16px
+    :width: 16px
+
 .. |autoPilotButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/find.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/auto-pilot.svg 
     :alt: autoPilotButton icon
@@ -375,6 +381,7 @@ File control
 View options
 ------------
 * **Find ID (** |findIdAction| **"Ctrl+F"):** Find and highlight ID. Press "Esc" to clear highlighted object.
+* **Zoom to rectangle (** |zoomRectButton| **"Shift+Z"):** Draw a rectangular area with left-click in order to zoom to that area. Right-click to cycle back to previously zoomed areas.
 * **Open Slideshow (** |slideshowButton| **"Ctrl+W"):** Opens slideshow.
 * **Auto-pilot (** |autoPilotButton| **"Ctrl+Shift+A"):** Press arrow up/down or Page Up/Page Down to navigate and view segmented objects one by one.
 * **Skip forward to new object (** |skipToNewIdAction| **"Page up"):** Skip forward to the frame where a new object appears.
@@ -390,7 +397,7 @@ Edit tools: Segmentation and tracking
 -------------------------------------
 * **Brush (** |brushButton| **"B"):** 
     * Edit segmentation labels with a circular brush.
-    * Increase brush size with "UP/DOWN" arrows on the keyboard.  
+    * Increase/decrease brush size with "UP/DOWN" arrows on the keyboard.  
     * Default behaviour:
         * Painting on the background will create a new object.
         * Edit an existing label by starting to paint on the object (brush cursor changes color when hovering an existing label).
@@ -407,7 +414,7 @@ Edit tools: Segmentation and tracking
         * NOTE: use the power brush to draw ABOVE the existing objects.
 * **Eraser (** |eraserButton| **"X"):**
     * Erase segmentation objects with a circular eraser.
-    * Increase eraser size with "UP/DOWN" arrows on the keyboard.
+    * Increase/decrease eraser size with "UP/DOWN" arrows on the keyboard.
     * Default behaviour:
         * Starting to erase from the background (cursor is a red circle) will erase any labels you hover above.
         * Starting to erase from a specific label will erase only that label (cursor is a circle with the color of the label).
@@ -416,11 +423,13 @@ Edit tools: Segmentation and tracking
 * **Magic Wand (** |wandToolButton| **"Ctrl+D"):** Create a new object using neighbouring pixels whose intensity is within a selected tolerance. Left-click for single selection or left-click and then drag for continous selection.
 * **Magic prompts (** |magicPromptsToolButton| **"W"):** Use promptable models (e.g., Segment Anything) to refine objects or generate new ones interactively with prompts (e.g., points). Prompts are added with both the left, right, and middle-click
 * **Copy lost contour (** |copyLostObjButton| **"V"):** Hover onto lost object contour --> right-click to copy the contour as a new object.
-* **Manually annotate future frames (** |manualAnnotFutureButton| **"Y"):**
+* **Lock ID and annotate single object (** |manualAnnotFutureButton| **"Y"):**
     1. Activate to automatically set the brush ID to the hovered ID. 
        --> Warning about lost objects temporarily disabled
     2. Annotate future frames
     3. Deactivate to go back to the frame you were annotating before activating this tool.
+
+    NOTE: While activated, the brush ID will be locked to the requested ID. This is useful to quickly annotate past and future frames of a specific object without checking errors with the other objects. The future frames visited during these edits will not be set as fully checked, but the edits will be kept.
 * **Magic labeller (** |labelRoiButton| **"L"):** Draw a rectangular ROI around object(s) you want to segment. Draw with LEFT button to label with last used model. Draw with RIGHT button to choose a different segmentation model.
 * **Segment (** |segmentToolAction| **"R"):** Segment with last used model and last used parameters. If you never selected a segmentation model before, you will be asked to choose one and initialize its parameters.
 * **Segmenting for lost IDs (** |SegForLostIDsButton| **):** Segment only a small cutout of the image around missing IDs based on the segmentation of the previous frame. Will always use cellpose model. Parameters can be adjusted in the top ribbon under Segment --> Edit settings for Segmenting lost IDs. In the settings menu, additional parameters can be set like padding and overlap threshold in addition to the model settings.

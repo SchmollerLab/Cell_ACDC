@@ -621,6 +621,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         left_click = mouseEvent.button() == Qt.MouseButton.LeftButton
         return modifiers == Qt.AltModifier and left_click
 
+    def middleClickText(self):
+        if self.delObjAction is None and sys.platform == 'darwin':
+            return 'Command + Left Click'
+        
+        if self.delObjAction is None:
+            return 'Middle Click'
+        
+        delObjKeySequence, delObjQtButton = self.delObjAction
+        
+        if delObjQtButton == Qt.MouseButton.LeftButton:
+            buttonName = 'Left click'
+        elif delObjQtButton == Qt.MouseButton.RightButton:
+            buttonName = 'Right click'
+        else:
+            buttonName = 'Middle click'
+        
+        if delObjKeySequence is None:
+            return buttonName
+        
+        return f'{delObjKeySequence.toString()} + {buttonName}'
+    
     def isDefaultMiddleClick(self, mouseEvent, modifiers):
         if sys.platform == 'darwin':
             middle_click = (
@@ -848,6 +869,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # Help menu
         helpMenu = menuBar.addMenu("&Help")
         helpMenu.addAction(self.openLogFileAction)
+        helpMenu.addAction(self.showLogFilesAction)
         helpMenu.addAction(self.tipsAction)
         helpMenu.addAction(self.UserManualAction)
         helpMenu.addSeparator()
@@ -885,6 +907,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolBar)
         navigateToolBar.addAction(self.findIdAction)
+        
+        navigateToolBar.addWidget(self.zoomRectButton)
 
         self.slideshowButton = QToolButton(self)
         self.slideshowButton.setIcon(QIcon(":eye-plus.svg"))
@@ -963,7 +987,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.assignBudMothButton.setCheckable(True)
         self.assignBudMothButton.setShortcut('A')
         self.assignBudMothButton.setVisible(False)
-        self.assignBudMothButton.action = ccaToolBar.addWidget(self.assignBudMothButton)
+        self.assignBudMothButton.action = ccaToolBar.addWidget(
+            self.assignBudMothButton
+        )
         self.checkableButtons.append(self.assignBudMothButton)
         self.checkableQButtonsGroup.addButton(self.assignBudMothButton)
         self.functionsNotTested3D.append(self.assignBudMothButton)
@@ -975,7 +1001,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setIsHistoryKnownButton.setCheckable(True)
         self.setIsHistoryKnownButton.setShortcut('U')
         self.setIsHistoryKnownButton.setVisible(False)
-        self.setIsHistoryKnownButton.action = ccaToolBar.addWidget(self.setIsHistoryKnownButton)
+        self.setIsHistoryKnownButton.action = ccaToolBar.addWidget(
+            self.setIsHistoryKnownButton
+        )
         self.checkableButtons.append(self.setIsHistoryKnownButton)
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
         self.functionsNotTested3D.append(self.setIsHistoryKnownButton)
@@ -994,6 +1022,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         editToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         
         self.addToolBar(editToolBar)
+        
+        self.manulAnnotToolButtons = set()
 
         self.brushButton = QToolButton(self)
         self.brushButton.setIcon(QIcon(":brush.svg"))
@@ -1003,6 +1033,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.LeftClickButtons.append(self.brushButton)
         self.brushButton.keyPressShortcut = Qt.Key_B
         self.widgetsWithShortcut['Brush'] = self.brushButton
+        self.manulAnnotToolButtons.add(self.brushButton)
 
         self.eraserButton = QToolButton(self)
         self.eraserButton.setIcon(QIcon(":eraser.svg"))
@@ -1012,6 +1043,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.widgetsWithShortcut['Eraser'] = self.eraserButton
         self.checkableButtons.append(self.eraserButton)
         self.LeftClickButtons.append(self.eraserButton)
+        self.manulAnnotToolButtons.add(self.eraserButton)
 
         self.curvToolButton = QToolButton(self)
         self.curvToolButton.setIcon(QIcon(":curvature-tool.svg"))
@@ -1022,6 +1054,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # self.functionsNotTested3D.append(self.curvToolButton)
         self.widgetsWithShortcut['Curvature tool'] = self.curvToolButton
         # self.checkableButtons.append(self.curvToolButton)
+        self.manulAnnotToolButtons.add(self.curvToolButton)
 
         self.wandToolButton = QToolButton(self)
         self.wandToolButton.setIcon(QIcon(":magic_wand.svg"))
@@ -1096,10 +1129,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.manualAnnotFutureButton
         )
         self.checkableButtons.append(self.manualAnnotFutureButton)
-        self.widgetsWithShortcut['Manually annotate future frames'] = (
+        self.widgetsWithShortcut['Lock ID and annotate single object'] = (
             self.manualAnnotFutureButton
         )
         self.functionsNotTested3D.append(self.manualAnnotFutureButton)
+        self.manulAnnotToolButtons.add(self.manualAnnotFutureButton)
 
         self.segmentToolAction = QAction('Segment with last used model', self)
         self.segmentToolAction.setIcon(QIcon(":segment.svg"))
@@ -1643,8 +1677,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     pos_i, frame_i, z_slice = key
                     posData.combine_img_data[frame_i][z_slice] = processed_data
                     self.img1.updateMinMaxValuesCombinedData(
-                            self.data, pos_i, frame_i, z_slice
-                        )
+                        self.data, pos_i, frame_i, z_slice
+                    )
             elif n_dim_img == 3:
                 for key, processed_data in per_pos_data[pos_i]:
                     pos_i, frame_i, z_slice = key
@@ -1868,7 +1902,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.modeToolBar = modeToolBar
         
-        self.autoPilotZoomToObjToolbar = widgets.ToolBar("Auto-zoom to objects", self)
+        self.overlayToolbar = widgets.OverlayToolbar(parent=self)
+        self.addToolBar(Qt.TopToolBarArea, self.overlayToolbar)
+        self.overlayToolbar.setVisible(False)
+        self.overlayToolbar.sigSetTranspacency.connect(
+            self.setOverlayTransparency
+        )
+        self.overlayToolbar.sigSetSingleChannel.connect(
+            self.setOverlaySingleChannel
+        )
+        
+        self.autoPilotZoomToObjToolbar = widgets.ToolBar(
+            "Auto-zoom to objects", self
+        )
         self.autoPilotZoomToObjToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.autoPilotZoomToObjToolbar.setMovable(False)
         self.addToolBar(Qt.TopToolBarArea, self.autoPilotZoomToObjToolbar)
@@ -2532,6 +2578,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.findIdAction.setIcon(QIcon(":find.svg"))
         self.findIdAction.setShortcut('Ctrl+F')
         
+        self.zoomRectButton = QToolButton(self)
+        self.zoomRectButton.setIcon(QIcon(":zoom_rect.svg"))
+        self.zoomRectButton.setCheckable(True)
+        self.zoomRectButton.setShortcut('Shift+Z')
+        self.LeftClickButtons.append(self.zoomRectButton)
+        self.checkableButtons.append(self.zoomRectButton)
+        self.checkableQButtonsGroup.addButton(self.zoomRectButton)
+        self.widgetsWithShortcut['Zoom to rectangular area'] = (
+            self.zoomRectButton
+        )
+        
         self.skipToNewIdAction = QAction(self)
         self.skipToNewIdAction.setIcon(QIcon(":skip_forward_new_ID.svg"))
         self.skipToNewIdAction.setShortcut(
@@ -2651,6 +2708,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.tipsAction = QAction("Tips and tricks...", self)
         self.UserManualAction = QAction("User Documentation...", self)
         self.openLogFileAction = QAction("Open log file...", self)
+        self.showLogFilesAction = QAction("Show log files...", self)
         self.aboutAction = QAction("About Cell-ACDC", self)
         # self.aboutAction = QAction("&About...", self)
 
@@ -2909,6 +2967,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
         self.UserManualAction.triggered.connect(myutils.browse_docs)
         self.openLogFileAction.triggered.connect(self.openLogFile)
+        self.showLogFilesAction.triggered.connect(self.showLogFiles)
         self.aboutAction.triggered.connect(self.showAbout)
         # Connect Open Recent to dynamically populate it
         # self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
@@ -2948,7 +3007,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if channel == self.user_ch_name:
             lutItem = self.imgGrad
         else:
-            _, lutItem, _ = self.overlayLayersItems[channel]
+            lutItem = self.overlayLayersItems[channel][1]
             
         for action in lutItem.rescaleActionGroup.actions():
             if action.text() == how:
@@ -2972,18 +3031,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             )
             return 
 
+        posData = self.data[self.pos_i]
         if imageItem is None:
             imageItem = self.img1
             channel = self.user_ch_name
+            image_data = posData.img_data
         else:
             channel = imageItem.channelName
+            _, filename = self.getPathFromChName(channel, posData)
+            image_data = posData.fluo_data_dict[filename]
         
         triggeredByUser = True
         if action is None:
             triggeredByUser = False
             action = imageItem.lutItem.rescaleActionGroup.checkedAction()
         
-        posData = self.data[self.pos_i]
         how = action.text()
         
         if how == 'Rescale each 2D image':
@@ -3003,30 +3065,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             levels_key = (how, posData.frame_i)
             levels = lutLevelsCh.get(levels_key)
             if levels is None:
-                image_data = posData.img_data[posData.frame_i]
                 levels = (image_data.min(), image_data.max())
             lutLevelsCh[levels_key] = levels
             imageItem.setLevels(levels)
         elif how == 'Rescale across time frames':            
             imageItem.setEnableAutoLevels(False)
-            
             levels_key = (how, None)
             levels = lutLevelsCh.get(levels_key)
             if levels is None:
-                image_data = posData.img_data
                 levels = (image_data.min(), image_data.max())
                 
             lutLevelsCh[levels_key] = levels
             imageItem.setLevels(levels)
         elif how == 'Choose custom levels...':
             if triggeredByUser:
-                image_data = posData.img_data
                 current_min, current_max = imageItem.getLevels() 
                 dtype_max = np.iinfo(image_data.dtype).max
+                max_value = image_data.max()
+                min_value = image_data.min()
                 win = apps.SetCustomLevelsLut(
                     init_min_value=current_min,
                     init_max_value=current_max,
-                    maximum_max_value=dtype_max,
+                    maximum_max_value=max_value,
+                    minimum_min_value=min_value,
                     parent=self
                 )
                 win.sigLevelsChanged.connect(
@@ -3047,7 +3108,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             levels_key = (how, None)
             levels = lutLevelsCh.get(levels_key)
             if levels is None:
-                image_data = posData.img_data
                 dtype_max = np.iinfo(image_data.dtype).max
                 levels = (0, dtype_max)
             lutLevelsCh[levels_key] = levels
@@ -3151,6 +3211,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.loadPosAction.triggered.connect(self.loadPosTriggered)
         # self.reloadAction.triggered.connect(self.reload_cb)
         self.findIdAction.triggered.connect(self.findID)
+        self.zoomRectButton.toggled.connect(self.zoomRectActionToggled)
         self.autoPilotButton.toggled.connect(self.autoPilotToggled)
         self.skipToNewIdAction.triggered.connect(self.skipForwardToNewID)        
         self.slideshowButton.toggled.connect(self.launchSlideshow)
@@ -3349,7 +3410,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.brushAutoFillCheckbox.toggled.connect(self.brushAutoFillToggled)
         self.brushAutoHideCheckbox.toggled.connect(self.brushAutoHideToggled)
 
-        self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
         self.imgGrad.sigAddScaleBar.connect(self.addScaleBarAction.setChecked)
         self.imgGrad.sigAddTimestamp.connect(self.addTimestampAction.setChecked)
         self.imgGrad.gradient.sigGradientChangeFinished.connect(
@@ -4056,7 +4116,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.imgGrad.setImageItem(self.img1)
         self.img1.lutItem = self.imgGrad
         self.imgGrad.sigRescaleIntes.connect(self.rescaleIntensitiesLut)
-        self.ax1.addImageItem(self.img1)
+        self.ax1.addBaseImageItem(self.img1)
+        
+        # RGBA image for true transparency mode
+        self.rgbaImg1 = pg.ImageItem()
+        self.ax1.addImageItem(self.rgbaImg1)
+        # self.rgbaImg1.setImage(self.emptyLab)
 
         # Right image
         self.img2 = widgets.labImageItem()
@@ -4292,6 +4357,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.manualBackgroundImageItem = pg.ImageItem()
     
+    def gui_createZoomRectItem(self):
+        Y, X = self.currentLab2D.shape
+        # Label ROI rectangle
+        pen = pg.mkPen('r', width=3, style=Qt.DashLine)
+        self.zoomRectItem = widgets.ZoomROI(
+            (0,0), (0,0),
+            maxBounds=QRectF(QRect(0,0,X,Y)),
+            scaleSnap=True,
+            translateSnap=True,
+            pen=pen, hoverPen=pen
+        )
+    
     def gui_createLabelRoiItem(self):
         Y, X = self.currentLab2D.shape
         # Label ROI rectangle
@@ -4330,14 +4407,36 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
     def gui_createOverlayItems(self):
         self.imgGrad.setAxisLabel(self.user_ch_name)
+        self.baseLayerToolbutton = widgets.OverlayChannelToolButton(
+            self.user_ch_name, self.imgGrad
+        )
+        self.baseLayerToolbutton.setChecked(True)
+        self.baseLayerToolbutton.clicked.connect(
+            self.overlayChannelToolbuttonClicked
+        )
+        self.allOverlayToolbuttons = {
+            self.user_ch_name: self.baseLayerToolbutton
+        }
+        self.allOverlayToolbuttonsByIdx = {
+            0: self.baseLayerToolbutton
+        }
+        self.baseLayerToolbutton.action = (
+            self.overlayToolbar.addWidget(self.baseLayerToolbutton)
+        )
         self.overlayLayersItems = {}
+        self.overlayToolbarAreChannelsChecked = {}
         fluoChannels = [ch for ch in self.ch_names if ch != self.user_ch_name]
         for c, ch in enumerate(fluoChannels):
-            overlayItems = self.getOverlayItems(ch)                
+            overlayItems = self.getOverlayItems(ch, c+1)                
             self.overlayLayersItems[ch] = overlayItems
-            imageItem, lutItem, alphaScrollBar = overlayItems
+            imageItem, lutItem = overlayItems[:2]
             self.ax1.addItem(imageItem)
             self.lutItemsLayout.addItem(lutItem, row=0, col=c+1)
+            toolbutton = overlayItems[3]
+            self.allOverlayToolbuttons[ch] = toolbutton
+            self.allOverlayToolbuttonsByIdx[c+1] = toolbutton
+
+        self.overlayToolbuttonsSep = self.overlayToolbar.addSeparator()
         self.plotsCol = len(self.ch_names)
 
     def gui_getLostObjScatterItem(self):
@@ -5582,7 +5681,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # Draw freehand clear region --> draw region
         elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
             self.freeRoiItem.addPoint(xdata, ydata)
-    
+        
+        # Label ROI dragging mouse --> draw ROI
+        elif self.isMouseDragImg1 and self.zoomRectButton.isChecked():
+            x0, y0 = self.zoomRectItem.pos()
+            w, h = (xdata-x0), (ydata-y0)
+            self.zoomRectItem.setSize((w, h))
+
     # @exec_time
     def fillHolesID(self, ID, sender='brush'):
         posData = self.data[self.pos_i]
@@ -6100,6 +6205,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not event.isExit()
             and noModifier
         )
+        setZoomRectCursor = (
+            self.zoomRectButton.isChecked() and not event.isExit()
+            and noModifier
+        )
         magicPromptsON = self.magicPromptsToolButton.isChecked()
         pointsLayerON = self.togglePointsLayerAction.isChecked()
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
@@ -6136,6 +6245,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.app.setOverrideCursor(Qt.PointingHandCursor)
         elif setAddPointCursor:
             self.app.setOverrideCursor(self.addPointsCursor)
+        elif setZoomRectCursor:
+            self.app.setOverrideCursor(Qt.CrossCursor)
         
         return {
             'setBrushCursor': setBrushCursor,
@@ -6152,6 +6263,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             'setManualTrackingCursor': setManualTrackingCursor,
             'setManualBackgroundCursor': setManualBackgroundCursor,
             'setAddPointCursor': setAddPointCursor,
+            'setZoomRectCursor': setZoomRectCursor
         }
     
     def warnAddingPointWithExistingId(self, point_id, table_endname=''):
@@ -6539,7 +6651,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
             self.isRightClickDragImg1 = False
             try:
-                self.splineToObj(isRightClick=True)
+                self.curvToolSplineToObj(isRightClick=True)
                 self.update_rp()
                 self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
@@ -6559,21 +6671,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.isMouseDragImg1 = False
 
             self.tempLayerImg1.setImage(self.emptyLab)
-
+        
             # Update data (rp, etc)
             self.update_rp()
 
-            for ID in self.erasedIDs:
-                if ID == 0:
-                    continue
-                if ID not in posData.IDs:
-                    if self.isSnapshot:
-                        self.fixCcaDfAfterEdit('Delete ID with eraser')
-                        self.updateAllImages()
-                    else:
-                        self.warnEditingWithCca_df('Delete ID with eraser')
-                    break
-            else:
+            doUpdateImages = self.checkWarnDeletedIDwithEraser()
+            
+            if doUpdateImages:
                 self.updateAllImages()
 
         # Brush button mouse release
@@ -6795,9 +6899,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.clickedOnBud = False
             self.BudMothTempLine.setData([], [])
         
+        # Draw clear region mouse release
         elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
             self.freeRoiItem.closeCurve()
             self.clearObjsFreehandRegion()
+        
+        # Zoom rect mouse release 
+        elif self.isMouseDragImg1 and self.zoomRectButton.isChecked():
+            self.isMouseDragImg1 = False
+            self.zoomRectDone()
 
     def gui_clickedDelRoi(self, event, left_click, right_click):
         posData = self.data[self.pos_i]
@@ -6935,6 +7045,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         findNextMotherButtonON = self.findNextMotherButton.isChecked()
         unknownLineageButtonON = self.unknownLineageButton.isChecked()
         drawClearRegionON = self.drawClearRegionButton.isChecked()
+        zoomRectON = self.zoomRectButton.isChecked()
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -6962,6 +7073,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not middle_click and not keepObjON and not separateON
             and not manualBackgroundON and not drawClearRegionON
             and addPointsByClickingButton is None and not whitelistIDsON
+            and not zoomRectON
         )
         if isPanImageClick:
             dragImgLeft = True
@@ -7028,14 +7140,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not magicPromptsON
+            and not magicPromptsON and not zoomRectON
         )
         canBrush = (
             brushON and not curvToolON and not rulerON
             and not dragImgLeft and not eraserON and not wandON
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None and not drawClearRegionON
-            and not magicPromptsON
+            and not magicPromptsON and not zoomRectON
         )
         canErase = (
             eraserON and not curvToolON and not rulerON
@@ -7043,7 +7155,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not magicPromptsON
+            and not magicPromptsON and not zoomRectON
         )
         canRuler = (
             rulerON and not curvToolON and not brushON
@@ -7051,7 +7163,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not magicPromptsON
+            and not magicPromptsON and not zoomRectON
         )
         canWand = (
             wandON and not curvToolON and not brushON
@@ -7059,7 +7171,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not magicPromptsON
+            and not magicPromptsON and not zoomRectON
         )
         canPolyLine = (
             polyLineRoiON and not wandON and not curvToolON and not brushON
@@ -7067,6 +7179,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
             and not drawClearRegionON and not magicPromptsON
+            and not zoomRectON
         )
         canLabelRoi = (
             labelRoiON and not wandON and not curvToolON and not brushON
@@ -7075,6 +7188,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not whitelistIDsON and not magicPromptsON
+            and not zoomRectON
         )
         canKeep = (
             keepObjON and not wandON and not curvToolON and not brushON
@@ -7083,6 +7197,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not whitelistIDsON and not magicPromptsON
+            and not zoomRectON
         )
         canWhitelistIDs = (
             whitelistIDsON and not wandON and not curvToolON and not brushON
@@ -7091,6 +7206,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not keepObjON and not magicPromptsON
+            and not zoomRectON
         )
         canAddPoint = (
             (pointsLayerON or magicPromptsON)
@@ -7099,6 +7215,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON  and not keepObjON
             and not manualBackgroundON and not drawClearRegionON
+            and not zoomRectON
         )
         canAddManualBackgroundObj = (
             manualBackgroundON and not wandON and not curvToolON and not brushON
@@ -7107,6 +7224,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and addPointsByClickingButton is None
             and not keepObjON and not drawClearRegionON
             and not magicPromptsON and not whitelistIDsON
+            and not zoomRectON
         )
         canDrawClearRegion = (
             drawClearRegionON and not wandON and not curvToolON and not brushON
@@ -7114,7 +7232,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
             and not polyLineRoiON and not magicPromptsON
-            and not whitelistIDsON
+            and not whitelistIDsON and not zoomRectON
         )
         canWand = (
             magicPromptsON and not curvToolON and not brushON
@@ -7122,7 +7240,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not wandON and not whitelistIDsON
+            and not wandON and not whitelistIDsON and not zoomRectON
+        )
+        canZoomRect = (
+            zoomRectON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+            and not polyLineRoiON and not labelRoiON
+            and addPointsByClickingButton is None
+            and not manualBackgroundON and not drawClearRegionON
+            and not wandON and not whitelistIDsON and not magicPromptsON
         )
         
         # Enable dragging of the image window or the scalebar
@@ -7209,7 +7335,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
             self.setImageImg2(updateLookuptable=False)
 
-            img = self.img1.image.copy()
             how = self.drawIDsContComboBox.currentText()
             lab2D = self.get_2Dlab(posData.lab)
             self.globalBrushMask = np.zeros(lab2D.shape, dtype=bool)
@@ -7501,7 +7626,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             
             if closeSpline:
                 self.splineHoverON = False
-                self.splineToObj()
+                self.curvToolSplineToObj()
                 self.update_rp()
                 self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
@@ -7795,6 +7920,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 return
             
             self.annotate_unknown_lineage_action(posData, event, ydata, xdata)
+        
+        elif (left_click or right_click) and canZoomRect:
+            if left_click:
+                x, y = event.pos().x(), event.pos().y()
+                xdata, ydata = int(x), int(y)
+                
+                self.zoomRectItem.setPos((xdata, ydata))
+                
+                self.isMouseDragImg1 = True
+            else:
+                try:
+                    xRange, yRange = self.zoomRectItem.getLastRange()
+                    self.ax1.setRange(
+                        xRange=xRange, 
+                        yRange=yRange, 
+                        padding=0
+                    )
+                except Exception as err:
+                    QTimer.singleShot(100, self.autoRange)
 
     def repeat_click_and_backup(self, posData, event, ydata, xdata):
         """
@@ -8251,11 +8395,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 return False
             
             isRightDifferentAnnot = self.rightBottomGroupbox.isChecked()
-            areLinesRequestedRight = self.annotCcaInfoCheckboxRight.isChecked()
+            areLinesRequestedRight = (
+                self.annotCcaInfoCheckboxRight.isChecked()
+                or self.drawMothBudLinesCheckboxRight.isChecked()
+            )
+            
             if isRightDifferentAnnot and areLinesRequestedRight:
                 return True
         
-            areLinesRequestedLeft = self.drawMothBudLinesCheckboxRight.isChecked()
+            areLinesRequestedLeft = (
+                self.drawMothBudLinesCheckbox.isChecked()
+                or self.annotCcaInfoCheckbox.isChecked()
+            )
             if not isRightDifferentAnnot and areLinesRequestedLeft:
                 return True
         return False
@@ -8386,6 +8537,37 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if checked:
             self.autoPilotZoomToObjToggle.setChecked(False)
             self.autoPilotZoomToObjToggle.toggle()
+    
+    def zoomRectActionToggled(self, checked):
+        if checked:
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.sender())
+            self.connectLeftClickButtons()
+            self.ax1.addItem(self.zoomRectItem)
+        else:
+            self.zoomRectItem.setPos((0,0))
+            self.zoomRectItem.setSize((0,0))
+            self.ax1.removeItem(self.zoomRectItem)
+    
+    def zoomRectDone(self):
+        xRange, yRange = self.ax1.viewRange()
+        self.zoomRectItem.storeLastRange(xRange, yRange)
+        
+        ymin, xmin, ymax, xmax = self.zoomRectItem.bbox()
+        
+        self.zoomRectItem.setPos((0,0))
+        self.zoomRectItem.setSize((0,0))
+        
+        self.ax1.setRange(
+            xRange=(xmin, xmax), 
+            yRange=(ymin, ymax), 
+            padding=0
+        )
+    
+    def zoomRectCancelled(self):
+        self.isMouseDragImg1 = False
+        self.zoomRectItem.setPos((0,0))
+        self.zoomRectItem.setSize((0,0))
     
     def findID(self):
         posData = self.data[self.pos_i]
@@ -11150,7 +11332,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.polyLineRoi.handleSize = 7
         self.polyLineRoi.points = []
-        self.ax1.addItem(self.polyLineRoi)
+        key = uuid.uuid4()
+        self.ax1.addDelRoiItem(self.polyLineRoi, key)
     
     def addPointsPolyLineRoi(self, closed=False):
         self.polyLineRoi.setPoints(self.polyLineRoi.points, closed=closed)
@@ -11450,7 +11633,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def addTimestamp(self, checked):
         if checked:
             posData = self.data[self.pos_i]
-            Y, X = self.img1.image.shape
+            Y, X = self.img1.image.shape[:2]
             viewRange = self.ax1.viewRange()
             self.timestampDialog = apps.TimestampPropertiesDialog(parent=self)
             self.timestampDialog.show()
@@ -11477,7 +11660,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def addScaleBar(self, checked):
         if checked:
             posData = self.data[self.pos_i]
-            Y, X = self.img1.image.shape
+            Y, X = self.img1.image.shape[:2]
             viewRange = self.ax1.viewRange()
             self.scaleBarDialog = apps.ScaleBarPropertiesDialog(
                 X, Y, posData.PhysicalSizeX, parent=self
@@ -11506,7 +11689,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.timestamp.draw(posData.frame_i, **timeStampKwargs)
     
     def editScaleBarProperties(self, properties):
-        Y, X = self.img1.image.shape
+        Y, X = self.img1.image.shape[:2]
         posData = self.data[self.pos_i]
         win = apps.ScaleBarPropertiesDialog(
             X, Y, posData.PhysicalSizeX, parent=self, **properties
@@ -11886,7 +12069,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.imgGrad.rescaleAcrossZstackAction.setDisabled(not enabled)
         for ch, overlayItems in self.overlayLayersItems.items():
-            imageItem, lutItem, alphaScrollBar = overlayItems
+            lutItem = overlayItems[1]
             lutItem.rescaleAcrossZstackAction.setDisabled(not enabled)
 
     def reInitCca(self):
@@ -12504,8 +12687,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.zSliceScrollBar.setSliderPosition(nearest_nonzero_z)
         self.update_z_slice(nearest_nonzero_z)
 
-
-
     def disconnectLeftClickButtons(self):
         for button in self.LeftClickButtons:
             try:
@@ -12561,6 +12742,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
         self.manualBackgroundButton.toggled.connect(self.manualBackground_cb)
         self.whitelistIDsButton.toggled.connect(self.whitelistIDs_cb)
+        self.zoomRectButton.toggled.connect(self.zoomRectActionToggled)
         self.connectLeftClickButtonsPointsLayersToolbar()
 
     def brushSize_cb(self, value):
@@ -12621,6 +12803,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def manualAnnotFuture_cb(self, checked):
         posData = self.data[self.pos_i]
         if checked:
+            for _ in range(3):
+                self.onEscape(
+                    buttonsToNotUncheck=[self.manualAnnotFutureButton],
+                    doAutoRange=False
+                )
+
+            self.brushButton.setChecked(True)
             self.store_data()
             self.manualAnnotState = {
                 'editID': self.editIDspinbox.value(),
@@ -12634,7 +12823,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 win = apps.QLineEditDialog(
                     title='Not hovering any ID',
                     msg='You are not hovering on any ID.\n'
-                        'Enter the ID that you want to lock for future frames.',
+                        'Enter the ID that you want to lock.',
                     parent=self, 
                     allowedValues=posData.IDs,
                 )
@@ -12644,11 +12833,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     return
                 hoverID = win.EntryID
             self.logger.info(
-                'Setting manual annotation for future frames with ID = '
+                'Setting manual annotation for ID = '
                 f'{hoverID}, at frame n. {posData.frame_i+1}'
             )
             self.editIDspinbox.setValue(hoverID)
             self.manualAnnotState['frame_i_to_restore'] = posData.frame_i
+            self.manualAnnotState['last_tracked_i'] = (
+                self.navigateScrollBar.maximum()-1
+            )
             self.ax1.sigRangeChanged.connect(self.highlightManualAnnotMode)
             self.ax1.setHighlighted(True)
         else:
@@ -12659,9 +12851,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             )
             frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
             if frame_to_restore is None:
-                return
+                return            
             
             self.store_data()
+            self.store_manual_annot_data()
+            
+            last_tracked_i_to_restore = self.manualAnnotState['last_tracked_i']
+            self.manualAnnotRestoreLastTrackedFrame(last_tracked_i_to_restore)
+            
             self.logger.info(
                 f'Restoring view to frame n. {posData.frame_i+1}...'
             )
@@ -12671,7 +12868,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.updateScrollbars()
             self.ax1.sigRangeChanged.disconnect()
             self.ax1.setHighlighted(False)
-            QTimer.singleShot(200, self.autoRange)
+            # QTimer.singleShot(200, self.autoRange)
+        
+        self.setManualAnnotModeEnabledTools(checked)
     
     def copyLostObjectContour(self, ID: int):
         posData = self.data[self.pos_i]
@@ -13652,9 +13851,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if return_val:
             return posData.brushID
 
-    def equalizeHist(self):
-        # Store undo state before modifying stuff
-        self.storeUndoRedoStates(False, storeImage=True)
+    @disableWindow
+    def equalizeHist(self, checked=True):
+        self.img1.useEqualized = checked
+        
+        if not checked:
+            self.updateAllImages()
+            return
+
+        self.logger.info('Equalizing image histogram...')
+        for pos_i, _posData in enumerate(self.data):
+            n_dim_img = _posData.img_data.ndim
+            _posData.equalized_img_data = preprocess.PreprocessedData()
+            for frame_i, img_frame in enumerate(_posData.img_data):
+                if n_dim_img == 4:
+                    for z, img_z in enumerate(img_frame):
+                        eq_img = skimage.exposure.equalize_adapthist(img_z)
+                        _posData.equalized_img_data[frame_i][z] = eq_img
+                        self.img1.updateMinMaxValuesEqualizedData(
+                            self.data, pos_i, frame_i, z
+                        )
+                else:
+                    eq_img = skimage.exposure.equalize_adapthist(img_frame)
+                    _posData.equalized_img_data[frame_i] = eq_img
+                    self.img1.updateMinMaxValuesEqualizedData(
+                        self.data, pos_i, frame_i, None
+                    )
+                
         self.updateAllImages()
 
     def curvTool_cb(self, checked):
@@ -13686,6 +13909,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.clearCurvItems()
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
+        
+        self.showEditIDwidgets(checked)
 
     def updateHoverLabelCursor(self, x, y):
         if x is None:
@@ -13921,7 +14146,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 break
         
         for channel, items in self.overlayLayersItems.items():
-            _, lutItem, _ = items
+            lutItem = items[1]
             for rescaleIntensAction in lutItem.rescaleActionGroup.actions():
                 if how == rescaleIntensAction.text():
                     rescaleIntensAction.setChecked(True)
@@ -13946,11 +14171,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         myutils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=retainSpaceZ)
         myutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=retainSpaceZ)
         myutils.setRetainSizePolicy(self.overlay_z_label, retain=retainSpaceZ)
-        
-        # for overlayItems in self.overlayLayersItems.values():
-        #     alphaScrollBar = overlayItems[2]
-        #     myutils.setRetainSizePolicy(alphaScrollBar, retain=checked)
-        #     myutils.setRetainSizePolicy(alphaScrollBar.label, retain=checked)
         
         QTimer.singleShot(200, self.resizeGui)
         
@@ -14019,6 +14239,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         posData = self.data[self.pos_i]
         imshow(posData.lab, annotate_labels_idxs=[0])
     
+    def checkOverlayToolbuttonClicked(self, event):
+        success = False
+        try:
+            n = int(event.text())
+            toolbutton = self.allOverlayToolbuttonsByIdx.get(n, None)
+            toolbutton.click()
+            success = True
+        except Exception as e:
+            # printl(traceback.format_exc())
+            success = False        
+        return success
+    
     def keyPressCheckSetSpinboxValue(self, event, spinbox):
         """Check if the key pressed is a digit and set the spinbox value 
         accordingly."""
@@ -14059,7 +14291,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.autoSaveTimer.isActive())
+            self.instructHowDeleteID()
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -14107,7 +14339,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     ID=0
                 )
             if self.isSegm3D:
-                self.changeBrushID()        
+                self.changeBrushID()   
+        
+        isAnyModifier = isAltModifier or isCtrlModifier or isShiftModifier
+        if not isAnyModifier and self.overlayButton.isChecked():
+            isButtonClicked = self.checkOverlayToolbuttonClicked(ev)
+            if isButtonClicked:
+                return            
+             
         isBrushActive = (
             self.brushButton.isChecked() or self.eraserButton.isChecked()
         )
@@ -14344,16 +14583,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.zSliceCheckbox.setChecked(not self.zSliceCheckbox.isChecked())
             self.zKeptDown = False
 
-    def setUncheckedAllButtons(self):
+    def setUncheckedAllButtons(self, buttonsToNotUncheck=None):
         self.clickedOnBud = False
+        if buttonsToNotUncheck is None:
+            buttonsToNotUncheck = set()
+            
         try:
             self.BudMothTempLine.setData([], [])
         except Exception as e:
             pass
         for button in self.checkableButtons:
+            if button in buttonsToNotUncheck:
+                continue
             button.setChecked(False)
         
-        self.countObjsButton.setChecked(False)
+        if self.countObjsButton not in buttonsToNotUncheck:
+            self.countObjsButton.setChecked(False)
         self.splineHoverON = False
         self.tempSegmentON = False
         self.isRightClickDragImg1 = False
@@ -17960,6 +18205,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.original_df_lin_tree_i = None
             self.logger.info('Lineage tree changes discarded.')
 
+    def manualAnnotRestoreLastTrackedFrame(self, last_tracked_i_to_restore):
+        if self.navigateScrollBar.maximum()-1 <= last_tracked_i_to_restore:
+            return
+        
+        posData = self.data[self.pos_i]
+        for frame_i in range(last_tracked_i_to_restore+1, posData.SizeT):
+            data_frame_i = myutils.get_empty_stored_data_dict()
+            
+            data_frame_i['manually_edited_lab'] = (
+                posData.allData_li[frame_i]['manually_edited_lab']
+            )
+            
+            posData.allData_li[frame_i] = data_frame_i
+        
+        self.navigateScrollBar.setMaximum(last_tracked_i_to_restore+1)
+        self.navSpinBox.setMaximum(last_tracked_i_to_restore+1)
+    
     def setNavigateScrollBarMaximum(self):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -18246,6 +18508,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         QTimer.singleShot(150, func)
     
+    def setManualAnnotModeEnabledTools(self, enabled):
+        for action in self.editToolBar.actions():
+            toolButton = self.editToolBar.widgetForAction(action)
+            if toolButton in self.manulAnnotToolButtons:
+                continue
+            
+            toolButton.setDisabled(enabled)  
+            action.setDisabled(enabled) 
+            
     def disableNonFunctionalButtons(self):
         if not self.isSegm3D:
             return 
@@ -18984,6 +19255,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setMetricsFunc()
 
         self.gui_createLabelRoiItem()
+        self.gui_createZoomRectItem()
 
         self.titleLabel.setText(
             'Data successfully loaded.',
@@ -19289,7 +19561,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.segForLostIDsAction.setDisabled(False)
         
         for ch, overlayItems in self.overlayLayersItems.items():
-            imageItem, lutItem, alphaScrollBar = overlayItems
+            lutItem = overlayItems[1]
             lutItem.rescaleAcrossTimeAction.setDisabled(self.isSnapshot)      
 
     def checkIfAutoSegm(self):
@@ -19727,7 +19999,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             pass
     
     # @exec_time
-    def splineToObj(self, xxA=None, yyA=None, isRightClick=False):
+    def curvToolSplineToObj(self, xxA=None, yyA=None, isRightClick=False):
         posData = self.data[self.pos_i]
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False, storeOnlyZoom=True)
@@ -19742,12 +20014,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         xxS, yyS = self.getClosedSplineCoords()
 
-        self.setBrushID()
+        if self.autoIDcheckboxAction.isChecked():
+            self.setBrushID()
+            curvToolID = posData.brushID
+        else:
+            curvToolID = self.editIDspinbox.value()
+            
         newIDMask = np.zeros(self.currentLab2D.shape, bool)
         rr, cc = skimage.draw.polygon(yyS, xxS)
         newIDMask[rr, cc] = True
         newIDMask[self.currentLab2D!=0] = False
-        self.currentLab2D[newIDMask] = posData.brushID
+        self.currentLab2D[newIDMask] = curvToolID
         self.set_2Dlab(self.currentLab2D)
 
     def addFluoChNameContextMenuAction(self, ch_name):
@@ -20185,6 +20462,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
                 
         return trackedID
+    
+    def store_manual_annot_data(
+            self, posData=None, data_frame_i=None    
+        ):
+        if posData is None:
+            posData = self.data[self.pos_i]
+        
+        if data_frame_i is None:
+            data_frame_i = posData.allData_li[posData.frame_i]
+        
+        if not self.isSegm3D:
+            lab = [posData.lab]
+        else:
+            lab = posData.lab
+            
+        for z, lab_2D in enumerate(lab):
+            zoom_lab, zoom_slice = transformation.crop_2D(
+                lab_2D, 
+                self.ax1.viewRange(), 
+                tolerance=10,
+                return_copy=False
+            )
+            data_frame_i['manually_edited_lab']['zoom_lab'][z] = zoom_lab
+            
+        data_frame_i['manually_edited_lab']['zoom_slice'] = zoom_slice
 
     @exception_handler
     def store_data(
@@ -20217,6 +20519,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         allData_li['IDs_idxs'] = (
             posData.IDs_idxs.copy()
         )
+        if self.manualAnnotFutureButton.isChecked():
+            self.store_manual_annot_data(
+                posData=posData, data_frame_i=allData_li    
+            )
+        
         self.store_zslices_rp()
 
         # Store dynamic metadata
@@ -21118,6 +21425,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         ]
         return editID_info
 
+    def apply_manual_edits_to_lab_if_needed(self, lab):
+        posData = self.data[self.pos_i]
+        data_frame_i = posData.allData_li[posData.frame_i]
+        edited_zoom_lab_dict = data_frame_i['manually_edited_lab']['zoom_lab']        
+        if not edited_zoom_lab_dict:
+            return lab
+        
+        zoom_slice = data_frame_i['manually_edited_lab']['zoom_slice']
+        for z, zoom_lab in edited_zoom_lab_dict.items():
+            if not self.isSegm3D:
+                lab[zoom_slice] = zoom_lab
+                break
+            
+            lab[z, zoom_slice[0], zoom_slice[1]] = zoom_lab
+        return lab
+    
     def _get_data_unvisited(self, posData, debug=False,lin_tree_init=True,):
         posData.editID_info = []
         proceed_cca = True
@@ -21157,7 +21480,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return proceed_cca, never_visited
         
         # Requested frame was never visited before. Load from HDD
-        posData.lab = self.get_labels()
+        labels = self.get_labels()
+        posData.lab = self.apply_manual_edits_to_lab_if_needed(
+            labels
+        )
         posData.rp = skimage.measure.regionprops(posData.lab)
         self.setManualBackgroundLab()
         if posData.acdc_df is not None:
@@ -21238,7 +21564,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # If stored labels is None then it is the first time we visit this frame
         if posData.allData_li[posData.frame_i]['labels'] is None:
             proceed_cca, never_visited =  self._get_data_unvisited(
-                posData,lin_tree_init=lin_tree_init,
+                posData, lin_tree_init=lin_tree_init,
             )
             if not proceed_cca:
                 return proceed_cca, never_visited
@@ -22038,7 +22364,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.drawObjMothBudLines(obj, posData, ax=1)
 
     def drawObjMothBudLines(self, obj, posData, ax=0):
-        if not self.areMothBudLinesRequested(ax):
+        areMothBudLinesRequested = self.areMothBudLinesRequested(ax)
+        if not areMothBudLinesRequested:
             return
         
         if posData.cca_df is None:
@@ -22260,6 +22587,62 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         for z, lab2d in enumerate(posData.lab):
             lab2d_rp = skimage.measure.regionprops(lab2d)
             posData.zSlicesRp[z] = {obj.label:obj for obj in lab2d_rp}
+    
+    def instructHowDeleteID(self):
+        if 'showInfoDeleteObject' not in self.df_settings.index:
+            self.df_settings.at['showInfoDeleteObject', 'value'] = 'Yes'
+        
+        showInfoDeleteObject = (
+            self.df_settings.at['showInfoDeleteObject', 'value'] == 'Yes'
+        )
+        if not showInfoDeleteObject:
+            return
+        
+        actionText = self.middleClickText()
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'You have deleted an object using the eraser tool.<br><br>'
+            'Did you know that you can use the "Delete object" action<br>'
+            'to <b>delete an object with a single click</b>?<br><br>'
+            f'To do so, use the following action: <code>{actionText}</code><br><br>'
+            'Note: You can also set a custom shortcut by going to the menu<br>'
+            '<code>Settings --&gt; Customise keyboard shortcuts...</code>.'
+        )
+        doNotShowAgainCheckbox = QCheckBox('Do not show again')
+        msg.information(
+            self, 'Delete objects with single click', txt,
+            widgets=doNotShowAgainCheckbox
+        )
+        
+        showInfoDeleteObjectValue = (
+            'No' if doNotShowAgainCheckbox.isChecked() else 'Yes'
+        )
+        self.df_settings.at['showInfoDeleteObject', 'value'] = (
+            showInfoDeleteObjectValue
+        )
+        self.df_settings.to_csv(settings_csv_path)
+        
+    
+    def checkWarnDeletedIDwithEraser(self):
+        posData = self.data[self.pos_i]
+        
+        for ID in self.erasedIDs:
+            if ID == 0:
+                continue
+            if ID in posData.IDs_idxs:
+                continue
+            
+            self.instructHowDeleteID()
+            
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit('Delete ID with eraser')
+                self.updateAllImages()
+            else:
+                self.warnEditingWithCca_df('Delete ID with eraser')
+            
+            return True
+        
+        return False
     
     @exception_handler
     def update_rp(
@@ -22812,7 +23195,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 ol_data = {}
             for i, ol_ch in enumerate(ol_channels):
                 _, filename = self.getPathFromChName(ol_ch, posData)
-                ol_data[filename] = posData.ol_data_dict[filename].copy()                                  
+                ol_data[filename] = (
+                    posData.ol_data_dict[filename].copy()
+                )                        
                 self.addFluoChNameContextMenuAction(ol_ch)
             posData.ol_data = ol_data
 
@@ -23877,11 +24262,65 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     xx, yy, data=ids, brush=brushes, pen=pens
                 )
 
+    def setOverlaySingleChannel(self, *args, **kwargs):
+        if self.overlayToolbar.isSingleChannel():
+            self.overlayToolbarAreChannelsChecked = {
+                channel:toolbutton.isChecked() 
+                for channel, toolbutton in self.allOverlayToolbuttons.items()
+            }
+            firstActiveToolbutton = [
+                toolbutton for toolbutton in self.allOverlayToolbuttons.values()
+                if toolbutton.isChecked()
+            ][0]
+            firstActiveToolbutton.click()
+        else:
+            for ch, checked in self.overlayToolbarAreChannelsChecked.items():
+                toolbutton = self.allOverlayToolbuttons[ch]
+                toolbutton.setChecked(checked)
+            
+            self.setOverlayItemsOpacities()
+    
+    def updateTransparentOverlayRgba(self, *args, **kwargs):
+        self.setOverlayImages()
+    
+    def setOverlayTransparency(self, transparent: bool):
+        self.rgbaImg1.setOpacity(float(transparent))
+        
+        if transparent:
+            self.img1.setOpacity(0.01, applyToLinked=False)
+            self.imgGrad.sigLookupTableChanged.connect(
+                self.updateTransparentOverlayRgba
+            )
+            self.imgGrad.sigLevelsChanged.connect(
+                self.updateTransparentOverlayRgba
+            )
+        
+        for channel, items in self.overlayLayersItems.items():
+            imageItem, lutItem, alphaSB = items[:3]
+            if transparent:
+                alphaSB.valueChanged.disconnect()
+                alphaSB.valueChanged.connect(
+                    self.updateTransparentOverlayRgba
+                )
+                lutItem.sigLookupTableChanged.connect(
+                    self.updateTransparentOverlayRgba
+                )
+                lutItem.sigLevelsChanged.connect(
+                    self.updateTransparentOverlayRgba
+                )
+                imageItem.setOpacity(0)
+
+        if not transparent:
+            self.setOverlayItemsOpacities()
+        
+        self.setOverlayImages()
+        
     def overlay_cb(self, checked):
+        self.overlayToolbar.setVisible(checked)
+        
         self.UserNormAction, _, _ = self.getCheckNormAction()
         posData = self.data[self.pos_i]
         if checked:
-            self.setRetainSizePolicyLutItems()
             if posData.ol_data is None:
                 selectedChannels = self.askSelectOverlayChannel()
                 if selectedChannels is None:
@@ -23898,7 +24337,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 imageItem = self.overlayLayersItems[lastChannel][0]
                 self.setOpacityOverlayLayersItems(0.5, imageItem=imageItem)
                 self.img1.setOpacity(0.5)
+                self.setOverlayChannelsToolbuttonsChecked()
 
+            self.setRetainSizePolicyLutItems()
             self.normalizeRescale0to1Action.setChecked(True)
 
             self.updateAllImages()
@@ -23909,10 +24350,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.updateAllImages()
             self.updateImageValueFormatter()
             self.enableOverlayWidgets(False)
+            self.clearOverlayImageItems()
             
-            for items in self.overlayLayersItems.values():
-                imageItem = items[0]
-                imageItem.clear()
         
         self.setOverlayItemsVisible()
     
@@ -24075,9 +24514,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         okButton = msg.warning(
             self, title, txt, buttonsTexts=('Ok')
         )
-
-    def imgGradLUT_cb(self, LUTitem):
-        pass
 
     def imgGradLUTfinished_cb(self):
         posData = self.data[self.pos_i]
@@ -24572,21 +25008,72 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return obj_slice
     
     def setOverlayImages(self, frame_i=None):
+        if not self.overlayButton.isChecked():
+            return
+        
         posData = self.data[self.pos_i]
         if posData.ol_data is None:
             return
+        
+        rgba_imgs_info = {}
         for filename in posData.ol_data:
             chName = myutils.get_chname_from_basename(
                 filename, posData.basename, remove_ext=False
             )
             if chName not in self.checkedOverlayChannels:
                 continue
-            imageItem = self.overlayLayersItems[chName][0]
+            
+            items = self.overlayLayersItems[chName]
+            imageItem, lutItem, alphaSB = items[:3]
 
             ol_img = self.getOlImg(filename, frame_i=frame_i)
 
-            self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
-            imageItem.setImage(ol_img)
+            if self.overlayToolbar.isTransparent():
+                toolbutton = items[3]
+                if not toolbutton.isChecked():
+                    continue
+                alpha_val = alphaSB.value()/alphaSB.maximum()
+                ol_img = skimage.exposure.rescale_intensity(
+                    ol_img, out_range=(0.0, 1.0)
+                )
+                out_range_min, out_range_max = lutItem.getLevels()                
+                rgba_imgs_info[chName] = (ol_img, alpha_val, lutItem)
+            else:
+                self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
+                imageItem.setImage(ol_img)
+        
+        if not self.overlayToolbar.isTransparent():
+            return            
+        
+        alpha_values = []
+        images = []
+        luts = []
+        for channel, info in rgba_imgs_info.items():
+            ol_img, alpha_val, lutItem = info
+            alpha_values.append(alpha_val)
+            images.append(ol_img)
+            luts.append(lutItem.gradient.getLookupTable(256, alpha=255)/255)
+        
+        weights = colors.hierarchical_weights(alpha_values)
+        
+        if self.baseLayerToolbutton.isChecked():
+            image1 = self._getImageupdateAllImages()
+            image1 = skimage.exposure.rescale_intensity(
+                image1, out_range=(0.0, 1.0)
+            )        
+            images.append(image1)
+            baseLut = (
+                self.imgGrad.gradient.getLookupTable(256, alpha=255)/255
+            )
+            luts.append(baseLut)
+        
+        images_rgba = []
+        for img, lut in zip(images, luts):
+            rgba = colors.grayscale_apply_lut(img, lut)            
+            images_rgba.append(rgba)
+        
+        rgba_merge = colors.hierarchical_blend(images_rgba, weights)        
+        self.rgbaImg1.setImage(rgba_merge)
         
     def initShortcuts(self):
         from . import config
@@ -25186,6 +25673,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 #     'Pre-processed image not existing --> returning raw image'
                 # )
                 return self.getRawImageLayer0(frame_i)
+        elif self.equalizeHistPushButton.isChecked():
+            img = posData.equalized_img_data[frame_i]
+            if posData.SizeZ == 1:
+                return np.array(img)
+            
+            self.updateZsliceScrollbar(frame_i)
+            z_slice = self.z_slice_index()
+            img = img[z_slice]
+            return img
         else:
             return self.getRawImageLayer0(frame_i)
 
@@ -25219,7 +25715,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         posData = self.data[self.pos_i]
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-        idx = delROIs_info['rois'].index(roi)
+        try:
+            idx = delROIs_info['rois'].index(roi)
+        except Exception as err:
+            try:
+                ax.removeDelRoiItem(roi)
+            except Exception as err:
+                pass
+            return
         delIDs = delROIs_info['delIDsROI'][idx]
         delMask = delROIs_info['delMasks'][idx]
         if how.find('nothing') != -1:
@@ -26117,8 +26620,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     
     def setImageImg1(self, image=None):
         img = self._getImageupdateAllImages(image=image)
-        if self.equalizeHistPushButton.isChecked():
-            img = skimage.exposure.equalize_adapthist(img)
         posData = self.data[self.pos_i]
         self.img1.setCurrentPosIndex(self.pos_i)
         self.img1.setCurrentFrameIndex(posData.frame_i)
@@ -26734,8 +27235,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setImageImg1(image=image)       
         self.setImageImg2()
         
-        if self.overlayButton.isChecked():
-            self.setOverlayImages()
+        self.setOverlayImages()
 
         self.setOverlayLabelsItems()
         self.setOverlaySegmMasks()
@@ -27135,7 +27635,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             lockedID = self.editIDspinbox.value()
             frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
             txt = (
-                f'Manually annotating ID {lockedID} '
+                f'Locked ID {lockedID} '
                 f'since frame n. {frame_to_restore+1}'
             )
             htmlTxt = f'<font color="orange">{txt}</font>'
@@ -28214,6 +28714,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         return msg.cancel
     
+    def removeOverlayItems(self):
+        self.lutItemsLayout.clear()
+        
+        try:
+            for toolbutton in self.allOverlayToolbuttonsByIdx.values():
+                self.overlayToolbar.removeAction(toolbutton.action)
+            
+            self.overlayToolbuttonsSep.removeFromToolbar()
+        except Exception as err:
+            pass
+    
+    def clearOverlayImageItems(self):
+        for items in self.overlayLayersItems.values():
+            imageItem = items[0]
+            imageItem.clear()
+        
+        self.rgbaImg1.clear()
+    
     def reInitGui(self):
         cancel = self.checkAskSavePointsLayers()
         if cancel:
@@ -28244,7 +28762,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setMeasWinState = None
         self.addPointsWin = None
         self.showPropsDockButton.setDisabled(True)
-        self.lutItemsLayout.clear()
+        self.removeOverlayItems()
         self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)
         
         self.reinitWidgetsPos()
@@ -28533,11 +29051,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return []
 
         if len(values) > 1:
-            select_folder.QtPrompt(self, values, allow_abort=False)
-            if select_folder.was_aborted:
+            select_folder.QtPrompt(self, values, allow_cancel=False)
+            if select_folder.cancel:
                 return []
         else:
-            select_folder.was_aborted = False
+            select_folder.cancel = False
             select_folder.selected_pos = select_folder.pos_foldernames
 
         images_paths = []
@@ -28651,17 +29169,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def overlayChannelToggled(self, checked):
         # Action toggled from overlayButton context menu
         channelName = self.sender().text()
+        posData = self.data[self.pos_i]
         if checked:
-            posData = self.data[self.pos_i]
             if channelName not in posData.loadedFluoChannels:
                 self.loadOverlayData([channelName], addToExisting=True)
+            else:
+                _, filename = self.getPathFromChName(channelName, posData)
+                posData.ol_data[filename] = (
+                    posData.ol_data_dict[filename].copy()
+                )
             
             self.checkedOverlayChannels.add(channelName)    
         else:
             self.checkedOverlayChannels.remove(channelName)
             imageItem = self.overlayLayersItems[channelName][0]
             imageItem.clear()
+        
+        self.setOverlayChannelsToolbuttonsChecked()
         self.setOverlayItemsVisible()
+        self.setRetainSizePolicyLutItems()
         self.updateAllImages()
 
     @exception_handler
@@ -29406,7 +29932,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.annotateRightHowCombobox.saveSettings = saveSettings
         self.annotateRightHowCombobox.setCurrentText(t)
         
-    def getOverlayItems(self, channelName):
+    def getOverlayItems(self, channelName, index):
         imageItem = widgets.OverlayImageItem()
         imageItem.setOpacity(0.5)
         imageItem.channelName = channelName
@@ -29476,8 +30002,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.addActionsLutItemContextMenu(lutItem)
 
         alphaScrollBar = self.addAlphaScrollbar(channelName, imageItem)
-
-        return imageItem, lutItem, alphaScrollBar
+        
+        toolbutton = widgets.OverlayChannelToolButton(
+            channelName, lutItem, shortcut=str(index)
+        )
+        toolbutton.action = self.overlayToolbar.addWidget(toolbutton)
+        toolbutton.setVisible(False)
+        
+        toolbutton.clicked.connect(self.overlayChannelToolbuttonClicked)
+        
+        return imageItem, lutItem, alphaScrollBar, toolbutton
     
     def addAlphaScrollbar(self, channelName, imageItem):
         alphaScrollBar = widgets.ScrollBar(Qt.Horizontal)
@@ -29529,26 +30063,104 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if not self.retainSizeLutItems:
             return
         for channel, items in self.overlayLayersItems.items():
-            _, lutItem, alphaSB = items
+            _, lutItem, alphaSB = items[:3]
             myutils.setRetainSizePolicy(lutItem, retain=True)
         QTimer.singleShot(300, self.autoRange)
 
+    def setOverlayChannelsToolbuttonsChecked(self):
+        for channel, items in self.overlayLayersItems.items():
+            _, lutItem, alphaSB, toolbutton = items[:4]
+            toolbutton.setChecked(
+                not self.overlayToolbar.isSingleChannel()
+                and channel in self.checkedOverlayChannels
+            )
+    
     def setOverlayItemsVisible(self):
         for channel, items in self.overlayLayersItems.items():
-            _, lutItem, alphaSB = items
+            _, lutItem, alphaSB, toolbutton = items[:4]
             if not self.overlayButton.isChecked():
                 lutItem.hide()
                 alphaSB.hide()
                 alphaSB.label.hide()
+                toolbutton.setVisible(False)
             elif channel in self.checkedOverlayChannels:
                 lutItem.show()
                 alphaSB.show()
                 alphaSB.label.show()
+                toolbutton.setVisible(True)
             else:
                 lutItem.hide()
                 alphaSB.hide()
                 alphaSB.label.hide()
+                toolbutton.setVisible(False)
 
+    def overlayChannelToolbuttonClicked(self, checked=False, toolbutton=None):
+        if toolbutton is None:
+            toolbutton = self.sender()
+        
+        n_checked_buttons = (
+            sum([b.isChecked() for b in self.allOverlayToolbuttons.values()])
+        )
+        
+        channelName = toolbutton.channelName()
+        
+        if n_checked_buttons == 0 or self.overlayToolbar.isSingleChannel():
+            # At least one button must be checked
+            toolbutton.setChecked(True)
+        
+        if self.overlayToolbar.isSingleChannel():
+            # Exclusive buttons 
+            for channel, otherToolbutton in self.allOverlayToolbuttons.items():
+                if channel == channelName:
+                    continue
+
+                otherToolbutton.setChecked(False)
+        
+        if self.overlayToolbar.isTransparent():            
+            self.setOverlayImages()
+            return
+        
+        self.setOverlayItemsOpacities()
+    
+    def setOverlayItemsOpacities(self):
+        n_checked_buttons = (
+            sum([b.isChecked() for b in self.allOverlayToolbuttons.values()])
+        )
+        
+        isSingleChannel = (
+            self.overlayToolbar.isSingleChannel()
+            or n_checked_buttons == 1
+        )
+        
+        # Set opacity of every layer accordingly
+        for channel, otherToolbutton in self.allOverlayToolbuttons.items():          
+            if channel == self.user_ch_name:
+                otherImageItem = self.img1
+                alphaScrollbar = None
+                alpha_value = 0.5
+            else:
+                otherItems = self.overlayLayersItems[channel]
+                otherImageItem = otherItems[0]
+                alphaScrollbar = otherItems[2]
+                alpha_value = alphaScrollbar.value()/alphaScrollbar.maximum()
+            
+            if otherToolbutton.isChecked() and isSingleChannel:
+                op_val = 1.0
+            elif otherToolbutton.isChecked():
+                op_val = alpha_value
+            else:
+                op_val = 0.0
+            
+            if op_val == 0:
+                op_val = 0.01
+
+            otherImageItem.setOpacity(op_val, applyToLinked=False)
+            
+            if alphaScrollbar is None:
+                continue
+            
+            alphaScrollbar.setDisabled(op_val == 0)
+    
     def initColormapOverlayLayerItem(self, foregrColor, lutItem):
         if self.invertBwAction.isChecked():
             bkgrColor = (255,255,255,255)
@@ -30685,7 +31297,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setAllIDs()
         posData = self.data[self.pos_i]
         allIDs = posData.allIDs
-        img_shape = self.img1.image.shape
+        img_shape = self.img1.image.shape[:2]
         self.textAnnot[0].changeResolution(mode, allIDs, self.ax1, img_shape)
         self.textAnnot[1].changeResolution(mode, allIDs, self.ax2, img_shape)
         self.updateAllImages()
@@ -30863,6 +31475,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.logger.info(f'Opening log file "{self.log_path}"...')
         myutils.showInExplorer(self.log_path)
     
+    def showLogFiles(self):
+        log_files_path = os.path.dirname(self.log_path)
+        self.logger.info(f'Opening log files folder "{log_files_path}"...')
+        myutils.showInExplorer(log_files_path)
+    
     def showTipsAndTricks(self):
         self.welcomeWin = welcome.welcomeWin()
         self.welcomeWin.showAndSetSize()
@@ -30963,7 +31580,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.guiTabControl.highlightSearchedCheckbox.setChecked(False)
         self.setHighlightID(False)
     
-    def onEscape(self, isTypingIDFunctionChecked=False):
+    def onEscape(
+            self, 
+            isTypingIDFunctionChecked=False, 
+            buttonsToNotUncheck=None,
+            doAutoRange=True    
+        ):
+        if buttonsToNotUncheck is None:
+            buttonsToNotUncheck = set()
+            
         if self.keepIDsButton.isChecked() and self.keptObjectsIDs:
             self.keptObjectsIDs = widgets.KeptObjectIDsList(
                 self.keptIDsLineEdit, self.keepIDsConfirmAction
@@ -30991,7 +31616,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             QTimer.singleShot(300, self.autoRange)
             return
         
-        self.setUncheckedAllButtons()
+        if self.zoomRectButton.isChecked():
+            self.zoomRectCancelled()
+            QTimer.singleShot(300, self.autoRange)
+            return
+        
+        self.setUncheckedAllButtons(buttonsToNotUncheck=buttonsToNotUncheck)
         self.setUncheckedAllCustomAnnotButtons()
         self.setUncheckedPointsLayers()
         if hasattr(self, 'tempLayerImg1'):
@@ -31003,7 +31633,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.polyLineRoi.clearPoints()
         except Exception as e:
             pass
-        QTimer.singleShot(300, self.autoRange)
+        
+        if doAutoRange:
+            QTimer.singleShot(11, self.autoRange)
     
     def askCloseAllWindows(self):
         txt = html_utils.paragraph("""

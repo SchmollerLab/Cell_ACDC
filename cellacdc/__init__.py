@@ -214,7 +214,7 @@ does_qrc_resources_exists = (
 
 def _copy_qrc_resources_file(
         src_qrc_resources_scheme_path: os.PathLike,
-        dst_qrc_resources_path: os.PathLike = qrc_resources_path, 
+        dst_qrc_resources_path: os.PathLike, 
         user_dst_qrc_resources_path: os.PathLike = qrc_resources_user_path
     ):
     try:
@@ -222,7 +222,8 @@ def _copy_qrc_resources_file(
         return True
     except Exception as err:
         # Copy to user folder because copying to cell-acdc location failed 
-        # possibly PermissionError
+        # possibly PermissionError --> return False to stop application 
+        # and prompt the user to restart Cell-ACDC
         shutil.copyfile(
             src_qrc_resources_scheme_path, user_dst_qrc_resources_path
         )
@@ -235,7 +236,9 @@ if not does_qrc_resources_exists:
     else:
         qrc_resources_scheme_path = qrc_resources_dark_path
     # Load default light mode
-    has_admin_rights = _copy_qrc_resources_file(qrc_resources_scheme_path)
+    has_admin_rights = _copy_qrc_resources_file(
+        qrc_resources_scheme_path, qrc_resources_path
+    )
     if not has_admin_rights:
         qrc_resources_path = qrc_resources_user_path
 elif os.path.exists(qrc_resources_user_path):
@@ -254,6 +257,7 @@ try:
             qrc_py.write(text)
 except Exception as err:
     raise err
+
 
 try:
     # Import qrc_resources explicitly so that "from . import acdc_qrc_resources" imports 

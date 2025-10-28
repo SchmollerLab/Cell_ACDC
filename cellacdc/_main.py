@@ -177,8 +177,8 @@ class mainWin(QMainWindow):
         modulesButtonsGroupBoxLayout.addWidget(segmButton)
 
         guiButton = QPushButton('  3. Launch GUI...')
-        guiButton.setIcon(QIcon(':icon.ico'))
-        guiButton.setIconSize(QSize(iconSize,iconSize))
+        guiButton.setIcon(QIcon(':logo.svg'))
+        guiButton.setIconSize(QSize(iconSize, iconSize))
         guiButton.setFont(font)
         guiButton.clicked.connect(self.launchGui)
         self.guiButton = guiButton
@@ -290,6 +290,7 @@ class mainWin(QMainWindow):
             )
             self.darkModeToggle.warnMessageBox = True
         self.setStatusBarRestartCellACDC()
+        self.darkModeToggle.setDisabled(True)
     
     def setStatusBarRestartCellACDC(self):
         self.statusBarLayout.addWidget(QLabel(html_utils.paragraph(

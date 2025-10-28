@@ -32,7 +32,9 @@ def warnTooManyItems(mainWin, numItems, qparent):
     )
     return msg.cancel, msg.clickedButton==switchToLowResButton
 
-def warnRestartCellACDCcolorModeToggled(scheme, app_name='Cell-ACDC', parent=None):
+def warnRestartCellACDCcolorModeToggled(
+        scheme, app_name='Cell-ACDC', parent=None
+    ):
     from . import widgets, html_utils
     msg = widgets.myMessageBox(wrapText=False)
     txt = (
@@ -301,3 +303,17 @@ def warnCannotAddRemovePointsProjection(qparent=None):
     """)
     msg = widgets.myMessageBox(wrapText=False)
     msg.warning(qparent, 'WARNING: Editing points in projection', txt)
+
+def warnRestartAcdcIconsUpdated(qparent=None):
+    from cellacdc import widgets
+    txt = (
+        'Cell-ACDC had to update the GUI icons. '
+        'Please re-start the application.\n\n'
+        'Thank you for your patience!'
+    )
+    print('*'*100)
+    print(txt)
+    print('^'*100)
+    html_txt = html_utils.paragraph(txt.replace('\n', '<br>'))
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.information(qparent, 'GUI icons updated', txt)

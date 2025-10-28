@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Dict, List, Union
 import os
 import sys
@@ -754,7 +754,6 @@ class browseFileButton(PushButton):
         self._openFolder = openFolder
         self._file_types = 'All Files (*)'
         if ext is not None:
-            s = ''
             s_li = []
             for name, extensions in ext.items():
                 _s = ''
@@ -2945,10 +2944,52 @@ class FormLayout(QGridLayout):
 def macShortcutToWindows(shortcut: str):
     if shortcut is None:
         return
-    s = shortcut.replace('Control', 'Meta')
-    s = shortcut.replace('Option', 'Alt')
-    s = shortcut.replace('Command', 'Ctrl')
+    
+    s = (shortcut
+        .replace('Control', 'Meta')
+        .replace('Option', 'Alt')
+        .replace('Command', 'Ctrl')
+    )
     return s
+
+def windowsShortcutToMac(shortcut: str):
+    if shortcut is None:
+        return
+    
+    if not is_mac:
+        return shortcut
+    
+    s = (shortcut
+        .replace('Meta', 'Control')
+        .replace('Alt', 'Option')
+        .replace('Ctrl', 'Command')
+    )
+    return s
+
+class ToolBarSeparator:
+    def __init__(self, width=5, toolbar: QToolBar=None):
+        self._parts = (
+            QHWidgetSpacer(width=width), 
+            QVLine(),
+            QHWidgetSpacer(width=width)
+        )
+        self._actions = []
+        self._toolbar = None
+        if toolbar is not None:
+            self.addToToolbar(toolbar)
+    
+    def addToToolbar(self, toolbar):
+        self._toolbar = toolbar
+        for part in self._parts:
+            action = toolbar.addWidget(part)
+            self._actions.append(action)
+    
+    def removeFromToolbar(self):
+        if self._toolbar is None:
+            return
+        
+        for action in self._actions:
+            self._toolbar.removeAction(action)
 
 class ToolBar(QToolBar):
     def __init__(self, *args, **kwargs) -> None:
@@ -2963,9 +3004,11 @@ class ToolBar(QToolBar):
                 break
     
     def addSeparator(self, width=5):
-        self.addWidget(QHWidgetSpacer(width=width))
-        self.addWidget(QVLine())
-        self.addWidget(QHWidgetSpacer(width=width))
+        separator = ToolBarSeparator(width=width, toolbar=self)
+        return separator
+    
+    def removeSeparator(self, separator):
+        separator.removeFromToolbar()
     
     def addSpinBox(self, label=''):
         spinbox = SpinBox(disableKeyPress=True)
@@ -2999,6 +3042,13 @@ class ToolBar(QToolBar):
         label = QLabel(text)
         label.action = self.addWidget(label)
         return label
+    
+    def addCheckBox(self, text='', checked=False):
+        checkbox = QCheckBox(text)
+        checkbox.setChecked(checked)
+        checkbox.action = self.addWidget(checkbox)
+        return checkbox
+        
     
 class ManualTrackingToolBar(ToolBar):
     sigIDchanged = Signal(int)
@@ -3318,6 +3368,44 @@ class ToolButtonCustomColor(rightClickToolButton):
         finally:
             p.end()
 
+class GradientToolButton(rightClickToolButton):
+    def __init__(self, colors=((255, 0, 0),), parent=None):
+        super().__init__(parent=parent)
+        self._qcolors = [pg.mkColor(c) for c in colors]
+        if len(self._qcolors) < 2:
+            self._qcolors.append(self._qcolors[0])
+    
+    def paintEvent(self, event):
+        super().paintEvent(event)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        pen = pg.mkPen(color=self._qcolors[-1], width=2)
+
+        pad = 7
+        
+        rect = self.rect().adjusted(pad, pad, -pad, -pad)  # A little padding
+
+        # Gradient: bottom to top
+        gradient = QLinearGradient(
+            QPointF(rect.bottomLeft()), QPointF(rect.topLeft())
+        )
+        
+         # Set color stops evenly distributed
+        num_colors = len(self._qcolors)
+        for i, color in enumerate(self._qcolors):
+            gradient.setColorAt(i / (num_colors - 1), color)
+        
+        if not self.isChecked():
+            painter.setOpacity(0.4)
+
+        painter.setBrush(gradient)
+        painter.setPen(pen)
+        painter.drawRect(rect)
+        
+        painter.end()
+
 class PointsLayerToolButton(ToolButtonCustomColor):
     sigEditAppearance = Signal(object)
     sigShowIdsToggled = Signal(object, bool)
@@ -3636,21 +3724,12 @@ class ShortcutLineEdit(QLineEdit):
         self.setAlignment(Qt.AlignCenter)
     
     def text(self):
-        text = super().text()
-        if text == 'Command':
-            return 'Ctrl'
-        
-        if text == 'Option':
-            return 'Alt'
+        text = macShortcutToWindows(super().text())
         
         return text
     
     def setText(self, text):
-        if is_mac and text == 'Ctrl':
-            text = 'Command'
-        
-        if is_mac and text == 'Alt':
-            text = 'Option'
+        text = windowsShortcutToMac(text)
         
         super().setText(text)
         if not text:
@@ -5161,6 +5240,9 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
 
         # hide histogram tool
         self.vb.hide()
+        
+        # Disable moving the axis up and down
+        self.axis.unlinkFromView()
 
         # Disable histogram default context Menu event
         self.vb.raiseContextMenu = lambda x: None
@@ -5369,10 +5451,10 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
 
 class ROI(pg.ROI):
     def __init__(
-            self, pos, size=..., angle=0, invertible=False, maxBounds=None, 
-            snapSize=1, scaleSnap=False, translateSnap=False, rotateSnap=False, 
-            parent=None, pen=None, hoverPen=None, handlePen=None, 
-            handleHoverPen=None, movable=True, rotatable=True, 
+            self, pos, size=pg.Point(1, 1), angle=0, invertible=False, 
+            maxBounds=None, snapSize=1, scaleSnap=False, translateSnap=False, 
+            rotateSnap=False, parent=None, pen=None, hoverPen=None, 
+            handlePen=None, handleHoverPen=None, movable=True, rotatable=True, 
             resizable=True, removable=False, aspectLocked=False
         ):
         super().__init__(
@@ -5400,7 +5482,32 @@ class ROI(pg.ROI):
             tmin, tmax = tRange
             _slice = (slice(tmin, tmax), *_slice)
         return _slice
+
+    def bbox(self):
+        x0, y0 = [int(round(c)) for c in self.pos()]
+        w, h = [int(round(c)) for c in self.size()]
+        xmin, xmax = x0, x0+w
+        if xmin > xmax:
+            xmin, xmax = xmax, xmin
+        ymin, ymax = y0, y0+h
+        if ymin > ymax:
+            ymin, ymax = ymax, ymin
         
+        return ymin, xmin, ymax, xmax
+
+class ZoomROI(ROI):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        self.viewRangesQueue = deque()
+        
+    def getLastRange(self):
+        xRange, yRange = self.viewRangesQueue.pop()
+        return xRange, yRange
+    
+    def storeLastRange(self, xRange, yRange):
+        self.viewRangesQueue.append((xRange, yRange))
+
 class DelROI(pg.ROI):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -5536,6 +5643,7 @@ class ToggleVisibilityCheckBox(QCheckBox):
 
 class myHistogramLUTitem(baseHistogramLUTitem):
     sigGradientMenuEvent = Signal(object)
+    sigGradientChanged = Signal(object)
     sigTickColorAccepted = Signal(object)
     sigAddScaleBar = Signal(bool)
     sigAddTimestamp = Signal(bool)
@@ -5696,6 +5804,10 @@ class myHistogramLUTitem(baseHistogramLUTitem):
     
     def emitAddTimestamp(self):
         self.sigAddTimestamp.emit(self.addTimestampAction.isChecked())
+    
+    def gradientChanged(self):
+        super().gradientChanged()
+        self.sigGradientChanged.emit(self)
     
     def gradientMenuEventFilter(self, object, event):
         if event.type() == QEvent.Type.MouseMove:
@@ -6512,7 +6624,8 @@ class MainPlotItem(pg.PlotItem):
         
         self.delRoiItems = {}
         self.highlightingRectItems = None
-        self._imageItem = None
+        self._baseImageItem = None
+        self._imageItems = []
     
     def addHighlightingRectItems(self):
         self.highlightingRectItems = {
@@ -6524,8 +6637,13 @@ class MainPlotItem(pg.PlotItem):
         for rect in self.highlightingRectItems.values():
             self.addItem(rect)
     
+    def addBaseImageItem(self, baseImageItem):
+        self._baseImageItem = baseImageItem
+        self._imageItems.append(baseImageItem)
+        self.addItem(baseImageItem)
+    
     def addImageItem(self, imageItem):
-        self._imageItem = imageItem
+        self._imageItems.append(imageItem)
         self.addItem(imageItem)
     
     def setHighlighted(self, highlighted):
@@ -6540,8 +6658,8 @@ class MainPlotItem(pg.PlotItem):
         ((xmin, xmax), (ymin, ymax)) = self.viewRange()
         xmin = xmin if xmin >= 0 else 0
         ymin = ymin if ymin >= 0 else 0
-        if self._imageItem is not None:
-            Y, X = self._imageItem.image.shape[:2]
+        if self._baseImageItem is not None:
+            Y, X = self._baseImageItem.image.shape[:2]
             xmax = min(xmax, X)
             ymax = min(ymax, Y)
         
@@ -6763,14 +6881,20 @@ class BaseImageItem(pg.ImageItem):
         self.minMaxValuesMapper = None
         self.minMaxValuesMapperPreproc = None
         self.minMaxValuesMapperCombined = None
+        self.minMaxValuesMapperEqualized = None
         self.pos_i = 0
         self.z = 0
         self.frame_i = 0
         self.usePreprocessed = False
+        self.useEqualized = False
         self.useCombined = False
+        self._isRgba = False
         
         super().__init__(image, **kargs)
         self.autoLevelsEnabled = None
+    
+    def isRgba(self):
+        return self._isRgba
     
     def setEnableAutoLevels(self, enabled: bool):
         self.autoLevelsEnabled = enabled
@@ -6780,6 +6904,9 @@ class BaseImageItem(pg.ImageItem):
         ):
         if autoLevels is None:
             autoLevels = self.autoLevelsEnabled
+        
+        if image is not None and image.ndim == 3 and image.shape[2] in (3, 4):
+            self._isRgba = True
         
         super().setImage(image, autoLevels=autoLevels, **kargs)
         
@@ -6802,6 +6929,21 @@ class BaseImageItem(pg.ImageItem):
                     self.minMaxValuesMapper[(pos_i, frame_i, z)] = (
                         np.nanmin(img), np.nanmax(img)
                     )
+    
+    def updateMinMaxValuesEqualizedData(
+            self, 
+            data: List['load.loadData'], 
+            pos_i: int, 
+            frame_i: int, 
+            z_slice: Union[int, str],
+        ):
+        if self.minMaxValuesMapperEqualized is None:
+            self.minMaxValuesMapperEqualized = {}
+
+        posData = data[pos_i]
+        img = posData.equalized_img_data[frame_i][z_slice]
+        key = (pos_i, frame_i, z_slice)
+        self.minMaxValuesMapperEqualized[key] = (np.nanmin(img), np.nanmax(img)) 
     
     def updateMinMaxValuesPreprocessedData(
             self, 
@@ -6843,10 +6985,15 @@ class BaseImageItem(pg.ImageItem):
         self.z = z
     
     def quickMinMax(self, targetSize=1e6):
+        if self.isRgba():
+            return super().quickMinMax(targetSize=targetSize)
+            
         if self.usePreprocessed and self.minMaxValuesMapperPreproc is not None:
             minMaxValuesMapper = self.minMaxValuesMapperPreproc
         elif self.useCombined and self.minMaxValuesMapperCombined is not None:
             minMaxValuesMapper = self.minMaxValuesMapperCombined
+        elif self.useEqualized and self.minMaxValuesMapperEqualized is not None:
+            minMaxValuesMapper = self.minMaxValuesMapperEqualized
         else:
             minMaxValuesMapper = self.minMaxValuesMapper
         
@@ -6899,6 +7046,9 @@ class OverlayImageItem(pg.ImageItem):
             autoLevels = self.autoLevelsEnabled
         
         super().setImage(image, autoLevels=autoLevels, **kargs)
+        
+    def setOpacity(self, value, **kwargs):
+        super().setOpacity(value)
 
 class ParentImageItem(BaseImageItem):
     def __init__(
@@ -7005,10 +7155,15 @@ class ParentImageItem(BaseImageItem):
             self.linkedImageItem.updateImage(*args, **kargs)
         return super().updateImage(*args, **kargs)
     
-    def setOpacity(self, value):
+    def setOpacity(self, value, applyToLinked=True):
         super().setOpacity(value)
-        if self.linkedImageItem is not None:
-            self.linkedImageItem.setOpacity(value)
+        if not applyToLinked:
+            return
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.setOpacity(value)
     
     def setLookupTable(self, lut):
         super().setLookupTable(lut)
@@ -8208,39 +8363,55 @@ class ImShow(QBaseWindow):
         ) 
         return item
 
-    def drawPointsFromDf(self, points_df, points_groups=None):
-        if isinstance(points_groups, str):
-            points_groups = [points_groups]
-            
-        if points_groups is None:
-            grouped = [('', points_df)]
-            groups = ['']
-        else:
-            grouped = points_df.groupby(points_groups)
-            groups = grouped.groups.keys()
+    def drawPointsFromDf(
+            self, 
+            points_df: pd.DataFrame | List[pd.DataFrame], 
+            points_groups=None
+        ):
+        if not isinstance(points_df, (list, tuple)):
+            points_df = [points_df]*len(self.PlotItems)
         
-        idxs_space = np.linspace(0, 1, len(groups))
-        self.group_to_idx_mapper = dict(zip(groups, idxs_space))
+        for p, df in enumerate(points_df):
+            if isinstance(points_groups, str):
+                points_groups = [points_groups]
+                
+            if points_groups is None:
+                grouped = [('', df)]
+                groups = ['']
+            else:
+                grouped = df.groupby(points_groups)
+                groups = grouped.groups.keys()
+            
+            idxs_space = np.linspace(0, 1, len(groups))
+            self.group_to_idx_mapper = dict(zip(groups, idxs_space))
 
-        for group, df in grouped:
-            yy = df['y'].values
-            xx = df['x'].values
-            points_coords = np.column_stack((yy, xx))
-            if 'z' in df.columns:
-                zz = df['z'].values
-                points_coords = np.column_stack((zz, points_coords))
-            if len(group) == 1:
-                group = group[0]
-            self.drawPoints(points_coords, group=group)
+            for group, df in grouped:
+                yy = df['y'].values
+                xx = df['x'].values
+                points_coords = np.column_stack((yy, xx))
+                if 'z' in df.columns:
+                    zz = df['z'].values
+                    points_coords = np.column_stack((zz, points_coords))
+                if len(group) == 1:
+                    group = group[0]
+                self.drawPoints(points_coords, group=group, idx=p)
     
-    def drawPoints(self, points_coords: np.ndarray, group=''):  
+    def drawPoints(self, points_coords: np.ndarray, group='', idx=None):  
         offset = 0.5 if np.issubdtype(points_coords.dtype, np.integer) else 0
         n_dim = points_coords.shape[1]
+        
+        if idx is not None:
+            PlotItems = [self.PlotItems[idx]]
+            ImageItems = [self.ImageItems[idx]]
+        else:
+            PlotItems = self.PlotItems
+            ImageItems = self.ImageItems
+        
         if n_dim == 2:
             zz = [0]*len(points_coords)
             self.points_coords = np.column_stack((zz, points_coords))
-            for p, plotItem in enumerate(self.PlotItems):
-                imageItem = self.ImageItems[p]
+            for p, plotItem in enumerate(PlotItems):
+                imageItem = ImageItems[p]
                 pointsItem = self._createPointsScatterItem(group, data=group)
                 pointsItem.z = 0
                 plotItem.addItem(pointsItem)
@@ -8250,8 +8421,8 @@ class ImShow(QBaseWindow):
                 imageItem.pointsItems = {group: [pointsItem]}
         elif n_dim == 3:
             self.points_coords = points_coords
-            for p, plotItem in enumerate(self.PlotItems):
-                imageItem = self.ImageItems[p]
+            for p, plotItem in enumerate(PlotItems):
+                imageItem = ImageItems[p]
                 imageItem.pointsItems = defaultdict(list)
                 scrollbar = imageItem.ScrollBars[0]
                 for first_coord in range(scrollbar.maximum()+1):
@@ -10604,14 +10775,16 @@ class MagicPromptsToolbar(ToolBar):
 
 class KeySequenceFromText(QKeySequence):
     def __init__(self, text: str):
+        if isinstance(text, str):
+            text = macShortcutToWindows(text)
         super().__init__(text)
         self._text = text
     
     def toString(self):
         if isinstance(self._text, str):
-            return self._text
+            return windowsShortcutToMac(self._text)
         else:
-            return super().toString()
+            return windowsShortcutToMac(super().toString())
     
 def modifierKeyToText(modifierKey: int):
     if modifierKey == Qt.ControlModifier:
@@ -10850,3 +11023,89 @@ def get_min_width_for_no_scrollbar(list_widget: QListWidget) -> int:
     # Add padding for icon, scrollbar margin, and frame
     padding = 30  # Adjust as needed (depends on style and icons)
     return max_width + padding
+
+class OverlayToolbar(ToolBar):
+    sigSetTranspacency = Signal(bool)
+    sigSetSingleChannel = Signal(bool)
+    
+    def __init__(self, name='Overlay tools', parent=None):
+        
+        super().__init__(name, parent)
+        
+        self.guiWin = parent
+        
+        self.setContextMenuPolicy(Qt.PreventContextMenu)
+        
+        self.addSeparator()
+        
+        self.transparencyCheckbox = self.addCheckBox(
+            text='True transparency (RGBA composite)'
+        )
+        
+        self.transparencyCheckbox.setToolTip(
+            'Activate to achieve true pixel-wise transparency where '
+            'the pixel intensity is 0 or set to 0 using the '
+            'LUT sliders on the left of the images.\n\n'
+            'Since it is significantly slower, we recommended to activate this '
+            'only if you need to export images for figures.'
+        )
+        
+        self.addSeparator()
+        
+        self.singleChannelCheckbox = self.addCheckBox(
+            text='Single channel'
+        )
+        
+        self.singleChannelCheckbox.setToolTip(
+            'When single channel mode is activated, selecting a channel '
+            'will display only that channel in the overlay.'
+        )
+        
+        self.transparencyCheckbox.toggled.connect(self.sigSetTranspacency.emit)
+        self.singleChannelCheckbox.toggled.connect(
+            self.sigSetSingleChannel.emit
+        )
+    
+    def isTransparent(self):
+        return self.transparencyCheckbox.isChecked()
+    
+    def isSingleChannel(self):
+        return self.singleChannelCheckbox.isChecked()
+
+class OverlayChannelToolButton(GradientToolButton):
+    def __init__(
+            self, 
+            channel_name: str, 
+            lut_item: myHistogramLUTitem, 
+            shortcut='0',
+            parent=None,
+        ):
+        super().__init__(
+            colors=lut_item.gradient.getLookupTable(256), 
+            parent=parent
+        )
+        self._channel_name = channel_name
+        
+        lut_item.sigGradientChanged.connect(self.updateColors)
+        
+        self.setToolTip(
+            f'Show/hide "{channel_name}" channel\n\n'
+            f'Shortcut: {shortcut}'
+        )
+        
+        self.setCheckable(True)
+    
+    def channelName(self):
+        return self._channel_name
+    
+    def updateColors(self, lut_item):
+        colors = lut_item.gradient.getLookupTable(256)
+        self._qcolors = [pg.mkColor(c) for c in colors]
+        self.update()
+    
+    def setVisible(self, visible: bool):
+        super().setVisible(visible)
+        if not hasattr(self, 'action'):
+            return
+        
+        self.action.setVisible(visible)

@@ -141,3 +141,17 @@ def savez_compressed(filepath, *args, safe=True, **kwargs):
         os.replace(temp_filepath, filepath)
     except PermissionError as err:
         np.savez_compressed(filepath, *args, **kwargs)
+
+def rename_files_replace_invalid_chars(files, src_path, replacement_char='_'):
+    renamed_files = []
+    for file in files:
+        invalid_chars = _validate_filename(file, is_path=False)
+        new_file = file
+        for char in invalid_chars:
+            new_file = new_file.replace(char, replacement_char)
+        if new_file != file:
+            src_filepath = os.path.join(src_path, file)
+            dst_filepath = os.path.join(src_path, new_file)
+            os.rename(src_filepath, dst_filepath)
+        renamed_files.append(new_file)
+    return renamed_files

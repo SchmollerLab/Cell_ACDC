@@ -72,7 +72,7 @@ class AutoPilot:
         values.pop(select_folder.pos_foldernames.index(posData.pos_foldername))
         select_folder.pos_foldernames.remove(posData.pos_foldername)
         select_folder.QtPrompt(self.parentWin, values, allowMultiSelection=False)
-        if select_folder.was_aborted:
+        if select_folder.cancel:
             return
         
         posPath = os.path.join(exp_path, select_folder.selected_pos[0])

@@ -391,13 +391,14 @@ class SegmKernel(_WorkflowKernel):
             if posData.SizeZ > 1 and not self.isSegm3D and not self.use3DdataFor2Dsegm:
                 # 2D segmentation on 3D data over time
                 img_data = posData.img_data
+
                 if self.second_channel_name is not None:
                     second_ch_data_slice = secondChImgData[self.t0:stop_i]
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
-                    img_data = img_data[:, y0:y1, x0:x1]
+                    img_data = img_data[:, :, y0:y1, x0:x1]
                     if self.second_channel_name is not None:
-                        second_ch_data_slice = second_ch_data_slice[:, y0:y1, x0:x1]
+                        second_ch_data_slice = second_ch_data_slice[:, :, y0:y1, x0:x1]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
 
                 img_data_slice = img_data[self.t0:stop_i]
@@ -620,6 +621,7 @@ class SegmKernel(_WorkflowKernel):
                 lab_stack = core.post_process_segm(
                     lab_stack, **self.standard_postrocess_kwargs
                 )
+                printl(self.custom_postproc_features)
                 if self.custom_postproc_features:
                     lab_stack = features.custom_post_process_segm(
                         posData, self.custom_postproc_grouped_features, 
@@ -768,6 +770,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
         self.metricsToSave = {chName:[] for chName in self.ch_names}
+        self.mixedChCombineMetricsToSkip = []
         self.calc_for_each_zslice_mapper = {}
         self.calc_size_for_each_zslice = (
             config_params['calc_for_each_zslice_size']
@@ -827,7 +830,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             
             self.chNamesToProcess.append(chName)
             self.calc_for_each_zslice_mapper[chName] = (
-                chNameGroupbox.isCalcForEachZsliceRequested()
+                chNameGroupbox.calcForEachZsliceRequested
             )
             last_selected_groupboxes_measurements[refChannel].append(
                 chNameGroupbox.title()
@@ -842,7 +845,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     favourite_funcs.add(func_name)
 
         self.calc_size_for_each_zslice = (
-            setMeasurementsDialog.sizeMetricsQGBox.isCalcForEachZsliceRequested()
+            setMeasurementsDialog.sizeMetricsQGBox.calcForEachZsliceRequested
         )
         if not setMeasurementsDialog.sizeMetricsQGBox.isChecked():
             self.sizeMetricsToSave = []
@@ -888,6 +891,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 chIndipendCustomMetricsToSave
             )
         
+        self.mixedChCombineMetricsToSkip = []
         if setMeasurementsDialog.mixedChannelsCombineMetricsQGBox is not None:
             skipAll = (
                 not setMeasurementsDialog.mixedChannelsCombineMetricsQGBox.isChecked()
@@ -999,23 +1003,15 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             load_dataPrep_ROIcoords=True
         )
         posData.labelSegmData()
-        if not posData.segmFound:
-            rel_path = (
-                f'...{os.sep}{exp_foldername}'
-                f'{os.sep}{posData.pos_foldername}'
-            )
-            self.log(
-                f'Skipping "{rel_path}" '
-                f'because segm. file was not found.'
-            )
-            return
     
         self.isSegm3D = posData.getIsSegm3D()
         
         # Allow single 2D/3D image
         if posData.SizeT == 1:
             posData.img_data = posData.img_data[np.newaxis]
-            posData.segm_data = posData.segm_data[np.newaxis]
+            
+            if posData.segm_data is not None:
+                posData.segm_data = posData.segm_data[np.newaxis]
         
         return posData
     
@@ -1038,6 +1034,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     posData.images_path, channel
                 )
                 img_data, bkgrData = self._load_channel_data(filepath)
+                if posData.SizeT == 1:
+                    img_data = img_data[np.newaxis]
+                    
                 filename_ext = os.path.basename(filepath)
                 filename, _ = os.path.splitext(filename_ext)
             
@@ -1094,7 +1093,18 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             if computeMetricsWorker.abort or computeMetricsWorker.savedToWorkflow:
                 computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
                 return 
-            
+        
+        if not posData.segmFound:
+            rel_path = (
+                f'...{os.sep}{exp_foldername}'
+                f'{os.sep}{posData.pos_foldername}'
+            )
+            self.log(
+                f'Skipping "{rel_path}" '
+                f'because segm. file was not found.'
+            )
+            return
+        
         self.init_signals(computeMetricsWorker, saveDataWorker)
         
         self.log(
@@ -1201,7 +1211,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 continue
 
             try:
-                prev_data_dict = posData.allData_li[frame_i-1]
                 prev_lab = posData.segm_data[frame_i-1]
                 acdc_df = self._add_velocity_measurement(
                     acdc_df, prev_lab, lab, posData
@@ -1500,7 +1509,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
         if not proceed:
             return []
-
+        
         df = measurements.add_size_metrics(
             df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, 
             vox_to_fl_3D, calc_size_for_each_zslice=calc_size_for_each_zslice
@@ -1647,7 +1656,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             self.ch_indipend_custom_func_params
         )
         images_path = posData.images_path
-        
+
         # Iterate channels
         iter_channels = zip(
             posData.loadedChNames, 
