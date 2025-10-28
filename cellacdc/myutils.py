@@ -4899,7 +4899,8 @@ def get_empty_stored_data_dict():
             'delROIs_info': {
                     'rois': [], 'delMasks': [], 'delIDsROI': [], 'state': []
                 },
-            'IDs': []
+            'IDs': [],
+            'manually_edited_lab': {'zoom_lab': {}, 'zoom_slice': None}
         }
 
 def iterate_along_axes(arr, axes, arr_ndim=None):

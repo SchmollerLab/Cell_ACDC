@@ -423,11 +423,13 @@ Edit tools: Segmentation and tracking
 * **Magic Wand (** |wandToolButton| **"Ctrl+D"):** Create a new object using neighbouring pixels whose intensity is within a selected tolerance. Left-click for single selection or left-click and then drag for continous selection.
 * **Magic prompts (** |magicPromptsToolButton| **"W"):** Use promptable models (e.g., Segment Anything) to refine objects or generate new ones interactively with prompts (e.g., points). Prompts are added with both the left, right, and middle-click
 * **Copy lost contour (** |copyLostObjButton| **"V"):** Hover onto lost object contour --> right-click to copy the contour as a new object.
-* **Manually annotate future frames (** |manualAnnotFutureButton| **"Y"):**
+* **Lock ID and annotate single object (** |manualAnnotFutureButton| **"Y"):**
     1. Activate to automatically set the brush ID to the hovered ID. 
        --> Warning about lost objects temporarily disabled
     2. Annotate future frames
     3. Deactivate to go back to the frame you were annotating before activating this tool.
+
+    NOTE: While activated, the brush ID will be locked to the requested ID. This is useful to quickly annotate past and future frames of a specific object without checking errors with the other objects. The future frames visited during these edits will not be set as fully checked, but the edits will be kept.
 * **Magic labeller (** |labelRoiButton| **"L"):** Draw a rectangular ROI around object(s) you want to segment. Draw with LEFT button to label with last used model. Draw with RIGHT button to choose a different segmentation model.
 * **Segment (** |segmentToolAction| **"R"):** Segment with last used model and last used parameters. If you never selected a segmentation model before, you will be asked to choose one and initialize its parameters.
 * **Segmenting for lost IDs (** |SegForLostIDsButton| **):** Segment only a small cutout of the image around missing IDs based on the segmentation of the previous frame. Will always use cellpose model. Parameters can be adjusted in the top ribbon under Segment --> Edit settings for Segmenting lost IDs. In the settings menu, additional parameters can be set like padding and overlap threshold in addition to the model settings.
