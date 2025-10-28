@@ -5516,6 +5516,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             if self.scaleBarDialog is not None:
                 self.scaleBarDialog.locCombobox.setCurrentText('Custom')
             if self.scaleBar.isHighlighted() and self.scaleBar.clicked:
+                self.scaleBar.setLocationProperty('custom')
                 self.scaleBar.move(x, y)
                 return
         
@@ -5523,6 +5524,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             if self.timestampDialog is not None:
                 self.timestampDialog.locCombobox.setCurrentText('Custom')
             if self.timestamp.isHighlighted() and self.timestamp.clicked:
+                self.timestamp.setLocationProperty('custom')
                 self.timestamp.move(x, y)
                 return
         
@@ -11691,16 +11693,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def editScaleBarProperties(self, properties):
         Y, X = self.img1.image.shape[:2]
         posData = self.data[self.pos_i]
-        win = apps.ScaleBarPropertiesDialog(
+        self.scaleBarDialog = apps.ScaleBarPropertiesDialog(
             X, Y, posData.PhysicalSizeX, parent=self, **properties
         )
-        win.sigValueChanged.connect(self.updateScaleBar)
-        win.exec_()
+        self.scaleBarDialog.sigValueChanged.connect(self.updateScaleBar)
+        self.scaleBarDialog.exec_()
     
     def editTimestampProperties(self, properties):
-        win = apps.TimestampPropertiesDialog(parent=self, **properties)
-        win.sigValueChanged.connect(self.updateTimestamp)
-        win.show()
+        self.timestampDialog = apps.TimestampPropertiesDialog(
+            parent=self, **properties
+        )
+        self.timestampDialog.sigValueChanged.connect(self.updateTimestamp)
+        self.timestampDialog.show()
     
     def invertBw(self, checked, update=True):
         self.invertBwAlreadyCalledOnce = True
@@ -31961,10 +31965,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.curvHoverPlotItem.setData(xi, yi)
     
     def viewRangeChanged(self, viewBox, viewRange):
-        if self.scaleBarDialog is not None:
-            self.scaleBar.updateViewRange(viewRange)
-            self.scaleBarDialog.onValueChanged(None)
+        if hasattr(self, 'scaleBar'):
+            isScaleBarMoveWithZoom = (
+                self.scaleBar.properties()['move_with_zoom']
+            )
+        else:
+            isScaleBarMoveWithZoom = False
+        doMoveScaleBar = (
+            self.scaleBarDialog is not None or isScaleBarMoveWithZoom
+        )
+        if doMoveScaleBar:
+            self.scaleBar.updatePosViewRangeChanged(viewRange)
         
-        if self.timestampDialog is not None:
-            self.timestamp.updateViewRange(viewRange)
-            self.timestampDialog.onValueChanged(None)
+        if hasattr(self, 'timestamp'):
+            isTimestampMoveWithZoom = (
+                self.timestamp.properties()['move_with_zoom']
+            )
+        else:
+            isTimestampMoveWithZoom = False
+            
+        doMoveTimestamp = (
+            self.timestampDialog is not None or isTimestampMoveWithZoom
+        )
+        if doMoveTimestamp:
+            self.timestamp.updatePosViewRangeChanged(viewRange)

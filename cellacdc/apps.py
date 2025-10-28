@@ -14719,7 +14719,7 @@ class ScaleBarPropertiesDialog(QBaseDialog):
         )
         loc = properties.get('loc')
         if isinstance(loc, str):
-            locCombobox.setCurrentText(loc)
+            locCombobox.setCurrentText(loc.capitalize())
         formLayout.addFormWidget(
             locFormWidget, row=row, 
             leftLabelAlignment=Qt.AlignLeft
@@ -14787,6 +14787,18 @@ class ScaleBarPropertiesDialog(QBaseDialog):
         )       
         self.decimalsSpinbox = decimalsSpinbox
         
+        row += 1
+        moveWithZoomToggle = widgets.Toggle()
+        moveWithZoomWidget = widgets.formWidget(
+            moveWithZoomToggle, labelTextLeft='Move scale bar with zoom',
+            widgetAlignment=Qt.AlignCenter, stretchWidget=False
+        )
+        formLayout.addFormWidget(
+            moveWithZoomWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        )
+        self.moveWithZoomToggle = moveWithZoomToggle
+        
         mainLayout.addLayout(formLayout)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
@@ -14811,8 +14823,9 @@ class ScaleBarPropertiesDialog(QBaseDialog):
         self.displayTextToggle.toggled.connect(self.onValueChanged)
         self.fontSizeSpinbox.valueChanged.connect(self.onValueChanged)
         self.decimalsSpinbox.valueChanged.connect(self.onValueChanged)
+        self.moveWithZoomToggle.toggled.connect(self.onValueChanged)
     
-    def onValueChanged(self, object):
+    def onValueChanged(self, *args, **kwargs):
         self.sigValueChanged.emit(self.kwargs())
     
     def selectColor(self):
@@ -14851,7 +14864,8 @@ class ScaleBarPropertiesDialog(QBaseDialog):
             'loc': self.locCombobox.currentText().lower(),
             'font_size': self.fontSizeSpinbox.value(),
             'unit': unit,
-            'num_decimals': self.decimalsSpinbox.value()
+            'num_decimals': self.decimalsSpinbox.value(),
+            'move_with_zoom': self.moveWithZoomToggle.isChecked()
         }
         return kwargs
     
@@ -15747,12 +15761,24 @@ class TimestampPropertiesDialog(QBaseDialog):
         )
         loc = properties.get('loc')
         if isinstance(loc, str):
-            locCombobox.setCurrentText(loc)
+            locCombobox.setCurrentText(loc.capitalize())
         formLayout.addFormWidget(
             locFormWidget, row=row, 
             leftLabelAlignment=Qt.AlignLeft
         )       
         self.locCombobox = locCombobox
+        
+        row += 1
+        moveWithZoomToggle = widgets.Toggle()
+        moveWithZoomWidget = widgets.formWidget(
+            moveWithZoomToggle, labelTextLeft='Move timestamp with zoom',
+            widgetAlignment=Qt.AlignCenter, stretchWidget=False
+        )
+        formLayout.addFormWidget(
+            moveWithZoomWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        )
+        self.moveWithZoomToggle = moveWithZoomToggle
         
         mainLayout.addLayout(formLayout)
         
@@ -15774,8 +15800,9 @@ class TimestampPropertiesDialog(QBaseDialog):
         
         self.locCombobox.currentTextChanged.connect(self.onValueChanged)
         self.fontSizeWidget.sigTextChanged.connect(self.onValueChanged)
+        self.moveWithZoomToggle.toggled.connect(self.onValueChanged)
     
-    def onValueChanged(self, object):
+    def onValueChanged(self, *args, **kwargs):
         self.sigValueChanged.emit(self.kwargs())
     
     def selectColor(self):
@@ -15798,6 +15825,7 @@ class TimestampPropertiesDialog(QBaseDialog):
             'start_timedelta': self.startTimeWidget.timedelta(),
             'loc': self.locCombobox.currentText().lower(),
             'font_size': self.fontSizeWidget.text(),
+            'move_with_zoom': self.moveWithZoomToggle.isChecked()
         }
         return kwargs
     

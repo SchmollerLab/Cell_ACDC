@@ -8725,7 +8725,8 @@ class ScaleBar(QGraphicsObject):
             'loc': self._loc,
             'font_size': float(self._font_size[:-2]),
             'unit': self._unit,
-            'num_decimals': self._num_decimals
+            'num_decimals': self._num_decimals,
+            'move_with_zoom': self._move_with_zoom,
         }
         return properties
     
@@ -8738,7 +8739,7 @@ class ScaleBar(QGraphicsObject):
         x0 = self.x0c + Dx
         x1 = x0 + self._length
         y0 = y1 = self.y0c + Dy
-        self.plotItem.setData([x0, x1], [y0, y0])
+        self.plotItem.setData([x0, x1], [y0, y1])
         self.setTextPos()
     
     def paint(self, painter, option, widget):
@@ -8747,6 +8748,12 @@ class ScaleBar(QGraphicsObject):
     def boundingRect(self):
         ymin, xmin, ymax, xmax = self.bbox()
         return QRectF(xmin, ymin, xmax-xmin, ymax-ymin)
+    
+    def setLocationProperty(self, loc: str):
+        self._loc = loc 
+    
+    def setMoveWithZoomProperty(self, move_with_zoom):
+        self._move_with_zoom = move_with_zoom
     
     def setProperties(
             self, 
@@ -8758,7 +8765,8 @@ class ScaleBar(QGraphicsObject):
             loc='top-left',
             font_size=12,
             unit='',
-            num_decimals=0
+            num_decimals=0,
+            move_with_zoom=False
         ):
         self._loc = loc
         self._color = color
@@ -8768,6 +8776,7 @@ class ScaleBar(QGraphicsObject):
         self._font_size = f'{font_size}px'
         self._unit = unit
         self._num_decimals = num_decimals
+        self._move_with_zoom = move_with_zoom
         self._thickness = thickness
         self.pen = pg.mkPen(width=thickness, color=color, cosmetic=False)
         self.highlightPen = pg.mkPen(
@@ -8811,6 +8820,42 @@ class ScaleBar(QGraphicsObject):
         xl = xc-wl/2
         yt = y0-hl    
         self.labelItem.setPos(xl, yt)
+    
+    def updatePosViewRangeChanged(self, viewRange):
+        if self._loc == 'custom':
+            xx, yy = self.plotItem.getData()
+            x0p = xx[0]
+            y0p = yy[0]
+            xcp = x0p + self._length/2
+            hl = self.labelItem.itemRect().height()
+            ycp = y0p - hl/2  
+            x0 = self.xmin
+            y0 = self.ymin
+            x_range = self.xmax - x0
+            y_range = self.ymax - y0
+            Dx_perc = (xcp - x0)/x_range
+            Dy_perc = (ycp - y0)/y_range   
+            
+            self.updateViewRange(viewRange)
+            
+            X0 = self.xmin
+            Y0 = self.ymin
+            
+            X_range = self.xmax - X0
+            Y_range = self.ymax - Y0
+            
+            Xcp = X0 + (Dx_perc*X_range)
+            Ycp = Y0 + (Dy_perc*Y_range)
+            X0p = Xcp - (self._length/2)
+            Y0p = Ycp + (hl/2)
+            
+            X1p = X0p + self._length
+            Y1p = Y0p
+            
+            self.plotItem.setData([X0p, X1p], [Y0p, Y1p])
+        else:
+            self.updateViewRange(viewRange)
+            self.update()
     
     def getStartXCoordFromLoc(self, loc):
         if loc == 'custom':
@@ -10029,9 +10074,9 @@ class TimestampItem(LabelItem):
         self._secondsPerFrame = secondsPerFrame
         self._x_pad = 3
         self._y_pad = 2
+        self.xmin, self.ymin = 0, 0
         self.SizeY = SizeY
         self.SizeX = SizeX
-        self.updateViewRange(viewRange)
         self._highlighted = False
         self._parent = parent
         if start_timedelta is None:
@@ -10039,12 +10084,13 @@ class TimestampItem(LabelItem):
         self._start_timedelta = start_timedelta
         self.clicked = False
         super().__init__(self)
+        self.updateViewRange(viewRange)
         self.createContextMenu()
     
     def setSecondsPerFrame(self, secondsPerFrame):
         self._secondsPerFrame = secondsPerFrame
     
-    def updateViewRange(self, viewRange):
+    def getBboxViewRange(self, viewRange):
         xRange, yRange = viewRange
         x0, x1 = xRange
         y0, y1 = yRange
@@ -10059,6 +10105,11 @@ class TimestampItem(LabelItem):
         
         if y1 > self.SizeY:
             y1 = self.SizeY
+        
+        return x0, y0, x1, y1
+   
+    def updateViewRange(self, viewRange):
+        x0, y0, x1, y1 = self.getBboxViewRange(viewRange)
         
         self.xmax = x1
         self.xmin = x0
@@ -10097,12 +10148,16 @@ class TimestampItem(LabelItem):
     def showContextMenu(self, x, y):
         self.contextMenu.popup(QPoint(int(x), int(y)))
     
+    def setLocationProperty(self, loc: str):
+        self._loc = loc    
+    
     def properties(self):
         properties = {
             'color': self._color,
             'loc': self._loc,
             'font_size': int(self._font_size[:-2]),
-            'start_timedelta': self._start_timedelta
+            'start_timedelta': self._start_timedelta,
+            'move_with_zoom': self._move_with_zoom,
         }
         return properties
 
@@ -10114,23 +10169,66 @@ class TimestampItem(LabelItem):
         self.setPosFromLoc()
         self.setText(frame_i)
     
+    def setMoveWithZoomProperty(self, move_with_zoom):
+        self._move_with_zoom = move_with_zoom
+    
+    def updatePosViewRangeChanged(self, viewRange):
+        if self._loc == 'custom':
+            textHeight = self.itemRect().height()
+            textWidth = self.itemRect().width()
+            x0p = self.pos().x()
+            y0p = self.pos().y()
+            xcp = x0p + textWidth/2
+            ycp = y0p + textHeight/2
+            x0 = self.xmin
+            y0 = self.ymin
+            x_range = self.xmax - x0
+            y_range = self.ymax - y0
+            Dx_perc = (xcp - x0)/x_range
+            Dy_perc = (ycp - y0)/y_range         
+            
+            self.updateViewRange(viewRange)
+            
+            X0 = self.xmin
+            Y0 = self.ymin
+            
+            X_range = self.xmax - X0
+            Y_range = self.ymax - Y0
+            
+            Xcp = X0 + (Dx_perc*X_range)
+            Ycp = Y0 + (Dy_perc*Y_range)
+            X0p = Xcp - (textWidth/2)
+            Y0p = Ycp - (textHeight/2)
+            
+            y_pos_max = self.ymax - textHeight - self._y_pad
+            if Y0p > y_pos_max:
+                Y0p = y_pos_max
+            
+            x_pos_max = self.xmax - textWidth - self._x_pad
+            if X0p > x_pos_max:
+                X0p = x_pos_max
+                
+            self.setPos(X0p, Y0p)
+        else:
+            self.updateViewRange(viewRange)
+            self.setPosFromLoc()
+            
+    
     def setPosFromLoc(self):
         textHeight = self.itemRect().height()
         textWidth = self.itemRect().width()
         if self._loc == 'custom':
             return
-            # pos = self.pos()
-            # x0, y0 = pos.x(), pos.y()
         
         if self._loc.find('top') != -1:
             y0 = self._y_pad + self.ymin
         else:
-            y0 = self.ymax - textHeight
+            y0 = self.ymax - textHeight - self._y_pad
         
         if self._loc.find('left') != -1:
             x0 = self._x_pad + self.xmin
         else:
-            x0 = self.xmax - textWidth
+            x0 = self.xmax - textWidth - self._x_pad
 
         self.setPos(x0, y0)
     
@@ -10139,13 +10237,15 @@ class TimestampItem(LabelItem):
             color=(255, 255, 255), 
             font_size='13px', 
             loc='top-left',
-            start_timedelta=None
+            start_timedelta=None,
+            move_with_zoom=False
         ):
         if start_timedelta is not None:
             self._start_timedelta = start_timedelta
         self._color = color
         self._loc = loc
         self._font_size = font_size
+        self._move_with_zoom = move_with_zoom
 
     def move(self, xm, ym):
         Dy = ym - self.yc
@@ -10865,11 +10965,12 @@ class TimeWidget(QGroupBox):
         values, sign = self.values()
         return datetime.timedelta(**values)*sign
     
-    def setValues(self, values, sign=1):
+    def setValues(self, values: dict[str, int | float], sign=1):
         signText = '+' if sign > 0 else '-'
         self.signCombobox.setCurrentText(signText)
         for unit, value in values.items():
-            values[unit].setValue(value)
+            spinbox = self.spinboxesMapper[unit]
+            spinbox.setValue(value)
     
     def emitValueChanged(self, value):
         self.sigValueChanged.emit(self.values())
