@@ -14222,7 +14222,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             toolbutton.click()
             success = True
         except Exception as e:
-            printl(traceback.format_exc())
+            # printl(traceback.format_exc())
             success = False        
         return success
     
@@ -24176,7 +24176,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.rgbaImg1.setOpacity(float(transparent))
         
         if transparent:
-            self.img1.setOpacity(0.0, applyToLinked=False)
+            self.img1.setOpacity(0.01, applyToLinked=False)
             self.imgGrad.sigLookupTableChanged.connect(
                 self.updateTransparentOverlayRgba
             )
@@ -30039,6 +30039,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 op_val = alpha_value
             else:
                 op_val = 0.0
+            
+            if op_val == 0:
+                op_val = 0.01
 
             otherImageItem.setOpacity(op_val, applyToLinked=False)
             
