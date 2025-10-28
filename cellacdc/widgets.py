@@ -8733,7 +8733,7 @@ class ScaleBar(QGraphicsObject):
         x0 = self.x0c + Dx
         x1 = x0 + self._length
         y0 = y1 = self.y0c + Dy
-        self.plotItem.setData([x0, x1], [y0, y0])
+        self.plotItem.setData([x0, x1], [y0, y1])
         self.setTextPos()
     
     def paint(self, painter, option, widget):
@@ -8814,6 +8814,42 @@ class ScaleBar(QGraphicsObject):
         xl = xc-wl/2
         yt = y0-hl    
         self.labelItem.setPos(xl, yt)
+    
+    def updatePosViewRangeChanged(self, viewRange):
+        if self._loc == 'custom':
+            xx, yy = self.plotItem.getData()
+            x0p = xx[0]
+            y0p = yy[0]
+            xcp = x0p + self._length/2
+            hl = self.labelItem.itemRect().height()
+            ycp = y0p - hl/2  
+            x0 = self.xmin
+            y0 = self.ymin
+            x_range = self.xmax - x0
+            y_range = self.ymax - y0
+            Dx_perc = (xcp - x0)/x_range
+            Dy_perc = (ycp - y0)/y_range   
+            
+            self.updateViewRange(viewRange)
+            
+            X0 = self.xmin
+            Y0 = self.ymin
+            
+            X_range = self.xmax - X0
+            Y_range = self.ymax - Y0
+            
+            Xcp = X0 + (Dx_perc*X_range)
+            Ycp = Y0 + (Dy_perc*Y_range)
+            X0p = Xcp - (self._length/2)
+            Y0p = Ycp + (hl/2)
+            
+            X1p = X0p + self._length
+            Y1p = Y0p
+            
+            self.plotItem.setData([X0p, X1p], [Y0p, Y1p])
+        else:
+            self.updateViewRange(viewRange)
+            self.update()
     
     def getStartXCoordFromLoc(self, loc):
         if loc == 'custom':
@@ -10033,7 +10069,6 @@ class TimestampItem(LabelItem):
         self._x_pad = 3
         self._y_pad = 2
         self.xmin, self.ymin = 0, 0
-        self._x_rel, self._y_rel = 0, 0
         self.SizeY = SizeY
         self.SizeX = SizeX
         self._highlighted = False
@@ -10049,7 +10084,7 @@ class TimestampItem(LabelItem):
     def setSecondsPerFrame(self, secondsPerFrame):
         self._secondsPerFrame = secondsPerFrame
     
-    def updateViewRange(self, viewRange):
+    def getBboxViewRange(self, viewRange):
         xRange, yRange = viewRange
         x0, x1 = xRange
         y0, y1 = yRange
@@ -10065,16 +10100,10 @@ class TimestampItem(LabelItem):
         if y1 > self.SizeY:
             y1 = self.SizeY
         
-        x_pos = self.pos().x()
-        y_pos = self.pos().y()
-        self._x_rel = x_pos - self.xmin
-        self._y_rel = y_pos - self.ymin
-        printl(
-            (self._x_rel, self._y_rel), 
-            (x_pos, y_pos), 
-            (self.xmin, self.ymin),
-            (x0, y0)
-        )
+        return x0, y0, x1, y1
+   
+    def updateViewRange(self, viewRange):
+        x0, y0, x1, y1 = self.getBboxViewRange(viewRange)
         
         self.xmax = x1
         self.xmin = x0
@@ -10137,34 +10166,63 @@ class TimestampItem(LabelItem):
     def setMoveWithZoomProperty(self, move_with_zoom):
         self._move_with_zoom = move_with_zoom
     
+    def updatePosViewRangeChanged(self, viewRange):
+        if self._loc == 'custom':
+            textHeight = self.itemRect().height()
+            textWidth = self.itemRect().width()
+            x0p = self.pos().x()
+            y0p = self.pos().y()
+            xcp = x0p + textWidth/2
+            ycp = y0p + textHeight/2
+            x0 = self.xmin
+            y0 = self.ymin
+            x_range = self.xmax - x0
+            y_range = self.ymax - y0
+            Dx_perc = (xcp - x0)/x_range
+            Dy_perc = (ycp - y0)/y_range         
+            
+            self.updateViewRange(viewRange)
+            
+            X0 = self.xmin
+            Y0 = self.ymin
+            
+            X_range = self.xmax - X0
+            Y_range = self.ymax - Y0
+            
+            Xcp = X0 + (Dx_perc*X_range)
+            Ycp = Y0 + (Dy_perc*Y_range)
+            X0p = Xcp - (textWidth/2)
+            Y0p = Ycp - (textHeight/2)
+            
+            y_pos_max = self.ymax - textHeight - self._y_pad
+            if Y0p > y_pos_max:
+                Y0p = y_pos_max
+            
+            x_pos_max = self.xmax - textWidth - self._x_pad
+            if X0p > x_pos_max:
+                X0p = x_pos_max
+                
+            self.setPos(X0p, Y0p)
+        else:
+            self.updateViewRange(viewRange)
+            self.setPosFromLoc()
+            
+    
     def setPosFromLoc(self):
         textHeight = self.itemRect().height()
         textWidth = self.itemRect().width()
-        if self._loc == 'custom' and not self._move_with_zoom:
+        if self._loc == 'custom':
             return
         
-        if self._loc == 'custom' and self._move_with_zoom:
-            y0 = self._y_rel + self.ymin
-            y0max = self.ymax - textHeight
-            if y0 > y0max:
-                y0 = y0max
-                
-            x0 = self._x_rel + self.xmin
-            x0max = self.xmax - textWidth
-            if x0 > x0max:
-                x0 = x0max
-            
-            printl((x0, y0), (self._x_rel, self._y_rel), (self.xmin, self.ymin))
+        if self._loc.find('top') != -1:
+            y0 = self._y_pad + self.ymin
         else:
-            if self._loc.find('top') != -1:
-                y0 = self._y_pad + self.ymin
-            else:
-                y0 = self.ymax - textHeight - self._y_pad
-            
-            if self._loc.find('left') != -1:
-                x0 = self._x_pad + self.xmin
-            else:
-                x0 = self.xmax - textWidth - self._x_pad
+            y0 = self.ymax - textHeight - self._y_pad
+        
+        if self._loc.find('left') != -1:
+            x0 = self._x_pad + self.xmin
+        else:
+            x0 = self.xmax - textWidth - self._x_pad
 
         self.setPos(x0, y0)
     

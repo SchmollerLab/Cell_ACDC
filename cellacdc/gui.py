@@ -31851,13 +31851,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.scaleBarDialog is not None or isScaleBarMoveWithZoom
         )
         if doMoveScaleBar:
-            self.scaleBar.updateViewRange(viewRange)
-            if self.scaleBarDialog is not None:
-                self.scaleBar.setMoveWithZoomProperty(True)
-                self.updateScaleBar(self.scaleBarDialog.kwargs())
-                self.scaleBar.setMoveWithZoomProperty(isScaleBarMoveWithZoom)
-            else:
-                self.scaleBar.update()
+            self.scaleBar.updatePosViewRangeChanged(viewRange)
         
         if hasattr(self, 'timestamp'):
             isTimestampMoveWithZoom = (
@@ -31870,10 +31864,4 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.timestampDialog is not None or isTimestampMoveWithZoom
         )
         if doMoveTimestamp:
-            self.timestamp.updateViewRange(viewRange)
-            if self.timestampDialog is not None:
-                self.timestamp.setMoveWithZoomProperty(True)
-                self.updateTimestamp(self.timestampDialog.kwargs())
-                self.timestamp.setMoveWithZoomProperty(isTimestampMoveWithZoom)
-            else:
-                self.timestamp.setPosFromLoc()
+            self.timestamp.updatePosViewRangeChanged(viewRange)
