@@ -5862,6 +5862,7 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             steps:  Dict[str, Dict[str, Any]],
             appended_text_filename: str,
             keep_input_data_type: bool,
+            n_threads: int = None
         ):
 
         channel_name_first = steps[1]['channel']
@@ -5893,6 +5894,7 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             save_filepaths=save_filepaths,
             signals=self.signals,
             logger_func=self.logger.log,
+            n_threads=n_threads
             )
     
     @worker_exception_handler
@@ -5934,7 +5936,8 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             image_paths,
             selectedSteps,
             appendedName,
-            self.keepInputDataType
+            self.keepInputDataType,
+            n_threads=self.nThreads
         )
 
         self.signals.finished.emit(self)

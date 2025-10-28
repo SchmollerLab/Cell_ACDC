@@ -18032,6 +18032,14 @@ class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
             parent=parent,
             df_metadata=df_metadata
             )
+        
+        # add int input for number of workers
+        self.nThreadsSpinBox = QSpinBox()
+        self.nThreadsSpinBox.setMinimum(1)
+        self.nThreadsSpinBox.setValue(4)
+        self.nThreadsSpinBox.setToolTip("Number of threads to use for processing")
+        self.mainLayout.addWidget(QLabel("Number of threads:"))
+        self.mainLayout.addWidget(self.nThreadsSpinBox)
 
         qutils.hide_and_delete_layout(self.buttonsLayout)
 
