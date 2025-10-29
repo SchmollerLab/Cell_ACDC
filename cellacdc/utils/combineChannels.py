@@ -56,6 +56,7 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
         
         self.worker.keepInputDataType = win.keepInputDataType
         self.worker.selectedSteps = win.selectedSteps
+        self.worker.nThreads = win.nThreadsSpinBox.value()
         self.worker.waitCond.wakeAll()
         
     def showEvent(self, event):
