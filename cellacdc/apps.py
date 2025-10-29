@@ -18389,13 +18389,18 @@ class SelectFoldersToAnalyse(QBaseDialog):
         ]
     
     def expFolderToPosFoldernamesMapper(self):
-        expPathsPosFoldernamesMapper = {}
+        expPathsPosFoldernamesMapper = defaultdict(set)
         for selectedPath in self.pathsList():
             pos_foldernames = myutils.get_pos_foldernames(
                 selectedPath, check_if_is_sub_folder=True
             )
             expPath = load.get_exp_path(selectedPath)
-            expPathsPosFoldernamesMapper[expPath] = pos_foldernames
+            expPathsPosFoldernamesMapper[expPath].update(pos_foldernames)
+        
+        expPathsPosFoldernamesMapper = {
+            expPath: natsorted(pos_foldernames) 
+            for expPath, pos_foldernames in expPathsPosFoldernamesMapper.items()
+        }
         return expPathsPosFoldernamesMapper
     
     def ok_cb(self):

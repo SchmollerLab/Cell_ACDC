@@ -621,7 +621,6 @@ class SegmKernel(_WorkflowKernel):
                 lab_stack = core.post_process_segm(
                     lab_stack, **self.standard_postrocess_kwargs
                 )
-                printl(self.custom_postproc_features)
                 if self.custom_postproc_features:
                     lab_stack = features.custom_post_process_segm(
                         posData, self.custom_postproc_grouped_features, 
