@@ -3016,6 +3016,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 break
     
     def customLevelsLutChanged(self, levels, imageItem=None):
+        printl(levels)
         imageItem.setLevels(levels)
     
     def rescaleIntensitiesLut(
@@ -3078,6 +3079,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             lutLevelsCh[levels_key] = levels
             imageItem.setLevels(levels)
         elif how == 'Choose custom levels...':
+            autoLevelsEnabledBefore = imageItem.autoLevelsEnabled
+            imageItem.setEnableAutoLevels(False)
             if triggeredByUser:
                 current_min, current_max = imageItem.getLevels() 
                 dtype_max = np.iinfo(image_data.dtype).max
@@ -3095,13 +3098,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 )
                 win.exec_()
                 if win.cancel:
+                    imageItem.setEnableAutoLevels(autoLevelsEnabledBefore)
                     self.logger.info('Custom LUT levels setting cancelled.')
                     self.updateAllImages()
                     return
                 selectedLevels = win.selectedLevels
             else:
                 selectedLevels = imageItem.getLevels()
-            imageItem.setEnableAutoLevels(False)
             imageItem.setLevels(selectedLevels)
         elif how == 'Do no rescale, display raw image':            
             imageItem.setEnableAutoLevels(False)
@@ -4401,9 +4404,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 if c >= len(self.overlayRGBs) -1:
                     i = c/len(fluoChannels)
                     additional_color_num = c - len(self.overlayRGBs) + 1
-                    rgbs = [tuple([round(c*255) for c in self.overlayCmap(i)][:3]) for _ in range(additional_color_num)]
+                    rgbs = [
+                        tuple([round(c*255) for c in self.overlayCmap(i)][:3]) 
+                        for _ in range(additional_color_num)
+                    ]
                     self.overlayRGBs.extend(rgbs)
-                self.overlayColors[ch] = self.overlayRGBs[c]
+                rgb = colors.FLUO_CHANNELS_COLORS.get(ch, self.overlayRGBs[c])
+                self.overlayColors[ch] = rgb
 
     def gui_createOverlayItems(self):
         self.imgGrad.setAxisLabel(self.user_ch_name)
