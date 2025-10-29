@@ -24,8 +24,6 @@ except:
     NETWORKX_INSTALLED = False
 
 __all__ = ['ColorMap']
-<<<<<<< Updated upstream
-=======
 
 FLUO_CHANNELS_COLORS = {
     'mCardinal': (255, 0, 255), 
@@ -41,7 +39,6 @@ FLUO_CHANNELS_COLORS = {
     'mCitrine': (255, 255, 0)
 }
 
->>>>>>> Stashed changes
 _mapCache = {}
 def getFromMatplotlib(name):
     """
