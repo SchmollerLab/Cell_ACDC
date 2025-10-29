@@ -7076,9 +7076,11 @@ class ParentImageItem(BaseImageItem):
         
         if self.activatingActions is None:
             return False
+        
         for action in self.activatingActions:
             if action.isChecked():
                 return True
+            
         return False
     
     # def setLevels(self, levels, **kargs):
@@ -7130,14 +7132,17 @@ class ParentImageItem(BaseImageItem):
     
     def setImage(
             self, image=None, autoLevels=None, next_frame_image=None, 
-            scrollbar_value=None, **kargs
+            scrollbar_value=None, force_set_linked=False, **kargs
         ):
         if autoLevels is None:
             autoLevels = self.autoLevelsEnabled
         
         super().setImage(image, autoLevels=autoLevels, **kargs)
         
-        if not self.isLinkedImageItemActive():
+        if self.linkedImageItem is None:
+            return
+        
+        if not self.isLinkedImageItemActive() and not force_set_linked:
             return
         
         if next_frame_image is not None:

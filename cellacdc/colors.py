@@ -25,7 +25,6 @@ except:
 
 __all__ = ['ColorMap']
 
-
 FLUO_CHANNELS_COLORS = {
     'mCardinal': (255, 0, 255), 
     'mNeonGreen': (0, 255, 0),
