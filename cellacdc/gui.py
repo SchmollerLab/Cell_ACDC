@@ -4160,7 +4160,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         # Brush/Eraser/Wand.. layer item
         self.tempLayerRightImage = pg.ImageItem()
-        # self.tempLayerImg1 = pg.ImageItem()
         self.tempLayerImg1 = widgets.ParentImageItem(
             linkedImageItem=self.tempLayerRightImage,
             activatingAction=(self.labelsGrad.showRightImgAction, )
@@ -6672,7 +6671,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             self.isMouseDragImg1 = False
 
-            self.tempLayerImg1.setImage(self.emptyLab)
+            self.tempLayerImg1.setImage(self.emptyLab, force_set_linked=True)
         
             # Update data (rp, etc)
             self.update_rp()
@@ -6686,7 +6685,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
             self.isMouseDragImg1 = False
 
-            self.tempLayerImg1.setImage(self.emptyLab)
+            self.tempLayerImg1.setImage(self.emptyLab, force_set_linked=True)
             
             self.brushReleased()
 
@@ -6694,7 +6693,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
             self.isMouseDragImg1 = False
 
-            self.tempLayerImg1.setImage(self.emptyLab)
+            self.tempLayerImg1.setImage(self.emptyLab, force_set_linked=True)
 
             posData = self.data[self.pos_i]
             posData.lab[self.flood_mask] = posData.brushID
@@ -25797,7 +25796,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             lut[1,:-1] = color
             self.tempLayerImg1.setLookupTable(lut)
         self.tempLayerImg1.setOpacity(opacity)
-        self.tempLayerImg1.setImage(tempImage)
+        self.tempLayerImg1.setImage(tempImage, force_set_linked=True)
     
     def _setTempImageBrushContour(self):
         pass
@@ -25830,9 +25829,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             img = self.brushContourImage
             color = self.brushContoursRgba
             cv2.drawContours(img, objContour, -1, color, 1)
-            self.tempLayerImg1.setImage(img)
+            self.tempLayerImg1.setImage(img, force_set_linked=True)
         else:
-            self.tempLayerImg1.setImage(brushImage)
+            self.tempLayerImg1.setImage(brushImage, force_set_linked=True)
     
     def getLabelsLayerImage(self, ax=0):
         if ax == 0:
@@ -31629,7 +31628,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setUncheckedAllCustomAnnotButtons()
         self.setUncheckedPointsLayers()
         if hasattr(self, 'tempLayerImg1'):
-            self.tempLayerImg1.setImage(self.emptyLab)
+            self.tempLayerImg1.setImage(self.emptyLab, force_set_linked=True)
         self.isMouseDragImg1 = False
         self.typingEditID = False
         self.clearHighlightedID()

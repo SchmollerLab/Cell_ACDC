@@ -24,6 +24,24 @@ except:
     NETWORKX_INSTALLED = False
 
 __all__ = ['ColorMap']
+<<<<<<< Updated upstream
+=======
+
+FLUO_CHANNELS_COLORS = {
+    'mCardinal': (255, 0, 255), 
+    'mNeonGreen': (0, 255, 0),
+    'NeonGreen': (0, 255, 0),
+    'mNG': (0, 255, 0), 
+    'mScarlet': (255, 0, 255), 
+    'mScarlet-I3': (255, 0, 255), 
+    'mKate': (255, 0, 255), 
+    'mKate2': (255, 0, 255),
+    'GFP': (0, 255, 0),
+    'EGFP': (0, 255, 0),
+    'mCitrine': (255, 255, 0)
+}
+
+>>>>>>> Stashed changes
 _mapCache = {}
 def getFromMatplotlib(name):
     """
