@@ -452,9 +452,10 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     # Check OS dark or light mode
     from qtpy.QtWidgets import QApplication, QStyleFactory
     from qtpy.QtGui import QPalette, QIcon
-    from . import settings_csv_path, resources_folderpath
+    from . import settings_csv_path, resources_folderpath, is_linux
     
     app = QApplication(['Cell-ACDC'])
+    app.setApplicationName("Cell-ACDC")
     app.setStyle(QStyleFactory.create('Fusion'))
     is_OS_dark_mode = app.palette().color(QPalette.Window).getHsl()[2] < 100
     app.toggle_dark_mode = False
@@ -469,6 +470,9 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     if icon_path is None:
         icon_path = os.path.join(resources_folderpath, 'icon_v2.ico')
     app.setWindowIcon(QIcon(icon_path))
+
+    if is_linux:
+        app.setDesktopFileName("cell-acdc")
     
     if logo_path is None:
         logo_path = os.path.join(resources_folderpath, 'logo_v2.png')

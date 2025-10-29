@@ -450,6 +450,61 @@ is_win = sys.platform.startswith("win")
 is_win64 = (is_win and (os.environ["PROCESSOR_ARCHITECTURE"] == "AMD64"))
 is_mac_arm64 = is_mac and platform.machine() == 'arm64'
 
+if is_linux and GUI_INSTALLED:
+    from pathlib import Path
+
+    acdc_exec_path = shutil.which("acdc")
+
+    logo_path = os.path.join(resources_folderpath, 'logo_square_v2.png')
+    txt = f"""
+[Desktop Entry]
+Name=Cell-ACDC
+Comment=Cell-Analysis of Cell Division Cycle
+Exec={acdc_exec_path}
+Icon=cell-acdc
+Type=Application
+Categories=Science;
+StartupNotify=true
+StartupWMClass=Cell-ACDC
+"""
+    apps_dir = Path.home() / ".local/share/applications"
+    icons_dir = Path.home() / ".local/share/icons"
+    desktop_file = apps_dir / "cell-acdc.desktop"
+
+    if not os.path.exists(desktop_file):
+        apps_dir.mkdir(parents=True, exist_ok=True)
+        icons_dir.mkdir(parents=True, exist_ok=True)
+        acdc_icon_dst_path = icons_dir / "cell-acdc.png"
+
+        shutil.copy2(logo_path, str(acdc_icon_dst_path))
+
+        # Write the .desktop file
+        desktop_file.write_text(txt)
+
+        # Make the .desktop file executable (equivalent to chmod +x)
+        import stat
+        mode = os.stat(desktop_file).st_mode
+        os.chmod(
+            desktop_file, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+        )
+
+        # 🔄 Refresh the desktop database
+        try:
+            subprocess.run(
+                ["update-desktop-database", str(apps_dir)],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            exit(
+                'Cell-ACDC had to update the desktop database. '
+                'Please re-start the software, thanks!'
+            )
+        except FileNotFoundError:
+            print("⚠️ 'update-desktop-database' not found. It’s part of the 'desktop-file-utils' package.")
+        except subprocess.CalledProcessError as e:
+            print(f"⚠️ Error updating desktop database:\n{e.stderr.decode()}")
+
 yeaz_weights_filenames = [
     'unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5',
     'weights_budding_BF_multilab_0_1.hdf5'
