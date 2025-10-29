@@ -3016,7 +3016,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 break
     
     def customLevelsLutChanged(self, levels, imageItem=None):
-        printl(levels)
         imageItem.setLevels(levels)
     
     def rescaleIntensitiesLut(
@@ -7974,7 +7973,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.original_df_lin_tree = self.lineage_tree.lineage_list[posData.frame_i].copy()
             self.original_df_lin_tree_i = posData.frame_i
         elif self.original_df_lin_tree_i != posData.frame_i:
-            printl('[WARNING]: !!! Original lineage tree df changed, resetting original_df_lin_tree !!!')
+            self.logger.info(
+                '[WARNING]: !!! Original lineage tree df changed, resetting original_df_lin_tree !!!'
+            )
             self.original_df_lin_tree = self.lineage_tree.lineage_list[posData.frame_i].copy()
             self.original_df_lin_tree_i = posData.frame_i
 
@@ -17687,7 +17688,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.checkManageVersions()
         self.removeAlldelROIsCurrentFrame()
         self.resetManualBackgroundItems()
-        proceed_cca, never_visited = self.get_data(debug=True)
+        proceed_cca, never_visited = self.get_data(debug=False)
         self.pointsLayerLoadedDfsToData()
         self.initContoursImage()
         self.initDelRoiLab()
@@ -17802,7 +17803,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             )
         except KeyError:
             posData.tracked_lost_centroids[frame_i] = accepted_lost_centroids
-            printl('KeyError, need to initialize posData.tracked_lost_centroids[frame_i] properly')
         return True
     
     def next_frame(self, warn=True):
@@ -17882,7 +17882,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             if mode == 'Segmentation and Tracking' or self.isSnapshot:
                 self.addExistingDelROIs()
             
-            # printl('here')
             if benchmark:
                 ts.append(time.perf_counter())
                 titles.append('get_data')
@@ -20298,7 +20297,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 delROIshapes = [[] for _ in range(posData.SizeT)]
                 for i in range(last_tracked_num):
                     posData.frame_i = i
-                    self.get_data()
+                    self.get_data(debug=True)
                     self.store_data(
                         enforce=True, autosave=False, store_cca_df_copy=True
                     )
@@ -21496,6 +21495,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         posData.rp = skimage.measure.regionprops(posData.lab)
         self.setManualBackgroundLab()
+        
         if posData.acdc_df is not None:
             frames = posData.acdc_df.index.get_level_values(0)
             if posData.frame_i in frames:
@@ -21511,17 +21511,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 posData.editID_info.extend(self._get_editID_info(df))
                 # Load cca df into current metadata
                 if 'cell_cycle_stage' in df.columns:
-                    if any(df['cell_cycle_stage'].isna()):
-                        if 'is_history_known' not in df.columns:
-                            df['is_history_known'] = True
-                        if 'corrected_on_frame_i' not in df.columns:
-                            df['corrected_on_frame_i'] = -1
+                    df = df.dropna()
+                    if df.empty:
                         df = df.drop(columns=self.cca_df_colnames)
                     else:
-                        # Convert to ints since there were NaN
                         cols = self.cca_df_int_cols
                         df[cols] = df[cols].astype(int)
-
+                    
                 i = posData.frame_i
                 posData.allData_li[i]['acdc_df'] = df.copy()
         
@@ -21532,7 +21528,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         return proceed_cca, never_visited
     
-    def _get_data_visited(self, posData, debug=False,lin_tree_init=True,):        
+    def _get_data_visited(self, posData, debug=False, lin_tree_init=True,):        
         # Requested frame was already visited. Load from RAM.
         never_visited = False
         posData.lab = self.get_labels(from_store=True)
@@ -21551,7 +21547,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.lineage_tree is None and lin_tree_init:
             self.initLinTree()
         
-        self.get_cca_df()
+        self.get_cca_df(debug=debug)
 
         return True, never_visited
     
@@ -21580,7 +21576,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 return proceed_cca, never_visited
         else:
             proceed_cca, never_visited = self._get_data_visited(
-                posData,lin_tree_init=lin_tree_init,
+                posData, lin_tree_init=lin_tree_init, debug=debug
             )
         
         self.update_rp_metadata(draw=False)
@@ -21720,7 +21716,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 break
         
         last_cca_frame_i = i if i==0 or i+1==len(posData.allData_li) else i-1
-
         if last_cca_frame_i == 0:
             # Remove undoable actions from segmentation mode
             posData.UndoRedoStates[0] = []
@@ -22124,20 +22119,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.store_data()
     
-    def get_cca_df(self, frame_i=None, return_df=False):
+    def get_cca_df(self, frame_i=None, return_df=False, debug=False):
         # cca_df is None unless the metadata contains cell cycle annotations
         # NOTE: cell cycle annotations are either from the current session
         # or loaded from HDD in "initPosAttr" with a .question to the user
         posData = self.data[self.pos_i]
         cca_df = None
         i = posData.frame_i if frame_i is None else frame_i
-        df = posData.allData_li[i]['acdc_df']
+        df = posData.allData_li[i]['acdc_df']            
         if df is not None:
             if 'cell_cycle_stage' in df.columns:
                 cca_df = df[self.cca_df_colnames].copy()
+        
         if cca_df is None and self.isSnapshot:
             cca_df = self.getBaseCca_df()
             posData.cca_df = cca_df
+
+        if cca_df is not None:
+            cca_df = cca_df.dropna()
+        
         if return_df:
             return cca_df
         else:
@@ -22696,8 +22696,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             - set(new_IDs) 
             - set(accepted_lost_centroids)
         )
-        if debug:
-            printl(added_IDs, removed_IDs)
 
         self.whitelistPropagateIDs(
             IDs_to_add=added_IDs, IDs_to_remove=removed_IDs,
@@ -28163,8 +28161,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             try:
                 posData.tracked_lost_centroids[frame_i].add(int_centroid)
             except KeyError:
-                posData.tracked_lost_centroids[frame_i] = {int_centroid}
-                printl('Need to fix probably? Why is this not properly init?')    
+                posData.tracked_lost_centroids[frame_i] = {int_centroid}  
 
     def getTrackedLostIDs(self, prev_lab=None, IDs_in_frames=None, frame_i=None):
         trackedLostIDs = set()

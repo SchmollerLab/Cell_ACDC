@@ -8644,7 +8644,13 @@ class editCcaTableWidget(QDialog):
             ccsValue = cca_df.at[ID, 'cell_cycle_stage']
             if ccsValue == 'S':
                 ccsValue = 'S/G2/M'
-            ccsComboBox.setCurrentText(ccsValue)
+            
+            try:
+                ccsComboBox.setCurrentText(ccsValue)
+            except Exception as err:
+                printl(ccsValue)
+                printl(cca_df)
+                raise err
             tableLayout.addWidget(ccsComboBox, row+1, col, alignment=AC)
             self.ccsComboBoxes.append(ccsComboBox)
             ccsComboBox.activated.connect(self.clearComboboxFocus)
