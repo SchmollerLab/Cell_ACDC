@@ -620,11 +620,27 @@ def get_pos_foldernames(exp_path, check_if_is_sub_folder=False):
             return [os.path.basename(exp_path)]
         elif is_images_folder:
             pos_path = os.path.dirname(exp_path)
-            return [os.path.basename(pos_path)]
+            if is_pos_folderpath(pos_path):
+                return [os.path.basename(pos_path)]
+            else:
+                return []
         else:
             return get_pos_foldernames(exp_path)
     return pos_foldernames
 
+def get_images_folderpath(folderpath):
+    if os.path.isfile(folderpath):
+        folderpath = os.path.dirname(folderpath)
+
+    if folderpath.endswith('Images'):
+        return folderpath
+    
+    images_folderpath = os.path.join(folderpath, 'Images')
+    if os.path.exists(images_folderpath):
+        return images_folderpath
+    
+    return ''
+    
 def getMostRecentPath():
     if os.path.exists(recentPaths_path):
         df = pd.read_csv(recentPaths_path, index_col='index')

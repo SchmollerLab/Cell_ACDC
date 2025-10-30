@@ -18408,8 +18408,12 @@ class SelectFoldersToAnalyse(QBaseDialog):
             pos_foldernames = myutils.get_pos_foldernames(
                 selectedPath, check_if_is_sub_folder=True
             )
-            expPath = load.get_exp_path(selectedPath)
-            expPathsPosFoldernamesMapper[expPath].update(pos_foldernames)
+            if not pos_foldernames: 
+                images_path = myutils.get_images_folderpath(selectedPath)
+                expPathsPosFoldernamesMapper[selectedPath].add('')
+            else:
+                expPath = load.get_exp_path(selectedPath)
+                expPathsPosFoldernamesMapper[expPath].update(pos_foldernames)
         
         expPathsPosFoldernamesMapper = {
             expPath: natsorted(pos_foldernames) 
