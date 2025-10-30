@@ -203,9 +203,9 @@ def get_greedy_lut(lab, lut, ids=None):
     adj_M[expanded[:-1, :], expanded[1:, :]] = 1
     # adj_M = adj_M[1:, 1:]
 
-    G = nx.from_numpy_array(adj_M)
+    graph = nx.from_numpy_array(adj_M)
     color_ids = nx.coloring.greedy_color(
-        G, strategy='independent_set', interchange=False
+        graph, strategy='connected_sequential'
     )
     
     n_foregr_colors = len(lut)-1

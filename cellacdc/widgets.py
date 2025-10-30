@@ -6287,6 +6287,12 @@ class labelsGradientWidget(pg.GradientWidget):
             'Greedily shuffle colormap  (Alt+Shift+S)', self
         )
         self.menu.addAction(self.greedyShuffleCmapAction)
+        
+        self.permanentGreedyCmapAction = QAction(
+            'Always use greedy colormap', self
+        )
+        self.permanentGreedyCmapAction.setCheckable(True)
+        self.menu.addAction(self.permanentGreedyCmapAction)
 
         # Invert bw action
         self.invertBwAction = QAction('Invert black/white', self)
