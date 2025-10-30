@@ -924,6 +924,7 @@ class AutoSaveWorker(QObject):
 
         end_i = self.getLastTrackedFrame(posData)
         
+        saved_segm_data = None
         if self.isAutoSaveON:
             if end_i < len(posData.segm_data):
                 saved_segm_data = posData.segm_data
@@ -944,7 +945,7 @@ class AutoSaveWorker(QObject):
             if lab is None:
                 break
             
-            if self.isAutoSaveON:
+            if self.isAutoSaveON and saved_segm_data is not None:
                 if posData.SizeT > 1:
                     saved_segm_data[frame_i] = lab
                 else:
