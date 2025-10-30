@@ -5372,6 +5372,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.connectLeftClickButtons()
             self.expandFootprintSize = 1
         else:
+            self.clearHighlightedID()
+            alpha = self.imgGrad.labelsAlphaSlider.value()
+            self.labelsLayerImg1.setOpacity(alpha)
+            self.labelsLayerRightImg.setOpacity(alpha)
             self.hoverLabelID = 0
             self.expandingID = 0
             self.updateAllImages()
@@ -5439,7 +5443,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.labelsGrad.showLabelsImgAction.isChecked():
             self.img2.setImage(img=self.currentLab2D, autoLevels=False)
 
-        self.setTempImg1ExpandLabel(prevCoords, expandedObjCoords)
+        self.setTempImgExpandLabel(prevCoords, expandedObjCoords)
 
     def startMovingLabel(self, xPos, yPos):
         posData = self.data[self.pos_i]
@@ -25883,33 +25887,42 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     self.labelsLayerRightImg.image, autoLevels=False
                 )
 
-    def setTempImg1ExpandLabel(self, prevCoords, expandedObjCoords, ax=0):
+    def _setTempImgExpandLabelSegmMasks(self, prevCoords, ax=0):
+        # Remove previous overlaid mask
+        labelsImage = self.getLabelsLayerImage(ax=ax)
+        labelsImage[prevCoords] = 0
+        
+        # Overlay new moved mask
+        labelsImage[prevCoords] = self.expandingID
+
+        if ax == 0:
+            self.labelsLayerImg1.setImage(
+                self.labelsLayerImg1.image, autoLevels=False)
+        else:
+            self.labelsLayerRightImg.setImage(
+                self.labelsLayerRightImg.image, autoLevels=False)
+    
+    def _setTempImgExpandLabelContours(self, prevCoords, ax=0):
+        self.contoursImage[prevCoords] = [0,0,0,0]
+        currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
+        for obj in currentLab2Drp:
+            if obj.label == self.expandingID:
+                # self.clearObjContour(obj=obj, ax=ax)
+                self.addObjContourToContoursImage(obj=obj, ax=ax, force=True)
+                break
+    
+    def setTempImgExpandLabel(self, prevCoords, expandedObjCoords, ax=0):
         if ax == 0:
             how = self.drawIDsContComboBox.currentText()
         else:
             how = self.getAnnotateHowRightImage()
         
-        if how.find('overlay segm. masks') != -1:
-            # Remove previous overlaid mask
-            labelsImage = self.getLabelsLayerImage(ax=ax)
-            labelsImage[prevCoords] = 0
-            
-            # Overlay new moved mask
-            labelsImage[prevCoords] = self.expandingID
-
-            if ax == 0:
-                self.labelsLayerImg1.setImage(
-                    self.labelsLayerImg1.image, autoLevels=False)
-            else:
-                self.labelsLayerRightImg.setImage(
-                    self.labelsLayerRightImg.image, autoLevels=False)
-        else:
-            currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
-            for obj in currentLab2Drp:
-                if obj.label == self.expandingID:
-                    self.clearObjContour(obj=obj, ax=ax)
-                    self.addObjContourToContoursImage(obj=obj, ax=ax)
-                    break
+        self._setTempImgExpandLabelContours(prevCoords, ax=ax)
+        
+        # if how.find('overlay segm. masks') != -1:
+        #     self._setTempImgExpandLabelSegmMasks(ax=ax)
+        # else:
+        #     self._setTempImgExpandLabelContours(ax=ax)
 
     def setTempImg1MoveLabel(self, ax=0):
         if ax == 0:
@@ -26636,8 +26649,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             scrollbar_value=posData.frame_i+2
         )
     
-    def getContoursImageItem(self, ax):
-        if not self.areContoursRequested(ax):
+    def getContoursImageItem(self, ax, force=False):
+        if not self.areContoursRequested(ax) and not force:
             return
         
         if ax == 0:
@@ -27025,9 +27038,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         return notEnoughG1Cells, proceed
     
     def addObjContourToContoursImage(
-            self, ID=0, obj=None, ax=0, thickness=None, color=None
+            self, ID=0, obj=None, ax=0, thickness=None, color=None,
+            force=False
         ):        
-        imageItem = self.getContoursImageItem(ax)
+        imageItem = self.getContoursImageItem(ax, force=force)
         if imageItem is None:
             return
         
@@ -27035,10 +27049,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             obj = self.getObjFromID(ID)
             if obj is None:
                 return
-
-        # if not self.isObjVisible(obj.bbox):
-        #     self.clearObjContour(obj=obj, ax=ax)
-        #     return
 
         contours = self.getObjContours(obj, all_external=True)
         if thickness is None:
@@ -27048,7 +27058,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.setContoursImage(imageItem, contours, thickness, color)
     
-    def clearObjContour(self, ID=0, obj=None, ax=0, debug=False):
+    def clearObjContour(
+            self, ID=0, obj=None, ax=0, debug=False, updateImage=True
+        ):
         imageItem = self.getContoursImageItem(ax)
         if imageItem is None:
             return
@@ -27059,6 +27071,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             obj_slice = self.getObjSlice(obj.slice)
             obj_image = self.getObjImage(obj.image, obj.bbox)
             self.contoursImage[obj_slice][obj_image] = [0,0,0,0]
+        
+        if not updateImage:
+            return
         
         imageItem.setImage(self.contoursImage)        
     
