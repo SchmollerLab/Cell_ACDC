@@ -9633,12 +9633,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def removeDelROI(self, event):
         posData = self.data[self.pos_i]
         
+        for ax in (self.ax1, self.ax2):
+            try:
+                self.ax1.removeDelRoiItem(self.roi_to_del)
+            except Exception as err:
+                pass
+        
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         idx = delROIs_info['rois'].index(self.roi_to_del)
         delROIs_info['rois'].pop(idx)
         delROIs_info['delMasks'].pop(idx)
         delROIs_info['delIDsROI'].pop(idx)
-        delROIs_info['state'].pop(idx)
+        delROIs_info['state'].pop(idx)    
         
         self.removeDelROIFromFutureFrames(self.roi_to_del)
         self.updateAllImages()
@@ -9695,14 +9701,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # Restore deleted IDs from already visited future frames
         current_frame_i = posData.frame_i    
         delROIs_info = posData.allData_li[current_frame_i]['delROIs_info']
-        idx = delROIs_info['rois'].index(roi)       
-        delROIs_info['state'][idx] = roiState
+        try:
+            idx = delROIs_info['rois'].index(roi)       
+            delROIs_info['state'][idx] = roiState
+        except Exception as err:
+            pass
         
         self.store_data()
         
         for i in range(posData.frame_i+1, posData.SizeT):
             delROIs_info = posData.allData_li[i]['delROIs_info']
-            idx = delROIs_info['rois'].index(roi)       
+            try:
+                idx = delROIs_info['rois'].index(roi)       
+            except Exception as err:
+                continue
             delROIs_info['state'][idx] = roiState
             if posData.allData_li[i]['labels'] is None:
                 continue
@@ -21526,12 +21538,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 posData.editID_info.extend(self._get_editID_info(df))
                 # Load cca df into current metadata
                 if 'cell_cycle_stage' in df.columns:
-                    df = df.dropna()
-                    if df.empty:
-                        df = df.drop(columns=self.cca_df_colnames)
+                    cca_cols = df.columns.intersection(self.cca_df_colnames)
+                    cca_df = df[cca_cols].dropna()
+                    if cca_df.empty:
+                        df = df.drop(
+                            columns=self.cca_df_colnames, errors='ignore'
+                        )
                     else:
+                        df = df.loc[cca_df.index]
                         cols = self.cca_df_int_cols
-                        df[cols] = df[cols].astype(int)
+                        df.loc[cca_df.index, cols] = (
+                            df.loc[cca_df.index, cols].astype(int)
+                        )
                     
                 i = posData.frame_i
                 posData.allData_li[i]['acdc_df'] = df.copy()
@@ -26351,7 +26369,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             else:
                 # Rect ROI is on ax2 because ax2 is visible
                 self.ax2.addDelRoiItem(roi, roi.key)    
-
+            
             self.setDelRoiState(roi, delROIs_info['state'][r])
             
     def updateFramePosLabel(self):
