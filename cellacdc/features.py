@@ -106,7 +106,9 @@ def get_acdc_df_features(
             )
             
             # Get the z-slice if we have z-stacks
-            z = posData.zSliceSegmentation(filename, frame_i)
+            z = posData.zSliceSegmentation(
+                filename, frame_i, errors='ignore'
+            )
             
             # Get the background data
             bkgr_data = measurements.get_bkgr_data(

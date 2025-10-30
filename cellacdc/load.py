@@ -2938,14 +2938,20 @@ class loadData:
         metadataWin.deleteLater()
         return True
     
-    def zSliceSegmentation(self, filename, frame_i):
+    def zSliceSegmentation(self, filename, frame_i, errors='raise'):
         if self.SizeZ > 1:
             idx = (filename, frame_i)
-            if self.segmInfo_df.at[idx, 'resegmented_in_gui']:
-                col = 'z_slice_used_gui'
-            else:
-                col = 'z_slice_used_dataPrep'
-            z = self.segmInfo_df.at[idx, col]
+            try:
+                if self.segmInfo_df.at[idx, 'resegmented_in_gui']:
+                    col = 'z_slice_used_gui'
+                else:
+                    col = 'z_slice_used_dataPrep'
+                z = self.segmInfo_df.at[idx, col]
+            except Exception as err:
+                if errors == 'raise':
+                    raise err
+                else:
+                    return round(self.SizeZ / 2)
         else:
             z = None
         return z
