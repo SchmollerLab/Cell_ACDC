@@ -236,8 +236,27 @@ def read_segm_workflow_from_config(filepath) -> dict:
         ini_items[section] = {}
         for option, value in options.items():
             if section == 'paths_info' or section == 'paths_to_segment':
-                value = value.strip('\n').strip().split('\n')
-                ini_items[section][option] = value
+                value_list  = value.strip('\n').strip().split('\n')
+                if option == 'paths':
+                    abs_paths = []
+                    folderpath = os.path.dirname(filepath)
+                    for path in value_list:
+                        if os.path.exists(path):
+                            abs_paths.append(path)
+                            continue
+                        
+                        abs_path = f'{folderpath}{os.sep}{path}'
+                        if not os.path.exists(abs_path):
+                            raise FileNotFoundError(
+                                'The following path to analyse does not exist:'
+                                f'\n\n"{path}"\n'
+                            )
+
+                        abs_paths.append(abs_path)
+
+                    ini_items[section][option] = abs_paths
+                else:
+                    ini_items[section][option] = value_list
                 continue
             if value == 'False':
                 value = False
@@ -248,7 +267,7 @@ def read_segm_workflow_from_config(filepath) -> dict:
             elif option == 'SizeT' or option == 'SizeZ':
                 value = int(value)
                 
-            if section == 'standard_postprocess_features':
+            if section == 'standard_postprocess_features' and value is not None:
                 for _type in (int, float, str):
                     try:
                         value = _type(value)

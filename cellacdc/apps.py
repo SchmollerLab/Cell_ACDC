@@ -12678,7 +12678,7 @@ class QDialogModelParams(QDialog):
                 if selector.highRangeWidgets.checkbox.isChecked():
                     highVal = selector.highRangeWidgets.spinbox.value()
                     highStr = str(highVal)
-                
+
                 configPars[custom_postproc_section][col_name] = (
                     f'{lowStr}, {highStr}'
                 )
