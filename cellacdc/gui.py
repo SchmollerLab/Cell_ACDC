@@ -2807,7 +2807,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.shuffleCmapAction.setShortcut('Shift+S')
 
         self.greedyShuffleCmapAction =  QAction(
-            'Optimise colormap', self
+            'Greedily shuffle colormap', self
         )
         self.greedyShuffleCmapAction.setShortcut('Alt+Shift+S')
 
@@ -3337,6 +3337,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.labelsGrad.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
         self.labelsGrad.greedyShuffleCmapAction.triggered.connect(
             self.greedyShuffleCmap
+        )
+        self.labelsGrad.permanentGreedyCmapAction.toggled.connect(
+            self.permanentGreedyCmapToggled
         )
         self.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
         self.greedyShuffleCmapAction.triggered.connect(self.greedyShuffleCmap)
@@ -17191,7 +17194,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             pass
 
         self.navigateScrollBar.blockSignals(False)
-        self.navigateScrollBar.actionTriggered.connect(self.framesScrollBarActionTriggered)
+        self.navigateScrollBar.actionTriggered.connect(
+            self.framesScrollBarActionTriggered
+        )
         self.navigateScrollBar.sliderReleased.connect(self.framesScrollBarReleased)
         self.navigateScrollBar.sliderMoved.connect(self.framesScrollBarMoved)
 
@@ -17701,7 +17706,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.updateScrollbars()
         self.updatePreprocessPreview()
         self.updateCombineChannelsPreview()
-        self.updateAllImages()
+        self.updateAllImages()            
         self.computeSegm()
         self.zoomOut()
         self.restartZoomAutoPilot()
@@ -19485,6 +19490,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
     def setFramesSnapshotMode(self):
         self.measurementsMenu.setDisabled(False)
+        self.setPermanentGreedyCmapPreferences()
         if self.isSnapshot:
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
@@ -19870,7 +19876,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.updatePreprocessPreview()
         self.updateCombineChannelsPreview()
         self.highlightedID = self.getHighlightedID()
-        self.updateAllImages(computePointsLayers=False, computeContours=False)
+        self.updateAllImages(
+            computePointsLayers=False, 
+            computeContours=False,
+            updateLookuptable=True
+        )
 
     def updateOverlayZslice(self, z):
         self.setOverlayImages()
@@ -20420,6 +20430,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.updateLookuptable()
         self.updateFramePosLabel()
         self.updateViewerWindow()
+        self.updateTimestampFrame()
         self.navigateScrollBarStartedMoving = False
 
     def framesScrollBarReleased(self):
@@ -25295,12 +25306,44 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.initLabelsImageItems()
         self.updateAllImages()
     
-    def greedyShuffleCmap(self):
+    def setPermanentGreedyCmapPreferences(self):
+        if self.isSnapshot:
+            option_name = 'permanent_greedy_lut_snapshots'
+        else:
+            option_name = 'permanent_greedy_lut_timelapse'
+
+        if option_name not in self.df_settings.index:
+            return
+        
+        checked = self.df_settings.at[option_name, 'value'] == 'yes'
+        self.labelsGrad.permanentGreedyCmapAction.setChecked(checked)
+        
+    def permanentGreedyCmapToggled(self, checked):
+        if checked:
+            settings_value = 'yes'
+        else:
+            self.setLut()
+            self.updateLookuptable()
+            self.initLabelsImageItems()
+            settings_value = 'no'
+        
+        self.updateAllImages()
+        
+        if self.isSnapshot:
+            option_name = 'permanent_greedy_lut_snapshots'
+        else:
+            option_name = 'permanent_greedy_lut_timelapse'
+            
+        self.df_settings.at[option_name, 'value'] = settings_value
+        self.df_settings.to_csv(self.settings_csv_path)
+    
+    def greedyShuffleCmap(self, updateImages=True):
         lut = self.labelsGrad.item.colorMap().getLookupTable(0,1,255)
         greedy_lut = colors.get_greedy_lut(self.currentLab2D, lut)
         self.lut = greedy_lut
         self.initLabelsImageItems()
-        self.updateAllImages()
+        if updateImages:
+            self.updateAllImages()
     
     def highlightZneighLabels_cb(self, checked):
         if checked:
@@ -25706,9 +25749,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         else:
             lab2D = self.get_2Dlab(posData.lab, force_z=False)
             allDelIDs = set()
+        
+        self.currentLab2D = lab2D   
+        if self.labelsGrad.permanentGreedyCmapAction.isChecked() and updateLookuptable:
+            self.greedyShuffleCmap(updateImages=False)
+            
         if self.labelsGrad.showLabelsImgAction.isChecked() and set_image:
             self.img2.setImage(lab2D, z=self.z_lab(), autoLevels=False)
-        self.currentLab2D = lab2D
+        
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
 
@@ -27244,7 +27292,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     # @exec_time
     @exception_handler
     def updateAllImages(
-            self, image=None, computePointsLayers=True, computeContours=True
+            self, image=None, computePointsLayers=True, computeContours=True,
+            updateLookuptable=True
         ):
         self.clearAllItems()
 
@@ -27256,7 +27305,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.rescaleIntensitiesLut(setImage=False)
 
         self.setImageImg1(image=image)       
-        self.setImageImg2()
+        self.setImageImg2(updateLookuptable=updateLookuptable)
         
         self.setOverlayImages()
 
