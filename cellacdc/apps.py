@@ -9360,6 +9360,9 @@ class QLineEditDialog(QDialog):
         # self.setModal(True)
     
     def value(self):
+        if self._type == str:
+            return self.entryWidget.text()
+        
         if self.isFloat or self.isInteger:
             val = self.entryWidget.value()
         elif not self.allowList:
@@ -9380,6 +9383,10 @@ class QLineEditDialog(QDialog):
         if self.allowList and (newChar==',' or newChar == ' '):
             return
 
+        if self._type == str:
+            self.entryWidget.setText(text)
+            return
+        
         # Allow only integers
         try:
             val = int(newChar)
@@ -9445,6 +9452,7 @@ class QLineEditDialog(QDialog):
                 )
                 msg.critical(self, 'Not a valid entry', txt)
                 return
+        
         if self.allowedValues:
             if self.notValidLabel.text():
                 return
@@ -9755,126 +9763,6 @@ class editID_QWidget(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
-
-class imshow_tk:
-    def __init__(
-            self, img, dots_coords=None, x_idx=1, axis=None,
-            additional_imgs=[], titles=[], fixed_vrange=False,
-            run=True, show_IDs=False
-        ):
-        if img.ndim == 3:
-            if img.shape[-1] > 4:
-                img = img.max(axis=0)
-                h, w = img.shape
-            else:
-                h, w, _ = img.shape
-        elif img.ndim == 2:
-            h, w = img.shape
-        elif img.ndim != 2 and img.ndim != 3:
-            raise TypeError(f'Invalid shape {img.shape} for image data. '
-            'Only 2D or 3D images.')
-        for i, im in enumerate(additional_imgs):
-            if im.ndim == 3 and im.shape[-1] > 4:
-                additional_imgs[i] = im.max(axis=0)
-            elif im.ndim != 2 and im.ndim != 3:
-                raise TypeError(f'Invalid shape {im.shape} for image data. '
-                'Only 2D or 3D images.')
-        n_imgs = len(additional_imgs)+1
-        if w/h > 2:
-            fig, ax = plt.subplots(n_imgs, 1, sharex=True, sharey=True)
-        else:
-            fig, ax = plt.subplots(1, n_imgs, sharex=True, sharey=True)
-        if n_imgs == 1:
-            ax = [ax]
-        self.ax0img = ax[0].imshow(img)
-        if dots_coords is not None:
-            ax[0].plot(dots_coords[:,x_idx], dots_coords[:,x_idx-1], 'r.')
-        if axis:
-            ax[0].axis('off')
-        if fixed_vrange:
-            vmin, vmax = img.min(), img.max()
-        else:
-            vmin, vmax = None, None
-        self.additional_aximgs = []
-        for i, img_i in enumerate(additional_imgs):
-            axi_img = ax[i+1].imshow(img_i, vmin=vmin, vmax=vmax)
-            self.additional_aximgs.append(axi_img)
-            if dots_coords is not None:
-                ax[i+1].plot(dots_coords[:,x_idx], dots_coords[:,x_idx-1], 'r.')
-            if axis:
-                ax[i+1].axis('off')
-        for title, a in zip(titles, ax):
-            a.set_title(title)
-
-        if show_IDs:
-            if issubclass(img.dtype.type, np.integer):
-                rp = skimage.measure.regionprops(img)
-                for obj in rp:
-                    y, x = obj.centroid
-                    ID = obj.label
-                    ax[0].text(
-                        int(x), int(y), str(ID), fontsize=12,
-                        fontweight='normal', horizontalalignment='center',
-                        verticalalignment='center', color='r'
-                    )
-            for i, img_i in enumerate(additional_imgs):
-                if issubclass(img_i.dtype.type, np.integer):
-                    rp = skimage.measure.regionprops(img_i)
-                    for obj in rp:
-                        y, x = obj.centroid
-                        ID = obj.label
-                        ax[i+1].text(
-                            int(x), int(y), str(ID), fontsize=14,
-                            fontweight='normal', horizontalalignment='center',
-                            verticalalignment='center', color='r'
-                        )
-        sub_win = embed_tk('Imshow embedded in tk', [800,600,400,150], fig)
-        sub_win.root.protocol("WM_DELETE_WINDOW", self._close)
-        self.sub_win = sub_win
-        self.fig = fig
-        self.ax = ax
-        sub_win.root.wm_attributes('-topmost',True)
-        sub_win.root.focus_force()
-        sub_win.root.after_idle(sub_win.root.attributes,'-topmost',False)
-        if run:
-            sub_win.root.mainloop()
-
-    def _close(self):
-        plt.close(self.fig)
-        self.sub_win.root.quit()
-        self.sub_win.root.destroy()
-
-class embed_tk:
-    """Example:
-    -----------
-    img = np.ones((600,600))
-    fig = plt.Figure(figsize=(5, 4), dpi=100)
-    ax = fig.add_subplot()
-    ax.imshow(img)
-
-    sub_win = embed_tk('Embeddding in tk', [1024,768,300,100], fig)
-
-    def on_key_event(event):
-        print('you pressed %s' % event.key)
-
-    sub_win.canvas.mpl_connect('key_press_event', on_key_event)
-
-    sub_win.root.mainloop()
-    """
-    def __init__(self, win_title, geom, fig):
-        root = tk.Tk()
-        root.wm_title(win_title)
-        root.geometry("{}x{}+{}+{}".format(*geom)) # WidthxHeight+Left+Top
-        # a tk.DrawingArea
-        canvas = FigureCanvasTkAgg(fig, master=root)
-        canvas.draw()
-        canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-        toolbar = NavigationToolbar2Tk(canvas, root)
-        toolbar.update()
-        canvas._tkcanvas.pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-        self.canvas = canvas
-        self.toolbar = toolbar
-        self.root = root
 
 class QtSelectItems(QDialog):
     def __init__(
@@ -11199,11 +11087,11 @@ class FunctionParamsDialog(QBaseDialog):
             isCustomWidget = hasattr(ArgSpec.type, 'isWidget')
             
             if isCustomWidget:
-                widget = ArgSpec.type()
+                widget = ArgSpec.type().widget
                 self.checkIfTypeCLassHasCastDtype(widget)
                 defaultVal = ArgSpec.default
-                valueSetter = ArgSpec.type.setValue
-                valueGetter = ArgSpec.type.value
+                valueSetter = widget.setValue
+                valueGetter = widget.value
                 widgetsLayout.addWidget(widget, row, 1, 1, 2)
                 try:
                     widget.sigValueChanged.connect(self.emitValuesChanged)
@@ -12141,10 +12029,10 @@ class QDialogModelParams(QDialog):
             isCustomWidget = hasattr(ArgSpec.type, 'isWidget')
             
             if isCustomWidget:
-                widget = ArgSpec.type()
+                widget = ArgSpec.type().widget
                 defaultVal = ArgSpec.default
-                valueSetter = ArgSpec.type.setValue
-                valueGetter = ArgSpec.type.value
+                valueSetter = widget.setValue
+                valueGetter = widget.value
                 changeSig = widget.sigValueChanged
                 groupBoxLayout.addWidget(widget, row, 1, 1, 2)
             elif isVectorEntry:
