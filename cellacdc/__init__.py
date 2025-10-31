@@ -258,7 +258,6 @@ try:
 except Exception as err:
     raise err
 
-
 try:
     # Import qrc_resources explicitly so that "from . import acdc_qrc_resources" imports 
     # the variable defined here. Use importlib in case qrc_resouces.py is in 

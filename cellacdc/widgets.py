@@ -53,6 +53,7 @@ from qtpy.QtWidgets import (
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
     QButtonGroup, QStyleOptionSlider
 )
+import qtpy.compat
 
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
@@ -9513,7 +9514,6 @@ class SwitchPlaneCombobox(QComboBox):
                 return axes
 
 class SamInputPointsWidget(QWidget):
-    isWidget = True
     sigValueChanged = Signal(str)
     
     def __init__(self, parent=None):
@@ -11221,3 +11221,84 @@ class OverlayChannelToolButton(GradientToolButton):
             return
         
         self.action.setVisible(visible)
+
+class YeazV2SelectModelNameCombobox(ComboBox):
+    sigValueChanged = Signal(str)
+    
+    def __init__(
+            self, *args, 
+            custom_select_item_text='Select custom weights file...', 
+            **kwargs
+        ):
+        super().__init__( *args, **kwargs)
+        self._csi_text = custom_select_item_text
+        self.sigTextChanged.connect(self.onTextChanged)
+        self.initItems()
+    
+    def initItems(self):
+        from cellacdc.models.YeaZ_v2 import load_models_filepath
+        models_name, models_name_filepath_mapper = load_models_filepath()
+        self.addItems(models_name)
+    
+    def onTextChanged(self, text):
+        if text != self._csi_text:
+            return
+        
+        start_dir = myutils.getMostRecentPath()
+        model_filepath = qtpy.compat.getopenfilename(
+            parent=self, 
+            caption='Select YeaZ weights file', 
+            filters='All Files (*)',
+            basedir=start_dir
+        )[0]
+        if not model_filepath:
+            self.setCurrentIndex(0)
+            return
+        
+        msg = html_utils.paragraph(f"""
+        Insert a <b>name</b> for the following YeaZ model:<br><br>
+        <code>{model_filepath}</code><br>
+        """)
+        modelNameWindow = apps.QLineEditDialog(
+            title='Insert a name for the model',
+            msg=msg,
+            allowEmpty=False,
+            parent=self
+        )
+        modelNameWindow.exec_()
+        if modelNameWindow.cancel:
+            self.setCurrentIndex(0)
+            return
+
+        model_name = modelNameWindow.enteredValue
+        
+        from cellacdc.models.YeaZ_v2 import add_model_filepath
+        add_model_filepath(model_name, model_filepath)
+        
+        self.addItem(model_name)
+        self.setCurrentText(model_name)
+        
+        print(
+            'YeaZ_v2 model added!\n\n'
+            f'  * Name: {model_name}\n'
+            f'  * File path: {model_filepath}\n'
+        )
+    
+    def addItem(self, item):
+        idx = self.count() - 1
+        self.insertItem(idx, item)
+    
+    def addItems(self, items):
+        super().clear()
+        super().addItems(items)
+        super().addItem(self._csi_text)
+        idx = len(items)
+        font = self.font()
+        font.setItalic(True)
+        self.setItemData(idx, font, Qt.FontRole)
+    
+    def setValue(self, value: str):
+        self.setCurrentText(value)
+    
+    def value(self, *args):
+        return self.currentText()

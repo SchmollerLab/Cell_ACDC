@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import json
 
 import skimage.exposure
 import skimage.measure
@@ -11,31 +12,27 @@ from yeaz.unet.model_pytorch import UNet
 from yeaz.unet import segment as yeaz_segment
 import yeaz.unet.neural_network as nn
 
-from cellacdc import myutils, printl
+from cellacdc import myutils, printl, load
 
-class AvailableModels:
-    values = [
-        'Phase contrast',
-        'Bright-field',
-        'Fission yeast'
-    ]
-    mapper = {
-        'Phase contrast': 'weights_budding_PhC_multilab_0_1',
-        'Bright-field': 'weights_budding_BF_multilab_0_1',
-        'Fission yeast': 'weights_fission_multilab_0_2'
-    }
+from . import load_models_filepath
+
+class ModelType:    
+    isWidget = True
+
+    def __init__(self):
+        from cellacdc import widgets
+        self.widget = widgets.YeazV2SelectModelNameCombobox(
+            custom_select_item_text='Select custom weights file...'
+        )
 
 class Model:
-    def __init__(self, model_type: AvailableModels='Phase contrast'):
+    def __init__(self, model_type: ModelType='Phase contrast'):
         # Initialize model
-        filename = AvailableModels.mapper[model_type]
-        _, model_folderpath = myutils.get_model_path(
-            'YeaZ_v2', create_temp_dir=False
-        )
-        pretrained_weights = os.path.join(model_folderpath, filename)
+        models_name, models_name_filepath_mapper = load_models_filepath()
+        weights_filepath = models_name_filepath_mapper[model_type]
         
         self.model = UNet()
-        self.model.load_state_dict(torch.load(pretrained_weights))
+        self.model.load_state_dict(torch.load(weights_filepath))
         
         if torch.cuda.is_available():
             device = torch.device('cuda')
