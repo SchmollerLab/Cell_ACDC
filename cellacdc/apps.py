@@ -10020,6 +10020,15 @@ class manualSeparateGui(QMainWindow):
             self.threePointsArcAction.setChecked(True)
         elif self.drawMode == 'freehand':
             self.freeHandAction.setChecked(True)
+            
+        self.swapIDsAction = QAction(
+            QIcon(":reload.svg"), "Swap IDs", self
+        )
+        self.swapIDsAction.setToolTip(
+            'Swap the two displayed IDs\n\n'
+            'Shortcut: "S"'
+        )
+        self.swapIDsAction.setShortcut('S')
     
     def state(self):
         return {
@@ -10080,6 +10089,12 @@ class manualSeparateGui(QMainWindow):
 
         editToolBar.addAction(self.threePointsArcAction)
         editToolBar.addAction(self.freeHandAction)
+        
+        editToolBar.addAction(self.swapIDsAction)
+        
+        self.warnLabel = QLabel()
+        editToolBar.addWidget(self.warnLabel)
+        
 
     def gui_connectActions(self):
         self.exitAction.triggered.connect(self.close)
@@ -10089,6 +10104,7 @@ class manualSeparateGui(QMainWindow):
         self.undoAction.triggered.connect(self.undo)
         self.overlayButton.toggled.connect(self.toggleOverlay)
         self.imgGrad.sigLookupTableChanged.connect(self.histLUT_cb)
+        self.swapIDsAction.triggered.connect(self.swapIDs)
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -10306,6 +10322,26 @@ class manualSeparateGui(QMainWindow):
             overlay = self.getOverlay()
             self.imgItem.setImage(overlay)
 
+    def swapIDs(self, checked=False):
+        if len(self.rp) == 1:
+            self.warnLabel.setText(
+                html_utils.paragraph(
+                    'WARNING: Split the object before swapping IDs',
+                    font_color='red'
+                )
+            )
+            return
+        
+        self.warnLabel.setText('')
+        
+        obj1 = self.rp[0]
+        obj2 = self.rp[1]
+        
+        self.lab[obj1.slice][obj1.image] = obj2.label
+        self.lab[obj2.slice][obj2.image] = obj1.label
+        
+        self.updateImg()
+    
     def updateImg(self):
         self.updateLookuptable()
         rp = skimage.measure.regionprops(self.lab)
