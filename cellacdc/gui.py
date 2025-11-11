@@ -31492,15 +31492,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             Do you want to <b>concatenate</b> the `acdc_output.csv` tables from 
             multiple Positions into <b>one single CSV file</b>?<br>
         """)
-        msg = widgets.myMessageBox()
+        msg = widgets.myMessageBox(wrapText=False)
         noButton, yesButton = msg.question(
             self, 'Concatenate tables?', txt, buttonsTexts=('No', 'Yes')
         )
         if not msg.clickedButton == yesButton:
             return
         
-        posData = self.data[self.pos_i]
-        self.mainWin.launchConcatUtil(exp_folderpath=posData.exp_path)
+        txt = html_utils.paragraph(f"""
+            To <b>concatenate</b> the `acdc_output.csv` tables from 
+            multiple Positions and multiple experiments<br>
+            launch the concatenation utility from the top menubar of the Cell-ACDC main launcher:<br><br>
+            <code>Utilities --> Concatenate --> Concatenate acdc output tables from multiple Positions and experiments...</code>.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'How to concatenate tables', txt)
         
     def updateSegmDataAutoSaveWorker(self):
         # Update savedSegmData in autosave worker
