@@ -52,10 +52,8 @@ from qtpy.QtGui import (
 from qtpy.QtWidgets import (
     QAction, QLabel, QPushButton, QHBoxLayout, QSizePolicy,
     QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
-    QScrollBar, QCheckBox, QToolButton, QSpinBox,
-    QComboBox, QButtonGroup, QActionGroup, QFileDialog,
-    QAbstractSlider, QMessageBox, QWidget, QGridLayout, QDockWidget,
-    QGraphicsProxyWidget, QVBoxLayout, QRadioButton, 
+    QScrollBar, QCheckBox, QToolButton, QSpinBox, QButtonGroup, QActionGroup, QFileDialog, QAbstractSlider, QMessageBox, QWidget, QGridLayout, 
+    QDockWidget, QGraphicsProxyWidget, QVBoxLayout, QRadioButton, 
     QSpacerItem, QScrollArea, QFormLayout, QGraphicsSceneMouseEvent 
 )
 
@@ -3587,7 +3585,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             'Draw only overlay segm. masks',
             'Draw nothing'
         ]
-        self.drawIDsContComboBox = QComboBox()
+        self.drawIDsContComboBox = widgets.ComboBox()
         self.drawIDsContComboBox.setFont(_font)
         self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
         self.drawIDsContComboBox.setVisible(False)
@@ -3710,7 +3708,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # z-slice scrollbars
         self.zSliceScrollBar = widgets.linkedQScrollbar(Qt.Horizontal)
 
-        self.zProjComboBox = QComboBox()
+        self.zProjComboBox = widgets.ComboBox()
         self.zProjComboBox.setFont(_font)
         self.zProjComboBox.addItems([
             'single z-slice',
@@ -3736,7 +3734,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         _z_label.setDisabled(True)
         self.overlay_z_label = _z_label
 
-        self.zProjOverlay_CB = QComboBox()
+        self.zProjOverlay_CB = widgets.ComboBox()
         self.zProjOverlay_CB.setFont(_font)
         self.zProjOverlay_CB.addItems([
             'single z-slice', 'max z-projection', 'mean z-projection',
@@ -3839,7 +3837,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.rightBottomGroupbox.setChecked(False)
         self.rightBottomGroupbox.hide()
 
-        self.annotateRightHowCombobox = QComboBox()
+        self.annotateRightHowCombobox = widgets.ComboBox()
         self.annotateRightHowCombobox.setFont(_font)
         self.annotateRightHowCombobox.addItems(self.drawIDsContComboBoxSegmItems)
         self.annotateRightHowCombobox.setCurrentIndex(
