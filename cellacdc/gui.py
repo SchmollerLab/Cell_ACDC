@@ -13723,6 +13723,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.mergeObjsTempLine.setData([], [])
     
     def Brush_cb(self, checked):
+        self.showEditIDwidgets(checked)
+        self.enableSizeSpinbox(checked)
         if checked:
             self.typingEditID = False
             self.setDiskMask()
@@ -13738,8 +13740,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             c = self.defaultToolBarButtonColor
             self.eraserButton.setStyleSheet(f'background-color: {c}')
             self.connectLeftClickButtons()
-            self.enableSizeSpinbox(True)
-            self.showEditIDwidgets(True)
             self.setFocusGraphics()
         else:
             self.ax1_lostObjScatterItem.setVisible(True)
@@ -13750,8 +13750,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
-            self.enableSizeSpinbox(False)
-            self.showEditIDwidgets(False)
             self.resetCursors()
     
     def showEditIDwidgets(self, visible):
@@ -14002,6 +14000,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
 
     def Eraser_cb(self, checked):
+        self.showEditIDwidgets(checked)
+        self.enableSizeSpinbox(checked)
         if checked:
             self.setDiskMask()
             self.setHoverToolSymbolData(
@@ -14013,13 +14013,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             c = self.defaultToolBarButtonColor
             self.brushButton.setStyleSheet(f'background-color: {c}')
             self.connectLeftClickButtons()
-            self.enableSizeSpinbox(True)
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
                          self.ax1_EraserX, self.ax2_EraserX)
             )
-            self.enableSizeSpinbox(False)
             self.resetCursors()
             self.updateAllImages()
     
