@@ -13743,8 +13743,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.mergeObjsTempLine.setData([], [])
     
     def Brush_cb(self, checked):
-        self.showEditIDwidgets(checked)
-        self.enableSizeSpinbox(checked)
         if checked:
             self.typingEditID = False
             self.setDiskMask()
@@ -13771,6 +13769,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
             self.resetCursors()
+        
+        self.showEditIDwidgets(checked)
+        self.enableSizeSpinbox(checked)
     
     def showEditIDwidgets(self, visible):
         self.editIDLabelAction.setVisible(visible)
@@ -14020,8 +14021,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
 
     def Eraser_cb(self, checked):
-        self.showEditIDwidgets(checked)
-        self.enableSizeSpinbox(checked)
         if checked:
             self.setDiskMask()
             self.setHoverToolSymbolData(
@@ -14040,6 +14039,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             )
             self.resetCursors()
             self.updateAllImages()
+            
+        self.showEditIDwidgets(checked)
+        self.enableSizeSpinbox(checked)
     
     def storeCurrentAnnotOptions_ax1(self, return_value=False):
         if self.annotOptionsToRestore is not None:
