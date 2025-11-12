@@ -4834,7 +4834,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                         'You can enter multiple IDs separated by comma',
                     parent=self, allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
-                    allowList=True
+                    allowList=True,
+                    isInteger=True
                 )
                 delID_prompt.exec_()
                 if delID_prompt.cancel:
@@ -4903,7 +4904,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter here ID that you want to split',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 sepID_prompt.exec_()
                 if sepID_prompt.cancel:
@@ -4996,7 +4998,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                          'Enter here the ID that you want to '
                          'fill the holes of',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 clickedBkgrID.exec_()
                 if clickedBkgrID.cancel:
@@ -5034,7 +5037,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                          'Enter here the ID that you want to '
                          'replace with Hull contour',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -5080,7 +5084,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                          'Enter here the ID that you want to '
                          'fill the holes of',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 clickedBkgrID.exec_()
                 if clickedBkgrID.cancel:
@@ -5102,7 +5107,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter here first ID that you want to merge',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -5134,7 +5140,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                         'Enter here ID that you want to replace with a new one',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 editID_prompt.show(block=True)
 
@@ -5186,7 +5193,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                         'Enter ID that you want to keep',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 keepID_win.exec_()
                 if keepID_win.cancel:
@@ -5217,7 +5225,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to remove from the analysis',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 binID_prompt.exec_()
                 if binID_prompt.cancel:
@@ -5297,7 +5306,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as dead',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 ripID_prompt.exec_()
                 if ripID_prompt.cancel:
@@ -6563,7 +6573,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                          'Enter ID that you want to merge with ID '
                          f'{self.firstID}',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -6806,7 +6817,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as mother cell',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 mothID_prompt.exec_()
                 if mothID_prompt.cancel:
@@ -7516,7 +7528,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                         'Enter ID that you want to keep',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 keepID_win.exec_()
                 if keepID_win.cancel:
@@ -7547,7 +7560,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                         'Enter ID that you want to select',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 keepID_win.exec_()
                 if keepID_win.cancel:
@@ -7784,7 +7798,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as divided',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 divID_prompt.exec_()
                 if divID_prompt.cancel:
@@ -7826,7 +7841,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter ID of a bud you want to correct mother assignment',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 budID_prompt.exec_()
                 if budID_prompt.cancel:
@@ -7874,7 +7890,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                          'Enter ID that you want to annotate as '
                          '"history UNKNOWN/KNOWN"',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 unknownID_prompt.exec_()
                 if unknownID_prompt.cancel:
@@ -7902,7 +7919,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as divided',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 clickedBkgrDialog.exec_()
                 if clickedBkgrDialog.cancel:
@@ -9335,7 +9353,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             clickedBkgrID = apps.QLineEditDialog(
                 title='Clicked on background',
                 msg=msg, parent=self, allowedValues=posData.IDs,
-                defaultTxt=str(nearest_ID)
+                defaultTxt=str(nearest_ID),
+                isInteger=True
             )
             clickedBkgrID.exec_()
             if clickedBkgrID.cancel:
@@ -12854,6 +12873,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                         'Enter the ID that you want to lock.',
                     parent=self, 
                     allowedValues=posData.IDs,
+                    isInteger=True
                 )
                 win.exec_()
                 if win.cancel:
@@ -30633,11 +30653,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
              cell cycle annotations:
          """)
          lastFrameDialog = apps.QLineEditDialog(
-             title='Last annoated frame number to save', 
-             defaultTxt=str(last_cca_frame_i+1),
-             msg=txt, parent=self, allowedValues=(1, last_cca_frame_i+1),
-             warnLastFrame=True, isInteger=True, stretchEntry=False,
-             lastVisitedFrame=last_cca_frame_i+1
+            title='Last annoated frame number to save', 
+            defaultTxt=str(last_cca_frame_i+1),
+            msg=txt, parent=self, allowedValues=(1, last_cca_frame_i+1),
+            warnLastFrame=True, isInteger=True, stretchEntry=False,
+            lastVisitedFrame=last_cca_frame_i+1,
          )
          lastFrameDialog.exec_()
          if lastFrameDialog.cancel:
@@ -30679,7 +30699,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             title='Last frame number to save', defaultTxt=str(frame_i+1),
             msg=txt, parent=self, allowedValues=(1, posData.SizeT),
             warnLastFrame=True, isInteger=True, stretchEntry=False,
-            lastVisitedFrame=frame_i+1
+            lastVisitedFrame=frame_i+1,
         )
         lastFrameDialog.exec_()
         if lastFrameDialog.cancel:

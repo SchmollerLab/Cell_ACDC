@@ -9363,14 +9363,15 @@ class QLineEditDialog(QDialog):
         if self._type == str:
             return self.entryWidget.text()
         
-        if self.isFloat or self.isInteger:
+        if (self.isFloat or self.isInteger) and not self.allowList:
             val = self.entryWidget.value()
         elif not self.allowList:
             val = int(self.entryWidget.text())
         elif self.allowList:
+            caster = int if self.isInteger else float
             text = self.entryWidget.text()
             m = re.findall(POSITIVE_FLOAT_REGEX, text)
-            val = [int(val) for val in m]
+            val = [caster(val) for val in m]
         return val
 
     def onTextChanged(self, text):
