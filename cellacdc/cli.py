@@ -1402,8 +1402,12 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
 
         for i, obj in enumerate(rp):
             IDs[i] = obj.label
-            IDs_vol_vox[i] = obj.vol_vox
-            IDs_vol_fl[i] = obj.vol_fl
+            try:
+                IDs_vol_vox[i] = obj.vol_vox
+                IDs_vol_fl[i] = obj.vol_fl
+            except Exception as err:
+                IDs_vol_vox[i] = np.nan
+                IDs_vol_fl[i] = np.nan
             IDs_area_pxl[i] = obj.area
             IDs_area_um2[i] = obj.area*yx_pxl_to_um2
             if self.isSegm3D:
