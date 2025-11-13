@@ -181,6 +181,16 @@ def read_last_selected_set_measurements(logger_func=print):
     
     return cp
 
+def write_last_selected_set_measurements(last_selected_meas: dict[str, dict]):
+    configPars = config.ConfigParser()
+    for section, values in last_selected_meas.items():
+        configPars[section] = {}
+        for option, value in values.items():
+            configPars[section][option] = str(value)
+    
+    with open(last_selected_measurements_ini_path, 'w') as configfile:
+        configPars.write(configfile)
+
 def migrate_models_paths(dst_path):
     models = myutils.get_list_of_models()
     user_profile_path = dst_path.replace('\\', '/')

@@ -2517,60 +2517,49 @@ class SetMeasurementsDialog(QBaseDialog):
         size_selected_meas = last_selected_meas.get(
             self.sizeMetricsQGBox.title()
         )
-        if size_selected_meas is None:
-            self.sizeMetricsQGBox.setChecked(False)
-        else:
+        if self.sizeMetricsQGBox.isChecked():
             for checkBox in self.sizeMetricsQGBox.checkBoxes: 
-                checked = size_selected_meas.get(checkBox.text())
-                if checked is not None:
-                    checkBox.setChecked(True)
-                else:
-                    checkBox.setChecked(False)
+                if not checkBox.isChecked():
+                    continue
+                
+                section = self.sizeMetricsQGBox.title()
+                last_selected_meas[section][checkBox.text()] = 'Yes'
         
         size_selected_meas = last_selected_meas.get(
             self.regionPropsQGBox.title()
         )
-        if size_selected_meas is None:
-            self.regionPropsQGBox.setChecked(False)
-        else:
+        if self.regionPropsQGBox.isChecked():
             for checkBox in self.regionPropsQGBox.checkBoxes: 
-                checked = size_selected_meas.get(checkBox.text())
-                if checked is not None:
-                    checkBox.setChecked(True)
-                else:
-                    checkBox.setChecked(False)
+                if not checkBox.isChecked():
+                    continue
+                
+                section = self.regionPropsQGBox.title()
+                last_selected_meas[section][checkBox.text()] = 'Yes'
         
         if self.chIndipendCustomeMetricsQGBox is not None:
-            ch_indip_custom_metrics = last_selected_meas.get(
-                self.chIndipendCustomeMetricsQGBox.title()
-            )
-            if size_selected_meas is None:
-                self.chIndipendCustomeMetricsQGBox.setChecked(False)
-            else:
+            if self.chIndipendCustomeMetricsQGBox.isChecked():
                 for checkBox in self.chIndipendCustomeMetricsQGBox.checkBoxes: 
-                    checked = size_selected_meas.get(checkBox.text())
-                    if checked is not None:
-                        checkBox.setChecked(True)
-                    else:
-                        checkBox.setChecked(False)
+                    if not checkBox.isChecked():
+                        continue
+                    
+                    section = self.chIndipendCustomeMetricsQGBox.title()
+                    last_selected_meas[section][checkBox.text()] = 'Yes'
         
         if self.mixedChannelsCombineMetricsQGBox is not None:
-            ch_indip_custom_metrics = last_selected_meas.get(
-                self.mixedChannelsCombineMetricsQGBox.title()
-            )
-            if size_selected_meas is None:
-                self.mixedChannelsCombineMetricsQGBox.setChecked(False)
-            else:
+            if self.mixedChannelsCombineMetricsQGBox.isChecked():
                 for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes: 
-                    checked = size_selected_meas.get(checkBox.text())
-                    if checked is not None:
-                        checkBox.setChecked(True)
-                    else:
-                        checkBox.setChecked(False)
+                    if not checkBox.isChecked():
+                        continue
+                    
+                    section = self.chIndipendCustomeMetricsQGBox.title()
+                    last_selected_meas[section][checkBox.text()] = 'Yes'
+        
+        load.write_last_selected_set_measurements(last_selected_meas)
     
     def loadLastSelection(self):
         self.doNotWarn = True
         last_selected_meas = load.read_last_selected_set_measurements()
+        last_selected_meas = dict(last_selected_meas)
         
         for chNameGroupbox in self.chNameGroupboxes:
             chName = chNameGroupbox.chName
@@ -2579,6 +2568,7 @@ class SetMeasurementsDialog(QBaseDialog):
                 chNameGroupbox.setChecked(False)
                 continue
             
+            chNameGroupbox.setChecked(True)
             for checkBox in chNameGroupbox.checkBoxes:
                 checked = chSelectedMeas.get(checkBox.text())
                 if checked is not None:
@@ -2592,6 +2582,7 @@ class SetMeasurementsDialog(QBaseDialog):
         if size_selected_meas is None:
             self.sizeMetricsQGBox.setChecked(False)
         else:
+            self.sizeMetricsQGBox.setChecked(True)
             for checkBox in self.sizeMetricsQGBox.checkBoxes: 
                 checked = size_selected_meas.get(checkBox.text())
                 if checked is not None:
@@ -2605,6 +2596,7 @@ class SetMeasurementsDialog(QBaseDialog):
         if size_selected_meas is None:
             self.regionPropsQGBox.setChecked(False)
         else:
+            self.regionPropsQGBox.setChecked(True)
             for checkBox in self.regionPropsQGBox.checkBoxes: 
                 checked = size_selected_meas.get(checkBox.text())
                 if checked is not None:
@@ -2619,6 +2611,7 @@ class SetMeasurementsDialog(QBaseDialog):
             if size_selected_meas is None:
                 self.chIndipendCustomeMetricsQGBox.setChecked(False)
             else:
+                self.chIndipendCustomeMetricsQGBox.setChecked(True)
                 for checkBox in self.chIndipendCustomeMetricsQGBox.checkBoxes: 
                     checked = size_selected_meas.get(checkBox.text())
                     if checked is not None:
@@ -2633,6 +2626,7 @@ class SetMeasurementsDialog(QBaseDialog):
             if size_selected_meas is None:
                 self.mixedChannelsCombineMetricsQGBox.setChecked(False)
             else:
+                self.mixedChannelsCombineMetricsQGBox.setChecked(True)
                 for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes: 
                     checked = size_selected_meas.get(checkBox.text())
                     if checked is not None:
