@@ -2985,24 +2985,6 @@ class QDialogMetadataXML(QDialog):
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.LensNA_DSB, row, 1)
-
-        row += 1
-        self.DimensionOrderCombo = widgets.QCenteredComboBox()
-        if sampleImgData is None:
-            items = [''.join(perm) for perm in permutations('zct', 3)]
-        else:
-            items = list(sampleImgData.keys())
-        self.DimensionOrderCombo.addItems(items)
-        self.DimensionOrderCombo.setCurrentText(DimensionOrder[:3].lower())
-        txt = 'Order of dimensions:  '
-        label = QLabel(txt)
-        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-        entriesLayout.addWidget(self.DimensionOrderCombo, row, 1)
-        dimensionOrderLayout = QHBoxLayout()
-        DimensionOrderHelpButton = widgets.infoPushButton()
-        dimensionOrderLayout.addWidget(DimensionOrderHelpButton)
-        dimensionOrderLayout.addStretch(1)
-        entriesLayout.addLayout(dimensionOrderLayout, row, 2, 1, 2)
         
         row += 1
         self.SizeT_SB = QSpinBox()
@@ -3297,10 +3279,6 @@ class QDialogMetadataXML(QDialog):
 
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
-        self.DimensionOrderCombo.currentTextChanged.connect(
-            self.dimensionOrderChanged
-        )
-        DimensionOrderHelpButton.clicked.connect(self.dimensionOrderHelp)
         
         self.hideShowTimeIncrement(SizeT)
         self.readSampleImgDataAgain = False
@@ -3319,24 +3297,6 @@ class QDialogMetadataXML(QDialog):
         else:
             self.imageViewer.posData.img_data = imgData
         self.imageViewer.update_img()
-    
-    def dimensionOrderHelp(self):
-        txt = html_utils.paragraph('''
-            The "Order of dimensions" is used to get the correct frame given 
-            the <b>z-slice</b> (if SizeZ > 1) index, the <b>channel</b> (if SizeC > 1) index, 
-            and the <b>frame</b> (if SizeT > 1) index.<br><br>
-            Example: "zct" means that the order of dimensions in the image shape  
-            is (SizeZ, SizeC, SizeT).<br><br>
-            To test this, click on the "eye" button besides the channel name below. For 
-            time-lapse data you will be able to visualize the first 4 frames. 
-            If the order of dimensions is correct, the displayed image should be 
-            the <b>image of the corresponding channel</b>. For time-lapse data check that 
-            every frame is correct. Make sure to also check 
-            that the z-slices are in the correct order by scrolling with the 
-            z-slice scrollbar.
-        ''')
-        msg = widgets.myMessageBox()
-        msg.information(self, 'Order of dimensions help', txt)
 
     def saveCh_checkBox_cb(self, state):
         self.checkChNames()
@@ -3545,7 +3505,7 @@ class QDialogMetadataXML(QDialog):
         
         if idx is None:
             idx = self.showChannelDataButtons.index(self.sender())
-        dimsOrder = self.DimensionOrderCombo.currentText()
+        dimsOrder = 'ctz'
         imgData = self.sampleImgData[dimsOrder][idx]
         posData = myutils.utilClass()
         posData.frame_i = 0
@@ -3686,22 +3646,6 @@ class QDialogMetadataXML(QDialog):
                 self.emWavelens_DSBs.pop(-1)
 
                 self.adjustSize()
-
-    def confirmOrderOfDimensions(self):
-        helpButton = widgets.helpPushButton('More details...')
-        txt = html_utils.paragraph("""
-            Are you sure that the parameter <code>Order of dimensions</code> 
-            <b>is correct</b>?<br>
-        """)
-        msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(
-            self, 'Double-check Order of dimensions', txt, showDialog=False,
-            buttonsTexts=('Cancel', helpButton, 'Yes')
-        )
-        helpButton.clicked.disconnect()
-        helpButton.clicked.connect(self.dimensionOrderHelp)
-        msg.exec_()
-        return msg.cancel
     
     def ok_cb(self, event):
         areChNamesValid = self.checkChNames()
@@ -3715,10 +3659,6 @@ class QDialogMetadataXML(QDialog):
             msg.critical(
                self, 'Invalid channel names', err_msg
             )
-            return
-
-        cancel = self.confirmOrderOfDimensions()
-        if cancel:
             return
         
         self.getValues()
