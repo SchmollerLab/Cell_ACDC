@@ -31542,14 +31542,34 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self._isQuickSave:
             return
         
+        if 'showAskConcatenate' not in self.df_settings.index:
+            self.df_settings.at['showAskConcatenate', 'value'] = 'Yes'
+        
+        showAskConcatenate = (
+            self.df_settings.at['showAskConcatenate', 'value'] == 'Yes'
+        )
+        if not showAskConcatenate:
+            return
+        
         txt = html_utils.paragraph(f"""
             Do you want to <b>concatenate</b> the `acdc_output.csv` tables from 
             multiple Positions into <b>one single CSV file</b>?<br>
         """)
+        doNotShowAgainCheckbox = QCheckBox('Do not show again')
         msg = widgets.myMessageBox(wrapText=False)
         noButton, yesButton = msg.question(
-            self, 'Concatenate tables?', txt, buttonsTexts=('No', 'Yes')
+            self, 'Concatenate tables?', txt, 
+            buttonsTexts=('No', 'Yes'),
+            widgets=doNotShowAgainCheckbox
         )
+        showAskConcatenate = (
+            'No' if doNotShowAgainCheckbox.isChecked() else 'Yes'
+        )
+        self.df_settings.at['showAskConcatenate', 'value'] = (
+            showAskConcatenate
+        )
+        self.df_settings.to_csv(settings_csv_path)
+        
         if not msg.clickedButton == yesButton:
             return
         
