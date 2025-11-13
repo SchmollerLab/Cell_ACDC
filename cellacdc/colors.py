@@ -190,7 +190,7 @@ def get_greedy_lut(lab, lut, ids=None):
     if len(ids) == 1:
         greedy_lut = np.copy(lut)
         greedy_lut[:] = greedy_lut[-1]
-        greedy_lut[0] = (0, 0, 0, 0)
+        greedy_lut[0] = [0]*lut.shape[-1]
         return greedy_lut
     
     # Taken from https://stackoverflow.com/questions/26486898/matrix-of-labels-to-adjacency-matrix
