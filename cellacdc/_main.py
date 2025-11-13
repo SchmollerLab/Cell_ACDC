@@ -307,7 +307,7 @@ class mainWin(QMainWindow):
             os.path.join(settings_folderpath, 'recentPaths.csv'), 
             load.last_entries_metadata_path, 
             load.additional_metadata_path, 
-            load.last_selected_groupboxes_measurements_path
+            load.last_selected_measurements_ini_path
         ]
         for path in paths_to_check:
             load.remove_duplicates_file(path)

@@ -88,8 +88,8 @@ acdc_df_dtype_id_checker_mapper = {
 
 additional_metadata_path = os.path.join(settings_folderpath, 'additional_metadata.json')
 last_entries_metadata_path = os.path.join(settings_folderpath, 'last_entries_metadata.csv')
-last_selected_groupboxes_measurements_path = os.path.join(
-    settings_folderpath, 'last_selected_groupboxes_set_measurements.json'
+last_selected_measurements_ini_path = os.path.join(
+    settings_folderpath, 'last_selected_measurements.ini'
 )
 channel_file_formats = (
     '_aligned.h5', '.h5', '_aligned.npz', '.tif'
@@ -172,17 +172,24 @@ def write_json(json_data, json_path, indent=2):
     with open(json_path, mode='w') as file:
         json.dump(json_data, file, indent=indent)
 
-def read_last_selected_gb_meas(logger_func=print):
-    data = {}
-    if not os.path.exists(last_selected_groupboxes_measurements_path):
-        write_json(data, last_selected_groupboxes_measurements_path)
-    else:
-        data = read_json(
-            last_selected_groupboxes_measurements_path,
-            desc='last selected channels (set measurments)',
-            logger_func=logger_func
-        )
-    return data
+def read_last_selected_set_measurements(logger_func=print):
+    if not os.path.exists(last_selected_measurements_ini_path):
+        return {}
+    
+    cp = config.ConfigParser()
+    cp.read(last_selected_measurements_ini_path)
+    
+    return cp
+
+def write_last_selected_set_measurements(last_selected_meas: dict[str, dict]):
+    configPars = config.ConfigParser()
+    for section, values in last_selected_meas.items():
+        configPars[section] = {}
+        for option, value in values.items():
+            configPars[section][option] = str(value)
+    
+    with open(last_selected_measurements_ini_path, 'w') as configfile:
+        configPars.write(configfile)
 
 def migrate_models_paths(dst_path):
     models = myutils.get_list_of_models()
@@ -303,9 +310,6 @@ def get_images_paths(folder_path):
     elif is_images_folder:
         images_paths = [folder_path]
     return images_paths
-            
-def save_last_selected_gb_meas(json_data):
-    write_json(json_data, last_selected_groupboxes_measurements_path)
 
 def read_config_metrics(ini_path):
     configPars = config.ConfigParser()

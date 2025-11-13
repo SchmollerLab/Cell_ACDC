@@ -812,13 +812,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.calc_for_each_zslice_mapper = {}
         self.calc_size_for_each_zslice = False
         
-        favourite_funcs = set()
-        last_selected_groupboxes_measurements = load.read_last_selected_gb_meas(
-            logger_func=self.log
-        )
-        refChannel = setMeasurementsDialog.chNameGroupboxes[0].chName
-        if refChannel not in last_selected_groupboxes_measurements:
-            last_selected_groupboxes_measurements[refChannel] = []
         # Remove unchecked metrics and load checked not loaded channels
         for chNameGroupbox in setMeasurementsDialog.chNameGroupboxes:
             chName = chNameGroupbox.chName
@@ -831,9 +824,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             self.calc_for_each_zslice_mapper[chName] = (
                 chNameGroupbox.calcForEachZsliceRequested
             )
-            last_selected_groupboxes_measurements[refChannel].append(
-                chNameGroupbox.title()
-            )
             for checkBox in chNameGroupbox.checkBoxes:
                 colname = checkBox.text()
                 if not checkBox.isChecked():
@@ -841,7 +831,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 else:
                     self.metricsToSave[chName].append(colname)
                     func_name = colname[len(chName):]
-                    favourite_funcs.add(func_name)
 
         self.calc_size_for_each_zslice = (
             setMeasurementsDialog.sizeMetricsQGBox.calcForEachZsliceRequested
@@ -851,22 +840,19 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         else:
             self.sizeMetricsToSave = []
             title = setMeasurementsDialog.sizeMetricsQGBox.title()
-            last_selected_groupboxes_measurements[refChannel].append(title)
             for checkBox in setMeasurementsDialog.sizeMetricsQGBox.checkBoxes:
                 if checkBox.isChecked():
                     self.sizeMetricsToSave.append(checkBox.text())
-                    favourite_funcs.add(checkBox.text())
 
         if not setMeasurementsDialog.regionPropsQGBox.isChecked():
             self.regionPropsToSave = ()
         else:
             self.regionPropsToSave = []
             title = setMeasurementsDialog.regionPropsQGBox.title()
-            last_selected_groupboxes_measurements[refChannel].append(title)
             for checkBox in setMeasurementsDialog.regionPropsQGBox.checkBoxes:
                 if checkBox.isChecked():
                     self.regionPropsToSave.append(checkBox.text())
-                    favourite_funcs.add(checkBox.text())
+                    
             self.regionPropsToSave = tuple(self.regionPropsToSave)
 
         if setMeasurementsDialog.chIndipendCustomeMetricsQGBox is not None:
@@ -875,7 +861,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             )
             if not skipAll:
                 title = setMeasurementsDialog.chIndipendCustomeMetricsQGBox.title()
-                last_selected_groupboxes_measurements[refChannel].append(title)
             chIndipendCustomMetricsToSave = []
             win = setMeasurementsDialog
             checkBoxes = win.chIndipendCustomeMetricsQGBox.checkBoxes
@@ -885,7 +870,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
     
                 if checkBox.isChecked():
                     chIndipendCustomMetricsToSave.append(checkBox.text())           
-                    favourite_funcs.add(checkBox.text())
+
             self.chIndipendCustomMetricsToSave = tuple(
                 chIndipendCustomMetricsToSave
             )
@@ -897,7 +882,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             )
             if not skipAll:
                 title = setMeasurementsDialog.mixedChannelsCombineMetricsQGBox.title()
-                last_selected_groupboxes_measurements[refChannel].append(title)
             mixedChCombineMetricsToSkip = []
             win = setMeasurementsDialog
             checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
@@ -906,16 +890,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     mixedChCombineMetricsToSkip.append(checkBox.text())
                 elif not checkBox.isChecked():
                     mixedChCombineMetricsToSkip.append(checkBox.text())
-                else:             
-                    favourite_funcs.add(checkBox.text())
+
             self.mixedChCombineMetricsToSkip = tuple(mixedChCombineMetricsToSkip)
-
-        df_favourite_funcs = pd.DataFrame(
-            {'favourite_func_name': list(favourite_funcs)}
-        )
-        df_favourite_funcs.to_csv(favourite_func_metrics_csv_path)
-
-        load.save_last_selected_gb_meas(last_selected_groupboxes_measurements)
     
     def _init_metrics_to_save(self, posData):
         posData.setLoadedChannelNames()
