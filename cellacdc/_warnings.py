@@ -13,7 +13,7 @@ def warnTooManyItems(mainWin, numItems, qparent):
     mainWin.logger.info(
         '[WARNING]: asking user what to do with too many graphical items...'
     )
-    msg = widgets.myMessageBox()
+    msg = widgets.myMessageBox(wrapText=False)
     txt = html_utils.paragraph(f"""
         You loaded a segmentation mask that has <b>{numItems} objects</b>.<br><br>
         Creating <b>high resolution</b> text annotations 
