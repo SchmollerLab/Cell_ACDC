@@ -14339,7 +14339,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            self.instructHowDeleteID()
+            posData = self.data[self.pos_i]
+            printl(posData.cca_df)
+            printl(posData.allData_li[posData.frame_i]['acdc_df'][cca_df_colnames])
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -31208,6 +31210,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def quickSave(self):
         self.saveData(isQuickSave=True)
     
+    def checkMissingCca(self):
+        missing_cca_items = []
+        for posData in self.data:
+            for frame_i, data_dict in enumerate(posData.allData_li):
+                acdc_df = data_dict['acdc_df']
+                if acdc_df is None:
+                    continue
+                
+                if 'cell_cycle_stage' not in acdc_df.columns:
+                    continue
+                
+                cca_df = acdc_df[cca_df_colnames]
+                if cca_df.isnull().values.any():
+                    i = frame_i if not self.isSnapshot else None
+                    missing_cca_items.append((cca_df, posData, i))
+        
+        if not missing_cca_items:
+            return True
+        
+        _warnings.warnMissingCca(missing_cca_items, qparent=self)
+        return False
+        
     def warnDifferentSegmChannel(
             self, loaded_channel, segm_channel_hyperparams, segmEndName
         ):
@@ -31271,17 +31295,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.user_ch_name, lastSegmChannel, segmEndName
             )
             if cancel:
-                self.abortSavingInitialisation()
+                self.cancelSavingInitialisation()
                 self.setDisabled(False, keepDisabled=False)
                 self.activateWindow()
                 return True
             posData.updateSegmentedChannelHyperparams(self.user_ch_name)
 
+        # Check missing cca annotations in snaphots
+        proceed = self.checkMissingCca()
+        if not proceed:
+            self.cancelSavingInitialisation()
+            self.setDisabled(False, keepDisabled=False)
+            self.activateWindow()
+            return 
+        
         self.save_metrics = False
         if not isQuickSave:
             self.save_metrics, cancel = self.askSaveMetrics()
             if cancel:
-                self.abortSavingInitialisation()
+                self.cancelSavingInitialisation()
                 self.setDisabled(False, keepDisabled=False)
                 self.activateWindow()
                 return True
@@ -31290,7 +31322,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.isSnapshot and not isQuickSave and len(self.data) > 1:
             self.posToSave = self.askPosToSave()
             if self.posToSave is None:
-                self.abortSavingInitialisation()
+                self.cancelSavingInitialisation()
                 self.setDisabled(False, keepDisabled=False)
                 self.activateWindow()
                 return True
@@ -31306,24 +31338,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if mode == 'Cell cycle analysis':
             proceed = self.askSaveLastVisitedCcaMode(isQuickSave=isQuickSave)
             if not proceed:
-                self.abortSavingInitialisation()
+                self.cancelSavingInitialisation()
                 self.setDisabled(False, keepDisabled=False)
                 self.activateWindow()
-                return
+                return True
         else:
             proceed = self.askSaveLastVisitedSegmMode(isQuickSave=isQuickSave)
             if not proceed:
-                self.abortSavingInitialisation()
+                self.cancelSavingInitialisation()
                 self.setDisabled(False, keepDisabled=False)
                 self.activateWindow()
-                return
+                return True
         
         append_name_og_whitelist, proceed, do_not_save_og_whitelist = self.askSaveOriginalSegm(isQuickSave=isQuickSave)
         if not proceed:
-            self.abortSavingInitialisation()
+            self.cancelSavingInitialisation()
             self.setDisabled(False, keepDisabled=False)
             self.activateWindow()
-            return
+            return True
 
         if self.save_metrics or mode == 'Cell cycle analysis':
             self.computeVolumeRegionprop()
@@ -31383,6 +31415,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
+        
+        return False
         
     def _workerDebug(self, stuff_to_debug):
         pass
@@ -31616,7 +31650,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if all(didWorkersFinished):
             self.waitCloseAutoSaveWorkerLoop.stop()
         
-    def abortSavingInitialisation(self):
+    def cancelSavingInitialisation(self):
         self.titleLabel.setText(
             'Saving data process cancelled.', color=self.titleColor
         )
