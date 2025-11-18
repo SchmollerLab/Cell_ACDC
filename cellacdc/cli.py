@@ -63,7 +63,12 @@ class _WorkflowKernel:
         if 'initialization' in workflow_params:
             ch_name = workflow_params['initialization']['user_ch_name']
         elif 'measurements' in workflow_params:
-            ch_name = workflow_params['measurements']['channels'][0]
+            channels = workflow_params['measurements']['channels']
+            channel_names_to_skip = (
+                workflow_params['measurements']['channel_names_to_skip']
+            )
+            channels = [ch for ch in channels if ch not in channel_names_to_skip]
+            ch_name = channels[0]
         else:
             printl(workflow_params, pretty=True)
             raise KeyError(
@@ -999,7 +1004,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             if channel in self.chNamesToSkip:
                 continue 
             
-            if c == 0:
+            if channel == posData.user_ch_name:
                 img_data = posData.img_data
                 filename = posData.filename
                 bkgrData = posData.bkgrData
@@ -1083,7 +1088,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.init_signals(computeMetricsWorker, saveDataWorker)
         
         self.log(
-            'Loaded paths:\n'
+            'Loading the following files:\n'
             f'Segmentation file name: {os.path.basename(posData.segm_npz_path)}\n'
             f'ACDC output file name: {os.path.basename(posData.acdc_output_csv_path)}'
         )
@@ -1102,6 +1107,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             ch for ch in channel_names if not ch in self.chNamesToSkip 
             and ch in self.chNamesToProcess
         ]
+        
+        self.log(f'Loading channels {channels_to_load}...')
         
         self._load_image_data(posData, channels_to_load)
         
