@@ -1453,7 +1453,11 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                         col = 'z_slice_used_dataPrep'
                         z_slice = posData.segmInfo_df.at[idx, col]
                     else:
-                        raise e
+                        print(
+                            f'[WARNING]: z-slice for channel {chName} absent. '
+                            'Using middle z-slice for calculating metrics.'
+                        )
+                        posData.segmInfo_df.at[idx, col] = round(posData.SizeZ/2)
         return True
     
     def _init_calc_metrics(
