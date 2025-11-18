@@ -182,8 +182,6 @@ def rescale_RGB(rgb_img, saturation_val=1.0):
     
 
 def get_greedy_lut(lab, lut, ids=None):    
-    expanded = skimage.segmentation.expand_labels(lab, distance=7)
-    adj_M = np.zeros([expanded.max() + 1]*2, dtype=bool)
     if ids is None:
         ids = [obj.label for obj in skimage.measure.regionprops(lab)]
     
@@ -192,6 +190,17 @@ def get_greedy_lut(lab, lut, ids=None):
         greedy_lut[:] = greedy_lut[-1]
         greedy_lut[0] = [0]*lut.shape[-1]
         return greedy_lut
+    
+    max_ID = max(ids)
+    if max_ID + 1 > len(lut):
+        # Repeat lut entries if not enough colors
+        lut = np.concat([lut]*((max_ID // len(lut))+1), axis=0)
+    
+    if lab.ndim == 3:
+        lab = lab.max(axis=0)
+    
+    expanded = skimage.segmentation.expand_labels(lab, distance=7)
+    adj_M = np.zeros([expanded.max() + 1]*2, dtype=bool)
     
     # Taken from https://stackoverflow.com/questions/26486898/matrix-of-labels-to-adjacency-matrix
     adj_M[expanded[:, :-1], expanded[:, 1:]] = 1
