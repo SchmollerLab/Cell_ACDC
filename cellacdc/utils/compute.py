@@ -419,6 +419,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
 
     def computeVolumeRegionprop(self, end_frame_i, posData):
         if 'cell_vol_vox' not in self.worker.kernel.sizeMetricsToSave:
+            self.worker.waitCond.wakeAll()
             return
 
         # We compute the cell volume in the main thread because calling
