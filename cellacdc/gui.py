@@ -8607,12 +8607,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             title='Search object by ID',
             msg='Enter object ID to find and highlight',
             parent=self,
+            isInteger=True
         )
         searchIDdialog.exec_()
         if searchIDdialog.cancel:
             return
 
         searchedID = searchIDdialog.EntryID
+        
         if searchedID in posData.IDs:
             self.goToObjectID(searchedID)
             return
@@ -11561,7 +11563,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     # @exec_time
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
-        if not hasattr(self, 'delRoiLab'):
+        if self.delRoiLab is None:
             self.initDelRoiLab()
             
         self.delRoiLab[:] = self.get_2Dlab(posData.lab, force_z=False)
@@ -28870,6 +28872,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.retainSizeLutItems = False
         self.setMeasWinState = None
         self.addPointsWin = None
+        self.delRoiLab = None
         self.showPropsDockButton.setDisabled(True)
         self.removeOverlayItems()
         self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)

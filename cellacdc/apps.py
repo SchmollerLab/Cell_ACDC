@@ -9522,7 +9522,11 @@ class QLineEditDialog(QDialog):
                     return
 
         self.cancel = False
-        self.EntryID = val
+        try:
+            self.EntryID = int(val)
+        except Exception as err:
+            self.EntryID = val
+            
         self.enteredValue = val
         self.close()
 
