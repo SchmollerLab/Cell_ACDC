@@ -13458,8 +13458,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     rp = posData.allData_li[frame_i]['regionprops']
                 posData.allIDs.update([obj.label for obj in rp])
     
-    def countObjects(self):
-        self.logger.info('Counting objects...')
+    def countObjectsTimelapse(self):
         if self.countObjsWindow is None:
             activeCategories = {
                 'In current frame', 
@@ -13543,6 +13542,58 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             categoryCountMapper[category] = allCategoryCountMapper[category]
             
         return categoryCountMapper
+        
+
+    def countObjectsSnapshots(self):
+        posData = self.data[self.pos_i]
+        if self.countObjsWindow is None:
+            activeCategories = {
+                'In current position', 
+                'In all loaded positions', 
+            }
+            if self.isSegm3D:
+                activeCategories.add('In current z-slice')
+        else:
+            activeCategories = self.countObjsWindow.activeCategories()
+
+        numObjectsCurrentPos = len(posData.IDs)
+        numObjectsAllPos = 0
+        numObjectsCurrentZslice = None
+        if 'In current z-slice' in activeCategories:
+            numObjectsCurrentZslice = len(
+                skimage.measure.regionprops(self.currentLab2D)
+            )
+        
+        for _posData in self.data:
+            numObjectsAllPos += len(posData.allData_li[0]['IDs'])
+        
+        allCategoryCountMapper = {
+            'In current position': numObjectsCurrentPos, 
+            'In all loaded positions': numObjectsAllPos, 
+        }
+        if numObjectsCurrentZslice is not None:
+            allCategoryCountMapper['In current z-slice'] = (
+                numObjectsCurrentZslice
+            )
+            
+        if self.countObjsWindow is None:
+            return allCategoryCountMapper 
+        
+        categoryCountMapper = {}
+        for category in activeCategories:
+            categoryCountMapper[category] = allCategoryCountMapper[category]
+            
+        return categoryCountMapper
+        
+    def countObjects(self):
+        self.logger.info('Counting objects...')
+        
+        posData = self.data[self.pos_i]
+        if posData.SizeT > 1:
+            return self.countObjectsTimelapse()
+        
+        return self.countObjectsSnapshots()
+        
     
     def updateObjectCounts(self):
         if self.countObjsWindow is None:
@@ -19915,6 +19966,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             computeContours=False,
             updateLookuptable=True
         )
+        if self.isSegm3D:
+            self.updateObjectCounts()
 
     def updateOverlayZslice(self, z):
         self.setOverlayImages()
