@@ -185,6 +185,9 @@ def get_greedy_lut(lab, lut, ids=None):
     if ids is None:
         ids = [obj.label for obj in skimage.measure.regionprops(lab)]
     
+    if len(ids) == 0:
+        return lut
+    
     if len(ids) == 1:
         greedy_lut = np.copy(lut)
         greedy_lut[:] = greedy_lut[-1]
