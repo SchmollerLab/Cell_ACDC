@@ -1457,7 +1457,21 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                             f'[WARNING]: z-slice for channel {chName} absent. '
                             'Using middle z-slice for calculating metrics.'
                         )
-                        posData.segmInfo_df.at[idx, col] = round(posData.SizeZ/2)
+                        middle_z = round(np.median(np.arange(posData.SizeZ)))
+                        new_row = pd.DataFrame({
+                                'z_slice_used_dataPrep': [middle_z],
+                                'resegmented_in_gui': [0],
+                                'which_z_proj': 'single z-slice',
+                                'is_from_dataPrep': [0],
+                                'z_slice_used_gui': [-1],
+                                'which_z_proj_gui': 'single z-slice',
+                            },
+                            index=[idx]
+                        )
+                        posData.segmInfo_df = pd.concat(
+                            [posData.segmInfo_df, new_row]
+                        )
+                        posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
         return True
     
     def _init_calc_metrics(
