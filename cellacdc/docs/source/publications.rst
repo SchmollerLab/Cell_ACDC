@@ -1,7 +1,7 @@
 Scientific publications where Cell-ACDC was used
 ================================================
 
-In the following publications authors used Cell-ACDC to analyse microscopy data:
+In the following publications, authors used Cell-ACDC to analyse microscopy data and obtain **biological insights**:
 
 .. raw:: html
 
