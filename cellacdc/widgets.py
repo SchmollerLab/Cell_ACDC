@@ -4422,13 +4422,21 @@ class _metricsQGBox(QGroupBox):
                 'ending with `_zsliceN` where N is the z-slice number\n'
                 '(starting from 0).'
             )
-            calcForEachZsliceLabel = QLabel('Calculate for each z-slice')
+            calcForEachZsliceLabel = QClickableLabel(
+                'Calculate for each z-slice'
+            )
             calcForEachZsliceLabel.setToolTip(tooltip)
             self.calcForEachZsliceToggle.setToolTip(tooltip)
             buttonsLayout.addWidget(self.calcForEachZsliceToggle)
             buttonsLayout.addWidget(calcForEachZsliceLabel)
             buttonsLayout.addStretch(1) 
             layout.addLayout(buttonsLayout)
+            calcForEachZsliceLabel.clicked.connect(
+                partial(
+                    self.toggleCalcForEachZslice, 
+                    toggle=self.calcForEachZsliceToggle
+                )
+            )
 
         self.setTitle(title)
         self.setCheckable(True)
@@ -4438,6 +4446,12 @@ class _metricsQGBox(QGroupBox):
         self.setFont(_font)
 
         self.toggled.connect(self.toggled_cb)
+    
+    def toggleCalcForEachZslice(self, label, toggle=None):
+        if toggle is None:
+            toggle = self.calcForEachZsliceToggle
+        
+        toggle.setChecked(not toggle.isChecked())
     
     def isCalcForEachZsliceRequested(self):
         if self.calcForEachZsliceToggle is None:
@@ -4597,17 +4611,32 @@ class channelMetricsQGBox(QGroupBox):
                 'ending with `_zsliceN` where N is the z-slice number\n'
                 '(starting from 0).'
             )
-            calcForEachZsliceLabel = QLabel('Calculate for each z-slice')
+            calcForEachZsliceLabel = QClickableLabel(
+                'Calculate for each z-slice'
+            )
             calcForEachZsliceLabel.setToolTip(tooltip)
             self.calcForEachZsliceToggle.setToolTip(tooltip)
             buttonsLayout.addWidget(self.calcForEachZsliceToggle)
             buttonsLayout.addWidget(calcForEachZsliceLabel)   
             buttonsLayout.addStretch(1) 
             layout.addLayout(buttonsLayout)
+            calcForEachZsliceLabel.clicked.connect(
+                partial(
+                    self.toggleCalcForEachZslice, 
+                    toggle=self.calcForEachZsliceToggle
+                )
+            )
+                
         
         self.setTitle(f'{chName} metrics')
         self.setCheckable(True)
         self.setLayout(layout)
+    
+    def toggleCalcForEachZslice(self, label, toggle=None):
+        if toggle is None:
+            toggle = self.calcForEachZsliceToggle
+        
+        toggle.setChecked(not toggle.isChecked())
     
     def isCalcForEachZsliceRequested(self):
         if self.calcForEachZsliceToggle is None:

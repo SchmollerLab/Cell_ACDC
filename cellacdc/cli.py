@@ -897,7 +897,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     mixedChCombineMetricsToSkip.append(checkBox.text())
 
             self.mixedChCombineMetricsToSkip = tuple(mixedChCombineMetricsToSkip)
-    
+
     def _init_metrics_to_save(self, posData):
         posData.setLoadedChannelNames()
         self.isSegm3D = posData.getIsSegm3D()
