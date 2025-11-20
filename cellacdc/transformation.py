@@ -288,3 +288,30 @@ def correct_img_dimension(image, input_dims: List[str], output_dims: List[str]):
     image = np.transpose(image, dim_map)
     
     return image
+
+def clear_objects_not_in_mask(lab, mask):
+    """Clear objects in lab that are not fully contained in mask.
+
+    Parameters
+    ----------
+    lab : np.ndarray
+        Labeled image.
+    mask : np.ndarray
+        Boolean mask.
+
+    Returns
+    -------
+    np.ndarray
+        Labeled image with objects not fully contained in mask removed.
+    list
+        List of cleared object IDs.
+
+    """
+    lab_cleared = lab.copy()
+    rp = skimage.measure.regionprops(lab)
+    for obj in rp:
+        if np.all(mask[obj.slice][obj.image]):
+            continue
+        lab_cleared[obj.slice][obj.image] = 0
+        
+    return lab_cleared
