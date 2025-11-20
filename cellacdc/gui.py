@@ -13253,15 +13253,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         mask = self.freeRoiItem.mask()
         
         regionLab = posData.lab[(...,) + regionSlice].copy()
-        regionLab[..., ~mask] = 0
         
         clearBorders = (
             self.drawClearRegionToolbar
-            .clearOnlyEnclosedObjsRadioButton
-            .isChecked()
+            .clearOnlyEnclosedObjsRadioButton.isChecked()
         )
         if clearBorders:
-            regionLab = skimage.segmentation.clear_border(regionLab)
+            if regionLab.ndim == 2:
+                regionLab = transformation.clear_objects_not_in_mask(
+                    regionLab, mask
+                )
+                regionRp = skimage.measure.regionprops(regionLab)
+                for obj in regionRp:
+                    if np.all(mask[obj.slice][obj.image]):
+                        continue
+                    
+                    regionLab[obj.slice][obj.image] = 0
+            else:
+                for z, regionLab_z in enumerate(regionLab):
+                    regionLab[z] = transformation.clear_objects_not_in_mask(
+                        regionLab_z, mask
+                    )
+        else:
+            regionLab[..., ~mask] = 0
         
         regionRp = skimage.measure.regionprops(regionLab)
         clearIDs = [obj.label for obj in regionRp]
