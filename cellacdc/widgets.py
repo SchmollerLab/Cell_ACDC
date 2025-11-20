@@ -6958,6 +6958,11 @@ class BaseImageItem(pg.ImageItem):
                 img_data = (img_data,)
             
             for frame_i, image in enumerate(img_data):
+                if image.ndim == 3:
+                    self._updateMinMaxValuesProjections(
+                        image, pos_i, frame_i, self.minMaxValuesMapper
+                    )
+                    
                 if image.ndim == 2:
                     image = (image,)
                 
@@ -6981,6 +6986,32 @@ class BaseImageItem(pg.ImageItem):
         key = (pos_i, frame_i, z_slice)
         self.minMaxValuesMapperEqualized[key] = (np.nanmin(img), np.nanmax(img)) 
     
+    def updateMinMaxValuesEqualizedDataProjections(
+            self, 
+            data: List['load.loadData'], 
+            pos_i: int, 
+            frame_i: int, 
+        ):    
+        posData = data[pos_i]
+        eq_zstack = posData.equalized_img_data[frame_i]
+        
+        self._updateMinMaxValuesProjections(
+            eq_zstack, pos_i, frame_i, self.minMaxValuesMapperEqualized
+        )
+    
+    def _updateMinMaxValuesProjections(self, zstack, pos_i, frame_i, mapper):
+        max_proj = zstack.max(axis=0)
+        key = (pos_i, frame_i, 'max z-projection')
+        mapper[key] = np.nanmin(max_proj), np.nanmax(max_proj)
+        
+        mean_proj = zstack.mean(axis=0)
+        key = (pos_i, frame_i, 'mean z-projection')
+        mapper[key] = np.nanmin(mean_proj), np.nanmax(mean_proj)
+        
+        median_proj = np.median(zstack, axis=0)
+        key = (pos_i, frame_i, 'median z-proj.')
+        mapper[key] = np.nanmin(median_proj), np.nanmax(median_proj)
+    
     def updateMinMaxValuesPreprocessedData(
             self, 
             data: List['load.loadData'], 
@@ -6996,6 +7027,19 @@ class BaseImageItem(pg.ImageItem):
         key = (pos_i, frame_i, z_slice)
         self.minMaxValuesMapperPreproc[key] = (np.nanmin(img), np.nanmax(img))
 
+    def updateMinMaxValuesPreprocessedProjections(
+            self, 
+            data: List['load.loadData'], 
+            pos_i: int, 
+            frame_i: int, 
+        ):    
+        posData = data[pos_i]
+        zstack = posData.preproc_img_data[frame_i]
+        
+        self._updateMinMaxValuesProjections(
+            zstack, pos_i, frame_i, self.minMaxValuesMapperPreproc
+        )
+    
     def updateMinMaxValuesCombinedData(
             self,
             data: List['load.loadData'],
@@ -7010,6 +7054,19 @@ class BaseImageItem(pg.ImageItem):
         img = posData.combine_img_data[frame_i][z_slice]
         key = (pos_i, frame_i, z_slice)
         self.minMaxValuesMapperCombined[key] = (np.nanmin(img), np.nanmax(img))
+    
+    def updateMinMaxValuesCombinedDataProjections(
+            self, 
+            data: List['load.loadData'], 
+            pos_i: int, 
+            frame_i: int, 
+        ):    
+        posData = data[pos_i]
+        zstack = posData.combine_img_data[frame_i]
+        
+        self._updateMinMaxValuesProjections(
+            zstack, pos_i, frame_i, self.minMaxValuesMapperCombined
+        )
     
     def setCurrentPosIndex(self, pos_i: int):
         self.pos_i = pos_i

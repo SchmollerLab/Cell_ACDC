@@ -1608,6 +1608,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.img1.updateMinMaxValuesPreprocessedData(
                     self.data, self.pos_i, posData.frame_i, z_slice
                 )
+                self.img1.updateMinMaxValuesPreprocessedProjections(
+                    self.data, self.pos_i, posData.frame_i
+                )
         elif how == 'all_frames':
             for frame_i, processed_frame in enumerate(processed_data):
                 if processed_frame.ndim == 2:
@@ -1620,8 +1623,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     self.img1.updateMinMaxValuesPreprocessedData(
                         self.data, self.pos_i, frame_i, z_slice
                     )
+                self.img1.updateMinMaxValuesPreprocessedProjections(
+                    self.data, self.pos_i, frame_i
+                )
         elif how == 'all_pos':
-            for pos_i, processed_pos_data in enumerate(processed_data):
+            for pos_i, processed_pos_data in enumerate(processed_data):                    
                 if processed_pos_data.ndim == 2:
                     processed_pos_data = (processed_pos_data,)
 
@@ -1634,6 +1640,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     )
                     self.img1.updateMinMaxValuesPreprocessedData(
                         self.data, pos_i, 0, z_slice
+                    )
+                
+                if posData.SizeZ > 1:
+                    self.img1.updateMinMaxValuesPreprocessedProjections(
+                        self.data, pos_i, frame_i
                     )
             
         if not self.viewPreprocDataToggle.isChecked():
@@ -1677,6 +1688,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     self.img1.updateMinMaxValuesCombinedData(
                         self.data, pos_i, frame_i, z_slice
                     )
+                self.img1.updateMinMaxValuesCombinedDataProjections(
+                    self.data, pos_i, frame_i
+                )
             elif n_dim_img == 3:
                 for key, processed_data in per_pos_data[pos_i]:
                     pos_i, frame_i, z_slice = key
@@ -1688,7 +1702,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 raise ValueError('Invalid number of dimensions in img_data.')
         
         posData = self.data[self.pos_i]
-        curr_pos_i, curr_frame_i, curr_z_slice = self.pos_i,self.data[self.pos_i].frame_i, self.z_slice_index()
+        curr_pos_i, curr_frame_i, curr_z_slice = (
+            self.pos_i,self.data[self.pos_i].frame_i, self.z_slice_index()
+        )
         current_combine_img = posData.combine_img_data[curr_frame_i]
         self.img1.updateMinMaxValuesCombinedData(
             self.data, curr_pos_i, curr_frame_i, curr_z_slice
@@ -1736,6 +1752,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     self.img1.updateMinMaxValuesCombinedData(
                             self.data, pos_i, frame_i, z_slice
                         )
+                self.img1.updateMinMaxValuesCombinedDataProjections(
+                    self.data, pos_i, frame_i
+                )
             else:
                 for key, processed_data in per_pos_data[pos_i]:
                     pos_i, frame_i, z_slice = key
@@ -13971,6 +13990,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                         self.img1.updateMinMaxValuesEqualizedData(
                             self.data, pos_i, frame_i, z
                         )
+                    self.img1.updateMinMaxValuesEqualizedDataProjections(
+                        self.data, pos_i, frame_i
+                    )
                 else:
                     eq_img = skimage.exposure.equalize_adapthist(img_frame)
                     _posData.equalized_img_data[frame_i] = eq_img
@@ -24744,11 +24766,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.overlay_z_label.setText(f'Overlay z-slice  {z+1:02}/{posData.SizeZ}')
                 ol_img = img[z].copy()
             elif zProjHow == 'max z-projection':
-                ol_img = img.max(axis=0).copy()
+                ol_img = img.max(axis=0)
             elif zProjHow == 'mean z-projection':
-                ol_img = img.mean(axis=0).copy()
+                ol_img = img.mean(axis=0)
             elif zProjHow == 'median z-proj.':
-                ol_img = np.median(img, axis=0).copy()
+                ol_img = np.median(img, axis=0)
         else:
             ol_img = img.copy()
 
@@ -26786,7 +26808,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.img1.setCurrentPosIndex(self.pos_i)
         self.img1.setCurrentFrameIndex(posData.frame_i)
         if posData.SizeZ > 1:
-            z = self.zSliceScrollBar.sliderPosition()
+            zProjHow = self.zProjComboBox.currentText()
+            if zProjHow == 'single z-slice':
+                z = self.zSliceScrollBar.sliderPosition()
+            else:
+                z = zProjHow
+            
             self.img1.setCurrentZsliceIndex(z)
 
         self.img1.setImage(
