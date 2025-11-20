@@ -1609,7 +1609,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     self.data, self.pos_i, posData.frame_i, z_slice
                 )
                 self.img1.updateMinMaxValuesPreprocessedProjections(
-                    self.data, pos_i, frame_i
+                    self.data, self.pos_i, frame_i
                 )
         elif how == 'all_frames':
             for frame_i, processed_frame in enumerate(processed_data):
@@ -1624,7 +1624,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                         self.data, self.pos_i, frame_i, z_slice
                     )
                 self.img1.updateMinMaxValuesPreprocessedProjections(
-                    self.data, pos_i, frame_i
+                    self.data, self.pos_i, frame_i
                 )
         elif how == 'all_pos':
             for pos_i, processed_pos_data in enumerate(processed_data):                    
