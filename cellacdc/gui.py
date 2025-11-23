@@ -13598,7 +13598,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             )
         
         for _posData in self.data:
-            numObjectsAllPos += len(posData.allData_li[0]['IDs'])
+            numObjectsAllPos += len(_posData.allData_li[0]['IDs'])
         
         allCategoryCountMapper = {
             'In current position': numObjectsCurrentPos, 
