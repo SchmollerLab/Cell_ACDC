@@ -5486,6 +5486,12 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
     def tickColorAccepted(self):
         self.gradient.currentColorAccepted()
         # self.sigTickColorAccepted.emit(self.gradient.colorDialog.color().getRgb())
+    
+    def setRescaleIntensitiesHow(self, how):
+        for action in self.rescaleActionGroup.actions():
+            if action.text() == how:
+                action.setChecked(True)
+                return
 
 class ROI(pg.ROI):
     def __init__(
