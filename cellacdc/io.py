@@ -9,6 +9,45 @@ import skimage.io
 
 from . import path, load, myutils, printl
 from . import moth_bud_tot_selected_columns_filepath
+from . import saved_measurements_selections_folderpath
+from . import config
+
+def get_saved_measurements_selections():
+    if not os.path.exists(saved_measurements_selections_folderpath):
+        return []
+    
+    return list(os.listdir(saved_measurements_selections_folderpath))
+
+def save_measurements_selections(
+        selected_measurements_filename, selected_measurements_dict
+    ):
+    os.makedirs(
+        saved_measurements_selections_folderpath, exist_ok=True
+    )
+    
+    configPars = config.ConfigParser()
+    for section, values in selected_measurements_dict.items():
+        configPars[section] = {}
+        for option, value in values.items():
+            configPars[section][option] = str(value)
+    
+    ini_filepath = os.path.join(
+        saved_measurements_selections_folderpath, selected_measurements_filename
+    )
+    with open(ini_filepath, 'w') as configfile:
+        configPars.write(configfile)
+    
+    return ini_filepath
+
+def read_measurements_selections(selected_measurements_filename):
+    ini_filepath = os.path.join(
+        saved_measurements_selections_folderpath, selected_measurements_filename
+    )
+    
+    cp = config.ConfigParser()
+    cp.read(ini_filepath)
+    
+    return dict(cp)
 
 def get_saved_moth_bud_tot_selections():
     if not os.path.exists(moth_bud_tot_selected_columns_filepath):

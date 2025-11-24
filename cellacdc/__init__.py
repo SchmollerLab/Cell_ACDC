@@ -359,6 +359,9 @@ data_structure_docs_url = 'https://cell-acdc.readthedocs.io/en/latest/data-struc
 moth_bud_tot_selected_columns_filepath = os.path.join(
     settings_folderpath, 'mother_bud_total_columns_selection.json'
 )
+saved_measurements_selections_folderpath = os.path.join(
+    settings_folderpath, 'saved_measurements_selections'
+)
 
 # Use to get the acdc_output file name from `segm_filename` as 
 # `m = re.sub(segm_re_pattern, '_acdc_output', segm_filename)`

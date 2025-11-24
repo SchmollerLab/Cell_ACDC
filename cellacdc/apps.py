@@ -1884,8 +1884,15 @@ class SetMeasurementsDialog(QBaseDialog):
         searchLayout.addWidget(searchLineEdit)
         searchLayout.setStretch(1, 3)
         
+        mainScrollArea = widgets.ScrollArea()
+        mainScrollAreaWidget = QWidget()
+        mainScrollArea.setWidget(mainScrollAreaWidget)
+        
         groupsLayout = QGridLayout()
         self.groupsLayout = groupsLayout
+        
+        mainScrollAreaWidget.setLayout(groupsLayout)
+        
         buttonsLayout = QHBoxLayout()
 
         self.chNameGroupboxes = []
@@ -2037,17 +2044,39 @@ class SetMeasurementsDialog(QBaseDialog):
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(self.deselectAllButton)
+        buttonsLayout.addSpacing(20)
+        
         if addCombineMetricCallback is not None:
             buttonsLayout.addWidget(addCombineMetricButton)
-        buttonsLayout.addWidget(self.deselectAllButton)
+            buttonsLayout.addSpacing(20)
+        
+        saveCurrentSelectionButton = widgets.savePushButton(
+            'Save current selection...'
+        )
+        saveCurrentSelectionButton.clicked.connect(
+            self.saveCurrentSelectionClicked
+        )
+        
+        buttonsLayout.addWidget(saveCurrentSelectionButton)
+        
+        loadSavedSelectionButton = widgets.OpenFilePushButton(
+            'Load saved selection...'
+        )
+        loadSavedSelectionButton.clicked.connect(self.loadSavedSelectionClicked)
+        buttonsLayout.addWidget(loadSavedSelectionButton)
+        
         buttonsLayout.addWidget(loadLastSelButton)
+        
+        buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(okButton)
 
         self.okButton = okButton
 
         layout.addLayout(searchLayout)
         layout.addSpacing(10)
-        layout.addLayout(groupsLayout)
+        # layout.addLayout(groupsLayout)
+        layout.addWidget(mainScrollArea)
         layout.addLayout(buttonsLayout)
 
         self.setLayout(layout)
@@ -2299,18 +2328,18 @@ class SetMeasurementsDialog(QBaseDialog):
         self.doNotWarn = True
         for chNameGroupbox in self.chNameGroupboxes:
             for gb in chNameGroupbox.groupboxes:
-                gb.checkAll(False)
+                gb.checkAll(None, False)
             cgb = getattr(chNameGroupbox, 'customMetricsQGBox', None)
             if cgb is not None:
-                cgb.checkAll(False)
+                cgb.checkAll(None, False)
         
-        self.sizeMetricsQGBox.checkAll(False)
-        self.regionPropsQGBox.checkAll(False)
+        self.sizeMetricsQGBox.checkAll(None, False)
+        self.regionPropsQGBox.checkAll(None, False)
         if self.chIndipendCustomeMetricsQGBox is not None:
-            self.chIndipendCustomeMetricsQGBox.checkAll(False)
+            self.chIndipendCustomeMetricsQGBox.checkAll(None, False)
             
         if self.mixedChannelsCombineMetricsQGBox is not None:
-            self.mixedChannelsCombineMetricsQGBox.checkAll(False)
+            self.mixedChannelsCombineMetricsQGBox.checkAll(None, False)
         self.doNotWarn = False
     
     def delMixedChannelCombineMetric(self, colname_to_del, hlayout):
@@ -2500,8 +2529,8 @@ class SetMeasurementsDialog(QBaseDialog):
                         continue
                     checkBox.setChecked(isChecked)
     
-    def saveLastSelection(self):
-        last_selected_meas = defaultdict(dict)
+    def currentSelectionMapper(self):
+        current_selected_meas = defaultdict(dict)
         
         for chNameGroupbox in self.chNameGroupboxes:
             if not chNameGroupbox.isChecked():
@@ -2512,9 +2541,9 @@ class SetMeasurementsDialog(QBaseDialog):
                 if not checkBox.isChecked():
                     continue
                 
-                last_selected_meas[chName][checkBox.text()] = 'Yes'
+                current_selected_meas[chName][checkBox.text()] = 'Yes'
         
-        size_selected_meas = last_selected_meas.get(
+        size_selected_meas = current_selected_meas.get(
             self.sizeMetricsQGBox.title()
         )
         if self.sizeMetricsQGBox.isChecked():
@@ -2523,9 +2552,9 @@ class SetMeasurementsDialog(QBaseDialog):
                     continue
                 
                 section = self.sizeMetricsQGBox.title()
-                last_selected_meas[section][checkBox.text()] = 'Yes'
+                current_selected_meas[section][checkBox.text()] = 'Yes'
         
-        size_selected_meas = last_selected_meas.get(
+        size_selected_meas = current_selected_meas.get(
             self.regionPropsQGBox.title()
         )
         if self.regionPropsQGBox.isChecked():
@@ -2534,7 +2563,7 @@ class SetMeasurementsDialog(QBaseDialog):
                     continue
                 
                 section = self.regionPropsQGBox.title()
-                last_selected_meas[section][checkBox.text()] = 'Yes'
+                current_selected_meas[section][checkBox.text()] = 'Yes'
         
         if self.chIndipendCustomeMetricsQGBox is not None:
             if self.chIndipendCustomeMetricsQGBox.isChecked():
@@ -2543,7 +2572,7 @@ class SetMeasurementsDialog(QBaseDialog):
                         continue
                     
                     section = self.chIndipendCustomeMetricsQGBox.title()
-                    last_selected_meas[section][checkBox.text()] = 'Yes'
+                    current_selected_meas[section][checkBox.text()] = 'Yes'
         
         if self.mixedChannelsCombineMetricsQGBox is not None:
             if self.mixedChannelsCombineMetricsQGBox.isChecked():
@@ -2552,18 +2581,75 @@ class SetMeasurementsDialog(QBaseDialog):
                         continue
                     
                     section = self.chIndipendCustomeMetricsQGBox.title()
-                    last_selected_meas[section][checkBox.text()] = 'Yes'
+                    current_selected_meas[section][checkBox.text()] = 'Yes'
         
+        return current_selected_meas
+    
+    def saveCurrentSelectionClicked(self):
+        current_selection_mapper = self.currentSelectionMapper()
+        defaultEntry = '_and_'.join(current_selection_mapper.keys())
+        defaultEntry = defaultEntry.replace(' ', '_').lower()
+        saved_selections = io.get_saved_measurements_selections()
+        win = filenameDialog(
+            basename='',
+            ext='',
+            hintText='Insert a <b>name</b> for the current selection:',
+            existingNames=saved_selections,
+            allowEmpty=False,
+            defaultEntry=defaultEntry
+        )
+        win.exec_()
+        if win.cancel:
+            return
+        
+        filename = win.filename
+        ini_filepath = io.save_measurements_selections(
+            filename, current_selection_mapper)
+        
+        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        txt = html_utils.paragraph(f"""
+            Done!<br><br>
+            Current selection saved with name <code>{filename}</code> at 
+            the following path:
+        """)
+        msg.information(
+            self, 'Selection saved', txt, 
+            commands=(ini_filepath,),
+            path_to_browse=os.path.dirname(ini_filepath),
+        )
+    
+    def loadSavedSelectionClicked(self):
+        self.doNotWarn = True
+        
+        saved_selections = io.get_saved_measurements_selections()
+        
+        selectNameWin = widgets.QDialogListbox(
+            'Choose selection to load',
+            'Choose selection to load:\n',
+            saved_selections, 
+            multiSelection=False, 
+            parent=self
+        )
+        selectNameWin.exec_()
+        if selectNameWin.cancel:
+            return
+        
+        selection_mapper = (
+            io.read_measurements_selections(selectNameWin.selectedItemsText[0])
+        )
+        
+        self.setCurrentSelectionFromMapper(selection_mapper)
+        
+        self.doNotWarn = False
+    
+    def saveLastSelection(self):
+        last_selected_meas = self.currentSelectionMapper()        
         load.write_last_selected_set_measurements(last_selected_meas)
     
-    def loadLastSelection(self):
-        self.doNotWarn = True
-        last_selected_meas = load.read_last_selected_set_measurements()
-        last_selected_meas = dict(last_selected_meas)
-        
+    def setCurrentSelectionFromMapper(self, selection_mapper):
         for chNameGroupbox in self.chNameGroupboxes:
             chName = chNameGroupbox.chName
-            chSelectedMeas = last_selected_meas.get(chName)
+            chSelectedMeas = selection_mapper.get(chName)
             if chSelectedMeas is None:
                 chNameGroupbox.setChecked(False)
                 continue
@@ -2576,7 +2662,7 @@ class SetMeasurementsDialog(QBaseDialog):
                 else:
                     checkBox.setChecked(False)
         
-        size_selected_meas = last_selected_meas.get(
+        size_selected_meas = selection_mapper.get(
             self.sizeMetricsQGBox.title()
         )
         if size_selected_meas is None:
@@ -2590,7 +2676,7 @@ class SetMeasurementsDialog(QBaseDialog):
                 else:
                     checkBox.setChecked(False)
         
-        size_selected_meas = last_selected_meas.get(
+        size_selected_meas = selection_mapper.get(
             self.regionPropsQGBox.title()
         )
         if size_selected_meas is None:
@@ -2605,7 +2691,7 @@ class SetMeasurementsDialog(QBaseDialog):
                     checkBox.setChecked(False)
         
         if self.chIndipendCustomeMetricsQGBox is not None:
-            ch_indip_custom_metrics = last_selected_meas.get(
+            ch_indip_custom_metrics = selection_mapper.get(
                 self.chIndipendCustomeMetricsQGBox.title()
             )
             if size_selected_meas is None:
@@ -2620,7 +2706,7 @@ class SetMeasurementsDialog(QBaseDialog):
                         checkBox.setChecked(False)
         
         if self.mixedChannelsCombineMetricsQGBox is not None:
-            ch_indip_custom_metrics = last_selected_meas.get(
+            ch_indip_custom_metrics = selection_mapper.get(
                 self.mixedChannelsCombineMetricsQGBox.title()
             )
             if size_selected_meas is None:
@@ -2633,6 +2719,13 @@ class SetMeasurementsDialog(QBaseDialog):
                         checkBox.setChecked(True)
                     else:
                         checkBox.setChecked(False)
+    
+    def loadLastSelection(self):
+        self.doNotWarn = True
+        last_selected_meas = load.read_last_selected_set_measurements()
+        last_selected_meas = dict(last_selected_meas)
+        
+        self.setCurrentSelectionFromMapper(last_selected_meas)
         
         self.doNotWarn = False
     
