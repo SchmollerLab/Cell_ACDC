@@ -3068,6 +3068,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         how = action.text()
         
+        self.df_settings.at[f'how_rescale_intensities_{channel}', 'value'] = how
+        self.df_settings.to_csv(self.settings_csv_path)
+        
         if how == 'Rescale each 2D image':
             if how == self.rescaleIntensChannelHowMapper[channel]:
                 # No need to update since we have autoscale
@@ -3762,6 +3765,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             'single z-slice', 'max z-projection', 'mean z-projection',
             'median z-proj.', 'same as above'
         ])
+        self.zProjOverlay_CB.setCurrentIndex(4)
         self.zSliceOverlay_SB.setDisabled(True)
 
         self.img1BottomGroupbox = self.gui_getImg1BottomWidgets()
@@ -19457,9 +19461,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.isDataLoaded = True
         self.isDataLoading = False
         
+        self.initImgGradRescaleIntensitiesHowPreference()
+        
         self.rescaleIntensitiesLut(setImage=False)
         
         self.gui_createAutoSaveWorker()
+    
+    def initImgGradRescaleIntensitiesHowPreference(self):
+        posData = self.data[self.pos_i]
+        channelName = posData.user_ch_name
+        if f'how_rescale_intensities_{channelName}' not in self.df_settings.index:
+            return
+        
+        how = self.df_settings.at[
+            f'how_rescale_intensities_{channelName}', 'value'
+        ]
+        self.imgGrad.setRescaleIntensitiesHow(how)
     
     def removeAxLimits(self):
         self.ax1.vb.state['limits']['xLimits'] = [-1E307, +1E307]
@@ -24652,7 +24669,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.zProjOverlay_CB.show()
             self.zSliceOverlay_SB.valueChanged.connect(self.updateOverlayZslice)
             self.zProjOverlay_CB.currentTextChanged.connect(self.updateOverlayZproj)
-            self.zProjOverlay_CB.setCurrentIndex(4)
             self.zProjOverlay_CB.activated.connect(self.clearComboBoxFocus)
         else:
             self.zSliceOverlay_SB.setDisabled(True)
@@ -30226,6 +30242,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         lutItem.sigRescaleIntes.connect(
             partial(self.rescaleIntensitiesLut, imageItem=imageItem)
         )
+        if f'how_rescale_intensities_{channelName}' in self.df_settings.index:
+            how = self.df_settings.at[
+                f'how_rescale_intensities_{channelName}', 'value'
+            ]
+            lutItem.setRescaleIntensitiesHow(how)
         
         self.rescaleIntensChannelHowMapper[channelName] = (
             'Rescale each 2D image'
