@@ -999,6 +999,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         if posData.fluo_data_dict:
             return 
         
+        # Load fluorescence channels data since not loaded in GUI
         posData.loadedChNames = []
         for c, channel in enumerate(channel_names):
             if channel in self.chNamesToSkip:
@@ -1009,7 +1010,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 filename = posData.filename
                 bkgrData = posData.bkgrData
             else:
-                # Delay loading image data
                 filepath = load.get_filename_from_channel(
                     posData.images_path, channel
                 )
@@ -1417,6 +1417,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         # Iteare fluo channels and get 2D data from 3D if needed
         filenames = posData.fluo_data_dict.keys()
         for chName, filename in zip(posData.loadedChNames, filenames):
+            if chName in self.chNamesToSkip:
+                continue 
+            
             idx = (filename, frame_i)
             try:
                 if posData.segmInfo_df.at[idx, 'resegmented_in_gui']:
