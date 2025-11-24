@@ -1,12 +1,13 @@
 Scientific publications where Cell-ACDC was used
 ================================================
 
-In the following publications authors used Cell-ACDC to analyse microscopy data:
+In the following publications, authors used Cell-ACDC to analyse microscopy data and obtain **biological insights**:
 
 .. raw:: html
 
     <ol>
-      <li>Geetha, S. S., et al. <i>Bloom helicase contributes to successful crossover formation with both catalytic and structural roles in Caenorhabditis elegans meiosis</i>. <b> Nucleic Acids Res.</b> (2025) DOI: <a href="https://doi.org/10.1093/nar/gkaf1030">10.1093/nar/gkaf1030</a>.</li><br>
+      <li>Akanksha, A., et al. <i>Microfluidic analysis of salt-stress-mediated antibiotic tolerance in Mycobacterium smegmatis</i>. <b>Lab on a Chip</b> (2025) DOI: <a href="https://doi.org/10.1039/D5LC00713E>10.1039/D5LC00713E"</a>.</li><br>
+      <li>Saydee-Onwubiko, U. N., et al. <i>Apoptosis promotes fertility in C. elegans by maintaining functional germline morphology</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.22.683972">10.1101/2025.10.22.683972</a>.</li><br>
       <li>Proulx-Giraldeau, F. , et al. <i>Division Asymmetry Drives Cell Size Variability in Budding Yeast</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.22.683920">10.1101/2025.10.22.683920</a>.</li><br>
       <li>Kukhtevich, I. , et al. <i>The origin of septin ring size control in budding yeast</i>. <b>The EMBO Journal</b> (2025) DOI: <a href="https://doi.org/10.1038/s44318-025-00571-5">10.1038/s44318-025-00571-5</a>.</li><br>
       <li>Conti, M. M. , et al. <i>Dynamic phosphorylation of Hcm1 promotes fitness in chronic stress</i>. <b>PLOS Genetics</b> (2025) DOI: <a href="https://doi.org/10.1371/journal.pgen.1011874">10.1371/journal.pgen.1011874</a>.</li><br>

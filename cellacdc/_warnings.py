@@ -13,7 +13,7 @@ def warnTooManyItems(mainWin, numItems, qparent):
     mainWin.logger.info(
         '[WARNING]: asking user what to do with too many graphical items...'
     )
-    msg = widgets.myMessageBox()
+    msg = widgets.myMessageBox(wrapText=False)
     txt = html_utils.paragraph(f"""
         You loaded a segmentation mask that has <b>{numItems} objects</b>.<br><br>
         Creating <b>high resolution</b> text annotations 
@@ -317,3 +317,38 @@ def warnRestartAcdcIconsUpdated(qparent=None):
     html_txt = html_utils.paragraph(txt.replace('\n', '<br>'))
     msg = widgets.myMessageBox(wrapText=False)
     msg.information(qparent, 'GUI icons updated', txt)
+
+def warnMissingCca(missing_cca_items, qparent=None):
+    from cellacdc import widgets, printl
+    mainText = html_utils.paragraph(f"""
+        Some objects have <b>missing cell cycle annotations</b>!<br><br>
+        Please, fix them before saving again, thanks!<br><br>
+        See <b>below</b> the list of object IDs without annotations.
+    """)
+    
+    details_txt_list = []
+    for cca_df, posData, frame_i in missing_cca_items:
+        txt = (
+            f'<b>{posData.pos_foldername}</b>:<br><br>'
+        )
+        indent = '&nbsp;&nbsp;'
+        if frame_i is not None:
+            txt = (f'{txt}'
+                f'  - Frame n. {frame_i+1}</b>:<br>'
+            )
+            indent = '&nbsp;&nbsp;&nbsp;&nbsp;'
+        missing_IDs = cca_df[cca_df.isnull().any(axis=1)].index.to_list()
+        for missing_ID in missing_IDs:
+            txt = (f'{txt}'
+                f'{indent}* ID: {missing_ID}<br>'
+            )
+        
+        details_txt_list.append(txt)
+    
+    detailsText = '<br>'.join(details_txt_list)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Missing cell cycle annotations', mainText, 
+        detailsText
+    )
+    return msg.cancel

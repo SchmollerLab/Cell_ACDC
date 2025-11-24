@@ -130,7 +130,7 @@ Please select the appropriate option. Afterwards, you are prompted to **create a
     :height: 16px
     :width: 16px
 
-A window with the extracted metadata should appear, which may **take a few seconds to load**. Make sure to **double check** all values and **change "Order of Dimensions"** to the appropriate value. To double **check if the dimensions are in the correct order**, select the eye icon (|eyeplusicon|) next to "Channel 0" and use the scrollbars to go through the z-coordinate and time-coordinate. Once all values are in order, press "Ok". If the values are the same for all positions, feel free to click "Use the above metadata for all the next positions".
+A window with the extracted metadata should appear, which may **take a few seconds to load**. To visualise **few frames of a specific channel**, select the eye icon (|eyeplusicon|) next to the respective channel and use the scrollbars to go through the z-coordinate and time-coordinate. Once all values are in order, press "Ok". If the values are the same for all positions, feel free to click "Use the above metadata for all the next positions".
 
 .. note:: 
     that if you have several files, and you press "Ok" and not one of the two other options, the process will stop after each file, and you need to confirm the metadata again.

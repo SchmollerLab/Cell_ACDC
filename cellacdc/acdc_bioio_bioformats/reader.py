@@ -109,7 +109,14 @@ class Channel:
 class Node:
     def __init__(self, image_filepath, bioimage_class):
         _, ext = os.path.splitext(image_filepath)
-        self._node = {}
+        try:
+            self._node = {
+                'TimeIncrement': bioimage_class.time_interval.total_seconds(),
+                'TimeIncrementUnit': 's'
+            }
+        except Exception as err:
+            self._node = {}
+            
         if ext not in EXTENSION_METADATA_ATTR_MAPPER:
             return
         
@@ -125,7 +132,7 @@ class Node:
         if value is None:
             raise ValueError(f"Node '{name}' not found in metadata.")
         
-        return self._node[name]
+        return value
 
 class Pixels:    
     def Channel(self, c: int):

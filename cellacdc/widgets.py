@@ -1,5 +1,5 @@
 from collections import defaultdict, deque
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Iterable
 import os
 import sys
 import operator
@@ -4033,11 +4033,19 @@ class SpinBox(QSpinBox):
     sigUpClicked = Signal()
     sigDownClicked = Signal()
 
-    def __init__(self, parent=None, disableKeyPress=False):
+    def __init__(
+            self, 
+            parent=None, 
+            disableKeyPress=False,
+            allowNegative=True
+        ):
         super().__init__(parent=parent)
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
-        self.setMinimum(-2**31)
+        if allowNegative:
+            self.setMinimum(-2**31)
+        else:
+            self.setMinimum(0)
         self._valueChangedFunction = None
         self.disableKeyPress = disableKeyPress
         self._linkedWidget = None
@@ -4324,7 +4332,6 @@ class CheckboxesGroupBox(QGroupBox):
         for checkBox in self.checkBoxes:
             checkBox.setChecked(checked)
             
-
 class _metricsQGBox(QGroupBox):
     sigDelClicked = Signal(str, object)
 
@@ -4422,13 +4429,21 @@ class _metricsQGBox(QGroupBox):
                 'ending with `_zsliceN` where N is the z-slice number\n'
                 '(starting from 0).'
             )
-            calcForEachZsliceLabel = QLabel('Calculate for each z-slice')
+            calcForEachZsliceLabel = QClickableLabel(
+                'Calculate for each z-slice'
+            )
             calcForEachZsliceLabel.setToolTip(tooltip)
             self.calcForEachZsliceToggle.setToolTip(tooltip)
             buttonsLayout.addWidget(self.calcForEachZsliceToggle)
             buttonsLayout.addWidget(calcForEachZsliceLabel)
             buttonsLayout.addStretch(1) 
             layout.addLayout(buttonsLayout)
+            calcForEachZsliceLabel.clicked.connect(
+                partial(
+                    self.toggleCalcForEachZslice, 
+                    toggle=self.calcForEachZsliceToggle
+                )
+            )
 
         self.setTitle(title)
         self.setCheckable(True)
@@ -4438,6 +4453,12 @@ class _metricsQGBox(QGroupBox):
         self.setFont(_font)
 
         self.toggled.connect(self.toggled_cb)
+    
+    def toggleCalcForEachZslice(self, label, toggle=None):
+        if toggle is None:
+            toggle = self.calcForEachZsliceToggle
+        
+        toggle.setChecked(not toggle.isChecked())
     
     def isCalcForEachZsliceRequested(self):
         if self.calcForEachZsliceToggle is None:
@@ -4597,17 +4618,32 @@ class channelMetricsQGBox(QGroupBox):
                 'ending with `_zsliceN` where N is the z-slice number\n'
                 '(starting from 0).'
             )
-            calcForEachZsliceLabel = QLabel('Calculate for each z-slice')
+            calcForEachZsliceLabel = QClickableLabel(
+                'Calculate for each z-slice'
+            )
             calcForEachZsliceLabel.setToolTip(tooltip)
             self.calcForEachZsliceToggle.setToolTip(tooltip)
             buttonsLayout.addWidget(self.calcForEachZsliceToggle)
             buttonsLayout.addWidget(calcForEachZsliceLabel)   
             buttonsLayout.addStretch(1) 
             layout.addLayout(buttonsLayout)
+            calcForEachZsliceLabel.clicked.connect(
+                partial(
+                    self.toggleCalcForEachZslice, 
+                    toggle=self.calcForEachZsliceToggle
+                )
+            )
+                
         
         self.setTitle(f'{chName} metrics')
         self.setCheckable(True)
         self.setLayout(layout)
+    
+    def toggleCalcForEachZslice(self, label, toggle=None):
+        if toggle is None:
+            toggle = self.calcForEachZsliceToggle
+        
+        toggle.setChecked(not toggle.isChecked())
     
     def isCalcForEachZsliceRequested(self):
         if self.calcForEachZsliceToggle is None:
@@ -5449,6 +5485,12 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
     def tickColorAccepted(self):
         self.gradient.currentColorAccepted()
         # self.sigTickColorAccepted.emit(self.gradient.colorDialog.color().getRgb())
+    
+    def setRescaleIntensitiesHow(self, how):
+        for action in self.rescaleActionGroup.actions():
+            if action.text() == how:
+                action.setChecked(True)
+                return
 
 class ROI(pg.ROI):
     def __init__(
@@ -6929,6 +6971,11 @@ class BaseImageItem(pg.ImageItem):
                 img_data = (img_data,)
             
             for frame_i, image in enumerate(img_data):
+                if image.ndim == 3:
+                    self._updateMinMaxValuesProjections(
+                        image, pos_i, frame_i, self.minMaxValuesMapper
+                    )
+                    
                 if image.ndim == 2:
                     image = (image,)
                 
@@ -6952,6 +6999,32 @@ class BaseImageItem(pg.ImageItem):
         key = (pos_i, frame_i, z_slice)
         self.minMaxValuesMapperEqualized[key] = (np.nanmin(img), np.nanmax(img)) 
     
+    def updateMinMaxValuesEqualizedDataProjections(
+            self, 
+            data: List['load.loadData'], 
+            pos_i: int, 
+            frame_i: int, 
+        ):    
+        posData = data[pos_i]
+        eq_zstack = posData.equalized_img_data[frame_i]
+        
+        self._updateMinMaxValuesProjections(
+            eq_zstack, pos_i, frame_i, self.minMaxValuesMapperEqualized
+        )
+    
+    def _updateMinMaxValuesProjections(self, zstack, pos_i, frame_i, mapper):
+        max_proj = zstack.max(axis=0)
+        key = (pos_i, frame_i, 'max z-projection')
+        mapper[key] = np.nanmin(max_proj), np.nanmax(max_proj)
+        
+        mean_proj = zstack.mean(axis=0)
+        key = (pos_i, frame_i, 'mean z-projection')
+        mapper[key] = np.nanmin(mean_proj), np.nanmax(mean_proj)
+        
+        median_proj = np.median(zstack, axis=0)
+        key = (pos_i, frame_i, 'median z-proj.')
+        mapper[key] = np.nanmin(median_proj), np.nanmax(median_proj)
+    
     def updateMinMaxValuesPreprocessedData(
             self, 
             data: List['load.loadData'], 
@@ -6967,6 +7040,19 @@ class BaseImageItem(pg.ImageItem):
         key = (pos_i, frame_i, z_slice)
         self.minMaxValuesMapperPreproc[key] = (np.nanmin(img), np.nanmax(img))
 
+    def updateMinMaxValuesPreprocessedProjections(
+            self, 
+            data: List['load.loadData'], 
+            pos_i: int, 
+            frame_i: int, 
+        ):    
+        posData = data[pos_i]
+        zstack = posData.preproc_img_data[frame_i]
+        
+        self._updateMinMaxValuesProjections(
+            zstack, pos_i, frame_i, self.minMaxValuesMapperPreproc
+        )
+    
     def updateMinMaxValuesCombinedData(
             self,
             data: List['load.loadData'],
@@ -6981,6 +7067,19 @@ class BaseImageItem(pg.ImageItem):
         img = posData.combine_img_data[frame_i][z_slice]
         key = (pos_i, frame_i, z_slice)
         self.minMaxValuesMapperCombined[key] = (np.nanmin(img), np.nanmax(img))
+    
+    def updateMinMaxValuesCombinedDataProjections(
+            self, 
+            data: List['load.loadData'], 
+            pos_i: int, 
+            frame_i: int, 
+        ):    
+        posData = data[pos_i]
+        zstack = posData.combine_img_data[frame_i]
+        
+        self._updateMinMaxValuesProjections(
+            zstack, pos_i, frame_i, self.minMaxValuesMapperCombined
+        )
     
     def setCurrentPosIndex(self, pos_i: int):
         self.pos_i = pos_i
@@ -7089,11 +7188,6 @@ class ParentImageItem(BaseImageItem):
                 return True
             
         return False
-    
-    # def setLevels(self, levels, **kargs):
-    #     if self.linkedImageItem is not None:
-    #         self.linkedImageItem.setLevels(levels)
-    #     return super().setLevels(levels, **kargs)
     
     def setEnableAutoLevels(self, enabled: bool):
         self.autoLevelsEnabled = enabled
@@ -7773,6 +7867,10 @@ class ImShowPlotItem(pg.PlotItem):
         self._selected = False
         self.selectingRects = []
     
+    def setSelectableTitle(self, title: QGraphicsProxyWidget, **kwargs):
+        self.layout.removeItem(self.titleLabel)
+        self.layout.addItem(title, 0, 1, alignment=Qt.AlignCenter)
+    
     def isSelected(self):
         return self._selected
     
@@ -7872,6 +7970,7 @@ class _ImShowImageItem(pg.ImageItem):
         super().__init__()
         self._idx = idx
         self._cursors = []
+        self._autoLevels = True
     
     def _getHoverImageValue(self, xdata, ydata):
         try:
@@ -7879,6 +7978,9 @@ class _ImShowImageItem(pg.ImageItem):
             return value
         except Exception as err:
             return
+    
+    def setAutoLevels(self, autoLevels):
+        self._autoLevels = autoLevels
     
     def mousePressEvent(self, event):
         self.sigMousePressEvent.emit(self, event)
@@ -7895,9 +7997,16 @@ class _ImShowImageItem(pg.ImageItem):
             cursor.setData([], [])
     
     def setImage(self, *args, **kwargs):
-        super().setImage(*args, **kwargs)                
+        if 'autoLevels' not in kwargs:
+            kwargs['autoLevels'] = self._autoLevels
+            
+        super().setImage(*args, **kwargs)             
         if not args:
             return
+        
+        if not kwargs['autoLevels']:
+            return
+        
         image = args[0]
         self._imageMax = image.max()
         self._imageMin = image.min()
@@ -7974,7 +8083,7 @@ class ImShow(QBaseWindow):
         scrollbar = self.sender()
         imageItem = scrollbar.imageItem
         img = self._get2Dimg(imageItem, scrollbar.image)
-        imageItem.setImage(img, autoLevels=self._autoLevels)
+        imageItem.setImage(img) # , autoLevels=self._autoLevels)
         
         overlayLab = self._get2DlabOverlay(imageItem)
         if overlayLab is not None:
@@ -8046,7 +8155,7 @@ class ImShow(QBaseWindow):
     def onMaxProjToggled(self, checked, scrollbar):
         imageItem = scrollbar.imageItem
         img = self._get2Dimg(imageItem, scrollbar.image)
-        imageItem.setImage(img, autoLevels=self._autoLevels)
+        imageItem.setImage(img) # , autoLevels=self._autoLevels)
         overlayLab = self._get2DlabOverlay(imageItem)
         if overlayLab is not None:
             imageItem.labImageItem.setImage(overlayLab, autoLevels=False)
@@ -8148,16 +8257,17 @@ class ImShow(QBaseWindow):
                     image = images[i]
                 except IndexError:
                     break
-                plot = ImShowPlotItem()
+                plotItem = ImShowPlotItem()
                 if hide_axes:
-                    plot.hideAxis('bottom')
-                    plot.hideAxis('left')
-                self.graphicLayout.addItem(plot, row=row, col=col)
-                self.PlotItems.append(plot)
+                    plotItem.hideAxis('bottom')
+                    plotItem.hideAxis('left')
+                self.graphicLayout.addItem(plotItem, row=row, col=col)
+                plotItem.loc = (row, col)
+                self.PlotItems.append(plotItem)
 
                 imageItem = _ImShowImageItem(i)
-                plot.addImageItem(imageItem)
-                imageItem.plot = plot
+                plotItem.addImageItem(imageItem)
+                imageItem.plot = plotItem
                 imageItem.sigHoverEvent.connect(
                     self.onImageItemHoverEvent
                 )
@@ -8197,11 +8307,11 @@ class ImShow(QBaseWindow):
         if not self._selectable_images:
             return
         
-        plot = imageItem.plot
-        if not plot.isSelected():
+        plotItem = imageItem.plot
+        if not plotItem.isSelected():
             return
         
-        self.selected_idx = self.PlotItems.index(plot)
+        self.selected_idx = self.PlotItems.index(plotItem)
         event.ignore()
         self.close()
     
@@ -8211,18 +8321,54 @@ class ImShow(QBaseWindow):
         
         modifiers = QGuiApplication.keyboardModifiers()
         isCtrl = modifiers == Qt.ControlModifier
-        plot = imageItem.plot
+        plotItem = imageItem.plot
         Y, X = imageItem.image.shape[:2]
-        plot.setSelected(
+        plotItem.setSelected(
             isCtrl and not event.isExit(), 
             xlim=(0, X), 
             ylim=(0, Y)
         )
+    
+    def movePlotItem(self, title):
+        combobox = self.sender()
+        plotItem = combobox.plotItem
+        row, col = plotItem.loc
         
-    def setupTitles(self, *titles):
-        color = 'k' if self._colorScheme == 'light' else 'w'
-        for plot, title in zip(self.PlotItems, titles):
-            plot.setTitle(title, color=color)
+        otherPlotItemIdx = combobox.titles.index(title)
+        otherPlotItem = self.PlotItems[otherPlotItemIdx]
+        other_row, other_col = otherPlotItem.loc
+        
+        self.graphicLayout.removeItem(plotItem)
+        self.graphicLayout.removeItem(otherPlotItem)
+        self.graphicLayout.addItem(otherPlotItem, row=row, col=col)
+        self.graphicLayout.addItem(plotItem, row=other_row, col=other_col)
+        
+        combobox.blockSignals(True)
+        combobox.setCurrentText(combobox.default_text)
+        combobox.blockSignals(False)
+        
+        plotItemIdx = combobox.titles.index(combobox.default_text)
+        
+        otherPlotItem.loc = (row, col)
+        plotItem.loc = (other_row, other_col)
+    
+    def setupTitles(self, *titles):        
+        for plotItem, title in zip(self.PlotItems, titles):
+            combobox = ComboBox()
+            combobox.default_text = title
+            combobox.titles = list(titles)
+            combobox.addItems(titles)
+            combobox.setMaximumWidth(combobox.sizeHint().width())
+            combobox.setCurrentText(title)
+            comboboxGraphicsItem = QGraphicsProxyWidget()
+            comboboxGraphicsItem.setWidget(combobox)
+            combobox.plotItem = plotItem
+            plotItem.setSelectableTitle(comboboxGraphicsItem)
+            combobox.currentTextChanged.connect(self.movePlotItem)
+        
+        # color = 'k' if self._colorScheme == 'light' else 'w'
+        # for plotItem, title in zip(self.PlotItems, titles):
+        #     plotItem.setSelectableTitle(title, color=color)
     
     def updateStatusBarLabel(self, text):
         self.wcLabel.setText(text)
@@ -8239,6 +8385,8 @@ class ImShow(QBaseWindow):
             autoLevels=True, 
             autoLevelsOnScroll=False
         ):
+        from .plot import matplotlib_cmap_to_lut
+        
         images = [np.squeeze(img) for img in images]
         self.luts = luts
         self._autoLevels = autoLevels
@@ -8276,11 +8424,17 @@ class ImShow(QBaseWindow):
         
         for i, (image, imageItem) in enumerate(zip(images, self.ImageItems)):
             if luts is not None:
-                imageItem.setLookupTable(luts[i])
-                if not autoLevels:
-                    imageItem.setLevels([0, len(luts[i])])
+                _autoLevels = autoLevels
+                lut = luts[i]
+                if not autoLevels and lut is not None:
+                    imageItem.setLevels([0, len(lut)])
+                else:
+                    _autoLevels = True
+                if lut is None:
+                    lut = matplotlib_cmap_to_lut('viridis')
+                imageItem.setLookupTable(lut)
             else:
-                self._autoLevels = True
+                _autoLevels = True
             
             is_rgb = image.shape[-1] == 3 and self._infer_rgb
             is_rgba = image.shape[-1] == 4 and self._infer_rgb
@@ -8290,14 +8444,15 @@ class ImShow(QBaseWindow):
             )
             
             if does_not_require_scrollbars:
-                imageItem.setImage(image, autoLevels=self._autoLevels)
+                imageItem.setAutoLevels(_autoLevels)
+                imageItem.setImage(image)
             else:
-                if not self._autoLevelsOnScroll:
-                    self._autoLevels = False
+                if not self._autoLevelsOnScroll and not _autoLevels:
+                    imageItem.setAutoLevels(False)
                     imageItem.setLevels([image.min(), image.max()])
                 for scrollbar in imageItem.ScrollBars:
                     scrollbar.setValue(int(scrollbar.maximum()/2))
-
+            
             imageItem.sigDataHover.connect(self.updateStatusBarLabel)
             
             if labels_overlays is None:

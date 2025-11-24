@@ -419,6 +419,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
 
     def computeVolumeRegionprop(self, end_frame_i, posData):
         if 'cell_vol_vox' not in self.worker.kernel.sizeMetricsToSave:
+            self.worker.waitCond.wakeAll()
             return
 
         # We compute the cell volume in the main thread because calling
@@ -463,10 +464,10 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             txt = 'Measurements set up completed.'
             self.logger.info(txt)
         elif worker.abort:
-            txt = 'Computing measurements ABORTED.'
+            txt = 'Computing measurements cancelled.'
             self.logger.info(txt)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-            msg.warning(self, 'Process aborted', html_utils.paragraph(txt))
+            msg.warning(self, 'Process cancelled', html_utils.paragraph(txt))
         
         else:
             txt = 'Computing measurements completed.'

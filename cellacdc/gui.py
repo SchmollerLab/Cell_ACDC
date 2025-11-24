@@ -52,10 +52,8 @@ from qtpy.QtGui import (
 from qtpy.QtWidgets import (
     QAction, QLabel, QPushButton, QHBoxLayout, QSizePolicy,
     QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
-    QScrollBar, QCheckBox, QToolButton, QSpinBox,
-    QComboBox, QButtonGroup, QActionGroup, QFileDialog,
-    QAbstractSlider, QMessageBox, QWidget, QGridLayout, QDockWidget,
-    QGraphicsProxyWidget, QVBoxLayout, QRadioButton, 
+    QScrollBar, QCheckBox, QToolButton, QSpinBox, QButtonGroup, QActionGroup, QFileDialog, QAbstractSlider, QMessageBox, QWidget, QGridLayout, 
+    QDockWidget, QGraphicsProxyWidget, QVBoxLayout, QRadioButton, 
     QSpacerItem, QScrollArea, QFormLayout, QGraphicsSceneMouseEvent 
 )
 
@@ -1610,6 +1608,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.img1.updateMinMaxValuesPreprocessedData(
                     self.data, self.pos_i, posData.frame_i, z_slice
                 )
+                self.img1.updateMinMaxValuesPreprocessedProjections(
+                    self.data, self.pos_i, posData.frame_i
+                )
         elif how == 'all_frames':
             for frame_i, processed_frame in enumerate(processed_data):
                 if processed_frame.ndim == 2:
@@ -1622,8 +1623,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     self.img1.updateMinMaxValuesPreprocessedData(
                         self.data, self.pos_i, frame_i, z_slice
                     )
+                self.img1.updateMinMaxValuesPreprocessedProjections(
+                    self.data, self.pos_i, frame_i
+                )
         elif how == 'all_pos':
-            for pos_i, processed_pos_data in enumerate(processed_data):
+            for pos_i, processed_pos_data in enumerate(processed_data):                    
                 if processed_pos_data.ndim == 2:
                     processed_pos_data = (processed_pos_data,)
 
@@ -1636,6 +1640,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     )
                     self.img1.updateMinMaxValuesPreprocessedData(
                         self.data, pos_i, 0, z_slice
+                    )
+                
+                if posData.SizeZ > 1:
+                    self.img1.updateMinMaxValuesPreprocessedProjections(
+                        self.data, pos_i, frame_i
                     )
             
         if not self.viewPreprocDataToggle.isChecked():
@@ -1679,6 +1688,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     self.img1.updateMinMaxValuesCombinedData(
                         self.data, pos_i, frame_i, z_slice
                     )
+                self.img1.updateMinMaxValuesCombinedDataProjections(
+                    self.data, pos_i, frame_i
+                )
             elif n_dim_img == 3:
                 for key, processed_data in per_pos_data[pos_i]:
                     pos_i, frame_i, z_slice = key
@@ -1690,7 +1702,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 raise ValueError('Invalid number of dimensions in img_data.')
         
         posData = self.data[self.pos_i]
-        curr_pos_i, curr_frame_i, curr_z_slice = self.pos_i,self.data[self.pos_i].frame_i, self.z_slice_index()
+        curr_pos_i, curr_frame_i, curr_z_slice = (
+            self.pos_i,self.data[self.pos_i].frame_i, self.z_slice_index()
+        )
         current_combine_img = posData.combine_img_data[curr_frame_i]
         self.img1.updateMinMaxValuesCombinedData(
             self.data, curr_pos_i, curr_frame_i, curr_z_slice
@@ -1738,6 +1752,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     self.img1.updateMinMaxValuesCombinedData(
                             self.data, pos_i, frame_i, z_slice
                         )
+                self.img1.updateMinMaxValuesCombinedDataProjections(
+                    self.data, pos_i, frame_i
+                )
             else:
                 for key, processed_data in per_pos_data[pos_i]:
                     pos_i, frame_i, z_slice = key
@@ -1944,7 +1961,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.autoIDcheckboxAction = brushEraserToolBar.addWidget(self.autoIDcheckbox)
         self.autoIDcheckboxAction.setVisible(False)
 
-        self.brushSizeSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.brushSizeSpinbox = widgets.SpinBox(
+            disableKeyPress=True,
+            allowNegative=False
+        )
         self.brushSizeSpinbox.setValue(4)
         brushSizeLabel = QLabel('   Size: ')
         brushSizeLabel.setBuddy(self.brushSizeSpinbox)
@@ -3048,6 +3068,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         how = action.text()
         
+        self.df_settings.at[f'how_rescale_intensities_{channel}', 'value'] = how
+        self.df_settings.to_csv(self.settings_csv_path)
+        
         if how == 'Rescale each 2D image':
             if how == self.rescaleIntensChannelHowMapper[channel]:
                 # No need to update since we have autoscale
@@ -3587,7 +3610,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             'Draw only overlay segm. masks',
             'Draw nothing'
         ]
-        self.drawIDsContComboBox = QComboBox()
+        self.drawIDsContComboBox = widgets.ComboBox()
         self.drawIDsContComboBox.setFont(_font)
         self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
         self.drawIDsContComboBox.setVisible(False)
@@ -3710,7 +3733,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # z-slice scrollbars
         self.zSliceScrollBar = widgets.linkedQScrollbar(Qt.Horizontal)
 
-        self.zProjComboBox = QComboBox()
+        self.zProjComboBox = widgets.ComboBox()
         self.zProjComboBox.setFont(_font)
         self.zProjComboBox.addItems([
             'single z-slice',
@@ -3736,12 +3759,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         _z_label.setDisabled(True)
         self.overlay_z_label = _z_label
 
-        self.zProjOverlay_CB = QComboBox()
+        self.zProjOverlay_CB = widgets.ComboBox()
         self.zProjOverlay_CB.setFont(_font)
         self.zProjOverlay_CB.addItems([
             'single z-slice', 'max z-projection', 'mean z-projection',
             'median z-proj.', 'same as above'
         ])
+        self.zProjOverlay_CB.setCurrentIndex(4)
         self.zSliceOverlay_SB.setDisabled(True)
 
         self.img1BottomGroupbox = self.gui_getImg1BottomWidgets()
@@ -3839,7 +3863,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.rightBottomGroupbox.setChecked(False)
         self.rightBottomGroupbox.hide()
 
-        self.annotateRightHowCombobox = QComboBox()
+        self.annotateRightHowCombobox = widgets.ComboBox()
         self.annotateRightHowCombobox.setFont(_font)
         self.annotateRightHowCombobox.addItems(self.drawIDsContComboBoxSegmItems)
         self.annotateRightHowCombobox.setCurrentIndex(
@@ -4836,7 +4860,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                         'You can enter multiple IDs separated by comma',
                     parent=self, allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
-                    allowList=True
+                    allowList=True,
+                    isInteger=True
                 )
                 delID_prompt.exec_()
                 if delID_prompt.cancel:
@@ -4905,7 +4930,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter here ID that you want to split',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 sepID_prompt.exec_()
                 if sepID_prompt.cancel:
@@ -4998,7 +5024,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                          'Enter here the ID that you want to '
                          'fill the holes of',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 clickedBkgrID.exec_()
                 if clickedBkgrID.cancel:
@@ -5036,7 +5063,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                          'Enter here the ID that you want to '
                          'replace with Hull contour',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -5082,7 +5110,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                          'Enter here the ID that you want to '
                          'fill the holes of',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 clickedBkgrID.exec_()
                 if clickedBkgrID.cancel:
@@ -5104,7 +5133,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter here first ID that you want to merge',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -5136,7 +5166,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                         'Enter here ID that you want to replace with a new one',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 editID_prompt.show(block=True)
 
@@ -5188,7 +5219,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                         'Enter ID that you want to keep',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 keepID_win.exec_()
                 if keepID_win.cancel:
@@ -5219,7 +5251,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to remove from the analysis',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 binID_prompt.exec_()
                 if binID_prompt.cancel:
@@ -5299,7 +5332,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as dead',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 ripID_prompt.exec_()
                 if ripID_prompt.cancel:
@@ -6565,7 +6599,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                          'Enter ID that you want to merge with ID '
                          f'{self.firstID}',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -6808,7 +6843,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as mother cell',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 mothID_prompt.exec_()
                 if mothID_prompt.cancel:
@@ -7518,7 +7554,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                         'Enter ID that you want to keep',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 keepID_win.exec_()
                 if keepID_win.cancel:
@@ -7549,7 +7586,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                         'Enter ID that you want to select',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 keepID_win.exec_()
                 if keepID_win.cancel:
@@ -7786,7 +7824,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as divided',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 divID_prompt.exec_()
                 if divID_prompt.cancel:
@@ -7828,7 +7867,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter ID of a bud you want to correct mother assignment',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 budID_prompt.exec_()
                 if budID_prompt.cancel:
@@ -7876,7 +7916,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                          'Enter ID that you want to annotate as '
                          '"history UNKNOWN/KNOWN"',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 unknownID_prompt.exec_()
                 if unknownID_prompt.cancel:
@@ -7904,7 +7945,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as divided',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    isInteger=True
                 )
                 clickedBkgrDialog.exec_()
                 if clickedBkgrDialog.cancel:
@@ -8591,12 +8633,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             title='Search object by ID',
             msg='Enter object ID to find and highlight',
             parent=self,
+            isInteger=True
         )
         searchIDdialog.exec_()
         if searchIDdialog.cancel:
             return
 
         searchedID = searchIDdialog.EntryID
+        
         if searchedID in posData.IDs:
             self.goToObjectID(searchedID)
             return
@@ -9337,7 +9381,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             clickedBkgrID = apps.QLineEditDialog(
                 title='Clicked on background',
                 msg=msg, parent=self, allowedValues=posData.IDs,
-                defaultTxt=str(nearest_ID)
+                defaultTxt=str(nearest_ID),
+                isInteger=True
             )
             clickedBkgrID.exec_()
             if clickedBkgrID.cancel:
@@ -11544,7 +11589,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     # @exec_time
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
-        if not hasattr(self, 'delRoiLab'):
+        if self.delRoiLab is None:
             self.initDelRoiLab()
             
         self.delRoiLab[:] = self.get_2Dlab(posData.lab, force_z=False)
@@ -12856,6 +12901,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                         'Enter the ID that you want to lock.',
                     parent=self, 
                     allowedValues=posData.IDs,
+                    isInteger=True
                 )
                 win.exec_()
                 if win.cancel:
@@ -13214,15 +13260,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         mask = self.freeRoiItem.mask()
         
         regionLab = posData.lab[(...,) + regionSlice].copy()
-        regionLab[..., ~mask] = 0
         
         clearBorders = (
             self.drawClearRegionToolbar
-            .clearOnlyEnclosedObjsRadioButton
-            .isChecked()
+            .clearOnlyEnclosedObjsRadioButton.isChecked()
         )
         if clearBorders:
-            regionLab = skimage.segmentation.clear_border(regionLab)
+            if regionLab.ndim == 2:
+                regionLab = transformation.clear_objects_not_in_mask(
+                    regionLab, mask
+                )
+                regionRp = skimage.measure.regionprops(regionLab)
+                for obj in regionRp:
+                    if np.all(mask[obj.slice][obj.image]):
+                        continue
+                    
+                    regionLab[obj.slice][obj.image] = 0
+            else:
+                for z, regionLab_z in enumerate(regionLab):
+                    regionLab[z] = transformation.clear_objects_not_in_mask(
+                        regionLab_z, mask
+                    )
+        else:
+            regionLab[..., ~mask] = 0
         
         regionRp = skimage.measure.regionprops(regionLab)
         clearIDs = [obj.label for obj in regionRp]
@@ -13438,8 +13498,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     rp = posData.allData_li[frame_i]['regionprops']
                 posData.allIDs.update([obj.label for obj in rp])
     
-    def countObjects(self):
-        self.logger.info('Counting objects...')
+    def countObjectsTimelapse(self):
         if self.countObjsWindow is None:
             activeCategories = {
                 'In current frame', 
@@ -13523,6 +13582,79 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             categoryCountMapper[category] = allCategoryCountMapper[category]
             
         return categoryCountMapper
+        
+
+    def countObjectsSnapshots(self):
+        posData = self.data[self.pos_i]
+        if self.countObjsWindow is None:
+            activeCategories = {
+                'In current position', 
+                'In all visited positions (current session)',
+                'In all visited positions (previous sessions)',
+                'In all loaded positions', 
+            }
+            if self.isSegm3D:
+                activeCategories.add('In current z-slice')
+        else:
+            activeCategories = self.countObjsWindow.activeCategories()
+
+        numObjectsCurrentPos = len(posData.IDs)
+        numObjectsAllPos = 0
+        numObjectsVisitedPosPrevious = 0
+        numObjectsVisitedPosCurrent = 0
+        numObjectsCurrentZslice = None
+        if 'In current z-slice' in activeCategories:
+            numObjectsCurrentZslice = len(
+                skimage.measure.regionprops(self.currentLab2D)
+            )
+        
+        for pos_i, _posData in enumerate(self.data):
+            IDs = _posData.allData_li[0]['IDs']
+            if os.path.exists(_posData.acdc_output_csv_path):
+                numObjectsVisitedPosPrevious += len(IDs)
+            if IDs:
+                numObjs = len(IDs)
+                numObjectsAllPos += len(IDs)
+            else:
+                lab = _posData.segm_data[0]
+                rp = skimage.measure.regionprops(lab)
+                numObjs = len(rp)
+                numObjectsAllPos += numObjs
+                
+            if _posData.visited:
+                numObjectsVisitedPosCurrent += numObjs
+        
+        allCategoryCountMapper = {
+            'In current position': numObjectsCurrentPos, 
+            'In all visited positions (current session)': 
+                numObjectsVisitedPosCurrent,
+            'In all visited positions (previous sessions)': 
+                numObjectsVisitedPosPrevious,
+            'In all loaded positions': numObjectsAllPos, 
+        }
+        if numObjectsCurrentZslice is not None:
+            allCategoryCountMapper['In current z-slice'] = (
+                numObjectsCurrentZslice
+            )
+            
+        if self.countObjsWindow is None:
+            return allCategoryCountMapper 
+        
+        categoryCountMapper = {}
+        for category in activeCategories:
+            categoryCountMapper[category] = allCategoryCountMapper[category]
+            
+        return categoryCountMapper
+        
+    def countObjects(self):
+        self.logger.info('Counting objects...')
+        
+        posData = self.data[self.pos_i]
+        if posData.SizeT > 1:
+            return self.countObjectsTimelapse()
+        
+        return self.countObjectsSnapshots()
+        
     
     def updateObjectCounts(self):
         if self.countObjsWindow is None:
@@ -13740,8 +13872,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             c = self.defaultToolBarButtonColor
             self.eraserButton.setStyleSheet(f'background-color: {c}')
             self.connectLeftClickButtons()
-            self.enableSizeSpinbox(True)
-            self.showEditIDwidgets(True)
             self.setFocusGraphics()
         else:
             self.ax1_lostObjScatterItem.setVisible(True)
@@ -13752,9 +13882,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
-            self.enableSizeSpinbox(False)
-            self.showEditIDwidgets(False)
             self.resetCursors()
+        
+        self.showEditIDwidgets(checked)
+        self.enableSizeSpinbox(checked)
     
     def showEditIDwidgets(self, visible):
         self.editIDLabelAction.setVisible(visible)
@@ -13901,6 +14032,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                         self.img1.updateMinMaxValuesEqualizedData(
                             self.data, pos_i, frame_i, z
                         )
+                    self.img1.updateMinMaxValuesEqualizedDataProjections(
+                        self.data, pos_i, frame_i
+                    )
                 else:
                     eq_img = skimage.exposure.equalize_adapthist(img_frame)
                     _posData.equalized_img_data[frame_i] = eq_img
@@ -14015,15 +14149,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             c = self.defaultToolBarButtonColor
             self.brushButton.setStyleSheet(f'background-color: {c}')
             self.connectLeftClickButtons()
-            self.enableSizeSpinbox(True)
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
                          self.ax1_EraserX, self.ax2_EraserX)
             )
-            self.enableSizeSpinbox(False)
             self.resetCursors()
             self.updateAllImages()
+            
+        self.showEditIDwidgets(checked)
+        self.enableSizeSpinbox(checked)
     
     def storeCurrentAnnotOptions_ax1(self, return_value=False):
         if self.annotOptionsToRestore is not None:
@@ -14321,7 +14456,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            self.instructHowDeleteID()
+            posData = self.data[self.pos_i]
+            printl(posData.cca_df)
+            printl(posData.allData_li[posData.frame_i]['acdc_df'][cca_df_colnames])
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -19324,9 +19461,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.isDataLoaded = True
         self.isDataLoading = False
         
+        self.initImgGradRescaleIntensitiesHowPreference()
+        
         self.rescaleIntensitiesLut(setImage=False)
         
         self.gui_createAutoSaveWorker()
+    
+    def initImgGradRescaleIntensitiesHowPreference(self):
+        posData = self.data[self.pos_i]
+        channelName = posData.user_ch_name
+        if f'how_rescale_intensities_{channelName}' not in self.df_settings.index:
+            return
+        
+        how = self.df_settings.at[
+            f'how_rescale_intensities_{channelName}', 'value'
+        ]
+        self.imgGrad.setRescaleIntensitiesHow(how)
     
     def removeAxLimits(self):
         self.ax1.vb.state['limits']['xLimits'] = [-1E307, +1E307]
@@ -19893,6 +20043,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             computeContours=False,
             updateLookuptable=True
         )
+        if self.isSegm3D:
+            self.updateObjectCounts()
 
     def updateOverlayZslice(self, z):
         self.setOverlayImages()
@@ -24517,7 +24669,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.zProjOverlay_CB.show()
             self.zSliceOverlay_SB.valueChanged.connect(self.updateOverlayZslice)
             self.zProjOverlay_CB.currentTextChanged.connect(self.updateOverlayZproj)
-            self.zProjOverlay_CB.setCurrentIndex(4)
             self.zProjOverlay_CB.activated.connect(self.clearComboBoxFocus)
         else:
             self.zSliceOverlay_SB.setDisabled(True)
@@ -24669,11 +24820,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.overlay_z_label.setText(f'Overlay z-slice  {z+1:02}/{posData.SizeZ}')
                 ol_img = img[z].copy()
             elif zProjHow == 'max z-projection':
-                ol_img = img.max(axis=0).copy()
+                ol_img = img.max(axis=0)
             elif zProjHow == 'mean z-projection':
-                ol_img = img.mean(axis=0).copy()
+                ol_img = img.mean(axis=0)
             elif zProjHow == 'median z-proj.':
-                ol_img = np.median(img, axis=0).copy()
+                ol_img = np.median(img, axis=0)
         else:
             ol_img = img.copy()
 
@@ -26711,7 +26862,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.img1.setCurrentPosIndex(self.pos_i)
         self.img1.setCurrentFrameIndex(posData.frame_i)
         if posData.SizeZ > 1:
-            z = self.zSliceScrollBar.sliderPosition()
+            zProjHow = self.zProjComboBox.currentText()
+            if zProjHow == 'single z-slice':
+                z = self.zSliceScrollBar.sliderPosition()
+            else:
+                z = zProjHow
+            
             self.img1.setCurrentZsliceIndex(z)
 
         self.img1.setImage(
@@ -27364,6 +27520,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.highlightSearchedID(self.highlightedID, force=True) 
         self.updateTimestampFrame()   
+        
+        posData.visited = True
 
     def updateTimestampFrame(self):
         if not hasattr(self, 'timestamp'):
@@ -28850,6 +29008,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.retainSizeLutItems = False
         self.setMeasWinState = None
         self.addPointsWin = None
+        self.delRoiLab = None
         self.showPropsDockButton.setDisabled(True)
         self.removeOverlayItems()
         self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)
@@ -30083,6 +30242,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         lutItem.sigRescaleIntes.connect(
             partial(self.rescaleIntensitiesLut, imageItem=imageItem)
         )
+        if f'how_rescale_intensities_{channelName}' in self.df_settings.index:
+            how = self.df_settings.at[
+                f'how_rescale_intensities_{channelName}', 'value'
+            ]
+            lutItem.setRescaleIntensitiesHow(how)
         
         self.rescaleIntensChannelHowMapper[channelName] = (
             'Rescale each 2D image'
@@ -30637,11 +30801,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
              cell cycle annotations:
          """)
          lastFrameDialog = apps.QLineEditDialog(
-             title='Last annoated frame number to save', 
-             defaultTxt=str(last_cca_frame_i+1),
-             msg=txt, parent=self, allowedValues=(1, last_cca_frame_i+1),
-             warnLastFrame=True, isInteger=True, stretchEntry=False,
-             lastVisitedFrame=last_cca_frame_i+1
+            title='Last annoated frame number to save', 
+            defaultTxt=str(last_cca_frame_i+1),
+            msg=txt, parent=self, allowedValues=(1, last_cca_frame_i+1),
+            warnLastFrame=True, isInteger=True, stretchEntry=False,
+            lastVisitedFrame=last_cca_frame_i+1,
          )
          lastFrameDialog.exec_()
          if lastFrameDialog.cancel:
@@ -30683,7 +30847,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             title='Last frame number to save', defaultTxt=str(frame_i+1),
             msg=txt, parent=self, allowedValues=(1, posData.SizeT),
             warnLastFrame=True, isInteger=True, stretchEntry=False,
-            lastVisitedFrame=frame_i+1
+            lastVisitedFrame=frame_i+1,
         )
         lastFrameDialog.exec_()
         if lastFrameDialog.cancel:
@@ -31190,6 +31354,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def quickSave(self):
         self.saveData(isQuickSave=True)
     
+    def checkMissingCca(self):
+        missing_cca_items = []
+        for posData in self.data:
+            for frame_i, data_dict in enumerate(posData.allData_li):
+                acdc_df = data_dict['acdc_df']
+                if acdc_df is None:
+                    continue
+                
+                if 'cell_cycle_stage' not in acdc_df.columns:
+                    continue
+                
+                cca_df = acdc_df[cca_df_colnames]
+                if cca_df.isnull().values.any():
+                    i = frame_i if not self.isSnapshot else None
+                    missing_cca_items.append((cca_df, posData, i))
+        
+        if not missing_cca_items:
+            return True
+        
+        _warnings.warnMissingCca(missing_cca_items, qparent=self)
+        return False
+        
     def warnDifferentSegmChannel(
             self, loaded_channel, segm_channel_hyperparams, segmEndName
         ):
@@ -31253,17 +31439,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.user_ch_name, lastSegmChannel, segmEndName
             )
             if cancel:
-                self.abortSavingInitialisation()
+                self.cancelSavingInitialisation()
                 self.setDisabled(False, keepDisabled=False)
                 self.activateWindow()
                 return True
             posData.updateSegmentedChannelHyperparams(self.user_ch_name)
 
+        # Check missing cca annotations in snaphots
+        proceed = self.checkMissingCca()
+        if not proceed:
+            self.cancelSavingInitialisation()
+            self.setDisabled(False, keepDisabled=False)
+            self.activateWindow()
+            return 
+        
         self.save_metrics = False
         if not isQuickSave:
             self.save_metrics, cancel = self.askSaveMetrics()
             if cancel:
-                self.abortSavingInitialisation()
+                self.cancelSavingInitialisation()
                 self.setDisabled(False, keepDisabled=False)
                 self.activateWindow()
                 return True
@@ -31272,7 +31466,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.isSnapshot and not isQuickSave and len(self.data) > 1:
             self.posToSave = self.askPosToSave()
             if self.posToSave is None:
-                self.abortSavingInitialisation()
+                self.cancelSavingInitialisation()
                 self.setDisabled(False, keepDisabled=False)
                 self.activateWindow()
                 return True
@@ -31288,24 +31482,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if mode == 'Cell cycle analysis':
             proceed = self.askSaveLastVisitedCcaMode(isQuickSave=isQuickSave)
             if not proceed:
-                self.abortSavingInitialisation()
+                self.cancelSavingInitialisation()
                 self.setDisabled(False, keepDisabled=False)
                 self.activateWindow()
-                return
+                return True
         else:
             proceed = self.askSaveLastVisitedSegmMode(isQuickSave=isQuickSave)
             if not proceed:
-                self.abortSavingInitialisation()
+                self.cancelSavingInitialisation()
                 self.setDisabled(False, keepDisabled=False)
                 self.activateWindow()
-                return
+                return True
         
         append_name_og_whitelist, proceed, do_not_save_og_whitelist = self.askSaveOriginalSegm(isQuickSave=isQuickSave)
         if not proceed:
-            self.abortSavingInitialisation()
+            self.cancelSavingInitialisation()
             self.setDisabled(False, keepDisabled=False)
             self.activateWindow()
-            return
+            return True
 
         if self.save_metrics or mode == 'Cell cycle analysis':
             self.computeVolumeRegionprop()
@@ -31365,6 +31559,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
+        
+        return False
         
     def _workerDebug(self, stuff_to_debug):
         pass
@@ -31490,19 +31686,45 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self._isQuickSave:
             return
         
+        if 'showAskConcatenate' not in self.df_settings.index:
+            self.df_settings.at['showAskConcatenate', 'value'] = 'Yes'
+        
+        showAskConcatenate = (
+            self.df_settings.at['showAskConcatenate', 'value'] == 'Yes'
+        )
+        if not showAskConcatenate:
+            return
+        
         txt = html_utils.paragraph(f"""
             Do you want to <b>concatenate</b> the `acdc_output.csv` tables from 
             multiple Positions into <b>one single CSV file</b>?<br>
         """)
-        msg = widgets.myMessageBox()
+        doNotShowAgainCheckbox = QCheckBox('Do not show again')
+        msg = widgets.myMessageBox(wrapText=False)
         noButton, yesButton = msg.question(
-            self, 'Concatenate tables?', txt, buttonsTexts=('No', 'Yes')
+            self, 'Concatenate tables?', txt, 
+            buttonsTexts=('No', 'Yes'),
+            widgets=doNotShowAgainCheckbox
         )
+        showAskConcatenate = (
+            'No' if doNotShowAgainCheckbox.isChecked() else 'Yes'
+        )
+        self.df_settings.at['showAskConcatenate', 'value'] = (
+            showAskConcatenate
+        )
+        self.df_settings.to_csv(settings_csv_path)
+        
         if not msg.clickedButton == yesButton:
             return
         
-        posData = self.data[self.pos_i]
-        self.mainWin.launchConcatUtil(exp_folderpath=posData.exp_path)
+        txt = html_utils.paragraph(f"""
+            To <b>concatenate</b> the `acdc_output.csv` tables from 
+            multiple Positions and multiple experiments<br>
+            launch the concatenation utility from the top menubar of the Cell-ACDC main launcher:<br><br>
+            <code>Utilities --> Concatenate --> Concatenate acdc output tables from multiple Positions and experiments...</code>.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'How to concatenate tables', txt)
         
     def updateSegmDataAutoSaveWorker(self):
         # Update savedSegmData in autosave worker
@@ -31592,7 +31814,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if all(didWorkersFinished):
             self.waitCloseAutoSaveWorkerLoop.stop()
         
-    def abortSavingInitialisation(self):
+    def cancelSavingInitialisation(self):
         self.titleLabel.setText(
             'Saving data process cancelled.', color=self.titleColor
         )

@@ -81,13 +81,12 @@ class bioFormatsWorker(QObject):
     )
     critical = Signal(object)
     sigFinishedReadingSampleImageData = Signal(object)
-    # aborted = Signal()
 
     def __init__(
             self, raw_src_path, rawFilenames, exp_dst_path,
             mutex, waitCond, rawDataStruct, 
             bioformats_backend: Literal['bioio', 'python-bioformats'],
-            lazy_load=True
+            lazy_load=True, move_raw_microscopy_files=True
         ):
         QObject.__init__(self)
         self.raw_src_path = raw_src_path
@@ -104,6 +103,7 @@ class bioFormatsWorker(QObject):
         self.cancel = False
         self.bioformats_backend = bioformats_backend
         self.lazy_load = lazy_load
+        self.move_raw_microscopy_files = move_raw_microscopy_files
     
     def _readSampleDataPythonBioformats(
             self, bioformats, rawFilePath, sampleImgData, SizeC, SizeT, SizeZ,
@@ -1057,14 +1057,14 @@ class bioFormatsWorker(QObject):
             javabridge.start_vm(class_path=bioformats.JARS, run_headless=True)
             self.progress.emit('Java VM running.')
             
-        self.aborted = False
+        self.cancelled = False
         self.isCriticalError = False
         for p, filename in enumerate(self.rawFilenames):
             if self.rawDataStruct == 0:
                 if not self.overWriteMetadata:
                     abort = self.readMetadata(raw_src_path, filename)
                     if abort:
-                        self.aborted = True
+                        self.cancelled = True
                         break
 
                 self.numPos = self.SizeS
@@ -1076,14 +1076,14 @@ class bioFormatsWorker(QObject):
                         p, raw_src_path, exp_dst_path, filename, p
                     )
                     if abort:
-                        self.aborted = True
+                        self.cancelled = True
                         break
 
             elif self.rawDataStruct == 1:
                 if not self.overWriteMetadata:
                     abort = self.readMetadata(raw_src_path, filename)
                     if abort:
-                        self.aborted = True
+                        self.cancelled = True
                         break
                 self.numPos = len(self.rawFilenames)
                 self.numPosDigits = len(str(self.numPos))
@@ -1093,31 +1093,23 @@ class bioFormatsWorker(QObject):
                     p, raw_src_path, exp_dst_path, filename, 0
                 )
                 if abort:
-                    self.aborted = True
+                    self.cancelled = True
                     break
 
             else:
                 break
 
             # Move files to raw_microscopy_files folder
-            foldername = os.path.basename(self.raw_src_path)
-            if foldername != 'raw_microscopy_files' and not self.aborted:
-                rawFilePath = os.path.join(self.raw_src_path, filename)
-                raw_path = os.path.join(raw_src_path, 'raw_microscopy_files')
-                if not os.path.exists(raw_path):
-                    os.mkdir(raw_path)
-                dst = os.path.join(raw_path, filename)
-                try:
-                    shutil.move(rawFilePath, dst)
-                except PermissionError as e:
-                    self.progress.emit(e)
+            self.move_to_raw_microscopy_files_folder(
+                self.raw_src_path, filename    
+            )
 
         if self.rawDataStruct == 2:
             filename = self.rawFilenames[0]
             if not self.overWriteMetadata:
                 abort = self.readMetadata(raw_src_path, filename)
                 if abort:
-                    self.aborted = True
+                    self.cancelled = True
                     if self.bioformats_backend == 'python-bioformats':
                         javabridge.kill_vm()
                     self.finished.emit()
@@ -1133,27 +1125,40 @@ class bioFormatsWorker(QObject):
                     0, p_idx=p_idx
                 )
                 if abort:
-                    self.aborted = True
+                    self.cancelled = True
                     break
 
             for filename in self.rawFilenames:
-                # Move files to raw_microscopy_files folder
-                foldername = os.path.basename(self.raw_src_path)
-                if foldername != 'raw_microscopy_files' and not self.aborted:
-                    rawFilePath = os.path.join(self.raw_src_path, filename)
-                    raw_path = os.path.join(raw_src_path, 'raw_microscopy_files')
-                    if not os.path.exists(raw_path):
-                        os.mkdir(raw_path)
-                    dst = os.path.join(raw_path, filename)
-                    try:
-                        shutil.move(rawFilePath, dst)
-                    except PermissionError as e:
-                        self.progress.emit(e)
+                self.move_to_raw_microscopy_files_folder(
+                    self.raw_src_path, filename    
+                )
 
         if self.bioformats_backend == 'python-bioformats':
             javabridge.kill_vm()
         self.finished.emit()
+    
+    def move_to_raw_microscopy_files_folder(self, raw_src_path, filename):
+        # Move files to raw_microscopy_files folder
+        foldername = os.path.basename(raw_src_path)
         
+        if self.cancelled:
+            return
+        
+        if foldername == 'raw_microscopy_files':
+            return
+        
+        if not self.move_raw_microscopy_files:
+            return
+        
+        rawFilePath = os.path.join(self.raw_src_path, filename)
+        raw_path = os.path.join(raw_src_path, 'raw_microscopy_files')
+        if not os.path.exists(raw_path):
+            os.mkdir(raw_path)
+        dst = os.path.join(raw_path, filename)
+        try:
+            shutil.move(rawFilePath, dst)
+        except PermissionError as e:
+            self.progress.emit(e)
 
 class createDataStructWin(QMainWindow):
     def __init__(
@@ -1612,6 +1617,13 @@ class createDataStructWin(QMainWindow):
         self.addPbar()
         
         self.initBioIO(raw_src_path, rawFilenames)
+        
+        move_raw_microscopy_files = False
+        if exp_dst_path == raw_src_path:
+            move_raw_microscopy_files, cancel = self.askMoveRawMicroscopyFiles()
+            if cancel:
+                self.close()
+                return
 
         # Set up separate thread for bioFormatsWorker class
         self.mutex = QMutex()
@@ -1621,7 +1633,8 @@ class createDataStructWin(QMainWindow):
             raw_src_path, rawFilenames, exp_dst_path,
             self.mutex, self.waitCond, rawDataStruct, 
             self.bioformats_backend, 
-            lazy_load=not self.loadEntirePosIntoRam
+            lazy_load=not self.loadEntirePosIntoRam,
+            move_raw_microscopy_files=move_raw_microscopy_files
         )
         if self.rawDataStruct == 2:
             self.worker.basename = self.basename
@@ -1647,6 +1660,21 @@ class createDataStructWin(QMainWindow):
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
+    
+    def askMoveRawMicroscopyFiles(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            At the end of the conversion process, do you want that Cell-ACDC  
+            <b>moves the raw microscopy files</b> <br>
+            to a sub-folder called <code>raw_microscopy_files</code>?
+        """)
+        _, doNotMoveButton, moveButton = msg.warning(
+            self, 'Too many objects', txt,
+            buttonsTexts=(
+                'Cancel', 'No, do not move the files', 'Yes, move the files'        
+            )
+        )
+        return msg.clickedButton == moveButton, msg.cancel
     
     def _installLazyLoadModules(self):
         myutils.check_install_package(
@@ -1730,7 +1758,7 @@ class createDataStructWin(QMainWindow):
         self.QPbar.setMaximum(max)
 
     def taskEnded(self):
-        if self.worker.aborted and not self.worker.isCriticalError:
+        if self.worker.cancelled and not self.worker.isCriticalError:
             msg = widgets.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(
                 'Conversion task cancelled.'
@@ -1739,7 +1767,7 @@ class createDataStructWin(QMainWindow):
                self, 'Conversion task cancelled.', txt
             )
             self.close()
-        elif not self.worker.aborted:
+        elif not self.worker.cancelled:
             msg = widgets.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(
                 'Conversion task ended.<br><br>'

@@ -1259,7 +1259,7 @@ def get_bkgr_data(
             bkgr_data['autoBkgr']['3D'] = autoBkr_3D
         autoBkgr_maxP = foregr_img.max(axis=0)[autoBkgr_mask_proj]
         autoBkgr_meanP = foregr_img.mean(axis=0)[autoBkgr_mask_proj]
-        autoBkgr_zSlice = foregr_img[z][autoBkgr_mask_proj]
+        autoBkgr_zSlice = foregr_img[int(z)][autoBkgr_mask_proj]
         bkgr_data['autoBkgr']['maxProj'] = autoBkgr_maxP
         bkgr_data['autoBkgr']['meanProj'] = autoBkgr_meanP
         bkgr_data['autoBkgr']['zSlice'] = autoBkgr_zSlice

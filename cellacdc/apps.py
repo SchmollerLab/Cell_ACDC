@@ -1884,8 +1884,15 @@ class SetMeasurementsDialog(QBaseDialog):
         searchLayout.addWidget(searchLineEdit)
         searchLayout.setStretch(1, 3)
         
+        mainScrollArea = widgets.ScrollArea()
+        mainScrollAreaWidget = QWidget()
+        mainScrollArea.setWidget(mainScrollAreaWidget)
+        
         groupsLayout = QGridLayout()
         self.groupsLayout = groupsLayout
+        
+        mainScrollAreaWidget.setLayout(groupsLayout)
+        
         buttonsLayout = QHBoxLayout()
 
         self.chNameGroupboxes = []
@@ -2037,17 +2044,39 @@ class SetMeasurementsDialog(QBaseDialog):
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(self.deselectAllButton)
+        buttonsLayout.addSpacing(20)
+        
         if addCombineMetricCallback is not None:
             buttonsLayout.addWidget(addCombineMetricButton)
-        buttonsLayout.addWidget(self.deselectAllButton)
+            buttonsLayout.addSpacing(20)
+        
+        saveCurrentSelectionButton = widgets.savePushButton(
+            'Save current selection...'
+        )
+        saveCurrentSelectionButton.clicked.connect(
+            self.saveCurrentSelectionClicked
+        )
+        
+        buttonsLayout.addWidget(saveCurrentSelectionButton)
+        
+        loadSavedSelectionButton = widgets.OpenFilePushButton(
+            'Load saved selection...'
+        )
+        loadSavedSelectionButton.clicked.connect(self.loadSavedSelectionClicked)
+        buttonsLayout.addWidget(loadSavedSelectionButton)
+        
         buttonsLayout.addWidget(loadLastSelButton)
+        
+        buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(okButton)
 
         self.okButton = okButton
 
         layout.addLayout(searchLayout)
         layout.addSpacing(10)
-        layout.addLayout(groupsLayout)
+        # layout.addLayout(groupsLayout)
+        layout.addWidget(mainScrollArea)
         layout.addLayout(buttonsLayout)
 
         self.setLayout(layout)
@@ -2299,18 +2328,18 @@ class SetMeasurementsDialog(QBaseDialog):
         self.doNotWarn = True
         for chNameGroupbox in self.chNameGroupboxes:
             for gb in chNameGroupbox.groupboxes:
-                gb.checkAll(False)
+                gb.checkAll(None, False)
             cgb = getattr(chNameGroupbox, 'customMetricsQGBox', None)
             if cgb is not None:
-                cgb.checkAll(False)
+                cgb.checkAll(None, False)
         
-        self.sizeMetricsQGBox.checkAll(False)
-        self.regionPropsQGBox.checkAll(False)
+        self.sizeMetricsQGBox.checkAll(None, False)
+        self.regionPropsQGBox.checkAll(None, False)
         if self.chIndipendCustomeMetricsQGBox is not None:
-            self.chIndipendCustomeMetricsQGBox.checkAll(False)
+            self.chIndipendCustomeMetricsQGBox.checkAll(None, False)
             
         if self.mixedChannelsCombineMetricsQGBox is not None:
-            self.mixedChannelsCombineMetricsQGBox.checkAll(False)
+            self.mixedChannelsCombineMetricsQGBox.checkAll(None, False)
         self.doNotWarn = False
     
     def delMixedChannelCombineMetric(self, colname_to_del, hlayout):
@@ -2500,33 +2529,204 @@ class SetMeasurementsDialog(QBaseDialog):
                         continue
                     checkBox.setChecked(isChecked)
     
-    def loadLastSelection(self):
-        self.doNotWarn = True
+    def currentSelectionMapper(self):
+        current_selected_meas = defaultdict(dict)
+        
         for chNameGroupbox in self.chNameGroupboxes:
-            chNameGroupbox.checkFavouriteFuncs()
-            chNameGroupbox.customMetricsQGBox.checkFavouriteFuncs()
-        self.sizeMetricsQGBox.checkFavouriteFuncs()
-        self.regionPropsQGBox.checkFavouriteFuncs()
-        last_sel_gb = load.read_last_selected_gb_meas()
-        if not last_sel_gb:
-            return
-        refChannel = self.chNameGroupboxes[0].chName
-        groupboxes = [
-            *self.chNameGroupboxes, self.sizeMetricsQGBox, 
-            self.regionPropsQGBox
-        ]
-        for chNameGroupbox in self.chNameGroupboxes:
-            chNameGroupbox.setChecked(False)
-        self.sizeMetricsQGBox.setChecked(False)
-        self.regionPropsQGBox.setChecked(False)
-        if refChannel not in last_sel_gb:
+            if not chNameGroupbox.isChecked():
+                continue
+            
+            chName = chNameGroupbox.chName
+            for checkBox in chNameGroupbox.checkBoxes:
+                if not checkBox.isChecked():
+                    continue
+                
+                current_selected_meas[chName][checkBox.text()] = 'Yes'
+        
+        size_selected_meas = current_selected_meas.get(
+            self.sizeMetricsQGBox.title()
+        )
+        if self.sizeMetricsQGBox.isChecked():
+            for checkBox in self.sizeMetricsQGBox.checkBoxes: 
+                if not checkBox.isChecked():
+                    continue
+                
+                section = self.sizeMetricsQGBox.title()
+                current_selected_meas[section][checkBox.text()] = 'Yes'
+        
+        size_selected_meas = current_selected_meas.get(
+            self.regionPropsQGBox.title()
+        )
+        if self.regionPropsQGBox.isChecked():
+            for checkBox in self.regionPropsQGBox.checkBoxes: 
+                if not checkBox.isChecked():
+                    continue
+                
+                section = self.regionPropsQGBox.title()
+                current_selected_meas[section][checkBox.text()] = 'Yes'
+        
+        if self.chIndipendCustomeMetricsQGBox is not None:
+            if self.chIndipendCustomeMetricsQGBox.isChecked():
+                for checkBox in self.chIndipendCustomeMetricsQGBox.checkBoxes: 
+                    if not checkBox.isChecked():
+                        continue
+                    
+                    section = self.chIndipendCustomeMetricsQGBox.title()
+                    current_selected_meas[section][checkBox.text()] = 'Yes'
+        
+        if self.mixedChannelsCombineMetricsQGBox is not None:
+            if self.mixedChannelsCombineMetricsQGBox.isChecked():
+                for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes: 
+                    if not checkBox.isChecked():
+                        continue
+                    
+                    section = self.chIndipendCustomeMetricsQGBox.title()
+                    current_selected_meas[section][checkBox.text()] = 'Yes'
+        
+        return current_selected_meas
+    
+    def saveCurrentSelectionClicked(self):
+        current_selection_mapper = self.currentSelectionMapper()
+        defaultEntry = '_and_'.join(current_selection_mapper.keys())
+        defaultEntry = defaultEntry.replace(' ', '_').lower()
+        saved_selections = io.get_saved_measurements_selections()
+        win = filenameDialog(
+            basename='',
+            ext='',
+            hintText='Insert a <b>name</b> for the current selection:',
+            existingNames=saved_selections,
+            allowEmpty=False,
+            defaultEntry=defaultEntry
+        )
+        win.exec_()
+        if win.cancel:
             return
         
-        for gb_title in last_sel_gb[refChannel]:
-            for gb in groupboxes:
-                if gb.title() != gb_title:
-                    continue
-                gb.setChecked(True)
+        filename = win.filename
+        ini_filepath = io.save_measurements_selections(
+            filename, current_selection_mapper)
+        
+        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        txt = html_utils.paragraph(f"""
+            Done!<br><br>
+            Current selection saved with name <code>{filename}</code> at 
+            the following path:
+        """)
+        msg.information(
+            self, 'Selection saved', txt, 
+            commands=(ini_filepath,),
+            path_to_browse=os.path.dirname(ini_filepath),
+        )
+    
+    def loadSavedSelectionClicked(self):
+        self.doNotWarn = True
+        
+        saved_selections = io.get_saved_measurements_selections()
+        
+        selectNameWin = widgets.QDialogListbox(
+            'Choose selection to load',
+            'Choose selection to load:\n',
+            saved_selections, 
+            multiSelection=False, 
+            parent=self
+        )
+        selectNameWin.exec_()
+        if selectNameWin.cancel:
+            return
+        
+        selection_mapper = (
+            io.read_measurements_selections(selectNameWin.selectedItemsText[0])
+        )
+        
+        self.setCurrentSelectionFromMapper(selection_mapper)
+        
+        self.doNotWarn = False
+    
+    def saveLastSelection(self):
+        last_selected_meas = self.currentSelectionMapper()        
+        load.write_last_selected_set_measurements(last_selected_meas)
+    
+    def setCurrentSelectionFromMapper(self, selection_mapper):
+        for chNameGroupbox in self.chNameGroupboxes:
+            chName = chNameGroupbox.chName
+            chSelectedMeas = selection_mapper.get(chName)
+            if chSelectedMeas is None:
+                chNameGroupbox.setChecked(False)
+                continue
+            
+            chNameGroupbox.setChecked(True)
+            for checkBox in chNameGroupbox.checkBoxes:
+                checked = chSelectedMeas.get(checkBox.text())
+                if checked is not None:
+                    checkBox.setChecked(True)
+                else:
+                    checkBox.setChecked(False)
+        
+        size_selected_meas = selection_mapper.get(
+            self.sizeMetricsQGBox.title()
+        )
+        if size_selected_meas is None:
+            self.sizeMetricsQGBox.setChecked(False)
+        else:
+            self.sizeMetricsQGBox.setChecked(True)
+            for checkBox in self.sizeMetricsQGBox.checkBoxes: 
+                checked = size_selected_meas.get(checkBox.text())
+                if checked is not None:
+                    checkBox.setChecked(True)
+                else:
+                    checkBox.setChecked(False)
+        
+        size_selected_meas = selection_mapper.get(
+            self.regionPropsQGBox.title()
+        )
+        if size_selected_meas is None:
+            self.regionPropsQGBox.setChecked(False)
+        else:
+            self.regionPropsQGBox.setChecked(True)
+            for checkBox in self.regionPropsQGBox.checkBoxes: 
+                checked = size_selected_meas.get(checkBox.text())
+                if checked is not None:
+                    checkBox.setChecked(True)
+                else:
+                    checkBox.setChecked(False)
+        
+        if self.chIndipendCustomeMetricsQGBox is not None:
+            ch_indip_custom_metrics = selection_mapper.get(
+                self.chIndipendCustomeMetricsQGBox.title()
+            )
+            if size_selected_meas is None:
+                self.chIndipendCustomeMetricsQGBox.setChecked(False)
+            else:
+                self.chIndipendCustomeMetricsQGBox.setChecked(True)
+                for checkBox in self.chIndipendCustomeMetricsQGBox.checkBoxes: 
+                    checked = size_selected_meas.get(checkBox.text())
+                    if checked is not None:
+                        checkBox.setChecked(True)
+                    else:
+                        checkBox.setChecked(False)
+        
+        if self.mixedChannelsCombineMetricsQGBox is not None:
+            ch_indip_custom_metrics = selection_mapper.get(
+                self.mixedChannelsCombineMetricsQGBox.title()
+            )
+            if size_selected_meas is None:
+                self.mixedChannelsCombineMetricsQGBox.setChecked(False)
+            else:
+                self.mixedChannelsCombineMetricsQGBox.setChecked(True)
+                for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes: 
+                    checked = size_selected_meas.get(checkBox.text())
+                    if checked is not None:
+                        checkBox.setChecked(True)
+                    else:
+                        checkBox.setChecked(False)
+    
+    def loadLastSelection(self):
+        self.doNotWarn = True
+        last_selected_meas = load.read_last_selected_set_measurements()
+        last_selected_meas = dict(last_selected_meas)
+        
+        self.setCurrentSelectionFromMapper(last_selected_meas)
+        
         self.doNotWarn = False
     
     def setDisabledMetricsRequestedForCombined(self, checked):
@@ -2666,6 +2866,7 @@ class SetMeasurementsDialog(QBaseDialog):
         )
         
         if self.allPos_acdc_df_cols is None:
+            self.saveLastSelection()
             self.cancel = False
             self.close()
             self.sigClosed.emit()
@@ -2713,6 +2914,7 @@ class SetMeasurementsDialog(QBaseDialog):
             if cancel:
                 return
 
+        self.saveLastSelection()
         self.cancel = False  
         self.close()
         self.sigClosed.emit()
@@ -2876,24 +3078,6 @@ class QDialogMetadataXML(QDialog):
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.LensNA_DSB, row, 1)
-
-        row += 1
-        self.DimensionOrderCombo = widgets.QCenteredComboBox()
-        if sampleImgData is None:
-            items = [''.join(perm) for perm in permutations('zct', 3)]
-        else:
-            items = list(sampleImgData.keys())
-        self.DimensionOrderCombo.addItems(items)
-        self.DimensionOrderCombo.setCurrentText(DimensionOrder[:3].lower())
-        txt = 'Order of dimensions:  '
-        label = QLabel(txt)
-        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-        entriesLayout.addWidget(self.DimensionOrderCombo, row, 1)
-        dimensionOrderLayout = QHBoxLayout()
-        DimensionOrderHelpButton = widgets.infoPushButton()
-        dimensionOrderLayout.addWidget(DimensionOrderHelpButton)
-        dimensionOrderLayout.addStretch(1)
-        entriesLayout.addLayout(dimensionOrderLayout, row, 2, 1, 2)
         
         row += 1
         self.SizeT_SB = QSpinBox()
@@ -3188,10 +3372,6 @@ class QDialogMetadataXML(QDialog):
 
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
-        self.DimensionOrderCombo.currentTextChanged.connect(
-            self.dimensionOrderChanged
-        )
-        DimensionOrderHelpButton.clicked.connect(self.dimensionOrderHelp)
         
         self.hideShowTimeIncrement(SizeT)
         self.readSampleImgDataAgain = False
@@ -3210,24 +3390,6 @@ class QDialogMetadataXML(QDialog):
         else:
             self.imageViewer.posData.img_data = imgData
         self.imageViewer.update_img()
-    
-    def dimensionOrderHelp(self):
-        txt = html_utils.paragraph('''
-            The "Order of dimensions" is used to get the correct frame given 
-            the <b>z-slice</b> (if SizeZ > 1) index, the <b>channel</b> (if SizeC > 1) index, 
-            and the <b>frame</b> (if SizeT > 1) index.<br><br>
-            Example: "zct" means that the order of dimensions in the image shape  
-            is (SizeZ, SizeC, SizeT).<br><br>
-            To test this, click on the "eye" button besides the channel name below. For 
-            time-lapse data you will be able to visualize the first 4 frames. 
-            If the order of dimensions is correct, the displayed image should be 
-            the <b>image of the corresponding channel</b>. For time-lapse data check that 
-            every frame is correct. Make sure to also check 
-            that the z-slices are in the correct order by scrolling with the 
-            z-slice scrollbar.
-        ''')
-        msg = widgets.myMessageBox()
-        msg.information(self, 'Order of dimensions help', txt)
 
     def saveCh_checkBox_cb(self, state):
         self.checkChNames()
@@ -3436,7 +3598,7 @@ class QDialogMetadataXML(QDialog):
         
         if idx is None:
             idx = self.showChannelDataButtons.index(self.sender())
-        dimsOrder = self.DimensionOrderCombo.currentText()
+        dimsOrder = 'ctz'
         imgData = self.sampleImgData[dimsOrder][idx]
         posData = myutils.utilClass()
         posData.frame_i = 0
@@ -3577,22 +3739,6 @@ class QDialogMetadataXML(QDialog):
                 self.emWavelens_DSBs.pop(-1)
 
                 self.adjustSize()
-
-    def confirmOrderOfDimensions(self):
-        helpButton = widgets.helpPushButton('More details...')
-        txt = html_utils.paragraph("""
-            Are you sure that the parameter <code>Order of dimensions</code> 
-            <b>is correct</b>?<br>
-        """)
-        msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(
-            self, 'Double-check Order of dimensions', txt, showDialog=False,
-            buttonsTexts=('Cancel', helpButton, 'Yes')
-        )
-        helpButton.clicked.disconnect()
-        helpButton.clicked.connect(self.dimensionOrderHelp)
-        msg.exec_()
-        return msg.cancel
     
     def ok_cb(self, event):
         areChNamesValid = self.checkChNames()
@@ -3606,10 +3752,6 @@ class QDialogMetadataXML(QDialog):
             msg.critical(
                self, 'Invalid channel names', err_msg
             )
-            return
-
-        cancel = self.confirmOrderOfDimensions()
-        if cancel:
             return
         
         self.getValues()
@@ -9363,14 +9505,15 @@ class QLineEditDialog(QDialog):
         if self._type == str:
             return self.entryWidget.text()
         
-        if self.isFloat or self.isInteger:
+        if (self.isFloat or self.isInteger) and not self.allowList:
             val = self.entryWidget.value()
         elif not self.allowList:
             val = int(self.entryWidget.text())
         elif self.allowList:
+            caster = int if self.isInteger else float
             text = self.entryWidget.text()
             m = re.findall(POSITIVE_FLOAT_REGEX, text)
-            val = [int(val) for val in m]
+            val = [caster(val) for val in m]
         return val
 
     def onTextChanged(self, text):
@@ -9472,7 +9615,11 @@ class QLineEditDialog(QDialog):
                     return
 
         self.cancel = False
-        self.EntryID = val
+        try:
+            self.EntryID = int(val)
+        except Exception as err:
+            self.EntryID = val
+            
         self.enteredValue = val
         self.close()
 
@@ -10020,6 +10167,15 @@ class manualSeparateGui(QMainWindow):
             self.threePointsArcAction.setChecked(True)
         elif self.drawMode == 'freehand':
             self.freeHandAction.setChecked(True)
+            
+        self.swapIDsAction = QAction(
+            QIcon(":reload.svg"), "Swap IDs", self
+        )
+        self.swapIDsAction.setToolTip(
+            'Swap the two displayed IDs\n\n'
+            'Shortcut: "S"'
+        )
+        self.swapIDsAction.setShortcut('S')
     
     def state(self):
         return {
@@ -10080,6 +10236,12 @@ class manualSeparateGui(QMainWindow):
 
         editToolBar.addAction(self.threePointsArcAction)
         editToolBar.addAction(self.freeHandAction)
+        
+        editToolBar.addAction(self.swapIDsAction)
+        
+        self.warnLabel = QLabel()
+        editToolBar.addWidget(self.warnLabel)
+        
 
     def gui_connectActions(self):
         self.exitAction.triggered.connect(self.close)
@@ -10089,6 +10251,7 @@ class manualSeparateGui(QMainWindow):
         self.undoAction.triggered.connect(self.undo)
         self.overlayButton.toggled.connect(self.toggleOverlay)
         self.imgGrad.sigLookupTableChanged.connect(self.histLUT_cb)
+        self.swapIDsAction.triggered.connect(self.swapIDs)
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -10306,6 +10469,26 @@ class manualSeparateGui(QMainWindow):
             overlay = self.getOverlay()
             self.imgItem.setImage(overlay)
 
+    def swapIDs(self, checked=False):
+        if len(self.rp) == 1:
+            self.warnLabel.setText(
+                html_utils.paragraph(
+                    'WARNING: Split the object before swapping IDs',
+                    font_color='red'
+                )
+            )
+            return
+        
+        self.warnLabel.setText('')
+        
+        obj1 = self.rp[0]
+        obj2 = self.rp[1]
+        
+        self.lab[obj1.slice][obj1.image] = obj2.label
+        self.lab[obj2.slice][obj2.image] = obj1.label
+        
+        self.updateImg()
+    
     def updateImg(self):
         self.updateLookuptable()
         rp = skimage.measure.regionprops(self.lab)
@@ -12404,7 +12587,6 @@ class QDialogModelParams(QDialog):
                 selector.highRangeWidgets.spinbox.setValue(high_val)
 
             f += 1
-
 
     def createSeeHereLabel(self, url):
         htmlTxt = f'<a href=\"{url}">here</a>'

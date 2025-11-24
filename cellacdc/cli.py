@@ -63,7 +63,12 @@ class _WorkflowKernel:
         if 'initialization' in workflow_params:
             ch_name = workflow_params['initialization']['user_ch_name']
         elif 'measurements' in workflow_params:
-            ch_name = workflow_params['measurements']['channels'][0]
+            channels = workflow_params['measurements']['channels']
+            channel_names_to_skip = (
+                workflow_params['measurements']['channel_names_to_skip']
+            )
+            channels = [ch for ch in channels if ch not in channel_names_to_skip]
+            ch_name = channels[0]
         else:
             printl(workflow_params, pretty=True)
             raise KeyError(
@@ -812,13 +817,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.calc_for_each_zslice_mapper = {}
         self.calc_size_for_each_zslice = False
         
-        favourite_funcs = set()
-        last_selected_groupboxes_measurements = load.read_last_selected_gb_meas(
-            logger_func=self.log
-        )
-        refChannel = setMeasurementsDialog.chNameGroupboxes[0].chName
-        if refChannel not in last_selected_groupboxes_measurements:
-            last_selected_groupboxes_measurements[refChannel] = []
         # Remove unchecked metrics and load checked not loaded channels
         for chNameGroupbox in setMeasurementsDialog.chNameGroupboxes:
             chName = chNameGroupbox.chName
@@ -831,9 +829,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             self.calc_for_each_zslice_mapper[chName] = (
                 chNameGroupbox.calcForEachZsliceRequested
             )
-            last_selected_groupboxes_measurements[refChannel].append(
-                chNameGroupbox.title()
-            )
             for checkBox in chNameGroupbox.checkBoxes:
                 colname = checkBox.text()
                 if not checkBox.isChecked():
@@ -841,7 +836,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 else:
                     self.metricsToSave[chName].append(colname)
                     func_name = colname[len(chName):]
-                    favourite_funcs.add(func_name)
 
         self.calc_size_for_each_zslice = (
             setMeasurementsDialog.sizeMetricsQGBox.calcForEachZsliceRequested
@@ -851,22 +845,19 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         else:
             self.sizeMetricsToSave = []
             title = setMeasurementsDialog.sizeMetricsQGBox.title()
-            last_selected_groupboxes_measurements[refChannel].append(title)
             for checkBox in setMeasurementsDialog.sizeMetricsQGBox.checkBoxes:
                 if checkBox.isChecked():
                     self.sizeMetricsToSave.append(checkBox.text())
-                    favourite_funcs.add(checkBox.text())
 
         if not setMeasurementsDialog.regionPropsQGBox.isChecked():
             self.regionPropsToSave = ()
         else:
             self.regionPropsToSave = []
             title = setMeasurementsDialog.regionPropsQGBox.title()
-            last_selected_groupboxes_measurements[refChannel].append(title)
             for checkBox in setMeasurementsDialog.regionPropsQGBox.checkBoxes:
                 if checkBox.isChecked():
                     self.regionPropsToSave.append(checkBox.text())
-                    favourite_funcs.add(checkBox.text())
+                    
             self.regionPropsToSave = tuple(self.regionPropsToSave)
 
         if setMeasurementsDialog.chIndipendCustomeMetricsQGBox is not None:
@@ -875,7 +866,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             )
             if not skipAll:
                 title = setMeasurementsDialog.chIndipendCustomeMetricsQGBox.title()
-                last_selected_groupboxes_measurements[refChannel].append(title)
             chIndipendCustomMetricsToSave = []
             win = setMeasurementsDialog
             checkBoxes = win.chIndipendCustomeMetricsQGBox.checkBoxes
@@ -885,7 +875,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
     
                 if checkBox.isChecked():
                     chIndipendCustomMetricsToSave.append(checkBox.text())           
-                    favourite_funcs.add(checkBox.text())
+
             self.chIndipendCustomMetricsToSave = tuple(
                 chIndipendCustomMetricsToSave
             )
@@ -897,7 +887,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             )
             if not skipAll:
                 title = setMeasurementsDialog.mixedChannelsCombineMetricsQGBox.title()
-                last_selected_groupboxes_measurements[refChannel].append(title)
             mixedChCombineMetricsToSkip = []
             win = setMeasurementsDialog
             checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
@@ -906,17 +895,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     mixedChCombineMetricsToSkip.append(checkBox.text())
                 elif not checkBox.isChecked():
                     mixedChCombineMetricsToSkip.append(checkBox.text())
-                else:             
-                    favourite_funcs.add(checkBox.text())
+
             self.mixedChCombineMetricsToSkip = tuple(mixedChCombineMetricsToSkip)
 
-        df_favourite_funcs = pd.DataFrame(
-            {'favourite_func_name': list(favourite_funcs)}
-        )
-        df_favourite_funcs.to_csv(favourite_func_metrics_csv_path)
-
-        load.save_last_selected_gb_meas(last_selected_groupboxes_measurements)
-    
     def _init_metrics_to_save(self, posData):
         posData.setLoadedChannelNames()
         self.isSegm3D = posData.getIsSegm3D()
@@ -1018,17 +999,17 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         if posData.fluo_data_dict:
             return 
         
+        # Load fluorescence channels data since not loaded in GUI
         posData.loadedChNames = []
         for c, channel in enumerate(channel_names):
             if channel in self.chNamesToSkip:
                 continue 
             
-            if c == 0:
+            if channel == posData.user_ch_name:
                 img_data = posData.img_data
                 filename = posData.filename
                 bkgrData = posData.bkgrData
             else:
-                # Delay loading image data
                 filepath = load.get_filename_from_channel(
                     posData.images_path, channel
                 )
@@ -1107,7 +1088,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.init_signals(computeMetricsWorker, saveDataWorker)
         
         self.log(
-            'Loaded paths:\n'
+            'Loading the following files:\n'
             f'Segmentation file name: {os.path.basename(posData.segm_npz_path)}\n'
             f'ACDC output file name: {os.path.basename(posData.acdc_output_csv_path)}'
         )
@@ -1126,6 +1107,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             ch for ch in channel_names if not ch in self.chNamesToSkip 
             and ch in self.chNamesToProcess
         ]
+        
+        self.log(f'Loading channels {channels_to_load}...')
         
         self._load_image_data(posData, channels_to_load)
         
@@ -1402,8 +1385,12 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
 
         for i, obj in enumerate(rp):
             IDs[i] = obj.label
-            IDs_vol_vox[i] = obj.vol_vox
-            IDs_vol_fl[i] = obj.vol_fl
+            try:
+                IDs_vol_vox[i] = obj.vol_vox
+                IDs_vol_fl[i] = obj.vol_fl
+            except Exception as err:
+                IDs_vol_vox[i] = np.nan
+                IDs_vol_fl[i] = np.nan
             IDs_area_pxl[i] = obj.area
             IDs_area_um2[i] = obj.area*yx_pxl_to_um2
             if self.isSegm3D:
@@ -1430,6 +1417,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         # Iteare fluo channels and get 2D data from 3D if needed
         filenames = posData.fluo_data_dict.keys()
         for chName, filename in zip(posData.loadedChNames, filenames):
+            if chName in self.chNamesToSkip:
+                continue 
+            
             idx = (filename, frame_i)
             try:
                 if posData.segmInfo_df.at[idx, 'resegmented_in_gui']:
@@ -1466,7 +1456,25 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                         col = 'z_slice_used_dataPrep'
                         z_slice = posData.segmInfo_df.at[idx, col]
                     else:
-                        raise e
+                        print(
+                            f'[WARNING]: z-slice for channel {chName} absent. '
+                            'Using middle z-slice for calculating metrics.'
+                        )
+                        middle_z = round(np.median(np.arange(posData.SizeZ)))
+                        new_row = pd.DataFrame({
+                                'z_slice_used_dataPrep': [middle_z],
+                                'resegmented_in_gui': [0],
+                                'which_z_proj': 'single z-slice',
+                                'is_from_dataPrep': [0],
+                                'z_slice_used_gui': [-1],
+                                'which_z_proj_gui': 'single z-slice',
+                            },
+                            index=[idx]
+                        )
+                        posData.segmInfo_df = pd.concat(
+                            [posData.segmInfo_df, new_row]
+                        )
+                        posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
         return True
     
     def _init_calc_metrics(
