@@ -4033,11 +4033,19 @@ class SpinBox(QSpinBox):
     sigUpClicked = Signal()
     sigDownClicked = Signal()
 
-    def __init__(self, parent=None, disableKeyPress=False):
+    def __init__(
+            self, 
+            parent=None, 
+            disableKeyPress=False,
+            allowNegative=True
+        ):
         super().__init__(parent=parent)
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
-        self.setMinimum(-2**31)
+        if allowNegative:
+            self.setMinimum(-2**31)
+        else:
+            self.setMinimum(0)
         self._valueChangedFunction = None
         self.disableKeyPress = disableKeyPress
         self._linkedWidget = None

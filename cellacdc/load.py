@@ -1256,6 +1256,7 @@ class loadData:
         self.loadSizeZ = None
         self.multiSegmAllPos = False
         self.manualBackgroundLab = None
+        self.visited = False
         self.frame_i = 0
         self.clickEntryPointsDfs = {}
         path_li = os.path.normpath(imgPath).split(os.sep)

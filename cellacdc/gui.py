@@ -1961,7 +1961,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.autoIDcheckboxAction = brushEraserToolBar.addWidget(self.autoIDcheckbox)
         self.autoIDcheckboxAction.setVisible(False)
 
-        self.brushSizeSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.brushSizeSpinbox = widgets.SpinBox(
+            disableKeyPress=True,
+            allowNegative=False
+        )
         self.brushSizeSpinbox.setValue(4)
         brushSizeLabel = QLabel('   Size: ')
         brushSizeLabel.setBuddy(self.brushSizeSpinbox)
@@ -13582,6 +13585,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.countObjsWindow is None:
             activeCategories = {
                 'In current position', 
+                'In all visited positions (current session)',
+                'In all visited positions (previous sessions)',
                 'In all loaded positions', 
             }
             if self.isSegm3D:
@@ -13591,17 +13596,36 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         numObjectsCurrentPos = len(posData.IDs)
         numObjectsAllPos = 0
+        numObjectsVisitedPosPrevious = 0
+        numObjectsVisitedPosCurrent = 0
         numObjectsCurrentZslice = None
         if 'In current z-slice' in activeCategories:
             numObjectsCurrentZslice = len(
                 skimage.measure.regionprops(self.currentLab2D)
             )
         
-        for _posData in self.data:
-            numObjectsAllPos += len(_posData.allData_li[0]['IDs'])
+        for pos_i, _posData in enumerate(self.data):
+            IDs = _posData.allData_li[0]['IDs']
+            if os.path.exists(_posData.acdc_output_csv_path):
+                numObjectsVisitedPosPrevious += len(IDs)
+            if IDs:
+                numObjs = len(IDs)
+                numObjectsAllPos += len(IDs)
+            else:
+                lab = _posData.segm_data[0]
+                rp = skimage.measure.regionprops(lab)
+                numObjs = len(rp)
+                numObjectsAllPos += numObjs
+                
+            if _posData.visited:
+                numObjectsVisitedPosCurrent += numObjs
         
         allCategoryCountMapper = {
             'In current position': numObjectsCurrentPos, 
+            'In all visited positions (current session)': 
+                numObjectsVisitedPosCurrent,
+            'In all visited positions (previous sessions)': 
+                numObjectsVisitedPosPrevious,
             'In all loaded positions': numObjectsAllPos, 
         }
         if numObjectsCurrentZslice is not None:
@@ -27480,6 +27504,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.highlightSearchedID(self.highlightedID, force=True) 
         self.updateTimestampFrame()   
+        
+        posData.visited = True
 
     def updateTimestampFrame(self):
         if not hasattr(self, 'timestamp'):
