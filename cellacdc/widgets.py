@@ -4332,7 +4332,6 @@ class CheckboxesGroupBox(QGroupBox):
         for checkBox in self.checkBoxes:
             checkBox.setChecked(checked)
             
-
 class _metricsQGBox(QGroupBox):
     sigDelClicked = Signal(str, object)
 
