@@ -268,7 +268,7 @@ def _setup_gui_libraries(caller_name='Cell-ACDC', exit_at_end=True):
         #     raise ModuleNotFoundError('pyqtgraph must be upgraded')
         if pg_minor < 13:
             raise ModuleNotFoundError('pyqtgraph must be upgraded')
-        if pg_patch < 7:
+        if pg_minor == 13 and pg_patch < 7:
             raise ModuleNotFoundError('pyqtgraph must be upgraded')
     except ModuleNotFoundError:
         import subprocess
