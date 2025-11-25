@@ -96,6 +96,9 @@ channel_file_formats = (
 )
 ISO_TIMESTAMP_FORMAT = r'iso%Y%m%d%H%M%S'
 
+class FileNameError(Exception):
+    pass
+
 def _pd_cast_float_and_bool_to_int(df, col, notna_idx):
     df.loc[notna_idx, col] = df.loc[notna_idx, col].astype(int)
     return df
@@ -1236,7 +1239,10 @@ def is_bkgrROIs_present(images_path):
     return False
 
 class loadData:
-    def __init__(self, imgPath, user_ch_name, relPathDepth=3, QParent=None, log_func=None):
+    def __init__(
+            self, imgPath, user_ch_name, 
+            relPathDepth=3, QParent=None, log_func=None
+        ):
         self.fluo_data_dict = {}
         self.fluo_bkgrData_dict = {}
         self.bkgrROIs = []
@@ -1394,6 +1400,21 @@ class loadData:
             ls, self.images_path, useExt=useExt
         )
         self.basename = selector.basename
+        # Check if any file is called like the basename --> not allowed
+        for file in ls:
+            filename, _ = os.path.splitext(file)
+            if filename != self.basename:
+                continue
+            
+            sep = '*'*100
+            raise FileNameError(
+                f'\n\n{sep}\n'
+                f'[ERROR]: The file "{file}" has the same name as '
+                f'the basename of all other files.\n\n'
+                f'Please, rename the file to include something '
+                f'after "{self.basename}", e.g., "{self.basename}_channel_name".'
+            )
+            break
 
     def loadImgData(self, imgPath=None, signals=None):
         if imgPath is None:
