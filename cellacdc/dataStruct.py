@@ -936,8 +936,6 @@ class bioFormatsWorker(QObject):
                 subprocess.run(args)
                 
                 bioformats._utils.check_raise_exception(uuid4)
-                
-                self.progressPbar.emit(len(self.chNames))
             else:  
                 self._saveDataPythonBioformats(
                     bioformats, rawFilePath, series, images_path, 
@@ -1003,8 +1001,6 @@ class bioFormatsWorker(QObject):
                     subprocess.run(args)
                     
                     bioformats._utils.check_raise_exception(uuid4)
-                    
-                    self.progressPbar.emit(1)
                 else:  
                     self._saveDataPythonBioformatsSingleChannel(
                         bioformats, rawFilePath, series, images_path, 
@@ -1075,6 +1071,7 @@ class bioFormatsWorker(QObject):
                     abort = self.saveToPosFolder(
                         p, raw_src_path, exp_dst_path, filename, p
                     )
+                    self.progressPbar.emit(len(self.chNames))
                     if abort:
                         self.cancelled = True
                         break
@@ -1092,6 +1089,7 @@ class bioFormatsWorker(QObject):
                 abort = self.saveToPosFolder(
                     p, raw_src_path, exp_dst_path, filename, 0
                 )
+                self.progressPbar.emit(len(self.chNames))
                 if abort:
                     self.cancelled = True
                     break
@@ -1124,6 +1122,7 @@ class bioFormatsWorker(QObject):
                     p, raw_src_path, exp_dst_path, self.basename,
                     0, p_idx=p_idx
                 )
+                self.progressPbar.emit(len(self.chNames))
                 if abort:
                     self.cancelled = True
                     break
