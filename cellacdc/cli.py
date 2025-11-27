@@ -1593,6 +1593,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
         # Add custom measurements
         for channel, (filename, channel_data) in iter_channels:
+            if channel in self.chNamesToSkip:
+                continue 
+            
             foregr_img = channel_data[frame_i]
             
             iter_other_channels = zip(
@@ -1670,6 +1673,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             posData.fluo_data_dict.items()
         )
         for channel, (filename, channel_data) in iter_channels:
+            if channel in self.chNamesToSkip:
+                continue 
+
             foregr_img = channel_data[frame_i]
 
             # Get the z-slice if we have z-stacks
