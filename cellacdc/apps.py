@@ -2963,12 +2963,9 @@ class SetMeasurementsDialog(QBaseDialog):
         super().show(block=block)
 
 class QDialogMetadataXML(QDialog):
-    sigDimensionOrderEditFinished = Signal(str, int, int, object)
-
     def __init__(
             self, title='Metadata',
-            LensNA=1.0, DimensionOrder=None, rawFilename='test',
-            SizeT=1, SizeZ=1, SizeC=1, SizeS=1,
+            LensNA=1.0, rawFilename='test', SizeT=1, SizeZ=1, SizeC=1, SizeS=1,
             TimeIncrement=1.0, TimeIncrementUnit='s',
             PhysicalSizeX=1.0, PhysicalSizeY=1.0, PhysicalSizeZ=1.0,
             PhysicalSizeUnit='μm', ImageName='', chNames=None, emWavelens=None,
@@ -2992,8 +2989,6 @@ class QDialogMetadataXML(QDialog):
         font = QFont()
         font.setPixelSize(12)
         self.setFont(font)
-        if DimensionOrder is None:
-            DimensionOrder = 'ztc' # default for .czi and .nd2
 
         mainLayout = QVBoxLayout()
         entriesLayout = QGridLayout()
@@ -3379,18 +3374,6 @@ class QDialogMetadataXML(QDialog):
         self.setLayout(mainLayout)
         # self.setModal(True)
 
-    def dimensionOrderChanged(self, dimsOrder):
-        if self.imageViewer is None:
-            return
-        
-        idx = self.imageViewer.channelIndex
-        imgData = self.sampleImgData[dimsOrder][idx] 
-        if self.imageViewer.posData.SizeT == 1:
-            self.imageViewer.posData.img_data = [imgData] # single frame data
-        else:
-            self.imageViewer.posData.img_data = imgData
-        self.imageViewer.update_img()
-
     def saveCh_checkBox_cb(self, state):
         self.checkChNames()
         idx = self.saveChannels_QCBs.index(self.sender())
@@ -3767,7 +3750,6 @@ class QDialogMetadataXML(QDialog):
 
     def getValues(self):
         self.LensNA = self.LensNA_DSB.value()
-        self.DimensionOrder = self.DimensionOrderCombo.currentText()
         self.SizeT = self.SizeT_SB.value()
         self.SizeZ = self.SizeZ_SB.value()
         self.SizeC = self.SizeC_SB.value()

@@ -75,7 +75,7 @@ class bioFormatsWorker(QObject):
     criticalError = Signal(str, str, str)
     filesExisting = Signal(str)
     confirmMetadata = Signal(
-        str, float, str, int, int, int, int,
+        str, float, int, int, int, int,
         float, str, float, float, float,
         str, list, list, str, str, object
     )
@@ -331,8 +331,6 @@ class bioFormatsWorker(QObject):
         else:
             SizeS = self.SizeS
 
-        DimensionOrder = 'ztc'
-
         try:
             SizeZ = int(metadata.image().Pixels.SizeZ)
         except Exception as e:
@@ -497,7 +495,6 @@ class bioFormatsWorker(QObject):
 
         if self.trustMetadataReader:
             self.LensNA = LensNA
-            self.DimensionOrder = DimensionOrder
             self.SizeT = SizeT
             self.SizeZ = SizeZ
             self.SizeC = SizeC
@@ -518,7 +515,7 @@ class bioFormatsWorker(QObject):
                     rawFilePath, SizeC, SizeT, SizeZ
                 )
             self.confirmMetadata.emit(
-                filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
+                filename, LensNA, SizeT, SizeZ, SizeC, SizeS,
                 TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
                 PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName,
                 rawFilePath, sampleImgData
@@ -532,7 +529,6 @@ class bioFormatsWorker(QObject):
             if not self.metadataWin.requestedReadingSampleImageDataAgain:
                 break
             LensNA = self.metadataWin.LensNA
-            DimensionOrder = self.metadataWin.DimensionOrder
             SizeT = self.metadataWin.SizeT
             SizeZ = self.metadataWin.SizeZ
             SizeC = self.metadataWin.SizeC
@@ -553,7 +549,6 @@ class bioFormatsWorker(QObject):
 
         self.to_h5 = self.metadataWin.to_h5
         self.LensNA = self.metadataWin.LensNA
-        self.DimensionOrder = self.metadataWin.DimensionOrder
         self.SizeT = self.metadataWin.SizeT
         self.SizeZ = self.metadataWin.SizeZ
         self.SizeC = self.metadataWin.SizeC
@@ -677,10 +672,10 @@ class bioFormatsWorker(QObject):
         else:
             return filename
     
-    def buildIndexes(self, SizeC, SizeT, SizeZ, DimensionOrder):
+    def buildIndexes(self, SizeC, SizeT, SizeZ):
         SizesCTZ = {'c': SizeC, 't': SizeT, 'z': SizeZ}
         idxs = {}
-        k_key, i_key, j_key = DimensionOrder
+        k_key, i_key, j_key = 'ztc'
         idx = 0
 
         for k in range(SizesCTZ[k_key]):
@@ -690,33 +685,8 @@ class bioFormatsWorker(QObject):
                     idx += 1
         return idxs
 
-    def getIndex(self, idxs, dimsIdx, DimensionOrder):
-        """Get the index of the single 2D image given `dimsIdx`. 
-        
-        Note that `idxs` is generated in `buildIndexes` method.
-
-        Example:
-            Given a `DimensionOrder = 'tcz'`, and a 
-            `dimsIdx = {'t': 0, 'c': 1, 'z': 0}` the returned index is `3`.
-
-        Args:
-            idxs (dict): Dictionary where the keys are tuples of `(t, c, z)`, 
-                i.e., `t` is the index requested in the time dimension.
-                Values are the corresponding incremental indexes in the correct
-                order (see `DimensionOrder`)
-            dimsIdx (dict): Dictionary with three keys, 'z', 't', and 'c'. 
-                Values are the corresponding requested index.
-            DimensionOrder (str): String of three lower-case characters 
-                (no spaces, no punctuation) from a combination of 'z', 't', 
-                and 'c'. This value determines the order of dimensions in the 
-                Bio-Formats file. 
-
-        Returns:
-            int: incremental index requested.
-        
-
-        """
-        dims = tuple([dimsIdx.get(v, 0) for v in DimensionOrder])
+    def getIndex(self, idxs, dimsIdx):
+        dims = tuple([dimsIdx.get(v, 0) for v in 'ztc'])
         return idxs[dims]
             
     def saveImgDataChannel(
@@ -771,7 +741,7 @@ class bioFormatsWorker(QObject):
                 )
                 dimsIdx['z'] = z
                 if self.rawDataStruct != 2:
-                    idx = self.getIndex(idxs, dimsIdx, self.DimensionOrder)
+                    idx = self.getIndex(idxs, dimsIdx)
                 else:
                     idx = None
                 imgData = reader.read(
@@ -833,7 +803,6 @@ class bioFormatsWorker(QObject):
         metadata_csv_path = os.path.join(images_path, metadata_filename)
         df = pd.DataFrame({
             'LensNA': self.LensNA,
-            'DimensionOrder': self.DimensionOrder,
             'SizeT': self.SizeT,
             'SizeZ': self.SizeZ,
             'TimeIncrement': self.TimeIncrement,
@@ -892,9 +861,7 @@ class bioFormatsWorker(QObject):
 
         df.to_csv(metadata_csv_path)
 
-        idxs = self.buildIndexes(
-            self.SizeC, self.SizeT, self.SizeZ, self.DimensionOrder
-        )
+        idxs = self.buildIndexes(self.SizeC, self.SizeT, self.SizeZ)
         if self.rawDataStruct != 2:     
             if self.bioformats_backend == 'bioio':
                 import subprocess
@@ -1191,9 +1158,6 @@ class createDataStructWin(QMainWindow):
         self.df_settings = pd.read_csv(
             settings_csv_path, index_col='setting'
         )
-        if 'lastDimensionOrder' in self.df_settings.index:
-            val = self.df_settings.at['lastDimensionOrder', 'value']
-            self.lastDimensionOrder = val
 
         self.setWindowTitle("Cell-ACDC - From raw microscopy file to tifs")
         self.setWindowIcon(QtGui.QIcon(":icon.ico"))
@@ -2142,7 +2106,7 @@ class createDataStructWin(QMainWindow):
         self.close()
 
     def askConfirmMetadata(
-            self, filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
+            self, filename, LensNA, SizeT, SizeZ, SizeC, SizeS,
             TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
             PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName,
             rawFilePath, sampleImgData
@@ -2150,12 +2114,9 @@ class createDataStructWin(QMainWindow):
         if self.rawDataStruct == 2:
             filename = self.basename
         self.metadataDialogIsOpen = True
-        if hasattr(self, 'lastDimensionOrder'):
-            DimensionOrder = self.lastDimensionOrder
         self.metadataWin = apps.QDialogMetadataXML(
             title=f'Metadata for {filename}', rawFilename=filename,
-            LensNA=LensNA, DimensionOrder=DimensionOrder,
-            SizeT=SizeT, SizeZ=SizeZ, SizeC=SizeC, SizeS=SizeS,
+            LensNA=LensNA, SizeT=SizeT, SizeZ=SizeZ, SizeC=SizeC, SizeS=SizeS,
             TimeIncrement=TimeIncrement, TimeIncrementUnit=TimeIncrementUnit,
             PhysicalSizeX=PhysicalSizeX, PhysicalSizeY=PhysicalSizeY,
             PhysicalSizeZ=PhysicalSizeZ, PhysicalSizeUnit=PhysicalSizeUnit,
@@ -2164,16 +2125,9 @@ class createDataStructWin(QMainWindow):
             sampleImgData=sampleImgData, rawFilePath=rawFilePath
         )
         self.metadataWin.exec_()
-        if not self.metadataWin.cancel:
-            self.saveLastSelectedDimensionOrder(self.metadataWin.DimensionOrder)
         self.metadataDialogIsOpen = False
         self.worker.metadataWin = self.metadataWin
         self.waitCond.wakeAll()
-    
-    def saveLastSelectedDimensionOrder(self, DimensionOrder):
-        self.df_settings.at['lastDimensionOrder', 'value'] = DimensionOrder
-        self.df_settings.to_csv(settings_csv_path)
-        self.lastDimensionOrder = DimensionOrder
 
     def askReplacePos(self, pos_path):
         msg = widgets.myMessageBox()
