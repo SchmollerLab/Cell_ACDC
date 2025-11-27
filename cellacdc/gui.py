@@ -5983,7 +5983,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     
     def onCtrlReleased(self):
         self.xyOnCtrlPressedFirstTime = None
-        self.isCtrlDown = False
     
     def gui_hoverEventImg1(self, event, isHoverImg1=True):
         try:
@@ -7048,11 +7047,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.gui_mouseReleaseEventImg1(event)
     
     def drawTempRulerLine(self, event):
+        modifiers = QGuiApplication.keyboardModifiers()
+        ctrl = modifiers == Qt.ControlModifier
         x, y = event.pos()
         x1, y1 = int(x), int(y)
         xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
         x0, y0 = xxRA[0], yyRA[0]
-        if self.isCtrlDown:
+        if ctrl:
             x1, y1 = transformation.snap_xy_to_closest_angle(
                 x0, y0, x1, y1
             )
@@ -7499,10 +7500,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.ax1_rulerAnchorsItem.setData([xdata], [ydata])
                 self.tempSegmentON = True
             else:
+                modifiers = QGuiApplication.keyboardModifiers()
+                ctrl = modifiers == Qt.ControlModifier
                 self.tempSegmentON = False
                 xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
                 x0, y0 = xxRA[0], yyRA[0]
-                if self.isCtrlDown:
+                if ctrl:
                     x1, y1 = transformation.snap_xy_to_closest_angle(
                         x0, y0, xdata, ydata
                     )
@@ -9493,12 +9496,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         ID = self.currentLab2D[ydata, xdata]
         return ID
     
-    def getHoverID(self, xdata, ydata):
+    def getHoverID(self, xdata, ydata, byPassShiftCheck=False):
         if not hasattr(self, 'diskMask'):
             return 0
         
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
+        if byPassShiftCheck:
+            shift = False
+        else:
+            shift = modifiers == Qt.ShiftModifier
 
         if self.isPowerBrush() and not ctrl:
             return 0        
@@ -9514,9 +9521,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.isSegm3D:
             z = self.z_lab()
             SizeZ = posData.lab.shape[0]
-            doNotLinkThroughZ = (
-                self.brushButton.isChecked() and self.isShiftDown
-            )
+            doNotLinkThroughZ = self.brushButton.isChecked() and shift
             if doNotLinkThroughZ:
                 if self.brushHoverCenterModeAction.isChecked() or ID>0:
                     hoverID = ID
@@ -9563,7 +9568,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 else:
                     hoverID = 0
         else:
-            if self.brushButton.isChecked() and self.isShiftDown:
+            if self.brushButton.isChecked() and shift:
                 # Force new ID with brush and Shift
                 hoverID = 0
             elif self.brushHoverCenterModeAction.isChecked() or ID>0:
@@ -9578,9 +9583,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
     def setHoverToolSymbolColor(
             self, xdata, ydata, pen, ScatterItems, button,
-            brush=None, hoverRGB=None, ID=None
+            brush=None, hoverRGB=None, ID=None, byPassShiftCheck=False
         ):
-
+        modifiers = QGuiApplication.keyboardModifiers()
+        if byPassShiftCheck:
+            shift = False
+        else:
+            shift = modifiers == Qt.ShiftModifier
+        
         posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab).shape
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
@@ -9588,10 +9598,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.isHoverZneighID = False
         if ID is None:
-            hoverID = self.getHoverID(xdata, ydata)
+            hoverID = self.getHoverID(
+                xdata, ydata, byPassShiftCheck=byPassShiftCheck
+            )
         else:
             hoverID = ID
-
+        
         if hoverID == 0:
             for item in ScatterItems:
                 item.setPen(pen)
@@ -9608,7 +9620,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 pass
         
         checkChangeID = (
-            self.isHoverZneighID and not self.isShiftDown
+            self.isHoverZneighID and not shift
             and self.lastHoverID != hoverID
         )
         if checkChangeID:
@@ -13440,7 +13452,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         # Restore ID previously hovered
         if ID != self.ax1BrushHoverID and not self.isMouseDragImg1:
-            self.restoreHoverObjBrush()
+            try:
+                self.restoreHoverObjBrush()
+            except Exception as e:
+                self.ax1BrushHoverID = 0
+                return
 
         # Hide items hover ID
         if ID != 0:
@@ -14467,10 +14483,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Control:
-            if not self.isCtrlDown:
+            if not ctrl:
                 self.wasCtrlPressedFirstTime = True
                 self.onCtrlPressedFirstTime()
-            self.isCtrlDown = True
         
         if ev.key() == Qt.Key_PageDown:
             self.onKeyPageDown()
@@ -14496,7 +14511,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not isCtrlModifier and not isShiftModifier
         )
         if isShiftModifier:
-            self.isShiftDown = True
             if self.brushButton.isChecked():
                 # Force default brush symbol with shift down
                 self.setHoverToolSymbolColor(
@@ -14696,22 +14710,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # else:
         #     self.drawIDsContComboBox.setCurrentIndex(0)
 
+    def updateBrushCursorOnShiftRelease(self):        
+        xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
+        self.setHoverToolSymbolColor(
+            xdata, ydata, self.ax2_BrushCirclePen,
+            (self.ax2_BrushCircle, self.ax1_BrushCircle),
+            self.brushButton, brush=self.ax2_BrushCircleBrush,
+            byPassShiftCheck=True
+        )
+        if self.isSegm3D:
+            self.changeBrushID()
+    
+    def onShiftReleased(self):
+        if self.brushButton.isChecked() and self.xHoverImg is not None:
+            self.updateBrushCursorOnShiftRelease()
+    
     def keyReleaseEvent(self, ev):
         if self.app.overrideCursor() == Qt.SizeAllCursor:
             self.app.restoreOverrideCursor()
         if ev.key() == Qt.Key_Control:
             self.onCtrlReleased()
         elif ev.key() == Qt.Key_Shift:
-            if self.isSegm3D and self.xHoverImg is not None:
-                # Restore normal brush cursor when releasing shift
-                xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
-                self.setHoverToolSymbolColor(
-                    xdata, ydata, self.ax2_BrushCirclePen,
-                    (self.ax2_BrushCircle, self.ax1_BrushCircle),
-                    self.brushButton, brush=self.ax2_BrushCircleBrush
-                )
-                self.changeBrushID()
-            self.isShiftDown = False
+            self.onShiftReleased()
+            
         canRepeat = (
             ev.key() == Qt.Key_Left
             or ev.key() == Qt.Key_Right
@@ -17861,6 +17882,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.restartZoomAutoPilot()
         self.initManualBackgroundObject()
         self.updateObjectCounts()
+        self.updateItemsMousePos()
 
     def prev_pos(self):
         self.store_data(debug=False, autosave=False)
@@ -18109,6 +18131,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 ts.append(time.perf_counter())
                 titles.append('whitelist stuff')
             self.zoomToCells()
+            self.updateItemsMousePos()
             self.updateObjectCounts()
             if benchmark:
                 ts.append(time.perf_counter())
@@ -18486,6 +18509,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.zoomToCells()
             self.initGhostObject()
             self.updateViewerWindow()
+            self.updateItemsMousePos()
             self.updateObjectCounts()
             if benchmark:
                 ts.append(time.perf_counter())
@@ -20043,6 +20067,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             computeContours=False,
             updateLookuptable=True
         )
+        self.updateItemsMousePos()
         if self.isSegm3D:
             self.updateObjectCounts()
 
@@ -20263,10 +20288,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.splineHoverON = False
         self.tempSegmentON = False
-        self.isCtrlDown = False
         self.xyOnCtrlPressedFirstTime = None
         self.typingEditID = False
-        self.isShiftDown = False
         self.prevAnnotOptions = None
         self.ghostObject = None
         self.autoContourHoverON = False
