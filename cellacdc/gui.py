@@ -23457,7 +23457,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         selectOverlayLabels = widgets.QDialogListbox(
             'Select segmentation to overlay',
             'Select segmentation file to overlay:\n',
-            list(self.existingSegmEndNames), 
+            natsorted(self.existingSegmEndNames), 
             multiSelection=True, 
             parent=self
         )

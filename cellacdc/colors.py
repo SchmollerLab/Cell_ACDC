@@ -197,7 +197,7 @@ def get_greedy_lut(lab, lut, ids=None):
     max_ID = max(ids, default=0)
     if max_ID + 1 > len(lut):
         # Repeat lut entries if not enough colors
-        lut = np.concat([lut]*((max_ID // len(lut))+1), axis=0)
+        lut = np.concatenate([lut]*((max_ID // len(lut))+1), axis=0)
     
     if lab.ndim == 3:
         lab = lab.max(axis=0)
