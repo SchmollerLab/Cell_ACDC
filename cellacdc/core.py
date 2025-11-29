@@ -1,6 +1,6 @@
 import traceback
 import inspect
-from typing import List, Dict, Any, Iterable, Tuple, Callable, Union
+from typing import List, Dict, Any, Iterable, Tuple, Callable, Union, Literal
 import os
 import time
 import concurrent.futures
@@ -448,10 +448,15 @@ def track_sub_cell_objects_acdc_df(
     
     return sub_tracked_acdc_df, tracked_acdc_df
         
-        
 def track_sub_cell_objects(
-        cells_segm_data, subobj_segm_data, IoAthresh, 
-        how='delete_sub', SizeT=None, sigProgress=None,
+        cells_segm_data, 
+        subobj_segm_data, 
+        IoAthresh, 
+        how: Literal[
+            'delete_sub', 'delete_cells', 'delete_both', 'only_track'
+        ]='delete_sub', 
+        SizeT: int | None =None, 
+        sigProgress=None,
         relabel_sub_obj_lab=False
     ):  
     """Function used to track sub-cellular objects and assign the same ID of 
@@ -482,7 +487,7 @@ def track_sub_cell_objects(
         SizeT (int, optional): Number of frames. Pass `SizeT=1` for non-timelapse
             data. Defaults to None --> assume first dimension of segm data is SizeT.
 
-        sigProgress (PyQt5.QtCore.Signal, optional): If provided it will emit 
+        sigProgress (qtpy.QtCore.Signal, optional): If provided it will emit 
             1 for each complete frame. Used to update GUI progress bars. 
             Defaults to None --> do not emit signal.
         
@@ -530,13 +535,17 @@ def track_sub_cell_objects(
             intersect_IDs, intersections = np.unique(
                 intersect_mask, return_counts=True
             )
+            if intersect_IDs[0] == 0:
+                intersect_IDs = intersect_IDs[1:]
+                intersections = intersections[1:]
+            
+            if len(intersect_IDs) == 0:
+                untracked_sub_objs_frame_i.add(sub_obj.label)
+                continue
+            
             argmax = intersections.argmax()
             intersect_ID = intersect_IDs[argmax]
             intersection = intersections[argmax]
-            
-            if intersect_ID == 0:
-                untracked_sub_objs_frame_i.add(sub_obj.label)
-                continue
             
             IoA = intersection/sub_obj.area
             if IoA < IoAthresh:
