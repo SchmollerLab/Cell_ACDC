@@ -17982,7 +17982,9 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             hideOnClosing=hideOnClosing,
         )
 
-        self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(self.emitValuesChanged)
+        self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(
+            self.emitValuesChanged
+        )
 
         self.mainLayout.insertWidget(1, self.combineChannelsWidget)
         self.combineChannelsWidget.groupbox.setCheckable(False)
@@ -18126,6 +18128,8 @@ class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
         self.nThreadsSpinBox.setToolTip("Number of threads to use for processing")
         self.mainLayout.addWidget(QLabel("Number of threads:"))
         self.mainLayout.addWidget(self.nThreadsSpinBox)
+        
+        self.mainLayout.addSpacing(20)
 
         qutils.hide_and_delete_layout(self.buttonsLayout)
 
