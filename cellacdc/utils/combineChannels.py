@@ -3,6 +3,7 @@ import os
 import pandas as pd
 
 from .. import apps, myutils, workers, widgets, html_utils, load
+from .. import printl
 
 from .base import NewThreadMultipleExpBaseUtil
 
@@ -26,15 +27,26 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
         super().runWorker(self.worker)
     
     def askSetup(self, expPaths):
+        self.images_paths = []
         chNames = {}
         for j, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             for i, pos in enumerate(pos_foldernames):
                 pos_path = os.path.join(exp_path, pos)
                 images_path = os.path.join(pos_path, 'Images')
-                basename, chNames_loc = myutils.getBasenameAndChNames(images_path)
+                self.images_paths.append(images_path)
+                basename, chNames_loc = myutils.getBasenameAndChNames(
+                    images_path
+                )
+                segm_files = load.get_segm_files(images_path)
+                segm_endnames = load.get_endnames(
+                    basename, segm_files
+                )
                 if i == 0 and j == 0:
                     chNames = set(chNames_loc)
+                    chNames.update(segm_endnames)
                     continue
+                
+                chNames_loc.update(segm_endnames)
                 chNames = chNames.intersection(set(chNames_loc))
 
         chNames = sorted(set(chNames))
@@ -62,7 +74,27 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
     def showEvent(self, event):
         self.runWorker()
     
+    def getBasenameExtAndExtensionOutputImage(self):
+        ext = '.npz'
+        basename_ext = 'segm_'
+        for step_n, step in self.worker.selectedSteps.items():
+            channel_name = step['channel']
+            if '_segm' not in channel_name:
+                basename_ext = ''
+                
+            for images_path in self.images_paths:
+                image_filepath = load.get_filepath_from_endname(
+                    images_path, channel_name
+                )
+                
+                _, ext = os.path.splitext(image_filepath)
+                if ext != '.npz':
+                    return '', '.tif'
+        
+        return basename_ext, ext
+    
     def askAppendName(self, basename):
+        basename_ext, ext = self.getBasenameExtAndExtensionOutputImage()
         helpText = (
             """
             The combined channels file will be saved with a different 
@@ -72,8 +104,8 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
             """
         )
         win = apps.filenameDialog(
-            basename=basename,
-            ext='.tif',
+            basename=f'{basename}{basename_ext}',
+            ext=ext,
             hintText='Insert a name for the <b>combined channels</b> file:',
             defaultEntry='combined',
             helpText=helpText, 

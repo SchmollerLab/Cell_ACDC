@@ -1008,6 +1008,22 @@ def get_endnames(basename, files):
         endnames.append(endname)
     return endnames
 
+def get_filepath_from_endname(images_path, endname):
+    channel_filepath = get_filename_from_channel(images_path, endname)
+    if channel_filepath:
+        return channel_filepath
+    
+    for file in myutils.listdir(images_path):
+        if file.endswith(endname):
+            return os.path.join(images_path, file) 
+
+    for file in myutils.listdir(images_path):
+        file_noext, ext = os.path.splitext(file)
+        if file_noext.endswith(endname):
+            return os.path.join(images_path, file) 
+    
+    return ''
+
 def get_exp_path(path):
     folder_type = myutils.determine_folder_type(path)
     is_pos_folder, is_images_folder, _ = folder_type

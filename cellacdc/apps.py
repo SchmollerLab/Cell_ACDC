@@ -17796,6 +17796,7 @@ class PreProcessRecipeDialog(QBaseDialog):
         # self.cancelButton.clicked.connect(self.close)
         
         mainLayout.addLayout(keepInputDataTypeLayout)
+        mainLayout.addSpacing(20)
         mainLayout.addWidget(self.preProcessParamsWidget)
         mainLayout.addLayout(buttonsLayout)
         self.mainLayout = mainLayout
@@ -17982,9 +17983,11 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             hideOnClosing=hideOnClosing,
         )
 
-        self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(self.emitValuesChanged)
+        self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(
+            self.emitValuesChanged
+        )
 
-        self.mainLayout.insertWidget(1, self.combineChannelsWidget)
+        self.mainLayout.insertWidget(2, self.combineChannelsWidget)
         self.combineChannelsWidget.groupbox.setCheckable(False)
         self.combineChannelsWidget.groupbox.setTitle('Combine channels (Operator, Channel name, Multiplier, Add another channel)')
 
@@ -18089,7 +18092,13 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             )
             return
         
-        if just_add_subt and all([w == 1 for w in multipliers])  and sum(multipliers) != 1:
+        is_default_multiplier = (
+            just_add_subt 
+            and all([w == 1 for w in multipliers]) 
+            and sum(multipliers) != 1
+        )
+        
+        if is_default_multiplier:
             cancel = self.warnDefaultMultipliers()
             if cancel:
                 return
@@ -18126,6 +18135,8 @@ class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
         self.nThreadsSpinBox.setToolTip("Number of threads to use for processing")
         self.mainLayout.addWidget(QLabel("Number of threads:"))
         self.mainLayout.addWidget(self.nThreadsSpinBox)
+        
+        self.mainLayout.addSpacing(20)
 
         qutils.hide_and_delete_layout(self.buttonsLayout)
 

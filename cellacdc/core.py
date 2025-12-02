@@ -3,7 +3,9 @@ import inspect
 from typing import List, Dict, Any, Iterable, Tuple, Callable, Union, Literal
 import os
 import time
-import concurrent.futures
+from concurrent.futures import (
+    ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+)
 from functools import partial
 from importlib import import_module
 import numpy as np
@@ -2245,14 +2247,14 @@ def preprocess_image_from_recipe_multithread(
         else:
             num_frames = len(preprocessed_image)
             pbar = tqdm(total=num_frames, ncols=100)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+            with ThreadPoolExecutor(max_workers=n_threads) as executor:
                 iterable = enumerate(preprocessed_image)
                 func = partial(
                     preprocess_exceutor_map,
                     recipe=(step,)
                 )
                 futures = {executor.submit(func, arg) for arg in iterable}
-                for future in concurrent.futures.as_completed(futures):
+                for future in as_completed(futures):
                     try:
                         frame_i, processed_img = future.result()
                         preprocessed_image[frame_i] = processed_img
@@ -2265,34 +2267,55 @@ def preprocess_image_from_recipe_multithread(
     return preprocessed_image
 
 def combine_channels_multithread(
-    steps: Dict[str, Dict[str, Any]],
-    image_paths: List[str],
-    # channel_names: List[str],
-    # operators: List[str],
-    # multipliers: List[float],
-    keep_input_data_type: bool,
-    save_filepaths: List[str]=None,
-    n_threads: int=None,
-    signals=None,
-    logger_func: Callable=None
+        steps: Dict[str, Dict[str, Any]],
+        images_paths: List[str],
+        keep_input_data_type: bool,
+        save_filepaths: List[str]=None,
+        n_threads: int=None,
+        signals=None,
+        logger_func: Callable=None
     ):
 
     channel_names = []
     multipliers = []
     operators = []
-
+    is_all_segm_masks = True
     for step in steps.values():
         channel_names.append(step['channel'])
         multipliers.append(step['multiplier'])
         operators.append(step['operator'])
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+        channel = step['channel']
+        if '_segm' not in channel:
+            is_all_segm_masks = False
+            break
+
+        for images_path in images_paths:
+            ch_filepath = load.get_filepath_from_endname(
+                images_path, channel
+            )
+            if ch_filepath:
+                break
+        
+        if not ch_filepath.endswith('.npz'):
+            is_all_segm_masks = False
+            break
+    
+    with ThreadPoolExecutor(max_workers=n_threads) as executor:
         if signals:
-            signals.initProgressBar.emit(len(image_paths))
+            signals.initProgressBar.emit(len(images_paths))
         else:
-            pbar = tqdm(total=len(image_paths), ncols=100, desc='Combining channels')
+            pbar = tqdm(
+                total=len(images_paths), ncols=100, desc='Combining channels'
+            )
+        
+        if is_all_segm_masks:
+            executor_func = combine_segm_masks_executor_map
+        else:
+            executor_func = combine_channels_executor_map
+
         func = partial(
-            combine_channels_executor_map,
+            executor_func,
             channel_names=channel_names,
             operators=operators,
             multipliers=multipliers,
@@ -2300,7 +2323,7 @@ def combine_channels_multithread(
             return_img=False,
             logger_func=logger_func
         )
-        iterable = zip(image_paths, save_filepaths)
+        iterable = zip(images_paths, save_filepaths)
         result = executor.map(func, iterable)
         for res in result:
             if signals:
@@ -2309,13 +2332,13 @@ def combine_channels_multithread(
                 pbar.update()
 
 def combine_channels_multithread_return_imgs(
-    steps: Dict[str, Dict[str, Any]],
-    data, # this weird data struc from acdc, find in load.py
-    keep_input_data_type: bool,
-    keys: List[Tuple[Union[int, None], Union[int, None], Union[int, None]]],
-    n_threads: int=None,
-    signals=None,
-    logger_func: Callable=None,
+        steps: Dict[str, Dict[str, Any]],
+        data: list['load.loadData'],
+        keep_input_data_type: bool,
+        keys: List[Tuple[Union[int, None], Union[int, None], Union[int, None]]],
+        n_threads: int=None,
+        signals=None,
+        logger_func: Callable=None,
     ):
 
     channel_names = []
@@ -2334,7 +2357,7 @@ def combine_channels_multithread_return_imgs(
     res_i = 0
     txts = set()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+    with ThreadPoolExecutor(max_workers=n_threads) as executor:
         if signals:
             signals.initProgressBar.emit(total)
         else:
@@ -2376,15 +2399,80 @@ def combine_channels_multithread_return_imgs(
     return output_imgs, keys_out
 
 def combine_channels_executor_map(args, **kwargs):
-    image_path, save_filepath = args
+    images_path, save_filepath = args
     kwargs['save_filepath'] = save_filepath
-    kwargs['image_path'] = image_path
+    kwargs['images_path'] = images_path
     return combine_channels_func(**kwargs)
+
+def combine_segm_masks_executor_map(args, **kwargs):
+    images_path, save_filepath = args
+    kwargs['save_filepath'] = save_filepath
+    kwargs['images_path'] = images_path
+    return combine_segm_masks_func(**kwargs)
 
 def combine_channels_executor_map_return_img(args, **kwargs):
     key = args
     kwargs['key'] = key
     return combine_channels_func(**kwargs)
+
+def combine_segm_masks_func(
+        channel_names: List[str],
+        operators: List[str],
+        multipliers: List[float],
+        keep_input_data_type: bool,
+        save_filepath: str=None,
+        return_img: bool=False,
+        logger_func: Callable=None,
+        images_path: str = None,
+        key: str = None,
+        data = None,
+    ):
+    segm_data_li = []
+    for segm_endname in channel_names:
+        segm_filepath = load.get_filepath_from_endname(
+            images_path, segm_endname
+        )
+        segm_data = np.load(segm_filepath)['arr_0']
+        segm_data_li.append(segm_data.astype(np.float32))
+    
+    if all(x == "+" for x in operators):
+        output_segm = np.sum(segm_data_li, axis=0)
+        return output_segm
+    
+    for i in range(len(segm_data_li)):
+        if i == 0:
+            if operators[i] == "+":
+                output_segm = segm_data_li[0]
+            elif operators[i] == "-":
+                output_segm = -segm_data_li[0]
+            else:
+                raise ValueError(f'Invalid operator: {operators[i]}')
+            continue
+        
+        if operators[i] == "+":
+            output_segm += segm_data_li[i]
+        elif operators[i] == "-":
+            output_segm -= segm_data_li[i]
+        elif operators[i] == "*":
+            output_segm *= segm_data_li[i]
+        elif operators[i] == "/":
+            output_segm /= segm_data_li[i]
+        else:
+            raise ValueError(f'Invalid operator: {operators[i]}')
+    
+    output_segm[output_segm<0] = 0
+    output_segm = output_segm.astype(np.uint32)
+
+    if return_img:
+        return output_segm, key, ''
+    
+    txt = f'Saving combined image to {save_filepath}'
+    if logger_func:
+        logger_func(txt)
+    else:
+        printl(txt)
+    
+    io.savez_compressed(save_filepath, output_segm)
 
 def combine_channels_func(
         channel_names: List[str],
@@ -2394,7 +2482,7 @@ def combine_channels_func(
         save_filepath: str=None,
         return_img: bool=False,
         logger_func: Callable=None,
-        image_path: str = None,
+        images_path: str = None,
         key: str = None,
         data = None,
     ):
@@ -2408,7 +2496,9 @@ def combine_channels_func(
     original_dtype = None
     if not data:
         for channel in channel_names:
-            ch_filepath = load.get_filename_from_channel(image_path, channel)
+            ch_filepath = load.get_filepath_from_endname(
+                images_path, channel
+            )
             ch_image_data = load.load_image_file(ch_filepath)
             if not original_dtype:
                 original_dtype = ch_image_data.dtype
@@ -2435,15 +2525,15 @@ def combine_channels_func(
                 ch_image_data = myutils.img_to_float(ch_image_data)
                 ch_image_data_list.append(ch_image_data)
             else:
-                raise ValueError(f'Invalid number of dimensions, is your data maybe corrupted?\n Ndims: {num_dim}\n Channel name: {channel_full_name}')
+                raise ValueError(
+                    f'Invalid number of dimensions, is your data maybe corrupted?\n Ndims: {num_dim}\n Channel name: {channel_full_name}'
+                )
 
     for i in range(len(ch_image_data_list)):
         multiplier = multipliers[i]
         if multiplier == 1:
             continue
         ch_image_data_list[i] = ch_image_data_list[i] * multipliers[i]
-    #     pbar.update()
-    # pbar.close()
 
     if all(x == "+" for x in operators):
         output_img = np.sum(ch_image_data_list, axis=0)
@@ -2480,10 +2570,15 @@ def combine_channels_func(
             warning = 'safe'
             prefix = ''
         except Exception as err:
+            traceback.print_exc()
             dtype_info = np.iinfo(original_dtype)
             dtype_max = dtype_info.max
             dtype_min = dtype_info.min
-            if output_img.max() <= dtype_max and output_img.min() >= dtype_min:
+            is_in_bounds = (
+                output_img.max() <= dtype_max
+                and output_img.min() >= dtype_min
+            )
+            if is_in_bounds:
                 output_img = output_img.astype(original_dtype)
                 method = 'output_img.astype(original_dtype)'
                 warning = 'safe if weights were set correctly'
@@ -2493,25 +2588,32 @@ def combine_channels_func(
                     output_img, out_range=(dtype_min, dtype_max)
                 )
                 output_img = output_img.astype(original_dtype)
-                method = 'skimage.exposure.rescale_intensity -> output_img.astype(original_dtype)'
+                method = (
+                    'skimage.exposure.rescale_intensity '
+                    '-> output_img.astype (original_dtype)'
+                )
                 warning = '!RESCALING! the image data'
                 prefix = '[WARNING]: '
 
-        txt = f'{prefix}Converted output image to {original_dtype} using {method}, which is {warning}'
+        txt = (
+            f'{prefix}Converted output image to {original_dtype} '
+            f'using {method}, which is {warning}'
+        )
 
         if not return_img:
-            if logger_func:
+            if logger_func is not None:
                 try:
                     logger_func(txt)
                 except Exception as err:
                     printl(txt)
             else:
                 printl(txt)
+        
         if return_img:
             return output_img, key, txt
     
     txt = f'Saving combined image to {save_filepath}'
-    if logger_func:
+    if logger_func is not None:
         logger_func(txt)
     else:
         printl(txt)
@@ -2728,7 +2830,7 @@ def _compute_all_obj_to_obj_contour_dist_pairs(
         current_rp_mapper[o] = obj
     
     pbar = tqdm(total=num_rows*num_cols, ncols=100, leave=False)
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor() as executor:
         iterable = enumerate(other_rp)
         
         func = partial(
@@ -2960,11 +3062,11 @@ def parallel_count_objects(posData, logger_func):
     if benchmark:
         t0 = time.perf_counter()
     # Process in batches to optimize memory usage and control parallelism
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor() as executor:
         futures = [executor.submit(process_lab, task) for task in tasks]
         
         # Process results as they are completed
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), ncols=100):
+        for future in tqdm(as_completed(futures), total=len(futures), ncols=100):
             i, data_dict, IDs = future.result()
             posData.allData_li[i] = myutils.get_empty_stored_data_dict() # or directly assign if it's mutable
             posData.allData_li[i]['IDs'] = data_dict['IDs']
@@ -3213,16 +3315,20 @@ def apply_func_to_imgs(image:np.ndarray,
 
     if parallel:
         if processpool:
-            executor_func = concurrent.futures.ProcessPoolExecutor
+            executor_func = ProcessPoolExecutor
         else:
-            executor_func = concurrent.futures.ThreadPoolExecutor
+            executor_func = ThreadPoolExecutor
         with executor_func() as executor:
             futures = {
                 executor.submit(func, image[i_in], *args, frame_index_out=i_out, **kwargs)
                 for i_in, i_out in input_output_mapper
             }
 
-            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing frames"):
+            for future in tqdm(
+                    as_completed(futures), 
+                    total=len(futures), 
+                    desc="Processing frames"
+                ):
                 i, processed = future.result()
                 image_out[i] = processed
     else:
