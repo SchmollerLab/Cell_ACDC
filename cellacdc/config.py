@@ -71,6 +71,13 @@ try:
     )
     
     ap.add_argument(
+        '--reset', action='store_true',
+        help=(
+            'Reset Cell-ACDC settings'
+        )
+    )
+    
+    ap.add_argument(
         '-info', '--info', action='store_true',
         help=(
             'Get information about Cell-ACDC version and environment'

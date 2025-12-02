@@ -61,6 +61,7 @@ from . import try_input_install_package
 from . import _warnings
 from . import urls
 from . import qrc_resources_path
+from . import settings_folderpath
 from .models._cellpose_base import min_target_versions_cp
 
 ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
@@ -505,6 +506,7 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
         f'Installed in "{cellacdc_path}"',
         f'Environment folder: "{env_folderpath}"',
         f'User profile folder: "{user_profile_path}"',
+        f'Settings folder: "{settings_folderpath}"',
         f'Python {python_version}',
         f'Platform: {platform.platform()}',
         f'System: {platform.system()}',
@@ -5419,3 +5421,56 @@ def get_linux_distribution_name():
     name_version = f'{RELEASE_DATA["NAME"]} {RELEASE_DATA["VERSION"]}'
     
     return name_version
+
+def reset_settings():
+    question = (
+        'Do you want to reset Cell-ACDC settings'
+        '- type "h" for help - (y/[n]/h)? '
+    )
+    info_txt = (
+        'If you reset Cell-ACDC settings, the folder below will be deleted.\n\n'
+        'This means deeleting things like custom shortcuts, recent paths, last '
+        'selections, and GUI preferences.\n\n'
+        f'Settings folder path: "{settings_folderpath}"'
+    )
+    answer = 'y'
+    while True:
+        try: 
+            answer = input(f'\n{question}')
+        except Exception as err:
+            break
+        
+        if answer == 'n':
+            print('*'*100)
+            return 'Resetting Cell-ACDC settings cancelled.'
+        
+        if answer == 'y':
+            break
+        
+        if answer == 'h':
+            print('-'*100)
+            print(f'\n{info_txt}')
+            print('='*100)
+        
+        print(
+            f'"{answer}" is not a valid answer. '
+            'Type "y" for "yes", "n" for "no", or "h" for help.'
+        )
+    
+    try:
+        os.remove(settings_folderpath)
+        print('*'*100)
+        out_txt = (
+            'Cell-ACDC settings have been reset.\n\n'
+            'The following folder was deleted:\n\n'
+            f'{settings_folderpath}'
+        )
+    except Exception as err:
+        traceback.print_exc()
+        print('*'*100)
+        out_txt = (
+            '**ERROR** occured when trying to remove the settings folder.\n\n'
+            'To reset Cell-ACDC settings, please remove this folder:\n\n'
+            f'{settings_folderpath}\n'
+        )
+        return out_txt

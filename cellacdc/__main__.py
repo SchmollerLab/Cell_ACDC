@@ -49,6 +49,12 @@ def run():
         print(info_txt)
         exit()
 
+    if parser_args['reset']:
+        from cellacdc.myutils import reset_settings
+        reset_info_txt = reset_settings()
+        print(reset_info_txt)
+        exit()
+    
     if PARAMS_PATH:
         _run.run_cli(PARAMS_PATH)
     else:
