@@ -3,7 +3,9 @@ import inspect
 from typing import List, Dict, Any, Iterable, Tuple, Callable, Union, Literal
 import os
 import time
-import concurrent.futures
+from concurrent.futures import (
+    ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+)
 from functools import partial
 from importlib import import_module
 import numpy as np
@@ -2245,14 +2247,14 @@ def preprocess_image_from_recipe_multithread(
         else:
             num_frames = len(preprocessed_image)
             pbar = tqdm(total=num_frames, ncols=100)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+            with ThreadPoolExecutor(max_workers=n_threads) as executor:
                 iterable = enumerate(preprocessed_image)
                 func = partial(
                     preprocess_exceutor_map,
                     recipe=(step,)
                 )
                 futures = {executor.submit(func, arg) for arg in iterable}
-                for future in concurrent.futures.as_completed(futures):
+                for future in as_completed(futures):
                     try:
                         frame_i, processed_img = future.result()
                         preprocessed_image[frame_i] = processed_img
@@ -2288,7 +2290,7 @@ def combine_channels_multithread(
             is_all_segm_masks = False
             break
 
-        for images_path in images_path:
+        for images_path in images_paths:
             ch_filepath = load.get_filepath_from_endname(
                 images_path, channel
             )
@@ -2298,8 +2300,8 @@ def combine_channels_multithread(
         if not ch_filepath.endswith('.npz'):
             is_all_segm_masks = False
             break
-            
-    with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+    
+    with ThreadPoolExecutor(max_workers=n_threads) as executor:
         if signals:
             signals.initProgressBar.emit(len(images_paths))
         else:
@@ -2355,7 +2357,7 @@ def combine_channels_multithread_return_imgs(
     res_i = 0
     txts = set()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+    with ThreadPoolExecutor(max_workers=n_threads) as executor:
         if signals:
             signals.initProgressBar.emit(total)
         else:
@@ -2828,7 +2830,7 @@ def _compute_all_obj_to_obj_contour_dist_pairs(
         current_rp_mapper[o] = obj
     
     pbar = tqdm(total=num_rows*num_cols, ncols=100, leave=False)
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor() as executor:
         iterable = enumerate(other_rp)
         
         func = partial(
@@ -3060,11 +3062,11 @@ def parallel_count_objects(posData, logger_func):
     if benchmark:
         t0 = time.perf_counter()
     # Process in batches to optimize memory usage and control parallelism
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor() as executor:
         futures = [executor.submit(process_lab, task) for task in tasks]
         
         # Process results as they are completed
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), ncols=100):
+        for future in tqdm(as_completed(futures), total=len(futures), ncols=100):
             i, data_dict, IDs = future.result()
             posData.allData_li[i] = myutils.get_empty_stored_data_dict() # or directly assign if it's mutable
             posData.allData_li[i]['IDs'] = data_dict['IDs']
@@ -3313,16 +3315,20 @@ def apply_func_to_imgs(image:np.ndarray,
 
     if parallel:
         if processpool:
-            executor_func = concurrent.futures.ProcessPoolExecutor
+            executor_func = ProcessPoolExecutor
         else:
-            executor_func = concurrent.futures.ThreadPoolExecutor
+            executor_func = ThreadPoolExecutor
         with executor_func() as executor:
             futures = {
                 executor.submit(func, image[i_in], *args, frame_index_out=i_out, **kwargs)
                 for i_in, i_out in input_output_mapper
             }
 
-            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing frames"):
+            for future in tqdm(
+                    as_completed(futures), 
+                    total=len(futures), 
+                    desc="Processing frames"
+                ):
                 i, processed = future.result()
                 image_out[i] = processed
     else:

@@ -5868,21 +5868,26 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
         save_filepaths = []
         images_path_to_process = []
         out_ext = '.npz'
+        basename_ext = 'segm_'
         for images_path in image_paths:
             for step_n, step in steps.items():
                 channel = step['channel']
+                if '_segm' not in channel:
+                     basename_ext = ''
+                     
                 image_filepath = load.get_filepath_from_endname(
                     images_path, channel
                 )
                 _, ext = os.path.splitext(image_filepath)
                 if ext != '.npz':
                     out_ext = '.tif'
+                    basename_ext = ''
                     break
 
             basename, channels = myutils.getBasenameAndChNames(images_path)
             
             savename = (
-                f'{basename}{appended_text_filename}{out_ext}'
+                f'{basename}{basename_ext}{appended_text_filename}{out_ext}'
             )
 
             images_path_to_process.append(images_path)

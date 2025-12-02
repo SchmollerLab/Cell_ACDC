@@ -74,10 +74,14 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
     def showEvent(self, event):
         self.runWorker()
     
-    def getExtensionOutputImage(self):
+    def getBasenameExtAndExtensionOutputImage(self):
         ext = '.npz'
+        basename_ext = 'segm_'
         for step_n, step in self.worker.selectedSteps.items():
             channel_name = step['channel']
+            if '_segm' not in channel_name:
+                basename_ext = ''
+                
             for images_path in self.images_paths:
                 image_filepath = load.get_filepath_from_endname(
                     images_path, channel_name
@@ -85,12 +89,12 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
                 
                 _, ext = os.path.splitext(image_filepath)
                 if ext != '.npz':
-                    return '.tif'
+                    return '', '.tif'
         
-        return ext
+        return basename_ext, ext
     
     def askAppendName(self, basename):
-        ext = self.getExtensionOutputImage()
+        basename_ext, ext = self.getBasenameExtAndExtensionOutputImage()
         helpText = (
             """
             The combined channels file will be saved with a different 
@@ -100,7 +104,7 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
             """
         )
         win = apps.filenameDialog(
-            basename=basename,
+            basename=f'{basename}{basename_ext}',
             ext=ext,
             hintText='Insert a name for the <b>combined channels</b> file:',
             defaultEntry='combined',
