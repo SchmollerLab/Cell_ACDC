@@ -2378,15 +2378,74 @@ def combine_channels_multithread_return_imgs(
     return output_imgs, keys_out
 
 def combine_channels_executor_map(args, **kwargs):
-    image_path, save_filepath = args
+    images_path, save_filepath = args
     kwargs['save_filepath'] = save_filepath
-    kwargs['image_path'] = image_path
+    kwargs['images_path'] = images_path
     return combine_channels_func(**kwargs)
 
 def combine_channels_executor_map_return_img(args, **kwargs):
     key = args
     kwargs['key'] = key
     return combine_channels_func(**kwargs)
+
+def combine_segm_masks_func(
+        channel_names: List[str],
+        operators: List[str],
+        multipliers: List[float],
+        keep_input_data_type: bool,
+        save_filepath: str=None,
+        return_img: bool=False,
+        logger_func: Callable=None,
+        images_path: str = None,
+        key: str = None,
+        data = None,
+    ):
+    segm_data_li = []
+    for segm_endname in channel_names:
+        segm_filepath = load.get_filepath_from_endname(
+            images_path, segm_endname
+        )
+        segm_data = np.load(segm_filepath)['arr_0']
+        segm_data_li.append(segm_data.astype(np.float32))
+    
+    if all(x == "+" for x in operators):
+        output_segm = np.sum(segm_data_li, axis=0)
+        return output_segm
+    
+    for i in range(len(segm_data_li)):
+        if i == 0:
+            if operators[i] == "+":
+                output_segm = segm_data_li[0]
+            elif operators[i] == "-":
+                output_segm = -segm_data_li[0]
+            else:
+                raise ValueError(f'Invalid operator: {operators[i]}')
+            continue
+        
+        if operators[i] == "+":
+            output_segm += segm_data_li[i]
+        elif operators[i] == "-":
+            output_segm -= segm_data_li[i]
+        elif operators[i] == "*":
+            output_segm *= segm_data_li[i]
+        elif operators[i] == "/":
+            output_segm /= segm_data_li[i]
+        else:
+            raise ValueError(f'Invalid operator: {operators[i]}')
+    
+    output_segm[output_segm<0] = 0
+    output_segm = output_segm.astype(np.uint32)
+
+    if return_img:
+        return output_segm, key, ''
+    
+    txt = f'Saving combined image to {save_filepath}'
+    if logger_func:
+        logger_func(txt)
+    else:
+        printl(txt)
+    
+    io.savez_compressed(save_filepath, output_segm)
 
 def combine_channels_func(
         channel_names: List[str],
@@ -2396,7 +2455,7 @@ def combine_channels_func(
         save_filepath: str=None,
         return_img: bool=False,
         logger_func: Callable=None,
-        image_path: str = None,
+        images_path: str = None,
         key: str = None,
         data = None,
     ):
@@ -2411,7 +2470,7 @@ def combine_channels_func(
     if not data:
         for channel in channel_names:
             ch_filepath = load.get_filepath_from_endname(
-                image_path, channel
+                images_path, channel
             )
             ch_image_data = load.load_image_file(ch_filepath)
             if not original_dtype:
@@ -2515,7 +2574,7 @@ def combine_channels_func(
         )
 
         if not return_img:
-            if logger_func:
+            if logger_func is not None:
                 try:
                     logger_func(txt)
                 except Exception as err:
@@ -2527,7 +2586,7 @@ def combine_channels_func(
             return output_img, key, txt
     
     txt = f'Saving combined image to {save_filepath}'
-    if logger_func:
+    if logger_func is not None:
         logger_func(txt)
     else:
         printl(txt)
