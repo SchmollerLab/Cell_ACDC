@@ -2267,9 +2267,6 @@ def preprocess_image_from_recipe_multithread(
 def combine_channels_multithread(
         steps: Dict[str, Dict[str, Any]],
         images_paths: List[str],
-        # channel_names: List[str],
-        # operators: List[str],
-        # multipliers: List[float],
         keep_input_data_type: bool,
         save_filepaths: List[str]=None,
         n_threads: int=None,
@@ -2280,12 +2277,28 @@ def combine_channels_multithread(
     channel_names = []
     multipliers = []
     operators = []
-    
+    is_all_segm_masks = True
     for step in steps.values():
         channel_names.append(step['channel'])
         multipliers.append(step['multiplier'])
         operators.append(step['operator'])
 
+        channel = step['channel']
+        if '_segm' not in channel:
+            is_all_segm_masks = False
+            break
+
+        for images_path in images_path:
+            ch_filepath = load.get_filepath_from_endname(
+                images_path, channel
+            )
+            if ch_filepath:
+                break
+        
+        if not ch_filepath.endswith('.npz'):
+            is_all_segm_masks = False
+            break
+            
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
         if signals:
             signals.initProgressBar.emit(len(images_paths))
@@ -2293,8 +2306,14 @@ def combine_channels_multithread(
             pbar = tqdm(
                 total=len(images_paths), ncols=100, desc='Combining channels'
             )
+        
+        if is_all_segm_masks:
+            executor_func = combine_segm_masks_executor_map
+        else:
+            executor_func = combine_channels_executor_map
+
         func = partial(
-            combine_channels_executor_map,
+            executor_func,
             channel_names=channel_names,
             operators=operators,
             multipliers=multipliers,
@@ -2382,6 +2401,12 @@ def combine_channels_executor_map(args, **kwargs):
     kwargs['save_filepath'] = save_filepath
     kwargs['images_path'] = images_path
     return combine_channels_func(**kwargs)
+
+def combine_segm_masks_executor_map(args, **kwargs):
+    images_path, save_filepath = args
+    kwargs['save_filepath'] = save_filepath
+    kwargs['images_path'] = images_path
+    return combine_segm_masks_func(**kwargs)
 
 def combine_channels_executor_map_return_img(args, **kwargs):
     key = args
