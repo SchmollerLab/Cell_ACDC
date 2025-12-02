@@ -5865,38 +5865,38 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             keep_input_data_type: bool,
             n_threads: int = None
         ):
-
-        channel_name_first = steps[1]['channel']
         save_filepaths = []
-        for image_path in image_paths:
-            ch_filepath = load.get_filename_from_channel(image_path, channel_name_first)
+        images_path_to_process = []
+        out_ext = '.npz'
+        for images_path in image_paths:
+            for step_n, step in steps.items():
+                channel = step['channel']
+                image_filepath = load.get_filepath_from_endname(
+                    images_path, channel
+                )
+                _, ext = os.path.splitext(image_filepath)
+                if ext != '.npz':
+                    out_ext = '.tif'
+                    break
 
-            _, ext = os.path.splitext(ch_filepath)
-
-            posData = load.loadData(ch_filepath, channel_name_first) 
-            posData.getBasenameAndChNames()
-            posData.buildPaths()
-            posData.loadOtherFiles(
-                load_segm_data=False,
-                load_metadata=True,
-            )
-
-            basename = posData.basename
+            basename, channels = myutils.getBasenameAndChNames(images_path)
+            
             savename = (
-                f'{basename}{appended_text_filename}{ext}'
+                f'{basename}{appended_text_filename}{out_ext}'
             )
-        
-            save_filepaths = save_filepaths + [os.path.join(image_path, savename)]
 
+            images_path_to_process.append(images_path)
+            save_filepaths.append(os.path.join(images_path, savename))
+        
         core.combine_channels_multithread(
             steps=steps,
-            image_paths=image_paths,
+            images_paths=images_path_to_process,
             keep_input_data_type=keep_input_data_type,
             save_filepaths=save_filepaths,
             signals=self.signals,
             logger_func=self.logger.log,
             n_threads=n_threads
-            )
+        )
     
     @worker_exception_handler
     def run(self):

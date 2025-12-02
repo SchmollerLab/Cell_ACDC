@@ -18974,10 +18974,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.viewCombineChannelDataToggle.setChecked(checked)
         self.updateCombineChannelsPreview()
     
-    def combineCurrentImage(self, 
-                            steps: List[Dict[str, Any]]=None,
-                            keep_input_data_type:bool=None,
-                            ):
+    def combineCurrentImage(
+            self, 
+            steps: List[Dict[str, Any]]=None,
+            keep_input_data_type:bool=None,
+        ):
 
         if steps and keep_input_data_type is None:
             raise ValueError('keep_input_data_type must be set if steps is set')

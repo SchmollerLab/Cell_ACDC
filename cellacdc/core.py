@@ -2265,22 +2265,22 @@ def preprocess_image_from_recipe_multithread(
     return preprocessed_image
 
 def combine_channels_multithread(
-    steps: Dict[str, Dict[str, Any]],
-    image_paths: List[str],
-    # channel_names: List[str],
-    # operators: List[str],
-    # multipliers: List[float],
-    keep_input_data_type: bool,
-    save_filepaths: List[str]=None,
-    n_threads: int=None,
-    signals=None,
-    logger_func: Callable=None
+        steps: Dict[str, Dict[str, Any]],
+        images_paths: List[str],
+        # channel_names: List[str],
+        # operators: List[str],
+        # multipliers: List[float],
+        keep_input_data_type: bool,
+        save_filepaths: List[str]=None,
+        n_threads: int=None,
+        signals=None,
+        logger_func: Callable=None
     ):
 
     channel_names = []
     multipliers = []
     operators = []
-
+    
     for step in steps.values():
         channel_names.append(step['channel'])
         multipliers.append(step['multiplier'])
@@ -2288,9 +2288,11 @@ def combine_channels_multithread(
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
         if signals:
-            signals.initProgressBar.emit(len(image_paths))
+            signals.initProgressBar.emit(len(images_paths))
         else:
-            pbar = tqdm(total=len(image_paths), ncols=100, desc='Combining channels')
+            pbar = tqdm(
+                total=len(images_paths), ncols=100, desc='Combining channels'
+            )
         func = partial(
             combine_channels_executor_map,
             channel_names=channel_names,
@@ -2300,7 +2302,7 @@ def combine_channels_multithread(
             return_img=False,
             logger_func=logger_func
         )
-        iterable = zip(image_paths, save_filepaths)
+        iterable = zip(images_paths, save_filepaths)
         result = executor.map(func, iterable)
         for res in result:
             if signals:
@@ -2309,13 +2311,13 @@ def combine_channels_multithread(
                 pbar.update()
 
 def combine_channels_multithread_return_imgs(
-    steps: Dict[str, Dict[str, Any]],
-    data, # this weird data struc from acdc, find in load.py
-    keep_input_data_type: bool,
-    keys: List[Tuple[Union[int, None], Union[int, None], Union[int, None]]],
-    n_threads: int=None,
-    signals=None,
-    logger_func: Callable=None,
+        steps: Dict[str, Dict[str, Any]],
+        data: list['load.loadData'],
+        keep_input_data_type: bool,
+        keys: List[Tuple[Union[int, None], Union[int, None], Union[int, None]]],
+        n_threads: int=None,
+        signals=None,
+        logger_func: Callable=None,
     ):
 
     channel_names = []
@@ -2408,7 +2410,9 @@ def combine_channels_func(
     original_dtype = None
     if not data:
         for channel in channel_names:
-            ch_filepath = load.get_filename_from_channel(image_path, channel)
+            ch_filepath = load.get_filepath_from_endname(
+                image_path, channel
+            )
             ch_image_data = load.load_image_file(ch_filepath)
             if not original_dtype:
                 original_dtype = ch_image_data.dtype
@@ -2435,15 +2439,15 @@ def combine_channels_func(
                 ch_image_data = myutils.img_to_float(ch_image_data)
                 ch_image_data_list.append(ch_image_data)
             else:
-                raise ValueError(f'Invalid number of dimensions, is your data maybe corrupted?\n Ndims: {num_dim}\n Channel name: {channel_full_name}')
+                raise ValueError(
+                    f'Invalid number of dimensions, is your data maybe corrupted?\n Ndims: {num_dim}\n Channel name: {channel_full_name}'
+                )
 
     for i in range(len(ch_image_data_list)):
         multiplier = multipliers[i]
         if multiplier == 1:
             continue
         ch_image_data_list[i] = ch_image_data_list[i] * multipliers[i]
-    #     pbar.update()
-    # pbar.close()
 
     if all(x == "+" for x in operators):
         output_img = np.sum(ch_image_data_list, axis=0)
@@ -2480,10 +2484,15 @@ def combine_channels_func(
             warning = 'safe'
             prefix = ''
         except Exception as err:
+            traceback.print_exc()
             dtype_info = np.iinfo(original_dtype)
             dtype_max = dtype_info.max
             dtype_min = dtype_info.min
-            if output_img.max() <= dtype_max and output_img.min() >= dtype_min:
+            is_in_bounds = (
+                output_img.max() <= dtype_max
+                and output_img.min() >= dtype_min
+            )
+            if is_in_bounds:
                 output_img = output_img.astype(original_dtype)
                 method = 'output_img.astype(original_dtype)'
                 warning = 'safe if weights were set correctly'
@@ -2493,11 +2502,17 @@ def combine_channels_func(
                     output_img, out_range=(dtype_min, dtype_max)
                 )
                 output_img = output_img.astype(original_dtype)
-                method = 'skimage.exposure.rescale_intensity -> output_img.astype(original_dtype)'
+                method = (
+                    'skimage.exposure.rescale_intensity '
+                    '-> output_img.astype (original_dtype)'
+                )
                 warning = '!RESCALING! the image data'
                 prefix = '[WARNING]: '
 
-        txt = f'{prefix}Converted output image to {original_dtype} using {method}, which is {warning}'
+        txt = (
+            f'{prefix}Converted output image to {original_dtype} '
+            f'using {method}, which is {warning}'
+        )
 
         if not return_img:
             if logger_func:
@@ -2507,6 +2522,7 @@ def combine_channels_func(
                     printl(txt)
             else:
                 printl(txt)
+        
         if return_img:
             return output_img, key, txt
     

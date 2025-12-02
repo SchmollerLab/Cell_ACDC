@@ -431,7 +431,9 @@ class mainWin(QMainWindow):
         if SPOTMAX_INSTALLED:
             concatMenu.addAction(self.concatSpotmaxDfsAction) 
 
-        dataPrepMenu = utilsMenu.addMenu('Image preprocessing')
+        dataPrepMenu = utilsMenu.addMenu(
+            'Image and segmentation files preprocessing'
+        )
                  
         dataPrepMenu.addAction(self.batchConverterAction)
         dataPrepMenu.addAction(self.repeatDataPrepAction)
@@ -748,7 +750,7 @@ class mainWin(QMainWindow):
         )
 
         self.combineChannelsAction = QAction(
-            'Combine channels...'
+            'Combine channels and/or segmentation files...'
         )
         
         self.createConnected3Dsegm = QAction(
