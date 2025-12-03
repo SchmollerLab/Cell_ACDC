@@ -99,7 +99,8 @@ class dataPrepWin(QMainWindow):
         if mainWin is not None:
             self.app = mainWin.app
 
-        self.setWindowTitle("Cell-ACDC - data prep")
+        self._acdc_version = myutils.read_version()
+        self.setWindowTitle(f"Cell-ACDC v{self._acdc_version} - data prep")
         self.setGeometry(100, 50, 850, 800)
         self.setWindowIcon(QIcon(":icon.ico"))
 
@@ -2839,7 +2840,8 @@ class dataPrepWin(QMainWindow):
             'Loading data (check progress in the terminal)...', 
             color='w'
         )
-        self.setWindowTitle(f'Cell-ACDC - Data Prep. - "{exp_path}"')
+        version = self._acdc_version
+        self.setWindowTitle(f'Cell-ACDC v{version} - Data Prep. - "{exp_path}"')
 
         self.num_pos = len(user_ch_file_paths)
 
@@ -2942,7 +2944,9 @@ class dataPrepWin(QMainWindow):
         is_pos_folder, is_images_folder, exp_path = folder_type
 
         self.titleLabel.setText('Loading data...', color='w')
-        self.setWindowTitle(f'Cell-ACDC - Data Prep. - "{exp_path}"')
+        self.setWindowTitle(
+            f'Cell-ACDC v{self._acdc_version} - Data Prep - "{exp_path}"'
+        )
         self.setCenterAlignmentTitle()
 
         ch_name_selector = prompts.select_channel_name(

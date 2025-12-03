@@ -7587,7 +7587,9 @@ class imageViewer(QMainWindow):
 
         self.frame_i = posData.frame_i
         self.num_frames = posData.SizeT
-        self.setWindowTitle(f"Cell-ACDC - {posData.relPath}")
+        
+        version = myutils.read_version()
+        self.setWindowTitle(f"Cell-ACDC v{version} - {posData.relPath}")
 
     def gui_createActions(self):
         # File actions
