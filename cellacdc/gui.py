@@ -24566,8 +24566,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 lastChannel = selectedChannels[-1]
                 self.setCheckedOverlayContextMenusActions(selectedChannels)
                 imageItem = self.overlayLayersItems[lastChannel][0]
-                self.setOpacityOverlayLayersItems(0.5, imageItem=imageItem)
-                self.img1.setOpacity(0.5)
+                self.setOpacityOverlayLayersItems(None, imageItem=imageItem)
                 self.setOverlayChannelsToolbuttonsChecked()
 
             self.setRetainSizePolicyLutItems()
@@ -29311,6 +29310,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         ch_name_selector.setUserChannelName()
         self.user_ch_name = user_ch_name
+        self.img1.channelName = user_ch_name
 
         self.AutoPilotProfile.storeSelectedChannel(self.user_ch_name)
 
@@ -30302,10 +30302,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         toolbutton.clicked.connect(self.overlayChannelToolbuttonClicked)
         
+        alphaScrollBar.toolbutton = toolbutton
+        
         return imageItem, lutItem, alphaScrollBar, toolbutton
     
     def addAlphaScrollbar(self, channelName, imageItem):
         alphaScrollBar = widgets.ScrollBar(Qt.Horizontal)
+        imageItem.alphaScrollBar = alphaScrollBar
+        alphaScrollBar.channelName = channelName
         
         label = QLabel(f'Alpha {channelName}')
         label.setFont(_font)
@@ -30330,7 +30334,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             alphaScrollBar, self.alphaScrollbarRow, 1, 1, 2
         )
 
-        alphaScrollBar.valueChanged.connect(self.setOpacityOverlayLayersItems)
+        alphaScrollBar.valueChanged.connect(
+            partial(self.setOpacityOverlayLayersItems, scrollbar=alphaScrollBar)
+        )
 
         self.alphaScrollbarRow += 1
         return alphaScrollBar
@@ -30369,21 +30375,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def setOverlayItemsVisible(self):
         for channel, items in self.overlayLayersItems.items():
             _, lutItem, alphaSB, toolbutton = items[:4]
-            if not self.overlayButton.isChecked():
-                lutItem.hide()
-                alphaSB.hide()
-                alphaSB.label.hide()
-                toolbutton.setVisible(False)
-            elif channel in self.checkedOverlayChannels:
+            lutItem.hide()
+            alphaSB.hide()
+            alphaSB.label.hide()
+            toolbutton.setVisible(False)    
+        
+        if not self.overlayButton.isChecked():
+            return
+        
+        for channel, items in self.overlayLayersItems.items():
+            _, lutItem, alphaSB, toolbutton = items[:4]
+            if channel in self.checkedOverlayChannels:
                 lutItem.show()
                 alphaSB.show()
                 alphaSB.label.show()
                 toolbutton.setVisible(True)
-            else:
-                lutItem.hide()
-                alphaSB.hide()
-                alphaSB.label.hide()
-                toolbutton.setVisible(False)
 
     def overlayChannelToolbuttonClicked(self, checked=False, toolbutton=None):
         if toolbutton is None:
@@ -30460,13 +30466,45 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         gradient = colors.get_pg_gradient((bkgrColor, foregrColor))
         lutItem.setGradient(gradient)
     
-    def setOpacityOverlayLayersItems(self, value, imageItem=None):
+    def setOpacityOverlayLayersItems(self, value, imageItem=None, scrollbar=None):
+        if scrollbar is None:
+            scrollbar = imageItem.alphaScrollBar
+
+        channel = scrollbar.channelName
+        toolbutton = self.allOverlayToolbuttons[channel]
+        if not toolbutton.isChecked() or not toolbutton.isVisible():
+            return
+        
+        if value is None:
+            value = scrollbar.value()
+            
         if imageItem is None:
-            imageItem = self.sender().imageItem
-            alpha = value/self.sender().maximum()
+            imageItem = scrollbar.imageItem
+            alpha = value/scrollbar.maximum()
+        elif value > 1:
+            alpha = value/scrollbar.maximum()
         else:
             alpha = value
-        imageItem.setOpacity(alpha)
+        
+        alpha_values = []
+        activeOverlayImageItems = []
+        for items in self.overlayLayersItems.values():
+            imgItem, lutItem, alphaSB = items[:3]
+            _toolbutton = alphaSB.toolbutton
+            if alphaSB.channelName == channel:
+                alpha_values.append(alpha)
+            elif not _toolbutton.isChecked() or not _toolbutton.isVisible():
+                continue
+            else:
+                alpha_values.append(alphaSB.value()/alphaSB.maximum())
+            
+            activeOverlayImageItems.append(imgItem)
+        
+        opacities = colors.hierarchical_weights(alpha_values)[::-1]
+        
+        for i, imgItem in enumerate(activeOverlayImageItems):
+            imgItem.setOpacity(opacities[i+1])
+        self.img1.setOpacity(opacities[0], applyToLinked=False)
         
     def showInExplorer_cb(self):
         posData = self.data[self.pos_i]
