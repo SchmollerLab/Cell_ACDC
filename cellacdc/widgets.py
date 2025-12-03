@@ -11333,6 +11333,9 @@ class OverlayToolbar(ToolBar):
             self.sigSetSingleChannel.emit
         )
     
+    def setTransparent(self, transparent: bool):
+        self.transparencyCheckbox.setChecked(transparent)
+    
     def isTransparent(self):
         return self.transparencyCheckbox.isChecked()
     
