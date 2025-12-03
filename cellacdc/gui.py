@@ -24518,7 +24518,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.rgbaImg1.setOpacity(float(transparent))
         
         if transparent:
-            self.img1.setOpacity(0.01, applyToLinked=False)
+            self.img1.setOpacity(0.0, applyToLinked=False)
             self.imgGrad.sigLookupTableChanged.connect(
                 self.updateTransparentOverlayRgba
             )
@@ -30432,22 +30432,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             or n_checked_buttons == 1
         )
         
+        channel_opacity_mapper = self.getOpacitiesFromAlphaScrollbarValues()
+        
         # Set opacity of every layer accordingly
         for channel, otherToolbutton in self.allOverlayToolbuttons.items():          
             if channel == self.user_ch_name:
                 otherImageItem = self.img1
                 alphaScrollbar = None
-                alpha_value = 0.5
+                # alpha_value = channel_opacity_mapper[channel]
             else:
                 otherItems = self.overlayLayersItems[channel]
                 otherImageItem = otherItems[0]
                 alphaScrollbar = otherItems[2]
-                alpha_value = alphaScrollbar.value()/alphaScrollbar.maximum()
+                # alpha_value = alphaScrollbar.value()/alphaScrollbar.maximum()
             
             if otherToolbutton.isChecked() and isSingleChannel:
                 op_val = 1.0
             elif otherToolbutton.isChecked():
-                op_val = alpha_value
+                op_val = channel_opacity_mapper[channel]
             else:
                 op_val = 0.0
             
@@ -30507,8 +30509,30 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         for i, imgItem in enumerate(activeOverlayImageItems):
             imgItem.setOpacity(opacities[i+1])
+            
         self.img1.setOpacity(opacities[0], applyToLinked=False)
+    
+    def getOpacitiesFromAlphaScrollbarValues(self):
+        alpha_values = []
+        activeOverlayImageItems = []
+        for items in self.overlayLayersItems.values():
+            imgItem, lutItem, alphaSB = items[:3]
+            _toolbutton = alphaSB.toolbutton
+            if not _toolbutton.isChecked() or not _toolbutton.isVisible():
+                continue
+
+            alpha_values.append(alphaSB.value()/alphaSB.maximum())
+            activeOverlayImageItems.append(imgItem)
         
+        opacities = colors.hierarchical_weights(alpha_values)[::-1]
+        channel_opacity_mapper = {}
+        for i, imgItem in enumerate(activeOverlayImageItems):
+            channel_opacity_mapper[imgItem.channelName] = opacities[i+1]
+        
+        channel_opacity_mapper[self.user_ch_name] = opacities[0]
+        
+        return channel_opacity_mapper
+    
     def showInExplorer_cb(self):
         posData = self.data[self.pos_i]
         path = posData.images_path
