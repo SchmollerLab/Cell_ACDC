@@ -29021,6 +29021,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if cancel:
             return False
         
+        if self.overlayToolbar.isTransparent():
+            self.overlayToolbar.setTransparent(False)
+        
         self.secondLevelToolbar.setVisible(False)
         
         self.gui_createLazyLoader()
