@@ -227,6 +227,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.mainWin = mainWin
         self.app = app
         self.closeGUI = False
+        self._acdc_version = myutils.read_version()
 
         self.setAcceptDrops(True)
         self._appName = 'Cell-ACDC'
@@ -395,7 +396,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             icon = QIcon(":icon.ico")
         super().setWindowIcon(icon)
     
-    def setWindowTitle(self, title="Cell-ACDC - GUI"):
+    def setWindowTitle(self, title=None):
+        if title is None:
+            title = f'Cell-ACDC v{self._acdc_version} - GUI'
         super().setWindowTitle(title)
     
     def initProfileModels(self):
@@ -19334,7 +19337,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.initManualBackgroundImage()
         self.initPixelSizePropsDockWidget()
 
-        self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.exp_path}"')
+        self.setWindowTitle(
+            f'Cell-ACDC v{self._acdc_version} - GUI - "{posData.exp_path}"'
+        )
         
         self.setupPreprocessing()
         self.setupCombiningChannels()
@@ -20562,13 +20567,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.PosScrollBarReleased()
 
     def PosScrollBarMoved(self, pos_n):
+        if self.navigateScrollBarStartedMoving:
+            self.store_data() 
+            
         self.pos_i = pos_n-1
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
         self.updateAllImages()
         self.setStatusBarLabel()
+        self.navigateScrollBarStartedMoving = False
 
     def PosScrollBarReleased(self):
+        self.navigateScrollBarStartedMoving = True
+        if self.pos_i == self.navigateScrollBar.sliderPosition()-1:
+            # Slider released without changing value --> do nothing
+            return
+        
         self.pos_i = self.navigateScrollBar.sliderPosition()-1
         self.updateFramePosLabel()
         self.updatePos()

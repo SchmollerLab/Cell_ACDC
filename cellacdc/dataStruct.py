@@ -1159,7 +1159,8 @@ class createDataStructWin(QMainWindow):
             settings_csv_path, index_col='setting'
         )
 
-        self.setWindowTitle("Cell-ACDC - From raw microscopy file to tifs")
+        version = myutils.read_version()
+        self.setWindowTitle(f"Cell-ACDC v{version} - Data structure")
         self.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
         mainContainer = QWidget()
