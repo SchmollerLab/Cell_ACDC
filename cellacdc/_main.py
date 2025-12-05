@@ -1073,7 +1073,11 @@ class mainWin(QMainWindow):
         
         return posPath
 
-    def getSelectedExpPaths(self, utilityName, exp_folderpath=None, custom_txt=None):
+    def getSelectedExpPaths(
+            self, utilityName, 
+            exp_folderpath=None, 
+            custom_txt=None
+        ):
         # self._debug()
         
         if exp_folderpath is None:
@@ -1171,7 +1175,7 @@ class mainWin(QMainWindow):
             return
 
         if len(expPaths) > 1 or is_multi_pos:
-            infoPaths = self.getInfoPosStatus(expPaths)
+            infoPaths = self.getInfoPosStatus(expPaths, utilityName)
             selectPosWin = apps.selectPositionsMultiExp(
                 expPaths, 
                 infoPaths=infoPaths, 
@@ -1675,13 +1679,17 @@ class mainWin(QMainWindow):
         )
         self.toSymDivWin.show()
     
-    def getInfoPosStatus(self, expPaths):
+    def getInfoPosStatus(self, expPaths, utilityName):
+        if 'spotmax' in utilityName.lower():
+            caller = 'SpotMAX'
+        else:
+            caller = 'Cell-ACDC'
         infoPaths = {}
         for exp_path, posFoldernames in expPaths.items():
             posFoldersInfo = {}
             for pos in posFoldernames:
                 pos_path = os.path.join(exp_path, pos)
-                status = myutils.get_pos_status(pos_path)
+                status = myutils.get_pos_status(pos_path, caller=caller)
                 posFoldersInfo[pos] = status
             infoPaths[exp_path] = posFoldersInfo
         return infoPaths
@@ -2041,7 +2049,8 @@ class mainWin(QMainWindow):
             f'Launching utility "Concatenate tables from multipe positions"'
         )
         selectedExpPaths = self.getSelectedExpPaths(
-            'Concatenate spotMAX output files', exp_folderpath=exp_folderpath
+            'Concatenate spotMAX output files', 
+            exp_folderpath=exp_folderpath,
         )
         if selectedExpPaths is None:
             return
