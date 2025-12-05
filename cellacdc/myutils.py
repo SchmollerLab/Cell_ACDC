@@ -73,7 +73,7 @@ def get_module_name(script_file_path):
     module = '.'.join(parts)
     return module
 
-def get_pos_status(pos_path):
+def get_pos_status_acdc(pos_path):
     images_path = os.path.join(pos_path, 'Images')
     ls = listdir(images_path)
     for file in ls:
@@ -97,6 +97,24 @@ def get_pos_status(pos_path):
     else:
         return f' (last tracked frame = {last_tracked_i+1})'
 
+def get_pos_status_spotmax(pos_path):
+    spotmax_out_path = os.path.join(pos_path, 'spotMAX_output')
+    is_smax_out_present = 'Yes' if os.path.exists(spotmax_out_path) else 'No'
+    if os.path.exists(spotmax_out_path):
+        return ' (SpotMAX output exists)'
+    else:
+        return ''
+
+def get_pos_status(
+        pos_path, 
+        caller: Literal['Cell-ACDC', 'SpotMAX']='Cell-ACDC'
+    ):
+    if caller == 'Cell-ACDC':
+        return get_pos_status_acdc(pos_path)
+    
+    if caller == 'SpotMAX':
+        return get_pos_status_spotmax(pos_path)
+    
 def get_gdrive_path():
     if is_win:
         return os.path.join(f'G:{os.sep}', 'My Drive')
