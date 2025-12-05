@@ -22975,20 +22975,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         lut[0] = [0,0,0,0]
         self.keepIDsTempLayerLeft.setLevels([0, len(lut)])
         self.keepIDsTempLayerLeft.setLookupTable(lut)
-
-        # # Gray out objects
-        # alpha = self.imgGrad.labelsAlphaSlider.value()
-        # self.labelsLayerImg1.setOpacity(alpha/3)
-        # self.labelsLayerRightImg.setOpacity(alpha/3)
-
-        # # Gray out contours
-        # imageItem = self.getContoursImageItem(0)
-        # if imageItem is not None:
-        #     imageItem.setOpacity(0.3)
-        
-        # imageItem = self.getContoursImageItem(1)
-        # if imageItem is not None:
-        #     imageItem.setOpacity(0.3)
         
     
     def updateTempLayerKeepIDs(self):
@@ -24515,7 +24501,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setOverlayImages()
     
     def setOverlayTransparency(self, transparent: bool):
-        self.rgbaImg1.setOpacity(float(transparent))
+        opacity = float(transparent)
+        opacity = opacity if opacity < 1.0 else 0.999
+        self.rgbaImg1.setOpacity(opacity)
         
         if transparent:
             self.img1.setOpacity(0.01, applyToLinked=False)
@@ -30445,6 +30433,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             if op_val == 0:
                 op_val = 0.01
 
+            op_val = op_val if op_val < 1.0 else 0.999
+            
             otherImageItem.setOpacity(op_val, applyToLinked=False)
             
             if alphaScrollbar is None:
@@ -30463,10 +30453,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def setOpacityOverlayLayersItems(self, value, imageItem=None):
         if imageItem is None:
             imageItem = self.sender().imageItem
-            alpha = value/self.sender().maximum()
+            opacity = value/self.sender().maximum()
         else:
-            alpha = value
-        imageItem.setOpacity(alpha)
+            opacity = value
+        
+        opacity = opacity if opacity < 1.0 else 0.999
+        opacity = opacity if opacity > 0.0 else 0.001
+        
+        imageItem.setOpacity(opacity)
         
     def showInExplorer_cb(self):
         posData = self.data[self.pos_i]
