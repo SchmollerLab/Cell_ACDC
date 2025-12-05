@@ -22975,20 +22975,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         lut[0] = [0,0,0,0]
         self.keepIDsTempLayerLeft.setLevels([0, len(lut)])
         self.keepIDsTempLayerLeft.setLookupTable(lut)
-
-        # # Gray out objects
-        # alpha = self.imgGrad.labelsAlphaSlider.value()
-        # self.labelsLayerImg1.setOpacity(alpha/3)
-        # self.labelsLayerRightImg.setOpacity(alpha/3)
-
-        # # Gray out contours
-        # imageItem = self.getContoursImageItem(0)
-        # if imageItem is not None:
-        #     imageItem.setOpacity(0.3)
-        
-        # imageItem = self.getContoursImageItem(1)
-        # if imageItem is not None:
-        #     imageItem.setOpacity(0.3)
         
     
     def updateTempLayerKeepIDs(self):
@@ -24515,7 +24501,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setOverlayImages()
     
     def setOverlayTransparency(self, transparent: bool):
-        self.rgbaImg1.setOpacity(float(transparent))
+        opacity = float(transparent)
+        opacity = opacity if opacity < 1.0 else 0.999
+        self.rgbaImg1.setOpacity(opacity)
         
         if transparent:
             self.img1.setOpacity(0.0, applyToLinked=False)
@@ -30456,6 +30444,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             if op_val == 0:
                 op_val = 0.01
 
+            op_val = op_val if op_val < 1.0 else 0.999
+            
             otherImageItem.setOpacity(op_val, applyToLinked=False)
             
             if alphaScrollbar is None:
@@ -30484,55 +30474,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             value = scrollbar.value()
             
         if imageItem is None:
-            imageItem = scrollbar.imageItem
-            alpha = value/scrollbar.maximum()
-        elif value > 1:
-            alpha = value/scrollbar.maximum()
+            imageItem = self.sender().imageItem
+            opacity = value/self.sender().maximum()
         else:
-            alpha = value
+            opacity = value
         
-        alpha_values = []
-        activeOverlayImageItems = []
-        for items in self.overlayLayersItems.values():
-            imgItem, lutItem, alphaSB = items[:3]
-            _toolbutton = alphaSB.toolbutton
-            if alphaSB.channelName == channel:
-                alpha_values.append(alpha)
-            elif not _toolbutton.isChecked() or not _toolbutton.isVisible():
-                continue
-            else:
-                alpha_values.append(alphaSB.value()/alphaSB.maximum())
-            
-            activeOverlayImageItems.append(imgItem)
+        opacity = opacity if opacity < 1.0 else 0.999
+        opacity = opacity if opacity > 0.0 else 0.001
         
-        opacities = colors.hierarchical_weights(alpha_values)[::-1]
+        imageItem.setOpacity(opacity)
         
-        for i, imgItem in enumerate(activeOverlayImageItems):
-            imgItem.setOpacity(opacities[i+1])
-            
-        self.img1.setOpacity(opacities[0], applyToLinked=False)
-    
-    def getOpacitiesFromAlphaScrollbarValues(self):
-        alpha_values = []
-        activeOverlayImageItems = []
-        for items in self.overlayLayersItems.values():
-            imgItem, lutItem, alphaSB = items[:3]
-            _toolbutton = alphaSB.toolbutton
-            if not _toolbutton.isChecked() or not _toolbutton.isVisible():
-                continue
-
-            alpha_values.append(alphaSB.value()/alphaSB.maximum())
-            activeOverlayImageItems.append(imgItem)
-        
-        opacities = colors.hierarchical_weights(alpha_values)[::-1]
-        channel_opacity_mapper = {}
-        for i, imgItem in enumerate(activeOverlayImageItems):
-            channel_opacity_mapper[imgItem.channelName] = opacities[i+1]
-        
-        channel_opacity_mapper[self.user_ch_name] = opacities[0]
-        
-        return channel_opacity_mapper
-    
     def showInExplorer_cb(self):
         posData = self.data[self.pos_i]
         path = posData.images_path
