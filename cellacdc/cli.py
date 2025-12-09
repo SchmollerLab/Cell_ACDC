@@ -1762,11 +1762,11 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         try:
             acdc_df, rp_errors = measurements.add_regionprops_metrics(
                 acdc_df, lab, regionprops_to_save, 
-                logger_func=self.logger.log
+                logger_func=self.logger.exception
             )
             if rp_errors:
                 print('')
-                self.logger.log(
+                self.logger.exception(
                     'WARNING: Some objects had the following errors:\n'
                     f'{rp_errors}\n'
                     'Region properties with errors were saved as `Not A Number`.'

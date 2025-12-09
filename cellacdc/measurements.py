@@ -15,6 +15,8 @@ from tqdm import tqdm
 from . import core, base_cca_dict, cca_df_colnames, html_utils, config, printl
 from . import user_profile_path, cca_functions
 
+skimage_rp_url = 'https://scikit-image.org/docs/0.18.x/api/skimage.measure.html#skimage.measure.regionprops'
+
 import warnings
 warnings.filterwarnings("ignore", message="Failed to get convex hull image.")
 warnings.filterwarnings("ignore", message="divide by zero encountered in long_scalars")
@@ -45,6 +47,10 @@ PROPS_DTYPES = {
     'label': int,
     'major_axis_length': float,
     'minor_axis_length': float,
+    'eccentricity': float,
+    'circularity': float,
+    'roundness': float,
+    'aspect_ratio': float,
     'inertia_tensor_eigvals': tuple,
     'equivalent_diameter': float,
     'moments': np.ndarray,
@@ -859,16 +865,66 @@ def _get_bkgr_val_names(is_manual_bkgr_present=False):
         bkgr_val_names['manualBkgr_bkgrVal_q05'] = '5 percentile'
     return bkgr_val_names
 
-def get_props_info_txt():
-    url = 'https://scikit-image.org/docs/0.18.x/api/skimage.measure.html#skimage.measure.regionprops'
+def _get_props_info_txt():
     txt = html_utils.paragraph(f"""
         Morphological properties are calculated using the function
         from the library <code>scikit-image</code> called
         <code>skimage.measure.regionprops</code>.<br><br>
         You can find more details about each one of the properties
-        <a href=\"{url}"></a>.
+        <a href=\"{skimage_rp_url}">scikit-image regionprops</a>.
     """)
     return txt
+
+def _get_info_circularity():
+    info_txt = html_utils.paragraph(f"""
+        Circularity is defined as the ratio between 
+        <code>4 * pi * area</code> and the perimeter squared.<br><br>
+        This value is minimum 1 which is the circularity of a circle.<br><br>
+        The area and the perimeter of the object are calculated using the function
+        from the library <code>scikit-image</code> called
+        <code>skimage.measure.regionprops</code>.<br><br>
+        You can find more details about the area and the perimeter here 
+        <a href=\"{skimage_rp_url}">scikit-image regionprops</a>.
+    """)
+    return info_txt
+
+def _get_info_roundness():
+    info_txt = html_utils.paragraph(f"""
+        Roundness is defined as the ratio between 
+        <code>4 * area / pi</code> and the major axis squared.<br><br>
+        The major axis and the area are calculated using the function
+        from the library <code>scikit-image</code> called
+        <code>skimage.measure.regionprops</code>.<br><br>
+        You can find more details about the major axis and the area here 
+        <a href=\"{skimage_rp_url}">scikit-image regionprops</a>.
+    """)
+    
+    return info_txt
+
+def _get_info_aspect_ratio():
+    
+    info_txt = html_utils.paragraph(f"""
+        Aspect ratio is defined as the ratio between the major and minor axis 
+        of the object.<br><br>
+        The major and minor axis are calculated using the function
+        from the library <code>scikit-image</code> called
+        <code>skimage.measure.regionprops</code>.<br><br>
+        You can find more details about major and minor axis here 
+        <a href=\"{skimage_rp_url}">scikit-image regionprops</a>.
+    """)
+    
+    return info_txt
+
+def get_props_info_txt_mapper():
+    skimage_desc = _get_props_info_txt()
+    props_names = get_props_names()
+    mapper = {prop: skimage_desc for prop in props_names}
+    
+    mapper['circularity'] = _get_info_circularity()
+    mapper['roundness'] = _get_info_roundness()
+    mapper['aspect_ratio'] = _get_info_aspect_ratio()
+    
+    return mapper
 
 def _is_numeric_dtype(dtype):
     is_numeric = (
@@ -919,6 +975,7 @@ def regionprops_table(labels, props, logger_func=None):
         pbar.set_description(f'Computing "{prop}"')
         for o, obj in enumerate(rp):
             try:
+                obj = calc_additional_regionprops(obj)
                 metric = getattr(obj, prop)
                 _type = PROPS_DTYPES[prop]
                 if _type == int or _type == float:
@@ -993,52 +1050,12 @@ def get_non_measurements_cols(colnames, metrics_colnames):
             
 
 def get_props_names_3D():
-    props = {
-        'label': int,
-        'major_axis_length': float,
-        'minor_axis_length': float,
-        'inertia_tensor_eigvals': tuple,
-        'equivalent_diameter': float,
-        'moments': np.ndarray,
-        'area': int,
-        'solidity': float,
-        'extent': float,
-        'inertia_tensor': np.ndarray,
-        'filled_area': int,
-        'centroid': tuple,
-        'bbox_area': int,
-        'local_centroid': tuple,
-        'convex_area': int,
-        'euler_number': int,
-        'moments_normalized': np.ndarray,
-        'moments_central': np.ndarray,
-        'bbox': tuple
-    }
-    return list(props.keys())
+    props_3D = list(PROPS_DTYPES.keys())
+    props_3D.remove('solidity')
+    return props_3D
 
 def get_props_names():
-    props = {
-        'label': int,
-        'major_axis_length': float,
-        'minor_axis_length': float,
-        'inertia_tensor_eigvals': tuple,
-        'equivalent_diameter': float,
-        'moments': np.ndarray,
-        'area': int,
-        'solidity': float,
-        'extent': float,
-        'inertia_tensor': np.ndarray,
-        'filled_area': int,
-        'centroid': tuple,
-        'bbox_area': int,
-        'local_centroid': tuple,
-        'convex_area': int,
-        'euler_number': int,
-        'moments_normalized': np.ndarray,
-        'moments_central': np.ndarray,
-        'bbox': tuple
-    }
-    return list(props.keys())
+    return list(PROPS_DTYPES.keys())
 
 def _try_metric_func(func, *args):
     try:
@@ -1957,3 +1974,61 @@ def get_regionprops_columns(existing_colnames, selected_props_names):
             if m is not None:
                 selected_rp_cols.append(col)
     return selected_rp_cols
+
+def calc_circularity(obj):
+    if obj.image.ndim == 3:
+        raise TypeError(
+            'Circularity can only be calculated for 2D objects.'
+        )
+    
+    circularity = 4 * np.pi * obj.area / pow(obj.perimeter, 2)
+    return circularity
+
+def calc_roundness(obj):
+    if obj.image.ndim == 3:
+        raise TypeError(
+            'Roundness can only be calculated for 2D objects.'
+        )
+    
+    roundness = 4 * obj.area / np.pi / pow(obj.major_axis_length, 2)
+    return roundness
+
+def calc_aspect_ratio(obj):
+    if obj.image.ndim == 3:
+        raise TypeError(
+            'Roundness can only be calculated for 2D objects.'
+        )
+    
+    roundness = obj.major_axis_length / obj.minor_axis_length
+    return roundness
+
+def calc_additional_regionprops(obj):
+    if obj.image.ndim == 3:
+        circularity_sum = 0
+        roundness_sum = 0
+        aspect_ratio_sum = 0
+        for image_z in obj.image:
+            rp_z = skimage.measure.regionprops(image_z.astype(np.uint8))
+            if len(rp_z) == 0:
+                continue
+            obj_z = rp_z[0]
+            circularity_sum += calc_circularity(obj_z)
+            roundness_sum += calc_roundness(obj_z)
+            aspect_ratio_sum += calc_aspect_ratio(obj_z)
+        circularity = circularity_sum / len(obj.image)
+        roundness = roundness_sum / len(obj.image)
+        aspect_ratio = aspect_ratio_sum / len(obj.image)
+    elif obj.image.ndim == 2:
+        circularity = calc_circularity(obj)
+        roundness = calc_roundness(obj)
+        aspect_ratio = calc_aspect_ratio(obj)
+    else:
+        raise TypeError(
+            'Additional regionprops can be calculated only for 2D or 3D objects.'
+        )
+    
+    obj.circularity = circularity
+    obj.roundness = roundness
+    obj.aspect_ratio = aspect_ratio
+    
+    return obj
