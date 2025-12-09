@@ -1958,9 +1958,8 @@ class SetMeasurementsDialog(QBaseDialog):
         groupsLayout.setColumnStretch(current_col, 3)
         row += 1
 
-        props_info_txt = measurements.get_props_info_txt()
-        props_names = measurements.get_props_names()
-        rp_desc = {prop_name:props_info_txt for prop_name in props_names}
+        props_info_txt_mapper = measurements.get_props_info_txt_mapper()
+        rp_desc = props_info_txt_mapper
         regionPropsQGBox = widgets._metricsQGBox(
             rp_desc, 'Morphological properties',
             favourite_funcs=favourite_funcs, isZstack=isZstack
