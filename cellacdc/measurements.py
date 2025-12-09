@@ -2014,10 +2014,10 @@ def calc_additional_regionprops(obj):
             obj_z = rp_z[0]
             circularity_sum += calc_circularity(obj_z)
             roundness_sum += calc_roundness(obj_z)
-            aspect_ratio += calc_aspect_ratio(obj_z)
+            aspect_ratio_sum += calc_aspect_ratio(obj_z)
         circularity = circularity_sum / len(obj.image)
         roundness = roundness_sum / len(obj.image)
-        aspect_ratio = aspect_ratio / len(obj.image)
+        aspect_ratio = aspect_ratio_sum / len(obj.image)
     elif obj.image.ndim == 2:
         circularity = calc_circularity(obj)
         roundness = calc_roundness(obj)
