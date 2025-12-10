@@ -3136,8 +3136,14 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
         debugging = False
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
+        
+        acdc_objs_count_df_allpos_filename = (
+            self.concat_df_filename.replace('acdc_output', 'acdc_objects_count')
+        )
+        
         self.signals.initProgressBar.emit(0)
         acdc_dfs_allexp = []
+        acdc_objs_count_dfs_allexp = []
         keys_exp = []
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             self.errors = {}
@@ -3153,9 +3159,13 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                     return
 
             selectedAcdcOutputEndname = self.mainWin.selectedAcdcOutputEndnames[0]
+            selectedAcdcObjsCountEndname = selectedAcdcOutputEndname.replace(
+                'acdc_output', 'acdc_objects_count'
+            )
 
             self.signals.initProgressBar.emit(len(pos_foldernames))
             acdc_dfs = []
+            acdc_objs_count_dfs = {}
             keys = []
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
@@ -3183,6 +3193,17 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                     )
                     self.signals.progressBar.emit(1)
                     continue
+                
+                acdc_objs_count_file = [
+                    f for f in ls 
+                    if f.endswith(f'{selectedAcdcObjsCountEndname}.csv')
+                ]
+                if acdc_objs_count_file:
+                    df_count_filepath = os.path.join(
+                        images_path, acdc_objs_count_file[0]
+                    )
+                    df_count = pd.read_csv(df_count_filepath)
+                    acdc_objs_count_dfs[pos] = df_count
                 
                 acdc_df_filepath = os.path.join(images_path, acdc_output_file[0])
                 acdc_df = pd.read_csv(acdc_df_filepath).set_index('Cell_ID')
@@ -3250,6 +3271,29 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
             to_format_func = getattr(acdc_df_allpos, self._to_format)
             to_format_func(acdc_dfs_allpos_filepath)
             self.acdc_dfs_allpos_filepath = acdc_dfs_allpos_filepath
+            
+            if not acdc_objs_count_dfs:
+                continue
+            
+            acdc_objs_count_df_allpos = pd.concat(
+                acdc_objs_count_dfs, names=['Position_n']
+            )
+            acdc_objs_count_df_allpos['experiment_folderpath'] = exp_path
+            
+            acdc_objs_count_df_allpos_filepath = os.path.join(
+                allpos_dir, acdc_objs_count_df_allpos_filename
+            )
+            
+            self.logger.log(
+                'Saving all positions objects count file to '
+                f'"{acdc_objs_count_df_allpos_filepath}"'
+            )
+            to_format_func = getattr(acdc_objs_count_df_allpos, self._to_format)
+            to_format_func(acdc_objs_count_df_allpos_filepath)
+            
+            acdc_objs_count_dfs_allexp[(exp_path, exp_name)] = (
+                acdc_objs_count_df_allpos
+            )
         
         if len(keys_exp) <= 1:
             self.signals.finished.emit(self)
@@ -3277,6 +3321,24 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
         )
         to_format_func = getattr(acdc_df_allexp, self._to_format)
         to_format_func(acdc_dfs_allexp_filepath)
+        
+        if acdc_objs_count_dfs_allexp:
+            allexp_count_df_filename = (
+                f'multiExp_{acdc_objs_count_df_allpos_filename}'
+            )
+            acdc_objs_count_df_allexp = pd.concat(
+                acdc_objs_count_dfs_allexp,
+                names=['experiment_folderpath', 'experiment_foldername']
+            )
+            acdc_objs_count_df_allexp_filepath = os.path.join(
+                self.allExpSaveFolder, allexp_count_df_filename
+            )
+            self.logger.log(
+                'Saving multiple experiments concatenated file to '
+                f'"{acdc_objs_count_df_allexp_filepath}"'
+            )
+            to_format_func = getattr(acdc_objs_count_df_allexp, self._to_format)
+            to_format_func(acdc_objs_count_df_allexp_filepath)
 
         self.signals.finished.emit(self)
 
