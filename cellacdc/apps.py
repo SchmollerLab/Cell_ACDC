@@ -1958,7 +1958,9 @@ class SetMeasurementsDialog(QBaseDialog):
         groupsLayout.setColumnStretch(current_col, 3)
         row += 1
 
-        props_info_txt_mapper = measurements.get_props_info_txt_mapper()
+        props_info_txt_mapper = measurements.get_props_info_txt_mapper(
+            isSegm3D=isSegm3D
+        )
         rp_desc = props_info_txt_mapper
         regionPropsQGBox = widgets._metricsQGBox(
             rp_desc, 'Morphological properties',

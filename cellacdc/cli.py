@@ -1165,7 +1165,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             
             try:
                 acdc_df = self._add_volume_metrics(acdc_df, rp, posData)
-                calc_metrics_addtional_args = self._init_calc_metrics(
+                acdc_df, calc_metrics_addtional_args = self._init_calc_metrics(
                     acdc_df, rp, frame_i, lab, posData, 
                     saveDataWorker=saveDataWorker
                 )
@@ -1515,7 +1515,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             posData, frame_i, saveDataWorker=saveDataWorker
         )
         if not proceed:
-            return []
+            return df, []
         
         df = measurements.add_size_metrics(
             df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, 
@@ -1531,14 +1531,14 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         autoBkgr_mask, autoBkgr_mask_proj = autoBkgr_masks
         dataPrepBkgrROI_mask = measurements.get_bkgrROI_mask(posData, isSegm3D)
         
-        out = (
+        calc_metrics_addtional_args = (
             autoBkgr_mask, 
             autoBkgr_mask_proj, 
             dataPrepBkgrROI_mask,
             manualBackgrRp
         )
     
-        return out
+        return df, calc_metrics_addtional_args
     
     def _init_metrics(self, posData, isSegm3D):
         self.chNamesToSkip = []
@@ -1765,12 +1765,15 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 logger_func=self.logger.exception
             )
             if rp_errors:
-                print('')
-                self.logger.exception(
+                print('\n')
+                err_message = (
                     'WARNING: Some objects had the following errors:\n'
                     f'{rp_errors}\n'
                     'Region properties with errors were saved as `Not A Number`.'
                 )
+                self.logger.exception(err_message)
+                err_txt = 'Morphological properties error'
+                self.regionPropsCritical.emit(err_message, err_txt)
         except Exception as error:
             traceback_format = traceback.format_exc()
             self.regionPropsCritical.emit(traceback_format, str(error))
