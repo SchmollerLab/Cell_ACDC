@@ -1631,10 +1631,16 @@ class loadData:
         
         return mapper
     
-    def countObjectsInSegm(self, categories: set[str] | list[str]):
+    def countObjectsInSegm(self, categories: set[str] | list[str] | None=None):
         if self.SizeT > 1:
+            if categories is None:
+                categories = ['In entire video']
+                
             return self.countObjectsInSegmTimelapse(categories)
         else:
+            if categories is None:
+                categories = ['In current position']
+                
             return self.countObjectsInSegmSnapshots(categories)
     
     def saveObjCounts(self, countMapper: dict[str, int]):

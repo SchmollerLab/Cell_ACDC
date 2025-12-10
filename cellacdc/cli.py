@@ -760,6 +760,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 '\n'.join(self.mixedChCombineMetricsToSkip)
             )
         
+        params['save_object_counts_table'] = self.save_object_counts_table
+        
         return params
         
     def set_metrics_from_workflow_config_params(self, config_params):
@@ -781,6 +783,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
         self.sizeMetricsToSave = config_params['size_metrics_to_save']
         self.regionPropsToSave = config_params['regionprops_to_save']
+        self.save_object_counts_table = config_params.get(
+            'save_object_counts_table', False
+        )
         if 'channel_indipendent_custom_metrics_to_save' in config_params:
             self.chIndipendCustomMetricsToSave = (
                 config_params['channel_indipendent_custom_metrics_to_save']
@@ -808,7 +813,10 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             )
             if metrics_to_save:
                 self.metricsToSave[channel] = metrics_to_save
-        
+    
+    def set_save_objects_count_table(self, yes: bool):
+        self.save_object_counts_table = yes
+    
     def set_metrics_from_set_measurements_dialog(self, setMeasurementsDialog):
         self.chNamesToSkip = []
         self.chNamesToProcess = []
@@ -1254,6 +1262,18 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             computeMetricsWorker=computeMetricsWorker, 
             saveDataWorker=saveDataWorker
         )
+        
+        if not self.save_object_counts_table:
+            return
+        
+        countMapper = posData.countObjectsInSegm()
+        countMapper.pop('In current frame', None)
+        df_count_endname = posData.saveObjCounts(countMapper)
+        
+        self.log(
+            'Saved object counts table to file ending with: '
+            f'"{df_count_endname}"'
+        )
     
     def _remove_deprecated_rows(self, df):
         v1_2_4_rc25_deprecated_cols = [
@@ -1551,7 +1571,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         # we set the measurements to save either at setMeasurements dialog
         # or at initMetricsToSave
         self.metricsToSave = None
-        self.regionPropsToSave = measurements.get_props_names()
+        self.save_object_counts_table = False
         if isSegm3D:
             self.regionPropsToSave = measurements.get_props_names_3D()
         else:
