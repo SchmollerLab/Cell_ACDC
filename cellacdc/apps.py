@@ -9235,13 +9235,10 @@ class askStopFrameSegm(QDialog):
 
         # Message
         infoTxt = html_utils.paragraph("""
-            Enter a <b>stop frame number</b> when to stop<br>
+            Enter a <b>stop frame number</b> when to stop 
             segmentation for each Position loaded:
         """)
         infoLabel = QLabel(infoTxt, self)
-        _font = QFont()
-        _font.setPixelSize(12)
-        infoLabel.setFont(_font)
         infoLabel.setAlignment(Qt.AlignCenter)
         # padding: top, left, bottom, right
         infoLabel.setStyleSheet("padding:0px 0px 8px 0px;")
@@ -9257,6 +9254,7 @@ class askStopFrameSegm(QDialog):
         mainScrollAreaWidget = QWidget()
         mainScrollAreaWidget.setLayout(columnsLayout)
         mainScrollArea.setWidget(mainScrollAreaWidget)
+        self.mainScrollArea = mainScrollArea
 
         # Form layout widget
         self.spinBoxes = []
@@ -9264,7 +9262,7 @@ class askStopFrameSegm(QDialog):
         iter_items = exp_path_pos_mapper.items()
         self.groupboxScrollAreas = []
         
-        for col, (exp_path, pos_foldername) in enumerate(iter_items):
+        for col, (exp_path, pos_folders_files) in enumerate(iter_items):
             groupboxScrollArea = widgets.ScrollArea()
             self.groupboxScrollAreas.append(groupboxScrollArea)
             groupbox = QGroupBox()
@@ -9274,12 +9272,12 @@ class askStopFrameSegm(QDialog):
             groupbox.setLayout(groupboxLayout)
             groupboxScrollArea.setWidget(groupbox)
             columnsLayout.addWidget(groupboxScrollArea)
-            for (i, img_path) in enumerate(user_ch_file_paths):
-                pos_foldername = os.path.basename(
-                    os.path.dirname(
-                        os.path.dirname(img_path)
-                    )
-                )
+            pos_folders = pos_folders_files['pos_foldernames']
+            filenames = pos_folders_files['filenames']
+            for i, pos_foldername in enumerate(pos_folders):
+                img_filename = filenames[i]
+                images_path = os.path.join(exp_path, pos_foldername, 'Images')
+                img_path = os.path.join(images_path, img_filename)
                 spinBox = widgets.mySpinBox()
                 spinBox.sigTabEvent.connect(self.keyTabEventSpinbox)
                 posData = load.loadData(img_path, user_ch_name, QParent=parent)
@@ -9384,10 +9382,16 @@ class askStopFrameSegm(QDialog):
         width, height = 0, 0
         for scrollArea in self.groupboxScrollAreas:
             width += scrollArea.minimumWidthNoScrollbar()
-            height += scrollArea.minimumHeightNoScrollbar()
+            scrollAreaHeight = scrollArea.minimumHeightNoScrollbar()
+            if scrollAreaHeight > height:
+                height = scrollAreaHeight
         
         width += 70
-        height += 70
+        height += (
+            self.sizeHint().height() 
+            - self.mainScrollArea.sizeHint().height()
+        )
+        
         if width > maxWidth:
             width = maxWidth
         
@@ -9397,6 +9401,7 @@ class askStopFrameSegm(QDialog):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         self.resize(width, height)
+        self.move(25, 50)
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
