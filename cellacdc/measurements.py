@@ -915,9 +915,12 @@ def _get_info_aspect_ratio():
     
     return info_txt
 
-def get_props_info_txt_mapper():
+def get_props_info_txt_mapper(isSegm3D=False):
     skimage_desc = _get_props_info_txt()
-    props_names = get_props_names()
+    if isSegm3D:
+        props_names = get_props_names_3D()
+    else:
+        props_names = get_props_names()
     mapper = {prop: skimage_desc for prop in props_names}
     
     mapper['circularity'] = _get_info_circularity()
@@ -1048,10 +1051,10 @@ def get_non_measurements_cols(colnames, metrics_colnames):
             non_metrics_non_rp_colnames.append(col)
     return non_metrics_non_rp_colnames  
             
-
 def get_props_names_3D():
     props_3D = list(PROPS_DTYPES.keys())
     props_3D.remove('solidity')
+    props_3D.remove('eccentricity')
     return props_3D
 
 def get_props_names():
@@ -1551,6 +1554,7 @@ def add_size_metrics(
                 col, obj, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
             )
             df.at[obj.label, col] = val
+            
             if not calc_size_for_each_zslice:
                 continue
             

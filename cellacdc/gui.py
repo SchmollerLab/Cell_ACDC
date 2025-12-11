@@ -13529,70 +13529,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         else:
             activeCategories = self.countObjsWindow.activeCategories()
             
-        posData = self.data[self.pos_i]
-        numObjsCurrentFrame = len(posData.IDs)
-        
-        uniqueIDsVisited = None
-        uniqueIDsAll = None
-        numObjsVisitedFrames = None
-        numObjsTotal = None
-        if 'Unique objects in all visited frames' in activeCategories:
-            uniqueIDsVisited = set()
-        
-        if 'Unique objects in entire video' in activeCategories:
-            uniqueIDsAll = set()
-        
-        if 'In all visited frames' in activeCategories:
-            numObjsVisitedFrames = 0
-        
-        if 'In entire video' in activeCategories:
-            numObjsTotal = 0
-            
-        for frame_i in range(len(posData.segm_data)):
-            lab = posData.allData_li[frame_i]['labels']
-            if lab is not None:
-                IDsFrame = posData.allData_li[frame_i]['IDs']
-                
-                if uniqueIDsVisited is not None:
-                    uniqueIDsVisited.update(IDsFrame)
-                
-                if uniqueIDsAll is not None:
-                    uniqueIDsAll.update(IDsFrame)
-                
-                numObjsFrame = len(IDsFrame)
-                
-                if numObjsVisitedFrames is not None:
-                    numObjsVisitedFrames += numObjsFrame
-                    
-                if numObjsTotal is not None:
-                    numObjsTotal += numObjsFrame
-            else:
-                lab = posData.segm_data[frame_i]
-                
-                if numObjsTotal is not None or numObjsTotal is not None:
-                    rp = skimage.measure.regionprops(posData.segm_data[frame_i])
-                
-                if numObjsTotal is not None:
-                    numObjsTotal += len(rp)
-                    
-                if uniqueIDsAll is not None:
-                    uniqueIDsAll.update([obj.label for obj in rp])
-        
-        numUniqueObjsVisitedFrames = None
-        if uniqueIDsVisited is not None:
-            numUniqueObjsVisitedFrames = len(uniqueIDsVisited)
-        
-        numUniqueObjsTotal = None
-        if uniqueIDsAll is not None:
-            numUniqueObjsTotal = len(uniqueIDsAll)
-        
-        allCategoryCountMapper = {
-            'In current frame': numObjsCurrentFrame, 
-            'In all visited frames': numObjsVisitedFrames, 
-            'In entire video': numObjsTotal, 
-            'Unique objects in all visited frames': numUniqueObjsVisitedFrames, 
-            'Unique objects in entire video': numUniqueObjsTotal
-        }
+        posData = self.data[self.pos_i]        
+        allCategoryCountMapper = posData.countObjectsInSegmTimelapse(
+            activeCategories
+        )
         if self.countObjsWindow is None:
             return allCategoryCountMapper 
         
@@ -24578,7 +24518,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             categoryCountMapper = self.countObjects()
             self.countObjsWindow = apps.ObjectCountDialog(
                 categoryCountMapper=categoryCountMapper, 
-                parent=self
+                parent=self,
+                data=self.data
             )
             self.countObjsWindow.sigShowEvent.connect(self.updateObjectCounts)
             self.countObjsWindow.sigUpdateCounts.connect(self.updateObjectCounts)

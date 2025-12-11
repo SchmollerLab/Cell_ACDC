@@ -760,6 +760,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 '\n'.join(self.mixedChCombineMetricsToSkip)
             )
         
+        params['save_object_counts_table'] = self.save_object_counts_table
+        
         return params
         
     def set_metrics_from_workflow_config_params(self, config_params):
@@ -781,6 +783,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
         self.sizeMetricsToSave = config_params['size_metrics_to_save']
         self.regionPropsToSave = config_params['regionprops_to_save']
+        self.save_object_counts_table = config_params.get(
+            'save_object_counts_table', False
+        )
         if 'channel_indipendent_custom_metrics_to_save' in config_params:
             self.chIndipendCustomMetricsToSave = (
                 config_params['channel_indipendent_custom_metrics_to_save']
@@ -808,7 +813,10 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             )
             if metrics_to_save:
                 self.metricsToSave[channel] = metrics_to_save
-        
+    
+    def set_save_objects_count_table(self, yes: bool):
+        self.save_object_counts_table = yes
+    
     def set_metrics_from_set_measurements_dialog(self, setMeasurementsDialog):
         self.chNamesToSkip = []
         self.chNamesToProcess = []
@@ -1165,7 +1173,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             
             try:
                 acdc_df = self._add_volume_metrics(acdc_df, rp, posData)
-                calc_metrics_addtional_args = self._init_calc_metrics(
+                acdc_df, calc_metrics_addtional_args = self._init_calc_metrics(
                     acdc_df, rp, frame_i, lab, posData, 
                     saveDataWorker=saveDataWorker
                 )
@@ -1253,6 +1261,18 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             all_frames_acdc_df, posData, custom_annot_columns, 
             computeMetricsWorker=computeMetricsWorker, 
             saveDataWorker=saveDataWorker
+        )
+        
+        if not self.save_object_counts_table:
+            return
+        
+        countMapper = posData.countObjectsInSegm()
+        countMapper.pop('In current frame', None)
+        df_count_endname = posData.saveObjCounts(countMapper)
+        
+        self.log(
+            'Saved object counts table to file ending with: '
+            f'"{df_count_endname}"'
         )
     
     def _remove_deprecated_rows(self, df):
@@ -1515,7 +1535,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             posData, frame_i, saveDataWorker=saveDataWorker
         )
         if not proceed:
-            return []
+            return df, []
         
         df = measurements.add_size_metrics(
             df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, 
@@ -1531,14 +1551,14 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         autoBkgr_mask, autoBkgr_mask_proj = autoBkgr_masks
         dataPrepBkgrROI_mask = measurements.get_bkgrROI_mask(posData, isSegm3D)
         
-        out = (
+        calc_metrics_addtional_args = (
             autoBkgr_mask, 
             autoBkgr_mask_proj, 
             dataPrepBkgrROI_mask,
             manualBackgrRp
         )
     
-        return out
+        return df, calc_metrics_addtional_args
     
     def _init_metrics(self, posData, isSegm3D):
         self.chNamesToSkip = []
@@ -1551,7 +1571,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         # we set the measurements to save either at setMeasurements dialog
         # or at initMetricsToSave
         self.metricsToSave = None
-        self.regionPropsToSave = measurements.get_props_names()
+        self.save_object_counts_table = False
         if isSegm3D:
             self.regionPropsToSave = measurements.get_props_names_3D()
         else:
@@ -1765,12 +1785,15 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 logger_func=self.logger.exception
             )
             if rp_errors:
-                print('')
-                self.logger.exception(
+                print('\n')
+                err_message = (
                     'WARNING: Some objects had the following errors:\n'
                     f'{rp_errors}\n'
                     'Region properties with errors were saved as `Not A Number`.'
                 )
+                self.logger.exception(err_message)
+                err_txt = 'Morphological properties error'
+                self.regionPropsCritical.emit(err_message, err_txt)
         except Exception as error:
             traceback_format = traceback.format_exc()
             self.regionPropsCritical.emit(traceback_format, str(error))

@@ -1550,6 +1550,117 @@ class loadData:
             img_data[i] = frame
         return img_data
 
+    def countObjectsInSegmTimelapse(self, categories: set[str] | list[str]):
+        numObjsCurrentFrame = len(self.IDs)
+        
+        uniqueIDsVisited = None
+        uniqueIDsAll = None
+        numObjsVisitedFrames = None
+        numObjsTotal = None
+        if 'Unique objects in all visited frames' in categories:
+            uniqueIDsVisited = set()
+        
+        if 'Unique objects in entire video' in categories:
+            uniqueIDsAll = set()
+        
+        if 'In all visited frames' in categories:
+            numObjsVisitedFrames = 0
+        
+        if 'In entire video' in categories:
+            numObjsTotal = 0
+            
+        for frame_i in range(len(self.segm_data)):
+            lab = self.allData_li[frame_i]['labels']
+            if lab is not None:
+                IDsFrame = self.allData_li[frame_i]['IDs']
+                
+                if uniqueIDsVisited is not None:
+                    uniqueIDsVisited.update(IDsFrame)
+                
+                if uniqueIDsAll is not None:
+                    uniqueIDsAll.update(IDsFrame)
+                
+                numObjsFrame = len(IDsFrame)
+                
+                if numObjsVisitedFrames is not None:
+                    numObjsVisitedFrames += numObjsFrame
+                    
+                if numObjsTotal is not None:
+                    numObjsTotal += numObjsFrame
+            else:
+                lab = self.segm_data[frame_i]
+                
+                if numObjsTotal is not None or numObjsTotal is not None:
+                    rp = skimage.measure.regionprops(self.segm_data[frame_i])
+                
+                if numObjsTotal is not None:
+                    numObjsTotal += len(rp)
+                    
+                if uniqueIDsAll is not None:
+                    uniqueIDsAll.update([obj.label for obj in rp])
+        
+        numUniqueObjsVisitedFrames = None
+        if uniqueIDsVisited is not None:
+            numUniqueObjsVisitedFrames = len(uniqueIDsVisited)
+        
+        numUniqueObjsTotal = None
+        if uniqueIDsAll is not None:
+            numUniqueObjsTotal = len(uniqueIDsAll)
+        
+        allCategoryCountMapper = {
+            'In current frame': numObjsCurrentFrame, 
+            'In all visited frames': numObjsVisitedFrames, 
+            'In entire video': numObjsTotal, 
+            'Unique objects in all visited frames': numUniqueObjsVisitedFrames, 
+            'Unique objects in entire video': numUniqueObjsTotal
+        }
+        
+        return allCategoryCountMapper
+    
+    def countObjectsInSegmSnapshots(self, categories: set[str] | list[str]):
+        if hasattr(self, 'IDs'):
+            numObjs = len(self.IDs)
+        else:
+            lab = np.squeeze(self.segm_data)
+            rp = skimage.measure.regionprops(lab)
+            numObjs = len(rp)
+        
+        mapper = {
+            'In current position': numObjs
+        }
+        
+        return mapper
+    
+    def countObjectsInSegm(self, categories: set[str] | list[str] | None=None):
+        if self.SizeT > 1:
+            if categories is None:
+                categories = ['In entire video']
+                
+            return self.countObjectsInSegmTimelapse(categories)
+        else:
+            if categories is None:
+                categories = ['In current position']
+                
+            return self.countObjectsInSegmSnapshots(categories)
+    
+    def saveObjCounts(self, countMapper: dict[str, int]):
+        df = pd.DataFrame(countMapper, index=[0])
+        segmFilename = os.path.basename(self.segm_npz_path)
+        segmEndname = segmFilename[len(self.basename):]
+        dfCountEndname = (
+            segmEndname
+            .replace('segm', 'acdc_objects_count')
+            .replace('.npz', '.csv')
+        )
+        
+        dfCountFilename = f'{self.basename}{dfCountEndname}'
+        dfCountFilepath = os.path.join(self.images_path, dfCountFilename)
+        
+        df.to_csv(dfCountFilepath, index=False)
+        
+        return dfCountEndname
+        
+    
     def detectMultiSegmNpz(
             self, multiPos=False, signals=None,
             mutex=None, waitCond=None, askMultiSegmFunc=None,

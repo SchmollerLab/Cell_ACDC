@@ -1958,7 +1958,9 @@ class SetMeasurementsDialog(QBaseDialog):
         groupsLayout.setColumnStretch(current_col, 3)
         row += 1
 
-        props_info_txt_mapper = measurements.get_props_info_txt_mapper()
+        props_info_txt_mapper = measurements.get_props_info_txt_mapper(
+            isSegm3D=isSegm3D
+        )
         rp_desc = props_info_txt_mapper
         regionPropsQGBox = widgets._metricsQGBox(
             rp_desc, 'Morphological properties',
@@ -17501,7 +17503,8 @@ class ObjectCountDialog(QBaseDialog):
     def __init__(
             self, 
             categoryCountMapper: dict,
-            parent=None
+            parent=None,
+            data: list['load.loadData'] | None=None
         ):
         super().__init__(parent=parent)
         self.setWindowTitle('Object count')
@@ -17512,6 +17515,14 @@ class ObjectCountDialog(QBaseDialog):
         cancelOkLayout = widgets.CancelOkButtonsLayout()
         cancelOkLayout.okButton.clicked.connect(self.ok_cb)
         cancelOkLayout.cancelButton.clicked.connect(self.close)
+        
+        self.data = data
+        if data is not None:
+            saveCountsButton = widgets.savePushButton(
+                'Export counts to CSV table'
+            )
+            saveCountsButton.clicked.connect(self.saveCounts)
+            cancelOkLayout.insertWidget(3, saveCountsButton)
         
         updateCountsButton = widgets.reloadPushButton('Update counts')
         cancelOkLayout.insertWidget(3, updateCountsButton)
@@ -17577,6 +17588,21 @@ class ObjectCountDialog(QBaseDialog):
         mainLayout.addLayout(cancelOkLayout)
         
         self.setLayout(mainLayout)
+    
+    def saveCounts(self, checked=False):
+        categories = self.activeCategories()
+        for posData in self.data:
+            countMapper = posData.countObjectsInSegm(categories)
+            countMapper.pop('In current frame', None)
+            df_count_endname = posData.saveObjCounts(countMapper)
+        
+        txt = html_utils.paragraph(f"""
+            Done!<br><br>
+            Objects count table saved in every loaded Position folder<br> 
+            as a <b>CSV file ending with</b> <code>{df_count_endname}</code>
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'Objects count saved', txt)
     
     def updateWarnLabel(self, checked):
         if not checked:

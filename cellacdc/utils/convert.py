@@ -86,7 +86,7 @@ class convertFileFormatWin(QMainWindow):
         informativeLabel.setAlignment(Qt.AlignLeft)
         mainLayout.addWidget(informativeLabel)
 
-        abortButton = QPushButton('Abort process')
+        abortButton = QPushButton('Stop processs')
         abortButton.clicked.connect(self.close)
         mainLayout.addWidget(abortButton)
 

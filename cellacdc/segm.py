@@ -212,7 +212,7 @@ class segmWin(QMainWindow):
         self.progressLabel = widgets.Label(self, force_html=True)
         self.mainLayout.addWidget(self.progressLabel)
 
-        abortButton = widgets.cancelPushButton('Abort process')
+        abortButton = widgets.cancelPushButton('Stop processs')
         abortButton.clicked.connect(self.close)
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(abortButton)

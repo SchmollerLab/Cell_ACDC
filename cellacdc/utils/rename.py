@@ -70,7 +70,7 @@ class renameFilesWin(QMainWindow):
         informativeLabel = QLabel(html_utils.paragraph(infoTxt))
         mainLayout.addWidget(informativeLabel)
 
-        abortButton = QPushButton('Abort process')
+        abortButton = QPushButton('Stop processs')
         abortButton.clicked.connect(self.close)
         mainLayout.addWidget(abortButton)
 
@@ -294,12 +294,6 @@ class renameFilesWin(QMainWindow):
         df.to_csv(recentPaths_path)
 
     def doAbort(self):
-        # msg = QMessageBox()
-        # closeAnswer = msg.warning(
-        #    self, 'Abort execution?', 'Do you really want to abort process?',
-        #    msg.Yes | msg.No
-        # )
-        # if closeAnswer == msg.Yes:
         if self.allowExit:
             exit('Execution aborted by the user')
         else:

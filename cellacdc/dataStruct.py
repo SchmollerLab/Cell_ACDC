@@ -1223,7 +1223,7 @@ class createDataStructWin(QMainWindow):
         self.logWin.setReadOnly(True)
         mainLayout.addWidget(self.logWin)
 
-        abortButton = widgets.cancelPushButton(' Abort process ')
+        abortButton = widgets.cancelPushButton(' Stop processs ')
         abortButton.clicked.connect(self.close)
         
         buttonsLayout = QHBoxLayout()

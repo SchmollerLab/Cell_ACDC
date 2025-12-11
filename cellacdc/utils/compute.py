@@ -360,7 +360,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             addCombineMetricCallback=self.addCombineMetric,
             allPosData=self.allPosData
         )
-        self.measurementsWin.sigClosed.connect(self.startSaveDataWorker)
+        self.measurementsWin.sigClosed.connect(self.askSaveObjectsCount)
         self.measurementsWin.sigCancel.connect(self.abortWorkerMeasurementsWin)
         self.measurementsWin.show()
     
@@ -369,6 +369,23 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.worker.waitCond.wakeAll()
         self.cancel = True
 
+    def askSaveObjectsCount(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            Do you also want to save an additional table with the 
+            number of objects in each frame?<br><br>
+            This table will be saved in each position folder as a CSV file 
+            ending with <code>acdc_objects_count</code>.
+        """)
+        noButton, yesButton = msg.question(
+            self, 'Save objects count?', txt, 
+            buttonsTexts=('No', 'Yes, save objects count')
+        )
+        if msg.clickedButton == yesButton:
+            self.worker.kernel.set_save_objects_count_table(True)
+            
+        self.startSaveDataWorker()
+    
     def startSaveDataWorker(self):
         self.worker.kernel.init_args(
             self.posData.chNames, self.endFilenameSegm

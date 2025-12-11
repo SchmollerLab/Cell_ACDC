@@ -41,6 +41,7 @@ from .utils import toObjCoords as utilsToObjCoords
 from .utils import acdcToSymDiv as utilsSymDiv
 from .utils import trackSubCellObjects as utilsTrackSubCell
 from .utils import createConnected3Dsegm as utilsConnected3Dsegm
+from .utils import countObjects as utilsCountObjectsInSegm
 from .utils import fucciPreprocess as utilsFucciPreprocess
 from .utils import customPreprocess as utilsCustomPreprocess
 from .utils import combineChannels as utilsCombineChannels
@@ -423,6 +424,7 @@ class mainWin(QMainWindow):
 
         measurementsMenu = utilsMenu.addMenu('Measurements')
         measurementsMenu.addAction(self.calcMetricsAcdcDf)
+        measurementsMenu.addAction(self.countObjectsInSegmAction)
         measurementsMenu.addAction(self.combineMetricsMultiChannelAction) 
         measurementsMenu.addAction(self.generateMothBudTotTableAction) 
         
@@ -753,6 +755,10 @@ class mainWin(QMainWindow):
             'Combine channels and/or segmentation files...'
         )
         
+        self.countObjectsInSegmAction = QAction(
+            'Count objects in segmentation mask and save to CSV file...'
+        )
+        
         self.createConnected3Dsegm = QAction(
             'Create connected 3D segmentation mask from z-slices segmentation...'
         )
@@ -863,6 +869,11 @@ class mainWin(QMainWindow):
 
         self.combineChannelsAction.triggered.connect(
             self.launchCombineChannelsUtil
+        )
+        
+        
+        self.countObjectsInSegmAction.triggered.connect(
+            self.launchCountObjectsInSegmActionUtil
         )
         
         self.createConnected3Dsegm.triggered.connect(
@@ -1563,6 +1574,23 @@ class mainWin(QMainWindow):
         infoText = 'Launching connected 3D segmentation mask creation process...'
         progressDialogueTitle = 'Creating connected 3D segmentation mask'
         self.connected3DsegmWin = utilsConnected3Dsegm.CreateConnected3Dsegm(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.connected3DsegmWin.show()
+    
+    def launchCountObjectsInSegmActionUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Create connected 3D segmentation mask'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Count objects in segmentation mask'
+        infoText = 'Launching count objects in segmentation masks process...'
+        progressDialogueTitle = 'Counting objects in segmentation mask'
+        self.connected3DsegmWin = utilsCountObjectsInSegm.CountObjectsInsegm(
             selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
             parent=self
         )
