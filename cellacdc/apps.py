@@ -18575,7 +18575,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
                 selectedValues=values
             )
             if select_folder.cancel:
-                continue
+                return
             
             for pos in select_folder.selected_pos:
                 paths.append(os.path.join(exp_path, pos))
@@ -18599,6 +18599,8 @@ class SelectFoldersToAnalyse(QBaseDialog):
                 return
             
             paths = self.parse_select_from_exp_paths(exp_paths)
+            if paths is None:
+                return
         else:
             paths = [selected_path]
         
