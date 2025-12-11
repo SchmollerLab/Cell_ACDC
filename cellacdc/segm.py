@@ -837,7 +837,6 @@ class segmWin(QMainWindow):
         self.trackerName = ''
         self.stopFrames = [1 for _ in range(len(user_ch_file_paths))]
         if self.posData.SizeT > 1:
-            printl(user_ch_file_paths, pretty=True)
             win = apps.askStopFrameSegm(
                 user_ch_file_paths, user_ch_name, parent=self
             )
