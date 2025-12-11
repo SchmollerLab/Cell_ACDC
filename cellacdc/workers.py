@@ -520,10 +520,13 @@ class AlignDataWorker(QObject):
             if filename_tif != user_ch_filename:
                 continue
             
+            if not self.align:
+                continue
+
             # Align based on user_ch_name
             aligned = True
-            if self.align:
-                self.logger.log(f'Aligning: {tif}')
+            self.logger.log(f'Aligning: {tif}')
+
             tif_data = load.imread(tif)
             numFramesWith0s = self.dataPrepWin.detectTifAlignment(
                 tif_data, self.posData
@@ -591,12 +594,16 @@ class AlignDataWorker(QObject):
             if tif.endswith(f'{self.user_ch_name}.tif'):
                 continue
             
+            if not self.align:
+                continue
+
             # Align the other channels
             if self.posData.loaded_shifts is None:
                 break
+
             if self.align:
                 self.logger.log(f'Aligning: {tif}')
-            tif_data = load.imread(tif)
+                tif_data = load.imread(tif)
 
             # Alignment routine
             if self.posData.SizeZ>1:
