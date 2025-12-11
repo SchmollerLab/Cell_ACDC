@@ -18239,12 +18239,12 @@ class QCropTrangeTool(QBaseDialog):
         layout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
-        self.startFrameScrollbar = QScrollBar(Qt.Horizontal)
+        self.startFrameScrollbar = widgets.sliderWithSpinBox()
         self.startFrameScrollbar.setMaximum(SizeT-1)
         t = str(1).zfill(self.numDigits)
         self.startFrameScrollbar.label = QLabel(f'{t}/{SizeT}')
 
-        self.endFrameScrollbar = QScrollBar(Qt.Horizontal)
+        self.endFrameScrollbar = widgets.sliderWithSpinBox()
         self.endFrameScrollbar.setMaximum(SizeT-1)
         self.endFrameScrollbar.setValue(SizeT-1)
         self.endFrameScrollbar.label = QLabel(f'{SizeT}/{SizeT}')
@@ -18294,8 +18294,8 @@ class QCropTrangeTool(QBaseDialog):
         # resetButton.clicked.connect(self.emitReset)
         cropButton.clicked.connect(self.emitCrop)
         cancelButton.clicked.connect(self.close)
-        self.startFrameScrollbar.valueChanged.connect(self.TvalueChanged)
-        self.endFrameScrollbar.valueChanged.connect(self.TvalueChanged)
+        self.startFrameScrollbar.sigValueChange.connect(self.TvalueChanged)
+        self.endFrameScrollbar.sigValueChange.connect(self.TvalueChanged)
 
     def emitReset(self):
         self.sigReset.emit()
