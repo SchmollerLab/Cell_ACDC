@@ -9230,6 +9230,8 @@ class askStopFrameSegm(QDialog):
         super().__init__(parent)
         self.setWindowTitle('Enter stop frame')
 
+        self.visualizeWindows = []
+
         mainLayout = QVBoxLayout()
         buttonsLayout = QHBoxLayout()
 
@@ -9358,19 +9360,25 @@ class askStopFrameSegm(QDialog):
             spinBox.value() for spinBox, posData in self.dataDict.values()
         ]
         self.close()
+    
+    def closeEvent(self, event):
+        for window in self.visualizeWindows:
+            window.close()
 
     def visualize_cb(self, checked=True):
+        self.setDisabled(True)
         spinBox, posData = self.dataDict[self.sender()]
         print('Loading image data...')
         posData.loadImgData()
         posData.frame_i = spinBox.value()-1
-        plot.imshow(posData.img_data, lut='gray')
-        # self.slideshowWin = imageViewer(
-        #     posData=posData, spinBox=spinBox
-        # )
-        # self.slideshowWin.update_img()
-        # # self.slideshowWin.framesScrollBar.setDisabled(True)
-        # self.slideshowWin.show()
+        win = plot.imshow(
+            posData.img_data, 
+            lut='gray',
+            figure_title=posData.relPath,
+            block=False
+        )
+        self.visualizeWindows.append(win)
+        self.setDisabled(False)
 
     def exec_(self):
         self.show(block=True)
@@ -9391,7 +9399,7 @@ class askStopFrameSegm(QDialog):
             self.sizeHint().height() 
             - self.mainScrollArea.sizeHint().height()
         )
-        
+
         if width > maxWidth:
             width = maxWidth
         
