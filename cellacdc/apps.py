@@ -18239,15 +18239,20 @@ class QCropTrangeTool(QBaseDialog):
         layout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
-        self.startFrameScrollbar = widgets.sliderWithSpinBox()
-        self.startFrameScrollbar.setMaximum(SizeT-1)
-        t = str(1).zfill(self.numDigits)
-        self.startFrameScrollbar.label = QLabel(f'{t}/{SizeT}')
+        self.startFrameScrollbar = widgets.sliderWithSpinBox(
+            spinbox_loc='left', 
+            maximum_on_label=SizeT
+        )
+        self.startFrameScrollbar.setMaximum(SizeT, including_spinbox=True)
+        self.startFrameScrollbar.setMinimum(1, including_spinbox=True)
 
-        self.endFrameScrollbar = widgets.sliderWithSpinBox()
-        self.endFrameScrollbar.setMaximum(SizeT-1)
-        self.endFrameScrollbar.setValue(SizeT-1)
-        self.endFrameScrollbar.label = QLabel(f'{SizeT}/{SizeT}')
+        self.endFrameScrollbar = widgets.sliderWithSpinBox(
+            spinbox_loc='left', 
+            maximum_on_label=SizeT
+        )
+        self.endFrameScrollbar.setMaximum(SizeT, including_spinbox=True)
+        self.endFrameScrollbar.setMinimum(1, including_spinbox=True)
+        self.endFrameScrollbar.setValue(SizeT)
 
         cancelButton = widgets.cancelPushButton('Cancel')
         cropButton = widgets.okPushButton(cropButtonText)
@@ -18258,20 +18263,15 @@ class QCropTrangeTool(QBaseDialog):
         layout.addWidget(
             QLabel('Start frame n.  '), row, 0, alignment=Qt.AlignRight
         )
-        layout.addWidget(
-            self.startFrameScrollbar.label, row, 1, alignment=Qt.AlignRight
-        )
         layout.addWidget(self.startFrameScrollbar, row, 2)
 
         row += 1
         layout.setRowStretch(row, 5)
+        layout.addItem(QSpacerItem(10, 10), row, 0)
 
         row += 1
         layout.addWidget(
             QLabel('Stop frame n. '), row, 0, alignment=Qt.AlignRight
-        )
-        layout.addWidget(
-            self.endFrameScrollbar.label, row, 1, alignment=Qt.AlignRight
         )
         layout.addWidget(self.endFrameScrollbar, row, 2)
 
@@ -18283,7 +18283,8 @@ class QCropTrangeTool(QBaseDialog):
             )
             row += 1
 
-        layout.addLayout(buttonsLayout, row, 2, alignment=Qt.AlignRight)
+        layout.addItem(QSpacerItem(10, 20), row, 0)
+        layout.addLayout(buttonsLayout, row+1, 2, alignment=Qt.AlignRight)
 
         layout.setColumnStretch(0, 0)
         layout.setColumnStretch(1, 0)
@@ -18302,22 +18303,21 @@ class QCropTrangeTool(QBaseDialog):
 
     def emitCrop(self):
         self.cancel = False
-        low_z = self.startFrameScrollbar.value()
-        high_z = self.endFrameScrollbar.value()
+        low_z = self.startFrameScrollbar.value() - 1
+        high_z = self.endFrameScrollbar.value() - 1
         self.sigCrop.emit(low_z, high_z)
         self.close()
 
     def updateScrollbars(self, start_frame_i, lower_frame_i):
-        self.startFrameScrollbar.setValue(start_frame_i)
-        self.endFrameScrollbar.setValue(lower_frame_i)
+        self.startFrameScrollbar.setValue(start_frame_i + 1)
+        self.endFrameScrollbar.setValue(lower_frame_i + 1)
 
     def TvalueChanged(self, value):
-        t = str(value+1).zfill(self.numDigits)
-        self.sender().label.setText(f'{t}/{self.SizeT}')
-        self.sigTvalueChanged.emit(value)
+        frame_i = value - 1
+        self.sigTvalueChanged.emit(frame_i)
 
     def showEvent(self, event):
-        self.resize(int(self.width()*1.5), self.height())
+        self.resize(int(self.width()*2.0), self.height())
 
     def closeEvent(self, event):
         super().closeEvent(event)
