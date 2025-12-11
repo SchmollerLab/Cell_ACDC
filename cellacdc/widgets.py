@@ -6834,9 +6834,9 @@ class sliderWithSpinBox(QWidget):
                 maximum_on_label_col = spinbox_col + 1
                 slider_col += 1
 
-        self.labelMaximum = QLabel()
-
-        layout.addWidget(self.labelMaximum, row+1, maximum_on_label_col)
+        if maximum_on_label is not None:
+            self.labelMaximum = QLabel()
+            layout.addWidget(self.labelMaximum, row+1, maximum_on_label_col)
         layout.addWidget(self.slider, row+1, slider_col)
         layout.addWidget(self.spinBox, row+1, spinbox_col)
         
