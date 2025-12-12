@@ -9230,66 +9230,93 @@ class askStopFrameSegm(QDialog):
         super().__init__(parent)
         self.setWindowTitle('Enter stop frame')
 
+        self.visualizeWindows = []
+
         mainLayout = QVBoxLayout()
-        formLayout = QFormLayout()
         buttonsLayout = QHBoxLayout()
 
         # Message
         infoTxt = html_utils.paragraph("""
-            Enter a <b>stop frame number</b> when to stop<br>
+            Enter a <b>stop frame number</b> when to stop 
             segmentation for each Position loaded:
         """)
         infoLabel = QLabel(infoTxt, self)
-        _font = QFont()
-        _font.setPixelSize(12)
-        infoLabel.setFont(_font)
         infoLabel.setAlignment(Qt.AlignCenter)
         # padding: top, left, bottom, right
         infoLabel.setStyleSheet("padding:0px 0px 8px 0px;")
 
         self.dataDict = {}
 
+        exp_path_pos_mapper = path.get_exp_path_pos_foldernames_mapper(
+            user_ch_file_paths
+        )
+
+        columnsLayout = QHBoxLayout()
+        mainScrollArea = widgets.ScrollArea()
+        mainScrollAreaWidget = QWidget()
+        mainScrollAreaWidget.setLayout(columnsLayout)
+        mainScrollArea.setWidget(mainScrollAreaWidget)
+        self.mainScrollArea = mainScrollArea
+
         # Form layout widget
         self.spinBoxes = []
         self.tab_idx = 0
-        for (i, img_path) in enumerate(user_ch_file_paths):
-            pos_foldername = os.path.basename(
-                os.path.dirname(
-                    os.path.dirname(img_path)
+        iter_items = exp_path_pos_mapper.items()
+        self.groupboxScrollAreas = []
+        
+        for col, (exp_path, pos_folders_files) in enumerate(iter_items):
+            groupboxScrollArea = widgets.ScrollArea()
+            self.groupboxScrollAreas.append(groupboxScrollArea)
+            groupbox = QGroupBox()
+            groupbox.setCheckable(False)
+            groupbox.setToolTip(exp_path)
+            groupboxLayout = QFormLayout()
+            groupbox.setLayout(groupboxLayout)
+            groupboxScrollArea.setWidget(groupbox)
+            columnsLayout.addWidget(groupboxScrollArea)
+            pos_folders = pos_folders_files['pos_foldernames']
+            filenames = pos_folders_files['filenames']
+            for i, pos_foldername in enumerate(pos_folders):
+                img_filename = filenames[i]
+                images_path = os.path.join(exp_path, pos_foldername, 'Images')
+                img_path = os.path.join(images_path, img_filename)
+                spinBox = widgets.mySpinBox()
+                spinBox.sigTabEvent.connect(self.keyTabEventSpinbox)
+                posData = load.loadData(img_path, user_ch_name, QParent=parent)
+                posData.getBasenameAndChNames()
+                posData.buildPaths()
+                posData.loadOtherFiles(
+                    load_segm_data=False,
+                    load_metadata=True,
+                    loadSegmInfo=True,
                 )
+                spinBox.setMaximum(posData.SizeT)
+                stopFrameNum = posData.readLastUsedStopFrameNumber()
+                if stopFrameNum is None:
+                    spinBox.setValue(posData.SizeT)
+                else:
+                    spinBox.setValue(stopFrameNum)
+                spinBox.setAlignment(Qt.AlignCenter)
+                visualizeButton = widgets.viewPushButton('Visualize')
+                visualizeButton.clicked.connect(self.visualize_cb)
+                formLabel = QLabel(html_utils.paragraph(f'{pos_foldername}  '))
+                layout = QHBoxLayout()
+                layout.addWidget(formLabel, alignment=Qt.AlignRight)
+                layout.addWidget(spinBox)
+                layout.addWidget(visualizeButton)
+                self.dataDict[visualizeButton] = (spinBox, posData)
+                groupboxLayout.addRow(layout)
+                spinBox.idx = i
+                self.spinBoxes.append(spinBox)
+            
+            fm = QFontMetrics(self.font())
+            elidedTitle = fm.elidedText(
+                exp_path, Qt.ElideLeft, groupbox.sizeHint().width()
             )
-            spinBox = widgets.mySpinBox()
-            spinBox.sigTabEvent.connect(self.keyTabEventSpinbox)
-            posData = load.loadData(img_path, user_ch_name, QParent=parent)
-            posData.getBasenameAndChNames()
-            posData.buildPaths()
-            posData.loadOtherFiles(
-                load_segm_data=False,
-                load_metadata=True,
-                loadSegmInfo=True,
-            )
-            spinBox.setMaximum(posData.SizeT)
-            stopFrameNum = posData.readLastUsedStopFrameNumber()
-            if stopFrameNum is None:
-                spinBox.setValue(posData.SizeT)
-            else:
-                spinBox.setValue(stopFrameNum)
-            spinBox.setAlignment(Qt.AlignCenter)
-            visualizeButton = widgets.viewPushButton('Visualize')
-            visualizeButton.clicked.connect(self.visualize_cb)
-            formLabel = QLabel(html_utils.paragraph(f'{pos_foldername}  '))
-            layout = QHBoxLayout()
-            layout.addWidget(formLabel, alignment=Qt.AlignRight)
-            layout.addWidget(spinBox)
-            layout.addWidget(visualizeButton)
-            self.dataDict[visualizeButton] = (spinBox, posData)
-            formLayout.addRow(layout)
-            spinBox.idx = i
-            self.spinBoxes.append(spinBox)
+            groupbox.setTitle(elidedTitle)
 
-        self.formLayout = formLayout
         mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
-        mainLayout.addLayout(formLayout)
+        mainLayout.addWidget(mainScrollArea)
 
         okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
@@ -9333,26 +9360,56 @@ class askStopFrameSegm(QDialog):
             spinBox.value() for spinBox, posData in self.dataDict.values()
         ]
         self.close()
+    
+    def closeEvent(self, event):
+        for window in self.visualizeWindows:
+            window.close()
 
     def visualize_cb(self, checked=True):
+        self.setDisabled(True)
         spinBox, posData = self.dataDict[self.sender()]
         print('Loading image data...')
         posData.loadImgData()
         posData.frame_i = spinBox.value()-1
-        plot.imshow(posData.img_data, lut='gray')
-        # self.slideshowWin = imageViewer(
-        #     posData=posData, spinBox=spinBox
-        # )
-        # self.slideshowWin.update_img()
-        # # self.slideshowWin.framesScrollBar.setDisabled(True)
-        # self.slideshowWin.show()
+        win = plot.imshow(
+            posData.img_data, 
+            lut='gray',
+            figure_title=posData.relPath,
+            block=False
+        )
+        self.visualizeWindows.append(win)
+        self.setDisabled(False)
 
     def exec_(self):
         self.show(block=True)
 
     def show(self, block=False):
+        screenSize = self.screen().size()
+        maxWidth = screenSize.width() - 50
+        maxHeight = screenSize.height() - 100
+        width, height = 0, 0
+        for scrollArea in self.groupboxScrollAreas:
+            width += scrollArea.minimumWidthNoScrollbar()
+            scrollAreaHeight = scrollArea.minimumHeightNoScrollbar()
+            if scrollAreaHeight > height:
+                height = scrollAreaHeight
+        
+        width += 70
+        height += (
+            self.sizeHint().height() 
+            - self.mainScrollArea.sizeHint().height()
+        )
+
+        if width > maxWidth:
+            width = maxWidth
+        
+        if height > maxHeight:
+            height = maxHeight
+
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
+        self.resize(width, height)
+        self.move(25, 50)
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()

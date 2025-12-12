@@ -113,3 +113,42 @@ def get_posfolderpaths_walk(folderpath):
         pos_folderpaths[exp_path] = natsorted(pos_folderpaths[exp_path])
     
     return pos_folderpaths
+
+def get_exp_path_pos_foldernames_mapper(paths):
+    mapper = defaultdict(lambda: defaultdict(list))
+
+    for path in paths:
+        filename = None
+        if os.path.isfile(path):
+            filename = os.path.basename(path)
+            path = os.path.dirname(path)
+
+        folder_type = myutils.determine_folder_type(path)
+        is_pos_folder, is_images_folder, _ = folder_type
+        
+        if filename is not None and not is_images_folder:
+            continue
+
+        if is_pos_folder:
+            pos_folderpath = path
+            exp_path = os.path.dirname(pos_folderpath)
+            pos_foldername = os.path.basename(pos_folderpath)
+        elif is_images_folder:
+            images_folderpath = path
+            pos_folderpath = os.path.dirname(images_folderpath)
+        else:
+            path_mapper = get_posfolderpaths_walk(path)
+            for exp_path, pos_foldernames in path_mapper.items():
+                mapper[exp_path]['pos_foldernames'].extend(pos_foldernames)
+            continue
+        
+        exp_path = os.path.dirname(pos_folderpath)
+        pos_foldername = os.path.basename(pos_folderpath)
+        key = exp_path.replace('\\', '/')
+        mapper[key]['pos_foldernames'].append(pos_foldername)
+
+        if filename is not None:
+            mapper[key]['filenames'].append(filename)
+        
+    return mapper
+
