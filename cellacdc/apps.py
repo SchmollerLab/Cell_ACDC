@@ -2581,7 +2581,7 @@ class SetMeasurementsDialog(QBaseDialog):
                     if not checkBox.isChecked():
                         continue
                     
-                    section = self.chIndipendCustomeMetricsQGBox.title()
+                    section = self.mixedChannelsCombineMetricsQGBox.title()
                     current_selected_meas[section][checkBox.text()] = 'Yes'
         
         return current_selected_meas

@@ -693,6 +693,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.ch_names = channel_names
         self.end_filename_segm = end_filename_segm
         self.notLoadedChNames = []
+        self.save_object_counts_table = False
     
     def log(self, message, level='INFO'):
         try:
