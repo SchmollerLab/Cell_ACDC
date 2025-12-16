@@ -12916,8 +12916,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You are not hovering on any ID.\n'
                         'Enter the ID that you want to lock.',
                     parent=self, 
-                    allowedValues=posData.IDs,
-                    isInteger=True
+                    isInteger=True,
+                    defaultTxt=self.setBrushID(return_val=True)
                 )
                 win.exec_()
                 if win.cancel:
@@ -12987,8 +12987,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             color = 'gold'
         else:
             color = 'red'
-        
-        printl(color)
         
         self.ax1.setHighlightingRectItemsColor(color)
         
