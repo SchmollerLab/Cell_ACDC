@@ -6675,8 +6675,9 @@ class MainPlotItem(pg.PlotItem):
         self.highlightingRectItems = None
         self._baseImageItem = None
         self._imageItems = []
+        self.highlightingRectItemsColor = None
     
-    def addHighlightingRectItems(self):
+    def addHighlightingRectItems(self, color=None):
         self.highlightingRectItems = {
             'left': RectItem(QRectF()),
             'right': RectItem(QRectF()),
@@ -6685,6 +6686,20 @@ class MainPlotItem(pg.PlotItem):
         }
         for rect in self.highlightingRectItems.values():
             self.addItem(rect)
+        
+        if color is None:
+            return
+        
+        self.setHighlightingRectItemsColor(color)
+    
+    def setHighlightingRectItemsColor(self, color):
+        if color == self.highlightingRectItemsColor:
+            return
+        
+        for item in self.highlightingRectItems.values():
+            item.setColor(color)
+        
+        self.highlightingRectItemsColor = color
     
     def addBaseImageItem(self, baseImageItem):
         self._baseImageItem = baseImageItem
@@ -6695,14 +6710,22 @@ class MainPlotItem(pg.PlotItem):
         self._imageItems.append(imageItem)
         self.addItem(imageItem)
     
-    def setHighlighted(self, highlighted):
+    def setHighlighted(self, highlighted, color=None):
+        if color is None:
+            color = self.highlightingRectItemsColor
+        
+        if color is None:
+            color = 'green'
+            
         if self.highlightingRectItems is None:
-            self.addHighlightingRectItems()
+            self.addHighlightingRectItems(color=color)
         
         if not highlighted:
             for rect in self.highlightingRectItems.values():
                 rect.setQRect(QRectF())
             return
+        
+        self.setHighlightingRectItemsColor(color)
         
         ((xmin, xmax), (ymin, ymax)) = self.viewRange()
         xmin = xmin if xmin >= 0 else 0
@@ -11273,6 +11296,13 @@ class RectItem(pg.GraphicsObject):
         self.picture = QPicture()
         self._generate_picture()
 
+    def setColor(self, color):
+        rgba = matplotlib.colors.to_rgba(color, alpha=100/255)
+        rgba = [round(c*255) for c in rgba]
+        self._brush = pg.mkBrush(rgba)
+        self._generate_picture()
+        self.update()
+    
     def setRect(self, x, y, width, height):
         self._rect = QRectF(x, y, width, height)
         self._generate_picture()
