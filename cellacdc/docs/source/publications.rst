@@ -1,5 +1,15 @@
+.. _Google Scholar: https://scholar.google.com/scholar?hl=en&as_sdt=2005&sciodt=0,5&cites=5370866519324948412&scipsc=&q=&scisbd=1
+
 Scientific publications where Cell-ACDC was used
 ================================================
+
+.. figure:: citations/citations_per_year.png
+    :width: 50%
+    :align: center
+    :alt: Citations per year from Google Scholar
+    :target: https://scholar.google.com/scholar?hl=en&as_sdt=2005&sciodt=0,5&cites=5370866519324948412&scipsc=&q=&scisbd=1
+
+    Citations per year. Data from `Google Scholar`_.
 
 In the following publications, authors used Cell-ACDC to analyse microscopy data and obtain **biological insights**:
 
