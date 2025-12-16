@@ -4861,7 +4861,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You clicked on the background.<br>'
                         'Enter here ID(s) that you want to delete<br><br>'
                         'You can enter multiple IDs separated by comma',
-                    parent=self, allowedValues=posData.IDs,
+                    parent=self, 
+                    allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
                     allowList=True,
                     isInteger=True
@@ -12915,8 +12916,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     msg='You are not hovering on any ID.\n'
                         'Enter the ID that you want to lock.',
                     parent=self, 
-                    allowedValues=posData.IDs,
-                    isInteger=True
+                    isInteger=True,
+                    defaultTxt=self.setBrushID(return_val=True)
                 )
                 win.exec_()
                 if win.cancel:
@@ -12933,7 +12934,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.navigateScrollBar.maximum()-1
             )
             self.ax1.sigRangeChanged.connect(self.highlightManualAnnotMode)
-            self.ax1.setHighlighted(True)
+            self.ax1.setHighlighted(True, color='green')
         else:
             self.autoIDcheckbox.setChecked(self.manualAnnotState['isAutoID'])
             self.editIDspinbox.setValue(self.manualAnnotState['editID'])
@@ -12973,6 +12974,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     
     def highlightManualAnnotMode(self, viewBox, viewRange):
         self.ax1.setHighlighted(True)
+    
+    def updateHighlightedAxis(self):
+        if not self.manualAnnotFutureButton.isChecked():
+            return
+        
+        frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
+        posData = self.data[self.pos_i]
+        if posData.frame_i == frame_to_restore:
+            color = 'green'
+        elif posData.frame_i < frame_to_restore:
+            color = 'gold'
+        else:
+            color = 'red'
+        
+        self.ax1.setHighlightingRectItemsColor(color)
         
     def updateLostNewCurrentIDs(self):
         posData = self.data[self.pos_i]
@@ -17929,14 +17945,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         return True
     
     def next_frame(self, warn=True):
-        # ok = self.warnOGIDs()
-        # if not ok:
-        #     self.resetNavigateScrollbar()
-        #     return
-        benchmark=False
-        if benchmark:
-            ts = [time.perf_counter()]
-            titles = ['']
         mode = str(self.modeComboBox.currentText())
         posData = self.data[self.pos_i]
         if posData.frame_i < posData.SizeT-1:
@@ -17977,20 +17985,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                         self.initLinTree()         
 
             # Store data for current frame
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('Innit stuff')
             if mode != 'Viewer':
                 self.store_data(debug=False)
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('store_data')
             # Go to next frame
 
             self.lin_tree_ask_changes()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('lin_tree_ask_changes')
             posData.frame_i += 1
             self.removeAlldelROIsCurrentFrame()
             proceed_cca, never_visited = self.get_data()
@@ -18005,24 +18004,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             if mode == 'Segmentation and Tracking' or self.isSnapshot:
                 self.addExistingDelROIs()
             
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('get_data')
             self.updatePreprocessPreview()
             self.updateCombineChannelsPreview()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('update preview')
-
             self.postProcessing()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('postprocessing')
             self.tracking(storeUndo=True, wl_update=False) # wl stuff handles later...
-
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('tracking')
 
             notEnoughG1Cells, proceed = self.attempt_auto_cca()
             if notEnoughG1Cells or not proceed:
@@ -18033,52 +18018,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     'Not enough G1 cells to compute cell cycle annotations.'
                 )
                 return
-
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('cca stuff')
             
             self.store_zslices_rp()
-
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('store_zslices_rp')
             self.resetExpandLabel()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('resetExpandLabel')
             self.updateAllImages()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('updateAllImages')
+            self.updateHighlightedAxis()
             self.updateViewerWindow()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('updateViewerWindow')
             self.updateLastVisitedFrame(last_visited_frame_i=posData.frame_i-1)
             self.setNavigateScrollBarMaximum()
             self.updateScrollbars()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('scrollbar and last visited frame update')
             self.computeSegm()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('computeSegm')
             self.initGhostObject()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('initGhostObject')
             self.whitelistPropagateIDs()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('whitelist stuff')
             self.zoomToCells()
             self.updateItemsMousePos()
             self.updateObjectCounts()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('zoomToCells')
         else:
             # Store data for current frame
             if mode != 'Viewer':
@@ -18086,14 +18040,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             msg = 'You reached the last segmented frame!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
-    
-        if benchmark:
-            time_taken = time.perf_counter() - ts[0]
-            print(f'\nTotal time for next_frame: {time_taken:.2f}s')
-            for i in range(1, len(ts)):
-                time_taken = ts[i] - ts[i-1]
-                print(f'Time taken for {titles[i]}: {time_taken:.2f}s')
-            print('')
 
     @disableWindow
     def get_difference_table(self, return_css_separated=False, return_differece=False):
@@ -18394,34 +18340,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.navSpinBox.setMaximum(i+1)
 
     def prev_frame(self,):
-        benchmark = False
-        if benchmark:
-            ts = [time.perf_counter()]
-            titles = ['']
         posData = self.data[self.pos_i]    
         if posData.frame_i > 0:
             # Store data for current frame
             mode = str(self.modeComboBox.currentText())
             if mode != 'Viewer':
                 self.store_data(debug=False)
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('store_data')
-            self.removeAlldelROIsCurrentFrame()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('removeAlldelROIsCurrentFrame')
-            
-
+            self.removeAlldelROIsCurrentFrame()           
             self.lin_tree_ask_changes()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('lin_tree_ask_changes')
             posData.frame_i -= 1
             _, never_visited = self.get_data()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('get_data')
             
             if mode == 'Segmentation and Tracking' or self.isSnapshot:
                 self.addExistingDelROIs()
@@ -18430,45 +18358,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.updatePreprocessPreview()
             self.updateCombineChannelsPreview()
             self.postProcessing()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('preview updated, reset expand labels, prost processing')
             self.tracking()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('tracking')
             self.whitelistPropagateIDs(update_lab=True)
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('whitelist stuff')
             self.updateAllImages()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('updateAllImages')
             self.updateScrollbars()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('updateScrollbars')
+            self.updateHighlightedAxis()
             self.zoomToCells()
             self.initGhostObject()
             self.updateViewerWindow()
             self.updateItemsMousePos()
             self.updateObjectCounts()
-            if benchmark:
-                ts.append(time.perf_counter())
-                titles.append('zoomToCells, initGhostObject, updateViewerWindow')
         else:
             msg = 'You reached the first frame!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
-        
-        if benchmark:
-            time_taken = time.perf_counter() - ts[0]
-            print(f'\nTotal time for prev_frame: {time_taken:.2f}s')
-            for i in range(1, len(ts)):
-                time_taken = ts[i] - ts[i-1]
-                print(f'Time taken for {titles[i]}: {time_taken:.2f}s')
-            print('')
 
     def loadSelectedData(self, user_ch_file_paths, user_ch_name):
         data = []
@@ -20573,6 +20476,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.updateFramePosLabel()
         self.updateViewerWindow()
         self.updateTimestampFrame()
+        self.updateHighlightedAxis()
         self.navigateScrollBarStartedMoving = False
 
     def framesScrollBarReleased(self):

@@ -9467,7 +9467,7 @@ class QLineEditDialog(QDialog):
         if isFloat and not allowList:
             entryWidget = QDoubleSpinBox()
             if allowedValues is not None:
-                _min, _max = allowedValues
+                _min, _max = min(allowedValues), max(allowedValues)
                 entryWidget.setMinimum(_min)
                 entryWidget.setMaximum(_max)
             else:
@@ -9478,7 +9478,7 @@ class QLineEditDialog(QDialog):
         elif isInteger and not allowList:
             entryWidget = QSpinBox()
             if allowedValues is not None:
-                _min, _max = allowedValues
+                _min, _max = min(allowedValues), max(allowedValues)
                 entryWidget.setMinimum(_min)
                 entryWidget.setMaximum(_max)
             else:
