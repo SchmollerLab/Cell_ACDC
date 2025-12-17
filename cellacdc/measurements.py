@@ -1562,12 +1562,12 @@ def add_size_metrics(
             for local_z, obj_img_z in enumerate(obj.image):
                 z_slice = z0 + local_z
                 area_pxl_z = np.count_nonzero(obj_img_z)
-                col = f'cell_area_pxl_zslice{z_slice}'
-                df.at[obj.label, col] = area_pxl_z
+                area_pxl_zslice_col = f'cell_area_pxl_zslice{z_slice}'
+                df.at[obj.label, area_pxl_zslice_col] = area_pxl_z
                 
                 area_um2_z = area_pxl_z*yx_pxl_to_um2
-                col = f'cell_area_um2_zslice{z_slice}'
-                df.at[obj.label, col] = area_um2_z
+                area_um2_zslice_col = f'cell_area_um2_zslice{z_slice}'
+                df.at[obj.label, area_um2_zslice_col] = area_um2_z
     return df
 
 def add_ch_indipend_custom_metrics(
