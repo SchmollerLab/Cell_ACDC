@@ -3144,13 +3144,9 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
         
-        acdc_objs_count_df_allpos_filename = (
-            self.concat_df_filename.replace('acdc_output', 'acdc_objects_count')
-        )
-        
         self.signals.initProgressBar.emit(0)
         acdc_dfs_allexp = []
-        acdc_objs_count_dfs_allexp = []
+        acdc_objs_count_dfs_allexp = {}
         keys_exp = []
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             self.errors = {}
@@ -3266,6 +3262,12 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                 if self.abort:
                     self.sigAborted.emit()
                     return
+            
+            acdc_objs_count_df_allpos_filename = (
+                self.concat_df_filename.replace(
+                    'acdc_output', 'acdc_objects_count'
+                )
+            )
             
             acdc_dfs_allpos_filepath = os.path.join(
                 allpos_dir, self.concat_df_filename
