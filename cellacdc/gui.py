@@ -15417,10 +15417,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         posData = self.data[self.pos_i]
         if ID not in posData.IDs:
-            self.manualTrackingButton = None
+            self.manualBackgroundObj = None
             self.manualBackgroundToolbar.showWarning(
                 f'The ID {ID} does not exist'
             )
+            self.manualBackgroundObjItem.clear()
             return
         
         ID_idx = posData.IDs_idxs[ID]
