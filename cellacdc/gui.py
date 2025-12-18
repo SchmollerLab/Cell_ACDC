@@ -12556,7 +12556,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.stopCcaIntegrityCheckerWorker()
         self.setAutoSaveSegmentationEnabled(False)
         if prevMode == 'Normal division: Lineage tree':
-            self.lin_tree_ask_changes()
+            self.askLineageTreeChanges()
             self.lineage_tree = None
             self.editLin_TreeBar.setVisible(False)
             self.uncheckAllButtonsFromButtonGroup(self.editLin_TreeGroup)
@@ -17945,102 +17945,132 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             posData.tracked_lost_centroids[frame_i] = accepted_lost_centroids
         return True
     
+    def askInitCcaFirstFrame(self):
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Cell cycle analysis':
+            return True
+        
+        posData = self.data[self.pos_i]
+        if posData.frame_i != 0:
+            return True
+        
+        editCcaWidget = apps.editCcaTableWidget(
+            posData.cca_df, posData.SizeT, parent=self,
+            title='Initialize cell cycle annotations'
+        )
+        editCcaWidget.sigApplyChangesFutureFrames.connect(
+            self.applyManualCcaChangesFutureFrames
+        )
+        editCcaWidget.exec_()
+        if editCcaWidget.cancel:
+            self.resetNavigateFramesScrollbar()
+            return False
+        
+        if posData.cca_df is not None:
+            is_cca_same_as_stored = (
+                (posData.cca_df == editCcaWidget.cca_df).all(axis=None)
+            )
+            if not is_cca_same_as_stored:
+                reinit_cca = self.warnEditingWithCca_df(
+                    'Re-initialize cell cyle annotations first frame',
+                    return_answer=True
+                )
+                if reinit_cca:
+                    self.resetCcaFuture(0)
+                    
+        posData.cca_df = editCcaWidget.cca_df
+        self.store_cca_df()
+        
+        return True
+    
+    def askInitLinTreeFirstFrame(self):
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Normal division: Lineage tree':
+            return True
+        
+        posData = self.data[self.pos_i]
+        if posData.frame_i != 0:
+            return True
+        
+        if self.lineage_tree is None:
+            self.initLinTree() 
+        
+        return True
+    
+    # @exec_time
     def next_frame(self, warn=True):
+        proceed = self.askInitCcaFirstFrame()
+        if not proceed:
+            return
+        
+        proceed = self.askInitLinTreeFirstFrame()
+        if not proceed:
+            return
+        
         mode = str(self.modeComboBox.currentText())
         posData = self.data[self.pos_i]
-        if posData.frame_i < posData.SizeT-1:
-            proceed = self.warnLostObjects()
-            if not proceed:
-                self.resetNavigateScrollbar()
-                return
-
-            if posData.frame_i <= 0:
-                if mode == 'Cell cycle analysis':
-                    # posData.IDs = [obj.label for obj in posData.rp]
-                    editCcaWidget = apps.editCcaTableWidget(
-                        posData.cca_df, posData.SizeT, parent=self,
-                        title='Initialize cell cycle annotations'
-                    )
-                    editCcaWidget.sigApplyChangesFutureFrames.connect(
-                        self.applyManualCcaChangesFutureFrames
-                    )
-                    editCcaWidget.exec_()
-                    if editCcaWidget.cancel:
-                        self.resetNavigateFramesScrollbar()
-                        return
-                    if posData.cca_df is not None:
-                        is_cca_same_as_stored = (
-                            (posData.cca_df == editCcaWidget.cca_df).all(axis=None)
-                        )
-                        if not is_cca_same_as_stored:
-                            reinit_cca = self.warnEditingWithCca_df(
-                                'Re-initialize cell cyle annotations first frame',
-                                return_answer=True
-                            )
-                            if reinit_cca:
-                                self.resetCcaFuture(0)
-                    posData.cca_df = editCcaWidget.cca_df
-                    self.store_cca_df()
-                elif mode == 'Normal division: Lineage tree':
-                    if self.lineage_tree is None:
-                        self.initLinTree()         
-
-            # Store data for current frame
-            if mode != 'Viewer':
-                self.store_data(debug=False)
-            # Go to next frame
-
-            self.lin_tree_ask_changes()
-            posData.frame_i += 1
-            self.removeAlldelROIsCurrentFrame()
-            proceed_cca, never_visited = self.get_data()
-            if not proceed_cca:
-                posData.frame_i -= 1
-                self.get_data()
-                self.logger.info(
-                    'No data for current frame. '
-                )
-                return
-            
-            if mode == 'Segmentation and Tracking' or self.isSnapshot:
-                self.addExistingDelROIs()
-            
-            self.updatePreprocessPreview()
-            self.updateCombineChannelsPreview()
-            self.postProcessing()
-            self.tracking(storeUndo=True, wl_update=False) # wl stuff handles later...
-
-            notEnoughG1Cells, proceed = self.attempt_auto_cca()
-            if notEnoughG1Cells or not proceed:
-                posData.frame_i -= 1
-                self.get_data()
-                self.setAllTextAnnotations()
-                self.logger.info(
-                    'Not enough G1 cells to compute cell cycle annotations.'
-                )
-                return
-            
-            self.store_zslices_rp()
-            self.resetExpandLabel()
-            self.updateAllImages()
-            self.updateHighlightedAxis()
-            self.updateViewerWindow()
-            self.updateLastVisitedFrame(last_visited_frame_i=posData.frame_i-1)
-            self.setNavigateScrollBarMaximum()
-            self.updateScrollbars()
-            self.computeSegm()
-            self.initGhostObject()
-            self.whitelistPropagateIDs()
-            self.zoomToCells()
-            self.updateItemsMousePos()
-            self.updateObjectCounts()
-        else:
+        
+        if posData.frame_i >= posData.SizeT-1:
             # Store data for current frame
             if mode != 'Viewer':
                 self.store_data(debug=False)
             msg = 'You reached the last segmented frame!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
+            return
+
+        proceed = self.warnLostObjects()
+        if not proceed:
+            self.resetNavigateScrollbar()
+            return     
+
+        # Store data for current frame
+        if mode != 'Viewer':
+            self.store_data(debug=False)
+
+        self.askLineageTreeChanges()
+        posData.frame_i += 1
+        self.removeAlldelROIsCurrentFrame()
+        proceed_cca, never_visited = self.get_data()
+        if not proceed_cca:
+            posData.frame_i -= 1
+            self.get_data()
+            self.logger.info(
+                'No data for current frame. '
+            )
+            return
+        
+        if mode == 'Segmentation and Tracking' or self.isSnapshot:
+            self.addExistingDelROIs()
+        
+        self.updatePreprocessPreview()
+        self.updateCombineChannelsPreview()
+        self.postProcessing()
+        self.tracking(storeUndo=True, wl_update=False) 
+        notEnoughG1Cells, proceed = self.attempt_auto_cca()
+        if notEnoughG1Cells or not proceed:
+            posData.frame_i -= 1
+            self.get_data()
+            self.setAllTextAnnotations()
+            self.logger.info(
+                'Not enough G1 cells to compute cell cycle annotations.'
+            )
+            return
+        
+        self.store_zslices_rp()
+        self.resetExpandLabel()
+        self.updateAllImages()
+        self.updateHighlightedAxis()
+        self.updateViewerWindow()
+        self.updateLastVisitedFrame(last_visited_frame_i=posData.frame_i-1)
+        self.setNavigateScrollBarMaximum()
+        self.updateScrollbars()
+        self.computeSegm()
+        self.initGhostObject()
+        self.whitelistPropagateIDs()
+        self.zoomToCells()
+        self.updateItemsMousePos()
+        self.updateObjectCounts()
 
     @disableWindow
     def get_difference_table(self, return_css_separated=False, return_differece=False):
@@ -18195,7 +18225,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 )
 
     @disableWindow
-    def lin_tree_ask_changes(self):
+    def askLineageTreeChanges(self):
         """
         Asks the user for changes in the lineage tree.
 
@@ -18219,7 +18249,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             posData.frame_i = self.original_df_lin_tree_i
             self.get_data()
             self.logger.info('Lineage tree changes were not propagated, going back to original frame.')
-            self.lin_tree_ask_changes()
+            self.askLineageTreeChanges()
             self.store_data(autosave=False)
             posData.frame_i = og_frame
             self.get_data()
@@ -18340,39 +18370,42 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.navigateScrollBar.setMaximum(i+1)
                 self.navSpinBox.setMaximum(i+1)
 
-    def prev_frame(self,):
+    # @exec_time
+    def prev_frame(self):
         posData = self.data[self.pos_i]    
-        if posData.frame_i > 0:
-            # Store data for current frame
-            mode = str(self.modeComboBox.currentText())
-            if mode != 'Viewer':
-                self.store_data(debug=False)
-            self.removeAlldelROIsCurrentFrame()           
-            self.lin_tree_ask_changes()
-            posData.frame_i -= 1
-            _, never_visited = self.get_data()
-            
-            if mode == 'Segmentation and Tracking' or self.isSnapshot:
-                self.addExistingDelROIs()
-            
-            self.resetExpandLabel()
-            self.updatePreprocessPreview()
-            self.updateCombineChannelsPreview()
-            self.postProcessing()
-            self.tracking()
-            self.whitelistPropagateIDs(update_lab=True)
-            self.updateAllImages()
-            self.updateScrollbars()
-            self.updateHighlightedAxis()
-            self.zoomToCells()
-            self.initGhostObject()
-            self.updateViewerWindow()
-            self.updateItemsMousePos()
-            self.updateObjectCounts()
-        else:
+        if posData.frame_i <= 0:
             msg = 'You reached the first frame!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
+            return
+        
+        # Store data for current frame
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Viewer':
+            self.store_data(debug=False)
+            
+        self.removeAlldelROIsCurrentFrame()           
+        self.askLineageTreeChanges()
+        posData.frame_i -= 1
+        _, never_visited = self.get_data()
+        
+        if mode == 'Segmentation and Tracking' or self.isSnapshot:
+            self.addExistingDelROIs()
+        
+        self.resetExpandLabel()
+        self.updatePreprocessPreview()
+        self.updateCombineChannelsPreview()
+        self.postProcessing()
+        self.tracking()
+        self.whitelistPropagateIDs(update_lab=True)
+        self.updateAllImages()
+        self.updateScrollbars()
+        self.updateHighlightedAxis()
+        self.zoomToCells()
+        self.initGhostObject()
+        self.updateViewerWindow()
+        self.updateItemsMousePos()
+        self.updateObjectCounts()
 
     def loadSelectedData(self, user_ch_file_paths, user_ch_name):
         data = []
@@ -31306,7 +31339,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def saveData(self, checked=False, finishedCallback=None, isQuickSave=False):
         self.setDisabled(True, keepDisabled=True)
 
-        self.lin_tree_ask_changes()
+        self.askLineageTreeChanges()
 
         self.store_data(autosave=False)
         self.applyDelROIs()
