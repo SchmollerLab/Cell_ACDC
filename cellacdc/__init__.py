@@ -6,6 +6,7 @@ import importlib
 import inspect
 import platform
 import traceback
+import time
 from datetime import datetime
 from pprint import pprint
 
@@ -605,7 +606,23 @@ def exception_handler_cli(func):
                 raise err
         return result
     return inner_function
-    
+
+def exec_time(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        t0 = time.perf_counter()
+        if func.__code__.co_argcount==1 and func.__defaults__ is None:
+            result = func(self)
+        elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+            result = func(self, *args)
+        else:
+            result = func(self, *args, **kwargs)
+        t1 = time.perf_counter()
+        s = f'{func.__name__} execution time = {(t1-t0)*1000:.3f} ms'
+        printl(s, is_decorator=True)
+        return result
+    return inner_function
+
 def _exception_handler_clean_progress(self):
     try:
         if self.progressWin is not None:

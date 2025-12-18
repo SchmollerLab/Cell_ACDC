@@ -6,7 +6,15 @@ import json
 from typing import Set, List, Tuple
 import time
 
-from . import html_utils, apps, widgets, exception_handler, disableWindow, gui_utils
+from . import (
+    html_utils, 
+    apps, 
+    widgets, 
+    exception_handler, 
+    disableWindow, 
+    gui_utils,
+    exec_time
+)
 from .trackers.CellACDC import CellACDC_tracker
 
 class Whitelist:
@@ -1653,6 +1661,7 @@ class WhitelistGUIElements:
         self.whitelistAddNewIDs()
         return new_frame, update_frames                    
 
+    # @exec_time
     def whitelistPropagateIDs(self, 
                               new_whitelist: Set[int] | List[int] = None, 
                               IDs_to_add: Set[int] = None,
@@ -1958,6 +1967,7 @@ class WhitelistGUIElements:
         else:
             self.whitelistIDsToolbar.whitelistLineEdit.setInstructionsText()
 
+    # @exec_time
     def whitelistUpdateTempLayer(self):
         """Updates the temp layer with the current whitelist IDs.
         """
@@ -1965,7 +1975,12 @@ class WhitelistGUIElements:
             self.keepIDsTempLayerLeft.clear()
             return
 
-        keptLab = np.zeros_like(self.currentLab2D)
+        if not hasattr(self, 'keptLab'):
+            self.keptLab = np.zeros_like(self.currentLab2D)
+            keptLab = self.keptLab
+        else:
+            keptLab = self.keptLab
+            keptLab[:] = 0
 
         posData = self.data[self.pos_i]
         if posData.whitelist is None:

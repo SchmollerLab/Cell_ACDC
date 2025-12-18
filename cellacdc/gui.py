@@ -3041,6 +3041,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def customLevelsLutChanged(self, levels, imageItem=None):
         imageItem.setLevels(levels)
     
+    def getPreComputedMinMaxZstack(self, channel: str):
+        if channel != self.user_ch_name:
+            return None
+        
+        posData = self.data[self.pos_i]
+        zstack_min, zstack_max = np.inf, 0
+        for z in range(posData.SizeZ):
+            key = (self.pos_i, posData.frame_i, z)
+            levels = self.img1.minMaxValuesMapper.get(key)
+            if levels is None:
+                return
+            
+            img_min, img_max = levels
+            if img_min < zstack_min:
+                zstack_min = img_min
+            
+            if img_max > zstack_max:
+                zstack_max = img_max
+        
+        return (zstack_min, zstack_max)
+    
+    # @exec_time
     def rescaleIntensitiesLut(
             self, 
             action: QAction=None, 
@@ -3091,7 +3113,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             levels_key = (how, posData.frame_i)
             levels = lutLevelsCh.get(levels_key)
             if levels is None:
-                levels = (image_data.min(), image_data.max())
+                levels = self.getPreComputedMinMaxZstack(channel)
+                
+            if levels is None:
+                image_zstack = image_data[posData.frame_i]
+                levels = (image_zstack.min(), image_zstack.max())
             lutLevelsCh[levels_key] = levels
             imageItem.setLevels(levels)
         elif how == 'Rescale across time frames':            
