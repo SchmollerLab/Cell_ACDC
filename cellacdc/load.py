@@ -23,24 +23,7 @@ import time
 
 import skimage
 import skimage.io
-import skimage.measure
-
-from . import GUI_INSTALLED
-
-if GUI_INSTALLED:
-    from qtpy import QtGui
-    from qtpy.QtCore import Qt, QRect, QRectF
-    from qtpy.QtWidgets import (
-        QApplication, QMessageBox, QFileDialog
-    )
-    import pyqtgraph as pg
-    pg.setConfigOption('imageAxisOrder', 'row-major')
-    from . import apps
-    from . import widgets
-    from . import qrc_resources_path, qrc_resources_light_path
-    from . import qrc_resources_dark_path
-    from . import whitelist
-    
+import skimage.measure    
     
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -57,6 +40,22 @@ from . import sorted_cols
 from . import io
 from . import core
 from . import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+
+from . import GUI_INSTALLED
+
+if GUI_INSTALLED:
+    from qtpy import QtGui
+    from qtpy.QtCore import Qt, QRect, QRectF
+    from qtpy.QtWidgets import (
+        QApplication, QMessageBox, QFileDialog
+    )
+    import pyqtgraph as pg
+    pg.setConfigOption('imageAxisOrder', 'row-major')
+    from . import apps
+    from . import widgets
+    from . import qrc_resources_path, qrc_resources_light_path
+    from . import qrc_resources_dark_path
+    from . import whitelist
 
 acdc_df_bool_cols = [
     'is_cell_dead',

@@ -42,13 +42,6 @@ import skimage.io
 import skimage.measure
 
 from . import GUI_INSTALLED, KNOWN_EXTENSIONS, is_conda_env
-
-if GUI_INSTALLED:
-    from qtpy.QtWidgets import QMessageBox
-    from qtpy.QtCore import Signal, QObject, QCoreApplication
-    
-    from . import widgets, apps
-    from . import config
     
 from . import core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
@@ -63,6 +56,13 @@ from . import urls
 from . import qrc_resources_path
 from . import settings_folderpath
 from .models._cellpose_base import min_target_versions_cp
+
+if GUI_INSTALLED:
+    from qtpy.QtWidgets import QMessageBox
+    from qtpy.QtCore import Signal, QObject, QCoreApplication
+    
+    from . import widgets, apps
+    from . import config
 
 ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
 
