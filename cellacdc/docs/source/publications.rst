@@ -16,6 +16,7 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Lambiase, A., et al. <i>Acteoside exerts neuroprotective effects by preventing α-synuclein aggregation and oxidative stress in models of Parkinson’s disease</i>. <b>Neurotherapeutics</b> (2025) DOI: <a href="https://doi.org/10.1016/j.neurot.2025.e00825">10.1016/j.neurot.2025.e00825</a>.</li><br>
       <li>Wunder, T., et al. <i>Conserved and Lineage-Specific Roles of KEA-Mediated Ion Homeostasis in Chlamydomonas</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.64898/2025.12.03.692059">10.64898/2025.12.03.692059</a>.</li><br>
       <li>Gao, X., et al. <i>Yeast growth is controlled by the proportional scaling of mRNA and ribosome concentrations</i>. <b>arXiv</b> (2025) DOI: <a href="https://doi.org/10.48550/arXiv.2508.14997">10.48550/arXiv.2508.14997</a>.</li><br>
       <li>Garrigós, V., et al. <i>Tsa1-Mediated Regulation of PKA Tunes Trehalose Metabolism in Saccharomyces cerevisiae</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.11.26.690464">10.1101/2025.11.26.690464</a>.</li><br>
