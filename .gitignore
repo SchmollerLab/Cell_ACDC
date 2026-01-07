@@ -23,6 +23,9 @@ requirements_new.txt
 **/weights_location_path.txt
 **/_test
 
+# Test output plots
+tests/_plots/
+
 yeast_toolbox/
 
 .setup.cfg

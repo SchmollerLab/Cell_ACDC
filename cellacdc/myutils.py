@@ -1810,6 +1810,15 @@ def _model_url(model_name, return_alternative=False):
             4096
         ]
         alternative_url = ''
+    elif model_name == 'sam2':
+        url = [
+            'https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt',
+            'https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.pt',
+            'https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_base_plus.pt',
+            'https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt'
+        ]
+        file_size = [155233385, 184211977, 319128965, 910600801]
+        alternative_url = ''
     else:
         return
     if return_alternative:
@@ -1826,7 +1835,7 @@ def _download_segment_anything_models():
     for url, file_size in zip(urls, file_sizes):
         filename = url.split('/')[-1]
         final_dst = os.path.join(final_model_path, filename)
-        if os.path.exists(final_dst):            
+        if os.path.exists(final_dst):
             continue
 
         temp_dst = os.path.join(temp_model_path, filename)
@@ -1834,7 +1843,27 @@ def _download_segment_anything_models():
             url, temp_dst, file_size=file_size, desc='segment_anything',
             verbose=False
         )
-        
+
+        shutil.move(temp_dst, final_dst)
+
+def _download_sam2_models():
+    urls, file_sizes = _model_url('sam2')
+    temp_model_path = tempfile.mkdtemp()
+    _, final_model_path = (
+        get_model_path('sam2', create_temp_dir=False)
+    )
+    for url, file_size in zip(urls, file_sizes):
+        filename = url.split('/')[-1]
+        final_dst = os.path.join(final_model_path, filename)
+        if os.path.exists(final_dst):
+            continue
+
+        temp_dst = os.path.join(temp_model_path, filename)
+        download_url(
+            url, temp_dst, file_size=file_size, desc='sam2',
+            verbose=False
+        )
+
         shutil.move(temp_dst, final_dst)
 
 def _download_deepsea_models():
@@ -2042,6 +2071,13 @@ def download_model(model_name):
     if model_name == 'segment_anything':
         try:
             _download_segment_anything_models()
+            return True
+        except Exception as e:
+            traceback.print_exc()
+            return False
+    elif model_name == 'sam2':
+        try:
+            _download_sam2_models()
             return True
         except Exception as e:
             traceback.print_exc()
