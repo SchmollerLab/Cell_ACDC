@@ -539,7 +539,7 @@ class SegmKernel(_WorkflowKernel):
             if self.innerPbar_available and self.signals is not None:
                 self.signals.resetInnerPbar.emit(len(img_data))
             
-            if self.is_segment3DT_available:
+            if self.is_segment3DT_available and img_data.ndim == 3:
                 self.model_kwargs['signals'] = (
                     self.signals, self.innerPbar_available
                 )
