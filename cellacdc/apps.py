@@ -15972,7 +15972,7 @@ class ExportToImageParametersDialog(QBaseDialog):
         
         row = 0
         gridLayout.addWidget(QLabel('View range X axis:'), row, 0)
-        self.xRangeSelector = widgets.RangeSelector()
+        self.xRangeSelector = widgets.RangeSelector(integers=True)
         if startViewRange is not None:
             xRange, yRange = startViewRange
             self.xRangeSelector.setRange(*xRange)
@@ -15980,7 +15980,7 @@ class ExportToImageParametersDialog(QBaseDialog):
         
         row += 1
         gridLayout.addWidget(QLabel('View range Y axis:'), row, 0)
-        self.yRangeSelector = widgets.RangeSelector()
+        self.yRangeSelector = widgets.RangeSelector(integers=True)
         if startViewRange is not None:
             xRange, yRange = startViewRange
             self.yRangeSelector.setRange(*yRange)
@@ -16054,6 +16054,7 @@ class ExportToImageParametersDialog(QBaseDialog):
         xRange, yRange = viewRange
         self.xRangeSelector.setRangeNoEmit(*xRange)
         self.yRangeSelector.setRangeNoEmit(*yRange)
+        self.setExportMaskImage(viewRange)
     
     def rangeChanged(self, *args):
         xRange = self.xRangeSelector.range()

@@ -1,3 +1,7 @@
+import os
+import tempfile
+import shutil
+
 import numpy as np
 import cv2
 
@@ -5,6 +9,7 @@ import skimage.io
 import skimage.color
 
 import pyqtgraph.exporters
+import pyqtgraph as pg
 
 from . import transformation, printl, myutils
 from . import is_mac, is_win
@@ -15,28 +20,67 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
         super().__init__(item)
         self._save_pngs = save_pngs
         
+        self._dpi = dpi
+        
         # DPI using A4 width
         desired_width = 8.268 * dpi
         self.params['width'] = desired_width
     
         self.parameters()['background'] = (0, 0, 0, 0)
     
-    def export(self, filepath):        
+    def super_export(self, filepath):
+        super().export(filepath)
+    
+    def crop_from_mask(self, img_rgba):
+        if not hasattr(self.item, 'exportMaskImageItem'):
+            return img_rgba
+        
+        crop_mask_rgba = self.item.exportMaskImageItem.image
+        alpha = crop_mask_rgba[..., 3]
+        rows, cols = np.where(alpha == 0)
+        top, bottom = rows.min(), rows.max() + 1
+        left, right = cols.min(), cols.max() + 1
+        
+        x0, y0 = self.item.exportMaskImageItem.pos()
+        
+        view_range = self.item.viewRange()
+        (x_min, x_max), (y_min, y_max) = view_range
+        H, W = img_rgba.shape[:2]
+        
+        # x mapping
+        left_px_f = (left - x_min) / (x_max - x_min) * W
+        right_px_f = (right - x_min) / (x_max - x_min) * W
+        
+        # y mapping (PNG origin top-left)
+        top_px_f = (y_max - top) / (y_max - y_min) * H
+        bottom_px_f = (y_max - bottom) / (y_max - y_min) * H
+        
+        left_px   = int(np.floor(left_px_f))
+        right_px  = int(np.ceil(right_px_f))
+
+        bottom_px = int(np.floor(bottom_px_f))
+        top_px    = int(np.ceil(top_px_f))
+        
+        return img_rgba[bottom_px:top_px, left_px:right_px]
+
+    def export(self, filepath):                                 
         super().export(filepath)
         
         # Remove padding
-        img = skimage.io.imread(filepath)
-        img_gray = img.sum(axis=2)
+        img_rgba = skimage.io.imread(filepath)    
+        img_rgba = self.crop_from_mask(img_rgba)
         
-        _, crop_slice = transformation.remove_padding_2D(
-            img_gray, return_crop_slice=True
+        img_rgba = transformation.crop_outer_padding(
+            img_rgba, value=(0, 0, 0, 255)
         )
-        img_cropped = img[crop_slice]
-        
-        if self._save_pngs:
-            skimage.io.imsave(filepath, img_cropped, check_contrast=False)
+        img_rgba = transformation.crop_outer_padding(
+            img_rgba, value=(255, 255, 255, 255)
+        )
 
-        img_bgr = cv2.cvtColor(img_cropped, cv2.COLOR_RGBA2BGR)
+        if self._save_pngs:
+            skimage.io.imsave(filepath, img_rgba, check_contrast=False)
+
+        img_bgr = cv2.cvtColor(img_rgba, cv2.COLOR_RGBA2BGR)
         
         return img_bgr
 

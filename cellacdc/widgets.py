@@ -10555,6 +10555,8 @@ class RangeSelector(QWidget):
     def __init__(self, parent=None, integers=False):
         super().__init__(parent)
         
+        self._integers = integers
+        
         layout = QHBoxLayout()
         
         if integers:
@@ -10592,6 +10594,13 @@ class RangeSelector(QWidget):
         self.highSpinbox.valueChanged.connect(self.highValueChanged)
     
     def setRange(self, lowValue, highValue):
+        if lowValue > highValue:
+            lowValue = highValue
+        
+        if self._integers:
+            lowValue = round(lowValue)
+            highValue = round(highValue)
+        
         self.lowSpinbox.setValue(lowValue)
         self.highSpinbox.setValue(highValue)
     

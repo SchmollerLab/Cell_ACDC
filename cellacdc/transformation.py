@@ -236,7 +236,45 @@ def remove_padding_2D(arr, val=0, return_crop_slice=False):
         return arr[crop_slice], crop_slice
     
     return arr[tuple(crop_slice)]
+
+def crop_outer_padding(arr, value=0, copy=False):
+    padding_pixel = np.all(arr == value, axis=-1)
+
+    # which rows/cols are entirely padding?
+    row_is_pad = np.all(padding_pixel, axis=1)
+    col_is_pad = np.all(padding_pixel, axis=0)
+
+    # find boundaries of the non-padding content
+    top = np.argmax(~row_is_pad)
+    bottom = len(row_is_pad) - np.argmax(~row_is_pad[::-1])
+    left = np.argmax(~col_is_pad)
+    right = len(col_is_pad) - np.argmax(~col_is_pad[::-1])
+
+    # build mask
+    padding_mask = np.zeros_like(padding_pixel)
+    padding_mask[:top, :] = True
+    padding_mask[bottom:, :] = True
+    padding_mask[:, :left] = True
+    padding_mask[:, right:] = True
     
+    # Crop using regionprops
+    padding_mask_rp = skimage.measure.regionprops(
+        skimage.measure.label(~padding_mask)
+    )
+    if not padding_mask_rp:
+        return arr.copy() if copy else arr
+    
+    padding_mask_obj = padding_mask_rp[0]
+    top, left, bottom, right = padding_mask_obj.bbox
+    
+    # Crop
+    cropped_arr = arr[top:bottom, left:right]
+    
+    if copy:
+        cropped_arr = cropped_arr.copy()
+    
+    return cropped_arr
+
 def snap_xy_to_closest_angle(x0, y0, x1, y1, angle_factor=15):
     # Snap to closest angle divisible by angle_factor degrees
     angle = math.degrees(math.atan2(y1-y0, x1-x0))

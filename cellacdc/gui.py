@@ -4402,6 +4402,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             pxMode=False
         )
         self.topLayerItems.append(self.warnPairingItem)
+        
+        self.exportMaskImageItem = pg.ImageItem()
 
         self.ghostContourItemLeft = widgets.GhostContourItem(self.ax1)
         self.ghostContourItemRight = widgets.GhostContourItem(self.ax2)
@@ -8203,6 +8205,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.textAnnot[0].addToPlotItem(self.ax1)
         self.textAnnot[1].addToPlotItem(self.ax2)
+        
+        self.ax1.addItem(self.exportMaskImageItem)
+        self.ax1.exportMaskImageItem = self.exportMaskImageItem
 
     def SegForLostIDsSetSettings(self):
 
@@ -24800,6 +24805,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             
         self.lostObjContoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
     
+    def initExportMaskImage(self):
+        posData = self.data[self.pos_i]
+        z_slice = self.z_lab()
+        img = posData.img_data[posData.frame_i]
+        Y, X = img[z_slice].shape[-2:]
+            
+        self.exportMaskImage = np.zeros((Y, X, 4), dtype=np.uint8)
+    
     def initLostTrackedObjContoursImage(self):
         posData = self.data[self.pos_i]
         z_slice = self.z_lab()
@@ -31161,6 +31174,30 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.startExportToVideoWorker(win.selected_preferences)        
 
+    def setExportMaskImage(self, viewRange):
+        if not hasattr(self, 'exportMaskImage'):
+            self.initExportMaskImage()
+        else:
+            self.exportMaskImage[:] = 0
+            
+        xRange, yRange = viewRange
+        x0, x1 = map(round, xRange)
+        y0, y1 = map(round, yRange)
+        
+        if self.invertBwAction.isChecked():
+            self.exportMaskImage[:, :, :3] = 255
+        
+        if x0 > 0:
+            self.exportMaskImage[:, :x0, 3] = 255
+        if x1 < self.exportMaskImage.shape[1]:
+            self.exportMaskImage[:, x1:, 3] = 255
+        if y0 > 0:
+            self.exportMaskImage[:y0, :, 3] = 255
+        if y1 < self.exportMaskImage.shape[0]:
+            self.exportMaskImage[y1:, :, 3] = 255
+        
+        self.exportMaskImageItem.setImage(self.exportMaskImage)
+
     def setViewRangeFromExportToImageDialog(self, viewRange, win=None):
         self.ax1.vb.sigRangeChanged.disconnect()
         xRange, yRange = viewRange
@@ -31168,6 +31205,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.ax1.vb.sigRangeChanged.connect(
             win.updateViewRangeExportToImageDialog
         )
+        self.setExportMaskImage(viewRange)
     
     def getZoomIDs(self, viewRange=None):
         if viewRange is None:
@@ -31216,11 +31254,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if filepath.endswith('.svg'):
             exporter = exporters.SVGExporter(self.ax1)
         else:
-            exporter = exporters.ImageExporter(self.ax1, dpi=preferences['dpi'])
+            exporter = exporters.ImageExporter(
+                self.ax1, dpi=preferences['dpi']
+            )
         exporter.export(filepath)
         self.logger.info(f'Image saved.')
         
         self.setDisabled(False)
+        self.exportMaskImage[:] = 0
+        self.exportMaskImageItem.setImage(self.exportMaskImage)
         prompts.exportToImageFinished(filepath, qparent=self)
     
     def exportToImageTriggered(self):
@@ -31228,7 +31270,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'{timestamp}_acdc_exported_image'
         win = apps.ExportToImageParametersDialog(
-            parent=self, startFolderpath=posData.pos_path, 
+            parent=self, 
+            startFolderpath=posData.pos_path, 
             startFilename=filename, 
             startViewRange=self.ax1.viewRange(),
             isScaleBarPresent=self.addScaleBarAction.isChecked(), 
@@ -31240,9 +31283,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.ax1.vb.sigRangeChanged.connect(
             win.updateViewRangeExportToImageDialog
         )
+        self.setExportMaskImage(self.ax1.viewRange())
         win.exec_()
         self.ax1.vb.sigRangeChanged.disconnect()
         if win.cancel:
+            self.exportMaskImage[:] = 0
+            self.exportMaskImageItem.setImage(self.exportMaskImage)
             self.logger.info('Export to image process cancelled')
             return
     
