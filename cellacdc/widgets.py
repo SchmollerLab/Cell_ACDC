@@ -6797,6 +6797,20 @@ class MainPlotItem(pg.PlotItem):
             return False
         
         return True
+    
+    def viewRange(self, mask_img=None):
+        if mask_img is None:
+            return super().viewRange()
+        
+        mask_rp = skimage.measure.regionprops(
+            skimage.measure.label(mask_img)
+        )
+        if not mask_rp:
+            return super().viewRange()
+        
+        mask_obj = mask_rp
+        ymin, xmin, ymax, xmax = mask_obj.bbox
+        return (xmin, xmax), (ymin, ymax)
             
 class sliderWithSpinBox(QWidget):
     sigValueChange = Signal(object)

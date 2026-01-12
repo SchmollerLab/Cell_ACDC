@@ -11754,7 +11754,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if checked:
             posData = self.data[self.pos_i]
             Y, X = self.img1.image.shape[:2]
-            viewRange = self.ax1.viewRange()
+            viewRange = self.ax1ViewRange()
             self.timestampDialog = apps.TimestampPropertiesDialog(parent=self)
             self.timestampDialog.show()
             self.timestamp = widgets.TimestampItem(
@@ -11777,16 +11777,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.timestampDialog = None
         self.imgGrad.addTimestampAction.setChecked(checked)
     
+    def ax1ViewRange(self):
+        if not hasattr(self, 'exportMaskImage'):
+            return self.ax1.viewRange()
+        
+        exportMask = np.all(self.exportMaskImage == [0, 0, 0, 0], axis=-1)
+        return self.ax1.viewRange(exportMask)
+        
     def addScaleBar(self, checked):
         if checked:
             posData = self.data[self.pos_i]
             Y, X = self.img1.image.shape[:2]
-            viewRange = self.ax1.viewRange()
+            viewRange = self.ax1ViewRange()
             self.scaleBarDialog = apps.ScaleBarPropertiesDialog(
                 X, Y, posData.PhysicalSizeX, parent=self
             )
             self.scaleBarDialog.show()
-            self.scaleBar = widgets.ScaleBar((Y, X), viewRange, parent=self.ax1)
+            self.scaleBar = widgets.ScaleBar(
+                (Y, X), viewRange, parent=self.ax1
+            )
             self.scaleBar.sigEditProperties.connect(self.editScaleBarProperties)
             self.scaleBar.addToAxis(self.ax1)
             self.scaleBar.draw(**self.scaleBarDialog.kwargs())
