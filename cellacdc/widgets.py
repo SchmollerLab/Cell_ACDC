@@ -6808,7 +6808,7 @@ class MainPlotItem(pg.PlotItem):
         if not mask_rp:
             return super().viewRange()
         
-        mask_obj = mask_rp
+        mask_obj = mask_rp[0]
         ymin, xmin, ymax, xmax = mask_obj.bbox
         return (xmin, xmax), (ymin, ymax)
             

@@ -12039,9 +12039,36 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         return tuple([int(val) for val in coords])
     
-    def hoverValuesFormatted(self, xdata, ydata, activeToolButton, is_ax0):     
+    def updateValuesStatusBar(self):
+        (xl, xr), (yt, yb) = self.ax1ViewRange()
+        W = xr - xl
+        H = yb - yt
+        txt = self.wcLabel.text()
+        pattern = (
+            r'W=.*?, H=.*? \| '
+            r'x_left=.*?, y_top=.*? \| '
+            r'x_right=.*?, y_bottom=.*? \| '
+        )
+        replacing = (
+            f'W={W:d}, H={H:d} | '
+            f'x_left={xl:d}, y_top={yt:d} | '
+            f'x_right={xr:d}, y_bottom={yb:d} | '
+        )
+        txt = re.sub(pattern, replacing, txt)
+        self.wcLabel.setText(txt)
+    
+    def hoverValuesFormatted(self, xdata, ydata, activeToolButton, is_ax0):  
+        (xl, xr), (yt, yb) = self.ax1ViewRange()
+        W = xr - xl
+        H = yb - yt
         ax_idx = 0 if is_ax0 else 1
-        txt = f'x={xdata:d}, y={ydata:d} (ax{ax_idx})'
+        txt = (
+            f'x={xdata:d}, y={ydata:d} | '
+            f'W={W:d}, H={H:d} | '
+            f'x_left={xl:d}, y_top={yt:d} | '
+            f'x_right={xr:d}, y_bottom={yb:d} | '
+            f'(ax{ax_idx})'
+        )
         if activeToolButton == self.rulerButton:
             txt = self._addRulerMeasurementText(txt)
             return txt
@@ -32286,6 +32313,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.curvHoverPlotItem.setData(xi, yi)
     
     def viewRangeChanged(self, viewBox, viewRange):
+        self.updateValuesStatusBar()
         if hasattr(self, 'scaleBar'):
             isScaleBarMoveWithZoom = (
                 self.scaleBar.properties()['move_with_zoom']
