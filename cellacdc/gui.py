@@ -292,6 +292,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.progressWin = None
         self.slideshowWin = None
         self.ccaTableWin = None
+        self.exportToImageWindow = None
         self.customAnnotButton = None
         self.ccaCheckerRunning = False
         self.isDataLoaded = False
@@ -11777,12 +11778,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.timestampDialog = None
         self.imgGrad.addTimestampAction.setChecked(checked)
     
-    def ax1ViewRange(self):
+    def ax1ViewRange(self, integers=False):
         if not hasattr(self, 'exportMaskImage'):
-            return self.ax1.viewRange()
+            viewRange = self.ax1.viewRange()
+        else:
+            exportMask = np.all(self.exportMaskImage == [0, 0, 0, 0], axis=-1)
+            viewRange = self.ax1.viewRange(exportMask)
         
-        exportMask = np.all(self.exportMaskImage == [0, 0, 0, 0], axis=-1)
-        return self.ax1.viewRange(exportMask)
+        if not integers:
+            return viewRange
+        
+        xRange, yRange = viewRange
+        xmin = round(xRange[0])
+        ymin = round(yRange[0])
+        xmax = round(xRange[1])
+        ymax = round(yRange[1])
+        return [xmin, xmax], [ymin, ymax]
         
     def addScaleBar(self, checked):
         if checked:
@@ -12040,9 +12051,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         return tuple([int(val) for val in coords])
     
     def updateValuesStatusBar(self):
-        (xl, xr), (yt, yb) = self.ax1ViewRange()
-        W = xr - xl
-        H = yb - yt
+        (xl, xr), (yt, yb) = self.ax1ViewRange(integers=True)
+        W = round(xr - xl)
+        H = round(yb - yt)
         txt = self.wcLabel.text()
         pattern = (
             r'W=.*?, H=.*? \| '
@@ -12058,9 +12069,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.wcLabel.setText(txt)
     
     def hoverValuesFormatted(self, xdata, ydata, activeToolButton, is_ax0):  
-        (xl, xr), (yt, yb) = self.ax1ViewRange()
-        W = xr - xl
-        H = yb - yt
+        (xl, xr), (yt, yb) = self.ax1ViewRange(integers=True)
+        W = round(xr - xl)
+        H = round(yb - yt)
         ax_idx = 0 if is_ax0 else 1
         txt = (
             f'x={xdata:d}, y={ydata:d} | '
@@ -31320,15 +31331,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             win.updateViewRangeExportToImageDialog
         )
         self.setExportMaskImage(self.ax1.viewRange())
+        self.exportToImageWindow = win
         win.exec_()
         self.ax1.vb.sigRangeChanged.disconnect()
         if win.cancel:
             self.exportMaskImage[:] = 0
             self.exportMaskImageItem.setImage(self.exportMaskImage)
+            self.exportToImageWindow = None
             self.logger.info('Export to image process cancelled')
             return
     
         self.exportToImage(win.selected_preferences)
+        self.exportToImageWindow = None
     
     def saveDataPermissionError(self, err_msg):
         self.setDisabled(False, keepDisabled=False)
@@ -32312,8 +32326,37 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xi, yi = self.getSpline(xx, yy, per=per)
         self.curvHoverPlotItem.setData(xi, yi)
     
+    def updateViewRangeExportToImage(self, viewRange):
+        if self.exportToImageWindow is None:
+            return
+
+        prevViewRange = self.exportToImageWindow.viewRange()
+        prevXRange = prevViewRange[0]
+        prevYRange = prevViewRange[1]
+        currXRange = viewRange[0]
+        currYRange = viewRange[1]
+        
+        printl(prevViewRange, viewRange)
+        
+        prevX0, prevX1 = prevXRange
+        currX0, currX1 = currXRange
+        prevY0, prevY1 = prevYRange
+        currY0, currY1 = currYRange
+        
+        newX0 = currX0 + (prevX0 - currX0)
+        newX1 = currX1 + (prevX1 - currX1)
+        newY0 = currY0 + (prevY0 - currY0)
+        newY1 = currY1 + (prevY1 - currY1)
+        
+        self.exportToImageWindow.setViewRange(
+            (newX0, newX1), (newY0, newY1)
+        )
+        
+    
     def viewRangeChanged(self, viewBox, viewRange):
         self.updateValuesStatusBar()
+        # self.updateViewRangeExportToImage(viewRange)        
+        
         if hasattr(self, 'scaleBar'):
             isScaleBarMoveWithZoom = (
                 self.scaleBar.properties()['move_with_zoom']

@@ -10565,11 +10565,14 @@ class FontSizeWidget(QWidget):
 
 class RangeSelector(QWidget):
     sigRangeChanged = Signal(object, object)
+    sigLowValueChanged = Signal(object)
+    sigHighValueChanged = Signal(object)
     
-    def __init__(self, parent=None, integers=False):
+    def __init__(self, parent=None, integers=False, ordered=True):
         super().__init__(parent)
         
         self._integers = integers
+        self._ordered = ordered
         
         layout = QHBoxLayout()
         
@@ -10591,9 +10594,11 @@ class RangeSelector(QWidget):
     
     def lowValueChanged(self, value):        
         self.emitRangeChanged()
+        self.sigLowValueChanged.emit(value)
         
     def highValueChanged(self, value):
         self.emitRangeChanged()
+        self.sigHighValueChanged.emit(value)
     
     def emitRangeChanged(self):
         self.sigRangeChanged.emit(*self.range())
@@ -10608,7 +10613,7 @@ class RangeSelector(QWidget):
         self.highSpinbox.valueChanged.connect(self.highValueChanged)
     
     def setRange(self, lowValue, highValue):
-        if lowValue > highValue:
+        if lowValue > highValue and self._ordered:
             lowValue = highValue
         
         if self._integers:

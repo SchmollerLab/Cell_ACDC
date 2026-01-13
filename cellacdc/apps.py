@@ -15987,6 +15987,24 @@ class ExportToImageParametersDialog(QBaseDialog):
         gridLayout.addWidget(self.yRangeSelector, row, 1)
         
         row += 1
+        gridLayout.addWidget(QLabel('Width and Height:'), row, 0)
+        self.widthHeightSelector = widgets.RangeSelector(
+            integers=True, ordered=False
+        )
+        if startViewRange is not None:
+            xRange, yRange = startViewRange
+            width = int(xRange[1] - xRange[0])
+            height = int(yRange[1] - yRange[0])
+            self.widthHeightSelector.setRange(width, height)
+        gridLayout.addWidget(self.widthHeightSelector, row, 1)
+        self.lockSizeButton = widgets.LockPushButton()
+        self.lockSizeButton.setCheckable(True)
+        self.lockSizeButton.setToolTip(
+            'Lock width and height'
+        )
+        gridLayout.addWidget(self.lockSizeButton, row, 2)
+        
+        row += 1
         gridLayout.addWidget(QLabel('File format:'), row, 0)
         self.fileFormatCombobox = QComboBox()
         self.fileFormatCombobox.addItems(['SVG', 'PNG', 'TIF', 'JPEG'])
@@ -16035,8 +16053,12 @@ class ExportToImageParametersDialog(QBaseDialog):
         )
         self.browseButton.sigPathSelected.connect(self.updateFolderPath)
         self.addScaleBarToggle.toggled.connect(self.addScaleBarToggled)
-        self.xRangeSelector.sigRangeChanged.connect(self.rangeChanged)
-        self.yRangeSelector.sigRangeChanged.connect(self.rangeChanged)
+        self.xRangeSelector.sigLowValueChanged.connect(self.x0Changed)
+        self.xRangeSelector.sigHighValueChanged.connect(self.x1Changed)
+        self.yRangeSelector.sigLowValueChanged.connect(self.y0Changed)
+        self.yRangeSelector.sigHighValueChanged.connect(self.y1Changed)
+        self.widthHeightSelector.sigLowValueChanged.connect(self.widthChanged)
+        self.widthHeightSelector.sigHighValueChanged.connect(self.heightChanged)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.setText('Export')
@@ -16044,17 +16066,111 @@ class ExportToImageParametersDialog(QBaseDialog):
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         
+        gridLayout.setColumnStretch(2, 0)
+        
         mainLayout.addLayout(gridLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
         
         self.setLayout(mainLayout)
     
+    def x0Changed(self, *args):
+        if self.lockSizeButton.isChecked():
+            x0, _ = self.xRangeSelector.range()
+            yRange = self.yRangeSelector.range()
+            width, height = self.widthHeightSelector.range()
+            x1 = x0 + width
+            xRange = (x0, x1)
+        else:
+            xRange = self.xRangeSelector.range()
+            yRange = self.yRangeSelector.range()
+            _, height = self.widthHeightSelector.range()
+            width = int(xRange[1] - xRange[0])
+            
+        self.xRangeSelector.setRangeNoEmit(*xRange)
+        self.yRangeSelector.setRangeNoEmit(*yRange)
+        self.widthHeightSelector.setRangeNoEmit(width, height)
+        self.rangeChanged()
+        
+    def x1Changed(self, *args):
+        if self.lockSizeButton.isChecked():
+            _, x1 = self.xRangeSelector.range()
+            yRange = self.yRangeSelector.range()
+            width, height = self.widthHeightSelector.range()
+            x0 = x1 - width
+            xRange = (x0, x1)
+        else:
+            xRange = self.xRangeSelector.range()
+            yRange = self.yRangeSelector.range()
+            _, height = self.widthHeightSelector.range()
+            width = int(xRange[1] - xRange[0])
+            
+        self.xRangeSelector.setRangeNoEmit(*xRange)
+        self.yRangeSelector.setRangeNoEmit(*yRange)
+        self.widthHeightSelector.setRangeNoEmit(width, height)
+        
+        self.rangeChanged()
+        
+    def y1Changed(self, *args):
+        if self.lockSizeButton.isChecked():
+            xRange = self.xRangeSelector.range()
+            _, y1 = self.yRangeSelector.range()
+            width, height = self.widthHeightSelector.range()
+            y0 = y1 + width
+            yRange = (y0, y1)
+        else:
+            xRange = self.xRangeSelector.range()
+            yRange = self.yRangeSelector.range()
+            _, height = self.widthHeightSelector.range()
+            width = int(xRange[1] - xRange[0])
+            
+        self.xRangeSelector.setRangeNoEmit(*xRange)
+        self.yRangeSelector.setRangeNoEmit(*yRange)
+        self.widthHeightSelector.setRangeNoEmit(width, height)
+        
+        self.rangeChanged()
+        
+    def y0Changed(self, *args):
+        if self.lockSizeButton.isChecked():
+            xRange = self.xRangeSelector.range()
+            y0, _ = self.yRangeSelector.range()
+            width, height = self.widthHeightSelector.range()
+            y1 = y0 - width
+            yRange = (y0, y1)
+        else:
+            xRange = self.xRangeSelector.range()
+            yRange = self.yRangeSelector.range()
+            _, height = self.widthHeightSelector.range()
+            width = int(xRange[1] - xRange[0])
+            
+        self.xRangeSelector.setRangeNoEmit(*xRange)
+        self.yRangeSelector.setRangeNoEmit(*yRange)
+        self.widthHeightSelector.setRangeNoEmit(width, height)
+        
+        self.rangeChanged()
+        
+    def widthChanged(self, *args):
+        self.widthHeightChanged()
+        self.rangeChanged()
+        
+    def heightChanged(self, *args):
+        self.widthHeightChanged()
+        self.rangeChanged()
+    
     def updateViewRangeExportToImageDialog(self, viewBox, viewRange, changed):
         xRange, yRange = viewRange
         self.xRangeSelector.setRangeNoEmit(*xRange)
         self.yRangeSelector.setRangeNoEmit(*yRange)
-        self.setExportMaskImage(viewRange)
+    
+    def widthHeightChanged(self, *args):
+        x0, _ = self.xRangeSelector.range()
+        y0, _ = self.yRangeSelector.range()
+        width, height = self.widthHeightSelector.range()
+        x1 = x0 + width
+        y1 = y0 + height
+        self.xRangeSelector.setRangeNoEmit(x0, x1)
+        self.yRangeSelector.setRangeNoEmit(y0, y1)
+        self.rangeChanged()
     
     def rangeChanged(self, *args):
         xRange = self.xRangeSelector.range()
@@ -16112,6 +16228,21 @@ class ExportToImageParametersDialog(QBaseDialog):
             return False
         
         return True
+    
+    def setViewRange(self, xRange, yRange):
+        self.xRangeSelector.setRangeNoEmit(*xRange)
+        self.yRangeSelector.setRangeNoEmit(*yRange)
+        width = int(xRange[1] - xRange[0])
+        height = int(yRange[1] - yRange[0])
+        self.widthHeightSelector.blockSignals(True)
+        self.widthHeightSelector.setRange(width, height)
+        self.widthHeightSelector.blockSignals(False)
+        self.rangeChanged()
+    
+    def viewRange(self):
+        xRange = self.xRangeSelector.range()
+        yRange = self.yRangeSelector.range()
+        return (xRange, yRange)
     
     def preferences(self):
         filename = f'{self.filenameLineEdit.text()}{self.fileFormatLabel.text()}'
