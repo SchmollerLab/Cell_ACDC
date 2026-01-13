@@ -243,19 +243,46 @@ def crop_outer_padding(arr, value=0, copy=False):
     # which rows/cols are entirely padding?
     row_is_pad = np.all(padding_pixel, axis=1)
     col_is_pad = np.all(padding_pixel, axis=0)
-
-    # find boundaries of the non-padding content
-    top = np.argmax(~row_is_pad)
-    bottom = len(row_is_pad) - np.argmax(~row_is_pad[::-1])
-    left = np.argmax(~col_is_pad)
-    right = len(col_is_pad) - np.argmax(~col_is_pad[::-1])
-
+    
     # build mask
     padding_mask = np.zeros_like(padding_pixel)
-    padding_mask[:top, :] = True
-    padding_mask[bottom:, :] = True
-    padding_mask[:, :left] = True
-    padding_mask[:, right:] = True
+
+    # find boundaries of the non-padding content
+    try:
+        top = np.argmax(~row_is_pad)
+        padding_mask[:top, :] = True
+        is_top_padded = True
+    except ValueError:
+        is_top_padded = False
+    
+    try:
+        bottom = len(row_is_pad) - np.argmax(~row_is_pad[::-1])
+        padding_mask[bottom:, :] = True
+        is_bottom_padded = True
+    except ValueError:
+        is_bottom_padded = False
+    
+    try:
+        left = np.argmax(~col_is_pad)
+        padding_mask[:, :left] = True
+        is_left_padded = True
+    except ValueError:
+        is_left_padded = False
+        
+    try:
+        right = len(col_is_pad) - np.argmax(~col_is_pad[::-1])
+        padding_mask[:, right:] = True
+        is_right_padded = True
+    except ValueError:
+        is_right_padded = False
+    
+    is_padded = (
+        is_top_padded or is_bottom_padded or 
+        is_left_padded or is_right_padded
+    )
+    
+    if not is_padded:
+        return arr.copy() if copy else arr
     
     # Crop using regionprops
     padding_mask_rp = skimage.measure.regionprops(
