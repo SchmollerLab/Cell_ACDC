@@ -11766,6 +11766,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.timestamp.sigEditProperties.connect(
                 self.editTimestampProperties
             )
+            self.timestamp.sigRemove.connect(
+                self.editTimestampRemove
+            )
             self.timestamp.addToAxis(self.ax1)
             self.timestamp.draw(
                 posData.frame_i, **self.timestampDialog.kwargs()
@@ -11779,11 +11782,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.imgGrad.addTimestampAction.setChecked(checked)
     
     def ax1ViewRange(self, integers=False):
-        if not hasattr(self, 'exportMaskImage'):
+        if self.exportToImageWindow is None:
             viewRange = self.ax1.viewRange()
         else:
             exportMask = np.all(self.exportMaskImage == [0, 0, 0, 0], axis=-1)
-            viewRange = self.ax1.viewRange(exportMask)
+            if np.all(exportMask):
+                viewRange = self.ax1.viewRange()
+            else:
+                viewRange = self.ax1.viewRange(exportMask)
         
         if not integers:
             return viewRange
@@ -11808,6 +11814,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 (Y, X), viewRange, parent=self.ax1
             )
             self.scaleBar.sigEditProperties.connect(self.editScaleBarProperties)
+            self.scaleBar.sigRemove.connect(
+                self.editScaleBarRemove
+            )
             self.scaleBar.addToAxis(self.ax1)
             self.scaleBar.draw(**self.scaleBarDialog.kwargs())
             self.scaleBarDialog.sigValueChanged.connect(self.updateScaleBar)
@@ -11828,6 +11837,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         posData = self.data[self.pos_i]
         self.timestamp.draw(posData.frame_i, **timeStampKwargs)
     
+    def editScaleBarRemove(self, timestamp):
+        self.addScaleBarAction.setChecked(False)
+    
     def editScaleBarProperties(self, properties):
         Y, X = self.img1.image.shape[:2]
         posData = self.data[self.pos_i]
@@ -11836,6 +11848,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.scaleBarDialog.sigValueChanged.connect(self.updateScaleBar)
         self.scaleBarDialog.exec_()
+    
+    def editTimestampRemove(self, timestamp):
+        self.addTimestampAction.setChecked(False)
     
     def editTimestampProperties(self, properties):
         self.timestampDialog = apps.TimestampPropertiesDialog(
@@ -31246,12 +31261,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.exportMaskImageItem.setImage(self.exportMaskImage)
 
     def setViewRangeFromExportToImageDialog(self, viewRange, win=None):
-        self.ax1.vb.sigRangeChanged.disconnect()
         xRange, yRange = viewRange
-        self.ax1.vb.setRange(xRange=xRange, yRange=yRange)
-        self.ax1.vb.sigRangeChanged.connect(
-            win.updateViewRangeExportToImageDialog
-        )
+        # self.ax1.sigRangeChanged.disconnect(self.viewRangeChanged)
+        self.ax1.setRange(xRange=xRange, yRange=yRange)
+        # self.ax1.sigRangeChanged.connect(self.viewRangeChanged)
+        # self.viewRangeChanged(
+        #     self.ax1.vb, viewRange, updateExportMaskImage=False
+        # )
         self.setExportMaskImage(viewRange)
     
     def getZoomIDs(self, viewRange=None):
@@ -31327,13 +31343,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         win.sigRangeChanged.connect(
             partial(self.setViewRangeFromExportToImageDialog, win=win)
         )
-        self.ax1.vb.sigRangeChanged.connect(
-            win.updateViewRangeExportToImageDialog
-        )
+        # self.ax1.vb.sigRangeChanged.connect(
+        #     win.updateViewRangeExportToImageDialog
+        # )
         self.setExportMaskImage(self.ax1.viewRange())
         self.exportToImageWindow = win
         win.exec_()
-        self.ax1.vb.sigRangeChanged.disconnect()
+        # self.ax1.vb.sigRangeChanged.disconnect()
         if win.cancel:
             self.exportMaskImage[:] = 0
             self.exportMaskImageItem.setImage(self.exportMaskImage)
@@ -32329,34 +32345,41 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def updateViewRangeExportToImage(self, viewRange):
         if self.exportToImageWindow is None:
             return
-
-        prevViewRange = self.exportToImageWindow.viewRange()
+        
+        # prevViewRange = self.exportToImageWindow.viewRange()
+        prevViewRange = self._viewRange
         prevXRange = prevViewRange[0]
         prevYRange = prevViewRange[1]
         currXRange = viewRange[0]
         currYRange = viewRange[1]
-        
-        printl(prevViewRange, viewRange)
         
         prevX0, prevX1 = prevXRange
         currX0, currX1 = currXRange
         prevY0, prevY1 = prevYRange
         currY0, currY1 = currYRange
         
-        newX0 = currX0 + (prevX0 - currX0)
-        newX1 = currX1 + (prevX1 - currX1)
-        newY0 = currY0 + (prevY0 - currY0)
-        newY1 = currY1 + (prevY1 - currY1)
+        deltaX = currX0 - prevX0
+        deltaY = currY0 - prevY0
+        
+        winViewRange = self.exportToImageWindow.viewRange()
+        winXRange = winViewRange[0]
+        winYRange = winViewRange[1]
+        winX0, winX1 = winXRange
+        winY0, winY1 = winYRange
+        
+        newX0 = winX0 + deltaX
+        newX1 = winX1 + deltaX
+        newY0 = winY0 + deltaY
+        newY1 = winY1 + deltaY
         
         self.exportToImageWindow.setViewRange(
-            (newX0, newX1), (newY0, newY1)
+            (newX0, newX1), (newY0, newY1), emitSignal=False
         )
         
-    
-    def viewRangeChanged(self, viewBox, viewRange):
+    def viewRangeChanged(self, viewBox, viewRange, updateExportImageMask=True):
+        # self.updateViewRangeExportToImage(viewRange) 
         self.updateValuesStatusBar()
-        # self.updateViewRangeExportToImage(viewRange)        
-        
+               
         if hasattr(self, 'scaleBar'):
             isScaleBarMoveWithZoom = (
                 self.scaleBar.properties()['move_with_zoom']
@@ -32381,3 +32404,5 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         if doMoveTimestamp:
             self.timestamp.updatePosViewRangeChanged(viewRange)
+        
+        self._viewRange = viewRange

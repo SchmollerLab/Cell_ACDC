@@ -8879,6 +8879,7 @@ class LabelItem(pg.LabelItem):
 
 class ScaleBar(QGraphicsObject): 
     sigEditProperties = Signal(object)
+    sigRemove = Signal(object)
     
     def __init__(self, imageShape, viewRange, parent=None):
         super().__init__(parent)
@@ -8920,11 +8921,16 @@ class ScaleBar(QGraphicsObject):
         action = QAction('Edit properties...', self.contextMenu)
         action.triggered.connect(self.emitEditProperties)
         self.contextMenu.addSeparator()
+        action = QAction('Remove', self.contextMenu)
+        action.triggered.connect(self.emitRemove)
         self.contextMenu.addAction(action)
     
     def emitEditProperties(self):
         self.setHighlighted(False)
         self.sigEditProperties.emit(self.properties())
+    
+    def emitRemove(self):
+        self.sigRemove.emit(self)
     
     def isHighlighted(self):
         return self._highlighted
@@ -10293,6 +10299,7 @@ class OddSpinBox(SpinBox):
 
 class TimestampItem(LabelItem):
     sigEditProperties = Signal(object)
+    sigRemove = Signal(object)
     
     def __init__(
             self, SizeY, SizeX, viewRange, 
@@ -10351,7 +10358,12 @@ class TimestampItem(LabelItem):
         action = QAction('Edit properties...', self.contextMenu)
         action.triggered.connect(self.emitEditProperties)
         self.contextMenu.addSeparator()
+        action = QAction('Remove', self.contextMenu)
+        action.triggered.connect(self.emitRemove)
         self.contextMenu.addAction(action)
+    
+    def emitRemove(self):
+        self.sigRemove.emit(self)
     
     def mousePressed(self, x, y):
         self.clicked = True
@@ -10613,8 +10625,8 @@ class RangeSelector(QWidget):
         self.highSpinbox.valueChanged.connect(self.highValueChanged)
     
     def setRange(self, lowValue, highValue):
-        if lowValue > highValue and self._ordered:
-            lowValue = highValue
+        # if lowValue > highValue and self._ordered:
+        #     highValue = lowValue + 1
         
         if self._integers:
             lowValue = round(lowValue)
