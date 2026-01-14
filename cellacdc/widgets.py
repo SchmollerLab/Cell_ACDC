@@ -10579,6 +10579,7 @@ class RangeSelector(QWidget):
     sigRangeChanged = Signal(object, object)
     sigLowValueChanged = Signal(object)
     sigHighValueChanged = Signal(object)
+    sigRangeManuallyChanged = Signal(object, object)
     
     def __init__(self, parent=None, integers=False, ordered=True):
         super().__init__(parent)
@@ -10603,6 +10604,17 @@ class RangeSelector(QWidget):
         
         self.lowSpinbox.valueChanged.connect(self.lowValueChanged)
         self.highSpinbox.valueChanged.connect(self.highValueChanged)
+        
+        self.lowSpinbox.editingFinished.connect(self.lowValueEditingFinished)
+        self.highSpinbox.editingFinished.connect(self.highValueEditingFinished)
+    
+    def lowValueEditingFinished(self):   
+        self.sigRangeManuallyChanged.emit(*self.range())     
+        self.emitRangeChanged()
+    
+    def highValueEditingFinished(self):   
+        self.sigRangeManuallyChanged.emit(*self.range())     
+        self.emitRangeChanged()
     
     def lowValueChanged(self, value):        
         self.emitRangeChanged()

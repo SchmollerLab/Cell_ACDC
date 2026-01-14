@@ -8,6 +8,9 @@ import cv2
 import skimage.io
 import skimage.color
 
+from qtpy.QtSvg import QSvgRenderer
+from qtpy.QtGui import QImage, QPainter
+
 import pyqtgraph.exporters
 import pyqtgraph as pg
 
@@ -30,6 +33,20 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
     
     def super_export(self, filepath):
         super().export(filepath)
+    
+    def svg_to_image(self, svg_filepath, image_filepath):
+        width = self.params['width']
+        height = self.params['height']
+        
+        renderer = QSvgRenderer(svg_filepath)
+        img = QImage(width, height, QImage.Format_ARGB32)
+        img.fill(0)
+
+        p = QPainter(img)
+        renderer.render(p)
+        p.end()
+
+        img.save(image_filepath)
     
     def crop_from_mask(self, img_rgba):
         if not hasattr(self.item, 'exportMaskImageItem'):
@@ -61,10 +78,26 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
         bottom_px = int(np.floor(bottom_px_f))
         top_px    = int(np.ceil(top_px_f))
         
+        if left_px < 0:
+            left_px = 0
+        
+        if right_px > W:
+            right_px = W
+        
+        if bottom_px < 0:
+            bottom_px = 0
+        
+        if top_px > H:
+            top_px = H
+        
         return img_rgba[bottom_px:top_px, left_px:right_px]
 
-    def export(self, filepath):                                 
-        super().export(filepath)
+    def export(self, filepath):     
+        no_ext_filepath, ext = os.path.splitext(filepath)
+        svg_filepath = f'{no_ext_filepath}.svg'    
+        svg_exporter = SVGExporter(self.item)                  
+        svg_exporter.export(svg_filepath)
+        self.svg_to_image(svg_filepath, filepath)
         
         # Remove padding
         img_rgba = skimage.io.imread(filepath)    

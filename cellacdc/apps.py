@@ -16002,7 +16002,6 @@ class ExportToImageParametersDialog(QBaseDialog):
         self.lockSizeButton.setToolTip(
             'Lock width and height'
         )
-        self.lockSizeButton.setChecked(True)
         gridLayout.addWidget(self.lockSizeButton, row, 2)
         
         row += 1
@@ -16060,6 +16059,9 @@ class ExportToImageParametersDialog(QBaseDialog):
         self.yRangeSelector.sigHighValueChanged.connect(self.y1Changed)
         self.widthHeightSelector.sigLowValueChanged.connect(self.widthChanged)
         self.widthHeightSelector.sigHighValueChanged.connect(self.heightChanged)
+        self.widthHeightSelector.sigRangeManuallyChanged.connect(
+            self.widthHeightManuallyChanged
+        )
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.setText('Export')
@@ -16074,6 +16076,9 @@ class ExportToImageParametersDialog(QBaseDialog):
         mainLayout.addLayout(buttonsLayout)
         
         self.setLayout(mainLayout)
+    
+    def widthHeightManuallyChanged(self, *args):
+        self.lockSizeButton.setChecked(True)
     
     def x0Changed(self, *args):
         if self.lockSizeButton.isChecked():
