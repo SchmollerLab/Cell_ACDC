@@ -16007,7 +16007,7 @@ class ExportToImageParametersDialog(QBaseDialog):
         row += 1
         gridLayout.addWidget(QLabel('File format:'), row, 0)
         self.fileFormatCombobox = QComboBox()
-        self.fileFormatCombobox.addItems(['SVG', 'PNG', 'TIF', 'JPEG'])
+        self.fileFormatCombobox.addItems(['SVG', 'PNG', 'TIFF', 'JPEG'])
         gridLayout.addWidget(self.fileFormatCombobox, row, 1)
         
         row += 1

@@ -46,7 +46,17 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
         renderer.render(p)
         p.end()
 
-        img.save(image_filepath)
+        if image_filepath.endswith('.tiff'):
+            png_filepath = image_filepath.replace('.tiff', '.png')
+            img.save(png_filepath, quality=100)
+            png_img = skimage.io.imread(png_filepath)
+            skimage.io.imsave(image_filepath, png_img)
+            try: 
+                os.remove(png_filepath)
+            except Exception:
+                pass
+        else:
+            img.save(image_filepath)
     
     def crop_from_mask(self, img_rgba):
         if not hasattr(self.item, 'exportMaskImageItem'):
@@ -58,7 +68,8 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
         top, bottom = rows.min(), rows.max() + 1
         left, right = cols.min(), cols.max() + 1
         
-        x0, y0 = self.item.exportMaskImageItem.pos()
+        pos = self.item.exportMaskImageItem.pos()
+        x0, y0 = pos.x(), pos.y()
         
         view_range = self.item.viewRange()
         (x_min, x_max), (y_min, y_max) = view_range
