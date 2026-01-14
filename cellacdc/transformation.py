@@ -238,7 +238,15 @@ def remove_padding_2D(arr, val=0, return_crop_slice=False):
     return arr[tuple(crop_slice)]
 
 def crop_outer_padding(arr, value=0, copy=False):
-    padding_pixel = np.all(arr == value, axis=-1)
+    if isinstance(value, (int, float)):
+        if arr.ndim > 2:
+            raise ValueError(
+                "When arr has more than 2 dimensions, value must be a list or "
+                "array with the same number of channels as arr"
+            )
+        padding_pixel = arr == value
+    else:
+        padding_pixel = np.all(arr == value, axis=-1)
 
     # which rows/cols are entirely padding?
     row_is_pad = np.all(padding_pixel, axis=1)
