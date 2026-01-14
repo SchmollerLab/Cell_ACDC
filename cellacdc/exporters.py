@@ -99,6 +99,11 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
         svg_exporter.export(svg_filepath)
         self.svg_to_image(svg_filepath, filepath)
         
+        try: 
+            os.remove(svg_filepath)
+        except Exception as err:
+            pass
+        
         # Remove padding
         img_rgba = skimage.io.imread(filepath)    
         img_rgba = self.crop_from_mask(img_rgba)
