@@ -18831,3 +18831,119 @@ class SelectFoldersToAnalyse(QBaseDialog):
         for item in self.listWidget.selectedItems():
             row = self.listWidget.row(item)
             self.listWidget.takeItem(row)
+
+class OverlayLabelsAppearanceDialog(QBaseDialog):
+    sigValuesChanged = Signal(object)
+    
+    def __init__(self, scatterPlotItem: pg.ScatterPlotItem=None, parent=None):
+        super().__init__(parent)
+        
+        self.cancel = True
+        
+        self.setWindowTitle('Overlay contours appearance properties')
+
+        mainLayout = QVBoxLayout()
+        
+        formLayout = widgets.FormLayout()
+        
+        row = -1
+        
+        row += 1
+        self.colorButton = widgets.myColorButton(color=(255, 0, 0))
+        self.colorButton.clicked.disconnect()
+        self.colorButton.clicked.connect(self.selectColor)
+        self.colorButton.setCursor(Qt.PointingHandCursor)
+        self.colorWidget = widgets.formWidget(
+            self.colorButton, addInfoButton=False, stretchWidget=False,
+            labelTextLeft='Symbol color: ', parent=self, 
+            widgetAlignment='left'
+        )
+        if scatterPlotItem is not None:
+            pen = scatterPlotItem.opts['pen']
+            color = pen.color()
+            self.colorButton.setColor(color)
+        formLayout.addFormWidget(self.colorWidget, row=row)
+        
+        row += 1
+        self.penWidthSpinBox = widgets.SpinBox()
+        self.penWidthSpinBox.setMinimum(0)
+        self.penWidthSpinBox.setValue(2)
+
+        self.penWidthWidget = widgets.formWidget(
+            self.penWidthSpinBox, addInfoButton=False, stretchWidget=False,
+            labelTextLeft='Symbol weight: ', parent=self, 
+            widgetAlignment='left'
+        )
+        if scatterPlotItem is not None:
+            pen = scatterPlotItem.opts['pen']
+            width = pen.width()
+            self.penWidthSpinBox.setValue(width)
+        formLayout.addFormWidget(self.penWidthWidget, row=row)
+        
+        row += 1
+        self.opacitySlider = widgets.sliderWithSpinBox(
+            isFloat=True, normalize=True
+        )
+        self.opacitySlider.setMinimum(0)
+        self.opacitySlider.setMaximum(100)
+        self.opacitySlider.setValue(0.8)
+
+        self.opacityWidget = widgets.formWidget(
+            self.opacitySlider, addInfoButton=False, stretchWidget=True,
+            labelTextLeft='Symbol opacity: ', parent=self
+        )
+        if scatterPlotItem is not None:
+            brush = scatterPlotItem.opts['brush']
+            alpha = brush.color().alpha()
+            opacity = alpha/255
+            self.opacitySlider.setValue(opacity)
+        formLayout.addFormWidget(self.opacityWidget, row=row)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addLayout(formLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def selectColor(self):
+        color = self.colorButton.color()
+        self.colorButton.origColor = color
+        self.colorButton.colorDialog.setCurrentColor(color)
+        self.colorButton.colorDialog.setWindowFlags(
+            Qt.Window | Qt.WindowStaysOnTopHint
+        )
+        self.colorButton.colorDialog.open()
+        w = self.width()
+        left = self.pos().x()
+        colorDialogTop = self.colorButton.colorDialog.pos().y()
+        self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
+    
+    def getBrush(self):
+        r, g, b, _ = self.colorButton.color().getRgb()
+        alpha = round(self.opacitySlider.value()*255)
+        brushColor = (r, g, b, alpha)
+        brush = pg.mkBrush(brushColor)
+        return brush
+    
+    def getPen(self):
+        color = self.colorButton.color()
+        penWidth = self.penWidthSpinBox.value()
+        if penWidth == 0:
+            return
+        
+        pen = pg.mkPen(color, width=penWidth)
+        return pen
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.properties = {
+            'brush': self.getBrush(),
+            'pen': self.getPen()
+        }
+        self.close()
+    

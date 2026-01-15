@@ -29373,6 +29373,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             action.setCheckable(True)
             action.toggled.connect(self.addOverlayLabelsToggled)
             self.overlayLabelsContextMenu.addAction(action)
+        
+        self.overlayLabelsContextMenu.addSeparator()
+        action = QAction('Edit appearance...', self.overlayLabelsContextMenu)
+        action.triggered.connect(self.editOverlayLabelsAppearance)
+        self.overlayLabelsContextMenu.addAction(action)
+    
+    def editOverlayLabelsAppearance(self, *args):
+        segmEndname = list(self.overlayLabelsItems.keys())[0]
+        contoursItem = self.overlayLabelsItems[segmEndname][1]
+        win = apps.OverlayLabelsAppearanceDialog(
+            scatterPlotItem=contoursItem, parent=self
+        )
+        win.exec_()
+        if win.cancel:
+            return
+        
+        brush = win.properties['brush']
+        pen = win.properties['pen']
+        for items in self.overlayLabelsItems.values():
+            imageItem, contoursItem, gradItem = items
+            contoursItem.setBrush(brush, update=False)
+            contoursItem.setPen(pen)
     
     def createOverlayLabelsItems(self, segmEndnames):
         selectActionGroup = QActionGroup(self)
