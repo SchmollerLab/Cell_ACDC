@@ -3534,7 +3534,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.quickSettingsGroupbox.setTitle('Quick settings')
 
         layout = QFormLayout()
-        layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
+        layout.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint
+        )
         layout.setFormAlignment(Qt.AlignRight | Qt.AlignVCenter)
         
         self.viewPreprocDataToggle = widgets.Toggle()
@@ -3601,6 +3603,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         label.setDisabled(True)
         self.realTimeTrackingToggle.label = label
         layout.addRow(label, self.realTimeTrackingToggle)
+        
+        self.showAllContoursToggle = widgets.Toggle()
+        showAllContoursTooltip = (
+            'If active, all contours will be displayed, including inner contours'
+            '(e.g. holes and sub-objects)'
+        )
+        self.showAllContoursToggle.setToolTip(showAllContoursTooltip)
+        showAllContourLabel = QLabel('Show all contours')
+        showAllContourLabel.setToolTip(showAllContoursTooltip)
+        layout.addRow(showAllContourLabel, self.showAllContoursToggle)
+        self.showAllContoursToggle.toggled.connect(
+            self.showAllContoursToggled
+        )
 
         # Font size
         self.fontSizeSpinBox = widgets.SpinBox()
@@ -3626,6 +3641,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.quickSettingsLayout.addWidget(self.quickSettingsGroupbox)
         self.quickSettingsLayout.addStretch(1)
 
+    def showAllContoursToggled(self):
+        if not self.isDataLoaded:
+            return
+        
+        self.computeAllContours()
+        self.updateAllImages()
+    
     def gui_createImg1Widgets(self):
         # Toggle contours/ID combobox
         self.drawIDsContComboBoxSegmItems = [
@@ -24905,7 +24927,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.textAnnot[1].initItem((Y, X))  
     
     def getObjContours(
-            self, obj, all_external=False, local=False, force_calc=True
+            self, obj, all_external=False, local=False, force_calc=True,
+            include_internal=False
         ):
         posData = self.data[self.pos_i]
         dataDict = posData.allData_li[posData.frame_i]
@@ -24942,7 +24965,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             for frame_i, dataDict in enumerate(posData.allData_li):
                 dataDict['contours'] = {}
 
-    def _computeAllContours2D(self, dataDict, obj, z, obj_bbox):
+    def _computeAllContours2D(
+            self, dataDict, obj, z, obj_bbox, include_internal=False
+        ):
         obj_image = self.getObjImage(obj.image, obj.bbox, z_slice=z)
         if obj_image is None:
             return
@@ -24964,7 +24989,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             obj_image=obj_image, 
             obj_bbox=obj_bbox, 
             local=local,
-            all_external=all_external
+            all_external=all_external,
+            all=include_internal
         )
         key = (obj.label, str(z), all_external, local)
         dataDict['contours'][key] = contours
@@ -24977,6 +25003,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         zz = [None]
         if self.isSegm3D:
             zz.extend(range(posData.SizeZ))
+        
+        include_internal = self.showAllContoursToggle.isChecked()
         for frame_i, dataDict in enumerate(posData.allData_li):
             lab = dataDict['labels']
             if lab is None:
@@ -24995,7 +25023,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     
                     try:
                         self._computeAllContours2D(
-                            dataDict, obj, z, obj_bbox
+                            dataDict, obj, z, obj_bbox,
+                            include_internal=include_internal
                         )
                     except Exception as err:
                         # Contours computation fails on weird objects
@@ -27005,7 +27034,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         contours = []
         for obj in skimage.measure.regionprops(self.currentLab2D):    
             obj_contours = self.getObjContours(
-                obj, all_external=True, force_calc=compute
+                obj, all_external=True, force_calc=compute,
+                include_internal=self.showAllContoursToggle.isChecked()
             )  
             contours.extend(obj_contours)
 
