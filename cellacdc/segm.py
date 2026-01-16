@@ -994,6 +994,7 @@ class segmWin(QMainWindow):
             'use_ROI': not self.ROIdeactivatedByUser,
             'second_channel_name': self.secondChannelName,
             'use3DdataFor2Dsegm': self.use3DdataFor2Dsegm,
+            'reduce_memory_usage': self.reduce_memory_usage,
         }
         metadata_params = {
             'SizeT': self.SizeT,
