@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
+import skimage.measure
 
 # Skip entire module if sam2 is not installed
 pytest.importorskip("sam2")
