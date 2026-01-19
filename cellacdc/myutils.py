@@ -3071,6 +3071,10 @@ def check_install_segment_anything():
     check_install_torch()
     check_install_package('segment_anything')
 
+def check_install_sam2():
+    check_install_torch()
+    check_install_package('sam2')
+
 def is_gui_running():
     if not GUI_INSTALLED:
         return False
@@ -3354,6 +3358,8 @@ def check_install_package(
                 _install_deepsea()
             elif pkg_name == 'segment_anything':
                 _install_segment_anything()
+            elif pkg_name == 'sam2':
+                _install_sam2()
             else:
                 pkg_command = _get_pkg_command_pip_install(
                     pkg_name, 
@@ -3736,9 +3742,17 @@ def _install_tensorflow(max_version='', min_version=''):
 
 def _install_segment_anything():
     args = [
-        sys.executable, '-m', 'pip', 'install', 
-        '-U', '--use-pep517', 
+        sys.executable, '-m', 'pip', 'install',
+        '-U', '--use-pep517',
         'git+https://github.com/facebookresearch/segment-anything.git'
+    ]
+    subprocess.check_call(args)
+
+def _install_sam2():
+    args = [
+        sys.executable, '-m', 'pip', 'install',
+        '-U', '--use-pep517',
+        'git+https://github.com/facebookresearch/sam2.git'
     ]
     subprocess.check_call(args)
 

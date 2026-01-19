@@ -1,13 +1,7 @@
 from cellacdc import myutils
 
-# Check if SAM2 is installed
-# Note: This assumes there's a check_install_sam2 function or we can adapt the existing one
-try:
-    import sam2
-except ImportError:
-    raise ImportError(
-        "SAM2 is not installed. Please install it with: pip install git+https://github.com/facebookresearch/segment-anything-2.git"
-    )
+myutils.check_install_sam2()
+import sam2
 
 import os
 from pathlib import Path

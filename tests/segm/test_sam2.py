@@ -16,6 +16,11 @@ from cellacdc import data, myutils
 class TestSAM2AutomaticSegmentation:
     """Test SAM2 model with automatic segmentation (no input points)."""
 
+    @pytest.fixture(scope="class", autouse=True)
+    def download_models(self):
+        """Download SAM2 models if not present."""
+        myutils.download_model("sam2")
+
     @pytest.fixture
     def test_data(self):
         """Load test data."""
@@ -28,19 +33,21 @@ class TestSAM2AutomaticSegmentation:
 
     @pytest.fixture
     def test_frames(self, posData):
-        """Load timelapse frames (capped at 20)."""
+        """Load timelapse frames (every 5th frame)."""
         posData.loadImgData()
         posData.loadOtherFiles(load_segm_data=False, load_metadata=True)
         posData.buildPaths()
 
         # Get frames from timelapse (shape: T, Y, X)
         image_data = posData.img_data
-        num_frames = min(len(image_data), 20)
 
         # Apply contrast stretching for better visibility
         # Normalize to full dtype range (like Fiji's auto-contrast)
+        # Sample every 5th frame
         normalized_frames = []
-        for frame in image_data[:num_frames]:
+        frame_indices = []
+        for i in range(0, len(image_data), 5):
+            frame = image_data[i]
             frame_min = frame.min()
             frame_max = frame.max()
             if frame_max > frame_min:
@@ -48,11 +55,14 @@ class TestSAM2AutomaticSegmentation:
                     np.uint16
                 )
             normalized_frames.append(frame)
+            frame_indices.append(i)
 
-        return np.array(normalized_frames)
+        return np.array(normalized_frames), frame_indices
 
-    def test_automatic_segmentation_all_frames(self, test_frames, posData):
-        """Test SAM2 automatic segmentation on all frames."""
+    def test_automatic_segmentation_sampled_frames(self, test_frames, posData):
+        """Test SAM2 automatic segmentation on sampled frames (every 5th)."""
+        frames, frame_indices = test_frames
+
         # Import SAM2 model module
         acdcSegment = myutils.import_segment_module("sam2")
 
@@ -75,7 +85,7 @@ class TestSAM2AutomaticSegmentation:
         plots_dir = Path(__file__).parent.parent / "_plots"
         plots_dir.mkdir(exist_ok=True)
 
-        for frame_i, frame in enumerate(test_frames):
+        for idx, (frame, frame_i) in enumerate(zip(frames, frame_indices)):
             # Run segmentation
             labels = model.segment(
                 frame,
