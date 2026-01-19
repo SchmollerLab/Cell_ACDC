@@ -102,6 +102,9 @@ pytorch = [
 cellpose3 = [
     "cellpose<4.0.0",
 ]
+cellpose = [
+    "cellpose>=4",
+]
 stardist = [
     "tensorflow<2.17",
     "numpy<2.0.0",
