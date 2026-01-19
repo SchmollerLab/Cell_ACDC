@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
+from matplotlib import patheffects
 import skimage.measure
 
 # Skip entire module if sam2 is not installed
@@ -145,7 +146,7 @@ class TestSAM2AutomaticSegmentation:
                     color='white', fontsize=8, fontweight='bold',
                     ha='center', va='center',
                     path_effects=[
-                        plt.matplotlib.patheffects.withStroke(linewidth=2, foreground='black')
+                        patheffects.withStroke(linewidth=2, foreground='black')
                     ]
                 )
 
