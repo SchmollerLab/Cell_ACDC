@@ -6797,6 +6797,20 @@ class MainPlotItem(pg.PlotItem):
             return False
         
         return True
+    
+    def viewRange(self, mask_img=None):
+        if mask_img is None:
+            return super().viewRange()
+        
+        mask_rp = skimage.measure.regionprops(
+            skimage.measure.label(mask_img)
+        )
+        if not mask_rp:
+            return super().viewRange()
+        
+        mask_obj = mask_rp[0]
+        ymin, xmin, ymax, xmax = mask_obj.bbox
+        return (xmin, xmax), (ymin, ymax)
             
 class sliderWithSpinBox(QWidget):
     sigValueChange = Signal(object)
@@ -8865,6 +8879,7 @@ class LabelItem(pg.LabelItem):
 
 class ScaleBar(QGraphicsObject): 
     sigEditProperties = Signal(object)
+    sigRemove = Signal(object)
     
     def __init__(self, imageShape, viewRange, parent=None):
         super().__init__(parent)
@@ -8906,11 +8921,16 @@ class ScaleBar(QGraphicsObject):
         action = QAction('Edit properties...', self.contextMenu)
         action.triggered.connect(self.emitEditProperties)
         self.contextMenu.addSeparator()
+        action = QAction('Remove', self.contextMenu)
+        action.triggered.connect(self.emitRemove)
         self.contextMenu.addAction(action)
     
     def emitEditProperties(self):
         self.setHighlighted(False)
         self.sigEditProperties.emit(self.properties())
+    
+    def emitRemove(self):
+        self.sigRemove.emit(self)
     
     def isHighlighted(self):
         return self._highlighted
@@ -10279,6 +10299,7 @@ class OddSpinBox(SpinBox):
 
 class TimestampItem(LabelItem):
     sigEditProperties = Signal(object)
+    sigRemove = Signal(object)
     
     def __init__(
             self, SizeY, SizeX, viewRange, 
@@ -10337,7 +10358,12 @@ class TimestampItem(LabelItem):
         action = QAction('Edit properties...', self.contextMenu)
         action.triggered.connect(self.emitEditProperties)
         self.contextMenu.addSeparator()
+        action = QAction('Remove', self.contextMenu)
+        action.triggered.connect(self.emitRemove)
         self.contextMenu.addAction(action)
+    
+    def emitRemove(self):
+        self.sigRemove.emit(self)
     
     def mousePressed(self, x, y):
         self.clicked = True
@@ -10551,9 +10577,15 @@ class FontSizeWidget(QWidget):
 
 class RangeSelector(QWidget):
     sigRangeChanged = Signal(object, object)
+    sigLowValueChanged = Signal(object)
+    sigHighValueChanged = Signal(object)
+    sigRangeManuallyChanged = Signal(object, object)
     
-    def __init__(self, parent=None, integers=False):
+    def __init__(self, parent=None, integers=False, ordered=True):
         super().__init__(parent)
+        
+        self._integers = integers
+        self._ordered = ordered
         
         layout = QHBoxLayout()
         
@@ -10572,12 +10604,25 @@ class RangeSelector(QWidget):
         
         self.lowSpinbox.valueChanged.connect(self.lowValueChanged)
         self.highSpinbox.valueChanged.connect(self.highValueChanged)
+        
+        self.lowSpinbox.editingFinished.connect(self.lowValueEditingFinished)
+        self.highSpinbox.editingFinished.connect(self.highValueEditingFinished)
+    
+    def lowValueEditingFinished(self):   
+        self.sigRangeManuallyChanged.emit(*self.range())     
+        self.emitRangeChanged()
+    
+    def highValueEditingFinished(self):   
+        self.sigRangeManuallyChanged.emit(*self.range())     
+        self.emitRangeChanged()
     
     def lowValueChanged(self, value):        
         self.emitRangeChanged()
+        self.sigLowValueChanged.emit(value)
         
     def highValueChanged(self, value):
         self.emitRangeChanged()
+        self.sigHighValueChanged.emit(value)
     
     def emitRangeChanged(self):
         self.sigRangeChanged.emit(*self.range())
@@ -10592,6 +10637,13 @@ class RangeSelector(QWidget):
         self.highSpinbox.valueChanged.connect(self.highValueChanged)
     
     def setRange(self, lowValue, highValue):
+        # if lowValue > highValue and self._ordered:
+        #     highValue = lowValue + 1
+        
+        if self._integers:
+            lowValue = round(lowValue)
+            highValue = round(highValue)
+        
         self.lowSpinbox.setValue(lowValue)
         self.highSpinbox.setValue(highValue)
     

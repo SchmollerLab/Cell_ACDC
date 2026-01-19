@@ -292,6 +292,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.progressWin = None
         self.slideshowWin = None
         self.ccaTableWin = None
+        self.exportToImageWindow = None
         self.customAnnotButton = None
         self.ccaCheckerRunning = False
         self.isDataLoaded = False
@@ -3533,7 +3534,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.quickSettingsGroupbox.setTitle('Quick settings')
 
         layout = QFormLayout()
-        layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
+        layout.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint
+        )
         layout.setFormAlignment(Qt.AlignRight | Qt.AlignVCenter)
         
         self.viewPreprocDataToggle = widgets.Toggle()
@@ -3600,6 +3603,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         label.setDisabled(True)
         self.realTimeTrackingToggle.label = label
         layout.addRow(label, self.realTimeTrackingToggle)
+        
+        self.showAllContoursToggle = widgets.Toggle()
+        showAllContoursTooltip = (
+            'If active, all contours will be displayed, including inner contours'
+            '(e.g. holes and sub-objects)'
+        )
+        self.showAllContoursToggle.setToolTip(showAllContoursTooltip)
+        showAllContourLabel = QLabel('Show all contours')
+        showAllContourLabel.setToolTip(showAllContoursTooltip)
+        layout.addRow(showAllContourLabel, self.showAllContoursToggle)
+        self.showAllContoursToggle.toggled.connect(
+            self.showAllContoursToggled
+        )
 
         # Font size
         self.fontSizeSpinBox = widgets.SpinBox()
@@ -3625,6 +3641,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.quickSettingsLayout.addWidget(self.quickSettingsGroupbox)
         self.quickSettingsLayout.addStretch(1)
 
+    def showAllContoursToggled(self):
+        if not self.isDataLoaded:
+            return
+        
+        self.computeAllContours()
+        self.updateAllImages()
+    
     def gui_createImg1Widgets(self):
         # Toggle contours/ID combobox
         self.drawIDsContComboBoxSegmItems = [
@@ -4402,6 +4425,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             pxMode=False
         )
         self.topLayerItems.append(self.warnPairingItem)
+        
+        self.exportMaskImageItem = pg.ImageItem()
 
         self.ghostContourItemLeft = widgets.GhostContourItem(self.ax1)
         self.ghostContourItemRight = widgets.GhostContourItem(self.ax2)
@@ -8203,6 +8228,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.textAnnot[0].addToPlotItem(self.ax1)
         self.textAnnot[1].addToPlotItem(self.ax2)
+        
+        self.ax1.addItem(self.exportMaskImageItem)
+        self.ax1.exportMaskImageItem = self.exportMaskImageItem
 
     def SegForLostIDsSetSettings(self):
 
@@ -11749,7 +11777,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if checked:
             posData = self.data[self.pos_i]
             Y, X = self.img1.image.shape[:2]
-            viewRange = self.ax1.viewRange()
+            viewRange = self.ax1ViewRange()
             self.timestampDialog = apps.TimestampPropertiesDialog(parent=self)
             self.timestampDialog.show()
             self.timestamp = widgets.TimestampItem(
@@ -11759,6 +11787,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             )
             self.timestamp.sigEditProperties.connect(
                 self.editTimestampProperties
+            )
+            self.timestamp.sigRemove.connect(
+                self.editTimestampRemove
             )
             self.timestamp.addToAxis(self.ax1)
             self.timestamp.draw(
@@ -11772,17 +11803,42 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.timestampDialog = None
         self.imgGrad.addTimestampAction.setChecked(checked)
     
+    def ax1ViewRange(self, integers=False):
+        if self.exportToImageWindow is None:
+            viewRange = self.ax1.viewRange()
+        else:
+            exportMask = np.all(self.exportMaskImage == [0, 0, 0, 0], axis=-1)
+            if np.all(exportMask):
+                viewRange = self.ax1.viewRange()
+            else:
+                viewRange = self.ax1.viewRange(exportMask)
+        
+        if not integers:
+            return viewRange
+        
+        xRange, yRange = viewRange
+        xmin = round(xRange[0])
+        ymin = round(yRange[0])
+        xmax = round(xRange[1])
+        ymax = round(yRange[1])
+        return [xmin, xmax], [ymin, ymax]
+        
     def addScaleBar(self, checked):
         if checked:
             posData = self.data[self.pos_i]
             Y, X = self.img1.image.shape[:2]
-            viewRange = self.ax1.viewRange()
+            viewRange = self.ax1ViewRange()
             self.scaleBarDialog = apps.ScaleBarPropertiesDialog(
                 X, Y, posData.PhysicalSizeX, parent=self
             )
             self.scaleBarDialog.show()
-            self.scaleBar = widgets.ScaleBar((Y, X), viewRange, parent=self.ax1)
+            self.scaleBar = widgets.ScaleBar(
+                (Y, X), viewRange, parent=self.ax1
+            )
             self.scaleBar.sigEditProperties.connect(self.editScaleBarProperties)
+            self.scaleBar.sigRemove.connect(
+                self.editScaleBarRemove
+            )
             self.scaleBar.addToAxis(self.ax1)
             self.scaleBar.draw(**self.scaleBarDialog.kwargs())
             self.scaleBarDialog.sigValueChanged.connect(self.updateScaleBar)
@@ -11803,6 +11859,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         posData = self.data[self.pos_i]
         self.timestamp.draw(posData.frame_i, **timeStampKwargs)
     
+    def editScaleBarRemove(self, timestamp):
+        self.addScaleBarAction.setChecked(False)
+    
     def editScaleBarProperties(self, properties):
         Y, X = self.img1.image.shape[:2]
         posData = self.data[self.pos_i]
@@ -11811,6 +11870,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.scaleBarDialog.sigValueChanged.connect(self.updateScaleBar)
         self.scaleBarDialog.exec_()
+    
+    def editTimestampRemove(self, timestamp):
+        self.addTimestampAction.setChecked(False)
     
     def editTimestampProperties(self, properties):
         self.timestampDialog = apps.TimestampPropertiesDialog(
@@ -12025,9 +12087,36 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         return tuple([int(val) for val in coords])
     
-    def hoverValuesFormatted(self, xdata, ydata, activeToolButton, is_ax0):     
+    def updateValuesStatusBar(self):
+        (xl, xr), (yt, yb) = self.ax1ViewRange(integers=True)
+        W = round(xr - xl)
+        H = round(yb - yt)
+        txt = self.wcLabel.text()
+        pattern = (
+            r'W=.*?, H=.*? \| '
+            r'x_left=.*?, y_top=.*? \| '
+            r'x_right=.*?, y_bottom=.*? \| '
+        )
+        replacing = (
+            f'W={W:d}, H={H:d} | '
+            f'x_left={xl:d}, y_top={yt:d} | '
+            f'x_right={xr:d}, y_bottom={yb:d} | '
+        )
+        txt = re.sub(pattern, replacing, txt)
+        self.wcLabel.setText(txt)
+    
+    def hoverValuesFormatted(self, xdata, ydata, activeToolButton, is_ax0):  
+        (xl, xr), (yt, yb) = self.ax1ViewRange(integers=True)
+        W = round(xr - xl)
+        H = round(yb - yt)
         ax_idx = 0 if is_ax0 else 1
-        txt = f'x={xdata:d}, y={ydata:d} (ax{ax_idx})'
+        txt = (
+            f'x={xdata:d}, y={ydata:d} | '
+            f'W={W:d}, H={H:d} | '
+            f'x_left={xl:d}, y_top={yt:d} | '
+            f'x_right={xr:d}, y_bottom={yb:d} | '
+            f'(ax{ax_idx})'
+        )
         if activeToolButton == self.rulerButton:
             txt = self._addRulerMeasurementText(txt)
             return txt
@@ -24800,6 +24889,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             
         self.lostObjContoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
     
+    def initExportMaskImage(self):
+        posData = self.data[self.pos_i]
+        z_slice = self.z_lab()
+        img = posData.img_data[posData.frame_i]
+        Y, X = img[z_slice].shape[-2:]
+            
+        self.exportMaskImage = np.zeros((Y, X, 4), dtype=np.uint8)
+    
     def initLostTrackedObjContoursImage(self):
         posData = self.data[self.pos_i]
         z_slice = self.z_lab()
@@ -24830,7 +24927,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.textAnnot[1].initItem((Y, X))  
     
     def getObjContours(
-            self, obj, all_external=False, local=False, force_calc=True
+            self, obj, all_external=False, local=False, force_calc=True,
+            include_internal=False
         ):
         posData = self.data[self.pos_i]
         dataDict = posData.allData_li[posData.frame_i]
@@ -24867,7 +24965,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             for frame_i, dataDict in enumerate(posData.allData_li):
                 dataDict['contours'] = {}
 
-    def _computeAllContours2D(self, dataDict, obj, z, obj_bbox):
+    def _computeAllContours2D(
+            self, dataDict, obj, z, obj_bbox, include_internal=False
+        ):
         obj_image = self.getObjImage(obj.image, obj.bbox, z_slice=z)
         if obj_image is None:
             return
@@ -24889,7 +24989,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             obj_image=obj_image, 
             obj_bbox=obj_bbox, 
             local=local,
-            all_external=all_external
+            all_external=all_external,
+            all=include_internal
         )
         key = (obj.label, str(z), all_external, local)
         dataDict['contours'][key] = contours
@@ -24902,6 +25003,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         zz = [None]
         if self.isSegm3D:
             zz.extend(range(posData.SizeZ))
+        
+        include_internal = self.showAllContoursToggle.isChecked()
         for frame_i, dataDict in enumerate(posData.allData_li):
             lab = dataDict['labels']
             if lab is None:
@@ -24920,7 +25023,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     
                     try:
                         self._computeAllContours2D(
-                            dataDict, obj, z, obj_bbox
+                            dataDict, obj, z, obj_bbox,
+                            include_internal=include_internal
                         )
                     except Exception as err:
                         # Contours computation fails on weird objects
@@ -26930,7 +27034,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         contours = []
         for obj in skimage.measure.regionprops(self.currentLab2D):    
             obj_contours = self.getObjContours(
-                obj, all_external=True, force_calc=compute
+                obj, all_external=True, force_calc=compute,
+                include_internal=self.showAllContoursToggle.isChecked()
             )  
             contours.extend(obj_contours)
 
@@ -29298,6 +29403,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             action.setCheckable(True)
             action.toggled.connect(self.addOverlayLabelsToggled)
             self.overlayLabelsContextMenu.addAction(action)
+        
+        self.overlayLabelsContextMenu.addSeparator()
+        action = QAction('Edit appearance...', self.overlayLabelsContextMenu)
+        action.triggered.connect(self.editOverlayLabelsAppearance)
+        self.overlayLabelsContextMenu.addAction(action)
+    
+    def editOverlayLabelsAppearance(self, *args):
+        segmEndname = list(self.overlayLabelsItems.keys())[0]
+        contoursItem = self.overlayLabelsItems[segmEndname][1]
+        win = apps.OverlayLabelsAppearanceDialog(
+            scatterPlotItem=contoursItem, parent=self
+        )
+        win.exec_()
+        if win.cancel:
+            return
+        
+        brush = win.properties['brush']
+        pen = win.properties['pen']
+        for items in self.overlayLabelsItems.values():
+            imageItem, contoursItem, gradItem = items
+            contoursItem.setBrush(brush, update=False)
+            contoursItem.setPen(pen)
     
     def createOverlayLabelsItems(self, segmEndnames):
         selectActionGroup = QActionGroup(self)
@@ -31161,13 +31288,39 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.startExportToVideoWorker(win.selected_preferences)        
 
-    def setViewRangeFromExportToImageDialog(self, viewRange, win=None):
-        self.ax1.vb.sigRangeChanged.disconnect()
+    def setExportMaskImage(self, viewRange):
+        if not hasattr(self, 'exportMaskImage'):
+            self.initExportMaskImage()
+        else:
+            self.exportMaskImage[:] = 0
+            
         xRange, yRange = viewRange
-        self.ax1.vb.setRange(xRange=xRange, yRange=yRange)
-        self.ax1.vb.sigRangeChanged.connect(
-            win.updateViewRangeExportToImageDialog
-        )
+        x0, x1 = map(round, xRange)
+        y0, y1 = map(round, yRange)
+        
+        if self.invertBwAction.isChecked():
+            self.exportMaskImage[:, :, :3] = 255
+        
+        if x0 > 0:
+            self.exportMaskImage[:, :x0, 3] = 255
+        if x1 < self.exportMaskImage.shape[1]:
+            self.exportMaskImage[:, x1:, 3] = 255
+        if y0 > 0:
+            self.exportMaskImage[:y0, :, 3] = 255
+        if y1 < self.exportMaskImage.shape[0]:
+            self.exportMaskImage[y1:, :, 3] = 255
+        
+        self.exportMaskImageItem.setImage(self.exportMaskImage)
+
+    def setViewRangeFromExportToImageDialog(self, viewRange, win=None):
+        xRange, yRange = viewRange
+        # self.ax1.sigRangeChanged.disconnect(self.viewRangeChanged)
+        self.ax1.setRange(xRange=xRange, yRange=yRange)
+        # self.ax1.sigRangeChanged.connect(self.viewRangeChanged)
+        # self.viewRangeChanged(
+        #     self.ax1.vb, viewRange, updateExportMaskImage=False
+        # )
+        self.setExportMaskImage(viewRange)
     
     def getZoomIDs(self, viewRange=None):
         if viewRange is None:
@@ -31216,11 +31369,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if filepath.endswith('.svg'):
             exporter = exporters.SVGExporter(self.ax1)
         else:
-            exporter = exporters.ImageExporter(self.ax1, dpi=preferences['dpi'])
+            exporter = exporters.ImageExporter(
+                self.ax1, dpi=preferences['dpi']
+            )
         exporter.export(filepath)
         self.logger.info(f'Image saved.')
         
         self.setDisabled(False)
+        self.exportMaskImage[:] = 0
+        self.exportMaskImageItem.setImage(self.exportMaskImage)
         prompts.exportToImageFinished(filepath, qparent=self)
     
     def exportToImageTriggered(self):
@@ -31228,7 +31385,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'{timestamp}_acdc_exported_image'
         win = apps.ExportToImageParametersDialog(
-            parent=self, startFolderpath=posData.pos_path, 
+            parent=self, 
+            startFolderpath=posData.pos_path, 
             startFilename=filename, 
             startViewRange=self.ax1.viewRange(),
             isScaleBarPresent=self.addScaleBarAction.isChecked(), 
@@ -31237,16 +31395,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         win.sigRangeChanged.connect(
             partial(self.setViewRangeFromExportToImageDialog, win=win)
         )
-        self.ax1.vb.sigRangeChanged.connect(
-            win.updateViewRangeExportToImageDialog
-        )
+        # self.ax1.vb.sigRangeChanged.connect(
+        #     win.updateViewRangeExportToImageDialog
+        # )
+        self.setExportMaskImage(self.ax1.viewRange())
+        self.exportToImageWindow = win
         win.exec_()
-        self.ax1.vb.sigRangeChanged.disconnect()
+        # self.ax1.vb.sigRangeChanged.disconnect()
         if win.cancel:
+            self.exportMaskImage[:] = 0
+            self.exportMaskImageItem.setImage(self.exportMaskImage)
+            self.exportToImageWindow = None
             self.logger.info('Export to image process cancelled')
             return
     
         self.exportToImage(win.selected_preferences)
+        self.exportToImageWindow = None
     
     def saveDataPermissionError(self, err_msg):
         self.setDisabled(False, keepDisabled=False)
@@ -32230,7 +32394,44 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xi, yi = self.getSpline(xx, yy, per=per)
         self.curvHoverPlotItem.setData(xi, yi)
     
-    def viewRangeChanged(self, viewBox, viewRange):
+    def updateViewRangeExportToImage(self, viewRange):
+        if self.exportToImageWindow is None:
+            return
+        
+        # prevViewRange = self.exportToImageWindow.viewRange()
+        prevViewRange = self._viewRange
+        prevXRange = prevViewRange[0]
+        prevYRange = prevViewRange[1]
+        currXRange = viewRange[0]
+        currYRange = viewRange[1]
+        
+        prevX0, prevX1 = prevXRange
+        currX0, currX1 = currXRange
+        prevY0, prevY1 = prevYRange
+        currY0, currY1 = currYRange
+        
+        deltaX = currX0 - prevX0
+        deltaY = currY0 - prevY0
+        
+        winViewRange = self.exportToImageWindow.viewRange()
+        winXRange = winViewRange[0]
+        winYRange = winViewRange[1]
+        winX0, winX1 = winXRange
+        winY0, winY1 = winYRange
+        
+        newX0 = winX0 + deltaX
+        newX1 = winX1 + deltaX
+        newY0 = winY0 + deltaY
+        newY1 = winY1 + deltaY
+        
+        self.exportToImageWindow.setViewRange(
+            (newX0, newX1), (newY0, newY1), emitSignal=False
+        )
+        
+    def viewRangeChanged(self, viewBox, viewRange, updateExportImageMask=True):
+        # self.updateViewRangeExportToImage(viewRange) 
+        self.updateValuesStatusBar()
+               
         if hasattr(self, 'scaleBar'):
             isScaleBarMoveWithZoom = (
                 self.scaleBar.properties()['move_with_zoom']
@@ -32255,3 +32456,5 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         if doMoveTimestamp:
             self.timestamp.updatePosViewRangeChanged(viewRange)
+        
+        self._viewRange = viewRange

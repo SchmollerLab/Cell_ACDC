@@ -153,7 +153,9 @@ class SegmKernel(_WorkflowKernel):
     @exception_handler_cli      
     def init_args_from_params(self, workflow_params, logger_func):
         args = workflow_params['initialization'].copy()
-        args['use3DdataFor2Dsegm'] = workflow_params.get(
+        
+        initialization_section = workflow_params['initialization']
+        args['use3DdataFor2Dsegm'] = initialization_section.get(
             'use3DdataFor2Dsegm', False
         )
         args['model_kwargs'] = workflow_params['segmentation_model_params']
@@ -180,6 +182,9 @@ class SegmKernel(_WorkflowKernel):
         
         args['preproc_recipe'] = config.preprocess_ini_items_to_recipe(
             workflow_params
+        )
+        args['reduce_memory_usage'] = initialization_section.get(
+            'reduce_memory_usage', False
         )
         
         self.init_args(**args)
@@ -539,7 +544,7 @@ class SegmKernel(_WorkflowKernel):
             if self.innerPbar_available and self.signals is not None:
                 self.signals.resetInnerPbar.emit(len(img_data))
             
-            if self.is_segment3DT_available:
+            if self.is_segment3DT_available and img_data.ndim == 3:
                 self.model_kwargs['signals'] = (
                     self.signals, self.innerPbar_available
                 )

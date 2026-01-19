@@ -340,11 +340,10 @@ class Model:
 
         if not segment_3D_volume and self.isZstack: # segment on a per slice basis
             if init_imgs:
-                images, z_axis, channel_axis = _initialize_image(images, 
-                                    self.is_rgb,
-                                    iter_axis_zstack=0,
-                                    isZstack=self.isZstack,
-                                    )
+                images, z_axis, channel_axis = _initialize_image(
+                    images, self.is_rgb, iter_axis_zstack=0,
+                    isZstack=self.isZstack,
+                )
             else:
                 z_axis = self.z_axis
                 channel_axis = self.channel_axis

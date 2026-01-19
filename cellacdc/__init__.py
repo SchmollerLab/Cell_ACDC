@@ -152,7 +152,7 @@ except Exception as e:
 
 import site
 sitepackages = site.getsitepackages()
-site_packages = [p for p in sitepackages if p.endswith('site-packages')][0]
+site_packages = [p for p in sitepackages if p.endswith('-packages')][0]
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 cellacdc_installation_path = os.path.dirname(cellacdc_path)
