@@ -425,10 +425,12 @@ class Model:
         # SAM Automatic mask generator (no prompts)
         if input_points is None:
             masks = self.model.generate(img)
+            # Sort by area descending so smaller masks overwrite larger ones
+            masks = sorted(masks, key=lambda m: m['area'], reverse=True)
             for id, mask in enumerate(masks):
                 obj_image = mask['segmentation']
                 labels[obj_image] = id+1
-            
+
             return labels
         
         # No input points --> return empty labels
