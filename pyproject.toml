@@ -140,6 +140,11 @@ all = [
     "tensorflow<2.16",
     "tables",
 ]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "matplotlib",
+]
 
 [project.scripts]
 cellacdc = "cellacdc.__main__:run"
@@ -158,8 +163,18 @@ namespaces = false
 [tool.setuptools_scm]
 version_file = "cellacdc/_version.py"
 
+[tool.uv]
+# Declare mutually exclusive extras
+conflicts = [
+    [
+        { extra = "cellpose" },
+        { extra = "cellpose3" },
+    ],
+]
+
 # Ignore DeprecationWarnings
 [tool.pytest.ini_options]
 filterwarnings = [
-    "ignore::DeprecationWarning"
+    "ignore::DeprecationWarning",
+    "ignore:cannot import name '_C' from 'sam2':UserWarning",
 ]
