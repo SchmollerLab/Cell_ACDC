@@ -135,6 +135,19 @@ class TestSAM2AutomaticSegmentation:
             # Overlay: grayscale image with colored labels
             ax.imshow(frame, cmap="gray")
             ax.imshow(labels, cmap=overlay_cmap, vmin=0, vmax=n_colors - 1, alpha=0.5)
+
+            # Add text annotations at centroid of each mask
+            for region in skimage.measure.regionprops(labels):
+                y, x = region.centroid
+                ax.text(
+                    x, y, str(region.label),
+                    color='white', fontsize=8, fontweight='bold',
+                    ha='center', va='center',
+                    path_effects=[
+                        plt.matplotlib.patheffects.withStroke(linewidth=2, foreground='black')
+                    ]
+                )
+
             ax.set_title(f"Frame {frame_i} ({num_objects} objects)")
             ax.axis("off")
 
