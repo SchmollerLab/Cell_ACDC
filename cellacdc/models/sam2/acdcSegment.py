@@ -314,14 +314,16 @@ class Model:
             else:
                 labels = self._segment_2D_image(
                     image, input_points, input_labels,
-                    embeddings_already_init=embeddings_init
+                    embeddings_already_init=embeddings_init,
+                    automatic_removal_of_background=automatic_removal_of_background
                 )
 
             if save_embeddings or only_embeddings:
                 posData.storeSamEmbeddings(self, frame_i=frame_i)
 
-        if automatic_removal_of_background and input_points is None:
-            labels = self._remove_background(labels)
+        # For z-stacks, remove background after 3D relabeling
+        if is_z_stack and automatic_removal_of_background and input_points is None:
+            labels = self._remove_background_from_labels(labels)
 
         return labels
 
@@ -416,7 +418,8 @@ class Model:
             self, image: np.ndarray,
             input_points: np.ndarray,
             input_labels: np.ndarray,
-            embeddings_already_init: bool=False
+            embeddings_already_init: bool=False,
+            automatic_removal_of_background: bool=False
         ) -> np.ndarray:
 
         img = myutils.to_uint8(image)
@@ -426,6 +429,13 @@ class Model:
         # SAM2 Automatic mask generator (no prompts)
         if input_points is None:
             masks = self.model.generate(img)
+
+            # Identify and exclude background before labeling
+            if automatic_removal_of_background and masks:
+                bg_idx = self._find_background_mask_index(masks, image.shape[:2])
+                if bg_idx is not None:
+                    masks = [m for i, m in enumerate(masks) if i != bg_idx]
+
             # Sort by area descending so smaller masks overwrite larger ones
             masks = sorted(masks, key=lambda m: m['area'], reverse=True)
             for id, mask in enumerate(masks):
@@ -458,9 +468,32 @@ class Model:
             labels[mask] = id
         return labels
 
-    def _remove_background(self, labels: np.ndarray) -> np.ndarray:
+    def _find_background_mask_index(
+            self, masks: list, shape: tuple
+        ) -> int | None:
+        """Find the mask with the most pixels touching the image border."""
+        if not masks:
+            return None
+
+        border_mask = np.ones(shape, dtype=bool)
+        border_slice = tuple([slice(2, -2) for _ in range(len(shape))])
+        border_mask[border_slice] = False
+
+        max_border_pixels = 0
+        bg_idx = None
+        for i, mask in enumerate(masks):
+            segmentation = mask['segmentation']
+            border_pixels = np.sum(segmentation & border_mask)
+            if border_pixels > max_border_pixels:
+                max_border_pixels = border_pixels
+                bg_idx = i
+
+        return bg_idx
+
+    def _remove_background_from_labels(self, labels: np.ndarray) -> np.ndarray:
+        """Remove background from labeled array (used for z-stacks after 3D relabeling)."""
         border_mask = np.ones(labels.shape, dtype=bool)
-        border_slice = tuple([slice(2,-2) for _ in range(labels.ndim)])
+        border_slice = tuple([slice(2, -2) for _ in range(labels.ndim)])
         border_mask[border_slice] = False
         border_ids, counts = np.unique(labels[border_mask], return_counts=True)
         max_count_idx = list(counts).index(counts.max())

@@ -45,10 +45,10 @@ class TestSAM2AutomaticSegmentation:
 
         # Apply contrast stretching for better visibility
         # Normalize to full dtype range (like Fiji's auto-contrast)
-        # Sample every 5th frame
+        # Sample every 20th frame
         normalized_frames = []
         frame_indices = []
-        for i in range(0, len(image_data), 5):
+        for i in range(0, len(image_data), 20):
             frame = image_data[i]
             frame_min = frame.min()
             frame_max = frame.max()
@@ -138,9 +138,17 @@ class TestSAM2AutomaticSegmentation:
             ax.imshow(frame, cmap="gray")
             ax.imshow(labels, cmap=overlay_cmap, vmin=0, vmax=n_colors - 1, alpha=0.5)
 
-            # Add text annotations at centroid of each mask
+            # Add text annotations inside each mask
+            # Use point closest to centroid that is actually inside the mask
+            # (centroid can be outside for ring-shaped objects)
             for region in skimage.measure.regionprops(labels):
-                y, x = region.centroid
+                cy, cx = region.centroid
+                # Get all coordinates of the region
+                coords = region.coords  # shape (N, 2) with (row, col) = (y, x)
+                # Find the point closest to the centroid
+                distances = (coords[:, 0] - cy) ** 2 + (coords[:, 1] - cx) ** 2
+                closest_idx = np.argmin(distances)
+                y, x = coords[closest_idx]
                 ax.text(
                     x, y, str(region.label),
                     color='white', fontsize=8, fontweight='bold',
