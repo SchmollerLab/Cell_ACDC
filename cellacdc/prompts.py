@@ -432,7 +432,7 @@ def init_segm_model_params(
     out = {}
     
     is_sam_model = (
-        model_name == 'segment_anything' and check_sam_embeddings
+        model_name in ('segment_anything', 'sam2') and check_sam_embeddings
     )
     
     # If SAM with prompts and embeddings were prev saved, asks to load them
@@ -482,7 +482,7 @@ def init_segm_model_params(
         posData.loadSamEmbeddings()
     
     ask_sam_embeddings = (
-        model_name == 'segment_anything' 
+        model_name in ('segment_anything', 'sam2')
         and not load_sam_embed
         and check_sam_embeddings
     )
