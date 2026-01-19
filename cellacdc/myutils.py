@@ -4267,6 +4267,7 @@ def _available_frameworks(model_name):
         or model_name.lower().find('omnipose') != -1
         or model_name.lower().find('deepsea') != -1
         or model_name.lower().find('segment_anything') != -1
+        or model_name.lower().find('sam2') != -1
         or model_name.lower().find('yeaz') != -1
         or model_name.lower().find('yeaz_v2') != -1
     ),

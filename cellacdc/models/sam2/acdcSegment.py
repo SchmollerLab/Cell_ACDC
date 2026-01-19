@@ -38,12 +38,12 @@ class Model:
             input_points_path: widgets.CsvFilePathControl='',
             input_points_df: DataFrame='None',
             points_per_side=32,
-            pred_iou_thresh=0.88,
+            pred_iou_thresh=0.8,
             stability_score_thresh=0.95,
             crop_n_layers=0,
-            crop_n_points_downscale_factor=2,
-            min_mask_region_area=1,
-            gpu=False
+            crop_n_points_downscale_factor=1,
+            min_mask_region_area=0,
+            gpu=True
         ):
         """Initialization of Segment Anything Model 2 within Cell-ACDC
 
@@ -59,7 +59,7 @@ class Model:
             A filtering threshold in [0,1], using the model's predicted mask
             quality.
             Ignored if `input_points_path` is not empty or `input_points_df` is not
-            'None'. Default is pred_iou_thresh
+            'None'. Default is 0.8
         stability_score_thresh : float, optional
             A filtering threshold in [0,1], using the stability of the mask
             under changes to the cutoff used to binarize the model's mask
@@ -76,13 +76,13 @@ class Model:
             The number of points-per-side sampled in layer n is scaled down by
             crop_n_points_downscale_factor**n.
             Ignored if `input_points_path` is not empty or `input_points_df` is not
-            'None'. Default is 2
+            'None'. Default is 1
         min_mask_region_area: int, optional
-            If >0, postprocessing will be applied mto remove disconnected
+            If >0, postprocessing will be applied to remove disconnected
             regions and holes in masks with area smaller than
             min_mask_region_area.
             Ignored if `input_points_path` is not empty or `input_points_df` is not
-            'None'. Default is 1
+            'None'. Default is 0
         input_points_path : str, optional
             If not empty, this is the path to the CSV file with the coordinates
             of the input points for SAM. It must contain the columns
