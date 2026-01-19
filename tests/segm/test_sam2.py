@@ -121,28 +121,22 @@ class TestSAM2AutomaticSegmentation:
             print(f"  Background pixels: {(labels == 0).sum()}")
             print(f"  Foreground pixels: {(labels > 0).sum()}")
 
-            fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+            fig, ax = plt.subplots(figsize=(6, 6))
 
-            # Original normalized image
-            axes[0].imshow(frame, cmap="gray")
-            axes[0].set_title("Normalized Image")
-            axes[0].axis("off")
+            # Create colormap with transparent background for overlay
+            n_colors = max(20, num_objects + 1)
+            base_colors = plt.cm.tab20(np.linspace(0, 1, 20))
+            colors = np.zeros((n_colors, 4))
+            colors[0] = [0, 0, 0, 0]  # Transparent background
+            for i in range(1, n_colors):
+                colors[i] = base_colors[(i - 1) % 20]
+            overlay_cmap = ListedColormap(colors)
 
-            # Segmentation labels
-            axes[1].imshow(labels, cmap="tab20")
-            axes[1].set_title(f"Segmentation Labels ({num_objects} objects)")
-            axes[1].axis("off")
-
-            # Overlay
-            axes[2].imshow(frame, cmap="gray")
-            # Create colormap with transparent background
-            colors = plt.cm.tab20(np.linspace(0, 1, 20))
-            colors[0] = [0, 0, 0, 0]  # Make background transparent
-            cmap = ListedColormap(colors)
-            masked_labels = np.ma.masked_where(labels == 0, labels)
-            axes[2].imshow(masked_labels, cmap=cmap, alpha=0.5)
-            axes[2].set_title("Overlay")
-            axes[2].axis("off")
+            # Overlay: grayscale image with colored labels
+            ax.imshow(frame, cmap="gray")
+            ax.imshow(labels, cmap=overlay_cmap, vmin=0, vmax=n_colors - 1, alpha=0.5)
+            ax.set_title(f"Frame {frame_i} ({num_objects} objects)")
+            ax.axis("off")
 
             plt.tight_layout()
             output_path = plots_dir / f"test_sam2_segmentation_frame_{frame_i:04d}.png"
