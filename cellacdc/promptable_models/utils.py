@@ -5,7 +5,7 @@ import numpy as np
 import skimage.measure
 
 
-def _build_combined_mask(model_out):
+def build_combined_mask(model_out):
     """Build a single labeled mask from model output, sorted by area (largest first)."""
     rp_model_out = skimage.measure.regionprops(model_out)
     # Sort by area descending so smaller objects paint on top
@@ -108,7 +108,7 @@ def insert_model_output_into_labels(
         - lab_intersection: only overlap regions kept
     """
     # Build combined new mask from model output (sorted by area, smallest on top)
-    lab_new = _build_combined_mask(model_out)
+    lab_new = build_combined_mask(model_out)
 
     # Apply overlap rules for union and intersection
     lab_union = _apply_overlap_rule(lab, lab_new, mode='union')

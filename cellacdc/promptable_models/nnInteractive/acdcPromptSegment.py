@@ -1,8 +1,9 @@
 import os
 from collections import defaultdict
-import heapq
 
 import numpy as np
+
+from cellacdc.promptable_models.utils import build_combined_mask
 
 import torch
 
@@ -239,7 +240,6 @@ class Model:
         """
         self._validate_image(image)
 
-        result_obj_masks = []
         lab = np.zeros(image.shape, dtype=np.uint32)        
         for prompt_id, value in self.prompt_ids_image_mapper.items():
             prompt_image, image_origin = value
@@ -280,19 +280,12 @@ class Model:
             d, h, w = result_mask.shape
             z1, y1, x1 = z0 + d, y0 + h, x0 + w
             
-            obj_vol = np.count_nonzero(result_mask)
             obj_slice = (slice(z0, z1), slice(y0, y1), slice(x0, x1))
-            
-            item = (-obj_vol, (prompt_id, obj_slice, result_mask))
-            heapq.heappush(result_obj_masks, item)
+            lab[obj_slice][result_mask] = prompt_id
             
             self.model.reset_interactions()
         
-        # Now we need to insert the objects in the order of their volume
-        for i in range(len(result_obj_masks)):
-            item = heapq.heappop(result_obj_masks)
-            obj_vol, (prompt_id, obj_slice, result_mask) = item
-            lab[obj_slice][result_mask] = prompt_id
+        lab = build_combined_mask(lab)
             
         self.prompt_ids_image_mapper = {}
         self.prompts = defaultdict(list)

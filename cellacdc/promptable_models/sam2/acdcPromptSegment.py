@@ -1,6 +1,7 @@
 import os
-import heapq
 from collections import defaultdict
+
+from cellacdc.promptable_models.utils import build_combined_mask
 
 import numpy as np
 import cv2
@@ -166,7 +167,6 @@ class Model:
         else:
             lab_out = np.zeros(image.shape, dtype=np.uint32)
 
-        result_obj_masks = []
         for prompt_id, (prompt_image, image_origin) in self.prompt_ids_image_mapper.items():
             if prompt_id == 0:
                 continue
@@ -237,8 +237,7 @@ class Model:
                 mask = masks[mask_idx].astype(bool)
                 obj_mask[mask] = True
 
-            obj_vol = int(np.count_nonzero(obj_mask))
-            if obj_vol == 0:
+            if not np.any(obj_mask):
                 continue
 
             z0, y0, x0 = map(int, image_origin)
@@ -254,12 +253,9 @@ class Model:
                     slice(x0, x0 + obj_mask.shape[2]),
                 )
 
-            item = (-obj_vol, (prompt_id, obj_slice, obj_mask))
-            heapq.heappush(result_obj_masks, item)
-
-        for _ in range(len(result_obj_masks)):
-            _, (prompt_id, obj_slice, obj_mask) = heapq.heappop(result_obj_masks)
             lab_out[obj_slice][obj_mask] = prompt_id
+
+        lab_out = build_combined_mask(lab_out)
 
         self.prompt_ids_image_mapper = {}
         self.prompts = defaultdict(list)
