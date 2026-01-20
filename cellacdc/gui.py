@@ -15854,7 +15854,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         image, df_points = inputs
         
         self.startMagicPromptsWorkerAndWait(
-            image, df_points, toolbar.model
+            image, df_points, toolbar.model, toolbar.model_segment_kwargs
         )
     
     def startMagicPromptsWorkerAndWait(
@@ -15934,7 +15934,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         posData = self.data[self.pos_i]
         
         if zoom_slice is None:
-            zoom_slice = slice(None)
+            zoom_slice = (slice(None), slice(None))
         
 
         images = (
@@ -21768,15 +21768,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         posData.lab = self.get_labels(from_store=True)
         posData.rp = skimage.measure.regionprops(posData.lab)
         df = posData.allData_li[posData.frame_i]['acdc_df']
-        try:
-            binnedIDs_df = df[df['is_cell_excluded']>0]
-        except Exception as err:
-            df = myutils.fix_acdc_df_dtypes(df)
-            binnedIDs_df = df[df['is_cell_excluded']>0]
-        posData.binnedIDs = set(binnedIDs_df.index)
-        ripIDs_df = df[df['is_cell_dead']>0]
-        posData.ripIDs = set(ripIDs_df.index)
-        posData.editID_info = self._get_editID_info(df)
+        if df is None:
+            posData.binnedIDs = set()
+            posData.ripIDs = set()
+            posData.editID_info = []
+        else:
+            try:
+                binnedIDs_df = df[df['is_cell_excluded']>0]
+            except Exception as err:
+                df = myutils.fix_acdc_df_dtypes(df)
+                binnedIDs_df = df[df['is_cell_excluded']>0]
+            posData.binnedIDs = set(binnedIDs_df.index)
+            ripIDs_df = df[df['is_cell_dead']>0]
+            posData.ripIDs = set(ripIDs_df.index)
+            posData.editID_info = self._get_editID_info(df)
         self.setManualBackgroundLab(load_from_store=True, debug=debug)
         if self.lineage_tree is None and lin_tree_init:
             self.initLinTree()
@@ -24305,9 +24310,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             else:
                 pointsDataPos = action.pointsData[self.pos_i]
                 framePointsData = pointsDataPos[posData.frame_i]
-                pointsDataPos['x'].append(x)
-                pointsDataPos['y'].append(y)
-                pointsDataPos['id'].append(id)
+                framePointsData['x'].append(x)
+                framePointsData['y'].append(y)
+                framePointsData['id'].append(id)
         
     def showPointsLayerIdsToggled(self, button, checked):
         button.action.scatterItem.drawIds = checked

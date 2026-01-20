@@ -84,8 +84,8 @@ class TestSAM2AutomaticSegmentation:
         )
 
         # Plot and save segmentation overlays
-        plots_dir = Path(__file__).parent.parent / "_plots"
-        plots_dir.mkdir(exist_ok=True)
+        plots_dir = Path(__file__).parent.parent / "_plots" / "segm" / "sam2"
+        plots_dir.mkdir(parents=True, exist_ok=True)
 
         for idx, (frame, frame_i) in enumerate(zip(frames, frame_indices)):
             # Run segmentation
