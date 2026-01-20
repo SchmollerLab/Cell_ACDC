@@ -29,8 +29,12 @@ def insert_model_output_into_labels(
     
     for obj_out in rp_model_out:
         lab_new[obj_out.slice][obj_out.image] = obj_out.label
-        lab_union[obj_out.slice][obj_out.image] = obj_out.label
-        
+
+        # True union: only add new mask where there's no existing label
+        empty_mask = lab_union[obj_out.slice] == 0
+        union_pixels = np.logical_and(obj_out.image, empty_mask)
+        lab_union[obj_out.slice][union_pixels] = obj_out.label
+
         intersect_mask = np.logical_and(lab[obj_out.slice] > 0, obj_out.image)
         lab_interesection[obj_out.slice][intersect_mask] = obj_out.label
     
