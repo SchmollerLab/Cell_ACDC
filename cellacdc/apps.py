@@ -17582,7 +17582,7 @@ class SetCustomLevelsLut(QBaseDialog):
         layout = QVBoxLayout()
         
         self.minLevelSlider = widgets.sliderWithSpinBox(
-            title='Mimimum', 
+            title='Minimum', 
             title_loc='top', 
         )
         self.minLevelSlider.setMinimum(minimum_min_value)
