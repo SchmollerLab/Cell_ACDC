@@ -20,7 +20,7 @@ def _build_combined_mask(model_out):
 def _apply_overlap_rule(
         lab_old,
         lab_new,
-        mode: Literal['new', 'union', 'intersection']
+        mode: Literal['union', 'intersection']
     ):
     """
     Apply overlap rules between old and new label masks.
@@ -28,11 +28,10 @@ def _apply_overlap_rule(
     For each overlapping pair (old ID p, new ID q):
     - union: p OR q region → all become p (old absorbs new)
     - intersection: only p AND q → p; p XOR q → 0 (deleted)
-    - new: p then q painted → overlap becomes q (new overwrites)
 
     Non-overlapping regions:
     - Old-only IDs: preserved in all modes
-    - New-only IDs: added in 'new' and 'union', deleted in 'intersection'
+    - New-only IDs: added in 'union', deleted in 'intersection'
     """
     result = np.zeros_like(lab_old)
 
@@ -73,17 +72,11 @@ def _apply_overlap_rule(
                     result[p_and_q] = p
                     # p_only and q_only become 0 (already 0 in result)
 
-                elif mode == 'new':
-                    # Paint p first, then q overwrites
-                    result[p_only] = p
-                    result[p_and_q] = q
-                    result[q_only] = q
-
     # Handle new IDs that don't overlap with any old ID
     non_overlapping_new_ids = new_ids - overlapping_new_ids
     for q in non_overlapping_new_ids:
         q_mask = lab_new == q
-        if mode in ('new', 'union'):
+        if mode == 'union':
             result[q_mask] = q
         # In 'intersection' mode, non-overlapping new IDs are not added
 
@@ -105,32 +98,20 @@ def insert_model_output_into_labels(
     model_out : np.ndarray
         New label mask from model
     edited_IDs : int or List[int]
-        IDs that were explicitly edited (clicked on existing cells).
-        These are removed from lab before computing 'new' result.
+        Deprecated, kept for API compatibility. No longer used.
 
     Returns
     -------
     lab_new, lab_union, lab_intersection : tuple of np.ndarray
-        - lab_new: edited cells removed, then new overwrites old in overlap
+        - lab_new: just the model output (new masks only)
         - lab_union: old absorbs new in overlap regions
         - lab_intersection: only overlap regions kept
     """
-    if isinstance(edited_IDs, int) and edited_IDs == 0:
-        edited_IDs = []
+    # Build combined new mask from model output (sorted by area, smallest on top)
+    lab_new = _build_combined_mask(model_out)
 
-    # Build combined new mask from model output
-    lab_new_mask = _build_combined_mask(model_out)
-
-    # For 'new' mode, first remove explicitly edited IDs from old mask
-    lab_for_new = lab.copy()
-    for edited_ID in edited_IDs:
-        if edited_ID == 0:
-            continue
-        lab_for_new[lab_for_new == edited_ID] = 0
-
-    # Apply the three overlap rules
-    lab_new = _apply_overlap_rule(lab_for_new, lab_new_mask, mode='new')
-    lab_union = _apply_overlap_rule(lab, lab_new_mask, mode='union')
-    lab_intersection = _apply_overlap_rule(lab, lab_new_mask, mode='intersection')
+    # Apply overlap rules for union and intersection
+    lab_union = _apply_overlap_rule(lab, lab_new, mode='union')
+    lab_intersection = _apply_overlap_rule(lab, lab_new, mode='intersection')
 
     return lab_new, lab_union, lab_intersection
