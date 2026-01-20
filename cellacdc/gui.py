@@ -11657,12 +11657,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         return allDelIDs
     
     # @exec_time
-    def getDelROIlab(self):
+    def getDelROIlab(self, input_lab_2D=None):
         posData = self.data[self.pos_i]
         if self.delRoiLab is None:
             self.initDelRoiLab()
-            
-        self.delRoiLab[:] = self.get_2Dlab(posData.lab, force_z=False)
+        
+        out_lab = self.delRoiLab
+        if input_lab_2D is None:
+            out_lab[:] = self.get_2Dlab(posData.lab, force_z=False)
+        else:
+            out_lab[:] = input_lab_2D
+        
         allDelIDs = set()
         # Iterate rois and delete IDs
         for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
@@ -11676,14 +11681,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             idx = delROIs_info['rois'].index(roi)
             delObjROImask = delROIs_info['delMasks'][idx]
             delIDsROI = delROIs_info['delIDsROI'][idx]   
-            delROIlabRp = skimage.measure.regionprops(self.delRoiLab)
+            delROIlabRp = skimage.measure.regionprops(out_lab)
             for delObj in delROIlabRp:
                 isDelObj = np.any(ROImask[delObj.slice][delObj.image])
                 if not isDelObj:
                     continue
                 
                 delObjROImask[delObj.slice][delObj.image] = delObj.label
-                self.delRoiLab[delObj.slice][delObj.image] = 0
+                out_lab[delObj.slice][delObj.image] = 0
             
                 delIDsROI.add(delObj.label)
                 allDelIDs.add(delObj.label)
@@ -11702,7 +11707,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         #     sep='\n'
         # )
         
-        return allDelIDs, self.delRoiLab
+        return allDelIDs, out_lab
     
     def getDelRoiMask(self, roi, posData=None, z_slice=None):
         if posData is None:
@@ -12083,7 +12088,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if ax_idx == 0:
             return
         
-        coords = re.findall(r'x=(\d+), y=(\d+) \(ax', text)[0]
+        coords = re.findall(r'x=(\d+), y=(\d+) \|', text)[0]
         
         return tuple([int(val) for val in coords])
     
@@ -13044,6 +13049,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 f'{hoverID}, at frame n. {posData.frame_i+1}'
             )
             self.editIDspinbox.setValue(hoverID)
+            obj_idx = posData.IDs_idxs[hoverID]
+            obj = posData.rp[obj_idx]
+            radius = obj.minor_axis_length / 2 # math.sqrt(obj.area/math.pi)*0.9
+            self.brushSizeSpinbox.setValue(round(radius))
             self.manualAnnotState['frame_i_to_restore'] = posData.frame_i
             self.manualAnnotState['last_tracked_i'] = (
                 self.navigateScrollBar.maximum()-1
@@ -13075,7 +13084,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.updateScrollbars()
             self.ax1.sigRangeChanged.disconnect()
             self.ax1.setHighlighted(False)
-            # QTimer.singleShot(200, self.autoRange)
+            QTimer.singleShot(150, self.autoRange)
         
         self.setManualAnnotModeEnabledTools(checked)
     
@@ -20697,6 +20706,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             lab = posData.lab
             
         for z, lab_2D in enumerate(lab):
+            _, lab_2D = self.getDelROIlab(input_lab_2D=lab_2D)
             zoom_lab, zoom_slice = transformation.crop_2D(
                 lab_2D, 
                 self.ax1.viewRange(), 
