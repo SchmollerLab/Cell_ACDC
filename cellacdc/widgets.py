@@ -6761,6 +6761,12 @@ class MainPlotItem(pg.PlotItem):
     def clear(self):
         super().clear()
         try:
+            for rect in self.highlightingRectItems.values():
+                self.addItem(rect)
+        except Exception as e:
+            pass
+                
+        try:
             self.removeItem(self.infoTextItem)
         except Exception as e:
             pass

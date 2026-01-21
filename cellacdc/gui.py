@@ -13051,7 +13051,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.editIDspinbox.setValue(hoverID)
             obj_idx = posData.IDs_idxs[hoverID]
             obj = posData.rp[obj_idx]
-            radius = obj.minor_axis_length / 2 # math.sqrt(obj.area/math.pi)*0.9
+            radius = 0.9 * obj.minor_axis_length / 2 # math.sqrt(obj.area/math.pi)*0.9
             self.brushSizeSpinbox.setValue(round(radius))
             self.manualAnnotState['frame_i_to_restore'] = posData.frame_i
             self.manualAnnotState['last_tracked_i'] = (
@@ -14556,8 +14556,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
-            printl(posData.cca_df)
-            printl(posData.allData_li[posData.frame_i]['acdc_df'][cca_df_colnames])
+            printl(posData.frame_i)
+            printl(posData.allData_li[posData.frame_i]['manually_edited_lab'])
+            printl(posData.frame_i+1)
+            printl(posData.allData_li[posData.frame_i]['manually_edited_lab'])
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -20706,16 +20708,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             lab = posData.lab
             
         for z, lab_2D in enumerate(lab):
-            _, lab_2D = self.getDelROIlab(input_lab_2D=lab_2D)
-            zoom_lab, zoom_slice = transformation.crop_2D(
-                lab_2D, 
-                self.ax1.viewRange(), 
-                tolerance=10,
-                return_copy=False
-            )
-            data_frame_i['manually_edited_lab']['zoom_lab'][z] = zoom_lab
+            data_frame_i['manually_edited_lab']['lab'][z] = lab_2D
             
-        data_frame_i['manually_edited_lab']['zoom_slice'] = zoom_slice
+        # data_frame_i['manually_edited_lab']['zoom_slice'] = zoom_slice
 
     @exception_handler
     def store_data(
@@ -20749,6 +20744,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             posData.IDs_idxs.copy()
         )
         if self.manualAnnotFutureButton.isChecked():
+            printl(posData.frame_i)
             self.store_manual_annot_data(
                 posData=posData, data_frame_i=allData_li    
             )
@@ -21657,20 +21653,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def apply_manual_edits_to_lab_if_needed(self, lab):
         posData = self.data[self.pos_i]
         data_frame_i = posData.allData_li[posData.frame_i]
-        edited_zoom_lab_dict = data_frame_i['manually_edited_lab']['zoom_lab']        
-        if not edited_zoom_lab_dict:
+        printl(posData.frame_i)
+        edited_lab_dict = data_frame_i['manually_edited_lab']['lab']        
+        if not edited_lab_dict:
             return lab
         
-        zoom_slice = data_frame_i['manually_edited_lab']['zoom_slice']
-        for z, zoom_lab in edited_zoom_lab_dict.items():
+        # zoom_slice = data_frame_i['manually_edited_lab']['zoom_slice']
+        for z, lab_edited in edited_lab_dict.items():
             if not self.isSegm3D:
-                lab[zoom_slice] = zoom_lab
+                # lab[zoom_slice] = lab_edited
+                lab = lab_edited
                 break
             
-            lab[z, zoom_slice[0], zoom_slice[1]] = zoom_lab
+            lab[z] = lab_edited
+            
+            # lab[z, zoom_slice[0], zoom_slice[1]] = zoom_lab
+            
         return lab
     
-    def _get_data_unvisited(self, posData, debug=False,lin_tree_init=True,):
+    def _get_data_unvisited(self, posData, debug=False, lin_tree_init=True,):
         posData.editID_info = []
         proceed_cca = True
         never_visited = True
