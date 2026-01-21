@@ -1123,19 +1123,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.widgetsWithShortcut['Label ROI'] = self.labelRoiButton
         # self.functionsNotTested3D.append(self.labelRoiButton)
         
-        self.manualAnnotFutureButton = QToolButton(self)
-        self.manualAnnotFutureButton.setIcon(QIcon(":lock_id_annotate_future.svg"))
-        self.manualAnnotFutureButton.setCheckable(True)
-        self.manualAnnotFutureButton.setShortcut('Y')
-        self.manualAnnotFutureButton.action = editToolBar.addWidget(
-            self.manualAnnotFutureButton
+        self.manualAnnotPastButton = QToolButton(self)
+        self.manualAnnotPastButton.setIcon(QIcon(":lock_id_annotate_future.svg"))
+        self.manualAnnotPastButton.setCheckable(True)
+        self.manualAnnotPastButton.setShortcut('Y')
+        self.manualAnnotPastButton.action = editToolBar.addWidget(
+            self.manualAnnotPastButton
         )
-        self.checkableButtons.append(self.manualAnnotFutureButton)
+        self.checkableButtons.append(self.manualAnnotPastButton)
         self.widgetsWithShortcut['Lock ID and annotate single object'] = (
-            self.manualAnnotFutureButton
+            self.manualAnnotPastButton
         )
-        self.functionsNotTested3D.append(self.manualAnnotFutureButton)
-        self.manulAnnotToolButtons.add(self.manualAnnotFutureButton)
+        self.functionsNotTested3D.append(self.manualAnnotPastButton)
+        self.manulAnnotToolButtons.add(self.manualAnnotPastButton)
 
         self.segmentToolAction = QAction('Segment with last used model', self)
         self.segmentToolAction.setIcon(QIcon(":segment.svg"))
@@ -3272,8 +3272,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.slideshowButton.toggled.connect(self.launchSlideshow)
         
         self.copyLostObjButton.toggled.connect(self.copyLostObjContour_cb)
-        self.manualAnnotFutureButton.toggled.connect(
-            self.manualAnnotFuture_cb
+        self.manualAnnotPastButton.toggled.connect(
+            self.manualAnnotPast_cb
         )
 
         self.segmSingleFrameMenu.triggered.connect(self.segmFrameCallback)
@@ -13011,12 +13011,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.lostObjImage = np.zeros_like(self.currentLab2D)
         self.updateLostContoursImage(0)
     
-    def manualAnnotFuture_cb(self, checked):
+    def manualAnnotPast_cb(self, checked):
         posData = self.data[self.pos_i]
         if checked:
             for _ in range(3):
                 self.onEscape(
-                    buttonsToNotUncheck=[self.manualAnnotFutureButton],
+                    buttonsToNotUncheck=[self.manualAnnotPastButton],
                     doAutoRange=False
                 )
 
@@ -13041,7 +13041,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 )
                 win.exec_()
                 if win.cancel:
-                    self.manualAnnotFutureButton.setChecked(False)
+                    self.manualAnnotPastButton.setChecked(False)
                     return
                 hoverID = win.EntryID
             self.logger.info(
@@ -13100,7 +13100,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.ax1.setHighlighted(True)
     
     def updateHighlightedAxis(self):
-        if not self.manualAnnotFutureButton.isChecked():
+        if not self.manualAnnotPastButton.isChecked():
             return
         
         frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
@@ -18125,6 +18125,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     
     # @exec_time
     def next_frame(self, warn=True):
+        if self.manualAnnotPastButton.isChecked():
+            warn_txt = (
+                'WARNING: Cannot navigate to future frames while in '
+                'manual annotation mode.'
+            )
+            self.logger.info(warn_txt)
+            self.statusBarLabel.setText(f'<p style="color:red;">{warn_txt}</p>')
+            return
         proceed = self.askInitCcaFirstFrame()
         if not proceed:
             return
@@ -19723,10 +19731,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             else:
                 self.manualBackgroundAction.setVisible(False)
                 self.manualBackgroundAction.setDisabled(True)
-            self.manualAnnotFutureButton.setDisabled(True)
-            self.manualAnnotFutureButton.action.setDisabled(True)
-            self.manualAnnotFutureButton.setVisible(False)
-            self.manualAnnotFutureButton.action.setVisible(False)
+            self.manualAnnotPastButton.setDisabled(True)
+            self.manualAnnotPastButton.action.setDisabled(True)
+            self.manualAnnotPastButton.setVisible(False)
+            self.manualAnnotPastButton.action.setVisible(False)
             self.copyLostObjButton.setDisabled(True)
             self.copyLostObjButton.action.setDisabled(True)
             self.copyLostObjButton.setVisible(False)
@@ -19763,10 +19771,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
             self.labelsGrad.showNextFrameAction.setDisabled(False)  
-            self.manualAnnotFutureButton.setDisabled(False)
-            self.manualAnnotFutureButton.action.setDisabled(False)
-            self.manualAnnotFutureButton.setVisible(True)
-            self.manualAnnotFutureButton.action.setVisible(True)
+            self.manualAnnotPastButton.setDisabled(False)
+            self.manualAnnotPastButton.action.setDisabled(False)
+            self.manualAnnotPastButton.setVisible(True)
+            self.manualAnnotPastButton.action.setVisible(True)
             self.copyLostObjButton.setDisabled(False)
             self.copyLostObjButton.action.setDisabled(False)
             self.copyLostObjButton.setVisible(True)
@@ -20743,8 +20751,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         allData_li['IDs_idxs'] = (
             posData.IDs_idxs.copy()
         )
-        if self.manualAnnotFutureButton.isChecked():
-            printl(posData.frame_i)
+        if self.manualAnnotPastButton.isChecked():
             self.store_manual_annot_data(
                 posData=posData, data_frame_i=allData_li    
             )
@@ -27925,7 +27932,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self, lost_IDs=None, new_IDs=None, IDs_with_holes=None, 
             tracked_lost_IDs=None
         ):
-        if self.manualAnnotFutureButton.isChecked():
+        if self.manualAnnotPastButton.isChecked():
             lockedID = self.editIDspinbox.value()
             frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
             txt = (
