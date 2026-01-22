@@ -4,6 +4,17 @@ import numpy as np
 
 import skimage.measure
 
+from cellacdc import printl
+
+
+def log_mask_selection(prompt_id, masks, scores, mask_idx, z_slice=None):
+    """Log mask sizes and scores for debugging prompt segmentation."""
+    z_info = f" z={z_slice}" if z_slice is not None else ""
+    printl(f"[DEBUG] Prompt ID {prompt_id}{z_info}:")
+    for i, (mask, score) in enumerate(zip(masks, scores)):
+        selected = " <-- selected" if i == mask_idx else ""
+        printl(f"  mask[{i}]: {int(mask.sum()):7} px, score={score:.6f}{selected}")
+
 
 def build_combined_mask(model_out):
     """Build a single labeled mask from model output, sorted by area (largest first)."""

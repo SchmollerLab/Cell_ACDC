@@ -47,7 +47,7 @@ class TestPromptableSAM2:
         assert len(centroids) > 0, "No objects found in ground truth"
 
         acdcPromptSegment = myutils.import_promptable_segment_module("sam2")
-        model = acdcPromptSegment.Model(model_type="Tiny", gpu=True)
+        model = acdcPromptSegment.Model(model_type="Large", gpu=True)
 
         # Add prompts for each ground truth centroid
         for label_id, y, x in centroids:
@@ -59,7 +59,7 @@ class TestPromptableSAM2:
                 prompt_type="point",
             )
 
-        labels = model.segment(frame)
+        labels = model.segment(frame, treat_other_objects_as_background=False)
 
         validate_labels(labels, frame.shape[:2])
 
@@ -72,4 +72,5 @@ class TestPromptableSAM2:
         save_segmentation_overlay(
             labels, frame, frame_index,
             plots_dir / f"test_promptable_sam2_frame_{frame_index:04d}.png",
+            prompt_points=centroids,
         )

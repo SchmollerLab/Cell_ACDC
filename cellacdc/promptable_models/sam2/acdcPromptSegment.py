@@ -1,7 +1,7 @@
 import os
 from collections import defaultdict
 
-from cellacdc.promptable_models.utils import build_combined_mask
+from cellacdc.promptable_models.utils import build_combined_mask, log_mask_selection
 
 import numpy as np
 import cv2
@@ -217,6 +217,8 @@ class Model:
                         multimask_output=multimask_output,
                     )
                     mask_idx = np.argmax(scores) if multimask_output else 0
+                    if multimask_output:
+                        log_mask_selection(prompt_id, masks, scores, mask_idx, z_slice=z)
                     mask = masks[mask_idx].astype(bool)
                     obj_mask[z][mask] = True
             else:
@@ -234,6 +236,8 @@ class Model:
                     multimask_output=multimask_output,
                 )
                 mask_idx = np.argmax(scores) if multimask_output else 0
+                if multimask_output:
+                    log_mask_selection(prompt_id, masks, scores, mask_idx)
                 mask = masks[mask_idx].astype(bool)
                 obj_mask[mask] = True
 

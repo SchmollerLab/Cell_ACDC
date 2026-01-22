@@ -136,6 +136,7 @@ def save_segmentation_overlay(
     frame: np.ndarray,
     frame_i: int,
     output_path: Path,
+    prompt_points: list = None,
 ):
     """Save segmentation overlay plot.
 
@@ -149,6 +150,8 @@ def save_segmentation_overlay(
         Frame index for title.
     output_path : Path
         Path to save the plot.
+    prompt_points : list, optional
+        List of (label_id, y, x) tuples for prompt points to plot as markers.
     """
     num_objects = labels.max()
 
@@ -182,6 +185,14 @@ def save_segmentation_overlay(
                 patheffects.withStroke(linewidth=2, foreground="black")
             ],
         )
+
+    # Plot prompt points if provided
+    if prompt_points:
+        for label_id, y, x in prompt_points:
+            ax.plot(
+                x, y, 'x',
+                color='red', markersize=8, markeredgewidth=2,
+            )
 
     ax.set_title(f"Frame {frame_i} ({num_objects} objects)")
     ax.axis("off")
