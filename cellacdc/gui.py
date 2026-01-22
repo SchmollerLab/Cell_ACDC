@@ -1123,19 +1123,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.widgetsWithShortcut['Label ROI'] = self.labelRoiButton
         # self.functionsNotTested3D.append(self.labelRoiButton)
         
-        self.manualAnnotFutureButton = QToolButton(self)
-        self.manualAnnotFutureButton.setIcon(QIcon(":lock_id_annotate_future.svg"))
-        self.manualAnnotFutureButton.setCheckable(True)
-        self.manualAnnotFutureButton.setShortcut('Y')
-        self.manualAnnotFutureButton.action = editToolBar.addWidget(
-            self.manualAnnotFutureButton
+        self.manualAnnotPastButton = QToolButton(self)
+        self.manualAnnotPastButton.setIcon(QIcon(":lock_id_annotate_future.svg"))
+        self.manualAnnotPastButton.setCheckable(True)
+        self.manualAnnotPastButton.setShortcut('Y')
+        self.manualAnnotPastButton.action = editToolBar.addWidget(
+            self.manualAnnotPastButton
         )
-        self.checkableButtons.append(self.manualAnnotFutureButton)
+        self.checkableButtons.append(self.manualAnnotPastButton)
         self.widgetsWithShortcut['Lock ID and annotate single object'] = (
-            self.manualAnnotFutureButton
+            self.manualAnnotPastButton
         )
-        self.functionsNotTested3D.append(self.manualAnnotFutureButton)
-        self.manulAnnotToolButtons.add(self.manualAnnotFutureButton)
+        self.functionsNotTested3D.append(self.manualAnnotPastButton)
+        self.manulAnnotToolButtons.add(self.manualAnnotPastButton)
 
         self.segmentToolAction = QAction('Segment with last used model', self)
         self.segmentToolAction.setIcon(QIcon(":segment.svg"))
@@ -3272,8 +3272,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.slideshowButton.toggled.connect(self.launchSlideshow)
         
         self.copyLostObjButton.toggled.connect(self.copyLostObjContour_cb)
-        self.manualAnnotFutureButton.toggled.connect(
-            self.manualAnnotFuture_cb
+        self.manualAnnotPastButton.toggled.connect(
+            self.manualAnnotPast_cb
         )
 
         self.segmSingleFrameMenu.triggered.connect(self.segmFrameCallback)
@@ -11657,12 +11657,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         return allDelIDs
     
     # @exec_time
-    def getDelROIlab(self):
+    def getDelROIlab(self, input_lab_2D=None):
         posData = self.data[self.pos_i]
         if self.delRoiLab is None:
             self.initDelRoiLab()
-            
-        self.delRoiLab[:] = self.get_2Dlab(posData.lab, force_z=False)
+        
+        out_lab = self.delRoiLab
+        if input_lab_2D is None:
+            out_lab[:] = self.get_2Dlab(posData.lab, force_z=False)
+        else:
+            out_lab[:] = input_lab_2D
+        
         allDelIDs = set()
         # Iterate rois and delete IDs
         for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
@@ -11676,14 +11681,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             idx = delROIs_info['rois'].index(roi)
             delObjROImask = delROIs_info['delMasks'][idx]
             delIDsROI = delROIs_info['delIDsROI'][idx]   
-            delROIlabRp = skimage.measure.regionprops(self.delRoiLab)
+            delROIlabRp = skimage.measure.regionprops(out_lab)
             for delObj in delROIlabRp:
                 isDelObj = np.any(ROImask[delObj.slice][delObj.image])
                 if not isDelObj:
                     continue
                 
                 delObjROImask[delObj.slice][delObj.image] = delObj.label
-                self.delRoiLab[delObj.slice][delObj.image] = 0
+                out_lab[delObj.slice][delObj.image] = 0
             
                 delIDsROI.add(delObj.label)
                 allDelIDs.add(delObj.label)
@@ -11702,7 +11707,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         #     sep='\n'
         # )
         
-        return allDelIDs, self.delRoiLab
+        return allDelIDs, out_lab
     
     def getDelRoiMask(self, roi, posData=None, z_slice=None):
         if posData is None:
@@ -12083,7 +12088,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if ax_idx == 0:
             return
         
-        coords = re.findall(r'x=(\d+), y=(\d+) \(ax', text)[0]
+        coords = re.findall(r'x=(\d+), y=(\d+) \|', text)[0]
         
         return tuple([int(val) for val in coords])
     
@@ -13006,12 +13011,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.lostObjImage = np.zeros_like(self.currentLab2D)
         self.updateLostContoursImage(0)
     
-    def manualAnnotFuture_cb(self, checked):
+    def manualAnnotPast_cb(self, checked):
         posData = self.data[self.pos_i]
         if checked:
             for _ in range(3):
                 self.onEscape(
-                    buttonsToNotUncheck=[self.manualAnnotFutureButton],
+                    buttonsToNotUncheck=[self.manualAnnotPastButton],
                     doAutoRange=False
                 )
 
@@ -13036,7 +13041,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 )
                 win.exec_()
                 if win.cancel:
-                    self.manualAnnotFutureButton.setChecked(False)
+                    self.manualAnnotPastButton.setChecked(False)
                     return
                 hoverID = win.EntryID
             self.logger.info(
@@ -13044,6 +13049,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 f'{hoverID}, at frame n. {posData.frame_i+1}'
             )
             self.editIDspinbox.setValue(hoverID)
+            obj_idx = posData.IDs_idxs[hoverID]
+            obj = posData.rp[obj_idx]
+            radius = 0.9 * obj.minor_axis_length / 2 # math.sqrt(obj.area/math.pi)*0.9
+            self.brushSizeSpinbox.setValue(round(radius))
             self.manualAnnotState['frame_i_to_restore'] = posData.frame_i
             self.manualAnnotState['last_tracked_i'] = (
                 self.navigateScrollBar.maximum()-1
@@ -13075,7 +13084,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.updateScrollbars()
             self.ax1.sigRangeChanged.disconnect()
             self.ax1.setHighlighted(False)
-            # QTimer.singleShot(200, self.autoRange)
+            QTimer.singleShot(150, self.autoRange)
         
         self.setManualAnnotModeEnabledTools(checked)
     
@@ -13091,7 +13100,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.ax1.setHighlighted(True)
     
     def updateHighlightedAxis(self):
-        if not self.manualAnnotFutureButton.isChecked():
+        if not self.manualAnnotPastButton.isChecked():
             return
         
         frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
@@ -14547,8 +14556,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
-            printl(posData.cca_df)
-            printl(posData.allData_li[posData.frame_i]['acdc_df'][cca_df_colnames])
+            printl(posData.frame_i)
+            printl(posData.allData_li[posData.frame_i]['manually_edited_lab'])
+            printl(posData.frame_i+1)
+            printl(posData.allData_li[posData.frame_i]['manually_edited_lab'])
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -18114,6 +18125,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     
     # @exec_time
     def next_frame(self, warn=True):
+        if self.manualAnnotPastButton.isChecked():
+            warn_txt = (
+                'WARNING: Cannot navigate to future frames while in '
+                'manual annotation mode.'
+            )
+            self.logger.info(warn_txt)
+            self.statusBarLabel.setText(f'<p style="color:red;">{warn_txt}</p>')
+            return
         proceed = self.askInitCcaFirstFrame()
         if not proceed:
             return
@@ -19712,10 +19731,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             else:
                 self.manualBackgroundAction.setVisible(False)
                 self.manualBackgroundAction.setDisabled(True)
-            self.manualAnnotFutureButton.setDisabled(True)
-            self.manualAnnotFutureButton.action.setDisabled(True)
-            self.manualAnnotFutureButton.setVisible(False)
-            self.manualAnnotFutureButton.action.setVisible(False)
+            self.manualAnnotPastButton.setDisabled(True)
+            self.manualAnnotPastButton.action.setDisabled(True)
+            self.manualAnnotPastButton.setVisible(False)
+            self.manualAnnotPastButton.action.setVisible(False)
             self.copyLostObjButton.setDisabled(True)
             self.copyLostObjButton.action.setDisabled(True)
             self.copyLostObjButton.setVisible(False)
@@ -19752,10 +19771,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
             self.labelsGrad.showNextFrameAction.setDisabled(False)  
-            self.manualAnnotFutureButton.setDisabled(False)
-            self.manualAnnotFutureButton.action.setDisabled(False)
-            self.manualAnnotFutureButton.setVisible(True)
-            self.manualAnnotFutureButton.action.setVisible(True)
+            self.manualAnnotPastButton.setDisabled(False)
+            self.manualAnnotPastButton.action.setDisabled(False)
+            self.manualAnnotPastButton.setVisible(True)
+            self.manualAnnotPastButton.action.setVisible(True)
             self.copyLostObjButton.setDisabled(False)
             self.copyLostObjButton.action.setDisabled(False)
             self.copyLostObjButton.setVisible(True)
@@ -20697,15 +20716,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             lab = posData.lab
             
         for z, lab_2D in enumerate(lab):
-            zoom_lab, zoom_slice = transformation.crop_2D(
-                lab_2D, 
-                self.ax1.viewRange(), 
-                tolerance=10,
-                return_copy=False
-            )
-            data_frame_i['manually_edited_lab']['zoom_lab'][z] = zoom_lab
+            data_frame_i['manually_edited_lab']['lab'][z] = lab_2D
             
-        data_frame_i['manually_edited_lab']['zoom_slice'] = zoom_slice
+        # data_frame_i['manually_edited_lab']['zoom_slice'] = zoom_slice
 
     @exception_handler
     def store_data(
@@ -20738,7 +20751,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         allData_li['IDs_idxs'] = (
             posData.IDs_idxs.copy()
         )
-        if self.manualAnnotFutureButton.isChecked():
+        if self.manualAnnotPastButton.isChecked():
             self.store_manual_annot_data(
                 posData=posData, data_frame_i=allData_li    
             )
@@ -21647,20 +21660,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def apply_manual_edits_to_lab_if_needed(self, lab):
         posData = self.data[self.pos_i]
         data_frame_i = posData.allData_li[posData.frame_i]
-        edited_zoom_lab_dict = data_frame_i['manually_edited_lab']['zoom_lab']        
-        if not edited_zoom_lab_dict:
+        printl(posData.frame_i)
+        edited_lab_dict = data_frame_i['manually_edited_lab']['lab']        
+        if not edited_lab_dict:
             return lab
         
-        zoom_slice = data_frame_i['manually_edited_lab']['zoom_slice']
-        for z, zoom_lab in edited_zoom_lab_dict.items():
+        # zoom_slice = data_frame_i['manually_edited_lab']['zoom_slice']
+        for z, lab_edited in edited_lab_dict.items():
             if not self.isSegm3D:
-                lab[zoom_slice] = zoom_lab
+                # lab[zoom_slice] = lab_edited
+                lab = lab_edited
                 break
             
-            lab[z, zoom_slice[0], zoom_slice[1]] = zoom_lab
+            lab[z] = lab_edited
+            
+            # lab[z, zoom_slice[0], zoom_slice[1]] = zoom_lab
+            
         return lab
     
-    def _get_data_unvisited(self, posData, debug=False,lin_tree_init=True,):
+    def _get_data_unvisited(self, posData, debug=False, lin_tree_init=True,):
         posData.editID_info = []
         proceed_cca = True
         never_visited = True
@@ -27914,7 +27932,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self, lost_IDs=None, new_IDs=None, IDs_with_holes=None, 
             tracked_lost_IDs=None
         ):
-        if self.manualAnnotFutureButton.isChecked():
+        if self.manualAnnotPastButton.isChecked():
             lockedID = self.editIDspinbox.value()
             frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
             txt = (
