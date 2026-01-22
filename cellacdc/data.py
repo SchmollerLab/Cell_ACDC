@@ -279,3 +279,28 @@ class YeastMitoSnapshotData(_Data):
     def posData(self):
         from . import load
         return load.loadData(self.intensity_image_path, 'mNeon')
+
+class MIA_KC_htb1_mCitrine(_Data):
+    def __init__(self):
+        images_path = os.path.join(
+            data_path, 'budding_yeast', 'TimeLapse_2D',
+            'MIA_KC_htb1_mCitrine_labeled', 'Position_2', 'Images'
+        )
+        intensity_image_path = os.path.join(
+            images_path, '19-03-2021_KCY050_SCGE_s02_phase_contr.tif'
+        )
+        acdc_df_path = os.path.join(
+            images_path, '19-03-2021_KCY050_SCGE_s02_acdc_output.csv'
+        )
+        segm_path = os.path.join(
+            images_path, '19-03-2021_KCY050_SCGE_s02_segm.npz'
+        )
+        basename = '19-03-2021_KCY050_SCGE_s02_'
+        super().__init__(
+            images_path, intensity_image_path, acdc_df_path, segm_path,
+            basename
+        )
+
+    def posData(self):
+        from . import load
+        return load.loadData(self.intensity_image_path, 'phase_contr')
