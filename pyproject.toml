@@ -124,7 +124,7 @@ deepsea = [
     "munkres",
 ]
 
-segment_anything = [
+sam = [
     "torch",
     "segment_anything @ git+https://github.com/facebookresearch/segment-anything.git",
 ]
@@ -132,6 +132,11 @@ segment_anything = [
 sam2 = [
     "torch",
     "sam-2 @ git+https://github.com/facebookresearch/sam2.git",
+]
+
+cellsam = [
+    "torch",
+    "cellSAM @ git+https://github.com/vanvalenlab/cellSAM.git",
 ]
 
 all = [
