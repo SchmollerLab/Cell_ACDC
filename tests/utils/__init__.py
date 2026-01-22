@@ -11,6 +11,8 @@ from .segmentation import (
     ensure_sam2,
     ensure_cellsam,
     get_test_posdata,
+    get_test_dataset,
+    get_ground_truth_centroids,
 )
 
 __all__ = [
@@ -24,4 +26,6 @@ __all__ = [
     "ensure_sam2",
     "ensure_cellsam",
     "get_test_posdata",
+    "get_test_dataset",
+    "get_ground_truth_centroids",
 ]

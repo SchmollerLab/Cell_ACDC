@@ -255,3 +255,36 @@ def get_test_posdata():
     """Get posData for the standard test dataset."""
     from cellacdc import data
     return data.MIA_KC_htb1_mCitrine().posData()
+
+
+def get_test_dataset():
+    """Get the standard test dataset object.
+
+    Returns
+    -------
+    cellacdc.data._Data
+        Dataset object with access to images, segmentation, and metadata.
+    """
+    from cellacdc import data
+    return data.MIA_KC_htb1_mCitrine()
+
+
+def get_ground_truth_centroids(segm_mask: np.ndarray) -> list[tuple[int, int, int]]:
+    """Extract centroids from ground truth segmentation mask.
+
+    Parameters
+    ----------
+    segm_mask : np.ndarray
+        Ground truth segmentation mask (2D labeled array).
+
+    Returns
+    -------
+    list[tuple[int, int, int]]
+        List of (label_id, y, x) tuples for each object's centroid.
+    """
+    centroids = []
+    for region in skimage.measure.regionprops(segm_mask):
+        cy, cx = region.centroid
+        # Round to integer pixel coordinates
+        centroids.append((region.label, int(round(cy)), int(round(cx))))
+    return centroids
