@@ -6759,13 +6759,14 @@ class MainPlotItem(pg.PlotItem):
         self.update()
     
     def clear(self):
-        super().clear()
-        try:
-            for rect in self.highlightingRectItems.values():
-                self.addItem(rect)
-        except Exception as e:
-            pass
-                
+        super().clear()   
+        
+        self.delRoiItems = {}
+        self.highlightingRectItems = None
+        self._baseImageItem = None
+        self._imageItems = []
+        self.highlightingRectItemsColor = None
+                   
         try:
             self.removeItem(self.infoTextItem)
         except Exception as e:
