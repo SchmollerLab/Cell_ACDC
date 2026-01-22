@@ -1,10 +1,6 @@
 from cellacdc import myutils
 
-myutils.check_install_package(
-    'cellSAM',
-    pypi_name='git+https://github.com/vanvalenlab/cellSAM.git',
-    import_pkg_name='cellSAM'
-)
+myutils.check_install_cellsam()
 
 import cellSAM
 

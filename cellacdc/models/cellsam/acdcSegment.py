@@ -123,7 +123,18 @@ class Model:
         else:
             model_name = model_types[model_type]
             print(f'Loading CellSAM model "{model_name}"...')
-            self.model = get_model(model=model_name)
+            try:
+                self.model = get_model(model=model_name)
+            except Exception as e:
+                error_msg = str(e).lower()
+                if 'token' in error_msg or 'auth' in error_msg or '401' in error_msg:
+                    raise RuntimeError(
+                        f"Failed to download CellSAM model: {e}\n\n"
+                        "Hint: CellSAM requires a DeepCell access token. "
+                        "Please set the DEEPCELL_ACCESS_TOKEN environment variable.\n"
+                        "You can obtain a token from https://deepcell.org"
+                    ) from e
+                raise
 
         self.model = self.model.to(self.device)
         self.model.bbox_threshold = bbox_threshold

@@ -3075,6 +3075,20 @@ def check_install_sam2():
     check_install_torch()
     check_install_package('sam2')
 
+
+def check_install_cellsam():
+    check_install_torch()
+    check_install_package(
+        'cellSAM',
+        pypi_name='git+https://github.com/vanvalenlab/cellSAM.git',
+        import_pkg_name='cellSAM',
+        note=(
+            'CellSAM requires a DeepCell access token to download models.\n'
+            'Set the DEEPCELL_ACCESS_TOKEN environment variable before use.\n'
+            'Get your token at: https://deepcell.org'
+        )
+    )
+
 def is_gui_running():
     if not GUI_INSTALLED:
         return False
