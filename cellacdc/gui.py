@@ -491,7 +491,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     self.df_settings.loc['is_bw_inverted'].astype(str)
                 )
             if 'fontSize' not in self.df_settings.index:
-                self.df_settings.at['fontSize', 'value'] = 12
+                self.df_settings.at['fontSize', 'value'] = '12'
             if 'overlayColor' not in self.df_settings.index:
                 self.df_settings.at['overlayColor', 'value'] = '255-255-0'
             if 'how_normIntensities' not in self.df_settings.index:
@@ -499,7 +499,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.df_settings.at['how_normIntensities', 'value'] = raw
         else:
             idx = ['is_bw_inverted', 'fontSize', 'overlayColor', 'how_normIntensities']
-            values = ['No', 12, '255-255-0', 'raw']
+            values = ['No', '12', '255-255-0', 'raw']
             self.df_settings = pd.DataFrame({
                 'setting': idx,'value': values}
             ).set_index('setting')
