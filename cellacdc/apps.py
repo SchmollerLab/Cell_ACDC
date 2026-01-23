@@ -14240,6 +14240,8 @@ class ShortcutEditorDialog(QBaseDialog):
         entriesLayout = QGridLayout()
         
         row = 0
+        button = widgets.PushButton(self, flat=True)
+        button.setIcon(QIcon(":del_obj_click.svg"))
         self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
             allowModifiers=True, notAllowedModifier=Qt.AltModifier
         )
@@ -14248,14 +14250,16 @@ class ShortcutEditorDialog(QBaseDialog):
         self.delObjButtonCombobox = QComboBox()
         self.delObjButtonCombobox.addItems(['Middle click', 'Left click'])
         self.delObjButtonCombobox.setCurrentText(delObjectButton)
-        entriesLayout.addWidget(QLabel('Delete object:'), row, 0)
-        entriesLayout.addWidget(self.delObjShortcutLineEdit, row, 1)
+        entriesLayout.addWidget(button, row, 0)
+        entriesLayout.addWidget(QLabel('Delete object:'), row, 1)
+        entriesLayout.addWidget(self.delObjShortcutLineEdit, row, 2)
         entriesLayout.addWidget(
-            self.delObjButtonCombobox, row, 2, alignment=Qt.AlignLeft
+            self.delObjButtonCombobox, row, 3, alignment=Qt.AlignLeft
         )
         
         row += 1
         name = 'Zoom out'
+        button = widgets.PushButton(self, flat=True)
         label = QLabel('Zoom out:')
         self.zoomShortcutLineEdit = widgets.ShortcutLineEdit()
         if zoomOutKeyValue is not None:
@@ -14265,12 +14269,18 @@ class ShortcutEditorDialog(QBaseDialog):
         self.zoomShortcutLineEdit.textChanged.connect(
             self.checkDuplicateShortcuts
         )
-        entriesLayout.addWidget(label, row, 0)
-        entriesLayout.addWidget(self.zoomShortcutLineEdit, row, 1)
+        entriesLayout.addWidget(button, row, 0)
+        entriesLayout.addWidget(label, row, 1)
+        entriesLayout.addWidget(self.zoomShortcutLineEdit, row, 2)
         self.shortcutLineEdits[name] = self.zoomShortcutLineEdit
         
         row += 1
         for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=row):
+            button = widgets.PushButton(self, flat=True)
+            try:
+                button.setIcon(widget.icon())
+            except:
+                pass
             label = QLabel(f'{name}:')
             shortcutLineEdit = widgets.ShortcutLineEdit()
             if hasattr(widget, 'keyPressShortcut'):
@@ -14283,14 +14293,16 @@ class ShortcutEditorDialog(QBaseDialog):
             shortcutLineEdit.setText(shortcut.toString())
             shortcutLineEdit.textChanged.connect(self.checkDuplicateShortcuts)
             shortcutLineEdit.isShortcutKeyPress = isShortcutKeyPress
-            entriesLayout.addWidget(label, row, 0)
-            entriesLayout.addWidget(shortcutLineEdit, row, 1)
+            entriesLayout.addWidget(button, row, 0)
+            entriesLayout.addWidget(label, row, 1)
+            entriesLayout.addWidget(shortcutLineEdit, row, 2)
             self.shortcutLineEdits[name] = shortcutLineEdit
         
         entriesLayout.setColumnStretch(0, 0)
-        entriesLayout.setColumnStretch(1, 1)
-        entriesLayout.setColumnStretch(2, 0)
-        
+        entriesLayout.setColumnStretch(1, 0)
+        entriesLayout.setColumnStretch(2, 1)
+        entriesLayout.setColumnStretch(3, 0)
+
         scrollAreaWidget.setLayout(entriesLayout)
         scrollArea.setWidget(scrollAreaWidget)
         buttonsLayout = widgets.CancelOkButtonsLayout()
