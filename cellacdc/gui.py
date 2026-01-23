@@ -13060,6 +13060,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.ax1.sigRangeChanged.connect(self.highlightManualAnnotMode)
             self.ax1.setHighlighted(True, color='green')
         else:
+            self.setStatusBarLabel()  
             self.autoIDcheckbox.setChecked(self.manualAnnotState['isAutoID'])
             self.editIDspinbox.setValue(self.manualAnnotState['editID'])
             self.warnLostCellsAction.setChecked(
@@ -14555,11 +14556,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            posData = self.data[self.pos_i]
-            printl(posData.frame_i)
-            printl(posData.allData_li[posData.frame_i]['manually_edited_lab'])
-            printl(posData.frame_i+1)
-            printl(posData.allData_li[posData.frame_i]['manually_edited_lab'])
+            # posData = self.data[self.pos_i]
+            printl(self.ax1.highlightingRectItems)
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -18123,16 +18121,30 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         return True
     
+    def checkIfFutureFrameManualAnnotPastFrames(self):
+        if not self.manualAnnotPastButton.isChecked():
+            return True
+        
+        posData = self.data[self.pos_i]
+        frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
+        if posData.frame_i <= frame_to_restore:
+            return True
+        
+        warn_txt = (
+            'WARNING: Cannot navigate to future frames while in '
+            'manual annotation mode.'
+        )
+        self.logger.info(warn_txt)
+        self.statusBarLabel.setText(f'<p style="color:red;">{warn_txt}</p>')
+        
+        return False
+        
     # @exec_time
-    def next_frame(self, warn=True):
-        if self.manualAnnotPastButton.isChecked():
-            warn_txt = (
-                'WARNING: Cannot navigate to future frames while in '
-                'manual annotation mode.'
-            )
-            self.logger.info(warn_txt)
-            self.statusBarLabel.setText(f'<p style="color:red;">{warn_txt}</p>')
+    def next_frame(self, warn=True):        
+        proceed = self.checkIfFutureFrameManualAnnotPastFrames()
+        if not proceed:
             return
+        
         proceed = self.askInitCcaFirstFrame()
         if not proceed:
             return
@@ -21660,7 +21672,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def apply_manual_edits_to_lab_if_needed(self, lab):
         posData = self.data[self.pos_i]
         data_frame_i = posData.allData_li[posData.frame_i]
-        printl(posData.frame_i)
         edited_lab_dict = data_frame_i['manually_edited_lab']['lab']        
         if not edited_lab_dict:
             return lab
