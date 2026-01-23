@@ -193,6 +193,11 @@ if os.path.exists(old_temp_path):
         print('^'*60)
 
 import pandas as pd
+# Disable pandas 3.0 strict string dtype to maintain backward compatibility
+# with code that assigns non-string values to DataFrames
+if hasattr(pd.options, 'future') and hasattr(pd.options.future, 'infer_string'):
+    pd.options.future.infer_string = False
+
 settings_csv_path = os.path.join(settings_folderpath, 'settings.csv')
 if not os.path.exists(settings_csv_path):
     df_settings = pd.DataFrame(
