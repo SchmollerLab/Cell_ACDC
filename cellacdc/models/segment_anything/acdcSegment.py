@@ -353,7 +353,7 @@ class Model:
                 
                 # Concatenate negative points
                 points_data_z = sub_df[['x', 'y']].to_numpy()
-                points_labels_z = sub_df['id'].to_numpy()
+                points_labels_z = np.ones(len(sub_df), dtype=int)  # 1 = positive
                 try:
                     neg_points_data_z = (
                         neg_input_points_df.loc[z][['x', 'y']].to_numpy())
@@ -383,8 +383,9 @@ class Model:
                 points_data_id = np.row_stack((
                     neg_input_points_data, points_data_id
                 ))
-                
-                points_labels_id = df_id['id'].to_numpy()
+
+                # Use 1 for positive labels (not actual IDs) - SAM expects binary 0/1
+                points_labels_id = np.ones(len(df_id), dtype=int)
                 points_labels_id = np.concatenate(
                     ([0]*len(neg_input_points_data), points_labels_id)
                 )

@@ -1,4 +1,4 @@
-"""Tests for SAM2 segmentation model."""
+"""Tests for Segment Anything (SAM) segmentation model."""
 
 from pathlib import Path
 
@@ -6,7 +6,7 @@ import pytest
 
 from cellacdc import myutils
 from tests.utils import (
-    ensure_sam2,
+    ensure_sam,
     get_test_posdata,
     load_normalized_frames,
     validate_labels,
@@ -14,16 +14,16 @@ from tests.utils import (
     print_segmentation_results,
 )
 
-ensure_sam2()
+ensure_sam()
 
 
-class TestSAM2AutomaticSegmentation:
-    """Test SAM2 model with automatic segmentation (no input points)."""
+class TestSAMAutomaticSegmentation:
+    """Test SAM model with automatic segmentation (no input points)."""
 
     @pytest.fixture(scope="class", autouse=True)
     def download_models(self):
-        """Download SAM2 models if not present."""
-        myutils.download_model("sam2")
+        """Download SAM models if not present."""
+        myutils.download_model("segment_anything")
 
     @pytest.fixture
     def posData(self):
@@ -36,13 +36,13 @@ class TestSAM2AutomaticSegmentation:
         return load_normalized_frames(posData, step=20)
 
     def test_automatic_segmentation_sampled_frames(self, test_frames, posData):
-        """Test SAM2 automatic segmentation on sampled frames."""
+        """Test SAM automatic segmentation on sampled frames."""
         frames, frame_indices = test_frames
 
-        acdcSegment = myutils.import_segment_module("sam2")
+        acdcSegment = myutils.import_segment_module("segment_anything")
 
         model = acdcSegment.Model(
-            model_type="Tiny",
+            model_type="Small",
             input_points_path="",
             input_points_df="None",
             points_per_side=32,
@@ -54,7 +54,7 @@ class TestSAM2AutomaticSegmentation:
             gpu=True,
         )
 
-        plots_dir = Path(__file__).parent.parent / "_plots" / "segm" / "sam2"
+        plots_dir = Path(__file__).parent.parent / "_plots" / "segm" / "sam"
 
         for frame, frame_i in zip(frames, frame_indices):
             labels = model.segment(
@@ -68,5 +68,5 @@ class TestSAM2AutomaticSegmentation:
             print_segmentation_results(labels, frame, frame_i)
             save_segmentation_overlay(
                 labels, frame, frame_i,
-                plots_dir / f"test_sam2_segmentation_frame_{frame_i:04d}.png",
+                plots_dir / f"test_sam_segmentation_frame_{frame_i:04d}.png",
             )
