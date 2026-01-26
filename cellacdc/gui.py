@@ -13049,10 +13049,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 f'{hoverID}, at frame n. {posData.frame_i+1}'
             )
             self.editIDspinbox.setValue(hoverID)
-            obj_idx = posData.IDs_idxs[hoverID]
-            obj = posData.rp[obj_idx]
-            radius = 0.9 * obj.minor_axis_length / 2 # math.sqrt(obj.area/math.pi)*0.9
-            self.brushSizeSpinbox.setValue(round(radius))
+            try:
+                obj_idx = posData.IDs_idxs[hoverID]
+                obj = posData.rp[obj_idx]
+                radius = 0.9 * obj.minor_axis_length / 2 # math.sqrt(obj.area/math.pi)*0.9
+                self.brushSizeSpinbox.setValue(round(radius))
+            except Exception as err:
+                pass
+            
             self.manualAnnotState['frame_i_to_restore'] = posData.frame_i
             self.manualAnnotState['last_tracked_i'] = (
                 self.navigateScrollBar.maximum()-1
