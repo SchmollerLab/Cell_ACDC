@@ -159,6 +159,12 @@
     :height: 16px
     :width: 16px
 
+.. |annotateSingleMotherBudPairButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/lock_id_annotate_future.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/lock_id_annotate_future.svg
+    :alt: annotateSingleMotherBudPairButton icon
+    :height: 16px
+    :width: 16px
+
 .. |segmentToolAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/segment.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/segment.svg 
     :alt: segmentToolAction icon
@@ -478,6 +484,12 @@ Edit tools: Cell cycle analysis
 * **Automatically assign bud to mother (** |assignBudMothAutoAction| **):** Automatically assign buds to mothers using YeastMate.
 * **Manually edit cell cycle annotations table (** |editCcaToolAction| **"Ctrl+Shift+P"):** Manually edit cell cycle annotations table.
 * **Re-initialize cell cycle annotations table (** |reInitCcaAction| **):** Re-initialize cell cycle annotations table from this frame onward. NOTE: This will erase all the already annotated future frames information (from the current session not the saved information).
+* **Annotate one mother-bud pair at the time (** |annotateSingleMotherBudPairButton| **"Y"):**
+    1. Activate to annotate a single mother-bud pair at the time.
+    2. Annotate past and future frames
+    3. Deactivate to go back to the frame you were annotating before activating this tool.
+
+    NOTE: When annotating future frames, the other cells will not be displayed and they will be ignored. 
 
 Edit tools: Normal division: Lineage tree
 -----------------------------------------

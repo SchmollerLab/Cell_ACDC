@@ -1010,6 +1010,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
         self.functionsNotTested3D.append(self.setIsHistoryKnownButton)
         
+        self.annotateSingleMotherBudPairButton = QToolButton(self)
+        self.annotateSingleMotherBudPairButton.setIcon(
+            QIcon(":lock_id_annotate_future.svg")
+        )
+        self.annotateSingleMotherBudPairButton.setCheckable(True)
+        self.annotateSingleMotherBudPairButton.setShortcut('Y')
+        self.annotateSingleMotherBudPairButton.setVisible(False)
+        self.annotateSingleMotherBudPairButton.action = ccaToolBar.addWidget(
+            self.annotateSingleMotherBudPairButton
+        )
+        self.checkableButtons.append(self.annotateSingleMotherBudPairButton)
+        self.widgetsWithShortcut['Annotate one mother-bud pair at the time'] = (
+            self.annotateSingleMotherBudPairButton
+        )
+        self.checkableQButtonsGroup.addButton(
+            self.annotateSingleMotherBudPairButton
+        )
+        self.functionsNotTested3D.append(self.annotateSingleMotherBudPairButton)
+        
         ccaToolBar.addAction(self.assignBudMothAutoAction)
         ccaToolBar.addAction(self.editCcaToolAction)
         ccaToolBar.addAction(self.reInitCcaAction)
@@ -14562,8 +14581,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            # posData = self.data[self.pos_i]
-            printl(self.ax1.highlightingRectItems)
+            worker, thread = self.autoSaveActiveWorkers[-1]
+            printl(len(worker.dataQ))
+            printl(
+                self.manualAnnotPastButton.isChecked(),
+                self.annotateSingleMotherBudPairButton.isChecked()
+            )
 
         if not self.isDataLoaded:
             self.logger.warning(
