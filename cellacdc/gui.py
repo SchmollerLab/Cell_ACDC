@@ -3346,9 +3346,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.whitelistIDsToolbar.sigViewOGIDs.connect(self.whitelistViewOGIDs)
 
-        self.whitelistIDsToolbar.sigAddNewIDs.connect(self.whitelistAddNewIDsToggled)
+        self.whitelistIDsToolbar.sigAddNewIDs.connect(
+            self.whitelistAddNewIDsToggled
+        )
 
-        self.whitelistIDsToolbar.sigLoadOGLabs.connect(self.whitelistLoadOGLabs_cb)
+        self.whitelistIDsToolbar.sigLoadOGLabs.connect(
+            self.whitelistLoadOGLabs_cb
+        )
 
         self.whitelistIDsToolbar.sigTrackOGagainstPreviousFrame.connect(
             self.whitelistTrackOGagainstPreviousFrame_cb
@@ -3370,6 +3374,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.addScaleBarAction.toggled.connect(self.addScaleBar)
         self.addTimestampAction.toggled.connect(self.addTimestamp)
         self.saveLabColormapAction.triggered.connect(self.saveLabelsColormap)
+        
+        self.annotateSingleMotherBudPairButton.toggled.connect(
+            self.annotateSingleMotherBudPair_cb
+        )
 
         self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
         # Brush/Eraser size action
@@ -3381,18 +3389,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.modeComboBox.activated.connect(self.clearComboBoxFocus)
         self.equalizeHistPushButton.toggled.connect(self.equalizeHist)
         
-        self.editOverlayColorAction.triggered.connect(self.toggleOverlayColorButton)
-        self.editTextIDsColorAction.triggered.connect(self.toggleTextIDsColorButton)
+        self.editOverlayColorAction.triggered.connect(
+            self.toggleOverlayColorButton
+        )
+        self.editTextIDsColorAction.triggered.connect(
+            self.toggleTextIDsColorButton
+        )
         self.overlayColorButton.sigColorChanging.connect(self.changeOverlayColor)
         self.overlayColorButton.sigColorChanged.connect(self.saveOverlayColor)
-        self.textIDsColorButton.sigColorChanging.connect(self.updateTextAnnotColor)
+        self.textIDsColorButton.sigColorChanging.connect(
+            self.updateTextAnnotColor
+        )
         self.textIDsColorButton.sigColorChanged.connect(self.saveTextIDsColors)
 
         self.setMeasurementsAction.triggered.connect(self.showSetMeasurements)
         self.addCustomMetricAction.triggered.connect(self.addCustomMetric)
         self.addCombineMetricAction.triggered.connect(self.addCombineMetric)
 
-        self.labelsGrad.colorButton.sigColorChanging.connect(self.updateBkgrColor)
+        self.labelsGrad.colorButton.sigColorChanging.connect(
+            self.updateBkgrColor
+        )
         self.labelsGrad.colorButton.sigColorChanged.connect(self.saveBkgrColor)
         self.labelsGrad.sigGradientChangeFinished.connect(self.updateLabelsCmap)
         self.labelsGrad.sigGradientChanged.connect(self.ticksCmapMoved)
@@ -13032,6 +13048,102 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.lostObjImage = np.zeros_like(self.currentLab2D)
         self.updateLostContoursImage(0)
     
+    def getHoveredMotherBudIDs(self):
+        posData = self.data[self.pos_i]
+        
+        hoverID = self.getLastHoveredID()
+        try:
+            ccs = posData.cca_df.loc[hoverID, 'cell_cycle_stage']
+        except Exception as err:
+            ccs = 'G1'
+        
+        cca_df = posData.cca_df
+        cca_df_S = cca_df[cca_df['cell_cycle_stage'] == 'S']
+        IDs_in_S = cca_df_S.index.to_list()
+        
+        if not IDs_in_S:
+            _warnings.warnNoIDsInS(qparent=self)
+            return
+        
+        while ccs != 'S':
+            win = apps.QLineEditDialog(
+                title='Selected ID not in S',
+                msg='The cell cycle stage of the selected ID is not "S"\n'
+                    'Enter the ID (mother or bud) '
+                    'that you want to annotate.',
+                parent=self, 
+                isInteger=True,
+                allowedValues=IDs_in_S,
+                defaultTxt=IDs_in_S[0]
+            )
+            win.exec_()
+            if win.cancel:
+                return
+            
+            hoverID = win.EntryID
+            ccs = cca_df.loc[hoverID, 'cell_cycle_stage']
+        
+        relationship = posData.cca_df.loc[hoverID, 'relationship']
+        relative_ID = posData.cca_df.loc[hoverID, 'relative_ID']
+        mothID = hoverID if relationship == 'mother' else relative_ID
+        budID = hoverID if relationship == 'bud' else relative_ID
+        
+        return mothID, budID
+    
+    def annotateSingleMotherBudPair_cb(self, checked):
+        posData = self.data[self.pos_i]
+        self.modeComboBox.setDisabled(checked)
+        if checked:
+            self.store_data()
+            
+            self.annotateSingleMothBudPairState = {}
+            mothIDbudID = self.getHoveredMotherBudIDs()
+            
+            if mothIDbudID is None:
+                self.annotateSingleMotherBudPairButton.setChecked(False)
+                return
+            
+            mothID, budID = mothIDbudID
+            
+            self.logger.info(
+                'Setting annotation mode for single mother-bud pair = '
+                f'{(mothID, budID)}, at frame n. {posData.frame_i+1}'
+            )
+            
+            self.annotateSingleMothBudPairState['mother_ID'] = (
+                mothID
+            )
+            self.annotateSingleMothBudPairState['bud_ID'] = (
+                budID
+            )
+            self.annotateSingleMothBudPairState['frame_i_to_restore'] = (
+                posData.frame_i
+            )
+            
+            self.ax1.sigRangeChanged.connect(self.highlightManualAnnotMode)
+            self.ax1.setHighlighted(True, color='green')
+        else:
+            frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
+            if frame_to_restore is None:
+                return            
+            
+            self.store_data()
+            self.store_manual_annot_data()
+            
+            last_tracked_i_to_restore = self.manualAnnotState['last_tracked_i']
+            self.manualAnnotRestoreLastTrackedFrame(last_tracked_i_to_restore)
+            
+            self.logger.info(
+                f'Restoring view to frame n. {posData.frame_i+1}...'
+            )
+            posData.frame_i = frame_to_restore
+            self.get_data()
+            self.updateAllImages()
+            self.updateScrollbars()
+            self.ax1.sigRangeChanged.disconnect()
+            self.ax1.setHighlighted(False)
+            QTimer.singleShot(150, self.autoRange)
+
     def manualAnnotPast_cb(self, checked):
         posData = self.data[self.pos_i]
         if checked:
@@ -27994,6 +28106,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self, lost_IDs=None, new_IDs=None, IDs_with_holes=None, 
             tracked_lost_IDs=None
         ):
+        if self.annotateSingleMotherBudPairButton.isChecked():
+            mothID = self.annotateSingleMothBudPairState.get(
+                'mother_ID'
+            )
+            budID = self.annotateSingleMothBudPairState.get(
+                'bud_ID'
+            )
+            frame_to_restore = self.annotateSingleMothBudPairState.get(
+                'frame_i_to_restore'
+            )
+            txt = (
+                f'Annotating mother-bud pair {(mothID, budID)} '
+                f'since frame n. {frame_to_restore+1}'
+            )
+            htmlTxt = f'<font color="orange">{txt}</font>'
+            self.titleLabel.setText(htmlTxt)
+            return
+        
         if self.manualAnnotPastButton.isChecked():
             lockedID = self.editIDspinbox.value()
             frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')

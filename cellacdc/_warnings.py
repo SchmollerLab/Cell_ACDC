@@ -202,6 +202,34 @@ def warnPromptSegmentPointsLayerNotInit(qparent=None):
     )
     return msg.cancel
 
+def warnNoIDsInS(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        <b>None</b> of the IDs present at this frame 
+        <b>are in 'S' phase</b>.<br><br>
+        This tool can be used only for mother-bud pairs.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'No cells in "S" phase', txt, 
+    )
+    return msg.cancel
+
+def warnSelectedIDisNotInS(ID, qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        The selected ID {ID} <b>cell cycle stage is not 'S'</b>!<br><br>
+        Make sure you are hovering a cell ID in 'S' (mother of bud), 
+        when activating this mode.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Selected ID not in S', txt, 
+    )
+    return msg.cancel
+
 def warnPromptSegmentModelNotInit(qparent=None):
     from cellacdc import widgets
     txt = html_utils.paragraph(f"""
