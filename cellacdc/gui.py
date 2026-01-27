@@ -16934,7 +16934,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.titleLabel.setText('Segmentation process cancelled.')
                 return
             
-            model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+            model = myutils.init_segm_model(
+                acdcSegment, posData, win.init_kwargs
+            )
             if model is None:
                 self.logger.info('Segmentation process cancelled.')
                 self.titleLabel.setText('Segmentation process cancelled.')
@@ -16952,8 +16954,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return model
 
         self.titleLabel.setText(
-            f'Labelling with {model_name}... '
+            f'Segmenting with {model_name}... '
             '(check progress in terminal/console)', color=self.titleColor
+        )
+        
+        post_process_params = {
+            'applied_postprocessing': self.applyPostProcessing
+        }
+        post_process_params = {
+            **post_process_params, 
+            **self.standardPostProcessKwargs,
+            **self.customPostProcessFeatures
+        }
+        posData.saveSegmHyperparams(
+            model_name, win.init_kwargs, win.model_kwargs,
+            post_process_params=post_process_params,
+            preproc_recipe=self.preproc_recipe
         )
 
         if self.askRepeatSegment3D:

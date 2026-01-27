@@ -11503,7 +11503,7 @@ class YeazV2SelectModelNameCombobox(ComboBox):
             custom_select_item_text='Select custom weights file...', 
             **kwargs
         ):
-        super().__init__( *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._csi_text = custom_select_item_text
         self.sigTextChanged.connect(self.onTextChanged)
         self.initItems()
