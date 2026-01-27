@@ -14415,7 +14415,7 @@ class SelectAcdcDfVersionToRestore(QBaseDialog):
         csv_files = [file for file in files if file.endswith('.csv')]
         self.neverSavedListBox = None
         if csv_files:
-            csv_names = natsorted(csv_files)
+            csv_names = natsorted(csv_files, reverse=True)
             keys = [csv_name[:-4] for csv_name in csv_names]
             self.neverSavedKeys = keys
             f = load.ISO_TIMESTAMP_FORMAT
