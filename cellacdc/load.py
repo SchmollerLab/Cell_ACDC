@@ -2760,28 +2760,50 @@ class loadData:
         return segmEndName
     
     def getSegmentedChannelHyperparams(self):
+        run_num = self.getSegmHyperparamsNewRunNumber()
         cp = config.ConfigParser()
         if os.path.exists(self.segm_hyperparams_ini_path):
             cp.read(self.segm_hyperparams_ini_path)
             segmEndName = self.getSegmEndname()
+            metadata_section = f'{segmEndName}.metadata.run_number_{run_num}'
             section = segmEndName
             option = 'segmented_channel'
-            channel_name = cp.get(section, option, fallback=self.user_ch_name)
+            channel_name = cp.get(
+                metadata_section, option, fallback=self.user_ch_name
+            )
             return channel_name, segmEndName
         else:
             return self.user_ch_name, ''
     
-    def updateSegmentedChannelHyperparams(self, channelName):
-        cp = config.ConfigParser()
+    def getSegmHyperparamsNewRunNumber(self):
+        run_num = 1
         if not os.path.exists(self.segm_hyperparams_ini_path):
-            return
+            return run_num
+        
+        cp = config.ConfigParser()
         cp.read(self.segm_hyperparams_ini_path)
         segmEndName = self.getSegmEndname()
-        section = segmEndName
-        if section not in cp.sections():
+        metadata_section = f'{segmEndName}.metadata'
+        for section in cp.sections():
+            if section.startswith(metadata_section):
+                run_num += 1
+        
+        return run_num
+    
+    def updateSegmentedChannelHyperparams(self, channelName):
+        if not os.path.exists(self.segm_hyperparams_ini_path):
             return
+        
+        cp = config.ConfigParser()
+        cp.read(self.segm_hyperparams_ini_path)
+        segmEndName = self.getSegmEndname()
+        run_num = self.getSegmHyperparamsNewRunNumber()
+        metadata_section = f'{segmEndName}.metadata.run_number_{run_num}'
+        if metadata_section not in cp.sections():
+            return
+        
         option = 'segmented_channel'
-        cp[section][option] = channelName
+        cp[metadata_section][option] = channelName
         with open(self.segm_hyperparams_ini_path, 'w') as configfile:
             cp.write(configfile)
 
@@ -2796,29 +2818,40 @@ class loadData:
             cp.read(self.segm_hyperparams_ini_path)
         
         segmEndName = self.getSegmEndname()
+        
+        # Remove old sections if present
+        cp.remove_section(segmEndName)
+        
         segm_filename = os.path.basename(self.segm_npz_path)
+        
+        run_num = self.getSegmHyperparamsNewRunNumber()
 
         metadata_section = f'{segmEndName}.metadata'
+        metadata_section = f'{metadata_section}.run_number_{run_num}'
         cp[metadata_section] = {}
         
         cp[metadata_section]['segmentation_filename'] = segm_filename
         cp[metadata_section]['segmented_channel'] = self.user_ch_name
-        now = datetime.now().strftime(r'%Y-%m-%d %H:%M:%S')
+        now = datetime.now().strftime(r'%Y-%m-%d %H:%M:%S.%u')
         cp[metadata_section]['segmented_on'] = now
         cp[metadata_section]['model_name'] = model_name
 
         init_section = f'{segmEndName}.init'
+        init_section = f'{init_section}.run_number_{run_num}'
+        
         cp[init_section] = {}
         for key, value in init_kwargs.items():
             cp[init_section][key] = str(value)
         
         segment_section = f'{segmEndName}.segment'
+        segment_section = f'{segment_section}.run_number_{run_num}'
         cp[segment_section] = {}
         for key, value in segment_kwargs.items():
             cp[segment_section][key] = str(value)
 
         if post_process_params is not None:
             post_process_section = f'{segmEndName}.postprocess'
+            post_process_section = f'{post_process_section}.run_number_{run_num}'
             cp[post_process_section] = {}
             for key, value in post_process_params.items():
                 cp[post_process_section][key] = str(value)
@@ -2829,6 +2862,9 @@ class loadData:
             )
             for preproc_section, section_items in preproc_ini_items.items():
                 segm_preproc_section = f'{segmEndName}.{preproc_section}'
+                segm_preproc_section = (
+                    f'{segm_preproc_section}.run_number_{run_num}'
+                )
                 cp[segm_preproc_section] = {}
                 for key, value in section_items.items():
                     cp[segm_preproc_section][key] = str(value)

@@ -97,7 +97,10 @@ def set_value_no_signals(widget, value):
 
 def set_exclusive_valueSetter(widget, valueSetter, value):
     was_blocked = widget.blockSignals(True)
-    valueSetter(widget, value)
+    try:
+        valueSetter(widget, value)
+    except Exception as err:
+        valueSetter(value)
     widget.blockSignals(was_blocked)
 
 def hardDelete(item, setPosData=True):
