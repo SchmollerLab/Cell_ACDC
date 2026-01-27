@@ -85,14 +85,11 @@ class tracker:
             in the `self.cca_dfs` list (one DataFrame with index `Cell_ID` per 
             frame). When used through Cell-ACDC, this list will be saved 
             to the acdc_output CSV file. 
-        """        
-        
-        if segm_video.ndim == 4:
-            raise TypeError('4D tracking not supported by Trackastra yet.')
-        
+        """                
         out = self.model.track(
             video_grayscale, segm_video, mode=linking_mode
         )
+        
         try:
             df_ctc, tracked_video = graph_to_ctc(out, segm_video)
         except Exception as e:
