@@ -885,6 +885,7 @@ class AutoSaveWorker(QObject):
                 if self.debug:
                     self.logger.log('Autosaving...')
                 data = self.dataQ.pop()
+                self.isSaving = True
                 try:
                     self.saveData(data)
                 except Exception as e:
@@ -892,6 +893,8 @@ class AutoSaveWorker(QObject):
                     print('*'*40)
                     self.logger.log(error)
                     print('='*40)
+                self.isSaving = False
+                
                 if len(self.dataQ) == 0:
                     self.sigDone.emit()
             else:
@@ -917,7 +920,6 @@ class AutoSaveWorker(QObject):
         if self.debug:
             self.logger.log('Started autosaving...')
         
-        self.isSaving = True
         try:
             posData.setTempPaths()
         except Exception as e:
@@ -994,7 +996,6 @@ class AutoSaveWorker(QObject):
             self.logger.log(f'Aborted autosaving {self.abortSaving}.')
 
         self.abortSaving = False
-        self.isSaving = False
     
     def _saveSegm(self, recovery_path, data):
         try:
@@ -1043,10 +1044,14 @@ class AutoSaveWorker(QObject):
         if last_unsaved_csv_path is None:
             reference_acdc_df = saved_acdc_df
         else:
-            reference_acdc_df = (
-                pd.read_csv(last_unsaved_csv_path, dtype=load.acdc_df_str_cols)
-                .set_index(['frame_i', 'Cell_ID'])
-            )
+            try:
+                reference_acdc_df = (
+                    pd.read_csv(last_unsaved_csv_path, dtype=load.acdc_df_str_cols)
+                    .set_index(['frame_i', 'Cell_ID'])
+                )
+            except Exception as e:
+                self.logger.log(f'[WARNING]: {e}')
+                reference_acdc_df = saved_acdc_df
         
         if myutils.are_acdc_dfs_equal(recovery_acdc_df, reference_acdc_df):
             return

@@ -108,8 +108,8 @@ if os.name == 'nt':
     except Exception as e:
         pass
 
-AUTOSAVE_INTERVAL_MINUTES = 5
-autosave_interval_seconds = 300
+AUTOSAVE_INTERVAL_MINUTES = 2
+autosave_interval_seconds = AUTOSAVE_INTERVAL_MINUTES*60
 autosave_interval_ms = autosave_interval_seconds*1000
 
 GREEN_HEX = _palettes.green()
@@ -8447,8 +8447,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.SegForLostIDsWaitCond.wakeAll()
 
         
-    def onSigStoreData(self, waitcond, pos_i=None, enforce=True, debug=False, mainThread=True,
-            autosave=True, store_cca_df_copy=False):
+    def onSigStoreData(
+            self, waitcond, pos_i=None, enforce=True, debug=False,
+            mainThread=True, autosave=True, store_cca_df_copy=False
+        ):
         self.store_data(pos_i=pos_i, enforce=enforce, debug=debug, mainThread=mainThread,
             autosave=autosave, store_cca_df_copy=store_cca_df_copy)
         waitcond.wakeAll()
@@ -22624,6 +22626,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.autoSaveTimer.isActive():
             return
         
+        self.logger.info('Autosaving...')
         posData = self.data[self.pos_i]          
         if not self.statusBarLabel.text().endswith('Autosaving...'):
             self.statusBarLabel.setText(
