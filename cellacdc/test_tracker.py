@@ -21,10 +21,10 @@ from cellacdc._run import _setup_app
 app, splashScreen = _setup_app(splashscreen=True)  
 splashScreen.close()
 
-channel_name = 'Autofluorescence'
+channel_name = 'SiR_Hoechst'
 end_filename_segm = 'segm' # 'segm_test'
 START_FRAME = 0 
-STOP_FRAME = 400
+STOP_FRAME = 10
 # PLOT_FRAME = 499
 SAVE = False
 REAL_TIME_TRACKER = False
@@ -123,7 +123,8 @@ tracked_stack = core.tracker_track(
     logger_func=print
 )
 
-posData.fromTrackerToAcdcDf(tracker, tracked_stack, save=True)
+if hasattr(posData, 'acdc_output_csv_path'):
+    posData.fromTrackerToAcdcDf(tracker, tracked_stack, save=True)
 
 first_untracked_lab = lab_stack[0]
 uniqueID = max(np.max(lab_stack), np.max(tracked_stack)) + 1
