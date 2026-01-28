@@ -50,6 +50,7 @@ dependencies = [
     "boto3",
     "requests",
     "setuptools-scm",
+    "matplotlib"
 ]
 dynamic = [
     "version",
@@ -148,7 +149,6 @@ all = [
 dev = [
     "pytest",
     "pytest-cov",
-    "matplotlib",
 ]
 
 [project.scripts]
