@@ -864,7 +864,41 @@ def add_generation_num_of_relative_ID(
     
     acdc_df_with_col = acdc_df_by_frame_i.reset_index()
     return acdc_df_with_col
+
+def get_IDs_gen_num_will_divide(cca_df):
+    """Get a list of (ID, gen_num) of cells that require `will_divide`>0
     
+    Parameters
+    ----------
+    cca_df : pd.DataFrame
+        DataFrame with cc annotations for every frame and Cell_ID
+    
+    Returns
+    -------
+    list of tuples
+        List of (ID, gen_num) of cells that require `will_divide`>0
+    """
+    
+    cca_df_buds = cca_df.query('relationship == "bud"')
+    IDs_gen_num_will_divide = []
+    for budID, bud_cca_df in cca_df_buds.groupby('Cell_ID'):
+        all_gen_nums = cca_df.query(f'Cell_ID == {budID}')['generation_num']
+        if not (all_gen_nums > 0).any():
+            # bud division is annotated in the future
+            continue        
+        
+        mothID = int(bud_cca_df['relative_ID'].iloc[0])
+        first_frame_bud = bud_cca_df['frame_i'].iloc[0]
+        gen_num_moth = cca_df.query(
+            f'(frame_i == {first_frame_bud}) & (Cell_ID == {mothID})'
+        )['generation_num'].iloc[0]
+        
+        IDs_gen_num_will_divide.append((mothID, gen_num_moth))
+        IDs_gen_num_will_divide.append((budID, 0))
+        
+    return IDs_gen_num_will_divide
+    
+
 def get_IDs_gen_num_will_divide_wrong(global_cca_df):
     """Get a list of (ID, gen_num) of cells whose `will_divide`>0 but the 
     next generation does not exist (i.e., `will_divide` is wrong)
