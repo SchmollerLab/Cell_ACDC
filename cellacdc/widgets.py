@@ -10981,6 +10981,21 @@ class MagicPromptsToolbar(ToolBar):
         
         self.addSeparator()
         
+        self.interpolateZslicesCheckbox = self.addCheckBox(
+            'Interpolate points on missing z-slices', checked=False
+        )
+        self.interpolateZslicesCheckbox.setToolTip(
+            'If checked, when working with 3D segmentation masks, you can '
+            'add points on some z-slices only and the points on the missing '
+            'z-slices will be determined by linear interpolation.\n\n'
+            'This is useful when working with 2D models that segments '
+            'each z-slice independently.\n\n'
+            'NOTE: The points will be added only when running the model and '
+            'removed afterwards.'
+        )
+        
+        self.addSeparator()
+        
         self.computeOnZoomAction = self.addButton(':compute-zoom.svg')
         self.computeOnZoomAction.setToolTip(
             'Compute the segmentation on the zoomed area of the image '
@@ -11003,21 +11018,6 @@ class MagicPromptsToolbar(ToolBar):
             'Clear all points on the zoomed area of the image'
         )
         self.clearPointsActionOnZoom.setDisabled(True)
-        
-        self.addSeparator()
-        
-        self.interpolateZslicesCheckbox = self.addCheckBox(
-            'Interpolate points on missing z-slices', checked=False
-        )
-        self.interpolateZslicesCheckbox.setToolTip(
-            'If checked, when working with 3D segmentation masks, you can '
-            'add points on some z-slices only and the points on the missing '
-            'z-slices will be determined by linear interpolation.\n\n'
-            'This is useful when working with 2D models that segments '
-            'each z-slice independently.\n\n'
-            'NOTE: The points will be added only when running the model and '
-            'removed afterwards.'
-        )
         
         self.addSeparator()
         
@@ -11357,6 +11357,7 @@ class PointsLayersToolbar(ToolBar):
         if 'z' not in df.columns:
             return df
         
+        printl(df)
         df_new_rows = []
         for (frame_i, point_id), df_id in df.groupby(['frame_i', 'id']):
             xx = df_id['x'].values
@@ -11373,7 +11374,7 @@ class PointsLayersToolbar(ToolBar):
                     continue
                 
                 t_int = (z - p0[2]) / d[2]
-                z_new, y_new, x_new = p0 + t_int * d
+                x_new, y_new, z_new = p0 + t_int * d
                 new_row_df['z'] = round(z_new)
                 new_row_df['y'] = round(y_new)
                 new_row_df['x'] = round(x_new)
