@@ -11395,8 +11395,6 @@ class PointsLayersToolbar(ToolBar):
         df = df.sort_values(by=['frame_i', 'id', 'z']).reset_index(drop=True)
         
         return df
-                
-                
 
 class PromptableModelPointsLayerToolbar(PointsLayersToolbar):
     def __init__(self, name='Promptable model points layers', parent=None):
