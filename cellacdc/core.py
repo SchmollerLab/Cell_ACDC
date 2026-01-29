@@ -3375,3 +3375,12 @@ def natsort_acdc_columns(
     
     sorted_cols = [*cols_to_prepend, *sorted_cols]
     return sorted_cols
+
+def linear_fit_3d(xx, yy, zz):
+    points = np.column_stack((xx, yy, zz))
+    centroid = points.mean(axis=0)
+
+    _, _, vh = np.linalg.svd(points - centroid)
+    d = vh[0]
+
+    return centroid, d

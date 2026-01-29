@@ -2323,7 +2323,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.magicPromptsToolbar.sigClearPointsOnZmom.connect(
             partial(self.magicPromptsClearPoints, only_zoom=True)
         )
-        
+        self.magicPromptsToolbar.sigInterpolateZslice.connect(
+            self.magicPromptsInterpolateZsliceToggled
+        )
+
         self.addToolBar(Qt.TopToolBarArea, self.magicPromptsToolbar)
         self.magicPromptsToolbar.setVisible(False)
         self.magicPromptsToolbar.keepVisibleWhenActive = True
@@ -15808,6 +15811,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             image_origin=image_origin, zoom_slice=zoom_slice
         )
     
+    def magicPromptsInterpolateZsliceToggled(self, checked):
+        # Nothing to do upon toggling this for now. 
+        # Interpolated points are added only upon running the model 
+        # and removed afterwards.
+        # See 'self.promptSegmentPointsLayerToolbar.addPointsZslicesInterpolation'
+        ...
+    
     def magicPromptsClearPoints(self, toolbar, only_zoom=False):
         posData = self.data[self.pos_i]
         scatterItem = self.promptSegmentPointsLayerToolbar.scatterItem()
@@ -15816,8 +15826,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         pointsDataPos = action.pointsData.get(self.pos_i)
         if pointsDataPos is None:
             return
-        
-        
         
         framePointsData = action.pointsData[self.pos_i].pop(
             posData.frame_i, None
@@ -23609,7 +23617,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             )
             return
         
-        onlyMouseClicks = toolbar==self.promptSegmentPointsLayerToolbar
+        onlyMouseClicks = toolbar == self.promptSegmentPointsLayerToolbar
         posData = self.data[self.pos_i]
         self.addPointsWin = apps.AddPointsLayerDialog(
             channelNames=posData.chNames, 

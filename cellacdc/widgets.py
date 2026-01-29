@@ -68,7 +68,7 @@ from . import apps
 from . import plot
 from . import annotate
 from . import urls
-from . import _core
+from . import _core, core
 from . import QtScoped
 from . import prompts
 from .acdc_regex import float_regex
@@ -10951,6 +10951,7 @@ class MagicPromptsToolbar(ToolBar):
     sigViewModelParams = Signal(
         str, object, list, list, str, object, object, object
     )
+    sigInterpolateZslice = Signal(bool)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -11005,6 +11006,21 @@ class MagicPromptsToolbar(ToolBar):
         
         self.addSeparator()
         
+        self.interpolateZslicesCheckbox = self.addCheckBox(
+            'Interpolate points on missing z-slices', checked=False
+        )
+        self.interpolateZslicesCheckbox.setToolTip(
+            'If checked, when working with 3D segmentation masks, you can '
+            'add points on some z-slices only and the points on the missing '
+            'z-slices will be determined by linear interpolation.\n\n'
+            'This is useful when working with 2D models that segments '
+            'each z-slice independently.\n\n'
+            'NOTE: The points will be added only when running the model and '
+            'removed afterwards.'
+        )
+        
+        self.addSeparator()
+        
         self.infoAction = self.addButton(':info.svg')
         self.infoAction.setToolTip(
             'Show instructions how to use promptable models'
@@ -11029,6 +11045,9 @@ class MagicPromptsToolbar(ToolBar):
         )
         self.clearPointsActionOnZoom.triggered.connect(
             self.emitSigClearPointsOnZoom
+        )
+        self.interpolateZslicesCheckbox.toggled.connect(
+            self.sigInterpolateZslice.emit
         )
     
     def showHelp(self):
@@ -11322,7 +11341,62 @@ class PointsLayersToolbar(ToolBar):
         if zz:
             df['z'] = zz
         
+        df = self.addPointsZslicesInterpolation(df, posData.lab, isSegm3D)
+        
         return df
+
+    def addPointsZslicesInterpolation(
+            self, 
+            df: pd.DataFrame, 
+            lab: np.ndarray, 
+            isSegm3D: bool
+        ):
+        if not isSegm3D:
+            return df
+        
+        if 'z' not in df.columns:
+            return df
+        
+        df_new_rows = []
+        for (frame_i, point_id), df_id in df.groupby(['frame_i', 'id']):
+            xx = df_id['x'].values
+            yy = df_id['y'].values
+            zz = df_id['z'].values
+            
+            p0, d = core.linear_fit_3d(xx, yy, zz)
+            
+            new_row_df = df_id.iloc[[0]].copy()
+            
+            z0, z1 = int(np.min(zz)), int(np.max(zz))
+            for z in range(z0, z1+1):
+                if z in zz:
+                    continue
+                
+                t_int = (z - p0[2]) / d[2]
+                z_new, y_new, x_new = p0 + t_int * d
+                new_row_df['z'] = round(z_new)
+                new_row_df['y'] = round(y_new)
+                new_row_df['x'] = round(x_new)
+                
+                Cell_ID = lab[
+                    int(round(z_new)),
+                    int(round(y_new)),
+                    int(round(x_new))
+                ]
+                new_row_df['Cell_ID'] = Cell_ID
+                
+                df_new_rows.append(new_row_df.copy())
+        
+        if not df_new_rows:
+            return df
+        
+        df_new = pd.concat(df_new_rows, ignore_index=True)
+        df = pd.concat([df, df_new], ignore_index=True)
+        df = df.sort_values(by=['frame_i', 'id', 'z']).reset_index(drop=True)
+        
+        return df
+                
+                
 
 class PromptableModelPointsLayerToolbar(PointsLayersToolbar):
     def __init__(self, name='Promptable model points layers', parent=None):
