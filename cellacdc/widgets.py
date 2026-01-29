@@ -11102,7 +11102,11 @@ class MagicPromptsToolbar(ToolBar):
         
         model_name = win.model_name
         print(f'Importing promptable model {model_name}...')
-        
+
+        # Download model weights, consistent with gui.py
+        downloadWin = apps.downloadModel(model_name, parent=self._parent)
+        downloadWin.download()
+
         acdcPromptSegment = myutils.import_promptable_segment_module(model_name)
         init_argspecs, segment_argspecs = myutils.getModelArgSpec(
             acdcPromptSegment
