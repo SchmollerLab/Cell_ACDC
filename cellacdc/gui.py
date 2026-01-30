@@ -5295,7 +5295,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.editIDmergeIDs = editID.mergeWithExistingID
             self.doNotAskAgainExistingID = editID.doNotAskAgainExistingID
             
-            self.applyEditID(ID, currentIDs, editID.how, x, y)
+            self.applyEditID(ID, currentIDs, editID.how, x, y, shift=shift)
         
         elif (right_click or left_click) and self.keepIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -6347,6 +6347,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.zoomRectButton.isChecked() and not event.isExit()
             and noModifier
         )
+        setEditIDCursor = (
+            self.editIDbutton.isChecked() and not event.isExit()
+        )
         magicPromptsON = self.magicPromptsToolButton.isChecked()
         pointsLayerON = self.togglePointsLayerAction.isChecked()
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
@@ -6385,6 +6388,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.app.setOverrideCursor(self.addPointsCursor)
         elif setZoomRectCursor:
             self.app.setOverrideCursor(Qt.CrossCursor)
+        elif setEditIDCursor and overrideCursor is None:
+            if shift:
+                self.app.setOverrideCursor(Qt.CrossCursor)
+            else:
+                self.app.restoreOverrideCursor()
         
         return {
             'setBrushCursor': setBrushCursor,
@@ -6401,7 +6409,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             'setManualTrackingCursor': setManualTrackingCursor,
             'setManualBackgroundCursor': setManualBackgroundCursor,
             'setAddPointCursor': setAddPointCursor,
-            'setZoomRectCursor': setZoomRectCursor
+            'setZoomRectCursor': setZoomRectCursor,
+            'setEditIDCursor': setEditIDCursor
         }
     
     def warnAddingPointWithExistingId(self, point_id, table_endname=''):
@@ -9492,7 +9501,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     
     # @exec_time
     def applyEditID(
-            self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y
+            self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y, shift=False
         ):  
         posData = self.data[self.pos_i]
         
@@ -9510,15 +9519,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if UndoFutFrames is None:
             return
 
+        if shift and self.isSegm3D:
+            lab = self.get_2Dlab(posData.lab)
+        else:
+            lab = posData.lab
+        
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(UndoFutFrames)
         maxID = max(posData.IDs, default=0)
         for old_ID, new_ID in oldIDnewIDMapper:
             if new_ID in currentIDs and not self.editIDmergeIDs:
                 tempID = maxID + 1
-                posData.lab[posData.lab == old_ID] = maxID + 1
-                posData.lab[posData.lab == new_ID] = old_ID
-                posData.lab[posData.lab == tempID] = new_ID
+                lab[lab == old_ID] = maxID + 1
+                lab[lab == new_ID] = old_ID
+                lab[lab == tempID] = new_ID
                 maxID += 1
 
                 old_ID_idx = currentIDs.index(old_ID)
@@ -9536,7 +9550,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     yo, xo = int(clicked_y), int(clicked_x)
                     posData.editID_info.append((yo, xo, old_ID))
             else:
-                posData.lab[posData.lab == old_ID] = new_ID
+                lab[lab == old_ID] = new_ID
                 if new_ID > maxID:
                     maxID = new_ID
                 old_ID_idx = posData.IDs.index(old_ID)
@@ -9550,6 +9564,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     posData.editID_info.append((y, x, new_ID))
             
             self.updateAssignedObjsAcdcTrackerSecondStep(new_ID)
+        
+        if shift and self.isSegm3D:
+            self.set_2Dlab(lab)
         
         # Update rps
         self.update_rp()
@@ -9581,7 +9598,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         if applyFutFrames:
             self.changeIDfutureFrames(
-                endFrame_i, oldIDnewIDMapper, includeUnvisited
+                endFrame_i, oldIDnewIDMapper, includeUnvisited,
+                shift=shift
             )
     
     def getLastHoveredID(self):
@@ -22689,7 +22707,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             posData.cca_df = cca_df
 
     def changeIDfutureFrames(
-            self, endFrame_i, oldIDnewIDMapper, includeUnvisited
+            self, endFrame_i, oldIDnewIDMapper, includeUnvisited,
+            shift=False
         ):
         posData = self.data[self.pos_i]
         self.current_frame_i = posData.frame_i
@@ -22711,6 +22730,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 # Visited frame
                 posData.frame_i = i
                 self.get_data(lin_tree_init=False)
+                if shift and self.isSegm3D:
+                    lab = self.get_2Dlab(posData.lab)
+                else:
+                    lab = posData.lab
+                
                 if self.onlyTracking:
                     self.tracking(enforce=True)
                 elif not posData.IDs:
@@ -22718,19 +22742,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 else:
                     maxID = max(posData.IDs, default=0) + 1
                     for old_ID, new_ID in oldIDnewIDMapper:
-                        if new_ID in posData.lab:
-                            tempID = maxID + 1 # posData.lab.max() + 1
-                            posData.lab[posData.lab == old_ID] = tempID
-                            posData.lab[posData.lab == new_ID] = old_ID
-                            posData.lab[posData.lab == tempID] = new_ID
+                        if new_ID in lab:
+                            tempID = maxID + 1 # lab.max() + 1
+                            lab[lab == old_ID] = tempID
+                            lab[lab == new_ID] = old_ID
+                            lab[lab == tempID] = new_ID
                             maxID += 1
                         else:
-                            posData.lab[posData.lab == old_ID] = new_ID
+                            lab[lab == old_ID] = new_ID
+                    
+                    if shift and self.isSegm3D:
+                        self.set_2Dlab(lab)
+                    
                     self.update_rp(draw=False)
                 self.store_data(autosave=i==endFrame_i)
             elif includeUnvisited:
                 # Unvisited frame (includeUnvisited = True)
                 lab = posData.segm_data[i]
+                if shift and self.isSegm3D:
+                    lab = self.get_2Dlab(lab)
+                else:
+                    lab = lab
+                    
                 for old_ID, new_ID in oldIDnewIDMapper:
                     if new_ID in lab:
                         tempID = lab.max() + 1
@@ -22739,6 +22772,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                         lab[lab == tempID] = new_ID
                     else:
                         lab[lab == old_ID] = new_ID
+                
+                if shift and self.isSegm3D:
+                    posData.segm_data[i][self.z_lab()] = lab
         
         # Back to current frame
         posData.frame_i = self.current_frame_i

@@ -525,9 +525,16 @@ yeaz_v2_weights_filenames = [
 ]
 
 segment_anything_weights_filenames = [
-    'sam_vit_h_4b8939.pth', 
-    'sam_vit_l_0b3195.pth', 
+    'sam_vit_h_4b8939.pth',
+    'sam_vit_l_0b3195.pth',
     'sam_vit_b_01ec64.pth'
+]
+
+sam2_weights_filenames = [
+    'sam2.1_hiera_large.pt',
+    'sam2.1_hiera_base_plus.pt',
+    'sam2.1_hiera_small.pt',
+    'sam2.1_hiera_tiny.pt'
 ]
 
 deepsea_weights_filenames = [
