@@ -22409,6 +22409,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.store_data()
     
+    def resetLin_tree_future(self):
+        if self.lineage_tree is not None:
+            self.logger.info("WARNING: resetting lineage tree future frames in the lineage_tree object is not implemented yet",
+                   "This is only for acdc_df dataframes")
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        for i in range(frame_i, posData.SizeT):
+            df = posData.allData_li[i]['acdc_df']
+            # reste lineage tree columns
+            if df is None:
+                continue
+            df = df.drop(columns=lineage_tree_cols, errors='ignore')
+            posData.allData_li[i]['acdc_df'] = df
+    
     def get_cca_df(self, frame_i=None, return_df=False, debug=False):
         # cca_df is None unless the metadata contains cell cycle annotations
         # NOTE: cell cycle annotations are either from the current session
@@ -26518,29 +26532,38 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-        
-        if acdc_df is None:
+                
+        if acdc_df is None and self.lineage_tree is None:
             if update_images:
                 self.updateAllImages()
+            
             return True
-        elif 'cell_cycle_stage' not in acdc_df.columns:
+        cell_cycle_stage_present = (
+            acdc_df is not None and 'cell_cycle_stage' in acdc_df.columns
+            )
+        lineage_tree_present = (
+            self.lineage_tree is not None or 'parent_ID_tree' in acdc_df.columns
+        )
+        if not cell_cycle_stage_present and not lineage_tree_present:
             if update_images:
                 self.updateAllImages()
             return True
             
         action = self.warnEditingWithAnnotActions.get(editTxt, None)
         if action is not None and not action.isChecked():
+            # user has checked that he does not want to be asked again AND he doesnt want to delete
             if update_images:
                 self.updateAllImages()
             return True
 
         msg = widgets.myMessageBox()
+        warn_type = 'cell cycle annotations' if cell_cycle_stage_present else 'lineage tree annotations'
         txt = html_utils.paragraph(
-            'You modified a frame that <b>has cell cycle annotations</b>.<br><br>'
+            f'You modified a frame that <b>has {warn_type}</b>.<br><br>'
             f'The change <b>"{editTxt}"</b> most likely makes the '
             '<b>annotations wrong</b>.<br><br>'
             'If you really want to apply this change we reccommend to remove'
-            'ALL cell cycle annotations<br>'
+            f'ALL {warn_type}<br>'
             'from current frame to the end.<br><br>'
             'What do you want to do?'
         )
@@ -26573,9 +26596,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if return_answer:
             return msg.clickedButton == removeAnnotButton
         
-        if msg.clickedButton == removeAnnotButton:
+        if (msg.clickedButton == removeAnnotButton) and cell_cycle_stage_present:
             self.resetFutureCcaColCurrentFrame()
             self.resetCcaFuture(posData.frame_i+1)
+            self.updateAllImages()
+        elif (msg.clickedButton == removeAnnotButton) and lineage_tree_present:
+            self.resetLin_tree_future()
             self.updateAllImages()
         else:
             if dropDelIDsNoteText and posData.cca_df is not None:
@@ -26593,6 +26619,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.store_data()
                 posData.frame_i -= 1
                 self.get_data()
+                if lineage_tree_present:
+                    self.resetLin_tree_future()
                 self.resetCcaFuture(posData.frame_i)
                 self.next_frame()
         
