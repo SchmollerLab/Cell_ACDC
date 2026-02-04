@@ -347,8 +347,11 @@ def warnMissingCca(missing_cca_items, qparent=None):
     
     detailsText = '<br>'.join(details_txt_list)
     msg = widgets.myMessageBox(wrapText=False)
-    msg.warning(
+    _, ignoreButton = msg.warning(
         qparent, 'Missing cell cycle annotations', mainText, 
-        detailsText
+        detailsText,
+        buttonsTexts=('Cancel', 'Ignore'),
+        add_do_not_show_again_checkbox=True,
     )
-    return msg.cancel
+    doNotShowAgain = msg.doNotShowAgainCheckbox.isChecked()
+    return msg.clickedButton == ignoreButton, doNotShowAgain
