@@ -15421,10 +15421,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             f'Track parameters: {track_params_log}'
         )
 
-        last_tracked_i = self.get_last_tracked_i()
-        if start_n-1 <= last_tracked_i and start_n>1:
+        last_cca_i = self.get_last_cca_frame_i()
+        if start_n-2 <= last_cca_i and start_n>1:
             proceed = self.warnRepeatTrackingVideoWithAnnotations(
-                last_tracked_i, start_n
+                last_cca_i, start_n
             )
             if not proceed:
                 self.logger.info('Tracking aborted.')
@@ -21919,6 +21919,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 last_tracked_i = posData.segmSizeT-1
         return last_tracked_i
 
+    def get_last_cca_frame_i(self):
+        posData = self.data[self.pos_i]
+        
+        i = 0
+        # Determine last annotated frame index
+        for i, dict_frame_i in enumerate(posData.allData_li):
+            df = dict_frame_i['acdc_df']
+            if df is None:
+                break
+            elif 'cell_cycle_stage' not in df.columns:
+                break
+        
+        last_cca_frame_i = i if i==0 or i+1==len(posData.allData_li) else i-1  
+        
+        return last_cca_frame_i
+    
     def initSegmTrackMode(self):
         posData = self.data[self.pos_i]
         last_tracked_i = self.get_last_tracked_i()
@@ -21996,16 +22012,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         proceed = True
-        i = 0
-        # Determine last annotated frame index
-        for i, dict_frame_i in enumerate(posData.allData_li):
-            df = dict_frame_i['acdc_df']
-            if df is None:
-                break
-            elif 'cell_cycle_stage' not in df.columns:
-                break
         
-        last_cca_frame_i = i if i==0 or i+1==len(posData.allData_li) else i-1
+        last_cca_frame_i = self.get_last_cca_frame_i()
         if last_cca_frame_i == 0:
             # Remove undoable actions from segmentation mode
             posData.UndoRedoStates[0] = []
@@ -26626,6 +26634,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         if get_answer:
             return msg.clickedButton == removeAnnotButton
+        else:
+            return True
+    
+    def warnRepeatTrackingVideoOnVisitedFrames(self, last_tracked_i, start_n):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            'You are repeating tracking on frames that <b>have already '
+            'been visited/tracked before</b>.<br><br>'
+            'This will very likely make the <b>annotations wrong</b>.<br><br>'
+            'If you really want to repeat tracking on the frames before '
+            f'{last_tracked_i+1} the <b>annotations from frame '
+            f'{start_n} to frame {last_tracked_i+1} '
+            'will be removed</b>.<br><br>'
+            'Do you want to continue?'
+        )
+        noButton, yesButton = msg.warning(
+            self, 'Repating tracking with annotations!', txt,
+            buttonsTexts=(
+                '  No, stop tracking and keep annotations.',
+                '  Yes, repeat tracking and DELETE annotations.' 
+            )
+        )
+        if msg.cancel:
+            return False
+
+        if msg.clickedButton == noButton:
+            return False
         else:
             return True
     
