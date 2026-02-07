@@ -622,7 +622,11 @@ class TextAnnotations:
                     'bold': False,
                 }
                 yc, xc = getObjCentroidFunc(obj.centroid)
-                pos = (int(xc), int(yc))
+                try:
+                    pos = (int(xc), int(yc))
+                except Exception as err:
+                    # Sometimes xc or yc can be nan, causing an error when converting to int --> skip annotation in this case
+                    continue
                 objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
                 self.item.appendData(objData, objOpts['text'])
 
