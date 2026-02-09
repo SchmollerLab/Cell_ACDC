@@ -523,6 +523,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         else:
             self._colorScheme = 'light'
         
+        self.doNotShowAgainMissingCca = False
         if 'doNotShowAgainMissingCca' not in self.df_settings.index:
             self.df_settings.at['doNotShowAgainMissingCca', 'value'] = 'No'
         else:
@@ -16032,7 +16033,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         results = (None, lab_new, lab_union, lab_interesection)
         selected_idx = promptSegmResultsWindow.selected_idx
-        posData.allData_li[posData.frame_i]['labels'] = results[selected_idx]
+        
+        lab = posData.allData_li[posData.frame_i]['labels']
+        lab[..., zoom_slice[0], zoom_slice[1]] = lab
+        
+        posData.allData_li[posData.frame_i]['labels'] = lab
         self.get_data()
         self.store_data(autosave=False)
         self.updateAllImages()
