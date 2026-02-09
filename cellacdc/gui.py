@@ -522,6 +522,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self._colorScheme = self.df_settings.at[col, 'value']
         else:
             self._colorScheme = 'light'
+        
+        if 'doNotShowAgainMissingCca' not in self.df_settings.index:
+            self.df_settings.at['doNotShowAgainMissingCca', 'value'] = 'No'
+        else:
+            val = self.df_settings.at['doNotShowAgainMissingCca', 'value']
+            self.doNotShowAgainMissingCca = val=='Yes'
 
     def dragEnterEvent(self, event):
         file_path = event.mimeData().urls()[0].toLocalFile()
@@ -2323,7 +2329,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.magicPromptsToolbar.sigClearPointsOnZmom.connect(
             partial(self.magicPromptsClearPoints, only_zoom=True)
         )
-        
+        self.magicPromptsToolbar.sigInterpolateZslice.connect(
+            self.magicPromptsInterpolateZsliceToggled
+        )
+
         self.addToolBar(Qt.TopToolBarArea, self.magicPromptsToolbar)
         self.magicPromptsToolbar.setVisible(False)
         self.magicPromptsToolbar.keepVisibleWhenActive = True
@@ -7516,7 +7525,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.storeUndoAddPoint(action)
             x, y = event.pos().x(), event.pos().y()
             hoveredPoints = action.scatterItem.pointsAt(event.pos())
-            if hoveredPoints:
+            if len(hoveredPoints) > 0:
                 removed_id = self.removeClickedPoints(action, hoveredPoints)
                 if not magicPromptsON:
                     addPointsByClickingButton.pointIdSpinbox.setValue(removed_id)
@@ -15808,6 +15817,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             image_origin=image_origin, zoom_slice=zoom_slice
         )
     
+    def magicPromptsInterpolateZsliceToggled(self, checked):
+        # Nothing to do upon toggling this for now. 
+        # Interpolated points are added only upon running the model 
+        # and removed afterwards.
+        # See 'self.promptSegmentPointsLayerToolbar.addPointsZslicesInterpolation'
+        ...
+    
     def magicPromptsClearPoints(self, toolbar, only_zoom=False):
         posData = self.data[self.pos_i]
         scatterItem = self.promptSegmentPointsLayerToolbar.scatterItem()
@@ -15816,8 +15832,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         pointsDataPos = action.pointsData.get(self.pos_i)
         if pointsDataPos is None:
             return
-        
-        
         
         framePointsData = action.pointsData[self.pos_i].pop(
             posData.frame_i, None
@@ -23623,7 +23637,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             )
             return
         
-        onlyMouseClicks = toolbar==self.promptSegmentPointsLayerToolbar
+        onlyMouseClicks = toolbar == self.promptSegmentPointsLayerToolbar
         posData = self.data[self.pos_i]
         self.addPointsWin = apps.AddPointsLayerDialog(
             channelNames=posData.chNames, 
@@ -31599,6 +31613,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.saveData(isQuickSave=True)
     
     def checkMissingCca(self):
+        proceed = True
+        ignore = False
+        doNotShowAgain = False
+        if not self.doNotShowAgainMissingCca:
+            return proceed, ignore, doNotShowAgain
+        
         missing_cca_items = []
         for posData in self.data:
             for frame_i, data_dict in enumerate(posData.allData_li):
@@ -31615,10 +31635,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     missing_cca_items.append((cca_df, posData, i))
         
         if not missing_cca_items:
-            return True
+            return proceed, ignore, doNotShowAgain
         
-        _warnings.warnMissingCca(missing_cca_items, qparent=self)
-        return False
+        proceed = False
+        ignore, doNotShowAgain =_warnings.warnMissingCca(
+            missing_cca_items, qparent=self
+        )
+        
+        if doNotShowAgain:
+            self.df_settings.at['doNotShowAgainMissingCca', 'value'] = 'Yes'
+            self.df_settings.to_csv(self.settings_csv_path)
+        
+        return proceed, ignore, doNotShowAgain
         
     def warnDifferentSegmChannel(
             self, loaded_channel, segm_channel_hyperparams, segmEndName
@@ -31690,8 +31718,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             posData.updateSegmentedChannelHyperparams(self.user_ch_name)
 
         # Check missing cca annotations in snaphots
-        proceed = self.checkMissingCca()
-        if not proceed:
+        proceed, ignore, self.doNotShowAgainMissingCca = self.checkMissingCca()
+        if not proceed and not ignore:
             self.cancelSavingInitialisation()
             self.setDisabled(False, keepDisabled=False)
             self.activateWindow()
