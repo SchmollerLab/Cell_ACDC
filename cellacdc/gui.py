@@ -16033,9 +16033,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         results = (None, lab_new, lab_union, lab_interesection)
         selected_idx = promptSegmResultsWindow.selected_idx
+        out_lab = results[selected_idx]
+        mask = out_lab > 0
         
         lab = posData.allData_li[posData.frame_i]['labels']
-        lab[..., zoom_slice[0], zoom_slice[1]] = lab
+        lab[..., zoom_slice[0], zoom_slice[1]][mask] = (
+            out_lab[..., zoom_slice[0], zoom_slice[1]][mask]
+        )
         
         posData.allData_li[posData.frame_i]['labels'] = lab
         self.get_data()
