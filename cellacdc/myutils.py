@@ -5001,7 +5001,8 @@ def get_empty_stored_data_dict():
                     'rois': [], 'delMasks': [], 'delIDsROI': [], 'state': []
                 },
             'IDs': [],
-            'manually_edited_lab': {'lab': {}, 'zoom_slice': None}
+            'manually_edited_lab': {'lab': {}, 'zoom_slice': None},
+            'single_moth_bud_pair_cca': None,
         }
 
 def iterate_along_axes(arr, axes, arr_ndim=None):

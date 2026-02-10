@@ -517,8 +517,7 @@ def _fix_corrected_assignment_i(acdc_df: pd.DataFrame):
 
 def _fix_will_divide(acdc_df):
     """Resetting annotaions in GUI sometimes does not fully reset `will_divide` 
-    column. Here we set `will_divide` back to 0 for those cells whose 
-    next generation does not exist (division was not annotated)
+    column. Here we reset `will_divide`
 
     Parameters
     ----------
@@ -534,19 +533,22 @@ def _fix_will_divide(acdc_df):
     if 'cell_cycle_stage' not in acdc_df.columns:
         return acdc_df
     
-    required_cols = ['frame_i', 'Cell_ID', 'generation_num', 'will_divide']
+    required_cols = [
+        'frame_i', 'Cell_ID', 'generation_num', 'will_divide', 'relationship',
+        'relative_ID'
+    ]
     
     cca_df_mask = ~acdc_df['cell_cycle_stage'].isna()
     cca_df = acdc_df[cca_df_mask].reset_index()[required_cols]
     
-    IDs_will_divide_wrong = (
-        cca_functions.get_IDs_gen_num_will_divide_wrong(cca_df)
-    )
-    if not IDs_will_divide_wrong:
+    IDs_gen_num_will_divide = cca_functions.get_IDs_gen_num_will_divide(cca_df)
+    
+    if not IDs_gen_num_will_divide:
         return acdc_df
     
-    cca_df = cca_df.reset_index().set_index(['Cell_ID', 'generation_num'])   
-    cca_df.loc[IDs_will_divide_wrong, 'will_divide'] = 0
+    cca_df['will_divide'] = 0.0
+    cca_df = cca_df.reset_index().set_index(['Cell_ID', 'generation_num'])
+    cca_df.loc[IDs_gen_num_will_divide, 'will_divide'] = 1.0
     cca_df = cca_df.reset_index()
     acdc_df = acdc_df.reset_index()
 
@@ -555,6 +557,21 @@ def _fix_will_divide(acdc_df):
     
     cca_df_index = cca_df_mask[cca_df_mask].index
     acdc_df.loc[cca_df_index, 'will_divide'] = cca_df['will_divide']
+    
+    # IDs_will_divide_wrong = (
+    #     cca_functions.get_IDs_gen_num_will_divide_wrong(cca_df)
+    # )
+    # if IDs_will_divide_wrong:
+    #     cca_df = cca_df.reset_index().set_index(['Cell_ID', 'generation_num'])   
+    #     cca_df.loc[IDs_will_divide_wrong, 'will_divide'] = 0
+    #     cca_df = cca_df.reset_index()
+    #     acdc_df = acdc_df.reset_index()
+
+    #     cca_df = cca_df.set_index(['frame_i', 'Cell_ID'])
+    #     acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
+        
+    #     cca_df_index = cca_df_mask[cca_df_mask].index
+    #     acdc_df.loc[cca_df_index, 'will_divide'] = cca_df['will_divide']
     
     return acdc_df
 
