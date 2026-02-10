@@ -4213,7 +4213,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         # RGBA image for true transparency mode
         self.rgbaImg1 = pg.ImageItem()
-        self.ax1.addImageItem(self.rgbaImg1)
+        
         # self.rgbaImg1.setImage(self.emptyLab)
 
         # Right image
@@ -4536,6 +4536,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.overlayToolbuttonsSep = self.overlayToolbar.addSeparator()
         self.plotsCol = len(self.ch_names)
+        
+        self.ax1.addImageItem(self.rgbaImg1)
 
     def gui_getLostObjScatterItem(self):
         self.objLostAnnotRgb = (245, 184, 0)
@@ -14628,8 +14630,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            # posData = self.data[self.pos_i]
-            printl(self.ax1.highlightingRectItems)
+            printl(self.rgbaImg1.opacity())
+            printl(self.rgbaImg1.zValue())
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -24670,7 +24672,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.rgbaImg1.setOpacity(opacity)
         
         if transparent:
-            self.img1.setOpacity(0.0, applyToLinked=False)
+            self.img1.setOpacity(0.001, applyToLinked=False)
             self.imgGrad.sigLookupTableChanged.connect(
                 self.updateTransparentOverlayRgba
             )
@@ -25471,7 +25473,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         rgba_merge = colors.hierarchical_blend(images_rgba, weights)        
         self.rgbaImg1.setImage(rgba_merge)
+    
+    def getOpacitiesFromAlphaScrollbarValues(self):
+        alpha_values = []
+        activeOverlayImageItems = []
+        for items in self.overlayLayersItems.values():
+            imgItem, lutItem, alphaSB = items[:3]
+            _toolbutton = alphaSB.toolbutton
+            if not _toolbutton.isChecked() or not _toolbutton.isVisible():
+                continue
+
+            alpha_values.append(alphaSB.value()/alphaSB.maximum())
+            activeOverlayImageItems.append(imgItem)
         
+        opacities = colors.hierarchical_weights(alpha_values)[::-1]
+        channel_opacity_mapper = {}
+        for i, imgItem in enumerate(activeOverlayImageItems):
+            channel_opacity_mapper[imgItem.channelName] = opacities[i+1]
+        
+        channel_opacity_mapper[self.user_ch_name] = opacities[0]
+        
+        return channel_opacity_mapper
+    
     def initShortcuts(self):
         from . import config
         cp = config.ConfigParser()
@@ -30718,15 +30741,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             value = scrollbar.value()
             
         if imageItem is None:
-            imageItem = self.sender().imageItem
-            opacity = value/self.sender().maximum()
+            imageItem = scrollbar.imageItem
+            alpha = value/scrollbar.maximum()
+        elif value > 1:
+            alpha = value/scrollbar.maximum()
         else:
-            opacity = value
+            alpha = value
         
-        opacity = opacity if opacity < 1.0 else 0.999
-        opacity = opacity if opacity > 0.0 else 0.001
+        alpha_values = []
+        activeOverlayImageItems = []
+        for items in self.overlayLayersItems.values():
+            imgItem, lutItem, alphaSB = items[:3]
+            _toolbutton = alphaSB.toolbutton
+            if alphaSB.channelName == channel:
+                alpha_values.append(alpha)
+            elif not _toolbutton.isChecked() or not _toolbutton.isVisible():
+                continue
+            else:
+                alpha_values.append(alphaSB.value()/alphaSB.maximum())
+            
+            activeOverlayImageItems.append(imgItem)
         
-        imageItem.setOpacity(opacity)
+        opacities = colors.hierarchical_weights(alpha_values)[::-1]
+        
+        for i, imgItem in enumerate(activeOverlayImageItems):
+            imgItem.setOpacity(opacities[i+1])
+            
+        self.img1.setOpacity(opacities[0], applyToLinked=False)
         
     def showInExplorer_cb(self):
         posData = self.data[self.pos_i]
@@ -31290,6 +31331,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
     def startExportToVideoWorker(self, preferences):
         self.isExportingVideo = True
+        self.isTransparent = self.overlayToolbar.isTransparent()
+        if not self.isTransparent: 
+            # SVG export works only with RGBA not with setOpacity 
+            # --> only true transparency mode can be used
+            self.overlayToolbar.setTransparent(True)
+            
         self.setDisabled(True)
         
         self.progressWin = apps.QDialogWorkerProgress(
@@ -31334,7 +31381,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         QTimer.singleShot(200, self.updateAndExportFrame)
     
     def updateAndExportFrame(self):
-        if self.exportToVideoCurrentNavVarIdx == self.exportToVideoStopNavVarNum:
+        didVideoExporterFinish = (
+            self.exportToVideoCurrentNavVarIdx 
+            == self.exportToVideoStopNavVarNum
+        )
+        if didVideoExporterFinish:
             self.progressWin.mainPbar.setMaximum(0)
             self.progressWin.mainPbar.setValue(0)
             QTimer.singleShot(50, self.exportingFramesFinished)
@@ -31430,6 +31481,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.setDisabled(False)
         self.isExportingVideo = False
+        
+        if not self.isTransparent:
+            # True transparency mode was activated programmatically 
+            # --> restore what the user had before starting to export
+            self.overlayToolbar.setTransparent(False)
         
         prompts.exportToVideoFinished(
             self.exportToVideoPreferences, conversion_to_mp4_successful, 
@@ -31581,9 +31637,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if filepath.endswith('.svg'):
             exporter = exporters.SVGExporter(self.ax1)
         else:
-            exporter = exporters.ImageExporter(
-                self.ax1, dpi=preferences['dpi']
-            )
+            exporter = exporters.ImageExporter(self.ax1, dpi=preferences['dpi'])
         exporter.export(filepath)
         self.logger.info(f'Image saved.')
         
@@ -31620,9 +31674,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.exportToImageWindow = None
             self.logger.info('Export to image process cancelled')
             return
-    
+
+        isTransparent = self.overlayToolbar.isTransparent()
+        if not isTransparent: 
+            # SVG export works only with RGBA not with setOpacity 
+            # --> only true transparency mode can be used
+            self.overlayToolbar.setTransparent(True)
+            
         self.exportToImage(win.selected_preferences)
         self.exportToImageWindow = None
+        
+        if not isTransparent: 
+            self.overlayToolbar.setTransparent(False)
     
     def saveDataPermissionError(self, err_msg):
         self.setDisabled(False, keepDisabled=False)
