@@ -68,7 +68,7 @@ from . import apps
 from . import plot
 from . import annotate
 from . import urls
-from . import _core
+from . import _core, core
 from . import QtScoped
 from . import prompts
 from .acdc_regex import float_regex
@@ -2803,7 +2803,8 @@ class myMessageBox(_base_widgets.QBaseDialog):
             buttonsTexts=None, layouts=None, widgets=None,
             commands=None, path_to_browse=None, browse_button_text=None,
             url_to_open=None, open_url_button_text='Open url', 
-            image_paths=None, wrapDetails=True
+            image_paths=None, wrapDetails=True,
+            add_do_not_show_again_checkbox=False
         ):
         if parent is not None:
             self.setParent(parent)
@@ -2861,6 +2862,10 @@ class myMessageBox(_base_widgets.QBaseDialog):
         
         if detailsText is not None:
             self.setDetailedText(detailsText, visible=True, wrap=wrapDetails)
+        
+        if add_do_not_show_again_checkbox:
+            self.addDoNotShowAgainCheckbox()
+        
         return buttons
 
     def critical(self, *args, showDialog=True, **kwargs):
@@ -10951,6 +10956,7 @@ class MagicPromptsToolbar(ToolBar):
     sigViewModelParams = Signal(
         str, object, list, list, str, object, object, object
     )
+    sigInterpolateZslice = Signal(bool)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -10976,6 +10982,21 @@ class MagicPromptsToolbar(ToolBar):
         
         self.promptTypeCombobox = self.addComboBox(
             prompt_types, label='Prompt type: ',
+        )
+        
+        self.addSeparator()
+        
+        self.interpolateZslicesCheckbox = self.addCheckBox(
+            'Interpolate points on missing z-slices', checked=False
+        )
+        self.interpolateZslicesCheckbox.setToolTip(
+            'If checked, when working with 3D segmentation masks, you can '
+            'add points on some z-slices only and the points on the missing '
+            'z-slices will be determined by linear interpolation.\n\n'
+            'This is useful when working with 2D models that segments '
+            'each z-slice independently.\n\n'
+            'NOTE: The points will be added only when running the model and '
+            'removed afterwards.'
         )
         
         self.addSeparator()
@@ -11029,6 +11050,9 @@ class MagicPromptsToolbar(ToolBar):
         )
         self.clearPointsActionOnZoom.triggered.connect(
             self.emitSigClearPointsOnZoom
+        )
+        self.interpolateZslicesCheckbox.toggled.connect(
+            self.sigInterpolateZslice.emit
         )
     
     def showHelp(self):
@@ -11102,7 +11126,11 @@ class MagicPromptsToolbar(ToolBar):
         
         model_name = win.model_name
         print(f'Importing promptable model {model_name}...')
-        
+
+        # Download model weights, consistent with gui.py
+        downloadWin = apps.downloadModel(model_name, parent=self._parent)
+        downloadWin.download()
+
         acdcPromptSegment = myutils.import_promptable_segment_module(model_name)
         init_argspecs, segment_argspecs = myutils.getModelArgSpec(
             acdcPromptSegment
@@ -11317,6 +11345,60 @@ class PointsLayersToolbar(ToolBar):
         df['id'] = ids
         if zz:
             df['z'] = zz
+        
+        df = self.addPointsZslicesInterpolation(df, posData.lab, isSegm3D)
+        
+        return df
+
+    def addPointsZslicesInterpolation(
+            self, 
+            df: pd.DataFrame, 
+            lab: np.ndarray, 
+            isSegm3D: bool
+        ):
+        if not isSegm3D:
+            return df
+        
+        if 'z' not in df.columns:
+            return df
+        
+        printl(df)
+        df_new_rows = []
+        for (frame_i, point_id), df_id in df.groupby(['frame_i', 'id']):
+            xx = df_id['x'].values
+            yy = df_id['y'].values
+            zz = df_id['z'].values
+            
+            p0, d = core.linear_fit_3d(xx, yy, zz)
+            
+            new_row_df = df_id.iloc[[0]].copy()
+            
+            z0, z1 = int(np.min(zz)), int(np.max(zz))
+            for z in range(z0, z1+1):
+                if z in zz:
+                    continue
+                
+                t_int = (z - p0[2]) / d[2]
+                x_new, y_new, z_new = p0 + t_int * d
+                new_row_df['z'] = round(z_new)
+                new_row_df['y'] = round(y_new)
+                new_row_df['x'] = round(x_new)
+                
+                Cell_ID = lab[
+                    int(round(z_new)),
+                    int(round(y_new)),
+                    int(round(x_new))
+                ]
+                new_row_df['Cell_ID'] = Cell_ID
+                
+                df_new_rows.append(new_row_df.copy())
+        
+        if not df_new_rows:
+            return df
+        
+        df_new = pd.concat(df_new_rows, ignore_index=True)
+        df = pd.concat([df, df_new], ignore_index=True)
+        df = df.sort_values(by=['frame_i', 'id', 'z']).reset_index(drop=True)
         
         return df
 

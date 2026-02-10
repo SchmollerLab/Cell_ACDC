@@ -87,6 +87,7 @@ from . import preprocess
 from . import io
 from . import whitelist
 from . import cli
+from . import is_mac
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger, ArgSpec
@@ -522,6 +523,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self._colorScheme = self.df_settings.at[col, 'value']
         else:
             self._colorScheme = 'light'
+        
+        if 'doNotShowAgainMissingCca' not in self.df_settings.index:
+            self.df_settings.at['doNotShowAgainMissingCca', 'value'] = 'No'
+        else:
+            val = self.df_settings.at['doNotShowAgainMissingCca', 'value']
+            self.doNotShowAgainMissingCca = val=='Yes'
 
     def dragEnterEvent(self, event):
         file_path = event.mimeData().urls()[0].toLocalFile()
@@ -624,7 +631,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         return modifiers == Qt.AltModifier and left_click
 
     def middleClickText(self):
-        if self.delObjAction is None and sys.platform == 'darwin':
+        if self.delObjAction is None and is_mac:
             return 'Command + Left Click'
         
         if self.delObjAction is None:
@@ -645,7 +652,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         return f'{delObjKeySequence.toString()} + {buttonName}'
     
     def isDefaultMiddleClick(self, mouseEvent, modifiers):
-        if sys.platform == 'darwin':
+        if is_mac:
             middle_click = (
                 mouseEvent.button() == Qt.MouseButton.LeftButton
                 and modifiers == Qt.ControlModifier
@@ -666,9 +673,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             isDelObjectActive = True
         else:
             isDelObjectActive = self.delObjToolAction.isChecked()
-            
+        
+        mouseEventButton = self.changeRightClickToLeftOnMac(mouseEvent)
+        
         middle_click = (
-            mouseEvent.button() == delObjQtButton and isDelObjectActive
+            mouseEventButton == delObjQtButton and isDelObjectActive
         )
         
         return middle_click
@@ -2343,7 +2352,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.magicPromptsToolbar.sigClearPointsOnZmom.connect(
             partial(self.magicPromptsClearPoints, only_zoom=True)
         )
-        
+        self.magicPromptsToolbar.sigInterpolateZslice.connect(
+            self.magicPromptsInterpolateZsliceToggled
+        )
+
         self.addToolBar(Qt.TopToolBarArea, self.magicPromptsToolbar)
         self.magicPromptsToolbar.setVisible(False)
         self.magicPromptsToolbar.keepVisibleWhenActive = True
@@ -5295,7 +5307,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.editIDmergeIDs = editID.mergeWithExistingID
             self.doNotAskAgainExistingID = editID.doNotAskAgainExistingID
             
-            self.applyEditID(ID, currentIDs, editID.how, x, y)
+            self.applyEditID(ID, currentIDs, editID.how, x, y, shift=shift)
         
         elif (right_click or left_click) and self.keepIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -6347,6 +6359,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.zoomRectButton.isChecked() and not event.isExit()
             and noModifier
         )
+        setEditIDCursor = (
+            self.editIDbutton.isChecked() and not event.isExit()
+        )
         magicPromptsON = self.magicPromptsToolButton.isChecked()
         pointsLayerON = self.togglePointsLayerAction.isChecked()
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
@@ -6385,6 +6400,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.app.setOverrideCursor(self.addPointsCursor)
         elif setZoomRectCursor:
             self.app.setOverrideCursor(Qt.CrossCursor)
+        elif setEditIDCursor and overrideCursor is None:
+            if shift:
+                self.app.setOverrideCursor(Qt.CrossCursor)
+            else:
+                self.app.restoreOverrideCursor()
         
         return {
             'setBrushCursor': setBrushCursor,
@@ -6401,7 +6421,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             'setManualTrackingCursor': setManualTrackingCursor,
             'setManualBackgroundCursor': setManualBackgroundCursor,
             'setAddPointCursor': setAddPointCursor,
-            'setZoomRectCursor': setZoomRectCursor
+            'setZoomRectCursor': setZoomRectCursor,
+            'setEditIDCursor': setEditIDCursor
         }
     
     def warnAddingPointWithExistingId(self, point_id, table_endname=''):
@@ -7225,12 +7246,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         ])
 
         canAnnotateDivision = (
-             not self.assignBudMothButton.isChecked()
-             and not self.setIsHistoryKnownButton.isChecked()
-             and not self.curvToolButton.isChecked()
-             and not is_right_click_custom_ON
-             and not labelRoiON
-             and not separateON
+            not self.assignBudMothButton.isChecked()
+            and not self.setIsHistoryKnownButton.isChecked()
+            and not self.curvToolButton.isChecked()
+            and not is_right_click_custom_ON
+            and not labelRoiON
+            and not separateON
         )
 
         # In timelapse mode division can be annotated if isCcaMode and right-click
@@ -7255,6 +7276,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not isMod and not is_right_click_action_ON
             and not is_right_click_custom_ON and not copyContourON 
             and not findNextMotherButtonON and not unknownLineageButtonON
+            and not middle_click
         )
         
         if isOnlyRightClick:
@@ -7543,7 +7565,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.storeUndoAddPoint(action)
             x, y = event.pos().x(), event.pos().y()
             hoveredPoints = action.scatterItem.pointsAt(event.pos())
-            if hoveredPoints:
+            if len(hoveredPoints) > 0:
                 removed_id = self.removeClickedPoints(action, hoveredPoints)
                 if not magicPromptsON:
                     addPointsByClickingButton.pointIdSpinbox.setValue(removed_id)
@@ -9492,7 +9514,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     
     # @exec_time
     def applyEditID(
-            self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y
+            self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y, shift=False
         ):  
         posData = self.data[self.pos_i]
         
@@ -9510,15 +9532,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if UndoFutFrames is None:
             return
 
+        if shift and self.isSegm3D:
+            lab = self.get_2Dlab(posData.lab)
+        else:
+            lab = posData.lab
+        
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(UndoFutFrames)
         maxID = max(posData.IDs, default=0)
         for old_ID, new_ID in oldIDnewIDMapper:
             if new_ID in currentIDs and not self.editIDmergeIDs:
                 tempID = maxID + 1
-                posData.lab[posData.lab == old_ID] = maxID + 1
-                posData.lab[posData.lab == new_ID] = old_ID
-                posData.lab[posData.lab == tempID] = new_ID
+                lab[lab == old_ID] = maxID + 1
+                lab[lab == new_ID] = old_ID
+                lab[lab == tempID] = new_ID
                 maxID += 1
 
                 old_ID_idx = currentIDs.index(old_ID)
@@ -9536,7 +9563,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     yo, xo = int(clicked_y), int(clicked_x)
                     posData.editID_info.append((yo, xo, old_ID))
             else:
-                posData.lab[posData.lab == old_ID] = new_ID
+                lab[lab == old_ID] = new_ID
                 if new_ID > maxID:
                     maxID = new_ID
                 old_ID_idx = posData.IDs.index(old_ID)
@@ -9550,6 +9577,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     posData.editID_info.append((y, x, new_ID))
             
             self.updateAssignedObjsAcdcTrackerSecondStep(new_ID)
+        
+        if shift and self.isSegm3D:
+            self.set_2Dlab(lab)
         
         # Update rps
         self.update_rp()
@@ -9581,7 +9611,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         if applyFutFrames:
             self.changeIDfutureFrames(
-                endFrame_i, oldIDnewIDMapper, includeUnvisited
+                endFrame_i, oldIDnewIDMapper, includeUnvisited,
+                shift=shift
             )
     
     def getLastHoveredID(self):
@@ -14648,8 +14679,43 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             # self.delObjToolAction.setChecked(True)
             return
 
-        if keySequenceText == delObjKeySequence.toString():
+        delObjKeySequenceText = widgets.macShortcutToWindows(
+            delObjKeySequence.toString()
+        )
+        keySequenceText = widgets.macShortcutToWindows(keySequenceText)
+
+        # printl(
+        #     delObjKeySequence.toString(), 
+        #     keySequenceText, 
+        #     delObjKeySequenceText
+        # )
+        
+        if keySequenceText == delObjKeySequenceText:
             self.delObjToolAction.setChecked(True)
+    
+    def changeRightClickToLeftOnMac(self, mouseEvent):
+        button = mouseEvent.button()
+        if not is_mac:
+            return button
+        
+        delObjKeySequence, delObjQtButton = self.delObjAction
+        if delObjKeySequence is None:
+            return button
+        
+        if not delObjKeySequence.toString() == 'Control':
+            return button
+        
+        if button != Qt.MouseButton.RightButton:
+            return button
+        
+        if delObjQtButton == Qt.MouseButton.LeftButton:
+            # On mac, pressing "Control" and clicking with left button changes 
+            # it to a right click button --> here, left click is required for 
+            # delete object --> force return of left click
+            return Qt.MouseButton.LeftButton
+        
+        return button
+    
     
     def checkTriggerKeyPressShortcuts(self, event: QKeyEvent):
         isBrushKey = event.key() == self.brushButton.keyPressShortcut
@@ -15964,6 +16030,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             image_origin=image_origin, zoom_slice=zoom_slice
         )
     
+    def magicPromptsInterpolateZsliceToggled(self, checked):
+        # Nothing to do upon toggling this for now. 
+        # Interpolated points are added only upon running the model 
+        # and removed afterwards.
+        # See 'self.promptSegmentPointsLayerToolbar.addPointsZslicesInterpolation'
+        ...
+    
     def magicPromptsClearPoints(self, toolbar, only_zoom=False):
         posData = self.data[self.pos_i]
         scatterItem = self.promptSegmentPointsLayerToolbar.scatterItem()
@@ -15972,8 +16045,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         pointsDataPos = action.pointsData.get(self.pos_i)
         if pointsDataPos is None:
             return
-        
-        
         
         framePointsData = action.pointsData[self.pos_i].pop(
             posData.frame_i, None
@@ -18765,7 +18836,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.logger.info(f'Reading {user_ch_name} channel metadata...')
         # Get information from first loaded position
         posData = load.loadData(user_ch_file_paths[0], user_ch_name, log_func=self.logger.info)
-        posData.getBasenameAndChNames()
+        posData.getBasenameAndChNames(qparent=self)
         posData.buildPaths()
 
         if posData.ext != '.h5':
@@ -18778,7 +18849,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         existingSegmEndNames = set()
         for filePath in user_ch_file_paths:
             _posData = load.loadData(filePath, user_ch_name, log_func=self.logger.info)
-            _posData.getBasenameAndChNames()
+            _posData.getBasenameAndChNames(qparent=self)
             segm_files = load.get_segm_files(_posData.images_path)
             _existingEndnames = load.get_endnames(
                 _posData.basename, segm_files
@@ -22659,6 +22730,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.store_data()
     
+    def resetLin_tree_future(self):
+        if self.lineage_tree is not None:
+            self.logger.info("WARNING: resetting lineage tree future frames in the lineage_tree object is not implemented yet",
+                   "This is only for acdc_df dataframes")
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        for i in range(frame_i, posData.SizeT):
+            df = posData.allData_li[i]['acdc_df']
+            # reste lineage tree columns
+            if df is None:
+                continue
+            df = df.drop(columns=lineage_tree_cols, errors='ignore')
+            posData.allData_li[i]['acdc_df'] = df
+    
     def get_cca_df(self, frame_i=None, return_df=False, debug=False):
         # cca_df is None unless the metadata contains cell cycle annotations
         # NOTE: cell cycle annotations are either from the current session
@@ -22689,7 +22774,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             posData.cca_df = cca_df
 
     def changeIDfutureFrames(
-            self, endFrame_i, oldIDnewIDMapper, includeUnvisited
+            self, endFrame_i, oldIDnewIDMapper, includeUnvisited,
+            shift=False
         ):
         posData = self.data[self.pos_i]
         self.current_frame_i = posData.frame_i
@@ -22711,6 +22797,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 # Visited frame
                 posData.frame_i = i
                 self.get_data(lin_tree_init=False)
+                if shift and self.isSegm3D:
+                    lab = self.get_2Dlab(posData.lab)
+                else:
+                    lab = posData.lab
+                
                 if self.onlyTracking:
                     self.tracking(enforce=True)
                 elif not posData.IDs:
@@ -22718,19 +22809,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 else:
                     maxID = max(posData.IDs, default=0) + 1
                     for old_ID, new_ID in oldIDnewIDMapper:
-                        if new_ID in posData.lab:
-                            tempID = maxID + 1 # posData.lab.max() + 1
-                            posData.lab[posData.lab == old_ID] = tempID
-                            posData.lab[posData.lab == new_ID] = old_ID
-                            posData.lab[posData.lab == tempID] = new_ID
+                        if new_ID in lab:
+                            tempID = maxID + 1 # lab.max() + 1
+                            lab[lab == old_ID] = tempID
+                            lab[lab == new_ID] = old_ID
+                            lab[lab == tempID] = new_ID
                             maxID += 1
                         else:
-                            posData.lab[posData.lab == old_ID] = new_ID
+                            lab[lab == old_ID] = new_ID
+                    
+                    if shift and self.isSegm3D:
+                        self.set_2Dlab(lab)
+                    
                     self.update_rp(draw=False)
                 self.store_data(autosave=i==endFrame_i)
             elif includeUnvisited:
                 # Unvisited frame (includeUnvisited = True)
                 lab = posData.segm_data[i]
+                if shift and self.isSegm3D:
+                    lab = self.get_2Dlab(lab)
+                else:
+                    lab = lab
+                    
                 for old_ID, new_ID in oldIDnewIDMapper:
                     if new_ID in lab:
                         tempID = lab.max() + 1
@@ -22739,6 +22839,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                         lab[lab == tempID] = new_ID
                     else:
                         lab[lab == old_ID] = new_ID
+                
+                if shift and self.isSegm3D:
+                    posData.segm_data[i][self.z_lab()] = lab
         
         # Back to current frame
         posData.frame_i = self.current_frame_i
@@ -23851,7 +23954,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             )
             return
         
-        onlyMouseClicks = toolbar==self.promptSegmentPointsLayerToolbar
+        onlyMouseClicks = toolbar == self.promptSegmentPointsLayerToolbar
         posData = self.data[self.pos_i]
         self.addPointsWin = apps.AddPointsLayerDialog(
             channelNames=posData.chNames, 
@@ -25758,7 +25861,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             cp.write(ini)
     
     def editShortcuts_cb(self):
-        if sys.platform == 'darwin':
+        if is_mac:
             delObjKeySequenceText = 'Ctrl'
             delObjButtonText = 'Left click'
         else:
@@ -26760,29 +26863,38 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-        
-        if acdc_df is None:
+                
+        if acdc_df is None and self.lineage_tree is None:
             if update_images:
                 self.updateAllImages()
+            
             return True
-        elif 'cell_cycle_stage' not in acdc_df.columns:
+        cell_cycle_stage_present = (
+            acdc_df is not None and 'cell_cycle_stage' in acdc_df.columns
+            )
+        lineage_tree_present = (
+            self.lineage_tree is not None or 'parent_ID_tree' in acdc_df.columns
+        )
+        if not cell_cycle_stage_present and not lineage_tree_present:
             if update_images:
                 self.updateAllImages()
             return True
             
         action = self.warnEditingWithAnnotActions.get(editTxt, None)
         if action is not None and not action.isChecked():
+            # user has checked that he does not want to be asked again AND he doesnt want to delete
             if update_images:
                 self.updateAllImages()
             return True
 
         msg = widgets.myMessageBox()
+        warn_type = 'cell cycle annotations' if cell_cycle_stage_present else 'lineage tree annotations'
         txt = html_utils.paragraph(
-            'You modified a frame that <b>has cell cycle annotations</b>.<br><br>'
+            f'You modified a frame that <b>has {warn_type}</b>.<br><br>'
             f'The change <b>"{editTxt}"</b> most likely makes the '
             '<b>annotations wrong</b>.<br><br>'
             'If you really want to apply this change we reccommend to remove'
-            'ALL cell cycle annotations<br>'
+            f'ALL {warn_type}<br>'
             'from current frame to the end.<br><br>'
             'What do you want to do?'
         )
@@ -26815,9 +26927,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if return_answer:
             return msg.clickedButton == removeAnnotButton
         
-        if msg.clickedButton == removeAnnotButton:
+        if (msg.clickedButton == removeAnnotButton) and cell_cycle_stage_present:
             self.resetFutureCcaColCurrentFrame()
             self.resetCcaFuture(posData.frame_i+1)
+            self.updateAllImages()
+        elif (msg.clickedButton == removeAnnotButton) and lineage_tree_present:
+            self.resetLin_tree_future()
             self.updateAllImages()
         else:
             if dropDelIDsNoteText and posData.cca_df is not None:
@@ -26835,6 +26950,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.store_data()
                 posData.frame_i -= 1
                 self.get_data()
+                if lineage_tree_present:
+                    self.resetLin_tree_future()
                 self.resetCcaFuture(posData.frame_i)
                 self.next_frame()
         
@@ -31831,6 +31948,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.saveData(isQuickSave=True)
     
     def checkMissingCca(self):
+        proceed = True
+        ignore = False
+        doNotShowAgain = False
+        if not self.doNotShowAgainMissingCca:
+            return proceed, ignore, doNotShowAgain
+        
         missing_cca_items = []
         for posData in self.data:
             for frame_i, data_dict in enumerate(posData.allData_li):
@@ -31847,10 +31970,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     missing_cca_items.append((cca_df, posData, i))
         
         if not missing_cca_items:
-            return True
+            return proceed, ignore, doNotShowAgain
         
-        _warnings.warnMissingCca(missing_cca_items, qparent=self)
-        return False
+        proceed = False
+        ignore, doNotShowAgain =_warnings.warnMissingCca(
+            missing_cca_items, qparent=self
+        )
+        
+        if doNotShowAgain:
+            self.df_settings.at['doNotShowAgainMissingCca', 'value'] = 'Yes'
+            self.df_settings.to_csv(self.settings_csv_path)
+        
+        return proceed, ignore, doNotShowAgain
         
     def warnDifferentSegmChannel(
             self, loaded_channel, segm_channel_hyperparams, segmEndName
@@ -31922,8 +32053,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             posData.updateSegmentedChannelHyperparams(self.user_ch_name)
 
         # Check missing cca annotations in snaphots
-        proceed = self.checkMissingCca()
-        if not proceed:
+        proceed, ignore, self.doNotShowAgainMissingCca = self.checkMissingCca()
+        if not proceed and not ignore:
             self.cancelSavingInitialisation()
             self.setDisabled(False, keepDisabled=False)
             self.activateWindow()

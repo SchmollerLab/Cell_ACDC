@@ -100,6 +100,9 @@ class workerLogger:
 
     def warning(self, message):
         self.log(message, level='WARNING')
+    
+    def exception(self, message):
+        self.log(message, level='EXCEPTION')
 
 class signals(QObject):
     progress = Signal(str, object)
