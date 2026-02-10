@@ -1112,7 +1112,7 @@ class AddPointsLayerDialog(QBaseDialog):
     def loadClickEntryTable(self, csv_path):
         self.clickEntryIsLoadedDf = None
         posData = load.loadData(csv_path, 'points')
-        posData.getBasenameAndChNames()
+        posData.getBasenameAndChNames(qparent=self)
         basename = posData.basename
         filename = os.path.basename(csv_path)
         filename, ext = os.path.splitext(filename)
@@ -9283,7 +9283,7 @@ class askStopFrameSegm(QDialog):
                 spinBox = widgets.mySpinBox()
                 spinBox.sigTabEvent.connect(self.keyTabEventSpinbox)
                 posData = load.loadData(img_path, user_ch_name, QParent=parent)
-                posData.getBasenameAndChNames()
+                posData.getBasenameAndChNames(qparent=self)
                 posData.buildPaths()
                 posData.loadOtherFiles(
                     load_segm_data=False,

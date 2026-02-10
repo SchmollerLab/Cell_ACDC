@@ -18654,7 +18654,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.logger.info(f'Reading {user_ch_name} channel metadata...')
         # Get information from first loaded position
         posData = load.loadData(user_ch_file_paths[0], user_ch_name, log_func=self.logger.info)
-        posData.getBasenameAndChNames()
+        posData.getBasenameAndChNames(qparent=self)
         posData.buildPaths()
 
         if posData.ext != '.h5':
@@ -18667,7 +18667,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         existingSegmEndNames = set()
         for filePath in user_ch_file_paths:
             _posData = load.loadData(filePath, user_ch_name, log_func=self.logger.info)
-            _posData.getBasenameAndChNames()
+            _posData.getBasenameAndChNames(qparent=self)
             segm_files = load.get_segm_files(_posData.images_path)
             _existingEndnames = load.get_endnames(
                 _posData.basename, segm_files

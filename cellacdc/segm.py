@@ -454,7 +454,7 @@ class segmWin(QMainWindow):
         # Ask other questions based on first position
         img_path = user_ch_file_paths[0]
         self.posData = load.loadData(img_path, user_ch_name, QParent=self)
-        self.posData.getBasenameAndChNames()
+        self.posData.getBasenameAndChNames(qparent=self)
         self.posData.buildPaths()
         self.posData.loadImgData()
         self.posData.loadOtherFiles(
@@ -481,7 +481,7 @@ class segmWin(QMainWindow):
         # Store metadata for all other positions loaded
         for other_img_path in user_ch_file_paths[1:]:
             self._posData = load.loadData(other_img_path, user_ch_name, QParent=self)
-            self._posData.getBasenameAndChNames()
+            self._posData.getBasenameAndChNames(qparent=self)
             self._posData.buildPaths()
             self._posData.loadOtherFiles(
                 load_segm_data=False,
@@ -662,7 +662,7 @@ class segmWin(QMainWindow):
         
         for other_img_path in user_ch_file_paths:
             self._posData = load.loadData(other_img_path, user_ch_name, QParent=self)
-            self._posData.getBasenameAndChNames()
+            self._posData.getBasenameAndChNames(qparent=self)
             self._posData.buildPaths()
             self._posData.saveSegmHyperparams(
                 model_name, self.init_model_kwargs, self.model_kwargs, 
@@ -693,7 +693,7 @@ class segmWin(QMainWindow):
         isSegmInfoPresent = True
         for img_path in user_ch_file_paths:
             self._posData = load.loadData(img_path, user_ch_name, QParent=self)
-            self._posData.getBasenameAndChNames()
+            self._posData.getBasenameAndChNames(qparent=self)
             self._posData.loadOtherFiles(
                 load_segm_data=False,
                 loadSegmInfo=True,
@@ -801,7 +801,7 @@ class segmWin(QMainWindow):
             img_path = user_ch_file_paths[0]
 
             self.posData = load.loadData(img_path, user_ch_name, QParent=self)
-            self.posData.getBasenameAndChNames()
+            self.posData.getBasenameAndChNames(qparent=self)
             self.posData.buildPaths()
             self.posData.loadImgData()
             self.posData.loadOtherFiles(
@@ -896,7 +896,7 @@ class segmWin(QMainWindow):
         max = 0
         for i, imgPath in enumerate(user_ch_file_paths):
             self._posData = load.loadData(imgPath, user_ch_name)
-            self._posData.getBasenameAndChNames()
+            self._posData.getBasenameAndChNames(qparent=self)
             self._posData.loadOtherFiles(
                 load_segm_data=False,
                 load_metadata=True

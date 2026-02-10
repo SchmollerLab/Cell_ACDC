@@ -9,7 +9,7 @@ from . import urls
 from . import error_below, error_close
 
 def warnTooManyItems(mainWin, numItems, qparent):
-    from . import widgets, html_utils
+    from . import widgets
     mainWin.logger.info(
         '[WARNING]: asking user what to do with too many graphical items...'
     )
@@ -35,7 +35,7 @@ def warnTooManyItems(mainWin, numItems, qparent):
 def warnRestartCellACDCcolorModeToggled(
         scheme, app_name='Cell-ACDC', parent=None
     ):
-    from . import widgets, html_utils
+    from . import widgets
     msg = widgets.myMessageBox(wrapText=False)
     txt = (
         'In order for the change to take effect, '
@@ -71,7 +71,7 @@ def warn_image_overflow_dtype(input_dtype, max_value, inferred_dtype):
     )
 
 def warn_cca_integrity(txt, category, qparent, go_to_frame_callback=None):
-    from . import html_utils, widgets
+    from . import widgets
     from qtpy.QtWidgets import QCheckBox
     
     preamble = html_utils.paragraph(
