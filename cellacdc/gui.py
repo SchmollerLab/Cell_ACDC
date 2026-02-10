@@ -4213,7 +4213,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         # RGBA image for true transparency mode
         self.rgbaImg1 = pg.ImageItem()
-        self.ax1.addImageItem(self.rgbaImg1)
+        
         # self.rgbaImg1.setImage(self.emptyLab)
 
         # Right image
@@ -4536,6 +4536,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.overlayToolbuttonsSep = self.overlayToolbar.addSeparator()
         self.plotsCol = len(self.ch_names)
+        
+        self.ax1.addImageItem(self.rgbaImg1)
 
     def gui_getLostObjScatterItem(self):
         self.objLostAnnotRgb = (245, 184, 0)
@@ -14628,9 +14630,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            # posData = self.data[self.pos_i]
-            from cellacdc.plot import imshow
-            imshow(self.rgbaImg1.image)
+            printl(self.rgbaImg1.opacity())
+            printl(self.rgbaImg1.zValue())
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -24663,7 +24664,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.rgbaImg1.setOpacity(opacity)
         
         if transparent:
-            self.img1.setOpacity(0.0, applyToLinked=False)
+            self.img1.setOpacity(0.001, applyToLinked=False)
             self.imgGrad.sigLookupTableChanged.connect(
                 self.updateTransparentOverlayRgba
             )
@@ -31295,6 +31296,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
     def startExportToVideoWorker(self, preferences):
         self.isExportingVideo = True
+        self.isTransparent = self.overlayToolbar.isTransparent()
+        if not self.isTransparent: 
+            # SVG export works only with RGBA not with setOpacity 
+            # --> only true transparency mode can be used
+            self.overlayToolbar.setTransparent(True)
+            
         self.setDisabled(True)
         
         self.progressWin = apps.QDialogWorkerProgress(
@@ -31339,7 +31346,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         QTimer.singleShot(200, self.updateAndExportFrame)
     
     def updateAndExportFrame(self):
-        if self.exportToVideoCurrentNavVarIdx == self.exportToVideoStopNavVarNum:
+        didVideoExporterFinish = (
+            self.exportToVideoCurrentNavVarIdx 
+            == self.exportToVideoStopNavVarNum
+        )
+        if didVideoExporterFinish:
             self.progressWin.mainPbar.setMaximum(0)
             self.progressWin.mainPbar.setValue(0)
             QTimer.singleShot(50, self.exportingFramesFinished)
@@ -31435,6 +31446,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.setDisabled(False)
         self.isExportingVideo = False
+        
+        if not self.isTransparent:
+            # True transparency mode was activated programmatically 
+            # --> restore what the user had before starting to export
+            self.overlayToolbar.setTransparent(False)
         
         prompts.exportToVideoFinished(
             self.exportToVideoPreferences, conversion_to_mp4_successful, 
@@ -31623,9 +31639,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.exportToImageWindow = None
             self.logger.info('Export to image process cancelled')
             return
-    
+
+        isTransparent = self.overlayToolbar.isTransparent()
+        if not isTransparent: 
+            # SVG export works only with RGBA not with setOpacity 
+            # --> only true transparency mode can be used
+            self.overlayToolbar.setTransparent(True)
+            
         self.exportToImage(win.selected_preferences)
         self.exportToImageWindow = None
+        
+        if not isTransparent: 
+            self.overlayToolbar.setTransparent(False)
     
     def saveDataPermissionError(self, err_msg):
         self.setDisabled(False, keepDisabled=False)
