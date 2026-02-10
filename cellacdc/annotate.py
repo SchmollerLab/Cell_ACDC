@@ -625,7 +625,10 @@ class TextAnnotations:
                 try:
                     pos = (int(xc), int(yc))
                 except Exception as err:
-                    # Sometimes xc or yc can be nan, causing an error when converting to int --> skip annotation in this case
+                    printl("""WARNING: Could not annotate lost object, failed 
+                           to get position. Skipping annotation.""")
+                    # Sometimes xc or yc can be nan, causing an error when 
+                    # converting to int --> skip annotation in this case
                     continue
                 objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
                 self.item.appendData(objData, objOpts['text'])
