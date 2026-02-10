@@ -22690,10 +22690,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             acdc_df.loc[lin_tree_df.index, lin_tree_colnames] = lin_tree_df[lin_tree_colnames]
             
             try:
-                if np.all(acdc_df['generation_num']==2) and not (acdc_df['generation_num_tree'].isna().all()): # check if generation_num is all just the default value and if yes, replace it with the tree values
+                try:
+                    if (acdc_df['generation_num'] == 2).all() and not (acdc_df['generation_num_tree'].isna().all()): # check if generation_num is all just the default value and if yes, replace it with the tree values
+                        acdc_df['generation_num'] = acdc_df['generation_num_tree']
+                except KeyError:
                     acdc_df['generation_num'] = acdc_df['generation_num_tree']
-            except KeyError:
-                acdc_df['generation_num'] = acdc_df['generation_num_tree']
+            except Exception as e:
+                self.logger.error(f'Error while syncing generation_num from lineage tree: {e} \n please save and restart')
 
             posData.allData_li[frame_i]['acdc_df'] = acdc_df
             self.already_synced_lin_tree.add(frame_i)
