@@ -87,6 +87,7 @@ from . import preprocess
 from . import io
 from . import whitelist
 from . import cli
+from . import is_mac
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger, ArgSpec
@@ -630,7 +631,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         return modifiers == Qt.AltModifier and left_click
 
     def middleClickText(self):
-        if self.delObjAction is None and sys.platform == 'darwin':
+        if self.delObjAction is None and is_mac:
             return 'Command + Left Click'
         
         if self.delObjAction is None:
@@ -651,7 +652,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         return f'{delObjKeySequence.toString()} + {buttonName}'
     
     def isDefaultMiddleClick(self, mouseEvent, modifiers):
-        if sys.platform == 'darwin':
+        if is_mac:
             middle_click = (
                 mouseEvent.button() == Qt.MouseButton.LeftButton
                 and modifiers == Qt.ControlModifier
@@ -672,9 +673,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             isDelObjectActive = True
         else:
             isDelObjectActive = self.delObjToolAction.isChecked()
-            
+        
+        mouseEventButton = self.changeRightClickToLeftOnMac(mouseEvent)
+        
         middle_click = (
-            mouseEvent.button() == delObjQtButton and isDelObjectActive
+            mouseEventButton == delObjQtButton and isDelObjectActive
         )
         
         return middle_click
@@ -7207,12 +7210,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         ])
 
         canAnnotateDivision = (
-             not self.assignBudMothButton.isChecked()
-             and not self.setIsHistoryKnownButton.isChecked()
-             and not self.curvToolButton.isChecked()
-             and not is_right_click_custom_ON
-             and not labelRoiON
-             and not separateON
+            not self.assignBudMothButton.isChecked()
+            and not self.setIsHistoryKnownButton.isChecked()
+            and not self.curvToolButton.isChecked()
+            and not is_right_click_custom_ON
+            and not labelRoiON
+            and not separateON
         )
 
         # In timelapse mode division can be annotated if isCcaMode and right-click
@@ -7237,6 +7240,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not isMod and not is_right_click_action_ON
             and not is_right_click_custom_ON and not copyContourON 
             and not findNextMotherButtonON and not unknownLineageButtonON
+            and not middle_click
         )
         
         if isOnlyRightClick:
@@ -14501,8 +14505,43 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             # self.delObjToolAction.setChecked(True)
             return
 
-        if keySequenceText == delObjKeySequence.toString():
+        delObjKeySequenceText = widgets.macShortcutToWindows(
+            delObjKeySequence.toString()
+        )
+        keySequenceText = widgets.macShortcutToWindows(keySequenceText)
+
+        # printl(
+        #     delObjKeySequence.toString(), 
+        #     keySequenceText, 
+        #     delObjKeySequenceText
+        # )
+        
+        if keySequenceText == delObjKeySequenceText:
             self.delObjToolAction.setChecked(True)
+    
+    def changeRightClickToLeftOnMac(self, mouseEvent):
+        button = mouseEvent.button()
+        if not is_mac:
+            return button
+        
+        delObjKeySequence, delObjQtButton = self.delObjAction
+        if delObjKeySequence is None:
+            return button
+        
+        if not delObjKeySequence.toString() == 'Control':
+            return button
+        
+        if button != Qt.MouseButton.RightButton:
+            return button
+        
+        if delObjQtButton == Qt.MouseButton.LeftButton:
+            # On mac, pressing "Control" and clicking with left button changes 
+            # it to a right click button --> here, left click is required for 
+            # delete object --> force return of left click
+            return Qt.MouseButton.LeftButton
+        
+        return button
+    
     
     def checkTriggerKeyPressShortcuts(self, event: QKeyEvent):
         isBrushKey = event.key() == self.brushButton.keyPressShortcut
@@ -25544,7 +25583,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             cp.write(ini)
     
     def editShortcuts_cb(self):
-        if sys.platform == 'darwin':
+        if is_mac:
             delObjKeySequenceText = 'Ctrl'
             delObjButtonText = 'Left click'
         else:
