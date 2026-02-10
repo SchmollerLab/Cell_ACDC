@@ -1983,7 +1983,7 @@ class dataPrepWin(QMainWindow):
         for f, file_path in enumerate(tqdm(user_ch_file_paths, ncols=100)):
             try:
                 posData = load.loadData(file_path, user_ch_name, QParent=self)
-                posData.getBasenameAndChNames()
+                posData.getBasenameAndChNames(qparent=self)
                 posData.buildPaths()
                 posData.loadImgData()
                 posData.loadOtherFiles(

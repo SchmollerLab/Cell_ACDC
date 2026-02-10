@@ -1408,7 +1408,7 @@ class loadData:
         with open(self.custom_annot_json_path, mode='w') as file:
             json.dump(self.customAnnot, file, indent=2)
 
-    def getBasenameAndChNames(self, useExt=None):
+    def getBasenameAndChNames(self, useExt=None, qparent=None):
         ls = myutils.listdir(self.images_path)
         selector = prompts.select_channel_name()
         self.chNames, _ = selector.get_available_channels(
@@ -1422,14 +1422,30 @@ class loadData:
                 continue
             
             sep = '*'*100
-            raise FileNameError(
-                f'\n\n{sep}\n'
-                f'[ERROR]: The file "{file}" has the same name as '
+            error_text = (
+                f'The file "{file}" has the same name as '
                 f'the basename of all other files.\n\n'
                 f'Please, rename the file to include something '
                 f'after "{self.basename}", e.g., "{self.basename}_channel_name".'
             )
-            break
+            if qparent is not None:
+                html_error_text = f'[WARNING]: {error_text}'
+                html_error_text = html_error_text.replace('\n', '<br>')
+                html_error_text = (
+                    html_error_text.replace(
+                        f'"{file}"', f'<code>{file}</code>'
+                    ).replace(
+                        f'"{self.basename}"', f'<code>{self.basename}</code>'
+                    ).replace(
+                        f'"{self.basename}_channel_name"', 
+                        f'<code>{self.basename}_channel_name</code>'
+                    )
+                )
+                html_error_text = html_utils.paragraph(html_error_text)
+                msg = widgets.myMessageBox(wrapText=False)
+                msg.warning(qparent, 'Rename files', html_error_text)
+            
+            raise FileNameError(f'\n\n{sep}\n[ERROR]: {error_text}')
 
     def loadImgData(self, imgPath=None, signals=None):
         if imgPath is None:
