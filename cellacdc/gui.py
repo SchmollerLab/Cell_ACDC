@@ -14629,7 +14629,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         if ev.key() == Qt.Key_Q and self.debug:
             # posData = self.data[self.pos_i]
-            printl(self.ax1.highlightingRectItems)
+            from cellacdc.plot import imshow
+            imshow(self.rgbaImg1.image)
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -25463,7 +25464,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         rgba_merge = colors.hierarchical_blend(images_rgba, weights)        
         self.rgbaImg1.setImage(rgba_merge)
+    
+    def getOpacitiesFromAlphaScrollbarValues(self):
+        alpha_values = []
+        activeOverlayImageItems = []
+        for items in self.overlayLayersItems.values():
+            imgItem, lutItem, alphaSB = items[:3]
+            _toolbutton = alphaSB.toolbutton
+            if not _toolbutton.isChecked() or not _toolbutton.isVisible():
+                continue
+
+            alpha_values.append(alphaSB.value()/alphaSB.maximum())
+            activeOverlayImageItems.append(imgItem)
         
+        opacities = colors.hierarchical_weights(alpha_values)[::-1]
+        channel_opacity_mapper = {}
+        for i, imgItem in enumerate(activeOverlayImageItems):
+            channel_opacity_mapper[imgItem.channelName] = opacities[i+1]
+        
+        channel_opacity_mapper[self.user_ch_name] = opacities[0]
+        
+        return channel_opacity_mapper
+    
     def initShortcuts(self):
         from . import config
         cp = config.ConfigParser()
@@ -30683,15 +30705,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             value = scrollbar.value()
             
         if imageItem is None:
-            imageItem = self.sender().imageItem
-            opacity = value/self.sender().maximum()
+            imageItem = scrollbar.imageItem
+            alpha = value/scrollbar.maximum()
+        elif value > 1:
+            alpha = value/scrollbar.maximum()
         else:
-            opacity = value
+            alpha = value
         
-        opacity = opacity if opacity < 1.0 else 0.999
-        opacity = opacity if opacity > 0.0 else 0.001
+        alpha_values = []
+        activeOverlayImageItems = []
+        for items in self.overlayLayersItems.values():
+            imgItem, lutItem, alphaSB = items[:3]
+            _toolbutton = alphaSB.toolbutton
+            if alphaSB.channelName == channel:
+                alpha_values.append(alpha)
+            elif not _toolbutton.isChecked() or not _toolbutton.isVisible():
+                continue
+            else:
+                alpha_values.append(alphaSB.value()/alphaSB.maximum())
+            
+            activeOverlayImageItems.append(imgItem)
         
-        imageItem.setOpacity(opacity)
+        opacities = colors.hierarchical_weights(alpha_values)[::-1]
+        
+        for i, imgItem in enumerate(activeOverlayImageItems):
+            imgItem.setOpacity(opacities[i+1])
+            
+        self.img1.setOpacity(opacities[0], applyToLinked=False)
         
     def showInExplorer_cb(self):
         posData = self.data[self.pos_i]
@@ -31546,9 +31586,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if filepath.endswith('.svg'):
             exporter = exporters.SVGExporter(self.ax1)
         else:
-            exporter = exporters.ImageExporter(
-                self.ax1, dpi=preferences['dpi']
-            )
+            exporter = exporters.ImageExporter(self.ax1, dpi=preferences['dpi'])
         exporter.export(filepath)
         self.logger.info(f'Image saved.')
         
