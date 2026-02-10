@@ -14508,7 +14508,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         delObjKeySequenceText = widgets.macShortcutToWindows(
             delObjKeySequence.toString()
         )
+        keySequenceText = widgets.macShortcutToWindows(keySequenceText)
 
+        # printl(
+        #     delObjKeySequence.toString(), 
+        #     keySequenceText, 
+        #     delObjKeySequenceText
+        # )
+        
         if keySequenceText == delObjKeySequenceText:
             self.delObjToolAction.setChecked(True)
     
