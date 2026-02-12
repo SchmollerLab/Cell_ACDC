@@ -22719,6 +22719,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.enqAutosave()
     
     def enqAutosave(self):
+        # experimental --> disable autosaving 
+        return
+        
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
             if self.statusBarLabel.text().endswith('Autosaving...'):
