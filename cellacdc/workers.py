@@ -841,6 +841,7 @@ class AutoSaveWorker(QObject):
         self.isPaused = False
         self.dataQ = deque(maxlen=5)
         self.isAutoSaveON = False
+        self.isAutoSaveAnnotON = True
         self.debug = False
     
     def pause(self):
@@ -923,6 +924,9 @@ class AutoSaveWorker(QObject):
         if self.debug:
             self.logger.log('Started autosaving...')
         
+        if not self.isAutoSaveON and not self.isAutoSaveAnnotON:
+            return
+        
         try:
             posData.setTempPaths()
         except Exception as e:
@@ -963,21 +967,23 @@ class AutoSaveWorker(QObject):
                 else:
                     saved_segm_data = lab
 
-            acdc_df = data_dict['acdc_df']
-            
-            if acdc_df is None:
-                continue
+            if self.isAutoSaveAnnotON:
+                acdc_df = data_dict['acdc_df']
+                
+                if acdc_df is None:
+                    continue
 
             if not np.any(lab):
                 continue
             
-            acdc_df = load.pd_bool_and_float_to_int_to_str(
-                acdc_df, inplace=False, colsToCastInt=[]
-            )
-            
-            acdc_df_li.append(acdc_df)
-            key = (frame_i, posData.TimeIncrement*frame_i)
-            keys.append(key)
+            if self.isAutoSaveAnnotON:
+                acdc_df = load.pd_bool_and_float_to_int_to_str(
+                    acdc_df, inplace=False, colsToCastInt=[]
+                )
+                
+                acdc_df_li.append(acdc_df)
+                key = (frame_i, posData.TimeIncrement*frame_i)
+                keys.append(key)
 
             if self.abortSaving:
                 break

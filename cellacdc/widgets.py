@@ -11657,3 +11657,13 @@ class YeazV2SelectModelNameCombobox(ComboBox):
     
     def value(self, *args):
         return self.currentText()
+
+class AutoSaveIntervalWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        autoSaveIntervalTooltip = (
+            'Autosave every minutes or frames specified here.'
+        )
+        
+        self.setToolTip(autoSaveIntervalTooltip)

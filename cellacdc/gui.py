@@ -109,10 +109,6 @@ if os.name == 'nt':
     except Exception as e:
         pass
 
-AUTOSAVE_INTERVAL_MINUTES = 2
-autosave_interval_seconds = AUTOSAVE_INTERVAL_MINUTES*60
-autosave_interval_ms = autosave_interval_seconds*1000
-
 GREEN_HEX = _palettes.green()
 
 custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
@@ -325,6 +321,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.whitelistOriginalIDs = None
         self.whyNavigateDisabled = set()
         self.autoSaveTimer = QTimer()
+        self.autosave_interval_ms = 2*60*1000
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -2980,6 +2977,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.viewCombineChannelDataToggled
         )
         self.autoSaveToggle.toggled.connect(self.autoSaveToggled)
+        self.autoSaveAnnotToggle.toggled.connect(self.autoSaveAnnotToggled)
         self.ccaIntegrCheckerToggle.toggled.connect(
             self.ccaIntegrCheckerToggled
         )
@@ -3576,14 +3574,30 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.autoSaveToggle = widgets.Toggle()
         autoSaveTooltip = (
-            'Automatically store a copy of the segmentation data and of '
-            'the annotations in the `.recovery` folder after every edit.'
+            'Automatically store a copy of the segmentation data '
+            'in the `.recovery` folder after every edit.'
         )
         self.autoSaveToggle.setChecked(True)
         self.autoSaveToggle.setToolTip(autoSaveTooltip)
         autoSaveLabel = QLabel('Autosave segm.')
         autoSaveLabel.setToolTip(autoSaveTooltip)
         layout.addRow(autoSaveLabel, self.autoSaveToggle)
+        
+        self.autoSaveAnnotToggle = widgets.Toggle()
+        autoSaveAnnotTooltip = (
+            'Automatically store a copy of the annotations (acdc_output CSV file) '
+            'in the `.recovery` folder after every edit.'
+        )
+        self.autoSaveAnnotToggle.setChecked(True)
+        self.autoSaveAnnotToggle.setToolTip(autoSaveAnnotTooltip)
+        autoSaveAnnotLabel = QLabel('Autosave annotations')
+        autoSaveAnnotLabel.setToolTip(autoSaveAnnotTooltip)
+        layout.addRow(autoSaveAnnotLabel, self.autoSaveAnnotToggle)
+        
+        self.autoSaveIntervalWidget = widgets.AutoSaveIntervalWidget()
+        autoSaveIntervalLabel = QLabel('Autosave interval')
+        autoSaveIntervalLabel.setToolTip(self.autoSaveIntervalWidget.tooltip())
+        layout.addRow(autoSaveIntervalLabel, self.autoSaveIntervalWidget)
         
         self.ccaIntegrCheckerToggle = widgets.Toggle()
         ccaIntegrCheckerToggleTooltip = (
@@ -12711,6 +12725,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.copyLostObjButton.setChecked(False)
         self.stopCcaIntegrityCheckerWorker()
         self.setAutoSaveSegmentationEnabled(False)
+        self.setAutoSaveAnnotationsEnabled(False)
         if prevMode == 'Normal division: Lineage tree':
             self.askLineageTreeChanges()
             self.lineage_tree = None
@@ -12739,6 +12754,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.restorePrevAnnotOptions()
             self.whitelistViewOGIDs(False)
         elif mode == 'Cell cycle analysis':
+            self.setAutoSaveAnnotationsEnabled(True)
             self.setSwitchViewedPlaneDisabled(True)
             self.startCcaIntegrityCheckerWorker()
             proceed = self.initCca()
@@ -12772,6 +12788,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.clearGhost()
             self.computeAllContours()
         elif mode == 'Custom annotations':
+            self.setAutoSaveAnnotationsEnabled(True)
             self.setSwitchViewedPlaneDisabled(True)
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
@@ -12784,6 +12801,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.doCustomAnnotation(0)
             self.computeAllContours()
         elif mode == 'Snapshot':
+            self.setAutoSaveAnnotationsEnabled(True)
             self.setSwitchViewedPlaneDisabled(False)
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
@@ -12800,6 +12818,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
             if proceed:
+                self.setAutoSaveAnnotationsEnabled(True)
                 self.setEnabledEditToolbarButton(enabled=False)
                 if self.isSnapshot:
                     self.editToolBar.setVisible(True)
@@ -22745,13 +22764,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if not self.autoSaveActiveWorkers:
             return
         
+        if self.autoSaveTimer.isActive():
+            return
+        
         worker, thread = self.autoSaveActiveWorkers[-1]
         if worker.isSaving:
             self.autoSaveTimer.timeout.connect(self.autoSaveTimerTimedOut)
-            self.autoSaveTimer.start(autosave_interval_ms)
-            return
-        
-        if self.autoSaveTimer.isActive():
+            self.autoSaveTimer.start(self.autosave_interval_ms)
             return
         
         self.logger.info('Autosaving...')
@@ -30903,7 +30922,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 
                 allPos_acdc_df_cols.update(acdc_df.columns)
         loadedChNames = posData.setLoadedChannelNames(returnList=True)
-        loadedChNames.insert(0, self.user_ch_name)
+        posData.fluo_data_dict.pop(self.user_ch_name, None)
+        if self.user_ch_name not in loadedChNames:
+            loadedChNames.insert(0, self.user_ch_name)
         notLoadedChNames = [c for c in self.ch_names if c not in loadedChNames]
         self.notLoadedChNames = notLoadedChNames
         self.measurementsWin = apps.SetMeasurementsDialog(
@@ -32051,6 +32072,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         else:
             worker.isAutoSaveON = False
     
+    def setAutoSaveAnnotationsEnabled(self, enabled):
+        if not self.autoSaveActiveWorkers:
+            return
+        
+        worker, thread = self.autoSaveActiveWorkers[-1]
+        
+        if enabled:
+            worker.isAutoSaveAnnotON = self.autoSaveToggle.isChecked()
+        else:
+            worker.isAutoSaveAnnotON = False
+    
     def autoSaveToggled(self, checked):
         if not self.autoSaveActiveWorkers:
             self.gui_createAutoSaveWorker()
@@ -32067,6 +32099,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             checked = False
         
         worker.isAutoSaveON = checked
+    
+    def autoSaveAnnotToggled(self, checked):
+        if not self.autoSaveActiveWorkers:
+            self.gui_createAutoSaveWorker()
+        
+        if not self.autoSaveActiveWorkers:
+            return
+        
+        worker, thread = self.autoSaveActiveWorkers[-1]
+        
+        mode = self.modeComboBox.currentText()
+        if mode != 'Viewer':
+            # No reason to save in viewer mode
+            checked = False
+        
+        worker.isAutoSaveAnnotON = checked
     
     def ccaIntegrCheckerToggled(self, checked):
         self.df_settings.at['is_cca_integrity_checker_activated', 'value'] = (
