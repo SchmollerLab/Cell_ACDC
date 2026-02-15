@@ -11659,11 +11659,42 @@ class YeazV2SelectModelNameCombobox(ComboBox):
         return self.currentText()
 
 class AutoSaveIntervalWidget(QWidget):
+    sigValueChanged = Signal(float, str)
+    
     def __init__(self, parent=None):
         super().__init__(parent)
+        
+        layout = QHBoxLayout()
         
         autoSaveIntervalTooltip = (
             'Autosave every minutes or frames specified here.'
         )
         
         self.setToolTip(autoSaveIntervalTooltip)
+        
+        self.spinbox = DoubleSpinBox()
+        self.spinbox.setMinimum(0)
+        self.spinbox.setValue(2)
+        self.spinbox.setDecimals(2)
+        self.spinbox.setSingleStep(1.0)
+        
+        layout.addWidget(self.spinbox)
+        
+        self.unitCombobox = ComboBox()
+        self.unitCombobox.addItems(['minutes', 'frames'])
+        layout.addWidget(self.unitCombobox)
+        
+        layout.setStretch(0, 1)
+        layout.setStretch(1, 0)
+        layout.setContentsMargins(5, 0, 5, 0)
+        
+        self.setLayout(layout)
+        
+        self.spinbox.sigTextChange.connect(self.emitSigValueChanged)
+        self.unitCombobox.sigTextChange.connect(self.emitSigValueChanged)
+    
+    def emitSigValueChanged(self, *args, **kwargs):
+        self.sigValueChanged.emit(
+            self.spinbox.value(), 
+            self.unitCombobox.currentText()
+        )

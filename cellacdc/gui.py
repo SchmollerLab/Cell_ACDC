@@ -321,7 +321,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.whitelistOriginalIDs = None
         self.whyNavigateDisabled = set()
         self.autoSaveTimer = QTimer()
-        self.autosave_interval_ms = 2*60*1000
+        self.autoSaveIntevalValueUnit = (2, 'minutes')
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -2978,6 +2978,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.autoSaveToggle.toggled.connect(self.autoSaveToggled)
         self.autoSaveAnnotToggle.toggled.connect(self.autoSaveAnnotToggled)
+        self.autoSaveIntervalWidget.sigValueChanged(
+            self.autoSaveIntervalValueChanged
+        )
         self.ccaIntegrCheckerToggle.toggled.connect(
             self.ccaIntegrCheckerToggled
         )
@@ -22746,6 +22749,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.autoSaveTimer.stop()
         self.enqAutosave()
     
+    def autoSaveTimerCountFrames(self):
+        ...
+    
     def enqAutosave(self):
         # experimental --> disable autosaving 
         return
@@ -22769,8 +22775,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         worker, thread = self.autoSaveActiveWorkers[-1]
         if worker.isSaving:
-            self.autoSaveTimer.timeout.connect(self.autoSaveTimerTimedOut)
-            self.autoSaveTimer.start(self.autosave_interval_ms)
+            autoSaveIntevalValue, autoSaveIntervalUnit = (
+                self.autoSaveIntevalValueUnit
+            )
+            if autoSaveIntervalUnit == 'minutes':
+                autosave_interval_ms = autoSaveIntevalValue*60*1000
+                self.autoSaveTimer.timeout.connect(self.autoSaveTimerTimedOut)
+                self.autoSaveTimer.start(self.autosave_interval_ms)
+            else:
+                self.autoSaveTimer.timeout.connect(
+                    self.autoSaveTimerCountFrames
+                )
+                self.autoSaveTimer.start(1000)
             return
         
         self.logger.info('Autosaving...')
@@ -32116,6 +32132,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         worker.isAutoSaveAnnotON = checked
     
+    def autoSaveIntervalValueChanged(
+            self, value: float, unit: Literal['minutes', 'frames']
+        ):
+        self.autoSaveIntevalValueUnit = (value, unit)
+        self.autoSaveTimer.stop()
+            
     def ccaIntegrCheckerToggled(self, checked):
         self.df_settings.at['is_cca_integrity_checker_activated', 'value'] = (
             int(checked)
