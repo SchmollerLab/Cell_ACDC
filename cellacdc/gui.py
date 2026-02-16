@@ -22759,7 +22759,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             >= autoSaveIntevalValue
         )
         if not isTimeToAutoSave:
-            continue
+            return
+        
+        self.autoSaveTimer.stop()
+        self.enqAutosave()
     
     def enqAutosave(self):
         # experimental --> disable autosaving 
@@ -22783,10 +22786,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
         
         worker, thread = self.autoSaveActiveWorkers[-1]
-        if worker.isSaving:
-            autoSaveIntevalValue, autoSaveIntervalUnit = (
-                self.autoSaveIntevalValueUnit
-            )
+        autoSaveIntevalValue, autoSaveIntervalUnit = (
+            self.autoSaveIntevalValueUnit
+        )
+        if autoSaveIntevalValue > 0:
             if autoSaveIntervalUnit == 'minutes':
                 autosave_interval_ms = autoSaveIntevalValue*60*1000
                 self.autoSaveTimer.timeout.connect(self.autoSaveTimerTimedOut)
@@ -22799,6 +22802,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 )
                 self.autoSaveTimer.start(1000)
             return
+        
+        if worker.isSaving:
+            ...
         
         self.logger.info('Autosaving...')
         posData = self.data[self.pos_i]          
