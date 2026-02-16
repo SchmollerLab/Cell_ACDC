@@ -22750,7 +22750,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.enqAutosave()
     
     def autoSaveTimerCountFrames(self):
-        ...
+        posData = self.data[self.pos_i]
+        autoSaveIntevalValue, autoSaveIntervalUnit = (
+            self.autoSaveIntevalValueUnit
+        )
+        isTimeToAutoSave = (
+            abs(posData.frame_i - self.autoSaveTimeStartFrameIdx)
+            >= autoSaveIntevalValue
+        )
+        if not isTimeToAutoSave:
+            continue
     
     def enqAutosave(self):
         # experimental --> disable autosaving 
@@ -22783,6 +22792,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.autoSaveTimer.timeout.connect(self.autoSaveTimerTimedOut)
                 self.autoSaveTimer.start(self.autosave_interval_ms)
             else:
+                posData = self.data[self.pos_i]
+                self.autoSaveTimeStartFrameIdx = posData.frame_i
                 self.autoSaveTimer.timeout.connect(
                     self.autoSaveTimerCountFrames
                 )
