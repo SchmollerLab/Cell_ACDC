@@ -320,8 +320,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.whitelistAddNewIDsFrame = None
         self.whitelistOriginalIDs = None
         self.whyNavigateDisabled = set()
-        self.autoSaveTimer = QTimer()
-        self.autoSaveIntevalValueUnit = (2, 'minutes')
+        self.autoSaveTimer = QTimer()        
+        if 'autoSaveIntevalValue' not in self.df_settings.index:
+            autoSaveIntevalValue = 2
+            autoSaveIntervalUnit = 'minutes'
+        else:
+            autoSaveIntevalValue = float(
+                self.df_settings.at['autoSaveIntevalValue', 'value']
+            )
+            autoSaveIntervalUnit = str(
+                self.df_settings.at['autoSaveIntervalUnit', 'value']
+            )
+        
+        self.autoSaveIntevalValueUnit = (
+            autoSaveIntevalValue, autoSaveIntervalUnit
+        )
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -869,6 +882,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.settingsMenu.addAction(self.highLowResAction)
         self.settingsMenu.addAction(self.editShortcutsAction)
         self.settingsMenu.addAction(self.showMirroredCursorAction)
+        self.settingsMenu.addSeparator()
+        self.settingsMenu.addAction(self.editAutoSaveIntervalAction)
         self.settingsMenu.addSeparator()
 
         # Mode menu (actions added when self.modeComboBox is created)
@@ -2791,6 +2806,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.highLowResAction.setToolTip(highLowResTooltip)
         
+        self.editAutoSaveIntervalAction = QAction(
+            'Change autosave interval (minutes or frames)...', self
+        )
+        
         self.editShortcutsAction = QAction(
             'Customize keyboard shortcuts...', self
         )
@@ -2978,8 +2997,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.autoSaveToggle.toggled.connect(self.autoSaveToggled)
         self.autoSaveAnnotToggle.toggled.connect(self.autoSaveAnnotToggled)
-        self.autoSaveIntervalWidget.sigValueChanged(
+        self.autoSaveIntevalDialog.sigValueChanged.connect(
             self.autoSaveIntervalValueChanged
+        )
+        self.autoSaveIntervalEditButton.clicked.connect(
+            self.autoSaveIntervalEdit
         )
         self.ccaIntegrCheckerToggle.toggled.connect(
             self.ccaIntegrCheckerToggled
@@ -2997,6 +3019,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.toggleColorSchemeAction.triggered.connect(self.onToggleColorScheme)
         self.pxModeAction.clicked.connect(self.pxModeActionToggled)
         self.editShortcutsAction.triggered.connect(self.editShortcuts_cb)
+        self.editAutoSaveIntervalAction.triggered.connect(
+            self.autoSaveIntervalEditButton.click
+        )
         self.showMirroredCursorAction.toggled.connect(
             self.showMirroredCursorToggled
         )
@@ -3597,10 +3622,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         autoSaveAnnotLabel.setToolTip(autoSaveAnnotTooltip)
         layout.addRow(autoSaveAnnotLabel, self.autoSaveAnnotToggle)
         
-        self.autoSaveIntervalWidget = widgets.AutoSaveIntervalWidget()
+        self.autoSaveIntervalEditButton = widgets.editPushButton(
+            flat=True, hoverable=True
+        )
+        autoSaveIntervalEditTooltip = (
+            'Change autosave interval (minutes or frames)'
+        )
         autoSaveIntervalLabel = QLabel('Autosave interval')
-        autoSaveIntervalLabel.setToolTip(self.autoSaveIntervalWidget.tooltip())
-        layout.addRow(autoSaveIntervalLabel, self.autoSaveIntervalWidget)
+        autoSaveIntervalLabel.setToolTip(autoSaveIntervalEditTooltip)
+        self.autoSaveIntervalEditButton.setToolTip(autoSaveIntervalEditTooltip)
+        layout.addRow(autoSaveIntervalLabel, self.autoSaveIntervalEditButton)
+        
+        self.autoSaveIntevalDialog = apps.AutoSaveIntervalDialog(parent=self)
         
         self.ccaIntegrCheckerToggle = widgets.Toggle()
         ccaIntegrCheckerToggleTooltip = (
@@ -12778,6 +12811,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.setAnnotOptionsCcaMode()
                 self.clearGhost()
         elif mode == 'Viewer':
+            self.autoSaveTimer.stop()
             self.setSwitchViewedPlaneDisabled(False)
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
@@ -20504,6 +20538,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.last_pos_i = -1
         self.last_frame_i = -1
+        self.autoSaveTimeStartFrameIdx = -1
 
         # Plots items
         self.isMouseDragImg2 = False
@@ -22747,7 +22782,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     
     def autoSaveTimerTimedOut(self):
         self.autoSaveTimer.stop()
-        self.enqAutosave()
+        self._enqueueAutoSave()
     
     def autoSaveTimerCountFrames(self):
         posData = self.data[self.pos_i]
@@ -22761,13 +22796,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if not isTimeToAutoSave:
             return
         
-        self.autoSaveTimer.stop()
-        self.enqAutosave()
+        self.autoSaveTimeStartFrameIdx = posData.frame_i
+        self._enqueueAutoSave()
     
     def enqAutosave(self):
-        # experimental --> disable autosaving 
-        return
-        
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
             if self.statusBarLabel.text().endswith('Autosaving...'):
@@ -22785,35 +22817,38 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.autoSaveTimer.isActive():
             return
         
-        worker, thread = self.autoSaveActiveWorkers[-1]
+        self._enqueueAutoSave()
         autoSaveIntevalValue, autoSaveIntervalUnit = (
             self.autoSaveIntevalValueUnit
         )
-        if autoSaveIntevalValue > 0:
-            if autoSaveIntervalUnit == 'minutes':
-                autosave_interval_ms = autoSaveIntevalValue*60*1000
-                self.autoSaveTimer.timeout.connect(self.autoSaveTimerTimedOut)
-                self.autoSaveTimer.start(self.autosave_interval_ms)
-            else:
-                posData = self.data[self.pos_i]
-                self.autoSaveTimeStartFrameIdx = posData.frame_i
-                self.autoSaveTimer.timeout.connect(
-                    self.autoSaveTimerCountFrames
-                )
-                self.autoSaveTimer.start(1000)
+        if autoSaveIntevalValue == 0:
             return
         
-        if worker.isSaving:
-            ...
-        
-        self.logger.info('Autosaving...')
-        posData = self.data[self.pos_i]          
+        posData = self.data[self.pos_i]
+        if autoSaveIntervalUnit == 'minutes':
+            autosave_interval_ms = round(autoSaveIntevalValue*60*1000)
+            self.autoSaveTimer.timeout.connect(self.autoSaveTimerTimedOut)
+            self.autoSaveTimer.start(autosave_interval_ms)
+        else:
+            self.autoSaveTimeStartFrameIdx = posData.frame_i
+            self.autoSaveTimer.timeout.connect(
+                self.autoSaveTimerCountFrames
+            )
+            self.autoSaveTimer.start(500)
+            
+    def _enqueueAutoSave(self):
         if not self.statusBarLabel.text().endswith('Autosaving...'):
             self.statusBarLabel.setText(
                 f'{self.statusBarLabel.text()} | Autosaving...'
             )
+            
+        timestamp = datetime.now().strftime(r'%H:%M:%S.%f')[:-3]
+        self.logger.info(f'Autosaving... - {timestamp}')
+        
+        posData = self.data[self.pos_i]
+        worker, thread = self.autoSaveActiveWorkers[-1]
         worker.enqueue(posData)
-
+    
     def enqCcaIntegrityChecker(self):
         if not self.ccaCheckerRunning:
             return
@@ -31895,7 +31930,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         for worker, thread in self.autoSaveActiveWorkers:
             self.logger.info('Stopping autosaving process...')
             self.statusBarLabel.setText('Stopping autosaving process...')
-            worker.abort()
+            worker.stop()
             self.waitAutoSaveWorkerTimer = QTimer()
             self.waitAutoSaveWorkerTimer.timeout.connect(
                 partial(self.waitAutoSaveWorker, worker)
@@ -32149,11 +32184,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         worker.isAutoSaveAnnotON = checked
     
+    def autoSaveIntervalEdit(self):
+        self.autoSaveIntevalDialog.show()
+        self.autoSaveIntevalDialog.raise_()
+        self.autoSaveIntevalDialog.activateWindow()
+    
     def autoSaveIntervalValueChanged(
             self, value: float, unit: Literal['minutes', 'frames']
         ):
         self.autoSaveIntevalValueUnit = (value, unit)
         self.autoSaveTimer.stop()
+        
+        self.df_settings.at['autoSaveIntevalValue', 'value'] = str(value)
+        self.df_settings.at['autoSaveIntervalUnit', 'value'] = unit
+        self.df_settings.to_csv(settings_csv_path)
             
     def ccaIntegrCheckerToggled(self, checked):
         self.df_settings.at['is_cca_integrity_checker_activated', 'value'] = (

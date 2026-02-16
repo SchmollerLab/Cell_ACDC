@@ -836,7 +836,7 @@ class AutoSaveWorker(QObject):
         self.waitCond = waitCond
         self.exit = False
         self.isFinished = False
-        self.abortSaving = False
+        self.stopSaving = False
         self.isSaving = False
         self.isPaused = False
         self.dataQ = deque(maxlen=5)
@@ -856,7 +856,7 @@ class AutoSaveWorker(QObject):
     def enqueue(self, posData):
         # First stop previously saving data
         if self.isSaving:
-            self.abortSaving = True
+            self.stopSaving = True
         self._enqueue(posData)
     
     def _enqueue(self, posData):
@@ -865,19 +865,22 @@ class AutoSaveWorker(QObject):
         self.dataQ.append(posData)
         if len(self.dataQ) == 1:
             # Wake up worker upon inserting first element
-            self.abortSaving = False
+            self.stopSaving = False
             self.waitCond.wakeAll()
     
     def _stop(self):
         self.exit = True
         self.waitCond.wakeAll()
     
-    def abort(self):
-        self.abortSaving = True
+    def stop(self):
+        self.stopSaving = True
         while not len(self.dataQ) == 0:
             data = self.dataQ.pop()
             del data
         self._stop()
+    
+    def cancelSaving(self):
+        ...
     
     @worker_exception_handler
     def run(self):
@@ -953,7 +956,7 @@ class AutoSaveWorker(QObject):
         acdc_df_li = []
         
         for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
-            if self.abortSaving:
+            if self.stopSaving:
                 break
             
             # Build saved_segm_data
@@ -985,10 +988,10 @@ class AutoSaveWorker(QObject):
                 key = (frame_i, posData.TimeIncrement*frame_i)
                 keys.append(key)
 
-            if self.abortSaving:
+            if self.stopSaving:
                 break
         
-        if not self.abortSaving:            
+        if not self.stopSaving:            
             if self.isAutoSaveON:
                 segm_data = np.squeeze(saved_segm_data)
                 self._saveSegm(segm_npz_path, segm_data)
@@ -1002,9 +1005,9 @@ class AutoSaveWorker(QObject):
 
         if self.debug:
             self.logger.log(f'Autosaving done.')
-            self.logger.log(f'Aborted autosaving {self.abortSaving}.')
+            self.logger.log(f'Stopped autosaving {self.stopSaving}.')
 
-        self.abortSaving = False
+        self.stopSaving = False
     
     def _saveSegm(self, recovery_path, data):
         try:
@@ -6198,9 +6201,10 @@ class saveDataWorker(QObject):
                 if skipUserChannel:
                     add_user_channel_data = False
 
+            printl(add_user_channel_data, self.isQuickSave)
             if add_user_channel_data and not self.isQuickSave:
                 posData.fluo_data_dict[posData.filename] = posData.img_data
-
+            
             if not self.isQuickSave:
                 posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
             
@@ -6250,8 +6254,7 @@ class saveDataWorker(QObject):
                     self.mutex.unlock()
                     posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
-            if add_user_channel_data and not self.isQuickSave:
-                posData.fluo_data_dict.pop(posData.filename)
+            posData.fluo_data_dict.pop(posData.filename, None)
 
             if not self.isQuickSave:
                 posData.fluo_bkgrData_dict.pop(posData.filename)

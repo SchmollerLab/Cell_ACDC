@@ -11690,8 +11690,8 @@ class AutoSaveIntervalWidget(QWidget):
         
         self.setLayout(layout)
         
-        self.spinbox.sigTextChange.connect(self.emitSigValueChanged)
-        self.unitCombobox.sigTextChange.connect(self.emitSigValueChanged)
+        self.spinbox.sigValueChanged.connect(self.emitSigValueChanged)
+        self.unitCombobox.sigTextChanged.connect(self.emitSigValueChanged)
     
     def emitSigValueChanged(self, *args, **kwargs):
         self.sigValueChanged.emit(
