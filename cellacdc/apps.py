@@ -18988,6 +18988,12 @@ class AutoSaveIntervalDialog(QBaseDialog):
         
         self.setLayout(mainLayout)
     
+    def setValues(self, autoSaveIntevalValue, autoSaveIntervalUnit):
+        self.autoSaveIntervalWidget.spinbox.setValue(autoSaveIntevalValue)
+        self.autoSaveIntervalWidget.unitCombobox.setCurrentText(
+            autoSaveIntervalUnit
+        )
+    
     def sizeHint(self):
         defaultWidth = super().sizeHint().width()
         defaultHeight = super().sizeHint().height()

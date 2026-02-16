@@ -335,6 +335,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.autoSaveIntevalValueUnit = (
             autoSaveIntevalValue, autoSaveIntervalUnit
         )
+        self.logger.info(
+            'Autosave interval set to: '
+            f'{autoSaveIntevalValue} {autoSaveIntervalUnit}'
+        )
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -2997,7 +3001,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.autoSaveToggle.toggled.connect(self.autoSaveToggled)
         self.autoSaveAnnotToggle.toggled.connect(self.autoSaveAnnotToggled)
-        self.autoSaveIntevalDialog.sigValueChanged.connect(
+        self.autoSaveIntervalDialog.sigValueChanged.connect(
             self.autoSaveIntervalValueChanged
         )
         self.autoSaveIntervalEditButton.clicked.connect(
@@ -3607,7 +3611,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.autoSaveToggle.setChecked(True)
         self.autoSaveToggle.setToolTip(autoSaveTooltip)
-        autoSaveLabel = QLabel('Autosave segm.')
+        autoSaveLabel = QLabel('Autosave segmentation')
         autoSaveLabel.setToolTip(autoSaveTooltip)
         layout.addRow(autoSaveLabel, self.autoSaveToggle)
         
@@ -3625,15 +3629,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.autoSaveIntervalEditButton = widgets.editPushButton(
             flat=True, hoverable=True
         )
-        autoSaveIntervalEditTooltip = (
-            'Change autosave interval (minutes or frames)'
+        self.autoSaveIntervalLabel = QLabel('Autosave interval')        
+        self.autoSaveIntervalSetTooltip()
+        layout.addRow(
+            self.autoSaveIntervalLabel, self.autoSaveIntervalEditButton
         )
-        autoSaveIntervalLabel = QLabel('Autosave interval')
-        autoSaveIntervalLabel.setToolTip(autoSaveIntervalEditTooltip)
-        self.autoSaveIntervalEditButton.setToolTip(autoSaveIntervalEditTooltip)
-        layout.addRow(autoSaveIntervalLabel, self.autoSaveIntervalEditButton)
         
-        self.autoSaveIntevalDialog = apps.AutoSaveIntervalDialog(parent=self)
+        self.autoSaveIntervalDialog = apps.AutoSaveIntervalDialog(parent=self)
+        self.autoSaveIntervalDialog.setValues(*self.autoSaveIntevalValueUnit)
         
         self.ccaIntegrCheckerToggle = widgets.Toggle()
         ccaIntegrCheckerToggleTooltip = (
@@ -14687,8 +14690,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.rgbaImg1.opacity())
-            printl(self.rgbaImg1.zValue())
+            printl(
+                self.autoSaveTimer.isActive(), self.autoSaveTimeStartFrameIdx,
+                self.autoSaveIntevalValueUnit
+            )
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -20538,7 +20543,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.last_pos_i = -1
         self.last_frame_i = -1
-        self.autoSaveTimeStartFrameIdx = -1
 
         # Plots items
         self.isMouseDragImg2 = False
@@ -22824,18 +22828,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if autoSaveIntevalValue == 0:
             return
         
-        posData = self.data[self.pos_i]
+        try:
+            self.autoSaveTimer.timeout.disconnect()
+        except Exception as err:
+            pass
+            
+        
         if autoSaveIntervalUnit == 'minutes':
             autosave_interval_ms = round(autoSaveIntevalValue*60*1000)
             self.autoSaveTimer.timeout.connect(self.autoSaveTimerTimedOut)
             self.autoSaveTimer.start(autosave_interval_ms)
         else:
-            self.autoSaveTimeStartFrameIdx = posData.frame_i
-            self.autoSaveTimer.timeout.connect(
-                self.autoSaveTimerCountFrames
-            )
-            self.autoSaveTimer.start(500)
-            
+            self.startAutoSaveEveryNframesTimer()
+    
+    def startAutoSaveEveryNframesTimer(self):
+        posData = self.data[self.pos_i]
+        self.autoSaveTimeStartFrameIdx = posData.frame_i
+        self.autoSaveTimer.timeout.connect(
+            self.autoSaveTimerCountFrames
+        )
+        self.autoSaveTimer.start(500)
+    
     def _enqueueAutoSave(self):
         if not self.statusBarLabel.text().endswith('Autosaving...'):
             self.statusBarLabel.setText(
@@ -32185,9 +32198,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         worker.isAutoSaveAnnotON = checked
     
     def autoSaveIntervalEdit(self):
-        self.autoSaveIntevalDialog.show()
-        self.autoSaveIntevalDialog.raise_()
-        self.autoSaveIntevalDialog.activateWindow()
+        self.autoSaveIntervalDialog.show()
+        self.autoSaveIntervalDialog.raise_()
+        self.autoSaveIntervalDialog.activateWindow()
     
     def autoSaveIntervalValueChanged(
             self, value: float, unit: Literal['minutes', 'frames']
@@ -32198,7 +32211,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.df_settings.at['autoSaveIntevalValue', 'value'] = str(value)
         self.df_settings.at['autoSaveIntervalUnit', 'value'] = unit
         self.df_settings.to_csv(settings_csv_path)
-            
+        
+        self.logger.info(
+            f'Autosave interval changed to: {value} {unit}'
+        )
+        self.autoSaveIntervalSetTooltip()
+        
+        if unit == 'frames':
+            self.startAutoSaveEveryNframesTimer()
+    
+    def autoSaveIntervalSetTooltip(self):
+        value, unit = self.autoSaveIntevalValueUnit
+        autoSaveIntervalEditTooltip = (
+            'Change autosave interval to every N frames or minutes\n\n'
+            f'Current autosave interval: {value} {unit}'
+        )
+        self.autoSaveIntervalLabel.setToolTip(autoSaveIntervalEditTooltip)
+        self.autoSaveIntervalEditButton.setToolTip(autoSaveIntervalEditTooltip)
+    
     def ccaIntegrCheckerToggled(self, checked):
         self.df_settings.at['is_cca_integrity_checker_activated', 'value'] = (
             int(checked)
