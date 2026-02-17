@@ -221,55 +221,19 @@ def save_labels_image(labels: np.ndarray, output_path: Path):
 
 
 def ensure_sam():
-    """Ensure segment_anything is importable, checking local repo as fallback."""
-    import importlib
-    import sys
-
-    try:
-        importlib.import_module("segment_anything")
-        return
-    except ModuleNotFoundError:
-        repo_root = Path(__file__).resolve().parents[3].parent
-        candidate = repo_root / "segment-anything"
-        if candidate.exists():
-            sys.path.insert(0, str(candidate))
-
+    """Ensure segment_anything is importable."""
     import pytest
     pytest.importorskip("segment_anything")
 
 
 def ensure_sam2():
-    """Ensure sam2 is importable, checking local repo as fallback."""
-    import importlib
-    import sys
-
-    try:
-        importlib.import_module("sam2")
-        return
-    except ModuleNotFoundError:
-        repo_root = Path(__file__).resolve().parents[3].parent
-        candidate = repo_root / "sam2"
-        if candidate.exists():
-            sys.path.insert(0, str(candidate))
-
+    """Ensure sam2 is importable."""
     import pytest
     pytest.importorskip("sam2")
 
 
 def ensure_microsam():
-    """Ensure micro_sam is importable, checking local clone as fallback."""
-    import importlib
-    import sys
-
-    try:
-        importlib.import_module("micro_sam")
-        return
-    except ModuleNotFoundError:
-        repo_root = Path(__file__).resolve().parents[2]
-        candidate = repo_root.parent / "micro-sam"
-        if candidate.exists():
-            sys.path.insert(0, str(candidate))
-
+    """Ensure micro_sam is importable."""
     import pytest
     pytest.importorskip("micro_sam")
 
