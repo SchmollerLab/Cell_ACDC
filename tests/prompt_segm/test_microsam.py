@@ -16,10 +16,6 @@ from tests.utils import (
 ensure_microsam()
 
 
-@pytest.mark.skipif(
-    not __import__("torch").cuda.is_available(),
-    reason="No GPU",
-)
 class TestPromptableMicroSAM:
     @pytest.fixture(scope="class", autouse=True)
     def download_models(self):
