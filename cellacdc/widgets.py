@@ -11657,3 +11657,23 @@ class YeazV2SelectModelNameCombobox(ComboBox):
     
     def value(self, *args):
         return self.currentText()
+
+class HighlightedIDToolbar(ToolBar):
+    sigIDChanged = Signal(int)
+    
+    def __init__(self, name='Highlighted ID', parent=None):
+        
+        super().__init__(name, parent)
+        
+        self.spinbox = self.addSpinBox('Highlighted ID: ')
+        self.spinbox.valueChanged.connect(self.emitSigIDChanged)
+        
+        self.addSeparator()
+    
+    def emitSigIDChanged(self, *args, **kwargs):
+        self.sigIDChanged.emit(self.spinbox.value())
+    
+    def setIDNoSignals(self, ID: int):
+        self.spinbox.blockSignals(True)
+        self.spinbox.setValue(ID)
+        self.spinbox.blockSignals(False)

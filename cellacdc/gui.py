@@ -1153,12 +1153,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
         editToolBar.addAction(self.segmentToolAction)
 
-        self.SegForLostIDsButton = QToolButton(self)
-        self.SegForLostIDsButton.setIcon(QIcon(":addDelPolyLineRoi_cursor.svg"))
+        self.segForLostIDsButton = QToolButton(self)
+        self.segForLostIDsButton.setIcon(QIcon(":addDelPolyLineRoi_cursor.svg"))
         self.segForLostIDsAction = editToolBar.addWidget(
-            self.SegForLostIDsButton
+            self.segForLostIDsButton
         )
-        self.SegForLostIDsButton.clicked.connect(self.SegForLostIDsAction)
+        self.segForLostIDsButton.clicked.connect(
+            self.segForLostIDsButtonClicked
+        )
 
         # self.SegForLostIDsButton.setShortcut('U')
         # self.widgetsWithShortcut['Unknown lineage (lineage tree)'] = self.SegForLostIDsButton
@@ -1954,6 +1956,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.autoPilotZoomToObjToolbar.keepVisibleWhenActive = True
         self.controlToolBars.append(self.autoPilotZoomToObjToolbar)
         
+        # Highlighted ID or searched ID toolbar
+        self.highlightIDToolbar = widgets.HighlightedIDToolbar(
+            parent=self
+        )
+        self.addToolBar(Qt.TopToolBarArea, self.highlightIDToolbar)
+        self.highlightIDToolbar.setVisible(False)
+        self.highlightIDToolbar.keepVisibleWhenActive = True
+        self.controlToolBars.append(self.highlightIDToolbar)
+        
+        self.highlightIDToolbar.sigIDChanged.connect(
+            self.setHighlighedIDfromToolbar
+        )
+        
         # Widgets toolbar
         brushEraserToolBar = widgets.ToolBar("Widgets", self)
         self.addToolBar(Qt.TopToolBarArea, brushEraserToolBar)
@@ -2198,7 +2213,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # self.autoPilotZoomToObjToolbar.addAction(closeToolbarAction)
         
         self.autoPilotZoomToObjToolbar.addWidget(widgets.QVLine())
-        self.autoPilotZoomToObjToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
+        self.autoPilotZoomToObjToolbar.addWidget(
+            widgets.QHWidgetSpacer(width=separatorW)
+        )
         
         spinBox = widgets.SpinBox()
         spinBox.setMinimum(1)
@@ -8355,7 +8372,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             'base_model_name': base_model_name,
         }
 
-    def SegForLostIDsAction(self):
+    def segForLostIDsButtonClicked(self):
 
         self.setFrameNavigationDisabled(disable=True, why='Segmentation for lost IDs')
         posData = self.data[self.pos_i]
@@ -8715,19 +8732,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.zoomRectItem.setPos((0,0))
         self.zoomRectItem.setSize((0,0))
     
-    def findID(self):
+    def findID(self, checked=False, ID=None):
         posData = self.data[self.pos_i]
-        searchIDdialog = apps.FindIDDialog(
-            title='Search object by ID',
-            msg='Enter object ID to find and highlight',
-            parent=self,
-            isInteger=True
-        )
-        searchIDdialog.exec_()
-        if searchIDdialog.cancel:
-            return
+        if ID is None:
+            searchIDdialog = apps.FindIDDialog(
+                title='Search object by ID',
+                msg='Enter object ID to find and highlight',
+                parent=self,
+                isInteger=True
+            )
+            searchIDdialog.exec_()
+            if searchIDdialog.cancel:
+                return
 
-        searchedID = searchIDdialog.EntryID
+            searchedID = searchIDdialog.EntryID
+        else:
+            searchedID = ID
         
         if searchedID in posData.IDs:
             self.goToObjectID(searchedID)
@@ -12807,6 +12827,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.setAnnotOptionsLin_treeMode()
                 self.clearGhost()
                 self.editLin_TreeBar.setVisible(True)
+        
+        self.disableNonFunctionalButtons()
 
     def disableEditingViewPlaneNotXY(self):
         posData = self.data[self.pos_i]
@@ -18855,7 +18877,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             else: 
                 action = item
             action.setDisabled(True)
-            
 
     @exception_handler
     def startLoadDataWorker(self, user_ch_file_paths, user_ch_name, firstPosData):
@@ -26920,8 +26941,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.highLightIDLayerImg1.clear()
         self.highLightIDLayerRightImage.clear()
     
+    def setHighlighedIDfromToolbar(self, ID: int):
+        self.findID(ID=ID)
+    
     def highlightSearchedID(self, ID, force=False, greyOthers=True):
+        self.highlightIDToolbar.setIDNoSignals(ID)
+        
         if ID == 0:
+            self.highlightIDToolbar.setVisible(False)
             return
 
         if ID == self.highlightedID and not force:
@@ -26947,6 +26974,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         posData = self.data[self.pos_i]
 
         self.highlightedID = ID
+        self.highlightIDToolbar.setVisible(True)
 
         objIdx = posData.IDs_idxs.get(ID)
         if objIdx is None:
@@ -32299,6 +32327,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.magicPromptsToolButton.setChecked(False)
     
     def clearHighlightedID(self):
+        self.highlightIDToolbar.setVisible(False)
+        
         try:
             self.updateLostContoursImage(ax=0, delROIsIDs=None)
         except Exception as err:
