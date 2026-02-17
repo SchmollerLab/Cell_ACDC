@@ -146,7 +146,7 @@ microsam = [
     "zarr",
     "pooch",
     "xxhash",
-    "micro-sam",
+    "micro-sam @ git+https://github.com/keejkrej/micro-sam.git",
     "segment_anything",
 ]
 
@@ -186,10 +186,6 @@ conflicts = [
         { extra = "cellpose3" },
     ],
 ]
-
-[tool.uv.sources]
-# Local clone; swap to git when pushing: micro-sam = { git = "https://github.com/.../micro-sam.git" }
-micro-sam = { path = "../micro-sam" }
 
 # Ignore DeprecationWarnings
 [tool.pytest.ini_options]
