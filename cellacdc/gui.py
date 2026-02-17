@@ -5253,11 +5253,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             posData.disableAutoActivateViewerWindow = True
             currentIDs = posData.IDs.copy()
             self.setAllIDs(onlyVisited=True)
-            editID = apps.editID_QWidget(
-                ID, posData.IDs, doNotShowAgain=self.doNotAskAgainExistingID,
-                parent=self, entryID=self.getNearestLostObjID(y, x), 
+            addPropagateCheckbox = (
+                not self.isSnapshot
+                and posData.frame_i == self.navigateScrollBar.maximum() - 1
+                and posData.frame_i < posData.SizeT - 1
+            )
+            editID = apps.EditIDDialog(
+                ID, posData.IDs, 
+                doNotShowAgain=self.doNotAskAgainExistingID,
+                parent=self, 
+                entryID=self.getNearestLostObjID(y, x), 
                 nextUniqueID=self.setBrushID(return_val=True), 
-                allIDs=posData.allIDs
+                allIDs=posData.allIDs,
+                addPropagateCheckbox=addPropagateCheckbox
             )
             editID.show(block=True)
             if editID.cancel:
@@ -5274,7 +5282,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.editIDmergeIDs = editID.mergeWithExistingID
             self.doNotAskAgainExistingID = editID.doNotAskAgainExistingID
             
-            self.applyEditID(ID, currentIDs, editID.how, x, y, shift=shift)
+            self.applyEditID(
+                ID, currentIDs, editID.how, x, y, 
+                shift=shift,
+                doPropagateUnvisited=editID.doPropagateFutureFrames
+            )
         
         elif (right_click or left_click) and self.keepIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -9481,7 +9493,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     
     # @exec_time
     def applyEditID(
-            self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y, shift=False
+            self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y, shift=False, doPropagateUnvisited=False
         ):  
         posData = self.data[self.pos_i]
         
@@ -9574,13 +9586,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         posData.doNotShowAgain_EditID = doNotShowAgain
         posData.UndoFutFrames_EditID = UndoFutFrames
         posData.applyFutFrames_EditID = applyFutFrames
-        includeUnvisited = posData.includeUnvisitedInfo['Edit ID']
+        includeUnvisited = (
+            posData.includeUnvisitedInfo['Edit ID']
+            or doPropagateUnvisited
+        )
+        
+        if not applyFutFrames and not doPropagateUnvisited:
+            return
 
-        if applyFutFrames:
-            self.changeIDfutureFrames(
-                endFrame_i, oldIDnewIDMapper, includeUnvisited,
-                shift=shift
-            )
+        self.changeIDfutureFrames(
+            endFrame_i, oldIDnewIDMapper, includeUnvisited,
+            shift=shift
+        )
     
     def getLastHoveredID(self):
         if self.xHoverImg is None:

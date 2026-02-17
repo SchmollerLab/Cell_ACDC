@@ -9735,10 +9735,15 @@ class NumericEntryDialog(QBaseDialog):
         self.value = getattr(self.entryWidget, self.valueGetter)()
         self.close()
 
-class editID_QWidget(QDialog):
+class EditIDDialog(QDialog):
     def __init__(
-            self, clickedID, IDs, entryID=None, doNotShowAgain=False, 
-            parent=None, nextUniqueID=1, allIDs=None
+            self, clickedID, IDs, 
+            entryID=None, 
+            doNotShowAgain=False, 
+            parent=None, 
+            nextUniqueID=1, 
+            allIDs=None,
+            addPropagateCheckbox=False
         ):
         self.assignNewID = False
         self.IDs = IDs
@@ -9796,6 +9801,12 @@ class editID_QWidget(QDialog):
         note.setStyleSheet("padding:12px 0px 0px 0px;")
         VBoxLayout.addWidget(note, alignment=Qt.AlignCenter)
         mainLayout.addLayout(VBoxLayout)
+        
+        self.propagateCheckbox = None
+        if addPropagateCheckbox:
+            mainLayout.addSpacing(10)
+            self.propagateCheckbox = QCheckBox('Apply to future frames')
+            mainLayout.addWidget(self.propagateCheckbox)
 
         buttonsLayout = QHBoxLayout()
         okButton = widgets.okPushButton('Ok')
@@ -9808,7 +9819,7 @@ class editID_QWidget(QDialog):
         buttonsLayout.addWidget(applyNewIDButton)
         buttonsLayout.addWidget(okButton)
 
-        mainLayout.addSpacing(10)
+        mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
@@ -9919,11 +9930,7 @@ class editID_QWidget(QDialog):
             else:
                 valid = False
 
-        if valid:
-            self.cancel = False
-            self.how = how
-            self.close()
-        else:
+        if not valid:
             err_msg = html_utils.paragraph(
                 'You entered invalid text. Valid text is either a single integer'
                 f' ID that will be used to replace ID {self.clickedID} '
@@ -9931,9 +9938,18 @@ class editID_QWidget(QDialog):
                 'such as (5, 10), (8, 27) to replace ID 5 with ID 10 and ID 8 with ID 27'
             )
             msg = widgets.myMessageBox()
-            msg.critical(
+            msg.warning(
                 self, 'Invalid entry', err_msg
             )
+            return
+        
+        self.cancel = False
+        self.how = how
+        self.doPropagateFutureFrames = False
+        if self.propagateCheckbox is not None:
+            self.doPropagateFutureFrames = self.propagateCheckbox.isChecked()
+        self.close()
+        
 
     def cancel_cb(self, event):
         self.cancel = True
@@ -18958,4 +18974,3 @@ class OverlayLabelsAppearanceDialog(QBaseDialog):
             'pen': self.getPen()
         }
         self.close()
-    
