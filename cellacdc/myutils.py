@@ -4000,9 +4000,12 @@ def import_promptable_segment_module(model_name):
             f'cellacdc.promptable_models.{model_name}.acdcPromptSegment'
         )
     except ModuleNotFoundError as e:
-        # Check if custom model
-        cp = config.ConfigParser()
+        # Check if custom model (config is GUI-only)
+        import configparser
+        cp = configparser.ConfigParser()
         cp.read(promptable_models_list_file_path)
+        if not cp.has_section(model_name):
+            raise e from None
         model_path = cp[model_name]['path']
         spec = importlib.util.spec_from_file_location(
             'acdcPromptSegment', model_path
@@ -4119,8 +4122,9 @@ def import_segment_module(model_name):
     try:
         acdcSegment = import_module(f'cellacdc.models.{model_name}.acdcSegment')
     except ModuleNotFoundError as e:
-        # Check if custom model
-        cp = config.ConfigParser()
+        # Check if custom model (config is GUI-only)
+        import configparser
+        cp = configparser.ConfigParser()
         cp.read(models_list_file_path)
         model_path = cp[model_name]['path']
         spec = importlib.util.spec_from_file_location('acdcSegment', model_path)

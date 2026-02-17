@@ -154,7 +154,7 @@ class Model:
         self,
         image,
         lab: NotParam = None,
-        treat_other_objects_as_background: bool = True,
+        treat_other_objects_as_background: bool = False,
         *args,
         **kwargs,
     ):

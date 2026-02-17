@@ -151,7 +151,7 @@ class Model:
         self,
         image,
         lab: NotParam = None,
-        treat_other_objects_as_background: bool = True,
+        treat_other_objects_as_background: bool = False,
         *args,
         **kwargs,
     ):
@@ -214,7 +214,6 @@ class Model:
                         points_yx,
                         point_labels,
                         image_embeddings=self._image_embeddings,
-                        i=0,
                         use_best_multimask=True,
                     )
                     obj_mask[z] = np.asarray(mask).squeeze().astype(bool)
@@ -232,7 +231,6 @@ class Model:
                     points_yx,
                     point_labels,
                     image_embeddings=self._image_embeddings,
-                    i=0,
                     use_best_multimask=True,
                 )
                 obj_mask[:] = np.asarray(mask).squeeze().astype(bool)
