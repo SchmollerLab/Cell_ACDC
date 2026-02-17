@@ -256,6 +256,24 @@ def ensure_sam2():
     pytest.importorskip("sam2")
 
 
+def ensure_microsam():
+    """Ensure micro_sam is importable, checking local clone as fallback."""
+    import importlib
+    import sys
+
+    try:
+        importlib.import_module("micro_sam")
+        return
+    except ModuleNotFoundError:
+        repo_root = Path(__file__).resolve().parents[2]
+        candidate = repo_root.parent / "micro-sam"
+        if candidate.exists():
+            sys.path.insert(0, str(candidate))
+
+    import pytest
+    pytest.importorskip("micro_sam")
+
+
 def ensure_cellsam():
     """Ensure cellSAM is importable."""
     import pytest

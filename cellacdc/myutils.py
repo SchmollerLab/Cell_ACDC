@@ -2092,6 +2092,9 @@ def download_model(model_name):
         except Exception as e:
             traceback.print_exc()
             return False
+    elif model_name == 'micro-sam':
+        # micro-sam downloads weights on first get_sam_model() via pooch
+        return True
     elif model_name == 'DeepSea':
         try:
             _download_deepsea_models()
