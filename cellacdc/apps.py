@@ -18958,4 +18958,51 @@ class OverlayLabelsAppearanceDialog(QBaseDialog):
             'pen': self.getPen()
         }
         self.close()
+
+class AutoSaveIntervalDialog(QBaseDialog):
+    sigValueChanged = Signal(float, str)
     
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.cancel = True
+        
+        self.setWindowTitle('Change autosave interval')
+
+        mainLayout = QVBoxLayout()
+        
+        self.autoSaveIntervalWidget = (
+            widgets.AutoSaveIntervalWidget(parent=self)
+        )
+        
+        mainLayout.addWidget(QLabel('Autosave interval:'))
+        mainLayout.addWidget(self.autoSaveIntervalWidget)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def setValues(self, autoSaveIntevalValue, autoSaveIntervalUnit):
+        self.autoSaveIntervalWidget.spinbox.setValue(autoSaveIntevalValue)
+        self.autoSaveIntervalWidget.unitCombobox.setCurrentText(
+            autoSaveIntervalUnit
+        )
+    
+    def sizeHint(self):
+        defaultWidth = super().sizeHint().width()
+        defaultHeight = super().sizeHint().height()
+        return QSize(defaultWidth*2, defaultHeight)
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.sigValueChanged.emit(
+            self.autoSaveIntervalWidget.spinbox.value(), 
+            self.autoSaveIntervalWidget.unitCombobox.currentText()
+        )
+        self.close()
