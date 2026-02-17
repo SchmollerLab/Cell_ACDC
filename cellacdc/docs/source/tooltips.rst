@@ -165,9 +165,9 @@
     :height: 16px
     :width: 16px
 
-.. |SegForLostIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/addDelPolyLineRoi_cursor.svg
+.. |segForLostIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/addDelPolyLineRoi_cursor.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addDelPolyLineRoi_cursor.svg
-    :alt: SegForLostIDsButton icon
+    :alt: segForLostIDsButton icon
     :height: 16px
     :width: 16px
 
@@ -432,7 +432,7 @@ Edit tools: Segmentation and tracking
     NOTE: While activated, the brush ID will be locked to the requested ID. This is useful to quickly annotate past frames of a specific object without checking errors with the other objects. Future frames cannot be viewed and annotated with this tool.
 * **Magic labeller (** |labelRoiButton| **"L"):** Draw a rectangular ROI around object(s) you want to segment. Draw with LEFT button to label with last used model. Draw with RIGHT button to choose a different segmentation model.
 * **Segment (** |segmentToolAction| **"R"):** Segment with last used model and last used parameters. If you never selected a segmentation model before, you will be asked to choose one and initialize its parameters.
-* **Segmenting for lost IDs (** |SegForLostIDsButton| **):** Segment only a small cutout of the image around missing IDs based on the segmentation of the previous frame. Will always use cellpose model. Parameters can be adjusted in the top ribbon under Segment --> Edit settings for Segmenting lost IDs. In the settings menu, additional parameters can be set like padding and overlap threshold in addition to the model settings.
+* **Segmenting for lost IDs (** |segForLostIDsButton| **):** Segment only a small cutout of the image around missing IDs based on the segmentation of the previous frame. Will always use cellpose model. Parameters can be adjusted in the top ribbon under Segment --> Edit settings for Segmenting lost IDs. In the settings menu, additional parameters can be set like padding and overlap threshold in addition to the model settings.
 * **Manual background (** |manualBackgroundButton| **"G"):**
     * How to use:
         1. Select object to copy its shape.

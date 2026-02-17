@@ -42,7 +42,7 @@ from . import cca_df_colnames, lineage_tree_cols, default_annot_df
 from . import cca_df_colnames_with_tree
 from . import cli
 from .utils import resize
-from .SingleCellSeg import single_cell_seg
+from . import segm_utils
 
 DEBUG = False
 
@@ -379,13 +379,15 @@ class SegForLostIDsWorker(QObject):
             missing_IDs_global.update(missing_IDs)
 
             assigned_IDs_prev = assigned_IDs.copy()
-            new_lab, assigned_IDs, IDs_bboxs, bboxs = single_cell_seg(model, prev_lab, curr_lab, curr_img, 
-                                            missing_IDs, new_unique_ID,
-                                            win, posData,
-                                            distance_filler_growth=args_new['distance_filler_growth'],
-                                            overlap_threshold=args_new['overlap_threshold'],
-                                            padding=args_new['padding'],
-                                            )
+            out = segm_utils.single_cell_seg(
+                model, prev_lab, curr_lab, curr_img, 
+                missing_IDs, new_unique_ID,
+                win, posData,
+                distance_filler_growth=args_new['distance_filler_growth'],
+                overlap_threshold=args_new['overlap_threshold'],
+                padding=args_new['padding'],
+            )
+            new_lab, assigned_IDs, IDs_bboxs, bboxs = out
                     
             IDs_bboxs_list.append(IDs_bboxs)
             bboxs_list.append(bboxs)
