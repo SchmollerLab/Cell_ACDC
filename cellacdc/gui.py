@@ -15943,11 +15943,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
     
     def magicPromptsInterpolateZsliceToggled(self, checked):
-        # Nothing to do upon toggling this for now. 
-        # Interpolated points are added only upon running the model 
-        # and removed afterwards.
         # See 'self.promptSegmentPointsLayerToolbar.addPointsZslicesInterpolation'
-        ...
+        self.promptSegmentPointsLayerToolbar.doAddPointsZslicesInterpolation = (
+            checked
+        )
     
     def magicPromptsClearPoints(self, toolbar, only_zoom=False):
         posData = self.data[self.pos_i]
@@ -16122,15 +16121,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             'Union of original and new masks',
             'Intersection of original and new masks'
         ]
-        if is_zoom:
-            # When segmenting zoomed image, new masks do not make sense because 
-            # objects outside of zoom would be removed
-            images = [images[0], *images[2:]]
-            labels_overlays = [labels_overlays[0], *labels_overlays[2:]]
-            labels_overlays_luts = [
-                labels_overlays_luts[0], *labels_overlays_luts[2:]
-            ]
-            axis_titles = [axis_titles[0], *axis_titles[2:]]
         
         from cellacdc.plot import imshow
         promptSegmResultsWindow = imshow(
@@ -16168,11 +16158,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         zoom_out_lab = results[selected_idx][..., zoom_slice[0], zoom_slice[1]]
         zoom_out_lab_mask = zoom_out_lab > 0
         
-        lab = posData.allData_li[posData.frame_i]['labels']
-        if not is_zoom and promptSegmResultsWindow.selected_idx == 1:
-            # User selected new masks --> erase everything
-            lab[:] = 0
-        
+        lab = posData.allData_li[posData.frame_i]['labels']        
         lab[..., zoom_slice[0], zoom_slice[1]][zoom_out_lab_mask] = (
             zoom_out_lab[zoom_out_lab_mask]
         )
@@ -23913,6 +23899,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if toolbar == self.promptSegmentPointsLayerToolbar:
             newID = self.setBrushID(return_val=True)
             pointIdSpinbox.setValue(newID)
+            pointIdSpinbox.setReadOnly(True)
+            pointIdSpinbox.setToolTip(
+                'The ids added with left-click cannot be manually edited. '
+                'They are always a new, non-existing id.'
+            ) 
+                
         toolButton.actions.append(pointIdSpinbox.labelAction)
         pointIdSpinbox.action = toolbar.addWidget(pointIdSpinbox)
         toolButton.actions.append(pointIdSpinbox.action)
@@ -29379,7 +29371,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             buttonsTexts=('Cancel', 'No, do not save', 'Yes, save points')
         )
         if msg.clickedButton == saveButton:
-            self.savePointsAddedByClicking(saveAction)
+            self.savePointsAddedByClicking(saveAction, None)
         
         return msg.cancel
     
