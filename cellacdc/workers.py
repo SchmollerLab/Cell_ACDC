@@ -6203,7 +6203,6 @@ class saveDataWorker(QObject):
                 if skipUserChannel:
                     add_user_channel_data = False
 
-            printl(add_user_channel_data, self.isQuickSave)
             if add_user_channel_data and not self.isQuickSave:
                 posData.fluo_data_dict[posData.filename] = posData.img_data
             
@@ -6211,17 +6210,17 @@ class saveDataWorker(QObject):
                 posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
             
             posData.setLoadedChannelNames()
-            self.mainWin.initMetricsToSave(posData)
             
-            self.mainWin._measurements_kernel.run(
-                posData=posData, 
-                stop_frame_n=end_i+1,
-                saveDataWorker=self,
-                save_metrics=self.mainWin.save_metrics and not self.isQuickSave
-            )
+            if not self.isQuickSave:
+                self.mainWin.initMetricsToSave(posData)
+                self.mainWin._measurements_kernel.run(
+                    posData=posData, 
+                    stop_frame_n=end_i+1,
+                    saveDataWorker=self,
+                    save_metrics=self.mainWin.save_metrics
+                )
+                
             self.progress.emit(f'Saving {posData.relPath}')
-
-            
 
             if not self.do_not_save_og_whitelist:
                 og_save_path = os.path.join(

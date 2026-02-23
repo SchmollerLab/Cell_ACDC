@@ -16094,36 +16094,44 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         posData = self.data[self.pos_i]
         
+        is_zoom = True
         if zoom_slice is None:
             zoom_slice = (slice(None), slice(None))
+            is_zoom = False
         
-
-        images = (
-            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
-            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
-            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
-            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
+        img = (
+            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]]
         )
-        labels_overlays = (
+        images = [img, img, img, img]
+        labels_overlays = [
             posData.lab[..., zoom_slice[0], zoom_slice[1]], 
             lab_new[..., zoom_slice[0], zoom_slice[1]], 
             lab_union[..., zoom_slice[0], zoom_slice[1]], 
             lab_interesection[..., zoom_slice[0], zoom_slice[1]],
-        )
+        ]
         labels_overlays_lut = self.getLabelsImageLut()
-        labels_overlays_luts = (
+        labels_overlays_luts = [
             labels_overlays_lut, 
             labels_overlays_lut, 
             labels_overlays_lut,
             labels_overlays_lut,
-        )
-        
-        axis_titles = (
+        ]
+        axis_titles = [
             'Original masks', 
             'New masks', 
             'Union of original and new masks',
             'Intersection of original and new masks'
-        )
+        ]
+        if is_zoom:
+            # When segmenting zoomed image, new masks do not make sense because 
+            # objects outside of zoom would be removed
+            images = [images[0], *images[2:]]
+            labels_overlays = [labels_overlays[0], *labels_overlays[2:]]
+            labels_overlays_luts = [
+                labels_overlays_luts[0], *labels_overlays_luts[2:]
+            ]
+            axis_titles = [axis_titles[0], *axis_titles[2:]]
+        
         from cellacdc.plot import imshow
         promptSegmResultsWindow = imshow(
             *images, 
@@ -16161,6 +16169,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         zoom_out_lab_mask = zoom_out_lab > 0
         
         lab = posData.allData_li[posData.frame_i]['labels']
+        if not is_zoom and promptSegmResultsWindow.selected_idx == 1:
+            # User selected new masks --> erase everything
+            lab[:] = 0
+        
         lab[..., zoom_slice[0], zoom_slice[1]][zoom_out_lab_mask] = (
             zoom_out_lab[zoom_out_lab_mask]
         )
