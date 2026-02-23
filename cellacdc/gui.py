@@ -23899,6 +23899,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if toolbar == self.promptSegmentPointsLayerToolbar:
             newID = self.setBrushID(return_val=True)
             pointIdSpinbox.setValue(newID)
+            pointIdSpinbox.setReadOnly(True)
+            pointIdSpinbox.setToolTip(
+                'The ids added with left-click cannot be manually edited. '
+                'They are always a new, non-existing id.'
+            ) 
+                
         toolButton.actions.append(pointIdSpinbox.labelAction)
         pointIdSpinbox.action = toolbar.addWidget(pointIdSpinbox)
         toolButton.actions.append(pointIdSpinbox.action)
