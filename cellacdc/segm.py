@@ -1089,6 +1089,20 @@ class segmWin(QMainWindow):
         config_filepath = os.path.join(folder_path, config_filename)
         self._saveConfigurationFile(config_filepath)
     
+    def showHelpSaveMeasurements(self, parent=None):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            If you choose to save the measurements, you will be asked to select 
+            which measurements to compute and save after segmentation.<br><br>
+            We recommend saving measurements <b>only if you do not plan to 
+            visualize or correct the segmentations results</b>.<br><br>
+            If you plan to visualize and correct segmentation results, and 
+            you need the measurements, you will anyway need to compute<br>
+            and save them after correcting the segmentations.
+        """
+        )
+        msg.information(parent, 'Help - Save measurements', txt)
+    
     def askSaveMeasurements(self):
         measurements_kernel = None
         
@@ -1106,12 +1120,19 @@ class segmWin(QMainWindow):
         msg = widgets.myMessageBox(wrapText=False)
         saveButton = widgets.savePushButton('Yes, save measurements')
         noSaveButton = widgets.noPushButton('Do not save measurements')
+        helpButton = widgets.helpPushButton('Help...')
         msg.question(
             self, 'Save measurements?', txt, 
             buttonsTexts=(
-                'Cancel', noSaveButton, saveButton
-            )
+                'Cancel', helpButton, noSaveButton, saveButton
+            ),
+            showDialog=False
         )
+        helpButton.clicked.disconnect()
+        helpButton.clicked.connect(
+            partial(self.showHelpSaveMeasurements, parent=msg)
+        )
+        msg.exec_()
         if msg.cancel:
             return False, measurements_kernel
         
