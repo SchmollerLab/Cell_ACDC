@@ -11104,7 +11104,6 @@ class MagicPromptsToolbar(ToolBar):
             self, 'Promptable models help', txt
         )  
         
-    
     def emitSigClearPoints(self):
         self.sigClearPoints.emit(self)
     
@@ -11297,6 +11296,7 @@ class PointsLayersToolbar(ToolBar):
         self.addPointsLayerAction.triggered.connect(
             self.emitAddPointsLayer
         )
+        self.doAddPointsZslicesInterpolation = False
     
     def emitAddPointsLayer(self):
         self.sigAddPointsLayer.emit()
@@ -11356,13 +11356,15 @@ class PointsLayersToolbar(ToolBar):
             lab: np.ndarray, 
             isSegm3D: bool
         ):
+        if not self.doAddPointsZslicesInterpolation:
+            return df
+        
         if not isSegm3D:
             return df
         
         if 'z' not in df.columns:
             return df
         
-        printl(df)
         df_new_rows = []
         for (frame_i, point_id), df_id in df.groupby(['frame_i', 'id']):
             xx = df_id['x'].values
