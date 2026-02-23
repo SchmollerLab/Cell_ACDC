@@ -29379,7 +29379,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             buttonsTexts=('Cancel', 'No, do not save', 'Yes, save points')
         )
         if msg.clickedButton == saveButton:
-            self.savePointsAddedByClicking(saveAction)
+            self.savePointsAddedByClicking(saveAction, None)
         
         return msg.cancel
     
