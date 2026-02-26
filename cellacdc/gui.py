@@ -14712,10 +14712,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(
-                self.autoSaveTimer.isActive(), self.autoSaveTimeStartFrameIdx,
-                self.autoSaveIntevalValueUnit
-            )
+            printl(self.data[0].customAnnot)
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -16678,7 +16675,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if not self.savedCustomAnnot:
             return
 
-        self.logger.info('Saving custom annotations parameters...')
         # Save to cell acdc temp path
         with open(custom_annot_path, mode='w') as file:
             json.dump(self.savedCustomAnnot, file, indent=2)
@@ -16686,12 +16682,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if only_temp:
             return
         
+        self.logger.info('Saving custom annotations parameters...')
         # Save to pos path
-        for posData in self.data:
-            if not posData.customAnnot:
-                continue
-            with open(posData.custom_annot_json_path, mode='w') as file:
-                json.dump(posData.customAnnot, file, indent=2)
+        for _posData in self.data:
+            _posData.saveCustomAnnotationParams()
 
     def customAnnotKeepActive(self, button):
         self.customAnnotDict[button]['state']['keepActive'] = button.keepToolActive
@@ -29495,7 +29489,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def reinitCustomAnnot(self):
         buttons = list(self.customAnnotDict.keys())
         for button in buttons:
-            self.removeCustomAnnotButton(button, save=False, askHow=False)
+            self.clearScatterPlotCustomAnnotButton(button)
+            action = self.customAnnotDict[button]['action']
+            self.annotateToolbar.removeAction(action)
+            self.checkableQButtonsGroup.removeButton(button)
+            self.customAnnotDict.pop(button)
+            # self.savedCustomAnnot.pop(name)
+
+            self.saveCustomAnnot(only_temp=True)
 
     def loadingDataAborted(self):
         self.openFolderAction.setEnabled(True)
