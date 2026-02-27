@@ -1915,8 +1915,6 @@ class loadData:
                     printl(filePath)
                     printl(traceback.format_exc())
                 df = pd.read_csv(filePath).dropna()
-                if 'filename' not in df.columns:
-                    df['filename'] = self.filename
                 # In some old versions, there was a bug that removed the 
                 # 'filename', and the 'frame_i' column names, so 
                 # we check if they are not present and rename the 
@@ -1928,6 +1926,8 @@ class loadData:
                             'Unnamed: 1': 'frame_i'
                         }
                     )
+                if 'filename' not in df.columns:
+                    df['filename'] = self.filename
                 df = df.set_index(['filename', 'frame_i']).sort_index()
                 df = df[~df.index.duplicated()]
                 self.segmInfo_df = df.sort_index()
