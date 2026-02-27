@@ -21837,9 +21837,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         else:
             return labels
 
+    def addYXcentroidToDf(self, df):
+        posData = self.data[self.pos_i]
+        for obj in posData.rp:
+            y_centroid = int(self.getObjCentroid(obj.centroid)[0])
+            x_centroid = int(self.getObjCentroid(obj.centroid)[1])
+            df.at[obj.label, 'y_centroid'] = y_centroid
+            df.at[obj.label, 'x_centroid'] = x_centroid
+        return df
+    
     def _get_editID_info(self, df):
         if 'was_manually_edited' not in df.columns:
             return []
+        
+        if 'y_centroid' not in df.columns or 'x_centroid' not in df.columns:
+            df = self.addYXcentroidToDf(df)
+        
         manually_edited_df = df[df['was_manually_edited'] > 0]
         editID_info = [
             (row.y_centroid, row.x_centroid, row.Index)

@@ -1408,6 +1408,48 @@ class loadData:
         with open(self.custom_annot_json_path, mode='w') as file:
             json.dump(self.customAnnot, file, indent=2)
 
+    def addYXcentroidColsIfMissing(self, show_progress=False):
+        if not self.segmFound:
+            return
+        
+        if not self.acdc_df_found:
+            return
+        
+        is_centroid_present = (
+            'y_centroid' in self.acdc_df.columns 
+            and 'x_centroid' in self.acdc_df.columns
+        )
+        if is_centroid_present:
+            return
+        
+        segm_data = self.segm_data
+        if self.SizeT == 1:
+            segm_data = (segm_data,)
+        
+        last_frame_i = self.acdc_df.reset_index()['frame_i'].max()
+        if show_progress:
+            pbar = tqdm(
+                total=last_frame_i+1, 
+                desc='Adding centroid columns to acdc_df'
+            )
+        
+        for frame_i in range(last_frame_i+1):
+            lab = segm_data[frame_i]
+            rp = skimage.measure.regionprops(lab)
+            for obj in rp:
+                ID = obj.label
+                y_centroid, x_centroid = obj.centroid[-2:]
+                self.acdc_df.loc[(frame_i, ID), 'y_centroid'] = y_centroid
+                self.acdc_df.loc[(frame_i, ID), 'x_centroid'] = x_centroid
+            
+            if show_progress:
+                pbar.update(1)
+        
+        if show_progress:
+            pbar.close()
+            
+        self.acdc_df.to_csv(self.acdc_output_csv_path)
+    
     def getBasenameAndChNames(self, useExt=None, qparent=None):
         ls = myutils.listdir(self.images_path)
         selector = prompts.select_channel_name()
@@ -1808,7 +1850,6 @@ class loadData:
             labelBoolSegm=None,
             load_whitelistIDs=False,
         ):
-
         self.segmFound = False if load_segm_data else None
         self.acdc_df_found = False if load_acdc_df else None
         self.shiftsFound = False if load_shifts else None
