@@ -1239,6 +1239,17 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             print('-'*30)
             return
         
+        self._concat_and_save_acdc_df(
+            acdc_df_li, keys, posData, save_metrics, 
+            computeMetricsWorker=computeMetricsWorker, 
+            saveDataWorker=saveDataWorker
+        )
+    
+    def _concat_and_save_acdc_df(
+            self, acdc_df_li, keys, posData, save_metrics,
+            computeMetricsWorker=None, saveDataWorker=None
+        ):
+        
         all_frames_acdc_df = pd.concat(
             acdc_df_li, keys=keys, names=['frame_i', 'time_seconds', 'Cell_ID']
         )

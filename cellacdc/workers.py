@@ -6113,6 +6113,35 @@ class saveDataWorker(QObject):
         self.progressBar.emit(1, -1, exec_time)
         self.time_last_pbar_update = t
     
+    def saveAcdcDf(self, posData: load.loadData, end_i):
+        acdc_dfs_li = []
+        keys = []
+        self.progress.emit(f'Saving annotations for {posData.relPath}...')
+        for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
+            if self.saveWin.aborted:
+                self.finished.emit()
+                return
+
+            # Build saved_segm_data
+            lab = data_dict['labels']
+            if lab is None:
+                break
+            
+            acdc_df = posData.allData_li[frame_i]['acdc_df']
+            if acdc_df is None:
+                continue
+            
+            acdc_dfs_li.append(acdc_df)
+            keys.append((frame_i, posData.TimeIncrement*frame_i))
+        
+        if not acdc_dfs_li:
+            return
+        
+        self.mainWin._measurements_kernel._concat_and_save_acdc_df(
+            acdc_dfs_li, keys, posData, self.mainWin.save_metrics,
+            saveDataWorker=self
+        )
+    
     def saveSegmData(self, posData, end_i, saved_segm_data):
         self.progress.emit(f'Saving segmentation data for {posData.relPath}...')
         for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
@@ -6221,6 +6250,8 @@ class saveDataWorker(QObject):
                     saveDataWorker=self,
                     save_metrics=self.mainWin.save_metrics
                 )
+            else:
+                self.saveAcdcDf(posData, end_i)
                 
             self.progress.emit(f'Saving {posData.relPath}')
 
