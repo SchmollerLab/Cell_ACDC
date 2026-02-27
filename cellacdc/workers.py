@@ -1559,6 +1559,8 @@ class loadDataWorker(QObject):
             if i == 0:
                 posData.segmFound = segmFound
 
+            posData.addYXcentroidColsIfMissing(show_progress=True)
+            
             isPosSegm3D = posData.getIsSegm3D()
             isMismatch = (
                 isPosSegm3D != self.mainWin.isSegm3D 
