@@ -21318,7 +21318,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         current_frame_i = posData.frame_i
 
         if not self.lineage_tree: # init lin tree if not done already
-            self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels']) # here frame_i!=0
+            self.lineage_tree = normal_division_lineage_tree(gui=self) # here frame_i!=0
             df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
             self.lineage_tree.load_lineage_df_list(df_li)
 
@@ -22406,7 +22406,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 lab = posData.lab
             else:
                 lab = posData.allData_li[0]['labels']
-            self.lineage_tree = normal_division_lineage_tree(lab = lab)
+            self.lineage_tree = normal_division_lineage_tree(gui=self)
             df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))] 
             self.lineage_tree.load_lineage_df_list(df_li)
 
@@ -22744,68 +22744,68 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.enqAutosave()
             self.enqCcaIntegrityChecker()
 
-    def lin_tree_to_acdc_df(self, force_all=False, ignore=set(), force=set(), specific=set()):
-        """
-        Syncs the lineage tree DataFrame with the acdc_df DataFrame. By default, it will only try to sync frames which have not been synced before. 
-        This can be changed using the optional arguments.
+    # def lin_tree_to_acdc_df(self, force_all=False, ignore=set(), force=set(), specific=set()):
+    #     """
+    #     Syncs the lineage tree DataFrame with the acdc_df DataFrame. By default, it will only try to sync frames which have not been synced before. 
+    #     This can be changed using the optional arguments.
 
-        Parameters
-        ----------
-        force_all : bool, optional 
-            If True, forces synchronization for all frames. Defaults to False.
-        ignore : set, optional
-            Set of frames to ignore during synchronization. Defaults to set().
-        force : set, optional
-            Set of frames to force synchronization. Defaults to set().
-        specific : set, optional
-            Set of frames to specifically synchronize. In this case it will ignore all other inputs and sync those no matter what. Defaults to set().
-        """
+    #     Parameters
+    #     ----------
+    #     force_all : bool, optional 
+    #         If True, forces synchronization for all frames. Defaults to False.
+    #     ignore : set, optional
+    #         Set of frames to ignore during synchronization. Defaults to set().
+    #     force : set, optional
+    #         Set of frames to force synchronization. Defaults to set().
+    #     specific : set, optional
+    #         Set of frames to specifically synchronize. In this case it will ignore all other inputs and sync those no matter what. Defaults to set().
+    #     """
 
-        if self.lineage_tree is None:
-            return
+    #     if self.lineage_tree is None:
+    #         return
         
-        # df_for_sync = []
-        # lineage_copy = self.lineage_tree.lineage_list.copy()
-        lin_tree_set = self.lineage_tree.frames_for_dfs.copy()
+    #     # df_for_sync = []
+    #     # lineage_copy = self.lineage_tree.lineage_list.copy()
+    #     lin_tree_set = self.lineage_tree.frames_for_dfs.copy()
 
-        if not force_all and not specific:
-            dont_sync = self.already_synced_lin_tree
-            dont_sync = {frame for frame in dont_sync if not frame in force}
-            dont_sync.update(ignore)
+    #     if not force_all and not specific:
+    #         dont_sync = self.already_synced_lin_tree
+    #         dont_sync = {frame for frame in dont_sync if not frame in force}
+    #         dont_sync.update(ignore)
 
-            lin_tree_set = lin_tree_set.difference(dont_sync)
+    #         lin_tree_set = lin_tree_set.difference(dont_sync)
 
-        if specific:
-            lin_tree_set = lin_tree_set.intersection(specific)
+    #     if specific:
+    #         lin_tree_set = lin_tree_set.intersection(specific)
 
 
-        if lin_tree_set == []:
-            return
+    #     if lin_tree_set == []:
+    #         return
 
-        posData = self.data[self.pos_i]
+    #     posData = self.data[self.pos_i]
 
-        lin_tree_colnames = None
-        self.store_data(autosave=False)
-        for frame_i in lin_tree_set:
-            acdc_df = posData.allData_li[frame_i]['acdc_df']
+    #     lin_tree_colnames = None
+    #     self.store_data(autosave=False)
+    #     for frame_i in lin_tree_set:
+    #         acdc_df = posData.allData_li[frame_i]['acdc_df']
 
-            lin_tree_df = self.lineage_tree.export_df(frame_i)
-            if lin_tree_colnames is None:
-                lin_tree_colnames = lin_tree_df.columns
+    #         lin_tree_df = self.lineage_tree.export_df(frame_i)
+    #         if lin_tree_colnames is None:
+    #             lin_tree_colnames = lin_tree_df.columns
 
-            acdc_df.loc[lin_tree_df.index, lin_tree_colnames] = lin_tree_df[lin_tree_colnames]
+    #         acdc_df.loc[lin_tree_df.index, lin_tree_colnames] = lin_tree_df[lin_tree_colnames]
             
-            try:
-                try:
-                    if (acdc_df['generation_num'] == 2).all() and not (acdc_df['generation_num_tree'].isna().all()): # check if generation_num is all just the default value and if yes, replace it with the tree values
-                        acdc_df['generation_num'] = acdc_df['generation_num_tree']
-                except KeyError:
-                    acdc_df['generation_num'] = acdc_df['generation_num_tree']
-            except Exception as e:
-                self.logger.error(f'Error while syncing generation_num from lineage tree: {e} \n please save and restart')
+    #         try:
+    #             try:
+    #                 if (acdc_df['generation_num'] == 2).all() and not (acdc_df['generation_num_tree'].isna().all()): # check if generation_num is all just the default value and if yes, replace it with the tree values
+    #                     acdc_df['generation_num'] = acdc_df['generation_num_tree']
+    #             except KeyError:
+    #                 acdc_df['generation_num'] = acdc_df['generation_num_tree']
+    #         except Exception as e:
+    #             self.logger.error(f'Error while syncing generation_num from lineage tree: {e} \n please save and restart')
 
-            posData.allData_li[frame_i]['acdc_df'] = acdc_df
-            self.already_synced_lin_tree.add(frame_i)
+    #         posData.allData_li[frame_i]['acdc_df'] = acdc_df
+    #         self.already_synced_lin_tree.add(frame_i)
 
     def turnOffAutoSaveWorker(self):
         self.autoSaveToggle.setChecked(False)
