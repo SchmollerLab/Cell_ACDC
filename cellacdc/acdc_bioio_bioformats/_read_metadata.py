@@ -28,8 +28,6 @@ try:
     metadataXML = bioformats.get_omexml_metadata(raw_filepath)
     metadata = bioformats.OMEXML().init_from_metadata(metadataXML)
 
-    print(metadata)
-
     os.makedirs(bioio_sample_data_folderpath, exist_ok=True)
     metadataXML_filepath = os.path.join(
         bioio_sample_data_folderpath, 'metadataXML.txt'
