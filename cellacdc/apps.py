@@ -8794,7 +8794,7 @@ class editCcaTableWidget(QDialog):
             relIDComboBox.activated.connect(self.clearComboboxFocus)
 
             col += 1
-            genNumSpinBox = QSpinBox()
+            genNumSpinBox = widgets.SpinBox()
             genNumSpinBox.setFocusPolicy(Qt.StrongFocus)
             genNumSpinBox.installEventFilter(self)
             genNumSpinBox.setValue(2)
@@ -8820,7 +8820,7 @@ class editCcaTableWidget(QDialog):
             relationshipComboBox.activated.connect(self.clearComboboxFocus)
 
             col += 1
-            emergFrameSpinBox = QSpinBox()
+            emergFrameSpinBox = widgets.SpinBox()
             emergFrameSpinBox.setFocusPolicy(Qt.StrongFocus)
             emergFrameSpinBox.installEventFilter(self)
             emergFrameSpinBox.setMaximum(SizeT)
@@ -8838,7 +8838,7 @@ class editCcaTableWidget(QDialog):
 
 
             col += 1
-            divisFrameSpinBox = QSpinBox()
+            divisFrameSpinBox = widgets.SpinBox()
             divisFrameSpinBox.setFocusPolicy(Qt.StrongFocus)
             divisFrameSpinBox.installEventFilter(self)
             divisFrameSpinBox.setMinimum(-1)

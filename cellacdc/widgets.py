@@ -4093,7 +4093,7 @@ class SpinBox(QSpinBox):
         self.valueChanged.connect(function)
     
     def setValue(self, value, setLinkedWidget=True):
-        super().setValue(value)
+        super().setValue(int(value))
         if self._linkedWidget is not None and setLinkedWidget:
             self._linkedWidget.setValue(value)
     
