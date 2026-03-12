@@ -1163,7 +1163,7 @@ def pd_bool_and_float_to_int_to_str(
     for col in colsToCastBool:
         try:
             series = acdc_df[col]
-            notna_idx = series.notna()
+            notna_idx = (series.notna()) & (series != '')
             notna_series = series.loc[notna_idx]
             dtype_id = None
             for dtype_id, dtype_checker in acdc_df_dtype_id_checker_mapper.items():
