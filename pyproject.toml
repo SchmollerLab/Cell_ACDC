@@ -39,7 +39,7 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
-    "pandas",
+    "pandas<3.0",
     "opencv-python-headless",
     "natsort",
     "h5py",
