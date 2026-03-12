@@ -4093,7 +4093,7 @@ class SpinBox(QSpinBox):
         self.valueChanged.connect(function)
     
     def setValue(self, value, setLinkedWidget=True):
-        super().setValue(value)
+        super().setValue(int(value))
         if self._linkedWidget is not None and setLinkedWidget:
             self._linkedWidget.setValue(value)
     
@@ -11104,7 +11104,6 @@ class MagicPromptsToolbar(ToolBar):
             self, 'Promptable models help', txt
         )  
         
-    
     def emitSigClearPoints(self):
         self.sigClearPoints.emit(self)
     
@@ -11297,6 +11296,7 @@ class PointsLayersToolbar(ToolBar):
         self.addPointsLayerAction.triggered.connect(
             self.emitAddPointsLayer
         )
+        self.doAddPointsZslicesInterpolation = False
     
     def emitAddPointsLayer(self):
         self.sigAddPointsLayer.emit()
@@ -11356,13 +11356,15 @@ class PointsLayersToolbar(ToolBar):
             lab: np.ndarray, 
             isSegm3D: bool
         ):
+        if not self.doAddPointsZslicesInterpolation:
+            return df
+        
         if not isSegm3D:
             return df
         
         if 'z' not in df.columns:
             return df
         
-        printl(df)
         df_new_rows = []
         for (frame_i, point_id), df_id in df.groupby(['frame_i', 'id']):
             xx = df_id['x'].values
@@ -11657,3 +11659,66 @@ class YeazV2SelectModelNameCombobox(ComboBox):
     
     def value(self, *args):
         return self.currentText()
+
+
+class HighlightedIDToolbar(ToolBar):
+    sigIDChanged = Signal(int)
+    
+    def __init__(self, name='Highlighted ID', parent=None):
+        
+        super().__init__(name, parent)
+        
+        self.spinbox = self.addSpinBox('Highlighted ID: ')
+        self.spinbox.valueChanged.connect(self.emitSigIDChanged)
+        
+        self.addSeparator()
+    
+    def emitSigIDChanged(self, *args, **kwargs):
+        self.sigIDChanged.emit(self.spinbox.value())
+    
+    def setIDNoSignals(self, ID: int):
+        self.spinbox.blockSignals(True)
+        self.spinbox.setValue(ID)
+        self.spinbox.blockSignals(False)
+        
+        
+class AutoSaveIntervalWidget(QWidget):
+    sigValueChanged = Signal(float, str)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        layout = QHBoxLayout()
+        
+        autoSaveIntervalTooltip = (
+            'Autosave every minutes or frames specified here.'
+        )
+        
+        self.setToolTip(autoSaveIntervalTooltip)
+        
+        self.spinbox = DoubleSpinBox()
+        self.spinbox.setMinimum(0)
+        self.spinbox.setValue(2)
+        self.spinbox.setDecimals(2)
+        self.spinbox.setSingleStep(1.0)
+        
+        layout.addWidget(self.spinbox)
+        
+        self.unitCombobox = ComboBox()
+        self.unitCombobox.addItems(['minutes', 'frames'])
+        layout.addWidget(self.unitCombobox)
+        
+        layout.setStretch(0, 1)
+        layout.setStretch(1, 0)
+        layout.setContentsMargins(5, 0, 5, 0)
+        
+        self.setLayout(layout)
+        
+        self.spinbox.sigValueChanged.connect(self.emitSigValueChanged)
+        self.unitCombobox.sigTextChanged.connect(self.emitSigValueChanged)
+    
+    def emitSigValueChanged(self, *args, **kwargs):
+        self.sigValueChanged.emit(
+            self.spinbox.value(), 
+            self.unitCombobox.currentText()
+        )

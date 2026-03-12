@@ -165,9 +165,9 @@
     :height: 16px
     :width: 16px
 
-.. |SegForLostIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/addDelPolyLineRoi_cursor.svg
+.. |segForLostIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/addDelPolyLineRoi_cursor.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addDelPolyLineRoi_cursor.svg
-    :alt: SegForLostIDsButton icon
+    :alt: segForLostIDsButton icon
     :height: 16px
     :width: 16px
 
@@ -432,7 +432,7 @@ Edit tools: Segmentation and tracking
     NOTE: While activated, the brush ID will be locked to the requested ID. This is useful to quickly annotate past frames of a specific object without checking errors with the other objects. Future frames cannot be viewed and annotated with this tool.
 * **Magic labeller (** |labelRoiButton| **"L"):** Draw a rectangular ROI around object(s) you want to segment. Draw with LEFT button to label with last used model. Draw with RIGHT button to choose a different segmentation model.
 * **Segment (** |segmentToolAction| **"R"):** Segment with last used model and last used parameters. If you never selected a segmentation model before, you will be asked to choose one and initialize its parameters.
-* **Segmenting for lost IDs (** |SegForLostIDsButton| **):** Segment only a small cutout of the image around missing IDs based on the segmentation of the previous frame. Will always use cellpose model. Parameters can be adjusted in the top ribbon under Segment --> Edit settings for Segmenting lost IDs. In the settings menu, additional parameters can be set like padding and overlap threshold in addition to the model settings.
+* **Segmenting for lost IDs (** |segForLostIDsButton| **):** Segment only a small cutout of the image around missing IDs based on the segmentation of the previous frame. Will always use cellpose model. Parameters can be adjusted in the top ribbon under Segment --> Edit settings for Segmenting lost IDs. In the settings menu, additional parameters can be set like padding and overlap threshold in addition to the model settings.
 * **Manual background (** |manualBackgroundButton| **"G"):**
     * How to use:
         1. Select object to copy its shape.
@@ -446,7 +446,7 @@ Edit tools: Segmentation and tracking
 * **Move object mask (** |moveLabelToolButton| **"P"):** Right-click drag and drop a labels to move it around.
 * **Expand/Shrink object mask (** |expandLabelToolButton| **"E"):** Leave mouse cursor on the label you want to expand/shrink and press arrow up/down on the keyboard to expand/shrink the mask.
 * **Edit ID (** |editIDbutton| **"N"):** Manually change ID of a cell by right-clicking on cell. When working with 3D segmentation masks, the default behaviour is to edit 
-the ID in add z-slices. To edit the ID only on the viewed z-slice, hold "Shift" while right-clicking.
+the ID in all z-slices. To edit the ID only on the viewed z-slice, hold "Shift" while right-clicking.
 * **Manual bud separation (** |separateBudButton| **"S"):** Separate mother-bud fused together or separate objects that have the same ID. Right-click to attempt automatic separation or Shift+right-click to skip automatic attemp and go straight to manual mode.
 * **Merge IDs (** |mergeIDsButton| **"M"):** Merge/fuse two objects together. 
     * Usage: right-click on one of the two objects, keep the button clicked and release on the second object to merge (drag-and-drop).

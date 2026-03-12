@@ -93,8 +93,8 @@ from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger, ArgSpec
 from .help import welcome, about
 from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
-    normal_division_lineage_tree, reorg_sister_cells_for_export
-)
+    normal_division_lineage_tree)#, reorg_sister_cells_for_export)
+
 from .plot import imshow
 from . import gui_utils
 
@@ -108,10 +108,6 @@ if os.name == 'nt':
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception as e:
         pass
-
-AUTOSAVE_INTERVAL_MINUTES = 2
-autosave_interval_seconds = AUTOSAVE_INTERVAL_MINUTES*60
-autosave_interval_ms = autosave_interval_seconds*1000
 
 GREEN_HEX = _palettes.green()
 
@@ -324,7 +320,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.whitelistAddNewIDsFrame = None
         self.whitelistOriginalIDs = None
         self.whyNavigateDisabled = set()
-        self.autoSaveTimer = QTimer()
+        self.autoSaveTimer = QTimer()        
+        if 'autoSaveIntevalValue' not in self.df_settings.index:
+            autoSaveIntevalValue = 2
+            autoSaveIntervalUnit = 'minutes'
+        else:
+            autoSaveIntevalValue = float(
+                self.df_settings.at['autoSaveIntevalValue', 'value']
+            )
+            autoSaveIntervalUnit = str(
+                self.df_settings.at['autoSaveIntervalUnit', 'value']
+            )
+        
+        self.autoSaveIntevalValueUnit = (
+            autoSaveIntevalValue, autoSaveIntervalUnit
+        )
+        self.logger.info(
+            'Autosave interval set to: '
+            f'{autoSaveIntevalValue} {autoSaveIntervalUnit}'
+        )
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -524,6 +538,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         else:
             self._colorScheme = 'light'
         
+        self.doNotShowAgainMissingCca = False
         if 'doNotShowAgainMissingCca' not in self.df_settings.index:
             self.df_settings.at['doNotShowAgainMissingCca', 'value'] = 'No'
         else:
@@ -872,6 +887,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.settingsMenu.addAction(self.editShortcutsAction)
         self.settingsMenu.addAction(self.showMirroredCursorAction)
         self.settingsMenu.addSeparator()
+        self.settingsMenu.addAction(self.editAutoSaveIntervalAction)
+        self.settingsMenu.addSeparator()
 
         # Mode menu (actions added when self.modeComboBox is created)
         self.modeMenu = menuBar.addMenu('Mode')
@@ -1152,12 +1169,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
         editToolBar.addAction(self.segmentToolAction)
 
-        self.SegForLostIDsButton = QToolButton(self)
-        self.SegForLostIDsButton.setIcon(QIcon(":addDelPolyLineRoi_cursor.svg"))
+        self.segForLostIDsButton = QToolButton(self)
+        self.segForLostIDsButton.setIcon(QIcon(":addDelPolyLineRoi_cursor.svg"))
         self.segForLostIDsAction = editToolBar.addWidget(
-            self.SegForLostIDsButton
+            self.segForLostIDsButton
         )
-        self.SegForLostIDsButton.clicked.connect(self.SegForLostIDsAction)
+        self.segForLostIDsButton.clicked.connect(
+            self.segForLostIDsButtonClicked
+        )
 
         # self.SegForLostIDsButton.setShortcut('U')
         # self.widgetsWithShortcut['Unknown lineage (lineage tree)'] = self.SegForLostIDsButton
@@ -1424,9 +1443,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         """
         posData = self.data[self.pos_i]
         self.lineage_tree.propagate(posData.frame_i)
-        self.lin_tree_to_acdc_df(force_all=True)
         if posData.frame_i == self.original_df_lin_tree_i:
-            self.original_df_lin_tree = self.lineage_tree.lineage_list[posData.frame_i]
+            self.original_df_lin_tree = posData.allData_li[posData.frame_i]['acdc_df'].copy()
 
         self.logger.info('Lineage tree propagated.')
 
@@ -1953,6 +1971,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.autoPilotZoomToObjToolbar.keepVisibleWhenActive = True
         self.controlToolBars.append(self.autoPilotZoomToObjToolbar)
         
+        # Highlighted ID or searched ID toolbar
+        self.highlightIDToolbar = widgets.HighlightedIDToolbar(
+            parent=self
+        )
+        self.addToolBar(Qt.TopToolBarArea, self.highlightIDToolbar)
+        self.highlightIDToolbar.setVisible(False)
+        self.highlightIDToolbar.keepVisibleWhenActive = True
+        self.controlToolBars.append(self.highlightIDToolbar)
+        
+        self.highlightIDToolbar.sigIDChanged.connect(
+            self.setHighlighedIDfromToolbar
+        )
+        
         # Widgets toolbar
         brushEraserToolBar = widgets.ToolBar("Widgets", self)
         self.addToolBar(Qt.TopToolBarArea, brushEraserToolBar)
@@ -2197,7 +2228,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # self.autoPilotZoomToObjToolbar.addAction(closeToolbarAction)
         
         self.autoPilotZoomToObjToolbar.addWidget(widgets.QVLine())
-        self.autoPilotZoomToObjToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
+        self.autoPilotZoomToObjToolbar.addWidget(
+            widgets.QHWidgetSpacer(width=separatorW)
+        )
         
         spinBox = widgets.SpinBox()
         spinBox.setMinimum(1)
@@ -2793,6 +2826,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.highLowResAction.setToolTip(highLowResTooltip)
         
+        self.editAutoSaveIntervalAction = QAction(
+            'Change autosave interval (minutes or frames)...', self
+        )
+        
         self.editShortcutsAction = QAction(
             'Customize keyboard shortcuts...', self
         )
@@ -2979,6 +3016,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.viewCombineChannelDataToggled
         )
         self.autoSaveToggle.toggled.connect(self.autoSaveToggled)
+        self.autoSaveAnnotToggle.toggled.connect(self.autoSaveAnnotToggled)
+        self.autoSaveIntervalDialog.sigValueChanged.connect(
+            self.autoSaveIntervalValueChanged
+        )
+        self.autoSaveIntervalEditButton.clicked.connect(
+            self.autoSaveIntervalEdit
+        )
         self.ccaIntegrCheckerToggle.toggled.connect(
             self.ccaIntegrCheckerToggled
         )
@@ -2995,6 +3039,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.toggleColorSchemeAction.triggered.connect(self.onToggleColorScheme)
         self.pxModeAction.clicked.connect(self.pxModeActionToggled)
         self.editShortcutsAction.triggered.connect(self.editShortcuts_cb)
+        self.editAutoSaveIntervalAction.triggered.connect(
+            self.autoSaveIntervalEditButton.click
+        )
         self.showMirroredCursorAction.toggled.connect(
             self.showMirroredCursorToggled
         )
@@ -3575,14 +3622,37 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.autoSaveToggle = widgets.Toggle()
         autoSaveTooltip = (
-            'Automatically store a copy of the segmentation data and of '
-            'the annotations in the `.recovery` folder after every edit.'
+            'Automatically store a copy of the segmentation data '
+            'in the `.recovery` folder after every edit.'
         )
         self.autoSaveToggle.setChecked(True)
         self.autoSaveToggle.setToolTip(autoSaveTooltip)
-        autoSaveLabel = QLabel('Autosave segm.')
+        autoSaveLabel = QLabel('Autosave segmentation')
         autoSaveLabel.setToolTip(autoSaveTooltip)
         layout.addRow(autoSaveLabel, self.autoSaveToggle)
+        
+        self.autoSaveAnnotToggle = widgets.Toggle()
+        autoSaveAnnotTooltip = (
+            'Automatically store a copy of the annotations (acdc_output CSV file) '
+            'in the `.recovery` folder after every edit.'
+        )
+        self.autoSaveAnnotToggle.setChecked(True)
+        self.autoSaveAnnotToggle.setToolTip(autoSaveAnnotTooltip)
+        autoSaveAnnotLabel = QLabel('Autosave annotations')
+        autoSaveAnnotLabel.setToolTip(autoSaveAnnotTooltip)
+        layout.addRow(autoSaveAnnotLabel, self.autoSaveAnnotToggle)
+        
+        self.autoSaveIntervalEditButton = widgets.editPushButton(
+            flat=True, hoverable=True
+        )
+        self.autoSaveIntervalLabel = QLabel('Autosave interval')        
+        self.autoSaveIntervalSetTooltip()
+        layout.addRow(
+            self.autoSaveIntervalLabel, self.autoSaveIntervalEditButton
+        )
+        
+        self.autoSaveIntervalDialog = apps.AutoSaveIntervalDialog(parent=self)
+        self.autoSaveIntervalDialog.setValues(*self.autoSaveIntevalValueUnit)
         
         self.ccaIntegrCheckerToggle = widgets.Toggle()
         ccaIntegrCheckerToggleTooltip = (
@@ -8113,13 +8183,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             A tuple containing the point(tuple: (x, y) coords) and ID of clicked cell.
         """
         if self.original_df_lin_tree is None:
-            self.original_df_lin_tree = self.lineage_tree.lineage_list[posData.frame_i].copy()
+            self.original_df_lin_tree = posData.allData_li[posData.frame_i]['acdc_df'].copy()
             self.original_df_lin_tree_i = posData.frame_i
         elif self.original_df_lin_tree_i != posData.frame_i:
             self.logger.info(
                 '[WARNING]: !!! Original lineage tree df changed, resetting original_df_lin_tree !!!'
             )
-            self.original_df_lin_tree = self.lineage_tree.lineage_list[posData.frame_i].copy()
+            self.original_df_lin_tree = posData.allData_li[posData.frame_i]['acdc_df'].copy()
             self.original_df_lin_tree_i = posData.frame_i
 
         if not self.right_click_ID:
@@ -8194,8 +8264,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         if point is None:
             return
-        
-        lin_tree_df = self.lineage_tree.lineage_list[posData.frame_i]
+        posData = self.data[self.pos_i]
+        acdc_df_frame = posData.allData_li[posData.frame_i]['acdc_df']
         filtered_IDs = self.getDistanceListMissingIDs(point, ID)
         if len(filtered_IDs) == 0:
             self.logger.info('No mother candidates found.')
@@ -8205,7 +8275,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         i = abs(i)  # Ensure i is non-negative
         new_mother = filtered_IDs[i]
 
-        if lin_tree_df.loc[ID]['parent_ID_tree'] == new_mother and self.original_mother_skipped == False: # if a mother is already present, skip it 
+        if acdc_df_frame.loc[ID]['parent_ID_tree'] == new_mother and self.original_mother_skipped == False: # if a mother is already present, skip it 
             self.right_click_i += 1
             self.original_mother_skipped = True
 
@@ -8213,8 +8283,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             i = abs(i)  # Ensure i is non-negative
             new_mother = filtered_IDs[i]
 
-        lin_tree_df.at[ID, 'parent_ID_tree'] = new_mother
-        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, consider_children=False, update_fams=False, raw_input=True, propagate=False)
+        acdc_df_frame.at[ID, 'parent_ID_tree'] = new_mother # update mother in the df, no need to propagate or stuff lile this
+        # dont need to update alldata_li as acdc_df_frame is just a view
         self.drawAllLineageTreeLines()
 
     def annotate_unknown_lineage_action(self, posData, event, ydata, xdata):
@@ -8238,10 +8308,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         if point is None:
             return
-
-        lin_tree_df = self.lineage_tree.lineage_list[posData.frame_i]
-        lin_tree_df.at[ID, 'parent_ID_tree'] = -1
-        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, consider_children=False, update_fams=False, raw_input=True, propagate=False)
+        posData = self.data[self.pos_i]
+        acdc_df_frame = posData.allData_li[posData.frame_i]['acdc_df']
+        acdc_df_frame.at[ID, 'parent_ID_tree'] = -1
         self.drawAllLineageTreeLines()
 
     def gui_addCreatedAxesItems(self):
@@ -8366,7 +8435,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             'base_model_name': base_model_name,
         }
 
-    def SegForLostIDsAction(self):
+    def segForLostIDsButtonClicked(self):
 
         self.setFrameNavigationDisabled(disable=True, why='Segmentation for lost IDs')
         posData = self.data[self.pos_i]
@@ -8726,19 +8795,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.zoomRectItem.setPos((0,0))
         self.zoomRectItem.setSize((0,0))
     
-    def findID(self):
+    def findID(self, checked=False, ID=None):
         posData = self.data[self.pos_i]
-        searchIDdialog = apps.FindIDDialog(
-            title='Search object by ID',
-            msg='Enter object ID to find and highlight',
-            parent=self,
-            isInteger=True
-        )
-        searchIDdialog.exec_()
-        if searchIDdialog.cancel:
-            return
+        if ID is None:
+            searchIDdialog = apps.FindIDDialog(
+                title='Search object by ID',
+                msg='Enter object ID to find and highlight',
+                parent=self,
+                isInteger=True
+            )
+            searchIDdialog.exec_()
+            if searchIDdialog.cancel:
+                return
 
-        searchedID = searchIDdialog.EntryID
+            searchedID = searchIDdialog.EntryID
+        else:
+            searchedID = ID
         
         if searchedID in posData.IDs:
             self.goToObjectID(searchedID)
@@ -12727,6 +12799,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.copyLostObjButton.setChecked(False)
         self.stopCcaIntegrityCheckerWorker()
         self.setAutoSaveSegmentationEnabled(False)
+        self.setAutoSaveAnnotationsEnabled(False)
         if prevMode == 'Normal division: Lineage tree':
             self.askLineageTreeChanges()
             self.lineage_tree = None
@@ -12755,6 +12828,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.restorePrevAnnotOptions()
             self.whitelistViewOGIDs(False)
         elif mode == 'Cell cycle analysis':
+            self.setAutoSaveAnnotationsEnabled(True)
             self.setSwitchViewedPlaneDisabled(True)
             self.startCcaIntegrityCheckerWorker()
             proceed = self.initCca()
@@ -12775,6 +12849,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.setAnnotOptionsCcaMode()
                 self.clearGhost()
         elif mode == 'Viewer':
+            self.autoSaveTimer.stop()
             self.setSwitchViewedPlaneDisabled(False)
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
@@ -12788,6 +12863,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.clearGhost()
             self.computeAllContours()
         elif mode == 'Custom annotations':
+            self.setAutoSaveAnnotationsEnabled(True)
             self.setSwitchViewedPlaneDisabled(True)
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
@@ -12800,6 +12876,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.doCustomAnnotation(0)
             self.computeAllContours()
         elif mode == 'Snapshot':
+            self.setAutoSaveAnnotationsEnabled(True)
             self.setSwitchViewedPlaneDisabled(False)
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
@@ -12816,6 +12893,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
             if proceed:
+                self.setAutoSaveAnnotationsEnabled(True)
                 self.setEnabledEditToolbarButton(enabled=False)
                 if self.isSnapshot:
                     self.editToolBar.setVisible(True)
@@ -12823,6 +12901,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.setAnnotOptionsLin_treeMode()
                 self.clearGhost()
                 self.editLin_TreeBar.setVisible(True)
+        
+        self.disableNonFunctionalButtons()
 
     def disableEditingViewPlaneNotXY(self):
         posData = self.data[self.pos_i]
@@ -14647,8 +14727,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.rgbaImg1.opacity())
-            printl(self.rgbaImg1.zValue())
+            import pdb; pdb.set_trace()
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -15876,11 +15955,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
     
     def magicPromptsInterpolateZsliceToggled(self, checked):
-        # Nothing to do upon toggling this for now. 
-        # Interpolated points are added only upon running the model 
-        # and removed afterwards.
         # See 'self.promptSegmentPointsLayerToolbar.addPointsZslicesInterpolation'
-        ...
+        self.promptSegmentPointsLayerToolbar.doAddPointsZslicesInterpolation = (
+            checked
+        )
     
     def magicPromptsClearPoints(self, toolbar, only_zoom=False):
         posData = self.data[self.pos_i]
@@ -16027,36 +16105,35 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         posData = self.data[self.pos_i]
         
+        is_zoom = True
         if zoom_slice is None:
             zoom_slice = (slice(None), slice(None))
+            is_zoom = False
         
-
-        images = (
-            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
-            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
-            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
-            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
+        img = (
+            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]]
         )
-        labels_overlays = (
+        images = [img, img, img, img]
+        labels_overlays = [
             posData.lab[..., zoom_slice[0], zoom_slice[1]], 
             lab_new[..., zoom_slice[0], zoom_slice[1]], 
             lab_union[..., zoom_slice[0], zoom_slice[1]], 
             lab_interesection[..., zoom_slice[0], zoom_slice[1]],
-        )
+        ]
         labels_overlays_lut = self.getLabelsImageLut()
-        labels_overlays_luts = (
+        labels_overlays_luts = [
             labels_overlays_lut, 
             labels_overlays_lut, 
             labels_overlays_lut,
             labels_overlays_lut,
-        )
-        
-        axis_titles = (
+        ]
+        axis_titles = [
             'Original masks', 
             'New masks', 
             'Union of original and new masks',
             'Intersection of original and new masks'
-        )
+        ]
+        
         from cellacdc.plot import imshow
         promptSegmResultsWindow = imshow(
             *images, 
@@ -16090,7 +16167,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         results = (None, lab_new, lab_union, lab_interesection)
         selected_idx = promptSegmResultsWindow.selected_idx
-        posData.allData_li[posData.frame_i]['labels'] = results[selected_idx]
+        zoom_out_lab = results[selected_idx][..., zoom_slice[0], zoom_slice[1]]
+        zoom_out_lab_mask = zoom_out_lab > 0
+        
+        lab = posData.allData_li[posData.frame_i]['labels']        
+        lab[..., zoom_slice[0], zoom_slice[1]][zoom_out_lab_mask] = (
+            zoom_out_lab[zoom_out_lab_mask]
+        )
+        
+        posData.allData_li[posData.frame_i]['labels'] = lab
         self.get_data()
         self.store_data(autosave=False)
         self.updateAllImages()
@@ -16605,7 +16690,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if not self.savedCustomAnnot:
             return
 
-        self.logger.info('Saving custom annotations parameters...')
         # Save to cell acdc temp path
         with open(custom_annot_path, mode='w') as file:
             json.dump(self.savedCustomAnnot, file, indent=2)
@@ -16613,12 +16697,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if only_temp:
             return
         
+        self.logger.info('Saving custom annotations parameters...')
         # Save to pos path
-        for posData in self.data:
-            if not posData.customAnnot:
-                continue
-            with open(posData.custom_annot_json_path, mode='w') as file:
-                json.dump(posData.customAnnot, file, indent=2)
+        for _posData in self.data:
+            _posData.saveCustomAnnotationParams()
 
     def customAnnotKeepActive(self, button):
         self.customAnnotDict[button]['state']['keepActive'] = button.keepToolActive
@@ -18338,7 +18420,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         posData = self.data[self.pos_i]
         
-        new_df = self.lineage_tree.lineage_list[posData.frame_i].copy()
+        new_df = posData.allData_li[posData.frame_i]['acdc_df']
         original_df = self.original_df_lin_tree.copy()
 
         if original_df.equals(new_df):
@@ -18517,7 +18599,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if result is None:
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
-            self.lin_tree_to_acdc_df(specific={posData.frame_i})
             return
 
         css, txt, differences = result
@@ -18526,7 +18607,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if posData.frame_i == max(self.lineage_tree.frames_for_dfs):
             # here we can just propagate the cahnged. This is super fast, since there is no recursion, no children and fast finding of parents
             self.lineage_tree.propagate(posData.frame_i, relevant_cells=changed_IDs)
-            self.lin_tree_to_acdc_df(specific={posData.frame_i})
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
             return
@@ -18545,12 +18625,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.lineage_tree.propagate(posData.frame_i, relevant_cells=changed_IDs)
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
-            self.lin_tree_to_acdc_df(force_all=True)
             self.logger.info('Lineage tree propagated.')
 
         elif msg.clickedButton == discard_btn:
-            self.lineage_tree.lineage_list[self.original_df_lin_tree_i] = self.original_df_lin_tree.copy()
-            self.lin_tree_to_acdc_df(specific={posData.frame_i}) # probably not necessary but just in case
+            posData.allData_li[posData.frame_i]['acdc_df'] = self.original_df_lin_tree.copy()
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
             self.logger.info('Lineage tree changes discarded.')
@@ -18568,7 +18646,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             
             ''')
             msg.warning(self, 'Changes kept but not propagated!', txt)
-            self.lin_tree_to_acdc_df(specific={posData.frame_i})
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
             self.logger.info('Lineage tree changes discarded.')
@@ -18863,7 +18940,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             else: 
                 action = item
             action.setDisabled(True)
-            
 
     @exception_handler
     def startLoadDataWorker(self, user_ch_file_paths, user_ch_name, firstPosData):
@@ -21252,9 +21328,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         current_frame_i = posData.frame_i
 
         if not self.lineage_tree: # init lin tree if not done already
-            self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels']) # here frame_i!=0
-            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
-            self.lineage_tree.load_lineage_df_list(df_li)
+            self.lineage_tree = normal_division_lineage_tree(gui=self) # here frame_i!=0
 
         missing_frames = list(range(current_frame_i+1))
         present_frames = list(self.lineage_tree.frames_for_dfs) if self.lineage_tree else []
@@ -21270,7 +21344,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             # i might need to change this if I need support for only partially missing frames... Although I probably never have to care about that though
             self.lineage_tree.real_time(frame_i, lab, prev_lab, rp=rp, prev_rp=prev_rp)
 
-        self.lin_tree_to_acdc_df(force_all=True) # store lineage tree in acdc_df
         posData.frame_i = current_frame_i
         self.store_data()
 
@@ -21541,7 +21614,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
 
         self.lineage_tree.real_time(frame_i, lab, prev_lab, rp=rp, prev_rp=prev_rp)
-        self.lin_tree_to_acdc_df()
         self.store_data()
 
     def getObjBbox(self, obj_bbox):
@@ -21771,9 +21843,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         else:
             return labels
 
+    def addYXcentroidToDf(self, df):
+        posData = self.data[self.pos_i]
+        for obj in posData.rp:
+            y_centroid = int(self.getObjCentroid(obj.centroid)[0])
+            x_centroid = int(self.getObjCentroid(obj.centroid)[1])
+            df.at[obj.label, 'y_centroid'] = y_centroid
+            df.at[obj.label, 'x_centroid'] = x_centroid
+        return df
+    
     def _get_editID_info(self, df):
         if 'was_manually_edited' not in df.columns:
             return []
+        
+        if 'y_centroid' not in df.columns or 'x_centroid' not in df.columns:
+            df = self.addYXcentroidToDf(df)
+        
         manually_edited_df = df[df['was_manually_edited'] > 0]
         editID_info = [
             (row.y_centroid, row.x_centroid, row.Index)
@@ -21871,9 +21956,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     else:
                         df = df.loc[cca_df.index]
                         cols = self.cca_df_int_cols
-                        df.loc[cca_df.index, cols] = (
-                            df.loc[cca_df.index, cols].astype(int)
-                        )
+                        df[cols] = df[cols].astype('Int64')
                     
                 i = posData.frame_i
                 posData.allData_li[i]['acdc_df'] = df.copy()
@@ -22323,13 +22406,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.lineage_tree is None or force:
             self.store_data(autosave=False)
             self.get_data(lin_tree_init=False)
-            if posData.frame_i == 0:
-                lab = posData.lab
-            else:
-                lab = posData.allData_li[0]['labels']
-            self.lineage_tree = normal_division_lineage_tree(lab = lab)
-            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))] 
-            self.lineage_tree.load_lineage_df_list(df_li)
+            self.lineage_tree = normal_division_lineage_tree(gui=self)
 
             msg = 'Lineage tree analysis initialized!'
             self.logger.info(msg)
@@ -22490,12 +22567,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.store_data()
     
     def resetLin_tree_future(self):
-        if self.lineage_tree is not None:
-            self.logger.info("WARNING: resetting lineage tree future frames in the lineage_tree object is not implemented yet",
-                   "This is only for acdc_df dataframes")
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
+
         for i in range(frame_i, posData.SizeT):
+            if self.lineage_tree is not None:
+                self.lineage_tree.frames_for_dfs.discard(frame_i)
             df = posData.allData_li[i]['acdc_df']
             # reste lineage tree columns
             if df is None:
@@ -22665,75 +22742,90 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.enqAutosave()
             self.enqCcaIntegrityChecker()
 
-    def lin_tree_to_acdc_df(self, force_all=False, ignore=set(), force=set(), specific=set()):
-        """
-        Syncs the lineage tree DataFrame with the acdc_df DataFrame. By default, it will only try to sync frames which have not been synced before. 
-        This can be changed using the optional arguments.
+    # def lin_tree_to_acdc_df(self, force_all=False, ignore=set(), force=set(), specific=set()):
+    #     """
+    #     Syncs the lineage tree DataFrame with the acdc_df DataFrame. By default, it will only try to sync frames which have not been synced before. 
+    #     This can be changed using the optional arguments.
 
-        Parameters
-        ----------
-        force_all : bool, optional 
-            If True, forces synchronization for all frames. Defaults to False.
-        ignore : set, optional
-            Set of frames to ignore during synchronization. Defaults to set().
-        force : set, optional
-            Set of frames to force synchronization. Defaults to set().
-        specific : set, optional
-            Set of frames to specifically synchronize. In this case it will ignore all other inputs and sync those no matter what. Defaults to set().
-        """
+    #     Parameters
+    #     ----------
+    #     force_all : bool, optional 
+    #         If True, forces synchronization for all frames. Defaults to False.
+    #     ignore : set, optional
+    #         Set of frames to ignore during synchronization. Defaults to set().
+    #     force : set, optional
+    #         Set of frames to force synchronization. Defaults to set().
+    #     specific : set, optional
+    #         Set of frames to specifically synchronize. In this case it will ignore all other inputs and sync those no matter what. Defaults to set().
+    #     """
 
-        if self.lineage_tree is None:
-            return
+    #     if self.lineage_tree is None:
+    #         return
         
-        # df_for_sync = []
-        # lineage_copy = self.lineage_tree.lineage_list.copy()
-        lin_tree_set = self.lineage_tree.frames_for_dfs.copy()
+    #     # df_for_sync = []
+    #     # lineage_copy = self.lineage_tree.lineage_list.copy()
+    #     lin_tree_set = self.lineage_tree.frames_for_dfs.copy()
 
-        if not force_all and not specific:
-            dont_sync = self.already_synced_lin_tree
-            dont_sync = {frame for frame in dont_sync if not frame in force}
-            dont_sync.update(ignore)
+    #     if not force_all and not specific:
+    #         dont_sync = self.already_synced_lin_tree
+    #         dont_sync = {frame for frame in dont_sync if not frame in force}
+    #         dont_sync.update(ignore)
 
-            lin_tree_set = lin_tree_set.difference(dont_sync)
+    #         lin_tree_set = lin_tree_set.difference(dont_sync)
 
-        if specific:
-            lin_tree_set = lin_tree_set.intersection(specific)
+    #     if specific:
+    #         lin_tree_set = lin_tree_set.intersection(specific)
 
 
-        if lin_tree_set == []:
-            return
+    #     if lin_tree_set == []:
+    #         return
 
-        posData = self.data[self.pos_i]
+    #     posData = self.data[self.pos_i]
 
-        lin_tree_colnames = None
-        self.store_data(autosave=False)
-        for frame_i in lin_tree_set:
-            acdc_df = posData.allData_li[frame_i]['acdc_df']
+    #     lin_tree_colnames = None
+    #     self.store_data(autosave=False)
+    #     for frame_i in lin_tree_set:
+    #         acdc_df = posData.allData_li[frame_i]['acdc_df']
 
-            lin_tree_df = self.lineage_tree.export_df(frame_i)
-            if lin_tree_colnames is None:
-                lin_tree_colnames = lin_tree_df.columns
+    #         lin_tree_df = self.lineage_tree.export_df(frame_i)
+    #         if lin_tree_colnames is None:
+    #             lin_tree_colnames = lin_tree_df.columns
 
-            acdc_df.loc[lin_tree_df.index, lin_tree_colnames] = lin_tree_df[lin_tree_colnames]
+    #         acdc_df.loc[lin_tree_df.index, lin_tree_colnames] = lin_tree_df[lin_tree_colnames]
             
-            try:
-                try:
-                    if (acdc_df['generation_num'] == 2).all() and not (acdc_df['generation_num_tree'].isna().all()): # check if generation_num is all just the default value and if yes, replace it with the tree values
-                        acdc_df['generation_num'] = acdc_df['generation_num_tree']
-                except KeyError:
-                    acdc_df['generation_num'] = acdc_df['generation_num_tree']
-            except Exception as e:
-                self.logger.error(f'Error while syncing generation_num from lineage tree: {e} \n please save and restart')
+    #         try:
+    #             try:
+    #                 if (acdc_df['generation_num'] == 2).all() and not (acdc_df['generation_num_tree'].isna().all()): # check if generation_num is all just the default value and if yes, replace it with the tree values
+    #                     acdc_df['generation_num'] = acdc_df['generation_num_tree']
+    #             except KeyError:
+    #                 acdc_df['generation_num'] = acdc_df['generation_num_tree']
+    #         except Exception as e:
+    #             self.logger.error(f'Error while syncing generation_num from lineage tree: {e} \n please save and restart')
 
-            posData.allData_li[frame_i]['acdc_df'] = acdc_df
-            self.already_synced_lin_tree.add(frame_i)
+    #         posData.allData_li[frame_i]['acdc_df'] = acdc_df
+    #         self.already_synced_lin_tree.add(frame_i)
 
     def turnOffAutoSaveWorker(self):
         self.autoSaveToggle.setChecked(False)
     
     def autoSaveTimerTimedOut(self):
         self.autoSaveTimer.stop()
-        self.enqAutosave()
+        self._enqueueAutoSave()
+    
+    def autoSaveTimerCountFrames(self):
+        posData = self.data[self.pos_i]
+        autoSaveIntevalValue, autoSaveIntervalUnit = (
+            self.autoSaveIntevalValueUnit
+        )
+        isTimeToAutoSave = (
+            abs(posData.frame_i - self.autoSaveTimeStartFrameIdx)
+            >= autoSaveIntevalValue
+        )
+        if not isTimeToAutoSave:
+            return
+        
+        self.autoSaveTimeStartFrameIdx = posData.frame_i
+        self._enqueueAutoSave()
     
     def enqAutosave(self):
         mode = str(self.modeComboBox.currentText())
@@ -22750,23 +22842,50 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if not self.autoSaveActiveWorkers:
             return
         
-        worker, thread = self.autoSaveActiveWorkers[-1]
-        if worker.isSaving:
-            self.autoSaveTimer.timeout.connect(self.autoSaveTimerTimedOut)
-            self.autoSaveTimer.start(autosave_interval_ms)
-            return
-        
         if self.autoSaveTimer.isActive():
             return
         
-        self.logger.info('Autosaving...')
-        posData = self.data[self.pos_i]          
+        self._enqueueAutoSave()
+        autoSaveIntevalValue, autoSaveIntervalUnit = (
+            self.autoSaveIntevalValueUnit
+        )
+        if autoSaveIntevalValue == 0:
+            return
+        
+        try:
+            self.autoSaveTimer.timeout.disconnect()
+        except Exception as err:
+            pass
+            
+        
+        if autoSaveIntervalUnit == 'minutes':
+            autosave_interval_ms = round(autoSaveIntevalValue*60*1000)
+            self.autoSaveTimer.timeout.connect(self.autoSaveTimerTimedOut)
+            self.autoSaveTimer.start(autosave_interval_ms)
+        else:
+            self.startAutoSaveEveryNframesTimer()
+    
+    def startAutoSaveEveryNframesTimer(self):
+        posData = self.data[self.pos_i]
+        self.autoSaveTimeStartFrameIdx = posData.frame_i
+        self.autoSaveTimer.timeout.connect(
+            self.autoSaveTimerCountFrames
+        )
+        self.autoSaveTimer.start(500)
+    
+    def _enqueueAutoSave(self):
         if not self.statusBarLabel.text().endswith('Autosaving...'):
             self.statusBarLabel.setText(
                 f'{self.statusBarLabel.text()} | Autosaving...'
             )
+            
+        timestamp = datetime.now().strftime(r'%H:%M:%S.%f')[:-3]
+        self.logger.info(f'Autosaving... - {timestamp}')
+        
+        posData = self.data[self.pos_i]
+        worker, thread = self.autoSaveActiveWorkers[-1]
         worker.enqueue(posData)
-
+    
     def enqCcaIntegrityChecker(self):
         if not self.ccaCheckerRunning:
             return
@@ -22840,15 +22959,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         """
         if self.lineage_tree is None:
             return
-        
-        if len(self.lineage_tree.lineage_list) < 2:
+
+        if len(self.lineage_tree.frames_for_dfs) < 2:
             return
 
         self.clearAllCellToCellLines()
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
-        lin_tree_df = self.lineage_tree.export_df(frame_i)
-        lin_tree_df_prev = self.lineage_tree.export_df(frame_i-1)
+        lin_tree_df = posData.allData_li[frame_i]['acdc_df']
+        lin_tree_df_prev = posData.allData_li[frame_i-1]['acdc_df']
         rp = posData.rp
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
 
@@ -22869,6 +22988,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 # lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
                 if lin_tree_df_ID["parent_ID_tree"] == -1: # make sure that new obj where the parents are not known get skipped
                     continue
+                
                 mother_obj = myutils.get_obj_by_label(prev_rp, lin_tree_df_ID["parent_ID_tree"])
 
                 emerg_frame_i = lin_tree_df_ID["emerg_frame_i"]
@@ -23785,6 +23905,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if toolbar == self.promptSegmentPointsLayerToolbar:
             newID = self.setBrushID(return_val=True)
             pointIdSpinbox.setValue(newID)
+            pointIdSpinbox.setReadOnly(True)
+            pointIdSpinbox.setToolTip(
+                'The ids added with left-click cannot be manually edited. '
+                'They are always a new, non-existing id.'
+            ) 
+                
         toolButton.actions.append(pointIdSpinbox.labelAction)
         pointIdSpinbox.action = toolbar.addWidget(pointIdSpinbox)
         toolButton.actions.append(pointIdSpinbox.action)
@@ -26640,8 +26766,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if acdc_df is None and self.lineage_tree is None:
             if update_images:
                 self.updateAllImages()
-            
             return True
+        
         cell_cycle_stage_present = (
             acdc_df is not None and 'cell_cycle_stage' in acdc_df.columns
             )
@@ -26718,15 +26844,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.addMissingIDs_cca_df(posData)
             self.updateAllImages()
             self.store_data()
-        if action is not None:
-            if action.removeAnnot:
-                self.store_data()
-                posData.frame_i -= 1
-                self.get_data()
-                if lineage_tree_present:
-                    self.resetLin_tree_future()
-                self.resetCcaFuture(posData.frame_i)
-                self.next_frame()
+        # if action is not None:
+        #     if action.removeAnnot:
+        #         self.store_data()
+        #         posData.frame_i -= 1
+        #         self.get_data()
+        #         if lineage_tree_present:
+        #             self.resetLin_tree_future()
+        #         self.resetCcaFuture(posData.frame_i)
+        #         self.next_frame()
         
         if get_answer:
             return msg.clickedButton == removeAnnotButton
@@ -26928,8 +27054,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.highLightIDLayerImg1.clear()
         self.highLightIDLayerRightImage.clear()
     
+    def setHighlighedIDfromToolbar(self, ID: int):
+        self.findID(ID=ID)
+    
     def highlightSearchedID(self, ID, force=False, greyOthers=True):
+        self.highlightIDToolbar.setIDNoSignals(ID)
+        
         if ID == 0:
+            self.highlightIDToolbar.setVisible(False)
             return
 
         if ID == self.highlightedID and not force:
@@ -26955,6 +27087,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         posData = self.data[self.pos_i]
 
         self.highlightedID = ID
+        self.highlightIDToolbar.setVisible(True)
 
         objIdx = posData.IDs_idxs.get(ID)
         if objIdx is None:
@@ -28216,7 +28349,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         else:
             try:
                 cells_with_parent, orphan_cells, lost_cells = self.lineage_tree.export_lin_tree_info(posData.frame_i)
-            except IndexError:
+            except IndexError or KeyError:
                 title = 'Processing lineage tree...'
                 htmlTxt = f'<font color="{self.titleColor}">{title}</font>'
                 self.titleLabel.setText(htmlTxt)
@@ -28231,18 +28364,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             
             parent_cell_txt_raw = []
             if cells_with_parent:
+                # aggregate same parents
+                parent_cell_groups = dict()
                 for cell, parent in cells_with_parent:
-                    parent_cell_txt_raw.append(f'{parent} --> {cell}')
+                    if parent not in parent_cell_groups:
+                        parent_cell_groups[parent] = []
+                    parent_cell_groups[parent].append(cell)
+                for parent, daughters in parent_cell_groups.items():
+                    cells_str = ','.join([str(daughter) for daughter in daughters])
+                    parent_cell_txt_raw.append(f'({parent}>{cells_str})')
 
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'New cells w/out mother', 'red', 
+                htmlTxt_li, htmlTxtFull_li, 'New w/out mother', 'red', 
                 orphan_cells
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'Lost cells', 'red', lost_cells
+                htmlTxt_li, htmlTxtFull_li, 'Lost', 'yellow', lost_cells
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'Parent --> Cell', 'green', 
+                htmlTxt_li, htmlTxtFull_li, 'Parent > Cell', 'green', 
                 parent_cell_txt_raw
             )
 
@@ -29244,7 +29384,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             buttonsTexts=('Cancel', 'No, do not save', 'Yes, save points')
         )
         if msg.clickedButton == saveButton:
-            self.savePointsAddedByClicking(saveAction)
+            self.savePointsAddedByClicking(saveAction, None)
         
         return msg.cancel
     
@@ -29368,7 +29508,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def reinitCustomAnnot(self):
         buttons = list(self.customAnnotDict.keys())
         for button in buttons:
-            self.removeCustomAnnotButton(button, save=False, askHow=False)
+            self.clearScatterPlotCustomAnnotButton(button)
+            action = self.customAnnotDict[button]['action']
+            self.annotateToolbar.removeAction(action)
+            self.checkableQButtonsGroup.removeButton(button)
+            self.customAnnotDict.pop(button)
+            # self.savedCustomAnnot.pop(name)
+
+            self.saveCustomAnnot(only_temp=True)
 
     def loadingDataAborted(self):
         self.openFolderAction.setEnabled(True)
@@ -30908,7 +31055,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 
                 allPos_acdc_df_cols.update(acdc_df.columns)
         loadedChNames = posData.setLoadedChannelNames(returnList=True)
-        loadedChNames.insert(0, self.user_ch_name)
+        posData.fluo_data_dict.pop(self.user_ch_name, None)
+        if self.user_ch_name not in loadedChNames:
+            loadedChNames.insert(0, self.user_ch_name)
         notLoadedChNames = [c for c in self.ch_names if c not in loadedChNames]
         self.notLoadedChNames = notLoadedChNames
         self.measurementsWin = apps.SetMeasurementsDialog(
@@ -31846,7 +31995,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         for worker, thread in self.autoSaveActiveWorkers:
             self.logger.info('Stopping autosaving process...')
             self.statusBarLabel.setText('Stopping autosaving process...')
-            worker.abort()
+            worker.stop()
             self.waitAutoSaveWorkerTimer = QTimer()
             self.waitAutoSaveWorkerTimer.timeout.connect(
                 partial(self.waitAutoSaveWorker, worker)
@@ -32056,6 +32205,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         else:
             worker.isAutoSaveON = False
     
+    def setAutoSaveAnnotationsEnabled(self, enabled):
+        if not self.autoSaveActiveWorkers:
+            return
+        
+        worker, thread = self.autoSaveActiveWorkers[-1]
+        
+        if enabled:
+            worker.isAutoSaveAnnotON = self.autoSaveToggle.isChecked()
+        else:
+            worker.isAutoSaveAnnotON = False
+    
     def autoSaveToggled(self, checked):
         if not self.autoSaveActiveWorkers:
             self.gui_createAutoSaveWorker()
@@ -32072,6 +32232,54 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             checked = False
         
         worker.isAutoSaveON = checked
+    
+    def autoSaveAnnotToggled(self, checked):
+        if not self.autoSaveActiveWorkers:
+            self.gui_createAutoSaveWorker()
+        
+        if not self.autoSaveActiveWorkers:
+            return
+        
+        worker, thread = self.autoSaveActiveWorkers[-1]
+        
+        mode = self.modeComboBox.currentText()
+        if mode != 'Viewer':
+            # No reason to save in viewer mode
+            checked = False
+        
+        worker.isAutoSaveAnnotON = checked
+    
+    def autoSaveIntervalEdit(self):
+        self.autoSaveIntervalDialog.show()
+        self.autoSaveIntervalDialog.raise_()
+        self.autoSaveIntervalDialog.activateWindow()
+    
+    def autoSaveIntervalValueChanged(
+            self, value: float, unit: Literal['minutes', 'frames']
+        ):
+        self.autoSaveIntevalValueUnit = (value, unit)
+        self.autoSaveTimer.stop()
+        
+        self.df_settings.at['autoSaveIntevalValue', 'value'] = str(value)
+        self.df_settings.at['autoSaveIntervalUnit', 'value'] = unit
+        self.df_settings.to_csv(settings_csv_path)
+        
+        self.logger.info(
+            f'Autosave interval changed to: {value} {unit}'
+        )
+        self.autoSaveIntervalSetTooltip()
+        
+        if unit == 'frames':
+            self.startAutoSaveEveryNframesTimer()
+    
+    def autoSaveIntervalSetTooltip(self):
+        value, unit = self.autoSaveIntevalValueUnit
+        autoSaveIntervalEditTooltip = (
+            'Change autosave interval to every N frames or minutes\n\n'
+            f'Current autosave interval: {value} {unit}'
+        )
+        self.autoSaveIntervalLabel.setToolTip(autoSaveIntervalEditTooltip)
+        self.autoSaveIntervalEditButton.setToolTip(autoSaveIntervalEditTooltip)
     
     def ccaIntegrCheckerToggled(self, checked):
         self.df_settings.at['is_cca_integrity_checker_activated', 'value'] = (
@@ -32307,6 +32515,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.magicPromptsToolButton.setChecked(False)
     
     def clearHighlightedID(self):
+        self.highlightIDToolbar.setVisible(False)
+        
         try:
             self.updateLostContoursImage(ax=0, delROIsIDs=None)
         except Exception as err:

@@ -42,7 +42,7 @@ from . import cca_df_colnames, lineage_tree_cols, default_annot_df
 from . import cca_df_colnames_with_tree
 from . import cli
 from .utils import resize
-from .SingleCellSeg import single_cell_seg
+from . import segm_utils
 
 DEBUG = False
 
@@ -379,13 +379,15 @@ class SegForLostIDsWorker(QObject):
             missing_IDs_global.update(missing_IDs)
 
             assigned_IDs_prev = assigned_IDs.copy()
-            new_lab, assigned_IDs, IDs_bboxs, bboxs = single_cell_seg(model, prev_lab, curr_lab, curr_img, 
-                                            missing_IDs, new_unique_ID,
-                                            win, posData,
-                                            distance_filler_growth=args_new['distance_filler_growth'],
-                                            overlap_threshold=args_new['overlap_threshold'],
-                                            padding=args_new['padding'],
-                                            )
+            out = segm_utils.single_cell_seg(
+                model, prev_lab, curr_lab, curr_img, 
+                missing_IDs, new_unique_ID,
+                win, posData,
+                distance_filler_growth=args_new['distance_filler_growth'],
+                overlap_threshold=args_new['overlap_threshold'],
+                padding=args_new['padding'],
+            )
+            new_lab, assigned_IDs, IDs_bboxs, bboxs = out
                     
             IDs_bboxs_list.append(IDs_bboxs)
             bboxs_list.append(bboxs)
@@ -836,11 +838,12 @@ class AutoSaveWorker(QObject):
         self.waitCond = waitCond
         self.exit = False
         self.isFinished = False
-        self.abortSaving = False
+        self.stopSaving = False
         self.isSaving = False
         self.isPaused = False
         self.dataQ = deque(maxlen=5)
         self.isAutoSaveON = False
+        self.isAutoSaveAnnotON = True
         self.debug = False
     
     def pause(self):
@@ -855,7 +858,7 @@ class AutoSaveWorker(QObject):
     def enqueue(self, posData):
         # First stop previously saving data
         if self.isSaving:
-            self.abortSaving = True
+            self.stopSaving = True
         self._enqueue(posData)
     
     def _enqueue(self, posData):
@@ -864,19 +867,22 @@ class AutoSaveWorker(QObject):
         self.dataQ.append(posData)
         if len(self.dataQ) == 1:
             # Wake up worker upon inserting first element
-            self.abortSaving = False
+            self.stopSaving = False
             self.waitCond.wakeAll()
     
     def _stop(self):
         self.exit = True
         self.waitCond.wakeAll()
     
-    def abort(self):
-        self.abortSaving = True
+    def stop(self):
+        self.stopSaving = True
         while not len(self.dataQ) == 0:
             data = self.dataQ.pop()
             del data
         self._stop()
+    
+    def cancelSaving(self):
+        ...
     
     @worker_exception_handler
     def run(self):
@@ -923,6 +929,9 @@ class AutoSaveWorker(QObject):
         if self.debug:
             self.logger.log('Started autosaving...')
         
+        if not self.isAutoSaveON and not self.isAutoSaveAnnotON:
+            return
+        
         try:
             posData.setTempPaths()
         except Exception as e:
@@ -949,7 +958,7 @@ class AutoSaveWorker(QObject):
         acdc_df_li = []
         
         for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
-            if self.abortSaving:
+            if self.stopSaving:
                 break
             
             # Build saved_segm_data
@@ -963,26 +972,28 @@ class AutoSaveWorker(QObject):
                 else:
                     saved_segm_data = lab
 
-            acdc_df = data_dict['acdc_df']
-            
-            if acdc_df is None:
-                continue
+            if self.isAutoSaveAnnotON:
+                acdc_df = data_dict['acdc_df']
+                
+                if acdc_df is None:
+                    continue
 
             if not np.any(lab):
                 continue
             
-            acdc_df = load.pd_bool_and_float_to_int_to_str(
-                acdc_df, inplace=False, colsToCastInt=[]
-            )
-            
-            acdc_df_li.append(acdc_df)
-            key = (frame_i, posData.TimeIncrement*frame_i)
-            keys.append(key)
+            if self.isAutoSaveAnnotON:
+                acdc_df = load.pd_bool_and_float_to_int_to_str(
+                    acdc_df, inplace=False, colsToCastInt=[]
+                )
+                
+                acdc_df_li.append(acdc_df)
+                key = (frame_i, posData.TimeIncrement*frame_i)
+                keys.append(key)
 
-            if self.abortSaving:
+            if self.stopSaving:
                 break
         
-        if not self.abortSaving:            
+        if not self.stopSaving:            
             if self.isAutoSaveON:
                 segm_data = np.squeeze(saved_segm_data)
                 self._saveSegm(segm_npz_path, segm_data)
@@ -996,9 +1007,9 @@ class AutoSaveWorker(QObject):
 
         if self.debug:
             self.logger.log(f'Autosaving done.')
-            self.logger.log(f'Aborted autosaving {self.abortSaving}.')
+            self.logger.log(f'Stopped autosaving {self.stopSaving}.')
 
-        self.abortSaving = False
+        self.stopSaving = False
     
     def _saveSegm(self, recovery_path, data):
         try:
@@ -1548,6 +1559,8 @@ class loadDataWorker(QObject):
             if i == 0:
                 posData.segmFound = segmFound
 
+            posData.addYXcentroidColsIfMissing(show_progress=True)
+            
             isPosSegm3D = posData.getIsSegm3D()
             isMismatch = (
                 isPosSegm3D != self.mainWin.isSegm3D 
@@ -6194,22 +6207,22 @@ class saveDataWorker(QObject):
 
             if add_user_channel_data and not self.isQuickSave:
                 posData.fluo_data_dict[posData.filename] = posData.img_data
-
+            
             if not self.isQuickSave:
                 posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
             
             posData.setLoadedChannelNames()
-            self.mainWin.initMetricsToSave(posData)
             
-            self.mainWin._measurements_kernel.run(
-                posData=posData, 
-                stop_frame_n=end_i+1,
-                saveDataWorker=self,
-                save_metrics=self.mainWin.save_metrics and not self.isQuickSave
-            )
+            if not self.isQuickSave:
+                self.mainWin.initMetricsToSave(posData)
+                self.mainWin._measurements_kernel.run(
+                    posData=posData, 
+                    stop_frame_n=end_i+1,
+                    saveDataWorker=self,
+                    save_metrics=self.mainWin.save_metrics
+                )
+                
             self.progress.emit(f'Saving {posData.relPath}')
-
-            
 
             if not self.do_not_save_og_whitelist:
                 og_save_path = os.path.join(
@@ -6244,8 +6257,7 @@ class saveDataWorker(QObject):
                     self.mutex.unlock()
                     posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
-            if add_user_channel_data and not self.isQuickSave:
-                posData.fluo_data_dict.pop(posData.filename)
+            posData.fluo_data_dict.pop(posData.filename, None)
 
             if not self.isQuickSave:
                 posData.fluo_bkgrData_dict.pop(posData.filename)

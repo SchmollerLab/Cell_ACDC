@@ -98,15 +98,13 @@ ISO_TIMESTAMP_FORMAT = r'iso%Y%m%d%H%M%S'
 class FileNameError(Exception):
     pass
 
-def _pd_cast_float_and_bool_to_int(df, col, notna_idx):
-    df.loc[notna_idx, col] = df.loc[notna_idx, col].astype(int)
+def _pd_cast_float_and_bool_to_int(df, col, _):
+    df[col] = df[col].astype("Int64") # preserves NA values
     return df
 
-def _pd_cast_string_to_int(df, col, notna_idx):
-    df.loc[notna_idx, col] = df.loc[notna_idx, col].astype(str)
-    df.loc[notna_idx, col] = (
-        df.loc[notna_idx, col].str.lower() == 'true'
-    ).astype(int)
+def _pd_cast_string_to_int(df, col, not_nan_mask):
+    df[col] = (df[col].astype(str).str.lower() == 'true').astype("Int64")
+    df.loc[~not_nan_mask, col] = pd.NA
     return df
 
 acdc_df_dtype_id_func_mapper = {
@@ -1165,7 +1163,7 @@ def pd_bool_and_float_to_int_to_str(
     for col in colsToCastBool:
         try:
             series = acdc_df[col]
-            notna_idx = series.notna()
+            notna_idx = (series.notna()) & (series != '')
             notna_series = series.loc[notna_idx]
             dtype_id = None
             for dtype_id, dtype_checker in acdc_df_dtype_id_checker_mapper.items():
@@ -1408,6 +1406,48 @@ class loadData:
         with open(self.custom_annot_json_path, mode='w') as file:
             json.dump(self.customAnnot, file, indent=2)
 
+    def addYXcentroidColsIfMissing(self, show_progress=False):
+        if not self.segmFound:
+            return
+        
+        if not self.acdc_df_found:
+            return
+        
+        is_centroid_present = (
+            'y_centroid' in self.acdc_df.columns 
+            and 'x_centroid' in self.acdc_df.columns
+        )
+        if is_centroid_present:
+            return
+        
+        segm_data = self.segm_data
+        if self.SizeT == 1:
+            segm_data = (segm_data,)
+        
+        last_frame_i = self.acdc_df.reset_index()['frame_i'].max()
+        if show_progress:
+            pbar = tqdm(
+                total=last_frame_i+1, 
+                desc='Adding centroid columns to acdc_df'
+            )
+        
+        for frame_i in range(last_frame_i+1):
+            lab = segm_data[frame_i]
+            rp = skimage.measure.regionprops(lab)
+            for obj in rp:
+                ID = obj.label
+                y_centroid, x_centroid = obj.centroid[-2:]
+                self.acdc_df.loc[(frame_i, ID), 'y_centroid'] = y_centroid
+                self.acdc_df.loc[(frame_i, ID), 'x_centroid'] = x_centroid
+            
+            if show_progress:
+                pbar.update(1)
+        
+        if show_progress:
+            pbar.close()
+            
+        self.acdc_df.to_csv(self.acdc_output_csv_path)
+    
     def getBasenameAndChNames(self, useExt=None, qparent=None):
         ls = myutils.listdir(self.images_path)
         selector = prompts.select_channel_name()
@@ -1808,7 +1848,6 @@ class loadData:
             labelBoolSegm=None,
             load_whitelistIDs=False,
         ):
-
         self.segmFound = False if load_segm_data else None
         self.acdc_df_found = False if load_acdc_df else None
         self.shiftsFound = False if load_shifts else None
@@ -1915,6 +1954,17 @@ class loadData:
                     printl(filePath)
                     printl(traceback.format_exc())
                 df = pd.read_csv(filePath).dropna()
+                # In some old versions, there was a bug that removed the 
+                # 'filename', and the 'frame_i' column names, so 
+                # we check if they are not present and rename the 
+                # 'Unnamed: 0' and 'Unnamed: 1' to filename and frame_i
+                if 'Unnamed: 0' in df.columns and 'Unnamed: 1' in df.columns:
+                    df = df.rename(
+                        columns={
+                            'Unnamed: 0': 'filename', 
+                            'Unnamed: 1': 'frame_i'
+                        }
+                    )
                 if 'filename' not in df.columns:
                     df['filename'] = self.filename
                 df = df.set_index(['filename', 'frame_i']).sort_index()
