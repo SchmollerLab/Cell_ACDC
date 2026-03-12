@@ -93,8 +93,8 @@ from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger, ArgSpec
 from .help import welcome, about
 from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
-    normal_division_lineage_tree, reorg_sister_cells_for_export
-)
+    normal_division_lineage_tree)#, reorg_sister_cells_for_export)
+
 from .plot import imshow
 from . import gui_utils
 
@@ -1443,9 +1443,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         """
         posData = self.data[self.pos_i]
         self.lineage_tree.propagate(posData.frame_i)
-        self.lin_tree_to_acdc_df(force_all=True)
         if posData.frame_i == self.original_df_lin_tree_i:
-            self.original_df_lin_tree = self.lineage_tree.lineage_list[posData.frame_i]
+            self.original_df_lin_tree = posData.allData_li[posData.frame_i]['acdc_df'].copy()
 
         self.logger.info('Lineage tree propagated.')
 
@@ -8172,13 +8171,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             A tuple containing the point(tuple: (x, y) coords) and ID of clicked cell.
         """
         if self.original_df_lin_tree is None:
-            self.original_df_lin_tree = self.lineage_tree.lineage_list[posData.frame_i].copy()
+            self.original_df_lin_tree = posData.allData_li[posData.frame_i]['acdc_df'].copy()
             self.original_df_lin_tree_i = posData.frame_i
         elif self.original_df_lin_tree_i != posData.frame_i:
             self.logger.info(
                 '[WARNING]: !!! Original lineage tree df changed, resetting original_df_lin_tree !!!'
             )
-            self.original_df_lin_tree = self.lineage_tree.lineage_list[posData.frame_i].copy()
+            self.original_df_lin_tree = posData.allData_li[posData.frame_i]['acdc_df'].copy()
             self.original_df_lin_tree_i = posData.frame_i
 
         if not self.right_click_ID:
@@ -8253,8 +8252,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         if point is None:
             return
-        
-        lin_tree_df = self.lineage_tree.lineage_list[posData.frame_i]
+        posData = self.data[self.pos_i]
+        acdc_df_frame = posData.allData_li[posData.frame_i]['acdc_df']
         filtered_IDs = self.getDistanceListMissingIDs(point, ID)
         if len(filtered_IDs) == 0:
             self.logger.info('No mother candidates found.')
@@ -8264,7 +8263,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         i = abs(i)  # Ensure i is non-negative
         new_mother = filtered_IDs[i]
 
-        if lin_tree_df.loc[ID]['parent_ID_tree'] == new_mother and self.original_mother_skipped == False: # if a mother is already present, skip it 
+        if acdc_df_frame.loc[ID]['parent_ID_tree'] == new_mother and self.original_mother_skipped == False: # if a mother is already present, skip it 
             self.right_click_i += 1
             self.original_mother_skipped = True
 
@@ -8272,8 +8271,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             i = abs(i)  # Ensure i is non-negative
             new_mother = filtered_IDs[i]
 
-        lin_tree_df.at[ID, 'parent_ID_tree'] = new_mother
-        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, consider_children=False, update_fams=False, raw_input=True, propagate=False)
+        acdc_df_frame.at[ID, 'parent_ID_tree'] = new_mother # update mother in the df, no need to propagate or stuff lile this
+        # dont need to update alldata_li as acdc_df_frame is just a view
         self.drawAllLineageTreeLines()
 
     def annotate_unknown_lineage_action(self, posData, event, ydata, xdata):
@@ -8297,10 +8296,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         if point is None:
             return
-
-        lin_tree_df = self.lineage_tree.lineage_list[posData.frame_i]
-        lin_tree_df.at[ID, 'parent_ID_tree'] = -1
-        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, consider_children=False, update_fams=False, raw_input=True, propagate=False)
+        posData = self.data[self.pos_i]
+        acdc_df_frame = posData.allData_li[posData.frame_i]['acdc_df']
+        acdc_df_frame.at[ID, 'parent_ID_tree'] = -1
         self.drawAllLineageTreeLines()
 
     def gui_addCreatedAxesItems(self):
@@ -14712,7 +14710,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.data[0].customAnnot)
+            import pdb; pdb.set_trace()
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -18405,7 +18403,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         posData = self.data[self.pos_i]
         
-        new_df = self.lineage_tree.lineage_list[posData.frame_i].copy()
+        new_df = posData.allData_li[posData.frame_i]['acdc_df']
         original_df = self.original_df_lin_tree.copy()
 
         if original_df.equals(new_df):
@@ -18584,7 +18582,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if result is None:
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
-            self.lin_tree_to_acdc_df(specific={posData.frame_i})
             return
 
         css, txt, differences = result
@@ -18593,7 +18590,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if posData.frame_i == max(self.lineage_tree.frames_for_dfs):
             # here we can just propagate the cahnged. This is super fast, since there is no recursion, no children and fast finding of parents
             self.lineage_tree.propagate(posData.frame_i, relevant_cells=changed_IDs)
-            self.lin_tree_to_acdc_df(specific={posData.frame_i})
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
             return
@@ -18612,12 +18608,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.lineage_tree.propagate(posData.frame_i, relevant_cells=changed_IDs)
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
-            self.lin_tree_to_acdc_df(force_all=True)
             self.logger.info('Lineage tree propagated.')
 
         elif msg.clickedButton == discard_btn:
-            self.lineage_tree.lineage_list[self.original_df_lin_tree_i] = self.original_df_lin_tree.copy()
-            self.lin_tree_to_acdc_df(specific={posData.frame_i}) # probably not necessary but just in case
+            posData.allData_li[posData.frame_i]['acdc_df'] = self.original_df_lin_tree.copy()
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
             self.logger.info('Lineage tree changes discarded.')
@@ -18635,7 +18629,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             
             ''')
             msg.warning(self, 'Changes kept but not propagated!', txt)
-            self.lin_tree_to_acdc_df(specific={posData.frame_i})
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
             self.logger.info('Lineage tree changes discarded.')
@@ -21319,8 +21312,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         if not self.lineage_tree: # init lin tree if not done already
             self.lineage_tree = normal_division_lineage_tree(gui=self) # here frame_i!=0
-            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
-            self.lineage_tree.load_lineage_df_list(df_li)
 
         missing_frames = list(range(current_frame_i+1))
         present_frames = list(self.lineage_tree.frames_for_dfs) if self.lineage_tree else []
@@ -21336,7 +21327,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             # i might need to change this if I need support for only partially missing frames... Although I probably never have to care about that though
             self.lineage_tree.real_time(frame_i, lab, prev_lab, rp=rp, prev_rp=prev_rp)
 
-        self.lin_tree_to_acdc_df(force_all=True) # store lineage tree in acdc_df
         posData.frame_i = current_frame_i
         self.store_data()
 
@@ -21607,7 +21597,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
 
         self.lineage_tree.real_time(frame_i, lab, prev_lab, rp=rp, prev_rp=prev_rp)
-        self.lin_tree_to_acdc_df()
         self.store_data()
 
     def getObjBbox(self, obj_bbox):
@@ -21950,9 +21939,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     else:
                         df = df.loc[cca_df.index]
                         cols = self.cca_df_int_cols
-                        df.loc[cca_df.index, cols] = (
-                            df.loc[cca_df.index, cols].astype(int)
-                        )
+                        df[cols] = df[cols].astype('Int64')
                     
                 i = posData.frame_i
                 posData.allData_li[i]['acdc_df'] = df.copy()
@@ -22402,13 +22389,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.lineage_tree is None or force:
             self.store_data(autosave=False)
             self.get_data(lin_tree_init=False)
-            if posData.frame_i == 0:
-                lab = posData.lab
-            else:
-                lab = posData.allData_li[0]['labels']
             self.lineage_tree = normal_division_lineage_tree(gui=self)
-            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))] 
-            self.lineage_tree.load_lineage_df_list(df_li)
 
             msg = 'Lineage tree analysis initialized!'
             self.logger.info(msg)
@@ -22569,12 +22550,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.store_data()
     
     def resetLin_tree_future(self):
-        if self.lineage_tree is not None:
-            self.logger.info("WARNING: resetting lineage tree future frames in the lineage_tree object is not implemented yet",
-                   "This is only for acdc_df dataframes")
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
+
         for i in range(frame_i, posData.SizeT):
+            if self.lineage_tree is not None:
+                self.lineage_tree.frames_for_dfs.discard(frame_i)
             df = posData.allData_li[i]['acdc_df']
             # reste lineage tree columns
             if df is None:
@@ -22961,15 +22942,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         """
         if self.lineage_tree is None:
             return
-        
-        if len(self.lineage_tree.lineage_list) < 2:
+
+        if len(self.lineage_tree.frames_for_dfs) < 2:
             return
 
         self.clearAllCellToCellLines()
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
-        lin_tree_df = self.lineage_tree.export_df(frame_i)
-        lin_tree_df_prev = self.lineage_tree.export_df(frame_i-1)
+        lin_tree_df = posData.allData_li[frame_i]['acdc_df']
+        lin_tree_df_prev = posData.allData_li[frame_i-1]['acdc_df']
         rp = posData.rp
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
 
@@ -22990,6 +22971,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 # lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
                 if lin_tree_df_ID["parent_ID_tree"] == -1: # make sure that new obj where the parents are not known get skipped
                     continue
+                
                 mother_obj = myutils.get_obj_by_label(prev_rp, lin_tree_df_ID["parent_ID_tree"])
 
                 emerg_frame_i = lin_tree_df_ID["emerg_frame_i"]
@@ -26767,8 +26749,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if acdc_df is None and self.lineage_tree is None:
             if update_images:
                 self.updateAllImages()
-            
             return True
+        
         cell_cycle_stage_present = (
             acdc_df is not None and 'cell_cycle_stage' in acdc_df.columns
             )
@@ -28350,7 +28332,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         else:
             try:
                 cells_with_parent, orphan_cells, lost_cells = self.lineage_tree.export_lin_tree_info(posData.frame_i)
-            except IndexError:
+            except IndexError or KeyError:
                 title = 'Processing lineage tree...'
                 htmlTxt = f'<font color="{self.titleColor}">{title}</font>'
                 self.titleLabel.setText(htmlTxt)
@@ -28365,18 +28347,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             
             parent_cell_txt_raw = []
             if cells_with_parent:
+                # aggregate same parents
+                parent_cell_groups = dict()
                 for cell, parent in cells_with_parent:
-                    parent_cell_txt_raw.append(f'{parent} --> {cell}')
+                    if parent not in parent_cell_groups:
+                        parent_cell_groups[parent] = []
+                    parent_cell_groups[parent].append(cell)
+                for parent, daughters in parent_cell_groups.items():
+                    cells_str = ','.join([str(daughter) for daughter in daughters])
+                    parent_cell_txt_raw.append(f'({parent}>{cells_str})')
 
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'New cells w/out mother', 'red', 
+                htmlTxt_li, htmlTxtFull_li, 'New w/out mother', 'red', 
                 orphan_cells
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'Lost cells', 'red', lost_cells
+                htmlTxt_li, htmlTxtFull_li, 'Lost', 'yellow', lost_cells
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'Parent --> Cell', 'green', 
+                htmlTxt_li, htmlTxtFull_li, 'Parent > Cell', 'green', 
                 parent_cell_txt_raw
             )
 
