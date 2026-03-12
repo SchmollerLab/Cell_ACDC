@@ -26845,15 +26845,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.addMissingIDs_cca_df(posData)
             self.updateAllImages()
             self.store_data()
-        if action is not None:
-            if action.removeAnnot:
-                self.store_data()
-                posData.frame_i -= 1
-                self.get_data()
-                if lineage_tree_present:
-                    self.resetLin_tree_future()
-                self.resetCcaFuture(posData.frame_i)
-                self.next_frame()
+        # if action is not None:
+        #     if action.removeAnnot:
+        #         self.store_data()
+        #         posData.frame_i -= 1
+        #         self.get_data()
+        #         if lineage_tree_present:
+        #             self.resetLin_tree_future()
+        #         self.resetCcaFuture(posData.frame_i)
+        #         self.next_frame()
         
         if get_answer:
             return msg.clickedButton == removeAnnotButton
