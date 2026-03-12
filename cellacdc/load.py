@@ -98,15 +98,13 @@ ISO_TIMESTAMP_FORMAT = r'iso%Y%m%d%H%M%S'
 class FileNameError(Exception):
     pass
 
-def _pd_cast_float_and_bool_to_int(df, col, notna_idx):
-    df.loc[notna_idx, col] = df.loc[notna_idx, col].astype(int)
+def _pd_cast_float_and_bool_to_int(df, col, _):
+    df[col] = df[col].astype("Int64") # preserves NA values
     return df
 
-def _pd_cast_string_to_int(df, col, notna_idx):
-    df.loc[notna_idx, col] = df.loc[notna_idx, col].astype(str)
-    df.loc[notna_idx, col] = (
-        df.loc[notna_idx, col].str.lower() == 'true'
-    ).astype(int)
+def _pd_cast_string_to_int(df, col, not_nan_mask):
+    df[col] = (df[col].astype(str).str.lower() == 'true').astype("Int64")
+    df.loc[~not_nan_mask, col] = pd.NA
     return df
 
 acdc_df_dtype_id_func_mapper = {
