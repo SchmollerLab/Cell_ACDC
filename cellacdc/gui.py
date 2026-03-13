@@ -320,7 +320,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.whitelistAddNewIDsFrame = None
         self.whitelistOriginalIDs = None
         self.whyNavigateDisabled = set()
-        self.autoSaveTimer = QTimer()        
+        self.autoSaveTimer = QTimer()   
         if 'autoSaveIntevalValue' not in self.df_settings.index:
             autoSaveIntevalValue = 2
             autoSaveIntervalUnit = 'minutes'
@@ -355,7 +355,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.countKeyPress = 0
         self.countRightClicks = 0
         self.xHoverImg, self.yHoverImg = None, None
-
+        
+        # Keep track on what frames the on first visit tools already ran
+        self.lastFrameRanOnFirstVisitTools = 0
+        
         # Buttons added to QButtonGroup will be mutually exclusive
         self.checkableQButtonsGroup = QButtonGroup(self)
         self.checkableQButtonsGroup.setExclusive(False)
@@ -1337,6 +1340,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.addDelPolyLineRoiAction.roiType = 'polyline'
         
         editToolBar.addAction(self.delBorderObjAction)
+        self.delBorderObjAction.button = editToolBar.widgetForAction(
+            self.delBorderObjAction
+        )
 
         self.addDelRoiAction.toolbar = editToolBar
         self.functionsNotTested3D.append(self.addDelRoiAction)
@@ -2454,10 +2460,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             keepToolActiveNames[toolName] = button
         
         keepToolActiveNames = dict(natsorted(keepToolActiveNames.items()))
+        
+        applyToNewFrameNames = {
+            'Segmenting for lost IDs': self.segForLostIDsButton,
+            'Delete bordering objects': self.delBorderObjAction.button
+        }
+        
+        allToolsList = list(keepToolActiveNames.keys()) + list(applyToNewFrameNames.keys())
+        allToolsList = natsorted(allToolsList)
+        
+        menus = {}
+        
+        for toolName in allToolsList:
+            menus[toolName] = self.settingsMenu.addMenu(f'{toolName} tool')
+            
         self.keepToolActiveActions = dict()
+        self.applyToolNewFrameActions = dict()
+        self.applyToolNewFrameButtons = dict()
         all_checked = True
+        
         for toolName, button in keepToolActiveNames.items():
-            menu = self.settingsMenu.addMenu(f'{toolName} tool')
+            menu = menus[toolName]
             action = QAction(button)
             action.setText('Keep tool active after using it')
             action.setCheckable(True)
@@ -2468,6 +2491,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             action.toggled.connect(self.keepToolActiveActionToggled)
             menu.addAction(action)
             self.keepToolActiveActions[toolName] = action
+            
+        for toolName, button in applyToNewFrameNames.items():
+            menu = menus[toolName]
+            action = QAction(button)
+            action.setText('Apply when visitng new frame')            
+            action.setCheckable(True)
+            action.toggled.connect(self.applyToolNewFrameActionToggled)
+            menu.addAction(action)
+            self.applyToolNewFrameActions[toolName] = action
+            self.applyToolNewFrameButtons[toolName] = button
+        
+        for toolName in self.applyToolNewFrameActions.keys():
+            settingString = toolName.strip()
+            settingString = toolName.replace(' ', '_')
+            settingString = f'{settingString}_applyNewFrame'
+            if settingString in self.df_settings.index:
+                val = self.df_settings.at[settingString, 'value']
+                if val == 'applyNewFrame':
+                    self.applyToolNewFrameActions[toolName].setChecked(True)
         
         self.settingsMenu.addSeparator()
 
@@ -9318,6 +9360,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.df_settings = self.df_settings.drop(
                 index=toolName, errors='ignore'
             )
+        self.df_settings.to_csv(self.settings_csv_path)
+        
+    def applyToolNewFrameActionToggled(self, checked, toolName=None):
+        if toolName is None:
+            parentToolButton = self.sender().parent()
+            toolName = re.findall(r'Name: (.*)', parentToolButton.toolTip())[0]
+        toolName = toolName.strip()
+        button = self.applyToolNewFrameButtons[toolName]
+        toolName = toolName.replace(' ', '_')
+        settingName = f'{toolName}_applyNewFrame'
+        if checked:
+            self.df_settings.at[settingName, 'value'] = 'applyNewFrame'
+            button.setStyleSheet(f'background-color: {GREEN_HEX}')
+        else:
+            self.df_settings = self.df_settings.drop(
+                index=settingName, errors='ignore'
+            )
+            button.setStyleSheet('background-color: none')
         self.df_settings.to_csv(self.settings_csv_path)
 
     def keepAllToolsActiveActionToggled(self, checked):
@@ -18411,7 +18471,35 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.zoomToCells()
         self.updateItemsMousePos()
         self.updateObjectCounts()
-
+        
+        self.apply_tools_on_new_frame()
+        
+    def apply_tools_on_new_frame(self):
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Segmentation and Tracking':
+            return
+        posData = self.data[self.pos_i]
+        if not (posData.last_tracked_i <= posData.frame_i) or posData.frame_i == self.lastFrameRanOnFirstVisitTools:
+            return
+        
+        self.lastFrameRanOnFirstVisitTools = posData.frame_i
+        for name, checkbox in self.applyToolNewFrameActions.items():
+            if not checkbox.isChecked():
+                continue
+            
+            tool_button = self.applyToolNewFrameButtons[name]
+            try:
+                if hasattr(tool_button, 'click'):
+                    tool_button.click()
+                elif hasattr(tool_button, 'trigger'):
+                    tool_button.trigger()
+                else:
+                    printl(
+                        f"Warning: {name} has no click or trigger method"
+                    )
+            except Exception as e:
+                self.logger.info(f"Error applying tool {name}: {e}")
+        
     @disableWindow
     def get_difference_table(self, return_css_separated=False, return_differece=False):
 
@@ -20738,6 +20826,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     )
                     if msg.clickedButton == yesButton:
                         posData.frame_i = posData.last_tracked_i
+                        self.lastFrameRanOnFirstVisitTools = posData.frame_i
                     else:
                         posData.frame_i = 0
 
@@ -22112,12 +22201,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             )
             if msg.clickedButton == goToButton:
                 posData.frame_i = last_tracked_i
+                self.lastFrameRanOnFirstVisitTools = posData.frame_i
                 self.get_data()
                 self.updateAllImages()
                 self.updateScrollbars()
             else:
                 last_tracked_i = posData.frame_i
                 current_frame_i = posData.frame_i
+                self.lastFrameRanOnFirstVisitTools = posData.frame_i
                 self.logger.info(
                     f'Storing data up until frame n. {current_frame_i+1}...'
                 )
@@ -28946,6 +29037,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         posData = self.data[self.pos_i]
         if from_frame_i is None:
             from_frame_i = posData.frame_i
+        
+        self.lastFrameRanOnFirstVisitTools = posData.frame_i
         
         self.updateLastCheckedFrameWidgets(from_frame_i)
         posData.last_tracked_i = from_frame_i
