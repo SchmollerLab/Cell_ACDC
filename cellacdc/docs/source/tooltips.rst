@@ -273,8 +273,8 @@
     :height: 16px
     :width: 16px
 
-.. |delNewObjAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/delBorderObj.svg
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/delBorderObj.svg
+.. |delNewObjAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/delNewObj.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/delNewObj.svg
     :alt: delNewObjAction icon
     :height: 16px
     :width: 16px
@@ -451,8 +451,7 @@ Edit tools: Segmentation and tracking
 * **Fill holes (** |fillHolesToolButton| **"F"):** Right-click on a cell to fill holes.
 * **Move object mask (** |moveLabelToolButton| **"P"):** Right-click drag and drop a labels to move it around.
 * **Expand/Shrink object mask (** |expandLabelToolButton| **"E"):** Leave mouse cursor on the label you want to expand/shrink and press arrow up/down on the keyboard to expand/shrink the mask.
-* **Edit ID (** |editIDbutton| **"N"):** Manually change ID of a cell by right-clicking on cell. When working with 3D segmentation masks, the default behaviour is to edit 
-the ID in all z-slices. To edit the ID only on the viewed z-slice, hold "Shift" while right-clicking.
+* **Edit ID (** |editIDbutton| **"N"):** Manually change ID of a cell by right-clicking on cell. When working with 3D segmentation masks, the default behaviour is to edit the ID in all z-slices. To edit the ID only on the viewed z-slice, hold "Shift" while right-clicking.
 * **Manual bud separation (** |separateBudButton| **"S"):** Separate mother-bud fused together or separate objects that have the same ID. Right-click to attempt automatic separation or Shift+right-click to skip automatic attemp and go straight to manual mode.
 * **Merge IDs (** |mergeIDsButton| **"M"):** Merge/fuse two objects together. 
     * Usage: right-click on one of the two objects, keep the button clicked and release on the second object to merge (drag-and-drop).
