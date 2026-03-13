@@ -2470,7 +2470,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         applyToNewFrameNames = {
             'Segmenting for lost IDs': self.segForLostIDsButton,
-            'Delete bordering objects': self.delBorderObjAction.button
+            'Delete bordering objects': self.delBorderObjAction.button,
+            'Delete newly segmented objects': self.delNewObjAction.button,
         }
         
         allToolsList = list(keepToolActiveNames.keys()) + list(applyToNewFrameNames.keys())
