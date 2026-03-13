@@ -1170,7 +1170,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         editToolBar.addAction(self.segmentToolAction)
 
         self.segForLostIDsButton = QToolButton(self)
-        self.segForLostIDsButton.setIcon(QIcon(":addDelPolyLineRoi_cursor.svg"))
+        self.segForLostIDsButton.setIcon(QIcon(":segForLostIDs.svg"))
         self.segForLostIDsAction = editToolBar.addWidget(
             self.segForLostIDsButton
         )
@@ -1337,6 +1337,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.addDelPolyLineRoiAction.roiType = 'polyline'
         
         editToolBar.addAction(self.delBorderObjAction)
+        editToolBar.addAction(self.delNewObjAction)
 
         self.addDelRoiAction.toolbar = editToolBar
         self.functionsNotTested3D.append(self.addDelRoiAction)
@@ -1346,6 +1347,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.delBorderObjAction.toolbar = editToolBar
         self.functionsNotTested3D.append(self.delBorderObjAction)
+        
+        self.delNewObjAction.toolbar = editToolBar
+        self.functionsNotTested3D.append(self.delNewObjAction)
 
         editToolBar.addAction(self.repeatTrackingAction)
         
@@ -2965,6 +2969,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
        
         self.delBorderObjAction = QAction(self)
         self.delBorderObjAction.setIcon(QIcon(":delBorderObj.svg"))
+        
+        self.delNewObjAction = QAction(self)
+        self.delNewObjAction.setIcon(QIcon(":delNewObj.svg"))
 
         self.loadCustomAnnotationsAction = QAction(self)
         self.loadCustomAnnotationsAction.setIcon(QIcon(":load_annotation.svg"))
@@ -3523,6 +3530,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.addDelRoiAction.triggered.connect(self.addDelROI)
         self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
         self.delBorderObjAction.triggered.connect(self.delBorderObj)
+        self.delNewObjAction.triggered.connect(self.delNewObj)
         
         self.brushAutoFillCheckbox.toggled.connect(self.brushAutoFillToggled)
         self.brushAutoHideCheckbox.toggled.connect(self.brushAutoHideToggled)
@@ -11489,6 +11497,32 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         removedIDs = [ID for ID in oldIDs if ID not in posData.IDs]
         if posData.cca_df is not None:
             posData.cca_df = posData.cca_df.drop(index=removedIDs)
+        self.store_data()
+        self.updateAllImages()
+        
+    def delNewObj(self, checked):
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False)
+
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        
+        if frame_i == 0:
+            return
+        
+        prev_IDs = posData.allData_li[frame_i-1]['IDs']
+        curr_IDs = posData.IDs
+        new_IDs = list(set(curr_IDs) - set(prev_IDs))
+
+        lab = posData.lab
+        del_mask = np.isin(lab, new_IDs)
+        lab[del_mask] = 0
+        posData.lab = lab
+        
+        self.update_rp()
+        
+        if posData.cca_df is not None:
+            posData.cca_df = posData.cca_df.drop(index=new_IDs)
         self.store_data()
         self.updateAllImages()
     

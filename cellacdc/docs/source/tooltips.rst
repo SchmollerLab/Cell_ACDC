@@ -165,8 +165,8 @@
     :height: 16px
     :width: 16px
 
-.. |segForLostIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/addDelPolyLineRoi_cursor.svg
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addDelPolyLineRoi_cursor.svg
+.. |segForLostIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/segForLostIDs.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/segForLostIDs.svg
     :alt: segForLostIDsButton icon
     :height: 16px
     :width: 16px
@@ -270,6 +270,12 @@
 .. |delBorderObjAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/delBorderObj.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/delBorderObj.svg
     :alt: delBorderObjAction icon
+    :height: 16px
+    :width: 16px
+
+.. |delNewObjAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/delBorderObj.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/delBorderObj.svg
+    :alt: delNewObjAction icon
     :height: 16px
     :width: 16px
 
@@ -467,6 +473,7 @@ the ID in all z-slices. To edit the ID only on the viewed z-slice, hold "Shift" 
     * To delete the ROI ``right-click on it --> remove``.
 * **Clear freehand region (** |drawClearRegionButton| **"O"):** Draw a freehand region and clear all objects present in the region. Once activated, additional options will appear in a new toolbar.
 * **Delete bordering objects (** |delBorderObjAction| **):** Remove segmented objects touching the border of the image.
+* **Delete newly segmented objects (** |delNewObjAction| **):** Remove newly segmented objects. This tool can be set to run automatically when visiting a new frame. To enable this, go to ``Settings (top ribbon) --> Delete newly segmented objects tool --> Apply when visiting new frame``. If this feature is enabled, the button will have a green background.
 * **Repeat tracking (** |repeatTrackingAction| **"Shift+T"):** Repeat tracking on current frame. Tracking method can be changed in ``Tracking --> Select real-time tracking algorithm``
 * **Manual tracking (** |manualTrackingButton| **"T"):** Select ID to track and right-click on an object to assign that ID.
 * **Reset last segmented frame (** |reinitLastSegmFrameAction| **):** Reset last segmented frame to current one. NOTE: This will re-enable real-time tracking for all the future frames.
