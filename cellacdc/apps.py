@@ -17897,6 +17897,7 @@ class PreProcessRecipeDialog(QBaseDialog):
     sigPreviewToggled = Signal(bool)
     sigValuesChanged = Signal(list)
     sigSavePreprocData = Signal(object)
+    sigClose = Signal(object)
     
     def __init__(
             self, 
@@ -18142,6 +18143,10 @@ class PreProcessRecipeDialog(QBaseDialog):
 
         self.cancel = False
         self.close()
+    
+    def close(self):
+        super().close()
+        self.sigClose.emit(self)
 
 class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
     def __init__(
@@ -18313,7 +18318,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             return
         
         if signal is not None:
-            signal.emit(steps, keep_input_dtype)
+            signal.emit(steps)
 
         if self.hideOnClosing:
             self.setDisabled(True)

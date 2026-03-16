@@ -1611,7 +1611,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         pos_i, frame_i, z_slice = key
         posData = self.data[pos_i]
         if not hasattr(posData, 'preproc_img_data'):
-            posData.preproc_img_data = preprocess.PreprocessedData()
+            posData.preproc_img_data = preprocess.PreprocessedData(
+                image_data=np.zeros(posData.img_data.shape)
+            )
         
         posData.preproc_img_data[frame_i][z_slice] = processed_data
         self.img1.updateMinMaxValuesPreprocessedData(
@@ -1721,7 +1723,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         for pos_i in unique_pos:    
             posData = self.data[pos_i]
             if not hasattr(posData, 'combine_img_data'):
-                posData.combine_img_data = preprocess.PreprocessedData()
+                posData.combine_img_data = preprocess.PreprocessedData(
+                    image_data=np.zeros(posData.img_data.shape)
+                )
 
             n_dim_img = posData.img_data.ndim
 
@@ -17776,7 +17780,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.preprocessDialog.raise_()
         self.preprocessDialog.activateWindow()
         self.preprocessDialog.emitSigPreviewToggled()
-
     
     def combineChannelsActionTriggered(self):
         self.combineDialog.show()
@@ -19347,15 +19350,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.combineWorker.wakeUp()
     
-    def combineZStack(self, 
-                      steps: List[Dict[str, Any]]=None,
-                      keep_input_data_type:bool=None,):
-
-        if steps and not keep_input_data_type:
+    def combineZStack(
+            self, 
+            steps: List[Dict[str, Any]]=None, 
+            keep_input_data_type:bool=None,
+        ):
+        if self.combineDialog is not None:
+            keep_input_data_type = (
+                self.combineDialog.keepInputDataTypeToggle.isChecked()
+            )
+        
+        if steps and keep_input_data_type is None:
             raise ValueError('keep_input_data_type must be set if steps is set')
         
         if steps is None:
-            steps, keep_input_data_type = self.combineDialog.steps(return_keepInputDataType=True)
+            steps, keep_input_data_type = self.combineDialog.steps(
+                return_keepInputDataType=True
+            )
 
         txt = 'Combining z-stack...'
         self.statusBarLabel.setText(txt)
@@ -19448,7 +19459,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.preprocWorker.wakeUp()
     
-    def preprocessZStack(self, recipe: List[Dict[str, Any]]):
+    def preprocessZStack(self, recipe: List[Dict[str, Any]], *args):
         txt = 'Pre-processing z-stack...'
         self.statusBarLabel.setText(txt)
         self.logger.info(txt)
@@ -19579,7 +19590,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def setupCombiningChannels(self):
         posData = self.data[self.pos_i]
         if self.combineDialog is not None:
-            self.preprocessDialog.close()
+            self.combineDialog.close()
         
         self.combineDialog = apps.CombineChannelsSetupDialogGUI(
             posData.chNames,
@@ -19613,6 +19624,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.combineDialog.sigSavePreprocData.connect(
             self.combineDialogSaveCombinedData
         )
+        self.combineDialog.sigClose.connect(
+            self.combineDialogClosed
+        )
 
         if self.combineWorker is not None:
             return
@@ -19643,12 +19657,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.combineWorker.signals.critical.connect(self.workerCritical)
         self.combineWorker.signals.finished.connect(self.combineWorkerClosed)
 
-        self.combineWorker.sigAskLoadFluoChannels.connect(self.combineWorkerAskLoadFluoChannels)
+        self.combineWorker.sigAskLoadFluoChannels.connect(
+            self.combineWorkerAskLoadFluoChannels
+        )
         
         self.combineThread.started.connect(self.combineWorker.run)
         self.combineThread.start()
         
         self.logger.info('Combine channels worker started.')
+    
+    def combineDialogClosed(self, window):
+        QTimer.singleShot(200, self._combineDialogClosed)
+    
+    def _combineDialogClosed(self):
+        self.combineDialog = None
 
     def combineWorkerCritical(self, error):
         self.combineDialog.appliedFinished()

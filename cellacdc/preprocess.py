@@ -469,8 +469,14 @@ class VolumeImageData:
         return arr.mean(axis=axis)
     
 class PreprocessedData:
-    def __init__(self):
+    def __init__(self, image_data=None):
         self._data = {}
+        if image_data is not None:
+            self._init_data(image_data)
+    
+    def _init_data(self, image_data):
+        for frame_i, img in enumerate(image_data):
+            self[frame_i] = img
     
     def __getitem__(self, frame_i: int):
         if frame_i not in self._data:
@@ -492,7 +498,7 @@ class PreprocessedData:
             self._data[frame_i][0] = image
         else:
             for z_slice, img in enumerate(image):
-                self._data[frame_i][z_slice] = image
+                self._data[frame_i][z_slice] = img
     
     def __repr__(self):
         return str(self._data)

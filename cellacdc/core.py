@@ -2388,13 +2388,13 @@ def combine_channels_multithread_return_imgs(
 
     if not logger_func:
         for txt in txts:
-            printl(txt)
+            print(txt)
     else:
         for txt in txts:
             try:
                 logger_func(txt)
             except Exception as err:
-                printl(txt)
+                print(txt)
 
     return output_imgs, keys_out
 
