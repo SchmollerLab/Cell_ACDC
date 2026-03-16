@@ -65,9 +65,9 @@
      showguides="true"
      inkscape:guide-bbox="true"
      inkscape:zoom="19.180271"
-     inkscape:cx="26.850507"
+     inkscape:cx="26.902644"
      inkscape:cy="17.074837"
-     inkscape:window-x="2552"
+     inkscape:window-x="-8"
      inkscape:window-y="-8"
      inkscape:window-maximized="1"
      inkscape:current-layer="svg6"
@@ -93,7 +93,7 @@
   <title
      id="title2">magic-wand</title>
   <rect
-     style="fill:none;fill-opacity:1;stroke:#d8d8d8;stroke-width:0.805;stroke-dasharray:none;stroke-opacity:1"
+     style="fill:none;fill-opacity:1;stroke:#d9d9d9;stroke-width:0.805;stroke-dasharray:none;stroke-opacity:1"
      id="rect1"
      width="29.695457"
      height="29.695457"
@@ -109,7 +109,7 @@
   <g
      aria-label="seg"
      id="text8156"
-     style="font-size:266.667px;line-height:1.25;fill:#4d4d4e"
+     style="font-size:266.667px;line-height:1.25;fill:#d9d9d9;fill-opacity:1"
      transform="matrix(0.04368635,0,0,0.04368635,3.9850518,-13.223347)">
     <path
        d="m 168.19144,468.61392 q 0,22.65627 -20.31252,36.58858 -20.31253,13.8021 -55.599028,13.8021 -19.531273,0 -35.416709,-3.64583 -15.885437,-3.64584 -25.520865,-8.07293 v -38.54172 h 4.29688 q 3.51563,2.47397 8.072927,5.46876 4.687506,2.86459 13.151058,6.25001 7.291675,2.99479 16.536478,5.20834 9.244803,2.08333 19.791691,2.08333 13.802098,0 20.442738,-2.99479 6.64063,-3.125 6.64063,-9.1146 0,-5.33854 -3.90626,-7.6823 -3.90625,-2.47396 -14.84376,-4.6875 -5.208344,-1.17188 -14.19273,-2.47396 -8.854178,-1.4323 -16.145853,-3.38542 -19.9219,-5.20834 -29.557328,-16.14586 -9.635428,-11.06772 -9.635428,-27.47399 0,-21.09377 19.921899,-35.02608 20.052108,-14.06252 54.68757,-14.06252 16.40627,0 31.38024,3.38542 15.10419,3.25521 23.56774,7.03126 v 36.97921 h -4.03646 q -10.41668,-7.16147 -23.82816,-11.58856 -13.28126,-4.55729 -26.95315,-4.55729 -11.328144,0 -19.140653,3.125 -7.682301,3.12501 -7.682301,8.85418 0,5.20834 3.515629,7.94272 3.515629,2.73438 16.536478,5.46875 7.161467,1.4323 15.364607,2.86459 8.33334,1.30209 16.66668,3.38542 18.48961,4.81772 27.34379,15.23439 8.85417,10.28648 8.85417,25.78129 z"
@@ -127,7 +127,7 @@
   </g>
   <text
      xml:space="preserve"
-     style="font-style:normal;font-weight:normal;font-size:7.2976px;line-height:1.25;font-family:sans-serif;fill:#ff0000;fill-opacity:0.7;stroke:#d9d9d9;stroke-width:0.35645;stroke-dasharray:none;stroke-opacity:1"
+     style="font-style:normal;font-weight:normal;font-size:7.2976px;line-height:1.25;font-family:sans-serif;fill:#ff0000;fill-opacity:0.7;stroke:#d8d8d8;stroke-width:0.35645;stroke-dasharray:none;stroke-opacity:1"
      x="20.290983"
      y="30.672245"
      id="text5957"
@@ -136,5 +136,5 @@
        id="tspan5955"
        x="20.290983"
        y="30.672245"
-       style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:17.5144px;font-family:Calibri;-inkscape-font-specification:'Calibri Bold';fill:#ff0000;fill-opacity:0.7;stroke:#d9d9d9;stroke-width:0.35645;stroke-dasharray:none;stroke-opacity:1">?</tspan></text>
+       style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:17.5144px;font-family:Calibri;-inkscape-font-specification:'Calibri Bold';fill:#ff0000;fill-opacity:0.7;stroke:#d8d8d8;stroke-width:0.35645;stroke-dasharray:none;stroke-opacity:1">?</tspan></text>
 </svg>
