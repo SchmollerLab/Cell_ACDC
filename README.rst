@@ -188,9 +188,14 @@ If you find Cell-ACDC useful, please cite it as follows:
    imaging data with Cell-ACDC. *BMC Biology* 20, 174 (2022). 
    DOI: `10.1186/s12915-022-01372-6 <https://doi.org/10.1186/s12915-022-01372-6>`_ 
 
+Alternatively, you can also use **Cite this repository** button on the right 
+ribbon of the GitHub page.
+
+
 **IMPORTANT**: when citing Cell-ACDC make sure to also cite the paper of the 
 segmentation models and trackers you used! 
-See `here <https://cell-acdc.readthedocs.io/en/latest/citation.html>`__ for a list of models currently available in Cell-ACDC.
+See `here <https://cell-acdc.readthedocs.io/en/latest/citation.html>`__ 
+for a list of models currently available in Cell-ACDC.
 
 Contact
 =======
