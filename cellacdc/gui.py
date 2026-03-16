@@ -6997,6 +6997,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     self.labelRoiCancelled()
                     return
             
+            # Restore state of button because it was maybe unchecked by 
+            # using other tools that are allowed --> see "elif" case in 
+            # labelRoi_cb
+            self.labelRoiButton.blockSignals(True)
+            self.labelRoiButton.setChecked(True)
+            self.labelRoiToolbar.setVisible(True)
+            self.labelRoiButton.blockSignals(False)
+            
             roiSecondChannel = None
             if self.secondChannelName is not None:
                 secondChannelData = self.getSecondChannelData()
@@ -7013,16 +7021,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.progressWin.show(self.app)
                 self.progressWin.mainPbar.setMaximum(stop_n-start_n)                
 
+            
             self.app.restoreOverrideCursor() 
             labelRoiWorker = self.labelRoiActiveWorkers[-1]
             labelRoiWorker.start(
-                roiImg, posData, roiSecondChannel=roiSecondChannel, 
+                roiImg, posData, 
+                roiSecondChannel=roiSecondChannel, 
                 isTimelapse=isTimelapse
             )            
             self.app.setOverrideCursor(Qt.WaitCursor)
             self.logger.info(
                 f'Magic labeller started on image ROI = {self.labelRoiSlice}...'
             )
+            self.titleLabel.setText('Magic labeller is doing its magic...')
+            self.setDisabled(True)
 
         # Move label mouse released, update move
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
@@ -13613,6 +13625,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
             # Add the rectROI to ax1
             self.ax1.addItem(self.labelRoiItem)
+        elif self.initLabelRoiModelDialog is not None:
+            # User is using other tools while the dialog is still open 
+            # --> we allow this because it's useful to be able to use 
+            # the ruler or check things --> do nothing
+            pass
         else:
             self.labelRoiToolbar.setVisible(False)
             
@@ -13719,6 +13736,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
     @exception_handler
     def labelRoiDone(self, roiSegmData, isTimeLapse):
+        self.setDisabled(False)
+        
         posData = self.data[self.pos_i]
         self.setBrushID()
 
@@ -17511,6 +17530,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
     @exception_handler
     def workerCritical(self, out: Tuple[QObject, Exception]):
+        self.setDisabled(False)
         worker, error = out
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
@@ -20666,6 +20686,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.timestampDialog = None
         self.scaleBarDialog = None
         self.countObjsWindow = None
+        self.initLabelRoiModelDialog = None
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -22942,6 +22963,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self._enqueueAutoSave()
     
     def autoSaveTimerCountFrames(self):
+        if not hasattr(self, 'data'):
+            # This happes when the elf.autoSaveTimer times out after 
+            # the GUI has been closed -->  we simply ignore it
+            return
+        
         posData = self.data[self.pos_i]
         autoSaveIntevalValue, autoSaveIntervalUnit = (
             self.autoSaveIntevalValueUnit
@@ -25037,20 +25063,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def initLabelRoiModel(self):
         self.app.restoreOverrideCursor()
         # Ask which model
-        win = apps.QDialogSelectModel(parent=self)
-        win.exec_()
-        if win.cancel:
+        self.initLabelRoiModelDialog = apps.QDialogSelectModel(parent=self)
+        self.initLabelRoiModelDialog.exec_()
+        if self.initLabelRoiModelDialog.cancel:
             self.logger.info('Magic labeller aborted.')
+            self.initLabelRoiModelDialog = None
             return True
         self.app.setOverrideCursor(Qt.WaitCursor)
-        model_name = win.selectedModel
+        model_name = self.initLabelRoiModelDialog.selectedModel
         self.labelRoiModel = self.repeatSegm(
             model_name=model_name, askSegmParams=True,
             is_label_roi=True
         )
         if self.labelRoiModel is None:
+            self.initLabelRoiModelDialog = None
             return True
         self.labelRoiViewCurrentModelAction.setDisabled(False)
+        self.initLabelRoiModelDialog = None
         return False
 
     def showOverlayContextMenu(self, event):
