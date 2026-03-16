@@ -32,33 +32,33 @@ import cellacdc.debugutils as debugutils
 #     lin_tree_cols = lin_tree_cols | sis_cols
 #     return df[list(lin_tree_cols)]
 
-# def reorg_sister_cells_for_export(lineage_tree_frame):
-#     """
-#     Reorganizes the daughter cells in the lineage tree frame for export.
-#     Translates the lists from 'sister_ID_tree' to 'sister_ID_tree_1', 'sister_ID_tree_2',
-#     while leaving the first entry from the list in 'sister_ID_tree'
+def reorg_sister_cells_for_export(lineage_tree_frame):
+    """
+    Reorganizes the daughter cells in the lineage tree frame for export.
+    Translates the lists from 'sister_ID_tree' to 'sister_ID_tree_1', 'sister_ID_tree_2',
+    while leaving the first entry from the list in 'sister_ID_tree'
 
-#     Parameters:
-#     - lineage_tree_frame (pandas.DataFrame): The lineage tree frame containing the daughter cells.
+    Parameters:
+    - lineage_tree_frame (pandas.DataFrame): The lineage tree frame containing the daughter cells.
 
-#     Returns:
-#     - pandas.DataFrame: The lineage tree frame with reorganized daughter cells (e.g. 'daughter_ID_tree_1', 'daughter_ID_tree_2', ...)
-#     """
-#     if lineage_tree_frame.empty:
-#         return lineage_tree_frame
+    Returns:
+    - pandas.DataFrame: The lineage tree frame with reorganized daughter cells (e.g. 'daughter_ID_tree_1', 'daughter_ID_tree_2', ...)
+    """
+    if lineage_tree_frame.empty:
+        return lineage_tree_frame
     
-#     old_sister_columns = {col for col in lineage_tree_frame.columns if col.startswith('sister_ID_tree')}
+    old_sister_columns = {col for col in lineage_tree_frame.columns if col.startswith('sister_ID_tree')}
 
-#     sister_columns = lineage_tree_frame['sister_ID_tree'].apply(pd.Series)
+    sister_columns = lineage_tree_frame['sister_ID_tree'].apply(pd.Series)
 
-#     max_daughter = sister_columns.shape[1]
-#     new_columns = [f'sister_ID_tree_{i}' for i in range(max_daughter)]
+    max_daughter = sister_columns.shape[1]
+    new_columns = [f'sister_ID_tree_{i}' for i in range(max_daughter)]
 
-#     lineage_tree_frame = lineage_tree_frame.drop(columns=old_sister_columns)
-#     lineage_tree_frame[new_columns] = sister_columns
-#     lineage_tree_frame['sister_ID_tree'] = sister_columns[0]
+    lineage_tree_frame = lineage_tree_frame.drop(columns=old_sister_columns)
+    lineage_tree_frame[new_columns] = sister_columns
+    lineage_tree_frame['sister_ID_tree'] = sister_columns[0]
 
-#     return lineage_tree_frame
+    return lineage_tree_frame
 
 # def reorg_sister_cells_inner_func(row):
 #     """
@@ -1099,34 +1099,34 @@ class normal_division_lineage_tree:
     #         self.lineage_list = df_li_new
 
     # This will probably be made obsolete by the gui_mode version
-    # def export_df(self, frame_i):
-    #     """
-    #     Export the lineage DataFrame for a specific frame, cleaning up auxiliary columns.
+    def export_df(self, frame_i):
+        """
+        Export the lineage DataFrame for a specific frame, cleaning up auxiliary columns.
 
-    #     Args:
-    #         frame_i (int): The index of the frame.
+        Args:
+            frame_i (int): The index of the frame.
 
-    #     Returns:
-    #         pd.DataFrame: The cleaned DataFrame for the specified frame.
-    #     """
-    #     df = self.lineage_list[frame_i].copy()
+        Returns:
+            pd.DataFrame: The cleaned DataFrame for the specified frame.
+        """
+        df = self.lineage_list[frame_i].copy()
 
-    #     if df.empty:
-    #         print(f'Warning: No dataframe for frame {frame_i} found.')
+        if df.empty:
+            print(f'Warning: No dataframe for frame {frame_i} found.')
 
-    #     df = reorg_sister_cells_for_export(df)
+        df = reorg_sister_cells_for_export(df)
 
-    #     df = checked_reset_index_Cell_ID(df)
+        df = checked_reset_index_Cell_ID(df)
 
-    #     columns = df.columns
-    #     if "level_0" in columns:
-    #         df = df.drop(columns="level_0")
-    #     if "index" in columns:
-    #         df = df.drop(columns="index")
-    #     if "frame_i" in columns:
-    #         df = df.drop(columns="frame_i")
+        columns = df.columns
+        if "level_0" in columns:
+            df = df.drop(columns="level_0")
+        if "index" in columns:
+            df = df.drop(columns="index")
+        if "frame_i" in columns:
+            df = df.drop(columns="frame_i")
 
-    #     return df
+        return df
     
     def export_lin_tree_info(self, frame_i):
         """
@@ -1272,12 +1272,11 @@ class tracker:
             rp = regionprops(tracker.tracked_lab)
             curr_IDs = {obj.label for obj in rp}
             new_IDs = curr_IDs - prev_IDs
-            # print(f'Frame {frame_i}: {new_IDs}, {curr_IDs}, {prev_IDs}')
-            tree.add_new_frame(
-                frame_i, mother_daughters, IDs_prev, IDs_curr_untracked,
-                assignments, curr_IDs, new_IDs
-            )
-            # printl(new_IDs, curr_IDs, prev_IDs)
+            if record_lineage or return_tracked_lost_centroids:
+                tree.add_new_frame(
+                    frame_i, mother_daughters, IDs_prev, IDs_curr_untracked,
+                    assignments, curr_IDs, new_IDs
+                )
             tracked_lost_centroids_loc = []
             for mother, _ in mother_daughters:
                 mother_ID = IDs_prev[mother]
