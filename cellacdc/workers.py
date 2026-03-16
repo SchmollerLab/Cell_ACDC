@@ -743,6 +743,7 @@ class LabelRoiWorker(QObject):
             if self.exit:
                 break
             elif self.started:
+                self.logger.log('Magic labeller is doing its magic...')
                 if self.isTimelapse:
                     segmData = np.zeros(self.imageData.shape, dtype=np.uint32)
                     for frame_i, img in enumerate(self.imageData):
