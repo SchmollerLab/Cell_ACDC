@@ -5750,7 +5750,7 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
 
             new_keys_per_pos = list(itertools.product(*new_keys_per_pos))
             new_keys.extend(new_keys_per_pos)
-
+        
         output_imgs, out_keys = core.combine_channels_multithread_return_imgs(
             steps=steps,
             data=data,
@@ -5786,7 +5786,9 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
                 data, steps, key, keep_input_data_type = self.dataQ.pop()
                 requ_steps, pos_i = self.requiredChannels(steps, key[0])
                 self.emitsigAskLoadFluoChannels(requ_steps, pos_i)
-                output_imgs, out_keys = self.applySteps(data, steps, keep_input_data_type, key)
+                output_imgs, out_keys = self.applySteps(
+                    data, steps, keep_input_data_type, key
+                )
                 self.sigPreviewDone.emit(output_imgs, out_keys)
                 if len(self.dataQ) == 0:
                     self.wait = True

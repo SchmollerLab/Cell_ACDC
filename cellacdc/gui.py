@@ -19327,7 +19327,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             raise ValueError('keep_input_data_type must be set if steps is set')
         
         if steps is None:
-            steps, keep_input_data_type = self.combineDialog.steps(return_keepInputDataType=True)
+            steps, keep_input_data_type = self.combineDialog.steps(
+                return_keepInputDataType=True
+            )
 
         txt = 'Combining current image...'
         self.logger.info(txt)
@@ -19441,7 +19443,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.combineWorker.wakeUp()
 
-    def preprocessCurrentImage(self, recipe: List[Dict[str, Any]]):
+    def preprocessCurrentImage(self, recipe: List[Dict[str, Any]], *args):
         txt = 'Pre-processing current image...'
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
@@ -19592,8 +19594,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.combineDialog is not None:
             self.combineDialog.close()
         
+        ordered_channels = [self.user_ch_name]
+        ordered_channels.extend(
+            [ch for ch in posData.chNames if ch != self.user_ch_name]
+        )
         self.combineDialog = apps.CombineChannelsSetupDialogGUI(
-            posData.chNames,
+            ordered_channels,
             isTimelapse=posData.SizeT>1, 
             isZstack=posData.SizeZ>1,
             isMultiPos=len(self.data)>1,

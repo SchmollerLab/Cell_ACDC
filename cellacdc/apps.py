@@ -16966,6 +16966,7 @@ class PreProcessParamsWidget(QWidget):
 
 class CombineChannelsWidget(PreProcessParamsWidget):
     sigValuesChangedCombineChannels = Signal()
+    
     def __init__(self, channel_names:Iterable[str], parent=None):
         self.channel_names = channel_names
 
@@ -16980,22 +16981,31 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         
         self.row += 1
         
+        if is_first:
+            self.row += 1
+        
         step_n = len(self.stepsWidgets)+1
         label = QLabel(f'Channel {step_n}: ')
         self.gridLayout.addWidget(label, self.row, 0)
         stepWidgets['stepLabel'] = label
 
+        if is_first:
+            self.gridLayout.addWidget(QLabel('Operator'), self.row-1, 1)
         operator = QComboBox()
         self.gridLayout.addWidget(operator, self.row, 1)
         stepWidgets['operator'] = operator
         operator.currentTextChanged.connect(self.emitValuesChanged)
- 
+
+        if is_first:
+            self.gridLayout.addWidget(QLabel('Channel'), self.row-1, 2)
         ch_selector = QComboBox()
         ch_selector.addItems(self.channel_names)
         self.gridLayout.addWidget(ch_selector, self.row, 2)
         stepWidgets['selector'] = ch_selector
         ch_selector.currentTextChanged.connect(self.emitValuesChanged)
 
+        if is_first:
+            self.gridLayout.addWidget(QLabel('Multiplier'), self.row-1, 3)
         multiplier = QDoubleSpinBox()
         multiplier.setRange(0, 1)
         multiplier.setSingleStep(0.01)
@@ -18016,9 +18026,7 @@ class PreProcessRecipeDialog(QBaseDialog):
                 'Apply to all z-slices of current image'
             )
             buttonsLayout.addWidget(self.applyAllZslicesButton, row, col)
-            self.applyAllZslicesButton.clicked.connect(
-                partial(self.apply, signal=self.sigApplyZstack)
-            )
+            self.applyAllZslicesButton.clicked.connect(self.applyAllZslices)
             self.allButtons.append(self.applyAllZslicesButton)
         if isTimelapse:
             row += 1
@@ -18026,9 +18034,7 @@ class PreProcessRecipeDialog(QBaseDialog):
                 'Apply to all frames'
             )
             buttonsLayout.addWidget(self.applyAllFramesButton, row, col)
-            self.applyAllFramesButton.clicked.connect(
-                partial(self.apply, signal=self.sigApplyAllFrames)
-            )
+            self.applyAllFramesButton.clicked.connect(self.applyAllFrames)
             self.allButtons.append(self.applyAllFramesButton)
         if isMultiPos:
             row += 1
@@ -18065,6 +18071,17 @@ class PreProcessRecipeDialog(QBaseDialog):
         
         self.setLayout(mainLayout)
 
+    def applyAllZslices(self, checked=False):
+        # Preview needs to be turned off because we are computing on every 
+        # z-slice 
+        self.previewCheckbox.setChecked(False)
+        self.apply(signal=self.sigApplyZstack)
+    
+    def applyAllFrames(self, checked=False):
+        # Preview needs to be turned off because we are computing on all frames
+        self.previewCheckbox.setChecked(False)
+        self.apply(signal=self.sigApplyAllFrames)
+    
     def emitSigPreviewToggled(self):
         self.sigPreviewToggled.emit(self.previewCheckbox.isChecked())
 
@@ -18255,7 +18272,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
 
         self.mainLayout.insertWidget(2, self.combineChannelsWidget)
         self.combineChannelsWidget.groupbox.setCheckable(False)
-        self.combineChannelsWidget.groupbox.setTitle('Combine channels (Operator, Channel name, Multiplier, Add another channel)')
+        self.combineChannelsWidget.groupbox.setTitle('Combine channels')
 
         self.cancel = True
 
@@ -18318,7 +18335,10 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             return
         
         if signal is not None:
-            signal.emit(steps)
+            try:
+                signal.emit(steps)
+            except TypeError as err:
+                signal.emit(steps, keep_input_dtype)
 
         if self.hideOnClosing:
             self.setDisabled(True)
