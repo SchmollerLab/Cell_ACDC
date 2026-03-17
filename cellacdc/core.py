@@ -2275,21 +2275,15 @@ def combine_channels_multithread(
         signals=None,
         logger_func: Callable=None
     ):
-
     channel_names = []
     multipliers = []
     operators = []
-    is_all_segm_masks = True
-    for step in steps.values():
-        channel_names.append(step['channel'])
+    are_channels_segm_masks = []
+    for step_n, step in steps.items():        
+        channel = step['channel']
+        channel_names.append(channel)
         multipliers.append(step['multiplier'])
         operators.append(step['operator'])
-
-        channel = step['channel']
-        if '_segm' not in channel:
-            is_all_segm_masks = False
-            break
-
         for images_path in images_paths:
             ch_filepath = load.get_filepath_from_endname(
                 images_path, channel
@@ -2297,9 +2291,11 @@ def combine_channels_multithread(
             if ch_filepath:
                 break
         
-        if not ch_filepath.endswith('.npz'):
-            is_all_segm_masks = False
-            break
+        are_channels_segm_masks.append(
+            '_segm' in channel and ch_filepath.endswith('.npz')
+        )
+        
+    is_all_segm_masks = all(are_channels_segm_masks)
     
     with ThreadPoolExecutor(max_workers=n_threads) as executor:
         if signals:
@@ -2528,7 +2524,7 @@ def combine_channels_func(
                 raise ValueError(
                     f'Invalid number of dimensions, is your data maybe corrupted?\n Ndims: {num_dim}\n Channel name: {channel_full_name}'
                 )
-
+    
     for i in range(len(ch_image_data_list)):
         multiplier = multipliers[i]
         if multiplier == 1:
@@ -2609,8 +2605,8 @@ def combine_channels_func(
             else:
                 printl(txt)
         
-        if return_img:
-            return output_img, key, txt
+    if return_img:
+        return output_img, key, txt
     
     txt = f'Saving combined image to {save_filepath}'
     if logger_func is not None:
