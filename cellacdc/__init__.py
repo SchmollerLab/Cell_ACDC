@@ -1,5 +1,3 @@
-print('Welcome to Cell-ACDC!')
-
 import os
 import sys
 

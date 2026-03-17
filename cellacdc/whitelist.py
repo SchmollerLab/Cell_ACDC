@@ -1588,10 +1588,10 @@ class WhitelistGUIElements:
         denom_overlap_matrix = 'union' if not against_prev else 'area_prev'
 
         lab = CellACDC_tracker.track_frame(
-                og_lab, og_rp, lab, rp,
-                denom_overlap_matrix=denom_overlap_matrix,
-                posData = posData,
-                setBrushID_func=self.setBrushID
+            og_lab, og_rp, lab, rp,
+            denom_overlap_matrix=denom_overlap_matrix,
+            posData = posData,
+            setBrushID_func=self.setBrushID
         )
 
         posData.lab = lab
