@@ -46,8 +46,9 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
                     chNames.update(segm_endnames)
                     continue
                 
+                chNames_loc = set(chNames_loc)
                 chNames_loc.update(segm_endnames)
-                chNames = chNames.intersection(set(chNames_loc))
+                chNames = chNames.intersection(chNames_loc)
 
         chNames = sorted(set(chNames))
             
