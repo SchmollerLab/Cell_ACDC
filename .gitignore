@@ -13,7 +13,7 @@ test.py
 .ref_graphs/
 test.csv
 cellacdc/test2.py
-
+test_shorten_data.py
 
 env_dependencies_issues.txt
 not_installed_requirements.txt

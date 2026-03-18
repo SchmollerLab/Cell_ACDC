@@ -1494,7 +1494,6 @@ class filenameDialog(QDialog):
             helpText = (f'{helpText}{html_utils.paragraph(helpText_loc)}')
 
         self.isSegmFile = basename.endswith('_segm')
-        
         self.allowEmpty = allowEmpty
         self.basename = basename
         if ext and not ext.startswith('.'):
@@ -16989,46 +16988,123 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         self.gridLayout.addWidget(label, self.row, 0)
         stepWidgets['stepLabel'] = label
 
+        tooltip = (
+            'Select the operator to be applied to the channel'
+            'Operators are applied in order of the list, and after applying the '
+            'multiplier and offset.'
+        )
         if is_first:
-            self.gridLayout.addWidget(QLabel('Operator'), self.row-1, 1)
+            label = QLabel('Operator')
+            label.setToolTip(
+                tooltip
+            )
+            self.gridLayout.addWidget(label, self.row-1, 1)
         operator = QComboBox()
+        operator.setToolTip(
+            tooltip
+        )
         self.gridLayout.addWidget(operator, self.row, 1)
         stepWidgets['operator'] = operator
         operator.currentTextChanged.connect(self.emitValuesChanged)
 
+        tooltip = (
+            'Select a channel or a segmentation mask'
+        )
         if is_first:
-            self.gridLayout.addWidget(QLabel('Channel'), self.row-1, 2)
+            label = QLabel('Channel')
+            label.setToolTip(
+                tooltip
+            )
+            self.gridLayout.addWidget(label, self.row-1, 2)
         ch_selector = QComboBox()
+        ch_selector.setToolTip(
+            tooltip
+        )
         ch_selector.addItems(self.channel_names)
         self.gridLayout.addWidget(ch_selector, self.row, 2)
         stepWidgets['selector'] = ch_selector
         ch_selector.currentTextChanged.connect(self.emitValuesChanged)
-
+        ch_selector.currentTextChanged.connect(self.setBinarizeCheckable)
+        
+        tooltip = (
+            'Offset is a sonstant that will be multiplied to the channel before '
+            'appliying the operator.'
+        )
         if is_first:
-            self.gridLayout.addWidget(QLabel('Multiplier'), self.row-1, 3)
+            label = QLabel('Offset')
+            label.setToolTip(
+                tooltip
+            )
+            self.gridLayout.addWidget(label, self.row-1, 3)
+        offset = QDoubleSpinBox()
+        # multiplier.setRange(0, 1)
+        offset.setRange(-np.inf, np.inf)
+        offset.setSingleStep(0.1)
+        offset.setValue(0)
+        offset.setToolTip(
+            tooltip
+        )
+        self.gridLayout.addWidget(offset, self.row, 3)
+        stepWidgets['offset'] = offset
+        offset.valueChanged.connect(self.emitValuesChanged)
+        
+        tooltip = (
+            'Multiplier is a float that will be multiplied with the channel or segmentation '
+            'before appliying the operator.'
+        )
+        if is_first:
+            label = QLabel('Multiplier')
+            self.gridLayout.addWidget(label, self.row-1, 4)
         multiplier = QDoubleSpinBox()
-        multiplier.setRange(0, 1)
-        multiplier.setSingleStep(0.01)
+        multiplier.setToolTip(
+            tooltip
+        )
+        multiplier.setRange(-np.inf, np.inf)
+        multiplier.setSingleStep(0.1)
         multiplier.setValue(1)
-        self.gridLayout.addWidget(multiplier, self.row, 3)
+        self.gridLayout.addWidget(multiplier, self.row, 4)
         stepWidgets['multiplier'] = multiplier
         multiplier.valueChanged.connect(self.emitValuesChanged)
+        
+        # add binarisaion spinbox
+        tooltip = (
+            'If binarize is selected, the channel will be binarized first, before applying offset and multiplier.\n'
+            'If inverse binarize is selected, the channel will be binerized and '
+            'then the logical NOT will be applied.'
+        )
+        if is_first:
+            label = QLabel('Binarize')
+            label.setToolTip(
+                tooltip
+            )
+            self.gridLayout.addWidget(label, self.row-1, 5)
+        options = ['No', 'binarize', 'inverse binarize']
+        self.binarizeCombobox = QComboBox()
+        self.binarizeCombobox.addItems(options)
+        self.binarizeCombobox.setCurrentIndex(0)
+        self.binarizeCombobox.setEnabled(False)
+        self.binarizeCombobox.setToolTip(
+            tooltip
+        )
+        self.binarizeCombobox.currentIndexChanged.connect(self.emitValuesChanged)
+        self.gridLayout.addWidget(self.binarizeCombobox, self.row, 5)
+        stepWidgets['binarize'] = self.binarizeCombobox
 
         if is_first:
             addButton = widgets.addPushButton()
-            self.gridLayout.addWidget(addButton, self.row, 4)
+            self.gridLayout.addWidget(addButton, self.row, 6)
             addButton.clicked.connect(self.addStep)
             stepWidgets['addButton'] = addButton
             operators = ['+', '-']
             stepWidgets['operator'].addItems(operators)
-
+            
         else:
             delButton = widgets.delPushButton()
-            self.gridLayout.addWidget(delButton, self.row, 4)
+            self.gridLayout.addWidget(delButton, self.row, 6)
             delButton.clicked.connect(self.removeStep)
             delButton.step_n = step_n
             stepWidgets['delButton'] = delButton
-            operators = ['+', '-', '*', '/']
+            operators = ['+', '-', '*', '/', 'max', 'min']
             stepWidgets['operator'].addItems(operators)
         
         self.row += 1
@@ -17036,7 +17112,7 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         ch_selector.step_n = step_n
 
         hline = widgets.QHLine()
-        self.gridLayout.addWidget(hline, self.row, 0, 1, 6)
+        self.gridLayout.addWidget(hline, self.row, 0, 1, 8)
         stepWidgets['hline'] = hline
         self.row += 1
               
@@ -17044,9 +17120,20 @@ class CombineChannelsWidget(PreProcessParamsWidget):
                 
         self.resetStretch()
         self.sigValuesChangedCombineChannels.emit()
+        self.setBinarizeCheckable()
     
     def emitValuesChanged(self, *args):
         self.sigValuesChangedCombineChannels.emit()
+        
+    def setBinarizeCheckable(self):
+        for step_n, stepWidgets in self.stepsWidgets.items():
+            binarizeSelector = stepWidgets['binarize']
+            channel = stepWidgets['selector'].currentText()
+            if "segm" in channel:
+                binarizeSelector.setEnabled(True)
+            else:
+                binarizeSelector.setEnabled(False)
+                binarizeSelector.setCurrentIndex(0)
 
     def removeStep(self, checked=False, step_n=None):        
         if step_n is None:
@@ -17068,6 +17155,13 @@ class CombineChannelsWidget(PreProcessParamsWidget):
 
         stepWidgets['multiplier'].hide()
         self.gridLayout.removeWidget(stepWidgets['multiplier'])
+        
+        stepWidgets['binarize'].hide()
+        self.gridLayout.removeWidget(stepWidgets['binarize'])
+        
+        stepWidgets['offset'].hide()
+        self.gridLayout.removeWidget(stepWidgets['offset'])
+        
         self.row -= 1
         
         stepWidgets['hline'].hide()
@@ -17101,10 +17195,14 @@ class CombineChannelsWidget(PreProcessParamsWidget):
             channel = stepWidgets['selector'].currentText()
             operator = stepWidgets['operator'].currentText()
             multiplier = stepWidgets['multiplier'].value()
+            binarize = stepWidgets['binarize'].currentText()
+            offset = stepWidgets['offset'].value()
             steps[step_number] = {
                 'channel': channel,
                 'operator': operator,
-                'multiplier': multiplier
+                'multiplier': multiplier,
+                'binarize': binarize,
+                'offset': offset
             }
 
         steps = dict(sorted(steps.items()))
@@ -18243,6 +18341,8 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     sigApplyAllZslices = Signal(dict, bool)
     sigApplyAllFramesZslices = Signal(dict, bool)
     sigApplyImage = Signal(dict, bool)
+    sigSaveAsSegmCheckboxToggled = Signal(bool)
+
 
     def __init__(
             self,
@@ -18269,6 +18369,9 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(
             self.emitValuesChanged
         )
+        self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(
+            self.autoCheckSaveAsSegmCheckbox
+        )
 
         self.mainLayout.insertWidget(2, self.combineChannelsWidget)
         self.combineChannelsWidget.groupbox.setCheckable(False)
@@ -18281,6 +18384,39 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.mainLayout.removeWidget(self.preProcessParamsWidget)
 
         self.savePreprocButton.setText('Save combined data...')
+        
+                
+        # add checkbox
+        self.mainLayout.addSpacing(-30) # better way to do this?
+        self.saveAsSegmCheckbox = widgets.CheckBox('Save as segmentation', self)
+        self.saveAsSegmCheckbox.setToolTip(
+            'Save the combined channels as a segmentation file, for example '
+            'when combining a binary mask with a segmentation mask.'
+        )
+        self.saveAsSegmCheckbox.setChecked(False)
+        self.saveAsSegmCheckbox.setEnabled(False)
+        self.saveAsSegmCheckbox.toggled.connect(self.emitSaveAsSegmCheckboxToggled)
+        self.mainLayout.addWidget(self.saveAsSegmCheckbox)
+        
+    def saveAsSegm(self):
+        return self.saveAsSegmCheckbox.isChecked()
+    
+    def emitSaveAsSegmCheckboxToggled(self):
+        self.sigSaveAsSegmCheckboxToggled.emit(self.saveAsSegm())
+    
+    def autoCheckSaveAsSegmCheckbox(self):
+        any_not_seg = False
+        for step in self.combineChannelsWidget.steps().values():
+            channel = step['channel']
+            if 'segm' not in channel:
+                any_not_seg = True
+                break
+
+        if any_not_seg:
+            self.saveAsSegmCheckbox.setChecked(False)
+            self.saveAsSegmCheckbox.setEnabled(False)
+        else:
+             self.saveAsSegmCheckbox.setEnabled(True)
 
     def warnMultipliers(self):
         msg = widgets.myMessageBox(wrapText=False)
@@ -18462,6 +18598,7 @@ class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
         self.allButtons.remove(self.loadRecipeButton)
 
         self.previewCheckbox.setChecked(True)
+        self.saveAsSegmCheckbox.setText('Save and view as segmentation')
 
     def steps(self, return_keepInputDataType=False):
         steps = self.combineChannelsWidget.steps()
@@ -18469,7 +18606,7 @@ class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
             return steps
         
         keep_input_dtype = self.keepInputDataTypeToggle.isChecked()
-        return steps, keep_input_dtype # why does this not work???s 
+        return steps, keep_input_dtype
 
 class QCropTrangeTool(QBaseDialog):
     sigClose = Signal()

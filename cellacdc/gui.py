@@ -315,6 +315,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.combineWorker = None
         self.preprocessDialog = None
         self.combineDialog = None
+        self.combineViewAsSegm = False
         self.viewOriginalLabels = True
         self.keepDisabled = False
         self.whitelistAddNewIDsFrame = None
@@ -19316,7 +19317,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def combinePreviewToggled(self, checked):
         self.viewCombineChannelDataToggle.setChecked(checked)
         self.updateCombineChannelsPreview()
-    
+        
+    def combinePreviewViewAsSegmToggled(self, checked):
+        if self.combineViewAsSegm == checked:
+            return
+        else:
+            self.updateCombineChannelsPreview(combineViewAsSegmNewState=checked)
+        
     def combineCurrentImage(
             self, 
             steps: List[Dict[str, Any]]=None,
@@ -19598,6 +19605,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         ordered_channels.extend(
             [ch for ch in posData.chNames if ch != self.user_ch_name]
         )
+        # also add segm
+        
         self.combineDialog = apps.CombineChannelsSetupDialogGUI(
             ordered_channels,
             isTimelapse=posData.SizeT>1, 
@@ -19623,6 +19632,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.combineDialog.sigPreviewToggled.connect(
             self.combinePreviewToggled
+        )
+        self.combineDialog.sigSaveAsSegmCheckboxToggled.connect(
+            self.combinePreviewViewAsSegmToggled
         )
         self.combineDialog.sigValuesChanged.connect(
             self.combineDialogStepsChanged

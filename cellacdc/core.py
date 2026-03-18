@@ -2273,30 +2273,22 @@ def combine_channels_multithread(
         save_filepaths: List[str]=None,
         n_threads: int=None,
         signals=None,
-        logger_func: Callable=None
+        logger_func: Callable=None,
+        output_as_segm: bool = False,
     ):
     channel_names = []
     multipliers = []
     operators = []
-    are_channels_segm_masks = []
+    binarizes = []
+    offsets = []
     for step_n, step in steps.items():        
         channel = step['channel']
         channel_names.append(channel)
         multipliers.append(step['multiplier'])
         operators.append(step['operator'])
-        for images_path in images_paths:
-            ch_filepath = load.get_filepath_from_endname(
-                images_path, channel
-            )
-            if ch_filepath:
-                break
-        
-        are_channels_segm_masks.append(
-            '_segm' in channel and ch_filepath.endswith('.npz')
-        )
-        
-    is_all_segm_masks = all(are_channels_segm_masks)
-    
+        binarizes.append(step['binarize'])
+        offsets.append(step['offset'])
+            
     with ThreadPoolExecutor(max_workers=n_threads) as executor:
         if signals:
             signals.initProgressBar.emit(len(images_paths))
@@ -2305,19 +2297,17 @@ def combine_channels_multithread(
                 total=len(images_paths), ncols=100, desc='Combining channels'
             )
         
-        if is_all_segm_masks:
-            executor_func = combine_segm_masks_executor_map
-        else:
-            executor_func = combine_channels_executor_map
-
         func = partial(
-            executor_func,
+            combine_channels_executor_map,
             channel_names=channel_names,
             operators=operators,
             multipliers=multipliers,
             keep_input_data_type=keep_input_data_type,
             return_img=False,
-            logger_func=logger_func
+            logger_func=logger_func,
+            output_as_segm=output_as_segm,
+            binarizes=binarizes,
+            offsets=offsets
         )
         iterable = zip(images_paths, save_filepaths)
         result = executor.map(func, iterable)
@@ -2335,16 +2325,21 @@ def combine_channels_multithread_return_imgs(
         n_threads: int=None,
         signals=None,
         logger_func: Callable=None,
+        output_as_segm: bool = False,
     ):
 
     channel_names = []
     multipliers = []
     operators = []
+    binarizes = []
+    offsets = []
 
     for step in steps.values():
         channel_names.append(step['channel'])
         multipliers.append(step['multiplier'])
         operators.append(step['operator'])
+        binarizes.append(step['binarize'])
+        offsets.append(step['offset'])
 
     total = len(keys)
     
@@ -2367,6 +2362,9 @@ def combine_channels_multithread_return_imgs(
             keep_input_data_type=keep_input_data_type,
             return_img=True,
             logger_func=logger_func,
+            output_as_segm=output_as_segm,
+            binarizes=binarizes,
+            offsets=offsets
         )
         iterable = keys
         result = executor.map(func, iterable)
@@ -2400,75 +2398,84 @@ def combine_channels_executor_map(args, **kwargs):
     kwargs['images_path'] = images_path
     return combine_channels_func(**kwargs)
 
-def combine_segm_masks_executor_map(args, **kwargs):
-    images_path, save_filepath = args
-    kwargs['save_filepath'] = save_filepath
-    kwargs['images_path'] = images_path
-    return combine_segm_masks_func(**kwargs)
-
 def combine_channels_executor_map_return_img(args, **kwargs):
     key = args
     kwargs['key'] = key
     return combine_channels_func(**kwargs)
 
-def combine_segm_masks_func(
-        channel_names: List[str],
-        operators: List[str],
-        multipliers: List[float],
-        keep_input_data_type: bool,
-        save_filepath: str=None,
-        return_img: bool=False,
-        logger_func: Callable=None,
-        images_path: str = None,
-        key: str = None,
-        data = None,
-    ):
-    segm_data_li = []
-    for segm_endname in channel_names:
-        segm_filepath = load.get_filepath_from_endname(
-            images_path, segm_endname
-        )
-        segm_data = np.load(segm_filepath)['arr_0']
-        segm_data_li.append(segm_data.astype(np.float32))
+def _combine_channels_operation_applier(i, input_img_added, output_img, operator):
+    """
+    Performs operation on output_img using input_img_added
+    Main reason for this to be a separate function is to centralize the logic
     
-    if all(x == "+" for x in operators):
-        output_segm = np.sum(segm_data_li, axis=0)
-        return output_segm
-    
-    for i in range(len(segm_data_li)):
-        if i == 0:
-            if operators[i] == "+":
-                output_segm = segm_data_li[0]
-            elif operators[i] == "-":
-                output_segm = -segm_data_li[0]
-            else:
-                raise ValueError(f'Invalid operator: {operators[i]}')
-            continue
-        
-        if operators[i] == "+":
-            output_segm += segm_data_li[i]
-        elif operators[i] == "-":
-            output_segm -= segm_data_li[i]
-        elif operators[i] == "*":
-            output_segm *= segm_data_li[i]
-        elif operators[i] == "/":
-            output_segm /= segm_data_li[i]
-        else:
-            raise ValueError(f'Invalid operator: {operators[i]}')
-    
-    output_segm[output_segm<0] = 0
-    output_segm = output_segm.astype(np.uint32)
+    NOTE: Needs to start either with properly init. "output_img" or i=0
 
-    if return_img:
-        return output_segm, key, ''
-    
-    txt = f'Saving combined image to {save_filepath}'
-    if logger_func:
-        logger_func(txt)
+    Parameters
+    ----------
+    i : int
+        only for getting i == 0 case
+    input_img_added : numpy.ndarray
+        Input image which is combined with output_img based on operation
+    output_img : numpy.ndarray
+        Output image which is combined with input_img_added based on operation
+    operator : str
+        Operation to be performed on output_img and input_img_added
+
+    Returns
+    -------
+    numpy.ndarray
+        Output image which is combined with input_img_added based on operation
+        can be used again for next iteration
+
+    Raises
+    ------
+    ValueError
+        _description_
+    ValueError
+        _description_
+    """
+    if i == 0:
+        if operator == "+":
+            output_img = input_img_added
+        elif operator == "-":
+            output_img = -input_img_added
+        else:
+            raise ValueError(f'Invalid operator: {operator}')
     else:
-        printl(txt)
-    
-    io.savez_compressed(save_filepath, output_segm)
+        if operator == "+":
+            output_img = output_img + input_img_added
+        elif operator == "-":
+            output_img = output_img - input_img_added
+        elif operator == "*":
+            output_img = output_img * input_img_added
+        elif operator == "/":
+            output_img = output_img / input_img_added
+        elif operator == "max":
+            output_img = np.maximum(output_img, input_img_added)
+        elif operator == "min":
+            output_img = np.minimum(output_img, input_img_added)
+        else:
+            raise ValueError(f'Invalid operator: {operator}')
+        
+    printl("after operator", output_img.min(), output_img.max())
+    return output_img
+
+def _combine_channels_multiplier_apply(multiplier, offset, binarize, input_img):
+    if binarize == 'binarize':
+        input_img = (input_img > 0)
+    elif binarize == 'inverse binarize':
+        input_img = ~(input_img > 0)
+
+    if offset != 0:
+        # offset is perc of original image
+        input_img = input_img + offset
+
+    if multiplier == 1:
+        printl("after mult", input_img.min(), input_img.max())
+        return input_img
+    input_img = input_img * multiplier
+    printl("after mult", input_img.min(), input_img.max())
+    return input_img
 
 def combine_channels_func(
         channel_names: List[str],
@@ -2481,7 +2488,10 @@ def combine_channels_func(
         images_path: str = None,
         key: str = None,
         data = None,
-    ):
+        output_as_segm: bool = False,
+        binarizes: List[str] = None,
+        offsets: List[float] = None,
+    ):# -> tuple[Any | ndarray, str, str | Any] | None:
     if not save_filepath and not return_img:
         raise ValueError('Either save_filepath must be provided or return_img must be true')
     
@@ -2490,16 +2500,20 @@ def combine_channels_func(
     
     ch_image_data_list = []
     original_dtype = None
-    if not data:
+    if data is None:
         for channel in channel_names:
             ch_filepath = load.get_filepath_from_endname(
                 images_path, channel
             )
             ch_image_data = load.load_image_file(ch_filepath)
-            if not original_dtype:
+            if original_dtype is None:
                 original_dtype = ch_image_data.dtype
-            ch_image_data = myutils.img_to_float(ch_image_data)
+            if "_segm" in ch_filepath:
+                ch_image_data = ch_image_data.astype(np.uint32)
+            else:
+                ch_image_data = myutils.img_to_float(ch_image_data)
             ch_image_data_list.append(ch_image_data)
+            printl("after load", channel, ch_image_data.min(), ch_image_data.max())
     else:
         posData = data[key[0]]
         fluo_data_dict = posData.fluo_data_dict
@@ -2510,13 +2524,13 @@ def combine_channels_func(
             channel_full_name = f'{posData.basename}{channel}'
             if num_dim == 3:
                 ch_image_data = fluo_data_dict[channel_full_name][key[1]]
-                if not original_dtype:
+                if original_dtype is None:
                     original_dtype = ch_image_data.dtype
                 ch_image_data = myutils.img_to_float(ch_image_data)
                 ch_image_data_list.append(ch_image_data)
             elif num_dim == 4:
                 ch_image_data = fluo_data_dict[channel_full_name][key[1]][key[2]]
-                if not original_dtype:
+                if original_dtype is None:
                     original_dtype = ch_image_data.dtype
                 ch_image_data = myutils.img_to_float(ch_image_data)
                 ch_image_data_list.append(ch_image_data)
@@ -2525,39 +2539,31 @@ def combine_channels_func(
                     f'Invalid number of dimensions, is your data maybe corrupted?\n Ndims: {num_dim}\n Channel name: {channel_full_name}'
                 )
     
-    for i in range(len(ch_image_data_list)):
+    for i, ch_image_data in enumerate(ch_image_data_list):
         multiplier = multipliers[i]
-        if multiplier == 1:
-            continue
-        ch_image_data_list[i] = ch_image_data_list[i] * multipliers[i]
+        binarize = binarizes[i]
+        offset = offsets[i]
+        ch_image_data_list[i] = _combine_channels_multiplier_apply(
+            multiplier, offset, binarize, ch_image_data
+        )
 
     if all(x == "+" for x in operators):
         output_img = np.sum(ch_image_data_list, axis=0)
     else:
+        output_img = None
         for i in range(len(ch_image_data_list)):
-            if i == 0:
-                if operators[i] == "+":
-                    output_img = ch_image_data_list[0]
-                elif operators[i] == "-":
-                    output_img = -ch_image_data_list[0]
-                else:
-                    raise ValueError(f'Invalid operator: {operators[i]}')
-            else:
-                if operators[i] == "+":
-                    output_img += ch_image_data_list[i]
-                elif operators[i] == "-":
-                    output_img -= ch_image_data_list[i]
-                elif operators[i] == "*":
-                    output_img *= ch_image_data_list[i]
-                elif operators[i] == "/":
-                    output_img /= ch_image_data_list[i]
-                else:
-                    raise ValueError(f'Invalid operator: {operators[i]}')
+            output_img = _combine_channels_operation_applier(i, 
+                                                            ch_image_data_list[i],
+                                                            output_img, 
+                                                            operators[i])
 
-    output_img = skimage.exposure.rescale_intensity(
-        output_img, out_range=(0, 1)
-    )
-    if keep_input_data_type:
+    if not output_as_segm:
+        output_img = skimage.exposure.rescale_intensity(
+            output_img, out_range=(0, 1)
+        )
+    
+    txt = ''
+    if keep_input_data_type and not output_as_segm:
         try:
             output_img = myutils.convert_to_dtype(
                 output_img, original_dtype
@@ -2577,7 +2583,7 @@ def combine_channels_func(
             if is_in_bounds:
                 output_img = output_img.astype(original_dtype)
                 method = 'output_img.astype(original_dtype)'
-                warning = 'safe if weights were set correctly'
+                warning = 'safe' # if weights were set correctly'
                 prefix = '[WARNING]: '
             else:
                 output_img = skimage.exposure.rescale_intensity(
@@ -2604,16 +2610,21 @@ def combine_channels_func(
                     printl(txt)
             else:
                 printl(txt)
-        
+    elif output_as_segm:
+        output_img[output_img<0] = 0
+        output_img = output_img.astype(np.uint32)
+    
     if return_img:
         return output_img, key, txt
     
-    txt = f'Saving combined image to {save_filepath}'
+    txt = f'Saving combined {"segmentation" if output_as_segm else "image"} to {save_filepath}'
     if logger_func is not None:
         logger_func(txt)
     else:
         printl(txt)
-    io.save_image_data(
+    
+
+    io.save_image_data( # handles saving img and segm
         save_filepath, output_img
     )
     return None
