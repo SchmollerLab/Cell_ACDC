@@ -1093,7 +1093,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.wandToolButton.setShortcut('Ctrl+D')
         self.wandToolButton.action = editToolBar.addWidget(self.wandToolButton)
         self.LeftClickButtons.append(self.wandToolButton)
-        self.functionsNotTested3D.append(self.wandToolButton)
         self.widgetsWithShortcut['Magic wand'] = self.wandToolButton
         
         self.magicPromptsToolButton = QToolButton(self)
@@ -2054,23 +2053,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         brushEraserToolBar.setVisible(False)
         self.brushEraserToolBar = brushEraserToolBar
 
-        self.wandControlsToolbar = widgets.ToolBar("Magic wand controls", self)
-        self.wandToleranceSlider = widgets.sliderWithSpinBox(
-            title='Tolerance', title_loc='in_line'
+        self.wandControlsToolbar = widgets.WandControlsToolbar(
+            parent=self
         )
-        self.wandToleranceSlider.setValue(5)
-
-        self.wandAutoFillCheckbox = QCheckBox('Auto-fill holes')
-
-        col = 3
-        self.wandToleranceSlider._layout.addWidget(
-            self.wandAutoFillCheckbox, 0, col
-        )
-
-        col += 1
-        self.wandToleranceSlider._layout.setColumnStretch(col, 21)
-
-        self.wandControlsToolbar.addWidget(self.wandToleranceSlider)
 
         self.addToolBar(Qt.TopToolBarArea , self.wandControlsToolbar)
         self.wandControlsToolbar.setVisible(False)
@@ -5899,9 +5884,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         # Wand dragging mouse --> keep doing the magic
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
-            tol = self.wandToleranceSlider.value()
+            tol = self.wandControlsToolbar.toleranceSpinbox.value()
+            if self.isSegm3D:
+                z_slice = self.zSliceScrollBar.sliderPosition()
+                seed = (z_slice, ydata, xdata)
+            else:
+                seed = (ydata, xdata)
+                
             flood_mask = skimage.segmentation.flood(
-                self.flood_img, (ydata, xdata), tolerance=tol
+                self.flood_img, seed, tolerance=tol
             )
             drawUnderMask = np.logical_or(
                 posData.lab==0, posData.lab==posData.brushID
@@ -5910,17 +5901,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
             self.flood_mask[flood_mask] = True
 
-            if self.wandAutoFillCheckbox.isChecked():
-                self.flood_mask = scipy.ndimage.binary_fill_holes(
-                    self.flood_mask
-                )
+            if self.wandControlsToolbar.autoFillHolesCheckbox.isChecked():
+                self.flood_mask = core.binary_fill_holes(self.flood_mask)
+            
+            if self.wandControlsToolbar.useConvexHullCheckbox.isChecked():
+                self.flood_mask = core.convex_hull_mask(self.flood_mask)
 
-            if np.any(self.flood_mask):
-                mask = np.logical_or(
-                    self.flood_mask,
-                    posData.lab==posData.brushID
-                )
-                self.setTempImg1Brush(False, mask, posData.brushID)
+            self.setTempBrushMaskFromWand(self.flood_mask)
         
         # Label ROI dragging mouse --> draw ROI
         elif self.isMouseDragImg1 and self.labelRoiButton.isChecked():
@@ -6882,7 +6869,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
             return
-
+        
         Y, X = self.get_2Dlab(posData.lab).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
@@ -6890,7 +6877,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.isMouseDragImg2 = False
             self.updateAllImages()
             return
-
+        
         if hasattr(self, 'scaleBar'):
             if self.scaleBar.isHighlighted() and self.scaleBar.clicked:
                 self.scaleBar.clicked = False
@@ -6958,7 +6945,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
             posData = self.data[self.pos_i]
             posData.lab[self.flood_mask] = posData.brushID
-
+            
             # Update data (rp, etc)
             self.update_rp()
 
@@ -7500,14 +7487,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             and not polyLineRoiON and not magicPromptsON
             and not whitelistIDsON and not zoomRectON
         )
-        canWand = (
-            magicPromptsON and not curvToolON and not brushON
-            and not dragImgLeft and not brushON and not rulerON
-            and not polyLineRoiON and not labelRoiON
-            and addPointsByClickingButton is None
-            and not manualBackgroundON and not drawClearRegionON
-            and not wandON and not whitelistIDsON and not zoomRectON
-        )
         canZoomRect = (
             zoomRectON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
@@ -7649,7 +7628,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             if eraseOnlyOneID:
                 mask[lab_2D!=self.erasedID] = False
 
-            self.getDisplayedImg1()
             self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
 
@@ -7925,29 +7903,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.brushColor = self.img2.lut[posData.brushID]/255
 
             # NOTE: flood is on mousedrag or release
-            tol = self.wandToleranceSlider.value()
-            self.flood_img = myutils.to_uint8(self.getDisplayedImg1())
+            tol = self.wandControlsToolbar.toleranceSpinbox.value()
+            self.flood_img = posData.img_data[posData.frame_i]
+            if self.isSegm3D:
+                z_slice = self.zSliceScrollBar.sliderPosition()
+                seed = (z_slice, ydata, xdata)
+            else:
+                self.flood_img = self.get_2Dimg_from_3D(self.flood_img)
+                seed = (ydata, xdata)
+                
             flood_mask = skimage.segmentation.flood(
-                self.flood_img, (ydata, xdata), tolerance=tol
+                self.flood_img, seed, tolerance=tol
             )
-            bkgrLabMask = self.get_2Dlab(posData.lab)==0
 
             drawUnderMask = np.logical_or(
                 posData.lab==0, posData.lab==posData.brushID
             )
             self.flood_mask = np.logical_and(flood_mask, drawUnderMask)
 
-            if self.wandAutoFillCheckbox.isChecked():
-                self.flood_mask = scipy.ndimage.binary_fill_holes(
-                    self.flood_mask
-                )
-
-            if np.any(self.flood_mask):
-                mask = np.logical_or(
-                    self.flood_mask,
-                    posData.lab==posData.brushID
-                )
-                self.setTempImg1Brush(True, mask, posData.brushID)
+            if self.wandControlsToolbar.autoFillHolesCheckbox.isChecked():
+                self.flood_mask = core.binary_fill_holes(self.flood_mask)
+            
+            if self.wandControlsToolbar.useConvexHullCheckbox.isChecked():
+                self.flood_mask = core.convex_hull_mask(self.flood_mask)
+            
+            self.setTempBrushMaskFromWand(self.flood_mask, init=True)
             self.isMouseDragImg1 = True
         
         elif right_click and self.manualTrackingButton.isChecked():
@@ -14825,7 +14805,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            import pdb; pdb.set_trace()
+            self.disableNonFunctionalButtons()
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -19068,7 +19048,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             action.setDisabled(True)
 
     @exception_handler
-    def startLoadDataWorker(self, user_ch_file_paths, user_ch_name, firstPosData):
+    def startLoadDataWorker(
+            self, user_ch_file_paths, user_ch_name, firstPosData
+        ):
         self.funcDescription = 'loading data'
         
         self.guiTabControl.propsQGBox.idSB.setValue(0)
@@ -24231,7 +24213,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 if not os.path.exists(filepath):
                     action.pointsData[self.pos_i] = {}
                 
-                df = load.load_df_points_layer(filepath)
+                df = load.load_df_points_layer(filepath)                
                 action.pointsData[self.pos_i] = (
                     load.loaded_df_to_points_data(
                         df, action.loadedDfInfo['t'], action.loadedDfInfo['z'], 
@@ -24486,7 +24468,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             brush=pg.mkBrush(color=(r,g,b,100)),
             pen=pg.mkPen(width=2, color=(r,g,b)),
             hoverable=True, hoverBrush=pg.mkBrush((r,g,b,200)), 
-            tip=None
+            tip=None, show_data_as_tip=True
         )
         self.ax1.addItem(scatterItem)
 
@@ -24526,6 +24508,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         scatterItem.action = action
         action.layerType = self.addPointsWin.layerType
         action.layerTypeIdx = self.addPointsWin.layerTypeIdx
+        action.loadedDf = self.addPointsWin.loadedDf
         posData = self.data[self.pos_i]
         action.pointsData = {}
         action.pointsData[self.pos_i] = self.addPointsWin.pointsData
@@ -24860,7 +24843,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 if not action.button.isChecked():
                     continue
                 
-                if posData.frame_i not in action.pointsData.get(self.pos_i, set()):
+                frames = action.pointsData.get(self.pos_i, set())
+                if posData.frame_i not in frames:
                     if action.layerTypeIdx != 4:
                         self.logger.info(
                             f'Frame number {posData.frame_i+1} does not have any '
@@ -24873,9 +24857,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 if 'x' not in framePointsData:
                     # 3D points
                     zProjHow = self.zProjComboBox.currentText()
-                    isZslice = (zProjHow == 'single z-slice' and posData.SizeZ > 1)
+                    isZslice = (
+                        zProjHow == 'single z-slice' and posData.SizeZ > 1
+                    )
                     if isZslice:
-                        xx, yy, ids = [], [], []
+                        xx, yy, ids, data = [], [], [], []
                         zSlice = self.zSliceScrollBar.sliderPosition()
                         zRadius = action.zRadius
                         zRange = range(zSlice-zRadius, zSlice+zRadius+1)
@@ -24886,6 +24872,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                             xx.extend(z_data['x'])
                             yy.extend(z_data['y'])
                             ids.extend(z_data['id'])
+                            data.extend(z_data['data'])
                     else:
                         xx, yy, ids = [], [], []
                         # z-projection --> draw all points
@@ -24893,12 +24880,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                             xx.extend(z_data['x'])
                             yy.extend(z_data['y'])
                             ids.extend(z_data['id'])
+                            data.extend(z_data['data'])
                 else:
                     # 2D segmentation
                     xx = framePointsData['x']
                     yy = framePointsData['y']
                     ids = framePointsData['id']
-
+                    data = framePointsData['data']
+                    
                 brushColors = [
                     action.brushColor if id != 0 else action.brushColorId0
                     for id in ids
@@ -24911,10 +24900,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 ]
                 pens = [pg.mkPen(color) for color in pensColor]
                 
+                if action.layerTypeIdx == 2:
+                    # For loaded table show the rest of the table as a tooltip
+                    data = data
+                else:
+                    data = ids
+                
                 xx = np.array(xx) # + 0.5
                 yy = np.array(yy) # + 0.5
+                
                 action.scatterItem.setData(
-                    xx, yy, data=ids, brush=brushes, pen=pens
+                    xx, yy, data=data, brush=brushes, pen=pens
                 )
 
     def setOverlaySingleChannel(self, *args, **kwargs):
@@ -26527,6 +26523,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def _setTempImageBrushContour(self):
         pass
     
+    def setTempBrushMaskFromWand(self, flood_mask, init=False):
+        if not np.any(flood_mask):
+            return
+        
+        posData = self.data[self.pos_i]
+        mask = np.logical_or(
+            flood_mask,
+            posData.lab==posData.brushID
+        )
+        if mask.ndim == 3:
+            z_slice = self.zSliceScrollBar.sliderPosition()
+            mask = mask[z_slice]
+            
+        self.setTempImg1Brush(init, mask, posData.brushID)
+    
     # @exec_time
     def setTempImg1Brush(self, init: bool, mask, ID, toLocalSlice=None, ax=0):
         if init:
@@ -26674,7 +26685,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.highLightIDLayerRightImage.image[mask] = self.movingID
                 highlightedImage = self.highLightIDLayerRightImage.image
                 self.highLightIDLayerRightImage.setImage(highlightedImage)
-
+    
     def addMissingIDs_cca_df(self, posData):
         base_cca_df = self.getBaseCca_df()
         if posData.cca_df is None:
@@ -26699,7 +26710,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         undoId = uuid.uuid4()
         self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
         
-        relIDs = posData.cca_df.reindex(deletedIDs, fill_value=-1)['relative_ID']
+        try:
+            relIDs = (
+                posData.cca_df.reindex(deletedIDs, fill_value=-1)
+                ['relative_ID']
+            )
+        except KeyError as err:
+            return
+        
         posData.cca_df = posData.cca_df.drop(deletedIDs, errors='ignore')
         if self.isSnapshot:
             self.update_cca_df_newIDs(posData, relIDs)
@@ -27967,8 +27985,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             brushSize = self.brushSizeSpinbox.value()
             self.brushSizeSpinbox.setValue(brushSize+1)
         elif isWandActive:
-            wandTolerance = self.wandToleranceSlider.value()
-            self.wandToleranceSlider.setValue(wandTolerance+1)
+            wandTolerance = self.wandControlsToolbar.toleranceSpinbox.value()
+            self.wandControlsToolbar.toleranceSpinbox.setValue(wandTolerance+1)
         elif isExpandLabelActive:
             self.expandLabel(dilation=True)
             self.expandFootprintSize += 1
@@ -27994,8 +28012,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             brushSize = self.brushSizeSpinbox.value()
             self.brushSizeSpinbox.setValue(brushSize-1)
         elif isWandActive:
-            wandTolerance = self.wandToleranceSlider.value()
-            self.wandToleranceSlider.setValue(wandTolerance-1)
+            wandTolerance = self.wandControlsToolbar.toleranceSpinbox.value()
+            self.wandControlsToolbar.toleranceSpinbox.setValue(wandTolerance-1)
         elif isExpandLabelActive:
             self.expandLabel(dilation=False)
             self.expandFootprintSize += 1

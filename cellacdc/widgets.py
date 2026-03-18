@@ -9874,7 +9874,7 @@ class SamInputPointsWidget(QWidget):
 class PointsScatterPlotItem(pg.ScatterPlotItem):
     sigHoverEntered = Signal(object, object, object)
     
-    def __init__(self, *args, ax=None, **kwargs):
+    def __init__(self, *args, ax=None, show_data_as_tip=False, **kwargs):
         self.textItem = annotate.TextAnnotationsScatterItem(
             size=12, anchor=(1.0, 1.0)
         )
@@ -9886,6 +9886,7 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
         self.textItem.setParentItem(self)
         self._font = QFont()
         self._font.setPixelSize(12)
+        self.show_data_as_tip = show_data_as_tip
         self.drawIds = True
         self.ax = ax
         self.sigHovered.connect(self.onHover)
@@ -9893,11 +9894,26 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
     
     def onHover(self, item, points, event):
         if len(points) == 0:
+            vb = self.getViewBox()
+            vb.setToolTip('')
             return
         
         if self.lastHoveredPoint != points[0]:
             self.sigHoverEntered.emit(item, points, event)
             self.lastHoveredPoint = points[0]
+            
+        if not self.opts['hoverable']:
+            return
+        
+        if not self.show_data_as_tip:
+            return
+        
+        tip_li = [str(point.data()) for point in points]
+        tip = '\n\n'.join(tip_li)
+        
+        vb = self.getViewBox()
+        vb.setToolTip(tip)
+        
     
     def setData(self, *args, **kwargs):
         self.clearTextItems()
@@ -9912,6 +9928,9 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
             return
         
         if not self.drawIds:
+            return
+        
+        if self.show_data_as_tip:
             return
         
         color = self.opts['brush'].color()
@@ -11722,3 +11741,24 @@ class AutoSaveIntervalWidget(QWidget):
             self.spinbox.value(), 
             self.unitCombobox.currentText()
         )
+
+class WandControlsToolbar(ToolBar):    
+    def __init__(self, name='Magic wand controls', parent=None):
+        super().__init__(name, parent)
+        
+        self.toleranceSpinbox = self.addSpinBox('Tolerance: ')
+        self.toleranceSpinbox.setValue(5)
+        
+        self.addSeparator()
+        
+        self.autoFillHolesCheckbox = self.addCheckBox(
+            'Auto-fill holes'
+        )
+        
+        self.addSeparator()
+        
+        self.useConvexHullCheckbox = self.addCheckBox(
+            'Use convex hull mask'
+        )
+        
+        self.addSeparator()
