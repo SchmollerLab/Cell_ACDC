@@ -256,6 +256,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 )
             
             getattr(self, key).setToolTip(tooltip)
+            getattr(self, key)._tooltip = tooltip
 
     def run(self, module='acdc_gui', logs_path=None):        
         self.setWindowIcon()
@@ -2005,7 +2006,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         # self.editIDspinbox.setMaximum(2**32-1)
         editIDLabel = QLabel('   ID: ')
         self.editIDLabelAction = brushEraserToolBar.addWidget(editIDLabel)
-        self.editIDspinboxAction = brushEraserToolBar.addWidget(self.editIDspinbox)
+        self.editIDspinboxAction = brushEraserToolBar.addWidget(
+            self.editIDspinbox
+        )
         self.editIDLabelAction.setVisible(False)
         self.editIDspinboxAction.setVisible(False)
         self.editIDspinboxAction.setDisabled(True)
@@ -20443,6 +20446,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             if button in self.toolsActiveInProj3Dsegm:
                 continue
             
+            if disabled:
+                action._tooltip = action.toolTip()
+                tooltip = 'This tool is not available in a projection'
+            else:
+                tooltip = action._tooltip
+            
+            action.setToolTip(tooltip)
+            button.setToolTip(tooltip)
             action.setDisabled(disabled)
             try:
                 button.setChecked(False)
@@ -24874,7 +24885,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                             ids.extend(z_data['id'])
                             data.extend(z_data['data'])
                     else:
-                        xx, yy, ids = [], [], []
+                        xx, yy, ids, data = [], [], [], []
                         # z-projection --> draw all points
                         for z, z_data in framePointsData.items():
                             xx.extend(z_data['x'])

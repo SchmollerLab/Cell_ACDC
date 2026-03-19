@@ -3008,7 +3008,7 @@ class ToolBar(QToolBar):
                 self.extendButton = child
                 self.extendButton.setIcon(QIcon(":expand.svg"))
                 break
-    
+
     def addSeparator(self, width=5):
         separator = ToolBarSeparator(width=width, toolbar=self)
         return separator
@@ -3054,7 +3054,6 @@ class ToolBar(QToolBar):
         checkbox.setChecked(checked)
         checkbox.action = self.addWidget(checkbox)
         return checkbox
-        
     
 class ManualTrackingToolBar(ToolBar):
     sigIDchanged = Signal(int)
