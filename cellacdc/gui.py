@@ -20466,7 +20466,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 action._tooltip = action.toolTip()
                 tooltip = 'This tool is not available in a projection'
             else:
-                tooltip = action._tooltip
+                try:
+                    tooltip = action._tooltip
+                except AttributeError as err:
+                    tooltip = action.toolTip()
+                    action._tooltip = action.toolTip()
             
             action.setToolTip(tooltip)
             button.setToolTip(tooltip)
