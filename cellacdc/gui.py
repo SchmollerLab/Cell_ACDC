@@ -6922,7 +6922,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             self.isMouseDragImg1 = False
 
-            self.tempLayerImg1.setImage(self.emptyLab, force_set_linked=True)
+            self.clearTempBrushImage()
         
             # Update data (rp, etc)
             self.update_rp()
@@ -6936,7 +6936,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
             self.isMouseDragImg1 = False
 
-            self.tempLayerImg1.setImage(self.emptyLab, force_set_linked=True)
+            self.clearTempBrushImage()
             
             self.brushReleased()
 
@@ -6944,7 +6944,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
             self.isMouseDragImg1 = False
 
-            self.tempLayerImg1.setImage(self.emptyLab, force_set_linked=True)
+            self.clearTempBrushImage()
 
             posData = self.data[self.pos_i]
             posData.lab[self.flood_mask] = posData.brushID
@@ -13775,6 +13775,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.ax1BrushHoverID in posData.IDs:
             obj_idx = posData.IDs_idxs[self.ax1BrushHoverID]
             obj = posData.rp[obj_idx]
+            if not self.isObjVisible(obj.bbox):
+                return
+            
             self.addObjContourToContoursImage(obj=obj, ax=0)
             self.addObjContourToContoursImage(obj=obj, ax=1)
 
@@ -13810,7 +13813,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         if self.ax2_lostTrackedScatterItem.isVisible():
             self.ax2_lostTrackedScatterItem.setVisible(False)
-
+            
         # Restore ID previously hovered
         if ID != self.ax1BrushHoverID and not self.isMouseDragImg1:
             try:
@@ -13823,10 +13826,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if ID != 0:
             self.clearObjContour(ID=ID, ax=0)
             self.clearObjContour(ID=ID, ax=1)
-            # self.setAllTextAnnotations(labelsToSkip={ID:True})
             self.ax1BrushHoverID = ID
         else:
-            # self.setAllTextAnnotations()
             self.ax1BrushHoverID = 0
 
     def updateBrushCursor(self, x, y, isHoverImg1=True):
@@ -13998,8 +13999,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.setAllIDs()
         else:
             # restore items to non-grayed out
-            self.tempLayerImg1.setImage(self.emptyLab, autoLevels=False)
-            self.tempLayerRightImage.setImage(self.emptyLab, autoLevels=False)
+            self.clearTempBrushImage()
             alpha = self.imgGrad.labelsAlphaSlider.value()
             self.labelsLayerImg1.setOpacity(alpha)
             self.labelsLayerRightImg.setOpacity(alpha)
@@ -14808,7 +14808,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            self.disableNonFunctionalButtons()
+            imageItem = self.getContoursImageItem(0)
+            printl(imageItem)
+            if imageItem is not None:
+                contoursImage = imageItem.image
+            else:
+                contoursImage = None
+                
+            if contoursImage is None:
+                contoursImage = np.zeros_like(self.brushContourImage)
+                
+            imshow(
+                self.brushContourImage, 
+                contoursImage, 
+                self.tempLayerImg1.image,
+                self.emptyLab,
+                self.contoursImage
+            )
+            
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -20255,8 +20272,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.highlightSearchedID(self.highlightedID, force=True) 
 
     def zSliceScrollBarReleased(self):
-        self.tempLayerImg1.setImage(self.emptyLab)
-        self.tempLayerRightImage.setImage(self.emptyLab)
+        self.clearTempBrushImage()
         self.zSliceScrollBarStartedMoving = True
         self.update_z_slice(self.zSliceScrollBar.sliderPosition())
     
@@ -27577,7 +27593,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         contours = []
         for obj in skimage.measure.regionprops(self.currentLab2D):    
             obj_contours = self.getObjContours(
-                obj, all_external=True, force_calc=compute,
+                obj, 
+                all_external=True, 
+                force_calc=compute,
                 include_internal=self.showAllContoursToggle.isChecked()
             )  
             contours.extend(obj_contours)
@@ -32734,8 +32752,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setUncheckedAllButtons(buttonsToNotUncheck=buttonsToNotUncheck)
         self.setUncheckedAllCustomAnnotButtons()
         self.setUncheckedPointsLayers()
-        if hasattr(self, 'tempLayerImg1'):
-            self.tempLayerImg1.setImage(self.emptyLab, force_set_linked=True)
+        self.clearTempBrushImage()
         self.isMouseDragImg1 = False
         self.typingEditID = False
         self.clearHighlightedID()
@@ -32746,6 +32763,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         if doAutoRange:
             QTimer.singleShot(11, self.autoRange)
+    
+    def clearTempBrushImage(self, forceClearLinked=True):
+        if not hasattr(self, 'tempLayerImg1'):
+            return
+        
+        self.tempLayerImg1.setImage(
+            self.emptyLab, force_set_linked=forceClearLinked
+        )
+        
+        try:
+            self.brushContourImage[:] = 0
+        except Exception as err:
+            pass
+        
+        try:
+            self.brushImage[:] = 0
+        except Exception as err:
+            pass
     
     def askCloseAllWindows(self):
         txt = html_utils.paragraph("""
