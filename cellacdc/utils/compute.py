@@ -499,4 +499,6 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
     def workerProgress(self, text, loggerLevel='INFO'):
         if self.progressWin is not None:
             self.progressWin.logConsole.append(text)
+        if loggerLevel.upper() == 'EXCEPTION':
+            loggerLevel = 'ERROR'
         self.logger.log(getattr(logging, loggerLevel.upper()), text)

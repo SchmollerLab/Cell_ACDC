@@ -16,6 +16,7 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Lanz, M. C., et al. <i>Cell enlargement drives aging-associated proteome remodeling and shortens replicative lifespan</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.02.15.706013">10.64898/2026.02.15.706013</a>.</li><br>
       <li>Lambiase, A., et al. <i>Acteoside exerts neuroprotective effects by preventing α-synuclein aggregation and oxidative stress in models of Parkinson’s disease</i>. <b>Neurotherapeutics</b> (2025) DOI: <a href="https://doi.org/10.1016/j.neurot.2025.e00825">10.1016/j.neurot.2025.e00825</a>.</li><br>
       <li>Wunder, T., et al. <i>Conserved and Lineage-Specific Roles of KEA-Mediated Ion Homeostasis in Chlamydomonas</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.64898/2025.12.03.692059">10.64898/2025.12.03.692059</a>.</li><br>
       <li>Gao, X., et al. <i>Yeast growth is controlled by the proportional scaling of mRNA and ribosome concentrations</i>. <b>arXiv</b> (2025) DOI: <a href="https://doi.org/10.48550/arXiv.2508.14997">10.48550/arXiv.2508.14997</a>.</li><br>

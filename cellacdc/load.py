@@ -98,15 +98,13 @@ ISO_TIMESTAMP_FORMAT = r'iso%Y%m%d%H%M%S'
 class FileNameError(Exception):
     pass
 
-def _pd_cast_float_and_bool_to_int(df, col, notna_idx):
-    df.loc[notna_idx, col] = df.loc[notna_idx, col].astype(int)
+def _pd_cast_float_and_bool_to_int(df, col, _):
+    df[col] = df[col].astype("Int64") # preserves NA values
     return df
 
-def _pd_cast_string_to_int(df, col, notna_idx):
-    df.loc[notna_idx, col] = df.loc[notna_idx, col].astype(str)
-    df.loc[notna_idx, col] = (
-        df.loc[notna_idx, col].str.lower() == 'true'
-    ).astype(int)
+def _pd_cast_string_to_int(df, col, not_nan_mask):
+    df[col] = (df[col].astype(str).str.lower() == 'true').astype("Int64")
+    df.loc[~not_nan_mask, col] = pd.NA
     return df
 
 acdc_df_dtype_id_func_mapper = {
@@ -663,7 +661,10 @@ def load_acdc_df_file(
     else:
         return acdc_df
 
-def save_acdc_df_file(acdc_df, csv_path, custom_annot_columns=None):
+def save_acdc_df_file(
+        acdc_df, csv_path, custom_annot_columns=None, 
+        last_cca_frame_i=None
+    ):
     if custom_annot_columns is not None:
         new_order_cols = [*sorted_cols, *custom_annot_columns]
     else:
@@ -680,6 +681,10 @@ def save_acdc_df_file(acdc_df, csv_path, custom_annot_columns=None):
         new_order_cols.append(col)
     
     acdc_df = acdc_df[new_order_cols]
+    
+    if last_cca_frame_i is not None:
+        acdc_df.loc[last_cca_frame_i:, cca_df_colnames] = pd.NA
+    
     acdc_df.to_csv(csv_path)
 
 def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
@@ -714,7 +719,7 @@ def _copy_acdc_dfs_to_temp_archive(
             acdc_df = pd_bool_and_float_to_int_to_str(acdc_df, inplace=False)
             compression_opts['archive_name'] = csv_name
             acdc_df.to_csv(
-                temp_zip_path, compression=compression_opts, mode='a'
+                temp_zip_path, compression=compression_opts
             )
 
 def _store_acdc_df_archive(zip_path, acdc_df_to_store):
@@ -745,7 +750,7 @@ def _store_acdc_df_archive(zip_path, acdc_df_to_store):
     
     compression_opts['archive_name'] = csv_name
     acdc_df = pd_bool_and_float_to_int_to_str(acdc_df_to_store, inplace=False)
-    acdc_df.to_csv(temp_zip_path, compression=compression_opts, mode='a')
+    acdc_df.to_csv(temp_zip_path, compression=compression_opts)
     shutil.move(temp_zip_path, zip_path)
     shutil.rmtree(temp_dirpath)
 
@@ -1182,7 +1187,7 @@ def pd_bool_and_float_to_int_to_str(
     for col in colsToCastBool:
         try:
             series = acdc_df[col]
-            notna_idx = series.notna()
+            notna_idx = (series.notna()) & (series != '')
             notna_series = series.loc[notna_idx]
             dtype_id = None
             for dtype_id, dtype_checker in acdc_df_dtype_id_checker_mapper.items():
@@ -1425,7 +1430,49 @@ class loadData:
         with open(self.custom_annot_json_path, mode='w') as file:
             json.dump(self.customAnnot, file, indent=2)
 
-    def getBasenameAndChNames(self, useExt=None):
+    def addYXcentroidColsIfMissing(self, show_progress=False):
+        if not self.segmFound:
+            return
+        
+        if not self.acdc_df_found:
+            return
+        
+        is_centroid_present = (
+            'y_centroid' in self.acdc_df.columns 
+            and 'x_centroid' in self.acdc_df.columns
+        )
+        if is_centroid_present:
+            return
+        
+        segm_data = self.segm_data
+        if self.SizeT == 1:
+            segm_data = (segm_data,)
+        
+        last_frame_i = self.acdc_df.reset_index()['frame_i'].max()
+        if show_progress:
+            pbar = tqdm(
+                total=last_frame_i+1, 
+                desc='Adding centroid columns to acdc_df'
+            )
+        
+        for frame_i in range(last_frame_i+1):
+            lab = segm_data[frame_i]
+            rp = skimage.measure.regionprops(lab)
+            for obj in rp:
+                ID = obj.label
+                y_centroid, x_centroid = obj.centroid[-2:]
+                self.acdc_df.loc[(frame_i, ID), 'y_centroid'] = y_centroid
+                self.acdc_df.loc[(frame_i, ID), 'x_centroid'] = x_centroid
+            
+            if show_progress:
+                pbar.update(1)
+        
+        if show_progress:
+            pbar.close()
+            
+        self.acdc_df.to_csv(self.acdc_output_csv_path)
+    
+    def getBasenameAndChNames(self, useExt=None, qparent=None):
         ls = myutils.listdir(self.images_path)
         selector = prompts.select_channel_name()
         self.chNames, _ = selector.get_available_channels(
@@ -1439,14 +1486,30 @@ class loadData:
                 continue
             
             sep = '*'*100
-            raise FileNameError(
-                f'\n\n{sep}\n'
-                f'[ERROR]: The file "{file}" has the same name as '
+            error_text = (
+                f'The file "{file}" has the same name as '
                 f'the basename of all other files.\n\n'
                 f'Please, rename the file to include something '
                 f'after "{self.basename}", e.g., "{self.basename}_channel_name".'
             )
-            break
+            if qparent is not None:
+                html_error_text = f'[WARNING]: {error_text}'
+                html_error_text = html_error_text.replace('\n', '<br>')
+                html_error_text = (
+                    html_error_text.replace(
+                        f'"{file}"', f'<code>{file}</code>'
+                    ).replace(
+                        f'"{self.basename}"', f'<code>{self.basename}</code>'
+                    ).replace(
+                        f'"{self.basename}_channel_name"', 
+                        f'<code>{self.basename}_channel_name</code>'
+                    )
+                )
+                html_error_text = html_utils.paragraph(html_error_text)
+                msg = widgets.myMessageBox(wrapText=False)
+                msg.warning(qparent, 'Rename files', html_error_text)
+            
+            raise FileNameError(f'\n\n{sep}\n[ERROR]: {error_text}')
 
     def loadImgData(self, imgPath=None, signals=None):
         if imgPath is None:
@@ -1809,7 +1872,6 @@ class loadData:
             labelBoolSegm=None,
             load_whitelistIDs=False,
         ):
-
         self.segmFound = False if load_segm_data else None
         self.acdc_df_found = False if load_acdc_df else None
         self.shiftsFound = False if load_shifts else None
@@ -1916,6 +1978,17 @@ class loadData:
                     printl(filePath)
                     printl(traceback.format_exc())
                 df = pd.read_csv(filePath).dropna()
+                # In some old versions, there was a bug that removed the 
+                # 'filename', and the 'frame_i' column names, so 
+                # we check if they are not present and rename the 
+                # 'Unnamed: 0' and 'Unnamed: 1' to filename and frame_i
+                if 'Unnamed: 0' in df.columns and 'Unnamed: 1' in df.columns:
+                    df = df.rename(
+                        columns={
+                            'Unnamed: 0': 'filename', 
+                            'Unnamed: 1': 'frame_i'
+                        }
+                    )
                 if 'filename' not in df.columns:
                     df['filename'] = self.filename
                 df = df.set_index(['filename', 'frame_i']).sort_index()

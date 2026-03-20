@@ -63,6 +63,9 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
             return img_rgba
         
         crop_mask_rgba = self.item.exportMaskImageItem.image
+        if crop_mask_rgba is None:
+            return img_rgba
+        
         alpha = crop_mask_rgba[..., 3]
         rows, cols = np.where(alpha == 0)
         top, bottom = rows.min(), rows.max() + 1

@@ -454,7 +454,7 @@ class segmWin(QMainWindow):
         # Ask other questions based on first position
         img_path = user_ch_file_paths[0]
         self.posData = load.loadData(img_path, user_ch_name, QParent=self)
-        self.posData.getBasenameAndChNames()
+        self.posData.getBasenameAndChNames(qparent=self)
         self.posData.buildPaths()
         self.posData.loadImgData()
         self.posData.loadOtherFiles(
@@ -481,7 +481,7 @@ class segmWin(QMainWindow):
         # Store metadata for all other positions loaded
         for other_img_path in user_ch_file_paths[1:]:
             self._posData = load.loadData(other_img_path, user_ch_name, QParent=self)
-            self._posData.getBasenameAndChNames()
+            self._posData.getBasenameAndChNames(qparent=self)
             self._posData.buildPaths()
             self._posData.loadOtherFiles(
                 load_segm_data=False,
@@ -662,7 +662,7 @@ class segmWin(QMainWindow):
         
         for other_img_path in user_ch_file_paths:
             self._posData = load.loadData(other_img_path, user_ch_name, QParent=self)
-            self._posData.getBasenameAndChNames()
+            self._posData.getBasenameAndChNames(qparent=self)
             self._posData.buildPaths()
             self._posData.saveSegmHyperparams(
                 model_name, self.init_model_kwargs, self.model_kwargs, 
@@ -693,7 +693,7 @@ class segmWin(QMainWindow):
         isSegmInfoPresent = True
         for img_path in user_ch_file_paths:
             self._posData = load.loadData(img_path, user_ch_name, QParent=self)
-            self._posData.getBasenameAndChNames()
+            self._posData.getBasenameAndChNames(qparent=self)
             self._posData.loadOtherFiles(
                 load_segm_data=False,
                 loadSegmInfo=True,
@@ -801,7 +801,7 @@ class segmWin(QMainWindow):
             img_path = user_ch_file_paths[0]
 
             self.posData = load.loadData(img_path, user_ch_name, QParent=self)
-            self.posData.getBasenameAndChNames()
+            self.posData.getBasenameAndChNames(qparent=self)
             self.posData.buildPaths()
             self.posData.loadImgData()
             self.posData.loadOtherFiles(
@@ -896,7 +896,7 @@ class segmWin(QMainWindow):
         max = 0
         for i, imgPath in enumerate(user_ch_file_paths):
             self._posData = load.loadData(imgPath, user_ch_name)
-            self._posData.getBasenameAndChNames()
+            self._posData.getBasenameAndChNames(qparent=self)
             self._posData.loadOtherFiles(
                 load_segm_data=False,
                 load_metadata=True
@@ -1089,6 +1089,20 @@ class segmWin(QMainWindow):
         config_filepath = os.path.join(folder_path, config_filename)
         self._saveConfigurationFile(config_filepath)
     
+    def showHelpSaveMeasurements(self, parent=None):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            If you choose to save the measurements, you will be asked to select 
+            which measurements to compute and save after segmentation.<br><br>
+            We recommend saving measurements <b>only if you do not plan to 
+            visualize or correct the segmentations results</b>.<br><br>
+            If you plan to visualize and correct segmentation results, and 
+            you need the measurements, you will anyway need to compute<br>
+            and save them after correcting the segmentations.
+        """
+        )
+        msg.information(parent, 'Help - Save measurements', txt)
+    
     def askSaveMeasurements(self):
         measurements_kernel = None
         
@@ -1106,12 +1120,19 @@ class segmWin(QMainWindow):
         msg = widgets.myMessageBox(wrapText=False)
         saveButton = widgets.savePushButton('Yes, save measurements')
         noSaveButton = widgets.noPushButton('Do not save measurements')
+        helpButton = widgets.helpPushButton('Help...')
         msg.question(
             self, 'Save measurements?', txt, 
             buttonsTexts=(
-                'Cancel', noSaveButton, saveButton
-            )
+                'Cancel', helpButton, noSaveButton, saveButton
+            ),
+            showDialog=False
         )
+        helpButton.clicked.disconnect()
+        helpButton.clicked.connect(
+            partial(self.showHelpSaveMeasurements, parent=msg)
+        )
+        msg.exec_()
         if msg.cancel:
             return False, measurements_kernel
         
