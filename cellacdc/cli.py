@@ -1062,7 +1062,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             saveDataWorker=None,
             posData=None,
             save_metrics=True,
-            do_init_metrics=True
+            do_init_metrics=True,
+            last_cca_frame_i=None
         ):      
         if posData is None:
             posData = self._load_posData(img_path, end_filename_segm)
@@ -1242,12 +1243,14 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self._concat_and_save_acdc_df(
             acdc_df_li, keys, posData, save_metrics, 
             computeMetricsWorker=computeMetricsWorker, 
-            saveDataWorker=saveDataWorker
+            saveDataWorker=saveDataWorker,
+            last_cca_frame_i=last_cca_frame_i
         )
     
     def _concat_and_save_acdc_df(
             self, acdc_df_li, keys, posData, save_metrics,
-            computeMetricsWorker=None, saveDataWorker=None
+            computeMetricsWorker=None, saveDataWorker=None,
+            last_cca_frame_i=None
         ):
         
         all_frames_acdc_df = pd.concat(
@@ -1277,7 +1280,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self._save_acdc_df(
             all_frames_acdc_df, posData, custom_annot_columns, 
             computeMetricsWorker=computeMetricsWorker, 
-            saveDataWorker=saveDataWorker
+            saveDataWorker=saveDataWorker,
+            last_cca_frame_i=last_cca_frame_i
         )
         
         if not self.save_object_counts_table:
@@ -1313,7 +1317,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
     
     def _save_acdc_df(
             self, all_frames_acdc_df, posData, custom_annot_columns, 
-            computeMetricsWorker=None, saveDataWorker=None
+            computeMetricsWorker=None, saveDataWorker=None,
+            last_cca_frame_i=None
         ):
         try:
             if saveDataWorker is not None:
@@ -1323,7 +1328,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 )
             load.save_acdc_df_file(
                 all_frames_acdc_df, posData.acdc_output_csv_path, 
-                custom_annot_columns=custom_annot_columns
+                custom_annot_columns=custom_annot_columns,
+                last_cca_frame_i=last_cca_frame_i
             )
             posData.acdc_df = all_frames_acdc_df
         except PermissionError as error:

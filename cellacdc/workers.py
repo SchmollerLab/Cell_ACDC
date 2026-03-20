@@ -6099,7 +6099,8 @@ class saveDataWorker(QObject):
         # Save segmentation metadata
         load.save_acdc_df_file(
             all_frames_acdc_df, acdc_output_csv_path, 
-            custom_annot_columns=custom_annot_columns
+            custom_annot_columns=custom_annot_columns, 
+            last_cca_frame_i=self.mainWin.last_cca_frame_i
         )
         
     def _emitSigDebug(self, stuff_to_debug):
@@ -6140,7 +6141,7 @@ class saveDataWorker(QObject):
         
         self.mainWin._measurements_kernel._concat_and_save_acdc_df(
             acdc_dfs_li, keys, posData, self.mainWin.save_metrics,
-            saveDataWorker=self
+            saveDataWorker=self, last_cca_frame_i=self.mainWin.last_cca_frame_i
         )
     
     def saveSegmData(self, posData, end_i, saved_segm_data):
@@ -6249,7 +6250,8 @@ class saveDataWorker(QObject):
                     posData=posData, 
                     stop_frame_n=end_i+1,
                     saveDataWorker=self,
-                    save_metrics=self.mainWin.save_metrics
+                    save_metrics=self.mainWin.save_metrics,
+                    last_cca_frame_i=self.mainWin.last_cca_frame_i
                 )
             else:
                 self.saveAcdcDf(posData, end_i)
