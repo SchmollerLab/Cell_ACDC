@@ -6987,6 +6987,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                     self.labelRoiCancelled()
                     return
             
+            # Restore state of button because it was maybe unchecked by 
+            # using other tools that are allowed --> see "elif" case in 
+            # labelRoi_cb
+            self.labelRoiButton.blockSignals(True)
+            self.labelRoiButton.setChecked(True)
+            self.labelRoiToolbar.setVisible(True)
+            self.labelRoiButton.blockSignals(False)
+            
             roiSecondChannel = None
             if self.secondChannelName is not None:
                 secondChannelData = self.getSecondChannelData()
@@ -7003,16 +7011,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.progressWin.show(self.app)
                 self.progressWin.mainPbar.setMaximum(stop_n-start_n)                
 
+            
             self.app.restoreOverrideCursor() 
             labelRoiWorker = self.labelRoiActiveWorkers[-1]
             labelRoiWorker.start(
-                roiImg, posData, roiSecondChannel=roiSecondChannel, 
+                roiImg, posData, 
+                roiSecondChannel=roiSecondChannel, 
                 isTimelapse=isTimelapse
             )            
             self.app.setOverrideCursor(Qt.WaitCursor)
             self.logger.info(
                 f'Magic labeller started on image ROI = {self.labelRoiSlice}...'
             )
+            self.titleLabel.setText('Magic labeller is doing its magic...')
+            self.setDisabled(True)
 
         # Move label mouse released, update move
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
@@ -13596,6 +13608,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
             # Add the rectROI to ax1
             self.ax1.addItem(self.labelRoiItem)
+        elif self.initLabelRoiModelDialog is not None:
+            # User is using other tools while the dialog is still open 
+            # --> we allow this because it's useful to be able to use 
+            # the ruler or check things --> do nothing
+            pass
         else:
             self.labelRoiToolbar.setVisible(False)
             
@@ -13702,6 +13719,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
     @exception_handler
     def labelRoiDone(self, roiSegmData, isTimeLapse):
+        self.setDisabled(False)
+        
         posData = self.data[self.pos_i]
         self.setBrushID()
 
@@ -17511,6 +17530,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
     @exception_handler
     def workerCritical(self, out: Tuple[QObject, Exception]):
+        self.setDisabled(False)
         worker, error = out
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
@@ -20679,6 +20699,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.timestampDialog = None
         self.scaleBarDialog = None
         self.countObjsWindow = None
+        self.initLabelRoiModelDialog = None
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -22955,6 +22976,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self._enqueueAutoSave()
     
     def autoSaveTimerCountFrames(self):
+        if not hasattr(self, 'data'):
+            # This happes when the elf.autoSaveTimer times out after 
+            # the GUI has been closed -->  we simply ignore it
+            return
+        
         posData = self.data[self.pos_i]
         autoSaveIntevalValue, autoSaveIntervalUnit = (
             self.autoSaveIntevalValueUnit
@@ -25064,20 +25090,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def initLabelRoiModel(self):
         self.app.restoreOverrideCursor()
         # Ask which model
-        win = apps.QDialogSelectModel(parent=self)
-        win.exec_()
-        if win.cancel:
+        self.initLabelRoiModelDialog = apps.QDialogSelectModel(parent=self)
+        self.initLabelRoiModelDialog.exec_()
+        if self.initLabelRoiModelDialog.cancel:
             self.logger.info('Magic labeller aborted.')
+            self.initLabelRoiModelDialog = None
             return True
         self.app.setOverrideCursor(Qt.WaitCursor)
-        model_name = win.selectedModel
+        model_name = self.initLabelRoiModelDialog.selectedModel
         self.labelRoiModel = self.repeatSegm(
             model_name=model_name, askSegmParams=True,
             is_label_roi=True
         )
         if self.labelRoiModel is None:
+            self.initLabelRoiModelDialog = None
             return True
         self.labelRoiViewCurrentModelAction.setDisabled(False)
+        self.initLabelRoiModelDialog = None
         return False
 
     def showOverlayContextMenu(self, event):
@@ -31459,50 +31488,54 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         return win.entryText, True, False
 
     def askSaveLastVisitedCcaMode(self, isQuickSave=False):
-         posData = self.data[self.pos_i]
-         current_frame_i = posData.frame_i
-         frame_i = 0
-         last_tracked_i = 0
-         self.save_until_frame_i = 0
-         if self.isSnapshot:
-             return True
-         
-         for frame_i, data_dict in enumerate(posData.allData_li):
-             lab = data_dict['labels']
-             if lab is None:
-                 frame_i -= 1
-                 break
-         
-         self.save_until_frame_i = frame_i
-         self.last_tracked_i = frame_i
-         
-         if isQuickSave:
-             return True
-         
-         last_cca_frame_i = self.navigateScrollBar.maximum()-1
-         # Ask to save last visited frame or not
-         txt = html_utils.paragraph(f"""
-             You annotated the cell cycle stages up 
-             until frame number {last_cca_frame_i+1}.<br><br>
-             Enter <b>up to which frame number</b> you want to save the 
-             cell cycle annotations:
-         """)
-         lastFrameDialog = apps.QLineEditDialog(
+        posData = self.data[self.pos_i]
+        current_frame_i = posData.frame_i
+        frame_i = 0
+        last_tracked_i = 0
+        self.save_until_frame_i = 0
+        if self.isSnapshot:
+            return True
+        
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            lab = data_dict['labels']
+            if lab is None:
+                frame_i -= 1
+                break
+        
+        self.save_until_frame_i = frame_i
+        self.save_cca_until_frame_i = frame_i
+        self.last_tracked_i = frame_i
+        
+        if isQuickSave:
+            return True
+        
+        last_cca_frame_i = self.navigateScrollBar.maximum()-1
+        # Ask to save last visited frame or not
+        txt = html_utils.paragraph(f"""
+            You annotated the cell cycle stages up 
+            until frame number {last_cca_frame_i+1}.<br><br>
+            Enter <b>up to which frame number</b> you want to save the 
+            cell cycle annotations:
+        """)
+        lastFrameDialog = apps.QLineEditDialog(
             title='Last annoated frame number to save', 
             defaultTxt=str(last_cca_frame_i+1),
             msg=txt, parent=self, allowedValues=(1, last_cca_frame_i+1),
             warnLastFrame=True, isInteger=True, stretchEntry=False,
             lastVisitedFrame=last_cca_frame_i+1,
-         )
-         lastFrameDialog.exec_()
-         if lastFrameDialog.cancel:
-             return False
- 
-         last_save_cca_frame_i = lastFrameDialog.EntryID - 1
-         if last_save_cca_frame_i < last_cca_frame_i:
-             self.resetCcaFuture(last_cca_frame_i)
-         
-         return True
+        )
+        lastFrameDialog.exec_()
+        if lastFrameDialog.cancel:
+            return False
+
+        last_save_cca_frame_i = lastFrameDialog.enteredValue - 1
+        
+        if last_save_cca_frame_i < last_cca_frame_i:
+            self.resetCcaFuture(last_cca_frame_i)
+        
+        self.save_cca_until_frame_i = last_save_cca_frame_i
+        
+        return True
     
     def askSaveLastVisitedSegmMode(self, isQuickSave=False):
         posData = self.data[self.pos_i]
@@ -31510,6 +31543,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         frame_i = 0
         last_tracked_i = 0
         self.save_until_frame_i = 0
+        self.save_cca_until_frame_i = 0
         if self.isSnapshot:
             return True
 
@@ -31521,6 +31555,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         if isQuickSave:
             self.save_until_frame_i = frame_i
+            self.save_cca_until_frame_i = frame_i
             self.last_tracked_i = frame_i
             return True
 
@@ -31540,7 +31575,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if lastFrameDialog.cancel:
             return False
 
-        self.save_until_frame_i = lastFrameDialog.EntryID - 1
+        self.save_until_frame_i = lastFrameDialog.enteredValue - 1
+        self.save_cca_until_frame_i = self.save_until_frame_i
         if self.save_until_frame_i > frame_i:
             self.logger.info(
                 f'Storing frames {frame_i+1}-{self.save_until_frame_i+1}...'
