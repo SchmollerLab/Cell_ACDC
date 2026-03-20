@@ -277,6 +277,9 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         self.initSizes(includeBold=includeBold)
     
     def initSizes(self, includeBold=True):
+        if not hasattr(self, 'scalesBold'):
+            includeBold = False
+            
         if includeBold:
             self.sizesBold = plot.get_symbol_sizes(
                 self.scalesBold, self.symbolsBold, self.fontSize
