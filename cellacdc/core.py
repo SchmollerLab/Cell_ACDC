@@ -2457,7 +2457,6 @@ def _combine_channels_operation_applier(i, input_img_added, output_img, operator
         else:
             raise ValueError(f'Invalid operator: {operator}')
         
-    printl("after operator", output_img.min(), output_img.max())
     return output_img
 
 def _combine_channels_multiplier_apply(multiplier, offset, binarize, input_img):
@@ -2471,11 +2470,21 @@ def _combine_channels_multiplier_apply(multiplier, offset, binarize, input_img):
         input_img = input_img + offset
 
     if multiplier == 1:
-        printl("after mult", input_img.min(), input_img.max())
         return input_img
     input_img = input_img * multiplier
-    printl("after mult", input_img.min(), input_img.max())
     return input_img
+
+def _get_img_from_data_key(data, key, num_dim):
+    if num_dim == 3:
+        return data[key[1]]
+    elif num_dim == 4:
+        return data[key[1]][key[2]]
+    elif num_dim == 2:
+        return data
+    else:
+        raise ValueError(
+            f'Invalid number of dimensions in img_data. {num_dim}'
+        )
 
 def combine_channels_func(
         channel_names: List[str],
@@ -2498,46 +2507,84 @@ def combine_channels_func(
     if return_img and not key:
         raise ValueError('If return_img is true, key must be provided')
     
-    ch_image_data_list = []
+    fluo_ch_data_list = dict()
+    segm_ch_data_list = dict()
+    segm_channels, fluo_channel_names, current_segm = myutils.seperate_fluo_segment_channels(channel_names)
     original_dtype = None
     if data is None:
-        for channel in channel_names:
+        for channel in fluo_channel_names:
             ch_filepath = load.get_filepath_from_endname(
                 images_path, channel
             )
             ch_image_data = load.load_image_file(ch_filepath)
             if original_dtype is None:
                 original_dtype = ch_image_data.dtype
-            if "_segm" in ch_filepath:
-                ch_image_data = ch_image_data.astype(np.uint32)
-            else:
-                ch_image_data = myutils.img_to_float(ch_image_data)
-            ch_image_data_list.append(ch_image_data)
-            printl("after load", channel, ch_image_data.min(), ch_image_data.max())
+
+            ch_image_data = myutils.img_to_float(ch_image_data)
+            fluo_ch_data_list[channel] = ch_image_data
+        for channel in segm_channels:
+            ch_filepath = load.get_filepath_from_endname(
+                images_path, channel
+            )
+            ch_image_data = load.load_image_file(ch_filepath)
+            if original_dtype is None:
+                original_dtype = ch_image_data.dtype
+
+            ch_image_data = ch_image_data.astype(np.uint32)
+            segm_ch_data_list[channel] = ch_image_data
     else:
         posData = data[key[0]]
         fluo_data_dict = posData.fluo_data_dict
-        random_ch_name = f'{posData.basename}{channel_names[0]}'
-        num_dim = fluo_data_dict[random_ch_name].ndim
+        segm_data_dict = posData.ol_labels_data
+        if len(fluo_channel_names) > 0:
+            random_ch_name = f'{posData.basename}{fluo_channel_names[0]}'
+            num_dim = fluo_data_dict[random_ch_name].ndim
+        elif len(segm_channels) > 0:
+            num_dim = segm_data_dict[segm_channels[0]].ndim
+        else:
+            num_dim = posData.allData_li[key[1]]['labels'].ndim
 
-        for channel in channel_names:
+        for channel in fluo_channel_names:
             channel_full_name = f'{posData.basename}{channel}'
-            if num_dim == 3:
-                ch_image_data = fluo_data_dict[channel_full_name][key[1]]
-                if original_dtype is None:
-                    original_dtype = ch_image_data.dtype
-                ch_image_data = myutils.img_to_float(ch_image_data)
-                ch_image_data_list.append(ch_image_data)
-            elif num_dim == 4:
-                ch_image_data = fluo_data_dict[channel_full_name][key[1]][key[2]]
-                if original_dtype is None:
-                    original_dtype = ch_image_data.dtype
-                ch_image_data = myutils.img_to_float(ch_image_data)
-                ch_image_data_list.append(ch_image_data)
+            channel_img_data = _get_img_from_data_key(fluo_data_dict[channel_full_name], key, num_dim)
+            if original_dtype is None:
+                original_dtype = channel_img_data.dtype
+            channel_img_data_float = myutils.img_to_float(channel_img_data)
+            fluo_ch_data_list[channel] = channel_img_data_float
+        for channel in segm_channels:
+            channel_img_data = _get_img_from_data_key(segm_data_dict[channel], key, num_dim)
+            if original_dtype is None:
+                original_dtype = channel_img_data.dtype
+            channel_img_data_int = channel_img_data.astype(np.uint32)
+            segm_ch_data_list[channel] = channel_img_data_int
+        if current_segm:
+            n_dim = 4
+            if posData.SizeZ == 1:
+                n_dim -= 1
+            if posData.SizeT == 1:
+                n_dim -= 1
+            if n_dim == 4:
+                channel_img_data = posData.allData_li[key[1]]['labels'][key[2]]
+            elif n_dim == 3 and posData.SizeZ == 1:
+                channel_img_data = posData.allData_li[key[1]]['labels']
+            elif n_dim == 3 and posData.SizeT == 1:
+                channel_img_data = posData.allData_li[0]['labels'][key[2]]
             else:
-                raise ValueError(
-                    f'Invalid number of dimensions, is your data maybe corrupted?\n Ndims: {num_dim}\n Channel name: {channel_full_name}'
-                )
+                channel_img_data = posData.lab
+            if original_dtype is None:
+                original_dtype = channel_img_data.dtype
+            channel_img_data_int = channel_img_data.astype(np.uint32)
+            segm_ch_data_list['current segm.'] = channel_img_data_int
+        
+    ch_image_data_list = list()
+    for ch in channel_names:
+        if ch in fluo_ch_data_list:
+            ch_image_data = fluo_ch_data_list[ch]
+        elif ch in segm_ch_data_list:
+            ch_image_data = segm_ch_data_list[ch]
+        else:
+            raise ValueError(f'Channel "{ch}" not found.')
+        ch_image_data_list.append(ch_image_data)
     
     for i, ch_image_data in enumerate(ch_image_data_list):
         multiplier = multipliers[i]
@@ -2572,7 +2619,6 @@ def combine_channels_func(
             warning = 'safe'
             prefix = ''
         except Exception as err:
-            traceback.print_exc()
             dtype_info = np.iinfo(original_dtype)
             dtype_max = dtype_info.max
             dtype_min = dtype_info.min

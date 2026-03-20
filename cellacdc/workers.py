@@ -5506,26 +5506,22 @@ class SaveCombinedChannelsWorker(QObject):
     def __init__(
             self, 
             allPosData: Iterable['load.loadData'], 
-            appended_text_filename: str,
+            filename: str,
             debug: bool = False
         ):
         QObject.__init__(self)
         self.allPosData = allPosData
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
-        self.appended_text_filename = appended_text_filename
+        self.filename = filename
         self.debug = debug
     
     @worker_exception_handler
     def run(self):
         self.signals.initProgressBar.emit(0)
         for posData in self.allPosData:
-            processed_filename = (
-                f'{posData.basename}'
-                f'{self.appended_text_filename}{posData.ext}'
-            )
             processed_filepath = os.path.join(
-                posData.images_path, processed_filename
+                posData.images_path, self.filename
             )
             self.logger.log(f'Saving {processed_filepath}...')
             processed_data = posData.combinedChannelsDataArray()
@@ -5662,7 +5658,7 @@ class CustomPreprocessWorkerGUI(QObject):
 class CombineWorkerGUI(CustomPreprocessWorkerGUI):
     sigDone = Signal(object, list)
     sigPreviewDone = Signal(object, list)
-    sigAskLoadFluoChannels = Signal(list, object)
+    sigAskLoadChannels = Signal(list, object)
 
     def __init__(self, mutex, waitCond, logger_func: Callable,):
 #                 signals_parent=None):
@@ -5681,9 +5677,10 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             data,
             steps: Dict[str, Any],
             key: Tuple[int, int, Union[int, str]],
-            keep_input_data_type: bool
+            keep_input_data_type: bool,
+            output_as_segm: bool,
         ):
-        self.dataQ.append((data, steps, key, keep_input_data_type))
+        self.dataQ.append((data, steps, key, keep_input_data_type,output_as_segm))
         if len(self.dataQ) == 1:
             self.sigIsQueueEmpty.emit(False)
             # Wake up worker upon inserting first element
@@ -5694,14 +5691,17 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             data: Dict[str, np.ndarray], 
             steps: Dict[str, Any],
             keep_input_data_type: bool,
-            key: Tuple[Union[int, None], Union[int, None], Union[int, None]]
+            key: Tuple[Union[int, None], Union[int, None], Union[int, None]],
+            output_as_segm: bool,
         ):
         self._key = key
         self._steps = steps
         self._data = data
         self._keep_input_data_type = keep_input_data_type
+        self._output_as_segm = output_as_segm
 
-    def runJob(self, data=None, steps=None, keep_input_data_type=None, key=None):
+    def runJob(self, data=None, steps=None, keep_input_data_type=None, key=None,
+               output_as_segm=None):
         if data is None:
             data = self._data
         if steps is None:
@@ -5710,18 +5710,21 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             keep_input_data_type = self._keep_input_data_type
         if key is None:
             key = self._key
+        if output_as_segm is None:
+            output_as_segm = self._output_as_segm
 
         if not steps:
             return
 
-        return self.applySteps(data, steps, keep_input_data_type, key)
+        return self.applySteps(data, steps, keep_input_data_type, key, output_as_segm)
     
     def applySteps(
             self, 
             data: Dict[str, np.ndarray], 
             steps: List[Dict[str, Any]],
             keep_input_data_type: bool,
-            key: Tuple[Union[int, None], Union[int, None], Union[int, None]]
+            key: Tuple[Union[int, None], Union[int, None], Union[int, None]],
+            output_as_segm=False,
         ):
 
         new_keys = []
@@ -5758,6 +5761,7 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             keys=new_keys,
             logger_func=self.logger,
             signals=self.signals,
+            output_as_segm=output_as_segm,
 
         )
         return output_imgs, out_keys
@@ -5783,11 +5787,12 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
                 self.logger.log('Combining channels worker paused.')
                 self.pause()
             elif len(self.dataQ) > 0:
-                data, steps, key, keep_input_data_type = self.dataQ.pop()
+                data, steps, key, keep_input_data_type, output_as_segm = self.dataQ.pop()
                 requ_steps, pos_i = self.requiredChannels(steps, key[0])
-                self.emitsigAskLoadFluoChannels(requ_steps, pos_i)
+                self.emitsigAskLoadChannels(requ_steps, pos_i)
                 output_imgs, out_keys = self.applySteps(
-                    data, steps, keep_input_data_type, key
+                    data, steps, keep_input_data_type, key,
+                    output_as_segm=output_as_segm
                 )
                 self.sigPreviewDone.emit(output_imgs, out_keys)
                 if len(self.dataQ) == 0:
@@ -5796,16 +5801,16 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             else:
                 self.logger.log('Combining channels worker resumed.')
                 requ_steps, pos_i = self.requiredChannels()
-                self.emitsigAskLoadFluoChannels(requ_steps, pos_i)
+                self.emitsigAskLoadChannels(requ_steps, pos_i)
                 output_imgs, out_keys = self.runJob()
                 self.sigDone.emit(output_imgs, out_keys)
                 self.wait = True
 
         self.signals.finished.emit(self)
     
-    def emitsigAskLoadFluoChannels(self, requChannels, pos_i):
+    def emitsigAskLoadChannels(self, requChannels, pos_i):
         self.mutex.lock()
-        self.sigAskLoadFluoChannels.emit(requChannels, pos_i)
+        self.sigAskLoadChannels.emit(requChannels, pos_i)
         self.waitCondLoadFluoChannels.wait(self.mutex)
         self.mutex.unlock()
         return self.abort

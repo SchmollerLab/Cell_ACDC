@@ -363,3 +363,7 @@ def grayscale_apply_lut(image, lut):
     indices = np.clip((img * (N - 1)).astype(int), 0, N - 1)
     rgba = lut[indices]
     return rgba
+
+def get_complementary_color(rgba_str: str) -> str:
+    r, g, b, a = rgba_str_to_values(rgba_str)
+    return f'rgba({255 - r}, {255 - g}, {255 - b}, {a})'
