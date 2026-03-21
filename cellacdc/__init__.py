@@ -1,5 +1,48 @@
 import os
 import sys
+
+def is_conda_env():
+    python_exec_path = sys.exec_prefix
+    is_conda_python = (
+        python_exec_path.find('conda') != -1
+        or python_exec_path.find('mambaforge') != -1
+        or python_exec_path.find('miniforge') != -1
+    )
+    if not is_conda_python:
+        return False
+    
+    stdout = subprocess.DEVNULL
+    try:
+        args = ['conda', '-V']
+        is_conda_present = subprocess.check_call(
+            args, shell=True, stdout=stdout) == 0
+        return True
+    except Exception as err:
+        pass
+    
+    try:
+        args = ['conda -V']
+        is_conda_present = subprocess.check_call(
+            args, shell=True, stdout=stdout) == 0
+        return True
+    except Exception as err:
+        return False
+    
+    return True
+
+def import_torch():
+
+    if is_conda_env():
+       return
+    
+    try:
+        import torch
+    except ModuleNotFoundError:
+        return
+
+import_torch()
+
+
 import shutil
 import subprocess
 import importlib
@@ -711,35 +754,6 @@ def ignore_exception(func):
             pass
         return result
     return inner_function
-
-def is_conda_env():
-    python_exec_path = sys.exec_prefix
-    is_conda_python = (
-        python_exec_path.find('conda') != -1
-        or python_exec_path.find('mambaforge') != -1
-        or python_exec_path.find('miniforge') != -1
-    )
-    if not is_conda_python:
-        return False
-    
-    stdout = subprocess.DEVNULL
-    try:
-        args = ['conda', '-V']
-        is_conda_present = subprocess.check_call(
-            args, shell=True, stdout=stdout) == 0
-        return True
-    except Exception as err:
-        pass
-    
-    try:
-        args = ['conda -V']
-        is_conda_present = subprocess.check_call(
-            args, shell=True, stdout=stdout) == 0
-        return True
-    except Exception as err:
-        return False
-    
-    return True
 
 error_below = f"\n{'*'*50} ERROR {'*'*50}\n"
 error_close = f"\n{'^'*(len(error_below)-1)}"
