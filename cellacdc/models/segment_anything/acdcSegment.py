@@ -2,6 +2,8 @@ import os
 
 from collections import defaultdict
 
+from tqdm import tqdm
+
 import numpy as np
 import pandas as pd
 import cv2
@@ -276,12 +278,15 @@ class Model:
         input_points, input_labels = self._get_input_points(
             is_z_stack, df_points
         )
-        if is_z_stack:                
+        if is_z_stack: 
+            pbar_z = tqdm(total=len(image), ncols=100, desc='z-slice')               
             for z, img in enumerate(image):
                 input_points_z = None
+                input_labels_z = None
                 if input_points is not None:
-                    input_points_z = input_points.get(z, [])
-                    input_labels_z = input_labels.get(z, [])
+                    input_points_z = input_points.get(z, None)
+                    if input_points_z is not None:
+                        input_labels_z = input_labels.get(z, [])
                 
                 embeddings_init = False
                 if use_loaded_embeddings:
@@ -300,6 +305,9 @@ class Model:
                     posData.storeSamEmbeddings(
                         self, frame_i=frame_i, z=z+start_z_slice
                     )
+                
+                pbar_z.update()
+            pbar_z.close()
                     
             labels = skimage.measure.label(labels>0)
         else:
@@ -416,8 +424,8 @@ class Model:
     
     def _segment_2D_image(
             self, image: np.ndarray,
-            input_points: np.ndarray,
-            input_labels: np.ndarray,
+            input_points: dict[int, np.ndarray],
+            input_labels: dict[int, np.ndarray],
             embeddings_already_init: bool=False,
             automatic_removal_of_background: bool=False
         ) -> np.ndarray:
