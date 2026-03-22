@@ -666,7 +666,7 @@ def save_acdc_df_file(
     acdc_df = acdc_df[new_order_cols]
     
     if last_cca_frame_i is not None:
-        acdc_df.loc[last_cca_frame_i:, cca_df_colnames] = pd.NA
+        acdc_df.loc[last_cca_frame_i+1:, cca_df_colnames] = pd.NA
     
     acdc_df.to_csv(csv_path)
 
