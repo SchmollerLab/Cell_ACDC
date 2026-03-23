@@ -28779,7 +28779,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             mode != 'Segmentation and Tracking' or
             self.isSnapshot or
             (posData.frame_i == 0 and not against_next) or
-            (posData.frame_i == posData.SizeT - 1 and against_next)
+            (posData.frame_i == posData.SizeT - 1 and against_next) or 
+            (posData.frame_i + 1 > self.getLastTrackedFrame(posData)) # check next frame was already visited (so tracked)
         )
         if skipTracking:
             self.setLostNewOldPrevIDs()
