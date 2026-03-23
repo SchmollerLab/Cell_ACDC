@@ -7931,8 +7931,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.flood_img, seed, tolerance=tol
             )
             
-            printl(self.flood_img.shape, flood_mask.shape, seed, tol)
-
             drawUnderMask = np.logical_or(
                 posData.lab==0, posData.lab==posData.brushID
             )
