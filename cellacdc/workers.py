@@ -842,7 +842,7 @@ class AutoSaveWorker(QObject):
         self.stopSaving = False
         self.isSaving = False
         self.isPaused = False
-        self.dataQ = deque(maxlen=5)
+        self.dataQ = deque(maxlen=2)
         self.isAutoSaveON = False
         self.isAutoSaveAnnotON = True
         self.debug = False
