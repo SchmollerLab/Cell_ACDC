@@ -17579,7 +17579,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.activateAnnotations()
         
         self.update_rp(wl_update=False)
-        self.tracking(enforce=True)
+        self.tracking(enforce=True, against_next=posData.frame_i==0)
         
         if self.isSnapshot:
             self.fixCcaDfAfterEdit('Repeat segmentation')
@@ -17595,7 +17595,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.checkIfAutoSegm()
         
         QTimer.singleShot(200, self.resizeGui)
-    
     def activateAnnotations(self):
         if self.annotContourCheckbox.isChecked():
             return
@@ -22304,7 +22303,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             txt = html_utils.paragraph(
                 'On this dataset either you <b>never checked</b> that the segmentation '
                 'and tracking are <b>correct</b> or you did not save yet.<br><br>'
-                'If you already visited some frames with "Segmentation and tracking" '
+                'If you already visited some frames with "Segmentation and Tracking" '
                 'mode save data before switching to "Cell cycle analysis mode".<br><br>'
                 'Otherwise you first have to check (and eventually correct) some frames '
                 'in "Segmentation and Tracking" mode before proceeding '
@@ -22452,7 +22451,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             txt = html_utils.paragraph(
                 'On this dataset either you <b>never checked</b> that the segmentation '
                 'and tracking are <b>correct</b> or you did not save yet.<br><br>'
-                'If you already visited some frames with "Segmentation and tracking" '
+                'If you already visited some frames with "Segmentation and Tracking" '
                 'mode save data before switching to "Normal division: Lineage Tree".<br><br>'
                 'Otherwise you first have to check (and eventually correct) some frames '
                 'in "Segmentation and Tracking" mode before proceeding '
@@ -28676,13 +28675,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if update_rp:
             self.update_rp(wl_update=wl_update)
     
-    def trackFrameCustomTracker(self, prev_lab, currentLab, IDs=None):
+    def trackFrameCustomTracker(
+            self, prev_lab, currentLab, IDs=None, unique_ID=None
+        ):
+        if unique_ID is None:
+            unique_ID = self.setBrushID()
         try:
             tracked_result = self.realTimeTracker.track_frame(
                 prev_lab, currentLab,
-                unique_ID=self.setBrushID(),
+                unique_ID=unique_ID,
+                IDs=IDs,
                 **self.track_frame_params,
-                IDs=IDs
             )
         except TypeError as err:
             if str(err).find('an unexpected keyword argument \'unique_ID\'') != -1:
@@ -28702,7 +28705,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 try:
                     tracked_result = self.realTimeTracker.track_frame(
                         prev_lab, currentLab,
-                        unique_ID=self.setBrushID(),
+                        unique_ID=unique_ID,
                         **self.track_frame_params
                     )
                 except TypeError as err:
@@ -28718,25 +28721,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         return tracked_result
     
     def trackFrame(
-            self, prev_lab, prev_rp, currentLab, currentRp, currentIDs,
-            assign_unique_new_IDs=True, IDs=None,
+            self, prev_lab, prev_rp, curr_lab, curr_rp, curr_IDs,
+            assign_unique_new_IDs=True, IDs=None, unique_ID=None
         ):
-        # printl(f'Tracking frame {self.data[self.pos_i].frame_i}...')
         if self.trackWithAcdcAction.isChecked():
             tracked_result = CellACDC_tracker.track_frame(
-                prev_lab, prev_rp, currentLab, currentRp,
-                IDs_curr_untracked=currentIDs,
+                prev_lab, prev_rp, curr_lab, curr_rp,
+                IDs_curr_untracked=curr_IDs,
                 setBrushID_func=self.setBrushID,
                 posData=self.data[self.pos_i],
-                assign_unique_new_IDs=assign_unique_new_IDs, IDs=IDs
+                assign_unique_new_IDs=assign_unique_new_IDs, 
+                IDs=IDs,
+                unique_ID=unique_ID
             )
         elif self.trackWithYeazAction.isChecked():
             tracked_result = self.tracking_yeaz.correspondence(
-                prev_lab, currentLab, use_modified_yeaz=True,
+                prev_lab, curr_lab, use_modified_yeaz=True,
                 use_scipy=True
             )
         else:
-            tracked_result = self.trackFrameCustomTracker(prev_lab, currentLab, IDs=IDs)
+            tracked_result = self.trackFrameCustomTracker(
+                prev_lab, curr_lab, IDs=IDs, unique_ID=unique_ID
+            )
 
         # Check if tracker also returns additional info
         if isinstance(tracked_result, tuple):
@@ -28794,13 +28800,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             storeUndo=False, prev_lab=None, prev_rp=None,
             return_lab=False, assign_unique_new_IDs=True,
             separateByLabel=True,wl_update=True,
-            IDs=None
+            IDs=None,against_next=False,
         ):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         skipTracking = (
-            posData.frame_i == 0 or mode.find('Tracking') == -1
-            or self.isSnapshot
+            mode != 'Segmentation and Tracking' or
+            self.isSnapshot or
+            (posData.frame_i == 0 and not against_next) or
+            (posData.frame_i == posData.SizeT - 1 and against_next) or 
+            (posData.frame_i + 1 > self.getLastTrackedFrame(posData)) # check next frame was already visited (so tracked)
         )
         if skipTracking:
             self.setLostNewOldPrevIDs()
@@ -28844,13 +28853,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.update_rp(wl_update=wl_update, )
 
         if prev_lab is None:
-            prev_lab = posData.allData_li[posData.frame_i-1]['labels']
+            if not against_next:
+                prev_lab = posData.allData_li[posData.frame_i-1]['labels']
+            else:
+                prev_lab = posData.allData_li[posData.frame_i+1]['labels']
         if prev_rp is None:
-            prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+            if not against_next:
+                prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+            else:
+                prev_rp = posData.allData_li[posData.frame_i+1]['regionprops']
+        
+        unique_ID = None
+        if posData.frame_i < self.get_last_tracked_i():
+            unique_ID = self.setBrushID(return_val=True)
         
         tracked_lab = self.trackFrame(
             prev_lab, prev_rp, posData.lab, posData.rp, posData.IDs,
-            assign_unique_new_IDs=assign_unique_new_IDs, IDs=IDs
+            assign_unique_new_IDs=assign_unique_new_IDs, IDs=IDs,
+            unique_ID=unique_ID
         )
         
         if DoManualEdit:
