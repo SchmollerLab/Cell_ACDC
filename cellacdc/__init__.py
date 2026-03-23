@@ -1,6 +1,8 @@
 import os
 import sys
 
+import subprocess
+
 def is_conda_env():
     python_exec_path = sys.exec_prefix
     is_conda_python = (
@@ -44,7 +46,6 @@ import_torch()
 
 
 import shutil
-import subprocess
 import importlib
 import inspect
 import platform
