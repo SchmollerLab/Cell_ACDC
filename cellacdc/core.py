@@ -24,7 +24,7 @@ import skimage.filters
 import skimage.segmentation
 import scipy.ndimage.morphology
 from itertools import product
-
+import pathlib
 from natsort import natsorted
 
 from math import sqrt
@@ -2536,19 +2536,23 @@ def combine_channels_func(
         posData = data[key[0]]
         fluo_data_dict = posData.fluo_data_dict
         segm_data_dict = posData.ol_labels_data
+        imgs_path = posData.images_path
         if len(fluo_channel_names) > 0:
             random_ch_name = next(iter(fluo_data_dict))
-            printl(random_ch_name)
             num_dim = fluo_data_dict[random_ch_name].ndim
         elif len(segm_channels) > 0:
             random_ch_name = next(iter(segm_data_dict))
-            printl(random_ch_name)
             num_dim = segm_data_dict[random_ch_name].ndim
         else:
             num_dim = posData.allData_li[key[1]]['labels'].ndim
 
         for channel in fluo_channel_names:
-            channel_full_name = f'{posData.basename}{channel}'
+            channel_path = load.get_filename_from_channel(
+                imgs_path, channel, basename=posData.basename
+            )
+            channel_full_name = pathlib.Path(channel_path).stem
+            # remove the file extension
+            
             channel_img_data = _get_img_from_data_key(fluo_data_dict[channel_full_name], key, num_dim)
             if original_dtype is None:
                 original_dtype = channel_img_data.dtype
