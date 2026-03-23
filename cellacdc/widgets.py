@@ -11745,8 +11745,18 @@ class WandControlsToolbar(ToolBar):
     def __init__(self, name='Magic wand controls', parent=None):
         super().__init__(name, parent)
         
-        self.toleranceSpinbox = self.addSpinBox('Tolerance: ')
+        self.toleranceSpinbox = self.addSpinBox('Tolerance [%]: ')
+        self.toleranceSpinbox.setMinimum(0)
+        self.toleranceSpinbox.setMaximum(100)
         self.toleranceSpinbox.setValue(5)
+        self.toleranceSpinbox.setToolTip(
+            'The tolerance is calculated as a percentage of the minimum-maximum '
+            'pixel values range of the loaded dataset.\n\n'
+            'If tolerance is greater than 0, the pixels adjacent to the added '
+            'pixels with value within +- tolerance will be considered part of '
+            'the object.'
+        )
+        self.addLabel(r'% of min-max intensity range ')
         
         self.addSeparator()
         

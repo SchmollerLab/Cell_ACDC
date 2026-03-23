@@ -1094,6 +1094,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.wandToolButton.setShortcut('Ctrl+D')
         self.wandToolButton.action = editToolBar.addWidget(self.wandToolButton)
         self.LeftClickButtons.append(self.wandToolButton)
+        self.checkableButtons.append(self.eraserButton)
         self.widgetsWithShortcut['Magic wand'] = self.wandToolButton
         
         self.magicPromptsToolButton = QToolButton(self)
@@ -5887,7 +5888,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         # Wand dragging mouse --> keep doing the magic
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
-            tol = self.wandControlsToolbar.toleranceSpinbox.value()
+            tol = self.getMagicWandFloodTolerance()
             if self.isSegm3D:
                 z_slice = self.zSliceScrollBar.sliderPosition()
                 seed = (z_slice, ydata, xdata)
@@ -7918,18 +7919,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.brushColor = self.img2.lut[posData.brushID]/255
 
             # NOTE: flood is on mousedrag or release
-            tol = self.wandControlsToolbar.toleranceSpinbox.value()
-            self.flood_img = posData.img_data[posData.frame_i]
+            tol = self.getMagicWandFloodTolerance()
+            self.initFloodMaskImage()
             if self.isSegm3D:
                 z_slice = self.zSliceScrollBar.sliderPosition()
                 seed = (z_slice, ydata, xdata)
             else:
-                self.flood_img = self.get_2Dimg_from_3D(self.flood_img)
                 seed = (ydata, xdata)
                 
             flood_mask = skimage.segmentation.flood(
                 self.flood_img, seed, tolerance=tol
             )
+            
+            printl(self.flood_img.shape, flood_mask.shape, seed, tol)
 
             drawUnderMask = np.logical_or(
                 posData.lab==0, posData.lab==posData.brushID
@@ -20901,6 +20903,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                         self.lastFrameRanOnFirstVisitTools = posData.frame_i
                     else:
                         posData.frame_i = 0
+                
+            posData.img_data_min_max = (
+                posData.img_data.min(), posData.img_data.max()
+            )    
 
         # Back to first position
         self.pos_i = 0
@@ -26416,6 +26422,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             img = posData.img_data[frame_i].copy()
         return img
     
+    def initFloodMaskImage(self):
+        posData = self.data[self.pos_i]
+        self.flood_img = posData.img_data[posData.frame_i]
+        if not self.isSegm3D and posData.SizeZ > 1:
+            self.flood_img = self.get_2Dimg_from_3D(self.flood_img)
+            return
+    
+    def getMagicWandFloodTolerance(self):
+        tol_perc = self.wandControlsToolbar.toleranceSpinbox.value()
+        if tol_perc == 0:
+            return
+        
+        posData = self.data[self.pos_i]
+        _min, _max = posData.img_data_min_max
+        tol_fraction = tol_perc/100
+        tol = (_max - _min) * tol_fraction
+        
+        return tol
+    
     def getImage(self, frame_i=None, raw=False):
         posData = self.data[self.pos_i]
         if frame_i is None:
@@ -29665,7 +29690,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.reinitStoredSegmModels()
         self.removeAxLimits()
         self.curvToolButton.setChecked(False)
-
+        
+        self.wandControlsToolbar.setVisible(False)
+        self.wandToolButton.setChecked(False)
         self.segmNdimIndicatorAction.setVisible(False)
         
         self.navigateToolBar.hide()
