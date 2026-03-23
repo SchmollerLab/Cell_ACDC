@@ -3008,7 +3008,7 @@ class ToolBar(QToolBar):
                 self.extendButton = child
                 self.extendButton.setIcon(QIcon(":expand.svg"))
                 break
-    
+
     def addSeparator(self, width=5):
         separator = ToolBarSeparator(width=width, toolbar=self)
         return separator
@@ -3054,7 +3054,6 @@ class ToolBar(QToolBar):
         checkbox.setChecked(checked)
         checkbox.action = self.addWidget(checkbox)
         return checkbox
-        
     
 class ManualTrackingToolBar(ToolBar):
     sigIDchanged = Signal(int)
@@ -9874,7 +9873,7 @@ class SamInputPointsWidget(QWidget):
 class PointsScatterPlotItem(pg.ScatterPlotItem):
     sigHoverEntered = Signal(object, object, object)
     
-    def __init__(self, *args, ax=None, **kwargs):
+    def __init__(self, *args, ax=None, show_data_as_tip=False, **kwargs):
         self.textItem = annotate.TextAnnotationsScatterItem(
             size=12, anchor=(1.0, 1.0)
         )
@@ -9886,6 +9885,7 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
         self.textItem.setParentItem(self)
         self._font = QFont()
         self._font.setPixelSize(12)
+        self.show_data_as_tip = show_data_as_tip
         self.drawIds = True
         self.ax = ax
         self.sigHovered.connect(self.onHover)
@@ -9893,11 +9893,26 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
     
     def onHover(self, item, points, event):
         if len(points) == 0:
+            vb = self.getViewBox()
+            vb.setToolTip('')
             return
         
         if self.lastHoveredPoint != points[0]:
             self.sigHoverEntered.emit(item, points, event)
             self.lastHoveredPoint = points[0]
+            
+        if not self.opts['hoverable']:
+            return
+        
+        if not self.show_data_as_tip:
+            return
+        
+        tip_li = [str(point.data()) for point in points]
+        tip = '\n\n'.join(tip_li)
+        
+        vb = self.getViewBox()
+        vb.setToolTip(tip)
+        
     
     def setData(self, *args, **kwargs):
         self.clearTextItems()
@@ -9912,6 +9927,9 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
             return
         
         if not self.drawIds:
+            return
+        
+        if self.show_data_as_tip:
             return
         
         color = self.opts['brush'].color()
@@ -11722,3 +11740,34 @@ class AutoSaveIntervalWidget(QWidget):
             self.spinbox.value(), 
             self.unitCombobox.currentText()
         )
+
+class WandControlsToolbar(ToolBar):    
+    def __init__(self, name='Magic wand controls', parent=None):
+        super().__init__(name, parent)
+        
+        self.toleranceSpinbox = self.addSpinBox('Tolerance [%]: ')
+        self.toleranceSpinbox.setMinimum(0)
+        self.toleranceSpinbox.setMaximum(100)
+        self.toleranceSpinbox.setValue(5)
+        self.toleranceSpinbox.setToolTip(
+            'The tolerance is calculated as a percentage of the minimum-maximum '
+            'pixel values range of the loaded dataset.\n\n'
+            'If tolerance is greater than 0, the pixels adjacent to the added '
+            'pixels with value within +- tolerance will be considered part of '
+            'the object.'
+        )
+        self.addLabel(r'% of min-max intensity range ')
+        
+        self.addSeparator()
+        
+        self.autoFillHolesCheckbox = self.addCheckBox(
+            'Auto-fill holes'
+        )
+        
+        self.addSeparator()
+        
+        self.useConvexHullCheckbox = self.addCheckBox(
+            'Use convex hull mask'
+        )
+        
+        self.addSeparator()

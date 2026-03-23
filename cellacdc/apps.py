@@ -1275,6 +1275,7 @@ class AddPointsLayerDialog(QBaseDialog):
     def ok_cb(self):
         self.pointsData = {}
         self.loadedDfInfo = None
+        self.loadedDf = None
         self.weighingChannel = ''
         if self.fromTableRadiobutton.isChecked():
             tablePath = self.tablePath.text()

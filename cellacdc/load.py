@@ -4032,12 +4032,14 @@ def loaded_df_to_points_data(df, t_col, z_col, y_col, x_col):
                     'x': df_z[x_col].to_list(),
                     'y': df_z[y_col].to_list(), 
                     'id': df_z['id'].to_list(), 
+                    'data': [row.to_string() for _, row in df_z.iterrows()]
                 }
         else:
             points_data[frame_i] = {
                 'x': df[x_col].to_list(),
                 'y': df[y_col].to_list(), 
                 'id': df['id'].to_list(), 
+                'data': [row.to_string() for _, row in df.iterrows()]
             }
     return points_data
 
