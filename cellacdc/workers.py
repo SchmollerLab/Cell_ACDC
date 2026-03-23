@@ -5770,12 +5770,11 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
         if steps is None:
             steps = self._steps
         
-        requ_steps = core.get_selected_channels(steps)
-        requ_steps = list(requ_steps)
+        required_channels = core.get_selected_channels(steps)
         if pos_i is None:
             pos_i = self._key[0]
 
-        return requ_steps, pos_i
+        return required_channels, pos_i
 
     @worker_exception_handler
     def run(self):

@@ -19964,6 +19964,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.updateAllImages()
     
     def setZprojDisabled(self, disabled, storePrevState=False):
+        self.combineChannelsAction.setDisabled(disabled)
         for action in self.editToolBar.actions():
             button = self.editToolBar.widgetForAction(action)
             if button == self.eraserButton:
@@ -19972,6 +19973,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if button in self.toolsActiveInProj3Dsegm:
                 continue
             
+            try:
+                tooltip = button.toolTip()
+                prefix = 'Disabled due to projection mode\n'
+                if disabled:
+                    if not tooltip.startswith(prefix):
+                        button.setToolTip(prefix + tooltip)
+                else:
+                    if tooltip.startswith(prefix):
+                        button.setToolTip(tooltip[len(prefix):])
+            except:
+                pass
             action.setDisabled(disabled)
             try:
                 button.setChecked(False)
