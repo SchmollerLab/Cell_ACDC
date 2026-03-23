@@ -2509,7 +2509,7 @@ def combine_channels_func(
     
     fluo_ch_data_list = dict()
     segm_ch_data_list = dict()
-    segm_channels, fluo_channel_names, current_segm = myutils.seperate_fluo_segment_channels(channel_names)
+    segm_channels, fluo_channel_names, current_segm = myutils.separate_fluo_segment_channels(channel_names)
     original_dtype = None
     if data is None:
         for channel in fluo_channel_names:

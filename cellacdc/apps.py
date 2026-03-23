@@ -18385,9 +18385,6 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
 
         self.savePreprocButton.setText('Save combined data...')
         
-                
-        # add checkbox
-        self.mainLayout.addSpacing(-30) # better way to do this?
         self.saveAsSegmCheckbox = widgets.CheckBox('Save as segmentation', self)
         self.saveAsSegmCheckbox.setToolTip(
             'Save the combined channels as a segmentation file, for example '
@@ -18396,7 +18393,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.saveAsSegmCheckbox.setChecked(False)
         self.saveAsSegmCheckbox.setEnabled(False)
         self.saveAsSegmCheckbox.toggled.connect(self.emitSaveAsSegmCheckboxToggled)
-        self.mainLayout.addWidget(self.saveAsSegmCheckbox)
+        qutils.insert_row(self.buttonsLayout, 1, self.saveAsSegmCheckbox, col=0, dont_shift_other_cols=True)
         
     def saveAsSegm(self):
         return self.saveAsSegmCheckbox.isChecked()

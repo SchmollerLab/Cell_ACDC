@@ -5558,7 +5558,7 @@ def reset_settings():
         )
         return out_txt
     
-def seperate_fluo_segment_channels(channels):
+def separate_fluo_segment_channels(channels):
     segms_to_load = []
     channels_to_load = []
     current_segm = False

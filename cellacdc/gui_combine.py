@@ -525,7 +525,7 @@ class CombineGUIWorker:
         
     def combineWorkerAskLoadChannels(self, requ_channels, pos_i):
         # spit channels and segm to load
-        segms_to_load, channels_to_load, current_segm = myutils.seperate_fluo_segment_channels(requ_channels)
+        segms_to_load, channels_to_load, current_segm = myutils.separate_fluo_segment_channels(requ_channels)
         if pos_i is None:
             pos_i = list(range(len(self.data)))
         elif not isinstance(pos_i, list):

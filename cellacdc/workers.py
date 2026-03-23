@@ -5658,7 +5658,7 @@ class CustomPreprocessWorkerGUI(QObject):
 class CombineWorkerGUI(CustomPreprocessWorkerGUI):
     sigDone = Signal(object, list)
     sigPreviewDone = Signal(object, list)
-    sigAskLoadChannels = Signal(list, object)
+    sigAskLoadChannels = Signal(set, object)
 
     def __init__(self, mutex, waitCond, logger_func: Callable,):
 #                 signals_parent=None):
@@ -5771,7 +5771,7 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             steps = self._steps
         
         requ_steps = core.get_selected_channels(steps)
-
+        requ_steps = list(requ_steps)
         if pos_i is None:
             pos_i = self._key[0]
 
