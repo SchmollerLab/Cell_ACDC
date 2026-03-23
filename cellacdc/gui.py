@@ -29563,9 +29563,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             r, g, b, a = colors.rgba_str_to_values(color)
             qcolor = QColor(r, g, b, a)
             contoursItem.setData(
-                [], [], symbol='s', pxMode=False, size=1,
+                [], [], symbol='s', pxMode=False, size=self.contLineWeight*2,
                 brush=pg.mkBrush(color=qcolor),
-                pen=pg.mkPen(width=self.contLineWeight*15, color=qcolor), tip=None
+                pen=pg.mkPen(width=3, color=qcolor), tip=None
             )
 
             items = (imageItem, contoursItem, gradItem)

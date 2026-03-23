@@ -2537,10 +2537,13 @@ def combine_channels_func(
         fluo_data_dict = posData.fluo_data_dict
         segm_data_dict = posData.ol_labels_data
         if len(fluo_channel_names) > 0:
-            random_ch_name = f'{posData.basename}{fluo_channel_names[0]}'
+            random_ch_name = next(iter(fluo_data_dict))
+            printl(random_ch_name)
             num_dim = fluo_data_dict[random_ch_name].ndim
         elif len(segm_channels) > 0:
-            num_dim = segm_data_dict[segm_channels[0]].ndim
+            random_ch_name = next(iter(segm_data_dict))
+            printl(random_ch_name)
+            num_dim = segm_data_dict[random_ch_name].ndim
         else:
             num_dim = posData.allData_li[key[1]]['labels'].ndim
 
