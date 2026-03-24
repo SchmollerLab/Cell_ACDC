@@ -24457,7 +24457,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                             xx.extend(z_data['x'])
                             yy.extend(z_data['y'])
                             ids.extend(z_data['id'])
-                            data.extend(z_data['data'])
+                            try:
+                                data.extend(z_data['data'])
+                            except KeyError as err:
+                                # data is needed only for loaded tables
+                                pass 
                     else:
                         xx, yy, ids, data = [], [], [], []
                         # z-projection --> draw all points
@@ -24465,13 +24469,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                             xx.extend(z_data['x'])
                             yy.extend(z_data['y'])
                             ids.extend(z_data['id'])
-                            data.extend(z_data['data'])
+                            try:
+                                data.extend(z_data['data'])
+                            except KeyError as err:
+                                # data is needed only for loaded tables
+                                pass 
                 else:
                     # 2D segmentation
                     xx = framePointsData['x']
                     yy = framePointsData['y']
                     ids = framePointsData['id']
-                    data = framePointsData['data']
+                    try:
+                        data = framePointsData['data']
+                    except KeyError as err:
+                        # data is needed only for loaded tables
+                        pass    
                     
                 brushColors = [
                     action.brushColor if id != 0 else action.brushColorId0
@@ -24488,12 +24500,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if action.layerTypeIdx == 2:
                     # For loaded table show the rest of the table as a tooltip
                     data = data
+                    show_data_as_tip = True
                 else:
                     data = ids
+                    show_data_as_tip = False
                 
                 xx = np.array(xx) # + 0.5
                 yy = np.array(yy) # + 0.5
                 
+                action.scatterItem.show_data_as_tip = show_data_as_tip
                 action.scatterItem.setData(
                     xx, yy, data=data, brush=brushes, pen=pens
                 )
