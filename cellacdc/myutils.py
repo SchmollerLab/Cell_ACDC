@@ -5589,3 +5589,16 @@ def reset_settings():
             f'{settings_folderpath}\n'
         )
         return out_txt
+    
+def separate_fluo_segment_channels(channels):
+    segms_to_load = []
+    channels_to_load = []
+    current_segm = False
+    for ch in channels:
+        if ch == 'current segm.':
+            current_segm = True
+        elif 'segm' in ch:
+            segms_to_load.append(ch)
+        else:
+            channels_to_load.append(ch)
+    return segms_to_load, channels_to_load, current_segm

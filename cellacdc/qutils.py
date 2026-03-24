@@ -118,3 +118,15 @@ def hardDelete(item, setPosData=True):
     except AttributeError:
         pass
     item = None
+    
+def insert_row(layout, insert_at, new_widget, col=0, dont_shift_other_cols=False):
+# Shift all widgets down by one row from insert_at onwards
+    for row in range(layout.rowCount() - 1, insert_at - 1, -1):
+        for loc_col in range(layout.columnCount()):
+            if loc_col != col and dont_shift_other_cols:
+                continue
+            item = layout.itemAtPosition(row, loc_col)
+            if item is not None:
+                layout.removeItem(item)
+                layout.addItem(item, row + 1, loc_col)
+    layout.addWidget(new_widget, insert_at, col)

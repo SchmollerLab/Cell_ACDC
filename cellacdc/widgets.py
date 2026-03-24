@@ -7266,6 +7266,20 @@ class ParentImageItem(BaseImageItem):
     def setEnableAutoLevels(self, enabled: bool):
         self.autoLevelsEnabled = enabled
     
+    def setUsePreprocessed(self, usePreprocessed):
+        self.usePreprocessed = usePreprocessed
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.usePreprocessed = usePreprocessed
+    
+    def setUseCombined(self, useCombined):
+        self.useCombined = useCombined
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.useCombined = useCombined
+    
     def preComputedMinMaxValues(self, *args, **kwargs):
         super().preComputedMinMaxValues(*args, **kwargs)
         if self.linkedImageItem is None:
@@ -7280,6 +7294,46 @@ class ParentImageItem(BaseImageItem):
             return
         
         self.linkedImageItem.minMaxValuesMapper = self.minMaxValuesMapper
+    
+    def updateMinMaxValuesCombinedData(self, *args, **kwargs):
+        super().updateMinMaxValuesCombinedData(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.minMaxValuesMapperCombined = (
+            self.minMaxValuesMapperCombined
+        )
+    
+    def updateMinMaxValuesCombinedDataProjections(self, *args, **kwargs):
+        super().updateMinMaxValuesCombinedDataProjections(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.minMaxValuesMapperCombined = (
+            self.minMaxValuesMapperCombined
+        )
+    
+    def updateMinMaxValuesEqualizedDataProjections(self, *args, **kwargs):
+        super().updateMinMaxValuesEqualizedDataProjections(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.minMaxValuesMapperEqualized = (
+            self.minMaxValuesMapperEqualized
+        )
+    
+    def updateMinMaxValuesEqualizedData(self, *args, **kwargs):
+        super().updateMinMaxValuesEqualizedData(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.minMaxValuesMapperEqualized = (
+            self.minMaxValuesMapperEqualized
+        )
     
     def setCurrentPosIndex(self, *args, **kwargs):
         super().setCurrentPosIndex(*args, **kwargs)
