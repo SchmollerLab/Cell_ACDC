@@ -18411,9 +18411,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             if 'segm' not in channel:
                 any_not_seg = True
                 break
-        
-        printl(any_not_seg)
-        
+                
         if any_not_seg:
             self.saveAsSegmCheckbox.setChecked(False)
             self.saveAsSegmCheckbox.setEnabled(False)

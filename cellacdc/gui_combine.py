@@ -287,6 +287,9 @@ class CombineGuiElements:
         self.setImageImg1()
 
     def combineChannelsActionTriggered(self):
+        curr_proj = self.zProjComboBox.currentText()
+        if curr_proj != 'single z-slice':
+             self.zProjComboBox.setCurrentText('single z-slice')
         self.combineDialog.show()
         self.combineDialog.raise_()
         self.combineDialog.activateWindow()

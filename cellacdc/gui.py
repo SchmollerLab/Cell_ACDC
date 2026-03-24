@@ -14689,12 +14689,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(
-                self.img1.useCombined, 
-                self.img1.linkedImageItem.useCombined,
-                self.img1.levels,
-                self.img1.linkedImageItem.levels
-            )
+            import pdb; pdb.set_trace()
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -27879,7 +27874,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if 'combined segm.' == segmEndname:
             comb_seg = True
             if not self.isSegm3D:
-                out = posData.ol_labels_data['combined segm.'][posData.frame_i][0]
+                zStackImg = self.data[0].SizeZ > 1
+                if zStackImg:
+                    selected_z_stack = self.zSliceScrollBar.sliderPosition()
+                else:
+                    selected_z_stack = 0
+                out = posData.ol_labels_data['combined segm.'][posData.frame_i][selected_z_stack]
                 return out.astype(np.uint32)
         
         if self.isSegm3D:

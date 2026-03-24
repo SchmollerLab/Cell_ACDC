@@ -2474,7 +2474,17 @@ def _combine_channels_multiplier_apply(multiplier, offset, binarize, input_img):
     input_img = input_img * multiplier
     return input_img
 
-def _get_img_from_data_key(data, key, num_dim):
+def _get_img_from_data_key(data, key, num_dim, seg=False):
+    n_dim_data = data.ndim - 1
+    n_dim_key = len(key)
+    if seg and n_dim_key == n_dim_data + 1:
+        # here a 2D segmentation is used for 3D image
+        return data[key[1]]
+    elif n_dim_key != n_dim_data:
+        raise ValueError(
+            f'Invalid number of dimensions in img_data: {n_dim_data}'
+            f' and key {key}'
+        )
     if num_dim == 3:
         return data[key[1]]
     elif num_dim == 4:
@@ -2512,6 +2522,7 @@ def combine_channels_func(
     segm_channels, fluo_channel_names, current_segm = myutils.separate_fluo_segment_channels(channel_names)
     original_dtype = None
     if data is None:
+        num_dim = None
         for channel in fluo_channel_names:
             ch_filepath = load.get_filepath_from_endname(
                 images_path, channel
@@ -2522,6 +2533,8 @@ def combine_channels_func(
 
             ch_image_data = myutils.img_to_float(ch_image_data)
             fluo_ch_data_list[channel] = ch_image_data
+            if num_dim is None:
+                num_dim = ch_image_data.ndim
         for channel in segm_channels:
             ch_filepath = load.get_filepath_from_endname(
                 images_path, channel
@@ -2531,20 +2544,31 @@ def combine_channels_func(
                 original_dtype = ch_image_data.dtype
 
             ch_image_data = ch_image_data.astype(np.uint32)
+            if num_dim is not None:
+                num_dim_seg = ch_image_data.ndim
+                if num_dim_seg != num_dim:
+                    # 2D (timelapse) and 3D (zstack) images
+                    raise NotImplementedError(
+                        f'2D segmentation operations on 3D images are not  supported.'
+                        f'you can expand 2D segmentation to 3D cylinders by using Utilities > Segmentation > Stack 2D segmentation objects into 3D objects...'
+                    )
             segm_ch_data_list[channel] = ch_image_data
     else:
         posData = data[key[0]]
         fluo_data_dict = posData.fluo_data_dict
         segm_data_dict = posData.ol_labels_data
         imgs_path = posData.images_path
-        if len(fluo_channel_names) > 0:
-            random_ch_name = next(iter(fluo_data_dict))
-            num_dim = fluo_data_dict[random_ch_name].ndim
-        elif len(segm_channels) > 0:
-            random_ch_name = next(iter(segm_data_dict))
-            num_dim = segm_data_dict[random_ch_name].ndim
-        else:
-            num_dim = posData.allData_li[key[1]]['labels'].ndim
+        try:
+            if len(fluo_channel_names) > 0:
+                random_ch_name = next(iter(fluo_data_dict))
+                num_dim = fluo_data_dict[random_ch_name].ndim
+            elif len(segm_channels) > 0:
+                random_ch_name = next(iter(segm_data_dict))
+                num_dim = segm_data_dict[random_ch_name].ndim
+            else:
+                num_dim = posData.allData_li[key[1]]['labels'].ndim
+        except:
+            printl(random_ch_name)
 
         for channel in fluo_channel_names:
             channel_path = load.get_filename_from_channel(
@@ -2559,7 +2583,7 @@ def combine_channels_func(
             channel_img_data_float = myutils.img_to_float(channel_img_data)
             fluo_ch_data_list[channel] = channel_img_data_float
         for channel in segm_channels:
-            channel_img_data = _get_img_from_data_key(segm_data_dict[channel], key, num_dim)
+            channel_img_data = _get_img_from_data_key(segm_data_dict[channel], key, num_dim, seg=True)
             if original_dtype is None:
                 original_dtype = channel_img_data.dtype
             channel_img_data_int = channel_img_data.astype(np.uint32)
