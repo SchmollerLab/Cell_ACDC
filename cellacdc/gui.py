@@ -19990,7 +19990,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             try:
                 tooltip = button.toolTip()
-                prefix = 'Disabled due to projection mode\n'
+                prefix = 'WARNING: Disabled due to projection mode\n\n'
                 if disabled:
                     if not tooltip.startswith(prefix):
                         button.setToolTip(prefix + tooltip)
