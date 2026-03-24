@@ -17531,7 +17531,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     @exception_handler
     def workerCritical(self, out: Tuple[QObject, Exception]):
         self.setDisabled(False)
-        worker, error = out
+        try:
+            worker, error = out
+        except TypeError as err:
+            error = out
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
