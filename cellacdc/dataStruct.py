@@ -2030,6 +2030,7 @@ class createDataStructWin(QMainWindow):
             return []
         else:
             files = [win.selectedItemText]
+            return files
 
     def attemptSeparateMultiChannel(self, rawFilenames):
         self.chNames = set()
