@@ -668,7 +668,11 @@ def save_acdc_df_file(
     if last_cca_frame_i is not None:
         acdc_df.loc[last_cca_frame_i+1:, cca_df_colnames] = pd.NA
     
-    acdc_df.to_csv(csv_path)
+    try:
+        acdc_df.to_csv(csv_path)
+    except Exception as err:
+        printl(f'[WARNING]: {err}')
+        return
 
 def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
     try:
@@ -2041,7 +2045,8 @@ class loadData:
             self.last_tracked_i_found = True
             try:
                 self.last_tracked_i = max(
-                    self.acdc_df.index.get_level_values(0)
+                    self.acdc_df.index.get_level_values(0),
+                    default=None
                 )
             except AttributeError as e:
                 # traceback.print_exc()
@@ -2094,17 +2099,21 @@ class loadData:
         self.acdc_df_found = True
         self.last_tracked_i = max(
             self.acdc_df.index.get_level_values(0),
-            default=0
+            default=None
         )
     
     def loadAcdcDf(self, filePath, updatePaths=True, return_df=False):
         acdc_df = _load_acdc_df_file(filePath)
+        if acdc_df.empty:
+            self.acdc_df_found = False
+            return
+        
         if updatePaths:
             self.acdc_df = acdc_df
             self.acdc_df_found = True
             self.last_tracked_i = max(
                 self.acdc_df.index.get_level_values(0),
-                default=0
+                default=None
             )
         if return_df:
             return acdc_df
