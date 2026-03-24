@@ -2092,14 +2092,20 @@ class loadData:
             return
         self.acdc_df = acdc_df
         self.acdc_df_found = True
-        self.last_tracked_i = max(self.acdc_df.index.get_level_values(0))
+        self.last_tracked_i = max(
+            self.acdc_df.index.get_level_values(0),
+            default=0
+        )
     
     def loadAcdcDf(self, filePath, updatePaths=True, return_df=False):
         acdc_df = _load_acdc_df_file(filePath)
         if updatePaths:
             self.acdc_df = acdc_df
             self.acdc_df_found = True
-            self.last_tracked_i = max(self.acdc_df.index.get_level_values(0))
+            self.last_tracked_i = max(
+                self.acdc_df.index.get_level_values(0),
+                default=0
+            )
         if return_df:
             return acdc_df
     
