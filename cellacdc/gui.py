@@ -20349,6 +20349,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.zProjComboBox.setCurrentText('single z-slice')
         depthAxes = self.switchPlaneCombobox.depthAxes()
         self.onEscape()
+        self.initDelRoiLab()
         if depthAxes != 'z':
             # Disable projections on plane that is not xy
             self.zProjComboBox.setCurrentText('single z-slice')
@@ -30733,10 +30734,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.drawNothingCheckbox.setDisabled(disabled)
     
     def setEnabledAnnotCheckBoxesLeftZdepthAxes(self):
+        if not self.isSegm3D:
+            return
+        
         self.annotIDsCheckbox.setDisabled(False)
         self.annotContourCheckbox.setDisabled(False)
         self.annotIDsCheckbox.setChecked(True)
         self.annotContourCheckbox.setChecked(True)
+        
         self.annotOptionClicked(
             sender=self.annotIDsCheckbox, saveSettings=False)
     
