@@ -17023,12 +17023,11 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         ch_selector.addItems(self.channel_names)
         self.gridLayout.addWidget(ch_selector, self.row, 2)
         stepWidgets['selector'] = ch_selector
-        ch_selector.currentTextChanged.connect(self.emitValuesChanged)
         ch_selector.currentTextChanged.connect(self.setBinarizeCheckable)
         
         tooltip = (
-            'Offset is a sonstant that will be multiplied to the channel before '
-            'appliying the operator.'
+            'Offset is a constant that will be added to the channel\'s '
+            'intensities before appliying the multiplier and the operator.'
         )
         if is_first:
             label = QLabel('Offset')
@@ -17049,8 +17048,8 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         offset.valueChanged.connect(self.emitValuesChanged)
         
         tooltip = (
-            'Multiplier is a float that will be multiplied with the channel or segmentation '
-            'before appliying the operator.'
+            'Multiplier is a float that will be multiplied with the channel\'s '
+            'intensities or segmentation before appliying the operator.'
         )
         if is_first:
             label = QLabel('Multiplier')
@@ -17134,6 +17133,8 @@ class CombineChannelsWidget(PreProcessParamsWidget):
             else:
                 binarizeSelector.setEnabled(False)
                 binarizeSelector.setCurrentIndex(0)
+        
+        self.emitValuesChanged()
 
     def removeStep(self, checked=False, step_n=None):        
         if step_n is None:
@@ -18343,7 +18344,6 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     sigApplyImage = Signal(dict, bool)
     sigSaveAsSegmCheckboxToggled = Signal(bool)
 
-
     def __init__(
             self,
             channel_names,
@@ -18369,9 +18369,6 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(
             self.emitValuesChanged
         )
-        self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(
-            self.autoCheckSaveAsSegmCheckbox
-        )
 
         self.mainLayout.insertWidget(2, self.combineChannelsWidget)
         self.combineChannelsWidget.groupbox.setCheckable(False)
@@ -18392,9 +18389,14 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         )
         self.saveAsSegmCheckbox.setChecked(False)
         self.saveAsSegmCheckbox.setEnabled(False)
-        self.saveAsSegmCheckbox.toggled.connect(self.emitSaveAsSegmCheckboxToggled)
-        qutils.insert_row(self.buttonsLayout, 1, self.saveAsSegmCheckbox, col=0, dont_shift_other_cols=True)
-        
+        self.saveAsSegmCheckbox.toggled.connect(
+            self.emitSaveAsSegmCheckboxToggled
+        )
+        qutils.insert_row(
+            self.buttonsLayout, 1, self.saveAsSegmCheckbox, col=0, 
+            dont_shift_other_cols=True
+        )
+    
     def saveAsSegm(self):
         return self.saveAsSegmCheckbox.isChecked()
     
@@ -18408,12 +18410,19 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             if 'segm' not in channel:
                 any_not_seg = True
                 break
-
+        
+        printl(any_not_seg)
+        
         if any_not_seg:
             self.saveAsSegmCheckbox.setChecked(False)
             self.saveAsSegmCheckbox.setEnabled(False)
         else:
-             self.saveAsSegmCheckbox.setEnabled(True)
+            self.saveAsSegmCheckbox.setEnabled(True)
+            self.blinker = qutils.QControlBlink(
+                self.saveAsSegmCheckbox, 
+                qparent=self
+            )
+            self.blinker.start()
 
     def warnMultipliers(self):
         msg = widgets.myMessageBox(wrapText=False)
@@ -18483,6 +18492,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             self.ok_cb()
 
     def emitValuesChanged(self):
+        self.autoCheckSaveAsSegmCheckbox()
         self.sigValuesChanged.emit()
 
     def ok_cb(self):
@@ -18596,7 +18606,7 @@ class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
 
         self.previewCheckbox.setChecked(True)
         self.saveAsSegmCheckbox.setText('Save and view as segmentation')
-
+    
     def steps(self, return_keepInputDataType=False):
         steps = self.combineChannelsWidget.steps()
         if not return_keepInputDataType:

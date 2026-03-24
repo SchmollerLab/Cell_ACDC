@@ -148,7 +148,8 @@ class CombineGuiElements:
         self.combineEnqueueCurrentImage(steps, keep_input_type)
         
     def viewCombineChannelDataToggled(self, checked):
-        self.img1.useCombined = checked
+        self.img1.setUseCombined(checked)
+        
         if checked:
             self.combineViewAsSegmSetup()
         else: # setimage1 is already called in combineViewAsSegmSetup
@@ -263,7 +264,7 @@ class CombineGuiElements:
     def combineViewAsSegmSetup(self):
         combineViewAsSegm = self.combineDialog.saveAsSegm()
         if not combineViewAsSegm:
-            self.img1.useCombined = True
+            self.img1.setUseCombined(True)
             if self.combineSegmViewToggle.isChecked():
                 self.combineSegmViewToggle.setChecked(False)
                 self.combineSegmViewToggle.setCheckable(False)
@@ -282,7 +283,7 @@ class CombineGuiElements:
             self.combineSegmViewToggle.setChecked(False)
             self.combineSegmViewToggle.setChecked(True)
 
-            self.img1.useCombined = False
+            self.img1.setUseCombined(False)
         self.setImageImg1()
 
     def combineChannelsActionTriggered(self):

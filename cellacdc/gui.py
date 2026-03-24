@@ -3544,10 +3544,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'on the top menubar.'
         )
         self.viewCombineChannelDataToggle.setChecked(False)
-        self.viewCombineChannelDataToggle.setToolTip(viewCombineChannelDataToggleTooltip)
+        self.viewCombineChannelDataToggle.setToolTip(
+            viewCombineChannelDataToggleTooltip
+        )
         viewCombineChannelDataToggleLabel = QLabel('View combined channels')
-        viewCombineChannelDataToggleLabel.setToolTip(viewCombineChannelDataToggleTooltip)
-        layout.addRow(viewCombineChannelDataToggleLabel, self.viewCombineChannelDataToggle)
+        viewCombineChannelDataToggleLabel.setToolTip(
+            viewCombineChannelDataToggleTooltip
+        )
+        layout.addRow(
+            viewCombineChannelDataToggleLabel, 
+            self.viewCombineChannelDataToggle
+        )
 
         self.autoSaveToggle = widgets.Toggle()
         autoSaveTooltip = (
@@ -14680,7 +14687,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            import pdb; pdb.set_trace()
+            printl(
+                self.img1.useCombined, 
+                self.img1.linkedImageItem.useCombined,
+                self.img1.levels,
+                self.img1.linkedImageItem.levels
+            )
 
         if not self.isDataLoaded:
             self.logger.warning(
@@ -25903,7 +25915,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if raw:
             return self.getRawImageLayer0(frame_i)
-        elif self.viewPreprocDataToggle.isChecked():
+        
+        if self.viewPreprocDataToggle.isChecked():
             try:
                 img = posData.preproc_img_data[frame_i]
                 if posData.SizeZ == 1:
@@ -25918,7 +25931,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 #     'Pre-processed image not existing --> returning raw image'
                 # )
                 return self.getRawImageLayer0(frame_i)
-        elif self.viewCombineChannelDataToggle.isChecked() and not self.combineDialog.saveAsSegm():
+        
+        viewCombinedImageData = (
+            self.viewCombineChannelDataToggle.isChecked()
+            and not self.combineDialog.saveAsSegm()
+        )
+        
+        if viewCombinedImageData:
             try:
                 img = posData.combine_img_data[frame_i]
                 if posData.SizeZ == 1:
@@ -25933,7 +25952,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 #     'combined image not existing --> returning raw image'
                 # )
                 return self.getRawImageLayer0(frame_i)
-        elif self.equalizeHistPushButton.isChecked():
+            
+        if self.equalizeHistPushButton.isChecked():
             img = posData.equalized_img_data[frame_i]
             if posData.SizeZ == 1:
                 return np.array(img)
@@ -25942,8 +25962,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             z_slice = self.z_slice_index()
             img = img[z_slice]
             return img
-        else:
-            return self.getRawImageLayer0(frame_i)
+
+        return self.getRawImageLayer0(frame_i)
 
     def setImageImg2(self, updateLookuptable=True, set_image=True):
         posData = self.data[self.pos_i]
@@ -31864,7 +31884,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             worker._stop()
     
     def viewPreprocDataToggled(self, checked):
-        self.img1.usePreprocessed = checked
+        self.img1.setUsePreprocessed(checked)
         self.setImageImg1()
 
         if self.viewCombineChannelDataToggle.isChecked():
