@@ -2475,16 +2475,16 @@ def _combine_channels_multiplier_apply(multiplier, offset, binarize, input_img):
     return input_img
 
 def _get_img_from_data_key(data, key, num_dim, seg=False):
-    n_dim_data = data.ndim - 1
+    n_dim_data = data.ndim - 1 # - 1 dim for x y
     n_dim_key = len(key)
     if seg and n_dim_key == n_dim_data + 1:
         # here a 2D segmentation is used for 3D image
         return data[key[1]]
-    elif n_dim_key != n_dim_data:
-        raise ValueError(
-            f'Invalid number of dimensions in img_data: {n_dim_data}'
-            f' and key {key}'
-        )
+    # elif n_dim_key != n_dim_data:
+    #     raise ValueError(
+    #         f'Invalid number of dimensions in img_data: {n_dim_data}'
+    #         f' and key {key}'
+    #     )
     if num_dim == 3:
         return data[key[1]]
     elif num_dim == 4:
