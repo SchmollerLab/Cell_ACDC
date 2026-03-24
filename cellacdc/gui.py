@@ -24393,20 +24393,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 z_int = round(zc)
                 if z_int not in action.pointsData[self.pos_i][posData.frame_i]:
                     action.pointsData[self.pos_i][posData.frame_i][z_int] = {
-                        'x': [xc], 'y': [yc]
+                        'x': [xc], 'y': [yc], 'id': [obj.label]
                     }
                 else:
                     z_data = action.pointsData[self.pos_i][posData.frame_i][z_int]
                     z_data['x'].append(xc)
                     z_data['y'].append(yc)
+                    z_data['id'].append(obj.label)
             else:
                 yc, xc = centroid
                 if 'y' not in action.pointsData[self.pos_i][posData.frame_i]:
                     action.pointsData[self.pos_i][posData.frame_i]['y'] = [yc]
                     action.pointsData[self.pos_i][posData.frame_i]['x'] = [xc]
+                    action.pointsData[self.pos_i][posData.frame_i]['id'] = (
+                        [obj.label]
+                    )
                 else:
                     action.pointsData[self.pos_i][posData.frame_i]['y'].append(yc)
                     action.pointsData[self.pos_i][posData.frame_i]['x'].append(xc)
+                    action.pointsData[self.pos_i][posData.frame_i]['id'].append(
+                        obj.label
+                    )
     
     def drawPointsLayers(self, computePointsLayers=True):
         posData = self.data[self.pos_i]
