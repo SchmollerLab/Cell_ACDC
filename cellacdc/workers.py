@@ -743,6 +743,7 @@ class LabelRoiWorker(QObject):
             if self.exit:
                 break
             elif self.started:
+                self.logger.log('Magic labeller is doing its magic...')
                 if self.isTimelapse:
                     segmData = np.zeros(self.imageData.shape, dtype=np.uint32)
                     for frame_i, img in enumerate(self.imageData):
@@ -6109,7 +6110,8 @@ class saveDataWorker(QObject):
         # Save segmentation metadata
         load.save_acdc_df_file(
             all_frames_acdc_df, acdc_output_csv_path, 
-            custom_annot_columns=custom_annot_columns
+            custom_annot_columns=custom_annot_columns, 
+            last_cca_frame_i=self.mainWin.save_cca_until_frame_i
         )
         
     def _emitSigDebug(self, stuff_to_debug):
@@ -6123,6 +6125,36 @@ class saveDataWorker(QObject):
         exec_time = t - self.time_last_pbar_update
         self.progressBar.emit(1, -1, exec_time)
         self.time_last_pbar_update = t
+    
+    def saveAcdcDf(self, posData: load.loadData, end_i):
+        acdc_dfs_li = []
+        keys = []
+        self.progress.emit(f'Saving annotations for {posData.relPath}...')
+        for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
+            if self.saveWin.aborted:
+                self.finished.emit()
+                return
+
+            # Build saved_segm_data
+            lab = data_dict['labels']
+            if lab is None:
+                break
+            
+            acdc_df = posData.allData_li[frame_i]['acdc_df']
+            if acdc_df is None:
+                continue
+            
+            acdc_dfs_li.append(acdc_df)
+            keys.append((frame_i, posData.TimeIncrement*frame_i))
+        
+        if not acdc_dfs_li:
+            return
+        
+        self.mainWin._measurements_kernel._concat_and_save_acdc_df(
+            acdc_dfs_li, keys, posData, self.mainWin.save_metrics,
+            saveDataWorker=self, 
+            last_cca_frame_i=self.mainWin.save_cca_until_frame_i
+        )
     
     def saveSegmData(self, posData, end_i, saved_segm_data):
         self.progress.emit(f'Saving segmentation data for {posData.relPath}...')
@@ -6230,8 +6262,11 @@ class saveDataWorker(QObject):
                     posData=posData, 
                     stop_frame_n=end_i+1,
                     saveDataWorker=self,
-                    save_metrics=self.mainWin.save_metrics
+                    save_metrics=self.mainWin.save_metrics,
+                    last_cca_frame_i=self.mainWin.save_cca_until_frame_i
                 )
+            else:
+                self.saveAcdcDf(posData, end_i)
                 
             self.progress.emit(f'Saving {posData.relPath}')
 

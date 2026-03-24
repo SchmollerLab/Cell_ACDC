@@ -3444,3 +3444,43 @@ def linear_fit_3d(xx, yy, zz):
     d = vh[0]
 
     return centroid, d
+
+def binary_fill_holes(mask, slice_by_slice=True):
+    if not slice_by_slice:
+        mask = scipy.ndimage.binary_fill_holes(mask)
+        return mask
+    
+    if mask.ndim == 2:
+        mask = scipy.ndimage.binary_fill_holes(mask)
+        return mask
+    
+    for z, mask_z in enumerate(mask):
+        if not np.any(mask_z):
+            continue
+        
+        mask[z] = scipy.ndimage.binary_fill_holes(mask_z)
+    
+    return mask
+
+def convex_hull_mask(mask: np.ndarray, slice_by_slice=True):
+    if not slice_by_slice:
+        mask = skimage.morphology.convex_hull_image(mask)
+        return mask
+    
+    if mask.ndim == 2:
+        mask = skimage.morphology.convex_hull_image(mask)
+        return mask
+    
+    mask_rp = skimage.measure.regionprops(mask.astype(np.uint8))
+    if len(mask_rp) == 0:
+        return mask
+    
+    mask_obj = mask_rp[0]
+    for z, mask_obj_img_z in enumerate(mask_obj.image):
+        if not np.any(mask_obj_img_z):
+            continue
+        
+        mask_obj_hull_z = skimage.morphology.convex_hull_image(mask_obj_img_z)
+        mask[mask_obj.slice][z] = mask_obj_hull_z
+    
+    return mask

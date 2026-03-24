@@ -644,7 +644,10 @@ def load_acdc_df_file(
     else:
         return acdc_df
 
-def save_acdc_df_file(acdc_df, csv_path, custom_annot_columns=None):
+def save_acdc_df_file(
+        acdc_df, csv_path, custom_annot_columns=None, 
+        last_cca_frame_i=None
+    ):
     if custom_annot_columns is not None:
         new_order_cols = [*sorted_cols, *custom_annot_columns]
     else:
@@ -661,6 +664,10 @@ def save_acdc_df_file(acdc_df, csv_path, custom_annot_columns=None):
         new_order_cols.append(col)
     
     acdc_df = acdc_df[new_order_cols]
+    
+    if last_cca_frame_i is not None:
+        acdc_df.loc[last_cca_frame_i+1:, cca_df_colnames] = pd.NA
+    
     acdc_df.to_csv(csv_path)
 
 def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
@@ -695,7 +702,7 @@ def _copy_acdc_dfs_to_temp_archive(
             acdc_df = pd_bool_and_float_to_int_to_str(acdc_df, inplace=False)
             compression_opts['archive_name'] = csv_name
             acdc_df.to_csv(
-                temp_zip_path, compression=compression_opts, mode='a'
+                temp_zip_path, compression=compression_opts
             )
 
 def _store_acdc_df_archive(zip_path, acdc_df_to_store):
@@ -726,7 +733,7 @@ def _store_acdc_df_archive(zip_path, acdc_df_to_store):
     
     compression_opts['archive_name'] = csv_name
     acdc_df = pd_bool_and_float_to_int_to_str(acdc_df_to_store, inplace=False)
-    acdc_df.to_csv(temp_zip_path, compression=compression_opts, mode='a')
+    acdc_df.to_csv(temp_zip_path, compression=compression_opts)
     shutil.move(temp_zip_path, zip_path)
     shutil.rmtree(temp_dirpath)
 
@@ -4025,12 +4032,14 @@ def loaded_df_to_points_data(df, t_col, z_col, y_col, x_col):
                     'x': df_z[x_col].to_list(),
                     'y': df_z[y_col].to_list(), 
                     'id': df_z['id'].to_list(), 
+                    'data': [row.to_string() for _, row in df_z.iterrows()]
                 }
         else:
             points_data[frame_i] = {
                 'x': df[x_col].to_list(),
                 'y': df[y_col].to_list(), 
                 'id': df['id'].to_list(), 
+                'data': [row.to_string() for _, row in df.iterrows()]
             }
     return points_data
 
