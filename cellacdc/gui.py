@@ -23630,6 +23630,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         saveToolbutton.sigLeftClick.connect(self.savePointsAddedByClicking)
         saveAction = toolbar.addWidget(saveToolbutton)
         saveToolbutton.action = saveAction
+        saveAction.saveToolbutton = saveToolbutton
         saveAction.toolButton = toolButton
         toolButton.saveAction = saveAction
         toolButton.saveToolbutton = saveToolbutton
@@ -23746,11 +23747,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     @exception_handler
     def savePointsAddedByClicking(self, button, event):
-        if hasattr(button, 'action'):
-            sender = button.action
-        else:
-            sender = button
-            
+        sender = button.action
         toolButton = sender.toolButton
         tableEndName = toolButton.clickEntryTableEndName
             
@@ -29239,7 +29236,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             buttonsTexts=('Cancel', 'No, do not save', 'Yes, save points')
         )
         if msg.clickedButton == saveButton:
-            self.savePointsAddedByClicking(saveAction, None)
+            self.savePointsAddedByClicking(saveAction.saveToolbutton, None)
         
         return msg.cancel
     
