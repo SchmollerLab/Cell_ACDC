@@ -14815,7 +14815,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if ev.key() == Qt.Key_Q and self.debug:
             try:
                 from . import q_debug
-                q_debug.q_debug()
+                q_debug.q_debug(self)
             except ImportError:
                 printl('File not found: q_debug.py')
                 pass
