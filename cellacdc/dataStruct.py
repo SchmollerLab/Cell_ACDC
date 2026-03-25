@@ -2158,7 +2158,7 @@ class createDataStructWin(QMainWindow):
             'or <b>create new</b> Position folders?'
         )
         _, overwriteButton, addFilesButton, createNewButton = msg.warning(
-           self, 'Replace files?', txt,
+           self, 'Warning: existing Position folders detected!', txt,
            buttonsTexts=(
                'Cancel', 
                'Overwrite', 
