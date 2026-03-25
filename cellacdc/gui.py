@@ -14813,7 +14813,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            import pdb; pdb.set_trace()
+            try:
+                from . import q_debug
+                q_debug.q_debug()
+            except ImportError:
+                printl('File not found: q_debug.py')
+                pass
 
         if not self.isDataLoaded:
             self.logger.warning(

@@ -15,6 +15,7 @@ test.csv
 cellacdc/test2.py
 test_shorten_data.py
 note.txt
+cellacdc/q_debug.py
 
 env_dependencies_issues.txt
 not_installed_requirements.txt
