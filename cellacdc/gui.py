@@ -325,6 +325,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.whitelistOriginalIDs = None
         self.whyNavigateDisabled = set()
         self.autoSaveTimer = QTimer()
+        self.addPointsLayerAction = None
+        
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
             autoSaveIntevalValue = 2
@@ -414,6 +416,128 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.installEventFilter(self)
         
         self.logger.info('GUI ready.')
+        
+    def initGlobalAttr(self):
+        self.setOverlayColors()
+
+        self.initImgCmap()
+
+        # Colormap
+        self.setLut()
+
+        self.fluoDataChNameActions = []
+
+        self.splineHoverON = False
+        self.tempSegmentON = False
+        self.xyOnCtrlPressedFirstTime = None
+        self.typingEditID = False
+        self.prevAnnotOptions = None
+        self.ghostObject = None
+        self.autoContourHoverON = False
+        self.navigateScrollBarStartedMoving = True
+        self.zSliceScrollBarStartedMoving = True
+        self.labelRoiRunning = False
+        self.isRangeReset = True
+        self.lastManualSeparateState = None
+        self.editIDmergeIDs = True
+        self.doNotAskAgainExistingID = False
+        self.doubleRightClickTimeElapsed = False
+        self.isRealTimeTrackerInitialized = False
+        self.isWarningCcaIntegrity = False
+        self.isDoubleRightClick = False
+        self.isExportingVideo = False
+        self.pointsLayersNeverToggled = True
+        self.highlightedIDopts = None
+        self.timestampStartTimedelta = timedelta(seconds=0)
+        self.keptObjectsIDs = widgets.KeptObjectIDsList(
+            self.keptIDsLineEdit, self.keepIDsConfirmAction
+        )
+        self._ZprojWidgersEnabledState = None
+        self.imgValueFormatter = 'd'
+        self.rawValueFormatter = 'd'
+        self.lastHoverID = -1
+        self.annotOptionsToRestore = None
+        self.annotOptionsToRestoreRight = None
+        self.rescaleIntensChannelHowMapper = {
+            self.user_ch_name: 'Rescale each 2D image'
+        }
+        self.timestampDialog = None
+        self.scaleBarDialog = None
+        self.countObjsWindow = None
+        self.initLabelRoiModelDialog = None
+
+        # Second channel used by cellpose
+        self.secondChannelName = None
+
+        self.ax1_viewRange = None
+        self.measurementsWin = None
+
+        self.model_kwargs = None
+        self.segmModelName = None
+        self.labelRoiModel = None
+        self.autoSegmDoNotAskAgain = False
+        self.labelRoiGarbageWorkers = []
+        self.labelRoiActiveWorkers = []
+
+        self.clickedOnBud = False
+        self.postProcessSegmWin = None
+
+        self.UserEnforced_DisabledTracking = False
+        self.UserEnforced_Tracking = False
+
+        self.ax1BrushHoverID = 0
+        
+        self.disabled_cca_warnings = set()
+
+        self.last_pos_i = -1
+        self.last_frame_i = -1
+
+        # Plots items
+        self.isMouseDragImg2 = False
+        self.isMouseDragImg1 = False
+        self.isMovingLabel = False
+        self.isRightClickDragImg1 = False
+        self.clickObjYc, self.clickObjXc = None, None
+
+        self.cca_df_colnames = cca_df_colnames
+        self.cca_df_dtypes = [
+            str, int, int, str, int, int, bool, bool, int
+        ]
+        self.cca_df_default_values = list(base_cca_dict.values())
+        self.cca_df_int_cols = [
+            col for col in cca_df_colnames if type(base_cca_dict[col]) == int
+        ]
+        self.lin_tree_df_bool_col = [
+            col for col in cca_df_colnames 
+            if isinstance(base_cca_dict[col], bool)
+        ]
+
+        self.lin_tree_col_checks = [
+            'generation_num',
+        ]
+
+        # self.lin_tree_df_colnames = set(base_cca_df.keys()) | set(lineage_tree_cols)
+        # # self.lin_tree_df_dtypes = [ #dk if i need this, for now ignored
+        # #     str, int, int, str, int, int, bool, bool, int
+        # # ]
+        # self.lin_tree_df_default_values = list(base_cca_df.values()) + lineage_tree_cols_std_val
+        self.lin_tree_df_int_cols = [
+            'generation_num',
+            'relative_ID',
+            'emerg_frame_i',
+            'division_frame_i',
+            'corrected_on_frame_i'
+        ]
+        self.lin_tree_df_bool_col = [
+            'is_history_known',
+        ]
+
+        self.lin_tree_col_checks = [
+            'generation_num',
+        ]
+
+        self.lin_tree_df_colnames = self.lin_tree_df_int_cols + self.lin_tree_df_bool_col + self.lin_tree_col_checks
+        self.SegForLostIDsSettings =  {}
     
     def setWindowIcon(self, icon=None):
         if icon is None:
@@ -7544,11 +7668,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             x, y = event.pos().x(), event.pos().y()
             hoveredPoints = action.scatterItem.pointsAt(event.pos())
             if len(hoveredPoints) > 0:
-                removed_id = self.removeClickedPoints(action, hoveredPoints)
-                if not magicPromptsON:
-                    addPointsByClickingButton.pointIdSpinbox.setValue(removed_id)
+                removed_ids = self.removeClickedPoints(action, hoveredPoints)
+                if not magicPromptsON and len(removed_ids) > 0:
+                    addPointsByClickingButton.pointIdSpinbox.setValue(min(removed_ids))
                     addPointsByClickingButton.pointIdSpinbox.removedId = (
-                        removed_id
+                        min(removed_ids)
                     )
                 else:
                     self.restorePrevPointIdRightClick(addPointsByClickingButton)
@@ -20156,128 +20280,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # To ensure mapping to colors we need to normalize image
             self.normalizeByMaxAction.setChecked(True)
     
-    def initGlobalAttr(self):
-        self.setOverlayColors()
-
-        self.initImgCmap()
-
-        # Colormap
-        self.setLut()
-
-        self.fluoDataChNameActions = []
-
-        self.splineHoverON = False
-        self.tempSegmentON = False
-        self.xyOnCtrlPressedFirstTime = None
-        self.typingEditID = False
-        self.prevAnnotOptions = None
-        self.ghostObject = None
-        self.autoContourHoverON = False
-        self.navigateScrollBarStartedMoving = True
-        self.zSliceScrollBarStartedMoving = True
-        self.labelRoiRunning = False
-        self.isRangeReset = True
-        self.lastManualSeparateState = None
-        self.editIDmergeIDs = True
-        self.doNotAskAgainExistingID = False
-        self.doubleRightClickTimeElapsed = False
-        self.isRealTimeTrackerInitialized = False
-        self.isWarningCcaIntegrity = False
-        self.isDoubleRightClick = False
-        self.isExportingVideo = False
-        self.pointsLayersNeverToggled = True
-        self.highlightedIDopts = None
-        self.timestampStartTimedelta = timedelta(seconds=0)
-        self.keptObjectsIDs = widgets.KeptObjectIDsList(
-            self.keptIDsLineEdit, self.keepIDsConfirmAction
-        )
-        self._ZprojWidgersEnabledState = None
-        self.imgValueFormatter = 'd'
-        self.rawValueFormatter = 'd'
-        self.lastHoverID = -1
-        self.annotOptionsToRestore = None
-        self.annotOptionsToRestoreRight = None
-        self.rescaleIntensChannelHowMapper = {
-            self.user_ch_name: 'Rescale each 2D image'
-        }
-        self.timestampDialog = None
-        self.scaleBarDialog = None
-        self.countObjsWindow = None
-        self.initLabelRoiModelDialog = None
-
-        # Second channel used by cellpose
-        self.secondChannelName = None
-
-        self.ax1_viewRange = None
-        self.measurementsWin = None
-
-        self.model_kwargs = None
-        self.segmModelName = None
-        self.labelRoiModel = None
-        self.autoSegmDoNotAskAgain = False
-        self.labelRoiGarbageWorkers = []
-        self.labelRoiActiveWorkers = []
-
-        self.clickedOnBud = False
-        self.postProcessSegmWin = None
-
-        self.UserEnforced_DisabledTracking = False
-        self.UserEnforced_Tracking = False
-
-        self.ax1BrushHoverID = 0
-        
-        self.disabled_cca_warnings = set()
-
-        self.last_pos_i = -1
-        self.last_frame_i = -1
-
-        # Plots items
-        self.isMouseDragImg2 = False
-        self.isMouseDragImg1 = False
-        self.isMovingLabel = False
-        self.isRightClickDragImg1 = False
-        self.clickObjYc, self.clickObjXc = None, None
-
-        self.cca_df_colnames = cca_df_colnames
-        self.cca_df_dtypes = [
-            str, int, int, str, int, int, bool, bool, int
-        ]
-        self.cca_df_default_values = list(base_cca_dict.values())
-        self.cca_df_int_cols = [
-            col for col in cca_df_colnames if type(base_cca_dict[col]) == int
-        ]
-        self.lin_tree_df_bool_col = [
-            col for col in cca_df_colnames 
-            if isinstance(base_cca_dict[col], bool)
-        ]
-
-        self.lin_tree_col_checks = [
-            'generation_num',
-        ]
-
-        # self.lin_tree_df_colnames = set(base_cca_df.keys()) | set(lineage_tree_cols)
-        # # self.lin_tree_df_dtypes = [ #dk if i need this, for now ignored
-        # #     str, int, int, str, int, int, bool, bool, int
-        # # ]
-        # self.lin_tree_df_default_values = list(base_cca_df.values()) + lineage_tree_cols_std_val
-        self.lin_tree_df_int_cols = [
-            'generation_num',
-            'relative_ID',
-            'emerg_frame_i',
-            'division_frame_i',
-            'corrected_on_frame_i'
-        ]
-        self.lin_tree_df_bool_col = [
-            'is_history_known',
-        ]
-
-        self.lin_tree_col_checks = [
-            'generation_num',
-        ]
-
-        self.lin_tree_df_colnames = self.lin_tree_df_int_cols + self.lin_tree_df_bool_col + self.lin_tree_col_checks
-        self.SegForLostIDsSettings =  {}
-    
     def initMetricsToSave(self, posData):
         self._measurements_kernel._init_metrics_to_save(posData)
 
@@ -24096,6 +24098,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         action.snapToMax = False
         action.loadedDfInfo = self.addPointsWin.loadedDfInfo
         self.setPointsLayerLoadedDfEndanme(action)
+        self.addPointsLayerAction = action
         
         if self.addPointsWin.layerType.startswith('Click to annotate point'):
             action.snapToMax = self.addPointsWin.snapToMaxToggle.isChecked()
@@ -24157,21 +24160,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             zSlice = None
         
-        id = None
+        removed_ids = []
         for point in points:
             pos = point.pos()
             x, y = pos.x(), pos.y()
             if zSlice is not None:
-                framePointsData[zSlice]['x'].remove(x)
-                framePointsData[zSlice]['y'].remove(y)
-                framePointsData[zSlice]['id'].remove(point.data())
+                zSliceRad = self.addPointsLayerAction.zRadius
+                sliceFramePointsData = [framePointsData[z] for z in range(
+                    zSlice-zSliceRad, zSlice+zSliceRad+1
+                ) if z in framePointsData.keys()]
             else:
-                framePointsData['x'].remove(x)
-                framePointsData['y'].remove(y)
-                framePointsData['id'].remove(point.data())
-            id = point.data()
+                sliceFramePointsData = [framePointsData]
+
+
+            for sliceFramePointsData in sliceFramePointsData:
+                if point.data() in sliceFramePointsData['id']:
+                    sliceFramePointsData['x'].remove(x)
+                    sliceFramePointsData['y'].remove(y)
+                    sliceFramePointsData['id'].remove(point.data())
+                    removed_ids.append(point.data())
         
-        return id
+        return removed_ids
     
     def restorePrevPointIdRightClick(self, addPointsByClickingButton):
         # Try to restore the id that was there before hovering 

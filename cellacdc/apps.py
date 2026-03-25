@@ -686,7 +686,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         self.zHeightSpinBox.setMinimum(1)
         self.zHeightWidget = widgets.formWidget(
             self.zHeightSpinBox, stretchWidget=True,
-            labelTextLeft='Z- height: ', parent=self
+            labelTextLeft='Z-height: ', parent=self
         )
         layout.addFormWidget(self.zHeightWidget, row=row)
         '----------------------------------------------------------------------'
