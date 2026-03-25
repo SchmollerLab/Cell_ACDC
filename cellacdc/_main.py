@@ -2050,7 +2050,7 @@ class mainWin(QMainWindow):
         self._gc_collect()
         
     def _gc_collect(self):
-        QTimer.singleShot(0, gc.collect)
+        QTimer.singleShot(100, gc.collect)
 
     def launchAlignUtil(self, checked=False):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
