@@ -300,7 +300,7 @@ def indexAssignment(
 
 def track_frame(
         prev_lab, prev_rp, lab, rp, IDs_curr_untracked=None,
-        uniqueID=None, setBrushID_func=None, posData=None,
+        unique_ID=None, setBrushID_func=None, posData=None,
         assign_unique_new_IDs=True, IoA_thresh=0.4, debug=False,
         return_all=False, aggr_track=None, IoA_matrix=None, 
         IoA_thresh_aggr=None, IDs_prev=None, return_prev_IDs=False,
@@ -327,26 +327,26 @@ def track_frame(
         IoA_thresh=IoA_thresh, aggr_track=aggr_track, 
         IoA_thresh_aggr=IoA_thresh_aggr, daughters_list=daughters_list,
     )
-
-    if posData is None and uniqueID is None:
-        uniqueID = max(
+    
+    if posData is None and unique_ID is None:
+        unique_ID = max(
             (max(IDs_prev, default=0), max(IDs_curr_untracked, default=0))
         ) + 1
-    elif uniqueID is None:
+    elif unique_ID is None:
         # Compute starting unique ID
         setBrushID_func(useCurrentLab=True)
-        uniqueID = posData.brushID+1
+        unique_ID = posData.brushID+1
 
     if not return_all:
         tracked_lab = indexAssignment(
             old_IDs, tracked_IDs, IDs_curr_untracked,
-            lab.copy(), rp, uniqueID,
+            lab.copy(), rp, unique_ID,
             assign_unique_new_IDs=assign_unique_new_IDs,
         )
     else:
         tracked_lab, assignments = indexAssignment(
             old_IDs, tracked_IDs, IDs_curr_untracked,
-            lab.copy(), rp, uniqueID,
+            lab.copy(), rp, unique_ID,
             assign_unique_new_IDs=assign_unique_new_IDs, 
             return_assignments=return_all,
         )

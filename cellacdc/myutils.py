@@ -2961,7 +2961,6 @@ def check_cellpose_version(version: str):
     return is_version_correct
 
 def purge_module(module_name):
-    import sys
     to_delete = [mod for mod in sys.modules if mod == module_name or mod.startswith(module_name + '.')]
     for mod in to_delete:
         del sys.modules[mod]
@@ -3009,6 +3008,8 @@ def check_install_cellpose(
     ):
     if isinstance(version, int):
         version = f'{version}.0'
+        
+    check_install_torch()
 
     if version == 'any':
         try:
@@ -3224,11 +3225,35 @@ def _run_command(command: str | list[str], shell=False):
     except Exception as err:
         pass
 
+def _warn_dll_torch(qparent=None):
+    msg = widgets.myMessageBox()
+    txt = html_utils.paragraph("""
+    <b>An error message will occur after you close this message.</b><br>
+    <b>Please save your data and restart Cell-ACDC.</b><br>
+    Sorry for the inconvenience!<br>
+    This error is not critical for the main functionality of Cell-ACDC,
+    and only concerns the segmentation model. Your can save your data without
+    a problem.<br>
+    The specific reason is that PyTorch and QtPy have weird issues with 
+    DLL conflicts.
+    """)
+    msg.information(
+    qparent, 'Please restart Cell-ACDC', txt, 
+    buttonsTexts=('Ok, I will save my data and restart Cell-ACDC'),
+    )
+
 def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
     try:
         import torch
         import torchvision
         return
+
+    except OSError as err:
+        if 'dll' in str(err):
+            _warn_dll_torch(qparent=qparent)
+            raise err
+        else:
+            traceback.print_exc()
     except Exception as err:
         traceback.print_exc()
     
@@ -3244,7 +3269,14 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
     
     command = win.command
     print(f'Running command: "{command}"')
-    _run_command(command)    
+    _run_command(command)
+    
+    try:
+        import torch
+    except OSError as e:
+        if 'dll' in str(e):
+            _warn_dll_torch(qparent=qparent)
+        raise e
     
     purge_module('torch')
 
@@ -5557,3 +5589,16 @@ def reset_settings():
             f'{settings_folderpath}\n'
         )
         return out_txt
+    
+def separate_fluo_segment_channels(channels):
+    segms_to_load = []
+    channels_to_load = []
+    current_segm = False
+    for ch in channels:
+        if ch == 'current segm.':
+            current_segm = True
+        elif 'segm' in ch:
+            segms_to_load.append(ch)
+        else:
+            channels_to_load.append(ch)
+    return segms_to_load, channels_to_load, current_segm

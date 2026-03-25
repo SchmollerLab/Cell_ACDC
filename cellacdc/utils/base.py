@@ -84,7 +84,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         infoLayout.addWidget(QLabel(infoTxt))
 
         buttonsLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Abort')
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)

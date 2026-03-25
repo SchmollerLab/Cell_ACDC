@@ -323,7 +323,7 @@ class normal_division_tracker:
         self.tracked_video[0] = segm_video[0]
 
     def track_frame(self, frame_i, lab=None, prev_lab=None, rp=None, prev_rp=None,
-                    IDs=None):
+                    IDs=None, unique_ID=None):
         """
         Tracks a single frame in the video sequence.
 
@@ -372,7 +372,8 @@ class normal_division_tracker:
                                                                              IDs_curr_untracked=self.IDs_curr_untracked, 
                                                                              IDs_prev=self.IDs_prev, 
                                                                              return_all=True,
-                                                                             mother_daughters=self.mother_daughters
+                                                                             mother_daughters=self.mother_daughters,
+                                                                             unique_ID=unique_ID
                                                                              )
         
 
@@ -1326,6 +1327,7 @@ class tracker:
                     IoA_thresh_aggressive:float  = 0.5,
                     min_daughter:int = 2,
                     max_daughter:int = 2,
+                    unique_ID: NotGUIParam =None,
                     ):
         """
         Tracks cell division in a single frame. (This is used for real time tracking in the GUI)
@@ -1350,7 +1352,7 @@ class tracker:
 
         segm_video = [previous_frame_labels, current_frame_labels]
         tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive)
-        tracker.track_frame(1, IDs=IDs)
+        tracker.track_frame(1, IDs=IDs, unique_ID=unique_ID)
         tracked_video = tracker.tracked_video
 
         mother_daughters_pairs = tracker.mother_daughters

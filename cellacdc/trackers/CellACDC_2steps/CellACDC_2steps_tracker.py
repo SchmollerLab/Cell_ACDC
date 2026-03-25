@@ -160,7 +160,7 @@ class tracker:
             curr_rp, 
             IoA_thresh=overlap_threshold, 
             return_prev_IDs=False, 
-            uniqueID=unique_ID
+            unique_ID=unique_ID
         )
         
         prev_rp_mapper = {obj.label: obj for obj in prev_rp}
