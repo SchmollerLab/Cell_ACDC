@@ -7668,10 +7668,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             hoveredPoints = action.scatterItem.pointsAt(event.pos())
             if len(hoveredPoints) > 0:
                 removed_ids = self.removeClickedPoints(action, hoveredPoints)
-                if not magicPromptsON and len(removed_ids) > 0:
-                    addPointsByClickingButton.pointIdSpinbox.setValue(min(removed_ids))
+                if not magicPromptsON:
+                    removed_id = min(removed_ids)
+                    addPointsByClickingButton.pointIdSpinbox.setValue(removed_id)
                     addPointsByClickingButton.pointIdSpinbox.removedId = (
-                        min(removed_ids)
+                        removed_id
                     )
                 else:
                     self.restorePrevPointIdRightClick(addPointsByClickingButton)

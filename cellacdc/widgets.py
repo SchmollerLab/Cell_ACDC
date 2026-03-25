@@ -3827,6 +3827,7 @@ class formWidget(QWidget):
             addComputeButton=False,
             key='',
             infoTxt='',
+            toolTip='',
             parent=None
         ):
         QWidget.__init__(self, parent)
@@ -3870,6 +3871,11 @@ class formWidget(QWidget):
         self.labelRight.setText(labelTextRight)
         self.labelRight.setFont(font)
         self.items.append(self.labelRight)
+        
+        if toolTip:
+            self.labelLeft.setToolTip(toolTip)
+            self.widget.setToolTip(toolTip)
+            self.labelRight.setToolTip(toolTip)
 
         if addInfoButton:
             infoButton = QPushButton(self)
