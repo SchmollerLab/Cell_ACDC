@@ -325,6 +325,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.whitelistOriginalIDs = None
         self.whyNavigateDisabled = set()
         self.autoSaveTimer = QTimer()
+        
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
             autoSaveIntevalValue = 2
@@ -414,6 +415,128 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.installEventFilter(self)
         
         self.logger.info('GUI ready.')
+        
+    def initGlobalAttr(self):
+        self.setOverlayColors()
+
+        self.initImgCmap()
+
+        # Colormap
+        self.setLut()
+
+        self.fluoDataChNameActions = []
+
+        self.splineHoverON = False
+        self.tempSegmentON = False
+        self.xyOnCtrlPressedFirstTime = None
+        self.typingEditID = False
+        self.prevAnnotOptions = None
+        self.ghostObject = None
+        self.autoContourHoverON = False
+        self.navigateScrollBarStartedMoving = True
+        self.zSliceScrollBarStartedMoving = True
+        self.labelRoiRunning = False
+        self.isRangeReset = True
+        self.lastManualSeparateState = None
+        self.editIDmergeIDs = True
+        self.doNotAskAgainExistingID = False
+        self.doubleRightClickTimeElapsed = False
+        self.isRealTimeTrackerInitialized = False
+        self.isWarningCcaIntegrity = False
+        self.isDoubleRightClick = False
+        self.isExportingVideo = False
+        self.pointsLayersNeverToggled = True
+        self.highlightedIDopts = None
+        self.timestampStartTimedelta = timedelta(seconds=0)
+        self.keptObjectsIDs = widgets.KeptObjectIDsList(
+            self.keptIDsLineEdit, self.keepIDsConfirmAction
+        )
+        self._ZprojWidgersEnabledState = None
+        self.imgValueFormatter = 'd'
+        self.rawValueFormatter = 'd'
+        self.lastHoverID = -1
+        self.annotOptionsToRestore = None
+        self.annotOptionsToRestoreRight = None
+        self.rescaleIntensChannelHowMapper = {
+            self.user_ch_name: 'Rescale each 2D image'
+        }
+        self.timestampDialog = None
+        self.scaleBarDialog = None
+        self.countObjsWindow = None
+        self.initLabelRoiModelDialog = None
+
+        # Second channel used by cellpose
+        self.secondChannelName = None
+
+        self.ax1_viewRange = None
+        self.measurementsWin = None
+
+        self.model_kwargs = None
+        self.segmModelName = None
+        self.labelRoiModel = None
+        self.autoSegmDoNotAskAgain = False
+        self.labelRoiGarbageWorkers = []
+        self.labelRoiActiveWorkers = []
+
+        self.clickedOnBud = False
+        self.postProcessSegmWin = None
+
+        self.UserEnforced_DisabledTracking = False
+        self.UserEnforced_Tracking = False
+
+        self.ax1BrushHoverID = 0
+        
+        self.disabled_cca_warnings = set()
+
+        self.last_pos_i = -1
+        self.last_frame_i = -1
+
+        # Plots items
+        self.isMouseDragImg2 = False
+        self.isMouseDragImg1 = False
+        self.isMovingLabel = False
+        self.isRightClickDragImg1 = False
+        self.clickObjYc, self.clickObjXc = None, None
+
+        self.cca_df_colnames = cca_df_colnames
+        self.cca_df_dtypes = [
+            str, int, int, str, int, int, bool, bool, int
+        ]
+        self.cca_df_default_values = list(base_cca_dict.values())
+        self.cca_df_int_cols = [
+            col for col in cca_df_colnames if type(base_cca_dict[col]) == int
+        ]
+        self.lin_tree_df_bool_col = [
+            col for col in cca_df_colnames 
+            if isinstance(base_cca_dict[col], bool)
+        ]
+
+        self.lin_tree_col_checks = [
+            'generation_num',
+        ]
+
+        # self.lin_tree_df_colnames = set(base_cca_df.keys()) | set(lineage_tree_cols)
+        # # self.lin_tree_df_dtypes = [ #dk if i need this, for now ignored
+        # #     str, int, int, str, int, int, bool, bool, int
+        # # ]
+        # self.lin_tree_df_default_values = list(base_cca_df.values()) + lineage_tree_cols_std_val
+        self.lin_tree_df_int_cols = [
+            'generation_num',
+            'relative_ID',
+            'emerg_frame_i',
+            'division_frame_i',
+            'corrected_on_frame_i'
+        ]
+        self.lin_tree_df_bool_col = [
+            'is_history_known',
+        ]
+
+        self.lin_tree_col_checks = [
+            'generation_num',
+        ]
+
+        self.lin_tree_df_colnames = self.lin_tree_df_int_cols + self.lin_tree_df_bool_col + self.lin_tree_col_checks
+        self.SegForLostIDsSettings =  {}
     
     def setWindowIcon(self, icon=None):
         if icon is None:
@@ -7544,8 +7667,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             x, y = event.pos().x(), event.pos().y()
             hoveredPoints = action.scatterItem.pointsAt(event.pos())
             if len(hoveredPoints) > 0:
-                removed_id = self.removeClickedPoints(action, hoveredPoints)
+                removed_ids = self.removeClickedPoints(action, hoveredPoints)
                 if not magicPromptsON:
+                    removed_id = min(removed_ids)
                     addPointsByClickingButton.pointIdSpinbox.setValue(removed_id)
                     addPointsByClickingButton.pointIdSpinbox.removedId = (
                         removed_id
@@ -20156,128 +20280,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # To ensure mapping to colors we need to normalize image
             self.normalizeByMaxAction.setChecked(True)
     
-    def initGlobalAttr(self):
-        self.setOverlayColors()
-
-        self.initImgCmap()
-
-        # Colormap
-        self.setLut()
-
-        self.fluoDataChNameActions = []
-
-        self.splineHoverON = False
-        self.tempSegmentON = False
-        self.xyOnCtrlPressedFirstTime = None
-        self.typingEditID = False
-        self.prevAnnotOptions = None
-        self.ghostObject = None
-        self.autoContourHoverON = False
-        self.navigateScrollBarStartedMoving = True
-        self.zSliceScrollBarStartedMoving = True
-        self.labelRoiRunning = False
-        self.isRangeReset = True
-        self.lastManualSeparateState = None
-        self.editIDmergeIDs = True
-        self.doNotAskAgainExistingID = False
-        self.doubleRightClickTimeElapsed = False
-        self.isRealTimeTrackerInitialized = False
-        self.isWarningCcaIntegrity = False
-        self.isDoubleRightClick = False
-        self.isExportingVideo = False
-        self.pointsLayersNeverToggled = True
-        self.highlightedIDopts = None
-        self.timestampStartTimedelta = timedelta(seconds=0)
-        self.keptObjectsIDs = widgets.KeptObjectIDsList(
-            self.keptIDsLineEdit, self.keepIDsConfirmAction
-        )
-        self._ZprojWidgersEnabledState = None
-        self.imgValueFormatter = 'd'
-        self.rawValueFormatter = 'd'
-        self.lastHoverID = -1
-        self.annotOptionsToRestore = None
-        self.annotOptionsToRestoreRight = None
-        self.rescaleIntensChannelHowMapper = {
-            self.user_ch_name: 'Rescale each 2D image'
-        }
-        self.timestampDialog = None
-        self.scaleBarDialog = None
-        self.countObjsWindow = None
-        self.initLabelRoiModelDialog = None
-
-        # Second channel used by cellpose
-        self.secondChannelName = None
-
-        self.ax1_viewRange = None
-        self.measurementsWin = None
-
-        self.model_kwargs = None
-        self.segmModelName = None
-        self.labelRoiModel = None
-        self.autoSegmDoNotAskAgain = False
-        self.labelRoiGarbageWorkers = []
-        self.labelRoiActiveWorkers = []
-
-        self.clickedOnBud = False
-        self.postProcessSegmWin = None
-
-        self.UserEnforced_DisabledTracking = False
-        self.UserEnforced_Tracking = False
-
-        self.ax1BrushHoverID = 0
-        
-        self.disabled_cca_warnings = set()
-
-        self.last_pos_i = -1
-        self.last_frame_i = -1
-
-        # Plots items
-        self.isMouseDragImg2 = False
-        self.isMouseDragImg1 = False
-        self.isMovingLabel = False
-        self.isRightClickDragImg1 = False
-        self.clickObjYc, self.clickObjXc = None, None
-
-        self.cca_df_colnames = cca_df_colnames
-        self.cca_df_dtypes = [
-            str, int, int, str, int, int, bool, bool, int
-        ]
-        self.cca_df_default_values = list(base_cca_dict.values())
-        self.cca_df_int_cols = [
-            col for col in cca_df_colnames if type(base_cca_dict[col]) == int
-        ]
-        self.lin_tree_df_bool_col = [
-            col for col in cca_df_colnames 
-            if isinstance(base_cca_dict[col], bool)
-        ]
-
-        self.lin_tree_col_checks = [
-            'generation_num',
-        ]
-
-        # self.lin_tree_df_colnames = set(base_cca_df.keys()) | set(lineage_tree_cols)
-        # # self.lin_tree_df_dtypes = [ #dk if i need this, for now ignored
-        # #     str, int, int, str, int, int, bool, bool, int
-        # # ]
-        # self.lin_tree_df_default_values = list(base_cca_df.values()) + lineage_tree_cols_std_val
-        self.lin_tree_df_int_cols = [
-            'generation_num',
-            'relative_ID',
-            'emerg_frame_i',
-            'division_frame_i',
-            'corrected_on_frame_i'
-        ]
-        self.lin_tree_df_bool_col = [
-            'is_history_known',
-        ]
-
-        self.lin_tree_col_checks = [
-            'generation_num',
-        ]
-
-        self.lin_tree_df_colnames = self.lin_tree_df_int_cols + self.lin_tree_df_bool_col + self.lin_tree_col_checks
-        self.SegForLostIDsSettings =  {}
-    
     def initMetricsToSave(self, posData):
         self._measurements_kernel._init_metrics_to_save(posData)
 
@@ -23630,6 +23632,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         saveToolbutton.sigLeftClick.connect(self.savePointsAddedByClicking)
         saveAction = toolbar.addWidget(saveToolbutton)
         saveToolbutton.action = saveAction
+        saveAction.saveToolbutton = saveToolbutton
         saveAction.toolButton = toolButton
         toolButton.saveAction = saveAction
         toolButton.saveToolbutton = saveToolbutton
@@ -23747,10 +23750,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     @exception_handler
     def savePointsAddedByClicking(self, button, event):
         sender = button.action
-        
         toolButton = sender.toolButton
         tableEndName = toolButton.clickEntryTableEndName
-        
+            
         self.logger.info(f'Saving _{tableEndName}.csv table...')
         
         self.savePointsAddedByClickingFromEndname(tableEndName)
@@ -24154,21 +24156,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             zSlice = None
         
-        id = None
+        removed_ids = []
         for point in points:
             pos = point.pos()
             x, y = pos.x(), pos.y()
             if zSlice is not None:
-                framePointsData[zSlice]['x'].remove(x)
-                framePointsData[zSlice]['y'].remove(y)
-                framePointsData[zSlice]['id'].remove(point.data())
+                zSliceRad = action.zRadius
+                sliceFramePointsData = [framePointsData[z] for z in range(
+                    zSlice-zSliceRad, zSlice+zSliceRad+1
+                ) if z in framePointsData.keys()]
             else:
-                framePointsData['x'].remove(x)
-                framePointsData['y'].remove(y)
-                framePointsData['id'].remove(point.data())
-            id = point.data()
+                sliceFramePointsData = [framePointsData]
+
+
+            for sliceFramePointsData in sliceFramePointsData:
+                if point.data() in sliceFramePointsData['id']:
+                    sliceFramePointsData['x'].remove(x)
+                    sliceFramePointsData['y'].remove(y)
+                    sliceFramePointsData['id'].remove(point.data())
+                    removed_ids.append(point.data())
         
-        return id
+        return removed_ids
     
     def restorePrevPointIdRightClick(self, addPointsByClickingButton):
         # Try to restore the id that was there before hovering 
@@ -24393,20 +24401,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 z_int = round(zc)
                 if z_int not in action.pointsData[self.pos_i][posData.frame_i]:
                     action.pointsData[self.pos_i][posData.frame_i][z_int] = {
-                        'x': [xc], 'y': [yc]
+                        'x': [xc], 'y': [yc], 'id': [obj.label]
                     }
                 else:
                     z_data = action.pointsData[self.pos_i][posData.frame_i][z_int]
                     z_data['x'].append(xc)
                     z_data['y'].append(yc)
+                    z_data['id'].append(obj.label)
             else:
                 yc, xc = centroid
                 if 'y' not in action.pointsData[self.pos_i][posData.frame_i]:
                     action.pointsData[self.pos_i][posData.frame_i]['y'] = [yc]
                     action.pointsData[self.pos_i][posData.frame_i]['x'] = [xc]
+                    action.pointsData[self.pos_i][posData.frame_i]['id'] = (
+                        [obj.label]
+                    )
                 else:
                     action.pointsData[self.pos_i][posData.frame_i]['y'].append(yc)
                     action.pointsData[self.pos_i][posData.frame_i]['x'].append(xc)
+                    action.pointsData[self.pos_i][posData.frame_i]['id'].append(
+                        obj.label
+                    )
     
     def drawPointsLayers(self, computePointsLayers=True):
         posData = self.data[self.pos_i]
@@ -24450,7 +24465,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                             xx.extend(z_data['x'])
                             yy.extend(z_data['y'])
                             ids.extend(z_data['id'])
-                            data.extend(z_data['data'])
+                            try:
+                                data.extend(z_data['data'])
+                            except KeyError as err:
+                                # data is needed only for loaded tables
+                                pass 
                     else:
                         xx, yy, ids, data = [], [], [], []
                         # z-projection --> draw all points
@@ -24458,13 +24477,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                             xx.extend(z_data['x'])
                             yy.extend(z_data['y'])
                             ids.extend(z_data['id'])
-                            data.extend(z_data['data'])
+                            try:
+                                data.extend(z_data['data'])
+                            except KeyError as err:
+                                # data is needed only for loaded tables
+                                pass 
                 else:
                     # 2D segmentation
                     xx = framePointsData['x']
                     yy = framePointsData['y']
                     ids = framePointsData['id']
-                    data = framePointsData['data']
+                    try:
+                        data = framePointsData['data']
+                    except KeyError as err:
+                        # data is needed only for loaded tables
+                        pass    
                     
                 brushColors = [
                     action.brushColor if id != 0 else action.brushColorId0
@@ -24481,12 +24508,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if action.layerTypeIdx == 2:
                     # For loaded table show the rest of the table as a tooltip
                     data = data
+                    show_data_as_tip = True
                 else:
                     data = ids
+                    show_data_as_tip = False
                 
                 xx = np.array(xx) # + 0.5
                 yy = np.array(yy) # + 0.5
                 
+                action.scatterItem.show_data_as_tip = show_data_as_tip
                 action.scatterItem.setData(
                     xx, yy, data=data, brush=brushes, pen=pens
                 )
@@ -29215,7 +29245,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             buttonsTexts=('Cancel', 'No, do not save', 'Yes, save points')
         )
         if msg.clickedButton == saveButton:
-            self.savePointsAddedByClicking(saveAction, None)
+            self.savePointsAddedByClicking(saveAction.saveToolbutton, None)
         
         return msg.cancel
     

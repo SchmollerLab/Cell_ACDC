@@ -681,12 +681,18 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         
         '----------------------------------------------------------------------' 
         row += 1
+        zHeightTooltip = (
+            'If "Z-depth" is greater than 1, the points will be annotated '
+            'in all the z-slices in the range `z - (Z-depth/2) < z < z + (Z-depth/2)`\n'
+            'where `z` is the center z-slice of the added point.'
+        )
         self.zHeightSpinBox = widgets.OddSpinBox()
         self.zHeightSpinBox.setValue(1)
         self.zHeightSpinBox.setMinimum(1)
         self.zHeightWidget = widgets.formWidget(
             self.zHeightSpinBox, stretchWidget=True,
-            labelTextLeft='Z- height: ', parent=self
+            labelTextLeft='Z-depth: ', parent=self,
+            toolTip=zHeightTooltip
         )
         layout.addFormWidget(self.zHeightWidget, row=row)
         '----------------------------------------------------------------------'
