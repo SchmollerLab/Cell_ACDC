@@ -61,6 +61,7 @@ from . import _warnings
 from . import exception_handler
 from . import user_profile_path
 from . import cellacdc_path
+from . config import parser_args
 
 try:
     import spotmax
@@ -484,7 +485,7 @@ class mainWin(QMainWindow):
 
         
         utilsMenu.addAction(self.debugAction)
-        self.debugAction.setVisible(False)
+        self.debugAction.setVisible(parser_args['debug'])
 
         menuBar.addMenu(helpMenu)
     
@@ -1242,19 +1243,24 @@ class mainWin(QMainWindow):
         return not msg.cancel
     
     def _debug(self):
-        printl('ciao')
-        from qtpy.QtWidgets import QDialog, QTreeWidget, QTreeWidgetItem
-        secondWin = QDialog(self)
+        try:
+            from . import q_debug
+            q_debug.q_debug(self)
+        except:
+            raise
+            printl('ciao')
+            from qtpy.QtWidgets import QDialog, QTreeWidget, QTreeWidgetItem
+            secondWin = QDialog(self)
 
-        layout = QVBoxLayout()
+            layout = QVBoxLayout()
 
-        widget = QTreeWidget()
-        item = QTreeWidgetItem(['ciao'])
-        widget.addTopLevelItem(item)
-        
-        layout.addWidget(widget)
-        secondWin.setLayout(layout)
-        secondWin.exec_()
+            widget = QTreeWidget()
+            item = QTreeWidgetItem(['ciao'])
+            widget.addTopLevelItem(item)
+            
+            layout.addWidget(widget)
+            secondWin.setLayout(layout)
+            secondWin.exec_()
     
     def askRestartAcdc(self):
         txt = html_utils.paragraph(
