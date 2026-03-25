@@ -325,7 +325,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.whitelistOriginalIDs = None
         self.whyNavigateDisabled = set()
         self.autoSaveTimer = QTimer()
-        self.addPointsLayerAction = None
         
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
@@ -24095,7 +24094,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         action.snapToMax = False
         action.loadedDfInfo = self.addPointsWin.loadedDfInfo
         self.setPointsLayerLoadedDfEndanme(action)
-        self.addPointsLayerAction = action
         
         if self.addPointsWin.layerType.startswith('Click to annotate point'):
             action.snapToMax = self.addPointsWin.snapToMaxToggle.isChecked()
@@ -24162,7 +24160,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             pos = point.pos()
             x, y = pos.x(), pos.y()
             if zSlice is not None:
-                zSliceRad = self.addPointsLayerAction.zRadius
+                zSliceRad = action.zRadius
                 sliceFramePointsData = [framePointsData[z] for z in range(
                     zSlice-zSliceRad, zSlice+zSliceRad+1
                 ) if z in framePointsData.keys()]
