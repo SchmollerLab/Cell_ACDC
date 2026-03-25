@@ -19022,3 +19022,94 @@ class AutoSaveIntervalDialog(QBaseDialog):
             self.autoSaveIntervalWidget.unitCombobox.currentText()
         )
         self.close()
+
+class TestSegmModelInitalDialog(QBaseDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.cancel = True
+        
+        mainLayout = QVBoxLayout()
+        entriesLayout = widgets.FormLayout()
+        
+        row = 0
+        self.startFrameNumberSpinbox = widgets.SpinBox()
+        self.startFrameNumberSpinbox.setMinimum(1)
+        
+        self.startFrameNumberFormWidget = widgets.formWidget(
+            self.startFrameNumberSpinbox, 
+            labelTextLeft='Start frame number',
+            addActivateCheckbox=True
+        )
+        entriesLayout.addFormWidget(self.startFrameNumberFormWidget, row=row)
+        
+        row += 1
+        self.stopFrameNumberSpinbox = widgets.SpinBox()
+        self.stopFrameNumberSpinbox.setMinimum(1)
+        
+        self.stopFrameNumberFormWidget = widgets.formWidget(
+            self.stopFrameNumberSpinbox, 
+            labelTextLeft='Stop frame number',
+            addActivateCheckbox=True
+        )
+        entriesLayout.addFormWidget(self.stopFrameNumberFormWidget, row=row)
+        
+        row += 1
+        self.startZsliceNumberSpinbox = widgets.SpinBox()
+        self.startZsliceNumberSpinbox.setMinimum(1)
+        
+        self.startZsliceNumberFormWidget = widgets.formWidget(
+            self.startZsliceNumberSpinbox, 
+            labelTextLeft='Start z-slice number',
+            addActivateCheckbox=True
+        )
+        entriesLayout.addFormWidget(self.startZsliceNumberFormWidget, row=row)
+        
+        row += 1
+        self.stopZsliceNumberSpinbox = widgets.SpinBox()
+        self.stopZsliceNumberSpinbox.setMinimum(1)
+        
+        self.stopZsliceNumberFormWidget = widgets.formWidget(
+            self.stopZsliceNumberSpinbox, 
+            labelTextLeft='Stop z-slice number',
+            addActivateCheckbox=True
+        )
+        entriesLayout.addFormWidget(self.stopZsliceNumberFormWidget, row=row)
+        
+        row += 1
+        
+        self.isTimelapseToggleFormWidget = widgets.formWidget(
+            widgets.Toggle(), 
+            labelTextLeft='Is timelapse?',
+            stretchWidget=False,
+            valueGetterName='isChecked'
+        )
+        entriesLayout.addFormWidget(self.isTimelapseToggleFormWidget, row=row)
+        
+        
+        # self.stopFrameNumberSpinbox
+        # self.startZsliceNumberSpinbox
+        # self.stopZsliceNumberSpinbox
+        # self.isTimelapseToggle
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addLayout(entriesLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def ok_cb(self):
+        self.cancel = False
+        
+        self.start_frame_n = self.startFrameNumberFormWidget.value()
+        self.stop_frame_n = self.stopFrameNumberFormWidget.value()
+        self.start_z_slice_n = self.startZsliceNumberFormWidget.value()
+        self.stop_z_slice_n = self.stopZsliceNumberFormWidget.value()
+        self.is_timelapse = self.isTimelapseToggleFormWidget.value()
+        
+        self.close()

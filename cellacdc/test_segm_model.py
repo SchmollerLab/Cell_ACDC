@@ -20,10 +20,6 @@ try:
 except Exception as e:
     pass
 
-FRAME_I = None # None # 0 # 300
-UNTIL_FRAME_I = 10 # None
-IS_TIMELAPSE = True
-
 test_data = None
 # test_data = data.Cdc42TimeLapseData()
 # # image_data = test_data.image_data()
@@ -35,6 +31,25 @@ test_data = None
 
 app, splashScreen = _setup_app(splashscreen=True)  
 splashScreen.close()
+
+initialWindow = apps.TestSegmModelInitalDialog()
+initialWindow.exec_()
+if initialWindow.cancel:
+    print('Execution cancelled.')
+    exit()
+
+start_frame_idx = initialWindow.start_frame_n
+if start_frame_idx is not None:
+    start_frame_idx -= 1
+    
+stop_frame_n = initialWindow.stop_frame_n 
+
+start_z_slice_idx = initialWindow.start_z_slice_n
+if start_z_slice_idx is not None:
+    start_z_slice_idx -= 1
+    
+stop_z_slice_n = initialWindow.stop_z_slice_n
+is_timelapse = initialWindow.is_timelapse
 
 if test_data is None:
     tif_filepath, _ = qtpy.compat.getopenfilename(
@@ -60,13 +75,13 @@ else:
 posData.loadOtherFiles(load_segm_data=False, load_metadata=True)
 posData.buildPaths()
 
-if FRAME_I is None:
-    img = image_data
+if is_timelapse:
+    img = image_data[
+        start_frame_idx:stop_frame_n, 
+        start_z_slice_idx:stop_z_slice_n
+    ]
 else:
-    img = image_data[FRAME_I]
-
-if UNTIL_FRAME_I is not None:
-    img = img[:UNTIL_FRAME_I]
+    img = image_data[start_z_slice_idx:stop_z_slice_n]
 
 from cellacdc.plot import imshow
 imshow(img)
@@ -132,10 +147,12 @@ if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
 
 print('Input image shape: ', img.shape)
 
+import pdb; pdb.set_trace()
+
 lab = core.segm_model_segment(
     model, img, win.model_kwargs, frame_i=FRAME_I, 
     preproc_recipe=win.preproc_recipe, posData=posData, 
-    is_timelapse_model_and_data=is_segment3DT_available and IS_TIMELAPSE,
+    is_timelapse_model_and_data=is_segment3DT_available and is_timelapse,
     reduce_memory_usage=win.reduceMemoryUsage,
 )
 
