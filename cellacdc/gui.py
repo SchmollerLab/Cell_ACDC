@@ -23746,11 +23746,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     @exception_handler
     def savePointsAddedByClicking(self, button, event):
-        sender = button.action
-        
+        if hasattr(button, 'action'):
+            sender = button.action
+        else:
+            sender = button
+            
         toolButton = sender.toolButton
         tableEndName = toolButton.clickEntryTableEndName
-        
+            
         self.logger.info(f'Saving _{tableEndName}.csv table...')
         
         self.savePointsAddedByClickingFromEndname(tableEndName)

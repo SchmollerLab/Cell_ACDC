@@ -9972,7 +9972,6 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
         self.clearTextItems()
         super().setData(*args, **kwargs)
         data = kwargs.get('data')
-        printl(data)
         if data is None:
             return
         
@@ -9980,15 +9979,12 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
             return
         
         first_point_data = data[0]
-        printl(first_point_data)
         if not isinstance(first_point_data, (int, str)):
             return
         
-        printl(self.drawIds)
         if not self.drawIds:
             return
         
-        printl(self.show_data_as_tip)
         if self.show_data_as_tip:
             return
         
@@ -10000,7 +9996,6 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
         # for x, y, point_data in zip(xx, yy, data):
         for point in self.points():
             text = str(point.data())
-            printl(text)
             if not text:
                 continue
             
