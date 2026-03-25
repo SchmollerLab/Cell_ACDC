@@ -8,6 +8,8 @@ import pandas as pd
 
 from functools import partial
 
+import gc
+
 from qtpy import QtCore, QtWidgets
 from qtpy.QtWidgets import (
     QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
@@ -1918,6 +1920,7 @@ class mainWin(QMainWindow):
     
     def progressWinClosed(self):
         self.progressWin = None
+        self._gc_collect()
     
     def workerInitProgressbar(self, totalIter):
         if self.progressWin is None:
@@ -1978,6 +1981,7 @@ class mainWin(QMainWindow):
             self.dataPrepWins.remove(dataPrepWin)
         except ValueError:
             pass
+        self._gc_collect()
 
     def launchSegm(self, checked=False):
         c = self.segmButton.palette().button().color().name()
@@ -2002,6 +2006,7 @@ class mainWin(QMainWindow):
 
     def segmWinClosed(self):
         self.segmButton.setPalette(self.defaultButtonPalette)
+        self._gc_collect()
 
     def launchGui(self, checked=False):
         self.logger.info('Opening GUI...')
@@ -2035,12 +2040,17 @@ class mainWin(QMainWindow):
     
     def spotmaxGuiClosed(self, spotmaxWin):
         self.spotmaxWins.remove(spotmaxWin)
+        self._gc_collect()
         
     def guiClosed(self, guiWin):
         try:
             self.guiWins.remove(guiWin)
         except ValueError:
             pass
+        self._gc_collect()
+        
+    def _gc_collect(self):
+        QTimer.singleShot(0, gc.collect)
 
     def launchAlignUtil(self, checked=False):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
