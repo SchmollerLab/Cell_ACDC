@@ -25982,6 +25982,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         viewCombinedImageData = (
             self.viewCombineChannelDataToggle.isChecked()
+            and self.combineDialog is not None
             and not self.combineDialog.saveAsSegm()
         )
         

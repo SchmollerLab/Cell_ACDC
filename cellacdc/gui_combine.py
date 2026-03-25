@@ -125,6 +125,9 @@ class CombineGuiElements:
     def updateCombineChannelsPreview(self, *args, **kwargs):
         force = kwargs.get('force', False)
         
+        if self.combineDialog is None:
+            return
+        
         if not self.combineDialog.isVisible() and not force:
             return
         
@@ -262,6 +265,8 @@ class CombineGuiElements:
         self.combineDialog = None
 
     def combineViewAsSegmSetup(self):
+        if self.combineDialog is None:
+            return
         combineViewAsSegm = self.combineDialog.saveAsSegm()
         if not combineViewAsSegm:
             self.img1.setUseCombined(True)
