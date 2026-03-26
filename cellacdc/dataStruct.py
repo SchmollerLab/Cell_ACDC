@@ -508,7 +508,7 @@ class bioFormatsWorker(QObject):
             self.PhysicalSizeZ = PhysicalSizeZ
             # self.chNames = chNames
             self.emWavelens = emWavelens
-            return
+            return False
 
         sampleImgData = None
         while True:
@@ -566,6 +566,8 @@ class bioFormatsWorker(QObject):
         self.saveChannels = self.metadataWin.saveChannels
         self.emWavelens = self.metadataWin.emWavelens
         self.addImageName = self.metadataWin.addImageName
+        
+        return False
 
     def saveToPosFolder(
             self, p, raw_src_path, exp_dst_path, filename, series, pos_n,
@@ -575,10 +577,11 @@ class bioFormatsWorker(QObject):
 
         if os.path.basename(raw_src_path) == 'raw_microscopy_files':
             raw_src_path = os.path.dirname(raw_src_path)
-        
-        pos_name = f'Position_{pos_n}'
+
+        in_file_pos_name = f'Position_{p+1}'
         savePos = (
-            'All Positions' in self.selectedPos or pos_name in self.selectedPos
+            'All Positions' in self.selectedPos 
+            or in_file_pos_name in self.selectedPos
         )
         if not savePos:
             return False
@@ -1033,8 +1036,8 @@ class bioFormatsWorker(QObject):
             pos_n = p + self.start_pos_n
             if self.rawDataStruct == 0:
                 if not self.overWriteMetadata:
-                    abort = self.readMetadata(raw_src_path, filename)
-                    if abort:
+                    cancel = self.readMetadata(raw_src_path, filename)
+                    if cancel:
                         self.cancelled = True
                         break
 
@@ -1042,28 +1045,30 @@ class bioFormatsWorker(QObject):
                 self.numPosDigits = len(str(self.numPos))
                 if p == 0:
                     self.initPbar.emit(self.numPos*self.SizeC)
-                for p in range(self.SizeS):
-                    abort = self.saveToPosFolder(
-                        p, raw_src_path, exp_dst_path, filename, p, pos_n
+                
+                for in_file_p in range(self.SizeS):
+                    cancel = self.saveToPosFolder(
+                        in_file_p, raw_src_path, exp_dst_path, filename, 
+                        in_file_p, pos_n
                     )
-                    if abort:
+                    if cancel:
                         self.cancelled = True
                         break
 
             elif self.rawDataStruct == 1:
                 if not self.overWriteMetadata:
-                    abort = self.readMetadata(raw_src_path, filename)
-                    if abort:
+                    cancel = self.readMetadata(raw_src_path, filename)
+                    if cancel:
                         self.cancelled = True
                         break
                 self.numPos = len(self.rawFilenames)
                 self.numPosDigits = len(str(self.numPos))
                 if p == 0:
                     self.initPbar.emit(self.numPos*self.SizeC)
-                abort = self.saveToPosFolder(
+                cancel = self.saveToPosFolder(
                     p, raw_src_path, exp_dst_path, filename, 0, pos_n
                 )
-                if abort:
+                if cancel:
                     self.cancelled = True
                     break
 
