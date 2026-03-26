@@ -14818,7 +14818,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 _q_debug.q_debug(self)
             except Exception as err:
                 printl(traceback.format_exc())
-                printl('[ERROR]: Error with '_qdebug' module. See Traceback above.)
+                printl('[ERROR]: Error with "_qdebug" module. See Traceback above.)
                 pass
 
         if not self.isDataLoaded:
