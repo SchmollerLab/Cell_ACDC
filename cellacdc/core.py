@@ -26,6 +26,7 @@ import scipy.ndimage.morphology
 from itertools import product
 import pathlib
 from natsort import natsorted
+import sympy as sp
 
 from math import sqrt
 from scipy.stats import norm
@@ -2268,6 +2269,7 @@ def preprocess_image_from_recipe_multithread(
 
 def combine_channels_multithread(
         steps: Dict[str, Dict[str, Any]],
+        formula: str,
         images_paths: List[str],
         keep_input_data_type: bool,
         save_filepaths: List[str]=None,
@@ -2276,19 +2278,6 @@ def combine_channels_multithread(
         logger_func: Callable=None,
         output_as_segm: bool = False,
     ):
-    channel_names = []
-    multipliers = []
-    operators = []
-    binarizes = []
-    offsets = []
-    for step_n, step in steps.items():        
-        channel = step['channel']
-        channel_names.append(channel)
-        multipliers.append(step['multiplier'])
-        operators.append(step['operator'])
-        binarizes.append(step['binarize'])
-        offsets.append(step['offset'])
-            
     with ThreadPoolExecutor(max_workers=n_threads) as executor:
         if signals:
             signals.initProgressBar.emit(len(images_paths))
@@ -2299,15 +2288,12 @@ def combine_channels_multithread(
         
         func = partial(
             combine_channels_executor_map,
-            channel_names=channel_names,
-            operators=operators,
-            multipliers=multipliers,
             keep_input_data_type=keep_input_data_type,
             return_img=False,
             logger_func=logger_func,
             output_as_segm=output_as_segm,
-            binarizes=binarizes,
-            offsets=offsets
+            formula=formula,
+            steps=steps,
         )
         iterable = zip(images_paths, save_filepaths)
         result = executor.map(func, iterable)
@@ -2326,20 +2312,9 @@ def combine_channels_multithread_return_imgs(
         signals=None,
         logger_func: Callable=None,
         output_as_segm: bool = False,
+        formula: str = None,
     ):
 
-    channel_names = []
-    multipliers = []
-    operators = []
-    binarizes = []
-    offsets = []
-
-    for step in steps.values():
-        channel_names.append(step['channel'])
-        multipliers.append(step['multiplier'])
-        operators.append(step['operator'])
-        binarizes.append(step['binarize'])
-        offsets.append(step['offset'])
 
     total = len(keys)
     
@@ -2356,15 +2331,12 @@ def combine_channels_multithread_return_imgs(
         func = partial(
             combine_channels_executor_map_return_img,
             data=data,
-            channel_names=channel_names,
-            operators=operators,
-            multipliers=multipliers,
             keep_input_data_type=keep_input_data_type,
             return_img=True,
             logger_func=logger_func,
             output_as_segm=output_as_segm,
-            binarizes=binarizes,
-            offsets=offsets
+            formula=formula,
+            steps=steps,
         )
         iterable = keys
         result = executor.map(func, iterable)
@@ -2459,19 +2431,11 @@ def _combine_channels_operation_applier(i, input_img_added, output_img, operator
         
     return output_img
 
-def _combine_channels_multiplier_apply(multiplier, offset, binarize, input_img):
+def _combine_channels_multiplier_apply(binarize, input_img):
     if binarize == 'binarize':
         input_img = (input_img > 0)
     elif binarize == 'inverse binarize':
         input_img = ~(input_img > 0)
-
-    if offset != 0:
-        # offset is perc of original image
-        input_img = input_img + offset
-
-    if multiplier == 1:
-        return input_img
-    input_img = input_img * multiplier
     return input_img
 
 def _get_img_from_data_key(data, key, num_dim, seg=False):
@@ -2497,9 +2461,7 @@ def _get_img_from_data_key(data, key, num_dim, seg=False):
         )
 
 def combine_channels_func(
-        channel_names: List[str],
-        operators: List[str],
-        multipliers: List[float],
+        steps: Dict[str, Dict[str, Any]],
         keep_input_data_type: bool,
         save_filepath: str=None,
         return_img: bool=False,
@@ -2508,8 +2470,7 @@ def combine_channels_func(
         key: str = None,
         data = None,
         output_as_segm: bool = False,
-        binarizes: List[str] = None,
-        offsets: List[float] = None,
+        formula: str = None,
     ):# -> tuple[Any | ndarray, str, str | Any] | None:
     if not save_filepath and not return_img:
         raise ValueError('Either save_filepath must be provided or return_img must be true')
@@ -2519,6 +2480,9 @@ def combine_channels_func(
     
     fluo_ch_data_list = dict()
     segm_ch_data_list = dict()
+    
+    channel_names = [step['channel'] for step in steps.values()]
+    channel_keys = steps.keys()
     segm_channels, fluo_channel_names, current_segm = myutils.separate_fluo_segment_channels(channel_names)
     original_dtype = None
     if data is None:
@@ -2607,33 +2571,48 @@ def combine_channels_func(
             channel_img_data_int = channel_img_data.astype(np.uint32)
             segm_ch_data_list['current segm.'] = channel_img_data_int
         
-    ch_image_data_list = list()
-    for ch in channel_names:
+    
+    for i, ch in zip(channel_keys, channel_names):
         if ch in fluo_ch_data_list:
             ch_image_data = fluo_ch_data_list[ch]
         elif ch in segm_ch_data_list:
             ch_image_data = segm_ch_data_list[ch]
         else:
             raise ValueError(f'Channel "{ch}" not found.')
-        ch_image_data_list.append(ch_image_data)
+        if steps[i]['channel'] != ch:
+            raise ValueError(f'Channel "{ch}" not found.')
+        
+        steps[i]['channel_data'] = ch_image_data
     
-    for i, ch_image_data in enumerate(ch_image_data_list):
-        multiplier = multipliers[i]
-        binarize = binarizes[i]
-        offset = offsets[i]
-        ch_image_data_list[i] = _combine_channels_multiplier_apply(
-            multiplier, offset, binarize, ch_image_data
+    for i, step_info in steps.items():
+        binarize = step_info['binarize']
+        steps[i]['channel_data'] = _combine_channels_multiplier_apply(
+            binarize, step_info['channel_data']
         )
+        norm_min, norm_max = step_info['min_val'], step_info['max_val']
+        # use rescale_intensity to normalize
+        if norm_min == 0 and norm_max == 1:
+            continue # cases where either the fields where disabled/reset or default, where we already normalized
+        steps[i]['channel_data'] = skimage.exposure.rescale_intensity(
+            steps[i]['channel_data'], 
+            out_range=(norm_min, norm_max)
+        )
+            
 
-    if all(x == "+" for x in operators):
-        output_img = np.sum(ch_image_data_list, axis=0)
-    else:
-        output_img = None
-        for i in range(len(ch_image_data_list)):
-            output_img = _combine_channels_operation_applier(i, 
-                                                            ch_image_data_list[i],
-                                                            output_img, 
-                                                            operators[i])
+    input_img_data = {step['name']: step['channel_data'] for step in steps.values()}
+    
+    symbols = {name: sp.Symbol(name) for name in input_img_data}
+    expr = sp.sympify(formula, locals=symbols)
+
+    used_vars = sorted(str(s) for s in expr.free_symbols)
+    func = sp.lambdify(
+        [symbols[v] for v in used_vars],  # fixed order!
+        expr,
+        modules="numpy"
+    )
+
+    args = [input_img_data[v] for v in used_vars]
+    output_img = func(*args)
 
     if not output_as_segm:
         output_img = skimage.exposure.rescale_intensity(

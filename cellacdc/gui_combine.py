@@ -227,7 +227,7 @@ class CombineGuiElements:
         self.combineMutex = QMutex()
         self.combineWaitCond = QWaitCondition()
         
-        self.combineWorker = workers.CombineWorkerGUI(
+        self.combineWorker = workers.CombineChannelsWorkerGUI(
             self.combineMutex, self.combineWaitCond,
             logger_func=self.logger.info,
             # signals=self.signals # what are the singals for gui???

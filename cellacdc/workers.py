@@ -5656,7 +5656,7 @@ class CustomPreprocessWorkerGUI(QObject):
 
         self.signals.finished.emit(self)
 
-class CombineWorkerGUI(CustomPreprocessWorkerGUI):
+class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
     sigDone = Signal(object, list)
     sigPreviewDone = Signal(object, list)
     sigAskLoadChannels = Signal(set, object)
@@ -5726,6 +5726,7 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             keep_input_data_type: bool,
             key: Tuple[Union[int, None], Union[int, None], Union[int, None]],
             output_as_segm=False,
+            formula=None,
         ):
 
         new_keys = []
@@ -5763,6 +5764,7 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             logger_func=self.logger,
             signals=self.signals,
             output_as_segm=output_as_segm,
+            formula=formula,
 
         )
         return output_imgs, out_keys
@@ -5962,7 +5964,8 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             steps:  Dict[str, Dict[str, Any]],
             appended_text_filename: str,
             keep_input_data_type: bool,
-            n_threads: int = None
+            n_threads: int = None,
+            formula: str = None,
         ):
         save_filepaths = []
         images_path_to_process = []
@@ -5973,20 +5976,6 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             out_ext = '.tif'
             basename_ext = ''
         for images_path in image_paths:
-            # for step_n, step in steps.items():
-            #     channel = step['channel']
-            #     if '_segm' not in channel:
-            #          basename_ext = ''
-                     
-            #     image_filepath = load.get_filepath_from_endname(
-            #         images_path, channel
-            #     )
-            #     _, ext = os.path.splitext(image_filepath)
-            #     if ext != '.npz':
-            #         out_ext = '.tif'
-            #         basename_ext = ''
-            #         break
-
             basename, channels = myutils.getBasenameAndChNames(images_path)
             
             savename = (
@@ -6004,7 +5993,8 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             signals=self.signals,
             logger_func=self.logger.log,
             n_threads=n_threads,
-            output_as_segm=self.saveAsSegm
+            output_as_segm=self.saveAsSegm,
+            formula=formula,
         )
     
     @worker_exception_handler
@@ -6042,12 +6032,14 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             image_paths += [os.path.join(exp_path, pos, 'Images') for pos in pos_foldernames]
 
         self.signals.initProgressBar.emit(len(pos_foldernames))
+        formula = self.formula
         self.applyPipeline(
             image_paths,
             selectedSteps,
             appendedName,
             self.keepInputDataType,
-            n_threads=self.nThreads
+            n_threads=self.nThreads,
+            formula=formula,
         )
 
         self.signals.finished.emit(self)
