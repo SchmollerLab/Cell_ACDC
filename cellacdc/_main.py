@@ -1246,23 +1246,10 @@ class mainWin(QMainWindow):
     
     def _debug(self):
         try:
-            from . import q_debug
-            q_debug.q_debug(self)
-        except:
-            raise
-            printl('ciao')
-            from qtpy.QtWidgets import QDialog, QTreeWidget, QTreeWidgetItem
-            secondWin = QDialog(self)
-
-            layout = QVBoxLayout()
-
-            widget = QTreeWidget()
-            item = QTreeWidgetItem(['ciao'])
-            widget.addTopLevelItem(item)
-            
-            layout.addWidget(widget)
-            secondWin.setLayout(layout)
-            secondWin.exec_()
+            from . import _q_debug
+            _q_debug.q_debug(self)
+        except Exception as err:
+            raise err
     
     def askRestartAcdc(self):
         txt = html_utils.paragraph(

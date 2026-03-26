@@ -14814,10 +14814,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if ev.key() == Qt.Key_Q and self.debug:
             try:
-                from . import q_debug
-                q_debug.q_debug(self)
-            except ImportError:
-                printl('File not found: q_debug.py')
+                from . import _q_debug
+                _q_debug.q_debug(self)
+            except Exception as err:
+                printl(traceback.format_exc())
+                printl('[ERROR]: Error with '_qdebug' module. See Traceback above.)
                 pass
 
         if not self.isDataLoaded:
