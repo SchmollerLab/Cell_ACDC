@@ -14813,7 +14813,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            import pdb; pdb.set_trace()
+            try:
+                from . import _q_debug
+                _q_debug.q_debug(self)
+            except Exception as err:
+                printl(traceback.format_exc())
+                printl('[ERROR]: Error with "_qdebug" module. See Traceback above.')
+                pass
 
         if not self.isDataLoaded:
             self.logger.warning(
