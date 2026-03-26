@@ -3825,8 +3825,10 @@ class formWidget(QWidget):
             addInfoButton=False,
             addApplyButton=False,
             addComputeButton=False,
+            addActivateCheckbox=False,
             key='',
             infoTxt='',
+            valueGetterName='value',
             toolTip='',
             parent=None
         ):
@@ -3835,6 +3837,7 @@ class formWidget(QWidget):
         self.key = key
         self.infoTxt = infoTxt
         self.widgetAlignment = widgetAlignment
+        self.valueGetterName = valueGetterName
 
         widget.setParent(self)
 
@@ -3909,9 +3912,29 @@ class formWidget(QWidget):
             computeButton.setToolTip(f'Compute this step and visualize results')
             computeButton.clicked.connect(self.computeButtonClicked)
             self.items.append(computeButton)
+        
+        self.activateCheckbox = None
+        if addActivateCheckbox:
+            self.activateCheckbox = QCheckBox('Activate')
+            self.activateCheckbox.setChecked(False)
+            self.widget.setDisabled(True)
+            self.activateCheckbox.toggled.connect(self.setWidgetEnabled)
+            self.items.append(self.activateCheckbox)
 
         self.labelLeft.clicked.connect(self.tryChecking)
         self.labelRight.clicked.connect(self.tryChecking)
+    
+    def setWidgetEnabled(self, checked):
+        self.widget.setDisabled(not checked)
+    
+    def value(self):
+        if self.activateCheckbox is None:
+            return getattr(self.widget, self.valueGetterName)()
+        
+        if not self.activateCheckbox.isChecked():
+            return
+        
+        return getattr(self.widget, self.valueGetterName)()
 
     def tryChecking(self, label):
         try:
@@ -11803,6 +11826,40 @@ class AutoSaveIntervalWidget(QWidget):
             self.unitCombobox.currentText()
         )
 
+class CheckableWidget(QWidget):
+    def __init__(self, widget, valueGetterName='value', parent=None):
+        super().__init__(parent)
+        
+        self.widget = widget
+        self.valueGetterName = valueGetterName
+        
+        widget.setDisabled(True)
+        
+        layout = QHBoxLayout()
+        
+        layout.addWidget(widget)
+        
+        self.checkbox = QCheckBox('Activate')
+        self.checkbox.toggled.connect(self.setWidgetEnabled)
+        
+        layout.addSpacing(5)
+        layout.addWidget(self.checkbox)
+        
+        layout.setContentsMargins(5, 0, 5, 0)
+
+        
+        self.setLayout(layout)
+    
+    def setWidgetEnabled(self, checked):
+        self.widget.setDisabled(not checked)
+    
+    def value(self):
+        if not self.checkbox.isChecked():
+            return
+        
+        return getattr(self.widget, self.valueGetterName)()
+    
+    
 class WandControlsToolbar(ToolBar):    
     def __init__(self, name='Magic wand controls', parent=None):
         super().__init__(name, parent)

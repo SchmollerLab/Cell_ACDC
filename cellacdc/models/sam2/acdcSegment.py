@@ -293,16 +293,21 @@ class Model:
                 if only_embeddings:
                     self._init_embeddings(img)
                 else:
-                    labels[z] = self._segment_2D_image(
+                    lab_2D = self._segment_2D_image(
                         img, input_points_z, input_labels_z,
                         embeddings_already_init=embeddings_init
                     )
+                    labels[z] = lab_2D
                 if save_embeddings or only_embeddings:
                     posData.storeSamEmbeddings(
                         self, frame_i=frame_i, z=z+start_z_slice
                     )
 
-            labels = skimage.measure.label(labels>0)
+            if automatic_removal_of_background and input_points is None:
+                # For z-stacks, remove background after 3D relabeling
+                labels = self._remove_background_from_labels(labels)
+                
+            labels = skimage.measure.label(labels>0).astype(np.uint32) 
         else:
             embeddings_init = False
             if use_loaded_embeddings:
@@ -320,10 +325,6 @@ class Model:
 
             if save_embeddings or only_embeddings:
                 posData.storeSamEmbeddings(self, frame_i=frame_i)
-
-        # For z-stacks, remove background after 3D relabeling
-        if is_z_stack and automatic_removal_of_background and input_points is None:
-            labels = self._remove_background_from_labels(labels)
 
         return labels
 
