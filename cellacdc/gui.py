@@ -20685,8 +20685,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             acdc_df['was_manually_edited'] = areManuallyEdited
             allData_li['acdc_df'] = acdc_df
 
-        if not mainThread:
+        if mainThread:
             self.pointsLayerDataToDf(posData)
+        
         self.store_cca_df(
             pos_i=pos_i, mainThread=mainThread, autosave=autosave, 
             store_cca_df_copy=store_cca_df_copy
@@ -29217,11 +29218,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 scatterItem = action.scatterItem
                 xx, yy = scatterItem.getData()
                 
-                if xx is None:
-                    continue
+                if xx is None or len(xx) == 0:
+                    toolButton = action.button
+                    tableEndName = toolButton.clickEntryTableEndName
+                    # Check in other loaded pos
+                    are_there_points_to_save = False
+                    for pos_i, _posData in enumerate(self.data):
+                        if pos_i == self.pos_i:
+                            continue
+                        
+                        df = _posData.clickEntryPointsDfs.get(tableEndName)
+                        if df is None:
+                            continue
+                        
+                        are_there_points_to_save = True
+                        break
                 
-                if len(xx) == 0:
-                    continue
+                    if not are_there_points_to_save:
+                        continue
                 
                 cancel = self.askSavePointsLayer(action)
                 if cancel:

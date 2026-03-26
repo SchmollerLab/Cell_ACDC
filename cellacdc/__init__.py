@@ -33,7 +33,6 @@ def is_conda_env():
     return True
 
 def import_torch():
-
     if is_conda_env():
        return
     
@@ -251,7 +250,15 @@ if not os.path.exists(settings_csv_path):
 # Get color scheme
 if not os.path.exists(settings_csv_path):
     scheme = 'light'
-df_settings = pd.read_csv(settings_csv_path, index_col='setting')
+
+try:
+    df_settings = pd.read_csv(settings_csv_path, index_col='setting')
+except Exception as err:
+    # Overwrite corrupted setttings file
+    df_settings = pd.DataFrame(
+        {'setting': [], 'value': []}).set_index('setting')
+    df_settings.to_csv(settings_csv_path)
+    
 if 'colorScheme' not in df_settings.index:
     scheme = 'light'
 else:
