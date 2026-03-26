@@ -30728,7 +30728,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if alphaScrollbar is None:
                 continue
             
-            alphaScrollbar.setDisabled(op_val == 0)
+            alphaScrollbar.setDisabled(bool(op_val == 0))
     
     def initColormapOverlayLayerItem(self, foregrColor, lutItem):
         if self.invertBwAction.isChecked():
