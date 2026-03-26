@@ -125,6 +125,9 @@ class CombineGuiElements:
     def updateCombineChannelsPreview(self, *args, **kwargs):
         force = kwargs.get('force', False)
         
+        if self.combineDialog is None:
+            return
+        
         if not self.combineDialog.isVisible() and not force:
             return
         

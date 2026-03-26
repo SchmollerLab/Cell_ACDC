@@ -1130,12 +1130,14 @@ class segmWorker(QObject):
             start_z_slice = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
         
         _lab = core.segm_model_segment(
-            self.mainWin.model, img, self.mainWin.model_kwargs, 
+            self.mainWin.model, img, 
+            self.mainWin.model_kwargs, 
             frame_i=posData.frame_i, 
             posData=posData, 
             start_z_slice=start_z_slice
         )
         posData.saveSamEmbeddings(logger_func=self.logger.info)
+
         if self.mainWin.applyPostProcessing:
             _lab = core.post_process_segm(
                 _lab, **self.mainWin.standardPostProcessKwargs

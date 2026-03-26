@@ -17172,8 +17172,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.segmWorkerWaitCond = QWaitCondition()
         self.thread = QThread()
         self.worker = workers.segmWorker(
-            self, secondChannelData=secondChannelData,
-            mutex=self.segmWorkerMutex, waitCond=self.segmWorkerWaitCond
+            self, 
+            secondChannelData=secondChannelData,
+            mutex=self.segmWorkerMutex, 
+            waitCond=self.segmWorkerWaitCond
         )
         self.worker.z_range = self.z_range
         self.worker.moveToThread(self.thread)
@@ -17191,9 +17193,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.thread.start()
     
     def debugSegmWorker(self, to_debug):
-        img, secondChImg = to_debug
-        printl(img.shape, secondChImg.shape)
-        imshow(img, secondChImg)
+        img, _lab, lab = to_debug
+        printl(img.shape, _lab.shape, lab.shape)
+        imshow(img, _lab, lab)
         self.segmWorkerWaitCond.wakeAll()
     
     def selectZtoolZvalueChanged(self, whichZ, z):
@@ -22492,12 +22494,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.autoSaveToggle.setChecked(False)
     
     def autoSaveTimerTimedOut(self):
+        if not hasattr(self, 'data'):
+            # This happes when the self.autoSaveTimer times out after 
+            # the GUI has been closed -->  we simply ignore it
+            self.autoSaveTimer.stop()
+            return
+        
         self.autoSaveTimer.stop()
         self._enqueueAutoSave()
     
     def autoSaveTimerCountFrames(self):
         if not hasattr(self, 'data'):
-            # This happes when the elf.autoSaveTimer times out after 
+            # This happes when the self.autoSaveTimer times out after 
             # the GUI has been closed -->  we simply ignore it
             return
         

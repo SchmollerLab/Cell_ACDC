@@ -146,15 +146,19 @@ if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
     img = skimage.color.rgb2gray(img)
 
 print('Input image shape: ', img.shape)
-
-import pdb; pdb.set_trace()
+print('Segmentation process started...')
 
 lab = core.segm_model_segment(
-    model, img, win.model_kwargs, frame_i=FRAME_I, 
+    model, img, win.model_kwargs, frame_i=start_frame_idx, 
     preproc_recipe=win.preproc_recipe, posData=posData, 
     is_timelapse_model_and_data=is_segment3DT_available and is_timelapse,
-    reduce_memory_usage=win.reduceMemoryUsage,
 )
 
 from cellacdc.plot import imshow
-imshow(img, lab)
+imshow(
+    img, 
+    lab, 
+    window_title=f'Result of segmenting with "{model_name}" model',
+    axis_titles=['Input image', 'Segmentation result'], 
+    annotate_labels_idxs=[1],
+)

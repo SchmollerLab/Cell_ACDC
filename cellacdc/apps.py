@@ -6528,15 +6528,14 @@ class QCropZtool(QBaseDialog):
         layout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
-        self.lowerZscrollbar = QScrollBar(Qt.Horizontal)
-        self.lowerZscrollbar.setMaximum(SizeZ-1)
-        s = str(1).zfill(self.numDigits)
-        self.lowerZscrollbar.label = QLabel(f'{s}/{SizeZ}')
+        self.lowerZscrollbar = widgets.ScrollBarWithNumericControl()
+        self.lowerZscrollbar.setMaximum(SizeZ)
+        self.lowerZscrollbar.setMinimum(1)
+        self.lowerZscrollbar.setValue(1)
 
-        self.upperZscrollbar = QScrollBar(Qt.Horizontal)
-        self.upperZscrollbar.setMaximum(SizeZ-1)
-        self.upperZscrollbar.setValue(SizeZ-1)
-        self.upperZscrollbar.label = QLabel(f'{SizeZ}/{SizeZ}')
+        self.upperZscrollbar = widgets.ScrollBarWithNumericControl()
+        self.upperZscrollbar.setMaximum(SizeZ)
+        self.upperZscrollbar.setValue(SizeZ)
 
         cancelButton = widgets.cancelPushButton('Cancel')
         cropButton = widgets.okPushButton(cropButtonText)
@@ -6545,73 +6544,65 @@ class QCropZtool(QBaseDialog):
 
         row = 0
         layout.addWidget(
-            QLabel('Lower z-slice  '), row, 0, alignment=Qt.AlignRight
+            QLabel('Lower z-slice '), row, 0, alignment=Qt.AlignRight
         )
-        layout.addWidget(
-            self.lowerZscrollbar.label, row, 1, alignment=Qt.AlignRight
-        )
-        layout.addWidget(self.lowerZscrollbar, row, 2)
+        layout.addWidget(self.lowerZscrollbar, row, 1)
 
         row += 1
         layout.setRowStretch(row, 5)
 
         row += 1
         layout.addWidget(
-            QLabel('Upper z-slice  '), row, 0, alignment=Qt.AlignRight
+            QLabel('Upper z-slice '), row, 0, alignment=Qt.AlignRight
         )
-        layout.addWidget(
-            self.upperZscrollbar.label, row, 1, alignment=Qt.AlignRight
-        )
-        layout.addWidget(self.upperZscrollbar, row, 2)
+        layout.addWidget(self.upperZscrollbar, row, 1)
 
         row += 1
         if addDoNotShowAgain:
             self.doNotShowAgainCheckbox = QCheckBox('Do not ask again')
             layout.addWidget(
-                self.doNotShowAgainCheckbox, row, 2, alignment=Qt.AlignLeft
+                self.doNotShowAgainCheckbox, row, 1, alignment=Qt.AlignLeft
             )
             row += 1
 
-        layout.addLayout(buttonsLayout, row, 2, alignment=Qt.AlignRight)
+        layout.addLayout(buttonsLayout, row, 1, alignment=Qt.AlignRight)
 
         layout.setColumnStretch(0, 0)
-        layout.setColumnStretch(1, 0)
-        layout.setColumnStretch(2, 10)
+        layout.setColumnStretch(1, 10)
 
         self.setLayout(layout)
 
         # resetButton.clicked.connect(self.emitReset)
         cropButton.clicked.connect(self.emitCrop)
         cancelButton.clicked.connect(self.close)
-        self.lowerZscrollbar.valueChanged.connect(self.ZvalueChanged)
-        self.upperZscrollbar.valueChanged.connect(self.ZvalueChanged)
+        self.lowerZscrollbar.sigValueChanged.connect(self.ZvalueChanged)
+        self.upperZscrollbar.sigValueChanged.connect(self.ZvalueChanged)
 
     def emitReset(self):
         self.sigReset.emit()
 
     def emitCrop(self):
         self.cancel = False
-        low_z = self.lowerZscrollbar.value()
-        high_z = self.upperZscrollbar.value()
+        low_z = self.lowerZscrollbar.value() - 1
+        high_z = self.upperZscrollbar.value() - 1
         self.sigCrop.emit(low_z, high_z)
         self.close()
 
     def updateScrollbars(self, lower_z, upper_z):
-        self.lowerZscrollbar.setValue(lower_z)
-        self.upperZscrollbar.setValue(upper_z)
+        self.lowerZscrollbar.setValue(lower_z+1)
+        self.upperZscrollbar.setValue(upper_z+1)
 
     def ZvalueChanged(self, value):
         which = 'lower' if self.sender() == self.lowerZscrollbar else 'upper'
-        if which == 'lower' and value > self.upperZscrollbar.value()-2:
-            self.lowerZscrollbar.setValue(self.upperZscrollbar.value()-2)
+        if which == 'lower' and value > self.upperZscrollbar.value()-1:
+            self.lowerZscrollbar.setValue(self.upperZscrollbar.value()-1)
             return
-        if which == 'upper' and value < self.lowerZscrollbar.value()+2:
-            self.upperZscrollbar.setValue(self.lowerZscrollbar.value()+2)
+        if which == 'upper' and value < self.lowerZscrollbar.value()+1:
+            self.upperZscrollbar.setValue(self.lowerZscrollbar.value()+1)
             return
 
-        s = str(value+1).zfill(self.numDigits)
-        self.sender().label.setText(f'{s}/{self.SizeZ}')
-        self.sigZvalueChanged.emit(which, value)
+        z_slice_n = value - 1
+        self.sigZvalueChanged.emit(which, z_slice_n)
 
     def showEvent(self, event):
         self.resize(int(self.width()*1.5), self.height())
