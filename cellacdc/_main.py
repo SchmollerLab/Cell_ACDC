@@ -8,6 +8,8 @@ import pandas as pd
 
 from functools import partial
 
+import gc
+
 from qtpy import QtCore, QtWidgets
 from qtpy.QtWidgets import (
     QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
@@ -61,6 +63,7 @@ from . import _warnings
 from . import exception_handler
 from . import user_profile_path
 from . import cellacdc_path
+from . config import parser_args
 
 try:
     import spotmax
@@ -484,7 +487,7 @@ class mainWin(QMainWindow):
 
         
         utilsMenu.addAction(self.debugAction)
-        self.debugAction.setVisible(False)
+        self.debugAction.setVisible(parser_args['debug'])
 
         menuBar.addMenu(helpMenu)
     
@@ -1242,19 +1245,11 @@ class mainWin(QMainWindow):
         return not msg.cancel
     
     def _debug(self):
-        printl('ciao')
-        from qtpy.QtWidgets import QDialog, QTreeWidget, QTreeWidgetItem
-        secondWin = QDialog(self)
-
-        layout = QVBoxLayout()
-
-        widget = QTreeWidget()
-        item = QTreeWidgetItem(['ciao'])
-        widget.addTopLevelItem(item)
-        
-        layout.addWidget(widget)
-        secondWin.setLayout(layout)
-        secondWin.exec_()
+        try:
+            from . import _q_debug
+            _q_debug.q_debug(self)
+        except Exception as err:
+            raise err
     
     def askRestartAcdc(self):
         txt = html_utils.paragraph(
@@ -1912,6 +1907,7 @@ class mainWin(QMainWindow):
     
     def progressWinClosed(self):
         self.progressWin = None
+        self._gc_collect()
     
     def workerInitProgressbar(self, totalIter):
         if self.progressWin is None:
@@ -1972,6 +1968,7 @@ class mainWin(QMainWindow):
             self.dataPrepWins.remove(dataPrepWin)
         except ValueError:
             pass
+        self._gc_collect()
 
     def launchSegm(self, checked=False):
         c = self.segmButton.palette().button().color().name()
@@ -1996,6 +1993,7 @@ class mainWin(QMainWindow):
 
     def segmWinClosed(self):
         self.segmButton.setPalette(self.defaultButtonPalette)
+        self._gc_collect()
 
     def launchGui(self, checked=False):
         self.logger.info('Opening GUI...')
@@ -2029,12 +2027,17 @@ class mainWin(QMainWindow):
     
     def spotmaxGuiClosed(self, spotmaxWin):
         self.spotmaxWins.remove(spotmaxWin)
+        self._gc_collect()
         
     def guiClosed(self, guiWin):
         try:
             self.guiWins.remove(guiWin)
         except ValueError:
             pass
+        self._gc_collect()
+        
+    def _gc_collect(self):
+        QTimer.singleShot(100, gc.collect)
 
     def launchAlignUtil(self, checked=False):
         self.logger.info(f'Launching utility "{self.sender().text()}"')

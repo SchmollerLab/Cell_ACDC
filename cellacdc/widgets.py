@@ -3829,6 +3829,7 @@ class formWidget(QWidget):
             key='',
             infoTxt='',
             valueGetterName='value',
+            toolTip='',
             parent=None
         ):
         QWidget.__init__(self, parent)
@@ -3873,6 +3874,11 @@ class formWidget(QWidget):
         self.labelRight.setText(labelTextRight)
         self.labelRight.setFont(font)
         self.items.append(self.labelRight)
+        
+        if toolTip:
+            self.labelLeft.setToolTip(toolTip)
+            self.widget.setToolTip(toolTip)
+            self.labelRight.setToolTip(toolTip)
 
         if addInfoButton:
             infoButton = QPushButton(self)
@@ -9955,7 +9961,7 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
             size=12, anchor=(1.0, 1.0)
         )
         self.textItem.createSymbols(
-            [str(id) for id in range(200)], includeBold=False
+            [str(int_id) for int_id in range(200)], includeBold=False
         )
         # self._textItems = {}
         super().__init__(*args, **kwargs)
@@ -9997,8 +10003,10 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
         data = kwargs.get('data')
         if data is None:
             return
+        
         if len(data) == 0:
             return
+        
         first_point_data = data[0]
         if not isinstance(first_point_data, (int, str)):
             return

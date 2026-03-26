@@ -127,54 +127,81 @@ def print_largest_attributes_for_all_classes(package_prefix="cellacdc", top_n=5)
 
 def print_largest_classes(package_prefix="cellacdc", top_n=10, max_instances=100):
     """
-    Print the classes defined in the given package prefix, sorted by their total memory usage
-    (sum of up to max_instances per class), as a percentage of the total process memory.
-    Uses pympler.asizeof for deep memory measurement.
+    Print classes (optionally filtered by module prefix) sorted by total memory usage.
+    Uses pympler.asizeof for deep size estimation.
     """
+
+    import gc
+    import psutil
+    import os
     try:
         from pympler import asizeof
     except ImportError:
-        conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
-
-        print(f"pympler is not installed. Install it with '{pip_prefix}l pympler' to use this function.")
+        print("pympler not installed. Run: pip install pympler")
         return
-    process = psutil.Process()
+
+    process = psutil.Process(os.getpid())
     process_mem = process.memory_info().rss
 
-    # First, collect all classes and build a mapping to their instances in one pass
-    classes = set()
     class_to_instances = {}
+
+    # ✅ Single pass over objects
     for obj in gc.get_objects():
-        if isinstance(obj, type):
-            if getattr(obj, "__module__", "").startswith(package_prefix):
-                classes.add(obj)
-    for obj in gc.get_objects():
-        obj_type = type(obj)
-        if obj_type in classes:
-            class_to_instances.setdefault(obj_type, []).append(obj)
+        try:
+            cls = type(obj)
+            module = getattr(cls, "__module__", None)
+
+            if package_prefix is not None:
+                if not isinstance(module, str) or not module.startswith(package_prefix):
+                    continue
+
+            class_to_instances.setdefault(cls, []).append(obj)
+
+        except Exception:
+            continue
 
     class_mem = []
 
     for cls, instances in class_to_instances.items():
-        # Only use up to max_instances per class
-        num_instances = len(instances)
-        step_instances = num_instances / max_instances if num_instances > max_instances else 1
+        n = len(instances)
 
-        limited_instances = instances[::int(step_instances)] if step_instances > 1 else instances
+        # ✅ Safe sampling
+        if n > max_instances:
+            step = max(1, n // max_instances)
+            sampled = instances[::step]
+        else:
+            sampled = instances
+
         total_size = 0
-        for inst in limited_instances:
+        counted = 0
+
+        for inst in sampled:
             try:
-                total_size += asizeof.asizeof(inst)
+                size = asizeof.asizeof(inst)
+                total_size += size
+                counted += 1
             except Exception:
                 continue
+
+        # scale up if sampled
+        if counted > 0 and n > counted:
+            total_size *= (n / counted)
+
         if total_size > 0:
-            class_mem.append((cls, total_size, len(instances)))
+            class_mem.append((cls, total_size, n))
+
+    # ✅ Sort by memory
     class_mem.sort(key=lambda x: x[1], reverse=True)
-    print(f"Total process memory: {process_mem:,} bytes")
-    print(f"{'Class':50} {'Instances':>10} {'Total bytes':>15} {'% of proc':>12}")
+
+    print(f"Total process memory: {process_mem/1024**2:.1f} MB")
+    print(f"{'Class':60} {'Instances':>10} {'Total MB':>12} {'% of proc':>10}")
+
     for cls, total_size, n in class_mem[:top_n]:
         percent = (total_size / process_mem * 100) if process_mem else 0
-        print(f"{cls.__module__+'.'+cls.__name__:<50} {n:10} {total_size:15,} {percent:11.2f}%")
+
+        name = f"{cls.__module__}.{cls.__name__}"
+
+        print(f"{name:<60} {n:10} {total_size/1024**2:12.2f} {percent:9.2f}%")
 
 
 # Example usage:
