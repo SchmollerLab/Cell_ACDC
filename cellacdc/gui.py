@@ -12897,7 +12897,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.initSegmTrackMode()
             self.setEnabledEditToolbarButton(enabled=True)
             self.addExistingDelROIs()
-            self.checkTrackingEnabled()
+            self.isFirstTimeOnNextFrame()
             self.setEnabledCcaToolbar(enabled=False)
             self.clearComputedContours()
             self.realTimeTrackingToggle.setDisabled(False)
@@ -21816,7 +21816,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.highlightLostNew()
         self.updateLastCheckedFrameWidgets(last_tracked_i)
 
-        self.checkTrackingEnabled()
+        self.isFirstTimeOnNextFrame()
         self.initRealTimeTracker()
     
     def updateLastCheckedFrameWidgets(self, last_tracked_i):
@@ -28273,13 +28273,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             maxID += 1
         return setRp
 
-    def checkTrackingEnabled(self):
+    def isFirstTimeOnNextFrame(self):
         posData = self.data[self.pos_i]
         posData.last_tracked_i = self.navigateScrollBar.maximum()-1
-        if posData.frame_i <= posData.last_tracked_i:
-            return True
-        else:
-            return False
+        return posData.frame_i > posData.last_tracked_i
 
     def trackManuallyAddedObject(
             self, added_IDs: List[int] | int | Set[int], isNewID: bool,
@@ -28488,45 +28485,49 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.update_rp()
     
+    def doSkipTracking(self, against_next: bool, enforce: bool):
+        if self.isSnapshot:
+            return True
+        
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Segmentation and Tracking':
+            return True
+        
+        if self.UserEnforced_DisabledTracking:
+            return True
+        
+        if against_next:
+            reference_lab = posData.allData_li[posData.frame_i-1]['labels']
+            if reference_lab is None:
+                # Next frame never visited --> cannot track against next
+                return True
+
+            if posData.frame_i == posData.SizeT - 1:
+                # Last frame --> cannot track against next
+                return True
+            
+        if enforce or self.UserEnforced_Tracking:
+            # Enforce even if not last visited frame
+            return False
+        
+        is_first_time_on_next_frame = self.isFirstTimeOnNextFrame()
+        skip_tracking = not is_first_time_on_next_frame
+        
+        return skip_tracking
+        
+    
     # @exec_time
     @exception_handler
     def tracking(
             self, enforce=False, DoManualEdit=True,
             storeUndo=False, prev_lab=None, prev_rp=None,
             return_lab=False, assign_unique_new_IDs=True,
-            separateByLabel=True,wl_update=True,
-            IDs=None,against_next=False,
+            separateByLabel=True, wl_update=True,
+            IDs=None, against_next=False,
         ):
         posData = self.data[self.pos_i]
-        mode = str(self.modeComboBox.currentText())
-        skipTracking = (
-            mode != 'Segmentation and Tracking' or
-            self.isSnapshot or
-            (posData.frame_i == 0 and not against_next) or
-            (posData.frame_i == posData.SizeT - 1 and against_next) or 
-            (posData.frame_i + 1 > self.getLastTrackedFrame(posData)) # check next frame was already visited (so tracked)
-        )
-        if skipTracking:
-            self.setLostNewOldPrevIDs()
-            return
-
-        # Disable tracking for already visited frames
-        trackingDisabled = self.checkTrackingEnabled()
-
-        if enforce or self.UserEnforced_Tracking:
-            # Tracking enforced by the user
-            do_tracking = True
-        elif self.UserEnforced_DisabledTracking:
-            # Tracking specifically DISABLED by the user
-            do_tracking = False
-        elif trackingDisabled:
-            # User did not choose what to do --> tracking disabled for
-            # visited frames and enabled for never visited frames
-            do_tracking = False
-        else:
-            do_tracking = True
-
-        if not do_tracking:
+        
+        if self.doSkipTracking(against_next, enforce):
             self.setLostNewOldPrevIDs()
             return
         
