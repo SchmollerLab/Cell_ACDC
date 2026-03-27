@@ -5680,8 +5680,9 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
             key: Tuple[int, int, Union[int, str]],
             keep_input_data_type: bool,
             output_as_segm: bool,
+            formula: str,
         ):
-        self.dataQ.append((data, steps, key, keep_input_data_type,output_as_segm))
+        self.dataQ.append((data, steps, key, keep_input_data_type,output_as_segm, formula))
         if len(self.dataQ) == 1:
             self.sigIsQueueEmpty.emit(False)
             # Wake up worker upon inserting first element
@@ -5694,15 +5695,17 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
             keep_input_data_type: bool,
             key: Tuple[Union[int, None], Union[int, None], Union[int, None]],
             output_as_segm: bool,
+            formula: str,
         ):
         self._key = key
         self._steps = steps
         self._data = data
         self._keep_input_data_type = keep_input_data_type
         self._output_as_segm = output_as_segm
+        self._formula = formula
 
     def runJob(self, data=None, steps=None, keep_input_data_type=None, key=None,
-               output_as_segm=None):
+               output_as_segm=None, formula=None):
         if data is None:
             data = self._data
         if steps is None:
@@ -5713,11 +5716,13 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
             key = self._key
         if output_as_segm is None:
             output_as_segm = self._output_as_segm
+        if formula is None:
+            formula = self._formula
 
-        if not steps:
+        if not steps and formula is None:
             return
 
-        return self.applySteps(data, steps, keep_input_data_type, key, output_as_segm)
+        return self.applySteps(data, steps, keep_input_data_type, key, output_as_segm, formula=formula)
     
     def applySteps(
             self, 
@@ -5789,12 +5794,12 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
                 self.logger.log('Combining channels worker paused.')
                 self.pause()
             elif len(self.dataQ) > 0:
-                data, steps, key, keep_input_data_type, output_as_segm = self.dataQ.pop()
+                data, steps, key, keep_input_data_type, output_as_segm, formula = self.dataQ.pop()
                 requ_steps, pos_i = self.requiredChannels(steps, key[0])
                 self.emitsigAskLoadChannels(requ_steps, pos_i)
                 output_imgs, out_keys = self.applySteps(
                     data, steps, keep_input_data_type, key,
-                    output_as_segm=output_as_segm
+                    output_as_segm=output_as_segm, formula=formula
                 )
                 self.sigPreviewDone.emit(output_imgs, out_keys)
                 if len(self.dataQ) == 0:

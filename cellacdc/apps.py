@@ -17264,7 +17264,7 @@ class FormulaEditWidget(QWidget):
             self._clearStatus()
             return
 
-        success, reconstructed_str = self._checkValidity(self._variable_names)
+        success, reconstructed_str = self.checkValidity(self._variable_names)
 
         if success:
             self._status_label.setText(f'→ {reconstructed_str}')
@@ -17279,7 +17279,9 @@ class FormulaEditWidget(QWidget):
 
         self.sigFormulaChanged.emit(text, success)
 
-    def _checkValidity(self, variable_names):
+    def checkValidity(self, variable_names=None):
+        if variable_names is None:
+            variable_names = self._variable_names
         formula_str = self._edit.text()
         arrays = {name: 1 for name in variable_names}
         success = False
@@ -17289,7 +17291,18 @@ class FormulaEditWidget(QWidget):
             expr = sp.sympify(formula_str, locals=symbols)
             missing = {str(s) for s in expr.free_symbols} - arrays.keys()
             if missing:
-                raise ValueError(f"Undefined variables: {missing}")
+                reconstructed_str = f'Missing variables: {missing}'
+                return False, reconstructed_str
+
+            if formula_str == '':
+                reconstructed_str = ''
+                return True, reconstructed_str
+            
+            # filter out expressions that have no variables
+            if not any(s.is_Symbol for s in expr.free_symbols):
+                reconstructed_str = 'No variables used'
+                return False, reconstructed_str
+            
             reconstructed_str = str(expr)
             success = True
         except Exception as e:
@@ -18427,11 +18440,11 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
 
 class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     sigValuesChanged = Signal()
-    sigApplyAllFrames = Signal(dict, bool)
-    sigApplyAllPos = Signal(dict, bool)
-    sigApplyAllZslices = Signal(dict, bool)
-    sigApplyAllFramesZslices = Signal(dict, bool)
-    sigApplyImage = Signal(dict, bool)
+    sigApplyAllFrames = Signal(dict, bool, str)
+    sigApplyAllPos = Signal(dict, bool, str)
+    sigApplyAllZslices = Signal(dict, bool, str)
+    sigApplyAllFramesZslices = Signal(dict, bool, str)
+    sigApplyImage = Signal(dict, bool, str)
     sigSaveAsSegmCheckboxToggled = Signal(bool)
 
     def __init__(
@@ -18461,6 +18474,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         )
         
         self.segm_blinked = False
+        self.validFormula = True # allow empty formula
 
         self.mainLayout.insertWidget(2, self.combineChannelsWidget)
         self.combineChannelsWidget.groupbox.setCheckable(False)
@@ -18475,7 +18489,6 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         )
         self.mainLayout.insertWidget(3, self.formulaEditWidget)
 
-        self.setButtonsEnabled(False)
                     
         self.cancel = True
 
@@ -18507,6 +18520,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
 
     def formulaChanged(self, formula_str, is_valid):
         self.setButtonsEnabled(is_valid)
+        self.validFormula = is_valid
         if is_valid:
             self.sigValuesChanged.emit()
     
@@ -18562,14 +18576,14 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         steps = self.combineChannelsWidget.steps()
         formula = self.formulaEditWidget.text()
         keep_input_dtype = self.keepInputDataTypeToggle.isChecked()
-        if not steps:
+        if not steps or not self.validFormula:
             return
         
         if signal is not None:
             try:
                 signal.emit(steps, formula)
             except TypeError as err:
-                signal.emit(steps, formula, keep_input_dtype)
+                signal.emit(steps, keep_input_dtype, formula)
 
         if self.hideOnClosing:
             self.setDisabled(True)
@@ -18583,9 +18597,13 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     def emitValuesChanged(self):
         self._updateFormulaVariableNames()
         self.autoCheckSaveAsSegmCheckbox()
+        if not self.validFormula:
+            return
         self.sigValuesChanged.emit()
 
     def ok_cb(self):
+        if not self.validFormula:
+            return
         self.keepInputDataType = self.keepInputDataTypeToggle.isChecked()
         self.selectedSteps = self.combineChannelsWidget.steps()
         self.formula = self.formulaEditWidget.text()
@@ -18662,11 +18680,12 @@ class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
     
     def steps(self, return_keepInputDataType=False):
         steps = self.combineChannelsWidget.steps()
-        if not return_keepInputDataType:
-            return steps
+        formula = self.formulaEditWidget.text()
+        # if not return_keepInputDataType:
+        #     return steps, formula
         
         keep_input_dtype = self.keepInputDataTypeToggle.isChecked()
-        return steps, keep_input_dtype
+        return steps, keep_input_dtype, formula
 
 class QCropTrangeTool(QBaseDialog):
     sigClose = Signal()

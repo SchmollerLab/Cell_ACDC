@@ -2597,22 +2597,25 @@ def combine_channels_func(
             steps[i]['channel_data'], 
             out_range=(norm_min, norm_max)
         )
-            
-
-    input_img_data = {step['name']: step['channel_data'] for step in steps.values()}
     
-    symbols = {name: sp.Symbol(name) for name in input_img_data}
-    expr = sp.sympify(formula, locals=symbols)
+    if formula != '':
+        input_img_data = {step['name']: step['channel_data'] for step in steps.values()}
+        
+        symbols = {name: sp.Symbol(name) for name in input_img_data}
+        expr = sp.sympify(formula, locals=symbols)
 
-    used_vars = sorted(str(s) for s in expr.free_symbols)
-    func = sp.lambdify(
-        [symbols[v] for v in used_vars],  # fixed order!
-        expr,
-        modules="numpy"
-    )
+        used_vars = sorted(str(s) for s in expr.free_symbols)
+        func = sp.lambdify(
+            [symbols[v] for v in used_vars],  # fixed order!
+            expr,
+            modules="numpy"
+        )
 
-    args = [input_img_data[v] for v in used_vars]
-    output_img = func(*args)
+        args = [input_img_data[v] for v in used_vars]
+        output_img = func(*args)
+    else:
+        key0 = list(steps.keys())[0]
+        output_img = steps[key0]['channel_data']
 
     if not output_as_segm:
         output_img = skimage.exposure.rescale_intensity(
