@@ -43,6 +43,7 @@ import pandas as pd
 import math
 import time
 import sympy as sp
+import json
 
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
@@ -64,14 +65,14 @@ from qtpy.QtWidgets import (
     QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
     QDockWidget, QMessageBox, QStyle, QPlainTextEdit, QSpacerItem,
     QTreeWidget, QTreeWidgetItem, QTextEdit, QSplashScreen, QAction,
-    QListWidgetItem, QActionGroup, QHeaderView
+    QListWidgetItem, QActionGroup, QHeaderView, QStyledItemDelegate
 )
 import qtpy.compat
 
 from . import exception_handler
 from . import load, prompts, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, settings_folderpath, config
-from . import preproc_recipes_path, segm_recipes_path
+from . import preproc_recipes_path, segm_recipes_path, combine_channels_recipes_path
 from . import is_conda_env
 from . import printl
 from . import colors
@@ -16599,6 +16600,33 @@ class PreProcessParamsWidget(QWidget):
             sortedConfigPars[key] = configPars[key]
         return sortedConfigPars
     
+    def saveRecipeUI(self, folder_path, ext, title, basename, hintText, 
+                     default_text):# -> tuple[Literal[False], Literal['']] | tuple[Literal[True], Any]:        
+        win = filenameDialog(
+            title=title,
+            basename=basename,
+            ext=ext,
+            hintText=hintText,
+            allowEmpty=False,
+            defaultEntry=default_text,
+            parent=self,
+        )
+        win.exec_()
+        if win.cancel:
+            return False, ''
+        
+        self.cancel = False
+        filepath = win.filename
+        os.makedirs(folder_path, exist_ok=True)
+        filepath = os.path.join(folder_path, filepath)
+        
+        if os.path.exists(filepath):
+            proceed = self.warnExistingRecipeFile(filepath)
+            if not proceed:
+                return False, ''
+        
+        return True, filepath
+    
     def saveRecipe(self):
         recipe = self.recipe()
         if recipe is None:
@@ -16611,30 +16639,16 @@ class PreProcessParamsWidget(QWidget):
             default_text = f'{default_text}-{func_name}'
         default_text = default_text.lstrip('-')
         
-        win = filenameDialog(
-            title='Filename for pre-processing recipe',
-            basename='preprocessing_recipe',
-            ext='.ini',
-            hintText='Insert a <b>filename</b> for the pre-processing recipe:',
-            allowEmpty=False,
-            defaultEntry=default_text,
-            parent=self,
-        )
-        win.exec_()
-        if win.cancel:
+        proceed, ini_filepath = self.saveRecipeUI(preproc_recipes_path, '.ini', 
+                          'Filename for pre-processing recipe',
+                          'preprocessing_recipe', 
+                          'Insert a <b>filename</b> for the pre-processing recipe:',
+                          default_text
+                          )
+        if not proceed:
             return
         
-        self.cancel = False
-        ini_filename = win.filename
         cp = self.recipeConfigPars('acdc')
-        os.makedirs(preproc_recipes_path, exist_ok=True)
-        ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
-        
-        if os.path.exists(ini_filepath):
-            proceed = self.warnExistingRecipeFile(ini_filename)
-            if not proceed:
-                return
-        
         with open(ini_filepath, 'w') as configfile:
             cp.write(configfile)
         
@@ -16664,89 +16678,96 @@ class PreProcessParamsWidget(QWidget):
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(self, 'No recipes saved', text)
     
-    def selectIniFileToLoadRecipe(self):
-        import qtpy.compat
-        ini_filepath = qtpy.compat.getopenfilename(
-            parent=self, 
-            caption='Select INI file to load pre-processing recipe', 
-            filters='INI (*.ini);;All Files (*)'
-        )[0]
-        if not ini_filepath:
-            return
+    # def selectIniFileToLoadRecipe(self):
+    #     import qtpy.compat
+    #     ini_filepath = qtpy.compat.getopenfilename(
+    #         parent=self, 
+    #         caption='Select INI file to load pre-processing recipe', 
+    #         filters='INI (*.ini);;All Files (*)'
+    #     )[0]
+    #     if not ini_filepath:
+    #         return
         
-        cp = config.ConfigParser()
-        cp.read(ini_filepath)
-        preprocConfigPars = {}
-        for section in cp.sections():
-            if not section.startswith('acdc.preprocess'):
-                continue      
+    #     cp = config.ConfigParser()
+    #     cp.read(ini_filepath)
+    #     preprocConfigPars = {}
+    #     for section in cp.sections():
+    #         if not section.startswith('acdc.preprocess'):
+    #             continue      
             
-            preprocConfigPars[section] = cp[section]
+    #         preprocConfigPars[section] = cp[section]
         
-        if not preprocConfigPars:
-            return
+    #     if not preprocConfigPars:
+    #         return
         
-        self.loadRecipe(preprocConfigPars)
+    #     self.loadRecipe(preprocConfigPars)
 
-    def selectAndLoadRecipe(self):
+    def selectRecipeFilepath(self, recipes_path, recipe_prefix, ext_label, ext):
         availableRecipes = []
-        for file in myutils.listdir(preproc_recipes_path):
-            if not file.startswith('preprocessing_recipe'):
-                continue
-            endname = file.split('preprocessing_recipe_')[1]
-            availableRecipes.append(endname)
+        if os.path.exists(recipes_path):
+            for file in myutils.listdir(recipes_path):
+                if not file.startswith(recipe_prefix):
+                    continue
+                endname = file.split(f'{recipe_prefix}_')[1]
+                availableRecipes.append(endname)
         
         if not availableRecipes:
-            # self.warnNoAvailableRecipesToLoad()
-            self.selectIniFileToLoadRecipe()
-            return
+            import qtpy.compat
+            filepath = qtpy.compat.getopenfilename(
+                parent=self,
+                caption=f'Select {ext_label} file to load recipe',
+                filters=f'{ext_label} (*.{ext});;All Files (*)'
+            )[0]
+            return filepath or None
         
         browseButton = widgets.browseFileButton(
-            'Select INI file...',
-            title='Select INI file to load pre-processing recipe',
+            f'Select {ext_label} file...',
+            title=f'Select {ext_label} file to load recipe',
             openFolder=False,
             start_dir=myutils.getMostRecentPath(),
-            ext={'INI': '.ini'}
+            ext={ext_label: f'.{ext}'}
         )
         selectRecipeWin = widgets.QDialogListbox(
             'Select recipe',
             'Select recipe to load:\n',
-            availableRecipes, 
-            multiSelection=False, 
+            availableRecipes,
+            multiSelection=False,
             allowEmptySelection=False,
             parent=self,
             additionalButtons=(browseButton,)
         )
         browseButton.sigPathSelected.connect(
             partial(
-                self.recipeIniFileSelected, 
+                self.recipeIniFileSelected,
                 selectRecipeWin=selectRecipeWin,
                 sender=browseButton
             )
         )
         selectRecipeWin.exec_()
         if selectRecipeWin.cancel:
-            return
+            return None
 
         if selectRecipeWin.clickedButton == browseButton:
-            ini_filepath = selectRecipeWin.selectedIniFilepath
-        else:
-            selected_endname = selectRecipeWin.selectedItemsText[0]
-            ini_filename = f'preprocessing_recipe_{selected_endname}'
-            ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
+            return selectRecipeWin.selectedIniFilepath
         
+        selected_endname = selectRecipeWin.selectedItemsText[0]
+        filename = f'{recipe_prefix}_{selected_endname}'
+        return os.path.join(recipes_path, filename)
+    
+    def selectAndLoadRecipe(self):
+        filepath = self.selectRecipeFilepath(
+            preproc_recipes_path, 'preprocessing_recipe', 'INI', 'ini'
+        )
+        if filepath is None:
+            return
         cp = config.ConfigParser()
-        cp.read(ini_filepath)
-        preprocConfigPars = {}
-        for section in cp.sections():
-            if not section.startswith('acdc.preprocess'):
-                continue      
-            
-            preprocConfigPars[section] = cp[section]
-        
+        cp.read(filepath)
+        preprocConfigPars = {
+            s: cp[s] for s in cp.sections() 
+            if s.startswith('acdc.preprocess')
+        }
         if not preprocConfigPars:
             return
-        
         self.loadRecipe(preprocConfigPars)
     
     def recipeIniFileSelected(
@@ -16971,6 +16992,35 @@ class PreProcessParamsWidget(QWidget):
                 cp[section][option] = str(value)
         return cp
 
+# class QComboBoxChangeColor(QComboBox):
+#     def __init__(self, forbidden_items=None, parent=None):
+#         super().__init__(parent)
+#         self.forbiddenItems = forbidden_items or set()
+#         self._defaultStyleSheet = self.styleSheet()
+#         self.currentTextChanged.connect(self._updateColor)
+    
+#     def _updateColor(self, text=None):
+#         if not hasattr(self, '_defaultStyleSheet'):
+#             self._defaultStyleSheet = self.styleSheet()
+#         if self.currentText() in self.forbiddenItems:
+#             self.setStyleSheet(
+#                 self._defaultStyleSheet + """
+#                 /* Closed state */
+#                 QComboBox {
+#                     color: red;
+#                 }
+
+#                 /* Open state (popup visible) */
+#                 QComboBox:on {
+#                     color: white;
+#                 }
+#                 """
+#             )
+#         else:
+#             self.setStyleSheet(self._defaultStyleSheet)
+
+        
+        
 class CombineChannelsWidget(PreProcessParamsWidget):
     sigValuesChangedCombineChannels = Signal()
     
@@ -17209,7 +17259,6 @@ class CombineChannelsWidget(PreProcessParamsWidget):
             }
 
         steps = dict(sorted(steps.items()))
-    
         return steps
     
 class FormulaEditWidget(QWidget):
@@ -17234,6 +17283,8 @@ class FormulaEditWidget(QWidget):
 
         self._edit.textChanged.connect(self._onTextChanged)
         self._clearStatus()
+        
+        self.parent = parent
 
     def setVariableNames(self, variable_names):
         """Allows setting the variables.
@@ -17262,7 +17313,6 @@ class FormulaEditWidget(QWidget):
     def _onTextChanged(self, text):
         if not text.strip():
             self._clearStatus()
-            return
 
         success, reconstructed_str = self.checkValidity(self._variable_names)
 
@@ -17286,6 +17336,19 @@ class FormulaEditWidget(QWidget):
         arrays = {name: 1 for name in variable_names}
         success = False
         reconstructed_str = 'ERROR'
+        forb_ch = self.parent.forbiddenChannels
+        if forb_ch:
+            stepsWidgets = self.parent.combineChannelsWidget.stepsWidgets
+            channels = {stepsWidget['selector'].currentText() for stepsWidget in stepsWidgets.values()}
+            if forb_ch.intersection(channels):
+                reconstructed_str = (
+                    'Channels that are forbidden are not allowed to be used!:\n'
+                    f'{forb_ch}'
+                )
+                return False, reconstructed_str
+        if formula_str == '':
+            reconstructed_str = 'First channel is returned/applied'
+            return True, reconstructed_str
         try:
             symbols = {name: sp.Symbol(name) for name in arrays}
             expr = sp.sympify(formula_str, locals=symbols)
@@ -18143,6 +18206,8 @@ class PreProcessRecipeDialog(QBaseDialog):
         keepInputDataTypeInfoButton.clicked.connect(
             self.showInfoKeepInputDataType
         )
+        self.keepInputDataTypeLayout = keepInputDataTypeLayout
+        
         self.preProcessParamsWidget = PreProcessParamsWidget(
             df_metadata=df_metadata, 
             addApplyButton=addApplyButton, 
@@ -18438,6 +18503,18 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
         self.cancel = False
         self.close()
 
+
+# class ComboDelegate(QStyledItemDelegate):
+#     def __init__(self, bad_values, parent=None):
+#         super().__init__(parent)
+#         self.bad_values = bad_values
+
+#     def paint(self, painter, option, index):
+#         text = index.data()
+#         if text in self.bad_values:
+#             option.palette.setColor(option.palette.Text, QColor("red"))
+#         super().paint(painter, option, index)
+        
 class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     sigValuesChanged = Signal()
     sigApplyAllFrames = Signal(dict, bool, str)
@@ -18459,7 +18536,11 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             ):
         
         self.combineChannelsWidget = CombineChannelsWidget(channel_names)
-
+        self.warnExistingRecipeFile = self.combineChannelsWidget.warnExistingRecipeFile
+        self.communicateSavingRecipeFinished = self.combineChannelsWidget.communicateSavingRecipeFinished
+        self.saveRecipeUI = self.combineChannelsWidget.saveRecipeUI
+        self.selectRecipeFilepath = self.combineChannelsWidget.selectRecipeFilepath
+        
         super().__init__(
             isTimelapse=isTimelapse,
             isZstack=isZstack,
@@ -18470,12 +18551,16 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         )
 
         self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(
-            self.emitValuesChanged
+            self.emitValuesChangedSteps
         )
         
+
         self.segm_blinked = False
         self.validFormula = True # allow empty formula
+        self.forbiddenChannels = set() # channels that cannot be combined
 
+        self.mainLayout.setSpacing(4)
+    
         self.mainLayout.insertWidget(2, self.combineChannelsWidget)
         self.combineChannelsWidget.groupbox.setCheckable(False)
         self.combineChannelsWidget.groupbox.setTitle('Combine channels')
@@ -18488,8 +18573,29 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             '"img1 + img2 * 0.5"'
         )
         self.mainLayout.insertWidget(3, self.formulaEditWidget)
+        
+        buttonsLayoutSaveGroup = QGridLayout()
+        
+        row = 0
+        col = 0
+        loadRecipeButton = widgets.OpenFilePushButton('Load saved recipe...')
+        self.loadRecipeButtonComb = loadRecipeButton
+        buttonsLayoutSaveGroup.addWidget(loadRecipeButton, row, col)
+        self.loadRecipeButtonComb.clicked.connect(self.selectAndLoadRecipe)
+        
+        col += 1
+        saveRecipeButton = widgets.savePushButton('Save current recipe...')
+        self.saveRecipeButtonComb = saveRecipeButton
+        buttonsLayoutSaveGroup.addWidget(saveRecipeButton, row, col)
+        saveRecipeButton.clicked.connect(self.saveRecipe)
+        
+        # col += 1
+        # loadLastRecipeButton = widgets.reloadPushButton('Load last parameters')
+        # self.loadLastRecipeButtonComb = loadLastRecipeButton
+        # buttonsLayoutSaveGroup.addWidget(loadLastRecipeButton, row, col)
+        
+        self.mainLayout.addLayout(buttonsLayoutSaveGroup)
 
-                    
         self.cancel = True
 
         self.setWindowTitle('Combine channels')
@@ -18498,7 +18604,12 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
 
         self.savePreprocButton.setText('Save combined data...')
         
-        self.saveAsSegmCheckbox = widgets.CheckBox('Save as segmentation', self)
+        label = QLabel('Save as segmentation:')
+        label.setToolTip(
+            'Save the combined channels as a segmentation file, for example '
+            'when combining a binary mask with a segmentation mask.'
+        )
+        self.saveAsSegmCheckbox = widgets.Toggle()
         self.saveAsSegmCheckbox.setToolTip(
             'Save the combined channels as a segmentation file, for example '
             'when combining a binary mask with a segmentation mask.'
@@ -18506,11 +18617,106 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.saveAsSegmCheckbox.setChecked(False)
         self.saveAsSegmCheckbox.setEnabled(False)
         self.saveAsSegmCheckbox.toggled.connect(self.emitSaveAsSegmCheckboxToggled)
-        qutils.insert_row(
-            self.buttonsLayout, 1, self.saveAsSegmCheckbox, col=0, 
-            dont_shift_other_cols=True
+        self.keepInputDataTypeLayout.insertWidget(0, label)
+        self.keepInputDataTypeLayout.insertWidget(1, self.saveAsSegmCheckbox)
+        
+    def saveRecipe(self):
+        os.makedirs(combine_channels_recipes_path, exist_ok=True)
+        folder_content = myutils.listdir(combine_channels_recipes_path)
+        num_recipes = len(folder_content)
+        default_text = f'{num_recipes + 1}'
+        proceed, filepath = self.saveRecipeUI(
+            combine_channels_recipes_path, '.json', 
+            'Save combine channels recipe', 'combine_channels_recipe',
+            'Insert a <b>filename</b> for the combine channels recipe:',
+            default_text
         )
+        
+        if not proceed:
+            return
+            
+        steps = self.combineChannelsWidget.steps() # already returns a copy
+        formula = self.formulaEditWidget.text()
+        steps['formula'] = formula
+        steps['keep_input_data_type'] = self.keepInputDataTypeToggle.isChecked()
+        steps['save_as_segm'] = self.saveAsSegmCheckbox.isChecked()
+        
+        with open(filepath, 'w') as f:
+            json.dump(steps, f, indent=2)
+        
+        self.communicateSavingRecipeFinished(filepath)
+    
+    def selectAndLoadRecipe(self):
+        filepath = self.selectRecipeFilepath(
+            combine_channels_recipes_path, 
+            'combine_channels_recipe', 'JSON', 'json'
+        )
+        if filepath is None:
+            return
 
+        self.loadRecipe(filepath)
+        
+    def loadRecipe(self, filepath):
+        with open(filepath, 'r') as f:
+            recipe = json.load(f)
+            
+        recipe = dict(sorted(recipe.items()))
+        keys_used = set()
+        for key, value in recipe.items():
+            if key == 'formula':
+                formula = value
+                continue
+            if key == 'keep_input_data_type':
+                self.keepInputDataTypeToggle.setChecked(value)
+                continue
+            if key == 'save_as_segm':
+                self.saveAsSegmCheckbox.setChecked(value)
+                continue
+            
+            name = value['name']
+            channel = value['channel']
+            binarize = value['binarize']
+            min_val = float(value['min_val'])
+            max_val = float(value['max_val'])
+            key = int(key)
+            stepWidgetsNum = len(self.combineChannelsWidget.stepsWidgets)
+            if key > stepWidgetsNum:
+                self.combineChannelsWidget.addStep()
+            
+            stepWidgets = self.combineChannelsWidget.stepsWidgets[key]
+            idx = stepWidgets['selector'].findText(channel)
+            if idx == -1:
+                stepWidgets['selector'].addItem(channel)
+                # stepWidgets['selector'].forbiddenItems.add(channel)
+                idx = stepWidgets['selector'].findText(channel)
+                stepWidgets['selector'].setItemData(idx, QColor('red'), Qt.ForegroundRole)
+
+                self.forbiddenChannels.add(channel)
+            
+            stepWidgets['selector'].setCurrentText(channel)
+            stepWidgets['name_edit'].setText(name)
+            stepWidgets['binarize'].setCurrentText(binarize)
+            stepWidgets['minValueSpinbox'].setValue(min_val)
+            stepWidgets['maxValueSpinbox'].setValue(max_val)
+            
+            keys_used.add(key)
+        
+        # remove extra steps
+        keys_present = set(range(1, len(self.combineChannelsWidget.stepsWidgets)+1))
+        extra_keys = keys_present - keys_used
+        extra_keys = list(extra_keys)
+        extra_keys.sort(reverse=True)
+        for key in extra_keys:
+            self.combineChannelsWidget.removeStep(step_n = key) 
+            # updates key dynamically so I have to rely that missing indx are always last steps
+
+        # update formula
+        self.formulaEditWidget.setText(formula)
+        
+        # for stepWidgets in self.combineChannelsWidget.stepsWidgets.values():
+        #     combo = stepWidgets['selector']
+        #     combo.setItemDelegate(ComboDelegate(self.forbiddenChannels, combo))
+        
     def _updateFormulaVariableNames(self):
         names = [
             stepWidgets['name_edit'].text()
@@ -18549,7 +18755,8 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         return self.saveAsSegmCheckbox.isChecked()
     
     def emitSaveAsSegmCheckboxToggled(self):
-        self.sigSaveAsSegmCheckboxToggled.emit(self.saveAsSegm())
+        if self.validFormula:
+            self.sigSaveAsSegmCheckboxToggled.emit(self.saveAsSegm())
     
     def autoCheckSaveAsSegmCheckbox(self):
         any_not_seg = False
@@ -18593,21 +18800,24 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             )
         else:
             self.ok_cb()
-
-    def emitValuesChanged(self):
-        self._updateFormulaVariableNames()
+    # Not needed anymore since now we funnel all changes to the formulaEditWidget, which then verifies the formula and
+    # emits a signal via  formulaChangeda
+    # def emitValuesChanged(self):
+    #     if not self.validFormula:
+    #         return
+    #     self.sigValuesChanged.emit()
+        
+    def emitValuesChangedSteps(self):
         self.autoCheckSaveAsSegmCheckbox()
-        if not self.validFormula:
-            return
-        self.sigValuesChanged.emit()
+        self._updateFormulaVariableNames()
 
     def ok_cb(self):
         if not self.validFormula:
             return
+        
         self.keepInputDataType = self.keepInputDataTypeToggle.isChecked()
         self.selectedSteps = self.combineChannelsWidget.steps()
         self.formula = self.formulaEditWidget.text()
-
         self.cancel = False
         self.close()
 
@@ -18636,13 +18846,10 @@ class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
         self.mainLayout.addSpacing(20)
 
         qutils.hide_and_delete_layout(self.buttonsLayout)
-        self.mainLayout.addWidget(self.saveAsSegmCheckbox)
-        self.saveAsSegmCheckbox.show()
         buttonsLayout = widgets.CancelOkButtonsLayout()
         self.buttonsLayout = buttonsLayout
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        self.setButtonsEnabled(False)
 
         self.mainLayout.addLayout(buttonsLayout)  
 

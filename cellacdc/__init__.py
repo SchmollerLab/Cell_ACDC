@@ -402,6 +402,7 @@ favourite_func_metrics_csv_path = os.path.join(
 )
 recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
 preproc_recipes_path = os.path.join(settings_folderpath, 'preprocessing_recipes')
+combine_channels_recipes_path = os.path.join(settings_folderpath, 'combine_channels')
 segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'

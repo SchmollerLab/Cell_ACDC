@@ -5730,8 +5730,8 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
             steps: List[Dict[str, Any]],
             keep_input_data_type: bool,
             key: Tuple[Union[int, None], Union[int, None], Union[int, None]],
-            output_as_segm=False,
-            formula=None,
+            output_as_segm: bool,
+            formula: str,
         ):
 
         new_keys = []
