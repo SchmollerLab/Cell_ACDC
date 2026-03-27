@@ -18589,12 +18589,13 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         buttonsLayoutSaveGroup.addWidget(saveRecipeButton, row, col)
         saveRecipeButton.clicked.connect(self.saveRecipe)
         
-        # col += 1
-        # loadLastRecipeButton = widgets.reloadPushButton('Load last parameters')
-        # self.loadLastRecipeButtonComb = loadLastRecipeButton
-        # buttonsLayoutSaveGroup.addWidget(loadLastRecipeButton, row, col)
-        
+        col += 1
+        loadLastRecipeButton = widgets.reloadPushButton('Load last parameters')
+        self.loadLastRecipeButtonComb = loadLastRecipeButton
+        buttonsLayoutSaveGroup.addWidget(loadLastRecipeButton, row, col)        
         self.mainLayout.addLayout(buttonsLayoutSaveGroup)
+        loadLastRecipeButton.clicked.connect(self.loadLastRecipe)
+        self.setLoadLastRecipe()
 
         self.cancel = True
 
@@ -18620,20 +18621,46 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.keepInputDataTypeLayout.insertWidget(0, label)
         self.keepInputDataTypeLayout.insertWidget(1, self.saveAsSegmCheckbox)
         
-    def saveRecipe(self):
-        os.makedirs(combine_channels_recipes_path, exist_ok=True)
-        folder_content = myutils.listdir(combine_channels_recipes_path)
-        num_recipes = len(folder_content)
-        default_text = f'{num_recipes + 1}'
-        proceed, filepath = self.saveRecipeUI(
-            combine_channels_recipes_path, '.json', 
-            'Save combine channels recipe', 'combine_channels_recipe',
-            'Insert a <b>filename</b> for the combine channels recipe:',
-            default_text
-        )
-        
-        if not proceed:
+    def setLoadLastRecipe(self):
+        filepath = self._lastRecipePath()
+        if not os.path.exists(filepath):
+            self.loadLastRecipeButtonComb.setEnabled(False)
+            
+    def loadLastRecipe(self):
+        filepath = self._lastRecipePath()
+        if not os.path.exists(filepath):
             return
+            
+        self.loadRecipe(filepath)
+        
+    def saveLastRecipe(self):
+        filepath = self._lastRecipePath()
+        # check if the file exists
+        if os.path.exists(filepath):
+            # back up the file to _previous.json
+            os.rename(filepath, filepath.replace('last_combine', 'previous_combine'))
+        self.saveRecipe(filepath=filepath)
+        
+    def _lastRecipePath(self):
+        return os.path.join(combine_channels_recipes_path, '.last_combine_channels_recipe.json')
+        
+    def saveRecipe(self, dummy=None, filepath=None):
+        os.makedirs(combine_channels_recipes_path, exist_ok=True)
+        
+        filepath_provided = filepath is not None
+        if not filepath_provided:
+            folder_content = myutils.listdir(combine_channels_recipes_path)
+            num_recipes = len(folder_content)
+            default_text = f'{num_recipes + 1}'
+            proceed, filepath = self.saveRecipeUI(
+                combine_channels_recipes_path, '.json', 
+                'Save combine channels recipe', 'combine_channels_recipe',
+                'Insert a <b>filename</b> for the combine channels recipe:',
+                default_text
+            )
+        
+            if not proceed:
+                return
             
         steps = self.combineChannelsWidget.steps() # already returns a copy
         formula = self.formulaEditWidget.text()
@@ -18644,7 +18671,8 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         with open(filepath, 'w') as f:
             json.dump(steps, f, indent=2)
         
-        self.communicateSavingRecipeFinished(filepath)
+        if not filepath_provided:
+            self.communicateSavingRecipeFinished(filepath)
     
     def selectAndLoadRecipe(self):
         filepath = self.selectRecipeFilepath(
@@ -18792,6 +18820,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             except TypeError as err:
                 signal.emit(steps, keep_input_dtype, formula)
 
+        self.saveLastRecipe()
         if self.hideOnClosing:
             self.setDisabled(True)
             self.infoLabel.setText(
@@ -18799,7 +18828,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
                 "<i>(Feel free to use Cell-ACDC while waiting)</i>"
             )
         else:
-            self.ok_cb()
+            self.ok_cb(saveLastRecipe=False)
     # Not needed anymore since now we funnel all changes to the formulaEditWidget, which then verifies the formula and
     # emits a signal via  formulaChangeda
     # def emitValuesChanged(self):
@@ -18811,10 +18840,13 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.autoCheckSaveAsSegmCheckbox()
         self._updateFormulaVariableNames()
 
-    def ok_cb(self):
+    def ok_cb(self, dummy=None, saveLastRecipe=True):
         if not self.validFormula:
             return
         
+        if saveLastRecipe:
+            self.saveLastRecipe()
+            
         self.keepInputDataType = self.keepInputDataTypeToggle.isChecked()
         self.selectedSteps = self.combineChannelsWidget.steps()
         self.formula = self.formulaEditWidget.text()
@@ -18874,6 +18906,7 @@ class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
             hideOnClosing=hideOnClosing,
         )
 
+        # remove the preprocess buttons, we use the comb version of them
         qutils.delete_widget(self.loadLastRecipeButton)
         qutils.delete_widget(self.saveRecipeButton)
         qutils.delete_widget(self.loadRecipeButton)

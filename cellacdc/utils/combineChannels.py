@@ -99,7 +99,6 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
             the name will be the same as the original file base.
             """
         )
-        printl(basename, basename_ext, ext)
         win = apps.filenameDialog(
             basename=f'{basename}{basename_ext}',
             ext=ext,
