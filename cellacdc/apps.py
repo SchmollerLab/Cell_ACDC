@@ -16566,7 +16566,7 @@ class PreProcessParamsWidget(QWidget):
         self.sigLoadRecipe.emit()
     
     def loadRecipe(self, configPars: dict):
-        for stepWidgets in self.stepsWidgets.values():
+        for stepWidgets in list(self.stepsWidgets.values()):
             try:
                 stepWidgets['delButton'].click()
             except Exception as err:
