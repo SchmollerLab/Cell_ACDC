@@ -17028,7 +17028,8 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         self.channel_names = channel_names
 
         super().__init__(parent)
-        
+
+        self.parent = parent
         qutils.delete_widget(self.loadLastRecipeButton)
         qutils.delete_widget(self.saveRecipeButton)
         qutils.delete_widget(self.loadRecipeButton)
@@ -18538,7 +18539,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             isMultiPos=False,
             ):
         
-        self.combineChannelsWidget = CombineChannelsWidget(channel_names)
+        self.combineChannelsWidget = CombineChannelsWidget(channel_names, parent=self)
         self.warnExistingRecipeFile = self.combineChannelsWidget.warnExistingRecipeFile
         self.communicateSavingRecipeFinished = self.combineChannelsWidget.communicateSavingRecipeFinished
         self.saveRecipeUI = self.combineChannelsWidget.saveRecipeUI
@@ -18566,7 +18567,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     
         self.mainLayout.insertWidget(2, self.combineChannelsWidget)
         self.combineChannelsWidget.groupbox.setCheckable(False)
-        self.combineChannelsWidget.groupbox.setTitle('Combine channels')
+        self.combineChannelsWidget.groupbox.setTitle('Combine and manipulate channels and/or segmentation files')
         
         self.formulaEditWidget = FormulaEditWidget(parent=self)
         self._updateFormulaVariableNames()
@@ -18611,7 +18612,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
 
         self.cancel = True
 
-        self.setWindowTitle('Combine channels')
+        self.setWindowTitle('Combine and manipulate channels and/or segmentation files')
         self.preProcessParamsWidget.hide()
         self.mainLayout.removeWidget(self.preProcessParamsWidget)
 
@@ -18619,7 +18620,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         
         
         tooltip = (
-            'Save the combined channels as a segmentation file, for example '
+            'Save as a segmentation file, for example '
             'when combining a binary mask with a segmentation mask.'
             )
         label = QLabel('Save as segmentation:')
@@ -18734,8 +18735,8 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             default_text = f'{num_recipes + 1}'
             proceed, filepath = self.saveRecipeUI(
                 combine_channels_recipes_path, '.json', 
-                'Save combine channels recipe', 'combine_channels_recipe',
-                'Insert a <b>filename</b> for the combine channels recipe:',
+                'Save recipe', 'combine_channels_recipe',
+                'Insert a <b>filename</b> for the recipe:',
                 default_text
             )
         
@@ -18792,9 +18793,12 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             if idx == -1:
                 stepWidgets['selector'].addItem(channel)
                 # stepWidgets['selector'].forbiddenItems.add(channel)
-                idx = stepWidgets['selector'].findText(channel)
-                stepWidgets['selector'].setItemData(idx, QColor('red'), Qt.ForegroundRole)
-
+                blinker = qutils.QControlBlink(
+                    stepWidgets['selector'], 
+                    qparent=self
+                )
+                blinker.start()
+                stepWidgets['selector'].blinker = blinker
                 self.forbiddenChannels.add(channel)
             
             stepWidgets['selector'].setCurrentText(channel)
@@ -18817,9 +18821,13 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         # update formula
         self.formulaEditWidget.setText(formula)
         
-        # for stepWidgets in self.combineChannelsWidget.stepsWidgets.values():
-        #     combo = stepWidgets['selector']
-        #     combo.setItemDelegate(ComboDelegate(self.forbiddenChannels, combo))
+        for stepWidgets in self.combineChannelsWidget.stepsWidgets.values():
+            combo = stepWidgets['selector']
+            # set forbidden channels red in all steps
+            for i in range(combo.count()):
+                item = combo.itemText(i)
+                if item in self.forbiddenChannels:
+                    combo.setItemData(i, QColor('red'), Qt.ForegroundRole)
         
     def _updateFormulaVariableNames(self):
         names = [
@@ -18945,12 +18953,7 @@ class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
             )
         
         # add int input for number of workers
-        self.nThreadsSpinBox = QSpinBox()
-        self.nThreadsSpinBox.setMinimum(1)
-        self.nThreadsSpinBox.setValue(4)
-        self.nThreadsSpinBox.setToolTip("Number of threads to use for processing")
-        self.mainLayout.addWidget(QLabel("Number of threads:"))
-        self.mainLayout.addWidget(self.nThreadsSpinBox)
+
         
         self.mainLayout.addSpacing(20)
 
@@ -18960,7 +18963,14 @@ class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
 
-        self.mainLayout.addLayout(buttonsLayout)  
+        self.mainLayout.addLayout(buttonsLayout)
+        
+        self.nThreadsSpinBox = QSpinBox()
+        self.nThreadsSpinBox.setMinimum(1)
+        self.nThreadsSpinBox.setValue(4)
+        self.nThreadsSpinBox.setToolTip("Number of threads to use for processing")
+        self.mainLayout.addWidget(QLabel("Number of threads:"))
+        self.mainLayout.addWidget(self.nThreadsSpinBox)
 
 class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
     def __init__(

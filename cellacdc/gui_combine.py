@@ -29,7 +29,7 @@ class CombineGuiElements:
 
         helpText = (
             """
-            The combined channels file will be saved with a different 
+            The segm/img file will be saved with a different 
             file name.<br><br>
             Insert a name to append to the end of the new file name. The rest of 
             the name will be the same as the original file base.
@@ -117,7 +117,7 @@ class CombineGuiElements:
     def combineDialogStepsChanged(self):
         steps, keep_input_data_type, formula = self.combineDialog.steps(return_keepInputDataType=True)
         if steps is None:
-            self.logger.warning('Combine channels steps not initialized yet.')
+            self.logger.warning('Combine channels recipe not initialized yet.')
             return
         
         self.updateCombineChannelsPreview(steps=steps, keep_input_data_type=keep_input_data_type, formula=formula)
@@ -142,7 +142,7 @@ class CombineGuiElements:
             formula = kwargs.get('formula')
 
         if steps is None:
-            self.logger.warning('Combine channels steps not initialized yet.')
+            self.logger.warning('Combine channels recipe not initialized yet.')
             return
         
         txt = 'Combining...'
@@ -296,6 +296,9 @@ class CombineGuiElements:
         curr_proj = self.zProjComboBox.currentText()
         if curr_proj != 'single z-slice':
              self.zProjComboBox.setCurrentText('single z-slice')
+        
+        if self.combineDialog is None:
+            self.setupCombiningChannels()
         self.combineDialog.show()
         self.combineDialog.raise_()
         self.combineDialog.activateWindow()
