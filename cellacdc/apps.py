@@ -18516,13 +18516,16 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
 #         super().paint(painter, option, index)
         
 class CombineChannelsSetupDialog(PreProcessRecipeDialog):
-    sigValuesChanged = Signal()
+    sigApplyImage = Signal(dict, bool, str)
+    sigApplyZstack = Signal(dict, bool, str)
     sigApplyAllFrames = Signal(dict, bool, str)
     sigApplyAllPos = Signal(dict, bool, str)
-    sigApplyAllZslices = Signal(dict, bool, str)
-    sigApplyAllFramesZslices = Signal(dict, bool, str)
-    sigApplyImage = Signal(dict, bool, str)
+    sigValuesChanged = Signal()
     sigSaveAsSegmCheckboxToggled = Signal(bool)
+
+    
+    # sigApplyAllZslices = Signal(dict, bool, str)
+    # sigApplyAllFramesZslices = Signal(dict, bool, str)
 
     def __init__(
             self,
@@ -18578,24 +18581,33 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         
         row = 0
         col = 0
-        loadRecipeButton = widgets.OpenFilePushButton('Load saved recipe...')
+        loadRecipeButton = widgets.OpenFilePushButton('Load saved recipe')
         self.loadRecipeButtonComb = loadRecipeButton
         buttonsLayoutSaveGroup.addWidget(loadRecipeButton, row, col)
         self.loadRecipeButtonComb.clicked.connect(self.selectAndLoadRecipe)
         
         col += 1
-        saveRecipeButton = widgets.savePushButton('Save current recipe...')
+        saveRecipeButton = widgets.savePushButton('Save current recipe')
         self.saveRecipeButtonComb = saveRecipeButton
         buttonsLayoutSaveGroup.addWidget(saveRecipeButton, row, col)
         saveRecipeButton.clicked.connect(self.saveRecipe)
+        saveRecipeButton.setToolTip(
+            'Save the current recipe to a file\n'
+            f'Location: <b>{combine_channels_recipes_path}</b>'
+        )
         
         col += 1
-        loadLastRecipeButton = widgets.reloadPushButton('Load last parameters')
+        loadLastRecipeButton = widgets.reloadPushButton('Load last recipe')
         self.loadLastRecipeButtonComb = loadLastRecipeButton
         buttonsLayoutSaveGroup.addWidget(loadLastRecipeButton, row, col)        
         self.mainLayout.addLayout(buttonsLayoutSaveGroup)
         loadLastRecipeButton.clicked.connect(self.loadLastRecipe)
         self.setLoadLastRecipe()
+        
+        loadLastRecipeButton.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        loadLastRecipeButton.customContextMenuRequested.connect(
+            self._showLoadRecipeContextMenu
+        )
 
         self.cancel = True
 
@@ -18605,27 +18617,48 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
 
         self.savePreprocButton.setText('Save combined data...')
         
+        
+        tooltip = (
+            'Save the combined channels as a segmentation file, for example '
+            'when combining a binary mask with a segmentation mask.'
+            )
         label = QLabel('Save as segmentation:')
-        label.setToolTip(
-            'Save the combined channels as a segmentation file, for example '
-            'when combining a binary mask with a segmentation mask.'
-        )
+        self.saveAsSegmlabel = label
+        label.setToolTip(tooltip)
         self.saveAsSegmCheckbox = widgets.Toggle()
-        self.saveAsSegmCheckbox.setToolTip(
-            'Save the combined channels as a segmentation file, for example '
-            'when combining a binary mask with a segmentation mask.'
-        )
+        self.saveAsSegmCheckbox.setToolTip(tooltip)
         self.saveAsSegmCheckbox.setChecked(False)
         self.saveAsSegmCheckbox.setEnabled(False)
         self.saveAsSegmCheckbox.toggled.connect(self.emitSaveAsSegmCheckboxToggled)
+        
         self.keepInputDataTypeLayout.insertWidget(0, label)
         self.keepInputDataTypeLayout.insertWidget(1, self.saveAsSegmCheckbox)
-        
+
     def setLoadLastRecipe(self):
         filepath = self._lastRecipePath()
         if not os.path.exists(filepath):
             self.loadLastRecipeButtonComb.setEnabled(False)
-            
+
+    def returLoadSecondLastRecipe(self):
+        filepath = self._secondLastRecipePath()
+        if not os.path.exists(filepath):
+            return False
+        return True
+
+    def _showLoadRecipeContextMenu(self, pos):
+        menu = QMenu(self)
+        action = menu.addAction('Load recipe from before the last one')
+        action.triggered.connect(self.loadPreviousRecipe)
+        action.setEnabled(self.returLoadSecondLastRecipe())
+        menu.exec(self.loadLastRecipeButtonComb.mapToGlobal(pos))
+
+    def loadPreviousRecipe(self):
+        filepath = self._secondLastRecipePath()
+        if not os.path.exists(filepath):
+            return
+
+        self.loadRecipe(filepath)
+
     def loadLastRecipe(self):
         filepath = self._lastRecipePath()
         if not os.path.exists(filepath):
@@ -18634,15 +18667,62 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.loadRecipe(filepath)
         
     def saveLastRecipe(self):
+        os.makedirs(combine_channels_recipes_path, exist_ok=True)
         filepath = self._lastRecipePath()
-        # check if the file exists
+
+        same = False
         if os.path.exists(filepath):
-            # back up the file to _previous.json
-            os.rename(filepath, filepath.replace('last_combine', 'previous_combine'))
+            steps_curr = self._getSaveRecipyDict()
+            with open(filepath, 'r') as f:
+                steps_prev = json.load(f)
+            same = self._recipesMatch(steps_curr, steps_prev)
+
+        if same:
+            return
+
+        if os.path.exists(filepath):
+            new_filename = self._secondLastRecipePath()
+            if os.path.exists(new_filename):
+                os.remove(new_filename)
+            os.rename(filepath, new_filename)
         self.saveRecipe(filepath=filepath)
+
+
+    def _recipesMatch(self, steps_curr, steps_prev):
+        # Normalize current dict to strings for comparison with JSON-loaded dict
+        def normalize(d):
+            return {str(k): str(v) for k, v in d.items()}
+
+        for raw_key in steps_curr:
+            key = str(raw_key)
+            if key not in steps_prev:
+                return False
+            if key in ('formula', 'keep_input_data_type', 'save_as_segm'):
+                if str(steps_curr[raw_key]) != str(steps_prev[key]):
+                    return False
+            else:
+                step_dict = normalize(steps_curr[raw_key])
+                step_dict_prev = steps_prev[key]
+                for key2, val2 in step_dict.items():
+                    if key2 not in step_dict_prev:
+                        return False
+                    if val2 != str(step_dict_prev[key2]):
+                        return False
+        return True
         
     def _lastRecipePath(self):
         return os.path.join(combine_channels_recipes_path, '.last_combine_channels_recipe.json')
+    
+    def _secondLastRecipePath(self):
+        return os.path.join(combine_channels_recipes_path, '.previous_combine_channels_recipe.json')
+    
+    def _getSaveRecipyDict(self):
+        steps = self.combineChannelsWidget.steps() # already returns a copy
+        formula = self.formulaEditWidget.text()
+        steps['formula'] = formula
+        steps['keep_input_data_type'] = self.keepInputDataTypeToggle.isChecked()
+        steps['save_as_segm'] = self.saveAsSegmCheckbox.isChecked()
+        return steps
         
     def saveRecipe(self, dummy=None, filepath=None):
         os.makedirs(combine_channels_recipes_path, exist_ok=True)
@@ -18662,11 +18742,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             if not proceed:
                 return
             
-        steps = self.combineChannelsWidget.steps() # already returns a copy
-        formula = self.formulaEditWidget.text()
-        steps['formula'] = formula
-        steps['keep_input_data_type'] = self.keepInputDataTypeToggle.isChecked()
-        steps['save_as_segm'] = self.saveAsSegmCheckbox.isChecked()
+        steps = self._getSaveRecipyDict()
         
         with open(filepath, 'w') as f:
             json.dump(steps, f, indent=2)
@@ -18819,6 +18895,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
                 signal.emit(steps, formula)
             except TypeError as err:
                 signal.emit(steps, keep_input_dtype, formula)
+            
 
         self.saveLastRecipe()
         if self.hideOnClosing:
@@ -18916,7 +18993,7 @@ class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
         self.allButtons.remove(self.loadRecipeButton)
 
         self.previewCheckbox.setChecked(True)
-        self.saveAsSegmCheckbox.setText('Save and view as segmentation')
+        self.saveAsSegmlabel.setText('Save and view as segmentation')
     
     def steps(self, return_keepInputDataType=False):
         steps = self.combineChannelsWidget.steps()
