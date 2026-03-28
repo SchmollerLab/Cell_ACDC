@@ -293,9 +293,15 @@ class CombineGuiElements:
         self.setImageImg1()
 
     def combineChannelsActionTriggered(self):
-        curr_proj = self.zProjComboBox.currentText()
-        if curr_proj != 'single z-slice':
-             self.zProjComboBox.setCurrentText('single z-slice')
+        if self.zProjComboBox is not None:
+            curr_proj = self.zProjComboBox.currentText()
+            if curr_proj != 'single z-slice':
+                self.zProjComboBox.setCurrentText('single z-slice')
+          
+        if self.switchPlaneCombobox is not None:
+            depthAxes = self.switchPlaneCombobox.depthAxes()
+            if depthAxes != 'z':
+                self.switchPlaneCombobox.setCurrentText('xy')
         
         if self.combineDialog is None:
             self.setupCombiningChannels()

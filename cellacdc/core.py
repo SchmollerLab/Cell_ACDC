@@ -2375,62 +2375,6 @@ def combine_channels_executor_map_return_img(args, **kwargs):
     kwargs['key'] = key
     return combine_channels_func(**kwargs)
 
-def _combine_channels_operation_applier(i, input_img_added, output_img, operator):
-    """
-    Performs operation on output_img using input_img_added
-    Main reason for this to be a separate function is to centralize the logic
-    
-    NOTE: Needs to start either with properly init. "output_img" or i=0
-
-    Parameters
-    ----------
-    i : int
-        only for getting i == 0 case
-    input_img_added : numpy.ndarray
-        Input image which is combined with output_img based on operation
-    output_img : numpy.ndarray
-        Output image which is combined with input_img_added based on operation
-    operator : str
-        Operation to be performed on output_img and input_img_added
-
-    Returns
-    -------
-    numpy.ndarray
-        Output image which is combined with input_img_added based on operation
-        can be used again for next iteration
-
-    Raises
-    ------
-    ValueError
-        _description_
-    ValueError
-        _description_
-    """
-    if i == 0:
-        if operator == "+":
-            output_img = input_img_added
-        elif operator == "-":
-            output_img = -input_img_added
-        else:
-            raise ValueError(f'Invalid operator: {operator}')
-    else:
-        if operator == "+":
-            output_img = output_img + input_img_added
-        elif operator == "-":
-            output_img = output_img - input_img_added
-        elif operator == "*":
-            output_img = output_img * input_img_added
-        elif operator == "/":
-            output_img = output_img / input_img_added
-        elif operator == "max":
-            output_img = np.maximum(output_img, input_img_added)
-        elif operator == "min":
-            output_img = np.minimum(output_img, input_img_added)
-        else:
-            raise ValueError(f'Invalid operator: {operator}')
-        
-    return output_img
-
 def _combine_channels_multiplier_apply(binarize, input_img):
     if binarize == 'binarize':
         input_img = (input_img > 0)
@@ -2446,9 +2390,9 @@ def _get_img_from_data_key(data, key, num_dim, seg=False):
         return data[key[1]]
     if num_dim == 3: # t x y
         return data[key[1]]
-    elif num_dim == 4: # t x z x y
+    elif num_dim == 4: # t z x y
         return data[key[1]][key[2]]
-    elif num_dim == 2: # z x y, aber t is always there
+    elif num_dim == 2: # z x y, but t is always there
         return data[0]
     else:
         raise ValueError(
@@ -2616,7 +2560,6 @@ def combine_channels_func(
     target_shape = [0, 0, 0, 0]
 
     if data is None:
-        num_dim = None
         for channel in fluo_channel_names:
             ch_filepath = load.get_filepath_from_endname(
                 images_path, channel
@@ -2624,15 +2567,12 @@ def combine_channels_func(
             ch_image_data = load.load_image_file(ch_filepath)
             if original_dtype is None:
                 original_dtype = ch_image_data.dtype
-                
+            
+            ch_image_data = myutils.img_to_float(ch_image_data)
             target_dims, target_shape = _update_target_shape_target_dims(
                  target_dims, target_shape, ch_image_data
             )
-            
-            ch_image_data = myutils.img_to_float(ch_image_data)
             fluo_ch_data_list[channel] = ch_image_data
-            if num_dim is None:
-                num_dim = ch_image_data.ndim
         for channel in segm_channels:
             ch_filepath = load.get_filepath_from_endname(
                 images_path, channel
@@ -2648,19 +2588,15 @@ def combine_channels_func(
             segm_ch_data_list[channel] = ch_image_data
     else:
         posData = data[key[0]]
-        
-    
         n_dim = 4
         if posData.SizeZ == 1:
             n_dim -= 1
-        if posData.SizeT == 1:
-            n_dim -= 1
+        # if posData.SizeT == 1: # actually t is always there, we only need to subtract for curr. segm
+        #     n_dim -= 1
         is_2D_segm_on_3D = posData.SizeZ != 1 and posData.allData_li[0]['labels'].ndim == 2
         fluo_data_dict = posData.fluo_data_dict
         segm_data_dict = posData.ol_labels_data
         imgs_path = posData.images_path
-        
-        
 
         for channel in fluo_channel_names:
             channel_path = load.get_filename_from_channel(
@@ -2687,6 +2623,8 @@ def combine_channels_func(
             )
             segm_ch_data_list[channel] = channel_img_data_int
         if current_segm: # here we dont need to get/appply target dim, as we already ignore z slice key if segm is 2D and image 3D (time is always treated differently!)
+            if posData.SizeT == 1: # actually t is always there, we only need to subtract for curr. segm
+                n_dim -= 1
             if posData.frame_i != key[1]:
                 if n_dim == 4 and not is_2D_segm_on_3D:
                     channel_img_data = posData.allData_li[key[1]]['labels'][key[2]]
