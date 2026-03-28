@@ -28499,14 +28499,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not self.realTimeTrackingToggle.isChecked():
             return True
         
+        posData = self.data[self.pos_i]
         if against_next:
-            reference_lab = posData.allData_li[posData.frame_i-1]['labels']
+            reference_lab = posData.allData_li[posData.frame_i+1]['labels']
             if reference_lab is None:
                 # Next frame never visited --> cannot track against next
                 return True
 
             if posData.frame_i == posData.SizeT - 1:
                 # Last frame --> cannot track against next
+                return True
+    
+        else:
+            # check that we are not on the last frame
+            if posData.frame_i == 0:
                 return True
             
         if enforce or self.UserEnforced_Tracking:
