@@ -28496,6 +28496,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.UserEnforced_DisabledTracking:
             return True
         
+        if not self.realTimeTrackingToggle.isChecked():
+            return True
+        
         if against_next:
             reference_lab = posData.allData_li[posData.frame_i-1]['labels']
             if reference_lab is None:
