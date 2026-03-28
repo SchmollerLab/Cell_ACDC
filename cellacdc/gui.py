@@ -2953,7 +2953,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.preprocessAction.setShortcut('Alt+Shift+P')
 
         self.combineChannelsAction = QAction(
-            'Combine channels...', self
+            'Combine and manipulate channels and/or segmentation files...', self
         )
         self.combineChannelsAction.setShortcut('Alt+Shift+C')
         

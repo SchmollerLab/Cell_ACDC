@@ -70,6 +70,7 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
         self.worker.keepInputDataType = win.keepInputDataType
         self.worker.selectedSteps = win.selectedSteps
         self.worker.nThreads = win.nThreadsSpinBox.value()
+        self.worker.formula = win.formulaEditWidget.text()
         self.worker.saveAsSegm = win.saveAsSegm()
         self.worker.waitCond.wakeAll()
         
@@ -86,24 +87,6 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
             basename_ext = ''
             ext = '.tif'
             return basename_ext, ext
-        
-        # ext = '.npz'
-        # basename_ext = 'segm_'
-        # for step_n, step in self.worker.selectedSteps.items():
-        #     channel_name = step['channel']
-        #     if '_segm' not in channel_name:
-        #         basename_ext = ''
-                
-        #     for images_path in self.images_paths:
-        #         image_filepath = load.get_filepath_from_endname(
-        #             images_path, channel_name
-        #         )
-                
-        #         _, ext = os.path.splitext(image_filepath)
-        #         if ext != '.npz':
-        #             return '', '.tif'
-        
-        # return basename_ext, ext
     
     def askAppendName(self, basename):
         basename_ext, ext = self.getBasenameExtAndExtensionOutputImage()
@@ -116,7 +99,6 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
             the name will be the same as the original file base.
             """
         )
-        printl(basename, basename_ext, ext)
         win = apps.filenameDialog(
             basename=f'{basename}{basename_ext}',
             ext=ext,

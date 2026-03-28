@@ -5658,7 +5658,7 @@ class CustomPreprocessWorkerGUI(QObject):
 
         self.signals.finished.emit(self)
 
-class CombineWorkerGUI(CustomPreprocessWorkerGUI):
+class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
     sigDone = Signal(object, list)
     sigPreviewDone = Signal(object, list)
     sigAskLoadChannels = Signal(set, object)
@@ -5682,8 +5682,9 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             key: Tuple[int, int, Union[int, str]],
             keep_input_data_type: bool,
             output_as_segm: bool,
+            formula: str,
         ):
-        self.dataQ.append((data, steps, key, keep_input_data_type,output_as_segm))
+        self.dataQ.append((data, steps, key, keep_input_data_type,output_as_segm, formula))
         if len(self.dataQ) == 1:
             self.sigIsQueueEmpty.emit(False)
             # Wake up worker upon inserting first element
@@ -5696,15 +5697,17 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             keep_input_data_type: bool,
             key: Tuple[Union[int, None], Union[int, None], Union[int, None]],
             output_as_segm: bool,
+            formula: str,
         ):
         self._key = key
         self._steps = steps
         self._data = data
         self._keep_input_data_type = keep_input_data_type
         self._output_as_segm = output_as_segm
+        self._formula = formula
 
     def runJob(self, data=None, steps=None, keep_input_data_type=None, key=None,
-               output_as_segm=None):
+               output_as_segm=None, formula=None):
         if data is None:
             data = self._data
         if steps is None:
@@ -5715,11 +5718,13 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             key = self._key
         if output_as_segm is None:
             output_as_segm = self._output_as_segm
+        if formula is None:
+            formula = self._formula
 
-        if not steps:
+        if not steps and formula is None:
             return
 
-        return self.applySteps(data, steps, keep_input_data_type, key, output_as_segm)
+        return self.applySteps(data, steps, keep_input_data_type, key, output_as_segm, formula=formula)
     
     def applySteps(
             self, 
@@ -5727,7 +5732,8 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             steps: List[Dict[str, Any]],
             keep_input_data_type: bool,
             key: Tuple[Union[int, None], Union[int, None], Union[int, None]],
-            output_as_segm=False,
+            output_as_segm: bool,
+            formula: str,
         ):
 
         new_keys = []
@@ -5765,6 +5771,7 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             logger_func=self.logger,
             signals=self.signals,
             output_as_segm=output_as_segm,
+            formula=formula,
 
         )
         return output_imgs, out_keys
@@ -5789,12 +5796,12 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
                 self.logger.log('Combining channels worker paused.')
                 self.pause()
             elif len(self.dataQ) > 0:
-                data, steps, key, keep_input_data_type, output_as_segm = self.dataQ.pop()
+                data, steps, key, keep_input_data_type, output_as_segm, formula = self.dataQ.pop()
                 requ_steps, pos_i = self.requiredChannels(steps, key[0])
                 self.emitsigAskLoadChannels(requ_steps, pos_i)
                 output_imgs, out_keys = self.applySteps(
                     data, steps, keep_input_data_type, key,
-                    output_as_segm=output_as_segm
+                    output_as_segm=output_as_segm, formula=formula
                 )
                 self.sigPreviewDone.emit(output_imgs, out_keys)
                 if len(self.dataQ) == 0:
@@ -5964,7 +5971,8 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             steps:  Dict[str, Dict[str, Any]],
             appended_text_filename: str,
             keep_input_data_type: bool,
-            n_threads: int = None
+            n_threads: int = None,
+            formula: str = None,
         ):
         save_filepaths = []
         images_path_to_process = []
@@ -5975,20 +5983,6 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             out_ext = '.tif'
             basename_ext = ''
         for images_path in image_paths:
-            # for step_n, step in steps.items():
-            #     channel = step['channel']
-            #     if '_segm' not in channel:
-            #          basename_ext = ''
-                     
-            #     image_filepath = load.get_filepath_from_endname(
-            #         images_path, channel
-            #     )
-            #     _, ext = os.path.splitext(image_filepath)
-            #     if ext != '.npz':
-            #         out_ext = '.tif'
-            #         basename_ext = ''
-            #         break
-
             basename, channels = myutils.getBasenameAndChNames(images_path)
             
             savename = (
@@ -6006,7 +6000,8 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             signals=self.signals,
             logger_func=self.logger.log,
             n_threads=n_threads,
-            output_as_segm=self.saveAsSegm
+            output_as_segm=self.saveAsSegm,
+            formula=formula,
         )
     
     @worker_exception_handler
@@ -6044,12 +6039,14 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             image_paths += [os.path.join(exp_path, pos, 'Images') for pos in pos_foldernames]
 
         self.signals.initProgressBar.emit(len(pos_foldernames))
+        formula = self.formula
         self.applyPipeline(
             image_paths,
             selectedSteps,
             appendedName,
             self.keepInputDataType,
-            n_threads=self.nThreads
+            n_threads=self.nThreads,
+            formula=formula,
         )
 
         self.signals.finished.emit(self)
