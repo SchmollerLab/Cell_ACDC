@@ -57,14 +57,15 @@ class WorkflowBaseFunctions():
         dialog = self.setupDialog(**kwargs_to_pass)
         return dialog
 
-    def renderDialogPreview(self, size=(520, 360), scale=(220, 110), parent=None, workflowGui=None, posData=None):
+    def renderDialogPreview(self, size=None, scale=(220, 110), parent=None, workflowGui=None, posData=None):
         try:
             kwargs = {'parent': parent, 'workflowGui': workflowGui, 'posData': posData}
             kwargs_required = inspect.getfullargspec(self.dryrunDialog).args
             kwargs_to_pass = {k: v for k, v in kwargs.items() if k in kwargs_required}
             dialog = self.dryrunDialog(**kwargs_to_pass)
     
-            dialog.setFixedSize(*size)  # Use fixed size instead of minimum
+            if size is not None:
+                dialog.setFixedSize(*size)  # Use fixed size instead of minimum
 
             dialog.setAttribute(Qt.WA_DontShowOnScreen, True)
             dialog.show()
@@ -77,7 +78,7 @@ class WorkflowBaseFunctions():
             QApplication.processEvents()
 
             # Grab the dialog content
-            pix = dialog.grab()
+            pix = dialog.grab().scaled(220, 110, Qt.KeepAspectRatio, Qt.SmoothTransformation)
 
             dialog.close()
             dialog.deleteLater()
@@ -89,6 +90,11 @@ class WorkflowBaseFunctions():
             pix = QPixmap(*scale)
             pix.fill(Qt.lightGray)
             return pix
+        
+    def input_types_changed(self, dialog, input_types):
+        dialog.input_types = input_types
+        if hasattr(dialog, 'updatedInputTypes'):
+            dialog.updatedInputTypes()
         
 class WorkflowCombineChannelsFunctions(WorkflowBaseFunctions):
     def __init__(self) -> None:
@@ -107,10 +113,6 @@ class WorkflowCombineChannelsFunctions(WorkflowBaseFunctions):
         dialog.sigSaveAsSegmCheckboxToggled.connect(self.saveAsSegmCheckboxToggled)
         dialog.input_types = {0: 'img'}
         return dialog
-    
-    def input_types_changed(self, dialog, input_types):
-        dialog.input_types = input_types
-        dialog.updatedInputTypes()
         
     def numStepsChanged(self, num_steps):
         inputs = {n: ['img', 'segm'] for n in range(num_steps)}
@@ -185,6 +187,7 @@ class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
         
     def updatedInputTypes(self):
         self.combineChannelsWidget.setBinarizeCheckableAndNorm()
+        self.autoCheckSaveAsSegmCheckbox() # to update the formula preview and error state based on the new input types
         
 class WorkflowInputDataDialog(QBaseDialog):
     sigOkClicked = Signal()
@@ -752,7 +755,7 @@ class WorkflowZone(QGraphicsView):
                             print(f"Input {index} on this card already has a connection. Inputs can only have one connection.")
                             self.cancelConnection()
                             return
-                
+
                 # Valid connection
                 self.createConnection(start_card, start_is_output, start_index, card, is_output, index)
             
@@ -805,15 +808,10 @@ class WorkflowZone(QGraphicsView):
             return
         
         # If input has no type, set it to the output type
-        if input_type is None and output_type is not None:
+        if output_type is not None:
             input_card.input_types[input_idx] = output_type
-            # Update the circle's styling
-            input_circle = input_card.input_circles[input_idx - 1] if input_idx - 1 < len(input_card.input_circles) else None
-            if input_circle is not None:
-                input_circle.updateTypeInfo(output_type)
             # Trigger input types changed callback
-            if hasattr(input_card.functions, 'input_types_changed'):
-                input_card.functions.input_types_changed(input_card.dialog, input_card.input_types)
+            input_card.functions.input_types_changed(input_card.dialog, input_card.input_types)
         
         # Store connection with card IDs
         if is_out1:  # card1 is output, card2 is input
@@ -1029,13 +1027,8 @@ class WorkflowZone(QGraphicsView):
                         output_type = source_card.output_types.get(start_idx)
                         if output_type is not None:
                             end_card.input_types[end_idx] = output_type
-                            # Update the circle's styling
-                            end_circle = end_card.input_circles[end_idx - 1] if end_idx - 1 < len(end_card.input_circles) else None
-                            if end_circle is not None:
-                                end_circle.updateTypeInfo(output_type)
                             # Trigger input types changed callback
-                            if hasattr(end_card.functions, 'input_types_changed'):
-                                end_card.functions.input_types_changed(end_card.dialog, end_card.input_types)
+                            end_card.functions.input_types_changed(end_card.dialog, end_card.input_types)
 
     def cancelConnection(self):
         """Cancel the current connection being drawn"""

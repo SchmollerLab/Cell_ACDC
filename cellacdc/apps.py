@@ -17189,10 +17189,8 @@ class CombineChannelsWidget(PreProcessParamsWidget):
             binarizeSelector = stepWidgets['binarize']
             segm = False
             if self.channel_names is None:
-                try:
-                    segm = self.parent.input_types[step_n-1] == 'segm'
-                except Exception as err:
-                    pass
+                if hasattr(self.parent, 'input_types') and step_n in self.parent.input_types:
+                    segm = self.parent.input_types[step_n] == 'segm'
             else:
                 channel = stepWidgets['selector'].currentText()
                 segm = True if 'segm' in channel.lower() else False
@@ -18576,7 +18574,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             parent=parent,
             hideOnClosing=hideOnClosing,
         )
-
+        self.channel_names = channel_names
         self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(
             self.emitValuesChangedSteps
         )
@@ -18901,11 +18899,17 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     
     def autoCheckSaveAsSegmCheckbox(self):
         any_not_seg = False
-        for step in self.combineChannelsWidget.steps().values():
-            channel = step['channel']
-            if 'segm' not in channel:
-                any_not_seg = True
-                break
+        for step_n, step in self.combineChannelsWidget.steps().items():
+            if self.channel_names is None and hasattr(self, 'input_types'):
+                segm = self.input_types.get(step_n, '') == 'segm'
+                if not segm:
+                    any_not_seg = True
+                    break
+            else:
+                channel = step['channel']
+                if 'segm' not in channel:
+                    any_not_seg = True
+                    break
                 
         if any_not_seg:
             self.saveAsSegmCheckbox.setChecked(False)
