@@ -64,6 +64,8 @@ from . import exception_handler
 from . import user_profile_path
 from . import cellacdc_path
 from . config import parser_args
+from . import workflow_gui
+
 
 try:
     import spotmax
@@ -179,8 +181,16 @@ class mainWin(QMainWindow):
         segmButton.clicked.connect(self.launchSegm)
         self.segmButton = segmButton
         modulesButtonsGroupBoxLayout.addWidget(segmButton)
+        
+        workflowButton = QPushButton('  3. Launch workflow module...')
+        workflowButton.setIcon(QIcon(':segment.svg'))
+        workflowButton.setIconSize(QSize(iconSize,iconSize))
+        workflowButton.setFont(font)
+        workflowButton.clicked.connect(self.launchWorkflowGui)
+        self.workflowButton = workflowButton
+        modulesButtonsGroupBoxLayout.addWidget(workflowButton)
 
-        guiButton = QPushButton('  3. Launch GUI...')
+        guiButton = QPushButton('  4. Launch GUI...')
         guiButton.setIcon(QIcon(':logo.svg'))
         guiButton.setIconSize(QSize(iconSize, iconSize))
         guiButton.setFont(font)
@@ -189,7 +199,7 @@ class mainWin(QMainWindow):
         modulesButtonsGroupBoxLayout.addWidget(guiButton)
 
         if SPOTMAX_INSTALLED:
-            spotmaxButton = QPushButton('  4. Launch SpotMAX...')
+            spotmaxButton = QPushButton('  5. Launch SpotMAX...')
             spotmaxButton.setIcon(QIcon(spotmax_logo_path))
             spotmaxButton.setIconSize(QSize(iconSize,iconSize))
             spotmaxButton.setFont(font)
@@ -247,6 +257,7 @@ class mainWin(QMainWindow):
         self.guiWins = []
         self.spotmaxWins = []
         self.dataPrepWins = []
+        self.workflowWins = []
         self._version = None
         self.progressWin = None
         self.forceClose = False
@@ -2004,6 +2015,34 @@ class mainWin(QMainWindow):
         self.guiWins.append(guiWin)
         guiWin.sigClosed.connect(self.guiClosed)
         guiWin.run()
+        
+    def launchWorkflowGui(self, checked=False):
+        self.logger.info('Opening Workflow GUI...')
+        # custom_txt = """
+        #             After you click "Ok" on this dialog you will be asked
+        #             to <b>select the experiment folders</b>, one by one.<br><br>
+        #         """
+        # selectedExpPaths = self.getSelectedExpPaths(
+        #     'Workflow GUI',
+        #     custom_txt=custom_txt
+        # )
+        # if selectedExpPaths is None:
+        #     return
+        selectedExpPaths = {r'C:/Users/timon/OneDrive/Helmholtz/Microscopy_Data/SpotMAX_vs_Human_dataset/C_elegans_CO/COSA-1/Halo': 
+            ['Position_8', 'Position_9', 'Position_10', 'Position_11', 
+             'Position_12', 'Position_13', 'Position_14', 'Position_15', 
+             'Position_16', 'Position_17', 'Position_18', 'Position_19'], 
+            r'C:/Users/timon/OneDrive/Helmholtz/Microscopy_Data/SpotMAX_vs_Human_dataset/C_elegans_CO/COSA-1/mNeonGreen': 
+                ['Position_1', 'Position_2', 'Position_3', 
+                 'Position_4', 'Position_5', 'Position_6', 'Position_7']}
+        workflowWin = workflow_gui.WorkflowGui(
+            self.app, mainWin=self, version=self._version, 
+            launcherSlot=self.launchWorkflowGui,
+            selectedExpPaths=selectedExpPaths
+        )
+        self.workflowWins.append(workflowWin)
+        workflowWin.sigClosed.connect(self.workflowGuiClosed)
+        workflowWin.run()
     
     def launchSpotmaxGui(self, checked=False):
         from spotmax import icon_path, logo_path
@@ -2035,6 +2074,14 @@ class mainWin(QMainWindow):
         except ValueError:
             pass
         self._gc_collect()
+        
+    def workflowGuiClosed(self, workflowWin):
+        try:
+            self.workflowWins.remove(workflowWin)
+        except ValueError:
+            pass
+        self._gc_collect()
+        
         
     def _gc_collect(self):
         QTimer.singleShot(100, gc.collect)

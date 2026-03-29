@@ -17023,8 +17023,9 @@ class PreProcessParamsWidget(QWidget):
         
 class CombineChannelsWidget(PreProcessParamsWidget):
     sigValuesChangedCombineChannels = Signal()
+    sigNumStepsChanged = Signal(int)
     
-    def __init__(self, channel_names:Iterable[str], parent=None):
+    def __init__(self, channel_names:Iterable[str] | None, parent=None):
         self.channel_names = channel_names
 
         super().__init__(parent)
@@ -17059,23 +17060,30 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         stepWidgets['name_edit'] = name_edit
         name_edit.textChanged.connect(self.emitValuesChanged)
 
-        tooltip = (
-            'Select a channel or a segmentation mask'
-        )
+        if self.channel_names is not None:
+            tooltip = (
+                'Number corresponds to input'
+            )
+        else:
+            tooltip = (
+                'Select a channel or a segmentation mask'
+            )
         if is_first:
             label = QLabel('Channel')
             label.setToolTip(
                 tooltip
             )
             self.gridLayout.addWidget(label, self.row-1, 2)
-        ch_selector = QComboBox()
-        ch_selector.setToolTip(
-            tooltip
-        )
-        ch_selector.addItems(self.channel_names)
+        
+        if self.channel_names is not None:
+            ch_selector = QComboBox()
+            ch_selector.addItems(self.channel_names)
+            ch_selector.currentTextChanged.connect(self.setBinarizeCheckableAndNorm)
+        else:
+            ch_selector = QLabel(f'Input {step_n}')
+        ch_selector.setToolTip(tooltip)
         self.gridLayout.addWidget(ch_selector, self.row, 2)
         stepWidgets['selector'] = ch_selector
-        ch_selector.currentTextChanged.connect(self.setBinarizeCheckableAndNorm)
 
         # add binarisaion spinbox
         tooltip = (
@@ -17170,6 +17178,8 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         self.resetStretch()
         self.sigValuesChangedCombineChannels.emit()
         self.setBinarizeCheckableAndNorm()
+        
+        self.sigNumStepsChanged.emit(len(self.stepsWidgets))
     
     def emitValuesChanged(self, *args):
         self.sigValuesChangedCombineChannels.emit()
@@ -17177,8 +17187,16 @@ class CombineChannelsWidget(PreProcessParamsWidget):
     def setBinarizeCheckableAndNorm(self):
         for step_n, stepWidgets in self.stepsWidgets.items():
             binarizeSelector = stepWidgets['binarize']
-            channel = stepWidgets['selector'].currentText()
-            if "segm" in channel:
+            segm = False
+            if self.channel_names is None:
+                try:
+                    segm = self.parent.input_types[step_n-1] == 'segm'
+                except Exception as err:
+                    pass
+            else:
+                channel = stepWidgets['selector'].currentText()
+                segm = True if 'segm' in channel.lower() else False
+            if segm:
                 binarizeSelector.setEnabled(True)
                 # set min and max to 0 and 1 and disable
                 stepWidgets['minValueSpinbox'].setValue(0)
@@ -17239,6 +17257,7 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         
         self.resetStretch()
         self.sigValuesChangedCombineChannels.emit()
+        self.sigNumStepsChanged.emit(len(self.stepsWidgets))
 
     def steps(self):
         steps = {}
@@ -17247,7 +17266,10 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         
         for step_number, stepWidgets in self.stepsWidgets.items():
             name = stepWidgets['name_edit'].text()
-            channel = stepWidgets['selector'].currentText()
+            if self.channel_names is None:
+                channel =  stepWidgets['selector'].text()
+            else:
+                channel = stepWidgets['selector'].currentText()
             binarize = stepWidgets['binarize'].currentText()
             min_val = stepWidgets['minValueSpinbox'].value()
             max_val = stepWidgets['maxValueSpinbox'].value()
@@ -18523,6 +18545,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     sigApplyAllPos = Signal(dict, bool, str)
     sigValuesChanged = Signal()
     sigSaveAsSegmCheckboxToggled = Signal(bool)
+    sigNumStepsChanged = Signal(int)
 
     
     # sigApplyAllZslices = Signal(dict, bool, str)
@@ -18557,7 +18580,9 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(
             self.emitValuesChangedSteps
         )
-        
+        self.combineChannelsWidget.sigNumStepsChanged.connect(
+            self.emitNumStepsChanged
+        )
 
         self.segm_blinked = False
         self.validFormula = True # allow empty formula
@@ -18579,6 +18604,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.mainLayout.insertWidget(3, self.formulaEditWidget)
         
         buttonsLayoutSaveGroup = QGridLayout()
+        self.buttonsLayoutSaveGroup = buttonsLayoutSaveGroup
         
         row = 0
         col = 0
@@ -18634,6 +18660,9 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         
         self.keepInputDataTypeLayout.insertWidget(0, label)
         self.keepInputDataTypeLayout.insertWidget(1, self.saveAsSegmCheckbox)
+
+    def emitNumStepsChanged(self, numSteps):
+        self.sigNumStepsChanged.emit(numSteps)
 
     def setLoadLastRecipe(self):
         filepath = self._lastRecipePath()
@@ -18936,7 +18965,10 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.selectedSteps = self.combineChannelsWidget.steps()
         self.formula = self.formulaEditWidget.text()
         self.cancel = False
-        self.close()
+        if self.hideOnClosing:
+            self.hide()
+        else:
+            self.close()
 
 class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
     def __init__(
