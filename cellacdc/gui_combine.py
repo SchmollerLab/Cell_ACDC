@@ -29,7 +29,7 @@ class CombineGuiElements:
 
         helpText = (
             """
-            The combined channels file will be saved with a different 
+            The segm/img file will be saved with a different 
             file name.<br><br>
             Insert a name to append to the end of the new file name. The rest of 
             the name will be the same as the original file base.
@@ -38,7 +38,7 @@ class CombineGuiElements:
         hintText = 'Insert a name for the <b>combined channels</b> file:'
         basename = posData.basename
         if self.combineDialog.saveAsSegm():
-            ext = '.npy'
+            ext = '.npz'
             hintText = hintText.replace('channels', 'segmentation')
             helpText = helpText.replace('channels', 'segmentation')
             basename = f'{basename}segm'
@@ -115,12 +115,12 @@ class CombineGuiElements:
         self.saveCombinedChannelsThread.start()
         
     def combineDialogStepsChanged(self):
-        steps, keep_input_type = self.combineDialog.steps(return_keepInputDataType=True)
+        steps, keep_input_data_type, formula = self.combineDialog.steps(return_keepInputDataType=True)
         if steps is None:
-            self.logger.warning('Combine channels steps not initialized yet.')
+            self.logger.warning('Combine channels recipe not initialized yet.')
             return
         
-        self.updateCombineChannelsPreview(steps=steps, keep_input_type=keep_input_type)
+        self.updateCombineChannelsPreview(steps=steps, keep_input_data_type=keep_input_data_type, formula=formula)
 
     def updateCombineChannelsPreview(self, *args, **kwargs):
         force = kwargs.get('force', False)
@@ -135,20 +135,21 @@ class CombineGuiElements:
             return
         
         if kwargs.get('steps') is None:
-            steps, keep_input_type = self.combineDialog.steps(return_keepInputDataType=True)
+            steps, keep_input_data_type, formula = self.combineDialog.steps(return_keepInputDataType=True)
         else:
             steps = kwargs.get('steps')
-            keep_input_type = kwargs.get('keep_input_type')
+            keep_input_data_type = kwargs.get('keep_input_data_type')
+            formula = kwargs.get('formula')
 
         if steps is None:
-            self.logger.warning('Combine channels steps not initialized yet.')
+            self.logger.warning('Combine channels recipe not initialized yet.')
             return
         
         txt = 'Combining...'
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
         
-        self.combineEnqueueCurrentImage(steps, keep_input_type)
+        self.combineEnqueueCurrentImage(steps, keep_input_data_type, formula)
         
     def viewCombineChannelDataToggled(self, checked):
         self.img1.setUseCombined(checked)
@@ -227,7 +228,7 @@ class CombineGuiElements:
         self.combineMutex = QMutex()
         self.combineWaitCond = QWaitCondition()
         
-        self.combineWorker = workers.CombineWorkerGUI(
+        self.combineWorker = workers.CombineChannelsWorkerGUI(
             self.combineMutex, self.combineWaitCond,
             logger_func=self.logger.info,
             # signals=self.signals # what are the singals for gui???
@@ -292,16 +293,25 @@ class CombineGuiElements:
         self.setImageImg1()
 
     def combineChannelsActionTriggered(self):
-        curr_proj = self.zProjComboBox.currentText()
-        if curr_proj != 'single z-slice':
-             self.zProjComboBox.setCurrentText('single z-slice')
+        if self.zProjComboBox is not None:
+            curr_proj = self.zProjComboBox.currentText()
+            if curr_proj != 'single z-slice':
+                self.zProjComboBox.setCurrentText('single z-slice')
+          
+        if self.switchPlaneCombobox is not None:
+            depthAxes = self.switchPlaneCombobox.depthAxes()
+            if depthAxes != 'z':
+                self.switchPlaneCombobox.setCurrentText('xy')
+        
+        if self.combineDialog is None:
+            self.setupCombiningChannels()
         self.combineDialog.show()
         self.combineDialog.raise_()
         self.combineDialog.activateWindow()
         self.combineDialog.emitSigPreviewToggled()
         
 class CombineGUIWorker:
-    def combineEnqueueCurrentImage(self, steps, keep_input_type):
+    def combineEnqueueCurrentImage(self, steps, keep_input_data_type, formula):
         posData = self.data[self.pos_i]
 
         if posData.SizeZ > 1:
@@ -314,8 +324,9 @@ class CombineGUIWorker:
             self.data,
             steps, 
             key,
-            keep_input_type,
+            keep_input_data_type,
             output_as_segm=self.combineDialog.saveAsSegm(),
+            formula=formula,
         )
         
     def combinePreviewToggled(self, checked):
@@ -330,16 +341,16 @@ class CombineGUIWorker:
             self, 
             steps: List[Dict[str, Any]]=None,
             keep_input_data_type:bool=None,
+            formula: str=None,
         ):
 
         if steps and keep_input_data_type is None:
             raise ValueError('keep_input_data_type must be set if steps is set')
         
         if steps is None:
-            steps, keep_input_data_type = self.combineDialog.steps(
+            steps, keep_input_data_type, formula = self.combineDialog.steps(
                 return_keepInputDataType=True
             )
-
         txt = 'Combining current image...'
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
@@ -358,6 +369,7 @@ class CombineGUIWorker:
             keep_input_data_type,
             key,
             output_as_segm=self.combineDialog.saveAsSegm(),
+            formula=formula,
         )
         
         self.combineWorker.wakeUp()
@@ -366,6 +378,7 @@ class CombineGUIWorker:
             self, 
             steps: List[Dict[str, Any]]=None, 
             keep_input_data_type:bool=None,
+            formula: str=None,
         ):
         if self.combineDialog is not None:
             keep_input_data_type = (
@@ -376,10 +389,9 @@ class CombineGUIWorker:
             raise ValueError('keep_input_data_type must be set if steps is set')
         
         if steps is None:
-            steps, keep_input_data_type = self.combineDialog.steps(
+            steps, keep_input_data_type, formula = self.combineDialog.steps(
                 return_keepInputDataType=True
             )
-
         txt = 'Combining z-stack...'
         self.statusBarLabel.setText(txt)
         self.logger.info(txt)
@@ -395,19 +407,21 @@ class CombineGUIWorker:
             keep_input_data_type,
             key,
             output_as_segm=self.combineDialog.saveAsSegm(),
+            formula=formula,
         )
 
         self.combineWorker.wakeUp()
     
     def combineAllFrames(self, 
                          steps: List[Dict[str, Any]]=None,
-                         keep_input_data_type:bool=None,):
+                         keep_input_data_type:bool=None,
+                         formula: str=None,
+                         ):
         if steps and not keep_input_data_type:
             raise ValueError('keep_input_data_type must be set if steps is set')
         
         if steps is None:
-            steps, keep_input_data_type = self.combineDialog.steps(return_keepInputDataType=True)
-
+            steps, keep_input_data_type, formula = self.combineDialog.steps(return_keepInputDataType=True)
         txt = 'Combining all frames...'
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
@@ -422,6 +436,7 @@ class CombineGUIWorker:
             keep_input_data_type,
             key,
             output_as_segm=self.combineDialog.saveAsSegm(),
+            formula=formula,
         )
 
         self.combineWorker.wakeUp()
@@ -429,13 +444,13 @@ class CombineGUIWorker:
     def combineAllPos(self, 
                       steps: List[Dict[str, Any]]=None,
                       keep_input_data_type:bool=None,
+                      formula: str=None,
                       ):
         if steps and not keep_input_data_type:
             raise ValueError('keep_input_data_type must be set if steps is set')
         
         if steps is None:
-            steps, keep_input_data_type = self.combineDialog.steps(return_keepInputDataType=True)
-
+            steps, keep_input_data_type, formula = self.combineDialog.steps(return_keepInputDataType=True)
         txt = 'Combining all Positions...'
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
@@ -453,6 +468,7 @@ class CombineGUIWorker:
             keep_input_data_type,
             key,
             output_as_segm=self.combineDialog.saveAsSegm(),
+            formula=formula,
         )
 
         self.combineWorker.wakeUp()

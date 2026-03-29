@@ -159,7 +159,7 @@ def save_image_data(filepath, img_data):
     elif filepath.endswith('.npz'):
         savez_compressed(filepath, img_data)
     elif filepath.endswith('.npy'):
-        np.save()
+        np.save(filepath, img_data)
     else:
         myutils.to_tiff(filepath, img_data)
     return np.squeeze(img_data)

@@ -755,7 +755,7 @@ class mainWin(QMainWindow):
         )
 
         self.combineChannelsAction = QAction(
-            'Combine channels and/or segmentation files...'
+            'Combine and manipulate channels and/or segmentation files...'
         )
         
         self.countObjectsInSegmAction = QAction(
@@ -1542,15 +1542,15 @@ class mainWin(QMainWindow):
                     recepies will be applied to all of them.
                 """
         selectedExpPaths = self.getSelectedExpPaths(
-            'Combine Channels',
+            'Combine and manipulate channels and/or segmentation files',
             custom_txt=custom_txt
         )
         if selectedExpPaths is None:
             return
         
-        title = 'Combine Channels' 
-        infoText = 'Launching combine channels utility...'
-        progressDialogueTitle = 'Combine Channels'
+        title = 'Combine and manipulate channels and/or segmentation files' 
+        infoText = 'Launching combine and manipulate channels utility...'
+        progressDialogueTitle = 'Combine and manipulate channels and/or segmentation files'
         self.CombineChannelsWin = utilsCombineChannels.CombineChannelsUtil(
             selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
             parent=self

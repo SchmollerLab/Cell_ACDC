@@ -70,12 +70,14 @@ VIDEO_EXTENSIONS = (
     '.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv',
 )
 
-def _warn_ask_install_package(commands: Iterable[str], note_txt=''):
+def _warn_ask_install_package(
+        commands: Iterable[str], note_txt='', caller='SpotMAX'
+    ):
     open_str = '='*100
     sep_str = '-'*100
     commands_txt = '\n'.join([f'  {command}' for command in commands])
     text = (
-        f'SpotMAX needs to run the following commands{note_txt}:\n\n'
+        f'{caller} needs to run the following commands{note_txt}:\n\n'
         f'{commands_txt}\n\n'
     )
     question = (
@@ -130,7 +132,24 @@ except Exception as err:
         'pip install --upgrade charset-normalizer'
     )
     _warn_ask_install_package(
-        commands, note_txt=' (fixing charset-normalizer package)'
+        commands, note_txt=' (fixing charset-normalizer package)',
+        caller='Cell-ACDC'
+    )
+    _run_pip_commands(commands)
+
+try:
+    import sympy
+except Exception as err:
+    import traceback
+    traceback.print_exc()
+    print('Since Cell-ACDC v1.7.2, the sympy library is required.')
+    commands = (
+        'pip install --upgrade sympy',
+    )
+    _warn_ask_install_package(
+        commands, 
+        note_txt=' (installing sympy)',
+        caller='Cell-ACDC'
     )
     _run_pip_commands(commands)
 
@@ -409,6 +428,7 @@ favourite_func_metrics_csv_path = os.path.join(
 )
 recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
 preproc_recipes_path = os.path.join(settings_folderpath, 'preprocessing_recipes')
+combine_channels_recipes_path = os.path.join(settings_folderpath, 'combine_channels')
 segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
