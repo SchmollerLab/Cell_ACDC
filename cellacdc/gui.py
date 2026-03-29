@@ -21310,17 +21310,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not self.isSegm3D:
             return 
         
+        posData = self.data[self.pos_i]
+
         idx = self.zSliceScrollBar.sliderPosition()
+        
+        # ensure idx doesnt exceed the number of z-slices of the position
+        idx_z = min(idx, posData.SizeZ-1)
+         
         if not self.switchPlaneCombobox.isEnabled():
-            return idx
+            return idx_z
         
         depthAxes = self.switchPlaneCombobox.depthAxes()
         if depthAxes == 'z':
-            return idx
+            return idx_z
         elif depthAxes == 'y':
-            return (slice(None), idx)
+            idx_y = min(idx, posData.SizeY-1)
+            return (slice(None), idx_y)
         else:
-            return (slice(None), slice(None), idx)
+            idx_x = min(idx, posData.SizeX-1)
+            return (slice(None), slice(None), idx_x)
                 
     def get_2Dlab(self, lab, force_z=True):
         if self.isSegm3D:
