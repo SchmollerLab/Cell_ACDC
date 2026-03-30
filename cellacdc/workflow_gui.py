@@ -1,6 +1,6 @@
 import inspect
 
-from qtpy.QtGui import QDropEvent, QIcon, QGuiApplication, QPixmap, QDrag, QCursor, QPainterPath, QPen, QColor
+from qtpy.QtGui import QDropEvent, QIcon, QGuiApplication, QPixmap, QDrag, QCursor, QPainterPath, QPen, QColor, QPolygonF
 from qtpy.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QListWidget, QListWidgetItem, 
     QLabel, QVBoxLayout, QSizePolicy, QScrollArea,
@@ -8,39 +8,70 @@ from qtpy.QtWidgets import (
     QComboBox
 )
 
-from . import myutils, apps, widgets, qutils, load
+from . import myutils, apps, widgets, qutils, load, printl
 from .apps import QBaseDialog
 from qtpy.QtCore import Signal, Qt, QDataStream, QIODevice, QMimeData, QPointF, QTimer
 
 import os
 
 class WorkflowBaseFunctions():
+    """Base class for workflow card widgets.
+    
+    This class provides a template for creating workflow cards that can be added
+    to the workflow GUI. Subclasses should implement dryrunDialog() and 
+    setupDialog() methods. This is the "functions" side of things, the dialogs
+    themselves are defined separately.
+    
+    Attributes:
+        title (str): Display title of the workflow card.
+        posData: Position data containing relevant information for the workflow.
+        input_types_accepted (dict): Maps input index to accepted input type(s).
+            Example: {0: 'img', 1: ['img', 'segm']}
+        input_types (dict): Maps input index to the currently connected input type.
+            Example: {0: 'img', 1: 'segm'}
+        output_types (dict): Maps output index to output type. Example: {0: 'segm'}
+        setInputs (callable): Method to set input count and types.
+        setOutputs (callable): Method to set output count and types.
+        updatePreview (callable): Method to update the preview image.
+        updateTitle (callable): Method to update the card title.
+    
+    Example:
+        class MyWorkflowCard(WorkflowBaseFunctions):
+            def __init__(self):
+                self.title = "My Workflow Step"
+            
+            def dryrunDialog(self, parent=None):
+                return MyDialog(parent=parent)
+            
+            def setupDialog(self, parent=None):
+                self.setInputs({0: 'img'})
+                self.setOutputs({0: 'img'})
+                return MyDialog(parent=parent)
+    """
     def __init__(self):
-        """ 
-        Can be used as base class for a workflow card widgets.
-        If you want to create a new workflow card, you should
-        set dryrunDialog which should return the dialog so it can be
-        screenshotted for the preview with dummy data.
-        
-        Then, have self.setupDialog() return a properly init dialog.
-        
-
-        Use self.posData for all the relevant info.
-        Set the number of inputs with self.setInputs({n_inputs: [n_type_1, n_type_2]}) and
-        outputs with self.setOutputs({n_outputs: n_type})
-
-        Connect self.valuesChanged_cb to a signal which emits when values are changed
-        
-        self.input_types_changed() is called when the input types are changed
-        self.input_types is a dict: {output_n: input_type}
-        self.output_types is also a dict: {input_n: output_type}
-         
-        """
+        """Initialize the base workflow functions class."""
         
     def runDialog_cb(self, dialog):
+        """Show the workflow dialog.
+        
+        Args:
+            dialog: The dialog widget to display.
+        """
+        # The dialog is usually hidden (not destroyed) between openings.
+        # Re-apply input-type dependent UI state right before showing.
+        if hasattr(dialog, 'updatedInputTypes'):
+            dialog.updatedInputTypes()
         dialog.show()
         
     def getDialogPreview(self, dialog):
+        """Capture a screenshot of the dialog for preview display.
+        
+        Args:
+            dialog: The dialog widget to capture.
+        
+        Returns:
+            QPixmap: A scaled (220x110) screenshot of the dialog, or None if capture fails.
+        """
         try:
             # Grab a screenshot of the dialog to update preview
             pix = dialog.grab().scaled(220, 110, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -50,14 +81,80 @@ class WorkflowBaseFunctions():
             print(f"Failed to update preview after dialog close: {e}")
         return None
     
+    def setupDialog(self, parent=None, workflowGui=None, posData=None):
+        """Configure to return the dialog widget for the workflow card.
+        
+        Args:
+            parent: Parent widget (optional).
+            workflowGui: Reference to the main WorkflowGui instance (optional).
+            posData: Position data object (optional).
+        
+        Returns:
+            The dialog widget created by the subclass setupDialog method.
+        """
+    
     def setupDialog_cb(self, parent=None, workflowGui=None, posData=None):
+        """Setup the dialog with only the required parameters for setupDialog.
+        
+        This method inspects the setupDialog signature and passes only the
+        parameters that are required by the subclass implementation.
+        
+        Args:
+            parent: Parent widget (optional).
+            workflowGui: Reference to the main WorkflowGui instance (optional).
+            posData: Position data object (optional).
+        
+        Returns:
+            The dialog widget created by the subclass setupDialog method.
+        """
         kwargs = {'parent': parent, 'workflowGui': workflowGui, 'posData': posData}
         kwargs_required = inspect.getfullargspec(self.setupDialog).args
         kwargs_to_pass = {k: v for k, v in kwargs.items() if k in kwargs_required}
         dialog = self.setupDialog(**kwargs_to_pass)
         return dialog
 
+    def initializeDialog(self, dialog, parent=None, workflowGui=None, posData=None):
+        """Configure a dialog after it has been created and assigned.
+
+        Args:
+            dialog: The dialog widget to configure.
+
+            parent: Parent widget (optional).
+            workflowGui: Reference to the main WorkflowGui instance (optional).
+            posData: Position data object (optional).
+        
+        """
+
+    def initializeDialog_cb(self, dialog, parent=None, workflowGui=None, posData=None):
+        """Call initializeDialog with only the supported arguments."""
+        kwargs = {
+            'dialog': dialog,
+            'parent': parent,
+            'workflowGui': workflowGui,
+            'posData': posData,
+        }
+        kwargs_required = inspect.getfullargspec(self.initializeDialog).args
+        kwargs_to_pass = {k: v for k, v in kwargs.items() if k in kwargs_required}
+        self.initializeDialog(**kwargs_to_pass)
+
     def renderDialogPreview(self, size=None, scale=(220, 110), parent=None, workflowGui=None, posData=None):
+        """Render a preview image of the workflow dialog without displaying it.
+        
+        Creates a hidden dialog instance (dryrunDialog), captures a screenshot,
+        and returns it at the specified scale. This is used to generate preview
+        images for the workflow sidebar.
+        
+        Args:
+            size (tuple, optional): Fixed size (width, height) for the dialog. Defaults to None.
+            scale (tuple): Target scale (width, height) for the returned image. Defaults to (220, 110).
+            parent: Parent widget (optional).
+            workflowGui: Reference to the main WorkflowGui instance (optional).
+            posData: Position data object (optional).
+        
+        Returns:
+            QPixmap: A screenshot of the dialog scaled to the specified size,
+                    or a light gray placeholder if rendering fails.
+        """
         try:
             kwargs = {'parent': parent, 'workflowGui': workflowGui, 'posData': posData}
             kwargs_required = inspect.getfullargspec(self.dryrunDialog).args
@@ -90,81 +187,207 @@ class WorkflowBaseFunctions():
             pix = QPixmap(*scale)
             pix.fill(Qt.lightGray)
             return pix
+
+    def updateInputTypes(self, dialog, input_types):
+        """Handle changes to connected input types and notify the dialog.
         
-    def input_types_changed(self, dialog, input_types):
+        Updates the dialog's input_types attribute and calls the dialog's
+        updatedInputTypes() callback if it exists, allowing the dialog to
+        respond to changes in the types currently flowing through its inputs.
+        
+        Args:
+            dialog: The dialog widget with input types.
+            input_types (dict): Updated concrete input type mapping.
+        """
         dialog.input_types = input_types
         if hasattr(dialog, 'updatedInputTypes'):
             dialog.updatedInputTypes()
         
 class WorkflowCombineChannelsFunctions(WorkflowBaseFunctions):
+    """Workflow card functions for combining and manipulating image channels.
+    
+    This workflow step allows users to combine multiple image or segmentation
+    channels into a single output image through various mathematical operations.
+    
+    Attributes:
+        combineChannelDialog: The dialog class for channel combination.
+        title (str): Display title "Combine and manipulate channels".
+    """
+    
     def __init__(self) -> None:
+        """Initialize the combine channels workflow."""
         self.combineChannelDialog = CombineChannelsSetupDialogWorkflow
         self.title = "Combine and manipulate channels"
     
-    def dryrunDialog(self, parent=None): # for rendering the preview in the right panel
-        return self.combineChannelDialog(parent=parent)
+    def dryrunDialog(self, parent=None, workflowGui=None):
+        """Create a dry-run dialog instance for preview rendering.
         
-    def setupDialog(self, parent=None):
+        Args:
+            parent: Parent widget for the dialog.
+            workflowGui: Reference to the main WorkflowGui instance.
+        
+        Returns:
+            CombineChannelsSetupDialogWorkflow: Dialog instance for preview.
+        """
+        return self.combineChannelDialog(parent=workflowGui)
+        
+    def setupDialog(self, workflowGui=None):
+        """Create the dialog for the workflow card.
+        
+        Sets up input/output types and connects signals for dynamic updates
+        when the number of channels changes or the save mode is toggled.
+        
+        Args:
+            workflowGui: Reference to the main WorkflowGui instance.
+        
+        Returns:
+            CombineChannelsSetupDialogWorkflow: Configured dialog instance.
+        """
+        dialog = self.combineChannelDialog(parent=workflowGui)
+        return dialog
+
+    def initializeDialog(self, dialog, workflowGui=None):
+        """Configure the combine channels card after dialog creation."""
         self.setInputs({0: ['img', 'segm']})
         self.setOutputs({0: 'img'})
-        dialog = self.combineChannelDialog(parent=parent)
         dialog.sigNumStepsChanged.connect(self.numStepsChanged)
         dialog.sigOkClicked.connect(self.updatePreview)
         dialog.sigSaveAsSegmCheckboxToggled.connect(self.saveAsSegmCheckboxToggled)
-        dialog.input_types = {0: 'img'}
-        return dialog
         
     def numStepsChanged(self, num_steps):
+        """Handle changes to the number of input channels.
+        
+        Updates the input definition to accept the new number of channels,
+        each capable of being either image or segmentation type.
+        
+        Args:
+            num_steps (int): New number of input channels.
+        """
         inputs = {n: ['img', 'segm'] for n in range(num_steps)}
         self.setInputs(inputs)
     
     def saveAsSegmCheckboxToggled(self, save_as_segm):
+        """Handle toggling the save output as segmentation checkbox.
+        
+        Updates the output type based on whether the result should be
+        treated as a segmentation or image.
+        
+        Args:
+            save_as_segm (bool): True to save as segmentation, False for image.
+        """
         self.setOutputs({0: 'segm' if save_as_segm else 'img'})
         
 class WorkflowInputSegmFunctions(WorkflowBaseFunctions):
+    """Workflow card functions for selecting segmentation data input.
+    
+    This workflow step allows users to select which segmentation data
+    to use as input for subsequent workflow operations.
+    
+    Attributes:
+        inputDataDialog: The dialog class for data selection.
+        title (str): Display title "Select segmentation data".
+    """
+    
     def __init__(self) -> None:
+        """Initialize the segmentation input workflow."""
         self.inputDataDialog = WorkflowInputDataDialog
         self.title = "Select segmentation data"
         
-    def dryrunDialog(self, parent=None, workflowGui=None): # for rendering the preview in the right panel
+    def dryrunDialog(self, workflowGui=None):
+        """Create a dry-run dialog instance for preview rendering.
+        
+        Args:
+            workflowGui: Reference to the main WorkflowGui instance.
+        
+        Returns:
+            WorkflowInputDataDialog: Dialog instance for preview.
+        """
         segm_options = workflowGui.segm_channels
-        return self.inputDataDialog(segm_options, 'segmentation', parent=parent)
+        return self.inputDataDialog(segm_options, 'segmentation', parent=workflowGui)
     
-    def setupDialog(self, parent=None, workflowGui=None):
+    def setupDialog(self, workflowGui=None):
+        """Create the dialog for the workflow card.
+        
+        Args:
+            workflowGui: Reference to the main WorkflowGui instance.
+        
+        Returns:
+            WorkflowInputDataDialog: Configured dialog instance.
+        """
+        segm_options = workflowGui.segm_channels
+        dialog = self.inputDataDialog(segm_options, 'segmentation', parent=workflowGui)
+        return dialog
+
+    def initializeDialog(self, dialog, workflowGui=None):
+        """Configure the segmentation input card after dialog creation."""
         self.setInputs()
         self.setOutputs({0: 'segm'})
-        segm_options = workflowGui.segm_channels
-        dialog = self.inputDataDialog(segm_options, 'segmentation', parent=parent)
         dialog.sigOkClicked.connect(self.updatePreview)
-        return dialog
         
 class WorkflowInputImgFunctions(WorkflowBaseFunctions):
+    """Workflow card functions for selecting image data input.
+    
+    This workflow step allows users to select which image channel
+    to use as input for subsequent workflow operations.
+    
+    Attributes:
+        inputDataDialog: The dialog class for data selection.
+        title (str): Display title "Select image data".
+    """
+    
     def __init__(self) -> None:
+        """Initialize the image input workflow."""
         self.inputDataDialog = WorkflowInputDataDialog
         self.title = "Select image data"
         
-    def dryrunDialog(self, parent=None, workflowGui=None): # for rendering the preview in the right panel
+    def dryrunDialog(self, workflowGui=None):
+        """Create a dry-run dialog instance for preview rendering.
+        
+        Args:
+            workflowGui: Reference to the main WorkflowGui instance.
+        
+        Returns:
+            WorkflowInputDataDialog: Dialog instance for preview.
+        """
         img_options = workflowGui.img_channels
-        return self.inputDataDialog(img_options, 'image', parent=parent)
+        return self.inputDataDialog(img_options, 'image', parent=workflowGui)
     
-    def setupDialog(self, parent=None, workflowGui=None):
+    def setupDialog(self, workflowGui=None):
+        """Create the dialog for the workflow card.
+        
+        Args:
+            workflowGui: Reference to the main WorkflowGui instance.
+        
+        Returns:
+            WorkflowInputDataDialog: Configured dialog instance.
+        """
+        img_options = workflowGui.img_channels
+        dialog = self.inputDataDialog(img_options, 'image', parent=workflowGui)
+        return dialog
+
+    def initializeDialog(self, dialog, workflowGui=None):
+        """Configure the image input card after dialog creation."""
         self.setInputs()
         self.setOutputs({0: 'img'})
-        img_options = workflowGui.img_channels
-
-        dialog = self.inputDataDialog(img_options, 'image', parent=parent)
         dialog.sigOkClicked.connect(self.updatePreview)
         dialog.sigUpdateTitle.connect(self.updateTitle)
-        return dialog
     
 class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
-    """Here we probably have to override some methods. In this case,
-    for example need to change th ok_cb to emit a signal, so I can hide and
-    update preview. I also dont want to give specific channel names, but instead
-    when a row is added, emit a signal with how many inputs there should be...+
+    """Dialog for combining and manipulating image channels in the workflow.
+    
+    Extends CombineChannelsSetupDialog to work within the workflow system.
+    Emits signals when OK/Cancel buttons are clicked without channel names,
+    and dynamically updates inputs/outputs based on the number of channels
+    selected and operation parameters.
+    
+    Signals:
+        sigOkClicked: Emitted when the OK button is clicked.
+        sigCancelClicked: Emitted when the Cancel button is clicked.
+        sigNumStepsChanged: Emitted when the number of channels changes.
+        sigSaveAsSegmCheckboxToggled: Emitted when the save mode is toggled.
     """
     sigOkClicked = Signal()
-    sigCancelClicked = Signal() # for future, if I want to restore if cancel is clicked
+    sigCancelClicked = Signal()
     
     def __init__(self, parent=None):
         super().__init__(channel_names=None, parent=parent, hideOnClosing=True)
@@ -183,16 +406,47 @@ class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
         self.mainLayout.addLayout(buttonsLayout)
         
     def cancelButtonClicked(self):
+        """Handle cancel button click by hiding the dialog."""
         self.hide()
         
     def updatedInputTypes(self):
-        self.combineChannelsWidget.setBinarizeCheckableAndNorm()
-        self.autoCheckSaveAsSegmCheckbox() # to update the formula preview and error state based on the new input types
+        """Handle when input types change and update the dialog UI accordingly.
         
+        Updates checkboxes for binarization and normalization, and automatically
+        validates the save as segmentation checkbox based on the updated input types
+        and formula preview.
+        """
+        self.combineChannelsWidget.setBinarizeCheckableAndNorm()
+        self.autoCheckSaveAsSegmCheckbox()
+
+
 class WorkflowInputDataDialog(QBaseDialog):
+    """Simple dialog for selecting input data (image or segmentation channel).
+    
+    Provides a dropdown menu for the user to select from available data options.
+    Used as an input node in the workflow to let users specify which data
+    should be passed to the next step.
+    
+    Args:
+        selection_options (list): Available options to select from.
+        type (str): Type of data being selected ('image' or 'segmentation').
+        parent: Parent widget.
+    
+    Signals:
+        sigOkClicked: Emitted when the OK button is clicked.
+        sigCancelClicked: Emitted when the Cancel button is clicked.
+        sigUpdateTitle: Emitted with the new title when selection changes.
+    
+    Attributes:
+        type (str): The type of data being selected.
+        selection_options (list): Available options.
+        selected_value (str): Currently selected value.
+        selection_widget (QComboBox): Dropdown for selection.
+    """
     sigOkClicked = Signal()
-    sigCancelClicked = Signal() # for future, if I want to restore if cancel is clicked
+    sigCancelClicked = Signal()
     sigUpdateTitle = Signal(str)
+    
     def __init__(self, selection_options, type, parent=None):
         super().__init__(parent=parent)
         self.setWindowTitle(f'Select input {type}')
@@ -227,21 +481,46 @@ class WorkflowInputDataDialog(QBaseDialog):
         self.setLayout(layout)
     
     def ok_clicked(self):
-        """Handle OK button click"""
+        """Handle OK button click.
+        
+        Stores the selected value and emits signals to update the preview
+        and card title, then hides the dialog.
+        """
         self.selected_value = self.selection_widget.currentText()
         self.sigUpdateTitle.emit(f'{self.type}: {self.selected_value}')
         self.hide()
     
     def cancel_clicked(self):
-        """Handle Cancel button click"""
+        """Handle Cancel button click by hiding the dialog."""
         self.hide()
     
     def get_selected_value(self):
-        """Return the selected value"""
+        """Get the currently selected value.
+        
+        Returns:
+            str: The text of the currently selected item in the dropdown.
+        """
         return self.selected_value
 
 class _WorkflowCardListWidget(QWidget):
-    """ Custom QWidget that is being used to set the preview in the QListWidget of the WorkflowSidebar """
+    """Widget representing a workflow card item in the sidebar.
+    
+    Displays a preview thumbnail and title for a workflow card in the sidebar.
+    This widget is used in the WorkflowSidebar and supports drag-and-drop
+    operations to add cards to the workflow zone.
+    
+    Args:
+        functions (WorkflowBaseFunctions): The workflow functions object containing
+            the dialog class and title.
+        parent: Parent widget.
+        render_preview (bool): Whether to render a preview image. Defaults to True.
+        posData: Position data for preview rendering.
+    
+    Attributes:
+        functions (WorkflowBaseFunctions): The associated workflow functions.
+        thumbnail (QLabel): Label displaying the preview image.
+        titleLabel (QLabel): Label displaying the card title.
+    """
     def __init__(self, functions: WorkflowBaseFunctions, parent=None,
                  render_preview=True, posData=None):
         super().__init__(parent=parent)
@@ -254,7 +533,9 @@ class _WorkflowCardListWidget(QWidget):
         self.thumbnail.setAlignment(Qt.AlignCenter)
         
         if render_preview:
-            preview = functions.renderDialogPreview(parent=self, workflowGui=parent, posData=posData)
+            preview = functions.renderDialogPreview(parent=self, 
+                                                    workflowGui=parent, 
+                                                    posData=posData)
             self.thumbnail.setPixmap(preview)
         
         self.titleLabel = QLabel(functions.title, parent=self)
@@ -272,49 +553,122 @@ class _WorkflowCardListWidget(QWidget):
         self.setLayout(layout)
     
     def getDragPixmap(self):
-        """Get or create the cached drag pixmap"""
+        """Get or create the cached drag pixmap for this card.
+        
+        The pixmap is created once and cached for efficiency, so subsequent
+        drag operations don't need to re-render the widget.
+        
+        Returns:
+            QPixmap: A screenshot/rendering of this card widget.
+        """
         if self._drag_pixmap is None:
             self._drag_pixmap = self.grab()
         return self._drag_pixmap
     
-    # def openDialog(self):
-    #     """Open the workflow dialog and update preview with result"""
-    #     try:
-    #         updated_pix = self.functions.run_dialog_cb()
-    #         if updated_pix is not None:
-    #             self.thumbnail.setPixmap(updated_pix)
-    #     except Exception as e:
-    #         print(f"Error running dialog: {e}")
-    
-    # def mousePressEvent(self, event):
-    #     """Open dialog when clicked"""
-    #     if event.button() == Qt.LeftButton:
-    #         self.openDialog()
-
-
 class _ConnectionLine(QGraphicsLineItem):
-    """Interactive connection line that can be deleted by right-clicking"""
+    """Visual representation of a connection between workflow card ports.
+    
+    An interactive line that connects output and input circles between workflow cards.
+    Can be deleted by right-clicking on it. The line updates dynamically as cards
+    are moved around the workflow zone.
+    
+    Args:
+        *args: Arguments passed to QGraphicsLineItem.
+        zone (WorkflowZone): Reference to the parent WorkflowZone.
+        **kwargs: Keyword arguments passed to QGraphicsLineItem.
+    
+    Attributes:
+        zone (WorkflowZone): The parent workflow zone.
+        start_circle (_InputOutputCircle): The source output circle.
+        end_circle (_InputOutputCircle): The target input circle.
+    """
     def __init__(self, *args, zone=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.zone = zone
+        self.workflowZone = zone
         self.setAcceptHoverEvents(True)
         self.setZValue(0)
+
+    def paint(self, painter, option, widget=None):
+        """Paint a directed connection with an arrowhead at the target end."""
+        line = self.line()
+        pen = self.pen()
+
+        painter.setRenderHint(painter.Antialiasing, True)
+        painter.setPen(pen)
+
+        dx = line.dx()
+        dy = line.dy()
+        length = (dx * dx + dy * dy) ** 0.5
+        if length < 1e-6:
+            return
+
+        ux = dx / length
+        uy = dy / length
+        px = -uy
+        py = ux
+
+        arrow_size = max(8.0, pen.widthF() * 4.0)
+        arrow_half_width = arrow_size * 0.5
+
+        tip = line.p2()
+        line_end = QPointF(tip.x() - ux * (arrow_size * 0.8), tip.y() - uy * (arrow_size * 0.8))
+
+        # Draw the shaft slightly shorter so the arrowhead is visually clear.
+        painter.drawLine(line.p1(), line_end)
+
+        base = QPointF(tip.x() - ux * arrow_size, tip.y() - uy * arrow_size)
+        left = QPointF(base.x() + px * arrow_half_width, base.y() + py * arrow_half_width)
+        right = QPointF(base.x() - px * arrow_half_width, base.y() - py * arrow_half_width)
+
+        arrow_head = QPolygonF([tip, left, right])
+        painter.setBrush(pen.color())
+        painter.drawPolygon(arrow_head)
     
     def mousePressEvent(self, event):
-        if event.button() == Qt.RightButton and self.zone:
-            self.zone.removeConnectionLine(self)
+        """Handle mouse press to delete the connection line on right-click.
+        
+        Args:
+            event: The mouse event.
+        """
+        if event.button() == Qt.RightButton and self.workflowZone:
+            self.workflowZone.removeConnectionLine(self)
             event.accept()
         else:
             super().mousePressEvent(event)
 
 class _InputOutputCircle(QLabel):
-    """Interactive circle label for inputs/outputs that can create connections"""
+    """Interactive circular port for workflow card input/output connections.
+    
+    Represents an input or output port on a workflow card. Users can click on
+    a circle to start/complete a connection. The circle displays the port index
+    and is colored based on the data type it accepts or provides.
+    
+    Circle border colors:
+        - Blue: Image type
+        - Red: Segmentation type
+        - Black: Untyped or multiple types
+    
+    Args:
+        index (int): The 0-based port index.
+        is_output (bool): True if this is an output port, False for input.
+        card (_WorkflowCardZoneWidget): The parent card widget.
+        zone (WorkflowZone, optional): Reference to the parent workflow zone.
+        type_info: Type constraint(s) - string (single type) or list (multiple types).
+    
+    Attributes:
+        index (int): The port index.
+        is_output (bool): Whether this is an output port.
+        card: The parent card.
+        zone: The parent workflow zone.
+        type_info: The type constraint for this port.
+        is_alternating (bool): True if port accepts multiple types.
+    """
     def __init__(self, index: int, is_output: bool, card, zone=None, type_info=None):
-        super().__init__(str(index))
+        super().__init__(str(index + 1))
         self.index = index
         self.is_output = is_output
         self.card = card
-        self.zone = zone
+        self.workflowZone = zone
         self.type_info = type_info
         self.is_alternating = isinstance(type_info, (list, tuple)) and len(type_info) > 1
         
@@ -326,7 +680,14 @@ class _InputOutputCircle(QLabel):
         self.setCursor(Qt.PointingHandCursor)
     
     def _getColorForType(self, type_value):
-        """Get border color based on type"""
+        """Get the border color for a data type.
+        
+        Args:
+            type_value (str or None): The data type ('img', 'segm', or None).
+        
+        Returns:
+            QColor: The color to use for the circle border.
+        """
         if type_value is None:
             return QColor("black")
         if type_value == 'segm':
@@ -336,7 +697,14 @@ class _InputOutputCircle(QLabel):
         return QColor("black")
     
     def paintEvent(self, event):
-        """Custom paint to draw circle with alternating dashed border"""
+        """Paint the circle with custom styled border.
+        
+        Draws either a solid or alternating dashed border depending on whether
+        the port accepts a single type or multiple types.
+        
+        Args:
+            event: The paint event.
+        """
         super().paintEvent(event)
         
         # Draw the custom border
@@ -406,47 +774,75 @@ class _InputOutputCircle(QLabel):
             qpainter.end()
     
     def updateTypeInfo(self, type_info):
-        """Update the type info and refresh styling"""
+        """Update the type constraint and refresh the visual appearance.
+        
+        Args:
+            type_info: New type constraint (string or list).
+        """
         self.type_info = type_info
         self.is_alternating = isinstance(type_info, (list, tuple)) and len(type_info) > 1
         self.update()
     
     def mousePressEvent(self, event):
-        if self.zone is None:
+        """Handle mouse press to create/complete connections or cancel.
+        
+        - Left-click: Start or complete a connection.
+        - Right-click: Cancel the current connection being drawn.
+        
+        Args:
+            event: The mouse event.
+        """
+        if self.workflowZone is None:
             super().mousePressEvent(event)
             return
             
         if event.button() == Qt.LeftButton:
             # Get global position and convert to scene coordinates
             global_pos = self.mapToGlobal(self.rect().center())
-            widget_pos = self.zone.mapFromGlobal(global_pos)
-            scene_pos = self.zone.mapToScene(widget_pos)
+            widget_pos = self.workflowZone.mapFromGlobal(global_pos)
+            scene_pos = self.workflowZone.mapToScene(widget_pos)
             
             # Start connection or complete it
-            self.zone.handleCircleClick(self.card, self.is_output, self.index, scene_pos)
+            self.workflowZone.handleCircleClick(self.card, self.is_output, self.index, scene_pos)
             event.accept()
         elif event.button() == Qt.RightButton:
-            self.zone.cancelConnection()
+            self.workflowZone.cancelConnection()
             event.accept()
         else:
             super().mousePressEvent(event)
-        
-    # def openDialog(self):
-    #     """Open the workflow dialog and update preview with result"""
-    #     try:
-    #         updated_pix = self.functions.run_dialog_cb()
-    #         if updated_pix is not None:
-    #             self.thumbnail.setPixmap(updated_pix)
-    #     except Exception as e:
-    #         print(f"Error running dialog: {e}")
-    
-    # def mousePressEvent(self, event):
-    #     """Open dialog when clicked"""
-    #     if event.button() == Qt.LeftButton:
-    #         self.openDialog()
+
 class _WorkflowCardZoneWidget(QWidget):
-    """Widget which is the card in the workflow zone. It also contains the dialog"""
-    def __init__(self, functions: WorkflowBaseFunctions, posData, zone=None, workflowGui=None):
+    """A workflow card widget that appears in the workflow zone.
+    
+    Represents a single workflow operation in the zone. Displays the operation's
+    preview image, input/output ports, and associated dialog. Cards can be:
+    - Moved by left-dragging
+    - Configured by right-clicking
+    - Deleted by middle-clicking
+    
+    Ports are represented as colored circles (blue=image, red=segmentation).
+    Connections between ports propagate data types through the workflow.
+    
+    Args:
+        functions (WorkflowBaseFunctions): The workflow operation functions.
+        posData: Position/experiment data for the workflow.
+        zone (WorkflowZone, optional): Parent workflow zone.
+        workflowGui (WorkflowGui, optional): Reference to the main GUI.
+    
+    Attributes:
+        functions: The workflow operation functions.
+        posData: Position data.
+        dialog: The operation's configuration dialog.
+        input_circles (list): List of input port circles.
+        output_circles (list): List of output port circles.
+        dialog.input_types_accepted (dict): Maps input index to accepted types.
+        dialog.input_types (dict): Maps input index to currently connected type.
+        output_types (dict): Maps output index to type.
+        card_id (int): Unique ID assigned by the zone.
+        graphics_proxy: Graphics proxy for positioning in the scene.
+    """
+    def __init__(self, functions: WorkflowBaseFunctions, posData, 
+                 zone=None, workflowGui=None):
         QWidget.__init__(self, parent=None)
         
         self.posData = posData
@@ -455,15 +851,13 @@ class _WorkflowCardZoneWidget(QWidget):
         self.title = functions.title
         self._drag_start_pos = None
         self.graphics_proxy = None
-        self.zone = zone
+        self.workflowZone = zone
         self.is_dragging = False
         self.input_circles = []
         self.output_circles = []
-        self.input_types = {}  # {input_idx: type} e.g., {1: 'img', 2: 'segm'}
-        self.output_types = {}  # {output_idx: type} e.g., {1: 'img'}
         
         self.functions.posData = posData
-        self.functions.setInputs = self.setInputs
+        self.functions.setInputs = self.setAcceptedInputs
         self.functions.setOutputs = self.setOutputs
         self.functions.updatePreview = self.updatePreview
         self.functions.updateTitle = self.updateTitle
@@ -495,71 +889,135 @@ class _WorkflowCardZoneWidget(QWidget):
         self.dialog = self.functions.setupDialog_cb(parent=self, 
                                                     workflowGui=workflowGui, 
                                                     posData=self.posData)
+        self.functions.initializeDialog_cb(self.dialog,
+                                           parent=self,
+                                           workflowGui=workflowGui,
+                                           posData=self.posData)
         self.functions.runDialog_cb(self.dialog)
+
+    def _getDialogInputTypes(self):
+        """Return dialog concrete input types."""
+        input_types = getattr(self.dialog, 'input_types', None)
+        if isinstance(input_types, dict):
+            return input_types
+        return {}
+
+    def _getDialogInputTypesAccepted(self):
+        """Return dialog accepted input types."""
+        input_types_accepted = getattr(self.dialog, 'input_types_accepted', None)
+        if isinstance(input_types_accepted, dict):
+            return input_types_accepted
+        return {}
         
     def updateTitle(self, new_title):
+        """Update the card's display title.
+        
+        Args:
+            new_title (str): The new title to display.
+        """
         self.title = new_title
         self.titleLabel.setText(new_title)
 
     def setZoneOnCircles(self):
-        """Set the zone reference on all circles after the card is added to the zone"""
+        """Assign the zone reference to all input/output circles.
+        
+        Called after the card is added to the zone to enable circles
+        to interact with the zone for connection creation.
+        """
         for circle in self.input_circles + self.output_circles:
-            circle.zone = self.zone
+            circle.workflowZone = self.workflowZone
 
-    def setInputs(self, n=None):
-        # Handle both dict (with types) and int inputs
-        if isinstance(n, dict):
+    def setAcceptedInputs(self, n=None):
+        """Set the number and types of input ports accepted by the card.
+        
+        Can be called with:
+        - A dict: {index: type} to set both count and accepted types
+        - An int: Just sets count (accepted types will be None)
+        - None: Clears all inputs
+        
+        Automatically removes invalid connections and rebuilds visual lines.
+        
+        Args:
+            n: Input count/types specification.
+        """
             # Extract count and types from dict
+        if isinstance(n, dict):
             type_info = n
             n = max(type_info.keys()) + 1 if type_info else 0
-            self.input_types = {idx + 1: type_info.get(idx) for idx in range(n)}
+            input_types_accepted = {idx: type_info.get(idx) for idx in range(n)}
         elif n is None:
             # None means no inputs
             n = 0
-            self.input_types = {}
+            input_types_accepted = {}
         else:
-            # Simple number, clear types
-            self.input_types = {i: None for i in range(1, n + 1)}
-        
+            # Simple number, clear accepted types
+            input_types_accepted = {i: None for i in range(n)}
+
+        self.dialog.input_types_accepted = input_types_accepted
+
         while self.inputs_layout.count():
             child = self.inputs_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
         self.input_circles.clear()
         self.inputs_layout.addStretch()
-        for i in range(1, n + 1):
-            type_value = self.input_types.get(i)
-            circle = _InputOutputCircle(i, False, self, self.zone, type_info=type_value)
+        for i in range(n):
+            type_value = input_types_accepted.get(i)
+            circle = _InputOutputCircle(i, False, self, self.workflowZone, type_info=type_value)
             self.input_circles.append(circle)
             self.inputs_layout.addWidget(circle)
             self.inputs_layout.addStretch()
-        
+
+
         # Validate and remove invalid connections for inputs that no longer exist
-        if self.zone is not None:
+        if self.workflowZone is not None:
             card_id = getattr(self, 'card_id', None)
             if card_id is not None:
                 # Remove connections to inputs that no longer exist or have type mismatch
-                self.zone.lines = [line for line in self.zone.lines
-                                  if not (line[1][0] == card_id and line[1][1] > n)]
+                lines_to_remove = [line for line in self.workflowZone.lines
+                                   if line[1][0] == card_id and line[1][1] >= n]
+                self.workflowZone.removeLineKeys(lines_to_remove)
                 # Also remove connections with type mismatches
-                self.zone.validateConnectionTypes()
+                self.workflowZone.validateConnectionTypes()
+                self.workflowZone.syncCardInputTypes(card_id)
                 # Defer rebuild until layout has been processed
-                QTimer.singleShot(0, self.zone.rebuildConnectionLines)
+                QTimer.singleShot(0, self.workflowZone.rebuildConnectionLines)
+                return
 
+        # Keep dialog input state in sync even before the card is attached to a zone.
+        self.functions.updateInputTypes(self.dialog, {i: None for i in range(n)})
+   
     def setOutputs(self, n=None):
-        # Handle both dict (with types) and int inputs
+        """Set the number and types of output ports.
+        
+        Can be called with:
+        - A dict: {index: type} to set both count and types
+        - An int: Just sets count (types will be None)
+        - None: Clears all outputs
+        
+        Automatically removes invalid connections and rebuilds visual lines.
+        Updates downstream cards about type changes.
+        
+        Args:
+            n: Output count/types specification.
+        """
+        previous_output_types = getattr(self, 'output_types', None)
+
         if isinstance(n, dict):
             # Extract count and types from dict
             type_info = n
             n = max(type_info.keys()) + 1 if type_info else 0
-            self.output_types = {idx + 1: type_info.get(idx) for idx in range(n)}
+            output_types = {idx: type_info.get(idx) for idx in range(n)}
         elif n is None:
             # None means no outputs
             n = 0
-            self.output_types = {}
+            output_types = {}
         else:
             # Simple number, clear types
-            self.output_types = {i: None for i in range(1, n + 1)}
+            output_types = {i: None for i in range(n)}
+
+        outputs_changed = previous_output_types != output_types
+        self.output_types = output_types
         
         while self.outputs_layout.count():
             child = self.outputs_layout.takeAt(0)
@@ -567,27 +1025,47 @@ class _WorkflowCardZoneWidget(QWidget):
                 child.widget().deleteLater()
         self.output_circles.clear()
         self.outputs_layout.addStretch()
-        for i in range(1, n + 1):
+        for i in range(n):
             type_value = self.output_types.get(i)
-            circle = _InputOutputCircle(i, True, self, self.zone, type_info=type_value)
+            circle = _InputOutputCircle(i, True, self, self.workflowZone, type_info=type_value)
             self.output_circles.append(circle)
             self.outputs_layout.addWidget(circle)
             self.outputs_layout.addStretch()
         
         # Validate and remove invalid connections for outputs that no longer exist
-        if self.zone is not None:
+        if self.workflowZone is not None:
             card_id = getattr(self, 'card_id', None)
             if card_id is not None:
                 # Remove connections from outputs that no longer exist
-                self.zone.lines = [line for line in self.zone.lines
-                                  if not (line[0][0] == card_id and line[0][1] > n)]
-                # Update downstream input types and validate compatibility
-                self.zone.updateDownstreamInputTypes(card_id)
-                self.zone.validateConnectionTypes()
+                lines_to_remove = [line for line in self.workflowZone.lines
+                                   if line[0][0] == card_id and line[0][1] >= n]
+                self.workflowZone.removeLineKeys(lines_to_remove)
+                self.workflowZone.validateConnectionTypes()
+                if outputs_changed:
+                    # Let direct downstream dialogs react first; any further
+                    # propagation happens when they emit their own output changes.
+                    self.workflowZone.updateDownstreamInputTypes(card_id)
                 # Defer rebuild until layout has been processed
-                QTimer.singleShot(0, self.zone.rebuildConnectionLines)
+                QTimer.singleShot(0, self.workflowZone.rebuildConnectionLines)
+                
+    def updateInputTypes(self, input_types):
+        """For updating what input a card actually gets (not what it accepts)!
+
+        Args:
+            input_types (dict): Maps input index to the type of data currently connected.
+        """
+        self.functions.updateInputTypes(self.dialog, input_types)
 
     def mousePressEvent(self, event):
+        """Handle mouse press events for card interaction.
+        
+        - Left button: Start dragging the card
+        - Middle button: Delete the card
+        - Right button: Open the configuration dialog
+        
+        Args:
+            event: The mouse event.
+        """
         if event.button() == Qt.LeftButton:
             self._drag_start_pos = event.globalPos()
             self.is_dragging = True
@@ -600,38 +1078,71 @@ class _WorkflowCardZoneWidget(QWidget):
                 print(f"Error running dialog: {e}")
 
     def mouseMoveEvent(self, event):
+        """Update card position and connection lines while dragging.
+        
+        Args:
+            event: The mouse event.
+        """
         if self.is_dragging and self._drag_start_pos is not None and self.graphics_proxy is not None:
             delta = event.globalPos() - self._drag_start_pos
             self.graphics_proxy.moveBy(delta.x(), delta.y())
             self._drag_start_pos = event.globalPos()
             # Update connection lines in real-time while dragging
-            if self.zone is not None:
-                self.zone.updateConnectionLines()
+            if self.workflowZone is not None:
+                self.workflowZone.updateConnectionLines()
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        """Finalize card position and update connection lines after dragging.
+        
+        Args:
+            event: The mouse event.
+        """
         if event.button() == Qt.LeftButton:
             self.is_dragging = False
             self._drag_start_pos = None
             # Update all connection lines after card is repositioned
-            if self.zone is not None:
-                self.zone.updateConnectionLines()
+            if self.workflowZone is not None:
+                self.workflowZone.updateConnectionLines()
         super().mouseReleaseEvent(event)
 
     def _deleteCard(self):
-        if self.zone is not None:
-            self.zone.removeCard(self)
-    
+        """Delete this card from the workflow zone."""
+        if self.workflowZone is not None:
+            self.workflowZone.removeCard(self)
+        # clean up dialog and widget
+        self.dialog.deleteLater()
+        self.dialog = None
+
     def updatePreview(self):
+        """Update the preview image by capturing the current dialog state."""
         preview = self.functions.getDialogPreview(self.dialog)
         if preview is not None:
             self.thumbnail.setPixmap(preview)
             
 
 class WorkflowSidebar(QListWidget):
-    """Custom QListWidget that shows the widget preview while dragging"""
+    """Sidebar list widget showing available workflow cards for drag-and-drop.
+    
+    Displays workflow card options (e.g., "Combine channels", "Select image")
+    that users can drag onto the workflow zone. Shows a preview thumbnail and
+    title for each card type.
+    
+    Features:
+    - Custom drag-and-drop with preview pixmap
+    - Caches pixmaps for better performance
+    - Emits sigItemDropped signal when a card is dropped in the zone
+    """
     
     def startDrag(self, supportedActions):
+        """Initiate drag operation with custom preview pixmap.
+        
+        Overrides default drag behavior to use the cached card preview
+        as the drag image instead of a generic widget icon.
+        
+        Args:
+            supportedActions: Supported drop actions.
+        """
         items = self.selectedItems()
         if not items:
             return
@@ -673,9 +1184,43 @@ class WorkflowSidebar(QListWidget):
 
 
 class WorkflowZone(QGraphicsView):
+    """The main canvas where workflow cards are arranged and connected.
+    
+    A graphics view that displays workflow cards and the connections between them.
+    Users can:
+    - Drop cards from the sidebar
+    - Drag cards to reposition them
+    - Click on input/output circles to create connections
+    - Right-click on lines to delete connections
+    - Right-click on cards to configure them
+    - Middle-click on cards to delete them
+    
+    The zone maintains:
+    - A list of cards and their unique IDs
+    - A list of connections (port-to-port links)
+    - Type compatibility checking
+    - Visual connection lines
+    
+    Signals:
+        sigItemDropped(str, int, int): Emitted when a card is dropped.
+            Args: card_name, x_position, y_position
+    
+    Attributes:
+        cards (dict): Maps card_id to graphics proxy widget.
+        lines (list): List of connections as ((from_id, from_port), (to_id, to_port)).
+        connection_lines (list): Visual QGraphicsLineItem objects.
+        unique_card_id (int): Counter for assigning unique IDs to cards.
+        connection_start (tuple): State of connection being drawn.
+        temp_line: Visual line being drawn while creating a connection.
+    """
     sigItemDropped = Signal(str, int, int)
 
     def __init__(self, parent=None):
+        """Initialize the workflow zone.
+        
+        Args:
+            parent: Parent widget.
+        """
         super().__init__(parent)
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
@@ -697,13 +1242,22 @@ class WorkflowZone(QGraphicsView):
         self.placeholder.setAlignment(Qt.AlignCenter)
         self.placeholder_proxy = self.scene.addWidget(self.placeholder)
         self.placeholder_proxy.setPos(0, 0)
+        self.line_to_visual_line_mapping = {}
+        self.visual_line_to_line_mapping = {}
 
     def addCard(self, card_widget, x, y):
+        """Add a workflow card to the zone at the specified position.
+        
+        Args:
+            card_widget (_WorkflowCardZoneWidget): The card to add.
+            x (int): X coordinate in the scene.
+            y (int): Y coordinate in the scene.
+        """
         proxy = self.scene.addWidget(card_widget)
         proxy.setPos(QPointF(x, y))
         proxy.setCacheMode(proxy.CacheMode.DeviceCoordinateCache)
         card_widget.graphics_proxy = proxy
-        card_widget.zone = self
+        card_widget.workflowZone = self
         card_widget.card_id = self.unique_card_id  # Store the ID on the card widget
         card_widget.setZoneOnCircles()
         self.cards[self.unique_card_id] = proxy
@@ -711,31 +1265,101 @@ class WorkflowZone(QGraphicsView):
         if len(self.cards) == 1:
             self.placeholder_proxy.hide()
 
+    def _computeCardInputTypes(self, card):
+        """Compute concrete input types for a card from current connections."""
+        card_id = getattr(card, 'card_id', None)
+        input_types = {i: None for i in range(len(card.input_circles))}
+
+        if card_id is None:
+            return input_types
+
+        for (start_card_id, start_idx), (end_card_id, end_idx) in self.lines:
+            if end_card_id != card_id or end_idx not in input_types:
+                continue
+
+            start_proxy = self.cards.get(start_card_id)
+            if start_proxy is None:
+                continue
+
+            start_card = start_proxy.widget()
+            if start_card is None:
+                continue
+
+            input_types[end_idx] = start_card.output_types.get(start_idx)
+
+        return input_types
+
+    def syncCardInputTypes(self, card_id):
+        """Sync a card's concrete input types from its incoming connections."""
+        proxy = self.cards.get(card_id)
+        if proxy is None:
+            return
+
+        card = proxy.widget()
+        if card is None:
+            return
+
+        input_types = self._computeCardInputTypes(card)
+
+        card.functions.updateInputTypes(card.dialog, input_types)
+
+    def removeLineKeys(self, line_keys):
+        """Remove logical and visual connections and resync affected inputs."""
+        affected_input_card_ids = set()
+
+        for line_key in line_keys:
+            if line_key in self.lines:
+                self.lines.remove(line_key)
+            self._removeVisualLineByKey(line_key)
+            affected_input_card_ids.add(line_key[1][0])
+
+        for card_id in affected_input_card_ids:
+            self.syncCardInputTypes(card_id)
+
+    def _removeVisualLineByKey(self, line_key):
+        """Remove visual line corresponding to a model line key."""
+        visual_line = self.line_to_visual_line_mapping.pop(line_key, None)
+        if visual_line is None:
+            return
+        self.visual_line_to_line_mapping.pop(visual_line, None)
+        if visual_line in self.connection_lines:
+            self.connection_lines.remove(visual_line)
+        self.scene.removeItem(visual_line)
+
     def removeCard(self, card_widget):
+        """Remove a workflow card and all its connections from the zone.
+        
+        Args:
+            card_widget (_WorkflowCardZoneWidget): The card to remove.
+        """
         card_id = getattr(card_widget, 'card_id', None)
         if card_id is not None and card_id in self.cards:
             proxy = self.cards[card_id]
             if proxy.widget() == card_widget:
                 self.scene.removeItem(proxy)
                 del self.cards[card_id]
-                # Remove all connections involving this card
-                self.lines = [line for line in self.lines 
-                             if line[0][0] != card_id and line[1][0] != card_id]
-                # Remove visual connection lines for this card from the scene
-                lines_to_remove = [line for line in self.connection_lines
-                                   if (getattr(line, 'start_circle', None) and 
-                                       getattr(line, 'start_circle', None).card.card_id == card_id) or
-                                      (getattr(line, 'end_circle', None) and 
-                                       getattr(line, 'end_circle', None).card.card_id == card_id)]
-                for line in lines_to_remove:
-                    self.scene.removeItem(line)
-                    self.connection_lines.remove(line)
+                # Remove all connections involving this card.
+                lines_to_remove = [line_key for line_key in self.lines
+                                   if line_key[0][0] == card_id or line_key[1][0] == card_id]
+                self.removeLineKeys(lines_to_remove)
                 card_widget.deleteLater()
                 if not self.cards:
                     self.placeholder_proxy.show()
 
     def handleCircleClick(self, card, is_output, index, scene_pos):
-        """Handle a click on an input/output circle"""
+        """Handle a click on an input/output circle to create/complete a connection.
+        
+        Handles the state machine for connection creation:
+        - First click: Start a connection from this port
+        - Second click: Complete connection if valid
+        - Invalid connections are rejected with feedback
+        
+        Args:
+            card (_WorkflowCardZoneWidget): The card containing the circle.
+            is_output (bool): True if output port, False if input.
+            index (int): The 0-based port index.
+            scene_pos (QPointF): Position in the scene where the click occurred.
+        """
         if self.connection_start is None:
             # Start a new connection
             self.connection_start = (card, is_output, index, scene_pos)
@@ -762,21 +1386,30 @@ class WorkflowZone(QGraphicsView):
             # Clear connection state regardless
             self.cancelConnection()
 
-    def _areTypesCompatible(self, output_type, input_type):
-        """Check if output_type is compatible with input_type.
-        - If input_type is a list, output_type must be in the list
-        - If input_type is a string, it must match output_type exactly
-        - If either is None, they're compatible
+    def _areTypesCompatible(self, output_type, input_type_accepted):
+        """Check if output type is compatible with accepted input type requirement.
+        
+        Compatibility rules:
+        - If either type is None, they are compatible
+        - If input accepts multiple types (list), output must be in that list
+        - If input expects a specific type (string), exact match required
+        
+        Args:
+            output_type (str or None): The output port's type.
+            input_type_accepted (str, list, or None): The accepted input type constraint(s).
+        
+        Returns:
+            bool: True if types are compatible.
         """
-        if output_type is None or input_type is None:
+        if output_type is None or input_type_accepted is None:
             return True
         
-        if isinstance(input_type, (list, tuple)):
+        if isinstance(input_type_accepted, (list, tuple)):
             # Input accepts a list of types
-            return output_type in input_type
+            return output_type in input_type_accepted
         else:
             # Input expects a specific type
-            return output_type == input_type
+            return output_type == input_type_accepted
 
     def createConnection(self, card1, is_out1, idx1, card2, is_out2, idx2):
         """Create a visual connection between two circles"""
@@ -801,27 +1434,23 @@ class WorkflowZone(QGraphicsView):
         
         # Check type compatibility
         output_type = output_card.output_types.get(output_idx)
-        input_type = input_card.input_types.get(input_idx)
+        input_type_accepted = input_card._getDialogInputTypesAccepted().get(input_idx)
         
-        if not self._areTypesCompatible(output_type, input_type):
-            print(f"Type mismatch: cannot connect output type '{output_type}' to input type '{input_type}'")
+        if not self._areTypesCompatible(output_type, input_type_accepted):
+            print(f"Type mismatch: cannot connect output type '{output_type}' to input type '{input_type_accepted}'")
             return
-        
-        # If input has no type, set it to the output type
-        if output_type is not None:
-            input_card.input_types[input_idx] = output_type
-            # Trigger input types changed callback
-            input_card.functions.input_types_changed(input_card.dialog, input_card.input_types)
         
         # Store connection with card IDs
         if is_out1:  # card1 is output, card2 is input
-            self.lines.append(((card1_id, idx1), (card2_id, idx2)))
+            line_key = ((card1_id, idx1), (card2_id, idx2))
         else:  # card1 is input, card2 is output - swap them
-            self.lines.append(((card2_id, idx2), (card1_id, idx1)))
-        
-        self.drawConnection(card1, is_out1, idx1, card2, is_out2, idx2)
+            line_key = ((card2_id, idx2), (card1_id, idx1))
 
-    def drawConnection(self, card1, is_out1, idx1, card2, is_out2, idx2):
+        self.lines.append(line_key)
+        self.syncCardInputTypes(input_card.card_id)
+        self.drawConnection(card1, is_out1, idx1, card2, is_out2, idx2, line_key=line_key)
+
+    def drawConnection(self, card1, is_out1, idx1, card2, is_out2, idx2, line_key=None):
         """Draw a connection line between two circles"""
         # Get the global positions of the circles
         proxy1 = card1.graphics_proxy
@@ -829,17 +1458,17 @@ class WorkflowZone(QGraphicsView):
         
         if is_out1:
             circles1 = card1.output_circles
-            start_circle = circles1[idx1 - 1] if idx1 - 1 < len(circles1) else None
+            start_circle = circles1[idx1] if idx1 < len(circles1) else None
         else:
             circles1 = card1.input_circles
-            start_circle = circles1[idx1 - 1] if idx1 - 1 < len(circles1) else None
+            start_circle = circles1[idx1] if idx1 < len(circles1) else None
         
         if is_out2:
             circles2 = card2.output_circles
-            end_circle = circles2[idx2 - 1] if idx2 - 1 < len(circles2) else None
+            end_circle = circles2[idx2] if idx2 < len(circles2) else None
         else:
             circles2 = card2.input_circles
-            end_circle = circles2[idx2 - 1] if idx2 - 1 < len(circles2) else None
+            end_circle = circles2[idx2] if idx2 < len(circles2) else None
         
         if start_circle and end_circle:
             start_global = start_circle.mapToGlobal(start_circle.rect().center())
@@ -860,21 +1489,25 @@ class WorkflowZone(QGraphicsView):
             
             self.scene.addItem(line)
             self.connection_lines.append(line)
+            if line_key is not None:
+                self.line_to_visual_line_mapping[line_key] = line
+                self.visual_line_to_line_mapping[line] = line_key
 
     def removeConnectionLine(self, line):
         """Remove a connection line when right-clicked"""
-        if line in self.connection_lines:
-            self.scene.removeItem(line)
-            self.connection_lines.remove(line)
-            # Remove from lines list
-            if hasattr(line, 'start_circle') and hasattr(line, 'end_circle'):
-                start_card_id = getattr(line.start_circle.card, 'card_id', None)
-                end_card_id = getattr(line.end_circle.card, 'card_id', None)
-                start_idx = line.start_circle.index
-                end_idx = line.end_circle.index
-                if start_card_id is not None and end_card_id is not None:
-                    self.lines = [l for l in self.lines 
-                                 if not (l[0] == (start_card_id, start_idx) and l[1] == (end_card_id, end_idx))]
+        if line not in self.connection_lines:
+            return
+
+        line_key_to_remove = self.visual_line_to_line_mapping.get(line)
+
+        if line_key_to_remove is not None:
+            self.removeLineKeys([line_key_to_remove])
+            return
+
+        # Fallback if mapping is out-of-sync.
+        self.visual_line_to_line_mapping.pop(line, None)
+        self.scene.removeItem(line)
+        self.connection_lines.remove(line)
 
     def updateConnectionLines(self):
         """Update all connection line positions based on current circle positions"""
@@ -914,6 +1547,8 @@ class WorkflowZone(QGraphicsView):
         for line in self.connection_lines[:]:
             self.scene.removeItem(line)
         self.connection_lines.clear()
+        self.line_to_visual_line_mapping.clear()
+        self.visual_line_to_line_mapping.clear()
         
         # Recreate visual lines for all valid connections in self.lines
         for line_data in self.lines:
@@ -933,31 +1568,13 @@ class WorkflowZone(QGraphicsView):
                 continue
             
             # Get the circles
-            start_circle = start_card.output_circles[start_idx - 1] if start_idx - 1 < len(start_card.output_circles) else None
-            end_circle = end_card.input_circles[end_idx - 1] if end_idx - 1 < len(end_card.input_circles) else None
+            start_circle = start_card.output_circles[start_idx] if start_idx < len(start_card.output_circles) else None
+            end_circle = end_card.input_circles[end_idx] if end_idx < len(end_card.input_circles) else None
             
             if start_circle is None or end_circle is None:
                 continue
             
-            # Draw the connection with the new circles
-            start_global = start_circle.mapToGlobal(start_circle.rect().center())
-            end_global = end_circle.mapToGlobal(end_circle.rect().center())
-            
-            start_scene = self.mapToScene(self.mapFromGlobal(start_global))
-            end_scene = self.mapToScene(self.mapFromGlobal(end_global))
-            
-            # Create line using custom ConnectionLine class
-            line = _ConnectionLine(start_scene.x(), start_scene.y(), end_scene.x(), end_scene.y(), zone=self)
-            pen = QPen(QColor(0, 0, 0))
-            pen.setWidth(2)
-            line.setPen(pen)
-            
-            # Store circle references for later updates
-            line.start_circle = start_circle
-            line.end_circle = end_circle
-            
-            self.scene.addItem(line)
-            self.connection_lines.append(line)
+            self.drawConnection(start_card, True, start_idx, end_card, False, end_idx, line_key=line_data)
 
     def validateConnectionTypes(self):
         """Remove connections where output type doesn't match input type"""
@@ -982,53 +1599,36 @@ class WorkflowZone(QGraphicsView):
             
             # Check type compatibility
             output_type = start_card.output_types.get(start_idx)
-            input_type = end_card.input_types.get(end_idx)
+            input_type_accepted = end_card._getDialogInputTypesAccepted().get(end_idx)
             
             # Remove connection if types don't match
-            if not self._areTypesCompatible(output_type, input_type):
+            if not self._areTypesCompatible(output_type, input_type_accepted):
                 lines_to_remove.append(line_data)
         
         # Remove incompatible connections from both data and visual lists
-        for line_data in lines_to_remove:
-            self.lines.remove(line_data)
-            # Also remove the visual line
-            line_visual_to_remove = None
-            for line in self.connection_lines:
-                if (hasattr(line, 'start_circle') and hasattr(line, 'end_circle') and
-                    getattr(line.start_circle.card, 'card_id', None) == line_data[0][0] and
-                    line.start_circle.index == line_data[0][1] and
-                    getattr(line.end_circle.card, 'card_id', None) == line_data[1][0] and
-                    line.end_circle.index == line_data[1][1]):
-                    line_visual_to_remove = line
-                    break
-            if line_visual_to_remove:
-                self.scene.removeItem(line_visual_to_remove)
-                self.connection_lines.remove(line_visual_to_remove)
+        self.removeLineKeys(lines_to_remove)
 
     def updateDownstreamInputTypes(self, source_card_id):
-        """Update input types of all cards connected to outputs of source_card_id"""
-        source_proxy = self.cards.get(source_card_id)
-        if source_proxy is None:
-            return
-        source_card = source_proxy.widget()
-        if source_card is None:
-            return
-        
-        # Find all connections from this card
+        """Sync the concrete input types of directly connected downstream cards.
+
+        Further propagation is intentionally dialog-driven: each downstream card
+        reacts in updatedInputTypes(), may emit output-type changes, and its own
+        setOutputs() call will then trigger the next downstream sync.
+        """
+        downstream_card_ids = set()
+
+        # Find all direct downstream cards connected to this source card.
         for line_data in self.lines:
-            (start_card_id, start_idx), (end_card_id, end_idx) = line_data
-            if start_card_id == source_card_id:
-                # This is a connection from source_card
-                end_proxy = self.cards.get(end_card_id)
-                if end_proxy is not None:
-                    end_card = end_proxy.widget()
-                    if end_card is not None:
-                        # Update the input type based on the output type
-                        output_type = source_card.output_types.get(start_idx)
-                        if output_type is not None:
-                            end_card.input_types[end_idx] = output_type
-                            # Trigger input types changed callback
-                            end_card.functions.input_types_changed(end_card.dialog, end_card.input_types)
+            (start_card_id, _start_idx), (end_card_id, _end_idx) = line_data
+            if start_card_id != source_card_id:
+                continue
+
+            downstream_card_ids.add(end_card_id)
+
+        # Only sync direct children here. If a child changes its outputs in
+        # response, its own setOutputs() call will continue propagation.
+        for downstream_card_id in downstream_card_ids:
+            self.syncCardInputTypes(downstream_card_id)
 
     def cancelConnection(self):
         """Cancel the current connection being drawn"""
@@ -1090,6 +1690,38 @@ class WorkflowZone(QGraphicsView):
             super().mousePressEvent(event)
 
 class WorkflowGui(QMainWindow):
+    """Main window for the workflow editor GUI.
+    
+    Provides a complete workflow editing interface with:
+    - Sidebar showing available workflow cards
+    - Workflow zone for arranging and connecting cards
+    - Automatic data type propagation and compatibility checking
+    - Dialog-based configuration for each workflow step
+    
+    The workflow is built by dragging cards from the sidebar onto the zone,
+    connecting them by clicking ports, and configuring each card.
+    
+    Args:
+        app: The QApplication instance.
+        parent: Parent widget (optional).
+        buttonToRestore: Button to re-enable when GUI closes (optional).
+        mainWin: Reference to the main Cell-ACDC window (optional).
+        version (str): GUI version string (optional).
+        launcherSlot (callable): Callback to invoke when GUI closes (optional).
+        selectedExpPaths (dict): {path: [positions]} data directories to process (optional).
+    
+    Attributes:
+        data (dict): Loaded position data indexed by position number.
+        posData: The first position's data (used for UI defaults).
+        img_channels (set): Available image channel names.
+        segm_channels (set): Available segmentation data names.
+        sidebar (WorkflowSidebar): The available cards panel.
+        dropZone (WorkflowZone): The workflow editing area.
+        debug (bool): Debug mode flag from configuration.
+    
+    Signals:
+        sigClosed(object): Emitted when the GUI window is closed.
+    """
     sigClosed = Signal(object)
         
     def __init__(
@@ -1097,7 +1729,20 @@ class WorkflowGui(QMainWindow):
             mainWin=None, version=None, launcherSlot=None,
             selectedExpPaths=None
         ):
-        """Initializer."""
+        """Initialize the workflow GUI.
+        
+        Loads data from selected positions, discovers available image and
+        segmentation channels, and builds the UI.
+        
+        Args:
+            app: The QApplication instance.
+            parent: Parent widget (optional).
+            buttonToRestore: Button to re-enable when closing (optional).
+            mainWin: Main window reference (optional).
+            version: Version string (optional).
+            launcherSlot: Callback for GUI close (optional).
+            selectedExpPaths: Dict mapping paths to position lists (optional).
+        """
 
         super().__init__(parent)
         
@@ -1120,6 +1765,12 @@ class WorkflowGui(QMainWindow):
         self.setupUI()
         
     def initData(self):
+        """Load and analyze data from selected experiments.
+        
+        Loads position data and discovers available image and segmentation
+        channels, keeping only channels common to all selected positions.
+        Stores the first position's data in self.posData for UI defaults.
+        """
         self.data = {}
         self.posData = None # store first data loaded, as this is relevant for UI.
         # all other data is only relevant for running the workflow
@@ -1159,6 +1810,14 @@ class WorkflowGui(QMainWindow):
             self.segm_channels = self.segm_channels.intersection(segm_endnames)
 
     def _setupDragCard(self, functions: WorkflowBaseFunctions):
+        """Add a workflow card to the sidebar.
+        
+        Creates a list item with preview and adds it to the sidebar for
+        drag-and-drop into the workflow zone.
+        
+        Args:
+            functions (WorkflowBaseFunctions): The workflow operation to add.
+        """
         channels_card = QListWidgetItem()
         channels_card.setData(Qt.UserRole, functions)
 
@@ -1169,7 +1828,16 @@ class WorkflowGui(QMainWindow):
         self.sidebar.setItemWidget(channels_card, card_widget)
 
     def addDroppedCard(self, card: str, x: int, y: int):
-        """Handle a card dropped into the WorkflowZone at position (x, y)"""
+        """Handle a card dropped into the WorkflowZone at position (x, y).
+        
+        Finds the card definition from the sidebar, creates a zone card widget,
+        and adds it at the specified position.
+        
+        Args:
+            card (str): The name/title of the card dropped.
+            x (int): X coordinate in the zone.
+            y (int): Y coordinate in the zone.
+        """
         # Find the card data from the sidebar
         card_data = None
         for i in range(self.sidebar.count()):
@@ -1182,13 +1850,27 @@ class WorkflowGui(QMainWindow):
         if not card_data:
             return
         
+        # Create a fresh functions instance for each dropped card to avoid
+        # cross-card state/signal leakage from shared function objects.
+        try:
+            card_functions = type(card_data)()
+        except Exception:
+            card_functions = card_data
+
         # Create a new zone card widget with the card data, passing zone reference
-        card_widget = _WorkflowCardZoneWidget(card_data, posData=self.posData, zone=self.dropZone, workflowGui=self)
+        card_widget = _WorkflowCardZoneWidget(card_functions, posData=self.posData, zone=self.dropZone, workflowGui=self)
         
         # Add it directly to the drop zone at the specified position
         self.dropZone.addCard(card_widget, x, y)
 
     def setupUI(self):
+        """Build the user interface.
+        
+        Creates:
+        - Sidebar with available workflow cards
+        - Main workflow zone for editing
+        - Connects signals for drag-and-drop
+        """
         central = QWidget()
         self.setCentralWidget(central)
         layout = QHBoxLayout(central)
@@ -1230,6 +1912,12 @@ class WorkflowGui(QMainWindow):
         self.setGeometry((screen.width() - width) // 2, (screen.height() - height) // 2, width, height)
 
     def run(self, module='acdc_workflow', logs_path=None):
+        """Display the window and setup logging.
+        
+        Args:
+            module (str): Module name for logging. Defaults to 'acdc_workflow'.
+            logs_path (str): Path for log files (optional).
+        """
         self.setWindowIcon()
         self.setWindowTitle()
         
@@ -1251,6 +1939,13 @@ class WorkflowGui(QMainWindow):
         self.show()
     
     def closeEvent(self, event):
+        """Handle window close event.
+        
+        Emits the sigClosed signal and prevents closing if closeGUI is False.
+        
+        Args:
+            event: The close event.
+        """
         if self.closeGUI:
             event.ignore()
             return
@@ -1259,17 +1954,34 @@ class WorkflowGui(QMainWindow):
         self.sigClosed.emit(self)
         
     def setWindowIcon(self, icon=None):
+        """Set the window icon.
+        
+        Args:
+            icon (QIcon, optional): Icon to set. Defaults to embedded icon.ico.
+        """
         if icon is None:
             icon = QIcon(":icon.ico")
         super().setWindowIcon(icon)
     
     def setWindowTitle(self, title=None):
+        """Set the window title.
+        
+        Args:
+            title (str, optional): Title to set. Defaults to version and 'workflow GUI'.
+        """
         if title is None:
             title = f'Cell-ACDC v{self._acdc_version} - workflow GUI'
         super().setWindowTitle(title)
         
     # handle key press events for shortcuts
     def keyPressEvent(self, event):
+        """Handle keyboard shortcuts.
+        
+        In debug mode, pressing 'Q' prints the workflow connection data.
+        
+        Args:
+            event: The key event.
+        """
         if event.key() == Qt.Key_Q and self.debug:
             print(self.dropZone.lines)
         super().keyPressEvent(event)

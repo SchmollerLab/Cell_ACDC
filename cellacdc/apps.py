@@ -17189,8 +17189,9 @@ class CombineChannelsWidget(PreProcessParamsWidget):
             binarizeSelector = stepWidgets['binarize']
             segm = False
             if self.channel_names is None:
-                if hasattr(self.parent, 'input_types') and step_n in self.parent.input_types:
-                    segm = self.parent.input_types[step_n] == 'segm'
+                idx = step_n - 1
+                if hasattr(self.parent, 'input_types') and idx in self.parent.input_types:
+                    segm = self.parent.input_types[idx] == 'segm'
             else:
                 channel = stepWidgets['selector'].currentText()
                 segm = True if 'segm' in channel.lower() else False
@@ -18897,32 +18898,41 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         if self.validFormula:
             self.sigSaveAsSegmCheckboxToggled.emit(self.saveAsSegm())
     
-    def autoCheckSaveAsSegmCheckbox(self):
+    def autoCheckSaveAsSegmCheckbox(self, dummy=None, return_bool=False):
         any_not_seg = False
         for step_n, step in self.combineChannelsWidget.steps().items():
             if self.channel_names is None and hasattr(self, 'input_types'):
-                segm = self.input_types.get(step_n, '') == 'segm'
+                idx = step_n - 1
+                is_none = self.input_types.get(idx, None) is None
+                if is_none:
+                    continue
+
+                segm = self.input_types.get(idx, '') == 'segm'
                 if not segm:
                     any_not_seg = True
                     break
+                                
             else:
                 channel = step['channel']
                 if 'segm' not in channel:
                     any_not_seg = True
                     break
-                
+           
         if any_not_seg:
             self.saveAsSegmCheckbox.setChecked(False)
             self.saveAsSegmCheckbox.setEnabled(False)
         else:
+            self.saveAsSegmCheckbox.setEnabled(True)
             if not self.segm_blinked:
-                self.saveAsSegmCheckbox.setEnabled(True)
                 self.blinker = qutils.QControlBlink(
                     self.saveAsSegmCheckbox, 
                     qparent=self
                 )
                 self.blinker.start()
                 self.segm_blinked = True
+        
+        if return_bool:
+            return not any_not_seg
 
     def apply(self, checked=False, signal: Signal=None):
         steps = self.combineChannelsWidget.steps()
