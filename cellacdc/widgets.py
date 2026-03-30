@@ -7222,6 +7222,15 @@ class BaseImageItem(pg.ImageItem):
             return levels
         except Exception as err:
             return super().quickMinMax(targetSize=targetSize)
+    
+    def setOpacity(self, value, **kwargs):
+        if value == 0:
+            value = 0.001
+        
+        if value == 1:
+            value = 0.999
+            
+        super().setOpacity(value)
         
 
 class BaseLabelsImageItem(pg.ImageItem):
@@ -7257,6 +7266,12 @@ class OverlayImageItem(pg.ImageItem):
         super().setImage(image, autoLevels=autoLevels, **kargs)
         
     def setOpacity(self, value, **kwargs):
+        if value == 0:
+            value = 0.001
+        
+        if value == 1:
+            value = 0.999
+            
         super().setOpacity(value)
 
 class ParentImageItem(BaseImageItem):
