@@ -40,6 +40,7 @@ from . import sorted_cols
 from . import io
 from . import core
 from . import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+from . import debugutils
 
 from . import GUI_INSTALLED
 
@@ -1264,7 +1265,7 @@ def is_bkgrROIs_present(images_path):
 
 class loadData:
     def __init__(
-            self, imgPath, user_ch_name, 
+            self, imgPath, user_ch_name=None, 
             relPathDepth=3, QParent=None, log_func=None
         ):
         self.fluo_data_dict = {}
@@ -1274,7 +1275,11 @@ class loadData:
         self.parent = QParent
         self.imgPath = imgPath
         self.user_ch_name = user_ch_name
-        self.images_path = os.path.dirname(imgPath)
+        # check if imgPath is to the Images folder...
+        if os.path.basename(imgPath) == 'Images' and os.path.isdir(imgPath):
+            self.images_path = imgPath
+        else:
+            self.images_path = os.path.dirname(imgPath)
         self.images_folder_files = os.listdir(self.images_path)
         self.pos_path = os.path.dirname(self.images_path)
         self.spotmax_out_path = os.path.join(self.pos_path, 'spotMAX_output')
@@ -1471,7 +1476,8 @@ class loadData:
             filename, _ = os.path.splitext(file)
             if filename != self.basename:
                 continue
-            
+            debugutils.print_call_stack()
+            printl(self.images_path)
             sep = '*'*100
             error_text = (
                 f'The file "{file}" has the same name as '
@@ -1766,9 +1772,11 @@ class loadData:
         
         return stop_frame_num
     
-    def getSamEmbeddingsPath(self):
+    def getSamEmbeddingsPath(self, user_ch_name=None):
+        if user_ch_name is None:
+            user_ch_name = self.user_ch_name
         sam_embed_filename = (
-            f'{self.basename}_{self.user_ch_name}_sam_embeddings.pt'
+            f'{self.basename}_{user_ch_name}_sam_embeddings.pt'
         )
         sam_embeddings_path = os.path.join(self.images_path, sam_embed_filename)
         return sam_embeddings_path
@@ -2898,7 +2906,8 @@ class loadData:
     def saveSegmHyperparams(
             self, model_name, init_kwargs, segment_kwargs, 
             post_process_params=None, 
-            preproc_recipe=None
+            preproc_recipe=None,
+            segmented_channel=None
         ):
         cp = config.ConfigParser()
 
@@ -2919,7 +2928,7 @@ class loadData:
         cp[metadata_section] = {}
         
         cp[metadata_section]['segmentation_filename'] = segm_filename
-        cp[metadata_section]['segmented_channel'] = self.user_ch_name
+        cp[metadata_section]['segmented_channel'] = segmented_channel if segmented_channel else self.user_ch_name
         now = datetime.now().strftime(r'%Y-%m-%d %H:%M:%S.%u')
         cp[metadata_section]['segmented_on'] = now
         cp[metadata_section]['model_name'] = model_name
@@ -3033,7 +3042,10 @@ class loadData:
         base_path = os.path.join(self.images_path, basename)
         self.slice_used_align_path = f'{base_path}slice_used_alignment.csv'
         self.slice_used_segm_path = f'{base_path}slice_segm.csv'
-        self.align_npz_path = f'{base_path}{self.user_ch_name}_aligned.npz'
+        if self.user_ch_name:
+            self.align_npz_path = f'{base_path}{self.user_ch_name}_aligned.npz'
+        else:
+            self.align_npz_path = None
         self.align_old_path = f'{base_path}phc_aligned.npy'
         self.align_shifts_path = f'{base_path}align_shift.npy'
         self.segm_npz_path = f'{base_path}segm.npz'
