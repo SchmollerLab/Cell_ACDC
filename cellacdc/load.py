@@ -666,7 +666,9 @@ def save_acdc_df_file(
     acdc_df = acdc_df[new_order_cols]
     
     if last_cca_frame_i is not None:
-        acdc_df.loc[last_cca_frame_i+1:, cca_df_colnames] = pd.NA
+        max_frame_i = acdc_df.index.get_level_values('frame_i').max()
+        if last_cca_frame_i < max_frame_i:
+            acdc_df.loc[last_cca_frame_i+1:, cca_df_colnames] = pd.NA
     
     try:
         acdc_df.to_csv(csv_path)
