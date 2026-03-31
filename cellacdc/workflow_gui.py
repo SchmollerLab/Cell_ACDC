@@ -3,7 +3,8 @@ from qtpy.QtGui import  QIcon, QGuiApplication, QDrag, QCursor, QPainterPath, QP
 from qtpy.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QListWidget, QListWidgetItem, 
     QLabel, QVBoxLayout, QSizePolicy, QPlainTextEdit,
-    QAbstractItemView, QGraphicsView, QGraphicsScene, QGraphicsLineItem, QAction
+    QAbstractItemView, QGraphicsView, QGraphicsScene, QGraphicsLineItem, QAction,
+    QMessageBox
 )
 from qtpy.QtCore import Signal, Qt, QMimeData, QPointF, QTimer, QObject
 import qtpy
@@ -45,6 +46,19 @@ class _WorkflowGuiLogHandler(logging.Handler):
         except Exception:
             text = record.getMessage()
         self._emitter.sigLogMessage.emit(str(text))
+
+
+class _ClickableLabel(QLabel):
+    """QLabel emitting a click signal on left mouse press."""
+
+    sigClicked = Signal()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.sigClicked.emit()
+            event.accept()
+            return
+        super().mousePressEvent(event)
 
 class _WorkflowCardListWidget(QWidget):
     """Widget representing a workflow card item in the sidebar.
@@ -862,6 +876,7 @@ class WorkflowZone(QGraphicsView):
     def _markWorkflowChanged(self):
         """Notify parent workflow GUI about user-driven workflow mutations."""
         self.parent.setUnsavedWork(True)
+        self.parent._refreshWorkflowValidationLabel()
 
     def addCard(self, card_widget, x, y):
         """Add a workflow card to the zone at the specified position.
@@ -1505,6 +1520,55 @@ class WorkflowGui(QMainWindow):
         for functions in functions_to_add:
             self._setupDragCard(functions, build_widget=build_widgets)
 
+    def _buildWorkflowHelpText(self):
+        """Build short help text for the workflow info message box."""
+        lines = [
+            'Quick guide',
+            '',
+            '- Start by creating a new workflow file or loading an existing one. (Ctrl+N/Ctrl+O)',
+            '- Change loaded experiment data with the "Load Images..." action.',
+            '- Drag cards from the sidebar into the workflow area.',
+            '- Make connections by clicking an output circle, then an input circle.',
+            '- Open or edit a card by right-clicking it in the workflow area.',
+            '',
+            'Cards',
+        ]
+
+        functions_to_add = (
+            workflow_dialogs.WorkflowCombineChannelsFunctions(),
+            workflow_dialogs.WorkflowInputImgFunctions(),
+            workflow_dialogs.WorkflowInputSegmFunctions(),
+        )
+        for functions in functions_to_add:
+            title = getattr(functions, 'title', type(functions).__name__)
+
+            info = getattr(functions, 'info', '')
+            if callable(info):
+                try:
+                    info = info()
+                except Exception:
+                    info = ''
+
+            if not info:
+                doc = getattr(type(functions), '__doc__', '') or ''
+                doc_lines = [line.strip() for line in doc.splitlines() if line.strip()]
+                info = doc_lines[0] if doc_lines else ''
+
+            if not info:
+                info = 'Configure this card and connect it within the workflow.'
+
+            lines.append(f'- {title}: {str(info).strip()}')
+
+        return '\n'.join(lines)
+
+    def _onWorkflowInfoTriggered(self):
+        """Show short usage instructions for the workflow GUI."""
+        QMessageBox.information(
+            self,
+            'Workflow help',
+            self._buildWorkflowHelpText(),
+        )
+
     def addDroppedCard(self, card: str, x: int, y: int):
         """Handle a card dropped into the WorkflowZone at position (x, y).
         
@@ -1543,6 +1607,61 @@ class WorkflowGui(QMainWindow):
         # Add it directly to the drop zone at the specified position
         self.dropZone.addCard(card_widget, x, y)
         self.setUnsavedWork(True)
+        self._refreshWorkflowValidationLabel()
+
+    def _createToolbarIoLegend(self):
+        """Create a compact legend for I/O port circle colors in the toolbar."""
+        legend_widget = QWidget(self)
+        legend_layout = QHBoxLayout(legend_widget)
+        legend_layout.setContentsMargins(6, 0, 0, 0)
+        legend_layout.setSpacing(8)
+
+        io_label = QLabel('I/O:', legend_widget)
+        legend_layout.addWidget(io_label)
+
+        def add_legend_item(color_name, text):
+            circle = QLabel(legend_widget)
+            circle.setFixedSize(12, 12)
+            circle.setStyleSheet(
+                "QLabel {"
+                "border: 2px solid %s;"
+                "border-radius: 6px;"
+                "background-color: transparent;"
+                "}" % color_name
+            )
+
+            text_label = QLabel(text, legend_widget)
+            legend_layout.addWidget(circle)
+            legend_layout.addWidget(text_label)
+
+        add_legend_item('red', 'segm.')
+        add_legend_item('blue', 'image')
+
+        return legend_widget
+
+    def _refreshWorkflowValidationLabel(self):
+        """Refresh toolbar validation label from current graph state."""
+        if not hasattr(self, 'validationStatusLabel') or self.validationStatusLabel is None:
+            return
+
+        is_valid, errors = self.validateWorkflowGraph(log_errors=False)
+        if is_valid:
+            self.validationStatusLabel.setText('Workflow: OK')
+            self.validationStatusLabel.setStyleSheet(
+                'QLabel { color: #1f7a1f; font-weight: bold; }'
+            )
+        else:
+            self.validationStatusLabel.setText(f'Workflow: {len(errors)} issue(s)')
+            self.validationStatusLabel.setStyleSheet(
+                'QLabel { color: #b22222; font-weight: bold; }'
+            )
+
+    def _onValidationStatusLabelClicked(self):
+        """Re-run validation and show current issues when toolbar label is clicked."""
+        is_valid, errors = self.validateWorkflowGraph(log_errors=True)
+        self._refreshWorkflowValidationLabel()
+        if not is_valid:
+            self._showWorkflowValidationErrors(errors)
 
     def setupUI(self):
         """Build the user interface.
@@ -1583,12 +1702,30 @@ class WorkflowGui(QMainWindow):
             QIcon(":image.svg"), "Load Images...", self
         )
         self.openImagesAction.triggered.connect(self._onLoadImagesTriggered)
+
+        self.infoAction = QAction(
+            QIcon(":info.svg"), "Workflow &Info", self
+        )
+        self.infoAction.setToolTip('Show brief workflow usage help')
+        self.infoAction.triggered.connect(self._onWorkflowInfoTriggered)
         
         folder_toolbar.addAction(self.newAction)
         folder_toolbar.addAction(self.loadWorkflowAction)
         folder_toolbar.addAction(self.saveAction)
         folder_toolbar.addAction(self.saveNewAction)
         folder_toolbar.addAction(self.openImagesAction)
+        folder_toolbar.addAction(self.infoAction)
+        folder_toolbar.addSeparator()
+        self.validationStatusLabel = _ClickableLabel('Workflow: OK', self)
+        self.validationStatusLabel.setStyleSheet(
+            'QLabel { color: #1f7a1f; font-weight: bold; }'
+        )
+        self.validationStatusLabel.setCursor(Qt.PointingHandCursor)
+        self.validationStatusLabel.setToolTip('Click to show workflow validation issues')
+        self.validationStatusLabel.sigClicked.connect(self._onValidationStatusLabelClicked)
+        folder_toolbar.addWidget(self.validationStatusLabel)
+        folder_toolbar.addSeparator()
+        folder_toolbar.addWidget(self._createToolbarIoLegend())
         self.saveAction.setEnabled(False)
         self.saveNewAction.setEnabled(False)
         self.openImagesAction.setEnabled(False)
@@ -1637,6 +1774,7 @@ class WorkflowGui(QMainWindow):
         # Initially disable sidebar and dropZone until data is loaded
         self.sidebar.setEnabled(False)
         self.dropZone.setEnabled(False)
+        self._refreshWorkflowValidationLabel()
 
         # Set window size based on screen resolution
         screen = QGuiApplication.primaryScreen().availableGeometry()
@@ -2145,6 +2283,7 @@ class WorkflowGui(QMainWindow):
             card_widget = proxy.widget()
             if card_widget is not None:
                 self.dropZone.removeCard(card_widget) # also removes connections
+        self._refreshWorkflowValidationLabel()
 
     def loadWorkflow(self, save_dir):
         """Load a saved workflow from disk and restore cards and connections.
@@ -2285,6 +2424,7 @@ class WorkflowGui(QMainWindow):
         self._notifyDialogsNewImageLoaded()
         self._setSaveActionsEnabled(True)
         self.setUnsavedWork(False)
+        self._refreshWorkflowValidationLabel()
         return True
     
     def verifyWorkflowSaveFiles(self, save_dir):
@@ -2332,6 +2472,151 @@ class WorkflowGui(QMainWindow):
 
         return all_files_exist
 
+    def _getCardOptionalInputIndices(self, card_widget):
+        """Return optional input indices declared by the card dialog.
+
+        Supported ``dialog.optional_inputs_n`` values:
+        - missing/None: no optional inputs
+        - bool: apply value to all inputs (True=all optional, False=none)
+        - dict[int, bool]: per-input optional flags
+
+        Parsing is intentionally permissive: malformed dict entries are skipped.
+        """
+        dialog = getattr(card_widget, 'dialog', None)
+        optional_inputs_n = getattr(dialog, 'optional_inputs_n', None)
+        n_inputs = len(getattr(card_widget, 'input_circles', []))
+        if n_inputs <= 0:
+            return set()
+
+        if optional_inputs_n is None:
+            return set()
+
+        if isinstance(optional_inputs_n, bool):
+            return set(range(n_inputs)) if optional_inputs_n else set()
+
+        return set(
+            idx for idx, is_optional in (optional_inputs_n or {}).items()
+            if is_optional and isinstance(idx, int) and (0 <= idx < n_inputs)
+        )
+
+    def _formatCardLabel(self, card_id):
+        """Return a short human-readable card label."""
+        proxy = self.dropZone.cards.get(card_id) if hasattr(self, 'dropZone') else None
+        card = proxy.widget() if proxy is not None else None
+        title = getattr(card, 'title', '') if card is not None else ''
+        if title:
+            return f"ID={card_id} ('{title}')"
+        return f"ID={card_id}"
+
+    def validateWorkflowGraph(self, log_errors=True):
+        """Validate workflow graph for missing required inputs and cycles.
+
+        Returns:
+            tuple: (is_valid, errors)
+                is_valid (bool): True when no validation issue was found.
+                errors (list[str]): Human-readable validation messages.
+        """
+        errors = []
+
+        if not hasattr(self, 'dropZone') or self.dropZone is None:
+            return True, errors
+
+        card_ids = set(self.dropZone.cards.keys())
+        incoming_by_card = {card_id: set() for card_id in card_ids}
+        adjacency = {card_id: set() for card_id in card_ids}
+
+        for line_data in self.dropZone.lines:
+            (from_card_id, _from_port), (to_card_id, to_port) = line_data
+            if to_card_id in incoming_by_card:
+                incoming_by_card[to_card_id].add(to_port)
+            if from_card_id in adjacency and to_card_id in adjacency:
+                adjacency[from_card_id].add(to_card_id)
+
+        for card_id in card_ids:
+            proxy = self.dropZone.cards.get(card_id)
+            card_widget = proxy.widget() if proxy is not None else None
+            if card_widget is None:
+                continue
+
+            n_inputs = len(getattr(card_widget, 'input_circles', []))
+            if n_inputs <= 0:
+                continue
+
+            optional_indices = self._getCardOptionalInputIndices(card_widget)
+            connected_inputs = incoming_by_card.get(card_id, set())
+
+            missing_required = [
+                idx for idx in range(n_inputs)
+                if idx not in connected_inputs and idx not in optional_indices
+            ]
+            if not missing_required:
+                continue
+
+            # Convert to 1-based indices for UI consistency with circle labels.
+            missing_ports = ', '.join(str(idx + 1) for idx in missing_required)
+            errors.append(
+                f"Card {self._formatCardLabel(card_id)} has missing required input port(s): {missing_ports}."
+            )
+
+        visit_state = {card_id: 0 for card_id in card_ids}  # 0=unvisited, 1=visiting, 2=done
+        recursion_stack = []
+        found_cycles = []
+        seen_cycle_signatures = set()
+
+        def _dfs(card_id):
+            visit_state[card_id] = 1
+            recursion_stack.append(card_id)
+
+            for downstream_id in adjacency.get(card_id, ()):
+                state = visit_state.get(downstream_id, 2)
+                if state == 0:
+                    _dfs(downstream_id)
+                elif state == 1:
+                    try:
+                        start_idx = recursion_stack.index(downstream_id)
+                    except ValueError:
+                        start_idx = 0
+                    cycle = recursion_stack[start_idx:] + [downstream_id]
+                    signature = tuple(cycle)
+                    if signature not in seen_cycle_signatures:
+                        seen_cycle_signatures.add(signature)
+                        found_cycles.append(cycle)
+
+            recursion_stack.pop()
+            visit_state[card_id] = 2
+
+        for card_id in card_ids:
+            if visit_state[card_id] == 0:
+                _dfs(card_id)
+
+        for cycle in found_cycles:
+            cycle_labels = ' -> '.join(self._formatCardLabel(card_id) for card_id in cycle)
+            errors.append(f"Workflow loop detected: {cycle_labels}.")
+
+        is_valid = len(errors) == 0
+        if (not is_valid) and log_errors:
+            self._logInfo('Workflow validation failed:')
+            for error in errors:
+                self._logInfo(f' - {error}')
+
+        return is_valid, errors
+
+    def _showWorkflowValidationErrors(self, errors):
+        """Show workflow validation errors in a compact warning dialog."""
+        if not errors:
+            return
+
+        max_errors_to_show = 12
+        visible_errors = errors[:max_errors_to_show]
+        bullet_list = '\n'.join(f'- {error}' for error in visible_errors)
+        hidden_count = max(0, len(errors) - len(visible_errors))
+        suffix = '' if hidden_count == 0 else f'\n... and {hidden_count} more issue(s).'
+        txt = (
+            'Workflow validation issues:\n\n'
+            f'{bullet_list}{suffix}'
+        )
+        QMessageBox.warning(self, 'Invalid workflow', txt)
+
     def _onNewWorkflowTriggered(self):
         """Load experiment data and create a new workflow."""
         # check for unsaved work before clearing
@@ -2363,7 +2648,7 @@ class WorkflowGui(QMainWindow):
             )
 
     def _onSaveWorkflowAsTriggered(self):
-        """Prompt for a destination and save the workflow there."""
+        """Prompt for a destination and save the workflow there."""        
         save_dir = self.selectSaveFolder(save=True)
         if not save_dir:
             return
@@ -2393,7 +2678,8 @@ class WorkflowGui(QMainWindow):
             event: The key event.
         """
         if event.key() == Qt.Key_Q and self.debug:
-            import pdb; pdb.set_trace()
+            self.validateWorkflowGraph(log_errors=True)  # also logs validation errors if any
+            # import pdb; pdb.set_trace()
         super().keyPressEvent(event)
         
     def selectSaveFolder(self, save=True):
