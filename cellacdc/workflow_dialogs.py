@@ -1,10 +1,11 @@
-from . import apps, qutils, widgets, printl
+from . import apps, qutils, widgets, printl, config
 from .apps import QBaseDialog
 from qtpy.QtWidgets import QVBoxLayout, QLabel, QComboBox, QApplication
 from qtpy.QtGui import QPixmap, QColor
 from qtpy.QtCore import Qt, Signal
 import inspect
 import traceback
+import json
 
 class WorkflowBaseFunctions():
     """Base class for workflow card widgets.
@@ -390,7 +391,47 @@ class WorkflowInputImgFunctions(WorkflowBaseFunctions):
         if hasattr(self, 'notifySelectionValid'):
             dialog.sigSelectionValid.connect(self.notifySelectionValid)
 
+class WorkflowPreProcessFunctions(WorkflowBaseFunctions):
+    """Workflow card functions for pre-processing image data."""
 
+    def __init__(self) -> None:
+        self.preprocessDialog = PreProcessSetupDialogWorkflow
+        self.title = "Pre-process image"
+
+    def dryrunDialog(self, parent=None, workflowGui=None):
+        return self.preprocessDialog(parent=workflowGui)
+
+    def setupDialog(self, workflowGui=None, logger=print):
+        dialog = self.preprocessDialog(parent=workflowGui, logger=logger)
+        return dialog
+
+    def initializeDialog(self, dialog, workflowGui=None):
+        self.setInputs({0: 'img'})
+        self.setOutputs({0: 'img'})
+        dialog.sigOkClicked.connect(self.updatePreview)
+
+class WorkflowPostProcessSegmFunctions(WorkflowBaseFunctions):
+    """Workflow card functions for post-processing segmentation masks."""
+
+    def __init__(self) -> None:
+        self.postProcessDialog = PostProcessSegmDialogWorkflow
+        self.title = "Post-process segmentation"
+
+    def dryrunDialog(self, workflowGui=None, posData=None):
+        return self.postProcessDialog(posData=posData, parent=workflowGui)
+
+    def setupDialog(self, workflowGui=None, posData=None, logger=print):
+        dialog = self.postProcessDialog(
+            posData=posData,
+            parent=workflowGui,
+            logger=logger,
+        )
+        return dialog
+
+    def initializeDialog(self, dialog, workflowGui=None):
+        self.setInputs({0: 'segm'})
+        self.setOutputs({0: 'segm'})
+        dialog.sigOkClicked.connect(self.updatePreview)
 
 class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
     """Dialog for combining and manipulating image channels in the workflow.
@@ -453,25 +494,245 @@ class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
         if not path.endswith(ext):
             path += ext
         self.show()
-        self.loadRecipe(filepath=path)
+        with open(path, 'r') as f:
+            content = json.load(f)
+        self.setContent(content)
         self.ok_cb()  # To emit signals and update the workflow card state after loading
         self.hide()
         
 class PreProcessSetupDialogWorkflow(apps.PreProcessRecipeDialog):
-    def __init__(self, parent=None):
+    sigOkClicked = Signal()
+    sigCancelClicked = Signal()
+
+    def __init__(self, parent=None, logger=print):
         super().__init__(parent=parent, hideOnClosing=True)
+        self.logger = logger
+
+        self.previewCheckbox.hide()
+        self.applyCurrentFrameButton.hide()
+        self.savePreprocButton.hide()
         
         self.mainLayout.addSpacing(20)
 
         qutils.hide_and_delete_layout(self.buttonsLayout)
         buttonsLayout = widgets.CancelOkButtonsLayout()
         self.buttonsLayout = buttonsLayout
+        
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
-        buttonsLayout.okButton.clicked.connect(self.sigOkClicked.emit)
         buttonsLayout.cancelButton.clicked.connect(self.sigCancelClicked.emit)
         buttonsLayout.cancelButton.clicked.connect(self.cancelButtonClicked)
         
         self.mainLayout.addLayout(buttonsLayout)
+    
+    def ok_cb(self):
+        recipe = self.recipe()
+        if recipe is None:
+            self.logger("No valid pre-processing steps configured. Please add at least one step before confirming.")
+            return
+        self.sigOkClicked.emit()
+        super().ok_cb()
+
+    def cancelButtonClicked(self):
+        """Handle cancel button click by hiding the dialog."""
+        self.hide()
+
+    def saveContent(self, path):
+        """Save pre-processing recipe to disk."""
+        ext = '.ini'
+        if not path.endswith(ext):
+            path += ext
+
+        cp = self.recipeConfigPars()
+        cp['acdc.preprocess.metadata'] = {
+            'keep_input_data_type': str(self.keepInputDataTypeToggle.isChecked())
+        }
+        with open(path, 'w') as f:
+            cp.write(f)
+
+    def loadContent(self, path):
+        """Load pre-processing recipe from disk and update card state."""
+        ext = '.ini'
+        if not path.endswith(ext):
+            path += ext
+
+        self.show()
+        try:
+            cp = config.ConfigParser()
+            cp.read(path)
+
+            preproc_config_pars = {
+                section: cp[section]
+                for section in cp.sections()
+                if section.startswith('acdc.preprocess.step')
+            }
+            if preproc_config_pars:
+                self.preProcessParamsWidget.loadRecipe(preproc_config_pars)
+
+            keep_input_dtype = cp.getboolean(
+                'acdc.preprocess.metadata',
+                'keep_input_data_type',
+                fallback=True,
+            )
+            self.keepInputDataTypeToggle.setChecked(keep_input_dtype)
+        except Exception as e:
+            self.logger(f"Failed to load content from {path}: {e}")
+            traceback.print_exc()
+
+        self.ok_cb()  # Emit update signal and refresh workflow card preview.
+        self.hide()
+        
+    def setContent(self, content):
+        """Set dialog content from in-memory recipe content."""
+        recipe = content['recipe'] # cannot sort, trust that list order is correct!
+        keep_input_data_type = bool(content['keep_input_data_type'])
+        clean_recipe = []
+        for step in recipe:
+            step_copy = dict(step)
+            step_copy.pop('keep_input_data_type', None)
+            clean_recipe.append(step_copy)
+
+        ini_items = config.preprocess_recipe_to_ini_items(clean_recipe)
+        self.preProcessParamsWidget.loadRecipe(ini_items)
+        self.keepInputDataTypeToggle.setChecked(keep_input_data_type)
+        
+    def getContent(self):
+        """Return current dialog content as in-memory recipe payload."""
+        return {
+            'recipe': self.recipe(warn=False) or [],
+            'keep_input_data_type': self.keepInputDataTypeToggle.isChecked(),
+        }
+
+class PostProcessSegmDialogWorkflow(QBaseDialog):
+    sigOkClicked = Signal()
+    sigCancelClicked = Signal()
+    sigValueChanged = Signal(object, object)
+
+    def __init__(self, posData, parent=None, logger=print):
+        super().__init__(parent=parent)
+        self.cancel = True
+        self.logger = logger
+
+        self.setWindowTitle('Post-process segmentation parameters')
+
+        self.postProcessGroupbox = apps.PostProcessSegmParams(
+            'Post-processing parameters', posData,
+            useSliders=True, 
+            parent=self
+        )
+        self.postProcessGroupbox.valueChanged.connect(self.valueChanged)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.postProcessGroupbox)
+        layout.addSpacing(10)
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.cancel_cb)
+        layout.addLayout(buttonsLayout)
+
+        self.setLayout(layout)
+
+    def _setCheckableRangeValue(self, range_widgets, value):
+        is_checked = value is not None
+        range_widgets.checkbox.setChecked(is_checked)
+        if is_checked:
+            range_widgets.spinbox.setValue(value)
+
+    def _restoreSelectedFeatures(self, selected_features_range, selected_features_group):
+        groupbox = self.postProcessGroupbox.selectedFeaturesDialog.groupbox
+        groupbox.resetFields()
+
+        items = list((selected_features_range or {}).items())
+        if not items:
+            return
+
+        while len(groupbox.selectors) < len(items):
+            groupbox.addFeatureField()
+
+        while len(groupbox.selectors) > len(items):
+            groupbox.selectors[-1].delButton.click()
+
+        for selector, (feature_name, feature_range) in zip(groupbox.selectors, items):
+            selector.selectButton.setFlat(True)
+            selector.selectButton.setText(feature_name)
+
+            feature_group = (selected_features_group or {}).get(feature_name)
+            if feature_group is not None:
+                selector.featureGroup = feature_group
+
+            if isinstance(feature_range, (list, tuple)) and len(feature_range) >= 2:
+                low_val, high_val = feature_range[0], feature_range[1]
+            else:
+                low_val, high_val = None, None
+
+            self._setCheckableRangeValue(selector.lowRangeWidgets, low_val)
+            self._setCheckableRangeValue(selector.highRangeWidgets, high_val)
+
+    def valueChanged(self, value):
+        self.sigValueChanged.emit(None, None)
+
+    def ok_cb(self):
+        self.cancel = False
+        self.sigOkClicked.emit()
+        self.hide()
+
+    def apply_cb(self):
+        self.ok_cb()
+
+    def applyAll_cb(self):
+        self.ok_cb()
+
+    def cancel_cb(self):
+        self.cancel = True
+        self.sigCancelClicked.emit()
+        self.hide()
+
+    def getContent(self):
+        groupbox = self.postProcessGroupbox.selectedFeaturesDialog.groupbox
+        return {
+            'kwargs': self.postProcessGroupbox.kwargs(),
+            'selected_features_range': self.postProcessGroupbox.selectedFeaturesRange(),
+            'selected_features_group': groupbox.selectedFeaturesGroup(),
+        }
+
+    def setContent(self, content):
+        content = content or {}
+        kwargs = content.get('kwargs') or {}
+        selected_features_range = content.get('selected_features_range') or {}
+        selected_features_group = content.get('selected_features_group') or {}
+
+        self.postProcessGroupbox.restoreFromKwargs(kwargs)
+        self._restoreSelectedFeatures(
+            selected_features_range=selected_features_range,
+            selected_features_group=selected_features_group,
+        )
+
+    def saveContent(self, path):
+        ext = '.json'
+        if not path.endswith(ext):
+            path += ext
+
+        with open(path, 'w') as f:
+            json.dump(self.getContent(), f, indent=2)
+
+    def loadContent(self, path):
+        ext = '.json'
+        if not path.endswith(ext):
+            path += ext
+
+        self.show()
+        try:
+            with open(path, 'r') as f:
+                content = json.load(f)
+            self.setContent(content)
+        except Exception as e:
+            self.logger(f"Failed to load content from {path}: {e}")
+            traceback.print_exc()
+            self.hide()
+            return
+
+        self.ok_cb()
+        self.hide()
 
 class WorkflowInputDataDialog(QBaseDialog):
     """Simple dialog for selecting input data (image or segmentation channel).
@@ -561,6 +822,24 @@ class WorkflowInputDataDialog(QBaseDialog):
             str: The text of the currently selected item in the dropdown.
         """
         return self.selected_value
+
+    def setContent(self, content):
+        """Set current selection from in-memory content."""
+        value = str(content)
+        idx = self.selection_widget.findText(value)
+        if idx == -1:
+            self.selection_widget.addItem(value)
+            if value not in self.selection_options:
+                self.selection_options.append(value)
+            idx = self.selection_widget.findText(value)
+
+        self.selection_widget.setCurrentIndex(idx)
+        self.selected_value = value
+        self.sigUpdateTitle.emit(f'{self.type}: {self.selected_value}')
+
+    def getContent(self):
+        """Return current selection as in-memory content."""
+        return self.get_selected_value()
     
     def saveContent(self, path):
         """Save the current selection to a file"""

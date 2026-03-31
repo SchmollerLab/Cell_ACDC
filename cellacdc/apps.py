@@ -7336,9 +7336,12 @@ class PostProcessSegmDialog(QBaseDialog):
             self, posData, 
             mainWin=None, 
             useSliders=True, 
-            maxSize=None
+            maxSize=None,
+            parent=None
         ):
-        super().__init__(mainWin)
+        if mainWin is not None and parent is not None:
+            raise ValueError('You cannot specify both mainWin and parent.')
+        super().__init__(mainWin if mainWin is not None else parent)
         self.cancel = True
         self.mainWin = mainWin
         self.isTimelapse = False
@@ -18758,6 +18761,69 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         steps['keep_input_data_type'] = self.keepInputDataTypeToggle.isChecked()
         steps['save_as_segm'] = self.saveAsSegmCheckbox.isChecked()
         return steps
+
+    def getContent(self):
+        """Return current dialog content as an in-memory recipe mapping."""
+        return self._getSaveRecipyDict()
+
+    def setContent(self, content):
+        """Set dialog content from an in-memory recipe mapping."""
+        self.keepInputDataTypeToggle.setChecked(
+            bool(content['keep_input_data_type'])
+        )
+        self.saveAsSegmCheckbox.setChecked(bool(content['save_as_segm']))
+
+        step_entries = []
+        for key, value in content.items():
+            if str(key) in ('formula', 'keep_input_data_type', 'save_as_segm'):
+                continue
+            step_n = int(key)
+            step_entries.append((step_n, value))
+
+        step_entries.sort(key=lambda x: x[0])
+        keys_used = set()
+
+        for step_n, step_data in step_entries:
+            while step_n > len(self.combineChannelsWidget.stepsWidgets):
+                self.combineChannelsWidget.addStep()
+
+            step_widgets = self.combineChannelsWidget.stepsWidgets[step_n]
+
+            channel = step_data['channel']
+            if self.channel_names is not None:
+                idx = step_widgets['selector'].findText(channel)
+                if idx == -1:
+                    step_widgets['selector'].addItem(channel)
+                    blinker = qutils.QControlBlink(
+                        step_widgets['selector'],
+                        qparent=self
+                    )
+                    blinker.start()
+                    step_widgets['selector'].blinker = blinker
+                    self.forbiddenChannels.add(channel)
+
+                step_widgets['selector'].setCurrentText(channel)
+
+            step_widgets['name_edit'].setText(str(step_data['name']))
+            step_widgets['binarize'].setCurrentText(str(step_data['binarize']))
+            step_widgets['minValueSpinbox'].setValue(float(step_data['min_val']))
+            step_widgets['maxValueSpinbox'].setValue(float(step_data['max_val']))
+            keys_used.add(step_n)
+
+        keys_present = set(range(1, len(self.combineChannelsWidget.stepsWidgets) + 1))
+        extra_keys = sorted(keys_present - keys_used, reverse=True)
+        for step_n in extra_keys:
+            self.combineChannelsWidget.removeStep(step_n=step_n)
+
+        self.formulaEditWidget.setText(str(content['formula']))
+
+        if self.channel_names is not None:
+            for step_widgets in self.combineChannelsWidget.stepsWidgets.values():
+                combo = step_widgets['selector']
+                for i in range(combo.count()):
+                    item = combo.itemText(i)
+                    if item in self.forbiddenChannels:
+                        combo.setItemData(i, QColor('red'), Qt.ForegroundRole)
         
     def saveRecipe(self, dummy=None, filepath=None):
         os.makedirs(combine_channels_recipes_path, exist_ok=True)
@@ -18798,73 +18864,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     def loadRecipe(self, filepath):
         with open(filepath, 'r') as f:
             recipe = json.load(f)
-            
-        recipe = dict(sorted(recipe.items()))
-        keys_used = set()
-        for key, value in recipe.items():
-            if key == 'formula':
-                formula = value
-                continue
-            if key == 'keep_input_data_type':
-                self.keepInputDataTypeToggle.setChecked(value)
-                continue
-            if key == 'save_as_segm':
-                self.saveAsSegmCheckbox.setChecked(value)
-                continue
-            
-            name = value['name']
-            channel = value['channel']
-            binarize = value['binarize']
-            min_val = float(value['min_val'])
-            max_val = float(value['max_val'])
-            key = int(key)
-            stepWidgetsNum = len(self.combineChannelsWidget.stepsWidgets)
-            if key > stepWidgetsNum:
-                self.combineChannelsWidget.addStep()
-            
-            stepWidgets = self.combineChannelsWidget.stepsWidgets[key]
-            if self.channel_names is not None:
-                idx = stepWidgets['selector'].findText(channel)
-                if idx == -1:
-                    stepWidgets['selector'].addItem(channel)
-                    # stepWidgets['selector'].forbiddenItems.add(channel)
-                    blinker = qutils.QControlBlink(
-                        stepWidgets['selector'], 
-                        qparent=self
-                    )
-                    blinker.start()
-                    stepWidgets['selector'].blinker = blinker
-                    self.forbiddenChannels.add(channel)
-                
-                stepWidgets['selector'].setCurrentText(channel)
-                
-            stepWidgets['name_edit'].setText(name)
-            stepWidgets['binarize'].setCurrentText(binarize)
-            stepWidgets['minValueSpinbox'].setValue(min_val)
-            stepWidgets['maxValueSpinbox'].setValue(max_val)
-            
-            keys_used.add(key)
-        
-        # remove extra steps
-        keys_present = set(range(1, len(self.combineChannelsWidget.stepsWidgets)+1))
-        extra_keys = keys_present - keys_used
-        extra_keys = list(extra_keys)
-        extra_keys.sort(reverse=True)
-        for key in extra_keys:
-            self.combineChannelsWidget.removeStep(step_n = key) 
-            # updates key dynamically so I have to rely that missing indx are always last steps
-
-        # update formula
-        self.formulaEditWidget.setText(formula)
-        
-        if self.channel_names is not None:
-            for stepWidgets in self.combineChannelsWidget.stepsWidgets.values():
-                combo = stepWidgets['selector']
-                # set forbidden channels red in all steps
-                for i in range(combo.count()):
-                    item = combo.itemText(i)
-                    if item in self.forbiddenChannels:
-                        combo.setItemData(i, QColor('red'), Qt.ForegroundRole)
+        self.setContent(recipe)
         
     def _updateFormulaVariableNames(self):
         names = [

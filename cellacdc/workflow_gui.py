@@ -4,7 +4,7 @@ from qtpy.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QListWidget, QListWidgetItem, 
     QLabel, QVBoxLayout, QSizePolicy, QPlainTextEdit,
     QAbstractItemView, QGraphicsView, QGraphicsScene, QGraphicsLineItem, QAction,
-    QMessageBox
+    QMessageBox, QPushButton, QApplication, QDialog
 )
 from qtpy.QtCore import Signal, Qt, QMimeData, QPointF, QTimer, QObject
 import qtpy
@@ -14,12 +14,21 @@ from .workflow_dialogs import WorkflowBaseFunctions
 from .acdc_regex import to_alphanumeric
 
 import os
+import shutil
+import copy
 import logging
 import traceback
+from datetime import datetime
 
 
 SUPPORTED_EXTENSIONS_CARD_SETTINGS = ['.json', '.txt', '.ini']
-
+FUNCTIONS_TO_ADD = [
+            workflow_dialogs.WorkflowCombineChannelsFunctions(),
+            workflow_dialogs.WorkflowPreProcessFunctions(),
+            workflow_dialogs.WorkflowPostProcessSegmFunctions(),
+            workflow_dialogs.WorkflowInputImgFunctions(),
+            workflow_dialogs.WorkflowInputSegmFunctions(),
+            ]
 class _WorkflowGuiLogEmitter(QObject):
     sigLogMessage = Signal(str)
 
@@ -46,19 +55,6 @@ class _WorkflowGuiLogHandler(logging.Handler):
         except Exception:
             text = record.getMessage()
         self._emitter.sigLogMessage.emit(str(text))
-
-
-class _ClickableLabel(QLabel):
-    """QLabel emitting a click signal on left mouse press."""
-
-    sigClicked = Signal()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.sigClicked.emit()
-            event.accept()
-            return
-        super().mousePressEvent(event)
 
 class _WorkflowCardListWidget(QWidget):
     """Widget representing a workflow card item in the sidebar.
@@ -400,8 +396,14 @@ class _WorkflowCardZoneWidget(QWidget):
         graphics_proxy: Graphics proxy for positioning in the scene.
     """
     def __init__(self, functions: WorkflowBaseFunctions, posData, 
-                 zone=None, workflowGui=None, logger=print):
+                 zone=None, workflowGui=None, logger=print,
+                 show_initial_dialog=True):
         QWidget.__init__(self, parent=None)
+
+        if workflowGui is None:
+            raise ValueError('_WorkflowCardZoneWidget requires a valid workflowGui')
+        if zone is None:
+            raise ValueError('_WorkflowCardZoneWidget requires a valid workflowZone')
         
         self.posData = posData
         self.workflowGui = workflowGui
@@ -414,6 +416,11 @@ class _WorkflowCardZoneWidget(QWidget):
         self.is_dragging = False
         self.input_circles = []
         self.output_circles = []
+        self._dialog_content_snapshot = None
+        self._dialog_workflow_snapshot_before_open = None
+        # When restoring state the card is already configured — no initial dialog.
+        self._is_first_dialog_interaction_pending = show_initial_dialog
+        self._unsaved_work_before_first_dialog = bool(self.workflowGui.unsaved_work)
         
         self.functions.posData = posData
         self.functions.setInputs = self.setAcceptedInputs
@@ -467,8 +474,53 @@ class _WorkflowCardZoneWidget(QWidget):
                                            parent=self,
                                            workflowGui=workflowGui,
                                            posData=self.posData)
-        
-        self.functions.runDialog_cb(self.dialog)
+
+        self.dialog.sigCancelClicked.connect(self._onDialogCancelled)
+        self.dialog.sigOkClicked.connect(self._onDialogAccepted)
+
+        if show_initial_dialog:
+            self._captureDialogContentSnapshot()
+            self.functions.runDialog_cb(self.dialog)
+
+    def _captureDialogContentSnapshot(self):
+        """Capture dialog content before opening, if supported."""
+        self._dialog_workflow_snapshot_before_open = self.workflowGui._captureWorkflowState()
+
+        content = self.dialog.getContent()
+        self._dialog_content_snapshot = copy.deepcopy(content)
+
+    def _restoreDialogContentSnapshot(self):
+        """Restore dialog content captured before opening, if available."""
+        if self._dialog_content_snapshot is None:
+            return
+
+        self.dialog.setContent(copy.deepcopy(self._dialog_content_snapshot))
+
+    def _onDialogCancelled(self):
+        """Revert unsaved dialog edits when cancel is clicked."""
+        if self._is_first_dialog_interaction_pending:
+            self._is_first_dialog_interaction_pending = False
+            self._dialog_workflow_snapshot_before_open = None
+            prev_restoring = getattr(self.workflowGui, '_history_restoring', False)
+            self.workflowGui._history_restoring = True
+            try:
+                self.workflowZone.removeCard(self)
+            finally:
+                self.workflowGui._history_restoring = prev_restoring
+            self.workflowGui.setUnsavedWork(self._unsaved_work_before_first_dialog)
+            self.workflowGui._refreshWorkflowValidationLabel()
+            return
+
+        self._restoreDialogContentSnapshot()
+        self._dialog_workflow_snapshot_before_open = None
+        self.updatePreview()
+
+    def _onDialogAccepted(self):
+        """Mark workflow as modified only when dialog changes are accepted."""
+        self._is_first_dialog_interaction_pending = False
+        self.workflowGui._registerWorkflowChange(self._dialog_workflow_snapshot_before_open)
+        self.workflowGui.setUnsavedWork(True)
+        self._dialog_workflow_snapshot_before_open = None
 
     def _getDialogInputTypes(self):
         """Return dialog concrete input types."""
@@ -495,13 +547,11 @@ class _WorkflowCardZoneWidget(QWidget):
 
     def _onDialogSelectionInvalid(self, value):
         """Forward a dialog-level invalid-selection notification to WorkflowGui."""
-        if self.workflowGui is not None and hasattr(self.workflowGui, '_onCardSelectionInvalid'):
-            self.workflowGui._onCardSelectionInvalid(self, value)
+        self.workflowGui._onCardSelectionInvalid(self, value)
 
     def _onDialogSelectionValid(self):
         """Forward a dialog-level valid-selection notification to WorkflowGui."""
-        if self.workflowGui is not None and hasattr(self.workflowGui, '_onCardSelectionValid'):
-            self.workflowGui._onCardSelectionValid(self)
+        self.workflowGui._onCardSelectionValid(self)
     
     def paintEvent(self, event):
         """Paint the card with a rounded border.
@@ -574,19 +624,18 @@ class _WorkflowCardZoneWidget(QWidget):
 
 
         # Validate and remove invalid connections for inputs that no longer exist
-        if self.workflowZone is not None:
-            card_id = getattr(self, 'card_id', None)
-            if card_id is not None:
-                # Remove connections to inputs that no longer exist or have type mismatch
-                lines_to_remove = [line for line in self.workflowZone.lines
-                                   if line[1][0] == card_id and line[1][1] >= n]
-                self.workflowZone.removeLineKeys(lines_to_remove)
-                # Also remove connections with type mismatches
-                self.workflowZone.validateConnectionTypes()
-                self.workflowZone.syncCardInputTypes(card_id)
-                # Defer rebuild until layout has been processed
-                QTimer.singleShot(0, self.workflowZone.rebuildConnectionLines)
-                return
+        card_id = getattr(self, 'card_id', None)
+        if card_id is not None:
+            # Remove connections to inputs that no longer exist or have type mismatch
+            lines_to_remove = [line for line in self.workflowZone.lines
+                               if line[1][0] == card_id and line[1][1] >= n]
+            self.workflowZone.removeLineKeys(lines_to_remove)
+            # Also remove connections with type mismatches
+            self.workflowZone.validateConnectionTypes()
+            self.workflowZone.syncCardInputTypes(card_id)
+            # Defer rebuild until layout has been processed
+            QTimer.singleShot(0, self.workflowZone.rebuildConnectionLines)
+            return
 
         # Keep dialog input state in sync even before the card is attached to a zone.
         self.functions.updateInputTypes(self.dialog, {i: None for i in range(n)})
@@ -637,20 +686,19 @@ class _WorkflowCardZoneWidget(QWidget):
             self.outputs_layout.addStretch()
         
         # Validate and remove invalid connections for outputs that no longer exist
-        if self.workflowZone is not None:
-            card_id = getattr(self, 'card_id', None)
-            if card_id is not None:
-                # Remove connections from outputs that no longer exist
-                lines_to_remove = [line for line in self.workflowZone.lines
-                                   if line[0][0] == card_id and line[0][1] >= n]
-                self.workflowZone.removeLineKeys(lines_to_remove)
-                self.workflowZone.validateConnectionTypes()
-                if outputs_changed:
-                    # Let direct downstream dialogs react first; any further
-                    # propagation happens when they emit their own output changes.
-                    self.workflowZone.updateDownstreamInputTypes(card_id)
-                # Defer rebuild until layout has been processed
-                QTimer.singleShot(0, self.workflowZone.rebuildConnectionLines)
+        card_id = getattr(self, 'card_id', None)
+        if card_id is not None:
+            # Remove connections from outputs that no longer exist
+            lines_to_remove = [line for line in self.workflowZone.lines
+                               if line[0][0] == card_id and line[0][1] >= n]
+            self.workflowZone.removeLineKeys(lines_to_remove)
+            self.workflowZone.validateConnectionTypes()
+            if outputs_changed:
+                # Let direct downstream dialogs react first; any further
+                # propagation happens when they emit their own output changes.
+                self.workflowZone.updateDownstreamInputTypes(card_id)
+            # Defer rebuild until layout has been processed
+            QTimer.singleShot(0, self.workflowZone.rebuildConnectionLines)
                 
     def updateInputTypes(self, input_types):
         """For updating what input a card actually gets (not what it accepts)!
@@ -686,8 +734,8 @@ class _WorkflowCardZoneWidget(QWidget):
         elif event.button() == Qt.MiddleButton:
             self._deleteCard()
         elif event.button() == Qt.RightButton:
-            self.workflowGui.setUnsavedWork(True)
             try:
+                self._captureDialogContentSnapshot()
                 self.functions.runDialog_cb(self.dialog)
             except Exception as e:
                 self._logInfo(f"Error running dialog: {e}")
@@ -703,8 +751,7 @@ class _WorkflowCardZoneWidget(QWidget):
             self.graphics_proxy.moveBy(delta.x(), delta.y())
             self._drag_start_pos = event.globalPos()
             # Update connection lines in real-time while dragging
-            if self.workflowZone is not None:
-                self.workflowZone.updateConnectionLines()
+            self.workflowZone.updateConnectionLines()
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
@@ -717,15 +764,13 @@ class _WorkflowCardZoneWidget(QWidget):
             self.is_dragging = False
             self._drag_start_pos = None
             # Update all connection lines after card is repositioned
-            if self.workflowZone is not None:
-                self.workflowZone.updateConnectionLines()
+            self.workflowZone.updateConnectionLines()
         super().mouseReleaseEvent(event)
 
     def _deleteCard(self):
         """Delete this card from the workflow zone."""
         self.workflowGui.setUnsavedWork(True)
-        if self.workflowZone is not None:
-            self.workflowZone.removeCard(self)
+        self.workflowZone.removeCard(self)
         # clean up dialog and widget
         self.dialog.deleteLater()
         self.dialog = None
@@ -873,10 +918,14 @@ class WorkflowZone(QGraphicsView):
         except Exception:
             pass
 
-    def _markWorkflowChanged(self):
+    def _markWorkflowChanged(self, previous_state=None):
         """Notify parent workflow GUI about user-driven workflow mutations."""
+        if getattr(self.parent, '_history_restoring', False):
+            return
         self.parent.setUnsavedWork(True)
         self.parent._refreshWorkflowValidationLabel()
+        if previous_state is not None and hasattr(self.parent, '_registerWorkflowChange'):
+            self.parent._registerWorkflowChange(previous_state)
 
     def addCard(self, card_widget, x, y):
         """Add a workflow card to the zone at the specified position.
@@ -983,6 +1032,9 @@ class WorkflowZone(QGraphicsView):
         if card_id is not None and card_id in self.cards:
             proxy = self.cards[card_id]
             if proxy.widget() == card_widget:
+                previous_state = None
+                if not getattr(self.parent, '_history_restoring', False):
+                    previous_state = self.parent._captureWorkflowState()
                 self.scene.removeItem(proxy)
                 del self.cards[card_id]
                 # Remove all connections involving this card.
@@ -995,6 +1047,7 @@ class WorkflowZone(QGraphicsView):
 
                 title = getattr(card_widget, 'title', '')
                 self._logInfo(f"Removed card ID={card_id} title='{title}'.")
+                self._markWorkflowChanged(previous_state)
 
     def handleCircleClick(self, card, is_output, index, scene_pos):
         """Handle a click on an input/output circle to create/complete a connection.
@@ -1066,6 +1119,10 @@ class WorkflowZone(QGraphicsView):
 
     def createConnection(self, card1, is_out1, idx1, card2, is_out2, idx2):
         """Create a visual connection between two circles"""
+        previous_state = None
+        if not getattr(self.parent, '_history_restoring', False):
+            previous_state = self.parent._captureWorkflowState()
+
         # Store connection with card IDs
         card1_id = getattr(card1, 'card_id', None)
         card2_id = getattr(card2, 'card_id', None)
@@ -1105,7 +1162,7 @@ class WorkflowZone(QGraphicsView):
         self.lines.append(line_key)
         self.syncCardInputTypes(input_card.card_id)
         self.drawConnection(card1, is_out1, idx1, card2, is_out2, idx2, line_key=line_key)
-        self._markWorkflowChanged()
+        self._markWorkflowChanged(previous_state)
         self._logInfo(
             f"Created connection: card {line_key[0][0]} output {line_key[0][1]} -> "
             f"card {line_key[1][0]} input {line_key[1][1]}."
@@ -1159,18 +1216,22 @@ class WorkflowZone(QGraphicsView):
         if line not in self.connection_lines:
             return
 
+        previous_state = None
+        if not getattr(self.parent, '_history_restoring', False):
+            previous_state = self.parent._captureWorkflowState()
+
         line_key_to_remove = self.visual_line_to_line_mapping.get(line)
 
         if line_key_to_remove is not None:
             self.removeLineKeys([line_key_to_remove])
-            self._markWorkflowChanged()
+            self._markWorkflowChanged(previous_state)
             return
 
         # Fallback if mapping is out-of-sync.
         self.visual_line_to_line_mapping.pop(line, None)
         self.scene.removeItem(line)
         self.connection_lines.remove(line)
-        self._markWorkflowChanged()
+        self._markWorkflowChanged(previous_state)
 
     def updateConnectionLines(self):
         """Update all connection line positions based on current circle positions"""
@@ -1424,6 +1485,11 @@ class WorkflowGui(QMainWindow):
         self._guiLogHandler = None
         self.unsaved_work = False
         self._suspend_unsaved_tracking = False
+        self._isAskingSaveBeforeClosing = False
+        self._history_restoring = False
+        self._undo_stack = []
+        self._redo_stack = []
+        self._history_max_steps = 100
         self.data_loaded = False
 
         self.setAcceptDrops(True)
@@ -1448,12 +1514,18 @@ class WorkflowGui(QMainWindow):
         for path, positions in self.selectedExpPaths.items():
             for pos in positions:
                 path_loc = os.path.join(path, pos, 'Images')
-                posData = load.loadData(path_loc, '?')
+                print("Loading data from", path_loc)
+
+                posData = load.loadData(path_loc)
                 posData.total_path = path_loc
                 self.data[i] = posData
                 
             if i == 0:
                 self.posData = posData
+                self.posData.loadOtherFiles(load_metadata=True,
+                                            load_customCombineMetrics=True,
+                                            load_customAnnot=True,
+                                            loadSegmInfo=True)
 
         for i, posData in enumerate(self.data.values()):
             basename, chNames_loc = myutils.getBasenameAndChNames(
@@ -1472,7 +1544,7 @@ class WorkflowGui(QMainWindow):
                 self.img_channels = set(chNames_loc)
                 self.segm_channels = set(segm_endnames)
                 continue
-            
+
             self.img_channels = self.img_channels.intersection(chNames_loc)
             self.segm_channels = self.segm_channels.intersection(segm_endnames)
 
@@ -1512,11 +1584,7 @@ class WorkflowGui(QMainWindow):
             return
 
         self.sidebar.clear()
-        functions_to_add = (
-            workflow_dialogs.WorkflowCombineChannelsFunctions(),
-            workflow_dialogs.WorkflowInputImgFunctions(),
-            workflow_dialogs.WorkflowInputSegmFunctions(),
-        )
+        functions_to_add = FUNCTIONS_TO_ADD
         for functions in functions_to_add:
             self._setupDragCard(functions, build_widget=build_widgets)
 
@@ -1534,11 +1602,7 @@ class WorkflowGui(QMainWindow):
             'Cards',
         ]
 
-        functions_to_add = (
-            workflow_dialogs.WorkflowCombineChannelsFunctions(),
-            workflow_dialogs.WorkflowInputImgFunctions(),
-            workflow_dialogs.WorkflowInputSegmFunctions(),
-        )
+        functions_to_add = FUNCTIONS_TO_ADD
         for functions in functions_to_add:
             title = getattr(functions, 'title', type(functions).__name__)
 
@@ -1580,6 +1644,8 @@ class WorkflowGui(QMainWindow):
             x (int): X coordinate in the zone.
             y (int): Y coordinate in the zone.
         """
+        previous_state = self._captureWorkflowState()
+
         # Find the card data from the sidebar
         card_data = None
         for i in range(self.sidebar.count()):
@@ -1607,6 +1673,7 @@ class WorkflowGui(QMainWindow):
         # Add it directly to the drop zone at the specified position
         self.dropZone.addCard(card_widget, x, y)
         self.setUnsavedWork(True)
+        self._registerWorkflowChange(previous_state)
         self._refreshWorkflowValidationLabel()
 
     def _createToolbarIoLegend(self):
@@ -1646,14 +1713,14 @@ class WorkflowGui(QMainWindow):
 
         is_valid, errors = self.validateWorkflowGraph(log_errors=False)
         if is_valid:
-            self.validationStatusLabel.setText('Workflow: OK')
+            self.validationStatusLabel.setText('Looking good!')
             self.validationStatusLabel.setStyleSheet(
-                'QLabel { color: #1f7a1f; font-weight: bold; }'
+                'QPushButton { color: #1f7a1f; font-weight: bold; }'
             )
         else:
-            self.validationStatusLabel.setText(f'Workflow: {len(errors)} issue(s)')
+            self.validationStatusLabel.setText(f'{len(errors)} issue(s) in Workflow')
             self.validationStatusLabel.setStyleSheet(
-                'QLabel { color: #b22222; font-weight: bold; }'
+                'QPushButton { color: #b22222; font-weight: bold; }'
             )
 
     def _onValidationStatusLabelClicked(self):
@@ -1708,6 +1775,14 @@ class WorkflowGui(QMainWindow):
         )
         self.infoAction.setToolTip('Show brief workflow usage help')
         self.infoAction.triggered.connect(self._onWorkflowInfoTriggered)
+
+        self.undoAction = QAction('Undo', self)
+        self.undoAction.setShortcut('Ctrl+Z')
+        self.undoAction.triggered.connect(self._onUndoTriggered)
+
+        self.redoAction = QAction('Redo', self)
+        self.redoAction.setShortcut('Ctrl+Y')
+        self.redoAction.triggered.connect(self._onRedoTriggered)
         
         folder_toolbar.addAction(self.newAction)
         folder_toolbar.addAction(self.loadWorkflowAction)
@@ -1715,20 +1790,23 @@ class WorkflowGui(QMainWindow):
         folder_toolbar.addAction(self.saveNewAction)
         folder_toolbar.addAction(self.openImagesAction)
         folder_toolbar.addAction(self.infoAction)
+        folder_toolbar.addAction(self.undoAction)
+        folder_toolbar.addAction(self.redoAction)
         folder_toolbar.addSeparator()
-        self.validationStatusLabel = _ClickableLabel('Workflow: OK', self)
+        self.validationStatusLabel = QPushButton('Looking good!', self)
         self.validationStatusLabel.setStyleSheet(
-            'QLabel { color: #1f7a1f; font-weight: bold; }'
+            'QPushButton { color: #1f7a1f; font-weight: bold; }'
         )
         self.validationStatusLabel.setCursor(Qt.PointingHandCursor)
         self.validationStatusLabel.setToolTip('Click to show workflow validation issues')
-        self.validationStatusLabel.sigClicked.connect(self._onValidationStatusLabelClicked)
+        self.validationStatusLabel.clicked.connect(self._onValidationStatusLabelClicked)
         folder_toolbar.addWidget(self.validationStatusLabel)
         folder_toolbar.addSeparator()
         folder_toolbar.addWidget(self._createToolbarIoLegend())
         self.saveAction.setEnabled(False)
         self.saveNewAction.setEnabled(False)
         self.openImagesAction.setEnabled(False)
+        self._updateUndoRedoActions()
         
         self.addToolBar(folder_toolbar)
 
@@ -1857,6 +1935,228 @@ class WorkflowGui(QMainWindow):
         if hasattr(self, 'saveNewAction') and self.saveNewAction is not None:
             self.saveNewAction.setEnabled(enabled)
 
+    def _captureWorkflowState(self):
+        """Capture cards, dialog content and connections for undo/redo."""
+        state = {'cards': {}, 'lines': []}
+        if not hasattr(self, 'dropZone') or self.dropZone is None:
+            return state
+
+        for card_id, proxy in self.dropZone.cards.items():
+            card_widget = proxy.widget()
+            if card_widget is None:
+                continue
+
+            dialog = getattr(card_widget, 'dialog', None)
+            content = None
+            if dialog is not None and hasattr(dialog, 'getContent'):
+                content = copy.deepcopy(dialog.getContent())
+
+            pos = proxy.pos()
+            state['cards'][str(card_id)] = {
+                'kind': getattr(card_widget, 'title', '') or '',
+                'position': {'x': pos.x(), 'y': pos.y()},
+                'content': content,
+            }
+
+        state['lines'] = [
+            {
+                'from': {'card_id': start_card_id, 'port': start_idx},
+                'to': {'card_id': end_card_id, 'port': end_idx},
+            }
+            for (start_card_id, start_idx), (end_card_id, end_idx) in self.dropZone.lines
+        ]
+        return state
+
+    def _restoreWorkflowState(self, state):
+        """Restore cards, dialog content and connections from a snapshot."""
+        if not hasattr(self, 'dropZone') or self.dropZone is None:
+            return
+
+        cards_data = (state or {}).get('cards', {}) or {}
+        lines_data = (state or {}).get('lines', []) or []
+
+        prev_history_restoring = self._history_restoring
+        prev_suspend_state = self._suspend_unsaved_tracking
+        self._history_restoring = True
+        self._suspend_unsaved_tracking = True
+        try:
+            self._clearWorkflow()
+
+            saved_to_new_id = {}
+
+            def _sort_key(card_id_text):
+                try:
+                    return int(card_id_text)
+                except Exception:
+                    return card_id_text
+
+            for saved_card_id in sorted(cards_data.keys(), key=_sort_key):
+                card_info = cards_data[saved_card_id] or {}
+                kind = card_info.get('kind', '')
+
+                functions = self._resolveWorkflowCardFunctions(kind)
+                if functions is None:
+                    continue
+
+                position = card_info.get('position', {}) or {}
+                x = position.get('x', 0)
+                y = position.get('y', 0)
+
+                card_widget = _WorkflowCardZoneWidget(
+                    functions,
+                    posData=self.posData,
+                    zone=self.dropZone,
+                    workflowGui=self,
+                    logger=self.logger,
+                    show_initial_dialog=False,
+                )
+                self.dropZone.addCard(card_widget, x, y)
+
+                new_card_id = getattr(card_widget, 'card_id', None)
+                if new_card_id is None:
+                    continue
+
+                saved_to_new_id[str(saved_card_id)] = new_card_id
+
+                dialog = getattr(card_widget, 'dialog', None)
+                content = card_info.get('content', None)
+                if content is not None and dialog is not None and hasattr(dialog, 'setContent'):
+                    dialog.setContent(copy.deepcopy(content))
+                    card_widget.updatePreview()
+
+            for line_info in lines_data:
+                from_info = (line_info or {}).get('from', {}) or {}
+                to_info = (line_info or {}).get('to', {}) or {}
+
+                saved_from_id = str(from_info.get('card_id'))
+                saved_to_id = str(to_info.get('card_id'))
+                new_from_id = saved_to_new_id.get(saved_from_id)
+                new_to_id = saved_to_new_id.get(saved_to_id)
+                if new_from_id is None or new_to_id is None:
+                    continue
+
+                from_port = int(from_info.get('port', 0))
+                to_port = int(to_info.get('port', 0))
+
+                start_proxy = self.dropZone.cards.get(new_from_id)
+                end_proxy = self.dropZone.cards.get(new_to_id)
+                if start_proxy is None or end_proxy is None:
+                    continue
+
+                start_card = start_proxy.widget()
+                end_card = end_proxy.widget()
+                if start_card is None or end_card is None:
+                    continue
+
+                self.dropZone.createConnection(
+                    start_card,
+                    True,
+                    from_port,
+                    end_card,
+                    False,
+                    to_port,
+                )
+        finally:
+            self._history_restoring = prev_history_restoring
+            self._suspend_unsaved_tracking = prev_suspend_state
+
+        self._refreshWorkflowValidationLabel()
+
+    def _registerWorkflowChange(self, previous_state):
+        """Register a committed workflow mutation into the undo history."""
+        if self._history_restoring or previous_state is None:
+            return
+
+        current_state = self._captureWorkflowState()
+        if previous_state == current_state:
+            return
+
+        self._undo_stack.append(copy.deepcopy(previous_state))
+        if len(self._undo_stack) > self._history_max_steps:
+            self._undo_stack = self._undo_stack[-self._history_max_steps:]
+
+        self._redo_stack.clear()
+        self._updateUndoRedoActions()
+
+    def _resetHistory(self):
+        """Clear undo/redo stacks."""
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._updateUndoRedoActions()
+
+    def _updateUndoRedoActions(self):
+        """Enable/disable undo-redo actions from current stack states."""
+        if hasattr(self, 'undoAction') and self.undoAction is not None:
+            self.undoAction.setEnabled(bool(self._undo_stack))
+        if hasattr(self, 'redoAction') and self.redoAction is not None:
+            self.redoAction.setEnabled(bool(self._redo_stack))
+
+    def _onUndoTriggered(self):
+        """Restore previous workflow snapshot (Ctrl+Z)."""
+        if not self._undo_stack:
+            return
+
+        current_state = self._captureWorkflowState()
+        target_state = self._undo_stack.pop()
+        self._redo_stack.append(current_state)
+        self._restoreWorkflowState(target_state)
+        self.setUnsavedWork(True)
+        self._updateUndoRedoActions()
+
+    def _onRedoTriggered(self):
+        """Re-apply reverted workflow snapshot (Ctrl+Y)."""
+        if not self._redo_stack:
+            return
+
+        current_state = self._captureWorkflowState()
+        target_state = self._redo_stack.pop()
+        self._undo_stack.append(current_state)
+        self._restoreWorkflowState(target_state)
+        self.setUnsavedWork(True)
+        self._updateUndoRedoActions()
+
+    def _getOpenDialog(self):
+        """Return a visible top-level dialog if one is currently open."""
+        app = QApplication.instance()
+        if app is None:
+            return None
+
+        for widget in app.topLevelWidgets():
+            if widget is None or widget is self:
+                continue
+            if not widget.isVisible():
+                continue
+            if isinstance(widget, QDialog):
+                return widget
+
+        return None
+
+    def _canSaveWorkflow(self):
+        """Return True when save operations are allowed."""
+        open_dialog = self._getOpenDialog()
+        if open_dialog is None:
+            return True
+
+        dialog_title = open_dialog.windowTitle() or type(open_dialog).__name__
+        self._logInfo(
+            f'Save blocked while dialog "{dialog_title}" is open. '
+            'Close it before saving.'
+        )
+        try:
+            open_dialog.raise_()
+            open_dialog.activateWindow()
+        except Exception:
+            pass
+
+        parent = open_dialog if open_dialog is not None else self
+        msg = widgets.myMessageBox(wrapText=False, parent=parent)
+        msg.warning(
+            parent,
+            'Save blocked',
+            'Close the currently open dialog before saving the workflow.'
+        )
+        return False
+
     def _onCardSelectionInvalid(self, card_widget, value):
         """Called when a dialog's previously selected value is no longer available.
 
@@ -1977,29 +2277,36 @@ class WorkflowGui(QMainWindow):
 
     def _askSaveBeforeClosing(self):
         """Ask user how to proceed when there are unsaved workflow changes."""
+        if self._isAskingSaveBeforeClosing:
+            return False
+
+        self._isAskingSaveBeforeClosing = True
         msg = widgets.myMessageBox(wrapText=False, parent=self)
         txt = (
             'There are unsaved workflow changes.<br><br>'
             'Do you want to save before closing?'
         )
-        _, discardButton, saveButton = msg.warning(
-            self,
-            'Unsaved workflow changes',
-            txt,
-            buttonsTexts=('Cancel', 'Discard', 'Save')
-        )
+        try:
+            _, discardButton, saveButton = msg.warning(
+                self,
+                'Unsaved workflow changes',
+                txt,
+                buttonsTexts=('Cancel', 'Discard', 'Save')
+            )
 
-        if msg.cancel:
+            if msg.cancel:
+                return False
+
+            if msg.clickedButton == saveButton:
+                self._onSaveWorkflowTriggered()
+                return not self.unsaved_work
+
+            if msg.clickedButton == discardButton:
+                return True
+
             return False
-
-        if msg.clickedButton == saveButton:
-            self._onSaveWorkflowTriggered()
-            return not self.unsaved_work
-
-        if msg.clickedButton == discardButton:
-            return True
-
-        return False
+        finally:
+            self._isAskingSaveBeforeClosing = False
     
     def closeEvent(self, event):
         """Handle window close event.
@@ -2010,6 +2317,10 @@ class WorkflowGui(QMainWindow):
         Args:
             event: The close event.
         """
+        if self._isAskingSaveBeforeClosing:
+            event.ignore()
+            return
+
         if self.closeGUI:
             event.ignore()
             return
@@ -2041,6 +2352,61 @@ class WorkflowGui(QMainWindow):
             title = f'Cell-ACDC v{self._acdc_version} - workflow GUI'
         super().setWindowTitle(title)
 
+    def _backupExistingWorkflow(self, save_dir, max_backups=5):
+        """Backup current workflow files before overwriting them.
+
+        Backups are stored in ``<save_dir>/backups`` as timestamped folders.
+        Only the latest ``max_backups`` backup folders are kept.
+        """
+        if not os.path.isdir(save_dir):
+            return
+
+        entries_to_backup = []
+        for entry in os.listdir(save_dir):
+            if entry == 'backups':
+                continue
+            entry_path = os.path.join(save_dir, entry)
+            if os.path.isfile(entry_path) or os.path.isdir(entry_path):
+                entries_to_backup.append((entry, entry_path))
+
+        if not entries_to_backup:
+            return
+
+        backups_dir = os.path.join(save_dir, 'backups')
+        os.makedirs(backups_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_name = f'workflow_{timestamp}'
+        backup_path = os.path.join(backups_dir, backup_name)
+        suffix = 1
+        while os.path.exists(backup_path):
+            backup_name = f'workflow_{timestamp}_{suffix}'
+            backup_path = os.path.join(backups_dir, backup_name)
+            suffix += 1
+
+        os.makedirs(backup_path, exist_ok=False)
+        for entry, entry_path in entries_to_backup:
+            dst_path = os.path.join(backup_path, entry)
+            if os.path.isdir(entry_path):
+                shutil.copytree(entry_path, dst_path)
+            else:
+                shutil.copy2(entry_path, dst_path)
+
+        self._logInfo(f'Created workflow backup: {backup_path}')
+
+        backup_dirs = [
+            os.path.join(backups_dir, name)
+            for name in os.listdir(backups_dir)
+            if os.path.isdir(os.path.join(backups_dir, name))
+        ]
+        backup_dirs.sort(key=os.path.getmtime, reverse=True)
+        for old_backup in backup_dirs[max_backups:]:
+            try:
+                shutil.rmtree(old_backup)
+                self._logInfo(f'Removed old workflow backup: {old_backup}')
+            except Exception as e:
+                self._logInfo(f'Failed to remove old backup {old_backup}: {e}')
+
     def saveWorkflow(self, save_dir):
         """Save the current workflow to disk.
 
@@ -2052,9 +2418,13 @@ class WorkflowGui(QMainWindow):
             save_dir (str): Destination folder for workflow files.
 
         Returns:
-            str: Path to the written `main.json` file.
+            str or None: Path to the written `main.json` file.
         """
+        if not self._canSaveWorkflow():
+            return None
+
         os.makedirs(save_dir, exist_ok=True)
+        self._backupExistingWorkflow(save_dir, max_backups=5)
         # clear old files in the save directory to prevent orphaned files from previous saves
         for filename in os.listdir(save_dir):
             file_path = os.path.join(save_dir, filename)
@@ -2630,6 +3000,7 @@ class WorkflowGui(QMainWindow):
         self._clearWorkflow()
         self.loadedWorkflowPath = None
         self.setUnsavedWork(False)
+        self._resetHistory()
         self._logInfo('Created new empty workflow.')
 
     def _onLoadWorkflowTriggered(self):
@@ -2641,6 +3012,7 @@ class WorkflowGui(QMainWindow):
         if self.verifyWorkflowSaveFiles(save_dir):
             if self.loadWorkflow(save_dir):
                 self.loadedWorkflowPath = save_dir
+                self._resetHistory()
         else:
             self._logInfo(
                 "Selected folder is missing expected workflow files. "
@@ -2649,15 +3021,22 @@ class WorkflowGui(QMainWindow):
 
     def _onSaveWorkflowAsTriggered(self):
         """Prompt for a destination and save the workflow there."""        
+        if not self._canSaveWorkflow():
+            return
+
         save_dir = self.selectSaveFolder(save=True)
         if not save_dir:
             return
 
-        self.saveWorkflow(save_dir)
-        self.loadedWorkflowPath = save_dir
+        main_json_path = self.saveWorkflow(save_dir)
+        if main_json_path is not None:
+            self.loadedWorkflowPath = save_dir
 
     def _onSaveWorkflowTriggered(self):
         """Save to current workflow path or prompt if not yet set."""
+        if not self._canSaveWorkflow():
+            return
+
         if self.loadedWorkflowPath is None:
             self._onSaveWorkflowAsTriggered()
             return
