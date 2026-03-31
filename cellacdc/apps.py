@@ -1855,13 +1855,14 @@ class SetMeasurementsDialog(QBaseDialog):
     sigClosed = Signal()
     sigCancel = Signal()
     sigRestart = Signal()
+    sigNumberChannelsRequested = Signal(int)
 
     def __init__(
             self, loadedChNames, notLoadedChNames, isZstack, isSegm3D,
             favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
             acdc_df_path=None, posData=None, addCombineMetricCallback=None,
             allPosData=None, is_concat=False, isSingleSelection=False,
-            state=None
+            state=None, addCustomChannels=False
         ):
         super().__init__(parent=parent)
         
@@ -1878,7 +1879,15 @@ class SetMeasurementsDialog(QBaseDialog):
         self.allPos_acdc_df_cols = allPos_acdc_df_cols
         self.acdc_df_path = acdc_df_path
         self.allPosData = allPosData
+        self.addCustomChannels = addCustomChannels
         self.doNotWarn = False
+        
+        # Store dialog parameters for dynamic widget creation
+        self.isZstack = isZstack
+        self.isSegm3D = isSegm3D
+        self.favourite_funcs = favourite_funcs
+        self.posData = posData
+        self.custom_channels_added = 0
 
         self.setWindowTitle('Set measurements')
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
@@ -1908,6 +1917,8 @@ class SetMeasurementsDialog(QBaseDialog):
 
         col = 0
         for col, chName in enumerate(loadedChNames):
+            if chName is None:
+                continue
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
                 posData=posData, is_concat=is_concat
@@ -1922,6 +1933,8 @@ class SetMeasurementsDialog(QBaseDialog):
 
         current_col = col+1
         for col, chName in enumerate(notLoadedChNames):
+            if chName is None:
+                continue
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
                 posData=posData, is_concat=is_concat
@@ -1937,6 +1950,18 @@ class SetMeasurementsDialog(QBaseDialog):
             self.all_metrics.extend([c.text() for c in channelGBox.checkBoxes])
 
         current_col += 1
+
+        # Add custom channels button if enabled
+        if addCustomChannels:
+            self.addCustomChannelsButton = widgets.addPushButton(
+                'Add input'
+            )
+            self.addCustomChannelsButton.clicked.connect(self._addCustomChannelWidget)
+            # Add button as a new column in the groupsLayout
+            self.groupsLayout.addWidget(
+                self.addCustomChannelsButton, 1, current_col, alignment=Qt.AlignTop
+            )
+            self.groupsLayout.setColumnStretch(current_col, 1)
 
         if posData is None:
             isTimelapse = False
@@ -2034,6 +2059,15 @@ class SetMeasurementsDialog(QBaseDialog):
                     )
             row += 1
 
+        if addCustomChannels:
+            # Keep the add-input button at the right side of the metrics column.
+            self.groupsLayout.removeWidget(self.addCustomChannelsButton)
+            self.groupsLayout.addWidget(
+                self.addCustomChannelsButton, 1, current_col + 1,
+                alignment=Qt.AlignTop
+            )
+            self.groupsLayout.setColumnStretch(current_col + 1, 1)
+
         self.last_row = row
         self.last_col = current_col
 
@@ -2104,7 +2138,7 @@ class SetMeasurementsDialog(QBaseDialog):
         for channelGBox in self.chNameGroupboxes:
             for checkbox in channelGBox.checkBoxes:
                 self.channelCheckboxToggled(checkbox)
-    
+        
     def allMetricsDict(self):
         all_metrics = {
             'standard': {}, 
@@ -2138,6 +2172,133 @@ class SetMeasurementsDialog(QBaseDialog):
             all_metrics['mixed_channels'].append(checkBox.text())
         
         return all_metrics
+    
+    
+    def _addCustomChannelWidget(self):
+        """Add a single custom channel metric box widget to the dialog."""
+        self.custom_channels_added += 1
+        ch_name = f'Input {self.custom_channels_added}'
+        
+        channelGBox = widgets.channelMetricsQGBox(
+            self.isZstack, ch_name, self.isSegm3D,
+            favourite_funcs=self.favourite_funcs,
+            posData=self.posData, is_concat=self.is_concat
+        )
+        channelGBox.chName = ch_name
+        channelGBox.isCustomChannel = True
+        
+        button_idx = self.groupsLayout.indexOf(self.addCustomChannelsButton)
+        if button_idx < 0:
+            next_col = self.groupsLayout.columnCount()
+        else:
+            _, next_col, _, _ = self.groupsLayout.getItemPosition(button_idx)
+        self.groupsLayout.addWidget(channelGBox, 0, next_col, 3, 1)
+        self.chNameGroupboxes.append(channelGBox)
+        
+        channelGBox.sigDelClicked.connect(self.delMixedChannelCombineMetric)
+        channelGBox.sigCheckboxToggled.connect(self.channelCheckboxToggled)
+        
+        self.groupsLayout.setColumnStretch(next_col, 5)
+        self.all_metrics.extend([c.text() for c in channelGBox.checkBoxes])
+        removeButton = widgets.cancelPushButton(f'Remove {ch_name}')
+        removeButton.clicked.connect(partial(self._removeCustomChannelWidget, ch_name))
+        channelGBox._removeButton = removeButton
+        self.groupsLayout.addWidget(removeButton, 3, next_col, alignment=Qt.AlignTop)
+        self._reflowCustomChannels()
+        self.sigNumberChannelsRequested.emit(len(self.chNameGroupboxes))
+            
+    def _removeCustomChannelWidget(self, chName):
+        gbox = next((c for c in self.chNameGroupboxes if c.chName == chName), None)
+        if gbox is None:
+            return
+        gbox_metrics = {c.text() for c in gbox.checkBoxes}
+        self.all_metrics = [m for m in self.all_metrics if m not in gbox_metrics]
+        self.groupsLayout.removeWidget(gbox)
+        gbox.hide()
+        gbox.deleteLater()
+        if hasattr(gbox, '_removeButton'):
+            self.groupsLayout.removeWidget(gbox._removeButton)
+            gbox._removeButton.hide()
+            gbox._removeButton.deleteLater()
+        self.chNameGroupboxes.remove(gbox)
+
+        self._reflowCustomChannels()
+        self.sigNumberChannelsRequested.emit(len(self.chNameGroupboxes))
+
+    def _reflowCustomChannels(self):
+        if not hasattr(self, 'addCustomChannelsButton'):
+            return
+
+        custom_widgets = []
+        for gbox in self.chNameGroupboxes:
+            if not getattr(gbox, 'isCustomChannel', False):
+                continue
+            idx = self.groupsLayout.indexOf(gbox)
+            if idx < 0:
+                continue
+            _, col, _, _ = self.groupsLayout.getItemPosition(idx)
+            custom_widgets.append((col, gbox))
+
+        if not custom_widgets:
+            self.custom_channels_added = 0
+            self.groupsLayout.invalidate()
+            self.groupsLayout.update()
+            return
+
+        custom_widgets.sort(key=lambda item: item[0])
+        start_col = custom_widgets[0][0]
+
+        button_idx = self.groupsLayout.indexOf(self.addCustomChannelsButton)
+        old_button_col = None
+        if button_idx >= 0:
+            _, old_button_col, _, _ = self.groupsLayout.getItemPosition(button_idx)
+
+        old_custom_cols = [col for col, _ in custom_widgets]
+
+        for i, (_, gbox) in enumerate(custom_widgets):
+            new_name = f'Input {i + 1}'
+            gbox.chName = new_name
+            gbox.setTitle(new_name)
+            if hasattr(gbox, '_removeButton'):
+                btn = gbox._removeButton
+                btn.setText(f'Remove {new_name}')
+                try:
+                    btn.clicked.disconnect()
+                except TypeError:
+                    pass
+                btn.clicked.connect(
+                    partial(self._removeCustomChannelWidget, new_name)
+                )
+
+            target_col = start_col + i
+            self.groupsLayout.removeWidget(gbox)
+            self.groupsLayout.addWidget(gbox, 0, target_col, 3, 1)
+            if hasattr(gbox, '_removeButton'):
+                btn = gbox._removeButton
+                self.groupsLayout.removeWidget(btn)
+                self.groupsLayout.addWidget(btn, 3, target_col, alignment=Qt.AlignTop)
+            self.groupsLayout.setColumnStretch(target_col, 5)
+
+        button_col = start_col + len(custom_widgets)
+        self.groupsLayout.removeWidget(self.addCustomChannelsButton)
+        self.groupsLayout.addWidget(
+            self.addCustomChannelsButton, 1, button_col, alignment=Qt.AlignTop
+        )
+        self.groupsLayout.setColumnStretch(button_col, 1)
+
+        reset_candidates = set(old_custom_cols)
+        if old_button_col is not None:
+            reset_candidates.add(old_button_col)
+
+        used_cols = set(range(start_col, button_col + 1))
+        for col in reset_candidates:
+            if col in used_cols:
+                continue
+            self.groupsLayout.setColumnStretch(col, 0)
+
+        self.custom_channels_added = len(custom_widgets)
+        self.groupsLayout.invalidate()
+        self.groupsLayout.update()
     
     def searchAndHighlight(self, text):
         for chNameGroupbox in self.chNameGroupboxes:
@@ -2961,7 +3122,15 @@ class SetMeasurementsDialog(QBaseDialog):
         screenTop = self.screen().geometry().y()
         h = screenHeight-200
         minColWith = screenWidth/5
-        w = minColWith*(self.last_col+1)
+
+        # Compute width from currently occupied columns (custom inputs can
+        # add/remove columns after initialization).
+        max_col = self.last_col
+        for i in range(self.groupsLayout.count()):
+            _, col, _, col_span = self.groupsLayout.getItemPosition(i)
+            max_col = max(max_col, col + col_span - 1)
+
+        w = minColWith*(max_col+1)
         xLeft = int((screenWidth-w)/2)
         if w > screenWidth:
             self.move(screenLeft+10, screenTop+50)
@@ -7114,13 +7283,15 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
 class PostProcessSegmParams(QGroupBox):
     valueChanged = Signal(object)
     editingFinished = Signal()
+    sigNumberChannelsRequested = Signal(int)
 
     def __init__(
             self, title, posData, 
             useSliders=False, 
             parent=None, 
             maxSize=None, 
-            force_postprocess_2D=False
+            force_postprocess_2D=False,
+            addCustomChannels=False
         ):
         QGroupBox.__init__(self, title, parent)
         SizeZ = posData.SizeZ
@@ -7247,12 +7418,17 @@ class PostProcessSegmParams(QGroupBox):
         addCustomFeatureLayout.addStretch(1)
         self.selectedFeaturesDialog = SelectFeaturesRangeDialog(
             posData=posData, parent=self, 
-            force_postprocess_2D=force_postprocess_2D
+            force_postprocess_2D=force_postprocess_2D,
+            addCustomChannels=addCustomChannels,
         )
         self.selectedFeaturesDialog.hide()
         self.addCustomFeaturesButton.clicked.connect(
             self.selectedFeaturesDialog.show
         )
+        if addCustomChannels:
+            self.selectedFeaturesDialog.sigNumberChannelsRequested.connect(
+                self.sigNumberChannelsRequested
+            )
         self.selectedFeaturesDialog.sigValueChanged.connect(self.onValueChanged)
         
         layout.addLayout(addCustomFeatureLayout, row, 0, 1, 2)
@@ -14554,12 +14730,16 @@ class SelectFeaturesRange:
             posData, 
             force_postprocess_2D=False, 
             qparent=None,
-            sigValueChanged=None
+            sigValueChanged=None,
+            sigNumberChannelsRequested=None,
+            addCustomChannels=False
         ) -> None:
         self.posData = posData
         self.qparent = qparent
         self.force_postprocess_2D = force_postprocess_2D
         self.sigValueChanged = sigValueChanged
+        self.sigNumberChannelsRequested = sigNumberChannelsRequested
+        self.addCustomChannels = addCustomChannels
         
         self.lowRangeWidgets = widgets.CheckableSpinBoxWidgets()
         self.highRangeWidgets = widgets.CheckableSpinBoxWidgets()        
@@ -14598,9 +14778,14 @@ class SelectFeaturesRange:
         self.selectFeatureDialog = SetMeasurementsDialog(
             loadedChNames, notLoadedChNames, isZstack, isSegm3D,
             posData=self.posData, parent=self.qparent,
-            isSingleSelection=True, is_concat=True
+            isSingleSelection=True, is_concat=True,
+            addCustomChannels=self.addCustomChannels
         )
         # self.selectFeatureDialog.resizeVertical()
+        if self.sigNumberChannelsRequested is not None:
+            self.selectFeatureDialog.sigNumberChannelsRequested.connect(
+                self.sigNumberChannelsRequested
+            )
         self.selectFeatureDialog.sigClosed.connect(self.setFeatureText)
         self.selectFeatureDialog.show()
     
@@ -14616,19 +14801,22 @@ class SelectFeaturesRange:
 
 class SelectFeaturesRangeDialog(QBaseDialog):
     sigValueChanged = Signal(object)
+    sigNumberChannelsRequested = Signal(int)
     
-    def __init__(self, posData=None, parent=None, force_postprocess_2D=False):
+    def __init__(self, posData=None, parent=None, force_postprocess_2D=False,
+                 addCustomChannels=False):
         super().__init__(parent)
         
         self.force_postprocess_2D = force_postprocess_2D
-        
         layout = QVBoxLayout()
         self.setWindowTitle('Custom features for post-processing')
         
         self.groupbox = SelectFeaturesRangeGroupbox(
             posData=posData, parent=parent, 
-            force_postprocess_2D=force_postprocess_2D
+            force_postprocess_2D=force_postprocess_2D,
+            addCustomChannels=addCustomChannels
         )
+        self.groupbox.sigNumberChannelsRequested.connect(self.sigNumberChannelsRequested.emit)
         
         buttonsLayout = QHBoxLayout()
         okPushButton = widgets.okPushButton(' Ok ')
@@ -14650,8 +14838,10 @@ class SelectFeaturesRangeDialog(QBaseDialog):
         self.hide()
 
 class SelectFeaturesRangeGroupbox(QGroupBox):
+    sigNumberChannelsRequested = Signal(int)
     def __init__(
-            self, posData=None, parent=None, force_postprocess_2D=False
+            self, posData=None, parent=None, force_postprocess_2D=False,
+            addCustomChannels=False
         ):
         super().__init__(parent)
 
@@ -14660,12 +14850,15 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
 
         self.posData = posData
         self.force_postprocess_2D = force_postprocess_2D
+        self.addCustomChannels = addCustomChannels
         
         self._layout = QGridLayout()
         self._layout.setVerticalSpacing(0)
 
         firstSelector = SelectFeaturesRange(
-            posData, force_postprocess_2D=force_postprocess_2D
+            posData, force_postprocess_2D=force_postprocess_2D,
+            addCustomChannels=self.addCustomChannels,
+            sigNumberChannelsRequested=self.sigNumberChannelsRequested.emit,
         )
         self.addButton = widgets.addPushButton('  Add feature    ')
         self.addButton.setSizePolicy(
@@ -14691,7 +14884,9 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
     def addFeatureField(self):
         row = self._layout.rowCount()
         selector = SelectFeaturesRange(
-            self.posData, force_postprocess_2D=self.force_postprocess_2D
+            self.posData, force_postprocess_2D=self.force_postprocess_2D,
+            addCustomChannels=self.addCustomChannels,
+            sigNumberChannelsRequested=self.sigNumberChannelsRequested.emit,
         )
         delButton = widgets.delPushButton('Remove feature')
         delButton.setSizePolicy(

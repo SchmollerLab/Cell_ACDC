@@ -431,6 +431,7 @@ class WorkflowPostProcessSegmFunctions(WorkflowBaseFunctions):
     def initializeDialog(self, dialog, workflowGui=None):
         self.setInputs({0: 'segm'})
         self.setOutputs({0: 'segm'})
+        dialog.sigInputsChanged.connect(self.setInputs)
         dialog.sigOkClicked.connect(self.updatePreview)
 
 class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
@@ -499,6 +500,11 @@ class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
         self.setContent(content)
         self.ok_cb()  # To emit signals and update the workflow card state after loading
         self.hide()
+        
+    def ok_cb(self):
+        """Handle OK button click by emitting the sigOkClicked signal and hiding the dialog."""
+        self.sigOkClicked.emit()
+        super().ok_cb(saveLastRecipe=False)  # Don't save to last recipe since this is just a workflow card dialog
         
 class PreProcessSetupDialogWorkflow(apps.PreProcessRecipeDialog):
     sigOkClicked = Signal()
@@ -601,11 +607,12 @@ class PreProcessSetupDialogWorkflow(apps.PreProcessRecipeDialog):
             'recipe': self.recipe(warn=False) or [],
             'keep_input_data_type': self.keepInputDataTypeToggle.isChecked(),
         }
-
+    
 class PostProcessSegmDialogWorkflow(QBaseDialog):
     sigOkClicked = Signal()
     sigCancelClicked = Signal()
     sigValueChanged = Signal(object, object)
+    sigInputsChanged = Signal(dict)  # Emit updated input types when they change
 
     def __init__(self, posData, parent=None, logger=print):
         super().__init__(parent=parent)
@@ -617,10 +624,11 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
         self.postProcessGroupbox = apps.PostProcessSegmParams(
             'Post-processing parameters', posData,
             useSliders=True, 
-            parent=self
+            parent=self,
+            addCustomChannels=True,
         )
         self.postProcessGroupbox.valueChanged.connect(self.valueChanged)
-
+        self.postProcessGroupbox.sigNumberChannelsRequested.connect(self.setInputs_cb)
         layout = QVBoxLayout(self)
         layout.addWidget(self.postProcessGroupbox)
         layout.addSpacing(10)
@@ -631,7 +639,15 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
         layout.addLayout(buttonsLayout)
 
         self.setLayout(layout)
-
+        
+    def setInputs_cb(self, number_inputs):
+        printl("here")
+        """Handle when input types change and update the dialog UI accordingly."""
+        inputs = {0: 'segm'} # first is segmentation
+        inputs.update({n: 'img' for n in range(1, number_inputs+1)}) # all other inputs are images
+        printl(f"Setting inputs to: {inputs}")
+        self.sigInputsChanged.emit(inputs)
+        
     def _setCheckableRangeValue(self, range_widgets, value):
         is_checked = value is not None
         range_widgets.checkbox.setChecked(is_checked)
@@ -675,12 +691,6 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
         self.cancel = False
         self.sigOkClicked.emit()
         self.hide()
-
-    def apply_cb(self):
-        self.ok_cb()
-
-    def applyAll_cb(self):
-        self.ok_cb()
 
     def cancel_cb(self):
         self.cancel = True
@@ -732,6 +742,12 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
             return
 
         self.ok_cb()
+        self.hide()
+        
+    def ok_cb(self):
+        """Handle OK button click by emitting the sigOkClicked signal and hiding the dialog."""
+        self.cancel = False
+        self.sigOkClicked.emit()
         self.hide()
 
 class WorkflowInputDataDialog(QBaseDialog):
