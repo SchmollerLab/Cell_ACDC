@@ -1,506 +1,50 @@
-import inspect
 
-from qtpy.QtGui import QDropEvent, QIcon, QGuiApplication, QPixmap, QDrag, QCursor, QPainterPath, QPen, QColor, QPolygonF
+from qtpy.QtGui import  QIcon, QGuiApplication, QDrag, QCursor, QPainterPath, QPen, QColor, QPolygonF, QPainter
 from qtpy.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QListWidget, QListWidgetItem, 
-    QLabel, QVBoxLayout, QSizePolicy, QScrollArea,
-    QAbstractItemView, QApplication, QGraphicsView, QGraphicsScene, QGraphicsProxyWidget, QGraphicsPixmapItem, QGraphicsLineItem,
-    QComboBox
+    QLabel, QVBoxLayout, QSizePolicy, QPlainTextEdit,
+    QAbstractItemView, QGraphicsView, QGraphicsScene, QGraphicsLineItem, QAction
 )
+from qtpy.QtCore import Signal, Qt, QMimeData, QPointF, QTimer, QObject
+import qtpy
 
-from . import myutils, apps, widgets, qutils, load, printl
-from .apps import QBaseDialog
-from qtpy.QtCore import Signal, Qt, QDataStream, QIODevice, QMimeData, QPointF, QTimer
+from . import myutils, load, printl, workflow_dialogs, widgets, apps, workflow_default_save_folderpath, qutils
+from .workflow_dialogs import WorkflowBaseFunctions
+from .acdc_regex import to_alphanumeric
 
 import os
+import logging
+import traceback
 
-class WorkflowBaseFunctions():
-    """Base class for workflow card widgets.
-    
-    This class provides a template for creating workflow cards that can be added
-    to the workflow GUI. Subclasses should implement dryrunDialog() and 
-    setupDialog() methods. This is the "functions" side of things, the dialogs
-    themselves are defined separately.
-    
-    Attributes:
-        title (str): Display title of the workflow card.
-        posData: Position data containing relevant information for the workflow.
-        input_types_accepted (dict): Maps input index to accepted input type(s).
-            Example: {0: 'img', 1: ['img', 'segm']}
-        input_types (dict): Maps input index to the currently connected input type.
-            Example: {0: 'img', 1: 'segm'}
-        output_types (dict): Maps output index to output type. Example: {0: 'segm'}
-        setInputs (callable): Method to set input count and types.
-        setOutputs (callable): Method to set output count and types.
-        updatePreview (callable): Method to update the preview image.
-        updateTitle (callable): Method to update the card title.
-    
-    Example:
-        class MyWorkflowCard(WorkflowBaseFunctions):
-            def __init__(self):
-                self.title = "My Workflow Step"
-            
-            def dryrunDialog(self, parent=None):
-                return MyDialog(parent=parent)
-            
-            def setupDialog(self, parent=None):
-                self.setInputs({0: 'img'})
-                self.setOutputs({0: 'img'})
-                return MyDialog(parent=parent)
-    """
-    def __init__(self):
-        """Initialize the base workflow functions class."""
-        
-    def runDialog_cb(self, dialog):
-        """Show the workflow dialog.
-        
-        Args:
-            dialog: The dialog widget to display.
-        """
-        # The dialog is usually hidden (not destroyed) between openings.
-        # Re-apply input-type dependent UI state right before showing.
-        if hasattr(dialog, 'updatedInputTypes'):
-            dialog.updatedInputTypes()
-        dialog.show()
-        
-    def getDialogPreview(self, dialog):
-        """Capture a screenshot of the dialog for preview display.
-        
-        Args:
-            dialog: The dialog widget to capture.
-        
-        Returns:
-            QPixmap: A scaled (220x110) screenshot of the dialog, or None if capture fails.
-        """
+
+SUPPORTED_EXTENSIONS_CARD_SETTINGS = ['.json', '.txt', '.ini']
+
+class _WorkflowGuiLogEmitter(QObject):
+    sigLogMessage = Signal(str)
+
+
+class _WorkflowGuiLogHandler(logging.Handler):
+    """Logging handler that appends records to a QPlainTextEdit."""
+
+    def __init__(self, text_edit):
+        super().__init__()
+        self._text_edit = text_edit
+        self._emitter = _WorkflowGuiLogEmitter()
+        self._emitter.sigLogMessage.connect(self._appendText)
+
+    def _appendText(self, text):
+        if self._text_edit is None:
+            return
+        self._text_edit.appendPlainText(text)
+        scroll_bar = self._text_edit.verticalScrollBar()
+        scroll_bar.setValue(scroll_bar.maximum())
+
+    def emit(self, record):
         try:
-            # Grab a screenshot of the dialog to update preview
-            pix = dialog.grab().scaled(220, 110, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            return pix
-        except Exception as e:
-            # If screenshot fails, just leave preview as is
-            print(f"Failed to update preview after dialog close: {e}")
-        return None
-    
-    def setupDialog(self, parent=None, workflowGui=None, posData=None):
-        """Configure to return the dialog widget for the workflow card.
-        
-        Args:
-            parent: Parent widget (optional).
-            workflowGui: Reference to the main WorkflowGui instance (optional).
-            posData: Position data object (optional).
-        
-        Returns:
-            The dialog widget created by the subclass setupDialog method.
-        """
-    
-    def setupDialog_cb(self, parent=None, workflowGui=None, posData=None):
-        """Setup the dialog with only the required parameters for setupDialog.
-        
-        This method inspects the setupDialog signature and passes only the
-        parameters that are required by the subclass implementation.
-        
-        Args:
-            parent: Parent widget (optional).
-            workflowGui: Reference to the main WorkflowGui instance (optional).
-            posData: Position data object (optional).
-        
-        Returns:
-            The dialog widget created by the subclass setupDialog method.
-        """
-        kwargs = {'parent': parent, 'workflowGui': workflowGui, 'posData': posData}
-        kwargs_required = inspect.getfullargspec(self.setupDialog).args
-        kwargs_to_pass = {k: v for k, v in kwargs.items() if k in kwargs_required}
-        dialog = self.setupDialog(**kwargs_to_pass)
-        return dialog
-
-    def initializeDialog(self, dialog, parent=None, workflowGui=None, posData=None):
-        """Configure a dialog after it has been created and assigned.
-
-        Args:
-            dialog: The dialog widget to configure.
-
-            parent: Parent widget (optional).
-            workflowGui: Reference to the main WorkflowGui instance (optional).
-            posData: Position data object (optional).
-        
-        """
-
-    def initializeDialog_cb(self, dialog, parent=None, workflowGui=None, posData=None):
-        """Call initializeDialog with only the supported arguments."""
-        kwargs = {
-            'dialog': dialog,
-            'parent': parent,
-            'workflowGui': workflowGui,
-            'posData': posData,
-        }
-        kwargs_required = inspect.getfullargspec(self.initializeDialog).args
-        kwargs_to_pass = {k: v for k, v in kwargs.items() if k in kwargs_required}
-        self.initializeDialog(**kwargs_to_pass)
-
-    def renderDialogPreview(self, size=None, scale=(220, 110), parent=None, workflowGui=None, posData=None):
-        """Render a preview image of the workflow dialog without displaying it.
-        
-        Creates a hidden dialog instance (dryrunDialog), captures a screenshot,
-        and returns it at the specified scale. This is used to generate preview
-        images for the workflow sidebar.
-        
-        Args:
-            size (tuple, optional): Fixed size (width, height) for the dialog. Defaults to None.
-            scale (tuple): Target scale (width, height) for the returned image. Defaults to (220, 110).
-            parent: Parent widget (optional).
-            workflowGui: Reference to the main WorkflowGui instance (optional).
-            posData: Position data object (optional).
-        
-        Returns:
-            QPixmap: A screenshot of the dialog scaled to the specified size,
-                    or a light gray placeholder if rendering fails.
-        """
-        try:
-            kwargs = {'parent': parent, 'workflowGui': workflowGui, 'posData': posData}
-            kwargs_required = inspect.getfullargspec(self.dryrunDialog).args
-            kwargs_to_pass = {k: v for k, v in kwargs.items() if k in kwargs_required}
-            dialog = self.dryrunDialog(**kwargs_to_pass)
-    
-            if size is not None:
-                dialog.setFixedSize(*size)  # Use fixed size instead of minimum
-
-            dialog.setAttribute(Qt.WA_DontShowOnScreen, True)
-            dialog.show()
-
-            QApplication.processEvents()
-            
-            # Force layout update
-            dialog.update()
-            dialog.repaint()
-            QApplication.processEvents()
-
-            # Grab the dialog content
-            pix = dialog.grab().scaled(220, 110, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-
-            dialog.close()
-            dialog.deleteLater()
-
-            return pix.scaled(*scale, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        except Exception as e:
-            # Fallback: create a simple placeholder image
-            print(f"Failed to render dialog preview: {e}")
-            pix = QPixmap(*scale)
-            pix.fill(Qt.lightGray)
-            return pix
-
-    def updateInputTypes(self, dialog, input_types):
-        """Handle changes to connected input types and notify the dialog.
-        
-        Updates the dialog's input_types attribute and calls the dialog's
-        updatedInputTypes() callback if it exists, allowing the dialog to
-        respond to changes in the types currently flowing through its inputs.
-        
-        Args:
-            dialog: The dialog widget with input types.
-            input_types (dict): Updated concrete input type mapping.
-        """
-        dialog.input_types = input_types
-        if hasattr(dialog, 'updatedInputTypes'):
-            dialog.updatedInputTypes()
-        
-class WorkflowCombineChannelsFunctions(WorkflowBaseFunctions):
-    """Workflow card functions for combining and manipulating image channels.
-    
-    This workflow step allows users to combine multiple image or segmentation
-    channels into a single output image through various mathematical operations.
-    
-    Attributes:
-        combineChannelDialog: The dialog class for channel combination.
-        title (str): Display title "Combine and manipulate channels".
-    """
-    
-    def __init__(self) -> None:
-        """Initialize the combine channels workflow."""
-        self.combineChannelDialog = CombineChannelsSetupDialogWorkflow
-        self.title = "Combine and manipulate channels"
-    
-    def dryrunDialog(self, parent=None, workflowGui=None):
-        """Create a dry-run dialog instance for preview rendering.
-        
-        Args:
-            parent: Parent widget for the dialog.
-            workflowGui: Reference to the main WorkflowGui instance.
-        
-        Returns:
-            CombineChannelsSetupDialogWorkflow: Dialog instance for preview.
-        """
-        return self.combineChannelDialog(parent=workflowGui)
-        
-    def setupDialog(self, workflowGui=None):
-        """Create the dialog for the workflow card.
-        
-        Sets up input/output types and connects signals for dynamic updates
-        when the number of channels changes or the save mode is toggled.
-        
-        Args:
-            workflowGui: Reference to the main WorkflowGui instance.
-        
-        Returns:
-            CombineChannelsSetupDialogWorkflow: Configured dialog instance.
-        """
-        dialog = self.combineChannelDialog(parent=workflowGui)
-        return dialog
-
-    def initializeDialog(self, dialog, workflowGui=None):
-        """Configure the combine channels card after dialog creation."""
-        self.setInputs({0: ['img', 'segm']})
-        self.setOutputs({0: 'img'})
-        dialog.sigNumStepsChanged.connect(self.numStepsChanged)
-        dialog.sigOkClicked.connect(self.updatePreview)
-        dialog.sigSaveAsSegmCheckboxToggled.connect(self.saveAsSegmCheckboxToggled)
-        
-    def numStepsChanged(self, num_steps):
-        """Handle changes to the number of input channels.
-        
-        Updates the input definition to accept the new number of channels,
-        each capable of being either image or segmentation type.
-        
-        Args:
-            num_steps (int): New number of input channels.
-        """
-        inputs = {n: ['img', 'segm'] for n in range(num_steps)}
-        self.setInputs(inputs)
-    
-    def saveAsSegmCheckboxToggled(self, save_as_segm):
-        """Handle toggling the save output as segmentation checkbox.
-        
-        Updates the output type based on whether the result should be
-        treated as a segmentation or image.
-        
-        Args:
-            save_as_segm (bool): True to save as segmentation, False for image.
-        """
-        self.setOutputs({0: 'segm' if save_as_segm else 'img'})
-        
-class WorkflowInputSegmFunctions(WorkflowBaseFunctions):
-    """Workflow card functions for selecting segmentation data input.
-    
-    This workflow step allows users to select which segmentation data
-    to use as input for subsequent workflow operations.
-    
-    Attributes:
-        inputDataDialog: The dialog class for data selection.
-        title (str): Display title "Select segmentation data".
-    """
-    
-    def __init__(self) -> None:
-        """Initialize the segmentation input workflow."""
-        self.inputDataDialog = WorkflowInputDataDialog
-        self.title = "Select segmentation data"
-        
-    def dryrunDialog(self, workflowGui=None):
-        """Create a dry-run dialog instance for preview rendering.
-        
-        Args:
-            workflowGui: Reference to the main WorkflowGui instance.
-        
-        Returns:
-            WorkflowInputDataDialog: Dialog instance for preview.
-        """
-        segm_options = workflowGui.segm_channels
-        return self.inputDataDialog(segm_options, 'segmentation', parent=workflowGui)
-    
-    def setupDialog(self, workflowGui=None):
-        """Create the dialog for the workflow card.
-        
-        Args:
-            workflowGui: Reference to the main WorkflowGui instance.
-        
-        Returns:
-            WorkflowInputDataDialog: Configured dialog instance.
-        """
-        segm_options = workflowGui.segm_channels
-        dialog = self.inputDataDialog(segm_options, 'segmentation', parent=workflowGui)
-        return dialog
-
-    def initializeDialog(self, dialog, workflowGui=None):
-        """Configure the segmentation input card after dialog creation."""
-        self.setInputs()
-        self.setOutputs({0: 'segm'})
-        dialog.sigOkClicked.connect(self.updatePreview)
-        
-class WorkflowInputImgFunctions(WorkflowBaseFunctions):
-    """Workflow card functions for selecting image data input.
-    
-    This workflow step allows users to select which image channel
-    to use as input for subsequent workflow operations.
-    
-    Attributes:
-        inputDataDialog: The dialog class for data selection.
-        title (str): Display title "Select image data".
-    """
-    
-    def __init__(self) -> None:
-        """Initialize the image input workflow."""
-        self.inputDataDialog = WorkflowInputDataDialog
-        self.title = "Select image data"
-        
-    def dryrunDialog(self, workflowGui=None):
-        """Create a dry-run dialog instance for preview rendering.
-        
-        Args:
-            workflowGui: Reference to the main WorkflowGui instance.
-        
-        Returns:
-            WorkflowInputDataDialog: Dialog instance for preview.
-        """
-        img_options = workflowGui.img_channels
-        return self.inputDataDialog(img_options, 'image', parent=workflowGui)
-    
-    def setupDialog(self, workflowGui=None):
-        """Create the dialog for the workflow card.
-        
-        Args:
-            workflowGui: Reference to the main WorkflowGui instance.
-        
-        Returns:
-            WorkflowInputDataDialog: Configured dialog instance.
-        """
-        img_options = workflowGui.img_channels
-        dialog = self.inputDataDialog(img_options, 'image', parent=workflowGui)
-        return dialog
-
-    def initializeDialog(self, dialog, workflowGui=None):
-        """Configure the image input card after dialog creation."""
-        self.setInputs()
-        self.setOutputs({0: 'img'})
-        dialog.sigOkClicked.connect(self.updatePreview)
-        dialog.sigUpdateTitle.connect(self.updateTitle)
-    
-class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
-    """Dialog for combining and manipulating image channels in the workflow.
-    
-    Extends CombineChannelsSetupDialog to work within the workflow system.
-    Emits signals when OK/Cancel buttons are clicked without channel names,
-    and dynamically updates inputs/outputs based on the number of channels
-    selected and operation parameters.
-    
-    Signals:
-        sigOkClicked: Emitted when the OK button is clicked.
-        sigCancelClicked: Emitted when the Cancel button is clicked.
-        sigNumStepsChanged: Emitted when the number of channels changes.
-        sigSaveAsSegmCheckboxToggled: Emitted when the save mode is toggled.
-    """
-    sigOkClicked = Signal()
-    sigCancelClicked = Signal()
-    
-    def __init__(self, parent=None):
-        super().__init__(channel_names=None, parent=parent, hideOnClosing=True)
-        
-        self.mainLayout.addSpacing(20)
-
-        qutils.hide_and_delete_layout(self.buttonsLayoutSaveGroup)
-        qutils.hide_and_delete_layout(self.buttonsLayout)
-        buttonsLayout = widgets.CancelOkButtonsLayout()
-        self.buttonsLayout = buttonsLayout
-        buttonsLayout.okButton.clicked.connect(self.ok_cb)
-        buttonsLayout.okButton.clicked.connect(self.sigOkClicked.emit)
-        buttonsLayout.cancelButton.clicked.connect(self.sigCancelClicked.emit)
-        buttonsLayout.cancelButton.clicked.connect(self.cancelButtonClicked)
-        
-        self.mainLayout.addLayout(buttonsLayout)
-        
-    def cancelButtonClicked(self):
-        """Handle cancel button click by hiding the dialog."""
-        self.hide()
-        
-    def updatedInputTypes(self):
-        """Handle when input types change and update the dialog UI accordingly.
-        
-        Updates checkboxes for binarization and normalization, and automatically
-        validates the save as segmentation checkbox based on the updated input types
-        and formula preview.
-        """
-        self.combineChannelsWidget.setBinarizeCheckableAndNorm()
-        self.autoCheckSaveAsSegmCheckbox()
-
-
-class WorkflowInputDataDialog(QBaseDialog):
-    """Simple dialog for selecting input data (image or segmentation channel).
-    
-    Provides a dropdown menu for the user to select from available data options.
-    Used as an input node in the workflow to let users specify which data
-    should be passed to the next step.
-    
-    Args:
-        selection_options (list): Available options to select from.
-        type (str): Type of data being selected ('image' or 'segmentation').
-        parent: Parent widget.
-    
-    Signals:
-        sigOkClicked: Emitted when the OK button is clicked.
-        sigCancelClicked: Emitted when the Cancel button is clicked.
-        sigUpdateTitle: Emitted with the new title when selection changes.
-    
-    Attributes:
-        type (str): The type of data being selected.
-        selection_options (list): Available options.
-        selected_value (str): Currently selected value.
-        selection_widget (QComboBox): Dropdown for selection.
-    """
-    sigOkClicked = Signal()
-    sigCancelClicked = Signal()
-    sigUpdateTitle = Signal(str)
-    
-    def __init__(self, selection_options, type, parent=None):
-        super().__init__(parent=parent)
-        self.setWindowTitle(f'Select input {type}')
-        
-        self.type = type
-        self.selection_options = selection_options or []
-        self.selected_value = None
-        
-        # Create layout
-        layout = QVBoxLayout()
-        
-        # Add label
-        label = QLabel(f'Select {type} input:')
-        layout.addWidget(label)
-        
-        # Add combo box for selection
-        self.selection_widget = QComboBox()
-        self.selection_widget.addItems(self.selection_options)
-        layout.addWidget(self.selection_widget)
-        
-        # Add buttons
-        buttons_layout = widgets.CancelOkButtonsLayout()
-        ok_button = buttons_layout.okButton
-        cancel_button = buttons_layout.cancelButton
-        ok_button.clicked.connect(self.ok_clicked)
-        ok_button.clicked.connect(self.sigOkClicked.emit)
-        cancel_button.clicked.connect(self.cancel_clicked)
-        cancel_button.clicked.connect(self.sigCancelClicked.emit)
-        
-        layout.addLayout(buttons_layout)
-        
-        self.setLayout(layout)
-    
-    def ok_clicked(self):
-        """Handle OK button click.
-        
-        Stores the selected value and emits signals to update the preview
-        and card title, then hides the dialog.
-        """
-        self.selected_value = self.selection_widget.currentText()
-        self.sigUpdateTitle.emit(f'{self.type}: {self.selected_value}')
-        self.hide()
-    
-    def cancel_clicked(self):
-        """Handle Cancel button click by hiding the dialog."""
-        self.hide()
-    
-    def get_selected_value(self):
-        """Get the currently selected value.
-        
-        Returns:
-            str: The text of the currently selected item in the dropdown.
-        """
-        return self.selected_value
+            text = self.format(record)
+        except Exception:
+            text = record.getMessage()
+        self._emitter.sigLogMessage.emit(str(text))
 
 class _WorkflowCardListWidget(QWidget):
     """Widget representing a workflow card item in the sidebar.
@@ -842,12 +386,13 @@ class _WorkflowCardZoneWidget(QWidget):
         graphics_proxy: Graphics proxy for positioning in the scene.
     """
     def __init__(self, functions: WorkflowBaseFunctions, posData, 
-                 zone=None, workflowGui=None):
+                 zone=None, workflowGui=None, logger=print):
         QWidget.__init__(self, parent=None)
         
         self.posData = posData
         self.workflowGui = workflowGui
         self.functions = functions
+        self.logger = logger
         self.title = functions.title
         self._drag_start_pos = None
         self.graphics_proxy = None
@@ -861,6 +406,11 @@ class _WorkflowCardZoneWidget(QWidget):
         self.functions.setOutputs = self.setOutputs
         self.functions.updatePreview = self.updatePreview
         self.functions.updateTitle = self.updateTitle
+        self.functions.notifySelectionInvalid = self._onDialogSelectionInvalid
+        self.functions.notifySelectionValid = self._onDialogSelectionValid
+
+        # Needed for stylesheet-driven background highlights and blink feedback.
+        self.setAttribute(Qt.WA_StyledBackground, True)
         
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(6, 6, 6, 6)
@@ -871,10 +421,19 @@ class _WorkflowCardZoneWidget(QWidget):
         self.inputs_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(self.inputs_container)
         
+        title_layout = QHBoxLayout()
+        self.idLabel = QLabel()
+        self.idLabel.setAlignment(Qt.AlignCenter)
+        self.idLabel.setAttribute(Qt.WA_TransparentForMouseEvents)
+        title_layout.addWidget(self.idLabel)
+        
+        title_layout.addStretch()
+        
         self.titleLabel = QLabel(functions.title)
         self.titleLabel.setAlignment(Qt.AlignCenter)
         self.titleLabel.setAttribute(Qt.WA_TransparentForMouseEvents)
-        main_layout.addWidget(self.titleLabel)
+        title_layout.addWidget(self.titleLabel)
+        main_layout.addLayout(title_layout)
         
         self.thumbnail = QLabel()
         self.thumbnail.setAlignment(Qt.AlignCenter)
@@ -888,11 +447,13 @@ class _WorkflowCardZoneWidget(QWidget):
         
         self.dialog = self.functions.setupDialog_cb(parent=self, 
                                                     workflowGui=workflowGui, 
-                                                    posData=self.posData)
+                                                    posData=self.posData,
+                                                    logger=self.logger)
         self.functions.initializeDialog_cb(self.dialog,
                                            parent=self,
                                            workflowGui=workflowGui,
                                            posData=self.posData)
+        
         self.functions.runDialog_cb(self.dialog)
 
     def _getDialogInputTypes(self):
@@ -917,6 +478,35 @@ class _WorkflowCardZoneWidget(QWidget):
         """
         self.title = new_title
         self.titleLabel.setText(new_title)
+
+    def _onDialogSelectionInvalid(self, value):
+        """Forward a dialog-level invalid-selection notification to WorkflowGui."""
+        if self.workflowGui is not None and hasattr(self.workflowGui, '_onCardSelectionInvalid'):
+            self.workflowGui._onCardSelectionInvalid(self, value)
+
+    def _onDialogSelectionValid(self):
+        """Forward a dialog-level valid-selection notification to WorkflowGui."""
+        if self.workflowGui is not None and hasattr(self.workflowGui, '_onCardSelectionValid'):
+            self.workflowGui._onCardSelectionValid(self)
+    
+    def paintEvent(self, event):
+        """Paint the card with a rounded border.
+        
+        Args:
+            event: The paint event.
+        """
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        
+        # Draw rounded rectangle border
+        rect = self.rect().adjusted(0, 0, -1, -1)
+        pen = QPen(QColor("#555"))
+        pen.setWidth(2)
+        painter.setPen(pen)
+        painter.drawRoundedRect(rect, 8, 8)
+        
+        painter.end()
+        super().paintEvent(event)
 
     def setZoneOnCircles(self):
         """Assign the zone reference to all input/output circles.
@@ -1056,6 +646,16 @@ class _WorkflowCardZoneWidget(QWidget):
         """
         self.functions.updateInputTypes(self.dialog, input_types)
 
+    def _logInfo(self, message):
+        """Log message supporting both Logger objects and callables."""
+        try:
+            if hasattr(self.logger, 'info'):
+                self.logger.info(message)
+            elif callable(self.logger):
+                self.logger(message)
+        except Exception:
+            pass
+
     def mousePressEvent(self, event):
         """Handle mouse press events for card interaction.
         
@@ -1072,10 +672,11 @@ class _WorkflowCardZoneWidget(QWidget):
         elif event.button() == Qt.MiddleButton:
             self._deleteCard()
         elif event.button() == Qt.RightButton:
+            self.workflowGui.setUnsavedWork(True)
             try:
                 self.functions.runDialog_cb(self.dialog)
             except Exception as e:
-                print(f"Error running dialog: {e}")
+                self._logInfo(f"Error running dialog: {e}")
 
     def mouseMoveEvent(self, event):
         """Update card position and connection lines while dragging.
@@ -1108,6 +709,7 @@ class _WorkflowCardZoneWidget(QWidget):
 
     def _deleteCard(self):
         """Delete this card from the workflow zone."""
+        self.workflowGui.setUnsavedWork(True)
         if self.workflowZone is not None:
             self.workflowZone.removeCard(self)
         # clean up dialog and widget
@@ -1215,12 +817,14 @@ class WorkflowZone(QGraphicsView):
     """
     sigItemDropped = Signal(str, int, int)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, logger=print):
         """Initialize the workflow zone.
         
         Args:
             parent: Parent widget.
         """
+        self.logger = logger
+        self.parent = parent
         super().__init__(parent)
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
@@ -1245,6 +849,20 @@ class WorkflowZone(QGraphicsView):
         self.line_to_visual_line_mapping = {}
         self.visual_line_to_line_mapping = {}
 
+    def _logInfo(self, message):
+        """Log an info message for workflow-zone actions."""
+        try:
+            if hasattr(self.logger, 'info'):
+                self.logger.info(message)
+            elif callable(self.logger):
+                self.logger(message)
+        except Exception:
+            pass
+
+    def _markWorkflowChanged(self):
+        """Notify parent workflow GUI about user-driven workflow mutations."""
+        self.parent.setUnsavedWork(True)
+
     def addCard(self, card_widget, x, y):
         """Add a workflow card to the zone at the specified position.
         
@@ -1259,11 +877,16 @@ class WorkflowZone(QGraphicsView):
         card_widget.graphics_proxy = proxy
         card_widget.workflowZone = self
         card_widget.card_id = self.unique_card_id  # Store the ID on the card widget
+        card_widget.idLabel.setText(f"ID: {self.unique_card_id}")  # Display the ID in the label
         card_widget.setZoneOnCircles()
         self.cards[self.unique_card_id] = proxy
+        card_id = self.unique_card_id
         self.unique_card_id += 1
         if len(self.cards) == 1:
             self.placeholder_proxy.hide()
+
+        title = getattr(card_widget, 'title', '')
+        self._logInfo(f"Added card ID={card_id} title='{title}' at ({x}, {y}).")
 
     def _computeCardInputTypes(self, card):
         """Compute concrete input types for a card from current connections."""
@@ -1306,12 +929,21 @@ class WorkflowZone(QGraphicsView):
     def removeLineKeys(self, line_keys):
         """Remove logical and visual connections and resync affected inputs."""
         affected_input_card_ids = set()
+        removed_line_keys = []
 
         for line_key in line_keys:
             if line_key in self.lines:
                 self.lines.remove(line_key)
+                removed_line_keys.append(line_key)
             self._removeVisualLineByKey(line_key)
             affected_input_card_ids.add(line_key[1][0])
+
+        for line_key in removed_line_keys:
+            (start_card_id, start_port), (end_card_id, end_port) = line_key
+            self._logInfo(
+                f"Removed connection: card {start_card_id} output {start_port} -> "
+                f"card {end_card_id} input {end_port}."
+            )
 
         for card_id in affected_input_card_ids:
             self.syncCardInputTypes(card_id)
@@ -1346,6 +978,9 @@ class WorkflowZone(QGraphicsView):
                 if not self.cards:
                     self.placeholder_proxy.show()
 
+                title = getattr(card_widget, 'title', '')
+                self._logInfo(f"Removed card ID={card_id} title='{title}'.")
+
     def handleCircleClick(self, card, is_output, index, scene_pos):
         """Handle a click on an input/output circle to create/complete a connection.
         
@@ -1376,7 +1011,10 @@ class WorkflowZone(QGraphicsView):
                     if card_id is not None:
                         existing = [line for line in self.lines if line[1][0] == card_id and line[1][1] == index]
                         if existing:
-                            print(f"Input {index} on this card already has a connection. Inputs can only have one connection.")
+                            self._logInfo(
+                                f"Input {index} on this card already has a connection. "
+                                "Inputs can only have one connection."
+                            )
                             self.cancelConnection()
                             return
 
@@ -1437,7 +1075,10 @@ class WorkflowZone(QGraphicsView):
         input_type_accepted = input_card._getDialogInputTypesAccepted().get(input_idx)
         
         if not self._areTypesCompatible(output_type, input_type_accepted):
-            print(f"Type mismatch: cannot connect output type '{output_type}' to input type '{input_type_accepted}'")
+            self._logInfo(
+                f"Type mismatch: cannot connect output type '{output_type}' "
+                f"to input type '{input_type_accepted}'"
+            )
             return
         
         # Store connection with card IDs
@@ -1449,6 +1090,11 @@ class WorkflowZone(QGraphicsView):
         self.lines.append(line_key)
         self.syncCardInputTypes(input_card.card_id)
         self.drawConnection(card1, is_out1, idx1, card2, is_out2, idx2, line_key=line_key)
+        self._markWorkflowChanged()
+        self._logInfo(
+            f"Created connection: card {line_key[0][0]} output {line_key[0][1]} -> "
+            f"card {line_key[1][0]} input {line_key[1][1]}."
+        )
 
     def drawConnection(self, card1, is_out1, idx1, card2, is_out2, idx2, line_key=None):
         """Draw a connection line between two circles"""
@@ -1502,12 +1148,14 @@ class WorkflowZone(QGraphicsView):
 
         if line_key_to_remove is not None:
             self.removeLineKeys([line_key_to_remove])
+            self._markWorkflowChanged()
             return
 
         # Fallback if mapping is out-of-sync.
         self.visual_line_to_line_mapping.pop(line, None)
         self.scene.removeItem(line)
         self.connection_lines.remove(line)
+        self._markWorkflowChanged()
 
     def updateConnectionLines(self):
         """Update all connection line positions based on current circle positions"""
@@ -1727,7 +1375,6 @@ class WorkflowGui(QMainWindow):
     def __init__(
             self, app, parent=None, buttonToRestore=None,
             mainWin=None, version=None, launcherSlot=None,
-            selectedExpPaths=None
         ):
         """Initialize the workflow GUI.
         
@@ -1756,13 +1403,18 @@ class WorkflowGui(QMainWindow):
         self.closeGUI = False
         self._acdc_version = myutils.read_version()
         self._version = version
-        self.selectedExpPaths = selectedExpPaths
+        self.selectedExpPaths = None 
+        self.loadedWorkflowPath = None
+        self.logDisplay = None
+        self._guiLogHandler = None
+        self.unsaved_work = False
+        self._suspend_unsaved_tracking = False
+        self.data_loaded = False
 
         self.setAcceptDrops(True)
         self._appName = 'Cell-ACDC'
                 
-        self.initData()
-        self.setupUI()
+
         
     def initData(self):
         """Load and analyze data from selected experiments.
@@ -1809,23 +1461,49 @@ class WorkflowGui(QMainWindow):
             self.img_channels = self.img_channels.intersection(chNames_loc)
             self.segm_channels = self.segm_channels.intersection(segm_endnames)
 
-    def _setupDragCard(self, functions: WorkflowBaseFunctions):
+    def _setupDragCard(self, functions: WorkflowBaseFunctions, build_widget=True):
         """Add a workflow card to the sidebar.
         
-        Creates a list item with preview and adds it to the sidebar for
-        drag-and-drop into the workflow zone.
+        Creates a list item and optionally attaches the full preview widget.
+        When data is not loaded yet, we keep the sidebar lightweight by
+        skipping full widget initialization.
         
         Args:
             functions (WorkflowBaseFunctions): The workflow operation to add.
+            build_widget (bool): If True, create full list widget with preview.
         """
         channels_card = QListWidgetItem()
         channels_card.setData(Qt.UserRole, functions)
-
-        card_widget = _WorkflowCardListWidget(functions, parent=self, posData=self.posData)
-        
-        channels_card.setSizeHint(card_widget.sizeHint())
         self.sidebar.addItem(channels_card)
+        
+        if not build_widget:
+            channels_card.setText(getattr(functions, 'title', 'Workflow Card'))
+            return
+
+        # Custom item widget handles title/preview painting.
+        channels_card.setText('')
+        card_widget = _WorkflowCardListWidget(functions, parent=self, posData=self.posData)
+        channels_card.setSizeHint(card_widget.sizeHint())
         self.sidebar.setItemWidget(channels_card, card_widget)
+
+    def _rebuildSidebarCards(self, build_widgets):
+        """Recreate sidebar cards.
+
+        Args:
+            build_widgets (bool): If True attach full card widgets, otherwise
+                create lightweight text-only items.
+        """
+        if not hasattr(self, 'sidebar') or self.sidebar is None:
+            return
+
+        self.sidebar.clear()
+        functions_to_add = (
+            workflow_dialogs.WorkflowCombineChannelsFunctions(),
+            workflow_dialogs.WorkflowInputImgFunctions(),
+            workflow_dialogs.WorkflowInputSegmFunctions(),
+        )
+        for functions in functions_to_add:
+            self._setupDragCard(functions, build_widget=build_widgets)
 
     def addDroppedCard(self, card: str, x: int, y: int):
         """Handle a card dropped into the WorkflowZone at position (x, y).
@@ -1858,10 +1536,13 @@ class WorkflowGui(QMainWindow):
             card_functions = card_data
 
         # Create a new zone card widget with the card data, passing zone reference
-        card_widget = _WorkflowCardZoneWidget(card_functions, posData=self.posData, zone=self.dropZone, workflowGui=self)
+        card_widget = _WorkflowCardZoneWidget(card_functions, posData=self.posData, 
+                                              zone=self.dropZone, workflowGui=self, 
+                                              logger=self.logger)
         
         # Add it directly to the drop zone at the specified position
         self.dropZone.addCard(card_widget, x, y)
+        self.setUnsavedWork(True)
 
     def setupUI(self):
         """Build the user interface.
@@ -1871,6 +1552,50 @@ class WorkflowGui(QMainWindow):
         - Main workflow zone for editing
         - Connects signals for drag-and-drop
         """
+        # Create and add toolbar first, before setting up central widget layout
+        folder_toolbar = widgets.ToolBar("File", parent=self)
+        
+        self.newAction = QAction(self)
+        self.newAction.setText("&New workflow file...")
+        self.newAction.setIcon(QIcon(":file-new.svg"))
+        self.newAction.setShortcut('Ctrl+N')
+        self.newAction.triggered.connect(self._onNewWorkflowTriggered)
+        
+        self.loadWorkflowAction = QAction(
+            QIcon(":folder-open.svg"), "&Load Workflow...", self
+        )
+        self.loadWorkflowAction.setShortcut('Ctrl+O')
+        self.loadWorkflowAction.triggered.connect(self._onLoadWorkflowTriggered)
+        
+        self.saveAction = QAction(
+            QIcon(":file-save.svg"), "&Save Workflow...", self
+        )
+        self.saveAction.setShortcut('Ctrl+S')
+        self.saveAction.triggered.connect(self._onSaveWorkflowTriggered)
+        
+        self.saveNewAction = QAction(
+            QIcon(":file-new.svg"), "Save Workflow &As...", self
+        )
+        self.saveNewAction.setShortcut('Ctrl+Shift+S')
+        self.saveNewAction.triggered.connect(self._onSaveWorkflowAsTriggered)
+        
+        self.openImagesAction = QAction(
+            QIcon(":image.svg"), "Load Images...", self
+        )
+        self.openImagesAction.triggered.connect(self._onLoadImagesTriggered)
+        
+        folder_toolbar.addAction(self.newAction)
+        folder_toolbar.addAction(self.loadWorkflowAction)
+        folder_toolbar.addAction(self.saveAction)
+        folder_toolbar.addAction(self.saveNewAction)
+        folder_toolbar.addAction(self.openImagesAction)
+        self.saveAction.setEnabled(False)
+        self.saveNewAction.setEnabled(False)
+        self.openImagesAction.setEnabled(False)
+        
+        self.addToolBar(folder_toolbar)
+
+        # Now set up central widget and layout
         central = QWidget()
         self.setCentralWidget(central)
         layout = QHBoxLayout(central)
@@ -1882,14 +1607,8 @@ class WorkflowGui(QMainWindow):
         self.sidebar.setDragDropMode(QAbstractItemView.DragOnly)
         self.sidebar.setSelectionMode(QAbstractItemView.SingleSelection)
 
-        functions = WorkflowCombineChannelsFunctions()
-        self._setupDragCard(functions)
-        
-        functions = WorkflowInputImgFunctions()
-        self._setupDragCard(functions)
-        
-        functions = WorkflowInputSegmFunctions()
-        self._setupDragCard(functions)
+        # Keep sidebar lightweight until experiment data is loaded.
+        self._rebuildSidebarCards(build_widgets=False)
         
         layout.addWidget(self.sidebar)
         
@@ -1899,11 +1618,25 @@ class WorkflowGui(QMainWindow):
         mainLayout = QVBoxLayout(self.mainPanel)
 
         # Create the drop zone that will directly hold dropped cards
-        self.dropZone = WorkflowZone()
+        self.dropZone = WorkflowZone(logger=self.logger, parent=self)
         self.dropZone.sigItemDropped.connect(self.addDroppedCard)
         mainLayout.addWidget(self.dropZone)
 
+        logLabel = QLabel('Logs')
+        mainLayout.addWidget(logLabel)
+
+        self.logDisplay = QPlainTextEdit(self)
+        self.logDisplay.setReadOnly(True)
+        self.logDisplay.setMaximumBlockCount(500)
+        self.logDisplay.setFixedHeight(120)
+        self.logDisplay.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        mainLayout.addWidget(self.logDisplay)
+
         layout.addWidget(self.mainPanel)
+
+        # Initially disable sidebar and dropZone until data is loaded
+        self.sidebar.setEnabled(False)
+        self.dropZone.setEnabled(False)
 
         # Set window size based on screen resolution
         screen = QGuiApplication.primaryScreen().availableGeometry()
@@ -1924,24 +1657,217 @@ class WorkflowGui(QMainWindow):
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
             module=module, logs_path=logs_path, caller=self._appName
         )
-        
-        if self._version is not None:
-            logger.info(f'Initializing GUI v{self._version}')
-        else:
-            logger.info(f'Initializing GUI...')
-            
+
+        self.curr_save_loaded = None
         self.module = module
         self.logger = logger
         self.log_path = log_path
         self.log_filename = log_filename
         self.logs_path = logs_path
         
+        self.setupUI()
+        self._attachGuiLogHandler()
+
+        if self._version is not None:
+            self.logger.info(f'Initializing GUI v{self._version}')
+        else:
+            self.logger.info('Initializing GUI...')
+        
         self.show()
+
+    def _attachGuiLogHandler(self):
+        """Attach a logging handler that streams records to the GUI panel."""
+        if self.logDisplay is None:
+            return
+
+        if self._guiLogHandler is not None:
+            try:
+                self.logger.removeHandler(self._guiLogHandler)
+            except Exception:
+                pass
+
+        if not hasattr(self.logger, 'addHandler'):
+            return
+
+        handler = _WorkflowGuiLogHandler(self.logDisplay)
+        handler.setLevel(logging.INFO)
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        self.logger.addHandler(handler)
+        self._guiLogHandler = handler
+
+    def _logInfo(self, message):
+        """Log message supporting both Logger objects and callables."""
+        try:
+            if hasattr(self.logger, 'info'):
+                self.logger.info(message)
+            elif callable(self.logger):
+                self.logger(message)
+        except Exception:
+            pass
+
+    def _setWorkflowUIEnabled(self, enabled=True):
+        """Enable or disable the workflow sidebar and dropzone."""
+        if hasattr(self, 'sidebar') and self.sidebar is not None:
+            self.sidebar.setEnabled(enabled)
+        if hasattr(self, 'dropZone') and self.dropZone is not None:
+            self.dropZone.setEnabled(enabled)
+
+    def _setSaveActionsEnabled(self, enabled=True):
+        """Enable or disable workflow save actions."""
+        if hasattr(self, 'saveAction') and self.saveAction is not None:
+            self.saveAction.setEnabled(enabled)
+        if hasattr(self, 'saveNewAction') and self.saveNewAction is not None:
+            self.saveNewAction.setEnabled(enabled)
+
+    def _onCardSelectionInvalid(self, card_widget, value):
+        """Called when a dialog's previously selected value is no longer available.
+
+        Starts a ``QControlBlink`` on the card to attract attention and marks
+        the dialog selector with a red background while an invalid channel is
+        still selected.
+
+        Args:
+            card_widget (_WorkflowCardZoneWidget): The card whose selection became invalid.
+            value (str): The selection value that is no longer available.
+        """
+        self._logInfo(
+            f"Card '{card_widget.title}': previous selection '{value}' is no longer "
+            "available after loading new image data."
+        )
+        card_widget._has_invalid_selection = True
+        card_widget._invalid_selection_value = value
+
+        # Blink the card widget to alert the user
+        blinker = qutils.QControlBlink(card_widget, qparent=self)
+        blinker.start()
+        # Keep blinker alive on the card so it is not garbage-collected mid-blink
+        card_widget._selection_invalid_blinker = blinker
+
+        # Re-apply invalid highlight after blink stops (blink toggles stylesheet).
+        duration_ms = getattr(blinker, 'duration_ms', 2000)
+        def _apply_invalid_style_if_needed():
+            if getattr(card_widget, '_has_invalid_selection', False):
+                card_widget.setStyleSheet("background-color: rgba(255, 0, 0, 50);")
+        QTimer.singleShot(duration_ms + 50, _apply_invalid_style_if_needed)
+
+    def _onCardSelectionValid(self, card_widget):
+        """Clear invalid-selection visual state after a valid selection is confirmed."""
+        card_widget._has_invalid_selection = False
+        card_widget._invalid_selection_value = None
+        card_widget.setStyleSheet('')
+
+    def _notifyDialogsNewImageLoaded(self):
+        """Notify existing workflow card dialogs that image data changed."""
+        if not hasattr(self, 'dropZone') or self.dropZone is None:
+            return
+
+        for proxy in self.dropZone.cards.values():
+            card_widget = proxy.widget() if proxy is not None else None
+            if card_widget is None:
+                continue
+
+            dialog = getattr(card_widget, 'dialog', None)
+            if dialog is None:
+                continue
+
+            if hasattr(dialog, 'new_image_loaded'):
+                try:
+                    dialog.new_image_loaded()
+                except TypeError:
+                    try:
+                        dialog.new_image_loaded(self.posData)
+                    except Exception as e:
+                        self._logInfo(f"Error in new_image_loaded for '{card_widget.title}': {e}")
+                except Exception as e:
+                    self._logInfo(f"Error in new_image_loaded for '{card_widget.title}': {e}")
+
+            try:
+                card_widget.updatePreview()
+            except Exception:
+                pass
+
+    def _loadExperimentData(self):
+        """Load experiment data by prompting user to select folders.
+        
+        Shows dialog with instructions and lets user select experiment folders.
+        Initializes data and enables the workflow UI if successful.
+        
+        Returns:
+            bool: True if data was successfully loaded, False otherwise.
+        """
+        custom_txt = (
+            "After you click \"Ok\" on this dialog you will be asked "
+            "to <b>select the experiment folders</b>, one by one.<br><br>"
+        )
+        
+        if self.mainWin is None or not hasattr(self.mainWin, 'getSelectedExpPaths'):
+            self._logInfo('Error: Cannot access experiment folder selection dialog.')
+            return False
+        
+        selectedExpPaths = self.mainWin.getSelectedExpPaths(
+            'Workflow GUI',
+            custom_txt=custom_txt
+        )
+        
+        if selectedExpPaths is None:
+            self._logInfo('No experiment folders selected.')
+            return False
+        
+        try:
+            self.selectedExpPaths = selectedExpPaths
+            self.initData()
+            self._rebuildSidebarCards(build_widgets=True)
+            self._notifyDialogsNewImageLoaded()
+            self.data_loaded = True
+            self._setWorkflowUIEnabled(True)
+            self._setSaveActionsEnabled(True)
+            self.openImagesAction.setEnabled(True)
+            self.setUnsavedWork(False)
+            self._logInfo(f'Loaded data from {len(self.data)} positions.')
+            return True
+        except Exception as e:
+            self._logInfo(f'Error loading experiment data: {e}')
+            self._setWorkflowUIEnabled(False)
+            return False
+
+    def setUnsavedWork(self, unsaved=True):
+        """Update the unsaved-work flag, respecting temporary tracking suspension."""
+        unsaved = bool(unsaved)
+        if unsaved and self._suspend_unsaved_tracking:
+            return
+        self.unsaved_work = unsaved
+
+    def _askSaveBeforeClosing(self):
+        """Ask user how to proceed when there are unsaved workflow changes."""
+        msg = widgets.myMessageBox(wrapText=False, parent=self)
+        txt = (
+            'There are unsaved workflow changes.<br><br>'
+            'Do you want to save before closing?'
+        )
+        _, discardButton, saveButton = msg.warning(
+            self,
+            'Unsaved workflow changes',
+            txt,
+            buttonsTexts=('Cancel', 'Discard', 'Save')
+        )
+
+        if msg.cancel:
+            return False
+
+        if msg.clickedButton == saveButton:
+            self._onSaveWorkflowTriggered()
+            return not self.unsaved_work
+
+        if msg.clickedButton == discardButton:
+            return True
+
+        return False
     
     def closeEvent(self, event):
         """Handle window close event.
         
-        Emits the sigClosed signal and prevents closing if closeGUI is False.
+        Emits the sigClosed signal and prompts to save if there are
+        unsaved workflow changes.
         
         Args:
             event: The close event.
@@ -1949,7 +1875,11 @@ class WorkflowGui(QMainWindow):
         if self.closeGUI:
             event.ignore()
             return
-        
+
+        if self.unsaved_work and not self._askSaveBeforeClosing():
+            event.ignore()
+            return
+
         self.closeGUI = True
         self.sigClosed.emit(self)
         
@@ -1972,6 +1902,486 @@ class WorkflowGui(QMainWindow):
         if title is None:
             title = f'Cell-ACDC v{self._acdc_version} - workflow GUI'
         super().setWindowTitle(title)
+
+    def saveWorkflow(self, save_dir):
+        """Save the current workflow to disk.
+
+        Creates `save_dir` and writes a `main.json` manifest containing cards
+        metadata and connection lines. Each card also saves its own dialog
+        content through `dialog.saveContent(path)`.
+
+        Args:
+            save_dir (str): Destination folder for workflow files.
+
+        Returns:
+            str: Path to the written `main.json` file.
+        """
+        os.makedirs(save_dir, exist_ok=True)
+        # clear old files in the save directory to prevent orphaned files from previous saves
+        for filename in os.listdir(save_dir):
+            file_path = os.path.join(save_dir, filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        self.logger.info(f"Saving workflow to: {save_dir}")
+        cards_data = {}
+        for card_id, proxy in self.dropZone.cards.items():
+            card_widget = proxy.widget()
+            if card_widget is None:
+                continue
+
+            title = getattr(card_widget, 'title', '') or ''
+            # Reuse shared helper for filesystem-safe text.
+            safe_title = to_alphanumeric(title).strip('_').lower()
+            if not safe_title:
+                safe_title = 'card'
+            save_filename = f'{card_id}_{safe_title}'
+            save_path = os.path.join(save_dir, save_filename)
+
+            dialog = getattr(card_widget, 'dialog', None)
+            if dialog is not None and hasattr(dialog, 'saveContent'):
+                dialog.saveContent(save_path)
+
+            pos = proxy.pos()
+            cards_data[str(card_id)] = {
+                'kind': title,
+                'position': {'x': pos.x(), 'y': pos.y()},
+                'save_path': save_filename,
+            }
+
+        lines_data = [
+            {
+                'from': {'card_id': start_card_id, 'port': start_idx},
+                'to': {'card_id': end_card_id, 'port': end_idx},
+            }
+            for (start_card_id, start_idx), (end_card_id, end_idx) in self.dropZone.lines
+        ]
+
+        main_data = {
+            'cards': cards_data,
+            'lines': lines_data,
+            'selectedExpPaths': self.selectedExpPaths or {},
+        }
+
+        main_json_path = os.path.join(save_dir, 'main.json')
+        load.write_json(main_data, main_json_path, indent=2)
+        self.setUnsavedWork(False)
+
+        return main_json_path
+
+    def _getCardSavePathCandidates(self, save_dir, save_path):
+        """Return candidate filesystem paths for a card settings save path."""
+        base_path = (
+            save_path if os.path.isabs(save_path)
+            else os.path.join(save_dir, save_path)
+        )
+
+        candidates = [base_path]
+        base_path_lower = base_path.lower()
+        has_supported_extension = any(
+            base_path_lower.endswith(ext)
+            for ext in SUPPORTED_EXTENSIONS_CARD_SETTINGS
+        )
+        if not has_supported_extension:
+            for ext in SUPPORTED_EXTENSIONS_CARD_SETTINGS:
+                candidates.append(f'{base_path}{ext}')
+
+        # Remove duplicates while preserving order.
+        return list(dict.fromkeys(candidates))
+
+    def _findExistingCardSavePath(self, save_dir, save_path):
+        """Return the first existing card settings path, if any."""
+        candidates = self._getCardSavePathCandidates(save_dir, save_path)
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                return candidate
+        return None
+
+    def verifyWorkflowFolderStructure(self, save_dir, require_card_files=True):
+        """Verify the workflow save folder structure and manifest schema.
+
+        Args:
+            save_dir (str): Folder expected to contain workflow save files.
+            require_card_files (bool): If True, verify that each card save file exists.
+
+        Returns:
+            tuple: (is_valid, errors, main_data)
+                is_valid (bool): True if structure is valid.
+                errors (list[str]): Validation errors.
+                main_data (dict or None): Parsed main.json if available.
+        """
+        errors = []
+        main_data = None
+
+        if not os.path.isdir(save_dir):
+            errors.append(f"Workflow folder not found: {save_dir}")
+            return False, errors, main_data
+
+        main_json_path = os.path.join(save_dir, 'main.json')
+        if not os.path.exists(main_json_path):
+            errors.append(f"Missing workflow manifest: {main_json_path}")
+            return False, errors, main_data
+
+        main_data = load.read_json(
+            main_json_path, logger_func=self._logInfo, desc='workflow data'
+        )
+        if not isinstance(main_data, dict):
+            errors.append(f"Invalid workflow manifest format: {main_json_path}")
+            return False, errors, None
+
+        cards_data = main_data.get('cards')
+        lines_data = main_data.get('lines')
+
+        if not isinstance(cards_data, dict):
+            errors.append("Invalid 'cards' section in main.json (expected dict).")
+        if not isinstance(lines_data, list):
+            errors.append("Invalid 'lines' section in main.json (expected list).")
+
+        if isinstance(cards_data, dict):
+            for card_id, card_info in cards_data.items():
+                if not isinstance(card_info, dict):
+                    errors.append(f"Card '{card_id}' entry is invalid (expected dict).")
+                    continue
+
+                kind = card_info.get('kind')
+                if not isinstance(kind, str) or not kind.strip():
+                    errors.append(f"Card '{card_id}' has invalid or missing 'kind'.")
+
+                position = card_info.get('position')
+                if not isinstance(position, dict):
+                    errors.append(f"Card '{card_id}' has invalid or missing 'position'.")
+                else:
+                    x = position.get('x')
+                    y = position.get('y')
+                    if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+                        errors.append(f"Card '{card_id}' position must contain numeric 'x' and 'y'.")
+
+                save_path = card_info.get('save_path')
+                if not isinstance(save_path, str) or not save_path.strip():
+                    errors.append(f"Card '{card_id}' has invalid or missing 'save_path'.")
+                    continue
+
+                if require_card_files:
+                    card_save_path = self._findExistingCardSavePath(save_dir, save_path)
+                    if card_save_path is None:
+                        candidates = self._getCardSavePathCandidates(save_dir, save_path)
+                        errors.append(
+                            f"Card '{card_id}' save file not found. "
+                            f"Tried: {', '.join(candidates)}"
+                        )
+
+        if isinstance(lines_data, list):
+            for idx, line_info in enumerate(lines_data):
+                if not isinstance(line_info, dict):
+                    errors.append(f"Line entry at index {idx} is invalid (expected dict).")
+                    continue
+
+                from_info = line_info.get('from')
+                to_info = line_info.get('to')
+                if not isinstance(from_info, dict) or not isinstance(to_info, dict):
+                    errors.append(f"Line entry at index {idx} must contain dict 'from' and 'to'.")
+                    continue
+
+                for endpoint_name, endpoint in (('from', from_info), ('to', to_info)):
+                    if 'card_id' not in endpoint or 'port' not in endpoint:
+                        errors.append(
+                            f"Line entry at index {idx} endpoint '{endpoint_name}' "
+                            "must contain 'card_id' and 'port'."
+                        )
+
+        return len(errors) == 0, errors, main_data
+
+    def _resolveWorkflowCardFunctions(self, kind):
+        """Resolve saved card kind/title to a sidebar workflow functions object."""
+        available_functions = []
+        for i in range(self.sidebar.count()):
+            item = self.sidebar.item(i)
+            functions = item.data(Qt.UserRole)
+            if functions is not None:
+                available_functions.append(functions)
+
+        if not available_functions:
+            return None
+
+        kind_text = str(kind or '').strip()
+        kind_lower = kind_text.lower()
+
+        # First pass: exact title match.
+        for functions in available_functions:
+            if getattr(functions, 'title', '') == kind_text:
+                return type(functions)()
+
+        # Second pass: support dynamic titles like "image: CH1".
+        if ':' in kind_lower:
+            prefix = kind_lower.split(':', 1)[0].strip()
+            if prefix == 'image':
+                for functions in available_functions:
+                    title_lower = getattr(functions, 'title', '').lower()
+                    if 'image' in title_lower:
+                        return type(functions)()
+            if prefix in ('segmentation', 'segm'):
+                for functions in available_functions:
+                    title_lower = getattr(functions, 'title', '').lower()
+                    if 'segmentation' in title_lower or 'segm' in title_lower:
+                        return type(functions)()
+
+        # Final pass: fuzzy containment.
+        for functions in available_functions:
+            title = getattr(functions, 'title', '')
+            title_lower = title.lower()
+            if kind_lower and (kind_lower in title_lower or title_lower in kind_lower):
+                return type(functions)()
+
+        return None
+
+    def _clearWorkflow(self):
+        """Remove all cards and connections from the current workflow zone."""
+        if not hasattr(self, 'dropZone') or self.dropZone is None:
+            return
+        card_ids = list(self.dropZone.cards.keys())
+        for card_id in card_ids:
+            proxy = self.dropZone.cards.get(card_id)
+            if proxy is None:
+                continue
+            card_widget = proxy.widget()
+            if card_widget is not None:
+                self.dropZone.removeCard(card_widget) # also removes connections
+
+    def loadWorkflow(self, save_dir):
+        """Load a saved workflow from disk and restore cards and connections.
+
+        Args:
+            save_dir (str): Folder containing `main.json` and per-card files.
+
+        Returns:
+            bool: True if loading completed successfully, False otherwise.
+        """
+        is_valid, errors, main_data = self.verifyWorkflowFolderStructure(
+            save_dir, require_card_files=True
+        )
+        if not is_valid:
+            self._logInfo('Invalid workflow folder structure:')
+            for error in errors:
+                self._logInfo(f' - {error}')
+            return False
+
+        cards_data = main_data.get('cards', {})
+        lines_data = main_data.get('lines', [])
+        saved_selected_paths = main_data.get('selectedExpPaths', {})
+        
+        # Restore selectedExpPaths and reload data if they exist
+        if saved_selected_paths:
+            try:
+                self.selectedExpPaths = saved_selected_paths
+                self.initData()
+                self._rebuildSidebarCards(build_widgets=True)
+                self.data_loaded = True
+                self._setWorkflowUIEnabled(True)
+                self.openImagesAction.setEnabled(True)
+            except Exception as e:
+                self._logInfo(f'Error restoring experiment data: {e}')
+                self._setWorkflowUIEnabled(False)
+                return False
+
+        prev_suspend_state = self._suspend_unsaved_tracking
+        self._suspend_unsaved_tracking = True
+        try:
+            self._clearWorkflow()
+
+            saved_to_new_id = {}
+
+            def _sort_key(card_id_text):
+                try:
+                    return int(card_id_text)
+                except Exception:
+                    return card_id_text
+
+            for saved_card_id in sorted(cards_data.keys(), key=_sort_key):
+                card_info = cards_data[saved_card_id] or {}
+                kind = card_info.get('kind', '')
+
+                functions = self._resolveWorkflowCardFunctions(kind)
+                if functions is None:
+                    self._logInfo(
+                        f"Could not resolve workflow card kind '{kind}'. "
+                        f"Skipping card {saved_card_id}."
+                    )
+                    continue
+
+                position = card_info.get('position', {}) or {}
+                x = position.get('x', 0)
+                y = position.get('y', 0)
+
+                try:
+                    card_widget = _WorkflowCardZoneWidget(
+                        functions,
+                        posData=self.posData,
+                        zone=self.dropZone,
+                        workflowGui=self,
+                        logger=self.logger,
+                    )
+                    self.dropZone.addCard(card_widget, x, y)
+                except Exception as e:
+                    self._logInfo(f"Failed to create card '{kind}' ({saved_card_id}): {e}")
+                    continue
+
+                new_card_id = getattr(card_widget, 'card_id', None)
+                if new_card_id is None:
+                    continue
+
+                saved_to_new_id[str(saved_card_id)] = new_card_id
+
+                save_path = card_info.get('save_path')
+                if save_path:
+                    card_save_path = self._findExistingCardSavePath(save_dir, save_path)
+                    dialog = getattr(card_widget, 'dialog', None)
+                    try:
+                        dialog.loadContent(card_save_path)
+                    except Exception as e:
+                        self._logInfo(f"Failed to load card content from {card_save_path}: {e}")
+                        traceback.print_exc()
+
+            for line_info in lines_data:
+                from_info = (line_info or {}).get('from', {}) or {}
+                to_info = (line_info or {}).get('to', {}) or {}
+
+                saved_from_id = str(from_info.get('card_id'))
+                saved_to_id = str(to_info.get('card_id'))
+                new_from_id = saved_to_new_id.get(saved_from_id)
+                new_to_id = saved_to_new_id.get(saved_to_id)
+
+                if new_from_id is None or new_to_id is None:
+                    continue
+
+                from_port = from_info.get('port', 0)
+                to_port = to_info.get('port', 0)
+
+                try:
+                    from_port = int(from_port)
+                    to_port = int(to_port)
+                except Exception:
+                    continue
+
+                start_proxy = self.dropZone.cards.get(new_from_id)
+                end_proxy = self.dropZone.cards.get(new_to_id)
+                if start_proxy is None or end_proxy is None:
+                    continue
+
+                start_card = start_proxy.widget()
+                end_card = end_proxy.widget()
+                if start_card is None or end_card is None:
+                    continue
+
+                self.dropZone.createConnection(
+                    start_card,
+                    True,
+                    from_port,
+                    end_card,
+                    False,
+                    to_port,
+                )
+        finally:
+            self._suspend_unsaved_tracking = prev_suspend_state
+
+        self._notifyDialogsNewImageLoaded()
+        self._setSaveActionsEnabled(True)
+        self.setUnsavedWork(False)
+        return True
+    
+    def verifyWorkflowSaveFiles(self, save_dir):
+        """Verify that all expected card save files exist in the workflow folder.
+
+        Args:
+            save_dir (str): Folder containing `main.json` and per-card files.   
+            
+        Returns:
+            bool: True if all expected card files exist, False otherwise.
+        """
+        main_json_path = os.path.join(save_dir, 'main.json')
+        if not os.path.exists(main_json_path):
+            self._logInfo(f"Workflow manifest not found: {main_json_path}")
+            return False
+
+        main_data = load.read_json(
+            main_json_path, logger_func=self._logInfo, desc='workflow data'
+        )
+        if not isinstance(main_data, dict):
+            self._logInfo(f"Invalid workflow manifest format: {main_json_path}")
+            return False
+
+        cards_data = main_data.get('cards')
+        if not isinstance(cards_data, dict):
+            self._logInfo("Invalid 'cards' section in main.json (expected dict).")
+            return False
+
+        all_files_exist = True
+        for card_id, card_info in cards_data.items():
+            save_path = card_info.get('save_path')
+            if not isinstance(save_path, str) or not save_path.strip():
+                self._logInfo(f"Card '{card_id}' has invalid or missing 'save_path'.")
+                all_files_exist = False
+                continue
+
+            card_save_path = self._findExistingCardSavePath(save_dir, save_path)
+            if card_save_path is None:
+                candidates = self._getCardSavePathCandidates(save_dir, save_path)
+                self._logInfo(
+                    f"Card '{card_id}' save file not found. "
+                    f"Tried: {', '.join(candidates)}"
+                )
+                all_files_exist = False
+
+        return all_files_exist
+
+    def _onNewWorkflowTriggered(self):
+        """Load experiment data and create a new workflow."""
+        # check for unsaved work before clearing
+        if self.unsaved_work and not self._askSaveBeforeClosing():
+            return
+        
+        # Load experiment data first
+        if not self._loadExperimentData():
+            return
+        
+        self._clearWorkflow()
+        self.loadedWorkflowPath = None
+        self.setUnsavedWork(False)
+        self._logInfo('Created new empty workflow.')
+
+    def _onLoadWorkflowTriggered(self):
+        """Prompt for a workflow folder and load it."""
+        save_dir = self.selectSaveFolder(save=False)
+        if save_dir is None:
+            return
+
+        if self.verifyWorkflowSaveFiles(save_dir):
+            if self.loadWorkflow(save_dir):
+                self.loadedWorkflowPath = save_dir
+        else:
+            self._logInfo(
+                "Selected folder is missing expected workflow files. "
+                "Please select a valid workflow folder."
+            )
+
+    def _onSaveWorkflowAsTriggered(self):
+        """Prompt for a destination and save the workflow there."""
+        save_dir = self.selectSaveFolder(save=True)
+        if not save_dir:
+            return
+
+        self.saveWorkflow(save_dir)
+        self.loadedWorkflowPath = save_dir
+
+    def _onSaveWorkflowTriggered(self):
+        """Save to current workflow path or prompt if not yet set."""
+        if self.loadedWorkflowPath is None:
+            self._onSaveWorkflowAsTriggered()
+            return
+
+        self.saveWorkflow(self.loadedWorkflowPath)
+
+    def _onLoadImagesTriggered(self):
+        """Load or change experiment data."""
+        self._loadExperimentData()
         
     # handle key press events for shortcuts
     def keyPressEvent(self, event):
@@ -1983,5 +2393,65 @@ class WorkflowGui(QMainWindow):
             event: The key event.
         """
         if event.key() == Qt.Key_Q and self.debug:
-            print(self.dropZone.lines)
+            import pdb; pdb.set_trace()
         super().keyPressEvent(event)
+        
+    def selectSaveFolder(self, save=True):
+        """Select workflow folder.
+
+        For saving, first select a parent folder and then ask for the workflow
+        subfolder name using the existing filename dialog.
+        """
+        os.makedirs(workflow_default_save_folderpath, exist_ok=True)
+        base_dir = apps.get_existing_directory(
+            parent=self,
+            caption=(
+                'Select parent folder where to save the workflow'
+                if save else 'Select workflow folder to load'
+            ),
+            basedir=workflow_default_save_folderpath,
+            allow_images_path=False,
+        )
+
+        if not base_dir:
+            return None
+
+        if not save:
+            return base_dir
+
+        existing_names = [
+            name
+            for name in os.listdir(base_dir)
+            if os.path.isdir(os.path.join(base_dir, name))
+        ]
+
+        name_win = apps.filenameDialog(
+            basename='',
+            ext='',
+            title='Save workflow',
+            hintText='Insert a name for the workflow folder:',
+            existingNames=existing_names,
+            defaultEntry='workflow',
+            allowEmpty=False,
+            parent=self,
+        )
+        name_win.exec_()
+        if name_win.cancel:
+            return None
+        
+        path = os.path.join(base_dir, name_win.entryText)
+        # check if path is empty
+        # if os.path.exists(path) and os.listdir(path):
+        #     msg = widgets.myMessageBox(wrapText=False, parent=self)
+        #     txt = (
+        #         f"The folder <br>'{path}'<br>already exists and is not empty. "
+        #         "Saving the workflow here may overwrite existing files. "
+        #         "Do you want to proceed?"
+        #     )
+        #     _, noButton, yesButton = msg.warning(
+        #         self, 'Folder not empty', txt, 
+        #         buttonsTexts=('No', 'Yes'),
+        #     )
+        #     if msg.cancel or msg.clickedButton == noButton:
+        #         return None
+        return path

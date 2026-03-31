@@ -2018,27 +2018,9 @@ class mainWin(QMainWindow):
         
     def launchWorkflowGui(self, checked=False):
         self.logger.info('Opening Workflow GUI...')
-        # custom_txt = """
-        #             After you click "Ok" on this dialog you will be asked
-        #             to <b>select the experiment folders</b>, one by one.<br><br>
-        #         """
-        # selectedExpPaths = self.getSelectedExpPaths(
-        #     'Workflow GUI',
-        #     custom_txt=custom_txt
-        # )
-        # if selectedExpPaths is None:
-        #     return
-        selectedExpPaths = {r'C:/Users/timon/OneDrive/Helmholtz/Microscopy_Data/SpotMAX_vs_Human_dataset/C_elegans_CO/COSA-1/Halo': 
-            ['Position_8', 'Position_9', 'Position_10', 'Position_11', 
-             'Position_12', 'Position_13', 'Position_14', 'Position_15', 
-             'Position_16', 'Position_17', 'Position_18', 'Position_19'], 
-            r'C:/Users/timon/OneDrive/Helmholtz/Microscopy_Data/SpotMAX_vs_Human_dataset/C_elegans_CO/COSA-1/mNeonGreen': 
-                ['Position_1', 'Position_2', 'Position_3', 
-                 'Position_4', 'Position_5', 'Position_6', 'Position_7']}
         workflowWin = workflow_gui.WorkflowGui(
             self.app, mainWin=self, version=self._version, 
             launcherSlot=self.launchWorkflowGui,
-            selectedExpPaths=selectedExpPaths
         )
         self.workflowWins.append(workflowWin)
         workflowWin.sigClosed.connect(self.workflowGuiClosed)

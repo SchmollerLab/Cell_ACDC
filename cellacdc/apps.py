@@ -6395,7 +6395,7 @@ class QDialogMetadata(QDialog):
                 search = [file for file in ls if file.find('metadata.csv')!=-1]
                 metadata_df = None
                 if search:
-                    fileName = search[0]
+                    e = search[0]
                     metadata_csv_path = os.path.join(images_path, fileName)
                     metadata_df = pd.read_csv(
                         metadata_csv_path
@@ -17188,14 +17188,20 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         for step_n, stepWidgets in self.stepsWidgets.items():
             binarizeSelector = stepWidgets['binarize']
             segm = False
+            is_none = False
             if self.channel_names is None:
                 idx = step_n - 1
                 if hasattr(self.parent, 'input_types') and idx in self.parent.input_types:
                     segm = self.parent.input_types[idx] == 'segm'
+                    is_none = self.parent.input_types[idx] is None
             else:
                 channel = stepWidgets['selector'].currentText()
                 segm = True if 'segm' in channel.lower() else False
-            if segm:
+            if is_none: # allow everything
+                binarizeSelector.setEnabled(True)
+                stepWidgets['minValueSpinbox'].setEnabled(True)
+                stepWidgets['maxValueSpinbox'].setEnabled(True)
+            elif segm:
                 binarizeSelector.setEnabled(True)
                 # set min and max to 0 and 1 and disable
                 stepWidgets['minValueSpinbox'].setValue(0)
@@ -18817,19 +18823,21 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
                 self.combineChannelsWidget.addStep()
             
             stepWidgets = self.combineChannelsWidget.stepsWidgets[key]
-            idx = stepWidgets['selector'].findText(channel)
-            if idx == -1:
-                stepWidgets['selector'].addItem(channel)
-                # stepWidgets['selector'].forbiddenItems.add(channel)
-                blinker = qutils.QControlBlink(
-                    stepWidgets['selector'], 
-                    qparent=self
-                )
-                blinker.start()
-                stepWidgets['selector'].blinker = blinker
-                self.forbiddenChannels.add(channel)
-            
-            stepWidgets['selector'].setCurrentText(channel)
+            if self.channel_names is not None:
+                idx = stepWidgets['selector'].findText(channel)
+                if idx == -1:
+                    stepWidgets['selector'].addItem(channel)
+                    # stepWidgets['selector'].forbiddenItems.add(channel)
+                    blinker = qutils.QControlBlink(
+                        stepWidgets['selector'], 
+                        qparent=self
+                    )
+                    blinker.start()
+                    stepWidgets['selector'].blinker = blinker
+                    self.forbiddenChannels.add(channel)
+                
+                stepWidgets['selector'].setCurrentText(channel)
+                
             stepWidgets['name_edit'].setText(name)
             stepWidgets['binarize'].setCurrentText(binarize)
             stepWidgets['minValueSpinbox'].setValue(min_val)
@@ -18849,13 +18857,14 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         # update formula
         self.formulaEditWidget.setText(formula)
         
-        for stepWidgets in self.combineChannelsWidget.stepsWidgets.values():
-            combo = stepWidgets['selector']
-            # set forbidden channels red in all steps
-            for i in range(combo.count()):
-                item = combo.itemText(i)
-                if item in self.forbiddenChannels:
-                    combo.setItemData(i, QColor('red'), Qt.ForegroundRole)
+        if self.channel_names is not None:
+            for stepWidgets in self.combineChannelsWidget.stepsWidgets.values():
+                combo = stepWidgets['selector']
+                # set forbidden channels red in all steps
+                for i in range(combo.count()):
+                    item = combo.itemText(i)
+                    if item in self.forbiddenChannels:
+                        combo.setItemData(i, QColor('red'), Qt.ForegroundRole)
         
     def _updateFormulaVariableNames(self):
         names = [
