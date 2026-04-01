@@ -7,6 +7,7 @@ import inspect
 import traceback
 import json
 import copy
+import re
 from .workflow_typing import (
     WfImageDC, WfSegmDC, WfMetricsDC, workflow_type_name, make_workflow_data_class
 )
@@ -530,6 +531,37 @@ class WorkflowPostProcessSegmFunctions(WorkflowBaseFunctions):
         dialog.sigInputsChanged.connect(self.setAcceptedInputs)
         dialog.sigOkClicked.connect(self.updatePreview)
 
+class WorkflowSetMeasurementsFunctions(WorkflowBaseFunctions):
+    """Workflow card functions for selecting measurements to extract."""
+
+    def __init__(self) -> None:
+        self.measurementsDialog = SetMeasurementsDialogWorkflow
+        self.card_key = 'set_measurements'
+        self.title = 'Set measurements'
+
+    def dryrunDialog(self, workflowGui=None, posData=None):
+        return self.measurementsDialog(posData=posData, parent=workflowGui)
+
+    def setupDialog(self, workflowGui=None, posData=None, logger=print):
+        dialog = self.measurementsDialog(
+            posData=posData,
+            parent=workflowGui,
+            logger=logger,
+        )
+        return dialog
+
+    def initializeDialog(self, dialog, workflowGui=None):
+        self.setAcceptedInputs({0: WfSegmDC(), 1: WfImageDC()})
+        self.setOutputs({0: WfMetricsDC(setMetrics=dialog.selectedMetrics())})
+        dialog.sigInputsChanged.connect(self.setAcceptedInputs)
+        dialog.sigSelectedMetricsChanged.connect(
+            lambda: self.selectedMetricsChanged(dialog)
+        )
+        dialog.sigOkClicked.connect(self.updatePreview)
+
+    def selectedMetricsChanged(self, dialog):
+        self.setOutputs({0: WfMetricsDC(setMetrics=dialog.selectedMetrics())})
+
 class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
     """Dialog for combining and manipulating image channels in the workflow.
     
@@ -843,6 +875,140 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
         self.cancel = False
         self.sigOkClicked.emit()
         self.hide()
+
+class SetMeasurementsDialogWorkflow(apps.SetMeasurementsDialog):
+    sigOkClicked = Signal()
+    sigCancelClicked = Signal()
+    sigInputsChanged = Signal(dict)
+
+    def __init__(self, posData, parent=None, logger=print):
+        super().__init__(
+            loadedChNames=[None],
+            notLoadedChNames=[],
+            parent=parent,
+            posData=posData,
+            addCustomChannels=True,
+        )
+        self.logger = logger
+        self.sigNumberChannelsRequested.connect(self.setInputs_cb)
+        # remove save/load buttons since we'll handle that through the workflow card's save/load content functions
+        self.saveCurrentSelectionButton.hide()
+        self.loadSavedSelectionButton.hide()
+        self.loadLastSelButton.hide()
+        # remove all other connections to the OK/Cancel buttons since we'll handle that through the workflow card's signals
+        self.cancelButton.clicked.disconnect()
+        self.okButton.clicked.disconnect()
+        self.cancelButton.clicked.connect(self.cancel_clicked)
+        self.okButton.clicked.connect(self.ok_clicked)
+        
+    def setInputs_cb(self, number_inputs):
+        inputs = {0: WfSegmDC()}  # first input is segmentation
+        inputs.update({n: WfImageDC() for n in range(1, number_inputs + 1)})
+        self.sigInputsChanged.emit(inputs)
+
+    def ok_clicked(self):
+        self.sigOkClicked.emit()
+        self.hide()
+
+    def cancel_clicked(self):
+        self.sigCancelClicked.emit()
+        self.hide()
+
+    def selectedMetrics(self):
+        """Return selected metrics as a flat list with section context."""
+        metrics_mapper = self.currentSelectionMapper()
+        selected_metrics = []
+        for section, metrics in metrics_mapper.items():
+            if section == 'DEFAULT' or not isinstance(metrics, dict):
+                continue
+            for metric_name in metrics:
+                selected_metrics.append(f'{section}/{metric_name}')
+
+        return selected_metrics
+
+    def getContent(self):
+        # Keep enough in-memory state to fully restore dialog UI on cancel.
+        custom_channels = [
+            gbox.chName
+            for gbox in self.chNameGroupboxes
+            if getattr(gbox, 'isCustomChannel', False)
+        ]
+        return {
+            'selection_mapper': self.currentSelectionMapper(),
+            'custom_channels': custom_channels,
+        }
+
+    def setContent(self, content):
+        if not content:
+            return
+
+        selection_mapper = content.get('selection_mapper') or {}
+        custom_channels = content.get('custom_channels') or []
+        # self._restoreCustomChannels(custom_channels)
+        selection_mapper = dict(selection_mapper)
+        self.setCurrentSelectionFromMapper(selection_mapper)
+
+    def saveContent(self, path):
+        ext = '.ini'
+        if not path.endswith(ext):
+            path += ext
+
+        # Persist using original SetMeasurementsDialog-compatible mapper format.
+        content = self.currentSelectionMapper()
+        cp = config.ConfigParser()
+        for section, values in content.items():
+            cp[section] = {}
+            for option, value in values.items():
+                cp[section][option] = str(value)
+
+        with open(path, 'w') as f:
+            cp.write(f)
+
+    def loadContent(self, path):
+        ext = '.ini'
+        if not path.endswith(ext):
+            path += ext
+
+        self.show()
+        try:
+            cp = config.ConfigParser()
+            cp.read(path)
+            content = dict(cp)
+            # File payload is the selection mapper format.
+            self.setCurrentSelectionFromMapper(content)
+        except Exception as e:
+            self.logger(f'Failed to load content from {path}: {e}')
+            traceback.print_exc()
+            self.hide()
+            return
+
+        self.ok_cb()
+        self.hide()
+        
+    def updatedInputTypes(self):
+        """Handle when input types change and update the dialog UI accordingly."""
+        """Need to verify this works!"""
+        curr_input_types = self.curr_input_types
+        isSegm3D = True
+        if self.curr_input_types[0] is not None:
+            isSegm3D = (self.curr_input_types[0].SizeZ>1 
+                        if self.curr_input_types[0].SizeZ is not None 
+                        else False)
+            
+        for channelGBox in self.chNameGroupboxes:            # extract channel number input...
+            regex_term = re.compile(r'Input (\d+)')
+            match = regex_term.search(channelGBox.chName)
+            if match is None:
+                continue
+            channel_num = int(match.group(1))
+            input_type = curr_input_types.get(channel_num, None)
+            if input_type is None:
+                continue
+            isZstack = input_type.SizeZ>1 if input_type.SizeZ is not None else False
+            channelGBox.updateZmode(
+                isZstack=isZstack,
+                isSegm3D=isSegm3D
+            )
 
 class WorkflowInputDataDialog(QBaseDialog):
     """Simple dialog for selecting input data (image or segmentation channel).

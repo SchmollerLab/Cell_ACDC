@@ -37,6 +37,7 @@ FUNCTIONS_TO_ADD = [
             workflow_dialogs.WorkflowPostProcessSegmFunctions(),
             workflow_dialogs.WorkflowInputImgFunctions(),
             workflow_dialogs.WorkflowInputSegmFunctions(),
+            workflow_dialogs.WorkflowSetMeasurementsFunctions(),
             ]
 class _WorkflowGuiLogEmitter(QObject):
     sigLogMessage = Signal(str)
@@ -1755,7 +1756,10 @@ class WorkflowGui(QMainWindow):
                 self.posData.loadOtherFiles(load_metadata=True,
                                             load_customCombineMetrics=True,
                                             load_customAnnot=True,
-                                            loadSegmInfo=True)
+                                            loadSegmInfo=True,
+                                            loadBkgrROIs=True,
+                                            
+                                            )
 
         for i, posData in enumerate(self.data.values()):
             basename, chNames_loc = myutils.getBasenameAndChNames(
@@ -3008,6 +3012,7 @@ class WorkflowGui(QMainWindow):
                         zone=self.dropZone,
                         workflowGui=self,
                         logger=self.logger,
+                        show_initial_dialog=False,
                     )
                     self.dropZone.addCard(card_widget, x, y)
                 except Exception as e:
@@ -3374,15 +3379,7 @@ class WorkflowGui(QMainWindow):
             # print each curr_input_types for each card in the workflow if dialog has attr
             for card_id, proxy in self.dropZone.cards.items():
                 card_widget = proxy.widget()
-                if card_widget is not None:
-                    dialog = getattr(card_widget, 'dialog', None)
-                    if dialog is not None:
-                        curr_input_types = getattr(dialog, 'curr_input_types', None)
-                        print(f"Card ID={card_id}, title='{getattr(card_widget, 'title', '')}': curr_input_types={curr_input_types}")
-                        # get accepted types
-                        input_types = getattr(dialog, 'input_types', None)
-                        print(f"Card ID={card_id}, title='{getattr(card_widget, 'title', '')}': input_types={input_types}")
-            # import pdb; pdb.set_trace()
+                print(card_widget.dialog.getContent())
         super().keyPressEvent(event)
         
     def selectSaveFolder(self, save=True):

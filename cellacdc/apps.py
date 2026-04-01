@@ -1857,9 +1857,11 @@ class SetMeasurementsDialog(QBaseDialog):
     sigCancel = Signal()
     sigRestart = Signal()
     sigNumberChannelsRequested = Signal(int)
+    sigSelectedMetricsChanged = Signal()
 
     def __init__(
-            self, loadedChNames, notLoadedChNames, isZstack, isSegm3D,
+            self, loadedChNames, notLoadedChNames, 
+            isZstack=None, isSegm3D=None,
             favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
             acdc_df_path=None, posData=None, addCombineMetricCallback=None,
             allPosData=None, is_concat=False, isSingleSelection=False,
@@ -1867,6 +1869,9 @@ class SetMeasurementsDialog(QBaseDialog):
         ):
         super().__init__(parent=parent)
         
+        if (isZstack is None or isSegm3D is None) and not addCustomChannels:
+            raise ValueError('isZstack and isSegm3D cannot be None if addCustomChannels is False')
+                
         self.checkBoxedGroup = QButtonGroup()
         self.checkBoxedGroup.setExclusive(isSingleSelection)
 
@@ -1922,7 +1927,7 @@ class SetMeasurementsDialog(QBaseDialog):
                 continue
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
-                posData=posData, is_concat=is_concat
+                posData=posData, is_concat=is_concat, add_custom_metrics=addCustomChannels
             )
             channelGBox.chName = chName
             groupsLayout.addWidget(channelGBox, 0, col, 3, 1)
@@ -1938,7 +1943,7 @@ class SetMeasurementsDialog(QBaseDialog):
                 continue
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
-                posData=posData, is_concat=is_concat
+                posData=posData, is_concat=is_concat, add_custom_metrics=addCustomChannels
             )
             channelGBox.setChecked(False)
             channelGBox.chName = chName
@@ -2073,7 +2078,9 @@ class SetMeasurementsDialog(QBaseDialog):
         self.last_col = current_col
 
         okButton = widgets.okPushButton('   Ok   ')
+        self.okButton = okButton
         cancelButton = widgets.cancelPushButton('Cancel')
+        self.cancelButton = cancelButton
         if addCombineMetricCallback is not None:
             addCombineMetricButton = widgets.addPushButton(
                 'Add combined measurement...'
@@ -2082,6 +2089,7 @@ class SetMeasurementsDialog(QBaseDialog):
         self.okButton = okButton
 
         loadLastSelButton = widgets.reloadPushButton('Load last selection...')
+        self.loadLastSelButton = loadLastSelButton
         self.deselectAllButton = QPushButton('Deselect all')
         self.deselectAllButton.setIcon(QIcon(':deselect_all.svg'))
 
@@ -2098,15 +2106,18 @@ class SetMeasurementsDialog(QBaseDialog):
         saveCurrentSelectionButton = widgets.savePushButton(
             'Save current selection...'
         )
+        self.saveCurrentSelectionButton = saveCurrentSelectionButton
         saveCurrentSelectionButton.clicked.connect(
             self.saveCurrentSelectionClicked
         )
+        
         
         buttonsLayout.addWidget(saveCurrentSelectionButton)
         
         loadSavedSelectionButton = widgets.OpenFilePushButton(
             'Load saved selection...'
         )
+        self.loadSavedSelectionButton = loadSavedSelectionButton
         loadSavedSelectionButton.clicked.connect(self.loadSavedSelectionClicked)
         buttonsLayout.addWidget(loadSavedSelectionButton)
         
@@ -2175,16 +2186,18 @@ class SetMeasurementsDialog(QBaseDialog):
         return all_metrics
     
     
-    def _addCustomChannelWidget(self):
+    def _addCustomChannelWidget(self, custom_channel_name=None):
         """Add a single custom channel metric box widget to the dialog."""
         self.custom_channels_added += 1
-        ch_name = f'Input {self.custom_channels_added}'
+        ch_name = custom_channel_name or f'Input {self.custom_channels_added}'
         
         channelGBox = widgets.channelMetricsQGBox(
             self.isZstack, ch_name, self.isSegm3D,
             favourite_funcs=self.favourite_funcs,
-            posData=self.posData, is_concat=self.is_concat
+            posData=self.posData, is_concat=self.is_concat,
+            add_custom_metrics=self.addCustomChannels
         )
+        
         channelGBox.chName = ch_name
         channelGBox.isCustomChannel = True
         
@@ -2195,6 +2208,9 @@ class SetMeasurementsDialog(QBaseDialog):
             _, next_col, _, _ = self.groupsLayout.getItemPosition(button_idx)
         self.groupsLayout.addWidget(channelGBox, 0, next_col, 3, 1)
         self.chNameGroupboxes.append(channelGBox)
+        for checkBox in channelGBox.checkBoxes:
+            self.checkBoxedGroup.addButton(checkBox)
+            self._connectSelectedMetricsChangedSignal(checkBox)
         
         channelGBox.sigDelClicked.connect(self.delMixedChannelCombineMetric)
         channelGBox.sigCheckboxToggled.connect(self.channelCheckboxToggled)
@@ -2206,7 +2222,7 @@ class SetMeasurementsDialog(QBaseDialog):
         channelGBox._removeButton = removeButton
         self.groupsLayout.addWidget(removeButton, 3, next_col, alignment=Qt.AlignTop)
         self._reflowCustomChannels()
-        self.sigNumberChannelsRequested.emit(len(self.chNameGroupboxes))
+        self._emitCustomChannelsChangedSignals()
             
     def _removeCustomChannelWidget(self, chName):
         gbox = next((c for c in self.chNameGroupboxes if c.chName == chName), None)
@@ -2224,7 +2240,13 @@ class SetMeasurementsDialog(QBaseDialog):
         self.chNameGroupboxes.remove(gbox)
 
         self._reflowCustomChannels()
+        self._emitCustomChannelsChangedSignals()
+
+    def _emitCustomChannelsChangedSignals(self):
+        if getattr(self, '_suspend_custom_channel_signals', False):
+            return
         self.sigNumberChannelsRequested.emit(len(self.chNameGroupboxes))
+        self.sigSelectedMetricsChanged.emit()
 
     def _reflowCustomChannels(self):
         if not hasattr(self, 'addCustomChannelsButton'):
@@ -2381,17 +2403,21 @@ class SetMeasurementsDialog(QBaseDialog):
         for chNameGroupbox in self.chNameGroupboxes:
             for checkBox in chNameGroupbox.checkBoxes:
                 self.checkBoxedGroup.addButton(checkBox)
+                self._connectSelectedMetricsChangedSignal(checkBox)
         
         for checkBox in self.regionPropsQGBox.checkBoxes:
             self.checkBoxedGroup.addButton(checkBox)
+            self._connectSelectedMetricsChangedSignal(checkBox)
         
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             self.checkBoxedGroup.addButton(checkBox)
+            self._connectSelectedMetricsChangedSignal(checkBox)
         
         if self.chIndipendCustomeMetricsQGBox is not None:
             checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
             for checkBox in checkBoxes:
                 self.checkBoxedGroup.addButton(checkBox)
+                self._connectSelectedMetricsChangedSignal(checkBox)
         
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
@@ -2399,6 +2425,16 @@ class SetMeasurementsDialog(QBaseDialog):
         checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
         for checkBox in checkBoxes:
             self.checkBoxedGroup.addButton(checkBox)
+            self._connectSelectedMetricsChangedSignal(checkBox)
+
+    def _selectedMetricToggled(self, checked=False):
+        self.sigSelectedMetricsChanged.emit()
+
+    def _connectSelectedMetricsChangedSignal(self, checkbox):
+        if getattr(checkbox, '_selected_metrics_signal_connected', False):
+            return
+        checkbox.toggled.connect(self._selectedMetricToggled)
+        checkbox._selected_metrics_signal_connected = True
             
     def channelCheckboxToggled(self, checkbox):
         # Make sure to automatically check the requested cell_vol metric for 
@@ -2532,7 +2568,7 @@ class SetMeasurementsDialog(QBaseDialog):
                 for section in _config.sections():
                     _config.remove_option(section, colname_to_del)
                 posData.saveCombineMetrics()
-    
+                    
     def setState(self, state):
         self.doNotWarn = True
         for chNameGroupbox in self.chNameGroupboxes:
@@ -2818,6 +2854,35 @@ class SetMeasurementsDialog(QBaseDialog):
         load.write_last_selected_set_measurements(last_selected_meas)
     
     def setCurrentSelectionFromMapper(self, selection_mapper):
+        # add channel name groupboxes for missing channels if self.addCustomChannels is True
+        if self.addCustomChannels:
+            existing_channel_names = {gbox.chName for gbox in self.chNameGroupboxes}
+            non_channel_sections = {
+                'DEFAULT',
+                self.sizeMetricsQGBox.title(),
+                self.regionPropsQGBox.title(),
+            }
+            if self.chIndipendCustomeMetricsQGBox is not None:
+                non_channel_sections.add(self.chIndipendCustomeMetricsQGBox.title())
+            if self.mixedChannelsCombineMetricsQGBox is not None:
+                non_channel_sections.add(self.mixedChannelsCombineMetricsQGBox.title())
+
+            for chName in selection_mapper.keys():
+                if chName in non_channel_sections:
+                    continue
+                if chName not in existing_channel_names:
+                    self._addCustomChannelWidget(custom_channel_name=chName)
+                    existing_channel_names.add(chName)
+                    
+            # Delete only extra custom input groupboxes not present in mapper.
+            custom_channel_names = {
+                gbox.chName
+                for gbox in self.chNameGroupboxes
+                if getattr(gbox, 'isCustomChannel', False)
+            }
+            for chName in custom_channel_names:
+                if chName not in selection_mapper:
+                    self._removeCustomChannelWidget(chName)
         for chNameGroupbox in self.chNameGroupboxes:
             chName = chNameGroupbox.chName
             chSelectedMeas = selection_mapper.get(chName)
