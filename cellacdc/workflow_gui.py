@@ -151,6 +151,10 @@ class _ConnectionLine(QGraphicsLineItem):
         self.workflowZone = zone
         self.setAcceptHoverEvents(True)
         self.setZValue(0)
+        self._blink_timer = None
+        self._blink_stop_timer = None
+        self._error_highlight_on = False
+        self._original_pen_for_highlight = None
 
     def _formatTypeInfo(self, type_info):
         """Convert workflow type payloads to concise tooltip text."""
@@ -275,6 +279,54 @@ class _ConnectionLine(QGraphicsLineItem):
             event.accept()
         else:
             super().mousePressEvent(event)
+
+    def highlightError(self, duration_ms=2200):
+        """Blink the line in red to draw attention to an invalid connection."""
+        self.clearErrorHighlight(reset_pen=False)
+        self._original_pen_for_highlight = QPen(self.pen())
+        self._error_highlight_on = False
+
+        parent_obj = self.workflowZone if self.workflowZone is not None else None
+        self._blink_timer = QTimer(parent_obj)
+        self._blink_timer.timeout.connect(self._toggleErrorHighlightPen)
+        self._blink_timer.start(120)
+
+        self._blink_stop_timer = QTimer(parent_obj)
+        self._blink_stop_timer.setSingleShot(True)
+        self._blink_stop_timer.timeout.connect(self.clearErrorHighlight)
+        self._blink_stop_timer.start(duration_ms)
+
+    def _toggleErrorHighlightPen(self):
+        if self._original_pen_for_highlight is None:
+            return
+
+        if self._error_highlight_on:
+            self.setPen(QPen(self._original_pen_for_highlight))
+        else:
+            highlight_pen = QPen(self._original_pen_for_highlight)
+            highlight_pen.setColor(QColor('#c62828'))
+            highlight_pen.setWidth(max(3, self._original_pen_for_highlight.width() + 1))
+            self.setPen(highlight_pen)
+
+        self._error_highlight_on = not self._error_highlight_on
+        self.update()
+
+    def clearErrorHighlight(self, reset_pen=True):
+        """Stop line error blink animation and optionally restore original style."""
+        if self._blink_timer is not None:
+            self._blink_timer.stop()
+            self._blink_timer = None
+
+        if self._blink_stop_timer is not None:
+            self._blink_stop_timer.stop()
+            self._blink_stop_timer = None
+
+        self._error_highlight_on = False
+        if reset_pen and self._original_pen_for_highlight is not None:
+            self.setPen(QPen(self._original_pen_for_highlight))
+            self.update()
+
+        self._original_pen_for_highlight = None
 
 class _InputOutputCircle(QLabel):
     """Interactive circular port for workflow card input/output connections.
@@ -1455,6 +1507,9 @@ class WorkflowZone(QGraphicsView):
         if line not in self.connection_lines:
             return
 
+        if hasattr(line, 'clearErrorHighlight'):
+            line.clearErrorHighlight(reset_pen=False)
+
         previous_state = None
         if not getattr(self.parent, '_history_restoring', False):
             previous_state = self.parent._captureWorkflowState()
@@ -1508,6 +1563,8 @@ class WorkflowZone(QGraphicsView):
         Used when circles are recreated due to port count changes."""
         # Remove all existing visual lines
         for line in self.connection_lines[:]:
+            if hasattr(line, 'clearErrorHighlight'):
+                line.clearErrorHighlight(reset_pen=False)
             self.scene.removeItem(line)
         self.connection_lines.clear()
         self.line_to_visual_line_mapping.clear()
@@ -1561,6 +1618,21 @@ class WorkflowZone(QGraphicsView):
                 mismatches.append((line_data, output_type, input_type_accepted))
 
         return mismatches
+
+    def clearConnectionErrorHighlights(self):
+        """Stop error animations on all visual connection lines."""
+        for line in self.connection_lines:
+            if hasattr(line, 'clearErrorHighlight'):
+                line.clearErrorHighlight(reset_pen=True)
+
+    def highlightConnectionKeys(self, line_keys, duration_ms=2200):
+        """Blink visual lines corresponding to model connection keys."""
+        for line_key in line_keys:
+            visual_line = self.line_to_visual_line_mapping.get(line_key)
+            if visual_line is None:
+                continue
+            if hasattr(visual_line, 'highlightError'):
+                visual_line.highlightError(duration_ms=duration_ms)
 
     def updateDownstreamInputTypes(self, source_card_id):
         """Sync the concrete input types of directly connected downstream cards.
@@ -1963,7 +2035,41 @@ class WorkflowGui(QMainWindow):
         is_valid, errors = self.validateWorkflowGraph(log_errors=True)
         self._refreshWorkflowValidationLabel()
         if not is_valid:
+            _errors, issue_card_ids, issue_line_keys = self._analyzeWorkflowGraphIssues()
+            self._highlightWorkflowIssues(issue_card_ids, issue_line_keys)
             self._showWorkflowValidationErrors(errors)
+
+    def _blinkWidgetControl(self, widget, duration_ms=2000):
+        """Start a blink effect on a widget and keep the blinker referenced."""
+        if widget is None:
+            return
+
+        blinker = qutils.QControlBlink(widget, duration_ms=duration_ms, qparent=self)
+        blinker.start()
+        setattr(widget, '_workflow_issue_blinker', blinker)
+
+    def _highlightWorkflowIssues(self, issue_card_ids, issue_line_keys):
+        """Blink cards, settings buttons and invalid connections after validation."""
+        if hasattr(self, 'dropZone') and self.dropZone is not None:
+            self.dropZone.clearConnectionErrorHighlights()
+
+        for card_id in sorted(issue_card_ids):
+            proxy = self.dropZone.cards.get(card_id) if hasattr(self, 'dropZone') else None
+            card_widget = proxy.widget() if proxy is not None else None
+            if card_widget is None:
+                continue
+
+            self._blinkWidgetControl(card_widget, duration_ms=2200)
+            settings_btn = getattr(card_widget, 'settingsButton', None)
+            self._blinkWidgetControl(settings_btn, duration_ms=2200)
+
+            # Bring problematic card into view to make issues easier to locate.
+            proxy_item = getattr(card_widget, 'graphics_proxy', None)
+            if proxy_item is not None and hasattr(self, 'dropZone'):
+                self.dropZone.ensureVisible(proxy_item)
+
+        if hasattr(self, 'dropZone') and self.dropZone is not None:
+            self.dropZone.highlightConnectionKeys(issue_line_keys, duration_ms=2200)
 
     def setupUI(self):
         """Build the user interface.
@@ -3169,18 +3275,18 @@ class WorkflowGui(QMainWindow):
             return f"ID={card_id} ('{title}')"
         return f"ID={card_id}"
 
-    def validateWorkflowGraph(self, log_errors=True):
-        """Validate workflow graph for required inputs, type mismatches, and cycles.
+    def _analyzeWorkflowGraphIssues(self):
+        """Analyze workflow graph and return errors plus issue targets.
 
         Returns:
-            tuple: (is_valid, errors)
-                is_valid (bool): True when no validation issue was found.
-                errors (list[str]): Human-readable validation messages.
+            tuple: (errors, issue_card_ids, issue_line_keys)
         """
         errors = []
+        issue_card_ids = set()
+        issue_line_keys = []
 
         if not hasattr(self, 'dropZone') or self.dropZone is None:
-            return True, errors
+            return errors, issue_card_ids, issue_line_keys
 
         card_ids = set(self.dropZone.cards.keys())
         incoming_by_card = {card_id: set() for card_id in card_ids}
@@ -3213,11 +3319,11 @@ class WorkflowGui(QMainWindow):
             if not missing_required:
                 continue
 
-            # Convert to 1-based indices for UI consistency with circle labels.
             missing_ports = ', '.join(str(idx + 1) for idx in missing_required)
             errors.append(
                 f"Card {self._formatCardLabel(card_id)} has missing required input port(s): {missing_ports}."
             )
+            issue_card_ids.add(card_id)
 
         for line_data in self.dropZone.lines:
             (from_card_id, from_port), (to_card_id, to_port) = line_data
@@ -3241,6 +3347,22 @@ class WorkflowGui(QMainWindow):
                 f"{self._formatCardLabel(to_card_id)} input {to_port + 1} "
                 f"(accepts={input_type_accepted})."
             )
+            issue_line_keys.append(line_data)
+            issue_card_ids.add(from_card_id)
+            issue_card_ids.add(to_card_id)
+
+        for card_id in card_ids:
+            proxy = self.dropZone.cards.get(card_id)
+            card_widget = proxy.widget() if proxy is not None else None
+            if card_widget is None:
+                continue
+            dialog = getattr(card_widget, 'dialog', None)
+            if dialog is not None and hasattr(dialog, 'hasInvalidContent') and dialog.hasInvalidContent():
+                errors.append(
+                    f"{self._formatCardLabel(card_id)} has stale feature selections. "
+                    "Update or remove the highlighted metrics."
+                )
+                issue_card_ids.add(card_id)
 
         visit_state = {card_id: 0 for card_id in card_ids}  # 0=unvisited, 1=visiting, 2=done
         recursion_stack = []
@@ -3276,7 +3398,19 @@ class WorkflowGui(QMainWindow):
         for cycle in found_cycles:
             cycle_labels = ' -> '.join(self._formatCardLabel(card_id) for card_id in cycle)
             errors.append(f"Workflow loop detected: {cycle_labels}.")
+            issue_card_ids.update(cycle)
 
+        return errors, issue_card_ids, issue_line_keys
+
+    def validateWorkflowGraph(self, log_errors=True):
+        """Validate workflow graph for required inputs, type mismatches, and cycles.
+
+        Returns:
+            tuple: (is_valid, errors)
+                is_valid (bool): True when no validation issue was found.
+                errors (list[str]): Human-readable validation messages.
+        """
+        errors, _issue_card_ids, _issue_line_keys = self._analyzeWorkflowGraphIssues()
         is_valid = len(errors) == 0
         if (not is_valid) and log_errors:
             self._logInfo('Workflow validation failed:')
@@ -3299,7 +3433,31 @@ class WorkflowGui(QMainWindow):
             'Workflow validation issues:\n\n'
             f'{bullet_list}{suffix}'
         )
-        QMessageBox.warning(self, 'Invalid workflow', txt)
+        previous_msg = getattr(self, '_validationErrorsMsgBox', None)
+        if previous_msg is not None:
+            try:
+                previous_msg.close()
+            except Exception:
+                pass
+
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Warning)
+        msg.setWindowTitle('Invalid workflow')
+        msg.setText(txt)
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.setModal(False)
+        msg.setWindowModality(Qt.NonModal)
+        msg.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+        msg.setAttribute(Qt.WA_DeleteOnClose, True)
+
+        def _clear_validation_msgbox(*_):
+            self._validationErrorsMsgBox = None
+
+        msg.finished.connect(_clear_validation_msgbox)
+        self._validationErrorsMsgBox = msg
+        msg.show()
+        msg.raise_()
+        msg.activateWindow()
 
     def _onNewWorkflowTriggered(self):
         """Load experiment data and create a new workflow."""

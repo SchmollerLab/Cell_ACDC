@@ -526,7 +526,7 @@ class WorkflowPostProcessSegmFunctions(WorkflowBaseFunctions):
         return dialog
 
     def initializeDialog(self, dialog, workflowGui=None):
-        self.setAcceptedInputs({0: WfSegmDC()})
+        self.setAcceptedInputs({0: WfSegmDC(), 1: WfMetricsDC()})
         self.setOutputs({0: WfSegmDC()})
         dialog.sigInputsChanged.connect(self.setAcceptedInputs)
         dialog.sigOkClicked.connect(self.updatePreview)
@@ -599,6 +599,11 @@ class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
     def cancelButtonClicked(self):
         """Handle cancel button click by hiding the dialog."""
         self.hide()
+
+    def closeEvent(self, event):
+        """Treat window close (X) as cancel."""
+        self.sigCancelClicked.emit()
+        super().closeEvent(event)
         
     def updatedInputTypes(self):
         """Handle when input types change and update the dialog UI accordingly.
@@ -669,6 +674,11 @@ class PreProcessSetupDialogWorkflow(apps.PreProcessRecipeDialog):
     def cancelButtonClicked(self):
         """Handle cancel button click by hiding the dialog."""
         self.hide()
+
+    def closeEvent(self, event):
+        """Treat window close (X) as cancel."""
+        self.sigCancelClicked.emit()
+        super().closeEvent(event)
 
     def saveContent(self, path):
         """Save pre-processing recipe to disk."""
@@ -746,14 +756,16 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
         super().__init__(parent=parent)
         self.cancel = True
         self.logger = logger
+        self.curr_input_types = {}
+        self.optional_inputs_n = {1: True}  # metrics input is optional
 
         self.setWindowTitle('Post-process segmentation parameters')
 
         self.postProcessGroupbox = apps.PostProcessSegmParams(
             'Post-processing parameters', posData,
-            useSliders=True, 
+            useSliders=True,
             parent=self,
-            addCustomChannels=True,
+            external_metrics=[],
         )
         self.postProcessGroupbox.valueChanged.connect(self.valueChanged)
         self.postProcessGroupbox.sigNumberChannelsRequested.connect(self.setInputs_cb)
@@ -767,13 +779,33 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
         layout.addLayout(buttonsLayout)
 
         self.setLayout(layout)
-        
+
+    def _externalMetricsFromInputs(self):
+        metrics = []
+        for idx in sorted(self.curr_input_types):
+            if idx == 0:
+                continue
+            input_type = self.curr_input_types[idx]
+            if not isinstance(input_type, WfMetricsDC):
+                continue
+            input_metrics = input_type.setMetrics or []
+            for metric in input_metrics:
+                if isinstance(metric, str):
+                    metrics.append(metric)
+
+        # Preserve order while removing duplicates.
+        return list(dict.fromkeys(metrics))
+
+    def updatedInputTypes(self):
+        external_metrics = self._externalMetricsFromInputs()
+        self.postProcessGroupbox.updateExternalMetrics(external_metrics)
+
     def setInputs_cb(self, number_inputs):
-        """Handle when input types change and update the dialog UI accordingly."""
-        inputs = {0: WfSegmDC()} # first is segmentation
-        inputs.update({n: WfImageDC() for n in range(1, number_inputs+1)}) # all other inputs are images
+        """Handle when required metric inputs change and update accepted inputs."""
+        inputs = {0: WfSegmDC()}  # first is segmentation
+        inputs.update({n: WfMetricsDC() for n in range(1, number_inputs+1)})
         self.sigInputsChanged.emit(inputs)
-        
+
     def _setCheckableRangeValue(self, range_widgets, value):
         is_checked = value is not None
         range_widgets.checkbox.setChecked(is_checked)
@@ -795,8 +827,7 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
             groupbox.selectors[-1].delButton.click()
 
         for selector, (feature_name, feature_range) in zip(groupbox.selectors, items):
-            selector.selectButton.setFlat(True)
-            selector.selectButton.setText(feature_name)
+            selector.setText(feature_name)
 
             feature_group = (selected_features_group or {}).get(feature_name)
             if feature_group is not None:
@@ -810,18 +841,23 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
             self._setCheckableRangeValue(selector.lowRangeWidgets, low_val)
             self._setCheckableRangeValue(selector.highRangeWidgets, high_val)
 
+    def hasInvalidContent(self):
+        groupbox = self.postProcessGroupbox.selectedFeaturesDialog.groupbox
+        return groupbox.hasInvalidExternalMetrics(blink_on_invalid=True)
+
     def valueChanged(self, value):
         self.sigValueChanged.emit(None, None)
-
-    def ok_cb(self):
-        self.cancel = False
-        self.sigOkClicked.emit()
-        self.hide()
 
     def cancel_cb(self):
         self.cancel = True
         self.sigCancelClicked.emit()
         self.hide()
+
+    def closeEvent(self, event):
+        """Treat window close (X) as cancel."""
+        self.cancel = True
+        self.sigCancelClicked.emit()
+        super().closeEvent(event)
 
     def getContent(self):
         groupbox = self.postProcessGroupbox.selectedFeaturesDialog.groupbox
@@ -869,7 +905,7 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
 
         self.ok_cb()
         self.hide()
-        
+
     def ok_cb(self):
         """Handle OK button click by emitting the sigOkClicked signal and hiding the dialog."""
         self.cancel = False
@@ -913,6 +949,11 @@ class SetMeasurementsDialogWorkflow(apps.SetMeasurementsDialog):
     def cancel_clicked(self):
         self.sigCancelClicked.emit()
         self.hide()
+
+    def closeEvent(self, event):
+        """Treat window close (X) as cancel."""
+        self.sigCancelClicked.emit()
+        super().closeEvent(event)
 
     def selectedMetrics(self):
         """Return selected metrics as a flat list with section context."""
@@ -1120,6 +1161,11 @@ class WorkflowInputDataDialog(QBaseDialog):
     def cancel_clicked(self):
         """Handle Cancel button click by hiding the dialog."""
         self.hide()
+
+    def closeEvent(self, event):
+        """Treat window close (X) as cancel."""
+        self.sigCancelClicked.emit()
+        super().closeEvent(event)
     
     def get_selected_value(self):
         """Get the currently selected value.

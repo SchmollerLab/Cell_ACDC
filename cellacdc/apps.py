@@ -7357,7 +7357,8 @@ class PostProcessSegmParams(QGroupBox):
             parent=None, 
             maxSize=None, 
             force_postprocess_2D=False,
-            addCustomChannels=False
+            addCustomChannels=False,
+            external_metrics=None
         ):
         QGroupBox.__init__(self, title, parent)
         SizeZ = posData.SizeZ
@@ -7486,6 +7487,7 @@ class PostProcessSegmParams(QGroupBox):
             posData=posData, parent=self, 
             force_postprocess_2D=force_postprocess_2D,
             addCustomChannels=addCustomChannels,
+            external_metrics=external_metrics,
         )
         self.selectedFeaturesDialog.hide()
         self.addCustomFeaturesButton.clicked.connect(
@@ -7513,6 +7515,9 @@ class PostProcessSegmParams(QGroupBox):
 
     def groupedFeatures(self):
         return self.selectedFeaturesDialog.groupbox.groupedFeatures()
+
+    def updateExternalMetrics(self, external_metrics):
+        self.selectedFeaturesDialog.updateExternalMetrics(external_metrics)
     
     def restoreDefault(self):
         self.minSolidity_DSB.setValue(0.5)
@@ -14791,6 +14796,9 @@ class ChangeUserProfileFolderPathDialog(QBaseDialog):
         self.close()
  
 class SelectFeaturesRange:
+    _externalMetricPlaceholder = 'Select external metric...'
+    _invalidSelectionStyle = 'QComboBox { background-color: red; }'
+
     def __init__(
             self, 
             posData, 
@@ -14798,7 +14806,8 @@ class SelectFeaturesRange:
             qparent=None,
             sigValueChanged=None,
             sigNumberChannelsRequested=None,
-            addCustomChannels=False
+            addCustomChannels=False,
+            external_metrics=None,
         ) -> None:
         self.posData = posData
         self.qparent = qparent
@@ -14806,20 +14815,30 @@ class SelectFeaturesRange:
         self.sigValueChanged = sigValueChanged
         self.sigNumberChannelsRequested = sigNumberChannelsRequested
         self.addCustomChannels = addCustomChannels
-        
+        self.external_metrics = external_metrics
+        self.featureGroup = 'external_metrics'
         self.lowRangeWidgets = widgets.CheckableSpinBoxWidgets()
         self.highRangeWidgets = widgets.CheckableSpinBoxWidgets()        
         
-        self.selectButton = widgets.FeatureSelectorButton(
-            'Click to select feature...'
-        )
-        self.selectButton.setSizeLongestText(
-            'Spotfit intens. metric, Foregr. integral gauss. peak'
-        )
-        self.selectButton.clicked.connect(self.selectFeature)
-        self.selectButton.setCursor(Qt.PointingHandCursor)
+        if self.external_metrics is None:
+            self.selectButton = widgets.FeatureSelectorButton(
+                'Click to select feature...'
+            )
+            self.selectButton.setSizeLongestText(
+                'Spotfit intens. metric, Foregr. integral gauss. peak'
+            )
+            self.selectButton.clicked.connect(self.selectFeature)
+            self.selectButton.setCursor(Qt.PointingHandCursor)
+        else:
+            # Use a combo-box when features come from an external source.
+            self.selectButton = QComboBox()
+            self.selectButton.currentTextChanged.connect(
+                self._onExternalMetricChanged
+            )
+            self.updateExternalMetrics(external_metrics)
 
         self.selectedFeatureGroups = {}
+        self._selectionBlinker = None
 
         self.widgets = [
             {'pos': (0, 0), 'widget': self.lowRangeWidgets.checkbox}, 
@@ -14832,9 +14851,96 @@ class SelectFeaturesRange:
             {'pos': (2, 0), 'widget': widgets.VerticalSpacerEmptyWidget(height=10)}
         ]
         self.columnsStretches = {0: 0, 1: 0, 2: 1, 3: 0, 4: 0}
-    
+        
+    def _setSelectionInvalidState(self, is_invalid):
+        if not isinstance(self.selectButton, QComboBox):
+            return
+        self.selectButton.setStyleSheet(
+            self._invalidSelectionStyle if is_invalid else ''
+        )
+
     def setText(self, text):
+        if isinstance(self.selectButton, QComboBox):
+            if text == '':
+                self.selectButton.setCurrentIndex(0)
+                self._setSelectionInvalidState(False)
+                return
+
+            idx = self.selectButton.findText(text)
+            if idx == -1:
+                self.selectButton.addItem(text)
+                idx = self.selectButton.findText(text)
+                self.selectButton.setItemData(idx, QColor('red'), Qt.ForegroundRole)
+                self.selectButton.setCurrentIndex(idx)
+                self._setSelectionInvalidState(True)
+                return
+            self.selectButton.setCurrentIndex(idx)
+            has_stale_color = (
+                self.selectButton.itemData(idx, Qt.ForegroundRole) is not None
+            )
+            self._setSelectionInvalidState(has_stale_color)
+            return
+
         self.selectButton.setText(text)
+
+    def text(self):
+        if isinstance(self.selectButton, QComboBox):
+            return self.selectButton.currentText()
+        return self.selectButton.text()
+
+    def hasValidSelection(self, blink_on_invalid=False):
+        text = self.text()
+        if not text:
+            if blink_on_invalid:
+                self._setSelectionInvalidState(True)
+            return False
+        if isinstance(self.selectButton, QComboBox):
+            idx = self.selectButton.currentIndex()
+            has_stale_color = (
+                self.selectButton.itemData(idx, Qt.ForegroundRole) is not None
+            )
+            isValid = (
+                text != self._externalMetricPlaceholder
+                and not has_stale_color
+            )
+            if not isValid and blink_on_invalid:
+                self._setSelectionInvalidState(True)
+            elif isValid:
+                self._setSelectionInvalidState(False)
+            return isValid
+
+        isValid = text.find('Click') == -1
+        if not isValid and blink_on_invalid:
+            self._setSelectionInvalidState(True)
+        return isValid
+
+    def hasInvalidExternalMetric(self, blink_on_invalid=False):
+        """Return True when a stale (red) external metric is selected."""
+        if not isinstance(self.selectButton, QComboBox):
+            return False
+        idx = self.selectButton.currentIndex()
+        color = self.selectButton.itemData(idx, Qt.ForegroundRole)
+        invalid = color is not None
+        if invalid and blink_on_invalid:
+            self._setSelectionInvalidState(True)
+        elif not invalid:
+            self._setSelectionInvalidState(False)
+        return invalid
+
+    def _onExternalMetricChanged(self, text):
+        if isinstance(self.selectButton, QComboBox):
+            is_placeholder = text == self._externalMetricPlaceholder
+            idx = self.selectButton.currentIndex()
+            has_stale_color = (
+                self.selectButton.itemData(idx, Qt.ForegroundRole) is not None
+            )
+            self._setSelectionInvalidState(is_placeholder or has_stale_color)
+
+        if self.sigValueChanged is None:
+            return
+        if text == self._externalMetricPlaceholder:
+            return
+        self.sigValueChanged(None)
     
     def selectFeature(self):
         loadedChNames = [self.posData.user_ch_name]
@@ -14864,13 +14970,58 @@ class SelectFeaturesRange:
         )
         self.selectButton.setText(selectedMetricName)
         self.featureGroup = selectedMetricGroup
+        
+    def updateExternalMetrics(self, external_metrics):
+        if not isinstance(self.selectButton, QComboBox):
+            raise RuntimeError(
+                'updateExternalMetrics can only be called for external-metrics '
+                'selectors'
+            )
+
+        currentText = self.selectButton.currentText()
+        if external_metrics is None:
+            self.external_metrics = []
+        elif isinstance(external_metrics, (list, tuple, set)):
+            self.external_metrics = list(external_metrics)
+        else:
+            raise TypeError(
+                'external_metrics must be None, list, tuple, or set of strings'
+                'However, got type: ' + str(type(external_metrics)) + ' with value: ' + str(external_metrics)
+            )
+
+        if any(not isinstance(metric, str) for metric in self.external_metrics):
+            raise TypeError('external_metrics values must be strings')
+
+        self.selectButton.blockSignals(True)
+        self.selectButton.clear()
+        self.selectButton.addItem(self._externalMetricPlaceholder)
+        self.selectButton.addItems(self.external_metrics)
+
+        for i in range(1, self.selectButton.count()):
+            self.selectButton.setItemData(i, None, Qt.ForegroundRole)
+
+        if currentText and currentText != self._externalMetricPlaceholder:
+            idx = self.selectButton.findText(currentText)
+            if idx == -1:
+                self.selectButton.addItem(currentText)
+                idx = self.selectButton.findText(currentText)
+                self.selectButton.setItemData(idx, QColor('red'), Qt.ForegroundRole)
+            self.selectButton.setCurrentIndex(idx)
+        else:
+            self.selectButton.setCurrentIndex(0)
+
+        self.selectButton.blockSignals(False)
+
+        if self.sigValueChanged is not None:
+            self.sigValueChanged(None)
+        
 
 class SelectFeaturesRangeDialog(QBaseDialog):
     sigValueChanged = Signal(object)
     sigNumberChannelsRequested = Signal(int)
     
     def __init__(self, posData=None, parent=None, force_postprocess_2D=False,
-                 addCustomChannels=False):
+                 addCustomChannels=False, external_metrics=None):
         super().__init__(parent)
         
         self.force_postprocess_2D = force_postprocess_2D
@@ -14880,7 +15031,8 @@ class SelectFeaturesRangeDialog(QBaseDialog):
         self.groupbox = SelectFeaturesRangeGroupbox(
             posData=posData, parent=parent, 
             force_postprocess_2D=force_postprocess_2D,
-            addCustomChannels=addCustomChannels
+            addCustomChannels=addCustomChannels,
+            external_metrics=external_metrics
         )
         self.groupbox.sigNumberChannelsRequested.connect(self.sigNumberChannelsRequested.emit)
         
@@ -14903,11 +15055,18 @@ class SelectFeaturesRangeDialog(QBaseDialog):
             self.sigValueChanged.emit(None)
         self.hide()
 
+    def updateExternalMetrics(self, external_metrics):
+        self.groupbox.updateExternalMetrics(external_metrics)
+
+    def showEvent(self, event):
+        self.groupbox.hasInvalidExternalMetrics(blink_on_invalid=True)
+        return super().showEvent(event)
+
 class SelectFeaturesRangeGroupbox(QGroupBox):
     sigNumberChannelsRequested = Signal(int)
     def __init__(
             self, posData=None, parent=None, force_postprocess_2D=False,
-            addCustomChannels=False
+            addCustomChannels=False,external_metrics=None
         ):
         super().__init__(parent)
 
@@ -14917,6 +15076,7 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
         self.posData = posData
         self.force_postprocess_2D = force_postprocess_2D
         self.addCustomChannels = addCustomChannels
+        self.external_metrics = external_metrics
         
         self._layout = QGridLayout()
         self._layout.setVerticalSpacing(0)
@@ -14925,6 +15085,7 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
             posData, force_postprocess_2D=force_postprocess_2D,
             addCustomChannels=self.addCustomChannels,
             sigNumberChannelsRequested=self.sigNumberChannelsRequested.emit,
+            external_metrics=external_metrics,
         )
         self.addButton = widgets.addPushButton('  Add feature    ')
         self.addButton.setSizePolicy(
@@ -14953,6 +15114,7 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
             self.posData, force_postprocess_2D=self.force_postprocess_2D,
             addCustomChannels=self.addCustomChannels,
             sigNumberChannelsRequested=self.sigNumberChannelsRequested.emit,
+            external_metrics=self.external_metrics,
         )
         delButton = widgets.delPushButton('Remove feature')
         delButton.setSizePolicy(
@@ -14972,7 +15134,7 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
             selector = self.selectors[-1]
             selector.delButton.click()
         firstSelector = self.selectors[0]
-        firstSelector.selectButton.setText('Click to select feature...')
+        firstSelector.setText('')
         firstSelector.lowRangeWidgets.checkbox.setChecked(False)
         firstSelector.highRangeWidgets.checkbox.setChecked(False)
     
@@ -14986,9 +15148,9 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
     def selectedFeaturesRange(self):
         featuresRange = {}
         for selector in self.selectors:
-            if selector.selectButton.text().find('Click') != -1:
+            if not selector.hasValidSelection(blink_on_invalid=True):
                 continue
-            featuresRange[selector.selectButton.text()] = (
+            featuresRange[selector.text()] = (
                 selector.lowRangeWidgets.value(), 
                 selector.highRangeWidgets.value()
             )
@@ -14997,11 +15159,20 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
     def selectedFeaturesGroup(self):
         featuresGroup = {}
         for selector in self.selectors:
-            if selector.selectButton.text().find('Click') != -1:
+            if not selector.hasValidSelection(blink_on_invalid=True):
                 continue
             group = selector.featureGroup                
-            featuresGroup[selector.selectButton.text()] = group
+            featuresGroup[selector.text()] = group
         return featuresGroup
+
+    def updateExternalMetrics(self, external_metrics):
+        self.external_metrics = external_metrics
+        for selector in self.selectors:
+            selector.updateExternalMetrics(external_metrics)
+
+    def hasInvalidExternalMetrics(self, blink_on_invalid=False):
+        results = [s.hasInvalidExternalMetric(blink_on_invalid=blink_on_invalid) for s in self.selectors]
+        return any(results)
 
     def groupedFeatures(self):
         featuresGroup = self.selectedFeaturesGroup()

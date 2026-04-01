@@ -35,8 +35,14 @@ class QControlBlink:
         self._widget = QWidgetToBlink
         self.qparent = qparent
         self.blinkON = False
+        self._originalStyleSheet = ''
+        self._blinkStyleSheet = ''
     
     def start(self):
+        self._originalStyleSheet = self._widget.styleSheet() or ''
+        className = self._widget.metaObject().className()
+        self._blinkStyleSheet = f'{className} {{ background-color: orange; }}'
+
         self.timer = QTimer(self.qparent)
         self.timer.timeout.connect(self.timerCallback)
         self.timer.start(100)
@@ -47,14 +53,15 @@ class QControlBlink:
     
     def timerCallback(self):
         if self.blinkON:
-            self._widget.setStyleSheet('background-color: orange')
+            self._widget.setStyleSheet(self._blinkStyleSheet)
         else:
-            self._widget.setStyleSheet('background-color: none')
+            self._widget.setStyleSheet(self._originalStyleSheet)
         self.blinkON = not self.blinkON
 
     def stop(self):
         self.timer.stop()
-        self._widget.setStyleSheet('background-color: none')
+        self.stopTimer.stop()
+        self._widget.setStyleSheet(self._originalStyleSheet)
 
 def hide_and_delete_layout(layout):
     # Hide all widgets in the layout
