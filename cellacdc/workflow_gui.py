@@ -10,7 +10,15 @@ from qtpy.QtCore import Signal, Qt, QMimeData, QPointF, QTimer, QObject
 import qtpy
 
 from . import myutils, load, printl, workflow_dialogs, widgets, apps, workflow_default_save_folderpath, qutils
-from .workflow_dialogs import WorkflowBaseFunctions
+from .workflow_dialogs import (
+    WorkflowBaseFunctions,
+)
+from .workflow_typing import (WfImageDC, 
+                              WfSegmDC, 
+                              WfMetricsDC, 
+                              workflow_type_name, 
+                              make_workflow_data_class,
+                              is_workflow_data_class)
 from .acdc_regex import to_alphanumeric
 
 import os
@@ -18,6 +26,7 @@ import shutil
 import copy
 import logging
 import traceback
+from contextlib import contextmanager
 from datetime import datetime
 
 
@@ -142,6 +151,79 @@ class _ConnectionLine(QGraphicsLineItem):
         self.setAcceptHoverEvents(True)
         self.setZValue(0)
 
+    def _formatTypeInfo(self, type_info):
+        """Convert workflow type payloads to concise tooltip text."""
+        if type_info is None:
+            return 'Any/Unknown'
+
+        if isinstance(type_info, (list, tuple)):
+            if len(type_info) == 0:
+                return 'Any/Unknown'
+            return ' | '.join(self._formatTypeInfo(t) for t in type_info)
+
+        if not is_workflow_data_class(type_info):
+            return str(type_info)
+
+        type_name = workflow_type_name(type_info)
+        size_z = getattr(type_info, 'SizeZ', None)
+        size_t = getattr(type_info, 'SizeT', None)
+
+        details = []
+        if size_z is not None:
+            details.append(f'Z={size_z}')
+        if size_t is not None:
+            details.append(f'T={size_t}')
+        if details:
+            return f"{type_name} ({', '.join(details)})"
+        return type_name
+
+    def _buildTooltipText(self):
+        """Build tooltip text from current source/target port typing."""
+        start_circle = getattr(self, 'start_circle', None)
+        end_circle = getattr(self, 'end_circle', None)
+        if start_circle is None or end_circle is None:
+            return 'Connection'
+
+        output_card = getattr(start_circle, 'card', None)
+        input_card = getattr(end_circle, 'card', None)
+        if output_card is None or input_card is None:
+            return 'Connection'
+
+        output_port = getattr(start_circle, 'index', 0)
+        input_port = getattr(end_circle, 'index', 0)
+
+        output_type = getattr(output_card, 'output_types', {}).get(output_port)
+        input_accepted = input_card._getDialogInputTypesAccepted().get(input_port)
+        input_current = input_card._getDialogInputTypes().get(input_port)
+
+        output_card_id = getattr(output_card, 'card_id', '?')
+        input_card_id = getattr(input_card, 'card_id', '?')
+        output_card_title = getattr(output_card, 'title', '')
+        input_card_title = getattr(input_card, 'title', '')
+
+        output_label = f"Card {output_card_id}"
+        input_label = f"Card {input_card_id}"
+        if output_card_title:
+            output_label += f" ({output_card_title})"
+        if input_card_title:
+            input_label += f" ({input_card_title})"
+
+        return (
+            f"{output_label} output {output_port + 1} -> {input_label} input {input_port + 1}\n"
+            f"Output type: {self._formatTypeInfo(output_type)}\n"
+            f"Input accepts: {self._formatTypeInfo(input_accepted)}\n"
+            f"Input current: {self._formatTypeInfo(input_current)}"
+        )
+
+    def hoverEnterEvent(self, event):
+        self.setToolTip(self._buildTooltipText())
+        super().hoverEnterEvent(event)
+
+    def hoverMoveEvent(self, event):
+        # Keep tooltip synced with live type updates while hovering.
+        self.setToolTip(self._buildTooltipText())
+        super().hoverMoveEvent(event)
+
     def paint(self, painter, option, widget=None):
         """Paint a directed connection with an arrowhead at the target end."""
         line = self.line()
@@ -187,6 +269,9 @@ class _ConnectionLine(QGraphicsLineItem):
         if event.button() == Qt.RightButton and self.workflowZone:
             self.workflowZone.removeConnectionLine(self)
             event.accept()
+        elif event.button() == Qt.MiddleButton and self.workflowZone:
+            self.workflowZone.removeConnectionLine(self)
+            event.accept()
         else:
             super().mousePressEvent(event)
 
@@ -200,6 +285,7 @@ class _InputOutputCircle(QLabel):
     Circle border colors:
         - Blue: Image type
         - Red: Segmentation type
+        - Green: Metrics type
         - Black: Untyped or multiple types
     
     Args:
@@ -207,7 +293,7 @@ class _InputOutputCircle(QLabel):
         is_output (bool): True if this is an output port, False for input.
         card (_WorkflowCardZoneWidget): The parent card widget.
         zone (WorkflowZone, optional): Reference to the parent workflow zone.
-        type_info: Type constraint(s) - string (single type) or list (multiple types).
+        type_info: Type constraint(s) - data class instance or list of instances.
     
     Attributes:
         index (int): The port index.
@@ -237,17 +323,50 @@ class _InputOutputCircle(QLabel):
         """Get the border color for a data type.
         
         Args:
-            type_value (str or None): The data type ('img', 'segm', or None).
+            type_value (str, data class, or None): The data type.
         
         Returns:
             QColor: The color to use for the circle border.
         """
         if type_value is None:
             return QColor("black")
-        if type_value == 'segm':
-            return QColor("red")
-        elif type_value == 'img':
-            return QColor("blue")
+
+        # # Support legacy/serialized payloads that may appear during load.
+        # if isinstance(type_value, str):
+        #     normalized = type_value.strip().lower()
+        #     if normalized in ('img', 'image'):
+        #         return QColor('blue')
+        #     if normalized in ('segm', 'segmentation', 'mask'):
+        #         return QColor('red')
+        #     if normalized in ('metrics', 'metric'):
+        #         return QColor('#2e8b57')
+
+        # if isinstance(type_value, dict):
+        #     normalized = str(
+        #         type_value.get('type')
+        #         or type_value.get('type_name')
+        #         or type_value.get('kind')
+        #         or ''
+        #     ).strip().lower()
+        #     if normalized in ('img', 'image'):
+        #         return QColor('blue')
+        #     if normalized in ('segm', 'segmentation', 'mask'):
+        #         return QColor('red')
+        #     if normalized in ('metrics', 'metric'):
+        #         return QColor('#2e8b57')
+
+        color = getattr(type_value, 'color', None)
+        if color:
+            return QColor(color)
+
+        type_name = workflow_type_name(type_value)
+        if type_name == 'img':
+            return QColor('blue')
+        if type_name == 'segm':
+            return QColor('red')
+        if type_name == 'metrics':
+            return QColor('#2e8b57')
+
         return QColor("black")
     
     def paintEvent(self, event):
@@ -260,7 +379,6 @@ class _InputOutputCircle(QLabel):
             event: The paint event.
         """
         super().paintEvent(event)
-        
         # Draw the custom border
         rect = self.rect().adjusted(1, 1, -1, -1)
         
@@ -333,6 +451,8 @@ class _InputOutputCircle(QLabel):
         Args:
             type_info: New type constraint (string or list).
         """
+        if isinstance(type_info, (list, tuple)) and len(type_info) == 1:
+            type_info = type_info[0]
         self.type_info = type_info
         self.is_alternating = isinstance(type_info, (list, tuple)) and len(type_info) > 1
         self.update()
@@ -374,7 +494,7 @@ class _WorkflowCardZoneWidget(QWidget):
     - Configured by right-clicking
     - Deleted by middle-clicking
     
-    Ports are represented as colored circles (blue=image, red=segmentation).
+    Ports are represented as colored circles (blue=image, red=segmentation, green=metrics).
     Connections between ports propagate data types through the workflow.
     
     Args:
@@ -389,8 +509,8 @@ class _WorkflowCardZoneWidget(QWidget):
         dialog: The operation's configuration dialog.
         input_circles (list): List of input port circles.
         output_circles (list): List of output port circles.
-        dialog.input_types_accepted (dict): Maps input index to accepted types.
-        dialog.input_types (dict): Maps input index to currently connected type.
+        dialog.curr_input_types_accepted (dict): Maps input index to accepted types.
+        dialog.curr_input_types (dict): Maps input index to currently connected type.
         output_types (dict): Maps output index to type.
         card_id (int): Unique ID assigned by the zone.
         graphics_proxy: Graphics proxy for positioning in the scene.
@@ -423,8 +543,9 @@ class _WorkflowCardZoneWidget(QWidget):
         self._unsaved_work_before_first_dialog = bool(self.workflowGui.unsaved_work)
         
         self.functions.posData = posData
-        self.functions.setInputs = self.setAcceptedInputs
+        self.functions.setAcceptedInputs = self.setAcceptedInputs
         self.functions.setOutputs = self.setOutputs
+        self.functions.getCurrentOutputs = lambda: copy.deepcopy(getattr(self, 'output_types', {}))
         self.functions.updatePreview = self.updatePreview
         self.functions.updateTitle = self.updateTitle
         self.functions.notifySelectionInvalid = self._onDialogSelectionInvalid
@@ -454,6 +575,31 @@ class _WorkflowCardZoneWidget(QWidget):
         self.titleLabel.setAlignment(Qt.AlignCenter)
         self.titleLabel.setAttribute(Qt.WA_TransparentForMouseEvents)
         title_layout.addWidget(self.titleLabel)
+
+        title_layout.addStretch()
+
+        _btn_style = (
+            "QPushButton { "
+            "min-width: 18px; max-width: 18px; "
+            "min-height: 18px; max-height: 18px; "
+            "padding: 0px; border-radius: 9px; "
+            "} "
+        )
+        # set cellacdc/resources/icons/cog.svg as icon
+        self.settingsButton = QPushButton(parent=self)
+        self.settingsButton.setIcon(QIcon(':cog.svg'))
+        self.settingsButton.setToolTip('Open settings')
+        self.settingsButton.setStyleSheet(_btn_style)
+        self.settingsButton.clicked.connect(self._openDialog)
+        title_layout.addWidget(self.settingsButton)
+
+        self.deleteButton = QPushButton(parent=self)
+        self.deleteButton.setIcon(QIcon(':file-exit.svg'))
+        self.deleteButton.setToolTip('Delete card')
+        self.deleteButton.setStyleSheet(_btn_style)
+        self.deleteButton.clicked.connect(self._deleteCard)
+        title_layout.addWidget(self.deleteButton)
+
         main_layout.addLayout(title_layout)
         
         self.thumbnail = QLabel()
@@ -524,17 +670,82 @@ class _WorkflowCardZoneWidget(QWidget):
 
     def _getDialogInputTypes(self):
         """Return dialog concrete input types."""
-        input_types = getattr(self.dialog, 'input_types', None)
-        if isinstance(input_types, dict):
-            return input_types
+        curr_input_types = getattr(self.dialog, 'curr_input_types', None)
+        if isinstance(curr_input_types, dict):
+            return curr_input_types
         return {}
 
     def _getDialogInputTypesAccepted(self):
         """Return dialog accepted input types."""
-        input_types_accepted = getattr(self.dialog, 'input_types_accepted', None)
+        # `curr_input_types_accepted` is the runtime source-of-truth used by
+        # setAcceptedInputs(); fall back to legacy/static attribute if needed.
+        input_types_accepted = getattr(self.dialog, 'curr_input_types_accepted', None)
         if isinstance(input_types_accepted, dict):
             return input_types_accepted
+
+        # input_types_accepted = getattr(self.dialog, 'input_types_accepted', None)
+        # if isinstance(input_types_accepted, dict):
+        #     return input_types_accepted
         return {}
+
+    def _normalizeTypeInfo(self, type_info):
+        """Validate and normalize type payloads to workflow data classes."""
+        if isinstance(type_info, (list, tuple)):
+            normalized = []
+            for value in type_info:
+                if value is not None and not is_workflow_data_class(value):
+                    raise TypeError(
+                        f'Invalid workflow type payload: {value!r}. '
+                        'Only workflow data-class instances are supported.'
+                    )
+                normalized.append(value)
+            return normalized
+
+        if type_info is not None and not is_workflow_data_class(type_info):
+            raise TypeError(
+                f'Invalid workflow type payload: {type_info!r}. '
+                'Only workflow data-class instances are supported.'
+            )
+        return type_info
+
+    def _firstConnectedInputType(self):
+        """Return normalized type flowing into input 0 (if any)."""
+        first_input = self._getDialogInputTypes().get(0)
+        return self._normalizeTypeInfo(first_input)
+
+    def _inheritDimensionsFromFirstInput(self, type_value):
+        """Propagate SizeZ/SizeT from first input unless explicitly provided."""
+        normalized = self._normalizeTypeInfo(type_value)
+        first_input_type = self._firstConnectedInputType()
+        if normalized is None or first_input_type is None:
+            return normalized
+
+        if not hasattr(normalized, 'SizeZ') or not hasattr(normalized, 'SizeT'):
+            return normalized
+        if not hasattr(first_input_type, 'SizeZ') or not hasattr(first_input_type, 'SizeT'):
+            return normalized
+
+        inherited_size_z = normalized.SizeZ if normalized.SizeZ is not None else first_input_type.SizeZ
+        inherited_size_t = normalized.SizeT if normalized.SizeT is not None else first_input_type.SizeT
+        type_name = workflow_type_name(normalized)
+        return make_workflow_data_class(type_name, SizeZ=inherited_size_z, SizeT=inherited_size_t)
+
+    def _verifyAcceptedInputTypes(self, input_types_accepted):
+        """Verify that accepted input constraints are valid and dimension-compatible."""
+        concrete_input_types = self._getDialogInputTypes()
+        for input_idx, accepted in input_types_accepted.items():
+            accepted_values = accepted if isinstance(accepted, (list, tuple)) else [accepted]
+            accepted_values = [self._normalizeTypeInfo(v) for v in accepted_values]
+
+            concrete = self._normalizeTypeInfo(concrete_input_types.get(input_idx))
+            if concrete is None:
+                continue
+
+            if not any(self.workflowZone._areTypesCompatible(concrete, a) for a in accepted_values):
+                self._logInfo(
+                    f"Input {input_idx + 1} type verification failed: "
+                    f"connected type '{concrete}' does not match accepted types {accepted_values}."
+                )
         
     def updateTitle(self, new_title):
         """Update the card's display title.
@@ -589,7 +800,8 @@ class _WorkflowCardZoneWidget(QWidget):
         - An int: Just sets count (accepted types will be None)
         - None: Clears all inputs
         
-        Automatically removes invalid connections and rebuilds visual lines.
+        Automatically removes connections for inputs that no longer exist and
+        rebuilds visual lines.
         
         Args:
             n: Input count/types specification.
@@ -598,7 +810,9 @@ class _WorkflowCardZoneWidget(QWidget):
         if isinstance(n, dict):
             type_info = n
             n = max(type_info.keys()) + 1 if type_info else 0
-            input_types_accepted = {idx: type_info.get(idx) for idx in range(n)}
+            input_types_accepted = {
+                idx: self._normalizeTypeInfo(type_info.get(idx)) for idx in range(n)
+            }
         elif n is None:
             # None means no inputs
             n = 0
@@ -607,7 +821,10 @@ class _WorkflowCardZoneWidget(QWidget):
             # Simple number, clear accepted types
             input_types_accepted = {i: None for i in range(n)}
 
-        self.dialog.input_types_accepted = input_types_accepted
+        self._verifyAcceptedInputTypes(input_types_accepted)
+        self.dialog.curr_input_types_accepted = input_types_accepted
+        if not hasattr(self.dialog, 'curr_input_types'):
+            self.dialog.curr_input_types = {i: None for i in range(n)}
 
         while self.inputs_layout.count():
             child = self.inputs_layout.takeAt(0)
@@ -617,6 +834,8 @@ class _WorkflowCardZoneWidget(QWidget):
         self.inputs_layout.addStretch()
         for i in range(n):
             type_value = input_types_accepted.get(i)
+            if isinstance(type_value, (list, tuple)) and len(type_value) == 1:
+                type_value = type_value[0]
             circle = _InputOutputCircle(i, False, self, self.workflowZone, type_info=type_value)
             self.input_circles.append(circle)
             self.inputs_layout.addWidget(circle)
@@ -626,19 +845,17 @@ class _WorkflowCardZoneWidget(QWidget):
         # Validate and remove invalid connections for inputs that no longer exist
         card_id = getattr(self, 'card_id', None)
         if card_id is not None:
-            # Remove connections to inputs that no longer exist or have type mismatch
+            # Remove connections to inputs that no longer exist.
             lines_to_remove = [line for line in self.workflowZone.lines
                                if line[1][0] == card_id and line[1][1] >= n]
             self.workflowZone.removeLineKeys(lines_to_remove)
-            # Also remove connections with type mismatches
-            self.workflowZone.validateConnectionTypes()
             self.workflowZone.syncCardInputTypes(card_id)
             # Defer rebuild until layout has been processed
             QTimer.singleShot(0, self.workflowZone.rebuildConnectionLines)
             return
 
-        # Keep dialog input state in sync even before the card is attached to a zone.
-        self.functions.updateInputTypes(self.dialog, {i: None for i in range(n)})
+        # # Keep dialog input state in sync even before the card is attached to a zone.
+        # self.functions.updateInputTypes(self.dialog, {i: None for i in range(n)})
    
     def setOutputs(self, n=None):
         """Set the number and types of output ports.
@@ -648,7 +865,8 @@ class _WorkflowCardZoneWidget(QWidget):
         - An int: Just sets count (types will be None)
         - None: Clears all outputs
         
-        Automatically removes invalid connections and rebuilds visual lines.
+        Automatically removes connections for outputs that no longer exist and
+        rebuilds visual lines.
         Updates downstream cards about type changes.
         
         Args:
@@ -660,14 +878,17 @@ class _WorkflowCardZoneWidget(QWidget):
             # Extract count and types from dict
             type_info = n
             n = max(type_info.keys()) + 1 if type_info else 0
-            output_types = {idx: type_info.get(idx) for idx in range(n)}
+            output_types = {
+                idx: self._inheritDimensionsFromFirstInput(self._normalizeTypeInfo(type_info.get(idx)))
+                for idx in range(n)
+            }
         elif n is None:
             # None means no outputs
             n = 0
             output_types = {}
         else:
             # Simple number, clear types
-            output_types = {i: None for i in range(n)}
+            raise ValueError("Output specification must be a dict mapping index to type, or None to clear outputs.")
 
         outputs_changed = previous_output_types != output_types
         self.output_types = output_types
@@ -680,6 +901,8 @@ class _WorkflowCardZoneWidget(QWidget):
         self.outputs_layout.addStretch()
         for i in range(n):
             type_value = self.output_types.get(i)
+            if isinstance(type_value, (list, tuple)) and len(type_value) == 1:
+                type_value = type_value[0]
             circle = _InputOutputCircle(i, True, self, self.workflowZone, type_info=type_value)
             self.output_circles.append(circle)
             self.outputs_layout.addWidget(circle)
@@ -692,7 +915,6 @@ class _WorkflowCardZoneWidget(QWidget):
             lines_to_remove = [line for line in self.workflowZone.lines
                                if line[0][0] == card_id and line[0][1] >= n]
             self.workflowZone.removeLineKeys(lines_to_remove)
-            self.workflowZone.validateConnectionTypes()
             if outputs_changed:
                 # Let direct downstream dialogs react first; any further
                 # propagation happens when they emit their own output changes.
@@ -734,11 +956,7 @@ class _WorkflowCardZoneWidget(QWidget):
         elif event.button() == Qt.MiddleButton:
             self._deleteCard()
         elif event.button() == Qt.RightButton:
-            try:
-                self._captureDialogContentSnapshot()
-                self.functions.runDialog_cb(self.dialog)
-            except Exception as e:
-                self._logInfo(f"Error running dialog: {e}")
+            self._openDialog()
 
     def mouseMoveEvent(self, event):
         """Update card position and connection lines while dragging.
@@ -766,6 +984,14 @@ class _WorkflowCardZoneWidget(QWidget):
             # Update all connection lines after card is repositioned
             self.workflowZone.updateConnectionLines()
         super().mouseReleaseEvent(event)
+
+    def _openDialog(self):
+        """Open the configuration dialog for this card."""
+        try:
+            self._captureDialogContentSnapshot()
+            self.functions.runDialog_cb(self.dialog)
+        except Exception as e:
+            self._logInfo(f"Error running dialog: {e}")
 
     def _deleteCard(self):
         """Delete this card from the workflow zone."""
@@ -1097,25 +1323,48 @@ class WorkflowZone(QGraphicsView):
         
         Compatibility rules:
         - If either type is None, they are compatible
-        - If input accepts multiple types (list), output must be in that list
-        - If input expects a specific type (string), exact match required
+        - If input accepts multiple types (list), output must match one
+        - If input expects a specific type, class kind must match
         
         Args:
-            output_type (str or None): The output port's type.
-            input_type_accepted (str, list, or None): The accepted input type constraint(s).
+            output_type: The output port's workflow data class.
+            input_type_accepted: Accepted workflow data class constraint(s).
         
         Returns:
             bool: True if types are compatible.
         """
+        if output_type is not None and not is_workflow_data_class(output_type):
+            raise TypeError(f'Unsupported output type: {output_type!r}')
+        if input_type_accepted is not None and not isinstance(input_type_accepted, (list, tuple)) and not is_workflow_data_class(input_type_accepted):
+            raise TypeError(f'Unsupported accepted input type: {input_type_accepted!r}')
+
         if output_type is None or input_type_accepted is None:
             return True
         
         if isinstance(input_type_accepted, (list, tuple)):
             # Input accepts a list of types
+            for accepted_type in input_type_accepted:
+                if accepted_type is not None and not is_workflow_data_class(accepted_type):
+                    raise TypeError(f'Unsupported accepted input type in list: {accepted_type!r}')
             return output_type in input_type_accepted
-        else:
-            # Input expects a specific type
-            return output_type == input_type_accepted
+
+        output_type_name = workflow_type_name(output_type)
+        accepted_type_name = workflow_type_name(input_type_accepted)
+        if output_type_name != accepted_type_name:
+            return False
+
+        # Accepted constraints with explicit dimensions must be respected.
+        accepted_size_z = getattr(input_type_accepted, 'SizeZ', None)
+        accepted_size_t = getattr(input_type_accepted, 'SizeT', None)
+        output_size_z = getattr(output_type, 'SizeZ', None)
+        output_size_t = getattr(output_type, 'SizeT', None)
+
+        if accepted_size_z is not None and output_size_z is not None and accepted_size_z != output_size_z:
+            return False
+        if accepted_size_t is not None and output_size_t is not None and accepted_size_t != output_size_t:
+            return False
+
+        return True
 
     def createConnection(self, card1, is_out1, idx1, card2, is_out2, idx2):
         """Create a visual connection between two circles"""
@@ -1141,17 +1390,6 @@ class WorkflowZone(QGraphicsView):
             output_idx = idx2
             input_card = card1
             input_idx = idx1
-        
-        # Check type compatibility
-        output_type = output_card.output_types.get(output_idx)
-        input_type_accepted = input_card._getDialogInputTypesAccepted().get(input_idx)
-        
-        if not self._areTypesCompatible(output_type, input_type_accepted):
-            self._logInfo(
-                f"Type mismatch: cannot connect output type '{output_type}' "
-                f"to input type '{input_type_accepted}'"
-            )
-            return
         
         # Store connection with card IDs
         if is_out1:  # card1 is output, card2 is input
@@ -1301,36 +1539,27 @@ class WorkflowZone(QGraphicsView):
             self.drawConnection(start_card, True, start_idx, end_card, False, end_idx, line_key=line_data)
 
     def validateConnectionTypes(self):
-        """Remove connections where output type doesn't match input type"""
-        lines_to_remove = []
+        """Return type-incompatible connections without mutating the graph."""
+        mismatches = []
         for line_data in self.lines:
             (start_card_id, start_idx), (end_card_id, end_idx) = line_data
-            
-            # Get the card widgets
+
             start_proxy = self.cards.get(start_card_id)
             end_proxy = self.cards.get(end_card_id)
-            
             if start_proxy is None or end_proxy is None:
-                lines_to_remove.append(line_data)
                 continue
-            
+
             start_card = start_proxy.widget()
             end_card = end_proxy.widget()
-            
             if start_card is None or end_card is None:
-                lines_to_remove.append(line_data)
                 continue
-            
-            # Check type compatibility
+
             output_type = start_card.output_types.get(start_idx)
             input_type_accepted = end_card._getDialogInputTypesAccepted().get(end_idx)
-            
-            # Remove connection if types don't match
             if not self._areTypesCompatible(output_type, input_type_accepted):
-                lines_to_remove.append(line_data)
-        
-        # Remove incompatible connections from both data and visual lists
-        self.removeLineKeys(lines_to_remove)
+                mismatches.append((line_data, output_type, input_type_accepted))
+
+        return mismatches
 
     def updateDownstreamInputTypes(self, source_card_id):
         """Sync the concrete input types of directly connected downstream cards.
@@ -1490,6 +1719,7 @@ class WorkflowGui(QMainWindow):
         self._undo_stack = []
         self._redo_stack = []
         self._history_max_steps = 100
+        self._io_actions_lock_depth = 0
         self.data_loaded = False
 
         self.setAcceptDrops(True)
@@ -1701,8 +1931,9 @@ class WorkflowGui(QMainWindow):
             legend_layout.addWidget(circle)
             legend_layout.addWidget(text_label)
 
-        add_legend_item('red', 'segm.')
-        add_legend_item('blue', 'image')
+        add_legend_item(WfSegmDC().color, 'segm.')
+        add_legend_item(WfImageDC().color, 'image')
+        add_legend_item(WfMetricsDC().color, 'metrics')
 
         return legend_widget
 
@@ -1803,9 +2034,7 @@ class WorkflowGui(QMainWindow):
         folder_toolbar.addWidget(self.validationStatusLabel)
         folder_toolbar.addSeparator()
         folder_toolbar.addWidget(self._createToolbarIoLegend())
-        self.saveAction.setEnabled(False)
-        self.saveNewAction.setEnabled(False)
-        self.openImagesAction.setEnabled(False)
+        self._updateIoActionsEnabledState()
         self._updateUndoRedoActions()
         
         self.addToolBar(folder_toolbar)
@@ -1930,10 +2159,43 @@ class WorkflowGui(QMainWindow):
 
     def _setSaveActionsEnabled(self, enabled=True):
         """Enable or disable workflow save actions."""
+        enabled = bool(enabled) and not self._ioActionsLocked()
         if hasattr(self, 'saveAction') and self.saveAction is not None:
             self.saveAction.setEnabled(enabled)
         if hasattr(self, 'saveNewAction') and self.saveNewAction is not None:
             self.saveNewAction.setEnabled(enabled)
+
+    def _setLoadImagesActionEnabled(self, enabled=True):
+        """Enable or disable the load-images action."""
+        enabled = bool(enabled) and not self._ioActionsLocked()
+        if hasattr(self, 'openImagesAction') and self.openImagesAction is not None:
+            self.openImagesAction.setEnabled(enabled)
+
+    def _ioActionsLocked(self):
+        """Return True when toolbar I/O actions are temporarily locked."""
+        return self._io_actions_lock_depth > 0
+
+    def _updateIoActionsEnabledState(self):
+        """Recompute enabled state for New/Load/Save/Save As/Load Images actions."""
+        actions_enabled = not self._ioActionsLocked()
+        if hasattr(self, 'newAction') and self.newAction is not None:
+            self.newAction.setEnabled(actions_enabled)
+        if hasattr(self, 'loadWorkflowAction') and self.loadWorkflowAction is not None:
+            self.loadWorkflowAction.setEnabled(actions_enabled)
+
+        self._setSaveActionsEnabled(self.data_loaded)
+        self._setLoadImagesActionEnabled(self.data_loaded)
+
+    @contextmanager
+    def _lockIoActions(self):
+        """Temporarily disable toolbar I/O actions during an active I/O handler."""
+        self._io_actions_lock_depth += 1
+        self._updateIoActionsEnabledState()
+        try:
+            yield
+        finally:
+            self._io_actions_lock_depth = max(0, self._io_actions_lock_depth - 1)
+            self._updateIoActionsEnabledState()
 
     def _captureWorkflowState(self):
         """Capture cards, dialog content and connections for undo/redo."""
@@ -1952,8 +2214,10 @@ class WorkflowGui(QMainWindow):
                 content = copy.deepcopy(dialog.getContent())
 
             pos = proxy.pos()
+            card_functions = getattr(card_widget, 'functions', None)
             state['cards'][str(card_id)] = {
                 'kind': getattr(card_widget, 'title', '') or '',
+                'card_key': getattr(card_functions, 'card_key', None),
                 'position': {'x': pos.x(), 'y': pos.y()},
                 'content': content,
             }
@@ -1993,8 +2257,9 @@ class WorkflowGui(QMainWindow):
             for saved_card_id in sorted(cards_data.keys(), key=_sort_key):
                 card_info = cards_data[saved_card_id] or {}
                 kind = card_info.get('kind', '')
+                card_key = card_info.get('card_key', None)
 
-                functions = self._resolveWorkflowCardFunctions(kind)
+                functions = self._resolveWorkflowCardFunctions(kind, card_key=card_key)
                 if functions is None:
                     continue
 
@@ -2259,7 +2524,7 @@ class WorkflowGui(QMainWindow):
             self.data_loaded = True
             self._setWorkflowUIEnabled(True)
             self._setSaveActionsEnabled(True)
-            self.openImagesAction.setEnabled(True)
+            self._setLoadImagesActionEnabled(True)
             self.setUnsavedWork(False)
             self._logInfo(f'Loaded data from {len(self.data)} positions.')
             return True
@@ -2450,8 +2715,10 @@ class WorkflowGui(QMainWindow):
                 dialog.saveContent(save_path)
 
             pos = proxy.pos()
+            card_functions = getattr(card_widget, 'functions', None)
             cards_data[str(card_id)] = {
                 'kind': title,
+                'card_key': getattr(card_functions, 'card_key', None),
                 'position': {'x': pos.x(), 'y': pos.y()},
                 'save_path': save_filename,
             }
@@ -2598,8 +2865,13 @@ class WorkflowGui(QMainWindow):
 
         return len(errors) == 0, errors, main_data
 
-    def _resolveWorkflowCardFunctions(self, kind):
-        """Resolve saved card kind/title to a sidebar workflow functions object."""
+    def _resolveWorkflowCardFunctions(self, kind, card_key=None):
+        """Resolve saved card type to a sidebar workflow functions object.
+
+        Resolution order:
+        1) Stable internal `card_key` (preferred)
+        2) Backward-compatible title-based matching
+        """
         available_functions = []
         for i in range(self.sidebar.count()):
             item = self.sidebar.item(i)
@@ -2609,6 +2881,13 @@ class WorkflowGui(QMainWindow):
 
         if not available_functions:
             return None
+
+        card_key_text = str(card_key or '').strip().lower()
+        if card_key_text:
+            for functions in available_functions:
+                functions_key = str(getattr(functions, 'card_key', '') or '').strip().lower()
+                if functions_key and functions_key == card_key_text:
+                    return type(functions)()
 
         kind_text = str(kind or '').strip()
         kind_lower = kind_text.lower()
@@ -2685,7 +2964,8 @@ class WorkflowGui(QMainWindow):
                 self._rebuildSidebarCards(build_widgets=True)
                 self.data_loaded = True
                 self._setWorkflowUIEnabled(True)
-                self.openImagesAction.setEnabled(True)
+                self._setSaveActionsEnabled(True)
+                self._setLoadImagesActionEnabled(True)
             except Exception as e:
                 self._logInfo(f'Error restoring experiment data: {e}')
                 self._setWorkflowUIEnabled(False)
@@ -2707,8 +2987,9 @@ class WorkflowGui(QMainWindow):
             for saved_card_id in sorted(cards_data.keys(), key=_sort_key):
                 card_info = cards_data[saved_card_id] or {}
                 kind = card_info.get('kind', '')
+                card_key = card_info.get('card_key', None)
 
-                functions = self._resolveWorkflowCardFunctions(kind)
+                functions = self._resolveWorkflowCardFunctions(kind, card_key=card_key)
                 if functions is None:
                     self._logInfo(
                         f"Could not resolve workflow card kind '{kind}'. "
@@ -2792,6 +3073,11 @@ class WorkflowGui(QMainWindow):
             self._suspend_unsaved_tracking = prev_suspend_state
 
         self._notifyDialogsNewImageLoaded()
+        # Re-apply connector colors once all post-load updates have completed.
+        for proxy in self.dropZone.cards.values():
+            card = proxy.widget()
+            if card is not None and hasattr(card, 'refreshPortColors'):
+                card.refreshPortColors()
         self._setSaveActionsEnabled(True)
         self.setUnsavedWork(False)
         self._refreshWorkflowValidationLabel()
@@ -2879,7 +3165,7 @@ class WorkflowGui(QMainWindow):
         return f"ID={card_id}"
 
     def validateWorkflowGraph(self, log_errors=True):
-        """Validate workflow graph for missing required inputs and cycles.
+        """Validate workflow graph for required inputs, type mismatches, and cycles.
 
         Returns:
             tuple: (is_valid, errors)
@@ -2926,6 +3212,29 @@ class WorkflowGui(QMainWindow):
             missing_ports = ', '.join(str(idx + 1) for idx in missing_required)
             errors.append(
                 f"Card {self._formatCardLabel(card_id)} has missing required input port(s): {missing_ports}."
+            )
+
+        for line_data in self.dropZone.lines:
+            (from_card_id, from_port), (to_card_id, to_port) = line_data
+
+            from_proxy = self.dropZone.cards.get(from_card_id)
+            to_proxy = self.dropZone.cards.get(to_card_id)
+            from_card = from_proxy.widget() if from_proxy is not None else None
+            to_card = to_proxy.widget() if to_proxy is not None else None
+            if from_card is None or to_card is None:
+                continue
+
+            output_type = from_card.output_types.get(from_port)
+            input_type_accepted = to_card._getDialogInputTypesAccepted().get(to_port)
+            if self.dropZone._areTypesCompatible(output_type, input_type_accepted):
+                continue
+
+            errors.append(
+                'Type mismatch: '
+                f"{self._formatCardLabel(from_card_id)} output {from_port + 1} "
+                f"(type={output_type}) -> "
+                f"{self._formatCardLabel(to_card_id)} input {to_port + 1} "
+                f"(accepts={input_type_accepted})."
             )
 
         visit_state = {card_id: 0 for card_id in card_ids}  # 0=unvisited, 1=visiting, 2=done
@@ -2989,63 +3298,68 @@ class WorkflowGui(QMainWindow):
 
     def _onNewWorkflowTriggered(self):
         """Load experiment data and create a new workflow."""
-        # check for unsaved work before clearing
-        if self.unsaved_work and not self._askSaveBeforeClosing():
-            return
-        
-        # Load experiment data first
-        if not self._loadExperimentData():
-            return
-        
-        self._clearWorkflow()
-        self.loadedWorkflowPath = None
-        self.setUnsavedWork(False)
-        self._resetHistory()
-        self._logInfo('Created new empty workflow.')
+        with self._lockIoActions():
+            # check for unsaved work before clearing
+            if self.unsaved_work and not self._askSaveBeforeClosing():
+                return
+            
+            # Load experiment data first
+            if not self._loadExperimentData():
+                return
+            
+            self._clearWorkflow()
+            self.loadedWorkflowPath = None
+            self.setUnsavedWork(False)
+            self._resetHistory()
+            self._logInfo('Created new empty workflow.')
 
     def _onLoadWorkflowTriggered(self):
         """Prompt for a workflow folder and load it."""
-        save_dir = self.selectSaveFolder(save=False)
-        if save_dir is None:
-            return
+        with self._lockIoActions():
+            save_dir = self.selectSaveFolder(save=False)
+            if save_dir is None:
+                return
 
-        if self.verifyWorkflowSaveFiles(save_dir):
-            if self.loadWorkflow(save_dir):
-                self.loadedWorkflowPath = save_dir
-                self._resetHistory()
-        else:
-            self._logInfo(
-                "Selected folder is missing expected workflow files. "
-                "Please select a valid workflow folder."
-            )
+            if self.verifyWorkflowSaveFiles(save_dir):
+                if self.loadWorkflow(save_dir):
+                    self.loadedWorkflowPath = save_dir
+                    self._resetHistory()
+            else:
+                self._logInfo(
+                    "Selected folder is missing expected workflow files. "
+                    "Please select a valid workflow folder."
+                )
 
     def _onSaveWorkflowAsTriggered(self):
         """Prompt for a destination and save the workflow there."""        
-        if not self._canSaveWorkflow():
-            return
+        with self._lockIoActions():
+            if not self._canSaveWorkflow():
+                return
 
-        save_dir = self.selectSaveFolder(save=True)
-        if not save_dir:
-            return
+            save_dir = self.selectSaveFolder(save=True)
+            if not save_dir:
+                return
 
-        main_json_path = self.saveWorkflow(save_dir)
-        if main_json_path is not None:
-            self.loadedWorkflowPath = save_dir
+            main_json_path = self.saveWorkflow(save_dir)
+            if main_json_path is not None:
+                self.loadedWorkflowPath = save_dir
 
     def _onSaveWorkflowTriggered(self):
         """Save to current workflow path or prompt if not yet set."""
-        if not self._canSaveWorkflow():
-            return
+        with self._lockIoActions():
+            if not self._canSaveWorkflow():
+                return
 
-        if self.loadedWorkflowPath is None:
-            self._onSaveWorkflowAsTriggered()
-            return
+            if self.loadedWorkflowPath is None:
+                self._onSaveWorkflowAsTriggered()
+                return
 
-        self.saveWorkflow(self.loadedWorkflowPath)
+            self.saveWorkflow(self.loadedWorkflowPath)
 
     def _onLoadImagesTriggered(self):
         """Load or change experiment data."""
-        self._loadExperimentData()
+        with self._lockIoActions():
+            self._loadExperimentData()
         
     # handle key press events for shortcuts
     def keyPressEvent(self, event):
@@ -3057,7 +3371,17 @@ class WorkflowGui(QMainWindow):
             event: The key event.
         """
         if event.key() == Qt.Key_Q and self.debug:
-            self.validateWorkflowGraph(log_errors=True)  # also logs validation errors if any
+            # print each curr_input_types for each card in the workflow if dialog has attr
+            for card_id, proxy in self.dropZone.cards.items():
+                card_widget = proxy.widget()
+                if card_widget is not None:
+                    dialog = getattr(card_widget, 'dialog', None)
+                    if dialog is not None:
+                        curr_input_types = getattr(dialog, 'curr_input_types', None)
+                        print(f"Card ID={card_id}, title='{getattr(card_widget, 'title', '')}': curr_input_types={curr_input_types}")
+                        # get accepted types
+                        input_types = getattr(dialog, 'input_types', None)
+                        print(f"Card ID={card_id}, title='{getattr(card_widget, 'title', '')}': input_types={input_types}")
             # import pdb; pdb.set_trace()
         super().keyPressEvent(event)
         

@@ -6,6 +6,11 @@ from qtpy.QtCore import Qt, Signal
 import inspect
 import traceback
 import json
+import copy
+from .workflow_typing import (
+    WfImageDC, WfSegmDC, WfMetricsDC, workflow_type_name, make_workflow_data_class
+)
+
 
 class WorkflowBaseFunctions():
     """Base class for workflow card widgets.
@@ -16,17 +21,10 @@ class WorkflowBaseFunctions():
     themselves are defined separately.
     
     Attributes:
-        title (str): Display title of the workflow card.
-        posData: Position data containing relevant information for the workflow.
-        input_types_accepted (dict): Maps input index to accepted input type(s).
-            Example: {0: 'img', 1: ['img', 'segm']}
-        input_types (dict): Maps input index to the currently connected input type.
-            Example: {0: 'img', 1: 'segm'}
-        output_types (dict): Maps output index to output type. Example: {0: 'segm'}
-        setInputs (callable): Method to set input count and types.
-        setOutputs (callable): Method to set output count and types.
-        updatePreview (callable): Method to update the preview image.
-        updateTitle (callable): Method to update the card title.
+        title (str): Display title for the workflow card.
+        posData: Position data for the workflow.
+        all_inputs_uniform (bool): If True, set all accepted inputs are of the same shape.
+            If False, inputs can be of different shapes.
     
     Example:
         class MyWorkflowCard(WorkflowBaseFunctions):
@@ -37,8 +35,8 @@ class WorkflowBaseFunctions():
                 return MyDialog(parent=parent)
             
             def setupDialog(self, parent=None):
-                self.setInputs({0: 'img'})
-                self.setOutputs({0: 'img'})
+                self.setAcceptedInputs({0: WorkflowImageDataClass()})
+                self.setOutputs({0: WorkflowImageDataClass()})
                 return MyDialog(parent=parent)
     """
     def __init__(self):
@@ -147,6 +145,9 @@ class WorkflowBaseFunctions():
         kwargs_required = inspect.getfullargspec(self.initializeDialog).args
         kwargs_to_pass = {k: v for k, v in kwargs.items() if k in kwargs_required}
         self.initializeDialog(**kwargs_to_pass)
+        # check for the common signals sigSetOutputs
+        if hasattr(dialog, 'sigSetOutputs'):
+            dialog.sigSetOutputs.connect(self.setOutputs)
 
     def renderDialogPreview(self, size=None, scale=(220, 110), parent=None, workflowGui=None, posData=None):
         """Render a preview image of the workflow dialog without displaying it.
@@ -202,18 +203,96 @@ class WorkflowBaseFunctions():
     def updateInputTypes(self, dialog, input_types):
         """Handle changes to connected input types and notify the dialog.
         
-        Updates the dialog's input_types attribute and calls the dialog's
+        Updates the dialog's curr_input_types attribute and calls the dialog's
         updatedInputTypes() callback if it exists, allowing the dialog to
         respond to changes in the types currently flowing through its inputs.
+        Re-applies current outputs through setOutputs() so cards that inherit
+        metadata from input 0 can propagate SizeT/SizeZ changes downstream.
         
         Args:
             dialog: The dialog widget with input types.
             input_types (dict): Updated concrete input type mapping.
         """
-        dialog.input_types = input_types
+        dialog.curr_input_types = input_types # currently connected input types
         if hasattr(dialog, 'updatedInputTypes'):
             dialog.updatedInputTypes()
+        self._applyInputUniformityRules(dialog, input_types)
+        # Trigger output re-evaluation so inherited SizeT/SizeZ is propagated
+        # even for cards that do not explicitly react to input-type changes.
+        if hasattr(self, 'getCurrentOutputs') and callable(self.getCurrentOutputs):
+            current_outputs = self.getCurrentOutputs()
+            if current_outputs is not None:
+                self.setOutputs(copy.deepcopy(current_outputs))
+            
+    def _applyInputUniformityRules(self, dialog, input_types):
+        # check for empty input_types
+        if not input_types:
+            return
         
+        curr_accepted_inputs = dialog.curr_input_types_accepted
+        if hasattr(self, 'all_inputs_uniform') and self.all_inputs_uniform:
+            first_input = input_types[0] if 0 in input_types else None
+            if first_input is not None:
+                curr_accepted_inputs ={
+                    idx: self._setInputMetadataUniform(
+                        curr_accepted_inputs[idx],
+                        size_t=first_input.SizeT,
+                        size_z=first_input.SizeZ,
+                    )
+                    for idx in curr_accepted_inputs.keys()
+                }
+                
+        if hasattr(self, 'all_time_inputs_uniform') and self.all_time_inputs_uniform:
+            # if all time inputs are uniform, then all inputs are uniform
+            first_input = input_types[0] if 0 in input_types else None
+            if first_input is not None:
+                curr_accepted_inputs ={
+                    idx: self._setInputMetadataUniform(
+                        curr_accepted_inputs[idx],
+                        size_t=first_input.SizeT,
+                    )
+                    for idx in curr_accepted_inputs.keys()
+                }
+                
+        if hasattr(self, 'if_0_3d_others_3d') and self.if_0_3d_others_3d:
+            # if segm input has 3D, img has to be 3D. If segm is 2D, img can be 2D or 3D
+            # overrides all_inputs_uniform for the first two inputs
+            first_input = input_types[0] if 0 in input_types else None
+            if (first_input is not None 
+                and first_input.SizeZ is not None 
+                and first_input.SizeZ > 1):
+                for idx in list(curr_accepted_inputs.keys())[1:]:
+                    curr_accepted_inputs[idx] = self._setInputMetadataUniform(
+                        curr_accepted_inputs[idx],
+                        size_z=curr_accepted_inputs[idx].SizeZ,
+                    )
+                    
+        # check for changes compared to original accepted inputs.
+        for idx in curr_accepted_inputs:
+            if (idx not in dialog.curr_input_types_accepted 
+                or dialog.curr_input_types_accepted[idx] != curr_accepted_inputs[idx]):
+                self.setAcceptedInputs(curr_accepted_inputs)
+                break
+            
+    def _setInputMetadataUniform(self, input_type_ls,
+                                    size_t=None, size_z=None):
+        """Set input metadata to be uniform for all inputs of a specific slot (input_ls).
+        """
+        
+        if not isinstance(input_type_ls, list):
+            input_type_ls = [input_type_ls]
+        
+        new_input_type_ls = []
+        for input_type in input_type_ls:
+            input_type_name = workflow_type_name(input_type)
+            new_input_type_ls.append(make_workflow_data_class(
+                input_type_name, SizeT=size_t, SizeZ=size_z
+            ))
+                
+        return new_input_type_ls
+        
+        
+
 class WorkflowCombineChannelsFunctions(WorkflowBaseFunctions):
     """Workflow card functions for combining and manipulating image channels.
     
@@ -228,7 +307,10 @@ class WorkflowCombineChannelsFunctions(WorkflowBaseFunctions):
     def __init__(self) -> None:
         """Initialize the combine channels workflow."""
         self.combineChannelDialog = CombineChannelsSetupDialogWorkflow
+        self.card_key = 'combine_channels'
         self.title = "Combine and manipulate channels"
+        # define input uniformity rules
+        self.all_inputs_uniform = True
     
     def dryrunDialog(self, parent=None, workflowGui=None):
         """Create a dry-run dialog instance for preview rendering.
@@ -259,8 +341,8 @@ class WorkflowCombineChannelsFunctions(WorkflowBaseFunctions):
 
     def initializeDialog(self, dialog, workflowGui=None):
         """Configure the combine channels card after dialog creation."""
-        self.setInputs({0: ['img', 'segm']})
-        self.setOutputs({0: 'img'})
+        self.setAcceptedInputs({0: [WfImageDC(), WfSegmDC()]})
+        self.setOutputs({0: WfImageDC()})
         dialog.sigNumStepsChanged.connect(self.numStepsChanged)
         dialog.sigOkClicked.connect(self.updatePreview)
         dialog.sigSaveAsSegmCheckboxToggled.connect(self.saveAsSegmCheckboxToggled)
@@ -274,8 +356,11 @@ class WorkflowCombineChannelsFunctions(WorkflowBaseFunctions):
         Args:
             num_steps (int): New number of input channels.
         """
-        inputs = {n: ['img', 'segm'] for n in range(num_steps)}
-        self.setInputs(inputs)
+        inputs = {
+            n: [WfImageDC(), WfSegmDC()]
+            for n in range(num_steps)
+        }
+        self.setAcceptedInputs(inputs)
     
     def saveAsSegmCheckboxToggled(self, save_as_segm):
         """Handle toggling the save output as segmentation checkbox.
@@ -286,7 +371,8 @@ class WorkflowCombineChannelsFunctions(WorkflowBaseFunctions):
         Args:
             save_as_segm (bool): True to save as segmentation, False for image.
         """
-        self.setOutputs({0: 'segm' if save_as_segm else 'img'})
+        out_data_class = WfSegmDC() if save_as_segm else WfImageDC()
+        self.setOutputs({0: out_data_class})
         
 class WorkflowInputSegmFunctions(WorkflowBaseFunctions):
     """Workflow card functions for selecting segmentation data input.
@@ -302,6 +388,7 @@ class WorkflowInputSegmFunctions(WorkflowBaseFunctions):
     def __init__(self) -> None:
         """Initialize the segmentation input workflow."""
         self.inputDataDialog = WorkflowInputDataDialog
+        self.card_key = 'input_segmentation'
         self.title = "Select segmentation data"
         
     def dryrunDialog(self, workflowGui=None):
@@ -326,13 +413,16 @@ class WorkflowInputSegmFunctions(WorkflowBaseFunctions):
             WorkflowInputDataDialog: Configured dialog instance.
         """
         segm_options = workflowGui.segm_channels
-        dialog = self.inputDataDialog(segm_options, 'segmentation', parent=workflowGui, logger=logger)
+        dialog = self.inputDataDialog(segm_options, 'segmentation', 
+                                      parent=workflowGui, 
+                                      logger=logger, 
+                                      posData=workflowGui.posData)
         return dialog
 
     def initializeDialog(self, dialog, workflowGui=None):
         """Configure the segmentation input card after dialog creation."""
-        self.setInputs()
-        self.setOutputs({0: 'segm'})
+        self.setAcceptedInputs()
+        self.setOutputs({0: WfSegmDC()})
         dialog.sigOkClicked.connect(self.updatePreview)
         dialog.sigUpdateTitle.connect(self.updateTitle)
         dialog.sigSelectionInvalid.connect(self.notifySelectionInvalid)
@@ -353,6 +443,7 @@ class WorkflowInputImgFunctions(WorkflowBaseFunctions):
     def __init__(self) -> None:
         """Initialize the image input workflow."""
         self.inputDataDialog = WorkflowInputDataDialog
+        self.card_key = 'input_image'
         self.title = "Select image data"
         
     def dryrunDialog(self, workflowGui=None):
@@ -378,13 +469,13 @@ class WorkflowInputImgFunctions(WorkflowBaseFunctions):
         """
         img_options = workflowGui.img_channels
         dialog = self.inputDataDialog(img_options, 'image', parent=workflowGui,
-                                      logger=logger)
+                                      logger=logger, posData=workflowGui.posData)
         return dialog
 
     def initializeDialog(self, dialog, workflowGui=None):
         """Configure the image input card after dialog creation."""
-        self.setInputs()
-        self.setOutputs({0: 'img'})
+        self.setAcceptedInputs()
+        self.setOutputs({0: WfImageDC()})
         dialog.sigOkClicked.connect(self.updatePreview)
         dialog.sigUpdateTitle.connect(self.updateTitle)
         dialog.sigSelectionInvalid.connect(self.notifySelectionInvalid)
@@ -396,6 +487,7 @@ class WorkflowPreProcessFunctions(WorkflowBaseFunctions):
 
     def __init__(self) -> None:
         self.preprocessDialog = PreProcessSetupDialogWorkflow
+        self.card_key = 'preprocess_image'
         self.title = "Pre-process image"
 
     def dryrunDialog(self, parent=None, workflowGui=None):
@@ -406,8 +498,8 @@ class WorkflowPreProcessFunctions(WorkflowBaseFunctions):
         return dialog
 
     def initializeDialog(self, dialog, workflowGui=None):
-        self.setInputs({0: 'img'})
-        self.setOutputs({0: 'img'})
+        self.setAcceptedInputs({0: WfImageDC()})
+        self.setOutputs({0: WfImageDC()})
         dialog.sigOkClicked.connect(self.updatePreview)
 
 class WorkflowPostProcessSegmFunctions(WorkflowBaseFunctions):
@@ -415,7 +507,11 @@ class WorkflowPostProcessSegmFunctions(WorkflowBaseFunctions):
 
     def __init__(self) -> None:
         self.postProcessDialog = PostProcessSegmDialogWorkflow
+        self.card_key = 'postprocess_segmentation'
         self.title = "Post-process segmentation"
+        self.all_inputs_uniform = True
+        self.if_0_3d_others_3d = True
+        # define input uniformity rules
 
     def dryrunDialog(self, workflowGui=None, posData=None):
         return self.postProcessDialog(posData=posData, parent=workflowGui)
@@ -429,9 +525,9 @@ class WorkflowPostProcessSegmFunctions(WorkflowBaseFunctions):
         return dialog
 
     def initializeDialog(self, dialog, workflowGui=None):
-        self.setInputs({0: 'segm'})
-        self.setOutputs({0: 'segm'})
-        dialog.sigInputsChanged.connect(self.setInputs)
+        self.setAcceptedInputs({0: WfSegmDC()})
+        self.setOutputs({0: WfSegmDC()})
+        dialog.sigInputsChanged.connect(self.setAcceptedInputs)
         dialog.sigOkClicked.connect(self.updatePreview)
 
 class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
@@ -641,11 +737,9 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
         self.setLayout(layout)
         
     def setInputs_cb(self, number_inputs):
-        printl("here")
         """Handle when input types change and update the dialog UI accordingly."""
-        inputs = {0: 'segm'} # first is segmentation
-        inputs.update({n: 'img' for n in range(1, number_inputs+1)}) # all other inputs are images
-        printl(f"Setting inputs to: {inputs}")
+        inputs = {0: WfSegmDC()} # first is segmentation
+        inputs.update({n: WfImageDC() for n in range(1, number_inputs+1)}) # all other inputs are images
         self.sigInputsChanged.emit(inputs)
         
     def _setCheckableRangeValue(self, range_widgets, value):
@@ -778,13 +872,16 @@ class WorkflowInputDataDialog(QBaseDialog):
     sigUpdateTitle = Signal(str)
     sigSelectionInvalid = Signal(str)
     sigSelectionValid = Signal()
+    sigSetOutputs = Signal(dict)  # Emit new output definitions when selection changes and affects output type
     
-    def __init__(self, selection_options, type, parent=None, logger=print):
+    def __init__(self, selection_options, type, parent=None, logger=print,
+                 posData=None):
         super().__init__(parent=parent)
         self.setWindowTitle(f'Select input {type}')
         
         self.type = type
         self.selection_options = selection_options or []
+        self.posData = posData
         self.logger = logger
         self.selected_value = None
         
@@ -809,9 +906,37 @@ class WorkflowInputDataDialog(QBaseDialog):
         cancel_button.clicked.connect(self.cancel_clicked)
         cancel_button.clicked.connect(self.sigCancelClicked.emit)
         
+        # add connection to update sizeT and SizeZ
+        self.selection_widget.currentTextChanged.connect(self.selectionChanged)
+        
         layout.addLayout(buttons_layout)
         
         self.setLayout(layout)
+        
+    def selectionChanged(self, new_selection):
+        """Handle when selection changes and update the dialog UI accordingly."""
+        self.sigUpdateTitle.emit(f'{self.type}: {new_selection}')
+        if self.posData is not None:
+            new_output_size_t = self.posData.SizeT
+            new_output_size_z = self.posData.SizeZ
+            if self.type == 'image':
+                out_data_class = WfImageDC(SizeT=new_output_size_t, SizeZ=new_output_size_z)
+            elif self.type == 'segmentation':
+                # here theoretically we could have a 2D segm on 3D image...
+                segm_info_df = self.posData.segmInfo_df if hasattr(self.posData, 'segmInfo_df') else None
+                if segm_info_df is not None and new_selection in segm_info_df.index:
+                    segm_info_df = segm_info_df.loc[new_selection]
+                    proj_method = segm_info_df['which_z_proj']
+                    if proj_method != 'single z-slice':
+                        new_output_size_z = 1
+                else:
+                    # log 
+                    txt = "segmInfo.csv not found." if segm_info_df is None else f"Selected segmentation '{new_selection}' not found in segmInfo.csv."
+                    self.logger(f"[WARNING]: {txt}\nDefaulting to using original SizeZ from posData.")
+                out_data_class = WfSegmDC(SizeT=new_output_size_t, SizeZ=new_output_size_z)
+            else:
+                raise ValueError(f"Unsupported type '{self.type}' for WorkflowInputDataDialog.")    
+            self.sigSetOutputs.emit({0: out_data_class})
     
     def ok_clicked(self):
         """Handle OK button click.
@@ -824,7 +949,6 @@ class WorkflowInputDataDialog(QBaseDialog):
             self.sigSelectionValid.emit()
         else:
             self.sigSelectionInvalid.emit(self.selected_value)
-        self.sigUpdateTitle.emit(f'{self.type}: {self.selected_value}')
         self.hide()
     
     def cancel_clicked(self):
@@ -851,7 +975,6 @@ class WorkflowInputDataDialog(QBaseDialog):
 
         self.selection_widget.setCurrentIndex(idx)
         self.selected_value = value
-        self.sigUpdateTitle.emit(f'{self.type}: {self.selected_value}')
 
     def getContent(self):
         """Return current selection as in-memory content."""
@@ -922,7 +1045,6 @@ class WorkflowInputDataDialog(QBaseDialog):
                 index = self.selection_widget.findText(content)
                 self.selection_widget.setCurrentIndex(index)
                 self.selected_value = content
-                self.sigUpdateTitle.emit(f'{self.type}: {self.selected_value}')
             else:
                 self.logger(f"Loaded value '{content}' not in selection options.")
         except Exception as e:

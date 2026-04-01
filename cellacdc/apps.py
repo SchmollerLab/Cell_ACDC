@@ -93,6 +93,7 @@ from . import _base_widgets
 from . import io
 from . import cca_functions
 from . import path
+from .workflow_typing import WfSegmDC
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -17389,9 +17390,9 @@ class CombineChannelsWidget(PreProcessParamsWidget):
             is_none = False
             if self.channel_names is None:
                 idx = step_n - 1
-                if hasattr(self.parent, 'input_types') and idx in self.parent.input_types:
-                    segm = self.parent.input_types[idx] == 'segm'
-                    is_none = self.parent.input_types[idx] is None
+                if hasattr(self.parent, 'curr_input_types') and idx in self.parent.curr_input_types:
+                    segm = isinstance(self.parent.curr_input_types[idx], WfSegmDC)
+                    is_none = self.parent.curr_input_types[idx] is None
             else:
                 channel = stepWidgets['selector'].currentText()
                 segm = True if 'segm' in channel.lower() else False
@@ -19105,13 +19106,13 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     def autoCheckSaveAsSegmCheckbox(self, dummy=None, return_bool=False):
         any_not_seg = False
         for step_n, step in self.combineChannelsWidget.steps().items():
-            if self.channel_names is None and hasattr(self, 'input_types'):
+            if self.channel_names is None and hasattr(self, 'curr_input_types'):
                 idx = step_n - 1
-                is_none = self.input_types.get(idx, None) is None
+                is_none = self.curr_input_types.get(idx, None) is None
                 if is_none:
                     continue
 
-                segm = self.input_types.get(idx, '') == 'segm'
+                segm = isinstance(self.curr_input_types[idx], WfSegmDC)
                 if not segm:
                     any_not_seg = True
                     break
