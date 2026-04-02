@@ -423,11 +423,17 @@ def init_prompt_model_params(
     return out
 
 def init_segm_model_params(
-        posData, model_name, init_params, segment_params, 
+    posData, model_name, init_params, segment_params,
+        images_path=None, basename=None, metadata_df=None, channel_names=None,
         qparent=None, help_url=None, init_last_params=False, 
         check_sam_embeddings=True, is_gui_caller=False,
         extraParams=None, extraParamsTitle=None,
-        ini_filename=None, add_additional_segm_params=False
+        ini_filename=None, add_additional_segm_params=False,
+        addPreProcessParams=True, addPostProcessParams=True,
+    exec_dialog=True, hideOnClosing=False,
+    sam_embeddings_path=None, sam_embeddings_loaded=False,
+    useInput2AsSecondChannelToggle=False,
+        load_sam_embeddings_func=None,
     ):
     out = {}
     
@@ -438,11 +444,26 @@ def init_segm_model_params(
     # If SAM with prompts and embeddings were prev saved, asks to load them
     load_sam_embed = False
     only_load_sam_embed = False
-    sam_embeddings_exist = os.path.exists(posData.sam_embeddings_path)
-    sam_embeddings_loaded = hasattr(posData, 'sam_embeddings')
+    if posData is not None:
+        if images_path is None:
+            images_path = getattr(posData, 'images_path', None)
+        if basename is None:
+            basename = getattr(posData, 'basename', None)
+        if metadata_df is None:
+            metadata_df = getattr(posData, 'metadata_df', None)
+        if channel_names is None:
+            channel_names = getattr(posData, 'chNames', None)
+        if sam_embeddings_path is None:
+            sam_embeddings_path = getattr(posData, 'sam_embeddings_path', None)
+        if not sam_embeddings_loaded:
+            sam_embeddings_loaded = hasattr(posData, 'sam_embeddings')
+
+    sam_embeddings_exist = bool(
+        sam_embeddings_path and os.path.exists(sam_embeddings_path)
+    )
     if is_sam_model and sam_embeddings_exist and not sam_embeddings_loaded:
         load_sam_embed, only_load_sam_embed, cancel = askSamLoadEmbeddings(
-            posData.sam_embeddings_path, qparent=qparent, 
+            sam_embeddings_path, qparent=qparent, 
             is_gui_caller=is_gui_caller
         )
         if cancel:
@@ -452,10 +473,12 @@ def init_segm_model_params(
     if only_load_sam_embed:
         return out
     
-    segm_files = load.get_segm_files(posData.images_path)
-    existingSegmEndnames = load.get_endnames(
-        posData.basename, segm_files
-    )
+    existingSegmEndnames = []
+    if images_path and basename:
+        segm_files = load.get_segm_files(images_path)
+        existingSegmEndnames = load.get_endnames(
+            basename, segm_files
+        )
     win = apps.QDialogModelParams(
         init_params,
         segment_params,
@@ -464,22 +487,34 @@ def init_segm_model_params(
         initLastParams=init_last_params, 
         posData=posData,
         segmFileEndnames=existingSegmEndnames,
-        df_metadata=posData.metadata_df,
+        df_metadata=metadata_df,
         force_postprocess_2D=False,
         extraParams=extraParams,
         extraParamsTitle=extraParamsTitle,
         ini_filename=ini_filename,
-        add_additional_segm_params=add_additional_segm_params
+        add_additional_segm_params=add_additional_segm_params,
+        addPostProcessParams=addPostProcessParams,
+        addPreProcessParams=addPreProcessParams,
+        hideOnClosing=hideOnClosing,
+        useInput2AsSecondChannelToggle=useInput2AsSecondChannelToggle,
     )
-    win.setChannelNames(posData.chNames)
+    if channel_names is not None:
+        win.setChannelNames(channel_names)
     out['win'] = win
+
+    if not exec_dialog:
+        return out
+
     win.exec_()
     if win.cancel:
         return out
     
     if load_sam_embed:
         win.model_kwargs['use_loaded_embeddings'] = True
-        posData.loadSamEmbeddings()
+        if callable(load_sam_embeddings_func):
+            load_sam_embeddings_func()
+        elif posData is not None and hasattr(posData, 'loadSamEmbeddings'):
+            posData.loadSamEmbeddings()
     
     ask_sam_embeddings = (
         model_name in ('segment_anything', 'sam2')

@@ -1,12 +1,16 @@
-from . import apps, qutils, widgets, printl, config
+import os
+import traceback
+
+from . import apps, qutils, widgets, printl, config, html_utils
+from . import myutils, prompts
 from .apps import QBaseDialog
 from qtpy.QtWidgets import QVBoxLayout, QLabel, QComboBox, QApplication
 from qtpy.QtGui import QPixmap, QColor
 from qtpy.QtCore import Qt, Signal
 import inspect
-import traceback
 import json
 import copy
+import io
 import re
 from .workflow_typing import (
     WfImageDC, WfSegmDC, WfMetricsDC, workflow_type_name, make_workflow_data_class
@@ -561,6 +565,362 @@ class WorkflowSetMeasurementsFunctions(WorkflowBaseFunctions):
 
     def selectedMetricsChanged(self, dialog):
         self.setOutputs({0: WfMetricsDC(setMetrics=dialog.selectedMetrics())})
+
+class SegmentFunctions(WorkflowBaseFunctions):
+    # self.segmentDialog = SegmentDialogWorkflow
+    
+    def __init__(self) -> None:
+        self.selectModelDialog = SelectModelDialogWorkflow
+        self.card_key = 'segmentation'
+        self.title = "Segment"
+        # self.segmentDialog = SegmentDialogWorkflow
+        
+    def dryrunDialog(self, parent=None, workflowGui=None, posData=None):
+        return self.selectModelDialog(parent=workflowGui, posData=posData)
+    
+    def setupDialog(self, workflowGui=None, posData=None, logger=print):
+        dialog = self.selectModelDialog(
+            parent=workflowGui, 
+            posData=posData,
+            logger=logger,
+        )
+        return dialog
+    
+    def initializeDialog(self, dialog, workflowGui=None):
+        self.setAcceptedInputs({0: WfImageDC(), 1: WfImageDC()})
+        self.setOutputs({0: WfSegmDC()})
+        dialog.sigCancelClicked.connect(self.cancel_clicked)
+        dialog.sigModelChanged.connect(self.setupModelParameters)
+        dialog.sigSelectionInvalid.connect(self.notifySelectionInvalid)
+        if hasattr(self, 'notifySelectionValid'):
+            dialog.sigSelectionValid.connect(self.notifySelectionValid)
+        dialog.sigOkClicked.connect(self.setupModelParameters)
+        dialog.sigOkClicked.connect(self.updatePreview)
+
+    def runDialog_cb(self, dialog):
+        if hasattr(dialog, 'openMainDialog'):
+            dialog.openMainDialog()
+            return
+        super().runDialog_cb(dialog)
+    
+    def cancel_clicked(self):
+        pass
+    
+    def setupModelParameters(self, model_name):
+        if not model_name:
+            self.updateTitle('Segment')
+            return
+
+        title = model_name.replace('_', ' ').strip().title()
+        self.updateTitle(f'Segment: {title}')
+        
+class SelectModelDialogWorkflow(apps.QDialogSelectModel):
+    sigModelChanged = Signal(str)
+    sigSelectionInvalid = Signal(str)
+    sigSelectionValid = Signal()
+
+    def __init__(
+            self, parent=None, posData=None, logger=print,
+            addSkipSegmButton=False, customFirst=''
+        ):
+        self.posData = posData
+        self.logger = logger
+        self.model_name = None
+        self.params_config_text = None
+        self.last_error_message = None
+        self._params_dialog = None
+        self._params_dialog_model_name = None
+        super().__init__(parent, addSkipSegmButton, customFirst)
+
+    def _invalidate_params_dialog_cache(self):
+        if self._params_dialog is not None:
+            try:
+                self._params_dialog.hide()
+                self._params_dialog.deleteLater()
+            except Exception:
+                pass
+        self._params_dialog = None
+        self._params_dialog_model_name = None
+
+    def _log(self, message):
+        try:
+            if hasattr(self.logger, 'info'):
+                self.logger.info(message)
+            elif callable(self.logger):
+                self.logger(message)
+        except Exception:
+            pass
+
+    def _display_model_name(self, model_name):
+        if model_name == 'thresholding':
+            return 'Automatic thresholding'
+        return model_name
+
+    def _show_model_params_error(self, err):
+        traceback_str = traceback.format_exc()
+        self._log(traceback_str)
+
+        model_name = self._display_model_name(self.model_name or 'selected model')
+        self.last_error_message = (
+            f"Model parameters error for {model_name}: {type(err).__name__}: {err}"
+        )
+        self.sigSelectionInvalid.emit(self.last_error_message)
+        txt = html_utils.paragraph(f"""
+            Cell-ACDC failed while preparing the parameters dialog for
+            <code>{model_name}</code>.<br><br>
+            This can happen when the selected model needs to be downloaded or
+            imported on the fly and that step fails.<br><br>
+            Please restart Cell-ACDC and try again. If the problem persists,
+            please report the issue on the <a href="https://github.com/SchmollerLab/Cell_ACDC/issues">Cell-ACDC GitHub issues page</a>.
+        """)
+
+        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        if hasattr(msg, 'setDetailedText'):
+            msg.setDetailedText(traceback_str)
+        msg.critical(self, 'Model parameters error', txt)
+
+    def _set_selected_model_item(self, model_name):
+        if not model_name:
+            return
+
+        display_name = self._display_model_name(model_name)
+        items = self.listBox.findItems(display_name, Qt.MatchExactly)
+        if not items:
+            self.listBox.addItem(display_name)
+            items = self.listBox.findItems(display_name, Qt.MatchExactly)
+
+        if items:
+            self.listBox.setCurrentItem(items[0])
+
+    def _selected_model_name(self):
+        item = self.listBox.currentItem()
+        if item is None:
+            return None
+
+        model_name = item.text()
+        if model_name == 'Add custom model...':
+            model_file_path = apps.addCustomModelMessages(self)
+            if model_file_path is None:
+                return None
+
+            myutils.store_custom_model_path(model_file_path)
+            model_name = os.path.basename(os.path.dirname(model_file_path))
+            item = self.listBox.findItems(model_name, Qt.MatchExactly)
+            if not item:
+                self.listBox.addItem(model_name)
+                item = self.listBox.findItems(model_name, Qt.MatchExactly)
+            if item:
+                self.listBox.setCurrentItem(item[0])
+            return model_name
+
+        if model_name == 'Automatic thresholding':
+            return 'thresholding'
+
+        return model_name
+
+    def _serialize_params_dialog(self, win):
+        if self.model_name == 'thresholding':
+            return json.dumps({
+                'gauss_sigma': win.segment_kwargs['gauss_sigma'],
+                'threshold_method': win.segment_kwargs['threshold_method'],
+                'segment_3D_volume': win.segment_kwargs.get(
+                    'segment_3D_volume', False
+                ),
+            })
+
+        config_pars = win.getConfigPars(create_new=True)
+        if hasattr(win, 'reduceMemUsageToggle'):
+            section = f'{win.model_name}.additional_segm_params'
+            config_pars[section] = {}
+            option = win.reduceMemUsageToggle.label
+            config_pars[section][option] = str(
+                win.reduceMemUsageToggle.isChecked()
+            )
+
+        buffer = io.StringIO()
+        config_pars.write(buffer)
+        return buffer.getvalue()
+
+    def _restore_params_dialog(self, win):
+        if not self.params_config_text:
+            return
+
+        if self.model_name == 'thresholding':
+            content = json.loads(self.params_config_text)
+            win.sigmaGaussSpinbox.setValue(content.get('gauss_sigma', 1.0))
+            threshold_method = content.get('threshold_method', 'threshold_otsu')
+            win.threshMethodCombobox.setCurrentText(
+                threshold_method[10:].capitalize()
+            )
+            if win.segment3Dcheckbox is not None:
+                win.segment3Dcheckbox.setChecked(
+                    content.get('segment_3D_volume', False)
+                )
+            return
+
+        config_pars = config.ConfigParser()
+        config_pars.read_string(self.params_config_text)
+        win.loadPreprocRecipe(configPars=config_pars)
+        win.loadLastSelection(
+            f'{win.model_name}.init', win.init_argsWidgets, configPars=config_pars
+        )
+        win.loadLastSelection(
+            f'{win.model_name}.segment', win.argsWidgets, configPars=config_pars
+        )
+        if win.extraArgsWidgets:
+            win.loadLastSelection(
+                f'{win.model_name}.extra',
+                win.extraArgsWidgets,
+                configPars=config_pars,
+            )
+        win.loadLastSelectionPostProcess(configPars=config_pars)
+
+        if hasattr(win, 'reduceMemUsageToggle'):
+            section = f'{win.model_name}.additional_segm_params'
+            option = win.reduceMemUsageToggle.label
+            if config_pars.has_option(section, option):
+                win.reduceMemUsageToggle.setChecked(
+                    config_pars.getboolean(section, option)
+                )
+
+    def _init_thresholding_dialog(self):
+        is_segm_3d = False
+        try:
+            input_0_type = self.curr_input_types.get(0, None)
+            size_z = getattr(input_0_type, 'SizeZ', None)
+            is_segm_3d = bool(size_z and size_z > 1)
+        except Exception:
+            is_segm_3d = False
+
+        win = apps.QDialogAutomaticThresholding(
+            parent=self, isSegm3D=is_segm_3d
+        )
+        self._restore_params_dialog(win)
+        return win
+
+    def _init_model_params_dialog(self):
+        download_win = apps.downloadModel(self.model_name, parent=self)
+        download_win.download()
+
+        acdc_segment = myutils.import_segment_module(self.model_name)
+        init_params, segment_params = myutils.getModelArgSpec(acdc_segment)
+        try:
+            help_url = acdc_segment.url_help()
+        except AttributeError:
+            help_url = None
+
+        out = prompts.init_segm_model_params(
+            self.posData,
+            self.model_name,
+            init_params,
+            segment_params,
+            qparent=self,
+            help_url=help_url,
+            init_last_params=not bool(self.params_config_text),
+            check_sam_embeddings=False,
+            add_additional_segm_params=True,
+            addPreProcessParams=False,
+            addPostProcessParams=False,
+            hideOnClosing=True,
+            useInput2AsSecondChannelToggle=True,
+            sam_embeddings_path=getattr(self.posData, 'sam_embeddings_path', None),
+            sam_embeddings_loaded=hasattr(self.posData, 'sam_embeddings'),
+            exec_dialog=False,
+        )
+        win = out.get('win')
+        if win is None:
+            return None
+
+        self._restore_params_dialog(win)
+        return win
+
+    def _open_params_dialog(self):
+        try:
+            if (
+                self._params_dialog is None
+                or self._params_dialog_model_name != self.model_name
+            ):
+                self._invalidate_params_dialog_cache()
+                if self.model_name == 'thresholding':
+                    win = self._init_thresholding_dialog()
+                else:
+                    win = self._init_model_params_dialog()
+
+                self._params_dialog = win
+                self._params_dialog_model_name = self.model_name
+            else:
+                win = self._params_dialog
+
+            if win is None:
+                return 'cancelled'
+
+            win.exec_()
+            if win.cancel:
+                return 'cancelled'
+
+            self.params_config_text = self._serialize_params_dialog(win)
+            self.last_error_message = None
+            self.sigSelectionValid.emit()
+            return 'accepted'
+        except Exception as err:
+            self._show_model_params_error(err)
+            return 'error'
+        
+    def getContent(self):
+        return {
+            'model_name': self.model_name,
+            'params_config_text': self.params_config_text,
+        }
+        
+    def setContent(self, content):
+        content = content or {}
+        previous_model_name = self.model_name
+        self.model_name = content.get('model_name')
+        self.params_config_text = content.get('params_config_text')
+        if previous_model_name != self.model_name:
+            self._invalidate_params_dialog_cache()
+        self.selectedModel = self.model_name
+        self._set_selected_model_item(self.model_name)
+        if self.model_name:
+            self.sigModelChanged.emit(self.model_name)
+
+    def ok_cb(self, event=None):
+        selected_model = self._selected_model_name()
+        if not selected_model:
+            return
+
+        if self.model_name != selected_model:
+            self._invalidate_params_dialog_cache()
+
+        self.model_name = selected_model
+        self.selectedModel = selected_model
+        self._set_selected_model_item(selected_model)
+
+        dialog_result = self._open_params_dialog()
+        if dialog_result == 'error':
+            return
+
+        if dialog_result == 'cancelled':
+            self.cancel = True
+            return
+
+        self.cancel = False
+        self.sigOkClicked.emit(self.model_name)
+        self.close()
+
+    def openMainDialog(self):
+        if not self.model_name:
+            super().show()
+            return
+
+        dialog_result = self._open_params_dialog()
+        if dialog_result == 'accepted':
+            self.cancel = False
+            self.sigOkClicked.emit(self.model_name)
+            return
+
+        self.cancel = True
+        self.sigCancelClicked.emit()
 
 class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
     """Dialog for combining and manipulating image channels in the workflow.

@@ -38,6 +38,7 @@ FUNCTIONS_TO_ADD = [
             workflow_dialogs.WorkflowInputImgFunctions(),
             workflow_dialogs.WorkflowInputSegmFunctions(),
             workflow_dialogs.WorkflowSetMeasurementsFunctions(),
+            workflow_dialogs.SegmentFunctions(),
             ]
 class _WorkflowGuiLogEmitter(QObject):
     sigLogMessage = Signal(str)
@@ -2427,19 +2428,17 @@ class WorkflowGui(QMainWindow):
         return False
 
     def _onCardSelectionInvalid(self, card_widget, value):
-        """Called when a dialog's previously selected value is no longer available.
+        """Called when a dialog reports an invalid or failed configuration.
 
         Starts a ``QControlBlink`` on the card to attract attention and marks
-        the dialog selector with a red background while an invalid channel is
-        still selected.
+        the card with a red background while the issue persists.
 
         Args:
-            card_widget (_WorkflowCardZoneWidget): The card whose selection became invalid.
-            value (str): The selection value that is no longer available.
+            card_widget (_WorkflowCardZoneWidget): The card whose configuration is invalid.
+            value (str): Human-readable description of the invalid state.
         """
         self._logInfo(
-            f"Card '{card_widget.title}': previous selection '{value}' is no longer "
-            "available after loading new image data."
+            f"Card '{card_widget.title}' reported an invalid state: {value}"
         )
         card_widget._has_invalid_selection = True
         card_widget._invalid_selection_value = value
@@ -3198,6 +3197,12 @@ class WorkflowGui(QMainWindow):
             card_widget = proxy.widget() if proxy is not None else None
             if card_widget is None:
                 continue
+
+            invalid_value = getattr(card_widget, '_invalid_selection_value', None)
+            if getattr(card_widget, '_has_invalid_selection', False) and invalid_value:
+                errors.append(
+                    f"Card {self._formatCardLabel(card_id)} has invalid configuration: {invalid_value}."
+                )
 
             n_inputs = len(getattr(card_widget, 'input_circles', []))
             if n_inputs <= 0:

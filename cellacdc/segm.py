@@ -361,6 +361,11 @@ class segmWin(QMainWindow):
         expToPosFoldersMapper = (
             selectFoldersWin.selectedExpFolderToPosFoldernamesMapper
         )
+        
+        if not expToPosFoldersMapper:
+            self.logger.info('No valid selection made.')
+            self.processStopped()
+            return
 
         font = QtGui.QFont()
         font.setPixelSize(13)
@@ -547,9 +552,13 @@ class segmWin(QMainWindow):
             url = None
         
         out = prompts.init_segm_model_params(
-            self.posData, model_name, init_params, segment_params, 
+            self.posData,
+            model_name, init_params, segment_params,
             help_url=url, qparent=self, init_last_params=False,
-            add_additional_segm_params=True
+            add_additional_segm_params=True,
+            sam_embeddings_path=getattr(self.posData, 'sam_embeddings_path', None),
+            sam_embeddings_loaded=hasattr(self.posData, 'sam_embeddings'),
+            load_sam_embeddings_func=self.posData.loadSamEmbeddings,
         )
         win = out.get('win')
         if win.cancel:

@@ -2966,7 +2966,11 @@ def purge_module(module_name):
         del sys.modules[mod]
         
     importlib.invalidate_caches()
-    importlib.import_module(module_name)
+    try:
+        importlib.import_module(module_name)
+        
+    except RuntimeError: # because of torch shinnanigans
+        pass
     if module_name in sys.modules:
         importlib.reload(sys.modules[module_name])
     else:

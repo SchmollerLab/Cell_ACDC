@@ -630,7 +630,6 @@ class customAnnotationDialog(QDialog):
 
     def exec_(self):
         self.show(block=True)
-
     def show(self, block=False):
         super().show()
         if block:
@@ -5781,8 +5780,10 @@ class SelectPromptableModelDialog(QBaseDialog):
 
 
 class QDialogSelectModel(QDialog):
+    sigCancelClicked = Signal()
+    sigOkClicked = Signal(str)
     def __init__(
-            self, parent=None, addSkipSegmButton=False, customFirst=''
+            self, parent=None, addSkipSegmButton=False, customFirst='',
         ):
         self.cancel = True
         super().__init__(parent)
@@ -5875,14 +5876,17 @@ class QDialogSelectModel(QDialog):
             self.listBox.setCurrentItem(item)
         elif model == 'Automatic thresholding':
             self.selectedModel = 'thresholding'
+            self.sigOkClicked.emit(self.selectedModel)
             self.close()
         else:
             self.selectedModel = model
+            self.sigOkClicked.emit(self.selectedModel)
             self.close()
 
     def cancel_cb(self, event):
         self.cancel = True
         self.selectedModel = None
+        self.sigCancelClicked.emit()
         self.close()
 
     def exec_(self):
@@ -11755,10 +11759,14 @@ class QDialogModelParams(QDialog):
             extraParams=None, 
             extraParamsTitle=None, 
             ini_filename=None,
-            add_additional_segm_params=False
+            add_additional_segm_params=False,
+            hideOnClosing=False,
+            useInput2AsSecondChannelToggle=False,
         ):
         self.cancel = True
         super().__init__(parent)
+        self.hideOnClosing = hideOnClosing
+        self.useInput2AsSecondChannelToggle = useInput2AsSecondChannelToggle
         self.channels = channels
         self.is_tracker = is_tracker
         self.currentChannelName = currentChannelName
@@ -12062,6 +12070,15 @@ class QDialogModelParams(QDialog):
         self.setLayout(mainLayout)
         self.setFont(font)
         # self.setModal(True)
+        
+    def _exit_local_loop_if_running(self):
+        if not hasattr(self, 'loop'):
+            return
+        try:
+            if self.loop.isRunning():
+                self.loop.exit()
+        except Exception:
+            pass
     
     def warningNoSegmRecipes(self):
         msg = widgets.myMessageBox(wrapText=False)
@@ -12452,13 +12469,24 @@ class QDialogModelParams(QDialog):
         if askSecondChannel:
             label = QLabel('Second channel (optional):  ')
             groupBoxLayout.addWidget(label, start_row, 0, alignment=Qt.AlignRight)
-            self.channelsCombobox = widgets.QCenteredComboBox()
-            groupBoxLayout.addWidget(self.channelsCombobox, start_row, 1, 1, 2)
             infoText = (
                 'Some models can merge two channels (e.g., cyto + '
                 'nucleus) to obtain better perfomance.\n\n'
                 'Select a channel as additional input to the model.'
             )
+            if self.useInput2AsSecondChannelToggle:
+                self.passInput2AsSecondChannelToggle = widgets.Toggle()
+                groupBoxLayout.addWidget(
+                    self.passInput2AsSecondChannelToggle,
+                    start_row, 1, 1, 2, alignment=Qt.AlignCenter
+                )
+                infoText = (
+                    'Enable this to pass workflow Input 2 as the model second '
+                    'channel.\n\nIf disabled, no second channel is used.'
+                )
+            else:
+                self.channelsCombobox = widgets.QCenteredComboBox()
+                groupBoxLayout.addWidget(self.channelsCombobox, start_row, 1, 1, 2)
             infoButton = self.getInfoButton('Second channel', infoText)
             groupBoxLayout.addWidget(infoButton, start_row, 3)
             start_row += 1
@@ -12961,7 +12989,10 @@ class QDialogModelParams(QDialog):
             self.applyPostProcessing = self.postProcessGroupbox.isChecked()
             self.standardPostProcessKwargs = self.postProcessGroupbox.kwargs()
         self.secondChannelName = None
-        if hasattr(self, 'channelsCombobox'):
+        if hasattr(self, 'passInput2AsSecondChannelToggle'):
+            if self.passInput2AsSecondChannelToggle.isChecked():
+                self.secondChannelName = '__input_2__'
+        elif hasattr(self, 'channelsCombobox'):
             self.secondChannelName = self.channelsCombobox.currentText()
         if self.secondChannelName == 'None':
             self.secondChannelName = None
@@ -12974,7 +13005,14 @@ class QDialogModelParams(QDialog):
             self.reduceMemoryUsage = self.reduceMemUsageToggle.isChecked()
         self.customPostProcessFeatures = self.selectedFeaturesRange()
         self.customPostProcessGroupedFeatures = self.groupedFeatures()
+
+        if self.hideOnClosing:
+            self.hide()
+            self._exit_local_loop_if_running()
+            return
+
         self.saveLastSelection()
+
         self.freePosData()
         self.close()
 
@@ -13089,12 +13127,25 @@ class QDialogModelParams(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        self.freePosData()
+        if self.hideOnClosing:
+            event.ignore()
+            self.hide()
+            self._exit_local_loop_if_running()
+            return
+
+        try:
+            self.freePosData()
+        except Exception as err:
+            pass
         if hasattr(self, 'loop'):
             self.loop.exit()
 
     def cancel_cb(self, checked):
         self.cancel = True
+        if self.hideOnClosing:
+            self.hide()
+            self._exit_local_loop_if_running()
+            return
         self.freePosData()
     
     def showEvent(self, event) -> None:

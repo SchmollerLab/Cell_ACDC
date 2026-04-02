@@ -3,7 +3,7 @@ from qtpy.QtCore import (
 )
 from qtpy.QtWidgets import QWidget
 import functools
-
+from . import printl
 class QWhileLoop:
     def __init__(
             self, loop_callback, period=100, max_duration=None
@@ -54,7 +54,11 @@ class QControlBlink:
 
     def stop(self):
         self.timer.stop()
-        self._widget.setStyleSheet('background-color: none')
+        try:
+            self._widget.setStyleSheet('background-color: none')
+        except RuntimeError as err:
+            self.blinkON = False
+            
 
 def hide_and_delete_layout(layout):
     # Hide all widgets in the layout

@@ -104,7 +104,8 @@ except AttributeError:
     url = None
 
 out = prompts.init_segm_model_params(
-    posData, model_name, init_params, segment_params, 
+    posData,
+    model_name, init_params, segment_params,
     help_url=url, qparent=None, init_last_params=True
 )
 win = out.get('win')
