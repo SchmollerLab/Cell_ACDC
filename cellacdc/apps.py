@@ -3060,10 +3060,11 @@ class QDialogMetadataXML(QDialog):
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.SizeS_SB, row, 1)
-        self.SizeS_SB.valueChanged.connect(self.SizeSvalueChanged)
-
+    
         if rawDataStruct == 0:
             row += 1
+            self.SizeS_SB.setValue(1)
+            self.SizeS_SB.setDisabled(True)
             self.posSelector = widgets.ExpandableListBox()
             positions = ['All positions']
             positions.extend([f'Position_{i+1}' for i in range(SizeS)])
@@ -3072,6 +3073,7 @@ class QDialogMetadataXML(QDialog):
             label = QLabel(txt)
             entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
             entriesLayout.addWidget(self.posSelector, row, 1)
+            self.SizeS_SB.valueChanged.connect(self.SizeSvalueChanged)
 
         row += 1
         self.LensNA_DSB = QDoubleSpinBox()
