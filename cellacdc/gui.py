@@ -23772,7 +23772,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             tableFilename = f'{basename}{tableEndName}.csv'
             if recovery:
                 tableFilepath = os.path.join(
-                    posData.images_path, 'recovery', tableFilename
+                    posData.recoveryFolderpath(), tableFilename
                 )
             else:
                 tableFilepath = os.path.join(posData.images_path, tableFilename)
@@ -24264,8 +24264,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
 
             if loadRecoveryIfNewer:
-                filepath = recovery_filepath
-            
+                recovery_exists = os.path.exists(recovery_filepath)
+                main_exists = os.path.exists(filepath)
+                if (
+                    recovery_exists
+                    and (
+                        not main_exists
+                        or os.path.getmtime(recovery_filepath)
+                        > os.path.getmtime(filepath) + 15
+                    )
+                ):
+                    filepath = recovery_filepath
+                elif not main_exists:
+                    continue
+
+            if not os.path.exists(filepath):
+                continue
+
             self.logger.info(f'Loading points from "{filepath}"...')
             df = pd.read_csv(filepath)
             if 'id' not in df.columns:
