@@ -3595,7 +3595,8 @@ class Toggle(QCheckBox):
             QCheckBox.setChecked(self, state>0)
         else:
             self.requestedState = state
-            self.toggled.emit(state>0)
+            if state is not None:
+                self.toggled.emit(state>0)
     
     def isChecked(self, debug=False):
         if debug:

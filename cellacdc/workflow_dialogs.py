@@ -100,7 +100,7 @@ class WorkflowBaseFunctions():
         if hasattr(dialog, 'updatedInputTypes'):
             dialog.updatedInputTypes()
         dialog.show()
-        
+    
     def getDialogPreview(self, dialog):
         """Capture a screenshot of the dialog for preview display.
         
@@ -119,7 +119,7 @@ class WorkflowBaseFunctions():
             print(f"Failed to update preview after dialog close: {e}")
         return None
     
-    def setupDialog_cb(self, parent=None, workflowGui=None, posData=None, logger=print):
+    def setupDialog_cb(self, parent=None, workflowGui=None, posData=None, logger=print, preInitWorkflow_res=None):
         """Setup the dialog with only the required parameters for setupDialog.
         
         This method inspects the setupDialog signature and passes only the
@@ -133,19 +133,21 @@ class WorkflowBaseFunctions():
         Returns:
             The dialog widget created by the subclass setupDialog method.
         """
-        kwargs = {'parent': parent, 'workflowGui': workflowGui, 'posData': posData}
+        kwargs = {'parent': parent, 'workflowGui': workflowGui, 'posData': posData, 'preInitWorkflow_res': preInitWorkflow_res, 'logger': logger}
         kwargs_required = inspect.getfullargspec(self.setupDialog).args
         kwargs_to_pass = {k: v for k, v in kwargs.items() if k in kwargs_required}
         dialog = self.setupDialog(**kwargs_to_pass)
         return dialog
 
-    def initializeDialog_cb(self, dialog, parent=None, workflowGui=None, posData=None):
+    def initializeDialog_cb(self, dialog, parent=None, workflowGui=None, posData=None, preInitWorkflow_res=None, logger=print):
         """Call initializeDialog with only the supported arguments."""
         kwargs = {
             'dialog': dialog,
             'parent': parent,
             'workflowGui': workflowGui,
             'posData': posData,
+            'preInitWorkflow_res': preInitWorkflow_res,
+            'logger': logger
         }
         kwargs_required = inspect.getfullargspec(self.initializeDialog).args
         kwargs_to_pass = {k: v for k, v in kwargs.items() if k in kwargs_required}
@@ -567,361 +569,317 @@ class WorkflowSetMeasurementsFunctions(WorkflowBaseFunctions):
         self.setOutputs({0: WfMetricsDC(setMetrics=dialog.selectedMetrics())})
 
 class SegmentFunctions(WorkflowBaseFunctions):
-    # self.segmentDialog = SegmentDialogWorkflow
+    """Workflow card functions for segmenting images.
     
-    def __init__(self) -> None:
-        self.selectModelDialog = SelectModelDialogWorkflow
-        self.card_key = 'segmentation'
-        self.title = "Segment"
-        # self.segmentDialog = SegmentDialogWorkflow
+    This workflow step allows users to segment images using a selected
+    segmentation model. The workflow consists of two steps:
+    1. Select a segmentation model (shown when card is dropped)
+    2. Configure model parameters
+    
+    Attributes:
+        title (str): Display title "Segment image".
+        card_key (str): Unique key 'segment'.
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.card_key = 'segment'
+        self.title = "Segment image"
+        
+    def preInitWorkflowDialog(self, workflowGui=None):
+        """Create and return the initial dialog shown when the card is dropped.
+        
+        This method is called before the main setupDialog and allows for a
+        dedicated first-run experience. In this case, it shows the model
+        selection dialog immediately when the card is added to the workflow,
+        and crucially BEFORE the main params dialog is initialized.
+        This instance should be reusable and not destroyed after selection.
+        
+        Args:
+            workflowGui: Reference to the main WorkflowGui instance.
+            _onDialogCancelled: Callback function to handle dialog cancellation.
+        """
+        window = apps.QDialogSelectModel(parent=workflowGui, addSkipSegmButton=False)
+        window.exec_()
+        selectedModel = window.selectedModel if hasattr(window, 'selectedModel') else None
+        window.deleteLater()  # Clean up the dialog instance after use
+        return selectedModel
+        
         
     def dryrunDialog(self, parent=None, workflowGui=None, posData=None):
-        return self.selectModelDialog(parent=workflowGui, posData=posData)
-    
-    def setupDialog(self, workflowGui=None, posData=None, logger=print):
-        dialog = self.selectModelDialog(
-            parent=workflowGui, 
-            posData=posData,
-            logger=logger,
-        )
-        return dialog
-    
-    def initializeDialog(self, dialog, workflowGui=None):
-        self.setAcceptedInputs({0: WfImageDC(), 1: WfImageDC()})
-        self.setOutputs({0: WfSegmDC()})
-        dialog.sigCancelClicked.connect(self.cancel_clicked)
-        dialog.sigModelChanged.connect(self.setupModelParameters)
-        dialog.sigSelectionInvalid.connect(self.notifySelectionInvalid)
-        if hasattr(self, 'notifySelectionValid'):
-            dialog.sigSelectionValid.connect(self.notifySelectionValid)
-        dialog.sigOkClicked.connect(self.setupModelParameters)
-        dialog.sigOkClicked.connect(self.updatePreview)
-
-    def runDialog_cb(self, dialog):
-        if hasattr(dialog, 'openMainDialog'):
-            dialog.openMainDialog()
-            return
-        super().runDialog_cb(dialog)
-    
-    def cancel_clicked(self):
-        pass
-    
-    def setupModelParameters(self, model_name):
-        if not model_name:
-            self.updateTitle('Segment')
-            return
-
-        title = model_name.replace('_', ' ').strip().title()
-        self.updateTitle(f'Segment: {title}')
+        """Create a dry-run dialog instance for preview rendering.
         
-class SelectModelDialogWorkflow(apps.QDialogSelectModel):
-    sigModelChanged = Signal(str)
-    sigSelectionInvalid = Signal(str)
-    sigSelectionValid = Signal()
+        Args:
+            parent: Parent widget for the dialog.
+            workflowGui: Reference to the main WorkflowGui instance.
+            posData: Position data object.
+        
+        Returns:
+            SelectSegmDialogWorkflow: Dialog instance for preview.
+        """
+        return apps.QDialogSelectModel(parent=workflowGui, addSkipSegmButton=False)
+    
+    def setupDialog(self, workflowGui=None, posData=None, logger=print, preInitWorkflow_res=None):
+        """Create the dialog for the workflow card.
+        
+        Creates a ModelParamsDialogWorkflow that will be configured
+        with the selected model's parameters.
+        
+        Args:
+            workflowGui: Reference to the main WorkflowGui instance.
+            posData: Position data object.
+            logger: Logging function.
+        
+        Returns:
+            ModelParamsDialogWorkflow: Configured dialog instance.
+        """
+        selected_model = preInitWorkflow_res
+        if selected_model is None:
+            # Card restoration can instantiate dialogs without pre-init payload.
+            # Fall back to a deterministic built-in model.
+            selected_model = 'thresholding'
 
-    def __init__(
-            self, parent=None, posData=None, logger=print,
-            addSkipSegmButton=False, customFirst=''
-        ):
-        self.posData = posData
-        self.logger = logger
-        self.model_name = None
-        self.params_config_text = None
-        self.last_error_message = None
-        self._params_dialog = None
-        self._params_dialog_model_name = None
-        super().__init__(parent, addSkipSegmButton, customFirst)
+        if selected_model == 'Automatic thresholding':
+            selected_model = 'thresholding'
+            
+        if selected_model == 'thresholding':
+            dialog = ThresholdSegmDialogWorkflow(parent=workflowGui, logger=logger)
+            dialog.logger = logger
+            return dialog
 
-    def _invalidate_params_dialog_cache(self):
-        if self._params_dialog is not None:
-            try:
-                self._params_dialog.hide()
-                self._params_dialog.deleteLater()
-            except Exception:
-                pass
-        self._params_dialog = None
-        self._params_dialog_model_name = None
-
-    def _log(self, message):
-        try:
-            if hasattr(self.logger, 'info'):
-                self.logger.info(message)
-            elif callable(self.logger):
-                self.logger(message)
-        except Exception:
-            pass
-
-    def _display_model_name(self, model_name):
-        if model_name == 'thresholding':
-            return 'Automatic thresholding'
-        return model_name
-
-    def _show_model_params_error(self, err):
-        traceback_str = traceback.format_exc()
-        self._log(traceback_str)
-
-        model_name = self._display_model_name(self.model_name or 'selected model')
-        self.last_error_message = (
-            f"Model parameters error for {model_name}: {type(err).__name__}: {err}"
-        )
-        self.sigSelectionInvalid.emit(self.last_error_message)
-        txt = html_utils.paragraph(f"""
-            Cell-ACDC failed while preparing the parameters dialog for
-            <code>{model_name}</code>.<br><br>
-            This can happen when the selected model needs to be downloaded or
-            imported on the fly and that step fails.<br><br>
-            Please restart Cell-ACDC and try again. If the problem persists,
-            please report the issue on the <a href="https://github.com/SchmollerLab/Cell_ACDC/issues">Cell-ACDC GitHub issues page</a>.
-        """)
-
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-        if hasattr(msg, 'setDetailedText'):
-            msg.setDetailedText(traceback_str)
-        msg.critical(self, 'Model parameters error', txt)
-
-    def _set_selected_model_item(self, model_name):
-        if not model_name:
-            return
-
-        display_name = self._display_model_name(model_name)
-        items = self.listBox.findItems(display_name, Qt.MatchExactly)
-        if not items:
-            self.listBox.addItem(display_name)
-            items = self.listBox.findItems(display_name, Qt.MatchExactly)
-
-        if items:
-            self.listBox.setCurrentItem(items[0])
-
-    def _selected_model_name(self):
-        item = self.listBox.currentItem()
-        if item is None:
-            return None
-
-        model_name = item.text()
-        if model_name == 'Add custom model...':
-            model_file_path = apps.addCustomModelMessages(self)
-            if model_file_path is None:
-                return None
-
-            myutils.store_custom_model_path(model_file_path)
-            model_name = os.path.basename(os.path.dirname(model_file_path))
-            item = self.listBox.findItems(model_name, Qt.MatchExactly)
-            if not item:
-                self.listBox.addItem(model_name)
-                item = self.listBox.findItems(model_name, Qt.MatchExactly)
-            if item:
-                self.listBox.setCurrentItem(item[0])
-            return model_name
-
-        if model_name == 'Automatic thresholding':
-            return 'thresholding'
-
-        return model_name
-
-    def _serialize_params_dialog(self, win):
-        if self.model_name == 'thresholding':
-            return json.dumps({
-                'gauss_sigma': win.segment_kwargs['gauss_sigma'],
-                'threshold_method': win.segment_kwargs['threshold_method'],
-                'segment_3D_volume': win.segment_kwargs.get(
-                    'segment_3D_volume', False
-                ),
-            })
-
-        config_pars = win.getConfigPars(create_new=True)
-        if hasattr(win, 'reduceMemUsageToggle'):
-            section = f'{win.model_name}.additional_segm_params'
-            config_pars[section] = {}
-            option = win.reduceMemUsageToggle.label
-            config_pars[section][option] = str(
-                win.reduceMemUsageToggle.isChecked()
-            )
-
-        buffer = io.StringIO()
-        config_pars.write(buffer)
-        return buffer.getvalue()
-
-    def _restore_params_dialog(self, win):
-        if not self.params_config_text:
-            return
-
-        if self.model_name == 'thresholding':
-            content = json.loads(self.params_config_text)
-            win.sigmaGaussSpinbox.setValue(content.get('gauss_sigma', 1.0))
-            threshold_method = content.get('threshold_method', 'threshold_otsu')
-            win.threshMethodCombobox.setCurrentText(
-                threshold_method[10:].capitalize()
-            )
-            if win.segment3Dcheckbox is not None:
-                win.segment3Dcheckbox.setChecked(
-                    content.get('segment_3D_volume', False)
-                )
-            return
-
-        config_pars = config.ConfigParser()
-        config_pars.read_string(self.params_config_text)
-        win.loadPreprocRecipe(configPars=config_pars)
-        win.loadLastSelection(
-            f'{win.model_name}.init', win.init_argsWidgets, configPars=config_pars
-        )
-        win.loadLastSelection(
-            f'{win.model_name}.segment', win.argsWidgets, configPars=config_pars
-        )
-        if win.extraArgsWidgets:
-            win.loadLastSelection(
-                f'{win.model_name}.extra',
-                win.extraArgsWidgets,
-                configPars=config_pars,
-            )
-        win.loadLastSelectionPostProcess(configPars=config_pars)
-
-        if hasattr(win, 'reduceMemUsageToggle'):
-            section = f'{win.model_name}.additional_segm_params'
-            option = win.reduceMemUsageToggle.label
-            if config_pars.has_option(section, option):
-                win.reduceMemUsageToggle.setChecked(
-                    config_pars.getboolean(section, option)
-                )
-
-    def _init_thresholding_dialog(self):
-        is_segm_3d = False
-        try:
-            input_0_type = self.curr_input_types.get(0, None)
-            size_z = getattr(input_0_type, 'SizeZ', None)
-            is_segm_3d = bool(size_z and size_z > 1)
-        except Exception:
-            is_segm_3d = False
-
-        win = apps.QDialogAutomaticThresholding(
-            parent=self, isSegm3D=is_segm_3d
-        )
-        self._restore_params_dialog(win)
-        return win
-
-    def _init_model_params_dialog(self):
-        download_win = apps.downloadModel(self.model_name, parent=self)
-        download_win.download()
-
-        acdc_segment = myutils.import_segment_module(self.model_name)
+        acdc_segment = myutils.import_segment_module(selected_model)
         init_params, segment_params = myutils.getModelArgSpec(acdc_segment)
         try:
             help_url = acdc_segment.url_help()
-        except AttributeError:
+        except Exception:
             help_url = None
 
-        out = prompts.init_segm_model_params(
-            self.posData,
-            self.model_name,
+        segm_files = prompts.load.get_segm_files(posData.images_path)
+        existing_segm_endnames = prompts.load.get_endnames(
+            posData.basename, segm_files
+        )
+
+        printl('setting up dialog')
+        dialog = SegmModelParamsDialogWorkflow(
             init_params,
             segment_params,
-            qparent=self,
-            help_url=help_url,
-            init_last_params=not bool(self.params_config_text),
-            check_sam_embeddings=False,
+            selected_model,
+            parent=workflowGui,
+            url=help_url,
+            initLastParams=True,
+            posData=posData, # for sam, need to double check if 3d, timelapse or additional img input or 
+            # segmFileEndnames=existing_segm_endnames,
+            # df_metadata=posData.metadata_df,
             add_additional_segm_params=True,
             addPreProcessParams=False,
             addPostProcessParams=False,
             hideOnClosing=True,
             useInput2AsSecondChannelToggle=True,
-            sam_embeddings_path=getattr(self.posData, 'sam_embeddings_path', None),
-            sam_embeddings_loaded=hasattr(self.posData, 'sam_embeddings'),
-            exec_dialog=False,
         )
-        win = out.get('win')
-        if win is None:
+        dialog.setChannelNames(posData.chNames)
+        dialog.logger = logger
+        return dialog
+    
+    def initializeDialog(self, dialog, workflowGui=None):
+        """Configure the segmentation card after dialog creation.
+        
+        Sets up input/output types and connects signals.
+        
+        Args:
+            dialog: The ModelParamsDialogWorkflow to configure.
+            workflowGui: Reference to the main WorkflowGui instance.
+        """
+        self.setAcceptedInputs({0: WfImageDC()})
+        self.setOutputs({0: WfSegmDC()})
+        dialog.sigOkClicked.connect(self.updatePreview)
+
+    def getPreInitWorkflowRes(self, dialog=None):
+        if dialog is None:
             return None
+        return getattr(dialog, 'model_name', None)
 
-        self._restore_params_dialog(win)
-        return win
 
-    def _open_params_dialog(self):
-        try:
-            if (
-                self._params_dialog is None
-                or self._params_dialog_model_name != self.model_name
-            ):
-                self._invalidate_params_dialog_cache()
-                if self.model_name == 'thresholding':
-                    win = self._init_thresholding_dialog()
-                else:
-                    win = self._init_model_params_dialog()
+class SegmModelParamsDialogWorkflow(apps.QDialogModelParams):
+    sigOkClicked = Signal()
+    sigCancelClicked = Signal()
 
-                self._params_dialog = win
-                self._params_dialog_model_name = self.model_name
-            else:
-                win = self._params_dialog
+    def __init__(self, *args, logger=print, **kwargs):
+        kwargs.setdefault('hideOnClosing', True)
+        super().__init__(*args, **kwargs)
+        self.logger = logger
 
-            if win is None:
-                return 'cancelled'
-
-            win.exec_()
-            if win.cancel:
-                return 'cancelled'
-
-            self.params_config_text = self._serialize_params_dialog(win)
-            self.last_error_message = None
-            self.sigSelectionValid.emit()
-            return 'accepted'
-        except Exception as err:
-            self._show_model_params_error(err)
-            return 'error'
-        
-    def getContent(self):
-        return {
-            'model_name': self.model_name,
-            'params_config_text': self.params_config_text,
-        }
-        
-    def setContent(self, content):
-        content = content or {}
-        previous_model_name = self.model_name
-        self.model_name = content.get('model_name')
-        self.params_config_text = content.get('params_config_text')
-        if previous_model_name != self.model_name:
-            self._invalidate_params_dialog_cache()
-        self.selectedModel = self.model_name
-        self._set_selected_model_item(self.model_name)
-        if self.model_name:
-            self.sigModelChanged.emit(self.model_name)
-
-    def ok_cb(self, event=None):
-        selected_model = self._selected_model_name()
-        if not selected_model:
+    def ok_cb(self, checked=False):
+        super().ok_cb(checked)
+        if self.cancel or self.isVisible():
             return
+        self.sigOkClicked.emit()
 
-        if self.model_name != selected_model:
-            self._invalidate_params_dialog_cache()
-
-        self.model_name = selected_model
-        self.selectedModel = selected_model
-        self._set_selected_model_item(selected_model)
-
-        dialog_result = self._open_params_dialog()
-        if dialog_result == 'error':
-            return
-
-        if dialog_result == 'cancelled':
-            self.cancel = True
-            return
-
-        self.cancel = False
-        self.sigOkClicked.emit(self.model_name)
-        self.close()
-
-    def openMainDialog(self):
-        if not self.model_name:
-            super().show()
-            return
-
-        dialog_result = self._open_params_dialog()
-        if dialog_result == 'accepted':
-            self.cancel = False
-            self.sigOkClicked.emit(self.model_name)
-            return
-
+    def cancel_cb(self, checked=False):
         self.cancel = True
         self.sigCancelClicked.emit()
+        if self.hideOnClosing:
+            self.hide()
+            self._exit_local_loop_if_running()
+            return
+        super().cancel_cb(checked)
 
+    def closeEvent(self, event):
+        self.cancel = True
+        self.sigCancelClicked.emit()
+        super().closeEvent(event)
+
+    def getContent(self):
+        config_pars = self.getConfigPars(create_new=True)
+        if hasattr(self, 'reduceMemUsageToggle'):
+            section = f'{self.model_name}.additional_segm_params'
+            option = self.reduceMemUsageToggle.label
+            config_pars[section] = {
+                option: str(self.reduceMemUsageToggle.isChecked())
+            }
+
+        ini_buffer = io.StringIO()
+        config_pars.write(ini_buffer)
+        return {
+            'config_ini': ini_buffer.getvalue(),
+        }
+
+    def setContent(self, content):
+        if not content:
+            return
+
+        config_ini = content.get('config_ini')
+        if config_ini:
+            cp = config.ConfigParser()
+            cp.read_string(config_ini)
+            self.loadPreprocRecipe(configPars=cp)
+            self.loadLastSelection(
+                f'{self.model_name}.init', self.init_argsWidgets, configPars=cp
+            )
+            self.loadLastSelection(
+                f'{self.model_name}.segment', self.argsWidgets, configPars=cp
+            )
+            if self.extraArgsWidgets:
+                self.loadLastSelection(
+                    f'{self.model_name}.extra',
+                    self.extraArgsWidgets,
+                    configPars=cp,
+                )
+            self.loadLastSelectionPostProcess(configPars=cp)
+
+            if hasattr(self, 'reduceMemUsageToggle'):
+                section = f'{self.model_name}.additional_segm_params'
+                option = self.reduceMemUsageToggle.label
+                if cp.has_option(section, option):
+                    self.reduceMemUsageToggle.setChecked(
+                        cp.getboolean(section, option)
+                    )
+
+    def saveContent(self, path):
+        ext = '.ini'
+        if not path.endswith(ext):
+            path += ext
+
+        config_pars = self.getConfigPars(create_new=True)
+        if hasattr(self, 'reduceMemUsageToggle'):
+            section = f'{self.model_name}.additional_segm_params'
+            option = self.reduceMemUsageToggle.label
+            config_pars[section] = {
+                option: str(self.reduceMemUsageToggle.isChecked())
+            }
+
+        with open(path, 'w') as f:
+            config_pars.write(f)
+
+    def loadContent(self, path):
+        ext = '.ini'
+        if not path.endswith(ext):
+            path += ext
+
+        self.show()
+        try:
+            cp = config.ConfigParser()
+            cp.read(path)
+
+            self.loadPreprocRecipe(configPars=cp)
+            self.loadLastSelection(
+                f'{self.model_name}.init', self.init_argsWidgets, configPars=cp
+            )
+            self.loadLastSelection(
+                f'{self.model_name}.segment', self.argsWidgets, configPars=cp
+            )
+            if self.extraArgsWidgets:
+                self.loadLastSelection(
+                    f'{self.model_name}.extra',
+                    self.extraArgsWidgets,
+                    configPars=cp,
+                )
+            self.loadLastSelectionPostProcess(configPars=cp)
+
+            if hasattr(self, 'reduceMemUsageToggle'):
+                section = f'{self.model_name}.additional_segm_params'
+                option = self.reduceMemUsageToggle.label
+                if cp.has_option(section, option):
+                    self.reduceMemUsageToggle.setChecked(
+                        cp.getboolean(section, option)
+                    )
+        except Exception as e:
+            self.logger(f'Failed to load content from {path}: {e}')
+            traceback.print_exc()
+            self.hide()
+            return
+
+        self.ok_cb()
+        self.hide()
+
+class ThresholdSegmDialogWorkflow(apps.QDialogAutomaticThresholding):
+    sigOkClicked = Signal()
+    sigCancelClicked = Signal()
+
+    def __init__(self, parent=None, logger=print):
+        super().__init__(parent=parent, hide_on_close=True)
+        self.logger = logger
+        self.cancelButton.clicked.disconnect()
+        self.cancelButton.clicked.connect(self.cancel_cb)
+        self.okButton.clicked.connect(self.sigOkClicked.emit)
+        
+    def cancel_cb(self):
+        self.sigCancelClicked.emit()
+        self.hide()
+        
+    def updatedInputTypes(self):
+        if not hasattr(self, 'curr_input_types') or 0 not in self.curr_input_types:
+            return
+
+        input_0 = self.curr_input_types[0]
+        if input_0 is None:
+            return
+
+        size_z = getattr(input_0, 'SizeZ', None)
+        is_input_3d = size_z is not None and size_z > 1
+        self._set3DCheckboxEnabled(is_input_3d)
+        
+    def setContent(self, content):
+        if not content:
+            return
+
+        if 'gauss_sigma' in content:
+            self.sigmaGaussSpinbox.setValue(float(content['gauss_sigma']))
+
+        threshold_method = content.get('threshold_method')
+        if threshold_method:
+            method = str(threshold_method)
+            if method.startswith('threshold_'):
+                method = method[10:].capitalize()
+            self.threshMethodCombobox.setCurrentText(method)
+
+        if self.segment3Dcheckbox is not None and 'segment_3D_volume' in content:
+            if self.segment3Dcheckbox.isEnabled():
+                self.segment3Dcheckbox.setChecked(bool(content['segment_3D_volume']))
+            elif self.segmentSliceBySliceCheckbox is not None:
+                self.segmentSliceBySliceCheckbox.setChecked(True)
+
+        self.getContent()
+        
 class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
     """Dialog for combining and manipulating image channels in the workflow.
     

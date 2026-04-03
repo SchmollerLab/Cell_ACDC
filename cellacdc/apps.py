@@ -5074,17 +5074,18 @@ class OrderableListWidgetDialog(QBaseDialog):
 
 
 class QDialogAutomaticThresholding(QBaseDialog):
-    def __init__(self, parent=None, isSegm3D=True):
+    def __init__(self, parent=None, isSegm3D=True, hide_on_close=False):
         super().__init__(parent)
 
         self.cancel = True
+        
+        self.hide_on_close = hide_on_close
 
         self.setWindowTitle('Automatic thresholding parameters')
 
         layout = QVBoxLayout()
         formLayout = QGridLayout()
         buttonsLayout = QHBoxLayout()
-
         row = 0
         self.sigmaGaussSpinbox = QDoubleSpinBox()
         self.sigmaGaussSpinbox.setValue(1)
@@ -5108,6 +5109,7 @@ class QDialogAutomaticThresholding(QBaseDialog):
         formLayout.addWidget(self.threshMethodCombobox, row, 1, 1, 2)
 
         self.segment3Dcheckbox = None
+        self.segmentSliceBySliceCheckbox = None
         if isSegm3D:
             row += 1
             formLayout.addWidget(
@@ -5116,11 +5118,13 @@ class QDialogAutomaticThresholding(QBaseDialog):
             group = QButtonGroup()
             group.setExclusive(True)
             self.segment3Dcheckbox = QRadioButton('Yes')
-            segmentSliceBySliceCheckbox = QRadioButton('No, segment slice-by-slice')
+            self.segmentSliceBySliceCheckbox = QRadioButton(
+                'No, segment slice-by-slice'
+            )
             group.addButton(self.segment3Dcheckbox)
-            group.addButton(segmentSliceBySliceCheckbox)
+            group.addButton(self.segmentSliceBySliceCheckbox)
             formLayout.addWidget(self.segment3Dcheckbox, row, 1)
-            formLayout.addWidget(segmentSliceBySliceCheckbox, row, 2)
+            formLayout.addWidget(self.segmentSliceBySliceCheckbox, row, 2)
             self.segment3Dcheckbox.setChecked(True)
 
         okButton = widgets.okPushButton('Ok')
@@ -5140,11 +5144,14 @@ class QDialogAutomaticThresholding(QBaseDialog):
         okButton.clicked.connect(self.ok_cb)
         helpButton.clicked.connect(self.help_cb)
         cancelButton.clicked.connect(self.close)
+        self.okButton = okButton
+        self.cancelButton = cancelButton
 
         self.setLayout(layout)
         self.setFont(font)
 
         self.configPars = self.loadLastSelection()
+        self._set3DCheckboxEnabled(isSegm3D)
 
     
     def help_cb(self):
@@ -5154,6 +5161,13 @@ class QDialogAutomaticThresholding(QBaseDialog):
 
     def ok_cb(self):
         self.cancel = False
+        self.getContent()
+        if self.hide_on_close:
+            self.hide()
+            return
+        self.close()
+        
+    def getContent(self):
         self.gaussSigma = self.sigmaGaussSpinbox.value()
         threshMethod = self.threshMethodCombobox.currentText().lower()
         self.threshMethod = f'threshold_{threshMethod}'
@@ -5166,7 +5180,16 @@ class QDialogAutomaticThresholding(QBaseDialog):
         if self.segment3Dcheckbox is not None:
             doSegm3D = self.segment3Dcheckbox.isChecked()
             self.segment_kwargs['segment_3D_volume'] = doSegm3D
-        self.close()
+            
+        return self.segment_kwargs
+
+    def _set3DCheckboxEnabled(self, is_input_3d):
+        if self.segment3Dcheckbox is None:
+            return
+
+        self.segment3Dcheckbox.setEnabled(is_input_3d)
+        if not is_input_3d and self.segmentSliceBySliceCheckbox is not None:
+            self.segmentSliceBySliceCheckbox.setChecked(True)
     
     def loadLastSelection(self):
         self.ini_path = os.path.join(
@@ -5185,8 +5208,8 @@ class QDialogAutomaticThresholding(QBaseDialog):
         self.sigmaGaussSpinbox.setValue(float(section['gauss_sigma']))
 
         threshold_method = section['threshold_method']
-        Method = threshold_method[10:].capitalize()
-        self.threshMethodCombobox.setCurrentText(Method)
+        method = threshold_method[10:].capitalize()
+        self.threshMethodCombobox.setCurrentText(method)
         if self.segment3Dcheckbox is None:
             return
         self.segment3Dcheckbox.setChecked(section.getboolean('segment_3D_volume'))
@@ -5784,8 +5807,10 @@ class QDialogSelectModel(QDialog):
     sigOkClicked = Signal(str)
     def __init__(
             self, parent=None, addSkipSegmButton=False, customFirst='',
+            hide_on_closing=False
         ):
         self.cancel = True
+        self.hide_on_closing = hide_on_closing
         super().__init__(parent)
         self.setWindowTitle('Select model')
 
@@ -5905,6 +5930,13 @@ class QDialogSelectModel(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
+        if self.hide_on_closing:
+            event.ignore()
+            self.hide()
+            if hasattr(self, 'loop'):
+                self.loop.exit()
+            return
+
         if hasattr(self, 'loop'):
             self.loop.exit()
 

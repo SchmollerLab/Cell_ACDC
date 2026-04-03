@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-
+from . import printl
 @dataclass(frozen=True)
 class WfImageDC:
     SizeZ: int = None

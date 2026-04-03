@@ -540,6 +540,7 @@ class _InputOutputCircle(QLabel):
             super().mousePressEvent(event)
 
 class _WorkflowCardZoneWidget(QWidget):
+
     """A workflow card widget that appears in the workflow zone.
     
     Represents a single workflow operation in the zone. Displays the operation's
@@ -571,7 +572,7 @@ class _WorkflowCardZoneWidget(QWidget):
     """
     def __init__(self, functions: WorkflowBaseFunctions, posData, 
                  zone=None, workflowGui=None, logger=print,
-                 show_initial_dialog=True):
+                 show_initial_dialog=True, preInitWorkflow_res=None):
         QWidget.__init__(self, parent=None)
 
         if workflowGui is None:
@@ -592,6 +593,7 @@ class _WorkflowCardZoneWidget(QWidget):
         self.output_circles = []
         self._dialog_content_snapshot = None
         self._dialog_workflow_snapshot_before_open = None
+        self._creation_aborted = False
         # When restoring state the card is already configured — no initial dialog.
         self._is_first_dialog_interaction_pending = show_initial_dialog
         self._unsaved_work_before_first_dialog = bool(self.workflowGui.unsaved_work)
@@ -604,6 +606,24 @@ class _WorkflowCardZoneWidget(QWidget):
         self.functions.updateTitle = self.updateTitle
         self.functions.notifySelectionInvalid = self._onDialogSelectionInvalid
         self.functions.notifySelectionValid = self._onDialogSelectionValid
+        self.functions._onDialogCancelled = self._onDialogCancelled
+        preInitWorkflowDialog = getattr(self.functions, 'preInitWorkflowDialog', None) # optional, for example getting model choices before dialog setup
+
+        # Run pre-init only for user-driven card creation. Restores pass the
+        # previously captured preInitWorkflow_res directly.
+        if (
+            preInitWorkflow_res is None
+            and show_initial_dialog
+            and callable(preInitWorkflowDialog)
+        ):
+            preInitWorkflow_res = preInitWorkflowDialog(workflowGui=workflowGui)
+            if preInitWorkflow_res is None:
+                # Card is not in the scene yet; mark creation as aborted so callers
+                # can skip adding this partially initialized widget.
+                self._creation_aborted = True
+                self.deleteLater()
+                return
+        self.preInitWorkflow_res = preInitWorkflow_res
 
         # Needed for stylesheet-driven background highlights and blink feedback.
         self.setAttribute(Qt.WA_StyledBackground, True)
@@ -665,22 +685,25 @@ class _WorkflowCardZoneWidget(QWidget):
         self.outputs_layout = QHBoxLayout(self.outputs_container)
         self.outputs_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(self.outputs_container)
-        
+                
         self.dialog = self.functions.setupDialog_cb(parent=self, 
                                                     workflowGui=workflowGui, 
                                                     posData=self.posData,
-                                                    logger=self.logger)
+                                                    logger=self.logger,
+                                                    preInitWorkflow_res=preInitWorkflow_res)
         self.functions.initializeDialog_cb(self.dialog,
                                            parent=self,
                                            workflowGui=workflowGui,
-                                           posData=self.posData)
+                                           posData=self.posData,
+                                           preInitWorkflow_res=preInitWorkflow_res,
+                                           logger=self.logger)
 
         self.dialog.sigCancelClicked.connect(self._onDialogCancelled)
         self.dialog.sigOkClicked.connect(self._onDialogAccepted)
-
+        # open the dialog immediately for user-driven card creation, but not when restoring
         if show_initial_dialog:
             self._captureDialogContentSnapshot()
-            self.functions.runDialog_cb(self.dialog)
+            self._openDialog()
 
     def _captureDialogContentSnapshot(self):
         """Capture dialog content before opening, if supported."""
@@ -1052,11 +1075,14 @@ class _WorkflowCardZoneWidget(QWidget):
         self.workflowGui.setUnsavedWork(True)
         self.workflowZone.removeCard(self)
         # clean up dialog and widget
-        self.dialog.deleteLater()
-        self.dialog = None
+        if hasattr(self, 'dialog') and self.dialog is not None:
+            self.dialog.deleteLater()
+            self.dialog = None
 
     def updatePreview(self):
         """Update the preview image by capturing the current dialog state."""
+        if not hasattr(self, 'dialog') or self.dialog is None:
+            return
         preview = self.functions.getDialogPreview(self.dialog)
         if preview is not None:
             self.thumbnail.setPixmap(preview)
@@ -1976,6 +2002,9 @@ class WorkflowGui(QMainWindow):
         card_widget = _WorkflowCardZoneWidget(card_functions, posData=self.posData, 
                                               zone=self.dropZone, workflowGui=self, 
                                               logger=self.logger)
+
+        if getattr(card_widget, '_creation_aborted', False):
+            return
         
         # Add it directly to the drop zone at the specified position
         self.dropZone.addCard(card_widget, x, y)
@@ -2330,6 +2359,7 @@ class WorkflowGui(QMainWindow):
                 'kind': getattr(card_widget, 'title', '') or '',
                 'card_key': getattr(card_functions, 'card_key', None),
                 'position': {'x': pos.x(), 'y': pos.y()},
+                'preInitWorkflow_res': getattr(card_widget, 'preInitWorkflow_res', None),
                 'content': content,
             }
 
@@ -2369,6 +2399,7 @@ class WorkflowGui(QMainWindow):
                 card_info = cards_data[saved_card_id] or {}
                 kind = card_info.get('kind', '')
                 card_key = card_info.get('card_key', None)
+                pre_init_workflow_res = card_info.get('preInitWorkflow_res', None)
 
                 functions = self._resolveWorkflowCardFunctions(kind, card_key=card_key)
                 if functions is None:
@@ -2385,6 +2416,7 @@ class WorkflowGui(QMainWindow):
                     workflowGui=self,
                     logger=self.logger,
                     show_initial_dialog=False,
+                    preInitWorkflow_res=pre_init_workflow_res,
                 )
                 self.dropZone.addCard(card_widget, x, y)
 
@@ -2829,6 +2861,7 @@ class WorkflowGui(QMainWindow):
                 'kind': title,
                 'card_key': getattr(card_functions, 'card_key', None),
                 'position': {'x': pos.x(), 'y': pos.y()},
+                'preInitWorkflow_res': getattr(card_widget, 'preInitWorkflow_res', None),
                 'save_path': save_filename,
             }
 
@@ -3097,6 +3130,7 @@ class WorkflowGui(QMainWindow):
                 card_info = cards_data[saved_card_id] or {}
                 kind = card_info.get('kind', '')
                 card_key = card_info.get('card_key', None)
+                pre_init_workflow_res = card_info.get('preInitWorkflow_res', None)
 
                 functions = self._resolveWorkflowCardFunctions(kind, card_key=card_key)
                 if functions is None:
@@ -3118,6 +3152,7 @@ class WorkflowGui(QMainWindow):
                         workflowGui=self,
                         logger=self.logger,
                         show_initial_dialog=False,
+                        preInitWorkflow_res=pre_init_workflow_res,
                     )
                     self.dropZone.addCard(card_widget, x, y)
                 except Exception as e:
