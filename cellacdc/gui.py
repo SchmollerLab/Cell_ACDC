@@ -19724,6 +19724,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.copyLostObjButton.action.setVisible(False)
             self.segForLostIDsAction.setVisible(False)
             self.segForLostIDsAction.setDisabled(True)
+            self.delNewObjAction.setVisible(False)
+            self.delNewObjAction.setDisabled(True)
         else:
             self.imgGrad.rescaleAcrossTimeAction.setDisabled(False)
             self.annotateToolbar.setVisible(False)
