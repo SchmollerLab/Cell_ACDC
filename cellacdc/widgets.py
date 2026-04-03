@@ -11429,7 +11429,11 @@ class PointsLayersToolbar(ToolBar):
         yy = []
         xx = []
         ids = []
-        pointsDataPos = action.pointsData[self.guiWin.pos_i]
+        pos_i = self.guiWin.pos_i
+        if pos_i not in action.pointsData:
+            printl('No points data for position', pos_i) # should really not happen, but its not a disaster if it does
+            return df
+        pointsDataPos = action.pointsData[pos_i]
         for frame_i, framePointsData in pointsDataPos.items():
             if posData.SizeZ > 1:
                 for z, zSlicePointsData in framePointsData.items():

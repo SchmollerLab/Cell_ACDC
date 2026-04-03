@@ -325,6 +325,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.whitelistOriginalIDs = None
         self.whyNavigateDisabled = set()
         self.autoSaveTimer = QTimer()
+        self.dirtyPointsLayerTableEndNames = set()
         
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
@@ -1486,7 +1487,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.functionsNotTested3D.append(self.delBorderObjAction)
         
         self.delNewObjAction.toolbar = editToolBar
-        self.functionsNotTested3D.append(self.delNewObjAction)
+        # self.functionsNotTested3D.append(self.delNewObjAction) so id this doesnt work in 3d i dont know anymore
 
         editToolBar.addAction(self.repeatTrackingAction)
         
@@ -18096,6 +18097,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.resetManualBackgroundItems()
         proceed_cca, never_visited = self.get_data(debug=False)
         self.pointsLayerLoadedDfsToData()
+        self.flushDirtyPointsLayersAutosave()
         self.initContoursImage()
         self.initDelRoiLab()
         self.initTextAnnot()
@@ -22520,6 +22522,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         self.autoSaveTimer.stop()
+        self.flushDirtyPointsLayersAutosave()
         self._enqueueAutoSave()
     
     def autoSaveTimerCountFrames(self):
@@ -22540,6 +22543,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         self.autoSaveTimeStartFrameIdx = posData.frame_i
+        self.flushDirtyPointsLayersAutosave()
         self._enqueueAutoSave()
     
     def enqAutosave(self):
@@ -23704,6 +23708,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         state = undoAddPointQueue.pop(-1)
         action.pointsData[self.pos_i] = state
+        self.markPointsLayerDirty(action=action)
         
         self.drawPointsLayers(computePointsLayers=False)
         
@@ -23757,7 +23762,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.autoPilotZoomToObjSpinBox.setValue(posData.IDs[0])
         self.zoomToObj(posData.rp[0])
     
-    def savePointsAddedByClickingFromEndname(self, tableEndName):
+    def savePointsAddedByClickingFromEndname(self, tableEndName, recovery=False):
         self.pointsLayerDataToDf(self.data[self.pos_i])
         for posData in self.data:
             if not posData.basename.endswith('_'):
@@ -23765,12 +23770,40 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 basename = posData.basename
             tableFilename = f'{basename}{tableEndName}.csv'
-            tableFilepath = os.path.join(posData.images_path, tableFilename)
+            if recovery:
+                tableFilepath = os.path.join(
+                    posData.images_path, 'recovery', tableFilename
+                )
+            else:
+                tableFilepath = os.path.join(posData.images_path, tableFilename)
             df = posData.clickEntryPointsDfs.get(tableEndName)
             if df is None:
                 continue
             df = df.sort_values(['frame_i', 'Cell_ID'])
             df.to_csv(tableFilepath, index=False)
+
+    def markPointsLayerDirty(self, tableEndName=None, action=None):
+        if tableEndName is None and action is not None:
+            tableEndName = getattr(action, 'clickEntryTableEndName', None)
+
+        if tableEndName is None:
+            addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+            if addPointsByClickingButton is None:
+                return
+            tableEndName = addPointsByClickingButton.clickEntryTableEndName
+
+        self.dirtyPointsLayerTableEndNames.add(tableEndName)
+
+    def flushDirtyPointsLayersAutosave(self):
+        if not self.dirtyPointsLayerTableEndNames:
+            return
+
+        for tableEndName in tuple(self.dirtyPointsLayerTableEndNames): # acoid runtime error
+            self.savePointsAddedByClickingFromEndname(
+                tableEndName, recovery=True
+            )
+
+        self.dirtyPointsLayerTableEndNames.clear()
     
     @exception_handler
     def savePointsAddedByClicking(self, button, event):
@@ -24006,16 +24039,86 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             obj = posData.rp[0]
         
         self.autoPilotZoomToObjSpinBox.setValue(obj.label)
-        self.zoomToObj(obj)        
+        self.zoomToObj(obj)
+        
+    def getClickEntryTableFilepaths(self, posData, tableEndName):
+        if posData.basename.endswith('_'):
+            basename = posData.basename
+        else:
+            basename = f'{posData.basename}_'
+
+        csv_filename = f'{basename}{tableEndName}'
+        if not csv_filename.endswith('.csv'):
+            csv_filename = f'{csv_filename}.csv'
+
+        filepath = os.path.join(posData.images_path, csv_filename)
+        recovery_filepath = os.path.join(
+            posData.images_path, 'recovery', csv_filename
+        )
+        return filepath, recovery_filepath
+
+    def getClickEntryNewerRecoveryFilepaths(self, tableEndName):
+        newer_recovery_filepaths = []
+        for posData in self.data:
+            filepath, recovery_filepath = self.getClickEntryTableFilepaths(
+                posData, tableEndName
+            )
+            if not os.path.exists(filepath) or not os.path.exists(recovery_filepath):
+                continue
+
+            if os.path.getmtime(recovery_filepath) <= os.path.getmtime(filepath) + 15: # add a 15 second tolerance
+                continue
+
+            newer_recovery_filepaths.append((filepath, recovery_filepath))
+
+        return newer_recovery_filepaths
+
+    def askLoadNewerRecoveryClickEntryDfs(
+            self, tableEndName, newer_recovery_filepaths
+        ):
+        if not newer_recovery_filepaths:
+            return False
+
+        num_tables = len(newer_recovery_filepaths)
+        filepath, recovery_filepath = newer_recovery_filepaths[0]
+        main_timestamp = datetime.fromtimestamp(
+            os.path.getmtime(filepath)
+        ).strftime('%a %d. %b. %y - %H:%M:%S')
+        recovery_timestamp = datetime.fromtimestamp(
+            os.path.getmtime(recovery_filepath)
+        ).strftime('%a %d. %b. %y - %H:%M:%S')
+
+        if num_tables == 1:
+            text = html_utils.paragraph(
+                f'A newer recovery version of <code>{tableEndName}.csv</code> '
+                'was found.<br><br>'
+                f'Main table save date: <code>{main_timestamp}</code><br>'
+                f'Recovery save date: <code>{recovery_timestamp}</code><br><br>'
+                'Do you want to load the newer recovery version?'
+            )
+        else:
+            text = html_utils.paragraph(
+                f'Newer recovery versions of <code>{tableEndName}.csv</code> '
+                f'were found for <b>{num_tables} positions</b>.<br><br>'
+                f'Example main table save date: <code>{main_timestamp}</code><br>'
+                f'Example recovery save date: <code>{recovery_timestamp}</code><br><br>'
+                'Do you want to load the newer recovery version where available?'
+            )
+
+        msg = widgets.myMessageBox(wrapText=False)
+        _, yesButton, _ = msg.warning(
+            self.addPointsWin, 'Newer recovery table found', text,
+            buttonsTexts=('Cancel', 'Yes, load newer recovery', 'No, load main table')
+        )
+        return msg.clickedButton == yesButton
         
     def checkClickEntryTableEndnameExists(self, tableEndName, forceLoading):
         doesTableExists = False
         for posData in self.data:
-            files = myutils.listdir(posData.images_path)
-            for file in files:
-                if file.endswith(f'{tableEndName}.csv'):
-                    doesTableExists = True
-                    break
+            filepath, _ = self.getClickEntryTableFilepaths(posData, tableEndName)
+            if os.path.exists(filepath):
+                doesTableExists = True
+                break
         
         if not doesTableExists:
             return
@@ -24033,7 +24136,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if msg.clickedButton != yesButton:
                 return
 
-        self.loadClickEntryDfs(tableEndName)
+        newer_recovery_filepaths = self.getClickEntryNewerRecoveryFilepaths(
+            tableEndName
+        )
+        load_recovery_if_newer = self.askLoadNewerRecoveryClickEntryDfs(
+            tableEndName, newer_recovery_filepaths
+        )
+
+        self.loadClickEntryDfs(
+            tableEndName, loadRecoveryIfNewer=load_recovery_if_newer
+        )
 
     def checkLoadedTableIds(self, toolbar):
         if toolbar != self.promptSegmentPointsLayerToolbar:
@@ -24145,20 +24257,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.addPointsWin = None
     
-    def loadClickEntryDfs(self, tableEndName):
+    def loadClickEntryDfs(self, tableEndName, loadRecoveryIfNewer=False):
         for posData in self.data:
-            if posData.basename.endswith('_'):
-                basename = posData.basename
-            else:
-                basename = f'{posData.basename}_'
-            csv_filename = f'{basename}{tableEndName}'
-            if not csv_filename.endswith('.csv'):
-                csv_filename = f'{csv_filename}.csv'
-            filepath = os.path.join(posData.images_path, csv_filename)
-            if not os.path.exists(filepath):
-                continue
+            filepath, recovery_filepath = self.getClickEntryTableFilepaths(
+                posData, tableEndName
+            )
+
+            if loadRecoveryIfNewer:
+                filepath = recovery_filepath
             
-            self.logger.info(f'Loading points from "{filepath}.csv"...')
+            self.logger.info(f'Loading points from "{filepath}"...')
             df = pd.read_csv(filepath)
             if 'id' not in df.columns:
                 df['id'] = range(1, len(df)+1)
@@ -24200,6 +24308,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     sliceFramePointsData['y'].remove(y)
                     sliceFramePointsData['id'].remove(point.data())
                     removed_ids.append(point.data())
+
+        if removed_ids:
+            self.markPointsLayerDirty(action=action)
         
         return removed_ids
     
@@ -24329,6 +24440,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 framePointsData['x'].append(x)
                 framePointsData['y'].append(y)
                 framePointsData['id'].append(id)
+
+        self.markPointsLayerDirty(action=action)
         
     def showPointsLayerIdsToggled(self, button, checked):
         button.action.scatterItem.drawIds = checked
