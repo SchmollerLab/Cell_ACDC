@@ -3581,7 +3581,9 @@ class Toggle(QCheckBox):
         # To get the actual position of the circle we need to wait that
         # the widget is visible before setting the state
         if event.type() == QEvent.Type.Show and self.requestedState is not None:
+            self.blockSignals(True)
             self.setChecked(self.requestedState)
+            self.blockSignals(False)
         return False
 
     def setChecked(self, state):
@@ -3593,8 +3595,12 @@ class Toggle(QCheckBox):
             QCheckBox.setChecked(self, state>0)
         else:
             self.requestedState = state
+            if state is not None:
+                self.toggled.emit(state>0)
     
-    def isChecked(self):
+    def isChecked(self, debug=False):
+        if debug:
+            printl(self.isVisible(), self._isChecked, super().isChecked())
         if self.isVisible():
             return super().isChecked()
         else:
@@ -4385,6 +4391,7 @@ class _metricsQGBox(QGroupBox):
         self.favourite_funcs = favourite_funcs
 
         self.doNotWarn = False
+        self._infoButtons = {}
 
         layout = QVBoxLayout()
         inner_layout = QVBoxLayout()
@@ -4422,6 +4429,7 @@ class _metricsQGBox(QGroupBox):
             infoButton.info = metric_desc
             infoButton.colname = metric_colname
             infoButton.clicked.connect(self.showInfo)
+            self._infoButtons[metric_colname] = infoButton
 
             rowLayout.addWidget(infoButton)
             rowLayout.addWidget(checkBox)   
@@ -4498,6 +4506,13 @@ class _metricsQGBox(QGroupBox):
             return False
         
         return self.calcForEachZsliceToggle.isChecked()
+
+    def updateMetricDescriptions(self, desc_dict):
+        for metric_colname, infoButton in self._infoButtons.items():
+            if metric_colname not in desc_dict:
+                continue
+
+            infoButton.info = desc_dict[metric_colname]
     
     def highlightCheckboxesFromSearchText(self, text):
         for checkbox in self.checkBoxes:
@@ -4575,10 +4590,13 @@ class channelMetricsQGBox(QGroupBox):
 
     def __init__(
             self, isZstack, chName, isSegm3D, is_concat=False,
-            posData=None, favourite_funcs=None
+            posData=None, favourite_funcs=None,
+            add_custom_metrics=False
         ):
         QGroupBox.__init__(self)
-
+        self.chName = chName
+        self.posData = posData
+        self.customMetricsQGBox = None
         self.doNotWarn = False
         self.is_concat = is_concat
         isManualBackgrPresent = False
@@ -4595,14 +4613,14 @@ class channelMetricsQGBox(QGroupBox):
         metricsQGBox = _metricsQGBox(
             metrics_desc, 'Standard measurements',
             favourite_funcs=favourite_funcs, 
-            parent=self, isZstack=isZstack
+            parent=self, isZstack=isZstack # isZstack actually not used
         )
         self.metricsQGBox = metricsQGBox
         
         bkgrValsQGBox = _metricsQGBox(
             bkgr_val_desc, 'Background values',
             favourite_funcs=favourite_funcs, 
-            parent=self, isZstack=isZstack
+            parent=self, isZstack=isZstack # isZstack actually not used
         )
         self.bkgrValsQGBox = bkgrValsQGBox
 
@@ -4642,7 +4660,7 @@ class channelMetricsQGBox(QGroupBox):
             self.customMetricsQGBox = customMetricsQGBox
 
         self.calcForEachZsliceToggle = None
-        if isZstack:
+        if isZstack or add_custom_metrics:
             buttonsLayout = QHBoxLayout()
             self.calcForEachZsliceToggle = Toggle()
             tooltip = (
@@ -4671,6 +4689,38 @@ class channelMetricsQGBox(QGroupBox):
         self.setTitle(f'{chName} metrics')
         self.setCheckable(True)
         self.setLayout(layout)
+        
+    def updateZmode(self, isZstack, isSegm3D):
+        if self.calcForEachZsliceToggle is not None:
+            if isZstack:
+                self.calcForEachZsliceToggle.setEnabled(True)
+                self.calcForEachZsliceToggle.setChecked(False)
+            else:
+                self.calcForEachZsliceToggle.setEnabled(False)
+                self.calcForEachZsliceToggle.setChecked(False)
+
+        isManualBackgrPresent = False
+        if self.posData is not None:
+            if self.posData.manualBackgroundLab is not None:
+                isManualBackgrPresent = True
+
+        metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
+            isZstack,
+            self.chName,
+            isSegm3D=isSegm3D,
+            isManualBackgrPresent=isManualBackgrPresent
+        )
+        self.metricsQGBox.updateMetricDescriptions(metrics_desc)
+        self.bkgrValsQGBox.updateMetricDescriptions(bkgr_val_desc)
+
+        if self.customMetricsQGBox is not None:
+            custom_metrics_desc = measurements.custom_metrics_desc(
+                isZstack,
+                self.chName,
+                posData=self.posData,
+                isSegm3D=isSegm3D
+            )
+            self.customMetricsQGBox.updateMetricDescriptions(custom_metrics_desc)
     
     def toggleCalcForEachZslice(self, label, toggle=None):
         if toggle is None:

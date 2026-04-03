@@ -415,7 +415,7 @@ def init_prompt_model_params(
         addPreProcessParams=False,
         addPostProcessParams=False,
         ini_filename=ini_filename,
-        add_additional_segm_params=False
+        add_additional_segm_params=False,
     )
     win.setChannelNames(posData.chNames)
     out['win'] = win
@@ -427,7 +427,8 @@ def init_segm_model_params(
         qparent=None, help_url=None, init_last_params=False, 
         check_sam_embeddings=True, is_gui_caller=False,
         extraParams=None, extraParamsTitle=None,
-        ini_filename=None, add_additional_segm_params=False
+        ini_filename=None, add_additional_segm_params=False,
+        addPreProcessParams=False, addPostProcessParams=False,
     ):
     out = {}
     
@@ -469,7 +470,9 @@ def init_segm_model_params(
         extraParams=extraParams,
         extraParamsTitle=extraParamsTitle,
         ini_filename=ini_filename,
-        add_additional_segm_params=add_additional_segm_params
+        add_additional_segm_params=add_additional_segm_params,
+        addPreProcessParams=addPreProcessParams,
+        addPostProcessParams=addPostProcessParams
     )
     win.setChannelNames(posData.chNames)
     out['win'] = win

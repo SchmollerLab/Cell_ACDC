@@ -93,6 +93,7 @@ from . import _base_widgets
 from . import io
 from . import cca_functions
 from . import path
+from .workflow_typing import WfSegmDC
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -629,7 +630,6 @@ class customAnnotationDialog(QDialog):
 
     def exec_(self):
         self.show(block=True)
-
     def show(self, block=False):
         super().show()
         if block:
@@ -1855,16 +1855,22 @@ class SetMeasurementsDialog(QBaseDialog):
     sigClosed = Signal()
     sigCancel = Signal()
     sigRestart = Signal()
+    sigNumberChannelsRequested = Signal(int)
+    sigSelectedMetricsChanged = Signal()
 
     def __init__(
-            self, loadedChNames, notLoadedChNames, isZstack, isSegm3D,
+            self, loadedChNames, notLoadedChNames, 
+            isZstack=None, isSegm3D=None,
             favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
             acdc_df_path=None, posData=None, addCombineMetricCallback=None,
             allPosData=None, is_concat=False, isSingleSelection=False,
-            state=None
+            state=None, addCustomChannels=False
         ):
         super().__init__(parent=parent)
         
+        if (isZstack is None or isSegm3D is None) and not addCustomChannels:
+            raise ValueError('isZstack and isSegm3D cannot be None if addCustomChannels is False')
+                
         self.checkBoxedGroup = QButtonGroup()
         self.checkBoxedGroup.setExclusive(isSingleSelection)
 
@@ -1878,7 +1884,15 @@ class SetMeasurementsDialog(QBaseDialog):
         self.allPos_acdc_df_cols = allPos_acdc_df_cols
         self.acdc_df_path = acdc_df_path
         self.allPosData = allPosData
+        self.addCustomChannels = addCustomChannels
         self.doNotWarn = False
+        
+        # Store dialog parameters for dynamic widget creation
+        self.isZstack = isZstack
+        self.isSegm3D = isSegm3D
+        self.favourite_funcs = favourite_funcs
+        self.posData = posData
+        self.custom_channels_added = 0
 
         self.setWindowTitle('Set measurements')
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
@@ -1908,9 +1922,11 @@ class SetMeasurementsDialog(QBaseDialog):
 
         col = 0
         for col, chName in enumerate(loadedChNames):
+            if chName is None:
+                continue
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
-                posData=posData, is_concat=is_concat
+                posData=posData, is_concat=is_concat, add_custom_metrics=addCustomChannels
             )
             channelGBox.chName = chName
             groupsLayout.addWidget(channelGBox, 0, col, 3, 1)
@@ -1922,9 +1938,11 @@ class SetMeasurementsDialog(QBaseDialog):
 
         current_col = col+1
         for col, chName in enumerate(notLoadedChNames):
+            if chName is None:
+                continue
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
-                posData=posData, is_concat=is_concat
+                posData=posData, is_concat=is_concat, add_custom_metrics=addCustomChannels
             )
             channelGBox.setChecked(False)
             channelGBox.chName = chName
@@ -1937,6 +1955,18 @@ class SetMeasurementsDialog(QBaseDialog):
             self.all_metrics.extend([c.text() for c in channelGBox.checkBoxes])
 
         current_col += 1
+
+        # Add custom channels button if enabled
+        if addCustomChannels:
+            self.addCustomChannelsButton = widgets.addPushButton(
+                'Add input'
+            )
+            self.addCustomChannelsButton.clicked.connect(self._addCustomChannelWidget)
+            # Add button as a new column in the groupsLayout
+            self.groupsLayout.addWidget(
+                self.addCustomChannelsButton, 1, current_col, alignment=Qt.AlignTop
+            )
+            self.groupsLayout.setColumnStretch(current_col, 1)
 
         if posData is None:
             isTimelapse = False
@@ -2034,11 +2064,22 @@ class SetMeasurementsDialog(QBaseDialog):
                     )
             row += 1
 
+        if addCustomChannels:
+            # Keep the add-input button at the right side of the metrics column.
+            self.groupsLayout.removeWidget(self.addCustomChannelsButton)
+            self.groupsLayout.addWidget(
+                self.addCustomChannelsButton, 1, current_col + 1,
+                alignment=Qt.AlignTop
+            )
+            self.groupsLayout.setColumnStretch(current_col + 1, 1)
+
         self.last_row = row
         self.last_col = current_col
 
         okButton = widgets.okPushButton('   Ok   ')
+        self.okButton = okButton
         cancelButton = widgets.cancelPushButton('Cancel')
+        self.cancelButton = cancelButton
         if addCombineMetricCallback is not None:
             addCombineMetricButton = widgets.addPushButton(
                 'Add combined measurement...'
@@ -2047,6 +2088,7 @@ class SetMeasurementsDialog(QBaseDialog):
         self.okButton = okButton
 
         loadLastSelButton = widgets.reloadPushButton('Load last selection...')
+        self.loadLastSelButton = loadLastSelButton
         self.deselectAllButton = QPushButton('Deselect all')
         self.deselectAllButton.setIcon(QIcon(':deselect_all.svg'))
 
@@ -2063,15 +2105,18 @@ class SetMeasurementsDialog(QBaseDialog):
         saveCurrentSelectionButton = widgets.savePushButton(
             'Save current selection...'
         )
+        self.saveCurrentSelectionButton = saveCurrentSelectionButton
         saveCurrentSelectionButton.clicked.connect(
             self.saveCurrentSelectionClicked
         )
+        
         
         buttonsLayout.addWidget(saveCurrentSelectionButton)
         
         loadSavedSelectionButton = widgets.OpenFilePushButton(
             'Load saved selection...'
         )
+        self.loadSavedSelectionButton = loadSavedSelectionButton
         loadSavedSelectionButton.clicked.connect(self.loadSavedSelectionClicked)
         buttonsLayout.addWidget(loadSavedSelectionButton)
         
@@ -2104,7 +2149,7 @@ class SetMeasurementsDialog(QBaseDialog):
         for channelGBox in self.chNameGroupboxes:
             for checkbox in channelGBox.checkBoxes:
                 self.channelCheckboxToggled(checkbox)
-    
+        
     def allMetricsDict(self):
         all_metrics = {
             'standard': {}, 
@@ -2138,6 +2183,144 @@ class SetMeasurementsDialog(QBaseDialog):
             all_metrics['mixed_channels'].append(checkBox.text())
         
         return all_metrics
+    
+    
+    def _addCustomChannelWidget(self, custom_channel_name=None):
+        """Add a single custom channel metric box widget to the dialog."""
+        self.custom_channels_added += 1
+        ch_name = custom_channel_name or f'Input {self.custom_channels_added}'
+        
+        channelGBox = widgets.channelMetricsQGBox(
+            self.isZstack, ch_name, self.isSegm3D,
+            favourite_funcs=self.favourite_funcs,
+            posData=self.posData, is_concat=self.is_concat,
+            add_custom_metrics=self.addCustomChannels
+        )
+        
+        channelGBox.chName = ch_name
+        channelGBox.isCustomChannel = True
+        
+        button_idx = self.groupsLayout.indexOf(self.addCustomChannelsButton)
+        if button_idx < 0:
+            next_col = self.groupsLayout.columnCount()
+        else:
+            _, next_col, _, _ = self.groupsLayout.getItemPosition(button_idx)
+        self.groupsLayout.addWidget(channelGBox, 0, next_col, 3, 1)
+        self.chNameGroupboxes.append(channelGBox)
+        for checkBox in channelGBox.checkBoxes:
+            self.checkBoxedGroup.addButton(checkBox)
+            self._connectSelectedMetricsChangedSignal(checkBox)
+        
+        channelGBox.sigDelClicked.connect(self.delMixedChannelCombineMetric)
+        channelGBox.sigCheckboxToggled.connect(self.channelCheckboxToggled)
+        
+        self.groupsLayout.setColumnStretch(next_col, 5)
+        self.all_metrics.extend([c.text() for c in channelGBox.checkBoxes])
+        removeButton = widgets.cancelPushButton(f'Remove {ch_name}')
+        removeButton.clicked.connect(partial(self._removeCustomChannelWidget, ch_name))
+        channelGBox._removeButton = removeButton
+        self.groupsLayout.addWidget(removeButton, 3, next_col, alignment=Qt.AlignTop)
+        self._reflowCustomChannels()
+        self._emitCustomChannelsChangedSignals()
+            
+    def _removeCustomChannelWidget(self, chName):
+        gbox = next((c for c in self.chNameGroupboxes if c.chName == chName), None)
+        if gbox is None:
+            return
+        gbox_metrics = {c.text() for c in gbox.checkBoxes}
+        self.all_metrics = [m for m in self.all_metrics if m not in gbox_metrics]
+        self.groupsLayout.removeWidget(gbox)
+        gbox.hide()
+        gbox.deleteLater()
+        if hasattr(gbox, '_removeButton'):
+            self.groupsLayout.removeWidget(gbox._removeButton)
+            gbox._removeButton.hide()
+            gbox._removeButton.deleteLater()
+        self.chNameGroupboxes.remove(gbox)
+
+        self._reflowCustomChannels()
+        self._emitCustomChannelsChangedSignals()
+
+    def _emitCustomChannelsChangedSignals(self):
+        if getattr(self, '_suspend_custom_channel_signals', False):
+            return
+        self.sigNumberChannelsRequested.emit(len(self.chNameGroupboxes))
+        self.sigSelectedMetricsChanged.emit()
+
+    def _reflowCustomChannels(self):
+        if not hasattr(self, 'addCustomChannelsButton'):
+            return
+
+        custom_widgets = []
+        for gbox in self.chNameGroupboxes:
+            if not getattr(gbox, 'isCustomChannel', False):
+                continue
+            idx = self.groupsLayout.indexOf(gbox)
+            if idx < 0:
+                continue
+            _, col, _, _ = self.groupsLayout.getItemPosition(idx)
+            custom_widgets.append((col, gbox))
+
+        if not custom_widgets:
+            self.custom_channels_added = 0
+            self.groupsLayout.invalidate()
+            self.groupsLayout.update()
+            return
+
+        custom_widgets.sort(key=lambda item: item[0])
+        start_col = custom_widgets[0][0]
+
+        button_idx = self.groupsLayout.indexOf(self.addCustomChannelsButton)
+        old_button_col = None
+        if button_idx >= 0:
+            _, old_button_col, _, _ = self.groupsLayout.getItemPosition(button_idx)
+
+        old_custom_cols = [col for col, _ in custom_widgets]
+
+        for i, (_, gbox) in enumerate(custom_widgets):
+            new_name = f'Input {i + 1}'
+            gbox.chName = new_name
+            gbox.setTitle(new_name)
+            if hasattr(gbox, '_removeButton'):
+                btn = gbox._removeButton
+                btn.setText(f'Remove {new_name}')
+                try:
+                    btn.clicked.disconnect()
+                except TypeError:
+                    pass
+                btn.clicked.connect(
+                    partial(self._removeCustomChannelWidget, new_name)
+                )
+
+            target_col = start_col + i
+            self.groupsLayout.removeWidget(gbox)
+            self.groupsLayout.addWidget(gbox, 0, target_col, 3, 1)
+            if hasattr(gbox, '_removeButton'):
+                btn = gbox._removeButton
+                self.groupsLayout.removeWidget(btn)
+                self.groupsLayout.addWidget(btn, 3, target_col, alignment=Qt.AlignTop)
+            self.groupsLayout.setColumnStretch(target_col, 5)
+
+        button_col = start_col + len(custom_widgets)
+        self.groupsLayout.removeWidget(self.addCustomChannelsButton)
+        self.groupsLayout.addWidget(
+            self.addCustomChannelsButton, 1, button_col, alignment=Qt.AlignTop
+        )
+        self.groupsLayout.setColumnStretch(button_col, 1)
+
+        reset_candidates = set(old_custom_cols)
+        if old_button_col is not None:
+            reset_candidates.add(old_button_col)
+
+        used_cols = set(range(start_col, button_col + 1))
+        for col in reset_candidates:
+            if col in used_cols:
+                continue
+            self.groupsLayout.setColumnStretch(col, 0)
+
+        self.custom_channels_added = len(custom_widgets)
+        self.groupsLayout.invalidate()
+        self.groupsLayout.update()
     
     def searchAndHighlight(self, text):
         for chNameGroupbox in self.chNameGroupboxes:
@@ -2219,17 +2402,21 @@ class SetMeasurementsDialog(QBaseDialog):
         for chNameGroupbox in self.chNameGroupboxes:
             for checkBox in chNameGroupbox.checkBoxes:
                 self.checkBoxedGroup.addButton(checkBox)
+                self._connectSelectedMetricsChangedSignal(checkBox)
         
         for checkBox in self.regionPropsQGBox.checkBoxes:
             self.checkBoxedGroup.addButton(checkBox)
+            self._connectSelectedMetricsChangedSignal(checkBox)
         
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             self.checkBoxedGroup.addButton(checkBox)
+            self._connectSelectedMetricsChangedSignal(checkBox)
         
         if self.chIndipendCustomeMetricsQGBox is not None:
             checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
             for checkBox in checkBoxes:
                 self.checkBoxedGroup.addButton(checkBox)
+                self._connectSelectedMetricsChangedSignal(checkBox)
         
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
@@ -2237,6 +2424,16 @@ class SetMeasurementsDialog(QBaseDialog):
         checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
         for checkBox in checkBoxes:
             self.checkBoxedGroup.addButton(checkBox)
+            self._connectSelectedMetricsChangedSignal(checkBox)
+
+    def _selectedMetricToggled(self, checked=False):
+        self.sigSelectedMetricsChanged.emit()
+
+    def _connectSelectedMetricsChangedSignal(self, checkbox):
+        if getattr(checkbox, '_selected_metrics_signal_connected', False):
+            return
+        checkbox.toggled.connect(self._selectedMetricToggled)
+        checkbox._selected_metrics_signal_connected = True
             
     def channelCheckboxToggled(self, checkbox):
         # Make sure to automatically check the requested cell_vol metric for 
@@ -2370,7 +2567,7 @@ class SetMeasurementsDialog(QBaseDialog):
                 for section in _config.sections():
                     _config.remove_option(section, colname_to_del)
                 posData.saveCombineMetrics()
-    
+                    
     def setState(self, state):
         self.doNotWarn = True
         for chNameGroupbox in self.chNameGroupboxes:
@@ -2656,6 +2853,35 @@ class SetMeasurementsDialog(QBaseDialog):
         load.write_last_selected_set_measurements(last_selected_meas)
     
     def setCurrentSelectionFromMapper(self, selection_mapper):
+        # add channel name groupboxes for missing channels if self.addCustomChannels is True
+        if self.addCustomChannels:
+            existing_channel_names = {gbox.chName for gbox in self.chNameGroupboxes}
+            non_channel_sections = {
+                'DEFAULT',
+                self.sizeMetricsQGBox.title(),
+                self.regionPropsQGBox.title(),
+            }
+            if self.chIndipendCustomeMetricsQGBox is not None:
+                non_channel_sections.add(self.chIndipendCustomeMetricsQGBox.title())
+            if self.mixedChannelsCombineMetricsQGBox is not None:
+                non_channel_sections.add(self.mixedChannelsCombineMetricsQGBox.title())
+
+            for chName in selection_mapper.keys():
+                if chName in non_channel_sections:
+                    continue
+                if chName not in existing_channel_names:
+                    self._addCustomChannelWidget(custom_channel_name=chName)
+                    existing_channel_names.add(chName)
+                    
+            # Delete only extra custom input groupboxes not present in mapper.
+            custom_channel_names = {
+                gbox.chName
+                for gbox in self.chNameGroupboxes
+                if getattr(gbox, 'isCustomChannel', False)
+            }
+            for chName in custom_channel_names:
+                if chName not in selection_mapper:
+                    self._removeCustomChannelWidget(chName)
         for chNameGroupbox in self.chNameGroupboxes:
             chName = chNameGroupbox.chName
             chSelectedMeas = selection_mapper.get(chName)
@@ -2961,7 +3187,15 @@ class SetMeasurementsDialog(QBaseDialog):
         screenTop = self.screen().geometry().y()
         h = screenHeight-200
         minColWith = screenWidth/5
-        w = minColWith*(self.last_col+1)
+
+        # Compute width from currently occupied columns (custom inputs can
+        # add/remove columns after initialization).
+        max_col = self.last_col
+        for i in range(self.groupsLayout.count()):
+            _, col, _, col_span = self.groupsLayout.getItemPosition(i)
+            max_col = max(max_col, col + col_span - 1)
+
+        w = minColWith*(max_col+1)
         xLeft = int((screenWidth-w)/2)
         if w > screenWidth:
             self.move(screenLeft+10, screenTop+50)
@@ -4842,17 +5076,18 @@ class OrderableListWidgetDialog(QBaseDialog):
 
 
 class QDialogAutomaticThresholding(QBaseDialog):
-    def __init__(self, parent=None, isSegm3D=True):
+    def __init__(self, parent=None, isSegm3D=True, hide_on_close=False):
         super().__init__(parent)
 
         self.cancel = True
+        
+        self.hide_on_close = hide_on_close
 
         self.setWindowTitle('Automatic thresholding parameters')
 
         layout = QVBoxLayout()
         formLayout = QGridLayout()
         buttonsLayout = QHBoxLayout()
-
         row = 0
         self.sigmaGaussSpinbox = QDoubleSpinBox()
         self.sigmaGaussSpinbox.setValue(1)
@@ -4876,6 +5111,7 @@ class QDialogAutomaticThresholding(QBaseDialog):
         formLayout.addWidget(self.threshMethodCombobox, row, 1, 1, 2)
 
         self.segment3Dcheckbox = None
+        self.segmentSliceBySliceCheckbox = None
         if isSegm3D:
             row += 1
             formLayout.addWidget(
@@ -4884,11 +5120,13 @@ class QDialogAutomaticThresholding(QBaseDialog):
             group = QButtonGroup()
             group.setExclusive(True)
             self.segment3Dcheckbox = QRadioButton('Yes')
-            segmentSliceBySliceCheckbox = QRadioButton('No, segment slice-by-slice')
+            self.segmentSliceBySliceCheckbox = QRadioButton(
+                'No, segment slice-by-slice'
+            )
             group.addButton(self.segment3Dcheckbox)
-            group.addButton(segmentSliceBySliceCheckbox)
+            group.addButton(self.segmentSliceBySliceCheckbox)
             formLayout.addWidget(self.segment3Dcheckbox, row, 1)
-            formLayout.addWidget(segmentSliceBySliceCheckbox, row, 2)
+            formLayout.addWidget(self.segmentSliceBySliceCheckbox, row, 2)
             self.segment3Dcheckbox.setChecked(True)
 
         okButton = widgets.okPushButton('Ok')
@@ -4908,11 +5146,14 @@ class QDialogAutomaticThresholding(QBaseDialog):
         okButton.clicked.connect(self.ok_cb)
         helpButton.clicked.connect(self.help_cb)
         cancelButton.clicked.connect(self.close)
+        self.okButton = okButton
+        self.cancelButton = cancelButton
 
         self.setLayout(layout)
         self.setFont(font)
 
         self.configPars = self.loadLastSelection()
+        self._set3DCheckboxEnabled(isSegm3D)
 
     
     def help_cb(self):
@@ -4922,6 +5163,13 @@ class QDialogAutomaticThresholding(QBaseDialog):
 
     def ok_cb(self):
         self.cancel = False
+        self.getContent()
+        if self.hide_on_close:
+            self.hide()
+            return
+        self.close()
+        
+    def getContent(self):
         self.gaussSigma = self.sigmaGaussSpinbox.value()
         threshMethod = self.threshMethodCombobox.currentText().lower()
         self.threshMethod = f'threshold_{threshMethod}'
@@ -4934,7 +5182,16 @@ class QDialogAutomaticThresholding(QBaseDialog):
         if self.segment3Dcheckbox is not None:
             doSegm3D = self.segment3Dcheckbox.isChecked()
             self.segment_kwargs['segment_3D_volume'] = doSegm3D
-        self.close()
+            
+        return self.segment_kwargs
+
+    def _set3DCheckboxEnabled(self, is_input_3d):
+        if self.segment3Dcheckbox is None:
+            return
+
+        self.segment3Dcheckbox.setEnabled(is_input_3d)
+        if not is_input_3d and self.segmentSliceBySliceCheckbox is not None:
+            self.segmentSliceBySliceCheckbox.setChecked(True)
     
     def loadLastSelection(self):
         self.ini_path = os.path.join(
@@ -4953,8 +5210,8 @@ class QDialogAutomaticThresholding(QBaseDialog):
         self.sigmaGaussSpinbox.setValue(float(section['gauss_sigma']))
 
         threshold_method = section['threshold_method']
-        Method = threshold_method[10:].capitalize()
-        self.threshMethodCombobox.setCurrentText(Method)
+        method = threshold_method[10:].capitalize()
+        self.threshMethodCombobox.setCurrentText(method)
         if self.segment3Dcheckbox is None:
             return
         self.segment3Dcheckbox.setChecked(section.getboolean('segment_3D_volume'))
@@ -5548,10 +5805,14 @@ class SelectPromptableModelDialog(QBaseDialog):
 
 
 class QDialogSelectModel(QDialog):
+    sigCancelClicked = Signal()
+    sigOkClicked = Signal(str)
     def __init__(
-            self, parent=None, addSkipSegmButton=False, customFirst=''
+            self, parent=None, addSkipSegmButton=False, customFirst='',
+            hide_on_closing=False
         ):
         self.cancel = True
+        self.hide_on_closing = hide_on_closing
         super().__init__(parent)
         self.setWindowTitle('Select model')
 
@@ -5642,14 +5903,17 @@ class QDialogSelectModel(QDialog):
             self.listBox.setCurrentItem(item)
         elif model == 'Automatic thresholding':
             self.selectedModel = 'thresholding'
+            self.sigOkClicked.emit(self.selectedModel)
             self.close()
         else:
             self.selectedModel = model
+            self.sigOkClicked.emit(self.selectedModel)
             self.close()
 
     def cancel_cb(self, event):
         self.cancel = True
         self.selectedModel = None
+        self.sigCancelClicked.emit()
         self.close()
 
     def exec_(self):
@@ -5668,6 +5932,13 @@ class QDialogSelectModel(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
+        if self.hide_on_closing:
+            event.ignore()
+            self.hide()
+            if hasattr(self, 'loop'):
+                self.loop.exit()
+            return
+
         if hasattr(self, 'loop'):
             self.loop.exit()
 
@@ -6397,7 +6668,7 @@ class QDialogMetadata(QDialog):
                 search = [file for file in ls if file.find('metadata.csv')!=-1]
                 metadata_df = None
                 if search:
-                    fileName = search[0]
+                    e = search[0]
                     metadata_csv_path = os.path.join(images_path, fileName)
                     metadata_df = pd.read_csv(
                         metadata_csv_path
@@ -7107,13 +7378,16 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
 class PostProcessSegmParams(QGroupBox):
     valueChanged = Signal(object)
     editingFinished = Signal()
+    sigNumberChannelsRequested = Signal(int)
 
     def __init__(
             self, title, posData, 
             useSliders=False, 
             parent=None, 
             maxSize=None, 
-            force_postprocess_2D=False
+            force_postprocess_2D=False,
+            addCustomChannels=False,
+            external_metrics=None
         ):
         QGroupBox.__init__(self, title, parent)
         SizeZ = posData.SizeZ
@@ -7240,12 +7514,18 @@ class PostProcessSegmParams(QGroupBox):
         addCustomFeatureLayout.addStretch(1)
         self.selectedFeaturesDialog = SelectFeaturesRangeDialog(
             posData=posData, parent=self, 
-            force_postprocess_2D=force_postprocess_2D
+            force_postprocess_2D=force_postprocess_2D,
+            addCustomChannels=addCustomChannels,
+            external_metrics=external_metrics,
         )
         self.selectedFeaturesDialog.hide()
         self.addCustomFeaturesButton.clicked.connect(
             self.selectedFeaturesDialog.show
         )
+        if addCustomChannels:
+            self.selectedFeaturesDialog.sigNumberChannelsRequested.connect(
+                self.sigNumberChannelsRequested
+            )
         self.selectedFeaturesDialog.sigValueChanged.connect(self.onValueChanged)
         
         layout.addLayout(addCustomFeatureLayout, row, 0, 1, 2)
@@ -7264,6 +7544,9 @@ class PostProcessSegmParams(QGroupBox):
 
     def groupedFeatures(self):
         return self.selectedFeaturesDialog.groupbox.groupedFeatures()
+
+    def updateExternalMetrics(self, external_metrics):
+        self.selectedFeaturesDialog.updateExternalMetrics(external_metrics)
     
     def restoreDefault(self):
         self.minSolidity_DSB.setValue(0.5)
@@ -7329,9 +7612,12 @@ class PostProcessSegmDialog(QBaseDialog):
             self, posData, 
             mainWin=None, 
             useSliders=True, 
-            maxSize=None
+            maxSize=None,
+            parent=None
         ):
-        super().__init__(mainWin)
+        if mainWin is not None and parent is not None:
+            raise ValueError('You cannot specify both mainWin and parent.')
+        super().__init__(mainWin if mainWin is not None else parent)
         self.cancel = True
         self.mainWin = mainWin
         self.isTimelapse = False
@@ -11503,10 +11789,14 @@ class QDialogModelParams(QDialog):
             extraParams=None, 
             extraParamsTitle=None, 
             ini_filename=None,
-            add_additional_segm_params=False
+            add_additional_segm_params=False,
+            hideOnClosing=False,
+            useInput2AsSecondChannelToggle=False,
         ):
         self.cancel = True
         super().__init__(parent)
+        self.hideOnClosing = hideOnClosing
+        self.useInput2AsSecondChannelToggle = useInput2AsSecondChannelToggle
         self.channels = channels
         self.is_tracker = is_tracker
         self.currentChannelName = currentChannelName
@@ -11810,6 +12100,15 @@ class QDialogModelParams(QDialog):
         self.setLayout(mainLayout)
         self.setFont(font)
         # self.setModal(True)
+        
+    def _exit_local_loop_if_running(self):
+        if not hasattr(self, 'loop'):
+            return
+        try:
+            if self.loop.isRunning():
+                self.loop.exit()
+        except Exception:
+            pass
     
     def warningNoSegmRecipes(self):
         msg = widgets.myMessageBox(wrapText=False)
@@ -12200,13 +12499,24 @@ class QDialogModelParams(QDialog):
         if askSecondChannel:
             label = QLabel('Second channel (optional):  ')
             groupBoxLayout.addWidget(label, start_row, 0, alignment=Qt.AlignRight)
-            self.channelsCombobox = widgets.QCenteredComboBox()
-            groupBoxLayout.addWidget(self.channelsCombobox, start_row, 1, 1, 2)
             infoText = (
                 'Some models can merge two channels (e.g., cyto + '
                 'nucleus) to obtain better perfomance.\n\n'
                 'Select a channel as additional input to the model.'
             )
+            if self.useInput2AsSecondChannelToggle:
+                self.passInput2AsSecondChannelToggle = widgets.Toggle()
+                groupBoxLayout.addWidget(
+                    self.passInput2AsSecondChannelToggle,
+                    start_row, 1, 1, 2, alignment=Qt.AlignCenter
+                )
+                infoText = (
+                    'Enable this to pass workflow Input 2 as the model second '
+                    'channel.\n\nIf disabled, no second channel is used.'
+                )
+            else:
+                self.channelsCombobox = widgets.QCenteredComboBox()
+                groupBoxLayout.addWidget(self.channelsCombobox, start_row, 1, 1, 2)
             infoButton = self.getInfoButton('Second channel', infoText)
             groupBoxLayout.addWidget(infoButton, start_row, 3)
             start_row += 1
@@ -12709,7 +13019,10 @@ class QDialogModelParams(QDialog):
             self.applyPostProcessing = self.postProcessGroupbox.isChecked()
             self.standardPostProcessKwargs = self.postProcessGroupbox.kwargs()
         self.secondChannelName = None
-        if hasattr(self, 'channelsCombobox'):
+        if hasattr(self, 'passInput2AsSecondChannelToggle'):
+            if self.passInput2AsSecondChannelToggle.isChecked():
+                self.secondChannelName = '__input_2__'
+        elif hasattr(self, 'channelsCombobox'):
             self.secondChannelName = self.channelsCombobox.currentText()
         if self.secondChannelName == 'None':
             self.secondChannelName = None
@@ -12722,7 +13035,14 @@ class QDialogModelParams(QDialog):
             self.reduceMemoryUsage = self.reduceMemUsageToggle.isChecked()
         self.customPostProcessFeatures = self.selectedFeaturesRange()
         self.customPostProcessGroupedFeatures = self.groupedFeatures()
+
+        if self.hideOnClosing:
+            self.hide()
+            self._exit_local_loop_if_running()
+            return
+
         self.saveLastSelection()
+
         self.freePosData()
         self.close()
 
@@ -12837,12 +13157,25 @@ class QDialogModelParams(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        self.freePosData()
+        if self.hideOnClosing:
+            event.ignore()
+            self.hide()
+            self._exit_local_loop_if_running()
+            return
+
+        try:
+            self.freePosData()
+        except Exception as err:
+            pass
         if hasattr(self, 'loop'):
             self.loop.exit()
 
     def cancel_cb(self, checked):
         self.cancel = True
+        if self.hideOnClosing:
+            self.hide()
+            self._exit_local_loop_if_running()
+            return
         self.freePosData()
     
     def showEvent(self, event) -> None:
@@ -14539,31 +14872,49 @@ class ChangeUserProfileFolderPathDialog(QBaseDialog):
         self.close()
  
 class SelectFeaturesRange:
+    _externalMetricPlaceholder = 'Select external metric...'
+    _invalidSelectionStyle = 'QComboBox { background-color: red; }'
+
     def __init__(
             self, 
             posData, 
             force_postprocess_2D=False, 
             qparent=None,
-            sigValueChanged=None
+            sigValueChanged=None,
+            sigNumberChannelsRequested=None,
+            addCustomChannels=False,
+            external_metrics=None,
         ) -> None:
         self.posData = posData
         self.qparent = qparent
         self.force_postprocess_2D = force_postprocess_2D
         self.sigValueChanged = sigValueChanged
-        
+        self.sigNumberChannelsRequested = sigNumberChannelsRequested
+        self.addCustomChannels = addCustomChannels
+        self.external_metrics = external_metrics
+        self.featureGroup = 'external_metrics'
         self.lowRangeWidgets = widgets.CheckableSpinBoxWidgets()
         self.highRangeWidgets = widgets.CheckableSpinBoxWidgets()        
         
-        self.selectButton = widgets.FeatureSelectorButton(
-            'Click to select feature...'
-        )
-        self.selectButton.setSizeLongestText(
-            'Spotfit intens. metric, Foregr. integral gauss. peak'
-        )
-        self.selectButton.clicked.connect(self.selectFeature)
-        self.selectButton.setCursor(Qt.PointingHandCursor)
+        if self.external_metrics is None:
+            self.selectButton = widgets.FeatureSelectorButton(
+                'Click to select feature...'
+            )
+            self.selectButton.setSizeLongestText(
+                'Spotfit intens. metric, Foregr. integral gauss. peak'
+            )
+            self.selectButton.clicked.connect(self.selectFeature)
+            self.selectButton.setCursor(Qt.PointingHandCursor)
+        else:
+            # Use a combo-box when features come from an external source.
+            self.selectButton = QComboBox()
+            self.selectButton.currentTextChanged.connect(
+                self._onExternalMetricChanged
+            )
+            self.updateExternalMetrics(external_metrics)
 
         self.selectedFeatureGroups = {}
+        self._selectionBlinker = None
 
         self.widgets = [
             {'pos': (0, 0), 'widget': self.lowRangeWidgets.checkbox}, 
@@ -14576,9 +14927,96 @@ class SelectFeaturesRange:
             {'pos': (2, 0), 'widget': widgets.VerticalSpacerEmptyWidget(height=10)}
         ]
         self.columnsStretches = {0: 0, 1: 0, 2: 1, 3: 0, 4: 0}
-    
+        
+    def _setSelectionInvalidState(self, is_invalid):
+        if not isinstance(self.selectButton, QComboBox):
+            return
+        self.selectButton.setStyleSheet(
+            self._invalidSelectionStyle if is_invalid else ''
+        )
+
     def setText(self, text):
+        if isinstance(self.selectButton, QComboBox):
+            if text == '':
+                self.selectButton.setCurrentIndex(0)
+                self._setSelectionInvalidState(False)
+                return
+
+            idx = self.selectButton.findText(text)
+            if idx == -1:
+                self.selectButton.addItem(text)
+                idx = self.selectButton.findText(text)
+                self.selectButton.setItemData(idx, QColor('red'), Qt.ForegroundRole)
+                self.selectButton.setCurrentIndex(idx)
+                self._setSelectionInvalidState(True)
+                return
+            self.selectButton.setCurrentIndex(idx)
+            has_stale_color = (
+                self.selectButton.itemData(idx, Qt.ForegroundRole) is not None
+            )
+            self._setSelectionInvalidState(has_stale_color)
+            return
+
         self.selectButton.setText(text)
+
+    def text(self):
+        if isinstance(self.selectButton, QComboBox):
+            return self.selectButton.currentText()
+        return self.selectButton.text()
+
+    def hasValidSelection(self, blink_on_invalid=False):
+        text = self.text()
+        if not text:
+            if blink_on_invalid:
+                self._setSelectionInvalidState(True)
+            return False
+        if isinstance(self.selectButton, QComboBox):
+            idx = self.selectButton.currentIndex()
+            has_stale_color = (
+                self.selectButton.itemData(idx, Qt.ForegroundRole) is not None
+            )
+            isValid = (
+                text != self._externalMetricPlaceholder
+                and not has_stale_color
+            )
+            if not isValid and blink_on_invalid:
+                self._setSelectionInvalidState(True)
+            elif isValid:
+                self._setSelectionInvalidState(False)
+            return isValid
+
+        isValid = text.find('Click') == -1
+        if not isValid and blink_on_invalid:
+            self._setSelectionInvalidState(True)
+        return isValid
+
+    def hasInvalidExternalMetric(self, blink_on_invalid=False):
+        """Return True when a stale (red) external metric is selected."""
+        if not isinstance(self.selectButton, QComboBox):
+            return False
+        idx = self.selectButton.currentIndex()
+        color = self.selectButton.itemData(idx, Qt.ForegroundRole)
+        invalid = color is not None
+        if invalid and blink_on_invalid:
+            self._setSelectionInvalidState(True)
+        elif not invalid:
+            self._setSelectionInvalidState(False)
+        return invalid
+
+    def _onExternalMetricChanged(self, text):
+        if isinstance(self.selectButton, QComboBox):
+            is_placeholder = text == self._externalMetricPlaceholder
+            idx = self.selectButton.currentIndex()
+            has_stale_color = (
+                self.selectButton.itemData(idx, Qt.ForegroundRole) is not None
+            )
+            self._setSelectionInvalidState(is_placeholder or has_stale_color)
+
+        if self.sigValueChanged is None:
+            return
+        if text == self._externalMetricPlaceholder:
+            return
+        self.sigValueChanged(None)
     
     def selectFeature(self):
         loadedChNames = [self.posData.user_ch_name]
@@ -14588,9 +15026,14 @@ class SelectFeaturesRange:
         self.selectFeatureDialog = SetMeasurementsDialog(
             loadedChNames, notLoadedChNames, isZstack, isSegm3D,
             posData=self.posData, parent=self.qparent,
-            isSingleSelection=True, is_concat=True
+            isSingleSelection=True, is_concat=True,
+            addCustomChannels=self.addCustomChannels
         )
         # self.selectFeatureDialog.resizeVertical()
+        if self.sigNumberChannelsRequested is not None:
+            self.selectFeatureDialog.sigNumberChannelsRequested.connect(
+                self.sigNumberChannelsRequested
+            )
         self.selectFeatureDialog.sigClosed.connect(self.setFeatureText)
         self.selectFeatureDialog.show()
     
@@ -14603,22 +15046,71 @@ class SelectFeaturesRange:
         )
         self.selectButton.setText(selectedMetricName)
         self.featureGroup = selectedMetricGroup
+        
+    def updateExternalMetrics(self, external_metrics):
+        if not isinstance(self.selectButton, QComboBox):
+            raise RuntimeError(
+                'updateExternalMetrics can only be called for external-metrics '
+                'selectors'
+            )
+
+        currentText = self.selectButton.currentText()
+        if external_metrics is None:
+            self.external_metrics = []
+        elif isinstance(external_metrics, (list, tuple, set)):
+            self.external_metrics = list(external_metrics)
+        else:
+            raise TypeError(
+                'external_metrics must be None, list, tuple, or set of strings'
+                'However, got type: ' + str(type(external_metrics)) + ' with value: ' + str(external_metrics)
+            )
+
+        if any(not isinstance(metric, str) for metric in self.external_metrics):
+            raise TypeError('external_metrics values must be strings')
+
+        self.selectButton.blockSignals(True)
+        self.selectButton.clear()
+        self.selectButton.addItem(self._externalMetricPlaceholder)
+        self.selectButton.addItems(self.external_metrics)
+
+        for i in range(1, self.selectButton.count()):
+            self.selectButton.setItemData(i, None, Qt.ForegroundRole)
+
+        if currentText and currentText != self._externalMetricPlaceholder:
+            idx = self.selectButton.findText(currentText)
+            if idx == -1:
+                self.selectButton.addItem(currentText)
+                idx = self.selectButton.findText(currentText)
+                self.selectButton.setItemData(idx, QColor('red'), Qt.ForegroundRole)
+            self.selectButton.setCurrentIndex(idx)
+        else:
+            self.selectButton.setCurrentIndex(0)
+
+        self.selectButton.blockSignals(False)
+
+        if self.sigValueChanged is not None:
+            self.sigValueChanged(None)
+        
 
 class SelectFeaturesRangeDialog(QBaseDialog):
     sigValueChanged = Signal(object)
+    sigNumberChannelsRequested = Signal(int)
     
-    def __init__(self, posData=None, parent=None, force_postprocess_2D=False):
+    def __init__(self, posData=None, parent=None, force_postprocess_2D=False,
+                 addCustomChannels=False, external_metrics=None):
         super().__init__(parent)
         
         self.force_postprocess_2D = force_postprocess_2D
-        
         layout = QVBoxLayout()
         self.setWindowTitle('Custom features for post-processing')
         
         self.groupbox = SelectFeaturesRangeGroupbox(
             posData=posData, parent=parent, 
-            force_postprocess_2D=force_postprocess_2D
+            force_postprocess_2D=force_postprocess_2D,
+            addCustomChannels=addCustomChannels,
+            external_metrics=external_metrics
         )
+        self.groupbox.sigNumberChannelsRequested.connect(self.sigNumberChannelsRequested.emit)
         
         buttonsLayout = QHBoxLayout()
         okPushButton = widgets.okPushButton(' Ok ')
@@ -14639,9 +15131,18 @@ class SelectFeaturesRangeDialog(QBaseDialog):
             self.sigValueChanged.emit(None)
         self.hide()
 
+    def updateExternalMetrics(self, external_metrics):
+        self.groupbox.updateExternalMetrics(external_metrics)
+
+    def showEvent(self, event):
+        self.groupbox.hasInvalidExternalMetrics(blink_on_invalid=True)
+        return super().showEvent(event)
+
 class SelectFeaturesRangeGroupbox(QGroupBox):
+    sigNumberChannelsRequested = Signal(int)
     def __init__(
-            self, posData=None, parent=None, force_postprocess_2D=False
+            self, posData=None, parent=None, force_postprocess_2D=False,
+            addCustomChannels=False,external_metrics=None
         ):
         super().__init__(parent)
 
@@ -14650,12 +15151,17 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
 
         self.posData = posData
         self.force_postprocess_2D = force_postprocess_2D
+        self.addCustomChannels = addCustomChannels
+        self.external_metrics = external_metrics
         
         self._layout = QGridLayout()
         self._layout.setVerticalSpacing(0)
 
         firstSelector = SelectFeaturesRange(
-            posData, force_postprocess_2D=force_postprocess_2D
+            posData, force_postprocess_2D=force_postprocess_2D,
+            addCustomChannels=self.addCustomChannels,
+            sigNumberChannelsRequested=self.sigNumberChannelsRequested.emit,
+            external_metrics=external_metrics,
         )
         self.addButton = widgets.addPushButton('  Add feature    ')
         self.addButton.setSizePolicy(
@@ -14681,7 +15187,10 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
     def addFeatureField(self):
         row = self._layout.rowCount()
         selector = SelectFeaturesRange(
-            self.posData, force_postprocess_2D=self.force_postprocess_2D
+            self.posData, force_postprocess_2D=self.force_postprocess_2D,
+            addCustomChannels=self.addCustomChannels,
+            sigNumberChannelsRequested=self.sigNumberChannelsRequested.emit,
+            external_metrics=self.external_metrics,
         )
         delButton = widgets.delPushButton('Remove feature')
         delButton.setSizePolicy(
@@ -14701,7 +15210,7 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
             selector = self.selectors[-1]
             selector.delButton.click()
         firstSelector = self.selectors[0]
-        firstSelector.selectButton.setText('Click to select feature...')
+        firstSelector.setText('')
         firstSelector.lowRangeWidgets.checkbox.setChecked(False)
         firstSelector.highRangeWidgets.checkbox.setChecked(False)
     
@@ -14715,9 +15224,9 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
     def selectedFeaturesRange(self):
         featuresRange = {}
         for selector in self.selectors:
-            if selector.selectButton.text().find('Click') != -1:
+            if not selector.hasValidSelection(blink_on_invalid=True):
                 continue
-            featuresRange[selector.selectButton.text()] = (
+            featuresRange[selector.text()] = (
                 selector.lowRangeWidgets.value(), 
                 selector.highRangeWidgets.value()
             )
@@ -14726,11 +15235,20 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
     def selectedFeaturesGroup(self):
         featuresGroup = {}
         for selector in self.selectors:
-            if selector.selectButton.text().find('Click') != -1:
+            if not selector.hasValidSelection(blink_on_invalid=True):
                 continue
             group = selector.featureGroup                
-            featuresGroup[selector.selectButton.text()] = group
+            featuresGroup[selector.text()] = group
         return featuresGroup
+
+    def updateExternalMetrics(self, external_metrics):
+        self.external_metrics = external_metrics
+        for selector in self.selectors:
+            selector.updateExternalMetrics(external_metrics)
+
+    def hasInvalidExternalMetrics(self, blink_on_invalid=False):
+        results = [s.hasInvalidExternalMetric(blink_on_invalid=blink_on_invalid) for s in self.selectors]
+        return any(results)
 
     def groupedFeatures(self):
         featuresGroup = self.selectedFeaturesGroup()
@@ -17016,8 +17534,9 @@ class PreProcessParamsWidget(QWidget):
         
 class CombineChannelsWidget(PreProcessParamsWidget):
     sigValuesChangedCombineChannels = Signal()
+    sigNumStepsChanged = Signal(int)
     
-    def __init__(self, channel_names:Iterable[str], parent=None):
+    def __init__(self, channel_names:Iterable[str] | None, parent=None):
         self.channel_names = channel_names
 
         super().__init__(parent)
@@ -17052,23 +17571,30 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         stepWidgets['name_edit'] = name_edit
         name_edit.textChanged.connect(self.emitValuesChanged)
 
-        tooltip = (
-            'Select a channel or a segmentation mask'
-        )
+        if self.channel_names is not None:
+            tooltip = (
+                'Number corresponds to input'
+            )
+        else:
+            tooltip = (
+                'Select a channel or a segmentation mask'
+            )
         if is_first:
             label = QLabel('Channel')
             label.setToolTip(
                 tooltip
             )
             self.gridLayout.addWidget(label, self.row-1, 2)
-        ch_selector = QComboBox()
-        ch_selector.setToolTip(
-            tooltip
-        )
-        ch_selector.addItems(self.channel_names)
+        
+        if self.channel_names is not None:
+            ch_selector = QComboBox()
+            ch_selector.addItems(self.channel_names)
+            ch_selector.currentTextChanged.connect(self.setBinarizeCheckableAndNorm)
+        else:
+            ch_selector = QLabel(f'Input {step_n}')
+        ch_selector.setToolTip(tooltip)
         self.gridLayout.addWidget(ch_selector, self.row, 2)
         stepWidgets['selector'] = ch_selector
-        ch_selector.currentTextChanged.connect(self.setBinarizeCheckableAndNorm)
 
         # add binarisaion spinbox
         tooltip = (
@@ -17163,6 +17689,8 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         self.resetStretch()
         self.sigValuesChangedCombineChannels.emit()
         self.setBinarizeCheckableAndNorm()
+        
+        self.sigNumStepsChanged.emit(len(self.stepsWidgets))
     
     def emitValuesChanged(self, *args):
         self.sigValuesChangedCombineChannels.emit()
@@ -17170,8 +17698,21 @@ class CombineChannelsWidget(PreProcessParamsWidget):
     def setBinarizeCheckableAndNorm(self):
         for step_n, stepWidgets in self.stepsWidgets.items():
             binarizeSelector = stepWidgets['binarize']
-            channel = stepWidgets['selector'].currentText()
-            if "segm" in channel:
+            segm = False
+            is_none = False
+            if self.channel_names is None:
+                idx = step_n - 1
+                if hasattr(self.parent, 'curr_input_types') and idx in self.parent.curr_input_types:
+                    segm = isinstance(self.parent.curr_input_types[idx], WfSegmDC)
+                    is_none = self.parent.curr_input_types[idx] is None
+            else:
+                channel = stepWidgets['selector'].currentText()
+                segm = True if 'segm' in channel.lower() else False
+            if is_none: # allow everything
+                binarizeSelector.setEnabled(True)
+                stepWidgets['minValueSpinbox'].setEnabled(True)
+                stepWidgets['maxValueSpinbox'].setEnabled(True)
+            elif segm:
                 binarizeSelector.setEnabled(True)
                 # set min and max to 0 and 1 and disable
                 stepWidgets['minValueSpinbox'].setValue(0)
@@ -17232,6 +17773,7 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         
         self.resetStretch()
         self.sigValuesChangedCombineChannels.emit()
+        self.sigNumStepsChanged.emit(len(self.stepsWidgets))
 
     def steps(self):
         steps = {}
@@ -17240,7 +17782,10 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         
         for step_number, stepWidgets in self.stepsWidgets.items():
             name = stepWidgets['name_edit'].text()
-            channel = stepWidgets['selector'].currentText()
+            if self.channel_names is None:
+                channel =  stepWidgets['selector'].text()
+            else:
+                channel = stepWidgets['selector'].currentText()
             binarize = stepWidgets['binarize'].currentText()
             min_val = stepWidgets['minValueSpinbox'].value()
             max_val = stepWidgets['maxValueSpinbox'].value()
@@ -18516,6 +19061,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     sigApplyAllPos = Signal(dict, bool, str)
     sigValuesChanged = Signal()
     sigSaveAsSegmCheckboxToggled = Signal(bool)
+    sigNumStepsChanged = Signal(int)
 
     
     # sigApplyAllZslices = Signal(dict, bool, str)
@@ -18546,11 +19092,13 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             parent=parent,
             hideOnClosing=hideOnClosing,
         )
-
+        self.channel_names = channel_names
         self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(
             self.emitValuesChangedSteps
         )
-        
+        self.combineChannelsWidget.sigNumStepsChanged.connect(
+            self.emitNumStepsChanged
+        )
 
         self.segm_blinked = False
         self.validFormula = True # allow empty formula
@@ -18572,6 +19120,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.mainLayout.insertWidget(3, self.formulaEditWidget)
         
         buttonsLayoutSaveGroup = QGridLayout()
+        self.buttonsLayoutSaveGroup = buttonsLayoutSaveGroup
         
         row = 0
         col = 0
@@ -18627,6 +19176,9 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         
         self.keepInputDataTypeLayout.insertWidget(0, label)
         self.keepInputDataTypeLayout.insertWidget(1, self.saveAsSegmCheckbox)
+
+    def emitNumStepsChanged(self, numSteps):
+        self.sigNumStepsChanged.emit(numSteps)
 
     def setLoadLastRecipe(self):
         filepath = self._lastRecipePath()
@@ -18717,6 +19269,69 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         steps['keep_input_data_type'] = self.keepInputDataTypeToggle.isChecked()
         steps['save_as_segm'] = self.saveAsSegmCheckbox.isChecked()
         return steps
+
+    def getContent(self):
+        """Return current dialog content as an in-memory recipe mapping."""
+        return self._getSaveRecipyDict()
+
+    def setContent(self, content):
+        """Set dialog content from an in-memory recipe mapping."""
+        self.keepInputDataTypeToggle.setChecked(
+            bool(content['keep_input_data_type'])
+        )
+        self.saveAsSegmCheckbox.setChecked(bool(content['save_as_segm']))
+
+        step_entries = []
+        for key, value in content.items():
+            if str(key) in ('formula', 'keep_input_data_type', 'save_as_segm'):
+                continue
+            step_n = int(key)
+            step_entries.append((step_n, value))
+
+        step_entries.sort(key=lambda x: x[0])
+        keys_used = set()
+
+        for step_n, step_data in step_entries:
+            while step_n > len(self.combineChannelsWidget.stepsWidgets):
+                self.combineChannelsWidget.addStep()
+
+            step_widgets = self.combineChannelsWidget.stepsWidgets[step_n]
+
+            channel = step_data['channel']
+            if self.channel_names is not None:
+                idx = step_widgets['selector'].findText(channel)
+                if idx == -1:
+                    step_widgets['selector'].addItem(channel)
+                    blinker = qutils.QControlBlink(
+                        step_widgets['selector'],
+                        qparent=self
+                    )
+                    blinker.start()
+                    step_widgets['selector'].blinker = blinker
+                    self.forbiddenChannels.add(channel)
+
+                step_widgets['selector'].setCurrentText(channel)
+
+            step_widgets['name_edit'].setText(str(step_data['name']))
+            step_widgets['binarize'].setCurrentText(str(step_data['binarize']))
+            step_widgets['minValueSpinbox'].setValue(float(step_data['min_val']))
+            step_widgets['maxValueSpinbox'].setValue(float(step_data['max_val']))
+            keys_used.add(step_n)
+
+        keys_present = set(range(1, len(self.combineChannelsWidget.stepsWidgets) + 1))
+        extra_keys = sorted(keys_present - keys_used, reverse=True)
+        for step_n in extra_keys:
+            self.combineChannelsWidget.removeStep(step_n=step_n)
+
+        self.formulaEditWidget.setText(str(content['formula']))
+
+        if self.channel_names is not None:
+            for step_widgets in self.combineChannelsWidget.stepsWidgets.values():
+                combo = step_widgets['selector']
+                for i in range(combo.count()):
+                    item = combo.itemText(i)
+                    if item in self.forbiddenChannels:
+                        combo.setItemData(i, QColor('red'), Qt.ForegroundRole)
         
     def saveRecipe(self, dummy=None, filepath=None):
         os.makedirs(combine_channels_recipes_path, exist_ok=True)
@@ -18757,70 +19372,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     def loadRecipe(self, filepath):
         with open(filepath, 'r') as f:
             recipe = json.load(f)
-            
-        recipe = dict(sorted(recipe.items()))
-        keys_used = set()
-        for key, value in recipe.items():
-            if key == 'formula':
-                formula = value
-                continue
-            if key == 'keep_input_data_type':
-                self.keepInputDataTypeToggle.setChecked(value)
-                continue
-            if key == 'save_as_segm':
-                self.saveAsSegmCheckbox.setChecked(value)
-                continue
-            
-            name = value['name']
-            channel = value['channel']
-            binarize = value['binarize']
-            min_val = float(value['min_val'])
-            max_val = float(value['max_val'])
-            key = int(key)
-            stepWidgetsNum = len(self.combineChannelsWidget.stepsWidgets)
-            if key > stepWidgetsNum:
-                self.combineChannelsWidget.addStep()
-            
-            stepWidgets = self.combineChannelsWidget.stepsWidgets[key]
-            idx = stepWidgets['selector'].findText(channel)
-            if idx == -1:
-                stepWidgets['selector'].addItem(channel)
-                # stepWidgets['selector'].forbiddenItems.add(channel)
-                blinker = qutils.QControlBlink(
-                    stepWidgets['selector'], 
-                    qparent=self
-                )
-                blinker.start()
-                stepWidgets['selector'].blinker = blinker
-                self.forbiddenChannels.add(channel)
-            
-            stepWidgets['selector'].setCurrentText(channel)
-            stepWidgets['name_edit'].setText(name)
-            stepWidgets['binarize'].setCurrentText(binarize)
-            stepWidgets['minValueSpinbox'].setValue(min_val)
-            stepWidgets['maxValueSpinbox'].setValue(max_val)
-            
-            keys_used.add(key)
-        
-        # remove extra steps
-        keys_present = set(range(1, len(self.combineChannelsWidget.stepsWidgets)+1))
-        extra_keys = keys_present - keys_used
-        extra_keys = list(extra_keys)
-        extra_keys.sort(reverse=True)
-        for key in extra_keys:
-            self.combineChannelsWidget.removeStep(step_n = key) 
-            # updates key dynamically so I have to rely that missing indx are always last steps
-
-        # update formula
-        self.formulaEditWidget.setText(formula)
-        
-        for stepWidgets in self.combineChannelsWidget.stepsWidgets.values():
-            combo = stepWidgets['selector']
-            # set forbidden channels red in all steps
-            for i in range(combo.count()):
-                item = combo.itemText(i)
-                if item in self.forbiddenChannels:
-                    combo.setItemData(i, QColor('red'), Qt.ForegroundRole)
+        self.setContent(recipe)
         
     def _updateFormulaVariableNames(self):
         names = [
@@ -18863,26 +19415,41 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         if self.validFormula:
             self.sigSaveAsSegmCheckboxToggled.emit(self.saveAsSegm())
     
-    def autoCheckSaveAsSegmCheckbox(self):
+    def autoCheckSaveAsSegmCheckbox(self, dummy=None, return_bool=False):
         any_not_seg = False
-        for step in self.combineChannelsWidget.steps().values():
-            channel = step['channel']
-            if 'segm' not in channel:
-                any_not_seg = True
-                break
-                
+        for step_n, step in self.combineChannelsWidget.steps().items():
+            if self.channel_names is None and hasattr(self, 'curr_input_types'):
+                idx = step_n - 1
+                is_none = self.curr_input_types.get(idx, None) is None
+                if is_none:
+                    continue
+
+                segm = isinstance(self.curr_input_types[idx], WfSegmDC)
+                if not segm:
+                    any_not_seg = True
+                    break
+                                
+            else:
+                channel = step['channel']
+                if 'segm' not in channel:
+                    any_not_seg = True
+                    break
+           
         if any_not_seg:
             self.saveAsSegmCheckbox.setChecked(False)
             self.saveAsSegmCheckbox.setEnabled(False)
         else:
+            self.saveAsSegmCheckbox.setEnabled(True)
             if not self.segm_blinked:
-                self.saveAsSegmCheckbox.setEnabled(True)
                 self.blinker = qutils.QControlBlink(
                     self.saveAsSegmCheckbox, 
                     qparent=self
                 )
                 self.blinker.start()
                 self.segm_blinked = True
+        
+        if return_bool:
+            return not any_not_seg
 
     def apply(self, checked=False, signal: Signal=None):
         steps = self.combineChannelsWidget.steps()
@@ -18929,7 +19496,10 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.selectedSteps = self.combineChannelsWidget.steps()
         self.formula = self.formulaEditWidget.text()
         self.cancel = False
-        self.close()
+        if self.hideOnClosing:
+            self.hide()
+        else:
+            self.close()
 
 class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
     def __init__(

@@ -439,6 +439,7 @@ moth_bud_tot_selected_columns_filepath = os.path.join(
 saved_measurements_selections_folderpath = os.path.join(
     settings_folderpath, 'saved_measurements_selections'
 )
+workflow_default_save_folderpath = os.path.join(settings_folderpath, 'acdc_workflows')
 
 # Use to get the acdc_output file name from `segm_filename` as 
 # `m = re.sub(segm_re_pattern, '_acdc_output', segm_filename)`
