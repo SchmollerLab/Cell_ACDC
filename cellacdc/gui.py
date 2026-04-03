@@ -23798,7 +23798,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not self.dirtyPointsLayerTableEndNames:
             return
 
-        for tableEndName in tuple(self.dirtyPointsLayerTableEndNames): # acoid runtime error
+        for tableEndName in tuple(self.dirtyPointsLayerTableEndNames): # avoid runtime error
             self.savePointsAddedByClickingFromEndname(
                 tableEndName, recovery=True
             )
