@@ -7,7 +7,7 @@ import numpy as np
 from skimage.measure import regionprops
 from skimage.segmentation import relabel_sequential
 
-from cellacdc import core, printl
+from cellacdc import core, printl, debugutils
 
 DEBUG = False
 
@@ -305,7 +305,7 @@ def track_frame(
         return_all=False, aggr_track=None, IoA_matrix=None, 
         IoA_thresh_aggr=None, IDs_prev=None, return_prev_IDs=False,
         mother_daughters=None, denom_overlap_matrix = 'area_prev',
-        IDs=None
+        IDs=None, return_assignments=False
     ):
     if not np.any(lab):
         # Skip empty frames
@@ -337,7 +337,7 @@ def track_frame(
         setBrushID_func(useCurrentLab=True)
         unique_ID = posData.brushID+1
 
-    if not return_all:
+    if not return_all and not return_assignments:
         tracked_lab = indexAssignment(
             old_IDs, tracked_IDs, IDs_curr_untracked,
             lab.copy(), rp, unique_ID,
@@ -348,13 +348,15 @@ def track_frame(
             old_IDs, tracked_IDs, IDs_curr_untracked,
             lab.copy(), rp, unique_ID,
             assign_unique_new_IDs=assign_unique_new_IDs, 
-            return_assignments=return_all,
+            return_assignments=True,
         )
 
     # old_new_ids = dict(zip(old_IDs, tracked_IDs)) # for now not used, but could be useful in the future
     
     if return_all:
         return tracked_lab, IoA_matrix, assignments, tracked_IDs # remove tracked_IDs and change code in CellACDC_tracker.py if causing problems
+    elif return_assignments:
+        return tracked_lab, assignments
     else:
         return tracked_lab
 

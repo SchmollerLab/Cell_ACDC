@@ -7413,7 +7413,7 @@ class PostProcessSegmDialog(QBaseDialog):
         # self.img.setCurrentPosIndex(self.pos_i)
         # self.img.minMaxValuesMapper = self.mainWin.img1.minMaxValuesMapper
         self.origLab = self.posData.lab.copy()
-        self.origRp = skimage.measure.regionprops(self.origLab)
+        self.origRp = skimage.measure.regionprops(self.origLab) # why seperate rp here?
         self.origObjs = {obj.label:obj for obj in self.origRp}
 
     def valueChanged(self, value):

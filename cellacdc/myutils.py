@@ -55,6 +55,7 @@ from . import _warnings
 from . import urls
 from . import qrc_resources_path
 from . import settings_folderpath
+from . import regionprops
 from .models._cellpose_base import min_target_versions_cp
 
 if GUI_INSTALLED:
@@ -1101,22 +1102,74 @@ def get_chname_from_basename(filename, basename, remove_ext=True):
         chName = chName[:aligned_idx]
     return chName
 
+def _edge_ids_2d(lab):
+    border_labels = np.r_[
+        lab[0, :],
+        lab[-1, :],
+        lab[:, 0],
+        lab[:, -1],
+    ]
+    return np.unique(border_labels[border_labels != 0])
+
+def _edge_ids_3d(lab):
+    face_labels = np.r_[
+        lab[0, :, :].ravel(),    # z min
+        lab[-1, :, :].ravel(),   # z max
+        lab[:, 0, :].ravel(),    # y min
+        lab[:, -1, :].ravel(),   # y max
+        lab[:, :, 0].ravel(),    # x min
+        lab[:, :, -1].ravel(),   # x max
+    ]
+    ids = np.unique(face_labels)
+    return ids[ids != 0]
+
+def get_edge_ids(lab):
+    if lab.ndim == 2:
+        return _edge_ids_2d(lab)
+    elif lab.ndim == 3:
+        return _edge_ids_3d(lab)
+    else:
+        raise ValueError('Label array must be either 2D or 3D.')
+    
+def clear_border(lab, return_edge_ids=False):
+    # probably faster than skimage since it avoids relabeling...
+    # assumes continous unique IDs, which we have. Modifies inplace!
+    edge_ids = get_edge_ids(lab)
+    lab[np.isin(lab, edge_ids)] = 0
+    if return_edge_ids:
+        return edge_ids
+
 def getBaseAcdcDf(rp):
     zeros_list = [0]*len(rp)
     nones_list = [None]*len(rp)
     minus1_list = [-1]*len(rp)
     IDs = []
-    xx_centroid = []
-    yy_centroid = []
-    zz_centroid = []
-    for obj in rp:
-        xc, yc = obj.centroid[-2:]
-        IDs.append(obj.label)
-        xx_centroid.append(xc)
-        yy_centroid.append(yc)
-        if len(obj.centroid) == 3:
-            zc = obj.centroid[0]
-            zz_centroid.append(zc)
+    xx_centroid = [0]*len(rp)
+    yy_centroid = [0]*len(rp)
+    zz_centroid = [0]*len(rp)
+    
+    if isinstance(rp, regionprops.acdcRegionprops):
+        for obj in rp:
+            ID = obj.label
+            centroid = rp.get_centroid(ID, exact=True)
+            xc, yc = centroid[-2:]
+            IDs.append(ID)
+            xx_centroid.append(xc)
+            yy_centroid.append(yc)
+            if len(centroid) == 3:
+                zc = centroid[0]
+                zz_centroid.append(zc)
+        
+    else:
+        for obj in rp:
+            centroid = obj.centroid
+            xc, yc = centroid[-2:]
+            IDs.append(obj.label)
+            xx_centroid.append(xc)
+            yy_centroid.append(yc)
+            if len(centroid) == 3:
+                zc = centroid[0]
+                zz_centroid.append(zc)
             
     df = pd.DataFrame(
         {
@@ -5032,7 +5085,6 @@ def get_empty_stored_data_dict():
             'delROIs_info': {
                     'rois': [], 'delMasks': [], 'delIDsROI': [], 'state': []
                 },
-            'IDs': [],
             'manually_edited_lab': {'lab': {}, 'zoom_slice': None}
         }
 
@@ -5414,7 +5466,7 @@ def find_distances_ID(rps, point=None, ID=None):
 
     if ID is not None and point is None:
         try:
-            point = [rp.centroid for rp in rps if rp.label == ID][0]
+            point = rp.get_centroid(ID)
         except IndexError:
             raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
 
@@ -5426,7 +5478,7 @@ def find_distances_ID(rps, point=None, ID=None):
     
     point = point[::-1] # rp are in (y, x) format (or (z, y, x) for 3D data) so I need to reverse order
     point = np.array([point])
-    centroids = np.array([rp.centroid for rp in rps])
+    centroids = np.array([rps.get_centroid(ID) for ID in rps.IDs])
     diff = point[:, np.newaxis] - centroids
     dist_matrix = np.linalg.norm(diff, axis=2)
     return dist_matrix
@@ -5463,7 +5515,7 @@ def sort_IDs_dist(rps, point=None, ID=None):
     """
     if ID is not None and point is None:
         try:
-            point = [rp.centroid for rp in rps if rp.label == ID][0]
+            point = rp.get_centroid(ID)
         except IndexError:
             raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
 
@@ -5474,7 +5526,7 @@ def sort_IDs_dist(rps, point=None, ID=None):
         raise ValueError('Only one of ID or point must be provided.')
     
 
-    IDs = [rp.label for rp in rps]
+    IDs = rp.IDs
     if len(IDs) == 0:
         return []
     elif len(IDs) == 1:

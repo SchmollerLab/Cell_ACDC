@@ -15,6 +15,7 @@ import matplotlib.colors
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import seaborn as sns
 
+from . import debugutils
 from tqdm import tqdm
 
 from . import GUI_INSTALLED

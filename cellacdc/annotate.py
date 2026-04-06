@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from . import GUI_INSTALLED
-from . import cellacdc_path, printl, ignore_exception
+from . import cellacdc_path, printl, ignore_exception, debugutils
 
 if GUI_INSTALLED:
     from PIL import Image, ImageFont, ImageDraw
@@ -207,6 +207,45 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         self.texts = []
         self.annotData = []
         self._anchor = anchor
+
+    def _rebuildSizes(self, bold=False):
+        if bold:
+            self.sizesBold = plot.get_symbol_sizes(
+                self.scalesBold, self.symbolsBold, self.fontSize
+            )
+            self._maxScaleBold = max(self.scalesBold.values(), default=None)
+        else:
+            self.sizesRegular = plot.get_symbol_sizes(
+                self.scalesRegular, self.symbolsRegular, self.fontSize
+            )
+            self._maxScaleRegular = max(self.scalesRegular.values(), default=None)
+
+    def _updateSizesForTexts(self, texts, bold=False):
+        if not texts:
+            return
+
+        if bold:
+            scales = self.scalesBold
+            sizes_attr = 'sizesBold'
+            max_scale_attr = '_maxScaleBold'
+        else:
+            scales = self.scalesRegular
+            sizes_attr = 'sizesRegular'
+            max_scale_attr = '_maxScaleRegular'
+
+        current_max_scale = getattr(self, max_scale_attr, None)
+        if current_max_scale is None:
+            self._rebuildSizes(bold=bold)
+            return
+
+        added_max_scale = max(scales[text] for text in texts)
+        if added_max_scale > current_max_scale:
+            self._rebuildSizes(bold=bold)
+            return
+
+        sizes = getattr(self, sizes_attr)
+        for text in texts:
+            sizes[text] = int(np.round(self.fontSize*current_max_scale/scales[text]))
     
     def clearData(self):
         self.setData([], [])
@@ -254,15 +293,28 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
             self.createSymbols(annotTexts)
     
     def addSymbols(self, annotTexts, includeBold=True):
-        for text in annotTexts:
-            if includeBold:
-                self.symbolsBold[text] = self.getObjTextAnnotSymbol(
-                    text, bold=True, initSizes=False
+        if includeBold:
+            missing_bold = [
+                text for text in annotTexts if text not in self.symbolsBold
+            ]
+            if missing_bold:
+                symbolsBold, scalesBold = plot.texts_to_pg_scatter_symbols(
+                    missing_bold, font=self.fontBold, return_scales=True
                 )
-            self.symbolsRegular[text] = self.getObjTextAnnotSymbol(
-                text, bold=True, initSizes=False
+                self.symbolsBold.update(symbolsBold)
+                self.scalesBold.update(scalesBold)
+                self._updateSizesForTexts(missing_bold, bold=True)
+
+        missing_regular = [
+            text for text in annotTexts if text not in self.symbolsRegular
+        ]
+        if missing_regular:
+            symbolsRegular, scalesRegular = plot.texts_to_pg_scatter_symbols(
+                missing_regular, font=self.fontRegular, return_scales=True
             )
-        self.initSizes(includeBold=includeBold)
+            self.symbolsRegular.update(symbolsRegular)
+            self.scalesRegular.update(scalesRegular)
+            self._updateSizesForTexts(missing_regular, bold=False)
 
     def createSymbols(self, annotTexts, includeBold=True):
         if includeBold:
@@ -281,12 +333,8 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
             includeBold = False
             
         if includeBold:
-            self.sizesBold = plot.get_symbol_sizes(
-                self.scalesBold, self.symbolsBold, self.fontSize
-            )
-        self.sizesRegular = plot.get_symbol_sizes(
-            self.scalesRegular, self.symbolsRegular, self.fontSize
-        )
+            self._rebuildSizes(bold=True)
+        self._rebuildSizes(bold=False)
     
     def setColors(self, colors):
         self._colors = colors.copy()
@@ -325,7 +373,7 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         symbols[text] = symbol
         scales[text] = scale
         if initSizes:
-            self.initSizes()
+            self._updateSizesForTexts([text], bold=bold)
         return symbol
 
     def grayOutAnnotations(self, IDsToSkip=None):
@@ -346,7 +394,7 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         self.setBrush(brushes)
         self.setPen(pens)
 
-    def highlightObject(self, obj):
+    def highlightObject(self, obj, rp=None, getObjCentroidFunc=None):
         ID = obj.label
         objIdx = None
         for idx, objData in enumerate(self.data):
@@ -357,7 +405,14 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
             objOpts = {
                 'text': str(ID), 'bold': True, 'color_name': 'new_object'
             }
-            yc, xc = obj.centroid[-2:]
+            if rp is not None:
+                centroid = rp.get_centroid(obj.label)
+            else:
+                centroid = obj.centroid
+            if getObjCentroidFunc is not None:
+                yc, xc = getObjCentroidFunc(centroid)
+            else:
+                yc, xc = centroid[-2:]
             pos = (int(xc), int(yc))
             self.addObjAnnot(pos, draw=True, **objOpts)
             return
@@ -504,13 +559,20 @@ class TextAnnotations:
         if hasattr(self.item, 'highlighterItem'):
             ax.removeItem(self.item.highlighterItem)
     
-    def addObjAnnotation(self, obj, color_name, text, bold):
+    def addObjAnnotation(self, obj, color_name, text, bold, rp=None, getObjCentroidFunc=None):
         objOpts = {
             'text': text,
             'bold': bold,
             'color_name': color_name,
         }
-        yc, xc = obj.centroid[-2:]
+        if rp is not None:
+            centroid = rp.get_centroid(obj.label)
+        else:
+            centroid = obj.centroid
+        if getObjCentroidFunc is not None:
+            yc, xc = getObjCentroidFunc(centroid)
+        else:
+            yc, xc = centroid[-2:]
         pos = (int(xc), int(yc))
         objData = self.item.addObjAnnot(pos, draw=True, **objOpts)
         self.item.appendData(objData, objOpts['text'])
@@ -563,7 +625,8 @@ class TextAnnotations:
                 isGenNumTreeAnnotation, posData.frame_i
             )
             
-            yc, xc = getObjCentroidFunc(obj.centroid)
+            centroid = posData.rp.get_centroid(obj.label)
+            yc, xc = getObjCentroidFunc(centroid)
             try:
                 rp_zslice = posData.zSlicesRp[currentZ]
                 obj_2d = rp_zslice[obj.label]
@@ -598,7 +661,8 @@ class TextAnnotations:
                     'color_name': 'tracked_lost_object',
                     'bold': False,
                 }
-                yc, xc = obj.centroid[-2:]
+                centroid = prev_rp.get_centroid(obj.label)
+                yc, xc = getObjCentroidFunc(centroid)
                 pos = (int(xc), int(yc))
                 objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
                 self.item.appendData(objData, objOpts['text'])
@@ -624,7 +688,8 @@ class TextAnnotations:
                     'color_name': 'lost_object',
                     'bold': False,
                 }
-                yc, xc = getObjCentroidFunc(obj.centroid)
+                centroid = prev_rp.get_centroid(obj.label)
+                yc, xc = getObjCentroidFunc(centroid)
                 try:
                     pos = (int(xc), int(yc))
                 except Exception as err:

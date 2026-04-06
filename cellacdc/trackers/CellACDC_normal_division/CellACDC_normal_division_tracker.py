@@ -4,13 +4,13 @@ from cellacdc.trackers.CellACDC.CellACDC_tracker import track_frame as track_fra
 from cellacdc.core import getBaseCca_df, printl
 from cellacdc.myutils import checked_reset_index, checked_reset_index_Cell_ID
 import numpy as np
-from skimage.measure import regionprops
 from tqdm import tqdm
 import pandas as pd
 from cellacdc.myutils import exec_time
 from cellacdc._types import NotGUIParam
 import copy
 import cellacdc.debugutils as debugutils
+from cellacdc.regionprops import acdcRegionprops as acdcRegionprops
 
 # def filter_cols(df):
 #     """
@@ -342,12 +342,12 @@ class normal_division_tracker:
             prev_lab = self.tracked_video[frame_i-1]
 
         if rp is None:
-            self.rp = regionprops(lab.copy())
+            self.rp = acdcRegionprops(lab.copy(), precache_centroids=False)
         else:
             self.rp = rp
 
         if prev_rp is None:
-            prev_rp = regionprops(prev_lab.copy())
+            prev_rp = acdcRegionprops(prev_lab.copy(), precache_centroids=False)
 
         IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_Io_matrix(lab,
                                                                              prev_lab,
@@ -594,8 +594,8 @@ class normal_division_lineage_tree:
         
         if lab is not None:
 
-            rp = regionprops(lab)
-            labels = [obj.label for obj in rp]
+            rp = acdcRegionprops(lab, precache_centroids=False)
+            labels = rp.IDs
             cca_df = pd.DataFrame({
                 'Cell_ID': labels,
             })
@@ -730,10 +730,10 @@ class normal_division_lineage_tree:
             None
         """
         if rp is None:
-            rp = regionprops(lab)
+            rp = acdcRegionprops(lab, precache_centroids=False)
 
         if prev_rp is None:
-            prev_rp = regionprops(prev_lab)
+            prev_rp = acdcRegionprops(prev_lab, precache_centroids=False)
 
         IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_Io_matrix(lab, prev_lab, rp, prev_rp)
         
@@ -751,7 +751,7 @@ class normal_division_lineage_tree:
         self.mother_daughters = filtered_mother_daughters
         
         curr_IDs = set(self.IDs_curr_untracked)
-        prev_IDs = {obj.label for obj in prev_rp}
+        prev_IDs = set(prev_rp.IDs)
         new_IDs = curr_IDs - prev_IDs
         self.frames_for_dfs.add(frame_i)
         self.add_new_frame(frame_i, self.mother_daughters, self.IDs_prev, self.IDs_curr_untracked, None, curr_IDs, new_IDs)
@@ -1256,8 +1256,8 @@ class tracker:
                         IoA_thresh_daughter=IoA_thresh_daughter
                     )
                 pbar.update()
-                rp = regionprops(segm_video[0])
-                prev_IDs = {obj.label for obj in rp}
+                rp = acdcRegionprops(segm_video[0], precache_centroids=False)
+                prev_IDs = rp.IDs_set
                 prev_rp = rp
                 continue
 
@@ -1270,8 +1270,8 @@ class tracker:
             IDs_prev = tracker.IDs_prev
             assignments = tracker.assignments
             IDs_curr_untracked = tracker.IDs_curr_untracked
-            rp = regionprops(tracker.tracked_lab)
-            curr_IDs = {obj.label for obj in rp}
+            rp = acdcRegionprops(tracker.tracked_lab)
+            curr_IDs = rp.IDs_set
             new_IDs = curr_IDs - prev_IDs
             if record_lineage or return_tracked_lost_centroids:
                 tree.add_new_frame(
@@ -1289,7 +1289,7 @@ class tracker:
                         found = True
                         break
                 if not found:
-                    labels = [obj.label for obj in rp]
+                    labels = rp.IDs
                     printl(mother, mother_ID, IDs_curr_untracked, labels)
                     raise ValueError('Something went wrong with the tracked lost centroids.')
 
