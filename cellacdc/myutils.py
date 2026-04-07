@@ -5466,7 +5466,7 @@ def find_distances_ID(rps, point=None, ID=None):
 
     if ID is not None and point is None:
         try:
-            point = rp.get_centroid(ID)
+            point = rps.get_centroid(ID)
         except IndexError:
             raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
 
@@ -5515,7 +5515,7 @@ def sort_IDs_dist(rps, point=None, ID=None):
     """
     if ID is not None and point is None:
         try:
-            point = rp.get_centroid(ID)
+            point = rps.get_centroid(ID)
         except IndexError:
             raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
 
@@ -5526,7 +5526,7 @@ def sort_IDs_dist(rps, point=None, ID=None):
         raise ValueError('Only one of ID or point must be provided.')
     
 
-    IDs = rp.IDs
+    IDs = rps.IDs
     if len(IDs) == 0:
         return []
     elif len(IDs) == 1:

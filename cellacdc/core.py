@@ -3321,25 +3321,28 @@ def count_objects_and_init_rps(posData: load.loadData, logger_func=print):
         return allIDs, posData
     
     # check if csv is usable
-    csv_filepath = verify_acdc_df_segm(posData, logger_func)
+    # csv_filepath = verify_acdc_df_segm(posData, logger_func)
     
     logger_func('Counting total number of segmented objects...')
 
-    frames_in_csv = set()
-    if csv_filepath is not None:
-        logger_func(f'Loading ACDC dataframe from "{csv_filepath}"...')
-        acdc_df = pd.read_csv(csv_filepath)
-        frames_in_csv = set(acdc_df['frame_i'])
-        for i in frames_in_csv:
-            posData.allData_li[i] = myutils.get_empty_stored_data_dict()
-            relevant_df = acdc_df[acdc_df['frame_i'] == i]
-            rp = regionprops.acdcRegionprops(segm_data[i], relevant_df)
-            posData.allData_li[i]['regionprops'] = rp
-            allIDs.update(rp.IDs_set)
+    # frames_in_csv = set()
+    # if csv_filepath is not None:
+    #     logger_func(f'Loading ACDC dataframe from "{csv_filepath}"...')
+    #     acdc_df = pd.read_csv(csv_filepath)
+    #     frames_in_csv = set(acdc_df['frame_i'])
+    #     pbar = tqdm(total=len(frames_in_csv), ncols=100, leave=False)
+    #     for i in frames_in_csv:
+    #         posData.allData_li[i] = myutils.get_empty_stored_data_dict()
+    #         relevant_df = acdc_df[acdc_df['frame_i'] == i]
+    #         rp = regionprops.acdcRegionprops(segm_data[i], relevant_df)
+    #         posData.allData_li[i]['regionprops'] = rp
+    #         allIDs.update(rp.IDs_set)
+    #         pbar.update()
+    #     pbar.close()
     
-    missing_i = set(range(len(segm_data))) - frames_in_csv if csv_filepath is not None else set(range(len(segm_data)))
-    if len(missing_i) == 0:
-        return allIDs, posData
+    # # missing_i = set(range(len(segm_data))) - frames_in_csv if csv_filepath is not None else set(range(len(segm_data)))
+    # if len(missing_i) == 0:
+    #     return allIDs, posData
     
     add_data_dict = verify_add_data_segm_proximity(posData, logger_func)
     centroids_loaded = ID_to_idx_loaded = centroids_IDs_exact_loaded = IDs_loaded = None
@@ -3356,19 +3359,19 @@ def count_objects_and_init_rps(posData: load.loadData, logger_func=print):
     #     with open(add_data_dict['ID_to_idx'], 'rb') as f:
     #         ID_to_idx_loaded = pickle.load(f)
     # other ids:
-    pbar = tqdm(total=len(missing_i), ncols=100)
+    pbar = tqdm(total=len(segm_data), ncols=100)
     for i, lab in enumerate(segm_data):
-        if i in frames_in_csv:
-            continue # skip frames already processed with csv
-        _centroids_loaded = centroids_loaded[i] if centroids_loaded is not None and i in centroids_loaded else None
-        # _IDs_loaded = IDs_loaded[i] if IDs_loaded is not None and i in IDs_loaded else None
-        _centroids_IDs_exact_loaded = centroids_IDs_exact_loaded[i] if centroids_IDs_exact_loaded is not None and i in centroids_IDs_exact_loaded else None
+        # if i in frames_in_csv:
+        #     continue # skip frames already processed with csv
+        # _centroids_loaded = centroids_loaded[i] if centroids_loaded is not None and i in centroids_loaded else None
+        # # _IDs_loaded = IDs_loaded[i] if IDs_loaded is not None and i in IDs_loaded else None
+        # _centroids_IDs_exact_loaded = centroids_IDs_exact_loaded[i] if centroids_IDs_exact_loaded is not None and i in centroids_IDs_exact_loaded else None
         # _ID_to_idx_loaded = ID_to_idx_loaded[i] if ID_to_idx_loaded is not None and i in ID_to_idx_loaded else None
         posData.allData_li[i] = myutils.get_empty_stored_data_dict()
         rp = regionprops.acdcRegionprops(lab,
-                                         centroids_loaded=_centroids_loaded, 
+                                        #  centroids_loaded=_centroids_loaded, 
                                         #  IDs_loaded=_IDs_loaded, 
-                                         centroids_IDs_exact_loaded=_centroids_IDs_exact_loaded, 
+                                        #  centroids_IDs_exact_loaded=_centroids_IDs_exact_loaded, 
                                         #  ID_to_idx_loaded=_ID_to_idx_loaded
                                         )
         IDs = rp.IDs_set      

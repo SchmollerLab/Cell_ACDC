@@ -2,6 +2,9 @@ import numpy as np
 from scipy import ndimage as ndi
 import skimage.measure
 from . import printl, debugutils
+from skimage.measure._regionprops_utils import (
+    _normalize_spacing,
+)
 # WARNING: Developers have already used
 #     7 hrs
 # to optimize this.
@@ -71,21 +74,128 @@ def _acdc_regionprops_factory(
     return regions
 
 
-class acdcRegionProperties(_RegionProperties):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-    
-    @property
-    @_cached # it is fast to get, but I need to make sure this doesnt change on me by accident
-    def bbox(self):
-        return super().bbox
-    
-    @property
-    @_cached # slow for 3D data, not too much hard.
-    def centroid(self):
-        return super().centroid
+# class acdcRegionProperties(_RegionProperties):
+#     def __init__(
+#         self,
+#         slice,
+#         label,
+#         label_image,
+#         intensity_image,
+#         cache_active,
+#         *,
+#         extra_properties=None,
+#         spacing=None,
+#         offset=None,
+#     ):
+#         if intensity_image is not None:
+#             ndim = label_image.ndim
+#             if not (
+#                 intensity_image.shape[:ndim] == label_image.shape
+#                 and intensity_image.ndim in [ndim, ndim + 1]
+#             ):
+#                 raise ValueError(
+#                     'Label and intensity image shapes must match,'
+#                     ' except for channel (last) axis.'
+#                 )
+#             multichannel = label_image.shape < intensity_image.shape
+#         else:
+#             multichannel = False
 
+#         self.label = label
+#         if offset is None:
+#             offset = np.zeros((label_image.ndim,), dtype=int)
+#         self._offset = np.array(offset)
 
+#         self._slice = slice
+#         self._label_image = label_image
+#         self._intensity_image = intensity_image
+
+#         self._cache_active = cache_active
+#         self._cache = {}
+#         self._ndim = label_image.ndim
+#         self._multichannel = multichannel
+#         self._spatial_axes = tuple(range(self._ndim))
+#         if spacing is None:
+#             spacing = np.full(self._ndim, 1.0)
+#         self._spacing = _normalize_spacing(spacing, self._ndim)
+#         self._pixel_area = np.prod(self._spacing)
+        
+#         self.slice = self.calc_slice()
+
+#         self._extra_properties = {}
+#         if extra_properties is not None:
+#             for func in extra_properties:
+#                 name = func.__name__
+#                 if hasattr(self, name):
+#                     msg = (
+#                         f"Extra property '{name}' is shadowed by existing "
+#                         f"property and will be inaccessible. Consider "
+#                         f"renaming it."
+#                     )
+#             self._extra_properties = {func.__name__: func for func in extra_properties}
+    
+#     # @property
+#     # @_cached
+#     def calc_slice(self):
+#         # scale slice with offset
+#         return tuple(
+#             slice(self._slice[i].start + self._offset[i],
+#                   self._slice[i].stop + self._offset[i])
+#             for i in range(self._ndim)
+#         )
+    
+#     @property
+#     @_cached
+#     def bbox(self):
+#         """
+#         Returns
+#         -------
+#         A tuple of the bounding box's start coordinates for each dimension,
+#         followed by the end coordinates for each dimension.
+#         """
+#         return tuple(
+#             [self.slice[i].start for i in range(self._ndim)]
+#             + [self.slice[i].stop for i in range(self._ndim)]
+#         )
+    
+#     @property
+#     @_cached # slow for 3D data, better cache it
+#     def centroid(self):
+#         return super().centroid
+
+#     @property
+#     def centroid_weighted(self):
+#         ctr = self.centroid_weighted_local
+#         return tuple(
+#             idx + slc.start * spc
+#             for idx, slc, spc in zip(ctr, self._slice, self._spacing)
+#         )
+
+#     @property
+#     @_cached
+#     def image_intensity(self):
+#         if self._intensity_image is None:
+#             raise AttributeError('No intensity image specified.')
+#         image = (
+#             self.image
+#             if not self._multichannel
+#             else np.expand_dims(self.image, self._ndim)
+#         )
+#         return self._intensity_image[self._slice] * image
+
+#     @property
+#     def coords(self):
+#         indices = np.argwhere(self.image)
+#         object_offset = np.array([self._slice[i].start for i in range(self._ndim)])
+#         return object_offset + indices + self._offset
+    
+#     @property
+#     def coords_scaled(self):
+#         indices = np.argwhere(self.image)
+#         object_offset = np.array([self._slice[i].start for i in range(self._ndim)])
+#         return (object_offset + indices) * self._spacing + self._offset
+
+acdcRegionProperties = _RegionProperties
 class acdcRegionprops:
     def __init__(
             self,
@@ -408,7 +518,6 @@ class acdcRegionprops:
         self._centroid_mapper = centroid_mapper
         self._centroid_IDs_exact = centroid_IDs_exact
         self.set_attributes(update_centroid_mapper=False) # update the mapper
-            
     
     def update_regionprops_via_deletions(
             self, IDs_to_delete: set[int]
@@ -451,12 +560,19 @@ class acdcRegionprops:
         rp_cutout_new = _acdc_regionprops_factory(new_cutout)
         new_cutout_IDs = set(obj.label for obj in rp_cutout_new)
         new_cutout_IDs.discard(0)
+        deleted_IDs = old_cutout_IDs.difference(new_cutout_IDs)
+        added_IDs = new_cutout_IDs.difference(old_cutout_IDs)
+        preserved_IDs = old_cutout_IDs.intersection(new_cutout_IDs)
+        IDs_to_add = (
+            added_IDs if specific_IDs is None
+            else added_IDs.intersection(specific_IDs)
+        )
 
         if not old_cutout_IDs and not new_cutout_IDs:
             self.lab = lab
             return
 
-        conflicting_IDs = new_cutout_IDs.difference(old_cutout_IDs).intersection(
+        conflicting_IDs = IDs_to_add.intersection(
             self.IDs_set.difference(old_cutout_IDs)
         )
         if conflicting_IDs:
@@ -469,6 +585,7 @@ class acdcRegionprops:
         unaffected_rp = [obj for obj in self._rp if obj.label not in old_cutout_IDs]
 
         offset = tuple(s.start for s in cutout_slices)
+        printl(f"Cutout offset: {offset}")
         cutout_rp_offset = self._get_regionprops_with_offset(new_cutout, offset)
         cutout_rp_offset_by_id = {}
         if cutout_rp_offset is not None:
@@ -477,11 +594,10 @@ class acdcRegionprops:
             }
 
         new_objs = []
-        updated_obj_IDs = set()
         updated_centroid_IDs = set()
         for obj in rp_cutout_new:
             ID = obj.label
-            if specific_IDs is not None and ID not in specific_IDs:
+            if ID not in IDs_to_add:
                 continue
             if self._is_bbox_touching_cutout_border(obj.bbox, new_cutout.shape):
                 # edge case: ID changed is outside the cutout
@@ -497,18 +613,15 @@ class acdcRegionprops:
 
             self._copy_custom_rp_attributes(new_obj, old_rp_by_id.get(ID))
             new_objs.append(new_obj)
-            updated_obj_IDs.add(ID)
             updated_centroid_IDs.add(ID)
 
-        deleted_IDs = old_cutout_IDs.difference(new_cutout_IDs)
         for ID in deleted_IDs:
             self._centroid_mapper.pop(ID, None)
             self._centroid_IDs_exact.discard(ID)
 
         preserved_cutout_rp = [
             old_rp_by_id[ID]
-            for ID in old_cutout_IDs.intersection(new_cutout_IDs)
-            if ID not in updated_obj_IDs
+            for ID in preserved_IDs
         ]
 
         if updated_centroid_IDs:
@@ -532,8 +645,18 @@ class acdcRegionprops:
         if exact and ID not in self._centroid_IDs_exact:
             obj = self.get_obj_from_ID(ID)
             centroid = obj.centroid
+            try:
+                int(centroid[0])
+            except (TypeError, ValueError):
+                printl(f"Warning: Centroid for ID {ID} is not a valid number. Returning None."
+                       " This can happen if the object is empty, has an invalid shape or "
+                       "if RP is stale"
+                )
+                raise
             self._centroid_mapper[ID] = centroid
             self._centroid_IDs_exact.add(ID)
+            return centroid
+        
         centroid = self._centroid_mapper.get(ID, None)
         if centroid is None:
             # add centroid to mapper if not found

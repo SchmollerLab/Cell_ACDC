@@ -115,8 +115,8 @@ if os.name == 'nt':
 
 GREEN_HEX = _palettes.green()
 
-RP_OPT_NUM_CELLS_MIN = 50 # th for trying to do local updates to regionprops, rp becomes slow for high num of cells
-RP_OPT_PERC_CUTOUT_MAX = 0.3 # th for trying to do local updates to regionprops, 
+RP_OPT_NUM_CELLS_MIN = 0 # th for trying to do local updates to regionprops, rp becomes slow for high num of cells
+RP_OPT_PERC_CUTOUT_MAX = 0.1 # th for trying to do local updates to regionprops, 
                              # if region which we have to update is too large too 
                              # many cells are probably inside and its not worth
                              # local updating (since we actually need to call RP twice!)
@@ -9692,7 +9692,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # objo_centroid = posData.rp.get_centroid(new_ID, exact=True)
                 # yo, xo = self.getObjCentroid(objo_centroid)
                 yn, xn = self.getObjCentroid(objn_centroid)
-                if not (math.isnan(yo) or math.isnan(yn)):
+                # if not (math.isnan(yo) or math.isnan(yn)):
+                if not math.isnan(yn):
                     yn, xn = int(yn), int(xn)
                     posData.editID_info.append((yn, xn, new_ID))
                     yo, xo = int(clicked_y), int(clicked_x)
@@ -11617,6 +11618,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Update data (rp, etc)
         
         power_brush = self.isPowerBrush()
+        # we have to delay for a second
         self.update_rp(use_curr_view=True, specific_IDs=posData.brushID if not power_brush else None)
         
         # Repeat tracking
@@ -20719,7 +20721,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             is_cell_dead_li[i] = obj.dead
             is_cell_excluded_li[i] = obj.excluded
             IDs[i] = obj.label
-            centroid = posData.rp.get_centroid(obj.label, exact=True) 
+            centroid = posData.rp.get_centroid(obj.label, exact=True)
+            try:
+                int(centroid[0])
+            except (TypeError, ValueError):
+                print(obj.label)
+                continue
+
             if self.isSegm3D:
                 zz_centroid[i] = int(centroid[0])
                 xx_centroid[i] = int(centroid[2])
@@ -21689,6 +21697,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             labels
         )
         posData.rp = posData.allData_li[posData.frame_i]['regionprops']
+        # posData.rp.update_regionprops(posData.lab)
         # get stored IDs
         self.setManualBackgroundLab()
         
@@ -23160,10 +23169,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if sum([assignments is not None, 
                 deletionIDs is not None, 
                 local_rp_update, 
-                preloaded_bbox is not None]) > 1:
-            raise ValueError('''Only one of assignments, deletionIDs,
-                             use_curr_view or use_bbox, preloaded_bbox can be used
-                             at a time''')
+                ]) > 1:
+            print(assignments is not None, deletionIDs is not None, local_rp_update)
+            raise ValueError('Only one of assignments, deletionIDs, '
+                             'use_curr_view or use_bbox, preloaded_bbox can be used '
+                             'at a time')
         
         if not isinstance(specific_IDs, (list, set)) and specific_IDs is not None:
             specific_IDs = [specific_IDs]
