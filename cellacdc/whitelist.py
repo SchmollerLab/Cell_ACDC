@@ -1530,7 +1530,6 @@ class WhitelistGUIElements:
                 denom_overlap_matrix=denom_overlap_matrix,
                 posData = posData,
                 setBrushID_func=self.setBrushID,
-                IDs=IDs,
                 # assign_unique_new_IDs=False,
         )
 

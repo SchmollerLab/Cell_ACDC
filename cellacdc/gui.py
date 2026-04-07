@@ -28573,7 +28573,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         tracked_lab, assignments = self.tracking(
             enforce=True, assign_unique_new_IDs=False, return_lab=True,
-            IDs=added_IDs
+            specific_IDs=added_IDs
         )
         self.clearAssignedObjsSecondStep()
         if tracked_lab is None:
@@ -28621,7 +28621,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.update_rp(wl_update=wl_update, assignments=assignments)
             
     def trackFrameCustomTracker(
-            self, prev_lab, currentLab, IDs=None, unique_ID=None,
+            self, prev_lab, currentLab, specific_IDs=None, unique_ID=None,
             return_assignments=True
         ):
         if unique_ID is None:
@@ -28639,7 +28639,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         tracked_result = self.realTimeTracker.track_frame(
             prev_lab, currentLab,
             unique_ID=unique_ID,
-            IDs=IDs,
+            specific_IDs=specific_IDs,
             **kwargs,
         )
       
@@ -28647,7 +28647,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def trackFrame(
             self, prev_lab, prev_rp, curr_lab, curr_rp, curr_IDs,
-            assign_unique_new_IDs=True, IDs=None, unique_ID=None
+            assign_unique_new_IDs=True, specific_IDs=None, unique_ID=None,
+            only_return_assignments=False
         ):
         if self.trackWithAcdcAction.isChecked():
             tracked_result = CellACDC_tracker.track_frame(
@@ -28656,9 +28657,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 setBrushID_func=self.setBrushID,
                 posData=self.data[self.pos_i],
                 assign_unique_new_IDs=assign_unique_new_IDs, 
-                IDs=IDs,
+                specific_IDs=specific_IDs,
                 unique_ID=unique_ID,
-                return_assignments=True
+                return_assignments=True,
+                only_return_assignments=only_return_assignments
             )
         elif self.trackWithYeazAction.isChecked():
             tracked_result = self.tracking_yeaz.correspondence(
@@ -28667,15 +28669,30 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
         else:
             tracked_result = self.trackFrameCustomTracker(
-                prev_lab, curr_lab, IDs=IDs, unique_ID=unique_ID
+                prev_lab, curr_lab, specific_IDs=specific_IDs, unique_ID=unique_ID
             )
 
         # Check if tracker also returns additional info
         if isinstance(tracked_result, tuple):
             tracked_lab, add_info = tracked_result
             assignments = self.handleAdditionalInfoRealTimeTracker(prev_rp, add_info)
+        elif isinstance(tracked_result, dict) and only_return_assignments:
+            assignments = tracked_result
         else:
             tracked_lab = tracked_result
+        
+        if not return_assignments:
+            return tracked_lab
+
+        # get assignments
+        assignments = dict()
+        for obj in posData.rp:
+            old_lab = obj.label
+            new_lab = tracked_lab[obj.slice][obj.image][0]
+            assignments[old_lab] = new_lab
+            
+        if only_return_assignments:
+            return assignments
         
         return tracked_lab, assignments
     
@@ -28690,9 +28707,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         prev_lab = posData.allData_li[posData.frame_i-1]['labels']
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        tracked_lab, assignments = self.trackFrame(
+        _, assignments = self.trackFrame(
             prev_lab, prev_rp, posData.lab, posData.rp, posData.IDs,
-            assign_unique_new_IDs=True, specific_IDs=subsetIDs
+            assign_unique_new_IDs=True, specific_IDs=subsetIDs,
+            only_return_assignments=True
         )
         reverse_assignments = {v:k for k,v in assignments.items()}
         assignments_new = dict()
@@ -28761,7 +28779,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             storeUndo=False, prev_lab=None, prev_rp=None,
             return_lab=False, assign_unique_new_IDs=True,
             separateByLabel=True, wl_update=True,
-            IDs=None, against_next=False,
+            against_next=False, specific_IDs=None 
         ):
         posData = self.data[self.pos_i]
         
@@ -28803,8 +28821,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         tracked_lab = self.trackFrame(
             prev_lab, prev_rp, posData.lab, posData.rp, posData.IDs,
-            assign_unique_new_IDs=assign_unique_new_IDs, IDs=IDs,
-            unique_ID=unique_ID
+            assign_unique_new_IDs=assign_unique_new_IDs,
+            unique_ID=unique_ID, specific_IDs=specific_IDs
         )
         
         if DoManualEdit:
