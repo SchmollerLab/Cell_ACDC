@@ -1113,11 +1113,11 @@ def _edge_ids_2d(lab):
 
 def _edge_ids_3d(lab):
     face_labels = np.r_[
-        lab[0, :, :].ravel(),    # z min
+        lab[ 0, :, :].ravel(),    # z min
         lab[-1, :, :].ravel(),   # z max
-        lab[:, 0, :].ravel(),    # y min
+        lab[:,  0, :].ravel(),    # y min
         lab[:, -1, :].ravel(),   # y max
-        lab[:, :, 0].ravel(),    # x min
+        lab[:, :,  0].ravel(),    # x min
         lab[:, :, -1].ravel(),   # x max
     ]
     ids = np.unique(face_labels)

@@ -2768,7 +2768,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Track current frame with real-time tracker...', self
         )
         self.repeatTrackingMenuAction.setDisabled(True)
-        self.repeatTrackingMenuAction.setShortcut('Shift+T')
+        self.repeatTrackingMenuAction.setShortcut('Ctrl+T')
 
         self.repeatTrackingVideoAction = QAction(
             'Select a tracker and track multiple frames...', self
@@ -9005,14 +9005,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for frame_i in range(len(posData.segm_data)):
             if frame_i >= len(posData.allData_li):
                 break
-            lab = posData.allData_li[frame_i]['labels']
-            if lab is None:
-                rp = skimage.measure.regionprops(posData.segm_data[frame_i])
-                IDs = set([obj.label for obj in rp])
-            else:
-                IDs = posData.allData_li[frame_i]['regionprops'].IDs
             
-            if searchedID in IDs:
+            rp = posData.allData_li[frame_i]['regionprops']
+            if rp is None:
+                lab = posData.segm_data[frame_i]
+                rp = regionprops.acdcRegionprops(lab)
+                posData.allData_li[frame_i]['regionprops'] = rp
+            if searchedID in rp.IDs:
                 frame_i_found = frame_i
                 break
             
@@ -11562,8 +11561,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for b in self.checkableQButtonsGroup.buttons():
             if b != button:
                 b.setChecked(False)
-                
-                
 
     def delBorderObj(self, checked):
         # Store undo state before modifying stuff
@@ -11618,7 +11615,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.fillHolesID(posData.brushID, sender='brush')
         
         # Update data (rp, etc)
-        printl(posData.brushID)
         
         power_brush = self.isPowerBrush()
         self.update_rp(use_curr_view=True, specific_IDs=posData.brushID if not power_brush else None)
@@ -11799,7 +11795,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def delROImovingFinished(self, roi: pg.ROI):
         roi.setPen(color='r')
-        self.update_rp()
+        self.update_rp() # get bbox of delROI old and new, run update_rp on both seperately
         self.updateAllImages()
         QTimer.singleShot(
             300, partial(self.updateDelROIinFutureFrames, roi)
@@ -11837,7 +11833,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         delROIs_info['delIDsROI'][idx] = delIDs - restoredIDs
         self.set_2Dlab(lab2D)
-        self.update_rp()
+        self.update_rp() # get bbox of delROI old and new, run update_rp on both seperately
 
     def restoreDelROIimg1(self, delMaskID, delID, ax=0):
         if ax == 0:
@@ -13407,8 +13403,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 
                 posData.frame_i = frame_i
                 self.get_data()
-                self.tracking(wl_update=False)
-                self.update_rp()
+                self.tracking() # we already update rp inside here
+                # self.update_rp() 
                 self.updateLostNewCurrentIDs()
                 self.store_data(mainThread=False, autosave=False)
                 # delROIsIDs = self.getDelRoisIDs()
@@ -13536,7 +13532,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.blinker.start()
         
         self.copyAllLostObjectsWorkerLoop.exit()
-        self.update_rp()
+        self.update_rp() # global op and obj added, no opt imo unless difference pic
         self.updateAllImages()
         self.store_data()
     
@@ -13752,7 +13748,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 frame_i = start_frame_i + i
                 lab = posData.allData_li[frame_i]['labels']
                 store = True
-                if lab is None:
+                if lab is None: # no rp update here?
                     if frame_i >= len(posData.segm_data):
                         lab = np.zeros_like(posData.segm_data[0])
                         posData.segm_data = np.append(
@@ -13768,6 +13764,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if store:
                     posData.frame_i = frame_i
                     posData.allData_li[frame_i]['labels'] = lab.copy()
+                    # no rp update here?
                     self.get_data()
                     self.store_data(autosave=False)
             
@@ -13780,7 +13777,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 roiLab, self.labelRoiSlice, posData.lab, posData.brushID
             )
 
-        self.update_rp()
+        self.update_rp() # get roi and set as bbox
         
         # Repeat tracking
         if self.autoIDcheckbox.isChecked():
@@ -13903,15 +13900,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             for frame_i in range(len(posData.segm_data)):
                 if frame_i >= len(posData.allData_li):
                     break
+                
                 lab = posData.allData_li[frame_i]['labels']
                 if lab is None and onlyVisited:
                     break
                 
-                if lab is None:
-                    rp = skimage.measure.regionprops(posData.segm_data[frame_i])
-                else:
-                    rp = posData.allData_li[frame_i]['regionprops']
-                posData.allIDs.update([obj.label for obj in rp])
+                rp = posData.allData_li[frame_i]['regionprops']
+                if rp is None:
+                    lab = posData.segm_data[frame_i]
+                    rp = regionprops.acdcRegionprops(lab)
+                    posData.allData_li[frame_i]['regionprops'] = rp
+                    
+                posData.allIDs.update(rp.IDs)
     
     def countObjectsTimelapse(self):
         if self.countObjsWindow is None:
@@ -14847,10 +14847,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if ev.key() == Qt.Key_Q and self.debug:
             try:
                 from . import _q_debug
-                _q_debug.q_debug(self)
+                _q_debug.q_debug(self, ev)
             except Exception as err:
                 printl(traceback.format_exc())
-                printl('[ERROR]: Error with "_qdebug" module. See Traceback above.')
+                printl('[ERROR]: Error with "_q_debug" module. See Traceback above.')
                 pass
 
         if not self.isDataLoaded:
@@ -15729,8 +15729,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def repeatTracking(self):
         posData = self.data[self.pos_i]
-        prev_lab = self.get_2Dlab(posData.lab).copy()
-        self.tracking(enforce=True, DoManualEdit=False)
+        tracked_lab, assignments = self.tracking(enforce=True, DoManualEdit=False, return_assignments=True, return_lab=True)
+        posData.lab = tracked_lab
         if posData.editID_info:
             editedIDsInfo = {
                 posData.lab[y,x]:newID 
@@ -15761,18 +15761,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 detailsText=editIDul
             )
             if msg.cancel:
+                self.update_rp(assignments=assignments) # rp now stale as we return img
                 return
             if msg.clickedButton == keepManualEditButton:
                 allIDs = posData.rp.IDs
                 lab2D = self.get_2Dlab(posData.lab)
-                self.manuallyEditTracking(lab2D, allIDs)
-                self.update_rp()
+                tracked_lab, assignments = self.manuallyEditTracking(lab2D, assignments) # here not use tracked lab?
+                self.update_rp(assignments=assignments) # rp now stale as we return img
                 self.setAllTextAnnotations()
                 self.highlightLostNew()
                 # self.checkIDsMultiContour()
             else:
+                self.update_rp(assignments=assignments) # rp now stale as we return img
                 posData.editID_info = []
-        if np.any(posData.lab != prev_lab):
+        
+        # filter self assignments
+        assignments = {k: v for k, v in assignments.items() if k != v}
+        if assignments:
             if self.isSnapshot:
                 self.fixCcaDfAfterEdit('Repeat tracking')
                 self.updateAllImages()
@@ -20581,36 +20586,66 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             segm_data.append(lab)
         return np.array(segm_data)
     
-    def trackNewIDtoNewIDsFutureFrame(self, newID, newIDmask):
+    def trackNewIDtoNewIDsFutureFrame(self, newID, obj, assignments):
+        # here RP is stale
         posData = self.data[self.pos_i]
         try:
             nextLab = posData.allData_li[posData.frame_i+1]['labels']
         except IndexError:
             # This is last frame --> there are no future frames
-            return
+            return None, assignments
         
         if nextLab is None:
-            return
+            return None, assignments
         
-        newID_lab = np.zeros_like(posData.lab)
-        newID_lab[newIDmask] = newID
-        newLab_rp = [posData.rp.get_obj_from_ID(newID)]
-        newLab_IDs = [newID]        
+        if obj is None:
+            return None, assignments
+             
+        
         nextRp = posData.allData_li[posData.frame_i+1]['regionprops']
+        nextLab = posData.allData_li[posData.frame_i+1]['labels']
+        reverse_assignments = {v:k for k, v in assignments.items()}
         
-        tracked_lab, assignments = self.trackFrame(
-            nextLab, nextRp, newID_lab, newLab_rp, newLab_IDs,
-            assign_unique_new_IDs=False
+        rp = posData.rp
+        lab = posData.lab
+        
+        # make rp remporarliy not stale anymore
+        rp.update_regionprops_via_assignments(assignments) 
+        tracked_lab, assignments_new = self.trackFrame(
+            nextLab, nextRp, lab, rp, rp.IDs,
+            assign_unique_new_IDs=False, return_assignments=True,
+            specific_IDs=[newID], 
         )
-        trackedID = tracked_lab[newID_lab>0][0]
+        # restore rp
+        posData.rp.update_regionprops_via_assignments(reverse_assignments)
+        
+        # clear self assignments
+        assignments_new = {
+            k:v for k, v in assignments_new.items() if k != v
+        }
+        if not assignments_new:
+            return None, assignments
+        
+        trackedIDs = list(assignments_new.values())
+
+        trackedID = trackedIDs[0]
         if trackedID == newID:
             # Object does not exist in future frame --> do not track
-            return
+            return None, assignments
         
         if posData.rp.get_obj_from_ID(trackedID, warn=False) is not None:
             # Tracked ID already exists --> do not track to avoid merging
-            return
+            return None, assignments
                 
+
+        
+        # update assignments
+        assignments = {
+            old_ID: tracked_ID for old_ID, tracked_ID in assignments.items()
+            if old_ID != newID
+        }
+        assignments[newID] = trackedID
+        
         return trackedID, assignments
     
     def store_manual_annot_data(
@@ -23133,7 +23168,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not isinstance(specific_IDs, (list, set)) and specific_IDs is not None:
             specific_IDs = [specific_IDs]
         
-        posData.rp: regionprops.acdcRegionprops
+        # posData.rp is an acdcRegionprops instance here.
         # if rp is None (can sometimes happen appearantly???)
         if posData.rp is None:
             printl(f'''Warning: posData.rp is None for pos {self.pos_i}, 
@@ -23341,7 +23376,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         posData = self.data[self.pos_i]
 
-        self.update_rp()
+        self.update_rp() # why here?
         # Repeat tracking
         self.tracking(enforce=True, assign_unique_new_IDs=False)
 
@@ -23396,6 +23431,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 
                 posData.frame_i = self.current_frame_i
                 self.get_data()
+        # no rp update here?
 
         # Ask to propagate change to all future visited frames
         key = 'Keep ID'
@@ -28157,7 +28193,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             imageItem, contoursItem, gradItem = items
             contoursItem.clear()
             if drawMode == 'Draw contours':
-                for obj in skimage.measure.regionprops(ol_lab):
+                for obj in skimage.measure.regionprops(ol_lab): #TODO contour opt
                     contours = self.getObjContours(
                         obj, all_external=True
                     )
@@ -28343,10 +28379,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if current_frame_i is None:
             return []
         
-        prev_frame_i = current_frame_i - 1
-        prevIDs = posData.allData_li[prev_frame_i]['regionprops'].IDs
+        if current_frame_i == 0:
+            return []
         
-        if prevIDs:
+        prev_frame_i = current_frame_i - 1
+        if posData.allData_li[prev_frame_i]['regionprops'] is not None:
+            prevIDs = posData.allData_li[prev_frame_i]['regionprops'].IDs
             return prevIDs
         
         # IDs in previous frame were not stored --> load prev lab from HDD
@@ -28355,8 +28393,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             frame_i=prev_frame_i,
             return_copy=False
         )
-        rp = skimage.measure.regionprops(prev_lab)
-        prevIDs = [obj.label for obj in rp]
+        rp = regionprops.acdcRegionprops(prev_lab)
+        posData.allData_li[prev_frame_i]['regionprops'] = rp
+        prevIDs = rp.IDs
         return prevIDs
             
     # @exec_time
@@ -28573,82 +28612,84 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         tracked_lab, assignments = self.tracking(
             enforce=True, assign_unique_new_IDs=False, return_lab=True,
-            specific_IDs=added_IDs
+            specific_IDs=added_IDs, return_assignments=True,
+            against_next=posData.frame_i==0
         )
+        
+        # RP not updated after tracking!!!
         self.clearAssignedObjsSecondStep()
         if tracked_lab is None:
             return
         
         # Track only new object
         prevIDs = posData.allData_li[posData.frame_i-1]['regionprops'].IDs
-
-        # mask = np.zeros(posData.lab.shape, dtype=bool)
-        update_rp = False
-        assignments = None
-        
-        self.update_rp(assignments=assignments) # !!! Make RP dirty so we can use it
-        reverse_assignments = {v:k for k,v in assignments.items()} if assignments else dict()
+      
+        # assignments_new = dict()
+        # self.update_rp(assignments=assignments)
         for added_ID in added_IDs:
-            mask = posData.lab == added_ID
+            
+            # check if added ID is already present
+            # here PR is "stale" so ID maps are not tracked
+            obj = posData.rp.get_obj_from_ID(added_ID, warn=False)
+            if obj is None:
+                continue
             try:
-                trackedID = tracked_lab[mask][0] # cannot get from rp as its from the tracked thing
+                trackedID = tracked_lab[obj.slice][obj.image][0]
             except IndexError as err:
                 # added_ID is not present
                 continue 
             
             isTrackedIDalreadyPresentAndNotNew = (
-                posData.IDs_idxs.get(trackedID) is not None
+                posData.rp.ID_to_idx.get(trackedID) is not None
                 and added_ID != trackedID
             )
             if isTrackedIDalreadyPresentAndNotNew:
+                self.updatePointsLayerClickEntryTableEndname(
+                    'added obj already present', added_ID, trackedID
+                )
                 continue
             
             isTrackedIDinPrevIDs = trackedID in prevIDs
             if isTrackedIDinPrevIDs:
-                posData.lab[mask] = trackedID
+                posData.lab[obj.slice][obj.image] = trackedID
             else:
                 # New object where we can try to track against next frame
-                trackedID, assignments = self.trackNewIDtoNewIDsFutureFrame(added_ID, mask)
+                trackedID, assignments = self.trackNewIDtoNewIDsFutureFrame(added_ID, obj, assignments)
                 if trackedID is None:
                     self.clearAssignedObjsSecondStep()
                     continue
-                posData.lab[mask] = trackedID
+                posData.lab[obj.slice][obj.image] = trackedID
         
             self.keepOnlyNewIDAssignedObjsSecondStep(trackedID)
-            update_rp = True
         
-        if update_rp:
-            self.update_rp(wl_update=wl_update, assignments=assignments)
+        self.update_rp(wl_update=wl_update, assignments=assignments)
             
     def trackFrameCustomTracker(
             self, prev_lab, currentLab, specific_IDs=None, unique_ID=None,
-            return_assignments=True
+            return_assignments=True, dont_return_tracked_lab=False
         ):
         if unique_ID is None:
             unique_ID = self.setBrushID()
         
         kwargs_total = {
             'unique_ID': unique_ID,
-            'IDs': IDs,
             'return_assignments': return_assignments,
+            'dont_return_tracked_lab': dont_return_tracked_lab,
+            'specific_IDs': specific_IDs
         }
         kwargs_total.update(self.track_frame_params)
         
-        kwargs_tracker = inspect.signature(self.realTimeTracker.track_frame).parameters
-        kwargs = {k: v for k, v in kwargs_total.items() if k in kwargs_tracker}
+        kwargs = {k: v for k, v in kwargs_total.items() if k in self.realTimeTracker_kwargs}
         tracked_result = self.realTimeTracker.track_frame(
             prev_lab, currentLab,
-            unique_ID=unique_ID,
-            specific_IDs=specific_IDs,
             **kwargs,
         )
-      
         return tracked_result
     
     def trackFrame(
             self, prev_lab, prev_rp, curr_lab, curr_rp, curr_IDs,
             assign_unique_new_IDs=True, specific_IDs=None, unique_ID=None,
-            only_return_assignments=False
+            dont_return_tracked_lab=False, return_assignments=False,
         ):
         if self.trackWithAcdcAction.isChecked():
             tracked_result = CellACDC_tracker.track_frame(
@@ -28659,8 +28700,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 assign_unique_new_IDs=assign_unique_new_IDs, 
                 specific_IDs=specific_IDs,
                 unique_ID=unique_ID,
-                return_assignments=True,
-                only_return_assignments=only_return_assignments
+                return_assignments=return_assignments,
+                dont_return_tracked_lab=dont_return_tracked_lab
             )
         elif self.trackWithYeazAction.isChecked():
             tracked_result = self.tracking_yeaz.correspondence(
@@ -28669,31 +28710,37 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
         else:
             tracked_result = self.trackFrameCustomTracker(
-                prev_lab, curr_lab, specific_IDs=specific_IDs, unique_ID=unique_ID
+                prev_lab, curr_lab, specific_IDs=specific_IDs, unique_ID=unique_ID,
+                dont_return_tracked_lab=dont_return_tracked_lab, return_assignments=return_assignments
             )
 
         # Check if tracker also returns additional info
+        assignments = None
         if isinstance(tracked_result, tuple):
             tracked_lab, add_info = tracked_result
             assignments = self.handleAdditionalInfoRealTimeTracker(prev_rp, add_info)
-        elif isinstance(tracked_result, dict) and only_return_assignments:
-            assignments = tracked_result
+        elif isinstance(tracked_result, dict) and dont_return_tracked_lab:
+            add_info = tracked_result
+            if 'assignments' in add_info: # if still entire add_info is returned
+                assignments = self.handleAdditionalInfoRealTimeTracker(prev_rp, add_info)
+            else:
+                assignments = add_info # its just assignements
         else:
             tracked_lab = tracked_result
         
-        if not return_assignments:
+        if not return_assignments and not dont_return_tracked_lab:
             return tracked_lab
 
         # get assignments
-        assignments = dict()
-        for obj in posData.rp:
-            old_lab = obj.label
-            new_lab = tracked_lab[obj.slice][obj.image][0]
-            assignments[old_lab] = new_lab
+        if assignments is None:
+            assignments = dict()
+            for obj in curr_rp:
+                old_lab = obj.label
+                new_lab = tracked_lab[obj.slice][obj.image][0]
+                assignments[old_lab] = new_lab
             
-        if only_return_assignments:
+        if dont_return_tracked_lab:
             return assignments
-        
         return tracked_lab, assignments
     
     def clearAssignedObjsSecondStep(self):
@@ -28707,12 +28754,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         prev_lab = posData.allData_li[posData.frame_i-1]['labels']
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        _, assignments = self.trackFrame(
+        assignments = self.trackFrame(
             prev_lab, prev_rp, posData.lab, posData.rp, posData.IDs,
             assign_unique_new_IDs=True, specific_IDs=subsetIDs,
-            only_return_assignments=True
+            dont_return_tracked_lab=True
         )
-        reverse_assignments = {v:k for k,v in assignments.items()}
+        # I think assignments already avoids merging
         assignments_new = dict()
         for old_ID, new_ID in assignments.items():
             # get "old" id based on assignments
@@ -28725,9 +28772,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     continue
                 
             
-            obj = posData.rp.get_obj_from_ID(subsetID) # pr is still old, so we need to get the old ID
-            posData.lab[obj.slice][obj.image] = assigned_ID
-            assignments_new[subsetID] = assigned_ID # old ID : new tracked ID
+            obj = posData.rp.get_obj_from_ID(old_ID) # pr is still old, so we need to get the old ID
+            posData.lab[obj.slice][obj.image] = new_ID
+            assignments_new[old_ID] = new_ID # old ID : new tracked ID
         
         self.update_rp(assignments=assignments_new)
     
@@ -28779,13 +28826,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             storeUndo=False, prev_lab=None, prev_rp=None,
             return_lab=False, assign_unique_new_IDs=True,
             separateByLabel=True, wl_update=True,
-            against_next=False, specific_IDs=None 
+            against_next=False, specific_IDs=None , return_assignments=False
         ):
         posData = self.data[self.pos_i]
-        
+        return_tuple = (None, None) if return_assignments and return_lab else None
         if self.doSkipTracking(against_next, enforce):
             self.setLostNewOldPrevIDs()
-            return
+            return return_tuple
         
         """Tracking starts here"""
         staturBarLabelText = self.statusBarLabel.text()
@@ -28819,48 +28866,55 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if posData.frame_i < self.get_last_tracked_i():
             unique_ID = self.setBrushID(return_val=True)
         
-        tracked_lab = self.trackFrame(
+        tracked_lab, assignments = self.trackFrame(
             prev_lab, prev_rp, posData.lab, posData.rp, posData.IDs,
             assign_unique_new_IDs=assign_unique_new_IDs,
-            unique_ID=unique_ID, specific_IDs=specific_IDs
+            unique_ID=unique_ID, specific_IDs=specific_IDs,
+            return_assignments=True
         )
         
         if DoManualEdit:
             # Correct tracking with manually changed IDs
-            rp = skimage.measure.regionprops(tracked_lab)
-            IDs = [obj.label for obj in rp]
-            self.manuallyEditTracking(tracked_lab, IDs)
+            tracked_lab, assignments = self.manuallyEditTracking(tracked_lab, assignments)
 
         if return_lab:
             QTimer.singleShot(50, partial(
                 self.statusBarLabel.setText, staturBarLabelText
             ))
+            if return_assignments:
+                return tracked_lab, assignments
             return tracked_lab
         
         # Update labels, regionprops and determine new and lost IDs
         posData.lab = tracked_lab
-        self.update_rp(wl_update=wl_update, )
+        self.update_rp(wl_update=wl_update, assignments=assignments)
         self.setAllTextAnnotations()
         QTimer.singleShot(50, partial(
             self.statusBarLabel.setText, staturBarLabelText
         ))
+        if return_assignments and return_lab:
+            return tracked_lab, assignments
+        elif return_assignments:
+            return assignments
+        elif return_lab:
+            return tracked_lab
 
-    def handleAdditionalInfoRealTimeTracker(self, prev_rp, *args):
+    def handleAdditionalInfoRealTimeTracker(self, prev_rp, add_info):
         assignments = None
         if self._rtTrackerName == 'CellACDC_normal_division':
-            tracked_lost_IDs = args[0]
+            tracked_lost_IDs = add_info['mothers']
             self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
-            assignments = args[1]
+            assignments = add_info['assignments']
         elif self._rtTrackerName == 'CellACDC_2steps':
-            assignments = args[1]
-            if args[0] is None:
-                return
-            posData = self.data[self.pos_i]
-            posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = args[0]
-        elif self._rtTrackerName == 'CellACDC':
-            assignments = args[0]
+            assignments = add_info['assignments']
+            if add_info['to_track_tracked_objs_2nd_step'] is not None:
+                posData = self.data[self.pos_i]
+                posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = add_info['to_track_tracked_objs_2nd_step']
+        elif self._rtTrackerName == 'Cell-ACDC':
+            assignments = add_info['assignments']
             
         return assignments
+    
     def keepOnlyNewIDAssignedObjsSecondStep(self, trackedID):
         posData = self.data[self.pos_i]
         annotInfo = posData.acdcTracker2stepsAnnotInfo.get(posData.frame_i)
@@ -28955,6 +29009,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         """        
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
+        prev_lab = posData.allData_li[frame_i-1]['labels']
         
         for obj in prev_rp:
             if obj.label not in tracked_lost_IDs:
@@ -28965,6 +29020,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 centroid = obj.centroid
             int_centroid = tuple([int(val) for val in centroid])
+            # check if centroid has right ID
+            if prev_lab[int_centroid] != ID:
+                # get closest point with the right ID
+                coords = obj.coords
+                distances = np.sqrt(np.sum((coords - centroid) ** 2, axis=1))
+                closest_idx = np.argmin(distances)
+                int_centroid = tuple([int(val) for val in coords[closest_idx]])
             try:
                 posData.tracked_lost_centroids[frame_i].add(int_centroid)
             except KeyError:
@@ -29018,28 +29080,59 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData.trackedLostIDs = trackedLostIDs
 
         return trackedLostIDs
-    
-    def manuallyEditTracking(self, tracked_lab, allIDs):
+        
+    def manuallyEditTracking(self, tracked_lab, assignments):
         posData = self.data[self.pos_i]
         infoToRemove = []
-        # Correct tracking with manually changed IDs
-        maxID = max(allIDs, default=1)
-        for y, x, new_ID in posData.editID_info:
-            old_ID = tracked_lab[y, x]
-            if old_ID == 0 or old_ID == new_ID:
-                infoToRemove.append((y, x, new_ID))
+
+        if not assignments:
+            return tracked_lab, assignments
+
+        # !!! RP is stale so we need to reverse search for the ID
+        reversed_assignments = (
+            {tracked_id: stale_id for stale_id, tracked_id in assignments.items()}
+            if assignments else {}
+        )
+        stale_ids = set(posData.rp.IDs)
+
+        covered_edited_IDs = set()
+        for y, x, edited_ID in posData.editID_info:
+            new_ID = assignments.get(edited_ID, edited_ID) # ID in tracked lab
+            if new_ID in covered_edited_IDs:
+                # This ID has already been edited by sawpping for example
                 continue
-            if new_ID in allIDs:
-                tempID = maxID+1
-                tracked_lab[tracked_lab == old_ID] = tempID
-                tracked_lab[tracked_lab == new_ID] = old_ID
-                tracked_lab[tracked_lab == tempID] = new_ID
+            
+            if new_ID == 0 or new_ID == edited_ID: # edited ID is not tracked to a different ID
+                infoToRemove.append((y, x, edited_ID))
+                continue
+
+            old_RP_ID = reversed_assignments.get(edited_ID, edited_ID) # ID pre tracking
+            old_obj = posData.rp.get_obj_from_ID(old_RP_ID) # obj pre tracking
+
+            if edited_ID in stale_ids:
+                # a swap has been made by the user between an old ID (old_RP_ID) and a new ID (edited_ID)
+                new_obj = posData.rp.get_obj_from_ID(edited_ID)
+                tracked_lab[old_obj.slice][old_obj.image] = edited_ID
+                tracked_lab[new_obj.slice][new_obj.image] = old_RP_ID
+                # update assignemnets
+                assignments[old_RP_ID] = edited_ID
+                assignments[edited_ID] = old_RP_ID
+                # add the two swapped IDs
+                
+                covered_edited_IDs.add(edited_ID)
+                covered_edited_IDs.add(old_RP_ID)
+                
             else:
-                tracked_lab[tracked_lab == old_ID] = new_ID
-                if new_ID > maxID:
-                    maxID = new_ID
+                tracked_lab[old_obj.slice][old_obj.image] = edited_ID
+                
+                assignments[old_RP_ID] = edited_ID
+
+                covered_edited_IDs.add(edited_ID)
+
         for info in infoToRemove:
             posData.editID_info.remove(info)
+            
+        return tracked_lab, assignments
     
     def warnReinitLastSegmFrame(self):
         current_frame_n = self.navigateScrollBar.value()
@@ -30175,8 +30268,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             rtTracker = aliases[rtTracker]
         
         if rtTracker == 'Cell-ACDC':
+            self._rtTrackerName = 'Cell-ACDC'
+            self.realTimeTracker_kwargs = None # This is hard coded
             return
         if rtTracker == 'YeaZ':
+            self._rtTrackerName = 'YeaZ'
+            self.realTimeTracker_kwargs = None # This is hard coded
             return
         
         if self.isRealTimeTrackerInitialized and not force:
@@ -30194,6 +30291,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.realTimeTracker = realTimeTracker
         self.track_frame_params = track_frame_params
+        self.realTimeTracker_kwargs = inspect.signature(self.realTimeTracker.track_frame).parameters
         self.logger.info(f'{rtTracker} tracker successfully initialized.')
         if 'image_channel_name' in self.track_frame_params:
             # Remove the channel name since it was already loaded in init_tracker

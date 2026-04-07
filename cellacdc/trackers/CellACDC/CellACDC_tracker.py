@@ -11,17 +11,53 @@ from cellacdc import core, printl, debugutils
 
 DEBUG = False
 
+def _normalize_specific_IDs(specific_IDs):
+    if specific_IDs is None:
+        return None
+    if isinstance(specific_IDs, (list, tuple, set, np.ndarray)):
+        return set(specific_IDs)
+    return {specific_IDs}
+
+def _filter_subset_assignments(old_IDs, tracked_IDs, all_curr_IDs, specific_IDs):
+    if specific_IDs is None:
+        return old_IDs, tracked_IDs
+
+    selected_curr_IDs = set(specific_IDs)
+    other_curr_IDs = set(all_curr_IDs).difference(selected_curr_IDs)
+    filtered_old_IDs = []
+    filtered_tracked_IDs = []
+    for old_ID, tracked_ID in zip(old_IDs, tracked_IDs):
+        if tracked_ID in other_curr_IDs:
+            continue
+        filtered_old_IDs.append(old_ID)
+        filtered_tracked_IDs.append(tracked_ID)
+
+    return filtered_old_IDs, filtered_tracked_IDs
+
 def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
                    specific_IDs=None,
                    denom:str='area_prev'):
     # maybe its faster to calculate IoU not via mask but via area1 / (area1 + area2 - intersection)
+    specific_IDs = _normalize_specific_IDs(specific_IDs)
     IDs_prev = []
     if IDs_curr_untracked is None:
         IDs_curr_untracked = [obj.label for obj in rp]
+    elif not isinstance(IDs_curr_untracked, list):
+        IDs_curr_untracked = list(IDs_curr_untracked)
 
-    IoA_matrix = np.zeros((len(rp), len(prev_rp)))
+    if specific_IDs is not None:
+        IDs_curr_untracked = [
+            ID for ID in IDs_curr_untracked if ID in specific_IDs
+        ]
+
+    if not IDs_curr_untracked:
+        return np.zeros((0, len(prev_rp))), IDs_curr_untracked, [
+            obj.label for obj in prev_rp
+        ]
+
+    IoA_matrix = np.zeros((len(IDs_curr_untracked), len(prev_rp)))
     rp_mapper = {obj.label: obj for obj in rp}
-    idx_mapper = {obj.label: i for i, obj in enumerate(rp)}
+    idx_mapper = {ID: i for i, ID in enumerate(IDs_curr_untracked)}
     # For each ID in previous frame get IoA with all current IDs
     # Rows: IDs in current frame, columns: IDs in previous frame
 
@@ -44,12 +80,6 @@ def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
         ID_prev = obj_prev.label
         IDs_prev.append(ID_prev)
         
-
-        # Skip if ID_prev is not in the list of IDs to be tracked
-        if specific_IDs is not None and ID_prev not in specific_IDs:
-            # put a 1 so the assignment is not skipped
-            continue
-        
         # if IDs is not None and ID_prev not in IDs:
         #     continue
 
@@ -68,6 +98,8 @@ def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
                 continue
 
             if denom == 'union':
+                if intersect_ID not in rp_mapper:
+                    continue
                 obj_curr = rp_mapper[intersect_ID]
                 # temp_lab[obj_prev.slice][obj_prev.image] = True
                 # temp_lab[obj_curr.slice][obj_curr.image] = True
@@ -77,7 +109,9 @@ def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
                 if denom_val == 0:
                     continue
             
-            idx = idx_mapper[intersect_ID]	
+            idx = idx_mapper.get(intersect_ID)
+            if idx is None:
+                continue
             IoA = I/denom_val
             IoA_matrix[idx, j] = IoA
     return IoA_matrix, IDs_curr_untracked, IDs_prev
@@ -89,12 +123,6 @@ def assign(
     # Determine max IoA between IDs and assign tracked ID if IoA >= IoA_thresh
     if IoA_matrix.size == 0:
         return [], []
-    
-    # filter the IoA matrix based on specific_IDs if provided
-    if specific_IDs is not None:
-        col_indices_to_keep = [i for i, ID_prev in enumerate(IDs_prev) if ID_prev in specific_IDs]
-        IoA_matrix = IoA_matrix[:, col_indices_to_keep]
-        IDs_prev = [IDs_prev[i] for i in col_indices_to_keep]
         
     max_IoA_col_idx = IoA_matrix.argmax(axis=1)
     unique_col_idx, counts = np.unique(max_IoA_col_idx, return_counts=True)
@@ -202,7 +230,9 @@ def indexAssignment(
         remove_untracked=False, 
         assign_unique_new_IDs=True, 
         return_assignments=False,
+        dont_return_tracked_lab=False,
         specific_IDs=None,
+        all_curr_IDs=None,
         IDs=None,
     ):
     """Replace `old_IDs` in `lab` with `tracked_IDs` while making sure to 
@@ -245,17 +275,25 @@ def indexAssignment(
     assignments: dict
         Returned only if `return_assignments` is True.
     """    
+    specific_IDs = _normalize_specific_IDs(specific_IDs)
     log_debugging(
         'start', 
         IDs_curr_untracked=IDs_curr_untracked,
         old_IDs=old_IDs
     )
     
-    # Replace untracked IDs with tracked IDs and new IDs with increasing num
-    if specific_IDs is not None:
-        # input tracks where only made for specific IDs.
-    # new_untracked_IDs = [ID for ID in IDs_curr_untracked if ID not in old_IDs]
-    tracked_lab = lab
+    if all_curr_IDs is None:
+        all_curr_IDs = list(IDs_curr_untracked)
+    old_IDs, tracked_IDs = _filter_subset_assignments(
+        old_IDs, tracked_IDs, all_curr_IDs, specific_IDs
+    )
+
+    # Replace untracked IDs with tracked IDs and new IDs with increasing num.
+    # When tracking only a subset of current IDs, leave unrelated labels untouched.
+    new_untracked_IDs = [ID for ID in IDs_curr_untracked if ID not in old_IDs]
+    
+    if not dont_return_tracked_lab:
+        tracked_lab = lab
     assignments = {}
     log_debugging(
         'assign_unique', 
@@ -269,9 +307,10 @@ def indexAssignment(
             new_tracked_IDs = [
                 uniqueID+i for i in range(len(new_untracked_IDs))
             ]
-        core.lab_replace_values(
-            tracked_lab, rp, new_untracked_IDs, new_tracked_IDs
-        )
+        if not dont_return_tracked_lab:
+            core.lab_replace_values(
+                tracked_lab, rp, new_untracked_IDs, new_tracked_IDs
+            )
         assignments.update(dict(zip(new_untracked_IDs, new_tracked_IDs)))
         log_debugging(
             'new_untracked_and_assign_unique', 
@@ -289,9 +328,10 @@ def indexAssignment(
         new_tracked_IDs = [
             uniqueID+i for i in range(len(new_IDs_in_trackedIDs))
         ]
-        core.lab_replace_values(
-            tracked_lab, rp, new_IDs_in_trackedIDs, new_tracked_IDs
-        )
+        if not dont_return_tracked_lab:
+            core.lab_replace_values(
+                tracked_lab, rp, new_IDs_in_trackedIDs, new_tracked_IDs
+            )
         assignments.update(dict(zip(new_IDs_in_trackedIDs, new_tracked_IDs)))
         log_debugging(
             'new_untracked_and_tracked', 
@@ -301,10 +341,15 @@ def indexAssignment(
             new_tracked_IDs=new_tracked_IDs
         )
     if tracked_IDs:
-        core.lab_replace_values(
-            tracked_lab, rp, old_IDs, tracked_IDs, in_place=True
-        )
-        assignments.update(dict(zip(old_IDs, tracked_IDs)))
+        if not dont_return_tracked_lab:
+            core.lab_replace_values(
+                tracked_lab, rp, old_IDs, tracked_IDs, in_place=True
+            )
+        assignments.update({
+            old_ID: tracked_ID
+            for old_ID, tracked_ID in zip(old_IDs, tracked_IDs)
+            if old_ID != tracked_ID
+        })
         log_debugging(
             'tracked', 
             tracked_IDs=tracked_IDs,
@@ -313,6 +358,8 @@ def indexAssignment(
 
     if not return_assignments:
         return tracked_lab
+    elif dont_return_tracked_lab:
+        return assignments
     else: 
         return tracked_lab, assignments
 
@@ -323,17 +370,24 @@ def track_frame(
         return_all=False, aggr_track=None, IoA_matrix=None, 
         IoA_thresh_aggr=None, IDs_prev=None, return_prev_IDs=False,
         mother_daughters=None, denom_overlap_matrix = 'area_prev',
-        return_assignments=False, specific_IDs=None, only_return_assignments=False
+        return_assignments=False, specific_IDs=None, dont_return_tracked_lab=False
     ):
     if not np.any(lab):
         # Skip empty frames
         return lab
 
+    all_curr_IDs = (
+        list(IDs_curr_untracked)
+        if IDs_curr_untracked is not None else [obj.label for obj in rp]
+    )
+
     if IoA_matrix is None:
-        IoA_matrix, IDs_curr_untracked, IDs_prev = calc_Io_matrix(
+        IoA_matrix, tracked_curr_IDs, IDs_prev = calc_Io_matrix(
             lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked,
             denom=denom_overlap_matrix,specific_IDs=specific_IDs,
         )
+    else:
+        tracked_curr_IDs = IDs_curr_untracked
 
     daughters_list = []
     if mother_daughters:
@@ -341,14 +395,15 @@ def track_frame(
             daughters_list.extend(daughters)
 
     old_IDs, tracked_IDs = assign(
-        IoA_matrix, IDs_curr_untracked, IDs_prev,
+        IoA_matrix, tracked_curr_IDs, IDs_prev,
         IoA_thresh=IoA_thresh, aggr_track=aggr_track, 
         IoA_thresh_aggr=IoA_thresh_aggr, daughters_list=daughters_list,
+        specific_IDs=specific_IDs,
     )
     
     if posData is None and unique_ID is None:
         unique_ID = max(
-            (max(IDs_prev, default=0), max(IDs_curr_untracked, default=0))
+            (max(IDs_prev, default=0), max(all_curr_IDs, default=0))
         ) + 1
     elif unique_ID is None:
         # Compute starting unique ID
@@ -357,27 +412,44 @@ def track_frame(
 
     if not return_all and not return_assignments:
         tracked_lab = indexAssignment(
-            old_IDs, tracked_IDs, IDs_curr_untracked,
+            old_IDs, tracked_IDs, tracked_curr_IDs,
             lab.copy(), rp, unique_ID,
             assign_unique_new_IDs=assign_unique_new_IDs,
             specific_IDs=specific_IDs,
+            all_curr_IDs=all_curr_IDs,
         )
-    else:
-        tracked_lab, assignments = indexAssignment(
-            old_IDs, tracked_IDs, IDs_curr_untracked,
+    elif dont_return_tracked_lab:
+        assignments = indexAssignment(
+            old_IDs, tracked_IDs, tracked_curr_IDs,
             lab.copy(), rp, unique_ID,
             assign_unique_new_IDs=assign_unique_new_IDs, 
             return_assignments=True, specific_IDs=specific_IDs,
+            dont_return_tracked_lab=True,
+            all_curr_IDs=all_curr_IDs,
+        )
+    else:
+        tracked_lab, assignments = indexAssignment(
+            old_IDs, tracked_IDs, tracked_curr_IDs,
+            lab.copy(), rp, unique_ID,
+            assign_unique_new_IDs=assign_unique_new_IDs, 
+            return_assignments=True, specific_IDs=specific_IDs,
+            all_curr_IDs=all_curr_IDs,
         )
 
     # old_new_ids = dict(zip(old_IDs, tracked_IDs)) # for now not used, but could be useful in the future
     
-    if return_all:
+    if return_all and dont_return_tracked_lab:
+        # special case where we want to only get the assignments but need the rest too!
+        return IoA_matrix, assignments, tracked_IDs
+    elif return_all:
         return tracked_lab, IoA_matrix, assignments, tracked_IDs # remove tracked_IDs and change code in CellACDC_tracker.py if causing problems
-    elif return_assignments and only_return_assignments:
+    elif dont_return_tracked_lab:
         return assignments
     elif return_assignments:
-        return tracked_lab, assignments
+        add_info = {
+            'assignments': assignments,
+        }
+        return tracked_lab, add_info
     else:
         return tracked_lab
 

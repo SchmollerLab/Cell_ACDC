@@ -226,6 +226,8 @@ class acdcRegionprops:
             return self._rp[idx]
         else:
             if warn:
+                # get caller info
+                debugutils.print_call_stack()
                 printl(f"Warning: Object with ID {ID} not found in regionprops.")
             return None
         
