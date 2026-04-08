@@ -18320,7 +18320,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         return False
     
-    @debugutils.line_benchmark
     def next_frame(self, warn=True):        
         proceed = self.checkIfFutureFrameManualAnnotPastFrames()
         if not proceed:
@@ -20722,10 +20721,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             is_cell_excluded_li[i] = obj.excluded
             IDs[i] = obj.label
             centroid = posData.rp.get_centroid(obj.label, exact=True)
-            try:
-                int(centroid[0])
-            except (TypeError, ValueError):
-                print(obj.label)
+            if centroid is None:
                 continue
 
             if self.isSegm3D:
@@ -21697,7 +21693,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             labels
         )
         posData.rp = posData.allData_li[posData.frame_i]['regionprops']
-        # posData.rp.update_regionprops(posData.lab)
         # get stored IDs
         self.setManualBackgroundLab()
         
@@ -23136,7 +23131,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return False
         return self._cutout_to_bbox(cutout)
     
-    # @exception_handler
+    @exception_handler
     def update_rp(
             self, draw=True, debug=False, # og stuff
             assignments=None, deletionIDs=None, # very quick upates, rp labels are changed but rest is same
@@ -27990,8 +27985,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 QAbstractSlider.SliderAction.SliderSingleStepSub
             )
     
-    # @exception_handler
-    @debugutils.line_benchmark
+    @exception_handler
     def updateAllImages(
             self, image=None, computePointsLayers=True, computeContours=True,
             updateLookuptable=True
@@ -28738,6 +28732,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             tracked_lab = tracked_result
         
+        printl(assignments)
         if not return_assignments and not dont_return_tracked_lab:
             return tracked_lab
 
@@ -28829,8 +28824,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
     
     # @exec_time
-    # @exception_handler
-    @debugutils.line_benchmark
+    @exception_handler
     def tracking(
             self, enforce=False, DoManualEdit=True,
             storeUndo=False, prev_lab=None, prev_rp=None,

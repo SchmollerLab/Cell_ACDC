@@ -107,6 +107,7 @@ def _acdc_regionprops_factory(
 #         self._offset = np.array(offset)
 
 #         self._slice = slice
+        
 #         self._label_image = label_image
 #         self._intensity_image = intensity_image
 
@@ -120,8 +121,6 @@ def _acdc_regionprops_factory(
 #         self._spacing = _normalize_spacing(spacing, self._ndim)
 #         self._pixel_area = np.prod(self._spacing)
         
-#         self.slice = self.calc_slice()
-
 #         self._extra_properties = {}
 #         if extra_properties is not None:
 #             for func in extra_properties:
@@ -133,69 +132,85 @@ def _acdc_regionprops_factory(
 #                         f"renaming it."
 #                     )
 #             self._extra_properties = {func.__name__: func for func in extra_properties}
+class acdcRegionProperties(_RegionProperties):
+    def __init__(
+        self,
+        slice,
+        label,
+        label_image,
+        intensity_image,
+        cache_active,
+        *,
+        extra_properties=None,
+        spacing=None,
+        offset=None,
+    ):
+        super().__init__(
+            slice, label, label_image, intensity_image, cache_active,
+            extra_properties=extra_properties, spacing=spacing, offset=offset
+        )    
+    # @property
+    # @_cached
+    # def slice(self):
+    #     # scale slice with offset
+    #     return tuple(
+    #         slice(self._slice[i].start + self._offset[i],
+    #               self._slice[i].stop + self._offset[i])
+    #         for i in range(self._ndim)
+    #     )
     
-#     # @property
-#     # @_cached
-#     def calc_slice(self):
-#         # scale slice with offset
-#         return tuple(
-#             slice(self._slice[i].start + self._offset[i],
-#                   self._slice[i].stop + self._offset[i])
-#             for i in range(self._ndim)
-#         )
+    @property
+    @_cached
+    def bbox(self):
+        """
+        Returns
+        -------
+        A tuple of the bounding box's start coordinates for each dimension,
+        followed by the end coordinates for each dimension.
+        """
+        return tuple(
+            [self.slice[i].start for i in range(self._ndim)]
+            + [self.slice[i].stop for i in range(self._ndim)]
+        )
     
-#     @property
-#     @_cached
-#     def bbox(self):
-#         """
-#         Returns
-#         -------
-#         A tuple of the bounding box's start coordinates for each dimension,
-#         followed by the end coordinates for each dimension.
-#         """
-#         return tuple(
-#             [self.slice[i].start for i in range(self._ndim)]
-#             + [self.slice[i].stop for i in range(self._ndim)]
-#         )
+    @property
+    @_cached # slow for 3D data, better cache it
+    def centroid(self):
+        return super().centroid
+
+    # @property
+    # def centroid_weighted(self):
+    #     ctr = self.centroid_weighted_local
+    #     return tuple(
+    #         idx + slc.start * spc
+    #         for idx, slc, spc in zip(ctr, self._slice, self._spacing)
+    #     )
+
+    # @property
+    # @_cached
+    # def image_intensity(self):
+    #     if self._intensity_image is None:
+    #         raise AttributeError('No intensity image specified.')
+    #     image = (
+    #         self.image
+    #         if not self._multichannel
+    #         else np.expand_dims(self.image, self._ndim)
+    #     )
+    #     return self._intensity_image[self._slice] * image
+
+    # @property
+    # def coords(self):
+    #     indices = np.argwhere(self.image)
+    #     object_offset = np.array([self._slice[i].start for i in range(self._ndim)])
+    #     return object_offset + indices + self._offset
     
-#     @property
-#     @_cached # slow for 3D data, better cache it
-#     def centroid(self):
-#         return super().centroid
+    # @property
+    # def coords_scaled(self):
+    #     indices = np.argwhere(self.image)
+    #     object_offset = np.array([self._slice[i].start for i in range(self._ndim)])
+    #     return (object_offset + indices) * self._spacing + self._offset
 
-#     @property
-#     def centroid_weighted(self):
-#         ctr = self.centroid_weighted_local
-#         return tuple(
-#             idx + slc.start * spc
-#             for idx, slc, spc in zip(ctr, self._slice, self._spacing)
-#         )
 
-#     @property
-#     @_cached
-#     def image_intensity(self):
-#         if self._intensity_image is None:
-#             raise AttributeError('No intensity image specified.')
-#         image = (
-#             self.image
-#             if not self._multichannel
-#             else np.expand_dims(self.image, self._ndim)
-#         )
-#         return self._intensity_image[self._slice] * image
-
-#     @property
-#     def coords(self):
-#         indices = np.argwhere(self.image)
-#         object_offset = np.array([self._slice[i].start for i in range(self._ndim)])
-#         return object_offset + indices + self._offset
-    
-#     @property
-#     def coords_scaled(self):
-#         indices = np.argwhere(self.image)
-#         object_offset = np.array([self._slice[i].start for i in range(self._ndim)])
-#         return (object_offset + indices) * self._spacing + self._offset
-
-acdcRegionProperties = _RegionProperties
 class acdcRegionprops:
     def __init__(
             self,
@@ -381,7 +396,6 @@ class acdcRegionprops:
 
         return obj_to_update
     
-    @debugutils.line_benchmark
     def update_regionprops(
             self, lab, specific_IDs_update_centroids=None,
             update_centroids=True
@@ -431,11 +445,30 @@ class acdcRegionprops:
             slice(int(bbox[dim]), int(bbox[dim+ndim])) for dim in range(ndim)
         )
 
-    def _get_regionprops_with_offset(self, lab, offset):
-        try:
-            return _acdc_regionprops_factory(lab, offset=offset)
-        except TypeError:
-            return None
+    def _translate_cutout_regionprop(self, obj, offset):
+        offset_arr = np.asarray(offset)
+        centroid = obj.centroid
+        translated_slice = tuple(
+            slice(
+                obj._slice[dim].start + offset_arr[dim],
+                obj._slice[dim].stop + offset_arr[dim],
+            )
+            for dim in range(obj._ndim)
+        )
+        translated_bbox = tuple(
+            [slc.start for slc in translated_slice]
+            + [slc.stop for slc in translated_slice]
+        )
+        translated_centroid = tuple(
+            coord + offset_arr[dim]
+            for dim, coord in enumerate(centroid)
+        )
+
+        obj._offset = offset_arr.copy()
+        obj._cache['slice'] = translated_slice
+        obj._cache['bbox'] = translated_bbox
+        obj._cache['centroid'] = translated_centroid
+        return obj
 
     def _get_single_obj_regionprop(self, lab, ID):
         mask = lab == ID
@@ -488,32 +521,35 @@ class acdcRegionprops:
         if not active_assignments:
             return
 
-        remapped_IDs = set()
-        for obj in self._rp:
-            old_ID = obj.label
-            new_ID = active_assignments.get(old_ID, old_ID)
-            if new_ID in remapped_IDs:
-                raise ValueError(
-                    'Assignments would create duplicate IDs in regionprops. '
-                    'Use a full regionprops recomputation for merges.'
-                )
-            remapped_IDs.add(new_ID)
+        # remapped_IDs = set()
+        # for obj in self._rp:
+        #     old_ID = obj.label
+        #     new_ID = active_assignments.get(old_ID, old_ID)
+        #     if new_ID in remapped_IDs:
+        #         raise ValueError(
+        #             'Assignments would create duplicate IDs in regionprops. '
+        #             'Use a full regionprops recomputation for merges.'
+        #         )
+        #     remapped_IDs.add(new_ID)
 
         centroid_mapper = {
             active_assignments.get(ID, ID): centroid
             for ID, centroid in self._centroid_mapper.items()
-            if active_assignments.get(ID, ID) in remapped_IDs
+            # if active_assignments.get(ID, ID) in remapped_IDs
         }
         centroid_IDs_exact = {
             active_assignments.get(ID, ID)
             for ID in self._centroid_IDs_exact
-            if active_assignments.get(ID, ID) in remapped_IDs
+            # if active_assignments.get(ID, ID) in remapped_IDs
         }
 
         for obj in self._rp:
             old_ID = obj.label
             new_ID = active_assignments.get(old_ID, old_ID)
             obj.label = new_ID
+            # if obj.area == 0:
+            #     # if area is 0, centroid is not defined and we should not trust the cached one
+            #     print("area 0...")
 
         self._centroid_mapper = centroid_mapper
         self._centroid_IDs_exact = centroid_IDs_exact
@@ -549,6 +585,7 @@ class acdcRegionprops:
         cutout_bbox : tuple[int, int, int, int]
             The bounding box of the cutout in the format (min_row, min_col, max_row, max_col).
         """
+        printl('Updating rp via cutout...')
         if specific_IDs is not None and not isinstance(specific_IDs, (list, set)):
             specific_IDs = {specific_IDs}
         elif specific_IDs is not None:
@@ -586,12 +623,6 @@ class acdcRegionprops:
 
         offset = tuple(s.start for s in cutout_slices)
         printl(f"Cutout offset: {offset}")
-        cutout_rp_offset = self._get_regionprops_with_offset(new_cutout, offset)
-        cutout_rp_offset_by_id = {}
-        if cutout_rp_offset is not None:
-            cutout_rp_offset_by_id = {
-                obj.label: obj for obj in cutout_rp_offset
-            }
 
         new_objs = []
         updated_centroid_IDs = set()
@@ -603,13 +634,7 @@ class acdcRegionprops:
                 # edge case: ID changed is outside the cutout
                 new_obj = self._get_single_obj_regionprop(lab, ID)
             else:
-                new_obj = cutout_rp_offset_by_id.get(ID, None)
-                if new_obj is None:
-                    raise ValueError(
-                        f'Could not get regionprops for object with ID {ID} in '
-                        f'cutout. This should not happen, if the bbox is not '
-                        f'touching the border.'
-                    )
+                new_obj = self._translate_cutout_regionprop(obj, offset)
 
             self._copy_custom_rp_attributes(new_obj, old_rp_by_id.get(ID))
             new_objs.append(new_obj)
@@ -648,11 +673,9 @@ class acdcRegionprops:
             try:
                 int(centroid[0])
             except (TypeError, ValueError):
-                printl(f"Warning: Centroid for ID {ID} is not a valid number. Returning None."
-                       " This can happen if the object is empty, has an invalid shape or "
-                       "if RP is stale"
-                )
-                raise
+                print(f"Warning: Centroid for ID {ID} is not a valid coordinate: {centroid}. "
+                      f"Object size: {obj.bbox}. Returning None.")
+                return None
             self._centroid_mapper[ID] = centroid
             self._centroid_IDs_exact.add(ID)
             return centroid

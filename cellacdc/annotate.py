@@ -703,8 +703,8 @@ class TextAnnotations:
 
         self.item.draw()
     
-    def highlightObject(self, obj):
-        self.item.highlightObject(obj)
+    def highlightObject(self, obj, rp=None, getObjCentroidFunc=None):
+        self.item.highlightObject(obj, rp=None, getObjCentroidFunc=None)
     
     def removeHighlightObject(self, obj):
         self.item.removeHighlightObject(obj)
