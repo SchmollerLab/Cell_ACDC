@@ -15776,6 +15776,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 self.update_rp(assignments=assignments) # rp now stale as we return img
                 posData.editID_info = []
+        else:
+            self.update_rp(assignments=assignments)
         
         # filter self assignments
         assignments = {k: v for k, v in assignments.items() if k != v}
@@ -20611,14 +20613,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         lab = posData.lab
         
         # make rp remporarliy not stale anymore
-        rp.update_regionprops_via_assignments(assignments) 
+        rp.update_regionprops_via_assignments(assignments, lab) 
         tracked_lab, assignments_new = self.trackFrame(
             nextLab, nextRp, lab, rp, rp.IDs,
             assign_unique_new_IDs=False, return_assignments=True,
             specific_IDs=[newID], 
         )
         # restore rp
-        posData.rp.update_regionprops_via_assignments(reverse_assignments)
+        posData.rp.update_regionprops_via_assignments(reverse_assignments, lab)
         
         # clear self assignments
         assignments_new = {
@@ -22470,7 +22472,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     posData.segm_data[i][self.z_lab()] = lab
                     rp.update_regionprops(lab)
                 else:
-                    rp.update_regionprops_via_assignments(assignments)
+                    rp.update_regionprops_via_assignments(assignments, lab)
         
         # Back to current frame
         posData.frame_i = self.current_frame_i
@@ -23183,7 +23185,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if assignments is not None:
             # {old_ID: new_ID, ...}
-            posData.rp.update_regionprops_via_assignments(assignments)
+            posData.rp.update_regionprops_via_assignments(assignments, posData.lab)
         elif deletionIDs is not None:
             # (delID1, delID2, ...)
             posData.rp.update_regionprops_via_deletions(deletionIDs)

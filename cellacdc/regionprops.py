@@ -445,7 +445,7 @@ class acdcRegionprops:
             slice(int(bbox[dim]), int(bbox[dim+ndim])) for dim in range(ndim)
         )
 
-    def _translate_cutout_regionprop(self, obj, offset):
+    def _translate_cutout_regionprop(self, obj, offset, lab):
         offset_arr = np.asarray(offset)
         centroid = obj.centroid
         translated_slice = tuple(
@@ -464,19 +464,31 @@ class acdcRegionprops:
             for dim, coord in enumerate(centroid)
         )
 
-        obj._offset = offset_arr.copy()
+        obj._label_image = lab
+        obj._slice = translated_slice
+        obj.slice = translated_slice
+        obj._offset = np.zeros_like(offset_arr)
         obj._cache['slice'] = translated_slice
         obj._cache['bbox'] = translated_bbox
         obj._cache['centroid'] = translated_centroid
         return obj
 
-    def _get_single_obj_regionprop(self, lab, ID):
-        mask = lab == ID
+    def _get_separate_obj_regionprops(self, lab, IDs):
+        IDs = tuple(int(ID) for ID in IDs)
+        if not IDs:
+            return {}
+
+        mask = np.isin(lab, IDs)
         if not np.any(mask):
-            return None
-        obj = _acdc_regionprops_factory(mask.astype(np.uint8))[0]
-        obj.label = ID
-        return obj
+            return {}
+
+        isolated_lab = np.zeros_like(lab)
+        isolated_lab[mask] = lab[mask]
+        return {
+            obj.label: obj
+            for obj in _acdc_regionprops_factory(isolated_lab)
+            if obj.label in IDs
+        }
 
     def _is_bbox_touching_cutout_border(self, bbox, shape):
         ndim = len(shape)
@@ -501,9 +513,13 @@ class acdcRegionprops:
             obj.label for obj in self._rp
             if self._obj_intersects_bbox(obj, cutout_bbox)
         }
+
+    def _set_label_image(self, lab, assignments):
+        self.lab = lab
+        # check that this is enough, it might be. I think all the local slices should be views and not copies...
         
     def update_regionprops_via_assignments(
-            self, assignments:dict[int, int]
+            self, assignments:dict[int, int], lab
     ):
         """If the lab is completely the same, but only ID changes/swaps have been made
 
@@ -512,6 +528,10 @@ class acdcRegionprops:
         assignments : dict[int, int]
             key: old ID,
             value: new ID
+        lab : np.ndarray, optional
+            Updated label image. When provided, regionprops objects are rebound
+            to this image so properties such as ``image`` stay consistent after
+            the ID remap.
         """
         active_assignments = {
             int(old_ID): int(new_ID)
@@ -520,6 +540,12 @@ class acdcRegionprops:
         }
         if not active_assignments:
             return
+        
+        self.lab = lab
+        # if not active_assignments:
+        #     if lab is not None:
+        #         self._set_label_image(lab)
+        #     return
 
         # remapped_IDs = set()
         # for obj in self._rp:
@@ -624,17 +650,27 @@ class acdcRegionprops:
         offset = tuple(s.start for s in cutout_slices)
         printl(f"Cutout offset: {offset}")
 
+        border_touching_IDs = {
+            obj.label
+            for obj in rp_cutout_new
+            if obj.label in IDs_to_add
+            and self._is_bbox_touching_cutout_border(obj.bbox, new_cutout.shape)
+        }
+        separate_objs = self._get_separate_obj_regionprops(lab, border_touching_IDs)
+
         new_objs = []
         updated_centroid_IDs = set()
         for obj in rp_cutout_new:
             ID = obj.label
             if ID not in IDs_to_add:
                 continue
-            if self._is_bbox_touching_cutout_border(obj.bbox, new_cutout.shape):
+            if ID in border_touching_IDs:
                 # edge case: ID changed is outside the cutout
-                new_obj = self._get_single_obj_regionprop(lab, ID)
+                new_obj = separate_objs.get(ID)
+                if new_obj is None:
+                    continue
             else:
-                new_obj = self._translate_cutout_regionprop(obj, offset)
+                new_obj = self._translate_cutout_regionprop(obj, offset, lab)
 
             self._copy_custom_rp_attributes(new_obj, old_rp_by_id.get(ID))
             new_objs.append(new_obj)
