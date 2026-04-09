@@ -178,7 +178,7 @@ class FindNextNewIdWorker(QObject):
         for frame_i, data_dict in enumerate(self.posData.allData_li):
             lab = data_dict['labels']
             rp = data_dict['regionprops']
-            IDs = data_dict['IDs']
+            IDs = data_dict['regionprops'].IDs
             if lab is None:
                 lab = self.posData.segm_data[frame_i]
                 rp = skimage.measure.regionprops(lab)
@@ -365,7 +365,7 @@ class SegForLostIDsWorker(QObject):
 
         curr_img = self.guiWin.getDisplayedImg1()
         prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
-        prev_IDs = set(posData.allData_li[frame_i-1]['IDs'])
+        prev_IDs = posData.allData_li[frame_i-1]['regionprops'].IDs_set
 
         # should probably not paly so much with posData.lab, instead handle stuff myself
         self.signals.initProgressBar.emit(2 * args_new['max_iterations'])
@@ -5185,7 +5185,7 @@ class CcaIntegrityCheckerWorker(QObject):
                 # There are no annotations at frame_i --> stop
                 break
             
-            IDs = data_dict['IDs']
+            IDs = data_dict['regionprops'].IDs
             checker = core.CcaIntegrityChecker(cca_df, lab, IDs)
             
             for checkpoint in checkpoints:
@@ -6155,7 +6155,7 @@ class saveDataWorker(QObject):
             last_cca_frame_i=self.mainWin.save_cca_until_frame_i
         )
     
-    def saveSegmData(self, posData, end_i, saved_segm_data):
+    def saveSegmData(self, posData: load.loadData, end_i, saved_segm_data):
         self.progress.emit(f'Saving segmentation data for {posData.relPath}...')
         for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
             if self.saveWin.aborted:
@@ -6181,6 +6181,14 @@ class saveDataWorker(QObject):
         io.savez_compressed(
             posData.segm_npz_path, np.squeeze(saved_segm_data)
         )
+        
+        # save information about the segmention
+        posData.updateSegmMetadata(all=True)
+        posData.saveSegmMetadataIni()
+        
+        # save rp info about segm
+        self.progress.emit(f'Saving additional data for {posData.relPath}...')
+        posData.saveCentroidsIDs()
         posData.segm_data = saved_segm_data
         # Allow single 2D/3D image
         if posData.SizeT == 1:
