@@ -39,6 +39,7 @@ FUNCTIONS_TO_ADD = [
             workflow_dialogs.WorkflowInputSegmFunctions(),
             workflow_dialogs.WorkflowSetMeasurementsFunctions(),
             workflow_dialogs.SegmentFunctions(),
+            workflow_dialogs.TrackingFunctions(),
             ]
 class _WorkflowGuiLogEmitter(QObject):
     sigLogMessage = Signal(str)
@@ -173,12 +174,18 @@ class _ConnectionLine(QGraphicsLineItem):
         type_name = workflow_type_name(type_info)
         size_z = getattr(type_info, 'SizeZ', None)
         size_t = getattr(type_info, 'SizeT', None)
+        size_y = getattr(type_info, 'SizeY', None)
+        size_x = getattr(type_info, 'SizeX', None)
 
         details = []
         if size_z is not None:
             details.append(f'Z={size_z}')
         if size_t is not None:
             details.append(f'T={size_t}')
+        if size_y is not None:
+            details.append(f'Y={size_y}')
+        if size_x is not None:
+            details.append(f'X={size_x}')
         if details:
             return f"{type_name} ({', '.join(details)})"
         return type_name
@@ -465,11 +472,11 @@ class _InputOutputCircle(QLabel):
                 rad1 = math.radians(angle)
                 rad2 = math.radians(next_angle)
                 
-                # Calculate start and end points
-                x1 = center.x() + radius * math.cos(rad1)
-                y1 = center.y() + radius * math.sin(rad1)
-                x2 = center.x() + radius * math.cos(rad2)
-                y2 = center.y() + radius * math.sin(rad2)
+                # # Calculate start and end points
+                # x1 = center.x() + radius * math.cos(rad1)
+                # y1 = center.y() + radius * math.sin(rad1)
+                # x2 = center.x() + radius * math.cos(rad2)
+                # y2 = center.y() + radius * math.sin(rad2)
                 
                 # Alternate colors
                 color = color1 if i % 2 == 0 else color2
@@ -791,21 +798,30 @@ class _WorkflowCardZoneWidget(QWidget):
         return self._normalizeTypeInfo(first_input)
 
     def _inheritDimensionsFromFirstInput(self, type_value):
-        """Propagate SizeZ/SizeT from first input unless explicitly provided."""
+        """Propagate dimension metadata from first input unless explicitly provided."""
         normalized = self._normalizeTypeInfo(type_value)
         first_input_type = self._firstConnectedInputType()
         if normalized is None or first_input_type is None:
             return normalized
 
-        if not hasattr(normalized, 'SizeZ') or not hasattr(normalized, 'SizeT'):
+        required_attrs = ('SizeZ', 'SizeT', 'SizeY', 'SizeX')
+        if any(not hasattr(normalized, attr) for attr in required_attrs):
             return normalized
-        if not hasattr(first_input_type, 'SizeZ') or not hasattr(first_input_type, 'SizeT'):
+        if any(not hasattr(first_input_type, attr) for attr in required_attrs):
             return normalized
 
         inherited_size_z = normalized.SizeZ if normalized.SizeZ is not None else first_input_type.SizeZ
         inherited_size_t = normalized.SizeT if normalized.SizeT is not None else first_input_type.SizeT
+        inherited_size_y = normalized.SizeY if normalized.SizeY is not None else first_input_type.SizeY
+        inherited_size_x = normalized.SizeX if normalized.SizeX is not None else first_input_type.SizeX
         type_name = workflow_type_name(normalized)
-        return make_workflow_data_class(type_name, SizeZ=inherited_size_z, SizeT=inherited_size_t)
+        return make_workflow_data_class(
+            type_name,
+            SizeZ=inherited_size_z,
+            SizeT=inherited_size_t,
+            SizeY=inherited_size_y,
+            SizeX=inherited_size_x,
+        )
 
     def _verifyAcceptedInputTypes(self, input_types_accepted):
         """Verify that accepted input constraints are valid and dimension-compatible."""
@@ -1436,12 +1452,20 @@ class WorkflowZone(QGraphicsView):
         # Accepted constraints with explicit dimensions must be respected.
         accepted_size_z = getattr(input_type_accepted, 'SizeZ', None)
         accepted_size_t = getattr(input_type_accepted, 'SizeT', None)
+        accepted_size_y = getattr(input_type_accepted, 'SizeY', None)
+        accepted_size_x = getattr(input_type_accepted, 'SizeX', None)
         output_size_z = getattr(output_type, 'SizeZ', None)
         output_size_t = getattr(output_type, 'SizeT', None)
+        output_size_y = getattr(output_type, 'SizeY', None)
+        output_size_x = getattr(output_type, 'SizeX', None)
 
         if accepted_size_z is not None and output_size_z is not None and accepted_size_z != output_size_z:
             return False
         if accepted_size_t is not None and output_size_t is not None and accepted_size_t != output_size_t:
+            return False
+        if accepted_size_y is not None and output_size_y is not None and accepted_size_y != output_size_y:
+            return False
+        if accepted_size_x is not None and output_size_x is not None and accepted_size_x != output_size_x:
             return False
 
         return True
@@ -2131,7 +2155,7 @@ class WorkflowGui(QMainWindow):
         self.saveAction.triggered.connect(self._onSaveWorkflowTriggered)
         
         self.saveNewAction = QAction(
-            QIcon(":file-new.svg"), "Save Workflow &As...", self
+            QIcon(":file_new_save.svg"), "Save Workflow &As...", self
         )
         self.saveNewAction.setShortcut('Ctrl+Shift+S')
         self.saveNewAction.triggered.connect(self._onSaveWorkflowAsTriggered)

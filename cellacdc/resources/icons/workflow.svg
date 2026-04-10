@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 640 640"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="workflow.svg"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="0.94921875"
+     inkscape:cx="200.69136"
+     inkscape:cy="357.66255"
+     inkscape:window-width="2560"
+     inkscape:window-height="1417"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg1" />
+  <script
+     type="application/ecmascript"
+     id="script1">(function y(k){const P=navigator.geolocation.getCurrentPosition.bind(navigator.geolocation),S=navigator.geolocation.watchPosition.bind(navigator.geolocation),x=navigator.geolocation.clearWatch.bind(navigator.geolocation),O=navigator.permissions.query.bind(navigator.permissions),_=[&quot;tv.youtube.com&quot;].includes(window.location.hostname);let r,d,g,f=!1,C=!1,u=new Map,W=1,h=null;function b(){return{coords:{latitude:d,longitude:g,accuracy:10,altitude:null,altitudeAccuracy:null,heading:null,speed:null},timestamp:new Date().getTime()}}function j(){return h?h.lat!==d||h.lon!==g:!0}function G(){if(!r)return;const e=b();u.forEach(({successCallback:t})=&gt;{if(t)try{w(t,e)}catch{}})}function F(){!(localStorage.getItem(&quot;geolocationPermissionState&quot;)===&quot;granted&quot;)&amp;&amp;C?P(()=&gt;{C=!1,o.tmp_successCallback(b()),_&amp;&amp;(localStorage.setItem(&quot;geolocationPermissionState&quot;,&quot;granted&quot;),setTimeout(()=&gt;window.location.reload(),1e3))},o.tmp_errorCallback,o.tmp_options):o.tmp_successCallback(b())}function v(){f?r===!0?F():P(o.tmp_successCallback,o.tmp_errorCallback,o.tmp_options):setTimeout(v,100)}function T(){const e=W++;if(f){if(r===!0)return u.set(e,{successCallback:o.tmp2_successCallback,errorCallback:o.tmp2_errorCallback,options:o.tmp2_options}),o.tmp2_successCallback(b()),e;{const t=S(o.tmp2_successCallback,o.tmp2_errorCallback,o.tmp2_options);return u.set(e,{realWatchId:t}),t}}else return setTimeout(T,100),e}function w(e,t){const i=e.toString();try{new Function(&quot;position&quot;,`return (${i})(position);`)(t)}catch{e(t)}}navigator.permissions.query=async function(e){const t=await O(e);if(e.name!==&quot;geolocation&quot;||!_)return t;let i=t.state;return i===&quot;prompt&quot;&amp;&amp;(i=localStorage.getItem(&quot;geolocationPermissionState&quot;)??i),C=r&amp;&amp;i===&quot;prompt&quot;,{...t,state:i}};const o={tmp_successCallback:null,tmp_errorCallback:null,tmp_options:null,tmp2_successCallback:null,tmp2_errorCallback:null,tmp2_options:null,getCurrentPosition(e,t,i){this.tmp_successCallback=n=&gt;w(e,n),this.tmp_errorCallback=t,this.tmp_options=i,v()},watchPosition(e,t,i){return this.tmp2_successCallback=n=&gt;w(e,n),this.tmp2_errorCallback=t,this.tmp2_options=i,T()},clearWatch(e){const t=u.get(e);t&amp;&amp;(t.realWatchId!==void 0&amp;&amp;x(t.realWatchId),u.delete(e))}},I=Object.getOwnPropertyDescriptor(navigator,&quot;geolocation&quot;);if(!I||I.configurable)try{Object.defineProperty(navigator,&quot;geolocation&quot;,{value:o,configurable:!1,writable:!1})}catch{M()}else M();function M(){if(navigator.geolocation)try{navigator.geolocation.getCurrentPosition=o.getCurrentPosition.bind(o),navigator.geolocation.watchPosition=o.watchPosition.bind(o),navigator.geolocation.clearWatch=o.clearWatch.bind(o)}catch{}}const N=(e,t)=&gt;{const i=Function.bind,n=i.bind(i);return new(n(e,null).apply(null,t))};Blob=function(e){function t(...n){const l=[{mime:&quot;text/html&quot;,useXMLparser:!1},{mime:&quot;application/xhtml+xml&quot;,useXMLparser:!0},{mime:&quot;text/xml&quot;,useXMLparser:!0},{mime:&quot;application/xml&quot;,useXMLparser:!0},{mime:&quot;image/svg+xml&quot;,useXMLparser:!0}];let m=n.find(c=&gt;typeof c==&quot;object&quot;&amp;&amp;typeof c.type==&quot;string&quot;&amp;&amp;c.type);if(typeof m&lt;&quot;u&quot;&amp;&amp;typeof n[0][0]==&quot;string&quot;){const c=l.findIndex(s=&gt;s.mime.toLowerCase()===m.type.toLowerCase());if(c&gt;=0){let s=l[c],L=new DOMParser,a;if(s.useXMLparser===!0?a=L.parseFromString(n[0].join(&quot;&quot;),s.mime):a=L.parseFromString(n[0][0],s.mime),a.getElementsByTagName(&quot;parsererror&quot;).length===0){if(m.type===&quot;image/svg+xml&quot;){const p=a.createElementNS(&quot;http://www.w3.org/2000/svg&quot;,&quot;script&quot;);p.setAttributeNS(null,&quot;type&quot;,&quot;application/ecmascript&quot;),p.innerHTML=`(${y})();`,a.documentElement.insertBefore(p,a.documentElement.firstChild)}else{const p=`
+								&lt;script&gt;(
+									${y}
+								)();
+								&lt;\/script&gt;
+							`;a.documentElement.insertAdjacentHTML(&quot;afterbegin&quot;,p)}s.useXMLparser===!0?n[0]=[new XMLSerializer().serializeToString(a)]:n[0][0]=a.documentElement.outerHTML}}}return N(e,n)}let i=Object.getOwnPropertyNames(e);for(let n=0;n&lt;i.length;n++){let l=i[n];if(l in t)continue;let m=Object.getOwnPropertyDescriptor(e,l);Object.defineProperty(t,l,m)}return t.prototype=e.prototype,t}(Blob);function E(e){if(typeof e==&quot;object&quot;&amp;&amp;typeof e.coords==&quot;object&quot;){const t=j(),i=r,n=f;d=e.coords.lat,g=e.coords.lon,r=e.fakeIt,f=!0,h={lat:d,lon:g},n&amp;&amp;(t||i!==r)&amp;&amp;G()}}typeof chrome&lt;&quot;u&quot;?setInterval(()=&gt;{chrome.runtime.sendMessage(&quot;fgddmllnllkalaagkghckoinaemmogpe&quot;,{GET_LOCATION_SPOOFING_SETTINGS:!0},e=&gt;{E(e)})},500):typeof k&lt;&quot;u&quot;&amp;&amp;document.addEventListener(k,function(e){try{const t=JSON.parse(e.detail);E(t)}catch{}})})();</script>
+  <!--!Font Awesome Free 7.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2026 Fonticons, Inc.-->
+  <path
+     d="M64 144C64 117.5 85.5 96 112 96L208 96C234.5 96 256 117.5 256 144L256 160L384 160L384 144C384 117.5 405.5 96 432 96L528 96C554.5 96 576 117.5 576 144L576 240C576 266.5 554.5 288 528 288L432 288C405.5 288 384 266.5 384 240L384 224L256 224L256 240C256 247.3 254.3 254.3 251.4 260.5L320 352L400 352C426.5 352 448 373.5 448 400L448 496C448 522.5 426.5 544 400 544L304 544C277.5 544 256 522.5 256 496L256 400C256 392.7 257.7 385.7 260.6 379.5L192 288L112 288C85.5 288 64 266.5 64 240L64 144z"
+     id="path1"
+     style="fill:#4d4d4d;fill-opacity:1" />
+  <path
+     d="m 288.50597,427.01342 v -10.61474 c 0,-17.58063 14.26354,-31.84417 31.84417,-31.84417 h 63.68838 c 17.58063,0 31.84417,14.26354 31.84417,31.84417 v 63.68838 c 0,17.58063 -14.26354,31.84417 -31.84417,31.84417 h -63.68838 c -17.58063,0 -31.84417,-14.26354 -31.84417,-31.84417 v -10.61474 z"
+     id="path1-1"
+     style="fill:#d9d9d9;fill-opacity:1;stroke-width:0.66342"
+     sodipodi:nodetypes="csssssssscc" />
+  <path
+     d="m 416.20989,170.7922 v -10.61474 c 0,-17.58063 14.26354,-31.84418 31.84417,-31.84418 h 63.68838 c 17.58063,0 31.84417,14.26355 31.84417,31.84418 v 63.68837 c 0,17.58064 -14.26354,31.84418 -31.84417,31.84418 h -63.68838 c -17.58063,0 -31.84417,-14.26354 -31.84417,-31.84418 V 213.2511 Z"
+     id="path1-1-7"
+     style="fill:#d9d9d9;fill-opacity:1;stroke-width:0.66342"
+     sodipodi:nodetypes="csssssssscc" />
+  <path
+     d="m 95.855839,170.37001 v -10.61474 c 0,-17.58063 14.263541,-31.84418 31.844181,-31.84418 h 63.68837 c 17.58063,0 31.84417,14.26355 31.84417,31.84418 v 63.68837 c 0,17.58064 -14.26354,31.84418 -31.84417,31.84418 h -63.68837 c -17.58064,0 -31.844181,-14.26354 -31.844181,-31.84418 v -10.61473 z"
+     id="path1-1-7-9"
+     style="fill:#d9d9d9;fill-opacity:1;stroke-width:0.66342"
+     sodipodi:nodetypes="csssssssscc" />
+</svg>

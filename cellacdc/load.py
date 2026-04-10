@@ -1278,6 +1278,7 @@ class loadData:
         # check if imgPath is to the Images folder...
         if os.path.basename(imgPath) == 'Images' and os.path.isdir(imgPath):
             self.images_path = imgPath
+            self.imgPath = None # If imgPath is to the Images folder, we set it to None to avoid confusion with channel file paths
         else:
             self.images_path = os.path.dirname(imgPath)
         self.images_folder_files = os.listdir(self.images_path)

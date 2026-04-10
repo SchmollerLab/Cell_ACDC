@@ -4,6 +4,8 @@
     <file alias="icon.ico">resources/icon_v2.ico</file>
     <file alias="logo.svg">resources/logo_v2.svg</file>
     <file alias="logo.png">resources/logo_v2.png</file>
+    <file alias="workflow.svg">resources/icons/workflow.svg</file>
+    <file alias="file_new_save.svg">resources/icons/file_new_save.svg</file>
     <file alias="delNewObj.svg">resources/icons/delNewObj.svg</file>
     <file alias="segForLostIDs.svg">resources/icons/segForLostIDs.svg</file>
     <file alias="AICS_logo.svg">resources/icons/AICS_logo.svg</file>

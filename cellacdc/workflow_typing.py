@@ -4,25 +4,35 @@ from . import printl
 class WfImageDC:
     SizeZ: int = None
     SizeT: int = None
+    SizeY: int = None
+    SizeX: int = None
     color: str = 'blue'
 
     def __str__(self):
         return f'img'
     def info(self):
-        return f'img, SizeZ={self.SizeZ}, SizeT={self.SizeT}'
+        return (
+            f'img, SizeZ={self.SizeZ}, SizeT={self.SizeT}, '
+            f'SizeY={self.SizeY}, SizeX={self.SizeX}'
+        )
 
 
 @dataclass(frozen=True)
 class WfSegmDC:
     SizeZ: int = None
     SizeT: int = None
+    SizeY: int = None
+    SizeX: int = None
     color: str = 'red'
 
     def __str__(self):
         return f'segm'
     
     def info(self):
-        return f'segm, SizeZ={self.SizeZ}, SizeT={self.SizeT}'
+        return (
+            f'segm, SizeZ={self.SizeZ}, SizeT={self.SizeT}, '
+            f'SizeY={self.SizeY}, SizeX={self.SizeX}'
+        )
 
 
 @dataclass(frozen=True)
@@ -48,14 +58,21 @@ def workflow_type_name(type_value):
     return None
 
 
-def make_workflow_data_class(type_name, SizeZ=None, SizeT=None, setMetrics=None):
+def make_workflow_data_class(
+        type_name, SizeZ=None, SizeT=None, SizeY=None, SizeX=None,
+        setMetrics=None
+    ):
     """Create a workflow data class instance from canonical type name."""
     if is_workflow_data_class(type_name):
         type_name = workflow_type_name(type_name)
     if type_name == 'img':
-        return WfImageDC(SizeZ=SizeZ, SizeT=SizeT)
+        return WfImageDC(
+            SizeZ=SizeZ, SizeT=SizeT, SizeY=SizeY, SizeX=SizeX
+        )
     if type_name == 'segm':
-        return WfSegmDC(SizeZ=SizeZ, SizeT=SizeT)
+        return WfSegmDC(
+            SizeZ=SizeZ, SizeT=SizeT, SizeY=SizeY, SizeX=SizeX
+        )
     if type_name == 'metrics':
         return WfMetricsDC(setMetrics=setMetrics)
     if type_name == 'any':

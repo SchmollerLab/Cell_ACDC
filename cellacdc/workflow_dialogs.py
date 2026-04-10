@@ -245,6 +245,8 @@ class WorkflowBaseFunctions():
                         curr_accepted_inputs[idx],
                         size_t=first_input.SizeT,
                         size_z=first_input.SizeZ,
+                        size_y=first_input.SizeY,
+                        size_x=first_input.SizeX,
                     )
                     for idx in curr_accepted_inputs.keys()
                 }
@@ -257,6 +259,8 @@ class WorkflowBaseFunctions():
                     idx: self._setInputMetadataUniform(
                         curr_accepted_inputs[idx],
                         size_t=first_input.SizeT,
+                        size_y=first_input.SizeY,
+                        size_x=first_input.SizeX,
                     )
                     for idx in curr_accepted_inputs.keys()
                 }
@@ -272,6 +276,8 @@ class WorkflowBaseFunctions():
                     curr_accepted_inputs[idx] = self._setInputMetadataUniform(
                         curr_accepted_inputs[idx],
                         size_z=curr_accepted_inputs[idx].SizeZ,
+                        size_y=first_input.SizeY,
+                        size_x=first_input.SizeX,
                     )
                     
         # check for changes compared to original accepted inputs.
@@ -282,7 +288,8 @@ class WorkflowBaseFunctions():
                 break
             
     def _setInputMetadataUniform(self, input_type_ls,
-                                    size_t=None, size_z=None):
+                                    size_t=None, size_z=None,
+                                    size_y=None, size_x=None):
         """Set input metadata to be uniform for all inputs of a specific slot (input_ls).
         """
         
@@ -293,13 +300,13 @@ class WorkflowBaseFunctions():
         for input_type in input_type_ls:
             input_type_name = workflow_type_name(input_type)
             new_input_type_ls.append(make_workflow_data_class(
-                input_type_name, SizeT=size_t, SizeZ=size_z
+                input_type_name,
+                SizeT=size_t, SizeZ=size_z,
+                SizeY=size_y, SizeX=size_x,
             ))
                 
         return new_input_type_ls
         
-        
-
 class WorkflowCombineChannelsFunctions(WorkflowBaseFunctions):
     """Workflow card functions for combining and manipulating image channels.
     
@@ -567,7 +574,6 @@ class WorkflowSetMeasurementsFunctions(WorkflowBaseFunctions):
 
     def selectedMetricsChanged(self, dialog):
         self.setOutputs({0: WfMetricsDC(setMetrics=dialog.selectedMetrics())})
-
 class SegmentFunctions(WorkflowBaseFunctions):
     """Workflow card functions for segmenting images.
     
@@ -654,12 +660,6 @@ class SegmentFunctions(WorkflowBaseFunctions):
         except Exception:
             help_url = None
 
-        segm_files = prompts.load.get_segm_files(posData.images_path)
-        existing_segm_endnames = prompts.load.get_endnames(
-            posData.basename, segm_files
-        )
-
-        printl('setting up dialog')
         dialog = SegmModelParamsDialogWorkflow(
             init_params,
             segment_params,
@@ -667,7 +667,7 @@ class SegmentFunctions(WorkflowBaseFunctions):
             parent=workflowGui,
             url=help_url,
             initLastParams=True,
-            posData=posData, # for sam, need to double check if 3d, timelapse or additional img input or 
+            # posData=posData, # for sam, need to double check if 3d, timelapse or additional img input or 
             # segmFileEndnames=existing_segm_endnames,
             # df_metadata=posData.metadata_df,
             add_additional_segm_params=True,
@@ -676,7 +676,7 @@ class SegmentFunctions(WorkflowBaseFunctions):
             hideOnClosing=True,
             useInput2AsSecondChannelToggle=True,
         )
-        dialog.setChannelNames(posData.chNames)
+
         dialog.logger = logger
         return dialog
     
@@ -692,6 +692,8 @@ class SegmentFunctions(WorkflowBaseFunctions):
         self.setAcceptedInputs({0: WfImageDC()})
         self.setOutputs({0: WfSegmDC()})
         dialog.sigOkClicked.connect(self.updatePreview)
+        if hasattr(dialog, 'sigInputsChanged'):
+            dialog.sigInputsChanged.connect(self.setAcceptedInputs)
 
     def getPreInitWorkflowRes(self, dialog=None):
         if dialog is None:
@@ -699,9 +701,131 @@ class SegmentFunctions(WorkflowBaseFunctions):
         return getattr(dialog, 'model_name', None)
 
 
+class TrackingFunctions(WorkflowBaseFunctions):
+    """Workflow card functions for tracking segmentation masks."""
+
+    def __init__(self):
+        super().__init__()
+        self.card_key = 'track'
+        self.title = 'Track segmentation'
+
+    def _getSelectableTrackers(self):
+        trackers = myutils.get_list_of_trackers()
+        if trackers:
+            return trackers
+        return ['No compatible trackers available']
+
+    def preInitWorkflowDialog(self, workflowGui=None):
+        trackers = myutils.get_list_of_trackers()
+        if not trackers:
+            return None
+
+        dialog = apps.QtSelectItems(
+            'Select tracker',
+            trackers,
+            'Select one of the following trackers',
+            parent=workflowGui,
+            showMultipleSelection=False
+        )
+        
+        dialog.exec_()
+        if dialog.cancel or not dialog.selectedItemsText:
+            return None
+        return dialog.selectedItemsText[0]
+
+    def dryrunDialog(self, parent=None, workflowGui=None, posData=None):
+        return apps.QtSelectItems(
+            'Select tracker',
+            self._getSelectableTrackers(),
+            'Select one of the following trackers',
+            parent=workflowGui,
+        )
+
+    def setupDialog(
+            self, workflowGui=None, posData=None, logger=print,
+            preInitWorkflow_res=None
+        ):
+        selected_tracker = preInitWorkflow_res
+        if selected_tracker is None:
+            trackers = myutils.get_list_of_trackers()
+            if not trackers:
+                raise ValueError('No workflow-compatible trackers available.')
+            selected_tracker = trackers[0]
+
+        if selected_tracker == 'BayesianTracker':
+            dialog = BayesianTrackerDialogWorkflow(
+                parent=workflowGui, posData=posData, logger=logger
+            )
+            dialog.logger = logger
+            return dialog
+
+        if selected_tracker == 'CellACDC':
+            dialog = CellACDCTrackerDialogWorkflow(
+                parent=workflowGui, logger=logger
+            )
+            dialog.logger = logger
+            return dialog
+
+        if selected_tracker == 'delta':
+            dialog = DeltaTrackerDialogWorkflow(
+                parent=workflowGui, posData=posData, logger=logger
+            )
+            dialog.logger = logger
+            return dialog
+
+        tracker_module = myutils.import_tracker_module(selected_tracker)
+        init_params, track_params = myutils.getTrackerArgSpec(
+            tracker_module, realTime=False
+        )
+        requires_input_image = myutils.isIntensityImgRequiredForTracker(
+            tracker_module
+        )
+        try:
+            help_url = tracker_module.url_help()
+        except Exception:
+            help_url = None
+
+        try:
+            df_metadata = posData.metadata_df
+        except Exception:
+            df_metadata = None
+
+        dialog = TrackingModelParamsDialogWorkflow(
+            init_params,
+            track_params,
+            selected_tracker,
+            parent=workflowGui,
+            url=help_url,
+            is_tracker=True,
+            initLastParams=True,
+            df_metadata=df_metadata,
+            posData=posData,
+            addPreProcessParams=False,
+            addPostProcessParams=False,
+            hideOnClosing=True,
+            logger=logger,
+            requiresInputImage=requires_input_image,
+        )
+        dialog.logger = logger
+        return dialog
+
+    def initializeDialog(self, dialog, workflowGui=None):
+        inputs = {0: WfSegmDC()}
+        if getattr(dialog, 'requiresInputImage', False):
+            inputs[1] = WfImageDC()
+        self.setAcceptedInputs(inputs)
+        self.setOutputs({0: WfSegmDC()})
+        dialog.sigOkClicked.connect(self.updatePreview)
+
+    def getPreInitWorkflowRes(self, dialog=None):
+        if dialog is None:
+            return None
+        return getattr(dialog, 'model_name', None)
+
 class SegmModelParamsDialogWorkflow(apps.QDialogModelParams):
     sigOkClicked = Signal()
     sigCancelClicked = Signal()
+    sigInputsChanged = Signal(dict)
 
     def __init__(self, *args, logger=print, **kwargs):
         kwargs.setdefault('hideOnClosing', True)
@@ -830,7 +954,262 @@ class SegmModelParamsDialogWorkflow(apps.QDialogModelParams):
 
         self.ok_cb()
         self.hide()
+        
+    def passInput2AsSecondChannelToggled_cb(self, checked):
+        inputs = {0: WfImageDC()}
+        if checked:
+            inputs[1] = WfImageDC()
 
+        self.sigInputsChanged.emit(inputs)
+
+
+class TrackingModelParamsDialogWorkflow(SegmModelParamsDialogWorkflow):
+    def __init__(self, *args, requiresInputImage=False, **kwargs):
+        self.requiresInputImage = requiresInputImage
+        super().__init__(*args, **kwargs)
+
+
+class _BaseTrackerDialogWorkflow:
+    sigOkClicked = Signal()
+    sigCancelClicked = Signal()
+
+    def _emitCancelledAndHide(self):
+        self.cancel = True
+        self.sigCancelClicked.emit()
+        self.hide()
+
+    def cancel_cb(self, checked=False):
+        self._emitCancelledAndHide()
+
+    def closeEvent(self, event):
+        if getattr(self, 'cancel', True):
+            self.sigCancelClicked.emit()
+        super().closeEvent(event)
+
+    def saveContent(self, path):
+        ext = '.json'
+        if not path.endswith(ext):
+            path += ext
+
+        with open(path, 'w') as f:
+            json.dump(self.getContent(), f, indent=2)
+
+    def loadContent(self, path):
+        ext = '.json'
+        if not path.endswith(ext):
+            path += ext
+
+        self.show()
+        try:
+            with open(path, 'r') as f:
+                content = json.load(f)
+            self.setContent(content)
+        except Exception as e:
+            self.logger(f'Failed to load content from {path}: {e}')
+            traceback.print_exc()
+            self.hide()
+            return
+
+        self.ok_cb()
+        self.hide()
+
+
+class BayesianTrackerDialogWorkflow(_BaseTrackerDialogWorkflow, apps.BayesianTrackerParamsWin):
+    sigOkClicked = Signal()
+    sigCancelClicked = Signal()
+
+    def __init__(self, parent=None, posData=None, logger=print):
+        self.logger = logger
+        self.requiresInputImage = True
+        self.optional_inputs_n = {1: True}
+
+        if posData is not None and hasattr(posData, 'img_data_shape') and posData.img_data_shape is not None:
+            Y, X = posData.img_data_shape[-2:]
+            if posData.isSegm3D:
+                segm_shape = (posData.SizeZ, Y, X)
+            else:
+                segm_shape = (1, Y, X)
+        else:
+            segm_shape = (1, 512, 512)
+
+        self._defaultSegmShape = segm_shape
+        self._lastAutoVolumeText = None
+
+        super().__init__(segm_shape, parent=parent, channels=None)
+        self._lastAutoVolumeText = self.volumeLineEdit.text()
+
+    def _volumeTextFromSegmShape(self, segm_shape):
+        z, y, x = segm_shape
+        volume_text = f'  (0, {x}), (0, {y})  '
+        if z > 1:
+            volume_text = f'{volume_text}, (0, {z})  '
+        return volume_text
+
+    def _segmShapeFromInputs(self):
+        size_z, size_y, size_x = self._defaultSegmShape
+        if hasattr(self, 'curr_input_types'):
+            input_0 = self.curr_input_types.get(0)
+            if input_0 is not None:
+                input_size_z = getattr(input_0, 'SizeZ', None)
+                input_size_y = getattr(input_0, 'SizeY', None)
+                input_size_x = getattr(input_0, 'SizeX', None)
+                if input_size_z is not None:
+                    size_z = max(1, int(input_size_z))
+                if input_size_y is not None:
+                    size_y = int(input_size_y)
+                if input_size_x is not None:
+                    size_x = int(input_size_x)
+
+        print((size_z, size_y, size_x))
+        return (size_z, size_y, size_x)
+
+    def _syncVolumeFromInputs(self):
+        segm_shape = self._segmShapeFromInputs()
+        new_auto_volume_text = self._volumeTextFromSegmShape(segm_shape)
+        current_volume_text = self.volumeLineEdit.text()
+        should_update = (
+            not current_volume_text
+            or self._lastAutoVolumeText is None
+            or current_volume_text == self._lastAutoVolumeText
+        )
+        self._defaultSegmShape = segm_shape
+        if should_update:
+            self.volumeLineEdit.setText(new_auto_volume_text)
+        self._lastAutoVolumeText = new_auto_volume_text
+
+    def updatedInputTypes(self):
+        self._syncVolumeFromInputs()
+
+    def ok_cb(self, checked=False):
+        super().ok_cb(checked=checked)
+        if self.cancel or self.isVisible():
+            return
+        self.sigOkClicked.emit()
+
+    def getContent(self):
+        return {
+            'model_path': self.modelPathLineEdit.text(),
+            'features': list(self.features),
+            'verbose': self.verboseToggle.isChecked(),
+            'optimize': self.optimizeToggle.isChecked(),
+            'max_search_radius': self.maxSearchRadiusSpinbox.value(),
+            'volume': self.volumeLineEdit.text(),
+            'step_size': self.stepSizeSpinbox.value(),
+            'update_method': self.updateMethodCombobox.currentText(),
+        }
+
+    def setContent(self, content):
+        content = content or {}
+        self.modelPathLineEdit.setText(content.get('model_path', ''))
+        self.features = list(content.get('features', []))
+        self.verboseToggle.setChecked(bool(content.get('verbose', True)))
+        self.optimizeToggle.setChecked(bool(content.get('optimize', True)))
+        self.maxSearchRadiusSpinbox.setValue(
+            int(content.get('max_search_radius', 50))
+        )
+        self.volumeLineEdit.setText(content.get('volume', self.volumeLineEdit.text()))
+        self.stepSizeSpinbox.setValue(int(content.get('step_size', 100)))
+        self.updateMethodCombobox.setCurrentText(
+            content.get('update_method', 'EXACT')
+        )
+
+
+class CellACDCTrackerDialogWorkflow(_BaseTrackerDialogWorkflow, apps.CellACDCTrackerParamsWin):
+    sigOkClicked = Signal()
+    sigCancelClicked = Signal()
+
+    def __init__(self, parent=None, logger=print):
+        self.logger = logger
+        self.requiresInputImage = False
+        super().__init__(parent=parent)
+
+    def ok_cb(self, checked=False):
+        super().ok_cb(checked=checked)
+        if self.cancel or self.isVisible():
+            return
+        self.sigOkClicked.emit()
+
+    def getContent(self):
+        return {
+            'IoA_thresh': self.maxOverlapSpinbox.value(),
+        }
+
+    def setContent(self, content):
+        content = content or {}
+        self.maxOverlapSpinbox.setValue(float(content.get('IoA_thresh', 0.4)))
+
+
+class DeltaTrackerDialogWorkflow(_BaseTrackerDialogWorkflow, apps.DeltaTrackerParamsWin):
+    sigOkClicked = Signal()
+    sigCancelClicked = Signal()
+
+    def __init__(self, parent=None, posData=None, logger=print):
+        self.logger = logger
+        self.requiresInputImage = True
+        super().__init__(posData=posData, parent=parent)
+        self._hideOriginalImageSelection()
+
+    def _hideOriginalImageSelection(self):
+        params_layout = self.modelPathLineEdit.parentWidget().layout()
+        for col in range(3):
+            item = params_layout.itemAtPosition(0, col)
+            if item is None:
+                continue
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+
+    def methodChanged(self, method):
+        self.model_type = method
+
+    def ok_cb(self, checked=False):
+        self.cancel = False
+        self.verbose = self.verboseToggle.isChecked()
+        self.legacy = self.legacyToggle.isChecked()
+        self.pickle = self.pickleToggle.isChecked()
+        self.movie = self.movieToggle.isChecked()
+        self.chamber = self.chamberToggle.isChecked()
+        self.model_type = self.updateMethodCombobox.currentText()
+
+        model_path = self.modelPathLineEdit.text().strip()
+        self.model_path = os.path.normpath(model_path) if model_path else ''
+        self.params = {
+            'original_images_path': self.model_path,
+            'verbose': self.verbose,
+            'legacy': self.legacy,
+            'pickle': self.pickle,
+            'movie': self.movie,
+            'model_type': self.model_type,
+            'single mothermachine chamber': self.chamber,
+        }
+
+        self.hide()
+        self.sigOkClicked.emit()
+
+    def getContent(self):
+        return {
+            'model_type': self.updateMethodCombobox.currentText(),
+            'single_mothermachine_chamber': self.chamberToggle.isChecked(),
+            'verbose': self.verboseToggle.isChecked(),
+            'legacy': self.legacyToggle.isChecked(),
+            'pickle': self.pickleToggle.isChecked(),
+            'movie': self.movieToggle.isChecked(),
+        }
+
+    def setContent(self, content):
+        content = content or {}
+        self.updateMethodCombobox.setCurrentText(
+            content.get('model_type', '2D')
+        )
+        self.model_type = self.updateMethodCombobox.currentText()
+        self.chamberToggle.setChecked(
+            bool(content.get('single_mothermachine_chamber', True))
+        )
+        self.verboseToggle.setChecked(bool(content.get('verbose', True)))
+        self.legacyToggle.setChecked(bool(content.get('legacy', False)))
+        self.pickleToggle.setChecked(bool(content.get('pickle', False)))
+        self.movieToggle.setChecked(bool(content.get('movie', False)))
+        
 class ThresholdSegmDialogWorkflow(apps.QDialogAutomaticThresholding):
     sigOkClicked = Signal()
     sigCancelClicked = Signal()
@@ -1444,8 +1823,14 @@ class WorkflowInputDataDialog(QBaseDialog):
         if self.posData is not None:
             new_output_size_t = self.posData.SizeT
             new_output_size_z = self.posData.SizeZ
+            new_output_size_y, new_output_size_x = 512, 512  #TODO placeholder
             if self.type == 'image':
-                out_data_class = WfImageDC(SizeT=new_output_size_t, SizeZ=new_output_size_z)
+                out_data_class = WfImageDC(
+                    SizeT=new_output_size_t,
+                    SizeZ=new_output_size_z,
+                    SizeY=new_output_size_y,
+                    SizeX=new_output_size_x,
+                )
             elif self.type == 'segmentation':
                 # here theoretically we could have a 2D segm on 3D image...
                 segm_info_df = self.posData.segmInfo_df if hasattr(self.posData, 'segmInfo_df') else None
@@ -1458,7 +1843,13 @@ class WorkflowInputDataDialog(QBaseDialog):
                     # log 
                     txt = "segmInfo.csv not found." if segm_info_df is None else f"Selected segmentation '{new_selection}' not found in segmInfo.csv."
                     self.logger(f"[WARNING]: {txt}\nDefaulting to using original SizeZ from posData.")
-                out_data_class = WfSegmDC(SizeT=new_output_size_t, SizeZ=new_output_size_z)
+                printl(new_output_size_t, new_output_size_z, new_output_size_y, new_output_size_x)
+                out_data_class = WfSegmDC(
+                    SizeT=new_output_size_t,
+                    SizeZ=new_output_size_z,
+                    SizeY=new_output_size_y,
+                    SizeX=new_output_size_x,
+                )
             else:
                 raise ValueError(f"Unsupported type '{self.type}' for WorkflowInputDataDialog.")    
             self.sigSetOutputs.emit({0: out_data_class})

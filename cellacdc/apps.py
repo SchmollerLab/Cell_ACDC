@@ -10267,7 +10267,7 @@ class QtSelectItems(QDialog):
     def __init__(
             self, title, items, informativeText,
             CbLabel='Select value:  ', parent=None,
-            showInFileManagerPath=None
+            showInFileManagerPath=None, showMultipleSelection=True
         ):
         self.cancel = True
         self.selectedItemsText = ''
@@ -10309,10 +10309,13 @@ class QtSelectItems(QDialog):
             bottomLayout.addWidget(showInFileManagerButton)
         bottomLayout.addWidget(okButton)
 
-        multiPosButton = QPushButton('Multiple selection')
-        multiPosButton.setCheckable(True)
-        self.multiPosButton = multiPosButton
-        bottomLayout.addWidget(multiPosButton, alignment=Qt.AlignLeft)
+        if showMultipleSelection:
+            multiPosButton = QPushButton('Multiple selection')
+            multiPosButton.setCheckable(True)
+            self.multiPosButton = multiPosButton
+            bottomLayout.addWidget(multiPosButton, alignment=Qt.AlignLeft)
+        else:
+            self.multiPosButton = None
 
         listBox = widgets.listWidget()
         listBox.addItems(items)
@@ -10336,14 +10339,15 @@ class QtSelectItems(QDialog):
         # Connect events
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
-        multiPosButton.toggled.connect(self.toggleMultiSelection)
+        if showMultipleSelection:
+            multiPosButton.toggled.connect(self.toggleMultiSelection)
         if showInFileManagerPath is not None:
             showInFileManagerButton.clicked.connect(self.showInFileManager)
 
         self.setFont(font)
 
     def setSelectedItems(self, selectedItemsText):
-        if self.multiPosButton.isChecked():
+        if self.multiPosButton is not None and self.multiPosButton.isChecked():
             for i in range(self.ListBox.count()):
                 item = self.ListBox.item(i)
                 if item.text() in selectedItemsText:
@@ -10385,7 +10389,7 @@ class QtSelectItems(QDialog):
             self.resize(self.width(), self.singleSelectionHeight)
 
     def getSelectedItems(self):
-        if self.multiPosButton.isChecked():
+        if self.multiPosButton is not None and self.multiPosButton.isChecked():
             selectedItems = self.ListBox.selectedItems()
             selectedItemsText = [item.text() for item in selectedItems]
             selectedItemsText = natsorted(selectedItemsText)
@@ -11774,6 +11778,7 @@ class FunctionParamsDialog(QBaseDialog):
         msg.information(self, f'Info about `{param_name}` parameter', text)
         
 class QDialogModelParams(QDialog):
+    sigSecondChannelToggled = Signal(bool)
     def __init__(
             self, 
             init_params, 
@@ -12520,6 +12525,10 @@ class QDialogModelParams(QDialog):
                 infoText = (
                     'Enable this to pass workflow Input 2 as the model second '
                     'channel.\n\nIf disabled, no second channel is used.'
+                )
+                if hasattr(self, 'passInput2AsSecondChannelToggled_cb'):
+                    self.passInput2AsSecondChannelToggle.toggled.connect(
+                    self.passInput2AsSecondChannelToggled_cb
                 )
             else:
                 self.channelsCombobox = widgets.QCenteredComboBox()

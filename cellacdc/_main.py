@@ -183,12 +183,13 @@ class mainWin(QMainWindow):
         modulesButtonsGroupBoxLayout.addWidget(segmButton)
         
         workflowButton = QPushButton('  3. Launch workflow module...')
-        workflowButton.setIcon(QIcon(':segment.svg'))
-        workflowButton.setIconSize(QSize(iconSize,iconSize))
+        workflowButton.setIcon(QIcon(':workflow.svg'))
+        workflowButton.setIconSize(QSize(iconSize, iconSize))
         workflowButton.setFont(font)
         workflowButton.clicked.connect(self.launchWorkflowGui)
         self.workflowButton = workflowButton
         modulesButtonsGroupBoxLayout.addWidget(workflowButton)
+        workflowButton.setFixedHeight(47)
 
         guiButton = QPushButton('  4. Launch GUI...')
         guiButton.setIcon(QIcon(':logo.svg'))
@@ -2232,6 +2233,8 @@ class mainWin(QMainWindow):
             openModules.extend(self.guiWins)
         if self.spotmaxWins:
             openModules.extend(self.spotmaxWins)
+        if self.workflowWins:
+            openModules.extend(self.workflowWins)
         return openModules
 
 
