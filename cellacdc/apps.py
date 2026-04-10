@@ -748,7 +748,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
 class AddPointsLayerDialog(QBaseDialog):
     sigClosed = Signal()
     sigCriticalReadTable = Signal(str)
-    sigLoadedTable = Signal(object)
+    sigLoadedTable = Signal(object, str)
     sigCheckClickEntryTableEndnameExists = Signal(str, bool)
 
     def __init__(
@@ -1193,7 +1193,7 @@ class AddPointsLayerDialog(QBaseDialog):
             self.zColName.addItems(df.columns)
             self.tColName.addItems(df.columns)
             self.tryAutoFillColNames(df)
-            self.sigLoadedTable.emit(df)
+            self.sigLoadedTable.emit(df, os.path.basename(path))
             self.browseTableButton.confirmAction()
         except Exception as e:
             traceback_format = traceback.format_exc()

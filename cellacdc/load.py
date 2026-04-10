@@ -557,6 +557,12 @@ def _fix_will_divide(acdc_df):
     return acdc_df
 
 def _add_missing_columns(acdc_df):
+    if 'is_cell_excluded' not in acdc_df.columns:
+        acdc_df['is_cell_excluded'] = 0
+    
+    if 'is_cell_dead' not in acdc_df.columns:
+        acdc_df['is_cell_dead'] = 0
+        
     if 'cell_cycle_stage' not in acdc_df.columns:
         return acdc_df
     
