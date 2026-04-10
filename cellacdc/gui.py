@@ -19768,6 +19768,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.copyLostObjButton.action.setVisible(True)
             self.segForLostIDsAction.setVisible(True)
             self.segForLostIDsAction.setDisabled(False)
+            self.delNewObjAction.setVisible(True)
+            self.delNewObjAction.setDisabled(False)
         
         for ch, overlayItems in self.overlayLayersItems.items():
             lutItem = overlayItems[1]
