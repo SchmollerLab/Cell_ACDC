@@ -2399,7 +2399,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Go to the `Settings --> Customise keyboard shortcuts...` menu '
             'on the top menubar\n'
             'to customise the action required to delete '
-            'an object with a click.'
+            'an object with a click.\n\n'
+            'When working with 3D segmentations, to delete only the z-slice mask, hold "Shift" while clicking.'
         )
         secondLevelToolbar.addAction(self.delObjToolAction)
         secondLevelToolbar.setMovable(False)
@@ -4943,6 +4944,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         modifiers = QGuiApplication.keyboardModifiers()
         alt = modifiers == Qt.AltModifier
         shift = modifiers == Qt.ShiftModifier
+        shift_regardless = bool(modifiers & Qt.ShiftModifier)
         isMod = alt
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -5078,7 +5080,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             includeUnvisited = posData.includeUnvisitedInfo['Delete ID']
 
             delID_mask = self.deleteIDmiddleClick(
-                delIDs, applyFutFrames, includeUnvisited
+                delIDs, applyFutFrames, includeUnvisited, shift=shift_regardless
             )
             if delID_mask.ndim == 3:
                 delID_mask = delID_mask[self.z_lab()]
@@ -16906,9 +16908,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if acdc_df is None:
                 self.store_data(autosave=False)
             acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-
+            
             xx, yy = [], []
             for annotID in annotIDs_frame_i:
+                if annotID not in posData.IDs_idxs:
+                    continue
+            
                 obj_idx = posData.IDs_idxs[annotID]
                 obj = posData.rp[obj_idx]
                 acdc_df.at[annotID, state['name']] = 1
@@ -21447,17 +21452,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             return self.data[self.pos_i].rp
 
-    def set_2Dlab(self, lab2D):
+    def set_2Dlab(self, lab2D, lab3D=None):
         posData = self.data[self.pos_i]
+        
+        if lab3D is None:
+            lab3D = posData.lab
+            
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
             if isZslice:
-                posData.lab[self.z_lab()] = lab2D
+                lab3D[self.z_lab()] = lab2D
             else:
-                posData.lab[:] = lab2D
+                lab3D[:] = lab2D
         else:
-            posData.lab = lab2D
+            lab3D = lab2D
 
     def get_labels(
             self, 
@@ -23580,9 +23589,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
             )
     
-    def logLoadedTablePointsLayer(self, df):
+    def logLoadedTablePointsLayer(self, df, filename: str):
         separator = f'-'*100
-        text = f'{separator}\nFirst 10 rows of loaded table:\n\n{df.head(10)}\n{separator}'
+        header = f'First 10 rows of loaded table - "{filename}":'
+        footer = f'Number of points: {len(df)}'
+        text = (
+            f'{separator}\n'
+            f'{header}\n\n'
+            f'{df.head(10)}\n\n'
+            f'{footer}\n'
+            f'{separator}'
+        )
+        if filename:
+            text = f'{text}\nFilename: {filename}'
         self.logger.info(text)
     
     def buttonAddPointsByClickingActive(self):
@@ -23823,7 +23842,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         action.loadedDfInfo['y'], action.loadedDfInfo['x']
                     )
                 )
-                self.logLoadedTablePointsLayer(df)
+                self.logLoadedTablePointsLayer(df, filename=filename)
             
     def setPointsLayerLoadedDfEndanme(self, action):
         if action.loadedDfInfo is None:
@@ -27764,17 +27783,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         self.timestamp.setText(posData.frame_i)
     
-    def deleteIDFromLab(self, lab, delID, frame_i=None, delMask=None):
+    def deleteIDFromLab(
+            self, lab, delID, frame_i=None, delMask=None, shift=False
+        ):
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i if frame_i is None else frame_i
 
-
-        if frame_i==posData.frame_i:
-            rp = posData.rp
-            IDs_idxs = posData.IDs_idxs
+        if shift and self.isSegm3D:
+            lab3D = lab
+            delMask3D = delMask
+            lab = self.get_2Dlab(lab)
+            if delMask is not None:
+                delMask = self.get_2Dlab(delMask)
+            rp = skimage.measure.regionprops(lab)
+            IDs_idxs = {obj.label: idx for idx, obj in enumerate(rp)}
         else:
-            rp = posData.allData_li[frame_i]['regionprops']
-            IDs_idxs = posData.allData_li[frame_i]['IDs_idxs']
+            if frame_i==posData.frame_i:
+                rp = posData.rp
+                IDs_idxs = posData.IDs_idxs
+            else:
+                rp = posData.allData_li[frame_i]['regionprops']
+                IDs_idxs = posData.allData_li[frame_i]['IDs_idxs']
 
         if isinstance(delID, int):
             delID = [delID]
@@ -27800,9 +27829,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             obj = rp[idx]
             delMask[obj.slice][obj.image] = True
         lab[delMask] = 0
+        
+        if shift and self.isSegm3D:
+            self.set_2Dlab(lab, lab3D=lab3D)
+            lab = lab3D
+            if delMask3D is not None:
+                self.set_2Dlab(delMask, lab3D=delMask3D)
+                delMask = delMask3D
+        
         return lab, delMask
     
-    def removeStoredContours(self, delID, frame_i=None):
+    def removeStoredContours(self, delID, frame_i=None, z_slice=None):
         posData = self.data[self.pos_i]
         
         if frame_i is None:
@@ -27816,6 +27853,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if ID == delID:
                     continue
                 
+                if z_slice is not None:
+                    z_slice_i = key[1]
+                    if z_slice_i != z_slice:
+                        continue
+                
                 newContours[key] = contours
             
             dataDict['contours'] = newContours
@@ -27824,7 +27866,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     @disableWindow
     def deleteIDmiddleClick(
-            self, delIDs: Iterable, applyFutFrames, includeUnvisited
+            self, delIDs: Iterable, applyFutFrames, includeUnvisited,
+            shift=False
         ):
         self.clearHighlightedID()
 
@@ -27845,7 +27888,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
                 if lab is not None:
                     # Visited frame
-                    lab, _ = self.deleteIDFromLab(lab, delIDs, frame_i=i, delMask=delMask)
+                    lab, _ = self.deleteIDFromLab(
+                        lab, delIDs, frame_i=i, delMask=delMask, shift=shift
+                    )
 
                     # Store change
                     posData.allData_li[i]['labels'] = lab
@@ -27856,19 +27901,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
                     lab = posData.segm_data[i]
-                    lab, _ = self.deleteIDFromLab(lab, delIDs, frame_i=i, delMask=delMask)
+                    lab, _ = self.deleteIDFromLab(
+                        lab, delIDs, frame_i=i, delMask=delMask, shift=shift
+                    )
 
         # Back to current frame
         if applyFutFrames:
             posData.frame_i = current_frame_i
             self.get_data()   
 
-        posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delIDs, )
+        z_slice = None
+        if shift and self.isSegm3D:
+            z_slice = self.z_lab()
+            
+        posData.lab, delID_mask = self.deleteIDFromLab(
+            posData.lab, delIDs, shift=shift
+        )
         for _delID in delIDs:
             self.clearObjContour(ID=_delID, ax=0)     
             self.clearObjContour(ID=_delID, ax=1)  
-            self.removeObjectFromRp(_delID)    
-            self.removeStoredContours(_delID) 
+            if z_slice is None:
+                self.removeObjectFromRp(_delID)    
+            self.removeStoredContours(_delID, z_slice=z_slice) 
+        
+        if shift and self.isSegm3D:
+            self.update_rp()
 
         self.store_data(autosave=False)
         self.whitelistPropagateIDs(IDs_to_remove=delIDs, curr_frame_only=(not applyFutFrames))
