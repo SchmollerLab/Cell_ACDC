@@ -6666,7 +6666,7 @@ class QDialogMetadata(QDialog):
                 search = [file for file in ls if file.find('metadata.csv')!=-1]
                 metadata_df = None
                 if search:
-                    e = search[0]
+                    fileName = search[0]
                     metadata_csv_path = os.path.join(images_path, fileName)
                     metadata_df = pd.read_csv(
                         metadata_csv_path
