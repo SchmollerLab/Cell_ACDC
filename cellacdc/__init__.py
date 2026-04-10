@@ -382,6 +382,8 @@ def printl(*objects, pretty=False, is_decorator=False, idx=1, **kwargs):
         text = f'{open_printl_str}\n{fileinfo_str}\n{text}\n{close_printl_str}'
         print(text)
 
+    printl.info = print
+
 parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')
 models_path = os.path.join(cellacdc_path, 'models')

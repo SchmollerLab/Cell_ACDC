@@ -47,7 +47,7 @@ class WorkflowBaseFunctions():
     def __init__(self):
         """Initialize the base workflow functions class."""
     
-    def setupDialog(self, parent=None, workflowGui=None, posData=None, logger=print):
+    def setupDialog(self, parent=None, workflowGui=None, posData=None, logger=printl):
         """Configure to return the dialog widget for the workflow card.
         
         Args:
@@ -119,7 +119,7 @@ class WorkflowBaseFunctions():
             print(f"Failed to update preview after dialog close: {e}")
         return None
     
-    def setupDialog_cb(self, parent=None, workflowGui=None, posData=None, logger=print, preInitWorkflow_res=None):
+    def setupDialog_cb(self, parent=None, workflowGui=None, posData=None, logger=printl, preInitWorkflow_res=None):
         """Setup the dialog with only the required parameters for setupDialog.
         
         This method inspects the setupDialog signature and passes only the
@@ -139,7 +139,7 @@ class WorkflowBaseFunctions():
         dialog = self.setupDialog(**kwargs_to_pass)
         return dialog
 
-    def initializeDialog_cb(self, dialog, parent=None, workflowGui=None, posData=None, preInitWorkflow_res=None, logger=print):
+    def initializeDialog_cb(self, dialog, parent=None, workflowGui=None, posData=None, preInitWorkflow_res=None, logger=printl):
         """Call initializeDialog with only the supported arguments."""
         kwargs = {
             'dialog': dialog,
@@ -202,7 +202,7 @@ class WorkflowBaseFunctions():
             return pix.scaled(*scale, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         except Exception as e:
             # Fallback: create a simple placeholder image
-            print(f"Failed to render dialog preview: {e}")
+            printl(f"Failed to render dialog preview: {e}")
             pix = QPixmap(*scale)
             pix.fill(Qt.lightGray)
             return pix
@@ -338,7 +338,7 @@ class WorkflowCombineChannelsFunctions(WorkflowBaseFunctions):
         """
         return self.combineChannelDialog(parent=workflowGui)
         
-    def setupDialog(self, workflowGui=None, logger=print):
+    def setupDialog(self, workflowGui=None, logger=printl):
         """Create the dialog for the workflow card.
         
         Sets up input/output types and connects signals for dynamic updates
@@ -417,7 +417,7 @@ class WorkflowInputSegmFunctions(WorkflowBaseFunctions):
         segm_options = workflowGui.segm_channels
         return self.inputDataDialog(segm_options, 'segmentation', parent=workflowGui)
     
-    def setupDialog(self, workflowGui=None, logger=print):
+    def setupDialog(self, workflowGui=None, logger=printl):
         """Create the dialog for the workflow card.
         
         Args:
@@ -472,7 +472,7 @@ class WorkflowInputImgFunctions(WorkflowBaseFunctions):
         img_options = workflowGui.img_channels
         return self.inputDataDialog(img_options, 'image', parent=workflowGui)
     
-    def setupDialog(self, workflowGui=None, logger=print):
+    def setupDialog(self, workflowGui=None, logger=printl):
         """Create the dialog for the workflow card.
         
         Args:
@@ -507,7 +507,7 @@ class WorkflowPreProcessFunctions(WorkflowBaseFunctions):
     def dryrunDialog(self, parent=None, workflowGui=None):
         return self.preprocessDialog(parent=workflowGui)
 
-    def setupDialog(self, workflowGui=None, logger=print):
+    def setupDialog(self, workflowGui=None, logger=printl):
         dialog = self.preprocessDialog(parent=workflowGui, logger=logger)
         return dialog
 
@@ -530,7 +530,7 @@ class WorkflowPostProcessSegmFunctions(WorkflowBaseFunctions):
     def dryrunDialog(self, workflowGui=None, posData=None):
         return self.postProcessDialog(posData=posData, parent=workflowGui)
 
-    def setupDialog(self, workflowGui=None, posData=None, logger=print):
+    def setupDialog(self, workflowGui=None, posData=None, logger=printl):
         dialog = self.postProcessDialog(
             posData=posData,
             parent=workflowGui,
@@ -555,7 +555,7 @@ class WorkflowSetMeasurementsFunctions(WorkflowBaseFunctions):
     def dryrunDialog(self, workflowGui=None, posData=None):
         return self.measurementsDialog(posData=posData, parent=workflowGui)
 
-    def setupDialog(self, workflowGui=None, posData=None, logger=print):
+    def setupDialog(self, workflowGui=None, posData=None, logger=printl):
         dialog = self.measurementsDialog(
             posData=posData,
             parent=workflowGui,
@@ -625,7 +625,7 @@ class SegmentFunctions(WorkflowBaseFunctions):
         """
         return apps.QDialogSelectModel(parent=workflowGui, addSkipSegmButton=False)
     
-    def setupDialog(self, workflowGui=None, posData=None, logger=print, preInitWorkflow_res=None):
+    def setupDialog(self, workflowGui=None, posData=None, logger=printl, preInitWorkflow_res=None):
         """Create the dialog for the workflow card.
         
         Creates a ModelParamsDialogWorkflow that will be configured
@@ -742,7 +742,7 @@ class TrackingFunctions(WorkflowBaseFunctions):
         )
 
     def setupDialog(
-            self, workflowGui=None, posData=None, logger=print,
+            self, workflowGui=None, posData=None, logger=printl,
             preInitWorkflow_res=None
         ):
         selected_tracker = preInitWorkflow_res
@@ -827,7 +827,7 @@ class SegmModelParamsDialogWorkflow(apps.QDialogModelParams):
     sigCancelClicked = Signal()
     sigInputsChanged = Signal(dict)
 
-    def __init__(self, *args, logger=print, **kwargs):
+    def __init__(self, *args, logger=printl, **kwargs):
         kwargs.setdefault('hideOnClosing', True)
         super().__init__(*args, **kwargs)
         self.logger = logger
@@ -947,7 +947,7 @@ class SegmModelParamsDialogWorkflow(apps.QDialogModelParams):
                         cp.getboolean(section, option)
                     )
         except Exception as e:
-            self.logger(f'Failed to load content from {path}: {e}')
+            self.logger.info(f'Failed to load content from {path}: {e}')
             traceback.print_exc()
             self.hide()
             return
@@ -1005,7 +1005,7 @@ class _BaseTrackerDialogWorkflow:
                 content = json.load(f)
             self.setContent(content)
         except Exception as e:
-            self.logger(f'Failed to load content from {path}: {e}')
+            self.logger.info(f'Failed to load content from {path}: {e}')
             traceback.print_exc()
             self.hide()
             return
@@ -1018,7 +1018,7 @@ class BayesianTrackerDialogWorkflow(_BaseTrackerDialogWorkflow, apps.BayesianTra
     sigOkClicked = Signal()
     sigCancelClicked = Signal()
 
-    def __init__(self, parent=None, posData=None, logger=print):
+    def __init__(self, parent=None, posData=None, logger=printl):
         self.logger = logger
         self.requiresInputImage = True
         self.optional_inputs_n = {1: True}
@@ -1118,7 +1118,7 @@ class CellACDCTrackerDialogWorkflow(_BaseTrackerDialogWorkflow, apps.CellACDCTra
     sigOkClicked = Signal()
     sigCancelClicked = Signal()
 
-    def __init__(self, parent=None, logger=print):
+    def __init__(self, parent=None, logger=printl):
         self.logger = logger
         self.requiresInputImage = False
         super().__init__(parent=parent)
@@ -1143,7 +1143,7 @@ class DeltaTrackerDialogWorkflow(_BaseTrackerDialogWorkflow, apps.DeltaTrackerPa
     sigOkClicked = Signal()
     sigCancelClicked = Signal()
 
-    def __init__(self, parent=None, posData=None, logger=print):
+    def __init__(self, parent=None, posData=None, logger=printl):
         self.logger = logger
         self.requiresInputImage = True
         super().__init__(posData=posData, parent=parent)
@@ -1214,7 +1214,7 @@ class ThresholdSegmDialogWorkflow(apps.QDialogAutomaticThresholding):
     sigOkClicked = Signal()
     sigCancelClicked = Signal()
 
-    def __init__(self, parent=None, logger=print):
+    def __init__(self, parent=None, logger=printl):
         super().__init__(parent=parent, hide_on_close=True)
         self.logger = logger
         self.cancelButton.clicked.disconnect()
@@ -1276,7 +1276,7 @@ class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
     sigOkClicked = Signal()
     sigCancelClicked = Signal()
     
-    def __init__(self, parent=None, logger=print):
+    def __init__(self, parent=None, logger=printl):
         super().__init__(channel_names=None, parent=parent, hideOnClosing=True)
         self.logger = logger
         
@@ -1340,7 +1340,7 @@ class PreProcessSetupDialogWorkflow(apps.PreProcessRecipeDialog):
     sigOkClicked = Signal()
     sigCancelClicked = Signal()
 
-    def __init__(self, parent=None, logger=print):
+    def __init__(self, parent=None, logger=printl):
         super().__init__(parent=parent, hideOnClosing=True)
         self.logger = logger
 
@@ -1363,7 +1363,7 @@ class PreProcessSetupDialogWorkflow(apps.PreProcessRecipeDialog):
     def ok_cb(self):
         recipe = self.recipe()
         if recipe is None:
-            self.logger("No valid pre-processing steps configured. Please add at least one step before confirming.")
+            self.logger.info("No valid pre-processing steps configured. Please add at least one step before confirming.")
             return
         self.sigOkClicked.emit()
         super().ok_cb()
@@ -1416,7 +1416,7 @@ class PreProcessSetupDialogWorkflow(apps.PreProcessRecipeDialog):
             )
             self.keepInputDataTypeToggle.setChecked(keep_input_dtype)
         except Exception as e:
-            self.logger(f"Failed to load content from {path}: {e}")
+            self.logger.info(f"Failed to load content from {path}: {e}")
             traceback.print_exc()
 
         self.ok_cb()  # Emit update signal and refresh workflow card preview.
@@ -1449,7 +1449,7 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
     sigValueChanged = Signal(object, object)
     sigInputsChanged = Signal(dict)  # Emit updated input types when they change
 
-    def __init__(self, posData, parent=None, logger=print):
+    def __init__(self, posData, parent=None, logger=printl):
         super().__init__(parent=parent)
         self.cancel = True
         self.logger = logger
@@ -1595,7 +1595,7 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
                 content = json.load(f)
             self.setContent(content)
         except Exception as e:
-            self.logger(f"Failed to load content from {path}: {e}")
+            self.logger.info(f"Failed to load content from {path}: {e}")
             traceback.print_exc()
             self.hide()
             return
@@ -1614,7 +1614,7 @@ class SetMeasurementsDialogWorkflow(apps.SetMeasurementsDialog):
     sigCancelClicked = Signal()
     sigInputsChanged = Signal(dict)
 
-    def __init__(self, posData, parent=None, logger=print):
+    def __init__(self, posData, parent=None, logger=printl):
         super().__init__(
             loadedChNames=[None],
             notLoadedChNames=[],
@@ -1715,7 +1715,7 @@ class SetMeasurementsDialogWorkflow(apps.SetMeasurementsDialog):
             # File payload is the selection mapper format.
             self.setCurrentSelectionFromMapper(content)
         except Exception as e:
-            self.logger(f'Failed to load content from {path}: {e}')
+            self.logger.info(f'Failed to load content from {path}: {e}')
             traceback.print_exc()
             self.hide()
             return
@@ -1778,7 +1778,7 @@ class WorkflowInputDataDialog(QBaseDialog):
     sigSelectionValid = Signal()
     sigSetOutputs = Signal(dict)  # Emit new output definitions when selection changes and affects output type
     
-    def __init__(self, selection_options, type, parent=None, logger=print,
+    def __init__(self, selection_options, type, parent=None, logger=printl,
                  posData=None):
         super().__init__(parent=parent)
         self.setWindowTitle(f'Select input {type}')
@@ -1823,7 +1823,7 @@ class WorkflowInputDataDialog(QBaseDialog):
         if self.posData is not None:
             new_output_size_t = self.posData.SizeT
             new_output_size_z = self.posData.SizeZ
-            new_output_size_y, new_output_size_x = 512, 512  #TODO placeholder
+            new_output_size_y, new_output_size_x = self.posData.SizeY, self.posData.SizeX
             if self.type == 'image':
                 out_data_class = WfImageDC(
                     SizeT=new_output_size_t,
@@ -1842,8 +1842,7 @@ class WorkflowInputDataDialog(QBaseDialog):
                 else:
                     # log 
                     txt = "segmInfo.csv not found." if segm_info_df is None else f"Selected segmentation '{new_selection}' not found in segmInfo.csv."
-                    self.logger(f"[WARNING]: {txt}\nDefaulting to using original SizeZ from posData.")
-                printl(new_output_size_t, new_output_size_z, new_output_size_y, new_output_size_x)
+                    self.logger.info(f"[WARNING]: {txt}\nDefaulting to using original SizeZ from posData.")
                 out_data_class = WfSegmDC(
                     SizeT=new_output_size_t,
                     SizeZ=new_output_size_z,
@@ -1863,6 +1862,7 @@ class WorkflowInputDataDialog(QBaseDialog):
         self.selected_value = self.selection_widget.currentText()
         if self.selected_value in self.selection_options:
             self.sigSelectionValid.emit()
+            self.selectionChanged(self.selected_value)  # Update outputs based on selection
         else:
             self.sigSelectionInvalid.emit(self.selected_value)
         self.hide()
@@ -1967,9 +1967,9 @@ class WorkflowInputDataDialog(QBaseDialog):
                 self.selection_widget.setCurrentIndex(index)
                 self.selected_value = content
             else:
-                self.logger(f"Loaded value '{content}' not in selection options.")
+                self.logger.info(f"Loaded value '{content}' not in selection options.")
         except Exception as e:
-            self.logger(f"Failed to load content from {path}: {e}")
+            self.logger.info(f"Failed to load content from {path}: {e}")
             traceback.print_exc()
         self.ok_clicked()  # To emit signals and update the workflow card state after loading
         self.hide()
