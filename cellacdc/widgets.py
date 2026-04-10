@@ -3581,9 +3581,12 @@ class Toggle(QCheckBox):
         # To get the actual position of the circle we need to wait that
         # the widget is visible before setting the state
         if event.type() == QEvent.Type.Show and self.requestedState is not None:
+            state = self.requestedState
             self.blockSignals(True)
-            self.setChecked(self.requestedState)
+            self.setChecked(state)
             self.blockSignals(False)
+            self.animation.stop()
+            self.circle_position = self.circlePos(state)
         return False
 
     def setChecked(self, state):

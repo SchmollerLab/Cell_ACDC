@@ -271,10 +271,8 @@ class mainWin(QMainWindow):
         widget.setLayout(layout)
         layout.addWidget(label)
         self.darkModeToggle = widgets.Toggle(label_text='Dark mode')
-        self.darkModeToggle.ignoreEvent = False
         self.darkModeToggle.warnMessageBox  = True
         if scheme == 'dark':
-            self.darkModeToggle.ignoreEvent = True
             self.darkModeToggle.setChecked(True)
         self.darkModeToggle.toggled.connect(self.onDarkModeToggled)
         layout.addWidget(self.darkModeToggle)
@@ -286,9 +284,7 @@ class mainWin(QMainWindow):
         return get_color_scheme()
     
     def onDarkModeToggled(self, checked):
-        if self.darkModeToggle.ignoreEvent:
-            self.darkModeToggle.ignoreEvent = False
-            return
+        self.darkModeToggle.setDisabled(True)
         from ._palettes import getPaletteColorScheme
         scheme = 'dark' if checked else 'light'
         load.rename_qrc_resources_file(scheme)
@@ -305,7 +301,7 @@ class mainWin(QMainWindow):
             )
             self.darkModeToggle.warnMessageBox = True
         self.setStatusBarRestartCellACDC()
-        self.darkModeToggle.setDisabled(True)
+        
     
     def setStatusBarRestartCellACDC(self):
         self.statusBarLayout.addWidget(QLabel(html_utils.paragraph(
@@ -1258,7 +1254,7 @@ class mainWin(QMainWindow):
     def _debug(self):
         try:
             from . import _q_debug
-            _q_debug.q_debug(self)
+            _q_debug.q_debug(self, None)
         except Exception as err:
             raise err
     
