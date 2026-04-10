@@ -5,6 +5,7 @@ from . import printl, debugutils
 from skimage.measure._regionprops_utils import (
     _normalize_spacing,
 )
+import traceback as traceback
 # WARNING: Developers have already used
 #     7 hrs
 # to optimize this.
@@ -18,6 +19,7 @@ from skimage.measure._regionprops_utils import (
 _RegionProperties = skimage.measure._regionprops.RegionProperties
 _cached = skimage.measure._regionprops._cached
 
+# @debugutils.line_benchmark
 def _acdc_regionprops_factory(
         label_image,
         intensity_image=None,
@@ -54,14 +56,14 @@ def _acdc_regionprops_factory(
 
     regions = []
     objects = ndi.find_objects(label_image)
-    for i, sl in enumerate(objects):
+    for i, sl in enumerate(objects, start=1):
         if sl is None:
             continue
 
         regions.append(
             acdcRegionProperties(
                 sl,
-                i + 1,
+                i,
                 label_image,
                 intensity_image,
                 cache,
@@ -69,8 +71,7 @@ def _acdc_regionprops_factory(
                 extra_properties=extra_properties,
                 offset=offset_arr,
             )
-        )
-
+            )
     return regions
 
 
@@ -178,6 +179,11 @@ class acdcRegionProperties(_RegionProperties):
     def centroid(self):
         return super().centroid
 
+    @property
+    @_cached
+    def contour(self):
+        pass
+    
     # @property
     # def centroid_weighted(self):
     #     ctr = self.centroid_weighted_local
@@ -514,9 +520,15 @@ class acdcRegionprops:
             if self._obj_intersects_bbox(obj, cutout_bbox)
         }
 
-    def _set_label_image(self, lab, assignments):
+    def _set_label_image(self, lab, objs=None, clear_cache=False):
         self.lab = lab
-        # check that this is enough, it might be. I think all the local slices should be views and not copies...
+        if objs is None:
+            objs = self._rp
+
+        for obj in objs:
+            obj._label_image = lab
+            if clear_cache:
+                obj._cache.clear()
         
     def update_regionprops_via_assignments(
             self, assignments:dict[int, int], lab
@@ -539,9 +551,9 @@ class acdcRegionprops:
             if old_ID in self.IDs_set and old_ID != new_ID
         }
         if not active_assignments:
+            self._set_label_image(lab)
             return
-        
-        self.lab = lab
+
         # if not active_assignments:
         #     if lab is not None:
         #         self._set_label_image(lab)
@@ -577,6 +589,8 @@ class acdcRegionprops:
             #     # if area is 0, centroid is not defined and we should not trust the cached one
             #     print("area 0...")
 
+        self._set_label_image(lab, clear_cache=True)
+
         self._centroid_mapper = centroid_mapper
         self._centroid_IDs_exact = centroid_IDs_exact
         self.set_attributes(update_centroid_mapper=False) # update the mapper
@@ -598,7 +612,7 @@ class acdcRegionprops:
         self.set_attributes(deleted_IDs=IDs_to_delete) # for updating the IDs to indx, centroid mapper
         
     def update_regionprops_via_cutout(
-        self, lab, cutout_bbox, specific_IDs=None
+        self, lab, cutout_bbox, specific_IDs=None, debug=True
     ):
         """Only relabels the regionprops of a specific cutout.
         Is only faster for small cutouts. I dont have a number, but I would say
@@ -611,31 +625,34 @@ class acdcRegionprops:
         cutout_bbox : tuple[int, int, int, int]
             The bounding box of the cutout in the format (min_row, min_col, max_row, max_col).
         """
-        printl('Updating rp via cutout...')
-        if specific_IDs is not None and not isinstance(specific_IDs, (list, set)):
+        if specific_IDs is not None and not isinstance(specific_IDs, (list, set, np.ndarray, tuple)):
             specific_IDs = {specific_IDs}
         elif specific_IDs is not None:
             specific_IDs = set(specific_IDs)
 
+        self.lab = lab
         cutout_slices = self._get_bbox_slices(cutout_bbox)
         new_cutout = lab[cutout_slices]
         old_cutout_IDs = self._get_old_cutout_IDs_from_rp(cutout_bbox)
         rp_cutout_new = _acdc_regionprops_factory(new_cutout)
         new_cutout_IDs = set(obj.label for obj in rp_cutout_new)
-        new_cutout_IDs.discard(0)
-        deleted_IDs = old_cutout_IDs.difference(new_cutout_IDs)
-        added_IDs = new_cutout_IDs.difference(old_cutout_IDs)
-        preserved_IDs = old_cutout_IDs.intersection(new_cutout_IDs)
-        IDs_to_add = (
-            added_IDs if specific_IDs is None
-            else added_IDs.intersection(specific_IDs)
-        )
 
         if not old_cutout_IDs and not new_cutout_IDs:
-            self.lab = lab
             return
+        
+        target_IDs = (
+            old_cutout_IDs.union(new_cutout_IDs)
+            if specific_IDs is None
+            else old_cutout_IDs.union(new_cutout_IDs).intersection(specific_IDs)
+        )
+        
+        deleted_target_IDs = old_cutout_IDs.difference(new_cutout_IDs).intersection(
+            target_IDs
+        )
+        
+        refreshed_IDs = new_cutout_IDs.intersection(target_IDs)
 
-        conflicting_IDs = IDs_to_add.intersection(
+        conflicting_IDs = refreshed_IDs.difference(old_cutout_IDs).intersection(
             self.IDs_set.difference(old_cutout_IDs)
         )
         if conflicting_IDs:
@@ -645,15 +662,15 @@ class acdcRegionprops:
             )
 
         old_rp_by_id = {obj.label: obj for obj in self._rp}
-        unaffected_rp = [obj for obj in self._rp if obj.label not in old_cutout_IDs]
+        IDs_to_replace = old_cutout_IDs.intersection(target_IDs)
+        unaffected_rp = [obj for obj in self._rp if obj.label not in IDs_to_replace]
 
         offset = tuple(s.start for s in cutout_slices)
-        printl(f"Cutout offset: {offset}")
 
         border_touching_IDs = {
             obj.label
             for obj in rp_cutout_new
-            if obj.label in IDs_to_add
+            if obj.label in refreshed_IDs
             and self._is_bbox_touching_cutout_border(obj.bbox, new_cutout.shape)
         }
         separate_objs = self._get_separate_obj_regionprops(lab, border_touching_IDs)
@@ -662,7 +679,7 @@ class acdcRegionprops:
         updated_centroid_IDs = set()
         for obj in rp_cutout_new:
             ID = obj.label
-            if ID not in IDs_to_add:
+            if ID not in refreshed_IDs:
                 continue
             if ID in border_touching_IDs:
                 # edge case: ID changed is outside the cutout
@@ -676,14 +693,9 @@ class acdcRegionprops:
             new_objs.append(new_obj)
             updated_centroid_IDs.add(ID)
 
-        for ID in deleted_IDs:
+        for ID in deleted_target_IDs:
             self._centroid_mapper.pop(ID, None)
             self._centroid_IDs_exact.discard(ID)
-
-        preserved_cutout_rp = [
-            old_rp_by_id[ID]
-            for ID in preserved_IDs
-        ]
 
         if updated_centroid_IDs:
             obj_to_update = self._get_IDs_to_update_centroids(
@@ -698,8 +710,8 @@ class acdcRegionprops:
             )
             self._centroid_IDs_exact.difference_update(obj_to_update)
 
-        self._rp = unaffected_rp + preserved_cutout_rp + new_objs
-        self.lab = lab
+        self._rp = unaffected_rp + new_objs
+        self._set_label_image(lab)
         self.set_attributes(update_centroid_mapper=False)
             
     def get_centroid(self, ID, exact=False):

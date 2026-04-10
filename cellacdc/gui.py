@@ -5188,8 +5188,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.storeManualSeparateDrawMode(manualSep.drawMode)
 
             # Update data (rp, etc)
-            bbox = self.update_rp_get_bbox(use_bbox=True, specific_IDs=ID) # use old ID to get bbox 
-            self.update_rp(specific_IDs=splittedIDs, preloaded_bbox=bbox)
+            bbox = self.update_rp_get_bbox(use_bbox=True, specific_IDs=ID) # use old ID to get bbox
+            specific_IDs = list(splittedIDs) + [ID]
+            self.update_rp(specific_IDs=specific_IDs, preloaded_bbox=bbox)
 
             # Repeat tracking
             self.trackSubsetIDs(splittedIDs)
@@ -5281,7 +5282,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 localHull = skimage.morphology.convex_hull_image(objMask)
                 hull_lab = posData.lab[self.getObjSlice(obj.slice)][localHull]
                 if preloaded_bbox is not False:
-                    IDs_overwritten = np.unique(hull_lab) # dont have to filter 0
+                    IDs_overwritten = np.unique(hull_lab) # dont have to filter 0, includes original ID
                 hull_lab = ID
                 self.update_rp(preloaded_bbox=preloaded_bbox, specific_IDs=IDs_overwritten,
                                ) 
@@ -6841,13 +6842,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             for ID in IDs_to_merge:
                 if ID == 0:
                     continue
-                posData.lab[posData.lab==ID] = self.firstID
+                obj = posData.rp.get_obj_from_ID(ID)
+                
+                posData.lab[obj.slice][obj.image] = self.firstID
             
             self.mergeObjsTempLine.setData([], [])
             self.clickObjYc, self.clickObjXc = None, None
-
+            
             bbox = self.update_rp_get_bbox(specific_IDs=IDs_to_merge,use_bbox=True) # use old IDs to get bbox
-            self.update_rp(specific_IDs=self.firstID,preloaded_bbox=bbox) # update with new IDs
+            specific_IDs = list(IDs_to_merge) + [self.firstID]
+            self.update_rp(specific_IDs=specific_IDs,preloaded_bbox=bbox) # update with new IDs
             ask_back_prop = True
 
             if posData.frame_i == 0:
@@ -6972,7 +6976,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             # Update data (rp, etc)
             # only visible stuff can be added, plus doesnt draw over eixisting
-            self.update_rp(use_curr_view=True, specific_IDs=[posData.brushID])
+            self.update_rp(use_curr_view=True, specific_IDs=posData.brushID)
 
             # Repeat tracking
             self.trackManuallyAddedObject(posData.brushID, self.isNewID)
@@ -11624,8 +11628,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Repeat tracking
         if self.autoIDcheckbox.isChecked():
             self.trackManuallyAddedObject(posData.brushID, self.isNewID)
-        else:
-            self.update_rp(use_curr_view=True)
+        # else: I think not necessary
+        #     self.update_rp(use_curr_view=True)
 
         # Update images
         if self.isNewID:
@@ -15204,11 +15208,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if ID == 0:
                     continue
                 obj = posData.rp.get_obj_from_ID(ID)
-                preloaded_bbox = self.update_rp_get_bbox(specific_IDs=[ID, self.firstID],use_bbox=True)
                 posData.lab[obj.slice][obj.image] = self.firstID
-                self.update_rp(preloaded_bbox=preloaded_bbox, specific_IDs=[ID, self.firstID])
-                
-                self.store_data(autosave=False)
+            
+            preloaded_bbox = self.update_rp_get_bbox(specific_IDs=IDs_to_merge,use_bbox=True) # use old RP to get the correct bbox
+            specific_IDs = list(IDs_to_merge) + [self.firstID]
+            self.update_rp(preloaded_bbox=preloaded_bbox, specific_IDs=specific_IDs)
+            self.store_data(autosave=False)
             
             if stop_loop:
                 break
@@ -23056,8 +23061,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         if len(posData.rp.IDs) < RP_OPT_NUM_CELLS_MIN:
             return False
-        if not isinstance(specific_IDs, (list, set, type(None))):
+        if not isinstance(specific_IDs, (list, set, np.ndarray)) and specific_IDs is not None:
             specific_IDs = [specific_IDs]
+        elif  specific_IDs is not None and len(specific_IDs) == 0:
+            specific_IDs = None
+        
         # Helper to merge bboxes
         def merge_bbox(b1, b2):
             if len(b1) == 4:
@@ -23073,7 +23081,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         bbox = None
         if custom_bbox or use_bbox:
-            if not custom_bbox and use_bbox and specific_IDs:
+            if not custom_bbox and use_bbox and specific_IDs is not None:
                 rp_old = posData.rp
                 for ID in specific_IDs:
                     b = rp_old.get_obj_from_ID(ID).bbox
@@ -23172,8 +23180,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                              'use_curr_view or use_bbox, preloaded_bbox can be used '
                              'at a time')
         
-        if not isinstance(specific_IDs, (list, set)) and specific_IDs is not None:
+        if not isinstance(specific_IDs, (list, set, np.ndarray)) and specific_IDs is not None:
             specific_IDs = [specific_IDs]
+        elif specific_IDs is not None and len(specific_IDs) == 0:
+            specific_IDs = None
+
         
         # posData.rp is an acdcRegionprops instance here.
         # if rp is None (can sometimes happen appearantly???)
