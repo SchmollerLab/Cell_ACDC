@@ -2400,7 +2400,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'on the top menubar\n'
             'to customise the action required to delete '
             'an object with a click.\n\n'
-            'To delete only the z-slice mask, hold "Shift" while right-clicking.'
+            'When working with 3D segmentations, to delete only the z-slice mask, hold "Shift" while clicking.'
         )
         secondLevelToolbar.addAction(self.delObjToolAction)
         secondLevelToolbar.setMovable(False)
@@ -4944,6 +4944,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         modifiers = QGuiApplication.keyboardModifiers()
         alt = modifiers == Qt.AltModifier
         shift = modifiers == Qt.ShiftModifier
+        shift_regardless = bool(modifiers & Qt.ShiftModifier)
         isMod = alt
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -5079,7 +5080,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             includeUnvisited = posData.includeUnvisitedInfo['Delete ID']
 
             delID_mask = self.deleteIDmiddleClick(
-                delIDs, applyFutFrames, includeUnvisited, shift=shift
+                delIDs, applyFutFrames, includeUnvisited, shift=shift_regardless
             )
             if delID_mask.ndim == 3:
                 delID_mask = delID_mask[self.z_lab()]
@@ -16907,9 +16908,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if acdc_df is None:
                 self.store_data(autosave=False)
             acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-
+            
             xx, yy = [], []
             for annotID in annotIDs_frame_i:
+                if annotID not in posData.IDs_idxs:
+                    continue
+            
                 obj_idx = posData.IDs_idxs[annotID]
                 obj = posData.rp[obj_idx]
                 acdc_df.at[annotID, state['name']] = 1
