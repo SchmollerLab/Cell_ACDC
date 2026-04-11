@@ -4,7 +4,7 @@ from qtpy.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QListWidget, QListWidgetItem, 
     QLabel, QVBoxLayout, QSizePolicy, QPlainTextEdit,
     QAbstractItemView, QGraphicsView, QGraphicsScene, QGraphicsLineItem, QAction,
-    QMessageBox, QPushButton, QApplication, QDialog
+    QMessageBox, QPushButton, QApplication, QDialog, QDockWidget, QMenu
 )
 from qtpy.QtCore import Signal, Qt, QMimeData, QPointF, QTimer, QObject
 import qtpy
@@ -1038,7 +1038,7 @@ class _WorkflowCardZoneWidget(QWidget):
         
         - Left button: Start dragging the card
         - Middle button: Delete the card
-        - Right button: Open the configuration dialog
+        - Right button: Open context menu
         
         Args:
             event: The mouse event.
@@ -1046,10 +1046,49 @@ class _WorkflowCardZoneWidget(QWidget):
         if event.button() == Qt.LeftButton:
             self._drag_start_pos = event.globalPos()
             self.is_dragging = True
+            event.accept()
         elif event.button() == Qt.MiddleButton:
             self._deleteCard()
+            event.accept()
         elif event.button() == Qt.RightButton:
+            self._showContextMenu(event.globalPos())
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        """Open card settings on left-button double-click."""
+        if event.button() == Qt.LeftButton:
+            # Stop an active drag start triggered by the first click.
+            self.is_dragging = False
+            self._drag_start_pos = None
             self._openDialog()
+            event.accept()
+            return
+
+        super().mouseDoubleClickEvent(event)
+
+    def _showContextMenu(self, global_pos):
+        """Show card context menu with common card/connection actions."""
+        menu = QMenu(self)
+        open_action = menu.addAction('Open dialog')
+        delete_action = menu.addAction('Delete card')
+        menu.addSeparator()
+        remove_incoming_action = menu.addAction('Delete all incoming connections')
+        remove_outgoing_action = menu.addAction('Delete all outgoing connections')
+
+        selected_action = menu.exec_(global_pos)
+        if selected_action is None:
+            return
+
+        if selected_action == open_action:
+            self._openDialog()
+        elif selected_action == delete_action:
+            self._deleteCard()
+        elif selected_action == remove_incoming_action:
+            self.workflowZone.removeCardConnections(self.card_id, remove_incoming=True, remove_outgoing=False)
+        elif selected_action == remove_outgoing_action:
+            self.workflowZone.removeCardConnections(self.card_id, remove_incoming=False, remove_outgoing=True)
 
     def mouseMoveEvent(self, event):
         """Update card position and connection lines while dragging.
@@ -1223,7 +1262,13 @@ class WorkflowZone(QGraphicsView):
         self.temp_line = None
         self.connection_lines = []  # List of visual connection line items
         
-        self.placeholder = QLabel("Drop items here")
+        self.placeholder = QLabel(
+            'Click <img src=":file-new.svg" width="16" height="16"> '
+            'in the top toolbar to create new workflow, or click '
+            '<img src=":folder-open.svg" width="16" height="16"> to load.'
+            'Click <img src=":info.svg" width="16" height="16"> for help.'
+        )
+        self.placeholder.setTextFormat(Qt.RichText)
         self.placeholder.setAlignment(Qt.AlignCenter)
         self.placeholder_proxy = self.scene.addWidget(self.placeholder)
         self.placeholder_proxy.setPos(0, 0)
@@ -1333,6 +1378,30 @@ class WorkflowZone(QGraphicsView):
 
         for card_id in affected_input_card_ids:
             self.syncCardInputTypes(card_id)
+
+    def removeCardConnections(self, card_id, remove_incoming=True, remove_outgoing=True):
+        """Remove incoming/outgoing connections for a card and track history."""
+        if card_id is None:
+            return
+
+        lines_to_remove = []
+        for line_key in self.lines:
+            (start_card_id, _start_port), (end_card_id, _end_port) = line_key
+            if remove_outgoing and start_card_id == card_id:
+                lines_to_remove.append(line_key)
+                continue
+            if remove_incoming and end_card_id == card_id:
+                lines_to_remove.append(line_key)
+
+        if not lines_to_remove:
+            return
+
+        previous_state = None
+        if not getattr(self.parent, '_history_restoring', False):
+            previous_state = self.parent._captureWorkflowState()
+
+        self.removeLineKeys(lines_to_remove)
+        self._markWorkflowChanged(previous_state)
 
     def _removeVisualLineByKey(self, line_key):
         """Remove visual line corresponding to a model line key."""
@@ -1990,6 +2059,26 @@ class WorkflowGui(QMainWindow):
             self._buildWorkflowHelpText(),
         )
 
+    def _onOpenLogFileLocationTriggered(self):
+        """Open the folder containing workflow GUI log files."""
+        logs_path = getattr(self, 'logs_path', None)
+        if not logs_path or not os.path.isdir(logs_path):
+            QMessageBox.information(
+                self,
+                'Log file location unavailable',
+                'Log file location is not available yet.',
+            )
+            return
+
+        myutils.showInExplorer(logs_path)
+
+    def _onAboutCellAcdcTriggered(self):
+        """Show the standard Cell-ACDC About dialog."""
+        from .help import about
+
+        self.aboutWin = about.QDialogAbout(parent=self)
+        self.aboutWin.show()
+
     def addDroppedCard(self, card: str, x: int, y: int):
         """Handle a card dropped into the WorkflowZone at position (x, y).
         
@@ -2161,7 +2250,7 @@ class WorkflowGui(QMainWindow):
         self.saveNewAction.triggered.connect(self._onSaveWorkflowAsTriggered)
         
         self.openImagesAction = QAction(
-            QIcon(":image.svg"), "Load Images...", self
+            QIcon(":image.svg"), "Open New Image Folder...", self
         )
         self.openImagesAction.triggered.connect(self._onLoadImagesTriggered)
 
@@ -2171,6 +2260,16 @@ class WorkflowGui(QMainWindow):
         self.infoAction.setToolTip('Show brief workflow usage help')
         self.infoAction.triggered.connect(self._onWorkflowInfoTriggered)
 
+        self.openLogFileLocationAction = QAction(
+            'Open log file location', self
+        )
+        self.openLogFileLocationAction.triggered.connect(
+            self._onOpenLogFileLocationTriggered
+        )
+
+        self.aboutAction = QAction('About Cell-ACDC', self)
+        self.aboutAction.triggered.connect(self._onAboutCellAcdcTriggered)
+
         self.undoAction = QAction('Undo', self)
         self.undoAction.setShortcut('Ctrl+Z')
         self.undoAction.triggered.connect(self._onUndoTriggered)
@@ -2178,6 +2277,24 @@ class WorkflowGui(QMainWindow):
         self.redoAction = QAction('Redo', self)
         self.redoAction.setShortcut('Ctrl+Y')
         self.redoAction.triggered.connect(self._onRedoTriggered)
+
+        menuBar = self.menuBar()
+        menuBar.setNativeMenuBar(False)
+
+        fileMenu = menuBar.addMenu('&File')
+        fileMenu.addAction(self.newAction)
+        fileMenu.addAction(self.loadWorkflowAction)
+        fileMenu.addSeparator()
+        fileMenu.addAction(self.saveAction)
+        fileMenu.addAction(self.saveNewAction)
+        fileMenu.addSeparator()
+        fileMenu.addAction(self.openImagesAction)
+
+        helpMenu = menuBar.addMenu('&Help')
+        helpMenu.addAction(self.infoAction)
+        helpMenu.addAction(self.openLogFileLocationAction)
+        helpMenu.addSeparator()
+        helpMenu.addAction(self.aboutAction)
         
         folder_toolbar.addAction(self.newAction)
         folder_toolbar.addAction(self.loadWorkflowAction)
@@ -2211,14 +2328,22 @@ class WorkflowGui(QMainWindow):
         # Sidebar
         self.sidebar = WorkflowSidebar()
         self.sidebar.setDragEnabled(True)
-        self.sidebar.setFixedWidth(200)
+        self.sidebar.setMinimumWidth(200)
         self.sidebar.setDragDropMode(QAbstractItemView.DragOnly)
         self.sidebar.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.sidebar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         # Keep sidebar lightweight until experiment data is loaded.
         self._rebuildSidebarCards(build_widgets=False)
-        
-        layout.addWidget(self.sidebar)
+
+        self.sidebarDock = QDockWidget('Cards', self)
+        self.sidebarDock.setObjectName('workflowSidebarDock')
+        self.sidebarDock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
+        self.sidebarDock.setFeatures(
+            QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable
+        )
+        self.sidebarDock.setWidget(self.sidebar)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.sidebarDock)
         
         # Main panel
         self.mainPanel = QWidget()
@@ -2239,6 +2364,8 @@ class WorkflowGui(QMainWindow):
         self.logDisplay.setFixedHeight(120)
         self.logDisplay.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         mainLayout.addWidget(self.logDisplay)
+        mainLayout.setStretch(0, 1)
+        mainLayout.setStretch(1, 0)
 
         layout.addWidget(self.mainPanel)
 
