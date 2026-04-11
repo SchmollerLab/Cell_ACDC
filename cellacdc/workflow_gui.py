@@ -379,6 +379,128 @@ class _InputOutputCircle(QLabel):
             "padding: 2px; font-weight: bold; background-color: transparent; }"
         )
         self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(self._buildPortTooltipText())
+
+    def _formatTypeInfo(self, type_info):
+        """Convert workflow type payloads to concise tooltip text."""
+        if type_info is None:
+            return 'Any/Unknown'
+
+        if isinstance(type_info, (list, tuple)):
+            if len(type_info) == 0:
+                return 'Any/Unknown'
+            return ' | '.join(self._formatTypeInfo(t) for t in type_info)
+
+        if not is_workflow_data_class(type_info):
+            return str(type_info)
+
+        type_name = workflow_type_name(type_info)
+        size_z = getattr(type_info, 'SizeZ', None)
+        size_t = getattr(type_info, 'SizeT', None)
+        size_y = getattr(type_info, 'SizeY', None)
+        size_x = getattr(type_info, 'SizeX', None)
+
+        details = []
+        if size_z is not None:
+            details.append(f'Z={size_z}')
+        if size_t is not None:
+            details.append(f'T={size_t}')
+        if size_y is not None:
+            details.append(f'Y={size_y}')
+        if size_x is not None:
+            details.append(f'X={size_x}')
+
+        if details:
+            return f"{type_name} ({', '.join(details)})"
+        return type_name
+
+    def _cardLabel(self, card_obj):
+        card_id = getattr(card_obj, 'card_id', '?')
+        title = getattr(card_obj, 'title', '')
+        label = f'Card {card_id}'
+        if title:
+            label += f' ({title})'
+        return label
+
+    def _resolveCardById(self, card_id):
+        zone = getattr(self, 'workflowZone', None)
+        if zone is None:
+            return None
+        proxy = getattr(zone, 'cards', {}).get(card_id)
+        if proxy is None:
+            return None
+        return proxy.widget()
+
+    def _buildPortTooltipText(self):
+        """Build dynamic tooltip text for this input/output port."""
+        port_kind = 'Output' if self.is_output else 'Input'
+        card_label = self._cardLabel(self.card)
+
+        lines = [
+            f'{port_kind} port {self.index + 1} on {card_label}'
+        ]
+
+        if self.is_output:
+            output_type = getattr(self.card, 'output_types', {}).get(self.index)
+            lines.append(f'Type: {self._formatTypeInfo(output_type)}')
+        else:
+            accepted = self.card._getDialogInputTypesAccepted().get(self.index)
+            current = self.card._getDialogInputTypes().get(self.index)
+            lines.append(f'Accepts: {self._formatTypeInfo(accepted)}')
+            lines.append(f'Current: {self._formatTypeInfo(current)}')
+
+        zone = getattr(self, 'workflowZone', None)
+        if zone is not None:
+            card_id = getattr(self.card, 'card_id', None)
+            if self.is_output:
+                outgoing = [
+                    line_key for line_key in zone.lines
+                    if line_key[0][0] == card_id and line_key[0][1] == self.index
+                ]
+                if outgoing:
+                    lines.append('Connected to:')
+                    for line_key in outgoing:
+                        end_card_id, end_idx = line_key[1]
+                        end_card = self._resolveCardById(end_card_id)
+                        end_label = self._cardLabel(end_card) if end_card is not None else f'Card {end_card_id}'
+                        lines.append(f' - {end_label} input {end_idx + 1}')
+                else:
+                    lines.append('Connected to: none')
+            else:
+                incoming = [
+                    line_key for line_key in zone.lines
+                    if line_key[1][0] == card_id and line_key[1][1] == self.index
+                ]
+                if incoming:
+                    start_card_id, start_idx = incoming[0][0]
+                    start_card = self._resolveCardById(start_card_id)
+                    start_label = self._cardLabel(start_card) if start_card is not None else f'Card {start_card_id}'
+                    lines.append(f'Connected from: {start_label} output {start_idx + 1}')
+                else:
+                    lines.append('Connected from: none')
+
+        lines.append('How to connect:')
+        if self.is_output:
+            lines.append(' - Click this output, then click a target input on another card.')
+        else:
+            lines.append(' - Click a source output first, then click this input.')
+        lines.append(' - Right-click while connecting to cancel.')
+
+        return '\n'.join(lines)
+
+    def hoverEnterEvent(self, event):
+        self.setToolTip(self._buildPortTooltipText())
+        super().hoverEnterEvent(event)
+
+    def hoverMoveEvent(self, event):
+        # Keep tooltip synced with live type/connection updates while hovering.
+        self.setToolTip(self._buildPortTooltipText())
+        super().hoverMoveEvent(event)
+
+    def enterEvent(self, event):
+        # QLabel tooltip display is enter-event driven in many styles/platforms.
+        self.setToolTip(self._buildPortTooltipText())
+        super().enterEvent(event)
     
     def _getColorForType(self, type_value):
         """Get the border color for a data type.
@@ -516,6 +638,7 @@ class _InputOutputCircle(QLabel):
             type_info = type_info[0]
         self.type_info = type_info
         self.is_alternating = isinstance(type_info, (list, tuple)) and len(type_info) > 1
+        self.setToolTip(self._buildPortTooltipText())
         self.update()
     
     def mousePressEvent(self, event):
