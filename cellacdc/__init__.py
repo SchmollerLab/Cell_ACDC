@@ -403,6 +403,7 @@ favourite_func_metrics_csv_path = os.path.join(
     settings_folderpath, 'favourite_func_metrics.csv'
 )
 recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
+recentWorkflowPaths_path = os.path.join(settings_folderpath, 'recentWorkflowsPaths.csv')
 preproc_recipes_path = os.path.join(settings_folderpath, 'preprocessing_recipes')
 combine_channels_recipes_path = os.path.join(settings_folderpath, 'combine_channels')
 segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')

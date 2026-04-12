@@ -1098,7 +1098,8 @@ class mainWin(QMainWindow):
     def getSelectedExpPaths(
             self, utilityName, 
             exp_folderpath=None, 
-            custom_txt=None
+            custom_txt=None,
+            allowProceedWithout=False,
         ):
         # self._debug()
         
@@ -1114,10 +1115,18 @@ class mainWin(QMainWindow):
                     Next, you will be able to <b>choose specific Positions</b>
                     from each selected experiment.
                 """)
-            msg.information(
-                self, f'{utilityName}', txt,
-                buttonsTexts=('Cancel', 'Ok')
-            )
+            if allowProceedWithout:
+                _, proceedWithoutButton, _ = msg.information(
+                    self, f'{utilityName}', txt,
+                    buttonsTexts=('Cancel', 'Proceed without', 'Select folders')
+                )
+                if msg.clickedButton == proceedWithoutButton:
+                    return {}
+            else:
+                msg.information(
+                    self, f'{utilityName}', txt,
+                    buttonsTexts=('Cancel', 'Ok')
+                )
             if msg.cancel:
                 self.logger.info(f'{utilityName} aborted by the user.')
                 return

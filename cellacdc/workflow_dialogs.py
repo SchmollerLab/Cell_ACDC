@@ -2,9 +2,11 @@ import os
 import traceback
 
 from . import apps, qutils, widgets, printl, config, html_utils
-from . import myutils, prompts
+from . import myutils, prompts, load
 from .apps import QBaseDialog
-from qtpy.QtWidgets import QVBoxLayout, QLabel, QComboBox, QApplication
+from qtpy.QtWidgets import (
+    QVBoxLayout, QLabel, QComboBox, QApplication, QHBoxLayout, QPushButton
+)
 from qtpy.QtGui import QPixmap, QColor
 from qtpy.QtCore import Qt, Signal
 import inspect
@@ -273,9 +275,19 @@ class WorkflowBaseFunctions():
                 and first_input.SizeZ is not None 
                 and first_input.SizeZ > 1):
                 for idx in list(curr_accepted_inputs.keys())[1:]:
+                    accepted_input = curr_accepted_inputs[idx]
+                    accepted_size_z = None
+                    if isinstance(accepted_input, list):
+                        for accepted_type in accepted_input:
+                            accepted_size_z = getattr(accepted_type, 'SizeZ', None)
+                            if accepted_size_z is not None:
+                                break
+                    else:
+                        accepted_size_z = getattr(accepted_input, 'SizeZ', None)
+
                     curr_accepted_inputs[idx] = self._setInputMetadataUniform(
-                        curr_accepted_inputs[idx],
-                        size_z=curr_accepted_inputs[idx].SizeZ,
+                        accepted_input,
+                        size_z=accepted_size_z,
                         size_y=first_input.SizeY,
                         size_x=first_input.SizeX,
                     )
@@ -292,8 +304,8 @@ class WorkflowBaseFunctions():
                                     size_y=None, size_x=None):
         """Set input metadata to be uniform for all inputs of a specific slot (input_ls).
         """
-        
-        if not isinstance(input_type_ls, list):
+        was_list = isinstance(input_type_ls, list)
+        if not was_list:
             input_type_ls = [input_type_ls]
         
         new_input_type_ls = []
@@ -304,8 +316,10 @@ class WorkflowBaseFunctions():
                 SizeT=size_t, SizeZ=size_z,
                 SizeY=size_y, SizeX=size_x,
             ))
-                
-        return new_input_type_ls
+
+        if was_list:
+            return new_input_type_ls
+        return new_input_type_ls[0]
         
 class WorkflowCombineChannelsFunctions(WorkflowBaseFunctions):
     """Workflow card functions for combining and manipulating image channels.
@@ -973,6 +987,28 @@ class _BaseTrackerDialogWorkflow:
     sigOkClicked = Signal()
     sigCancelClicked = Signal()
 
+    def _tryParentSaveContent(self, path):
+        parent_save = getattr(super(), 'saveContent', None)
+        if not callable(parent_save):
+            return False
+        try:
+            parent_save(path)
+            return True
+        except TypeError:
+            parent_save()
+            return True
+
+    def _tryParentLoadContent(self, path):
+        parent_load = getattr(super(), 'loadContent', None)
+        if not callable(parent_load):
+            return False
+        try:
+            parent_load(path)
+            return True
+        except TypeError:
+            parent_load()
+            return True
+
     def _emitCancelledAndHide(self):
         self.cancel = True
         self.sigCancelClicked.emit()
@@ -987,6 +1023,9 @@ class _BaseTrackerDialogWorkflow:
         super().closeEvent(event)
 
     def saveContent(self, path):
+        if self._tryParentSaveContent(path):
+            return
+
         ext = '.json'
         if not path.endswith(ext):
             path += ext
@@ -995,6 +1034,11 @@ class _BaseTrackerDialogWorkflow:
             json.dump(self.getContent(), f, indent=2)
 
     def loadContent(self, path):
+        if self._tryParentLoadContent(path):
+            self.ok_cb()
+            self.hide()
+            return
+
         ext = '.json'
         if not path.endswith(ext):
             path += ext
@@ -1258,6 +1302,44 @@ class ThresholdSegmDialogWorkflow(apps.QDialogAutomaticThresholding):
                 self.segmentSliceBySliceCheckbox.setChecked(True)
 
         self.getContent()
+
+    def saveContent(self, path):
+        ext = '.ini'
+        if not path.endswith(ext):
+            path += ext
+
+        content = self.getContent()
+        cp = config.ConfigParser()
+        cp['thresholding.segment'] = {
+            'gauss_sigma': str(content.get('gauss_sigma', 1.0)),
+            'threshold_method': str(content.get('threshold_method', 'threshold_otsu')),
+            'segment_3D_volume': str(bool(content.get('segment_3D_volume', False))),
+        }
+
+        with open(path, 'w') as f:
+            cp.write(f)
+
+    def loadContent(self, path):
+        ext = '.ini'
+        if not path.endswith(ext):
+            path += ext
+
+        self.show()
+        try:
+            cp = config.ConfigParser()
+            cp.read(path)
+            section = cp['thresholding.segment'] if cp.has_section('thresholding.segment') else {}
+            self.setContent(section)
+        except Exception as e:
+            self.logger.info(f'Failed to load content from {path}: {e}')
+            traceback.print_exc()
+            self.hide()
+            return
+
+        self.cancel = False
+        self.getContent()
+        self.sigOkClicked.emit()
+        self.hide()
         
 class CombineChannelsSetupDialogWorkflow(apps.CombineChannelsSetupDialog):
     """Dialog for combining and manipulating image channels in the workflow.
@@ -1456,14 +1538,23 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
         self.curr_input_types = {}
         self.optional_inputs_n = {1: True}  # metrics input is optional
 
+        # In workflow "proceed without" mode posData can be None.
+        # Build a minimal fallback so PostProcessSegmParams can initialize.
+        posData = myutils.utilClass()
+        posData.SizeZ = 1
+        posData.isSegm3D = True
+        posData.user_ch_name = 'Input 0'
+        self._postprocess_posData = posData
+
         self.setWindowTitle('Post-process segmentation parameters')
 
         self.postProcessGroupbox = apps.PostProcessSegmParams(
-            'Post-processing parameters', posData,
+            'Post-processing parameters', self._postprocess_posData,
             useSliders=True,
             parent=self,
             external_metrics=[],
         )
+        self._syncPostProcessMetadataFromInputs()
         self.postProcessGroupbox.valueChanged.connect(self.valueChanged)
         self.postProcessGroupbox.sigNumberChannelsRequested.connect(self.setInputs_cb)
         layout = QVBoxLayout(self)
@@ -1493,7 +1584,32 @@ class PostProcessSegmDialogWorkflow(QBaseDialog):
         # Preserve order while removing duplicates.
         return list(dict.fromkeys(metrics))
 
+    def _syncPostProcessMetadataFromInputs(self):
+        size_z = getattr(self._postprocess_posData, 'SizeZ', 1) or 1
+        is_segm_3d = bool(getattr(self._postprocess_posData, 'isSegm3D', False))
+        channel_name = getattr(self._postprocess_posData, 'user_ch_name', 'Input 0')
+
+        input_0 = self.curr_input_types.get(0)
+        if input_0 is not None:
+            input_size_z = getattr(input_0, 'SizeZ', None)
+            if input_size_z is not None:
+                size_z = max(1, int(input_size_z))
+                is_segm_3d = size_z > 1
+                channel_name = 'Input 0'
+
+        self.postProcessGroupbox.channelName = channel_name
+        self.postProcessGroupbox.isSegm3D = is_segm_3d
+
+        min_obj_size_z_widget = getattr(self.postProcessGroupbox, 'minObjSizeZ_SB', None)
+        if hasattr(min_obj_size_z_widget, 'setMaximum'):
+            min_obj_size_z_widget.setMaximum(size_z)
+            if not is_segm_3d and hasattr(min_obj_size_z_widget, 'setValue'):
+                min_obj_size_z_widget.setValue(0)
+            if hasattr(min_obj_size_z_widget, 'setDisabled'):
+                min_obj_size_z_widget.setDisabled(not is_segm_3d)
+
     def updatedInputTypes(self):
+        self._syncPostProcessMetadataFromInputs()
         external_metrics = self._externalMetricsFromInputs()
         self.postProcessGroupbox.updateExternalMetrics(external_metrics)
 
@@ -1748,10 +1864,145 @@ class SetMeasurementsDialogWorkflow(apps.SetMeasurementsDialog):
                 isSegm3D=isSegm3D
             )
 
+
+class WorkflowCardMetadataDialog(apps.QDialogMetadata):
+    """Workflow-specific metadata dialog with local Ok/Cancel footer only."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._hideNonShapeFields()
+        self._rebuildLocalFooter()
+
+    def _hideNonShapeFields(self):
+        # Keep only pixel-shape related controls (SizeT, SizeZ and image shape label).
+        if hasattr(self, 'TimeIncrementLabel'):
+            self.TimeIncrementLabel.hide()
+        if hasattr(self, 'TimeIncrementSpinBox'):
+            self.TimeIncrementSpinBox.hide()
+
+        if hasattr(self, 'PhysicalSizeZLabel'):
+            self.PhysicalSizeZLabel.hide()
+        if hasattr(self, 'PhysicalSizeZSpinBox'):
+            self.PhysicalSizeZSpinBox.hide()
+
+        if hasattr(self, 'isSegm3DLabel'):
+            self.isSegm3DLabel.hide()
+        if hasattr(self, 'isSegm3Dtoggle'):
+            self.isSegm3Dtoggle.hide()
+        if hasattr(self, 'infoButtonSegm3D'):
+            self.infoButtonSegm3D.hide()
+            
+        if hasattr(self, 'PhysicalSizeXSpinBox'):
+            self.PhysicalSizeXSpinBox.hide()
+        if hasattr(self, 'PhysicalSizeXLabel'):
+            self.PhysicalSizeXLabel.hide()
+            
+        if hasattr(self, 'PhysicalSizeYSpinBox'):
+            self.PhysicalSizeYSpinBox.hide()
+        if hasattr(self, 'PhysicalSizeYLabel'):
+            self.PhysicalSizeYLabel.hide()
+
+        # Remove the entire "Add custom field" row (button + info button).
+        for i in range(self.mainLayout.count()):
+            layout_item = self.mainLayout.itemAt(i)
+            sublayout = layout_item.layout()
+            if sublayout is None:
+                continue
+
+            has_add_field_button = False
+            for j in range(sublayout.count()):
+                subitem = sublayout.itemAt(j)
+                widget = subitem.widget()
+                if isinstance(widget, QPushButton) and widget.text().strip() == 'Add custom field':
+                    has_add_field_button = True
+                    break
+
+            if not has_add_field_button:
+                continue
+
+            while sublayout.count():
+                subitem = sublayout.takeAt(0)
+                widget = subitem.widget()
+                if widget is not None:
+                    widget.setParent(None)
+                    widget.deleteLater()
+            self.mainLayout.removeItem(sublayout)
+            break
+
+    def _getCancelButton(self):
+        for button in self.findChildren(QPushButton):
+            if button.text().strip() == 'Cancel':
+                return button
+        return None
+
+    def _rebuildLocalFooter(self):
+        ok_button = getattr(self, 'okButton', None)
+        cancel_button = self._getCancelButton()
+
+        old_buttons_layout_item = self.mainLayout.itemAt(self.mainLayout.count() - 1)
+        old_buttons_layout = (
+            old_buttons_layout_item.layout() if old_buttons_layout_item is not None else None
+        )
+        if old_buttons_layout is not None:
+            while old_buttons_layout.count():
+                item = old_buttons_layout.takeAt(0)
+                widget = item.widget()
+                if widget is None:
+                    continue
+                if widget in (ok_button, cancel_button):
+                    old_buttons_layout.removeWidget(widget)
+                    continue
+                widget.setParent(None)
+                widget.deleteLater()
+            self.mainLayout.removeItem(old_buttons_layout)
+
+        if ok_button is not None:
+            ok_button.setText('Ok')
+
+        if cancel_button is None:
+            cancel_button = widgets.cancelPushButton('Cancel')
+            cancel_button.clicked.connect(self.cancel_cb)
+
+        footer_layout = QHBoxLayout()
+        footer_layout.addStretch(1)
+        if ok_button is not None:
+            footer_layout.addWidget(ok_button)
+        footer_layout.addWidget(cancel_button)
+        footer_layout.addStretch(1)
+        self.mainLayout.addLayout(footer_layout)
+
+    def ok_cb(self, checked=False):
+        """Workflow-local accept callback without touching metadata.csv files."""
+        self.cancel = False
+        self.SizeT = self.SizeT_SpinBox.value()
+        self.SizeZ = self.SizeZ_SpinBox.value()
+
+        if self.SizeT_metadata is not None and self.SizeT != self.SizeT_metadata:
+            proceed = self.warnEditingMetadata(
+                self.SizeT, self.SizeT_metadata, 'frames'
+            )
+            if not proceed:
+                return
+
+        if self.SizeZ_metadata is not None and self.SizeZ != self.SizeZ_metadata:
+            proceed = self.warnEditingMetadata(
+                self.SizeZ, self.SizeZ_metadata, 'z-slices'
+            )
+            if not proceed:
+                return
+
+        proceed = self.checkShapeMismatchMetadata()
+        if not proceed:
+            return
+
+        # Intentionally do not update any CSV files.
+        self.close()
+
 class WorkflowInputDataDialog(QBaseDialog):
     """Simple dialog for selecting input data (image or segmentation channel).
     
-    Provides a dropdown menu for the user to select from available data options.
+    Provides a dropdown menu for the user to select from available data options
+    and a browse button to optionally select a specific file.
     Used as an input node in the workflow to let users specify which data
     should be passed to the next step.
     
@@ -1788,6 +2039,8 @@ class WorkflowInputDataDialog(QBaseDialog):
         self.posData = posData
         self.logger = logger
         self.selected_value = None
+        self.selection_metadata_state = {}
+        self.selection_source_cache = {}
         
         # Create layout
         layout = QVBoxLayout()
@@ -1796,19 +2049,29 @@ class WorkflowInputDataDialog(QBaseDialog):
         label = QLabel(f'Select {type} input:')
         layout.addWidget(label)
         
-        # Add combo box for selection
+        # Add combo box for selection and allow browsing a specific file.
+        selection_layout = QHBoxLayout()
         self.selection_widget = QComboBox()
         self.selection_widget.addItems(self.selection_options)
-        layout.addWidget(self.selection_widget)
+        selection_layout.addWidget(self.selection_widget)
+
+        self.browse_button = QPushButton('Browse...')
+        self.browse_button.clicked.connect(self.browseSelectionFile)
+        selection_layout.addWidget(self.browse_button)
+
+        self.metadata_button = QPushButton('Metadata...')
+        self.metadata_button.clicked.connect(self.editSelectionMetadata)
+        selection_layout.addWidget(self.metadata_button)
+        layout.addLayout(selection_layout)
         
         # Add buttons
         buttons_layout = widgets.CancelOkButtonsLayout()
-        ok_button = buttons_layout.okButton
-        cancel_button = buttons_layout.cancelButton
-        ok_button.clicked.connect(self.ok_clicked)
-        ok_button.clicked.connect(self.sigOkClicked.emit)
-        cancel_button.clicked.connect(self.cancel_clicked)
-        cancel_button.clicked.connect(self.sigCancelClicked.emit)
+        self.ok_button = buttons_layout.okButton
+        self.cancel_button = buttons_layout.cancelButton
+        self.ok_button.clicked.connect(self.ok_clicked)
+        self.ok_button.clicked.connect(self.sigOkClicked.emit)
+        self.cancel_button.clicked.connect(self.cancel_clicked)
+        self.cancel_button.clicked.connect(self.sigCancelClicked.emit)
         
         # add connection to update sizeT and SizeZ
         self.selection_widget.currentTextChanged.connect(self.selectionChanged)
@@ -1816,14 +2079,381 @@ class WorkflowInputDataDialog(QBaseDialog):
         layout.addLayout(buttons_layout)
         
         self.setLayout(layout)
+
+    def _getSelectionLabel(self, selection):
+        if os.path.isfile(selection):
+            return os.path.basename(selection)
+        return selection
+
+    def _isValidSelection(self, selection):
+        return selection in self.selection_options or os.path.isfile(selection)
+
+    def _ensureSelectionItem(self, value, color=None):
+        idx = self.selection_widget.findText(value)
+        if idx == -1:
+            self.selection_widget.addItem(value)
+            idx = self.selection_widget.count() - 1
+
+        model = self.selection_widget.model()
+        item = model.item(idx)
+        if item is not None:
+            item.setForeground(QColor(color) if color else QColor())
+
+        return idx
+
+    def _isPosDataAvailable(self):
+        if self.posData is None:
+            return False
+
+        size_x = getattr(self.posData, 'SizeX', None)
+        if size_x is None:
+            return False
+
+        return int(size_x) > 1
+
+    def _buildFallbackSourcePosDataFromFile(self, selection):
+        file = load.load_image_file(selection)
+        ndim = file.ndim
+
+        if ndim >= 4:
+            size_t, size_z, size_y, size_x = file.shape[-4:]
+            img_data_shape = tuple(file.shape[-4:])
+        elif ndim == 3:
+            size_t, size_y, size_x = file.shape
+            size_z = 1
+            img_data_shape = tuple(file.shape)
+            self.logger.info(
+                f'[WARNING]: Selected file "{selection}" has 3 dimensions. '
+                f'Assuming SizeZ=1 and SizeT={size_t}.'
+            )
+        elif ndim == 2:
+            size_t = size_z = 1
+            size_y, size_x = file.shape
+            img_data_shape = tuple(file.shape)
+        else:
+            # Keep a safe shape default for unsupported scalar/1D arrays.
+            size_t = size_z = size_y = size_x = 1
+            img_data_shape = (1, 1)
+
+        source_pos_data = myutils.utilClass()
+        source_pos_data.SizeT = int(size_t)
+        source_pos_data.SizeZ = int(size_z)
+        source_pos_data.SizeY = int(size_y)
+        source_pos_data.SizeX = int(size_x)
+        source_pos_data.img_data_shape = img_data_shape
+        source_pos_data.images_path = os.path.dirname(selection)
+        source_pos_data.segmFound = False
+        source_pos_data.isSegm3D = int(size_z) > 1
+
+        # QDialogMetadata expects this method when posData is provided.
+        source_pos_data.getIsSegm3D = lambda: bool(source_pos_data.isSegm3D)
+
+        return source_pos_data
+
+    def _getSelectionSourcePosData(self, selection):
+        if not os.path.isfile(selection):
+            return self.posData
+
+        try:
+            images_path = os.path.dirname(selection)
+            # list all files in the same directory
+            filenames = myutils.listdir(images_path)
+            proceed = myutils.checkDataIntegrity(filenames, images_path, warn=False)
+            if not proceed and not self._isPosDataAvailable():
+                # log that no data could be loaded
+                self.logger.info(
+                    f'[WARNING]: Selected file "{selection}" failed integrity check. '
+                    f'Getting metadata directly from the file without loading associated metadata files. '
+                )
+                return self._buildFallbackSourcePosDataFromFile(selection)
+            
+            elif not proceed:
+                self.logger.info(
+                    f'[WARNING]: Selected file "{selection}" failed integrity check and has no valid image files'
+                    f' in the same directory. Falling back to current position metadata.'
+                )
+                
+                return self.posData                
+            source_pos_data = load.loadData(selection, '', QParent=self)
+            source_pos_data.loadImgData(selection)
+
+            # Random standalone files may not belong to a valid Cell-ACDC
+            # basename/dataset structure. Try metadata loading only when safe.
+            should_try_metadata = True
+            try:
+                load.get_posData_metadata(
+                    source_pos_data.images_path,
+                    getattr(source_pos_data, 'basename', ''),
+                )
+            except Exception:
+                should_try_metadata = False
+
+            if should_try_metadata:
+                try:
+                    source_pos_data.loadOtherFiles(
+                        load_metadata=True,
+                        loadSegmInfo=self.type == 'segmentation'
+                    )
+                except Exception:
+                    # Keep working with image-derived defaults without surfacing
+                    # basename-related warnings for arbitrary files.
+                    pass
+            return source_pos_data
+        except Exception as err:
+            self.logger.info(
+                f'[WARNING]: Failed to load metadata for selected file '
+                f'"{selection}": {err}. Falling back to current position metadata.'
+            )
+            return self.posData
+
+    def _selectionMetadataKey(self, selection):
+        return str(selection).strip()
+
+    def _normalizeMetadataState(self, metadata_state):
+        metadata_state = metadata_state or {}
+        size_t = int(metadata_state.get('SizeT', 1) or 1)
+        size_z = int(metadata_state.get('SizeZ', 1) or 1)
+        size_y = int(metadata_state.get('SizeY', 1) or 1)
+        size_x = int(metadata_state.get('SizeX', 1) or 1)
+        img_data_shape = metadata_state.get('img_data_shape')
+        if img_data_shape is None:
+            img_data_shape = self._defaultImgDataShape(
+                size_t, size_z, size_y, size_x
+            )
+        return {
+            'SizeT': size_t,
+            'SizeZ': size_z,
+            'SizeY': size_y,
+            'SizeX': size_x,
+            'img_data_shape': img_data_shape,
+        }
+
+    def _defaultImgDataShape(self, size_t, size_z, size_y=1, size_x=1):
+        size_t = int(size_t) if size_t is not None else 1
+        size_z = int(size_z) if size_z is not None else 1
+        size_y = int(size_y) if size_y is not None else 1
+        size_x = int(size_x) if size_x is not None else 1
+        if size_t > 1 and size_z > 1:
+            return (size_t, size_z, size_y, size_x)
+        if size_t > 1:
+            return (size_t, size_y, size_x)
+        if size_z > 1:
+            return (size_z, size_y, size_x)
+        return (size_y, size_x)
+
+    def _collectSelectionMetadata(self, source_pos_data=None):
+        if source_pos_data is not None:
+            size_t = getattr(source_pos_data, 'SizeT', 1)
+            size_z = getattr(source_pos_data, 'SizeZ', 1)
+            size_y = getattr(source_pos_data, 'SizeY', 1)
+            size_x = getattr(source_pos_data, 'SizeX', 1)
+            img_data_shape = getattr(source_pos_data, 'img_data_shape', None)
+            if img_data_shape is None:
+                img_data_shape = self._defaultImgDataShape(
+                    size_t, size_z, size_y, size_x
+                )
+            return {
+                'SizeT': size_t,
+                'SizeZ': size_z,
+                'SizeY': size_y,
+                'SizeX': size_x,
+                'img_data_shape': img_data_shape,
+            }
+
+        return {
+            'SizeT': 1,
+            'SizeZ': 1,
+            'SizeY': 1,
+            'SizeX': 1,
+            'img_data_shape': (1, 1),
+        }
+
+    def _getSelectionState(self, selection):
+        key = self._selectionMetadataKey(selection)
+        source_pos_data = self.selection_source_cache.get(key)
+        metadata_state = self.selection_metadata_state.get(key)
+
+        if source_pos_data is None:
+            source_pos_data = self._getSelectionSourcePosData(selection)
+            self.selection_source_cache[key] = source_pos_data
+
+        if metadata_state is None:
+            metadata_state = self._collectSelectionMetadata(
+                source_pos_data=source_pos_data
+            )
+            metadata_state = self._normalizeMetadataState(metadata_state)
+            self.selection_metadata_state[key] = metadata_state
+        else:
+            metadata_state = self._normalizeMetadataState(metadata_state)
+            self.selection_metadata_state[key] = metadata_state
+
+        return metadata_state, source_pos_data
+
+    def _getSegmInfoSelectionKey(self, selection, source_pos_data):
+        if not os.path.isfile(selection):
+            return selection
+
+        filename = os.path.splitext(os.path.basename(selection))[0]
+        basename = getattr(source_pos_data, 'basename', None)
+        if basename and filename.startswith(basename):
+            return filename[len(basename):]
+        return filename
+
+    def _getSelectionDialogFilters(self):
+        if self.type == 'image':
+            return (
+                'Image files (*.tif *.tiff *.png *.jpg *.jpeg *.h5 *.npz *.npy *.avi *.mp4 *.mov);;'
+                'All Files (*)'
+            )
+
+        return 'Segmentation files (*.npz *.npy *.tif *.tiff *.h5);;All Files (*)'
+
+    def browseSelectionFile(self):
+        from qtpy.compat import getopenfilename
+
+        current_text = self.selection_widget.currentText().strip()
+        if os.path.isfile(current_text):
+            start_dir = os.path.dirname(current_text)
+        elif self.posData is not None:
+            start_dir = self.posData.images_path
+        else:
+            start_dir = myutils.getMostRecentPath()
+
+        filepath = getopenfilename(
+            parent=self,
+            caption=f'Select {self.type} file',
+            basedir=start_dir,
+            filters=self._getSelectionDialogFilters()
+        )[0]
+        if not filepath:
+            return
+
+        idx = self._ensureSelectionItem(filepath)
+        self.selection_widget.setCurrentIndex(idx)
+        self.selected_value = filepath
+        self.selectionChanged(filepath)
+
+    def editSelectionMetadata(self):
+        selection = self.selection_widget.currentText().strip()
+        if not selection:
+            selection = self.selected_value
+
+        if not selection:
+            return
+
+        metadata_state, source_pos_data = self._getSelectionState(selection)
+
+        # Keep parent dialog actions disabled while child metadata editor is open.
+        if hasattr(self, 'ok_button'):
+            self.ok_button.setEnabled(False)
+        if hasattr(self, 'cancel_button'):
+            self.cancel_button.setEnabled(False)
+
+        try:
+            # Ensure shape is available for QDialogMetadata validation.
+            if source_pos_data is not None and not hasattr(source_pos_data, 'img_data_shape'):
+                if os.path.isfile(selection):
+                    source_pos_data.loadImgData(selection)
+                else:
+                    source_img_path = myutils.getChannelFilePath(
+                        source_pos_data.images_path, selection
+                    )
+                    if source_img_path:
+                        source_pos_data.loadImgData(source_img_path)
+                    elif self.posData is not None and hasattr(self.posData, 'img_data_shape'):
+                        source_pos_data.img_data_shape = self.posData.img_data_shape
+
+            img_data_shape = metadata_state.get('img_data_shape')
+            if img_data_shape is None:
+                img_data_shape = self._defaultImgDataShape(
+                    metadata_state.get('SizeT', 1),
+                    metadata_state.get('SizeZ', 1),
+                    metadata_state.get('SizeY', 1),
+                    metadata_state.get('SizeX', 1),
+                )
+
+            metadataWin = WorkflowCardMetadataDialog(
+                metadata_state.get('SizeT', 1),
+                metadata_state.get('SizeZ', 1),
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                True,
+                False,
+                False,
+                parent=self,
+                font=apps.font,
+                imgDataShape=img_data_shape,
+                posData=source_pos_data,
+                singlePos=True,
+                askSegm3D=False,
+                additionalValues={},
+                forceEnableAskSegm3D=True,
+                SizeT_metadata=metadata_state.get('SizeT', 1),
+                SizeZ_metadata=metadata_state.get('SizeZ', 1),
+                basename=getattr(source_pos_data, 'basename', '') if source_pos_data is not None else '',
+            )
+
+            metadataWin.exec_()
+            if metadataWin.cancel:
+                return
+
+            # Persist edited metadata in the card state for this selection.
+            key = self._selectionMetadataKey(selection)
+            size_y = int(metadata_state.get('SizeY', 1) or 1)
+            size_x = int(metadata_state.get('SizeX', 1) or 1)
+            updated_shape = self._defaultImgDataShape(
+                metadataWin.SizeT,
+                metadataWin.SizeZ,
+                size_y,
+                size_x,
+            )
+            self.selection_metadata_state[key] = {
+                'SizeT': metadataWin.SizeT,
+                'SizeZ': metadataWin.SizeZ,
+                'SizeY': size_y,
+                'SizeX': size_x,
+                'img_data_shape': updated_shape,
+            }
+
+            # Mirror values in source_pos_data when available (in-memory only).
+            if source_pos_data is not None:
+                source_pos_data.SizeT = metadataWin.SizeT
+                source_pos_data.SizeZ = metadataWin.SizeZ
+                source_pos_data.SizeY = size_y
+                source_pos_data.SizeX = size_x
+                source_pos_data.img_data_shape = updated_shape
+                if hasattr(source_pos_data, 'img_data_shape'):
+                    source_pos_data.SizeY, source_pos_data.SizeX = (
+                        source_pos_data.img_data_shape[-2:]
+                    )
+                source_pos_data.isSegm3D = metadataWin.SizeZ > 1
+                self.selection_source_cache[key] = source_pos_data
+        except Exception as err:
+            self.logger.info(
+                f'[WARNING]: Could not open metadata editor for "{selection}": {err}'
+            )
+            return
+        finally:
+            if hasattr(self, 'ok_button'):
+                self.ok_button.setEnabled(True)
+            if hasattr(self, 'cancel_button'):
+                self.cancel_button.setEnabled(True)
+
+        self.selectionChanged(selection)
         
     def selectionChanged(self, new_selection):
         """Handle when selection changes and update the dialog UI accordingly."""
-        self.sigUpdateTitle.emit(f'{self.type}: {new_selection}')
-        if self.posData is not None:
-            new_output_size_t = self.posData.SizeT
-            new_output_size_z = self.posData.SizeZ
-            new_output_size_y, new_output_size_x = self.posData.SizeY, self.posData.SizeX
+        self.sigUpdateTitle.emit(
+            f'{self.type}: {self._getSelectionLabel(new_selection)}'
+        )
+        metadata_state, source_pos_data = self._getSelectionState(new_selection)
+        new_output_size_t = metadata_state.get('SizeT', 1)
+        new_output_size_z = metadata_state.get('SizeZ', 1)
+        new_output_size_y = metadata_state.get('SizeY', 1)
+        new_output_size_x = metadata_state.get('SizeX', 1)
+        if self.posData is not None or metadata_state is not None:
             if self.type == 'image':
                 out_data_class = WfImageDC(
                     SizeT=new_output_size_t,
@@ -1833,16 +2463,28 @@ class WorkflowInputDataDialog(QBaseDialog):
                 )
             elif self.type == 'segmentation':
                 # here theoretically we could have a 2D segm on 3D image...
-                segm_info_df = self.posData.segmInfo_df if hasattr(self.posData, 'segmInfo_df') else None
-                if segm_info_df is not None and new_selection in segm_info_df.index:
-                    segm_info_df = segm_info_df.loc[new_selection]
+                segm_info_df = (
+                    source_pos_data.segmInfo_df
+                    if source_pos_data is not None and hasattr(source_pos_data, 'segmInfo_df') else None
+                )
+                segm_info_key = self._getSegmInfoSelectionKey(
+                    new_selection, source_pos_data
+                )
+                if segm_info_df is not None and segm_info_key in segm_info_df.index:
+                    segm_info_df = segm_info_df.loc[segm_info_key]
                     proj_method = segm_info_df['which_z_proj']
                     if proj_method != 'single z-slice':
                         new_output_size_z = 1
                 else:
-                    # log 
-                    txt = "segmInfo.csv not found." if segm_info_df is None else f"Selected segmentation '{new_selection}' not found in segmInfo.csv."
-                    self.logger.info(f"[WARNING]: {txt}\nDefaulting to using original SizeZ from posData.")
+                    key = self._selectionMetadataKey(new_selection)
+                    if key not in self.selection_metadata_state:
+                        # Log only when no card-level metadata state exists.
+                        txt = (
+                            'segmInfo.csv not found.'
+                            if segm_info_df is None else
+                            f"Selected segmentation '{segm_info_key}' not found in segmInfo.csv."
+                        )
+                        self.logger.info(f"[WARNING]: {txt}\nDefaulting to current selection metadata.")
                 out_data_class = WfSegmDC(
                     SizeT=new_output_size_t,
                     SizeZ=new_output_size_z,
@@ -1860,7 +2502,7 @@ class WorkflowInputDataDialog(QBaseDialog):
         and card title, then hides the dialog.
         """
         self.selected_value = self.selection_widget.currentText()
-        if self.selected_value in self.selection_options:
+        if self._isValidSelection(self.selected_value):
             self.sigSelectionValid.emit()
             self.selectionChanged(self.selected_value)  # Update outputs based on selection
         else:
@@ -1882,33 +2524,47 @@ class WorkflowInputDataDialog(QBaseDialog):
         Returns:
             str: The text of the currently selected item in the dropdown.
         """
-        return self.selected_value
+        if self.selected_value is not None:
+            return self.selected_value
+        return self.selection_widget.currentText()
 
     def setContent(self, content):
         """Set current selection from in-memory content."""
-        value = str(content)
-        idx = self.selection_widget.findText(value)
-        if idx == -1:
-            self.selection_widget.addItem(value)
-            if value not in self.selection_options:
-                self.selection_options.append(value)
-            idx = self.selection_widget.findText(value)
+        if isinstance(content, dict):
+            value = str(content.get('selected_value', ''))
+            metadata_state = content.get('metadata_state') or {}
+            if isinstance(metadata_state, dict):
+                self.selection_metadata_state = {
+                    str(k): self._normalizeMetadataState(v)
+                    for k, v in metadata_state.items() if isinstance(v, dict)
+                }
+            self.selection_source_cache = {}
+        else:
+            value = str(content)
+
+        if not value:
+            return
+
+        idx = self._ensureSelectionItem(value)
 
         self.selection_widget.setCurrentIndex(idx)
         self.selected_value = value
 
     def getContent(self):
         """Return current selection as in-memory content."""
-        return self.get_selected_value()
+        return {
+            'selected_value': self.get_selected_value(),
+            'metadata_state': copy.deepcopy(self.selection_metadata_state),
+        }
     
     def saveContent(self, path):
-        """Save the current selection to a file"""
-        ext = '.txt'
+        """Save the current selection and metadata state to a file."""
+        ext = '.json'
         if not path.endswith(ext):
             path += ext
-        content = self.get_selected_value()
+        content = self.getContent()
         with open(path, 'w') as f:
-            f.write(content)
+            json.dump(content, f, indent=2)
             
     def new_image_loaded(self):
         """Update the available options when new image data is loaded.
@@ -1930,6 +2586,7 @@ class WorkflowInputDataDialog(QBaseDialog):
             return
 
         prev_selection = self.selected_value
+        self.selection_source_cache = {}
 
         self.selection_widget.blockSignals(True)
         self.selection_widget.clear()
@@ -1942,34 +2599,37 @@ class WorkflowInputDataDialog(QBaseDialog):
                 self.selection_widget.setCurrentIndex(
                     self.selection_options.index(prev_selection)
                 )
+            elif os.path.isfile(prev_selection):
+                idx = self._ensureSelectionItem(prev_selection)
+                self.selection_widget.setCurrentIndex(idx)
             else:
                 # Previous value no longer available – add it back in red
-                self.selection_widget.addItem(prev_selection)
-                invalid_idx = self.selection_widget.count() - 1
-                model = self.selection_widget.model()
-                item = model.item(invalid_idx)
-                if item is not None:
-                    item.setForeground(QColor('red'))
+                invalid_idx = self._ensureSelectionItem(prev_selection, color='red')
                 self.selection_widget.setCurrentIndex(invalid_idx)
                 self.sigSelectionInvalid.emit(prev_selection)
 
     def loadContent(self, path):
         """Load the selection from a file and update the dialog."""
-        ext = '.txt'
+        ext = '.json'
         self.show()
-        if not path.endswith(ext):
-            path += ext
         try:
-            with open(path, 'r') as f:
-                content = f.read().strip()
-            if content in self.selection_options:
-                index = self.selection_widget.findText(content)
-                self.selection_widget.setCurrentIndex(index)
-                self.selected_value = content
+            json_path = path if path.endswith(ext) else f'{path}{ext}'
+            if os.path.exists(json_path):
+                with open(json_path, 'r') as f:
+                    content = json.load(f)
+                self.setContent(content)
             else:
-                self.logger.info(f"Loaded value '{content}' not in selection options.")
+                # Legacy fallback: previous versions saved plain text.
+                txt_path = path if path.endswith('.txt') else f'{path}.txt'
+                with open(txt_path, 'r') as f:
+                    content = f.read().strip()
+                if self._isValidSelection(content):
+                    self.setContent(content)
+                else:
+                    self.logger.info(f"Loaded value '{content}' not in selection options.")
         except Exception as e:
             self.logger.info(f"Failed to load content from {path}: {e}")
             traceback.print_exc()
+        self.selection_source_cache = {}
         self.ok_clicked()  # To emit signals and update the workflow card state after loading
         self.hide()

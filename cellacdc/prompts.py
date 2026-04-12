@@ -23,12 +23,13 @@ from . import myutils, printl, html_utils, load
 from . import settings_folderpath
 
 class select_channel_name:
-    def __init__(self, which_channel=None, allow_abort=True):
+    def __init__(self, which_channel=None, allow_abort=True, ask_user_if_basename_not_found=True):
         self.is_first_call = True
         self.which_channel = which_channel
         self.last_sel_channel = self._load_last_selection()
         self.was_aborted = False
         self.allow_abort = allow_abort
+        self.ask_user_if_basename_not_found = ask_user_if_basename_not_found
 
     def _get_available_channels_from_metadata(
             self, metadata_csv_path, filenames, channelExt
@@ -120,7 +121,8 @@ class select_channel_name:
         # Find basename as intersection of filenames
         channel_names = set()
         self.basenameNotFound = False
-        isBasenamePresent = myutils.checkDataIntegrity(filenames, images_path)
+        if self.ask_user_if_basename_not_found:
+            isBasenamePresent = myutils.checkDataIntegrity(filenames, images_path)
         if basename is None:
             basename = filenames[0]
         basename = filenames[0]

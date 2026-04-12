@@ -10,6 +10,7 @@ from qtpy.QtCore import Signal, Qt, QMimeData, QPointF, QTimer, QObject
 import qtpy
 
 from . import myutils, load, printl, workflow_dialogs, widgets, apps, workflow_default_save_folderpath, qutils
+from . import recentWorkflowPaths_path
 from .workflow_dialogs import (
     WorkflowBaseFunctions,
 )
@@ -26,6 +27,7 @@ import shutil
 import copy
 import logging
 import traceback
+import pandas as pd
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -2407,6 +2409,7 @@ class WorkflowGui(QMainWindow):
         fileMenu = menuBar.addMenu('&File')
         fileMenu.addAction(self.newAction)
         fileMenu.addAction(self.loadWorkflowAction)
+        self.openRecentWorkflowMenu = fileMenu.addMenu('Open Recent Workflow')
         fileMenu.addSeparator()
         fileMenu.addAction(self.saveAction)
         fileMenu.addAction(self.saveNewAction)
@@ -2418,6 +2421,11 @@ class WorkflowGui(QMainWindow):
         helpMenu.addAction(self.openLogFileLocationAction)
         helpMenu.addSeparator()
         helpMenu.addAction(self.aboutAction)
+
+        # Populate recent workflow entries only when opening the submenu.
+        self.openRecentWorkflowMenu.aboutToShow.connect(
+            self._populateOpenRecentWorkflowsMenu
+        )
         
         folder_toolbar.addAction(self.newAction)
         folder_toolbar.addAction(self.loadWorkflowAction)
@@ -2904,6 +2912,29 @@ class WorkflowGui(QMainWindow):
             except Exception:
                 pass
 
+    def _raiseGuiToFront(self):
+        """Bring workflow window in front of other windows after load actions."""
+        if not self.isVisible():
+            return
+
+        try:
+            if self.isMinimized():
+                self.showNormal()
+            else:
+                self.show()
+
+            # On Windows, a temporary top-most toggle makes the raise reliable.
+            self.raise_()
+            self.activateWindow()
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+            self.show()
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, False)
+            self.show()
+            self.raise_()
+            self.activateWindow()
+        except Exception as e:
+            self._logInfo(f'Could not raise workflow GUI to front: {e}')
+
     def _loadExperimentData(self):
         """Load experiment data by prompting user to select folders.
         
@@ -2924,12 +2955,27 @@ class WorkflowGui(QMainWindow):
         
         selectedExpPaths = self.mainWin.getSelectedExpPaths(
             'Workflow GUI',
-            custom_txt=custom_txt
+            custom_txt=custom_txt,
+            allowProceedWithout=True,
         )
         
         if selectedExpPaths is None:
             self._logInfo('No experiment folders selected.')
             return False
+
+        if not selectedExpPaths:
+            self.selectedExpPaths = {}
+            self.initData()
+            self._rebuildSidebarCards(build_widgets=True)
+            self._notifyDialogsNewImageLoaded()
+            self.data_loaded = True
+            self._setWorkflowUIEnabled(True)
+            self._setSaveActionsEnabled(True)
+            self._setLoadImagesActionEnabled(True)
+            self.setUnsavedWork(False)
+            self._logInfo('Proceeding without loaded images. You can load folders later.')
+            QTimer.singleShot(50, self._raiseGuiToFront)
+            return True
         
         try:
             self.selectedExpPaths = selectedExpPaths
@@ -2942,6 +2988,7 @@ class WorkflowGui(QMainWindow):
             self._setLoadImagesActionEnabled(True)
             self.setUnsavedWork(False)
             self._logInfo(f'Loaded data from {len(self.data)} positions.')
+            QTimer.singleShot(50, self._raiseGuiToFront)
             return True
         except Exception as e:
             self._logInfo(f'Error loading experiment data: {e}')
@@ -2964,14 +3011,17 @@ class WorkflowGui(QMainWindow):
         msg = widgets.myMessageBox(wrapText=False, parent=self)
         txt = (
             'There are unsaved workflow changes.<br><br>'
-            'Do you want to save before closing?'
+            'Do you want to <b>save before closing? </b>'
         )
         try:
+            discardButton = widgets.noPushButton(' No')
+            saveButton = widgets.savePushButton(' Yes')
+
             _, discardButton, saveButton = msg.warning(
                 self,
                 'Unsaved workflow changes',
                 txt,
-                buttonsTexts=('Cancel', 'Discard', 'Save')
+                buttonsTexts=('Cancel', discardButton, saveButton)
             )
 
             if msg.cancel:
@@ -3086,6 +3136,128 @@ class WorkflowGui(QMainWindow):
                 self._logInfo(f'Removed old workflow backup: {old_backup}')
             except Exception as e:
                 self._logInfo(f'Failed to remove old backup {old_backup}: {e}')
+
+    def _readRecentWorkflowPaths(self):
+        """Read recent workflow folder paths sorted by latest opened timestamp."""
+        if not os.path.exists(recentWorkflowPaths_path):
+            return []
+
+        try:
+            df = pd.read_csv(recentWorkflowPaths_path, index_col='index')
+            if 'opened_last_on' in df.columns:
+                df = df.sort_values('opened_last_on', ascending=False)
+            return [
+                str(path).strip()
+                for path in df.get('path', pd.Series(dtype='object')).to_list()
+                if str(path).strip()
+            ]
+        except Exception as e:
+            self._logInfo(f'Failed to read recent workflows list: {e}')
+            return []
+
+    def _addToRecentWorkflowPaths(self, workflow_path):
+        """Insert workflow folder into recent-workflows CSV history."""
+        if not workflow_path or not os.path.exists(workflow_path):
+            return
+
+        workflow_path = workflow_path.replace('\\', '/')
+        if os.path.exists(recentWorkflowPaths_path):
+            try:
+                df = pd.read_csv(recentWorkflowPaths_path, index_col='index')
+                recent_paths = df['path'].to_list()
+                if 'opened_last_on' in df.columns:
+                    opened_on = df['opened_last_on'].to_list()
+                else:
+                    opened_on = [None] * len(recent_paths)
+
+                if workflow_path in recent_paths:
+                    pop_idx = recent_paths.index(workflow_path)
+                    recent_paths.pop(pop_idx)
+                    opened_on.pop(pop_idx)
+
+                recent_paths.insert(0, workflow_path)
+                opened_on.insert(0, datetime.now())
+
+                # Keep max 40 recent workflow folders.
+                if len(recent_paths) > 40:
+                    recent_paths.pop(-1)
+                    opened_on.pop(-1)
+            except Exception:
+                recent_paths = [workflow_path]
+                opened_on = [datetime.now()]
+        else:
+            recent_paths = [workflow_path]
+            opened_on = [datetime.now()]
+
+        df = pd.DataFrame({
+            'path': recent_paths,
+            'opened_last_on': pd.Series(opened_on, dtype='datetime64[ns]')
+        })
+        df.index.name = 'index'
+        df.to_csv(recentWorkflowPaths_path)
+
+    def _populateOpenRecentWorkflowsMenu(self):
+        """Populate the Open Recent Workflow submenu from CSV history."""
+        menu = getattr(self, 'openRecentWorkflowMenu', None)
+        if menu is None:
+            return
+
+        menu.clear()
+        actions = []
+        for workflow_path in self._readRecentWorkflowPaths():
+            if not os.path.isdir(workflow_path):
+                continue
+
+            action = QAction(workflow_path, self)
+            action.triggered.connect(
+                lambda _checked=False, path=workflow_path: self._openRecentWorkflow(path)
+            )
+            actions.append(action)
+
+        if not actions:
+            empty_action = QAction('No recent workflows', self)
+            empty_action.setEnabled(False)
+            actions.append(empty_action)
+
+        menu.addActions(actions)
+
+    def _loadWorkflowFromPath(self, save_dir):
+        """Load a workflow folder and update the recent-workflows history."""
+        if self.verifyWorkflowSaveFiles(save_dir):
+            if self.loadWorkflow(save_dir):
+                self.loadedWorkflowPath = save_dir
+                self._resetHistory()
+                self._addToRecentWorkflowPaths(save_dir)
+                QTimer.singleShot(50, self._raiseGuiToFront)
+                return True
+        else:
+            self._logInfo(
+                'Selected folder is missing expected workflow files. '
+                'Please select a valid workflow folder.'
+            )
+
+        return False
+
+    def _openRecentWorkflow(self, workflow_path):
+        """Open a workflow folder selected from the recent submenu."""
+        if not workflow_path:
+            return
+
+        with self._lockIoActions():
+            if self.unsaved_work and not self._askSaveBeforeClosing():
+                return
+
+            if not os.path.isdir(workflow_path):
+                self._logInfo(f'Recent workflow path not found: {workflow_path}')
+                msg = widgets.myMessageBox(wrapText=False, parent=self)
+                msg.warning(
+                    self,
+                    'Workflow folder not found',
+                    f'The workflow folder does not exist anymore:\n\n{workflow_path}'
+                )
+                return
+
+            self._loadWorkflowFromPath(workflow_path)
 
     def saveWorkflow(self, save_dir):
         """Save the current workflow to disk.
@@ -3797,15 +3969,7 @@ class WorkflowGui(QMainWindow):
             if save_dir is None:
                 return
 
-            if self.verifyWorkflowSaveFiles(save_dir):
-                if self.loadWorkflow(save_dir):
-                    self.loadedWorkflowPath = save_dir
-                    self._resetHistory()
-            else:
-                self._logInfo(
-                    "Selected folder is missing expected workflow files. "
-                    "Please select a valid workflow folder."
-                )
+            self._loadWorkflowFromPath(save_dir)
 
     def _onSaveWorkflowAsTriggered(self):
         """Prompt for a destination and save the workflow there."""        
@@ -3820,6 +3984,7 @@ class WorkflowGui(QMainWindow):
             main_json_path = self.saveWorkflow(save_dir)
             if main_json_path is not None:
                 self.loadedWorkflowPath = save_dir
+                self._addToRecentWorkflowPaths(save_dir)
 
     def _onSaveWorkflowTriggered(self):
         """Save to current workflow path or prompt if not yet set."""
@@ -3831,7 +3996,9 @@ class WorkflowGui(QMainWindow):
                 self._onSaveWorkflowAsTriggered()
                 return
 
-            self.saveWorkflow(self.loadedWorkflowPath)
+            main_json_path = self.saveWorkflow(self.loadedWorkflowPath)
+            if main_json_path is not None:
+                self._addToRecentWorkflowPaths(self.loadedWorkflowPath)
 
     def _onLoadImagesTriggered(self):
         """Load or change experiment data."""

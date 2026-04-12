@@ -710,23 +710,24 @@ def addToRecentPaths(exp_path, logger=None):
     df.index.name = 'index'
     df.to_csv(recentPaths_path)
 
-def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
+def checkDataIntegrity(filenames, parent_path, parentQWidget=None, warn=True):
     if not filenames:
-        msg = widgets.myMessageBox(wrapText=False)
-        txt = html_utils.paragraph(
-            'Cell-ACDC could not find any files in the folder '
-            f'<b>{parent_path}</b>.<br><br>'
-            'Please make sure that the folder contains at least one image file.<br><br>'
-            'Thank you for your patience!'
-        )
-        msg.warning(parentQWidget, 'Selected folder is emppty', txt)
+        if warn:
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                'Cell-ACDC could not find any files in the folder '
+                f'<b>{parent_path}</b>.<br><br>'
+                'Please make sure that the folder contains at least one image file.<br><br>'
+                'Thank you for your patience!'
+            )
+            msg.warning(parentQWidget, 'Selected folder is emppty', txt)
         raise FileNotFoundError(
             f'No files found in the folder {parent_path}. '
         )
             
     char = filenames[0][:2]
     startWithSameChar = all([f.startswith(char) for f in filenames])
-    if not startWithSameChar:
+    if not startWithSameChar and warn:
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
             'Cell-ACDC detected files inside the folder '
@@ -759,6 +760,7 @@ def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
             raise TypeError(
                 'Process aborted by the user.'
             )
+    if not startWithSameChar:
         return False
     return True
 
