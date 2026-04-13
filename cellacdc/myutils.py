@@ -4109,19 +4109,18 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     pip_prefix = pip_prefix.replace('install -y', 'uninstall')
     txt_cuda = html_utils.paragraph(f"""
         Check out these instructions {cellpose_href}, and {torch_href}.<br>
-        First, uninstall the CPU version of PyTorch with the following command:<br><br>
-        <code>{pip_prefix} uninstall torch</code>.<br><br>
-        Then, install the CUDA version required by your GPU with the follwing 
-        command (in this case 12.8):<br><br>
-        <code>{pip_prefix} torch torchvision torchaudio --index-url 
-        https://download.pytorch.org/whl/cu128</code>
+        First, uninstall the CPU version of PyTorch with the following command:
+        <copiable>{pip_prefix} uninstall torch</copiable>
+        <br>Then, install the CUDA version required by your GPU with the follwing 
+        command (in this case 12.8):
+        <copiable>{pip_prefix} torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128</copiable>
         <br>
         """)
     
     add_info = html_utils.to_admonition(
         f"""
         Pleae use the following table to find the correct link for the command.
-        You can check the CUDA  <br> version installed on your system with the
+        You can check the highest CUDA  <br> version supported on your system with the
         command <code>nvidia-smi</code> in the terminal.<br>
 
         {html_utils.table_style_header}
