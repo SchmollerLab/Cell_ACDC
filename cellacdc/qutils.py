@@ -41,13 +41,18 @@ class QControlBlink:
     def start(self):
         self._originalStyleSheet = self._widget.styleSheet() or ''
         className = self._widget.metaObject().className()
-        self._blinkStyleSheet = f'{className} {{ background-color: orange; }}'
+        blink_overlay = f'{className} {{ background-color: orange; }}'
+        if self._originalStyleSheet:
+            self._blinkStyleSheet = f'{self._originalStyleSheet}\n{blink_overlay}'
+        else:
+            self._blinkStyleSheet = blink_overlay
 
         self.timer = QTimer(self.qparent)
         self.timer.timeout.connect(self.timerCallback)
         self.timer.start(100)
 
         self.stopTimer = QTimer(self.qparent)
+        self.stopTimer.setSingleShot(True)
         self.stopTimer.timeout.connect(self.stop)
         self.stopTimer.start(self.duration_ms)
     
@@ -60,10 +65,14 @@ class QControlBlink:
 
     def stop(self):
         self.timer.stop()
+        self.stopTimer.stop()
         try:
-            self._widget.setStyleSheet('background-color: none')
+            self._widget.setStyleSheet(self._originalStyleSheet)
         except RuntimeError as err:
             self.blinkON = False
+            return
+
+        self.blinkON = False
             
 
 def hide_and_delete_layout(layout):

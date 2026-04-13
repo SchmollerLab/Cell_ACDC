@@ -34,15 +34,48 @@ from datetime import datetime
 
 SUPPORTED_EXTENSIONS_CARD_SETTINGS = ['.json', '.txt', '.ini']
 FUNCTIONS_TO_ADD = [
-            workflow_dialogs.WorkflowCombineChannelsFunctions(),
-            workflow_dialogs.WorkflowPreProcessFunctions(),
-            workflow_dialogs.WorkflowPostProcessSegmFunctions(),
             workflow_dialogs.WorkflowInputImgFunctions(),
             workflow_dialogs.WorkflowInputSegmFunctions(),
-            workflow_dialogs.WorkflowSetMeasurementsFunctions(),
+            
+            workflow_dialogs.WorkflowCombineChannelsFunctions(),
+            workflow_dialogs.WorkflowPreProcessFunctions(),
+            workflow_dialogs.WorkflowZStackManipulationFunctions(),
+            workflow_dialogs.WorkflowCropImagesFunctions(),
+            
             workflow_dialogs.SegmentFunctions(),
             workflow_dialogs.TrackingFunctions(),
+            workflow_dialogs.WorkflowPostProcessSegmFunctions(),
+
+            workflow_dialogs.WorkflowSetMeasurementsFunctions(),
+
             ]
+
+def _resolveSidebarGroupName(functions: WorkflowBaseFunctions):
+    """Return the accordion subgroup name for a workflow sidebar card."""
+    card_key = str(getattr(functions, 'card_key', '') or '').strip().lower()
+    title = str(getattr(functions, 'title', '') or '').strip().lower()
+
+    if card_key in ('input_image', 'input_segmentation'):
+        return 'Inputs'
+
+    if card_key in ('preprocess_image', 'combine_channels', 'zstack_manipulation', 'crop_images'):
+        return 'Image processing'
+
+    if card_key in ('segment', 'track', 'postprocess_segmentation'):
+        return 'Segmentation'
+    
+    if card_key in ('set_measurements', 'export_measurements'):
+        return 'Measurements'
+
+    if 'input' in card_key or 'load' in card_key:
+        return 'Inputs'
+    if 'segment' in card_key or 'track' in card_key:
+        return 'Segmentation'
+    if 'measure' in card_key or 'export' in card_key:
+        return 'Measurements'
+
+
+    return 'Other'
 class _WorkflowGuiLogEmitter(QObject):
     sigLogMessage = Signal(str)
 
@@ -132,6 +165,32 @@ class _WorkflowCardListWidget(QWidget):
         if self._drag_pixmap is None:
             self._drag_pixmap = self.grab()
         return self._drag_pixmap
+
+
+class _WorkflowSidebarGroupHeaderWidget(QPushButton):
+    """Clickable header used to expand/collapse a workflow sidebar subgroup."""
+
+    def __init__(self, title, expanded=True, parent=None):
+        super().__init__(parent=parent)
+        self._title = str(title)
+        self.setCheckable(True)
+        self.setChecked(bool(expanded))
+        self.setCursor(Qt.PointingHandCursor)
+        self.setStyleSheet(
+            "QPushButton {"
+            "text-align: left;"
+            "font-weight: bold;"
+            "padding: 6px 8px;"
+            "border: 2px solid #bdbdbd;"
+            "border-radius: 4px;"
+            "}"
+        )
+        self.toggled.connect(self._updateLabel)
+        self._updateLabel(self.isChecked())
+
+    def _updateLabel(self, expanded):
+        prefix = '[ - ]' if expanded else '[ + ]'
+        self.setText(f'{prefix} {self._title}')
     
 class _ConnectionLine(QGraphicsLineItem):
     """Visual representation of a connection between workflow card ports.
@@ -1280,6 +1339,68 @@ class WorkflowSidebar(QListWidget):
     - Caches pixmaps for better performance
     - Emits sigItemDropped signal when a card is dropped in the zone
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._group_data = {}
+
+    def clear(self):
+        """Clear sidebar items and reset accordion bookkeeping."""
+        self._group_data.clear()
+        super().clear()
+
+    def addGroupHeader(self, group_name, expanded=True):
+        """Add an accordion header item for a subgroup."""
+        if group_name in self._group_data:
+            return self._group_data[group_name]['header_item']
+
+        header_item = QListWidgetItem()
+        header_item.setFlags(Qt.ItemIsEnabled)
+        header_item.setData(Qt.UserRole, None)
+        self.addItem(header_item)
+
+        header_widget = _WorkflowSidebarGroupHeaderWidget(
+            group_name,
+            expanded=expanded,
+            parent=self,
+        )
+        header_widget.toggled.connect(
+            lambda is_expanded, name=group_name: self._onHeaderToggled(name, is_expanded)
+        )
+        header_item.setSizeHint(header_widget.sizeHint())
+        self.setItemWidget(header_item, header_widget)
+
+        self._group_data[group_name] = {
+            'header_item': header_item,
+            'header_widget': header_widget,
+            'items': [],
+            'expanded': bool(expanded),
+        }
+        return header_item
+
+    def registerGroupItem(self, group_name, item):
+        """Associate a card item with an existing subgroup."""
+        group = self._group_data.get(group_name)
+        if group is None:
+            return
+
+        group['items'].append(item)
+        item.setHidden(not group['expanded'])
+
+    def _setGroupExpanded(self, group_name, expanded):
+        """Set subgroup expansion and hide/show its card items."""
+        group = self._group_data.get(group_name)
+        if group is None:
+            return
+
+        expanded = bool(expanded)
+        group['expanded'] = expanded
+        for item in group['items']:
+            item.setHidden(not expanded)
+
+    def _onHeaderToggled(self, group_name, expanded):
+        """Handle subgroup header toggle (non-exclusive expansion)."""
+        self._setGroupExpanded(group_name, expanded)
     
     def startDrag(self, supportedActions):
         """Initiate drag operation with custom preview pixmap.
@@ -1297,6 +1418,9 @@ class WorkflowSidebar(QListWidget):
         item = items[0]
         widget = self.itemWidget(item)
         card_data = item.data(Qt.UserRole)
+
+        if card_data is None:
+            return
         
         if widget is None:
             # Fallback to default behavior
@@ -1636,7 +1760,10 @@ class WorkflowZone(QGraphicsView):
             for accepted_type in input_type_accepted:
                 if accepted_type is not None and not is_workflow_data_class(accepted_type):
                     raise TypeError(f'Unsupported accepted input type in list: {accepted_type!r}')
-            return output_type in input_type_accepted
+            return any(
+                self._areTypesCompatible(output_type, accepted_type)
+                for accepted_type in input_type_accepted
+            )
 
         output_type_name = workflow_type_name(output_type)
         accepted_type_name = workflow_type_name(input_type_accepted)
@@ -2066,17 +2193,25 @@ class WorkflowGui(QMainWindow):
 
                 posData = load.loadData(path_loc)
                 posData.total_path = path_loc
+                if self.posData is None:
+                    # Keep a first loaded reference for dialogs that need
+                    # current position metadata defaults.
+                    self.posData = posData
+
+                # Safely try to load all useful side metadata once at init.
+                    posData.loadOtherFiles(
+                        load_metadata=True,
+                        load_customCombineMetrics=True,
+                        load_customAnnot=True,
+                        loadSegmInfo=True,
+                        loadBkgrROIs=True,
+                        load_segm_data=False,
+                        load_dataPrep_ROIcoords=True,
+                        load_dataprep_free_roi=True,
+                    )
+
                 self.data[i] = posData
-                
-            if i == 0:
-                self.posData = posData
-                self.posData.loadOtherFiles(load_metadata=True,
-                                            load_customCombineMetrics=True,
-                                            load_customAnnot=True,
-                                            loadSegmInfo=True,
-                                            loadBkgrROIs=True,
-                                            
-                                            )
+                i += 1
 
         for i, posData in enumerate(self.data.values()):
             basename, chNames_loc = myutils.getBasenameAndChNames(
@@ -2099,7 +2234,9 @@ class WorkflowGui(QMainWindow):
             self.img_channels = self.img_channels.intersection(chNames_loc)
             self.segm_channels = self.segm_channels.intersection(segm_endnames)
 
-    def _setupDragCard(self, functions: WorkflowBaseFunctions, build_widget=True):
+
+
+    def _setupDragCard(self, functions: WorkflowBaseFunctions, build_widget=True, group_name=None):
         """Add a workflow card to the sidebar.
         
         Creates a list item and optionally attaches the full preview widget.
@@ -2109,10 +2246,14 @@ class WorkflowGui(QMainWindow):
         Args:
             functions (WorkflowBaseFunctions): The workflow operation to add.
             build_widget (bool): If True, create full list widget with preview.
+            group_name (str): Accordion subgroup where the card is placed.
         """
+        group_name = group_name or _resolveSidebarGroupName(functions)
+
         channels_card = QListWidgetItem()
         channels_card.setData(Qt.UserRole, functions)
         self.sidebar.addItem(channels_card)
+        self.sidebar.registerGroupItem(group_name, channels_card)
         
         if not build_widget:
             channels_card.setText(getattr(functions, 'title', 'Workflow Card'))
@@ -2136,8 +2277,25 @@ class WorkflowGui(QMainWindow):
 
         self.sidebar.clear()
         functions_to_add = FUNCTIONS_TO_ADD
+        group_order = []
+        grouped_functions = {}
+
         for functions in functions_to_add:
-            self._setupDragCard(functions, build_widget=build_widgets)
+            group_name = _resolveSidebarGroupName(functions)
+            if group_name not in grouped_functions:
+                grouped_functions[group_name] = []
+                group_order.append(group_name)
+            grouped_functions[group_name].append(functions)
+
+        for idx, group_name in enumerate(group_order):
+            # Start with the first group expanded; other groups collapsed.
+            self.sidebar.addGroupHeader(group_name, expanded=(idx == 0))
+            for functions in grouped_functions[group_name]:
+                self._setupDragCard(
+                    functions,
+                    build_widget=build_widgets,
+                    group_name=group_name,
+                )
 
     def _buildWorkflowHelpText(self):
         """Build short help text for the workflow info message box."""
@@ -3558,6 +3716,14 @@ class WorkflowGui(QMainWindow):
                 self._logInfo(f'Error restoring experiment data: {e}')
                 self._setWorkflowUIEnabled(False)
                 return False
+        else:
+            self.selectedExpPaths = {}
+            self.initData()
+            self._rebuildSidebarCards(build_widgets=True)
+            self.data_loaded = True
+            self._setWorkflowUIEnabled(True)
+            self._setSaveActionsEnabled(True)
+            self._setLoadImagesActionEnabled(True)
 
         prev_suspend_state = self._suspend_unsaved_tracking
         self._suspend_unsaved_tracking = True
@@ -3603,6 +3769,7 @@ class WorkflowGui(QMainWindow):
                     self.dropZone.addCard(card_widget, x, y)
                 except Exception as e:
                     self._logInfo(f"Failed to create card '{kind}' ({saved_card_id}): {e}")
+                    traceback.print_exc()
                     continue
 
                 new_card_id = getattr(card_widget, 'card_id', None)
@@ -4016,9 +4183,8 @@ class WorkflowGui(QMainWindow):
         """
         if event.key() == Qt.Key_Q and self.debug:
             # print each curr_input_types for each card in the workflow if dialog has attr
-            for card_id, proxy in self.dropZone.cards.items():
-                card_widget = proxy.widget()
-                print(card_widget.dialog.getContent())
+            import pdb; pdb.set_trace()
+
         super().keyPressEvent(event)
         
     def selectSaveFolder(self, save=True):
