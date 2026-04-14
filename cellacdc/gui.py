@@ -31119,7 +31119,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.waitCond.wakeAll()
 
-    def showSetMeasurements(self, checked=False):
+    def showSetMeasurements(self, checked=False, qparent=None):
+        qparent = qparent if qparent is not None else self
+        if self.measurementsWin is not None:
+            self.measurementsWin.raise_()
+            self.measurementsWin.activateWindow()
+            return
+
         try:
             df_favourite_funcs = pd.read_csv(favourite_func_metrics_csv_path)
             favourite_funcs = df_favourite_funcs['favourite_func_name'].to_list()
@@ -31147,11 +31153,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             allPos_acdc_df_cols=list(allPos_acdc_df_cols),
             acdc_df_path=posData.images_path, posData=posData,
             addCombineMetricCallback=self.addCombineMetric,
-            allPosData=self.data, parent=self, 
+            allPosData=self.data, 
+            parent=qparent, 
             state=self.setMeasWinState
         )
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
         self.measurementsWin.show()
+
+        printl(qparent)
 
     def setMeasurements(self):
         posData = self.data[self.pos_i]
@@ -31492,7 +31501,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             showDialog=False
         )
         setMeasurementsButton.disconnect()
-        setMeasurementsButton.clicked.connect(self.showSetMeasurements)
+        setMeasurementsButton.clicked.connect(
+            partial(
+                self.showSetMeasurements, 
+                qparent=msg,
+            )
+        )
         msg.exec_()
         save_metrics = msg.clickedButton == yesButton
         return save_metrics, msg.cancel
