@@ -2766,7 +2766,7 @@ class myMessageBox(_base_widgets.QBaseDialog):
             factor = np.ceil(textWidth/screenWidth)
             lineLength = int(labelWidget.nCharsLongestLine/factor)
             for label in labelWidget.labels:
-                if isinstance(label, widgets.CopiableCommandWidget):
+                if isinstance(label, CopiableCommandWidget):
                     continue
                 
                 text = label.text()
