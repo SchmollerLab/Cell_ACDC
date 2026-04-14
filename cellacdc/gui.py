@@ -31160,8 +31160,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
         self.measurementsWin.show()
 
-        printl(qparent)
-
     def setMeasurements(self):
         posData = self.data[self.pos_i]
         if self.measurementsWin.delExistingCols:
