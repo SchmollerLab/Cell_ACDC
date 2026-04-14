@@ -31122,6 +31122,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def showSetMeasurements(self, checked=False, qparent=None):
         qparent = qparent if qparent is not None else self
         if self.measurementsWin is not None:
+            self.measurementsWin.show()
             self.measurementsWin.raise_()
             self.measurementsWin.activateWindow()
             return
@@ -31157,9 +31158,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             parent=qparent, 
             state=self.setMeasWinState
         )
+        self.measurementsWin.sigCancel.connect(self.setMeasurementsCancelled)
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
         self.measurementsWin.show()
-
+        
+    def setMeasurementsCancelled(self):
+        self.measurementsWin = None
+        
     def setMeasurements(self):
         posData = self.data[self.pos_i]
         if self.measurementsWin.delExistingCols:
