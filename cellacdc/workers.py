@@ -6167,7 +6167,6 @@ class saveDataWorker(QObject):
             )
 
         
-        import pdb; pdb.set_trace()
         for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
             if self.saveWin.aborted:
                 self.finished.emit()
