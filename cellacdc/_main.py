@@ -64,6 +64,8 @@ from . import exception_handler
 from . import user_profile_path
 from . import cellacdc_path
 from . config import parser_args
+from . import workflow_gui
+
 
 try:
     import spotmax
@@ -179,8 +181,17 @@ class mainWin(QMainWindow):
         segmButton.clicked.connect(self.launchSegm)
         self.segmButton = segmButton
         modulesButtonsGroupBoxLayout.addWidget(segmButton)
+        
+        workflowButton = QPushButton('  3. Launch workflow module...')
+        workflowButton.setIcon(QIcon(':workflow.svg'))
+        workflowButton.setIconSize(QSize(iconSize, iconSize))
+        workflowButton.setFont(font)
+        workflowButton.clicked.connect(self.launchWorkflowGui)
+        self.workflowButton = workflowButton
+        modulesButtonsGroupBoxLayout.addWidget(workflowButton)
+        workflowButton.setFixedHeight(47)
 
-        guiButton = QPushButton('  3. Launch GUI...')
+        guiButton = QPushButton('  4. Launch GUI...')
         guiButton.setIcon(QIcon(':logo.svg'))
         guiButton.setIconSize(QSize(iconSize, iconSize))
         guiButton.setFont(font)
@@ -189,7 +200,7 @@ class mainWin(QMainWindow):
         modulesButtonsGroupBoxLayout.addWidget(guiButton)
 
         if SPOTMAX_INSTALLED:
-            spotmaxButton = QPushButton('  4. Launch SpotMAX...')
+            spotmaxButton = QPushButton('  5. Launch SpotMAX...')
             spotmaxButton.setIcon(QIcon(spotmax_logo_path))
             spotmaxButton.setIconSize(QSize(iconSize,iconSize))
             spotmaxButton.setFont(font)
@@ -247,6 +258,7 @@ class mainWin(QMainWindow):
         self.guiWins = []
         self.spotmaxWins = []
         self.dataPrepWins = []
+        self.workflowWins = []
         self._version = None
         self.progressWin = None
         self.forceClose = False
@@ -260,10 +272,8 @@ class mainWin(QMainWindow):
         widget.setLayout(layout)
         layout.addWidget(label)
         self.darkModeToggle = widgets.Toggle(label_text='Dark mode')
-        self.darkModeToggle.ignoreEvent = False
         self.darkModeToggle.warnMessageBox  = True
         if scheme == 'dark':
-            self.darkModeToggle.ignoreEvent = True
             self.darkModeToggle.setChecked(True)
         self.darkModeToggle.toggled.connect(self.onDarkModeToggled)
         layout.addWidget(self.darkModeToggle)
@@ -275,9 +285,7 @@ class mainWin(QMainWindow):
         return get_color_scheme()
     
     def onDarkModeToggled(self, checked):
-        if self.darkModeToggle.ignoreEvent:
-            self.darkModeToggle.ignoreEvent = False
-            return
+        self.darkModeToggle.setDisabled(True)
         from ._palettes import getPaletteColorScheme
         scheme = 'dark' if checked else 'light'
         load.rename_qrc_resources_file(scheme)
@@ -294,7 +302,7 @@ class mainWin(QMainWindow):
             )
             self.darkModeToggle.warnMessageBox = True
         self.setStatusBarRestartCellACDC()
-        self.darkModeToggle.setDisabled(True)
+        
     
     def setStatusBarRestartCellACDC(self):
         self.statusBarLayout.addWidget(QLabel(html_utils.paragraph(
@@ -1090,7 +1098,8 @@ class mainWin(QMainWindow):
     def getSelectedExpPaths(
             self, utilityName, 
             exp_folderpath=None, 
-            custom_txt=None
+            custom_txt=None,
+            allowProceedWithout=False,
         ):
         # self._debug()
         
@@ -1106,10 +1115,18 @@ class mainWin(QMainWindow):
                     Next, you will be able to <b>choose specific Positions</b>
                     from each selected experiment.
                 """)
-            msg.information(
-                self, f'{utilityName}', txt,
-                buttonsTexts=('Cancel', 'Ok')
-            )
+            if allowProceedWithout:
+                _, proceedWithoutButton, _ = msg.information(
+                    self, f'{utilityName}', txt,
+                    buttonsTexts=('Cancel', 'Proceed without', 'Select folders')
+                )
+                if msg.clickedButton == proceedWithoutButton:
+                    return {}
+            else:
+                msg.information(
+                    self, f'{utilityName}', txt,
+                    buttonsTexts=('Cancel', 'Ok')
+                )
             if msg.cancel:
                 self.logger.info(f'{utilityName} aborted by the user.')
                 return
@@ -1247,7 +1264,7 @@ class mainWin(QMainWindow):
     def _debug(self):
         try:
             from . import _q_debug
-            _q_debug.q_debug(self)
+            _q_debug.q_debug(self, None)
         except Exception as err:
             raise err
     
@@ -2004,6 +2021,16 @@ class mainWin(QMainWindow):
         self.guiWins.append(guiWin)
         guiWin.sigClosed.connect(self.guiClosed)
         guiWin.run()
+        
+    def launchWorkflowGui(self, checked=False):
+        self.logger.info('Opening Workflow GUI...')
+        workflowWin = workflow_gui.WorkflowGui(
+            self.app, mainWin=self, version=self._version, 
+            launcherSlot=self.launchWorkflowGui,
+        )
+        self.workflowWins.append(workflowWin)
+        workflowWin.sigClosed.connect(self.workflowGuiClosed)
+        workflowWin.run()
     
     def launchSpotmaxGui(self, checked=False):
         from spotmax import icon_path, logo_path
@@ -2035,6 +2062,14 @@ class mainWin(QMainWindow):
         except ValueError:
             pass
         self._gc_collect()
+        
+    def workflowGuiClosed(self, workflowWin):
+        try:
+            self.workflowWins.remove(workflowWin)
+        except ValueError:
+            pass
+        self._gc_collect()
+        
         
     def _gc_collect(self):
         QTimer.singleShot(100, gc.collect)
@@ -2207,6 +2242,8 @@ class mainWin(QMainWindow):
             openModules.extend(self.guiWins)
         if self.spotmaxWins:
             openModules.extend(self.spotmaxWins)
+        if self.workflowWins:
+            openModules.extend(self.workflowWins)
         return openModules
 
 

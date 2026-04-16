@@ -408,6 +408,8 @@ def printl(*objects, pretty=False, is_decorator=False, idx=1, **kwargs):
         text = f'{open_printl_str}\n{fileinfo_str}\n{text}\n{close_printl_str}'
         print(text)
 
+    printl.info = print
+
 parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')
 models_path = os.path.join(cellacdc_path, 'models')
@@ -427,6 +429,7 @@ favourite_func_metrics_csv_path = os.path.join(
     settings_folderpath, 'favourite_func_metrics.csv'
 )
 recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
+recentWorkflowPaths_path = os.path.join(settings_folderpath, 'recentWorkflowsPaths.csv')
 preproc_recipes_path = os.path.join(settings_folderpath, 'preprocessing_recipes')
 combine_channels_recipes_path = os.path.join(settings_folderpath, 'combine_channels')
 segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')
@@ -439,6 +442,7 @@ moth_bud_tot_selected_columns_filepath = os.path.join(
 saved_measurements_selections_folderpath = os.path.join(
     settings_folderpath, 'saved_measurements_selections'
 )
+workflow_default_save_folderpath = os.path.join(settings_folderpath, 'acdc_workflows')
 
 # Use to get the acdc_output file name from `segm_filename` as 
 # `m = re.sub(segm_re_pattern, '_acdc_output', segm_filename)`

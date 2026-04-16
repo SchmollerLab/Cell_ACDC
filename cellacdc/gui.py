@@ -17075,11 +17075,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         text_if_cancelled = 'Segmentation process cancelled.'
         out = prompts.init_segm_model_params(
-            posData, model_name, init_params, segment_params, 
+            posData,
+            model_name, init_params, segment_params,
             help_url=url, qparent=self, init_last_params=initLastParams, 
             check_sam_embeddings=not is_label_roi, is_gui_caller=True,
             extraParams=extraParams,extraParamsTitle=extraParamsTitle,
             ini_filename=ini_filename,
+            sam_embeddings_path=getattr(posData, 'sam_embeddings_path', None),
+            sam_embeddings_loaded=hasattr(posData, 'sam_embeddings'),
         )
         if out.get('load_sam_embeddings', False):
             self.logger.info('Loading Segment Anything image embeddings...')

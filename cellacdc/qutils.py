@@ -3,7 +3,7 @@ from qtpy.QtCore import (
 )
 from qtpy.QtWidgets import QWidget
 import functools
-
+from . import printl
 class QWhileLoop:
     def __init__(
             self, loop_callback, period=100, max_duration=None
@@ -35,26 +35,45 @@ class QControlBlink:
         self._widget = QWidgetToBlink
         self.qparent = qparent
         self.blinkON = False
+        self._originalStyleSheet = ''
+        self._blinkStyleSheet = ''
     
     def start(self):
+        self._originalStyleSheet = self._widget.styleSheet() or ''
+        className = self._widget.metaObject().className()
+        blink_overlay = f'{className} {{ background-color: orange; }}'
+        if self._originalStyleSheet:
+            self._blinkStyleSheet = f'{self._originalStyleSheet}\n{blink_overlay}'
+        else:
+            self._blinkStyleSheet = blink_overlay
+
         self.timer = QTimer(self.qparent)
         self.timer.timeout.connect(self.timerCallback)
         self.timer.start(100)
 
         self.stopTimer = QTimer(self.qparent)
+        self.stopTimer.setSingleShot(True)
         self.stopTimer.timeout.connect(self.stop)
         self.stopTimer.start(self.duration_ms)
     
     def timerCallback(self):
         if self.blinkON:
-            self._widget.setStyleSheet('background-color: orange')
+            self._widget.setStyleSheet(self._blinkStyleSheet)
         else:
-            self._widget.setStyleSheet('background-color: none')
+            self._widget.setStyleSheet(self._originalStyleSheet)
         self.blinkON = not self.blinkON
 
     def stop(self):
         self.timer.stop()
-        self._widget.setStyleSheet('background-color: none')
+        self.stopTimer.stop()
+        try:
+            self._widget.setStyleSheet(self._originalStyleSheet)
+        except RuntimeError as err:
+            self.blinkON = False
+            return
+
+        self.blinkON = False
+            
 
 def hide_and_delete_layout(layout):
     # Hide all widgets in the layout
