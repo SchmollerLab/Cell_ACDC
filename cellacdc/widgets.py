@@ -1,5 +1,5 @@
 from collections import defaultdict, deque
-from typing import Dict, List, Union, Iterable
+from typing import Dict, List, Union, Iterable, Sequence
 import os
 import sys
 import operator
@@ -2514,9 +2514,20 @@ class myMessageBox(_base_widgets.QBaseDialog):
     def splitLatexBlocks(self, text):
         texts = re.split(r"(<latex.*?>.+?)</latex>", text)
         return texts        
+    
+    def splitCopiableBlocks(self, texts: Sequence[str] | str):
+        if isinstance(texts, str):
+            texts = (texts,)
+        
+        texts_out = []
+        for text in texts:
+            texts_out.extend(re.split(r"(<copiable>.+?)</copiable>", text))
+        return texts_out  
 
     def addText(self, text):
         texts = self.splitLatexBlocks(text)
+        texts = self.splitCopiableBlocks(texts)
+        
         labelsWidget = LabelsWidget(texts, wrapText=self.wrapText)
         self.labelsWidgets.append(labelsWidget)
         self.labels.extend(labelsWidget.labels)
@@ -2755,6 +2766,9 @@ class myMessageBox(_base_widgets.QBaseDialog):
             factor = np.ceil(textWidth/screenWidth)
             lineLength = int(labelWidget.nCharsLongestLine/factor)
             for label in labelWidget.labels:
+                if isinstance(label, CopiableCommandWidget):
+                    continue
+                
                 text = label.text()
                 chunks = textwrap.wrap(text, lineLength)
                 text = '<br>'.join(chunks)
@@ -7728,6 +7742,9 @@ class CopiableCommandWidget(QGroupBox):
         
         self.setLayout(layout)        
     
+    def setWordWrap(self, wordWrap):
+        self.label.setWordWrap(wordWrap)
+    
     def copyToClipboard(self):
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
@@ -7746,8 +7763,13 @@ class CopiableCommandWidget(QGroupBox):
     
     def command(self):
         return self._command
-        
-
+    
+    def text(self):
+        return self.label.text()
+    
+    def setTextInteractionFlags(self, flags):
+        self.label.setTextInteractionFlags(flags)
+    
 def PostProcessSegmWidget(
         minimum, maximum, value, useSliders, isFloat=False, normalize=False,
         label=None
@@ -9750,6 +9772,7 @@ class LabelsWidget(QWidget):
         for t, text in enumerate(texts):
             if not text:
                 continue
+
             if text.startswith('<latex>'):
                 layout.addSpacing(10)
                 label = LatexLabel(text)
@@ -9761,6 +9784,13 @@ class LabelsWidget(QWidget):
                         layout.addSpacing(10)
                 except IndexError:
                     layout.addSpacing(10)
+            elif text.startswith('<copiable>'):
+                text = (
+                    text.removeprefix('<copiable>')
+                    .removeprefix('</copiable>')
+                )
+                label = CopiableCommandWidget(command=text, parent=self)
+                layout.addWidget(label)
             else:
                 label = QLabel(text)
                 label.setWordWrap(wrapText)
@@ -9774,7 +9804,7 @@ class LabelsWidget(QWidget):
             
             self.labels.append(label)
         
-        self.nCharsLongestLine = max(self.textLengths)
+        self.nCharsLongestLine = max(self.textLengths, default=1)
         
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
@@ -9798,7 +9828,7 @@ class LabelsWidget(QWidget):
         
         fixedTexts = []
         for text in texts:
-            if text.startswith('<latex>'):
+            if text.startswith('<latex>') or text.startswith('<copiable>'):
                 fixedTexts.append(text)
                 continue
             
