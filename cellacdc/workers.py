@@ -6157,6 +6157,17 @@ class saveDataWorker(QObject):
     
     def saveSegmData(self, posData, end_i, saved_segm_data):
         self.progress.emit(f'Saving segmentation data for {posData.relPath}...')
+        
+        
+        # extend saved_segm_data if needed
+        if posData.SizeT > 1:
+            missing_frames_number = end_i + 1 - len(saved_segm_data)
+            saved_segm_data = np.concatenate(
+                (saved_segm_data, np.zeros((missing_frames_number, *saved_segm_data.shape[1:]), dtype=saved_segm_data.dtype)),
+            )
+
+        
+        import pdb; pdb.set_trace()
         for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
             if self.saveWin.aborted:
                 self.finished.emit()
