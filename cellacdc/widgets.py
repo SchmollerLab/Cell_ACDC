@@ -1,5 +1,5 @@
 from collections import defaultdict, deque
-from typing import Dict, List, Union, Iterable
+from typing import Dict, List, Union, Iterable, Sequence
 import os
 import sys
 import operator
@@ -2515,7 +2515,7 @@ class myMessageBox(_base_widgets.QBaseDialog):
         texts = re.split(r"(<latex.*?>.+?)</latex>", text)
         return texts        
     
-    def splitCopiableBlocks(self, texts: list[str] | tuple[str]):
+    def splitCopiableBlocks(self, texts: Sequence[str] | str):
         if isinstance(texts, str):
             texts = (texts,)
         
@@ -9786,8 +9786,8 @@ class LabelsWidget(QWidget):
                     layout.addSpacing(10)
             elif text.startswith('<copiable>'):
                 text = (
-                    text.lstrip('<copiable>')
-                    .rstrip('</copiable>')
+                    text.removeprefix('<copiable>')
+                    .removeprefix('</copiable>')
                 )
                 label = CopiableCommandWidget(command=text, parent=self)
                 layout.addWidget(label)
@@ -9804,7 +9804,7 @@ class LabelsWidget(QWidget):
             
             self.labels.append(label)
         
-        self.nCharsLongestLine = max(self.textLengths)
+        self.nCharsLongestLine = max(self.textLengths, default=1)
         
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
