@@ -17395,7 +17395,8 @@ class InitFijiMacroDialog(QBaseDialog):
         self.filesStructureCombobox = QComboBox()
         self.filesStructureCombobox.addItems([
             'Positions (aka "series") embedded in the file',
-            'Positions (aka "series") separated, one for each file'
+            'Positions (aka "series") separated, one for each file',
+            'Positions (aka "series") and channels separated, one for each file'
         ])
         gridLayout.addWidget(self.filesStructureCombobox, row, 1)
         infoButton = widgets.infoPushButton()
@@ -17412,6 +17413,15 @@ class InitFijiMacroDialog(QBaseDialog):
         browseButton.sigPathSelected.connect(
             partial(self.updateFolderPath, lineEdit=self.folderPathLineEdit)
         )
+        self.folderPathLineEdit.textChanged(self.srcFolderPathChanged)
+        
+        row += 1
+        label = QLabel('Destination folder: ')
+        gridLayout.addWidget(label, row, 0)
+        self.dstfolderPathLineEdit = widgets.ElidingLineEdit()
+        gridLayout.addWidget(self.dstfolderPathLineEdit, row, 1)
+        browseButton = widgets.browseFileButton(openFolder=True)
+        gridLayout.addWidget(browseButton, row, 2)
         
         row += 1
         label = QLabel('Channel(s) name: ')
@@ -17423,7 +17433,6 @@ class InitFijiMacroDialog(QBaseDialog):
         infoButton = widgets.infoPushButton()
         gridLayout.addWidget(infoButton, row, 2)
         infoButton.clicked.connect(self.showInfoChannelName)
-        
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
         
@@ -17439,6 +17448,13 @@ class InitFijiMacroDialog(QBaseDialog):
         mainLayout.addLayout(buttonsLayout)
         
         self.setLayout(mainLayout)
+    
+    def srcFolderPathChanged(self, text):
+        if self.dstfolderPathLineEdit.text():
+            return
+        
+        folderPath = self.folderPathLineEdit.text()
+        self.dstfolderPathLineEdit.setText(folderPath)
     
     def showInfoFileStructure(self):
         txt = html_utils.paragraph("""
@@ -17566,10 +17582,15 @@ class InitFijiMacroDialog(QBaseDialog):
         self.selectedFolderPath = self.folderPath()
         self.filesStructure = self.filesStructureCombobox.currentText()
         is_multiple_files = self.filesStructure.find('separated') != -1
+        is_separate_channels = 'channels separated' in self.filesStructure
+        dst_folderpath = self.dstfolderPathLineEdit.text()
         self.init_macro_args = (
-            self.folderPath(), is_multiple_files, 
+            self.folderPath(), 
+            is_multiple_files, 
+            is_separate_channels,
+            dst_folderpath,
             self.channelNamesLineEdit.text().split(',')
-            
+
         )
         self.cancel = False
         self.close()

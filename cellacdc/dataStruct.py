@@ -2311,7 +2311,8 @@ class InitFijiMacro:
             self.cancel()
             return
         
-        macro_filepath = fiji_macros.init_macro(*win.init_macro_args)
+        init_macro_args = win.init_macro_args
+        macro_filepath = fiji_macros.init_macro(*init_macro_args)
         macro_command = fiji_macros.command_run_macro(macro_filepath)
         
         txt = html_utils.paragraph("""
@@ -2333,6 +2334,17 @@ class InitFijiMacro:
             return
         
         success = fiji_macros.run_macro(macro_command)
+        
+        files_folderpath = init_macro_args[0]
+        is_separate_channels = init_macro_args[2]
+        dst_folderpath = init_macro_args[3]
+        channels = init_macro_args[4]
+        if success and is_separate_channels:
+            self.logger.info('Moving files to Position folders...')
+            success = io.move_separate_channels_tiffs_to_pos_folders(
+                dst_folderpath, channels
+            )
+        
         if success:
             txt = html_utils.paragraph("""
                 Macro execution completed. 
