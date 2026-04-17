@@ -1032,6 +1032,7 @@ class bioFormatsWorker(QObject):
             
         self.cancelled = False
         self.isCriticalError = False
+        
         for p, filename in enumerate(self.rawFilenames):
             pos_n = p + self.start_pos_n
             if self.rawDataStruct == 0:
@@ -1090,15 +1091,15 @@ class bioFormatsWorker(QObject):
                         javabridge.kill_vm()
                     self.finished.emit()
                     return
-
+      
             self.numPos = len(self.posNums)
             self.numPosDigits = len(str(self.numPos))
             self.initPbar.emit(self.numPos*self.SizeC)
             for p_idx, pos in enumerate(self.posNums):
                 p = pos-1
                 abort = self.saveToPosFolder(
-                    p, raw_src_path, exp_dst_path, self.basename, pos_n,
-                    0, p_idx=p_idx
+                    p, raw_src_path, exp_dst_path, self.basename, 0,
+                    pos, p_idx=p_idx
                 )
                 if abort:
                     self.cancelled = True
