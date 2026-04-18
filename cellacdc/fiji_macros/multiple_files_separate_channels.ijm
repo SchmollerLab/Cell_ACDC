@@ -1,11 +1,10 @@
 requires("1.52u");
 
-//Channels names
-channels = newArray(...);
-// channels = newArray("AlexaFluor","phase_contr","DAPI","Cy3");
-
 setBatchMode(true); //when setBatchMode is set to true imageJ does not display the images. This speeds up the process by 20x.
 run("Bio-Formats Macro Extensions");
+
+//Channels names
+channels = newArray(...);
 
 //Dialog folder and get file list
 id = ...;
@@ -18,22 +17,9 @@ Array.sort(natural_order, ids);
 
 sEnd = ids.length //1 for just first file and ids.length for all files in the folder
 
-// If .czi files are not in a CZIs subfolder create the folder and move files there
-if (files_folder_name != "raw_microscopy_files") {
-	files_folder_new = files_folder + "raw_microscopy_files";
-	File.makeDirectory(files_folder_new);
-
-	for (s = 0; s < sEnd; s++) {
-		id = files_folder + ids[s];
-		new_id = files_folder_new + "/" + ids[s];
-		File.rename(id,new_id);
-	}
-	files_folder = files_folder_new;
-}
-
 //Create TIFFs folder
 path = dst_folderpath;
-wpath = replace(path, "/", "\\");
+wpath= replace(path, "/", "\\");
 osInfo = getInfo("os.name");
 WindowsIdx = indexOf(osInfo, "Windows");
 if (WindowsIdx != -1)
@@ -42,9 +28,6 @@ if (WindowsIdx != -1)
 } else {
 	exec("open " + path);
 }
-
-TIFFs = path;
-File.makeDirectory(TIFFs);
 
 for (s = 0; s < sEnd; s++) {
 	id = files_folder + "/" + ids[s];
@@ -63,20 +46,17 @@ for (s = 0; s < sEnd; s++) {
 	filenameNoExtension = File.nameWithoutExtension;
 	Ext.getSizeC(sizeC); //Gets the number of channels in the current series.
 	print("Saving s="+seriesNum+"/"+sEnd+"..."); //Display message
-	pos_path = TIFFs+"/Position_"+seriesNum;
-	File.makeDirectory(pos_path);
-	images_path = pos_path+"/Images";
-	File.makeDirectory(images_path);
+
 	C = 0;
 	CEnd = sizeC;
 
 	// Create metadata file with basename
     pos_num = nss(seriesNum, sEnd);
     print("Creating metadata file for Position_" + seriesNum);
-    basename_string = filenameNoExtension + "_s" + pos_num + "_";
-    metadata_filepath = images_path + "/" + basename_string + "metadata.csv";
+    metadata_filepath = dst_folderpath + "/" + filenameNoExtension + "_metadata.csv";
+    
     metadata_file = File.open(metadata_filepath);
-    metadata_str = "Description,values\nbasename," + basename_string;
+    metadata_str = "Description,values";
     
      // Add sizes to metadata
     Ext.getSizeT(sizeT);
@@ -105,22 +85,23 @@ for (s = 0; s < sEnd; s++) {
     	print("Image file is not timelapse");
     }
     
-	for (c=C; c<CEnd; c++) { //for loop for iterating through the channels
-		print("    Saving channel="+c+1+"/"+CEnd+"..."); //Display message
-		scTif = images_path + "/" + basename_string + channels[c] + ".tif";		
-		selectImage(1);
-		saveAs("Tiff", scTif);
-		close();
-		channel_desc = "channel_" + c + "_name";
-		metadata_str = metadata_str + "\n" + channel_desc + "," + channels[c];
-	}
+	scTif = dst_folderpath + "/" + filenameNoExtension + ".tif";		
+	selectImage(1);
+	
+	print("---------");
+	print(scTif);
+	print("---------");
+	
+	saveAs("Tiff", scTif);
+	close();
+
 	print(metadata_file, metadata_str);
 	File.close(metadata_file);
 	print("Saved!");
 }
 
 print("All done!");
-run("Quit");
+// run("Quit");
 
 function nss(n, numPos){
 	ss = "";
