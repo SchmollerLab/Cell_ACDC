@@ -2226,6 +2226,7 @@ class InitFijiMacro:
             widgets.DownloadPushButton('Download Fiji.app')
         )
         msg = widgets.myMessageBox(wrapText=False)
+        msg.did_user_selected_fiji = False
         msg.question(
             self.acdcLauncher, 'Select Fiji location', txt, 
             buttonsTexts=(
@@ -2239,7 +2240,7 @@ class InitFijiMacro:
         )
         msg.exec_()
         
-        return msg.cancel
+        return msg.cancel, msg.did_user_selected_fiji
     
     def selectFijiLocation(self, checked=True, messagebox=None):
         import qtpy.compat
@@ -2253,15 +2254,14 @@ class InitFijiMacro:
         
         from cellacdc import fiji_location_filepath
         with open(fiji_location_filepath, 'w') as txt:
-            txt.write(
-                os.path.join(filepath, 'Contents', 'MacOS', 'ImageJ-macosx')
-            )
+            txt.write(os.path.join(filepath))
         
+        messagebox.did_user_selected_fiji = True
         messagebox.cancel = False
         messagebox.close()
     
     def run(self):
-        cancel = self.askSelectInstalledFiji()
+        cancel, did_user_selected_fiji = self.askSelectInstalledFiji()
         if cancel:
             self.cancel()
             return
@@ -2276,12 +2276,15 @@ class InitFijiMacro:
         """)
         self.logger.info('Testing Fiji command...')
         fiji_success = myutils.test_fiji_base_command(self.logger.info)
+        printl(fiji_success)
         commands = None
         if not fiji_success:
-            try:
-                shutil.rmtree(acdc_fiji_path)
-            except Exception as err:
-                pass
+            if not did_user_selected_fiji:
+                try:
+                    shutil.rmtree(acdc_fiji_path)
+                except Exception as err:
+                    pass
+            
             href = html_utils.href_tag('here', urls.fiji_downloads)
             note_download_txt = (f"""
                 Before continuing, Fiji will be <b>automatically downloaded
@@ -2289,7 +2292,10 @@ class InitFijiMacro:
                 If the download fails, please download the zip file from {href} 
                 and unzip it in the following location:
             """)
-            txt = f'{txt}<br><br>{note_download_txt}'
+            admon = html_utils.to_admonition(
+                note_download_txt, admonition_type='note'
+            )
+            txt = f'{txt}<br>{admon}'
             commands = (acdc_fiji_path,)
             
         txt = html_utils.paragraph(txt)
