@@ -44,7 +44,7 @@ def init_macro(
     
     dst_folderpath = files_folderpath.replace('\\', '/')
     macro_txt = macro_txt.replace(
-        'dst_folderpath = ...', f'dst_folderpath = {dst_folderpath}'
+        'dst_folderpath = ...', f'dst_folderpath = "{dst_folderpath}"'
     )
     
     date_time = datetime.datetime.now().strftime(r'%Y-%m-%d_%H-%M-%S')
