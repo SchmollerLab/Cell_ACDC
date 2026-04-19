@@ -3890,7 +3890,6 @@ def _init_fiji_cli():
         return True
     
     fiji_app_folderpath = get_fiji_exec_folderpath()
-    printl(fiji_app_folderpath)
     args_add_to_path = [f'chmod 755 {fiji_app_folderpath}']
     try:
         subprocess.check_call(args_add_to_path, shell=True)
@@ -3922,7 +3921,7 @@ def run_fiji_command(command=None, logger_func=print):
     for args in commands:
         logger_func(
             f'{separator}\n'
-            f'Trying Fiji command: "{args}"...'
+            f'Trying Fiji command: "{args}"...\n'
             f'{separator}\n'
         )
         try:

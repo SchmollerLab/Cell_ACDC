@@ -2210,7 +2210,7 @@ class InitFijiMacro:
     
     def askSelectInstalledFiji(self):
         if os.path.exists(myutils.get_fiji_exec_folderpath()):
-            return
+            return False, False
         
         txt = html_utils.paragraph(f"""    
             Do you already have Fiji (ImageJ)?<br><br>
@@ -2276,7 +2276,6 @@ class InitFijiMacro:
         """)
         self.logger.info('Testing Fiji command...')
         fiji_success = myutils.test_fiji_base_command(self.logger.info)
-        printl(fiji_success)
         commands = None
         if not fiji_success:
             if not did_user_selected_fiji:

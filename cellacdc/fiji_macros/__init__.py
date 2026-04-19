@@ -42,13 +42,12 @@ def init_macro(
     files_path = f'"{files_path}/"'
     macro_txt = macro_txt.replace('id = ...', f'id = {files_path}')
     
-    dst_folderpath = files_folderpath.dst_folderpath('\\', '/')
-    dst_folderpath = f'"{dst_folderpath}/"'
+    dst_folderpath = files_folderpath.replace('\\', '/')
     macro_txt = macro_txt.replace(
         'dst_folderpath = ...', f'dst_folderpath = {dst_folderpath}'
     )
     
-    date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    date_time = datetime.datetime.now().strftime(r'%Y-%m-%d_%H-%M-%S')
     id = uuid4()
     macro_filename = f'{date_time}_{id}_{macro_template_filename}'
     macro_filepath = os.path.join(macros_folderpath, macro_filename)

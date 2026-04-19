@@ -204,21 +204,28 @@ def rename_files_replace_invalid_chars(files, src_path, replacement_char='_'):
 
 def move_separate_channels_tiffs_to_pos_folders(
         tiffs_folderpath: os.PathLike,
-        channel_names: Sequence[str]
+        channel_names: Sequence[str],
+        get_only_basenames=False,
+        extension='.tif'
     ):
     basenames = set()
     for file in myutils.listdir(tiffs_folderpath):
-        if not file.endswith('.tif'):
+        if not file.endswith(extension):
             continue
         
+        filename_no_ext = os.path.splitext(file)[0]
         for channel in channel_names:
-            splits = file[:-4].split(channel)
+            splits = filename_no_ext.split(channel)
             if len(splits) == 2:
                 basename = splits[0]
                 basenames.add(basename)
                 break
     
     basenames = natsorted(basenames)    
+    
+    if get_only_basenames:
+        return basenames
+    
     for p, basename in enumerate(basenames):
         pos_folderpath = os.path.join(tiffs_folderpath, f'Position_{p+1}')
         images_path = os.path.join(pos_folderpath, 'Images')

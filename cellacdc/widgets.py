@@ -719,6 +719,11 @@ class CrossCursorPointButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':cross_cursor.svg'))
 
+class TestPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':test.svg'))
+
 class browseFileButton(PushButton):
     sigPathSelected = Signal(str)
 

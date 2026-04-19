@@ -17399,6 +17399,9 @@ class InitFijiMacroDialog(QBaseDialog):
             'Positions (aka "series") and channels separated, one for each file'
         ])
         gridLayout.addWidget(self.filesStructureCombobox, row, 1)
+        self.filesStructureCombobox.currentTextChanged.connect(
+            self.fileStructureChanged
+        )
         infoButton = widgets.infoPushButton()
         gridLayout.addWidget(infoButton, row, 2)
         infoButton.clicked.connect(self.showInfoFileStructure)
@@ -17413,7 +17416,7 @@ class InitFijiMacroDialog(QBaseDialog):
         browseButton.sigPathSelected.connect(
             partial(self.updateFolderPath, lineEdit=self.folderPathLineEdit)
         )
-        self.folderPathLineEdit.textChanged(self.srcFolderPathChanged)
+        self.folderPathLineEdit.textChanged.connect(self.srcFolderPathChanged)
         
         row += 1
         label = QLabel('Destination folder: ')
@@ -17422,6 +17425,7 @@ class InitFijiMacroDialog(QBaseDialog):
         gridLayout.addWidget(self.dstfolderPathLineEdit, row, 1)
         browseButton = widgets.browseFileButton(openFolder=True)
         gridLayout.addWidget(browseButton, row, 2)
+        browseButton.sigPathSelected.connect(self.dstfolderPathLineEdit.setText)
         
         row += 1
         label = QLabel('Channel(s) name: ')
@@ -17430,6 +17434,11 @@ class InitFijiMacroDialog(QBaseDialog):
             additionalChars=' ,'
         )
         gridLayout.addWidget(self.channelNamesLineEdit, row, 1)
+        checkButton = widgets.TestPushButton('Check')
+        gridLayout.addWidget(checkButton, row, 3)
+        checkButton.clicked.connect(self.checkChannelNames)
+        checkButton.setDisabled(True)
+        self.checkButton = checkButton
         infoButton = widgets.infoPushButton()
         gridLayout.addWidget(infoButton, row, 2)
         infoButton.clicked.connect(self.showInfoChannelName)
@@ -17442,13 +17451,43 @@ class InitFijiMacroDialog(QBaseDialog):
         gridLayout.setColumnStretch(0, 0)
         gridLayout.setColumnStretch(1, 1)
         gridLayout.setColumnStretch(2, 0)
-        
+        gridLayout.setColumnStretch(3, 0)
+
         mainLayout.addLayout(gridLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
         
         self.setLayout(mainLayout)
     
+    def fileStructureChanged(self, text):
+        self.checkButton.setDisabled(not 'channels separated' in text)
+    
+    def checkChannelNames(self, checked=False):
+        proceed = self.validate()
+        if not proceed:
+            return
+        
+        src_folderpath = self.folderPath()
+        channel_names = self.channelNames()
+        extension = os.listdir(src_folderpath)[0].split('.')[-1]
+        basenames = io.move_separate_channels_tiffs_to_pos_folders(
+            src_folderpath, channel_names, get_only_basenames=True,
+            extension=extension
+        )
+        pos_folders_texts = []
+        for p, basename in enumerate(basenames):
+            pos_folders_texts.append(f'Position_{p+1}: <code>{basename}</code>')
+
+        pos_folders_html_list = html_utils.to_list(
+            pos_folders_texts, ordered=True
+        )
+        text = html_utils.paragraph(
+            'The following Position folders will be created based on the provided channel names:<br>'
+            f'{pos_folders_html_list}'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'Position folders', text)
+
     def srcFolderPathChanged(self, text):
         if self.dstfolderPathLineEdit.text():
             return
@@ -17472,9 +17511,14 @@ class InitFijiMacroDialog(QBaseDialog):
             Enter the channels name. Separate multiple channels with a comma.<br><br>
             The channel names will be used to name the individual TIFF files 
             (one for each channel).<br><br>
-            Make sure that you write the <b>channels in the right order</b>. 
-            If you are unsure, open the file in Fiji first<br> 
-            and check the order of channels.
+            If multiple channels are embedded in the microscopy file, make sure that you write the <b>channels in the right order</b>.<br> 
+            If you are unsure, open the file in Fiji first
+            and check the order of channels.<br><br>
+            If the channels are already separated, make sure to write the 
+            full channel name as it appears in the file, including capitalization and spaces.<br>
+            For example, if the files are named "pos1_ch1.tif", "pos1_ch2.tif", etc., the channels names should be "ch1, ch2".<br><br>
+            After providing the channel names, you can check that they are correct by clicking on the "Check" button next to the channel names field.<br>
+            The number of Positions that will be created will be displayed alongside the basename.
         """)
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(self, 'Files structure info', txt)
@@ -17500,10 +17544,10 @@ class InitFijiMacroDialog(QBaseDialog):
                 return
             
         lineEdit.setText(path)
-    
-    def warnPathEmpty(self):
-        txt = html_utils.paragraph("""
-            Folder path <b>cannot be empty</b>.
+
+    def warnPathEmpty(self, path_name):
+        txt = html_utils.paragraph(f"""
+            {path_name} <b>cannot be empty</b>.
         """)
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(self, 'Empty folder path', txt)
@@ -17547,17 +17591,23 @@ class InitFijiMacroDialog(QBaseDialog):
     
     def validate(self):
         path = self.folderPath()
-        if not path:
-            self.warnPathEmpty()
-            return False
-        
-        if not os.path.exists(path):
-            self.warnSelectedPathDoesNotExist(path)
-            return False
-        
-        if not os.path.isdir(path):
-            self.warnSelectedPathNotAFolder(path)
-            return False
+        dst_path = self.dstfolderPathLineEdit.text()
+        paths = {
+            'Source folder': path,
+            'Destination folder': dst_path,
+        }
+        for _path_name, _path in paths.items():
+            if not _path:
+                self.warnPathEmpty(_path_name)
+                return False
+            
+            if not os.path.exists(_path):
+                self.warnSelectedPathDoesNotExist(_path)
+                return False
+            
+            if not os.path.isdir(_path):
+                self.warnSelectedPathNotAFolder(_path)
+                return False
         
         files = os.listdir(path)
         extensions = set([os.path.splitext(file)[1] for file in files])
@@ -17574,6 +17624,11 @@ class InitFijiMacroDialog(QBaseDialog):
     def folderPath(self):
         return self.folderPathLineEdit.text()
     
+    def channelNames(self):
+        channel_names = self.channelNamesLineEdit.text().split(',')
+        channel_names = [ch.strip() for ch in channel_names]
+        return channel_names
+    
     def ok_cb(self):
         proceed = self.validate()
         if not proceed:
@@ -17589,8 +17644,7 @@ class InitFijiMacroDialog(QBaseDialog):
             is_multiple_files, 
             is_separate_channels,
             dst_folderpath,
-            self.channelNamesLineEdit.text().split(',')
-
+            self.channelNames(),
         )
         self.cancel = False
         self.close()
