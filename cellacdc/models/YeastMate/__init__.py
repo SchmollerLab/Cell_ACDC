@@ -8,13 +8,17 @@ except ModuleNotFoundError:
     if sys.platform.startswith("win"):
         from qtpy.QtWidgets import QMessageBox, QApplication
         from qtpy.QtCore import QCoreApplication
-        from cellacdc.apps import warnVisualCppRequired
+        from cellacdc.widgets import warnVisualCppRequired
 
         if QCoreApplication.instance() is None:
             app = QApplication(sys.argv)
 
         win = warnVisualCppRequired(pkg_name='YeastMate')
         win.exec_()
+        if win.cancel:
+            raise ModuleNotFoundError(
+                'User cancelled Visual C++ installation'
+            )
 
         subprocess.check_call(
             [sys.executable, '-m', 'pip', 'install', 'Cython']
