@@ -8,7 +8,7 @@ except ModuleNotFoundError:
     if sys.platform.startswith("win"):
         from qtpy.QtWidgets import QMessageBox, QApplication
         from qtpy.QtCore import QCoreApplication
-        from cellacdc.apps import warnVisualCppRequired
+        from cellacdc.widgets import warnVisualCppRequired
 
         if QCoreApplication.instance() is None:
             app = QApplication(sys.argv)

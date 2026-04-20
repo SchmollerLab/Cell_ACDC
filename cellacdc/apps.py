@@ -12991,55 +12991,6 @@ class downloadModel:
         # if self.loop is not None:
         #     self.loop.exit()
 
-class warnVisualCppRequired(widgets.myMessageBox):
-    def __init__(self, pkg_name='javabridge', parent=None):
-        super().__init__(parent)
-        self.screenShotWin = None
-
-        self.setIcon(iconName='SP_MessageBoxWarning')
-        self.setWindowTitle(f'Installation of {pkg_name} info')
-        txt = html_utils.paragraph(f"""
-            Installation of {pkg_name} on Windows requires
-            Microsoft Visual C++ 14.0 or higher.<br><br>
-            Cell-ACDC will anyway try to install {pkg_name} now.<br><br>
-            If the installation fails, please <b>close Cell-ACDC</b>,
-            then download and install <b>"Microsoft C++ Build Tools"</b>
-            from the link below
-            before trying this module again.<br><br>
-            <a href='https://visualstudio.microsoft.com/visual-cpp-build-tools/'>
-                https://visualstudio.microsoft.com/visual-cpp-build-tools/
-            </a><br><br>
-            <b>IMPORTANT</b>: when installing "Microsoft C++ Build Tools"
-            make sure to select <b>"Desktop development with C++"</b>.
-            Click "See the screenshot" for more details.
-        """)
-        seeScreenshotButton = QPushButton('See screenshot...')
-        okButton = widgets.okPushButton('Ok')
-        okButton = self.addButton('Ok')
-        okButton.disconnect()
-        okButton.clicked.connect(self.ok_cb)
-        self.addButton(seeScreenshotButton)
-        seeScreenshotButton.disconnect()
-        seeScreenshotButton.clicked.connect(
-            self.viewScreenshot
-        )
-        self.addCancelButton()
-        self.addText(txt)
-
-    def ok_cb(self):
-        self.cancel = False
-        self.close()
-    
-    def viewScreenshot(self, checked=False):
-        self.screenShotWin = widgets.view_visualcpp_screenshot(self)
-        self.screenShotWin.show()
-
-    def closeEvent(self, event):
-        if self.screenShotWin is not None:
-            self.screenShotWin.close()
-            
-        return super().closeEvent(event)
-
 class combineMetricsEquationDialog(QBaseDialog):
     sigOk = Signal(object)
 
