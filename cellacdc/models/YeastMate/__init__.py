@@ -15,6 +15,10 @@ except ModuleNotFoundError:
 
         win = warnVisualCppRequired(pkg_name='YeastMate')
         win.exec_()
+        if win.cancel:
+            raise ModuleNotFoundError(
+                'User cancelled Visual C++ installation'
+            )
 
         subprocess.check_call(
             [sys.executable, '-m', 'pip', 'install', 'Cython']

@@ -12991,18 +12991,14 @@ class downloadModel:
         # if self.loop is not None:
         #     self.loop.exit()
 
-class warnVisualCppRequired(QMessageBox):
+class warnVisualCppRequired(widgets.myMessageBox):
     def __init__(self, pkg_name='javabridge', parent=None):
         super().__init__(parent)
-        self.loop = None
         self.screenShotWin = None
 
-        self.setModal(False)
-        self.setIcon(self.Warning)
+        self.setIcon(iconName='SP_MessageBoxWarning')
         self.setWindowTitle(f'Installation of {pkg_name} info')
-        self.setTextFormat(Qt.RichText)
-        txt = (f"""
-        <p style=font-size:13px>
+        txt = html_utils.paragraph(f"""
             Installation of {pkg_name} on Windows requires
             Microsoft Visual C++ 14.0 or higher.<br><br>
             Cell-ACDC will anyway try to install {pkg_name} now.<br><br>
@@ -13016,40 +13012,33 @@ class warnVisualCppRequired(QMessageBox):
             <b>IMPORTANT</b>: when installing "Microsoft C++ Build Tools"
             make sure to select <b>"Desktop development with C++"</b>.
             Click "See the screenshot" for more details.
-        </p>
         """)
         seeScreenshotButton = QPushButton('See screenshot...')
         okButton = widgets.okPushButton('Ok')
-        self.addButton(okButton, self.YesRole)
+        okButton = self.addButton('Ok')
         okButton.disconnect()
-        okButton.clicked.connect(self.close_)
-        self.addButton(seeScreenshotButton, self.HelpRole)
+        okButton.clicked.connect(self.ok_cb)
+        self.addButton(seeScreenshotButton)
         seeScreenshotButton.disconnect()
         seeScreenshotButton.clicked.connect(
             self.viewScreenshot
         )
-        self.setText(txt)
+        self.addCancelButton()
+        self.addText(txt)
 
+    def ok_cb(self):
+        self.cancel = False
+        self.close()
+    
     def viewScreenshot(self, checked=False):
-        self.screenShotWin = widgets.view_visualcpp_screenshot()
+        self.screenShotWin = widgets.view_visualcpp_screenshot(self)
         self.screenShotWin.show()
 
-    def exec_(self):
-        self.show(block=True)
-
-    def show(self, block=False):
-        super().show()
-        if block:
-            self.loop = QEventLoop()
-            self.loop.exec_()
-
-    def close_(self):
-        self.hide()
-        self.close()
-        if self.loop is not None:
-            self.loop.exit()
+    def closeEvent(self, event):
         if self.screenShotWin is not None:
             self.screenShotWin.close()
+            
+        return super().closeEvent(event)
 
 class combineMetricsEquationDialog(QBaseDialog):
     sigOk = Signal(object)
