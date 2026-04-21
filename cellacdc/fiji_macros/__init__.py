@@ -42,7 +42,7 @@ def init_macro(
     files_path = f'"{files_path}/"'
     macro_txt = macro_txt.replace('id = ...', f'id = {files_path}')
     
-    dst_folderpath = files_folderpath.replace('\\', '/')
+    dst_folderpath = dst_folderpath.replace('\\', '/')
     macro_txt = macro_txt.replace(
         'dst_folderpath = ...', f'dst_folderpath = "{dst_folderpath}"'
     )

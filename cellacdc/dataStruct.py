@@ -2214,7 +2214,7 @@ class InitFijiMacro:
         
         txt = html_utils.paragraph(f"""    
             Do you already have Fiji (ImageJ)?<br><br>
-            If yes, click on the <code>Select Fiji location</code> button below<br>
+            If yes, click on the <code>Select Fiji location</code> button below 
             and select where you have the Fiji app.<br><br>
             Alternatively, you can ignore this and let Cell-ACDC automatically 
             download Fiji for you.
@@ -2316,32 +2316,47 @@ class InitFijiMacro:
             self.cancel()
             return
         
+        is_separate_channels = init_macro_args[2]
+        
         init_macro_args = win.init_macro_args
         macro_filepath = fiji_macros.init_macro(*init_macro_args)
         macro_command = fiji_macros.command_run_macro(macro_filepath)
         
-        txt = html_utils.paragraph("""
+        txt = ("""
             Cell-ACDC will now run the macro in the terminal.<br><br>
             During the process, the <b>GUI will be unresponsive</b>, while 
             progress will be displayed in the terminal.<br><br>
             If you prefer, you can stop the process now and run the command 
             yourself, or even run the macro directly from the Fiji GUI.<br><br>
-            Command to run the macro:
         """)
+        
+        if is_separate_channels:
+            important_admon = html_utils.to_admonition(
+                'There are still steps to run after the macro finishes, so '
+                'if you run it yourself,<br>'
+                'please close this dialogue only after the macro completes.',
+                admonition_type='important'
+            )
+            txt = f'{txt}{important_admon}'
+        
+        txt = f'{txt}Command to run the macro:'
+        
+        txt = html_utils.paragraph(txt)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(
+        _, okButton, _ = msg.information(
             self.acdcLauncher, 'Fiji macro command', txt, 
-            buttonsTexts=('Cancel', 'Ok'),
+            buttonsTexts=('Cancel', 'I already ran the macro', 'Ok'),
             commands=(macro_filepath)
         )
         if msg.cancel:
             self.cancel()
             return
         
-        success = fiji_macros.run_macro(macro_command)
+        success = True
+        if msg.clickedButton == okButton:
+            success = fiji_macros.run_macro(macro_command)            
         
         files_folderpath = init_macro_args[0]
-        is_separate_channels = init_macro_args[2]
         dst_folderpath = init_macro_args[3]
         channels = init_macro_args[4]
         if success and is_separate_channels:
