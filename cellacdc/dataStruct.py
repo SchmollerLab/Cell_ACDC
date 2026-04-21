@@ -2210,11 +2210,11 @@ class InitFijiMacro:
     
     def askSelectInstalledFiji(self):
         if os.path.exists(myutils.get_fiji_exec_folderpath()):
-            return
+            return False, False
         
         txt = html_utils.paragraph(f"""    
             Do you already have Fiji (ImageJ)?<br><br>
-            If yes, click on the <code>Select Fiji location</code> button below<br>
+            If yes, click on the <code>Select Fiji location</code> button below 
             and select where you have the Fiji app.<br><br>
             Alternatively, you can ignore this and let Cell-ACDC automatically 
             download Fiji for you.
@@ -2226,6 +2226,7 @@ class InitFijiMacro:
             widgets.DownloadPushButton('Download Fiji.app')
         )
         msg = widgets.myMessageBox(wrapText=False)
+        msg.did_user_selected_fiji = False
         msg.question(
             self.acdcLauncher, 'Select Fiji location', txt, 
             buttonsTexts=(
@@ -2239,7 +2240,7 @@ class InitFijiMacro:
         )
         msg.exec_()
         
-        return msg.cancel
+        return msg.cancel, msg.did_user_selected_fiji
     
     def selectFijiLocation(self, checked=True, messagebox=None):
         import qtpy.compat
@@ -2253,15 +2254,14 @@ class InitFijiMacro:
         
         from cellacdc import fiji_location_filepath
         with open(fiji_location_filepath, 'w') as txt:
-            txt.write(
-                os.path.join(filepath, 'Contents', 'MacOS', 'ImageJ-macosx')
-            )
+            txt.write(os.path.join(filepath))
         
+        messagebox.did_user_selected_fiji = True
         messagebox.cancel = False
         messagebox.close()
     
     def run(self):
-        cancel = self.askSelectInstalledFiji()
+        cancel, did_user_selected_fiji = self.askSelectInstalledFiji()
         if cancel:
             self.cancel()
             return
@@ -2278,10 +2278,12 @@ class InitFijiMacro:
         fiji_success = myutils.test_fiji_base_command(self.logger.info)
         commands = None
         if not fiji_success:
-            try:
-                shutil.rmtree(acdc_fiji_path)
-            except Exception as err:
-                pass
+            if not did_user_selected_fiji:
+                try:
+                    shutil.rmtree(acdc_fiji_path)
+                except Exception as err:
+                    pass
+            
             href = html_utils.href_tag('here', urls.fiji_downloads)
             note_download_txt = (f"""
                 Before continuing, Fiji will be <b>automatically downloaded
@@ -2289,7 +2291,10 @@ class InitFijiMacro:
                 If the download fails, please download the zip file from {href} 
                 and unzip it in the following location:
             """)
-            txt = f'{txt}<br><br>{note_download_txt}'
+            admon = html_utils.to_admonition(
+                note_download_txt, admonition_type='note'
+            )
+            txt = f'{txt}<br>{admon}'
             commands = (acdc_fiji_path,)
             
         txt = html_utils.paragraph(txt)
@@ -2311,28 +2316,55 @@ class InitFijiMacro:
             self.cancel()
             return
         
-        macro_filepath = fiji_macros.init_macro(*win.init_macro_args)
+        init_macro_args = win.init_macro_args
+        is_separate_channels = init_macro_args[2]
+        macro_filepath = fiji_macros.init_macro(*init_macro_args)
         macro_command = fiji_macros.command_run_macro(macro_filepath)
         
-        txt = html_utils.paragraph("""
+        txt = ("""
             Cell-ACDC will now run the macro in the terminal.<br><br>
             During the process, the <b>GUI will be unresponsive</b>, while 
             progress will be displayed in the terminal.<br><br>
             If you prefer, you can stop the process now and run the command 
-            yourself, or even run the macro directly from the Fiji GUI.<br><br>
-            Command to run the macro:
+            yourself, or even run the macro directly from the Fiji GUI.<br>
         """)
+        
+        if is_separate_channels:
+            important_admon = html_utils.to_admonition(
+                'There are still steps to run after the macro finishes, so '
+                'if you run it yourself, '
+                'please close this dialogue only after the macro completes.',
+                admonition_type='important'
+            )
+            txt = f'{txt}{important_admon}'
+        
+        txt = f'{txt}<br>Command to run the macro:'
+        
+        txt = html_utils.paragraph(txt)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(
+        _, _, okButton = msg.information(
             self.acdcLauncher, 'Fiji macro command', txt, 
-            buttonsTexts=('Cancel', 'Ok'),
-            commands=(macro_filepath)
+            buttonsTexts=('Cancel', 'I already ran the macro', 'Ok'),
+            commands=(macro_filepath),
+            path_to_browse=os.path.dirname(macro_filepath)
         )
         if msg.cancel:
             self.cancel()
             return
         
-        success = fiji_macros.run_macro(macro_command)
+        success = True
+        if msg.clickedButton == okButton:
+            success = fiji_macros.run_macro(macro_command)            
+        
+        files_folderpath = init_macro_args[0]
+        dst_folderpath = init_macro_args[3]
+        channels = init_macro_args[4]
+        if success and is_separate_channels:
+            self.logger.info('Moving files to Position folders...')
+            success = io.move_separate_channels_tiffs_to_pos_folders(
+                dst_folderpath, channels
+            )
+        
         if success:
             txt = html_utils.paragraph("""
                 Macro execution completed. 

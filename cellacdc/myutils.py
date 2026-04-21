@@ -3840,29 +3840,43 @@ def download_ffmpeg():
     
     return ffmep_exec_path.replace('\\', os.sep).replace('/', os.sep)
 
+def get_fiji_binary_filepath_mac(fiji_app_filepath):
+    if not is_mac:
+        return ''
+
+    fiji_binary_path = os.path.join(
+        fiji_app_filepath, 'Contents', 'MacOS', 'ImageJ-macosx'
+    )
+    if os.path.exists(fiji_binary_path):
+        return fiji_binary_path
+    
+    fiji_binary_path = os.path.join(
+        fiji_app_filepath, 'Contents', 'MacOS', 'fiji-macos'
+    )
+    if os.path.exists(fiji_binary_path):
+        return fiji_binary_path
+
+    return ''
+
 def get_fiji_exec_folderpath() -> str:
     if not is_mac:
         return ''
     
     from cellacdc import fiji_location_filepath
+    
     if os.path.exists(fiji_location_filepath):
         with open(fiji_location_filepath, 'r') as txt:
-            fiji_filepath = txt.read()
-        
-        if os.path.exists(fiji_filepath):
-            return fiji_filepath
-    
+            fiji_app_filepath = txt.read()
+
+        return get_fiji_binary_filepath_mac(fiji_app_filepath)
+
     if os.path.exists('/Applications/Fiji.app'):
-        return '/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx'
+        return get_fiji_binary_filepath_mac('/Applications/Fiji.app')
     
-    acdc_fiji_exec_path = os.path.join(
-        acdc_fiji_path, 'Fiji.app', 'Contents', 'MacOS', 'ImageJ-macosx'
-    )
+    acdc_fiji_app_path = os.path.join(acdc_fiji_path, 'Fiji.app')
+    acdc_fiji_binary_path = get_fiji_binary_filepath_mac(acdc_fiji_app_path)
     
-    if not os.path.exists(acdc_fiji_exec_path):
-        return ''
-    
-    return acdc_fiji_exec_path
+    return acdc_fiji_binary_path
 
 def get_fiji_base_command():
     command = None
@@ -3872,9 +3886,17 @@ def get_fiji_base_command():
     return command
     
 def _init_fiji_cli():
-    if not is_win:
-        args_add_to_path = [f'chmod 755 {get_fiji_exec_folderpath()}']
+    if is_win:
+        return True
+    
+    fiji_app_folderpath = get_fiji_exec_folderpath()
+    args_add_to_path = [f'chmod 755 {fiji_app_folderpath}']
+    try:
         subprocess.check_call(args_add_to_path, shell=True)
+        return True
+    except Exception as e:
+        printl(f'Error occurred while setting permissions: {e}')
+        return False
 
 def test_fiji_base_command(logger_func=print):
     base_command = get_fiji_base_command()
@@ -3890,10 +3912,18 @@ def run_fiji_command(command=None, logger_func=print):
     if command is None:
         command = f'{get_fiji_base_command()} --headless'
     
-    _init_fiji_cli()
-    
+    init_success = _init_fiji_cli()
+    if not init_success:
+        return False
+
+    separator = '-'*100
     commands = (command, command.split())
     for args in commands:
+        logger_func(
+            f'{separator}\n'
+            f'Trying Fiji command: "{args}"...\n'
+            f'{separator}\n'
+        )
         try:
             subprocess.check_call(args, shell=True)
             return True

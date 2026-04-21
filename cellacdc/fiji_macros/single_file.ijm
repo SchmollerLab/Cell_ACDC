@@ -6,6 +6,7 @@ macro_path = File.directory();
 
 //File dialog and open
 id = ...;
+dst_folderpath = ...;
 
 setBatchMode(true); //when setBatchMode is set to true imageJ does not display the images. This speeds up the process by 20x.
 run("Bio-Formats Macro Extensions");
@@ -19,7 +20,7 @@ filename = File.getName(id);
 print("Number of series in "+ filename +" is: "+seriesCount);
 
 //Create folder
-path = File.getParent(id);
+path = dst_folderpath;
 wpath= replace(path, "/", "\\");
 osInfo = getInfo("os.name");
 WindowsIdx = indexOf(osInfo, "Windows");
@@ -29,9 +30,6 @@ if (WindowsIdx != -1)
 } else {
 	exec("open " + path);
 }
-folder = path;
-MIA = folder;
-File.makeDirectory(MIA);
 
 //open each series by splitting channels and saving them separately into .tif files
 S = 1; //start from S series (from 1)
@@ -48,7 +46,7 @@ for (s=S-1; s<End; s++) { //for loop for iterating through the series
 	Ext.getSizeC(sizeC); //Gets the number of channels in the current series.
 	//Ext.getSizeZ(sizeZ); //Gets the number of focal planes in the current series.
 	print("Saving s="+seriesNum+"/"+End+"..."); //Display message
-	pos_path = folder+"/Position_"+seriesNum;
+	pos_path = dst_folderpath+"/Position_"+seriesNum;
 	File.makeDirectory(pos_path);
 	images_path = pos_path+"/Images";
 	File.makeDirectory(images_path);
