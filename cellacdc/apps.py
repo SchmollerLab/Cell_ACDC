@@ -17609,7 +17609,7 @@ class InitFijiMacroDialog(QBaseDialog):
                 self.warnSelectedPathNotAFolder(_path)
                 return False
         
-        files = os.listdir(path)
+        files = myutils.listdir(path)
         extensions = set([os.path.splitext(file)[1] for file in files])
         if len(extensions) > 1:
             self.warnMultipleExtensionsPresent(path, extensions)
