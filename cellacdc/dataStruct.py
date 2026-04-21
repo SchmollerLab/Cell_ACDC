@@ -2326,26 +2326,27 @@ class InitFijiMacro:
             During the process, the <b>GUI will be unresponsive</b>, while 
             progress will be displayed in the terminal.<br><br>
             If you prefer, you can stop the process now and run the command 
-            yourself, or even run the macro directly from the Fiji GUI.<br><br>
+            yourself, or even run the macro directly from the Fiji GUI.<br>
         """)
         
         if is_separate_channels:
             important_admon = html_utils.to_admonition(
                 'There are still steps to run after the macro finishes, so '
-                'if you run it yourself,<br>'
+                'if you run it yourself, '
                 'please close this dialogue only after the macro completes.',
                 admonition_type='important'
             )
             txt = f'{txt}{important_admon}'
         
-        txt = f'{txt}Command to run the macro:'
+        txt = f'{txt}<br>Command to run the macro:'
         
         txt = html_utils.paragraph(txt)
         msg = widgets.myMessageBox(wrapText=False)
-        _, okButton, _ = msg.information(
+        _, _, okButton = msg.information(
             self.acdcLauncher, 'Fiji macro command', txt, 
             buttonsTexts=('Cancel', 'I already ran the macro', 'Ok'),
-            commands=(macro_filepath)
+            commands=(macro_filepath),
+            path_to_browse=os.path.dirname(macro_filepath)
         )
         if msg.cancel:
             self.cancel()
