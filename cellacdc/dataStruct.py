@@ -2316,9 +2316,8 @@ class InitFijiMacro:
             self.cancel()
             return
         
-        is_separate_channels = init_macro_args[2]
-        
         init_macro_args = win.init_macro_args
+        is_separate_channels = init_macro_args[2]
         macro_filepath = fiji_macros.init_macro(*init_macro_args)
         macro_command = fiji_macros.command_run_macro(macro_filepath)
         
