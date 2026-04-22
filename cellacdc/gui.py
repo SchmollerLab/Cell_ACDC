@@ -29305,6 +29305,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateAllImages()
         self.logger.info('Annotations correctly recovered.')
 
+    def askUserChannelName(self, filename_no_ext):
+        help_txt = html_utils.paragraph(f"""
+            Cell-ACDC requires that every TIFF file has a basename and some 
+            additional text, typically the channel name.<br><br>
+            The basename will be common to all created files, while the additional text is used to identify the image files.
+        """)
+
+        txt = html_utils.paragraph(f"""
+            Provide some text (e.g., the channel name) to append at the end of the image file.
+        """)
+        win = apps.filenameDialog(
+            basename=filename_no_ext,
+            hintText=txt,
+            defaultEntry='channel_1',
+            helpText=help_txt, 
+            allowEmpty=False,
+            parent=self,
+            title='Save not whitelisted segmentation data',
+        )
+        win.exec_()
+        if win.cancel:
+            return False, ''
+
+        return True, win.entryText
+    
     def warnUserCreationImagesFolder(self, images_path):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
@@ -29313,18 +29338,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             folder called <code>Images</code></b>.<br><br>
             The <b>file format</b> of the images must be <b>TIFF</b> (.tif extension).<br><br>
             You can choose to let Cell-ACDC create the required data structure 
-            from your file, or you can stop the 
+            from your file,<br>
+            or you can stop the 
             process and manually place the image(s) into a folder called 
             <code>Images</code>.<br><br>
             If you choose to proceed, Cell-ACDC will create the following 
-            folder:<br><br>
-            <code>{images_path}</code>
-            <br><br>
+            folder:
+            <copiable>{images_path}</copiable>
+            <br>
             How do you want to proceed?
         """)
         copyButton = widgets.copyPushButton('Copy the image into the new folder')
         moveButton = widgets.movePushButton('Move the image into the new folder')
-        _, copyButton, moveButton = msg.warning(
+        _, copyButton, moveButton = msg.information(
             self, 'Creating Images folder', txt, 
             buttonsTexts=('Cancel', copyButton, moveButton)
         )
@@ -29351,6 +29377,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return
         dirpath = os.path.dirname(file_path)
         dirname = os.path.basename(dirpath)
+        filename, ext = os.path.splitext(os.path.basename(file_path))
+        channel_name = None
         do_copy = True
         if dirname != 'Images':
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -29358,18 +29386,37 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             exp_path = os.path.join(dirpath, acdc_folder, 'Images')
             proceed, do_copy = self.warnUserCreationImagesFolder(exp_path)
             if not proceed:
-                self.logger.info('Loading image file aborted.')
+                self.logger.info('Loading image file cancelled.')
                 return
+            
+            proceed, channel_name = self.askUserChannelName(filename)
+            if not proceed:
+                self.logger.info('Loading image file cancelled.')
+                return
+            
             os.makedirs(exp_path, exist_ok=True)
         else:
             exp_path = dirpath
 
-        filename, ext = os.path.splitext(os.path.basename(file_path))
+        if channel_name is not None:
+            basename = f'{filename}_'
+            new_filename = f'{filename}_{channel_name}{ext}'
+            df_metadata = pd.DataFrame({
+                'Description': ['basename'],
+                'values': [basename]
+            })
+            metadata_csv_filename = f'{basename}metadata.csv'
+            metadata_csv_filepath = os.path.join(
+                exp_path, metadata_csv_filename
+            )
+            df_metadata.to_csv(metadata_csv_filepath, index=False)
+        else:
+            new_filename = f'{filename}{ext}'
+        
         if ext == '.tif' or ext == '.npz':
-            filename_ext = os.path.basename(file_path)
-            new_filepath = os.path.join(exp_path, filename_ext)
+            new_filepath = os.path.join(exp_path, new_filename)
             if not os.path.exists(new_filepath):
-                self.logger.info('Copying file to Image folder...')
+                self.logger.info('Copying file to Images folder...')
                 if do_copy:
                     shutil.copy2(file_path, new_filepath)
                 else:
@@ -29389,7 +29436,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         data.img_data, cv2.COLOR_RGBA2GRAY
                     )
                 data.img_data = skimage.img_as_ubyte(data.img_data)
-            tif_path = os.path.join(exp_path, f'{filename}.tif')
+            tif_filename = new_filename.replace(ext, '.tif')
+            tif_path = os.path.join(exp_path, tif_filename)
             if data.img_data.ndim == 3:
                 SizeT = data.img_data.shape[0]
                 SizeZ = 1

@@ -51,7 +51,8 @@ dependencies = [
     "requests",
     "setuptools-scm",
     "matplotlib",
-    "sympy"
+    "sympy",
+    "imagecodecs"
 ]
 dynamic = [
     "version",
