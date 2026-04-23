@@ -13367,6 +13367,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData.frame_i = frame_i
         self.get_data()
         self.tracking(wl_update=False)
+        self.currentLab2D = self.get_2Dlab(posData.lab)
         self.update_rp()
         self.updateLostNewCurrentIDs()
         self.store_data(mainThread=False, autosave=False)
