@@ -1,5 +1,8 @@
 name: Build Cython extensions
 
+permissions:
+  contents: write
+
 on:
   push:
     paths:
@@ -52,6 +55,8 @@ jobs:
         working-directory: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -65,4 +70,4 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add cellacdc/precompiled/
           git diff --staged --quiet || git commit -m "ci: update precompiled Cython extensions"
-          git push
+          git push origin HEAD:${{ github.ref_name }}
