@@ -5466,7 +5466,7 @@ class SimpleWorker(QObject):
 class CopyAllLostObjectsWorker(QObject):
     navigateToFrame = Signal(int)
     returnToFrame = Signal(int)
-    copyContour = Signal(int)
+    copyLostObjectMask = Signal(int)
     refreshRp = Signal()
     progressBar = Signal(int)
     finished = Signal(object)
@@ -5505,7 +5505,7 @@ class CopyAllLostObjectsWorker(QObject):
                     overlap_warning = True
                     continue
 
-                self.copyContour.emit(lostObj.label)
+                self.copyLostObjectMask.emit(lostObj.label)
 
             # Refresh rp so the next frame's updateLostNewCurrentIDs sees the
             # copied IDs as belonging to this frame and marks them lost there.

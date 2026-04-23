@@ -7858,7 +7858,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         elif right_click and copyContourON:
             hoverLostID = self.ax1_lostObjScatterItem.hoverLostID
-            self.copyLostObjectContour(hoverLostID)
+            self.copyLostObjectMask(hoverLostID)
             self.update_rp()
             self.updateAllImages()
             self.store_data()
@@ -13335,7 +13335,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         self.setManualAnnotModeEnabledTools(checked)
     
-    def copyLostObjectContour(self, ID: int):
+    def copyLostObjectMask(self, ID: int):
         posData = self.data[self.pos_i]
         mask = self.lostObjImage == ID
         lab2D = self.get_2Dlab(posData.lab)
@@ -13401,7 +13401,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.lostObjContoursImage[:] = 0
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
-        prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
+        prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs'] # need to change this when merging with opt.
         for lostID in posData.lost_IDs:
             obj = prev_rp[prev_IDs_idxs[lostID]]
             self.addLostObjsToImage(obj, lostID, force=True)
@@ -13413,7 +13413,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.get_data()
 
     def _copyAllLostObjects_refreshRp(self):
-        self.update_rp(draw=False, wl_update=False)
+        self.update_rp(draw=False, wl_update=False) # need to change this when merging with opt.
 
     @disableWindow
     def copyAllLostObjects(self, for_future_frame_n, max_overlap_perc):
@@ -13445,8 +13445,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self._copyAllLostObjects_returnToFrame,
             Qt.BlockingQueuedConnection
         )
-        self.copyAllLostObjectsWorker.copyContour.connect(
-            self.copyLostObjectContour,
+        self.copyAllLostObjectsWorker.copyLostObjectMask.connect(
+            self.copyLostObjectMask,
             Qt.BlockingQueuedConnection
         )
         self.copyAllLostObjectsWorker.refreshRp.connect(
