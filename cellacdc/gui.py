@@ -240,7 +240,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.original_df_lin_tree = None
         self.original_df_lin_tree_i = None
 
-    def setTooltips(self): #laoding tooltips for GUI from .\Cell_ACDC\docs\source\tooltips.rst
+    def setTooltips(self):
         tooltips = load.get_tooltips_from_docs()
 
         for key, tooltip in tooltips.items():
@@ -2469,7 +2469,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         menus = {}
         
         for toolName in allToolsList:
-            menus[toolName] = self.settingsMenu.addMenu(f'{toolName} tool')
+            menutItemText = f'{toolName} tool'.replace('  ', ' ')
+            menus[toolName] = self.settingsMenu.addMenu(menutItemText)
             
         self.keepToolActiveActions = dict()
         self.applyToolNewFrameActions = dict()
@@ -7116,11 +7117,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.assignBudMothButton.setChecked(False)
                     msg = widgets.myMessageBox()
                     txt = (
-                        f'You clicked FIRST on ID {budID} and then on {new_mothID}.\n'
+                        f'You clicked FIRST on ID {budID} and then on {new_mothID}.<br>'
                         f'For me this means that you want ID {budID} to be the '
-                        f'BUD of ID {new_mothID}.\n'
+                        f'BUD of ID {new_mothID}.<br>'
                         f'However <b>ID {budID} is bigger than {new_mothID}</b> '
-                        f'so maybe you shoul have clicked FIRST on {new_mothID}?\n\n'
+                        f'so maybe you should have clicked FIRST on {new_mothID}?<br><br>'
                         'What do you want me to do?'
                     )
                     txt = html_utils.paragraph(txt)
@@ -17238,11 +17239,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             **self.standardPostProcessKwargs,
             **self.customPostProcessFeatures
         }
-        posData.saveSegmHyperparams(
-            model_name, win.init_kwargs, win.model_kwargs,
-            post_process_params=post_process_params,
-            preproc_recipe=self.preproc_recipe
-        )
+        if askSegmParams:
+            posData.saveSegmHyperparams(
+                model_name, win.init_kwargs, win.model_kwargs,
+                post_process_params=post_process_params,
+                preproc_recipe=self.preproc_recipe
+            )
 
         if self.askRepeatSegment3D:
             self.segment3D = False
@@ -29339,9 +29341,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         return True, win.entryText
     
-    def warnUserCreationImagesFolder(self, images_path):
+    def warnUserCreationImagesFolder(self, images_path, ext):
         msg = widgets.myMessageBox(wrapText=False)
-        txt = html_utils.paragraph(f"""
+        txt = (f"""
             Cell-ACDC requires a specific folder structure to load the data.<br><br>
             Specifically, it requires the <b>image(s) to be located in a
             folder called <code>Images</code></b>.<br><br>
@@ -29357,19 +29359,41 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             <br>
             How do you want to proceed?
         """)
-        copyButton = widgets.copyPushButton('Copy the image into the new folder')
-        moveButton = widgets.movePushButton('Move the image into the new folder')
-        _, copyButton, moveButton = msg.information(
-            self, 'Creating Images folder', txt, 
-            buttonsTexts=('Cancel', copyButton, moveButton)
-        )
-        if msg.cancel:
-            return False, None
+        if ext == '.tif' or ext == '.npz':
+            txt = f'{txt}How do you want to proceed?'
+        else:
+            txt = f'{txt}Do you want to proceed?'
+        txt = html_utils.paragraph(txt)
+        
+        
+        if ext == '.tif' or ext == '.npz':
+            copyButton = widgets.copyPushButton(
+                'Copy the image into the new folder'
+            )
+            moveButton = widgets.movePushButton(
+                'Move the image into the new folder'
+            )
+            _, copyButton, moveButton = msg.information(
+                self, 'Creating Images folder', txt, 
+                buttonsTexts=('Cancel', copyButton, moveButton)
+            )
+            if msg.cancel:
+                return False, None
 
-        if msg.clickedButton == copyButton:
+            if msg.clickedButton == copyButton:
+                return True, True
+            elif msg.clickedButton == moveButton:
+                return True, False
+        
+        else:
+            msg.information(
+                self, 'Creating Images folder', txt, 
+                buttonsTexts=('Cancel', 'Yes, proceed')
+            )
+            if msg.cancel:
+                return False, None
+            
             return True, True
-        elif msg.clickedButton == moveButton:
-            return True, False
 
     @exception_handler
     def _openFile(self, file_path=None):
@@ -29384,6 +29408,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 ";;All Files (*)")[0]
             if not file_path:
                 return
+        
+        filename, ext = os.path.splitext(os.path.basename(file_path))
         dirpath = os.path.dirname(file_path)
         dirname = os.path.basename(dirpath)
         filename, ext = os.path.splitext(os.path.basename(file_path))
@@ -29394,7 +29420,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             acdc_folder = f'{timestamp}_acdc'
             exp_path = os.path.join(dirpath, acdc_folder, 'Images')
-            proceed, do_copy = self.warnUserCreationImagesFolder(exp_path)
+            proceed, do_copy = self.warnUserCreationImagesFolder(exp_path, ext)
             if not proceed:
                 self.logger.info('Loading image file cancelled.')
                 return
