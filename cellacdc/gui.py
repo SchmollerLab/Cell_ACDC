@@ -13387,152 +13387,116 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs, curr_delRoiIDs
         )
         return out
-    
-    def copyAllLostObjectsWorkerCallback(
-            self, posData, for_future_frame_n, max_overlap_perc
-        ):
-        current_frame_i = posData.frame_i
-        last_visited_frame_i = self.get_last_tracked_i()
-        last_copied_frame_i = current_frame_i+for_future_frame_n+1
-        frames_range = (current_frame_i, last_copied_frame_i)
-        for frame_i in range(*frames_range):
-            if frame_i == posData.SizeT:
-                break
-            
-            if frame_i > posData.frame_i:
-                self.store_data(mainThread=False, autosave=False)
-                
-                posData.frame_i = frame_i
-                self.get_data()
-                self.tracking(wl_update=False)
-                self.update_rp()
-                self.updateLostNewCurrentIDs()
-                self.store_data(mainThread=False, autosave=False)
-                # delROIsIDs = self.getDelRoisIDs()
-                
-                self.lostObjContoursImage[:] = 0
-                prev_rp = posData.allData_li[frame_i-1]['regionprops']
-                prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
-                for lostID in posData.lost_IDs:
-                    obj = prev_rp[prev_IDs_idxs[lostID]]
-                    self.addLostObjsToImage(obj, lostID, force=True)
-            
-            for lostObj in skimage.measure.regionprops(self.lostObjImage):
-                overlap = np.count_nonzero(
-                    self.currentLab2D[lostObj.slice][lostObj.image]
-                )
-                overlap_perc = overlap/lostObj.area*100
-                if overlap_perc > max_overlap_perc:
-                    self.copyAllLostObjectsWorker.overlapWarning = True
-                    continue
-                
-                self.copyLostObjectContour(lostObj.label)
-            
-            self.copyAllLostObjectsWorker.signals.progressBar.emit(1)           
-        
-        if for_future_frame_n == 0:
-            return
-        
-        # Back to current frame
-        self.store_data(autosave=False, mainThread=False)
-        posData.frame_i = current_frame_i
+
+    def _copyAllLostObjects_navigateToFrame(self, frame_i):
+        posData = self.data[self.pos_i]
+        self.store_data(mainThread=False, autosave=False)
+
+        posData.frame_i = frame_i
         self.get_data()
-        
-        if last_visited_frame_i >= last_copied_frame_i:
-            return
-        
-        self.copyAllLostObjectsWorker.output['doReinitLastSegmFrame'] = True
-        self.copyAllLostObjectsWorker.output['last_visited_frame_i'] = (
-            last_visited_frame_i
-        )
-    
+        self.tracking(wl_update=False)
+        self.update_rp()
+        self.updateLostNewCurrentIDs()
+        self.store_data(mainThread=False, autosave=False)
+
+        self.lostObjContoursImage[:] = 0
+        prev_rp = posData.allData_li[frame_i-1]['regionprops']
+        prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
+        for lostID in posData.lost_IDs:
+            obj = prev_rp[prev_IDs_idxs[lostID]]
+            self.addLostObjsToImage(obj, lostID, force=True)
+
+    def _copyAllLostObjects_returnToFrame(self, frame_i):
+        posData = self.data[self.pos_i]
+        self.store_data(autosave=False, mainThread=False)
+        posData.frame_i = frame_i
+        self.get_data()
+
     @disableWindow
     def copyAllLostObjects(self, for_future_frame_n, max_overlap_perc):
         if not self.copyLostObjButton.isChecked():
             return
-        
+
         posData = self.data[self.pos_i]
-        
-        desc = (
-            'Copying all lost objects...'
-        )
-        
+
+        desc = 'Copying all lost objects...'
+
         self.progressWin = apps.QDialogWorkerProgress(
             title=desc, parent=self.mainWin, pbarDesc=desc
         )
         self.progressWin.mainPbar.setMaximum(for_future_frame_n+1)
         self.progressWin.show(self.app)
-                              
+
         self.copyAllLostObjectsThread = QThread()
-        
-        self.copyAllLostObjectsWorker = workers.SimpleWorker(
-            posData, self.copyAllLostObjectsWorkerCallback, 
-            func_args=(for_future_frame_n, max_overlap_perc)
+
+        self.copyAllLostObjectsWorker = workers.CopyAllLostObjectsWorker(
+            self, posData, for_future_frame_n, max_overlap_perc
         )
-        self.copyAllLostObjectsWorker.overlapWarning = False
-        
-        self.copyAllLostObjectsWorker.moveToThread(
-            self.copyAllLostObjectsThread
+        self.copyAllLostObjectsWorker.moveToThread(self.copyAllLostObjectsThread)
+
+        self.copyAllLostObjectsWorker.navigateToFrame.connect(
+            self._copyAllLostObjects_navigateToFrame,
+            Qt.BlockingQueuedConnection
         )
-        
-        self.copyAllLostObjectsWorker.signals.finished.connect(
+        self.copyAllLostObjectsWorker.returnToFrame.connect(
+            self._copyAllLostObjects_returnToFrame,
+            Qt.BlockingQueuedConnection
+        )
+        self.copyAllLostObjectsWorker.copyContour.connect(
+            self.copyLostObjectContour,
+            Qt.BlockingQueuedConnection
+        )
+        self.copyAllLostObjectsWorker.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.copyAllLostObjectsWorker.critical.connect(
+            self.copyAllLostObjectsWorkerCritical
+        )
+        self.copyAllLostObjectsWorker.finished.connect(
             self.copyAllLostObjectsThread.quit
         )
-        self.copyAllLostObjectsWorker.signals.finished.connect(
+        self.copyAllLostObjectsWorker.finished.connect(
             self.copyAllLostObjectsWorker.deleteLater
         )
         self.copyAllLostObjectsThread.finished.connect(
             self.copyAllLostObjectsThread.deleteLater
         )
-        
-        self.copyAllLostObjectsWorker.signals.critical.connect(
-            self.copyAllLostObjectsWorkerCritical
-        )
-        self.copyAllLostObjectsWorker.signals.initProgressBar.connect(
-            self.workerInitProgressbar
-        )
-        self.copyAllLostObjectsWorker.signals.progressBar.connect(
-            self.workerUpdateProgressbar
-        )
-        self.copyAllLostObjectsWorker.signals.progress.connect(
-            self.workerProgress
-        )
-        self.copyAllLostObjectsWorker.signals.finished.connect(
+        self.copyAllLostObjectsWorker.finished.connect(
             self.copyAllLostObjectsWorkerFinished
         )
-        
+
         self.copyAllLostObjectsThread.started.connect(
             self.copyAllLostObjectsWorker.run
         )
         self.copyAllLostObjectsThread.start()
-        
+
         self.copyAllLostObjectsWorkerLoop = QEventLoop()
         self.copyAllLostObjectsWorkerLoop.exec_()
-    
+
     def copyAllLostObjectsWorkerCritical(self, error):
         self.copyAllLostObjectsWorkerLoop.exit()
         self.workerCritical(error)
-    
+
     def copyAllLostObjectsWorkerFinished(self, output):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
-        
+
         if output.get('doReinitLastSegmFrame', False):
             self.reInitLastSegmFrame(
-                from_frame_i=output.get('last_visited_frame_i'), 
-                updateImages=False, 
+                from_frame_i=output.get('last_visited_frame_i'),
+                updateImages=False,
                 force=True
             )
-        
-        if self.copyAllLostObjectsWorker.overlapWarning:
+
+        if output.get('overlap_warning', False):
             self.blinker = qutils.QControlBlink(
-                self.copyLostObjToolbar.maxOverlapNumberControl, 
+                self.copyLostObjToolbar.maxOverlapNumberControl,
                 qparent=self.mainWin
             )
             self.blinker.start()
-        
+
         self.copyAllLostObjectsWorkerLoop.exit()
         self.update_rp()
         self.updateAllImages()
