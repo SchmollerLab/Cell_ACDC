@@ -29,7 +29,7 @@ jobs:
 
       - name: Build extension
         run: |
-          python -m pip install cython numpy setuptools
+          python -m pip install --upgrade "setuptools>=77" cython numpy
           python "${{ github.workspace }}/setup.py" build_ext --inplace --build-temp "${{ github.workspace }}/build/temp"
 
       - name: Move to precompiled folder
