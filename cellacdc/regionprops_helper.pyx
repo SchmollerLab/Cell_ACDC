@@ -37,11 +37,24 @@ def find_all_objects_2D(np.uint32_t[:, :] label_img):
                 if j     < cs[label]: cs[label] = <unsigned int>j
                 if j + 1 > ce[label]: ce[label] = <unsigned int>(j + 1)
 
-    return [
-        (lbl, (rs[lbl], re[lbl], cs[lbl], ce[lbl]))
-        for lbl in range(1, max_label + 1)
-        if re[lbl] != 0
-    ]
+    # Collect present labels into compact numpy arrays (avoids per-label tuple allocation)
+    cdef unsigned int n_labels = 0
+    for lbl in range(1, max_label + 1):
+        if re[lbl] != 0:
+            n_labels += 1
+
+    cdef np.ndarray[np.uint32_t, ndim=1] out_labels = np.empty(n_labels, dtype=np.uint32)
+    cdef np.ndarray[np.uint32_t, ndim=2] out_bboxes = np.empty((n_labels, 4), dtype=np.uint32)
+    cdef unsigned int idx = 0
+    for lbl in range(1, max_label + 1):
+        if re[lbl] != 0:
+            out_labels[idx] = lbl
+            out_bboxes[idx, 0] = rs[lbl]
+            out_bboxes[idx, 1] = re[lbl]
+            out_bboxes[idx, 2] = cs[lbl]
+            out_bboxes[idx, 3] = ce[lbl]
+            idx += 1
+    return out_labels, out_bboxes
 
 def find_all_objects_3D(np.uint32_t[:, :, :] label_img):
     cdef Py_ssize_t n_z = label_img.shape[0]
@@ -83,8 +96,23 @@ def find_all_objects_3D(np.uint32_t[:, :, :] label_img):
                     if k     < cs[label]: cs[label] = <unsigned int>k
                     if k + 1 > ce[label]: ce[label] = <unsigned int>(k + 1)
 
-    return [
-        (lbl, (zs[lbl], ze[lbl], rs[lbl], re[lbl], cs[lbl], ce[lbl]))
-        for lbl in range(1, max_label + 1)
-        if ze[lbl] != 0
-    ]
+    # Collect present labels into compact numpy arrays (avoids per-label tuple allocation)
+    cdef unsigned int n_labels = 0
+    for lbl in range(1, max_label + 1):
+        if ze[lbl] != 0:
+            n_labels += 1
+
+    cdef np.ndarray[np.uint32_t, ndim=1] out_labels = np.empty(n_labels, dtype=np.uint32)
+    cdef np.ndarray[np.uint32_t, ndim=2] out_bboxes = np.empty((n_labels, 6), dtype=np.uint32)
+    cdef unsigned int idx = 0
+    for lbl in range(1, max_label + 1):
+        if ze[lbl] != 0:
+            out_labels[idx] = lbl
+            out_bboxes[idx, 0] = zs[lbl]
+            out_bboxes[idx, 1] = ze[lbl]
+            out_bboxes[idx, 2] = rs[lbl]
+            out_bboxes[idx, 3] = re[lbl]
+            out_bboxes[idx, 4] = cs[lbl]
+            out_bboxes[idx, 5] = ce[lbl]
+            idx += 1
+    return out_labels, out_bboxes

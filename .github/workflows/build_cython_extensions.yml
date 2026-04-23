@@ -2,7 +2,7 @@ name: Build Cython extensions
 
 on:
   push:
-paths:
+    paths:
       - "cellacdc/**/*.pyx"
       - "setup.py"
 
