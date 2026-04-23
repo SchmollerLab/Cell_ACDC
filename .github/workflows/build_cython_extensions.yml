@@ -5,6 +5,7 @@ on:
     paths:
       - "cellacdc/**/*.pyx"
       - "setup.py"
+  workflow_dispatch:
 
 jobs:
   build:

@@ -64,20 +64,23 @@ def _acdc_regionprops_factory(
     if _CYTHON_FIND_OBJECTS:
         img_uint32 = label_image.astype(np.uint32, copy=False)
         if label_image.ndim == 2:
-            objects = find_all_objects_2D(img_uint32)
-            for label, (r0, r1, c0, c1) in objects:
-                sl = (slice(r0, r1), slice(c0, c1))
+            labels, bboxes = find_all_objects_2D(img_uint32)
+            for i in range(len(labels)):
+                sl = (slice(int(bboxes[i, 0]), int(bboxes[i, 1])),
+                      slice(int(bboxes[i, 2]), int(bboxes[i, 3])))
                 regions.append(acdcRegionProperties(
-                    sl, label, label_image, intensity_image, cache,
+                    sl, int(labels[i]), label_image, intensity_image, cache,
                     spacing=spacing, extra_properties=extra_properties,
                     offset=offset_arr,
                 ))
         else:
-            objects = find_all_objects_3D(img_uint32)
-            for label, (z0, z1, r0, r1, c0, c1) in objects:
-                sl = (slice(z0, z1), slice(r0, r1), slice(c0, c1))
+            labels, bboxes = find_all_objects_3D(img_uint32)
+            for i in range(len(labels)):
+                sl = (slice(int(bboxes[i, 0]), int(bboxes[i, 1])),
+                      slice(int(bboxes[i, 2]), int(bboxes[i, 3])),
+                      slice(int(bboxes[i, 4]), int(bboxes[i, 5])))
                 regions.append(acdcRegionProperties(
-                    sl, label, label_image, intensity_image, cache,
+                    sl, int(labels[i]), label_image, intensity_image, cache,
                     spacing=spacing, extra_properties=extra_properties,
                     offset=offset_arr,
                 ))
