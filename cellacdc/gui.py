@@ -2469,8 +2469,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         menus = {}
         
         for toolName in allToolsList:
-            menutItemText = f'{toolName} tool'.replace('  ', ' ')
-            menus[toolName] = self.settingsMenu.addMenu(menutItemText)
+            menuItemText = f'{toolName} tool'.replace('  ', ' ')
+            menus[toolName] = self.settingsMenu.addMenu(menuItemText)
             
         self.keepToolActiveActions = dict()
         self.applyToolNewFrameActions = dict()
@@ -29410,9 +29410,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return
         
         filename, ext = os.path.splitext(os.path.basename(file_path))
+        ext = ext.lower()
         dirpath = os.path.dirname(file_path)
         dirname = os.path.basename(dirpath)
-        filename, ext = os.path.splitext(os.path.basename(file_path))
         filename = filename.rstrip('_')
         channel_name = None
         do_copy = True
@@ -29486,7 +29486,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         data.img_data, cv2.COLOR_RGBA2GRAY
                     )
                 data.img_data = skimage.img_as_ubyte(data.img_data)
-            tif_filename = new_filename.replace(ext, '.tif')
+            new_filename_no_ext, ext = os.path.splitext(new_filename)
+            tif_filename = f'{new_filename_no_ext}.tif'
             tif_path = os.path.join(exp_path, tif_filename)
             if data.img_data.ndim == 3:
                 SizeT = data.img_data.shape[0]
