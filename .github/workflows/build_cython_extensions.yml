@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -25,8 +28,8 @@ jobs:
 
       - name: Build extension
         run: |
-          pip install cython numpy setuptools
-          python setup.py build_ext --inplace --build-temp build/temp
+          python -m pip install cython numpy setuptools
+          python "${{ github.workspace }}/setup.py" build_ext --inplace --build-temp "${{ github.workspace }}/build/temp"
 
       - name: Move to precompiled folder
         shell: bash
@@ -43,6 +46,9 @@ jobs:
   commit:
     needs: build
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
 
