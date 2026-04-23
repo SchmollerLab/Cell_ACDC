@@ -5467,6 +5467,7 @@ class CopyAllLostObjectsWorker(QObject):
     navigateToFrame = Signal(int)
     returnToFrame = Signal(int)
     copyContour = Signal(int)
+    refreshRp = Signal()
     progressBar = Signal(int)
     finished = Signal(object)
     critical = Signal(object)
@@ -5505,6 +5506,10 @@ class CopyAllLostObjectsWorker(QObject):
                     continue
 
                 self.copyContour.emit(lostObj.label)
+
+            # Refresh rp so the next frame's updateLostNewCurrentIDs sees the
+            # copied IDs as belonging to this frame and marks them lost there.
+            self.refreshRp.emit()
 
             self.progressBar.emit(1)
 

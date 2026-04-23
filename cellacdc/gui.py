@@ -13412,6 +13412,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         posData.frame_i = frame_i
         self.get_data()
 
+    def _copyAllLostObjects_refreshRp(self):
+        self.update_rp(draw=False, wl_update=False)
+
     @disableWindow
     def copyAllLostObjects(self, for_future_frame_n, max_overlap_perc):
         if not self.copyLostObjButton.isChecked():
@@ -13444,6 +13447,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         )
         self.copyAllLostObjectsWorker.copyContour.connect(
             self.copyLostObjectContour,
+            Qt.BlockingQueuedConnection
+        )
+        self.copyAllLostObjectsWorker.refreshRp.connect(
+            self._copyAllLostObjects_refreshRp,
             Qt.BlockingQueuedConnection
         )
         self.copyAllLostObjectsWorker.progressBar.connect(
