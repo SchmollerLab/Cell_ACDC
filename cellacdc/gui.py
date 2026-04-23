@@ -29305,24 +29305,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateAllImages()
         self.logger.info('Annotations correctly recovered.')
 
-    def askUserChannelName(self, filename_no_ext):
+    def askUserChannelName(self, filename_no_ext, ext):
         help_txt = html_utils.paragraph(f"""
-            Cell-ACDC requires that every TIFF file has a basename and some 
+            Cell-ACDC requires that every image file has a basename and some 
             additional text, typically the channel name.<br><br>
             The basename will be common to all created files, while the additional text is used to identify the image files.
         """)
 
+        basename = filename_no_ext
+        underscore_splits = filename_no_ext.split('_')
+        if len(underscore_splits) > 1:
+            channel_name = underscore_splits[-1]
+            basename = '_'.join(underscore_splits[:-1])
+        else:
+            channel_name = 'channel_1'
+        
         txt = html_utils.paragraph(f"""
             Provide some text (e.g., the channel name) to append at the end of the image file.
         """)
         win = apps.filenameDialog(
-            basename=filename_no_ext,
+            basename=basename,
+            ext=ext,
             hintText=txt,
-            defaultEntry='channel_1',
+            defaultEntry=channel_name,
             helpText=help_txt, 
             allowEmpty=False,
             parent=self,
-            title='Save not whitelisted segmentation data',
+            title='Provide channel name for image file',
         )
         win.exec_()
         if win.cancel:
@@ -29378,6 +29387,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         dirpath = os.path.dirname(file_path)
         dirname = os.path.basename(dirpath)
         filename, ext = os.path.splitext(os.path.basename(file_path))
+        filename = filename.rstrip('_')
         channel_name = None
         do_copy = True
         if dirname != 'Images':
@@ -29389,7 +29399,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.logger.info('Loading image file cancelled.')
                 return
             
-            proceed, channel_name = self.askUserChannelName(filename)
+            proceed, channel_name = self.askUserChannelName(
+                filename, ext
+            )
             if not proceed:
                 self.logger.info('Loading image file cancelled.')
                 return
@@ -29399,6 +29411,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             exp_path = dirpath
 
         if channel_name is not None:
+            # Check if user wants to use the existing channel name
+            underscore_splits = filename.split('_')
+            if len(underscore_splits) > 1:
+                default_ch_name = underscore_splits[-1]
+                if channel_name == default_ch_name:
+                    filename = '_'.join(underscore_splits[:-1])
+                    
             basename = f'{filename}_'
             new_filename = f'{filename}_{channel_name}{ext}'
             df_metadata = pd.DataFrame({
@@ -29413,17 +29432,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             new_filename = f'{filename}{ext}'
         
+        if do_copy:
+            action_text = 'Copying'
+        else:
+            action_text = 'Moving'
+        
         if ext == '.tif' or ext == '.npz':
             new_filepath = os.path.join(exp_path, new_filename)
             if not os.path.exists(new_filepath):
-                self.logger.info('Copying file to Images folder...')
+                self.logger.info(f'{action_text} file to Images folder...')
                 if do_copy:
                     shutil.copy2(file_path, new_filepath)
                 else:
                     shutil.move(file_path, new_filepath)
             self._openFolder(exp_path=exp_path, imageFilePath=new_filepath)
         else:
-            self.logger.info('Copying file to .tif format...')
+            self.logger.info(f'{action_text} file to .tif format...')
             data = load.loadData(file_path, '', log_func=self.logger.info)
             data.loadImgData()
             img = data.img_data
