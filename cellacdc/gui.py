@@ -9039,7 +9039,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         obj_contours = self.getObjContours(obj, all_external=True)
         contours.extend(obj_contours)
         
-        self.addLostObjsToImage(obj, lostID)
+        self.addLostObjsToLostObjImage(obj, lostID)
         self.drawLostObjContoursImage(
             imageItem, contours, thickness=2, color=color
         )
@@ -13400,11 +13400,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.store_data(mainThread=False, autosave=False)
 
         self.lostObjContoursImage[:] = 0
+        self.lostObjImage[:] = 0
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
         prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
         for lostID in posData.lost_IDs:
             obj = prev_rp[prev_IDs_idxs[lostID]]
-            self.addLostObjsToImage(obj, lostID, force=True)
+            self.addLostObjsToLostObjImage(obj, lostID, force=True)
 
     def _copyAllLostObjects_returnToFrame(self, frame_i):
         posData = self.data[self.pos_i]
@@ -27627,7 +27628,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             obj_contours = self.getObjContours(obj, all_external=True)
             
             if ax == 0:
-                self.addLostObjsToImage(obj, lostID)
+                self.addLostObjsToLostObjImage(obj, lostID)
                 
             contours.extend(obj_contours)
 
@@ -28309,7 +28310,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setAllLostObjContoursImage(delROIsIDs=delROIsIDs)        
         self.setAllLostTrackedObjContoursImage(delROIsIDs=delROIsIDs)
 
-    def addLostObjsToImage(self, lostObj, lostID, force=False):
+    def addLostObjsToLostObjImage(self, lostObj, lostID, force=False):
         if not force:
             if not self.copyLostObjButton.isChecked():
                 return
