@@ -13,15 +13,10 @@ test.py
 .ref_graphs/
 test.csv
 cellacdc/test2.py
-<<<<<<< fix-multiple-frames-copy-all
-cellacdc/_q_debug.py
-
-=======
 test_shorten_data.py
 note.txt
 cellacdc/q_debug.py
 cellacdc/_q_debug.py
->>>>>>> main
 
 env_dependencies_issues.txt
 not_installed_requirements.txt
