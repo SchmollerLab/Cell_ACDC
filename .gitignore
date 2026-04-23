@@ -26,6 +26,11 @@ requirements_new.txt
 **/weights_location_path.txt
 **/_test
 
+# cython generated files
+*.pyd
+*.so
+!cellacdc/precompiled/
+
 # Test output plots
 tests/_plots/
 

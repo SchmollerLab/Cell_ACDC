@@ -1,0 +1,63 @@
+name: Build Cython extensions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "cellacdc/**/*.pyx"
+      - "setup.py"
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build extension
+        run: |
+          pip install cython numpy setuptools
+          python setup.py build_ext --inplace --build-temp build/temp
+
+      - name: Move to precompiled folder
+        shell: bash
+        run: |
+          mkdir -p cellacdc/precompiled
+          mv cellacdc/regionprops_helper.*.so cellacdc/precompiled/ 2>/dev/null || true
+          mv cellacdc/regionprops_helper.*.pyd cellacdc/precompiled/ 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: precompiled-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: cellacdc/precompiled/
+
+  commit:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: precompiled-*
+          merge-multiple: true
+          path: cellacdc/precompiled/
+
+      - name: Commit precompiled binaries
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add cellacdc/precompiled/
+          git diff --staged --quiet || git commit -m "ci: update precompiled Cython extensions"
+          git push
