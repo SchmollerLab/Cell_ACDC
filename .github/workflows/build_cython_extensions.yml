@@ -2,9 +2,7 @@ name: Build Cython extensions
 
 on:
   push:
-    branches:
-      - main
-    paths:
+paths:
       - "cellacdc/**/*.pyx"
       - "setup.py"
 

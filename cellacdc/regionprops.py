@@ -6,6 +6,12 @@ from skimage.measure._regionprops_utils import (
     _normalize_spacing,
 )
 import traceback as traceback
+
+try:
+    from .precompiled.regionprops_helper import find_all_objects_2D, find_all_objects_3D
+    _CYTHON_FIND_OBJECTS = True
+except Exception:
+    _CYTHON_FIND_OBJECTS = False
 # WARNING: Developers have already used
 #     7 hrs
 # to optimize this.
@@ -55,23 +61,36 @@ def _acdc_regionprops_factory(
             )
 
     regions = []
-    objects = ndi.find_objects(label_image)
-    for i, sl in enumerate(objects, start=1):
-        if sl is None:
-            continue
-
-        regions.append(
-            acdcRegionProperties(
-                sl,
-                i,
-                label_image,
-                intensity_image,
-                cache,
-                spacing=spacing,
-                extra_properties=extra_properties,
+    if _CYTHON_FIND_OBJECTS:
+        img_uint32 = label_image.astype(np.uint32, copy=False)
+        if label_image.ndim == 2:
+            objects = find_all_objects_2D(img_uint32)
+            for label, (r0, r1, c0, c1) in objects:
+                sl = (slice(r0, r1), slice(c0, c1))
+                regions.append(acdcRegionProperties(
+                    sl, label, label_image, intensity_image, cache,
+                    spacing=spacing, extra_properties=extra_properties,
+                    offset=offset_arr,
+                ))
+        else:
+            objects = find_all_objects_3D(img_uint32)
+            for label, (z0, z1, r0, r1, c0, c1) in objects:
+                sl = (slice(z0, z1), slice(r0, r1), slice(c0, c1))
+                regions.append(acdcRegionProperties(
+                    sl, label, label_image, intensity_image, cache,
+                    spacing=spacing, extra_properties=extra_properties,
+                    offset=offset_arr,
+                ))
+    else:
+        objects = ndi.find_objects(label_image)
+        for i, sl in enumerate(objects, start=1):
+            if sl is None:
+                continue
+            regions.append(acdcRegionProperties(
+                sl, i, label_image, intensity_image, cache,
+                spacing=spacing, extra_properties=extra_properties,
                 offset=offset_arr,
-            )
-            )
+            ))
     return regions
 
 
