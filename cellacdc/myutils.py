@@ -2961,7 +2961,6 @@ def check_cellpose_version(version: str):
     return is_version_correct
 
 def purge_module(module_name):
-    import sys
     to_delete = [mod for mod in sys.modules if mod == module_name or mod.startswith(module_name + '.')]
     for mod in to_delete:
         del sys.modules[mod]
@@ -3009,6 +3008,8 @@ def check_install_cellpose(
     ):
     if isinstance(version, int):
         version = f'{version}.0'
+        
+    check_install_torch()
 
     if version == 'any':
         try:
@@ -3224,11 +3225,35 @@ def _run_command(command: str | list[str], shell=False):
     except Exception as err:
         pass
 
+def _warn_dll_torch(qparent=None):
+    msg = widgets.myMessageBox()
+    txt = html_utils.paragraph("""
+    <b>An error message will occur after you close this message.</b><br>
+    <b>Please save your data and restart Cell-ACDC.</b><br>
+    Sorry for the inconvenience!<br>
+    This error is not critical for the main functionality of Cell-ACDC,
+    and only concerns the segmentation model. Your can save your data without
+    a problem.<br>
+    The specific reason is that PyTorch and QtPy have weird issues with 
+    DLL conflicts.
+    """)
+    msg.information(
+    qparent, 'Please restart Cell-ACDC', txt, 
+    buttonsTexts=('Ok, I will save my data and restart Cell-ACDC'),
+    )
+
 def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
     try:
         import torch
         import torchvision
         return
+
+    except OSError as err:
+        if 'dll' in str(err):
+            _warn_dll_torch(qparent=qparent)
+            raise err
+        else:
+            traceback.print_exc()
     except Exception as err:
         traceback.print_exc()
     
@@ -3244,7 +3269,14 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
     
     command = win.command
     print(f'Running command: "{command}"')
-    _run_command(command)    
+    _run_command(command)
+    
+    try:
+        import torch
+    except OSError as e:
+        if 'dll' in str(e):
+            _warn_dll_torch(qparent=qparent)
+        raise e
     
     purge_module('torch')
 
@@ -3808,29 +3840,43 @@ def download_ffmpeg():
     
     return ffmep_exec_path.replace('\\', os.sep).replace('/', os.sep)
 
+def get_fiji_binary_filepath_mac(fiji_app_filepath):
+    if not is_mac:
+        return ''
+
+    fiji_binary_path = os.path.join(
+        fiji_app_filepath, 'Contents', 'MacOS', 'ImageJ-macosx'
+    )
+    if os.path.exists(fiji_binary_path):
+        return fiji_binary_path
+    
+    fiji_binary_path = os.path.join(
+        fiji_app_filepath, 'Contents', 'MacOS', 'fiji-macos'
+    )
+    if os.path.exists(fiji_binary_path):
+        return fiji_binary_path
+
+    return ''
+
 def get_fiji_exec_folderpath() -> str:
     if not is_mac:
         return ''
     
     from cellacdc import fiji_location_filepath
+    
     if os.path.exists(fiji_location_filepath):
         with open(fiji_location_filepath, 'r') as txt:
-            fiji_filepath = txt.read()
-        
-        if os.path.exists(fiji_filepath):
-            return fiji_filepath
-    
+            fiji_app_filepath = txt.read()
+
+        return get_fiji_binary_filepath_mac(fiji_app_filepath)
+
     if os.path.exists('/Applications/Fiji.app'):
-        return '/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx'
+        return get_fiji_binary_filepath_mac('/Applications/Fiji.app')
     
-    acdc_fiji_exec_path = os.path.join(
-        acdc_fiji_path, 'Fiji.app', 'Contents', 'MacOS', 'ImageJ-macosx'
-    )
+    acdc_fiji_app_path = os.path.join(acdc_fiji_path, 'Fiji.app')
+    acdc_fiji_binary_path = get_fiji_binary_filepath_mac(acdc_fiji_app_path)
     
-    if not os.path.exists(acdc_fiji_exec_path):
-        return ''
-    
-    return acdc_fiji_exec_path
+    return acdc_fiji_binary_path
 
 def get_fiji_base_command():
     command = None
@@ -3840,9 +3886,17 @@ def get_fiji_base_command():
     return command
     
 def _init_fiji_cli():
-    if not is_win:
-        args_add_to_path = [f'chmod 755 {get_fiji_exec_folderpath()}']
+    if is_win:
+        return True
+    
+    fiji_app_folderpath = get_fiji_exec_folderpath()
+    args_add_to_path = [f'chmod 755 {fiji_app_folderpath}']
+    try:
         subprocess.check_call(args_add_to_path, shell=True)
+        return True
+    except Exception as e:
+        printl(f'Error occurred while setting permissions: {e}')
+        return False
 
 def test_fiji_base_command(logger_func=print):
     base_command = get_fiji_base_command()
@@ -3858,10 +3912,18 @@ def run_fiji_command(command=None, logger_func=print):
     if command is None:
         command = f'{get_fiji_base_command()} --headless'
     
-    _init_fiji_cli()
-    
+    init_success = _init_fiji_cli()
+    if not init_success:
+        return False
+
+    separator = '-'*100
     commands = (command, command.split())
     for args in commands:
+        logger_func(
+            f'{separator}\n'
+            f'Trying Fiji command: "{args}"...\n'
+            f'{separator}\n'
+        )
         try:
             subprocess.check_call(args, shell=True)
             return True
@@ -4077,19 +4139,18 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     pip_prefix = pip_prefix.replace('install -y', 'uninstall')
     txt_cuda = html_utils.paragraph(f"""
         Check out these instructions {cellpose_href}, and {torch_href}.<br>
-        First, uninstall the CPU version of PyTorch with the following command:<br><br>
-        <code>{pip_prefix} uninstall torch</code>.<br><br>
-        Then, install the CUDA version required by your GPU with the follwing 
-        command (in this case 12.8):<br><br>
-        <code>{pip_prefix} torch torchvision torchaudio --index-url 
-        https://download.pytorch.org/whl/cu128</code>
+        First, uninstall the CPU version of PyTorch with the following command:
+        <copiable>{pip_prefix} uninstall torch</copiable>
+        <br>Then, install the CUDA version required by your GPU with the following 
+        command (in this case 12.8):
+        <copiable>{pip_prefix} torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128</copiable>
         <br>
         """)
     
     add_info = html_utils.to_admonition(
         f"""
         Pleae use the following table to find the correct link for the command.
-        You can check the CUDA  <br> version installed on your system with the
+        You can check the highest CUDA  <br> version supported on your system with the
         command <code>nvidia-smi</code> in the terminal.<br>
 
         {html_utils.table_style_header}
@@ -5557,3 +5618,16 @@ def reset_settings():
             f'{settings_folderpath}\n'
         )
         return out_txt
+    
+def separate_fluo_segment_channels(channels):
+    segms_to_load = []
+    channels_to_load = []
+    current_segm = False
+    for ch in channels:
+        if ch == 'current segm.':
+            current_segm = True
+        elif 'segm' in ch:
+            segms_to_load.append(ch)
+        else:
+            channels_to_load.append(ch)
+    return segms_to_load, channels_to_load, current_segm

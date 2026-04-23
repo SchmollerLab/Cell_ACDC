@@ -1,5 +1,5 @@
 from collections import defaultdict, deque
-from typing import Dict, List, Union, Iterable
+from typing import Dict, List, Union, Iterable, Sequence
 import os
 import sys
 import operator
@@ -718,6 +718,11 @@ class CrossCursorPointButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':cross_cursor.svg'))
+
+class TestPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':test.svg'))
 
 class browseFileButton(PushButton):
     sigPathSelected = Signal(str)
@@ -2514,9 +2519,20 @@ class myMessageBox(_base_widgets.QBaseDialog):
     def splitLatexBlocks(self, text):
         texts = re.split(r"(<latex.*?>.+?)</latex>", text)
         return texts        
+    
+    def splitCopiableBlocks(self, texts: Sequence[str] | str):
+        if isinstance(texts, str):
+            texts = (texts,)
+        
+        texts_out = []
+        for text in texts:
+            texts_out.extend(re.split(r"(<copiable>.+?)</copiable>", text))
+        return texts_out  
 
     def addText(self, text):
         texts = self.splitLatexBlocks(text)
+        texts = self.splitCopiableBlocks(texts)
+        
         labelsWidget = LabelsWidget(texts, wrapText=self.wrapText)
         self.labelsWidgets.append(labelsWidget)
         self.labels.extend(labelsWidget.labels)
@@ -2755,6 +2771,9 @@ class myMessageBox(_base_widgets.QBaseDialog):
             factor = np.ceil(textWidth/screenWidth)
             lineLength = int(labelWidget.nCharsLongestLine/factor)
             for label in labelWidget.labels:
+                if isinstance(label, CopiableCommandWidget):
+                    continue
+                
                 text = label.text()
                 chunks = textwrap.wrap(text, lineLength)
                 text = '<br>'.join(chunks)
@@ -3008,7 +3027,7 @@ class ToolBar(QToolBar):
                 self.extendButton = child
                 self.extendButton.setIcon(QIcon(":expand.svg"))
                 break
-    
+
     def addSeparator(self, width=5):
         separator = ToolBarSeparator(width=width, toolbar=self)
         return separator
@@ -3054,7 +3073,6 @@ class ToolBar(QToolBar):
         checkbox.setChecked(checked)
         checkbox.action = self.addWidget(checkbox)
         return checkbox
-        
     
 class ManualTrackingToolBar(ToolBar):
     sigIDchanged = Signal(int)
@@ -3826,8 +3844,11 @@ class formWidget(QWidget):
             addInfoButton=False,
             addApplyButton=False,
             addComputeButton=False,
+            addActivateCheckbox=False,
             key='',
             infoTxt='',
+            valueGetterName='value',
+            toolTip='',
             parent=None
         ):
         QWidget.__init__(self, parent)
@@ -3835,6 +3856,7 @@ class formWidget(QWidget):
         self.key = key
         self.infoTxt = infoTxt
         self.widgetAlignment = widgetAlignment
+        self.valueGetterName = valueGetterName
 
         widget.setParent(self)
 
@@ -3871,6 +3893,11 @@ class formWidget(QWidget):
         self.labelRight.setText(labelTextRight)
         self.labelRight.setFont(font)
         self.items.append(self.labelRight)
+        
+        if toolTip:
+            self.labelLeft.setToolTip(toolTip)
+            self.widget.setToolTip(toolTip)
+            self.labelRight.setToolTip(toolTip)
 
         if addInfoButton:
             infoButton = QPushButton(self)
@@ -3904,9 +3931,29 @@ class formWidget(QWidget):
             computeButton.setToolTip(f'Compute this step and visualize results')
             computeButton.clicked.connect(self.computeButtonClicked)
             self.items.append(computeButton)
+        
+        self.activateCheckbox = None
+        if addActivateCheckbox:
+            self.activateCheckbox = QCheckBox('Activate')
+            self.activateCheckbox.setChecked(False)
+            self.widget.setDisabled(True)
+            self.activateCheckbox.toggled.connect(self.setWidgetEnabled)
+            self.items.append(self.activateCheckbox)
 
         self.labelLeft.clicked.connect(self.tryChecking)
         self.labelRight.clicked.connect(self.tryChecking)
+    
+    def setWidgetEnabled(self, checked):
+        self.widget.setDisabled(not checked)
+    
+    def value(self):
+        if self.activateCheckbox is None:
+            return getattr(self.widget, self.valueGetterName)()
+        
+        if not self.activateCheckbox.isChecked():
+            return
+        
+        return getattr(self.widget, self.valueGetterName)()
 
     def tryChecking(self, label):
         try:
@@ -7194,6 +7241,15 @@ class BaseImageItem(pg.ImageItem):
             return levels
         except Exception as err:
             return super().quickMinMax(targetSize=targetSize)
+    
+    def setOpacity(self, value, **kwargs):
+        if value == 0:
+            value = 0.001
+        
+        if value == 1:
+            value = 0.999
+            
+        super().setOpacity(value)
         
 
 class BaseLabelsImageItem(pg.ImageItem):
@@ -7229,6 +7285,12 @@ class OverlayImageItem(pg.ImageItem):
         super().setImage(image, autoLevels=autoLevels, **kargs)
         
     def setOpacity(self, value, **kwargs):
+        if value == 0:
+            value = 0.001
+        
+        if value == 1:
+            value = 0.999
+            
         super().setOpacity(value)
 
 class ParentImageItem(BaseImageItem):
@@ -7267,6 +7329,20 @@ class ParentImageItem(BaseImageItem):
     def setEnableAutoLevels(self, enabled: bool):
         self.autoLevelsEnabled = enabled
     
+    def setUsePreprocessed(self, usePreprocessed):
+        self.usePreprocessed = usePreprocessed
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.usePreprocessed = usePreprocessed
+    
+    def setUseCombined(self, useCombined):
+        self.useCombined = useCombined
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.useCombined = useCombined
+    
     def preComputedMinMaxValues(self, *args, **kwargs):
         super().preComputedMinMaxValues(*args, **kwargs)
         if self.linkedImageItem is None:
@@ -7281,6 +7357,46 @@ class ParentImageItem(BaseImageItem):
             return
         
         self.linkedImageItem.minMaxValuesMapper = self.minMaxValuesMapper
+    
+    def updateMinMaxValuesCombinedData(self, *args, **kwargs):
+        super().updateMinMaxValuesCombinedData(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.minMaxValuesMapperCombined = (
+            self.minMaxValuesMapperCombined
+        )
+    
+    def updateMinMaxValuesCombinedDataProjections(self, *args, **kwargs):
+        super().updateMinMaxValuesCombinedDataProjections(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.minMaxValuesMapperCombined = (
+            self.minMaxValuesMapperCombined
+        )
+    
+    def updateMinMaxValuesEqualizedDataProjections(self, *args, **kwargs):
+        super().updateMinMaxValuesEqualizedDataProjections(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.minMaxValuesMapperEqualized = (
+            self.minMaxValuesMapperEqualized
+        )
+    
+    def updateMinMaxValuesEqualizedData(self, *args, **kwargs):
+        super().updateMinMaxValuesEqualizedData(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.minMaxValuesMapperEqualized = (
+            self.minMaxValuesMapperEqualized
+        )
     
     def setCurrentPosIndex(self, *args, **kwargs):
         super().setCurrentPosIndex(*args, **kwargs)
@@ -7631,6 +7747,9 @@ class CopiableCommandWidget(QGroupBox):
         
         self.setLayout(layout)        
     
+    def setWordWrap(self, wordWrap):
+        self.label.setWordWrap(wordWrap)
+    
     def copyToClipboard(self):
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
@@ -7649,8 +7768,13 @@ class CopiableCommandWidget(QGroupBox):
     
     def command(self):
         return self._command
-        
-
+    
+    def text(self):
+        return self.label.text()
+    
+    def setTextInteractionFlags(self, flags):
+        self.label.setTextInteractionFlags(flags)
+    
 def PostProcessSegmWidget(
         minimum, maximum, value, useSliders, isFloat=False, normalize=False,
         label=None
@@ -9653,6 +9777,7 @@ class LabelsWidget(QWidget):
         for t, text in enumerate(texts):
             if not text:
                 continue
+
             if text.startswith('<latex>'):
                 layout.addSpacing(10)
                 label = LatexLabel(text)
@@ -9664,6 +9789,13 @@ class LabelsWidget(QWidget):
                         layout.addSpacing(10)
                 except IndexError:
                     layout.addSpacing(10)
+            elif text.startswith('<copiable>'):
+                text = (
+                    text.removeprefix('<copiable>')
+                    .removeprefix('</copiable>')
+                )
+                label = CopiableCommandWidget(command=text, parent=self)
+                layout.addWidget(label)
             else:
                 label = QLabel(text)
                 label.setWordWrap(wrapText)
@@ -9677,7 +9809,7 @@ class LabelsWidget(QWidget):
             
             self.labels.append(label)
         
-        self.nCharsLongestLine = max(self.textLengths)
+        self.nCharsLongestLine = max(self.textLengths, default=1)
         
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
@@ -9701,7 +9833,7 @@ class LabelsWidget(QWidget):
         
         fixedTexts = []
         for text in texts:
-            if text.startswith('<latex>'):
+            if text.startswith('<latex>') or text.startswith('<copiable>'):
                 fixedTexts.append(text)
                 continue
             
@@ -9874,18 +10006,19 @@ class SamInputPointsWidget(QWidget):
 class PointsScatterPlotItem(pg.ScatterPlotItem):
     sigHoverEntered = Signal(object, object, object)
     
-    def __init__(self, *args, ax=None, **kwargs):
+    def __init__(self, *args, ax=None, show_data_as_tip=False, **kwargs):
         self.textItem = annotate.TextAnnotationsScatterItem(
             size=12, anchor=(1.0, 1.0)
         )
         self.textItem.createSymbols(
-            [str(id) for id in range(200)], includeBold=False
+            [str(int_id) for int_id in range(200)], includeBold=False
         )
         # self._textItems = {}
         super().__init__(*args, **kwargs)
         self.textItem.setParentItem(self)
         self._font = QFont()
         self._font.setPixelSize(12)
+        self.show_data_as_tip = show_data_as_tip
         self.drawIds = True
         self.ax = ax
         self.sigHovered.connect(self.onHover)
@@ -9893,11 +10026,26 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
     
     def onHover(self, item, points, event):
         if len(points) == 0:
+            vb = self.getViewBox()
+            vb.setToolTip('')
             return
         
         if self.lastHoveredPoint != points[0]:
             self.sigHoverEntered.emit(item, points, event)
             self.lastHoveredPoint = points[0]
+            
+        if not self.opts['hoverable']:
+            return
+        
+        if not self.show_data_as_tip:
+            return
+        
+        tip_li = [str(point.data()) for point in points]
+        tip = '\n\n'.join(tip_li)
+        
+        vb = self.getViewBox()
+        vb.setToolTip(tip)
+        
     
     def setData(self, *args, **kwargs):
         self.clearTextItems()
@@ -9905,13 +10053,18 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
         data = kwargs.get('data')
         if data is None:
             return
+        
         if len(data) == 0:
             return
+        
         first_point_data = data[0]
         if not isinstance(first_point_data, (int, str)):
             return
         
         if not self.drawIds:
+            return
+        
+        if self.show_data_as_tip:
             return
         
         color = self.opts['brush'].color()
@@ -11311,7 +11464,11 @@ class PointsLayersToolbar(ToolBar):
         yy = []
         xx = []
         ids = []
-        pointsDataPos = action.pointsData[self.guiWin.pos_i]
+        pos_i = self.guiWin.pos_i
+        if pos_i not in action.pointsData:
+            printl('No points data for position', pos_i) # should really not happen, but its not a disaster if it does
+            return df
+        pointsDataPos = action.pointsData[pos_i]
         for frame_i, framePointsData in pointsDataPos.items():
             if posData.SizeZ > 1:
                 for z, zSlicePointsData in framePointsData.items():
@@ -11722,3 +11879,117 @@ class AutoSaveIntervalWidget(QWidget):
             self.spinbox.value(), 
             self.unitCombobox.currentText()
         )
+
+class CheckableWidget(QWidget):
+    def __init__(self, widget, valueGetterName='value', parent=None):
+        super().__init__(parent)
+        
+        self.widget = widget
+        self.valueGetterName = valueGetterName
+        
+        widget.setDisabled(True)
+        
+        layout = QHBoxLayout()
+        
+        layout.addWidget(widget)
+        
+        self.checkbox = QCheckBox('Activate')
+        self.checkbox.toggled.connect(self.setWidgetEnabled)
+        
+        layout.addSpacing(5)
+        layout.addWidget(self.checkbox)
+        
+        layout.setContentsMargins(5, 0, 5, 0)
+
+        
+        self.setLayout(layout)
+    
+    def setWidgetEnabled(self, checked):
+        self.widget.setDisabled(not checked)
+    
+    def value(self):
+        if not self.checkbox.isChecked():
+            return
+        
+        return getattr(self.widget, self.valueGetterName)()
+    
+    
+class WandControlsToolbar(ToolBar):    
+    def __init__(self, name='Magic wand controls', parent=None):
+        super().__init__(name, parent)
+        
+        self.toleranceSpinbox = self.addSpinBox('Tolerance [%]: ')
+        self.toleranceSpinbox.setMinimum(0)
+        self.toleranceSpinbox.setMaximum(100)
+        self.toleranceSpinbox.setValue(5)
+        self.toleranceSpinbox.setToolTip(
+            'The tolerance is calculated as a percentage of the minimum-maximum '
+            'pixel values range of the loaded dataset.\n\n'
+            'If tolerance is greater than 0, the pixels adjacent to the added '
+            'pixels with value within +- tolerance will be considered part of '
+            'the object.'
+        )
+        self.addLabel(r'% of min-max intensity range ')
+        
+        self.addSeparator()
+        
+        self.autoFillHolesCheckbox = self.addCheckBox(
+            'Auto-fill holes'
+        )
+        
+        self.addSeparator()
+        
+        self.useConvexHullCheckbox = self.addCheckBox(
+            'Use convex hull mask'
+        )
+        
+        self.addSeparator()
+    
+class warnVisualCppRequired(myMessageBox):
+    def __init__(self, pkg_name='javabridge', parent=None):
+        super().__init__(parent)
+        self.screenShotWin = None
+
+        self.setIcon(iconName='SP_MessageBoxWarning')
+        self.setWindowTitle(f'Installation of {pkg_name} info')
+        txt = html_utils.paragraph(f"""
+            Installation of {pkg_name} on Windows requires
+            Microsoft Visual C++ 14.0 or higher.<br><br>
+            Cell-ACDC will anyway try to install {pkg_name} now.<br><br>
+            If the installation fails, please <b>close Cell-ACDC</b>,
+            then download and install <b>"Microsoft C++ Build Tools"</b>
+            from the link below
+            before trying this module again.<br><br>
+            <a href='https://visualstudio.microsoft.com/visual-cpp-build-tools/'>
+                https://visualstudio.microsoft.com/visual-cpp-build-tools/
+            </a><br><br>
+            <b>IMPORTANT</b>: when installing "Microsoft C++ Build Tools"
+            make sure to select <b>"Desktop development with C++"</b>.
+            Click "See the screenshot" for more details.
+        """)
+        seeScreenshotButton = QPushButton('See screenshot...')
+        okButton = okPushButton('Ok')
+        okButton = self.addButton('Ok')
+        okButton.disconnect()
+        okButton.clicked.connect(self.ok_cb)
+        self.addButton(seeScreenshotButton)
+        seeScreenshotButton.disconnect()
+        seeScreenshotButton.clicked.connect(
+            self.viewScreenshot
+        )
+        self.addCancelButton(connect=True)
+        self.addText(txt)
+
+    def ok_cb(self):
+        self.cancel = False
+        self.close()
+    
+    def viewScreenshot(self, checked=False):
+        self.screenShotWin = view_visualcpp_screenshot(self)
+        self.screenShotWin.show()
+
+    def closeEvent(self, event):
+        if self.screenShotWin is not None:
+            self.screenShotWin.close()
+            
+        return super().closeEvent(event)

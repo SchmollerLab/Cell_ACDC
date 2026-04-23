@@ -2,6 +2,8 @@ import os
 
 from collections import defaultdict
 
+from tqdm import tqdm
+
 import numpy as np
 import pandas as pd
 import cv2
@@ -272,16 +274,20 @@ class Model:
             df_points = self._input_points_df[mask]
         else:
             df_points = self._input_points_df
-            
+        
+        auto_remove_bkgr = automatic_removal_of_background
         input_points, input_labels = self._get_input_points(
             is_z_stack, df_points
         )
-        if is_z_stack:                
+        if is_z_stack: 
+            pbar_z = tqdm(total=len(image), ncols=100, desc='z-slice')               
             for z, img in enumerate(image):
                 input_points_z = None
+                input_labels_z = None
                 if input_points is not None:
-                    input_points_z = input_points.get(z, [])
-                    input_labels_z = input_labels.get(z, [])
+                    input_points_z = input_points.get(z, None)
+                    if input_points_z is not None:
+                        input_labels_z = input_labels.get(z, [])
                 
                 embeddings_init = False
                 if use_loaded_embeddings:
@@ -292,16 +298,24 @@ class Model:
                 if only_embeddings:
                     self._init_embeddings(img)
                 else:
-                    labels[z] = self._segment_2D_image(
+                    lab_2D = self._segment_2D_image(
                         img, input_points_z, input_labels_z, 
-                        embeddings_already_init=embeddings_init
+                        embeddings_already_init=embeddings_init,
                     )
+                    labels[z] = lab_2D
                 if save_embeddings or only_embeddings:
                     posData.storeSamEmbeddings(
                         self, frame_i=frame_i, z=z+start_z_slice
                     )
-                    
-            labels = skimage.measure.label(labels>0)
+                
+                pbar_z.update()
+            pbar_z.close()
+            
+            if automatic_removal_of_background and input_points is None:
+                # For z-stacks, remove background after 3D relabeling
+                labels = self._remove_background_from_labels(labels)
+                
+            labels = skimage.measure.label(labels>0).astype(np.uint32)     
         else:
             embeddings_init = False
             if use_loaded_embeddings:
@@ -314,16 +328,11 @@ class Model:
                 labels = self._segment_2D_image(
                     image, input_points, input_labels,
                     embeddings_already_init=embeddings_init,
-                    automatic_removal_of_background=automatic_removal_of_background
+                    automatic_removal_of_background=auto_remove_bkgr
                 )
-
             if save_embeddings or only_embeddings:
                 posData.storeSamEmbeddings(self, frame_i=frame_i)
-
-        # For z-stacks, remove background after 3D relabeling
-        if is_z_stack and automatic_removal_of_background and input_points is None:
-            labels = self._remove_background_from_labels(labels)
-
+        
         return labels
 
     def _get_img_embeddings(self, posData, frame_i=0, z=0):
@@ -416,8 +425,8 @@ class Model:
     
     def _segment_2D_image(
             self, image: np.ndarray,
-            input_points: np.ndarray,
-            input_labels: np.ndarray,
+            input_points: dict[int, np.ndarray],
+            input_labels: dict[int, np.ndarray],
             embeddings_already_init: bool=False,
             automatic_removal_of_background: bool=False
         ) -> np.ndarray:

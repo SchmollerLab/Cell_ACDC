@@ -73,7 +73,6 @@ class bioFormatsWorker(QObject):
     progressPbar = Signal(int)
     initPbar = Signal(int)
     criticalError = Signal(str, str, str)
-    filesExisting = Signal(str)
     confirmMetadata = Signal(
         str, float, int, int, int, int,
         float, str, float, float, float,
@@ -86,7 +85,9 @@ class bioFormatsWorker(QObject):
             self, raw_src_path, rawFilenames, exp_dst_path,
             mutex, waitCond, rawDataStruct, 
             bioformats_backend: Literal['bioio', 'python-bioformats'],
-            lazy_load=True, move_raw_microscopy_files=True
+            lazy_load=True, move_raw_microscopy_files=True,
+            overwrite=False, add_files=False, create_new=False,
+            start_pos_n=1
         ):
         QObject.__init__(self)
         self.raw_src_path = raw_src_path
@@ -98,9 +99,11 @@ class bioFormatsWorker(QObject):
         self.overWriteMetadata = False
         self.trustMetadataReader = False
         self.rawDataStruct = rawDataStruct
-        self.overwritePos = False
-        self.addFiles = False
+        self.overwritePos = overwrite
+        self.addFiles = add_files
+        self.createNew = create_new
         self.cancel = False
+        self.start_pos_n = start_pos_n
         self.bioformats_backend = bioformats_backend
         self.lazy_load = lazy_load
         self.move_raw_microscopy_files = move_raw_microscopy_files
@@ -505,7 +508,7 @@ class bioFormatsWorker(QObject):
             self.PhysicalSizeZ = PhysicalSizeZ
             # self.chNames = chNames
             self.emWavelens = emWavelens
-            return
+            return False
 
         sampleImgData = None
         while True:
@@ -563,42 +566,42 @@ class bioFormatsWorker(QObject):
         self.saveChannels = self.metadataWin.saveChannels
         self.emWavelens = self.metadataWin.emWavelens
         self.addImageName = self.metadataWin.addImageName
+        
+        return False
 
     def saveToPosFolder(
-            self, p, raw_src_path, exp_dst_path, filename, series, p_idx=0
+            self, p, raw_src_path, exp_dst_path, filename, series, pos_n,
+            p_idx=0,
         ):
         rawFilePath = os.path.join(raw_src_path, filename)
 
         if os.path.basename(raw_src_path) == 'raw_microscopy_files':
             raw_src_path = os.path.dirname(raw_src_path)
-        
-        pos_name = f'Position_{p+1}'
+
+        in_file_pos_name = f'Position_{p+1}'
         savePos = (
-            'All Positions' in self.selectedPos or pos_name in self.selectedPos
+            'All Positions' in self.selectedPos 
+            or in_file_pos_name in self.selectedPos
         )
         if not savePos:
             return False
 
-        pos_path = os.path.join(exp_dst_path, f'Position_{p+1}')
+        pos_path = os.path.join(exp_dst_path, f'Position_{pos_n}')
         images_path = os.path.join(pos_path, 'Images')
-
-        if os.path.exists(images_path) and self.askReplacePosFiles:
-            self.askReplacePosFiles = False
-            self.mutex.lock()
-            self.filesExisting.emit(pos_path)
-            self.waitCond.wait(self.mutex)
-            self.mutex.unlock()
-            if self.cancel:
-                return True
 
         if os.path.exists(images_path) and self.overwritePos:
             shutil.rmtree(images_path)
         
+        if os.path.exists(images_path) and self.createNew:
+            images_path = re.sub(
+                r'Position_\d+', f'Position_{pos_n}', images_path
+            )
+        
         if not os.path.exists(images_path):
             os.makedirs(images_path, exist_ok=True)
-
+        
         self.saveData(
-            images_path, rawFilePath, filename, p, series, p_idx=p_idx
+            images_path, rawFilePath, filename, p, series, pos_n, p_idx=p_idx,
         )
         
         return False
@@ -776,16 +779,19 @@ class bioFormatsWorker(QObject):
             shutil.move(tempFilepath, filePath)
             shutil.rmtree(tempDir)
 
-    def saveData(self, images_path, rawFilePath, filename, p, series, p_idx=0):
+    def saveData(
+            self, images_path, rawFilePath, filename, p, series, pos_n,
+            p_idx=0
+        ):
         if self.bioformats_backend == 'bioio':
             from cellacdc import acdc_bioio_bioformats as bioformats
         else:
             import javabridge
             from cellacdc import bioformats
-            
-        s0p = str(p+1).zfill(self.numPosDigits)
+        
+        s0p = str(pos_n).zfill(self.numPosDigits)
         self.progress.emit(
-            f'Position {p+1}/{self.numPos}: saving data to {images_path}...'
+            f'Position {pos_n}/{self.numPos}: saving data to {images_path}...'
         )
         filenameNOext, ext = os.path.splitext(filename)
 
@@ -920,7 +926,7 @@ class bioFormatsWorker(QObject):
                 if not saveCh:
                     continue
 
-                rawFilename = f'{basename}{p+1}_{chName}'
+                rawFilename = f'{basename}{pos_n}_{chName}'
                 pos_rawFilenames.append(rawFilename)
                 raw_src_path = os.path.dirname(rawFilePath)
                 rawFilePath = [
@@ -981,7 +987,7 @@ class bioFormatsWorker(QObject):
             if self.moveOtherFiles or self.copyOtherFiles:
                 # Move the other files present in the folder if they
                 # contain "otherFilename" in the name
-                otherFilename = f'{basename}{p+1}'
+                otherFilename = f'{basename}{pos_n}'
                 rawFilePath = set()
                 for f in myutils.listdir(raw_src_path):
                     notRawFile = all(
@@ -1026,11 +1032,13 @@ class bioFormatsWorker(QObject):
             
         self.cancelled = False
         self.isCriticalError = False
+        
         for p, filename in enumerate(self.rawFilenames):
+            pos_n = p + self.start_pos_n
             if self.rawDataStruct == 0:
                 if not self.overWriteMetadata:
-                    abort = self.readMetadata(raw_src_path, filename)
-                    if abort:
+                    cancel = self.readMetadata(raw_src_path, filename)
+                    if cancel:
                         self.cancelled = True
                         break
 
@@ -1038,28 +1046,30 @@ class bioFormatsWorker(QObject):
                 self.numPosDigits = len(str(self.numPos))
                 if p == 0:
                     self.initPbar.emit(self.numPos*self.SizeC)
-                for p in range(self.SizeS):
-                    abort = self.saveToPosFolder(
-                        p, raw_src_path, exp_dst_path, filename, p
+                
+                for in_file_p in range(self.SizeS):
+                    cancel = self.saveToPosFolder(
+                        in_file_p, raw_src_path, exp_dst_path, filename, 
+                        in_file_p, pos_n
                     )
-                    if abort:
+                    if cancel:
                         self.cancelled = True
                         break
 
             elif self.rawDataStruct == 1:
                 if not self.overWriteMetadata:
-                    abort = self.readMetadata(raw_src_path, filename)
-                    if abort:
+                    cancel = self.readMetadata(raw_src_path, filename)
+                    if cancel:
                         self.cancelled = True
                         break
                 self.numPos = len(self.rawFilenames)
                 self.numPosDigits = len(str(self.numPos))
                 if p == 0:
                     self.initPbar.emit(self.numPos*self.SizeC)
-                abort = self.saveToPosFolder(
-                    p, raw_src_path, exp_dst_path, filename, 0
+                cancel = self.saveToPosFolder(
+                    p, raw_src_path, exp_dst_path, filename, 0, pos_n
                 )
-                if abort:
+                if cancel:
                     self.cancelled = True
                     break
 
@@ -1081,15 +1091,15 @@ class bioFormatsWorker(QObject):
                         javabridge.kill_vm()
                     self.finished.emit()
                     return
-
+      
             self.numPos = len(self.posNums)
             self.numPosDigits = len(str(self.numPos))
             self.initPbar.emit(self.numPos*self.SizeC)
             for p_idx, pos in enumerate(self.posNums):
                 p = pos-1
                 abort = self.saveToPosFolder(
-                    p, raw_src_path, exp_dst_path, self.basename,
-                    0, p_idx=p_idx
+                    p, raw_src_path, exp_dst_path, self.basename, 0,
+                    pos, p_idx=p_idx
                 )
                 if abort:
                     self.cancelled = True
@@ -1565,7 +1575,14 @@ class createDataStructWin(QMainWindow):
         if not exp_dst_path:
             self.close()
             return
+        
+        out = self.askPosFoldersExisting(exp_dst_path)
+        if out is None:
+            self.close()
+            return
 
+        overwrite, add_files, create_new, start_pos_n = out
+        
         self.log('Instructing to move raw data...')
         loadEntirePosIntoRam = self.askHowToLoadData()
         if loadEntirePosIntoRam is None:
@@ -1599,7 +1616,11 @@ class createDataStructWin(QMainWindow):
             self.mutex, self.waitCond, rawDataStruct, 
             self.bioformats_backend, 
             lazy_load=not self.loadEntirePosIntoRam,
-            move_raw_microscopy_files=move_raw_microscopy_files
+            move_raw_microscopy_files=move_raw_microscopy_files,
+            overwrite=overwrite,
+            add_files=add_files,
+            create_new=create_new,
+            start_pos_n=start_pos_n,
         )
         if self.rawDataStruct == 2:
             self.worker.basename = self.basename
@@ -1621,7 +1642,6 @@ class createDataStructWin(QMainWindow):
         self.worker.critical.connect(self.workerCritical)
         self.worker.criticalError.connect(self.criticalBioFormats)
         self.worker.confirmMetadata.connect(self.askConfirmMetadata)
-        self.worker.filesExisting.connect(self.askReplacePos)
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
@@ -2016,6 +2036,7 @@ class createDataStructWin(QMainWindow):
             return []
         else:
             files = [win.selectedItemText]
+            return files
 
     def attemptSeparateMultiChannel(self, rawFilenames):
         self.chNames = set()
@@ -2130,25 +2151,41 @@ class createDataStructWin(QMainWindow):
         self.worker.metadataWin = self.metadataWin
         self.waitCond.wakeAll()
 
-    def askReplacePos(self, pos_path):
-        msg = widgets.myMessageBox()
+    def askPosFoldersExisting(self, exp_dst_path):
+        pos_foldernames = myutils.get_pos_foldernames(exp_dst_path)
+        if not pos_foldernames:
+            return False, False, False, 1
+        
+        msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
-            f'The following folder <b>already exists</b>.<br><br>'
-            f'<code>{pos_path}</code><br><br>'
-            'Do you want to <b>overwrite</b> all of its content or '
-            '<b>add files</b> to it?'
+            'The selected destination folder <b>already contains Position folders</b>.<br><br>'
+            'Do you want to <b>overwrite</b> all of its content, '
+            '<b>add files</b> to the existing Position folders,<br>'
+            'or <b>create new</b> Position folders?'
         )
-        cancelButton, overwriteButton, addFilesButton = msg.warning(
-           self, 'Replace files?', txt,
-           buttonsTexts=('Cancel', 'Overwrite', 'Add files')
+        _, overwriteButton, addFilesButton, createNewButton = msg.warning(
+           self, 'Warning: existing Position folders detected!', txt,
+           buttonsTexts=(
+               'Cancel', 
+               'Overwrite', 
+               'Add files', 
+               widgets.newFilePushButton('Create new'),
+            ),
+           path_to_browse=exp_dst_path
         )
         if msg.cancel:
-            self.worker.cancel = True
-        elif overwriteButton == msg.clickedButton:
-            self.worker.overwritePos = True
-        elif addFilesButton == msg.clickedButton:
-            self.worker.addFiles = True
-        self.waitCond.wakeAll()
+            return 
+        
+        overwrite = overwriteButton == msg.clickedButton
+        add_files = addFilesButton == msg.clickedButton
+        create_new = createNewButton == msg.clickedButton
+        
+        start_pos_n = 1
+        if create_new:
+            pos_ns = [int(pos.split('_')[-1]) for pos in pos_foldernames]
+            start_pos_n = max(pos_ns) + 1
+        
+        return overwrite, add_files, create_new, start_pos_n
 
     def closeEvent(self, event):
         self.logger.info('Closing data structure logger...')
@@ -2173,11 +2210,11 @@ class InitFijiMacro:
     
     def askSelectInstalledFiji(self):
         if os.path.exists(myutils.get_fiji_exec_folderpath()):
-            return
+            return False, False
         
         txt = html_utils.paragraph(f"""    
             Do you already have Fiji (ImageJ)?<br><br>
-            If yes, click on the <code>Select Fiji location</code> button below<br>
+            If yes, click on the <code>Select Fiji location</code> button below 
             and select where you have the Fiji app.<br><br>
             Alternatively, you can ignore this and let Cell-ACDC automatically 
             download Fiji for you.
@@ -2189,6 +2226,7 @@ class InitFijiMacro:
             widgets.DownloadPushButton('Download Fiji.app')
         )
         msg = widgets.myMessageBox(wrapText=False)
+        msg.did_user_selected_fiji = False
         msg.question(
             self.acdcLauncher, 'Select Fiji location', txt, 
             buttonsTexts=(
@@ -2202,7 +2240,7 @@ class InitFijiMacro:
         )
         msg.exec_()
         
-        return msg.cancel
+        return msg.cancel, msg.did_user_selected_fiji
     
     def selectFijiLocation(self, checked=True, messagebox=None):
         import qtpy.compat
@@ -2216,15 +2254,14 @@ class InitFijiMacro:
         
         from cellacdc import fiji_location_filepath
         with open(fiji_location_filepath, 'w') as txt:
-            txt.write(
-                os.path.join(filepath, 'Contents', 'MacOS', 'ImageJ-macosx')
-            )
+            txt.write(os.path.join(filepath))
         
+        messagebox.did_user_selected_fiji = True
         messagebox.cancel = False
         messagebox.close()
     
     def run(self):
-        cancel = self.askSelectInstalledFiji()
+        cancel, did_user_selected_fiji = self.askSelectInstalledFiji()
         if cancel:
             self.cancel()
             return
@@ -2241,10 +2278,12 @@ class InitFijiMacro:
         fiji_success = myutils.test_fiji_base_command(self.logger.info)
         commands = None
         if not fiji_success:
-            try:
-                shutil.rmtree(acdc_fiji_path)
-            except Exception as err:
-                pass
+            if not did_user_selected_fiji:
+                try:
+                    shutil.rmtree(acdc_fiji_path)
+                except Exception as err:
+                    pass
+            
             href = html_utils.href_tag('here', urls.fiji_downloads)
             note_download_txt = (f"""
                 Before continuing, Fiji will be <b>automatically downloaded
@@ -2252,7 +2291,10 @@ class InitFijiMacro:
                 If the download fails, please download the zip file from {href} 
                 and unzip it in the following location:
             """)
-            txt = f'{txt}<br><br>{note_download_txt}'
+            admon = html_utils.to_admonition(
+                note_download_txt, admonition_type='note'
+            )
+            txt = f'{txt}<br>{admon}'
             commands = (acdc_fiji_path,)
             
         txt = html_utils.paragraph(txt)
@@ -2274,28 +2316,55 @@ class InitFijiMacro:
             self.cancel()
             return
         
-        macro_filepath = fiji_macros.init_macro(*win.init_macro_args)
+        init_macro_args = win.init_macro_args
+        is_separate_channels = init_macro_args[2]
+        macro_filepath = fiji_macros.init_macro(*init_macro_args)
         macro_command = fiji_macros.command_run_macro(macro_filepath)
         
-        txt = html_utils.paragraph("""
+        txt = ("""
             Cell-ACDC will now run the macro in the terminal.<br><br>
             During the process, the <b>GUI will be unresponsive</b>, while 
             progress will be displayed in the terminal.<br><br>
             If you prefer, you can stop the process now and run the command 
-            yourself, or even run the macro directly from the Fiji GUI.<br><br>
-            Command to run the macro:
+            yourself, or even run the macro directly from the Fiji GUI.<br>
         """)
+        
+        if is_separate_channels:
+            important_admon = html_utils.to_admonition(
+                'There are still steps to run after the macro finishes, so '
+                'if you run it yourself, '
+                'please close this dialogue only after the macro completes.',
+                admonition_type='important'
+            )
+            txt = f'{txt}{important_admon}'
+        
+        txt = f'{txt}<br>Command to run the macro:'
+        
+        txt = html_utils.paragraph(txt)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(
+        _, _, okButton = msg.information(
             self.acdcLauncher, 'Fiji macro command', txt, 
-            buttonsTexts=('Cancel', 'Ok'),
-            commands=(macro_filepath)
+            buttonsTexts=('Cancel', 'I already ran the macro', 'Ok'),
+            commands=(macro_filepath),
+            path_to_browse=os.path.dirname(macro_filepath)
         )
         if msg.cancel:
             self.cancel()
             return
         
-        success = fiji_macros.run_macro(macro_command)
+        success = True
+        if msg.clickedButton == okButton:
+            success = fiji_macros.run_macro(macro_command)            
+        
+        files_folderpath = init_macro_args[0]
+        dst_folderpath = init_macro_args[3]
+        channels = init_macro_args[4]
+        if success and is_separate_channels:
+            self.logger.info('Moving files to Position folders...')
+            success = io.move_separate_channels_tiffs_to_pos_folders(
+                dst_folderpath, channels
+            )
+        
         if success:
             txt = html_utils.paragraph("""
                 Macro execution completed. 

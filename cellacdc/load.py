@@ -557,6 +557,12 @@ def _fix_will_divide(acdc_df):
     return acdc_df
 
 def _add_missing_columns(acdc_df):
+    if 'is_cell_excluded' not in acdc_df.columns:
+        acdc_df['is_cell_excluded'] = 0
+    
+    if 'is_cell_dead' not in acdc_df.columns:
+        acdc_df['is_cell_dead'] = 0
+        
     if 'cell_cycle_stage' not in acdc_df.columns:
         return acdc_df
     
@@ -666,9 +672,15 @@ def save_acdc_df_file(
     acdc_df = acdc_df[new_order_cols]
     
     if last_cca_frame_i is not None:
-        acdc_df.loc[last_cca_frame_i:, cca_df_colnames] = pd.NA
+        max_frame_i = acdc_df.index.get_level_values('frame_i').max()
+        if last_cca_frame_i < max_frame_i:
+            acdc_df.loc[last_cca_frame_i+1:, cca_df_colnames] = pd.NA
     
-    acdc_df.to_csv(csv_path)
+    try:
+        acdc_df.to_csv(csv_path)
+    except Exception as err:
+        printl(f'[WARNING]: {err}')
+        return
 
 def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
     try:
@@ -2041,7 +2053,8 @@ class loadData:
             self.last_tracked_i_found = True
             try:
                 self.last_tracked_i = max(
-                    self.acdc_df.index.get_level_values(0)
+                    self.acdc_df.index.get_level_values(0),
+                    default=None
                 )
             except AttributeError as e:
                 # traceback.print_exc()
@@ -2092,14 +2105,24 @@ class loadData:
             return
         self.acdc_df = acdc_df
         self.acdc_df_found = True
-        self.last_tracked_i = max(self.acdc_df.index.get_level_values(0))
+        self.last_tracked_i = max(
+            self.acdc_df.index.get_level_values(0),
+            default=None
+        )
     
     def loadAcdcDf(self, filePath, updatePaths=True, return_df=False):
         acdc_df = _load_acdc_df_file(filePath)
+        if acdc_df.empty:
+            self.acdc_df_found = False
+            return
+        
         if updatePaths:
             self.acdc_df = acdc_df
             self.acdc_df_found = True
-            self.last_tracked_i = max(self.acdc_df.index.get_level_values(0))
+            self.last_tracked_i = max(
+                self.acdc_df.index.get_level_values(0),
+                default=None
+            )
         if return_df:
             return acdc_df
     
@@ -4032,12 +4055,14 @@ def loaded_df_to_points_data(df, t_col, z_col, y_col, x_col):
                     'x': df_z[x_col].to_list(),
                     'y': df_z[y_col].to_list(), 
                     'id': df_z['id'].to_list(), 
+                    'data': [row.to_string() for _, row in df_z.iterrows()]
                 }
         else:
             points_data[frame_i] = {
                 'x': df[x_col].to_list(),
                 'y': df[y_col].to_list(), 
                 'id': df['id'].to_list(), 
+                'data': [row.to_string() for _, row in df.iterrows()]
             }
     return points_data
 

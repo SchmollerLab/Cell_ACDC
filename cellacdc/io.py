@@ -1,9 +1,16 @@
 import os
+import shutil
 import pathlib
 import sys
 import re
 import h5py
 import json
+
+from typing import Sequence
+
+from natsort import natsorted
+
+import pandas as pd
 import numpy as np
 import skimage.io
 
@@ -159,7 +166,7 @@ def save_image_data(filepath, img_data):
     elif filepath.endswith('.npz'):
         savez_compressed(filepath, img_data)
     elif filepath.endswith('.npy'):
-        np.save()
+        np.save(filepath, img_data)
     else:
         myutils.to_tiff(filepath, img_data)
     return np.squeeze(img_data)
@@ -194,3 +201,52 @@ def rename_files_replace_invalid_chars(files, src_path, replacement_char='_'):
             os.rename(src_filepath, dst_filepath)
         renamed_files.append(new_file)
     return renamed_files
+
+def move_separate_channels_tiffs_to_pos_folders(
+        tiffs_folderpath: os.PathLike,
+        channel_names: Sequence[str],
+        get_only_basenames=False,
+        extension='.tif'
+    ):
+    basenames = set()
+    for file in myutils.listdir(tiffs_folderpath):
+        if not file.endswith(extension):
+            continue
+        
+        filename_no_ext = os.path.splitext(file)[0]
+        for channel in channel_names:
+            splits = filename_no_ext.split(channel)
+            if len(splits) == 2:
+                basename = splits[0]
+                basenames.add(basename)
+                break
+    
+    basenames = natsorted(basenames)    
+    
+    if get_only_basenames:
+        return basenames
+    
+    for p, basename in enumerate(basenames):
+        pos_folderpath = os.path.join(tiffs_folderpath, f'Position_{p+1}')
+        images_path = os.path.join(pos_folderpath, 'Images')
+        
+        os.makedirs(images_path, exist_ok=True)
+        for file in myutils.listdir(tiffs_folderpath):
+            if not file.startswith(basename):
+                continue
+            
+            src_filepath = os.path.join(tiffs_folderpath, file)
+            if file.endswith('.tif'):
+                dst_filepath = os.path.join(images_path, file)
+                shutil.move(src_filepath, dst_filepath)
+            elif file.endswith('_metadata.csv'):
+                dst_filename = f'{basename}metadata.csv'
+                dst_filepath = os.path.join(images_path, dst_filename)
+                df_metadata = pd.read_csv(src_filepath, index_col='Description')
+                df_metadata.at['basename', 'values'] = basename
+                df_metadata.to_csv(dst_filepath)
+                try:
+                    os.remove(src_filepath)
+                except Exception as err:
+                    pass
+    return True

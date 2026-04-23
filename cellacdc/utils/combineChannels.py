@@ -46,8 +46,9 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
                     chNames.update(segm_endnames)
                     continue
                 
+                chNames_loc = set(chNames_loc)
                 chNames_loc.update(segm_endnames)
-                chNames = chNames.intersection(set(chNames_loc))
+                chNames = chNames.intersection(chNames_loc)
 
         chNames = sorted(set(chNames))
             
@@ -69,36 +70,31 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
         self.worker.keepInputDataType = win.keepInputDataType
         self.worker.selectedSteps = win.selectedSteps
         self.worker.nThreads = win.nThreadsSpinBox.value()
+        self.worker.formula = win.formulaEditWidget.text()
+        self.worker.saveAsSegm = win.saveAsSegm()
         self.worker.waitCond.wakeAll()
         
     def showEvent(self, event):
         self.runWorker()
     
     def getBasenameExtAndExtensionOutputImage(self):
-        ext = '.npz'
-        basename_ext = 'segm_'
-        for step_n, step in self.worker.selectedSteps.items():
-            channel_name = step['channel']
-            if '_segm' not in channel_name:
-                basename_ext = ''
-                
-            for images_path in self.images_paths:
-                image_filepath = load.get_filepath_from_endname(
-                    images_path, channel_name
-                )
-                
-                _, ext = os.path.splitext(image_filepath)
-                if ext != '.npz':
-                    return '', '.tif'
-        
-        return basename_ext, ext
+        saveAsSegm = self.worker.saveAsSegm
+        if saveAsSegm:
+            basename_ext = 'segm'
+            ext = '.npz'
+            return basename_ext, ext
+        else:
+            basename_ext = ''
+            ext = '.tif'
+            return basename_ext, ext
     
     def askAppendName(self, basename):
         basename_ext, ext = self.getBasenameExtAndExtensionOutputImage()
+        saveAsSegm = self.worker.saveAsSegm
         helpText = (
-            """
-            The combined channels file will be saved with a different 
-            file name.<br><br>
+            f"""
+            The {"combined channels" if not saveAsSegm else "combined segmentation"} 
+            file will be saved with a different file name.<br><br>
             Insert a name to append to the end of the new file name. The rest of 
             the name will be the same as the original file base.
             """
@@ -106,9 +102,9 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
         win = apps.filenameDialog(
             basename=f'{basename}{basename_ext}',
             ext=ext,
-            hintText='Insert a name for the <b>combined channels</b> file:',
+            hintText=f'Insert a name for the <b>{"combined channels" if not saveAsSegm else "combined segmentation"}</b> file:',
             defaultEntry='combined',
-            helpText=helpText, 
+            helpText=helpText,
             allowEmpty=False,
             parent=self
         )

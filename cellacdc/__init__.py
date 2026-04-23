@@ -1,7 +1,50 @@
 import os
 import sys
-import shutil
+
 import subprocess
+
+def is_conda_env():
+    python_exec_path = sys.exec_prefix
+    is_conda_python = (
+        python_exec_path.find('conda') != -1
+        or python_exec_path.find('mambaforge') != -1
+        or python_exec_path.find('miniforge') != -1
+    )
+    if not is_conda_python:
+        return False
+    
+    stdout = subprocess.DEVNULL
+    try:
+        args = ['conda', '-V']
+        is_conda_present = subprocess.check_call(
+            args, shell=True, stdout=stdout) == 0
+        return True
+    except Exception as err:
+        pass
+    
+    try:
+        args = ['conda -V']
+        is_conda_present = subprocess.check_call(
+            args, shell=True, stdout=stdout) == 0
+        return True
+    except Exception as err:
+        return False
+    
+    return True
+
+def import_torch():
+    if is_conda_env():
+       return
+    
+    try:
+        import torch
+    except ModuleNotFoundError:
+        return
+
+import_torch()
+
+
+import shutil
 import importlib
 import inspect
 import platform
@@ -27,12 +70,14 @@ VIDEO_EXTENSIONS = (
     '.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv',
 )
 
-def _warn_ask_install_package(commands: Iterable[str], note_txt=''):
+def _warn_ask_install_package(
+        commands: Iterable[str], note_txt='', caller='SpotMAX'
+    ):
     open_str = '='*100
     sep_str = '-'*100
     commands_txt = '\n'.join([f'  {command}' for command in commands])
     text = (
-        f'SpotMAX needs to run the following commands{note_txt}:\n\n'
+        f'{caller} needs to run the following commands{note_txt}:\n\n'
         f'{commands_txt}\n\n'
     )
     question = (
@@ -87,7 +132,24 @@ except Exception as err:
         'pip install --upgrade charset-normalizer'
     )
     _warn_ask_install_package(
-        commands, note_txt=' (fixing charset-normalizer package)'
+        commands, note_txt=' (fixing charset-normalizer package)',
+        caller='Cell-ACDC'
+    )
+    _run_pip_commands(commands)
+
+try:
+    import sympy
+except Exception as err:
+    import traceback
+    traceback.print_exc()
+    print('Since Cell-ACDC v1.7.2, the sympy library is required.')
+    commands = (
+        'pip install --upgrade sympy',
+    )
+    _warn_ask_install_package(
+        commands, 
+        note_txt=' (installing sympy)',
+        caller='Cell-ACDC'
     )
     _run_pip_commands(commands)
 
@@ -207,7 +269,15 @@ if not os.path.exists(settings_csv_path):
 # Get color scheme
 if not os.path.exists(settings_csv_path):
     scheme = 'light'
-df_settings = pd.read_csv(settings_csv_path, index_col='setting')
+
+try:
+    df_settings = pd.read_csv(settings_csv_path, index_col='setting')
+except Exception as err:
+    # Overwrite corrupted setttings file
+    df_settings = pd.DataFrame(
+        {'setting': [], 'value': []}).set_index('setting')
+    df_settings.to_csv(settings_csv_path)
+    
 if 'colorScheme' not in df_settings.index:
     scheme = 'light'
 else:
@@ -358,6 +428,7 @@ favourite_func_metrics_csv_path = os.path.join(
 )
 recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
 preproc_recipes_path = os.path.join(settings_folderpath, 'preprocessing_recipes')
+combine_channels_recipes_path = os.path.join(settings_folderpath, 'combine_channels')
 segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
@@ -711,35 +782,6 @@ def ignore_exception(func):
             pass
         return result
     return inner_function
-
-def is_conda_env():
-    python_exec_path = sys.exec_prefix
-    is_conda_python = (
-        python_exec_path.find('conda') != -1
-        or python_exec_path.find('mambaforge') != -1
-        or python_exec_path.find('miniforge') != -1
-    )
-    if not is_conda_python:
-        return False
-    
-    stdout = subprocess.DEVNULL
-    try:
-        args = ['conda', '-V']
-        is_conda_present = subprocess.check_call(
-            args, shell=True, stdout=stdout) == 0
-        return True
-    except Exception as err:
-        pass
-    
-    try:
-        args = ['conda -V']
-        is_conda_present = subprocess.check_call(
-            args, shell=True, stdout=stdout) == 0
-        return True
-    except Exception as err:
-        return False
-    
-    return True
 
 error_below = f"\n{'*'*50} ERROR {'*'*50}\n"
 error_close = f"\n{'^'*(len(error_below)-1)}"

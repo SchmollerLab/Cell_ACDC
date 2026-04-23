@@ -42,6 +42,8 @@ import seaborn as sns
 import pandas as pd
 import math
 import time
+import sympy as sp
+import json
 
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
@@ -63,14 +65,14 @@ from qtpy.QtWidgets import (
     QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
     QDockWidget, QMessageBox, QStyle, QPlainTextEdit, QSpacerItem,
     QTreeWidget, QTreeWidgetItem, QTextEdit, QSplashScreen, QAction,
-    QListWidgetItem, QActionGroup, QHeaderView
+    QListWidgetItem, QActionGroup, QHeaderView, QStyledItemDelegate
 )
 import qtpy.compat
 
 from . import exception_handler
 from . import load, prompts, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, settings_folderpath, config
-from . import preproc_recipes_path, segm_recipes_path
+from . import preproc_recipes_path, segm_recipes_path, combine_channels_recipes_path
 from . import is_conda_env
 from . import printl
 from . import colors
@@ -681,12 +683,18 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         
         '----------------------------------------------------------------------' 
         row += 1
+        zHeightTooltip = (
+            'If "Z-depth" is greater than 1, the points will be annotated '
+            'in all the z-slices in the range `z - (Z-depth/2) < z < z + (Z-depth/2)`\n'
+            'where `z` is the center z-slice of the added point.'
+        )
         self.zHeightSpinBox = widgets.OddSpinBox()
         self.zHeightSpinBox.setValue(1)
         self.zHeightSpinBox.setMinimum(1)
         self.zHeightWidget = widgets.formWidget(
             self.zHeightSpinBox, stretchWidget=True,
-            labelTextLeft='Z- height: ', parent=self
+            labelTextLeft='Z-depth: ', parent=self,
+            toolTip=zHeightTooltip
         )
         layout.addFormWidget(self.zHeightWidget, row=row)
         '----------------------------------------------------------------------'
@@ -740,7 +748,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
 class AddPointsLayerDialog(QBaseDialog):
     sigClosed = Signal()
     sigCriticalReadTable = Signal(str)
-    sigLoadedTable = Signal(object)
+    sigLoadedTable = Signal(object, str)
     sigCheckClickEntryTableEndnameExists = Signal(str, bool)
 
     def __init__(
@@ -1185,7 +1193,7 @@ class AddPointsLayerDialog(QBaseDialog):
             self.zColName.addItems(df.columns)
             self.tColName.addItems(df.columns)
             self.tryAutoFillColNames(df)
-            self.sigLoadedTable.emit(df)
+            self.sigLoadedTable.emit(df, os.path.basename(path))
             self.browseTableButton.confirmAction()
         except Exception as e:
             traceback_format = traceback.format_exc()
@@ -1275,6 +1283,7 @@ class AddPointsLayerDialog(QBaseDialog):
     def ok_cb(self):
         self.pointsData = {}
         self.loadedDfInfo = None
+        self.loadedDf = None
         self.weighingChannel = ''
         if self.fromTableRadiobutton.isChecked():
             tablePath = self.tablePath.text()
@@ -1494,7 +1503,6 @@ class filenameDialog(QDialog):
             helpText = (f'{helpText}{html_utils.paragraph(helpText_loc)}')
 
         self.isSegmFile = basename.endswith('_segm')
-        
         self.allowEmpty = allowEmpty
         self.basename = basename
         if ext and not ext.startswith('.'):
@@ -3052,10 +3060,11 @@ class QDialogMetadataXML(QDialog):
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.SizeS_SB, row, 1)
-        self.SizeS_SB.valueChanged.connect(self.SizeSvalueChanged)
-
+    
         if rawDataStruct == 0:
             row += 1
+            self.SizeS_SB.setValue(1)
+            self.SizeS_SB.setDisabled(True)
             self.posSelector = widgets.ExpandableListBox()
             positions = ['All positions']
             positions.extend([f'Position_{i+1}' for i in range(SizeS)])
@@ -3064,6 +3073,7 @@ class QDialogMetadataXML(QDialog):
             label = QLabel(txt)
             entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
             entriesLayout.addWidget(self.posSelector, row, 1)
+            self.SizeS_SB.valueChanged.connect(self.SizeSvalueChanged)
 
         row += 1
         self.LensNA_DSB = QDoubleSpinBox()
@@ -6528,15 +6538,14 @@ class QCropZtool(QBaseDialog):
         layout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
-        self.lowerZscrollbar = QScrollBar(Qt.Horizontal)
-        self.lowerZscrollbar.setMaximum(SizeZ-1)
-        s = str(1).zfill(self.numDigits)
-        self.lowerZscrollbar.label = QLabel(f'{s}/{SizeZ}')
+        self.lowerZscrollbar = widgets.ScrollBarWithNumericControl()
+        self.lowerZscrollbar.setMaximum(SizeZ)
+        self.lowerZscrollbar.setMinimum(1)
+        self.lowerZscrollbar.setValue(1)
 
-        self.upperZscrollbar = QScrollBar(Qt.Horizontal)
-        self.upperZscrollbar.setMaximum(SizeZ-1)
-        self.upperZscrollbar.setValue(SizeZ-1)
-        self.upperZscrollbar.label = QLabel(f'{SizeZ}/{SizeZ}')
+        self.upperZscrollbar = widgets.ScrollBarWithNumericControl()
+        self.upperZscrollbar.setMaximum(SizeZ)
+        self.upperZscrollbar.setValue(SizeZ)
 
         cancelButton = widgets.cancelPushButton('Cancel')
         cropButton = widgets.okPushButton(cropButtonText)
@@ -6545,73 +6554,65 @@ class QCropZtool(QBaseDialog):
 
         row = 0
         layout.addWidget(
-            QLabel('Lower z-slice  '), row, 0, alignment=Qt.AlignRight
+            QLabel('Lower z-slice '), row, 0, alignment=Qt.AlignRight
         )
-        layout.addWidget(
-            self.lowerZscrollbar.label, row, 1, alignment=Qt.AlignRight
-        )
-        layout.addWidget(self.lowerZscrollbar, row, 2)
+        layout.addWidget(self.lowerZscrollbar, row, 1)
 
         row += 1
         layout.setRowStretch(row, 5)
 
         row += 1
         layout.addWidget(
-            QLabel('Upper z-slice  '), row, 0, alignment=Qt.AlignRight
+            QLabel('Upper z-slice '), row, 0, alignment=Qt.AlignRight
         )
-        layout.addWidget(
-            self.upperZscrollbar.label, row, 1, alignment=Qt.AlignRight
-        )
-        layout.addWidget(self.upperZscrollbar, row, 2)
+        layout.addWidget(self.upperZscrollbar, row, 1)
 
         row += 1
         if addDoNotShowAgain:
             self.doNotShowAgainCheckbox = QCheckBox('Do not ask again')
             layout.addWidget(
-                self.doNotShowAgainCheckbox, row, 2, alignment=Qt.AlignLeft
+                self.doNotShowAgainCheckbox, row, 1, alignment=Qt.AlignLeft
             )
             row += 1
 
-        layout.addLayout(buttonsLayout, row, 2, alignment=Qt.AlignRight)
+        layout.addLayout(buttonsLayout, row, 1, alignment=Qt.AlignRight)
 
         layout.setColumnStretch(0, 0)
-        layout.setColumnStretch(1, 0)
-        layout.setColumnStretch(2, 10)
+        layout.setColumnStretch(1, 10)
 
         self.setLayout(layout)
 
         # resetButton.clicked.connect(self.emitReset)
         cropButton.clicked.connect(self.emitCrop)
         cancelButton.clicked.connect(self.close)
-        self.lowerZscrollbar.valueChanged.connect(self.ZvalueChanged)
-        self.upperZscrollbar.valueChanged.connect(self.ZvalueChanged)
+        self.lowerZscrollbar.sigValueChanged.connect(self.ZvalueChanged)
+        self.upperZscrollbar.sigValueChanged.connect(self.ZvalueChanged)
 
     def emitReset(self):
         self.sigReset.emit()
 
     def emitCrop(self):
         self.cancel = False
-        low_z = self.lowerZscrollbar.value()
-        high_z = self.upperZscrollbar.value()
+        low_z = self.lowerZscrollbar.value() - 1
+        high_z = self.upperZscrollbar.value() - 1
         self.sigCrop.emit(low_z, high_z)
         self.close()
 
     def updateScrollbars(self, lower_z, upper_z):
-        self.lowerZscrollbar.setValue(lower_z)
-        self.upperZscrollbar.setValue(upper_z)
+        self.lowerZscrollbar.setValue(lower_z+1)
+        self.upperZscrollbar.setValue(upper_z+1)
 
     def ZvalueChanged(self, value):
         which = 'lower' if self.sender() == self.lowerZscrollbar else 'upper'
-        if which == 'lower' and value > self.upperZscrollbar.value()-2:
-            self.lowerZscrollbar.setValue(self.upperZscrollbar.value()-2)
+        if which == 'lower' and value > self.upperZscrollbar.value()-1:
+            self.lowerZscrollbar.setValue(self.upperZscrollbar.value()-1)
             return
-        if which == 'upper' and value < self.lowerZscrollbar.value()+2:
-            self.upperZscrollbar.setValue(self.lowerZscrollbar.value()+2)
+        if which == 'upper' and value < self.lowerZscrollbar.value()+1:
+            self.upperZscrollbar.setValue(self.lowerZscrollbar.value()+1)
             return
 
-        s = str(value+1).zfill(self.numDigits)
-        self.sender().label.setText(f'{s}/{self.SizeZ}')
-        self.sigZvalueChanged.emit(which, value)
+        z_slice_n = value - 1
+        self.sigZvalueChanged.emit(which, z_slice_n)
 
     def showEvent(self, event):
         self.resize(int(self.width()*1.5), self.height())
@@ -12990,66 +12991,6 @@ class downloadModel:
         # if self.loop is not None:
         #     self.loop.exit()
 
-class warnVisualCppRequired(QMessageBox):
-    def __init__(self, pkg_name='javabridge', parent=None):
-        super().__init__(parent)
-        self.loop = None
-        self.screenShotWin = None
-
-        self.setModal(False)
-        self.setIcon(self.Warning)
-        self.setWindowTitle(f'Installation of {pkg_name} info')
-        self.setTextFormat(Qt.RichText)
-        txt = (f"""
-        <p style=font-size:13px>
-            Installation of {pkg_name} on Windows requires
-            Microsoft Visual C++ 14.0 or higher.<br><br>
-            Cell-ACDC will anyway try to install {pkg_name} now.<br><br>
-            If the installation fails, please <b>close Cell-ACDC</b>,
-            then download and install <b>"Microsoft C++ Build Tools"</b>
-            from the link below
-            before trying this module again.<br><br>
-            <a href='https://visualstudio.microsoft.com/visual-cpp-build-tools/'>
-                https://visualstudio.microsoft.com/visual-cpp-build-tools/
-            </a><br><br>
-            <b>IMPORTANT</b>: when installing "Microsoft C++ Build Tools"
-            make sure to select <b>"Desktop development with C++"</b>.
-            Click "See the screenshot" for more details.
-        </p>
-        """)
-        seeScreenshotButton = QPushButton('See screenshot...')
-        okButton = widgets.okPushButton('Ok')
-        self.addButton(okButton, self.YesRole)
-        okButton.disconnect()
-        okButton.clicked.connect(self.close_)
-        self.addButton(seeScreenshotButton, self.HelpRole)
-        seeScreenshotButton.disconnect()
-        seeScreenshotButton.clicked.connect(
-            self.viewScreenshot
-        )
-        self.setText(txt)
-
-    def viewScreenshot(self, checked=False):
-        self.screenShotWin = widgets.view_visualcpp_screenshot()
-        self.screenShotWin.show()
-
-    def exec_(self):
-        self.show(block=True)
-
-    def show(self, block=False):
-        super().show()
-        if block:
-            self.loop = QEventLoop()
-            self.loop.exec_()
-
-    def close_(self):
-        self.hide()
-        self.close()
-        if self.loop is not None:
-            self.loop.exit()
-        if self.screenShotWin is not None:
-            self.screenShotWin.close()
-
 class combineMetricsEquationDialog(QBaseDialog):
     sigOk = Signal(object)
 
@@ -16558,7 +16499,7 @@ class PreProcessParamsWidget(QWidget):
         self.sigLoadRecipe.emit()
     
     def loadRecipe(self, configPars: dict):
-        for stepWidgets in self.stepsWidgets.values():
+        for stepWidgets in list(self.stepsWidgets.values()):
             try:
                 stepWidgets['delButton'].click()
             except Exception as err:
@@ -16592,6 +16533,33 @@ class PreProcessParamsWidget(QWidget):
             sortedConfigPars[key] = configPars[key]
         return sortedConfigPars
     
+    def saveRecipeUI(self, folder_path, ext, title, basename, hintText, 
+                     default_text):# -> tuple[Literal[False], Literal['']] | tuple[Literal[True], Any]:        
+        win = filenameDialog(
+            title=title,
+            basename=basename,
+            ext=ext,
+            hintText=hintText,
+            allowEmpty=False,
+            defaultEntry=default_text,
+            parent=self,
+        )
+        win.exec_()
+        if win.cancel:
+            return False, ''
+        
+        self.cancel = False
+        filepath = win.filename
+        os.makedirs(folder_path, exist_ok=True)
+        filepath = os.path.join(folder_path, filepath)
+        
+        if os.path.exists(filepath):
+            proceed = self.warnExistingRecipeFile(filepath)
+            if not proceed:
+                return False, ''
+        
+        return True, filepath
+    
     def saveRecipe(self):
         recipe = self.recipe()
         if recipe is None:
@@ -16604,30 +16572,16 @@ class PreProcessParamsWidget(QWidget):
             default_text = f'{default_text}-{func_name}'
         default_text = default_text.lstrip('-')
         
-        win = filenameDialog(
-            title='Filename for pre-processing recipe',
-            basename='preprocessing_recipe',
-            ext='.ini',
-            hintText='Insert a <b>filename</b> for the pre-processing recipe:',
-            allowEmpty=False,
-            defaultEntry=default_text,
-            parent=self,
-        )
-        win.exec_()
-        if win.cancel:
+        proceed, ini_filepath = self.saveRecipeUI(preproc_recipes_path, '.ini', 
+                          'Filename for pre-processing recipe',
+                          'preprocessing_recipe', 
+                          'Insert a <b>filename</b> for the pre-processing recipe:',
+                          default_text
+                          )
+        if not proceed:
             return
         
-        self.cancel = False
-        ini_filename = win.filename
         cp = self.recipeConfigPars('acdc')
-        os.makedirs(preproc_recipes_path, exist_ok=True)
-        ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
-        
-        if os.path.exists(ini_filepath):
-            proceed = self.warnExistingRecipeFile(ini_filename)
-            if not proceed:
-                return
-        
         with open(ini_filepath, 'w') as configfile:
             cp.write(configfile)
         
@@ -16657,89 +16611,96 @@ class PreProcessParamsWidget(QWidget):
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(self, 'No recipes saved', text)
     
-    def selectIniFileToLoadRecipe(self):
-        import qtpy.compat
-        ini_filepath = qtpy.compat.getopenfilename(
-            parent=self, 
-            caption='Select INI file to load pre-processing recipe', 
-            filters='INI (*.ini);;All Files (*)'
-        )[0]
-        if not ini_filepath:
-            return
+    # def selectIniFileToLoadRecipe(self):
+    #     import qtpy.compat
+    #     ini_filepath = qtpy.compat.getopenfilename(
+    #         parent=self, 
+    #         caption='Select INI file to load pre-processing recipe', 
+    #         filters='INI (*.ini);;All Files (*)'
+    #     )[0]
+    #     if not ini_filepath:
+    #         return
         
-        cp = config.ConfigParser()
-        cp.read(ini_filepath)
-        preprocConfigPars = {}
-        for section in cp.sections():
-            if not section.startswith('acdc.preprocess'):
-                continue      
+    #     cp = config.ConfigParser()
+    #     cp.read(ini_filepath)
+    #     preprocConfigPars = {}
+    #     for section in cp.sections():
+    #         if not section.startswith('acdc.preprocess'):
+    #             continue      
             
-            preprocConfigPars[section] = cp[section]
+    #         preprocConfigPars[section] = cp[section]
         
-        if not preprocConfigPars:
-            return
+    #     if not preprocConfigPars:
+    #         return
         
-        self.loadRecipe(preprocConfigPars)
+    #     self.loadRecipe(preprocConfigPars)
 
-    def selectAndLoadRecipe(self):
+    def selectRecipeFilepath(self, recipes_path, recipe_prefix, ext_label, ext):
         availableRecipes = []
-        for file in myutils.listdir(preproc_recipes_path):
-            if not file.startswith('preprocessing_recipe'):
-                continue
-            endname = file.split('preprocessing_recipe_')[1]
-            availableRecipes.append(endname)
+        if os.path.exists(recipes_path):
+            for file in myutils.listdir(recipes_path):
+                if not file.startswith(recipe_prefix):
+                    continue
+                endname = file.split(f'{recipe_prefix}_')[1]
+                availableRecipes.append(endname)
         
         if not availableRecipes:
-            # self.warnNoAvailableRecipesToLoad()
-            self.selectIniFileToLoadRecipe()
-            return
+            import qtpy.compat
+            filepath = qtpy.compat.getopenfilename(
+                parent=self,
+                caption=f'Select {ext_label} file to load recipe',
+                filters=f'{ext_label} (*.{ext});;All Files (*)'
+            )[0]
+            return filepath or None
         
         browseButton = widgets.browseFileButton(
-            'Select INI file...',
-            title='Select INI file to load pre-processing recipe',
+            f'Select {ext_label} file...',
+            title=f'Select {ext_label} file to load recipe',
             openFolder=False,
             start_dir=myutils.getMostRecentPath(),
-            ext={'INI': '.ini'}
+            ext={ext_label: f'.{ext}'}
         )
         selectRecipeWin = widgets.QDialogListbox(
             'Select recipe',
             'Select recipe to load:\n',
-            availableRecipes, 
-            multiSelection=False, 
+            availableRecipes,
+            multiSelection=False,
             allowEmptySelection=False,
             parent=self,
             additionalButtons=(browseButton,)
         )
         browseButton.sigPathSelected.connect(
             partial(
-                self.recipeIniFileSelected, 
+                self.recipeIniFileSelected,
                 selectRecipeWin=selectRecipeWin,
                 sender=browseButton
             )
         )
         selectRecipeWin.exec_()
         if selectRecipeWin.cancel:
-            return
+            return None
 
         if selectRecipeWin.clickedButton == browseButton:
-            ini_filepath = selectRecipeWin.selectedIniFilepath
-        else:
-            selected_endname = selectRecipeWin.selectedItemsText[0]
-            ini_filename = f'preprocessing_recipe_{selected_endname}'
-            ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
+            return selectRecipeWin.selectedIniFilepath
         
+        selected_endname = selectRecipeWin.selectedItemsText[0]
+        filename = f'{recipe_prefix}_{selected_endname}'
+        return os.path.join(recipes_path, filename)
+    
+    def selectAndLoadRecipe(self):
+        filepath = self.selectRecipeFilepath(
+            preproc_recipes_path, 'preprocessing_recipe', 'INI', 'ini'
+        )
+        if filepath is None:
+            return
         cp = config.ConfigParser()
-        cp.read(ini_filepath)
-        preprocConfigPars = {}
-        for section in cp.sections():
-            if not section.startswith('acdc.preprocess'):
-                continue      
-            
-            preprocConfigPars[section] = cp[section]
-        
+        cp.read(filepath)
+        preprocConfigPars = {
+            s: cp[s] for s in cp.sections() 
+            if s.startswith('acdc.preprocess')
+        }
         if not preprocConfigPars:
             return
-        
         self.loadRecipe(preprocConfigPars)
     
     def recipeIniFileSelected(
@@ -16964,13 +16925,44 @@ class PreProcessParamsWidget(QWidget):
                 cp[section][option] = str(value)
         return cp
 
+# class QComboBoxChangeColor(QComboBox):
+#     def __init__(self, forbidden_items=None, parent=None):
+#         super().__init__(parent)
+#         self.forbiddenItems = forbidden_items or set()
+#         self._defaultStyleSheet = self.styleSheet()
+#         self.currentTextChanged.connect(self._updateColor)
+    
+#     def _updateColor(self, text=None):
+#         if not hasattr(self, '_defaultStyleSheet'):
+#             self._defaultStyleSheet = self.styleSheet()
+#         if self.currentText() in self.forbiddenItems:
+#             self.setStyleSheet(
+#                 self._defaultStyleSheet + """
+#                 /* Closed state */
+#                 QComboBox {
+#                     color: red;
+#                 }
+
+#                 /* Open state (popup visible) */
+#                 QComboBox:on {
+#                     color: white;
+#                 }
+#                 """
+#             )
+#         else:
+#             self.setStyleSheet(self._defaultStyleSheet)
+
+        
+        
 class CombineChannelsWidget(PreProcessParamsWidget):
     sigValuesChangedCombineChannels = Signal()
+    
     def __init__(self, channel_names:Iterable[str], parent=None):
         self.channel_names = channel_names
 
         super().__init__(parent)
-        
+
+        self.parent = parent
         qutils.delete_widget(self.loadLastRecipeButton)
         qutils.delete_widget(self.saveRecipeButton)
         qutils.delete_widget(self.loadRecipeButton)
@@ -16979,54 +16971,130 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         stepWidgets = {}
         
         self.row += 1
+        if is_first:
+            self.row += 1
         
         step_n = len(self.stepsWidgets)+1
-        label = QLabel(f'Channel {step_n}: ')
-        self.gridLayout.addWidget(label, self.row, 0)
-        stepWidgets['stepLabel'] = label
+        tooltip = (
+            'Use this text in the formula'
+        )
+        if is_first:
+            label = QLabel('Formula var')
+            label.setToolTip(
+                tooltip
+            )
+            self.gridLayout.addWidget(label, self.row-1, 1)
+        name_edit = QLineEdit(text=f'img{step_n}')
+        name_edit.setToolTip(
+            tooltip
+        )
+        self.gridLayout.addWidget(name_edit, self.row, 1)
+        stepWidgets['name_edit'] = name_edit
+        name_edit.textChanged.connect(self.emitValuesChanged)
 
-        operator = QComboBox()
-        self.gridLayout.addWidget(operator, self.row, 1)
-        stepWidgets['operator'] = operator
-        operator.currentTextChanged.connect(self.emitValuesChanged)
- 
+        tooltip = (
+            'Select a channel or a segmentation mask'
+        )
+        if is_first:
+            label = QLabel('Channel')
+            label.setToolTip(
+                tooltip
+            )
+            self.gridLayout.addWidget(label, self.row-1, 2)
         ch_selector = QComboBox()
+        ch_selector.setToolTip(
+            tooltip
+        )
         ch_selector.addItems(self.channel_names)
         self.gridLayout.addWidget(ch_selector, self.row, 2)
         stepWidgets['selector'] = ch_selector
-        ch_selector.currentTextChanged.connect(self.emitValuesChanged)
+        ch_selector.currentTextChanged.connect(self.setBinarizeCheckableAndNorm)
 
-        multiplier = QDoubleSpinBox()
-        multiplier.setRange(0, 1)
-        multiplier.setSingleStep(0.01)
-        multiplier.setValue(1)
-        self.gridLayout.addWidget(multiplier, self.row, 3)
-        stepWidgets['multiplier'] = multiplier
-        multiplier.valueChanged.connect(self.emitValuesChanged)
+        # add binarisaion spinbox
+        tooltip = (
+            'If binarize is selected, the channel will be binarized first, before applying offset and multiplier.\n'
+            'If inverse binarize is selected, the channel will be binerized and '
+            'then the logical NOT will be applied.'
+        )
+        if is_first:
+            label = QLabel('Binarize')
+            label.setToolTip(
+                tooltip
+            )
+            self.gridLayout.addWidget(label, self.row-1, 5)
+        options = ['No', 'binarize', 'inverse binarize']
+        self.binarizeCombobox = QComboBox()
+        self.binarizeCombobox.addItems(options)
+        self.binarizeCombobox.setCurrentIndex(0)
+        self.binarizeCombobox.setEnabled(False)
+        self.binarizeCombobox.setToolTip(
+            tooltip
+        )
+        self.binarizeCombobox.currentIndexChanged.connect(self.emitValuesChanged)
+        self.gridLayout.addWidget(self.binarizeCombobox, self.row, 5)
+        stepWidgets['binarize'] = self.binarizeCombobox
+        
+        tooltip = (
+            'Min value of the channel to be normalized to.'
+        )
+        if is_first:
+            label = QLabel('Min val')
+            label.setToolTip(
+                tooltip
+            )
+            self.gridLayout.addWidget(label, self.row-1, 6)
+        self.minValueSpinbox = QDoubleSpinBox()
+        self.minValueSpinbox.setRange(-np.inf, np.inf)
+        self.minValueSpinbox.setSingleStep(0.1)
+        self.minValueSpinbox.setValue(0)
+        self.minValueSpinbox.setToolTip(
+            tooltip
+        )
+        
+        self.minValueSpinbox.valueChanged.connect(self.emitValuesChanged)
+        self.gridLayout.addWidget(self.minValueSpinbox, self.row, 6)
+        stepWidgets['minValueSpinbox'] = self.minValueSpinbox
+        
+        tooltip = (
+            'Max value of the channel to be normalized to.'
+        )
+        if is_first:
+            label = QLabel('Max val')
+            label.setToolTip(
+                tooltip
+            )
+            self.gridLayout.addWidget(label, self.row-1, 7)
+        self.maxValueSpinbox = QDoubleSpinBox()
+        self.maxValueSpinbox.setRange(-np.inf, np.inf)
+        self.maxValueSpinbox.setSingleStep(0.1)
+        self.maxValueSpinbox.setValue(1)
+        self.maxValueSpinbox.setToolTip(
+            tooltip
+        )
+        
+        self.maxValueSpinbox.valueChanged.connect(self.emitValuesChanged)
+        self.gridLayout.addWidget(self.maxValueSpinbox, self.row, 7)
+        stepWidgets['maxValueSpinbox'] = self.maxValueSpinbox
 
         if is_first:
             addButton = widgets.addPushButton()
-            self.gridLayout.addWidget(addButton, self.row, 4)
+            self.gridLayout.addWidget(addButton, self.row, 8)
             addButton.clicked.connect(self.addStep)
             stepWidgets['addButton'] = addButton
-            operators = ['+', '-']
-            stepWidgets['operator'].addItems(operators)
-
+            
         else:
             delButton = widgets.delPushButton()
-            self.gridLayout.addWidget(delButton, self.row, 4)
+            self.gridLayout.addWidget(delButton, self.row, 8)
             delButton.clicked.connect(self.removeStep)
             delButton.step_n = step_n
             stepWidgets['delButton'] = delButton
-            operators = ['+', '-', '*', '/']
-            stepWidgets['operator'].addItems(operators)
         
         self.row += 1
         ch_selector.row = self.row
         ch_selector.step_n = step_n
 
         hline = widgets.QHLine()
-        self.gridLayout.addWidget(hline, self.row, 0, 1, 6)
+        self.gridLayout.addWidget(hline, self.row, 0, 1, 8)
         stepWidgets['hline'] = hline
         self.row += 1
               
@@ -17034,9 +17102,30 @@ class CombineChannelsWidget(PreProcessParamsWidget):
                 
         self.resetStretch()
         self.sigValuesChangedCombineChannels.emit()
+        self.setBinarizeCheckableAndNorm()
     
     def emitValuesChanged(self, *args):
         self.sigValuesChangedCombineChannels.emit()
+        
+    def setBinarizeCheckableAndNorm(self):
+        for step_n, stepWidgets in self.stepsWidgets.items():
+            binarizeSelector = stepWidgets['binarize']
+            channel = stepWidgets['selector'].currentText()
+            if "segm" in channel:
+                binarizeSelector.setEnabled(True)
+                # set min and max to 0 and 1 and disable
+                stepWidgets['minValueSpinbox'].setValue(0)
+                stepWidgets['maxValueSpinbox'].setValue(1)
+                stepWidgets['minValueSpinbox'].setEnabled(False)
+                stepWidgets['maxValueSpinbox'].setEnabled(False)
+            else:
+                binarizeSelector.setEnabled(False)
+                binarizeSelector.setCurrentIndex(0)
+                # set min and max to 0 and 1 and enable
+                stepWidgets['minValueSpinbox'].setEnabled(True)
+                stepWidgets['maxValueSpinbox'].setEnabled(True)
+        
+        self.emitValuesChanged()
 
     def removeStep(self, checked=False, step_n=None):        
         if step_n is None:
@@ -17044,20 +17133,24 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         
         stepWidgets = self.stepsWidgets[step_n]
         
-        stepWidgets['stepLabel'].hide()
-        self.gridLayout.removeWidget(stepWidgets['stepLabel'])
+        stepWidgets['name_edit'].hide()
+        self.gridLayout.removeWidget(stepWidgets['name_edit'])
         
         stepWidgets['selector'].hide()
         self.gridLayout.removeWidget(stepWidgets['selector'])
         
+        stepWidgets['binarize'].hide()
+        self.gridLayout.removeWidget(stepWidgets['binarize'])
+        
+        stepWidgets['minValueSpinbox'].hide()
+        self.gridLayout.removeWidget(stepWidgets['minValueSpinbox'])
+        
+        stepWidgets['maxValueSpinbox'].hide()
+        self.gridLayout.removeWidget(stepWidgets['maxValueSpinbox'])
+        
         stepWidgets['delButton'].hide()
         self.gridLayout.removeWidget(stepWidgets['delButton'])
-
-        stepWidgets['operator'].hide()
-        self.gridLayout.removeWidget(stepWidgets['operator'])
-
-        stepWidgets['multiplier'].hide()
-        self.gridLayout.removeWidget(stepWidgets['multiplier'])
+        
         self.row -= 1
         
         stepWidgets['hline'].hide()
@@ -17071,8 +17164,6 @@ class CombineChannelsWidget(PreProcessParamsWidget):
             if i == 0:
                 continue
             step_n = i + 1
-            label = stepWidgets['stepLabel']
-            label.setText(f'Channel {step_n}: ')
             stepWidgets['delButton'].step_n = step_n
             stepWidgets['selector'].step_n = step_n
             stepsWidgetsMapper[step_n] = stepWidgets
@@ -17088,18 +17179,136 @@ class CombineChannelsWidget(PreProcessParamsWidget):
             return steps
         
         for step_number, stepWidgets in self.stepsWidgets.items():
+            name = stepWidgets['name_edit'].text()
             channel = stepWidgets['selector'].currentText()
-            operator = stepWidgets['operator'].currentText()
-            multiplier = stepWidgets['multiplier'].value()
+            binarize = stepWidgets['binarize'].currentText()
+            min_val = stepWidgets['minValueSpinbox'].value()
+            max_val = stepWidgets['maxValueSpinbox'].value()
             steps[step_number] = {
+                'name': name,
                 'channel': channel,
-                'operator': operator,
-                'multiplier': multiplier
+                'binarize': binarize,
+                'min_val': min_val,
+                'max_val': max_val,
             }
 
         steps = dict(sorted(steps.items()))
-       
         return steps
+    
+class FormulaEditWidget(QWidget):
+    sigFormulaChanged = Signal(str, bool)  # formula_str, is_valid
+
+    def __init__(self, variable_names=None, parent=None):
+        super().__init__(parent)
+        self._variable_names = variable_names or []
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        self._edit = QLineEdit()
+        self._edit.setPlaceholderText('e.g. img1 + img2 * 0.5')
+        layout.addWidget(self._edit)
+
+        self._status_label = QLabel()
+        self._status_label.setWordWrap(True)
+        self._status_label.setStyleSheet('font-size: 11px;')
+        layout.addWidget(self._status_label)
+
+        self._edit.textChanged.connect(self._onTextChanged)
+        self._clearStatus()
+        
+        self.parent = parent
+
+    def setVariableNames(self, variable_names):
+        """Allows setting the variables.
+
+        Parameters
+        ----------
+        variable_names : list
+            list of variable names (strings)
+        """
+        
+        self._variable_names = variable_names
+        self._onTextChanged(self._edit.text())
+
+    def text(self):
+        """Returns the current formula text."""
+        return self._edit.text()
+
+    def setText(self, text):
+        """Sets the formula text."""
+        self._edit.setText(text)
+
+    def _clearStatus(self):
+        self._status_label.setText('')
+        self._status_label.setStyleSheet('font-size: 11px;')
+
+    def _onTextChanged(self, text):
+        if not text.strip():
+            self._clearStatus()
+
+        success, reconstructed_str = self.checkValidity(self._variable_names)
+
+        if success:
+            self._status_label.setText(f'→ {reconstructed_str}')
+            self._status_label.setStyleSheet(
+                'font-size: 11px; color: green;'
+            )
+        else:
+            self._status_label.setText(reconstructed_str)
+            self._status_label.setStyleSheet(
+                'font-size: 11px; color: red;'
+            )
+
+        self.sigFormulaChanged.emit(text, success)
+
+    def checkValidity(self, variable_names=None):
+        if variable_names is None:
+            variable_names = self._variable_names
+        formula_str = self._edit.text()
+        arrays = {name: 1 for name in variable_names}
+        success = False
+        reconstructed_str = 'ERROR'
+        forb_ch = self.parent.forbiddenChannels
+        if forb_ch:
+            stepsWidgets = self.parent.combineChannelsWidget.stepsWidgets
+            channels = {stepsWidget['selector'].currentText() for stepsWidget in stepsWidgets.values()}
+            if forb_ch.intersection(channels):
+                reconstructed_str = (
+                    'Channels that are forbidden are not allowed to be used!:\n'
+                    f'{forb_ch}'
+                )
+                return False, reconstructed_str
+        if formula_str == '':
+            reconstructed_str = 'First channel is returned/applied'
+            return True, reconstructed_str
+        try:
+            symbols = {name: sp.Symbol(name) for name in arrays}
+            expr = sp.sympify(formula_str, locals=symbols)
+            missing = {str(s) for s in expr.free_symbols} - arrays.keys()
+            if missing:
+                reconstructed_str = f'Missing variables: {missing}'
+                return False, reconstructed_str
+
+            if formula_str == '':
+                reconstructed_str = ''
+                return True, reconstructed_str
+            
+            # filter out expressions that have no variables
+            if not any(s.is_Symbol for s in expr.free_symbols):
+                reconstructed_str = 'No variables used'
+                return False, reconstructed_str
+            
+            reconstructed_str = str(expr)
+            success = True
+        except Exception as e:
+            if 'syntax' in str(e):
+                reconstructed_str = f'Syntax error'
+            else:
+                reconstructed_str = str(e)
+            success = False
+        return success, reconstructed_str
 
 class InitFijiMacroDialog(QBaseDialog):
     def __init__(self, parent=None):
@@ -17126,9 +17335,13 @@ class InitFijiMacroDialog(QBaseDialog):
         self.filesStructureCombobox = QComboBox()
         self.filesStructureCombobox.addItems([
             'Positions (aka "series") embedded in the file',
-            'Positions (aka "series") separated, one for each file'
+            'Positions (aka "series") separated, one for each file',
+            'Positions (aka "series") and channels separated, one for each file'
         ])
         gridLayout.addWidget(self.filesStructureCombobox, row, 1)
+        self.filesStructureCombobox.currentTextChanged.connect(
+            self.fileStructureChanged
+        )
         infoButton = widgets.infoPushButton()
         gridLayout.addWidget(infoButton, row, 2)
         infoButton.clicked.connect(self.showInfoFileStructure)
@@ -17143,6 +17356,16 @@ class InitFijiMacroDialog(QBaseDialog):
         browseButton.sigPathSelected.connect(
             partial(self.updateFolderPath, lineEdit=self.folderPathLineEdit)
         )
+        self.folderPathLineEdit.textChanged.connect(self.srcFolderPathChanged)
+        
+        row += 1
+        label = QLabel('Destination folder: ')
+        gridLayout.addWidget(label, row, 0)
+        self.dstfolderPathLineEdit = widgets.ElidingLineEdit()
+        gridLayout.addWidget(self.dstfolderPathLineEdit, row, 1)
+        browseButton = widgets.browseFileButton(openFolder=True)
+        gridLayout.addWidget(browseButton, row, 2)
+        browseButton.sigPathSelected.connect(self.dstfolderPathLineEdit.setText)
         
         row += 1
         label = QLabel('Channel(s) name: ')
@@ -17151,10 +17374,14 @@ class InitFijiMacroDialog(QBaseDialog):
             additionalChars=' ,'
         )
         gridLayout.addWidget(self.channelNamesLineEdit, row, 1)
+        checkButton = widgets.TestPushButton('Check')
+        gridLayout.addWidget(checkButton, row, 3)
+        checkButton.clicked.connect(self.checkChannelNames)
+        checkButton.setDisabled(True)
+        self.checkButton = checkButton
         infoButton = widgets.infoPushButton()
         gridLayout.addWidget(infoButton, row, 2)
         infoButton.clicked.connect(self.showInfoChannelName)
-        
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
         
@@ -17164,12 +17391,49 @@ class InitFijiMacroDialog(QBaseDialog):
         gridLayout.setColumnStretch(0, 0)
         gridLayout.setColumnStretch(1, 1)
         gridLayout.setColumnStretch(2, 0)
-        
+        gridLayout.setColumnStretch(3, 0)
+
         mainLayout.addLayout(gridLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
         
         self.setLayout(mainLayout)
+    
+    def fileStructureChanged(self, text):
+        self.checkButton.setDisabled(not 'channels separated' in text)
+    
+    def checkChannelNames(self, checked=False):
+        proceed = self.validate()
+        if not proceed:
+            return
+        
+        src_folderpath = self.folderPath()
+        channel_names = self.channelNames()
+        extension = os.listdir(src_folderpath)[0].split('.')[-1]
+        basenames = io.move_separate_channels_tiffs_to_pos_folders(
+            src_folderpath, channel_names, get_only_basenames=True,
+            extension=extension
+        )
+        pos_folders_texts = []
+        for p, basename in enumerate(basenames):
+            pos_folders_texts.append(f'Position_{p+1}: <code>{basename}</code>')
+
+        pos_folders_html_list = html_utils.to_list(
+            pos_folders_texts, ordered=True
+        )
+        text = html_utils.paragraph(
+            'The following Position folders will be created based on the provided channel names:<br>'
+            f'{pos_folders_html_list}'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'Position folders', text)
+
+    def srcFolderPathChanged(self, text):
+        if self.dstfolderPathLineEdit.text():
+            return
+        
+        folderPath = self.folderPathLineEdit.text()
+        self.dstfolderPathLineEdit.setText(folderPath)
     
     def showInfoFileStructure(self):
         txt = html_utils.paragraph("""
@@ -17187,9 +17451,14 @@ class InitFijiMacroDialog(QBaseDialog):
             Enter the channels name. Separate multiple channels with a comma.<br><br>
             The channel names will be used to name the individual TIFF files 
             (one for each channel).<br><br>
-            Make sure that you write the <b>channels in the right order</b>. 
-            If you are unsure, open the file in Fiji first<br> 
-            and check the order of channels.
+            If multiple channels are embedded in the microscopy file, make sure that you write the <b>channels in the right order</b>.<br> 
+            If you are unsure, open the file in Fiji first
+            and check the order of channels.<br><br>
+            If the channels are already separated, make sure to write the 
+            full channel name as it appears in the file, including capitalization and spaces.<br>
+            For example, if the files are named "pos1_ch1.tif", "pos1_ch2.tif", etc., the channels names should be "ch1, ch2".<br><br>
+            After providing the channel names, you can check that they are correct by clicking on the "Check" button next to the channel names field.<br>
+            The number of Positions that will be created will be displayed alongside the basename.
         """)
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(self, 'Files structure info', txt)
@@ -17215,10 +17484,10 @@ class InitFijiMacroDialog(QBaseDialog):
                 return
             
         lineEdit.setText(path)
-    
-    def warnPathEmpty(self):
-        txt = html_utils.paragraph("""
-            Folder path <b>cannot be empty</b>.
+
+    def warnPathEmpty(self, path_name):
+        txt = html_utils.paragraph(f"""
+            {path_name} <b>cannot be empty</b>.
         """)
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(self, 'Empty folder path', txt)
@@ -17262,19 +17531,25 @@ class InitFijiMacroDialog(QBaseDialog):
     
     def validate(self):
         path = self.folderPath()
-        if not path:
-            self.warnPathEmpty()
-            return False
+        dst_path = self.dstfolderPathLineEdit.text()
+        paths = {
+            'Source folder': path,
+            'Destination folder': dst_path,
+        }
+        for _path_name, _path in paths.items():
+            if not _path:
+                self.warnPathEmpty(_path_name)
+                return False
+            
+            if not os.path.exists(_path):
+                self.warnSelectedPathDoesNotExist(_path)
+                return False
+            
+            if not os.path.isdir(_path):
+                self.warnSelectedPathNotAFolder(_path)
+                return False
         
-        if not os.path.exists(path):
-            self.warnSelectedPathDoesNotExist(path)
-            return False
-        
-        if not os.path.isdir(path):
-            self.warnSelectedPathNotAFolder(path)
-            return False
-        
-        files = os.listdir(path)
+        files = myutils.listdir(path)
         extensions = set([os.path.splitext(file)[1] for file in files])
         if len(extensions) > 1:
             self.warnMultipleExtensionsPresent(path, extensions)
@@ -17289,6 +17564,11 @@ class InitFijiMacroDialog(QBaseDialog):
     def folderPath(self):
         return self.folderPathLineEdit.text()
     
+    def channelNames(self):
+        channel_names = self.channelNamesLineEdit.text().split(',')
+        channel_names = [ch.strip() for ch in channel_names]
+        return channel_names
+    
     def ok_cb(self):
         proceed = self.validate()
         if not proceed:
@@ -17297,10 +17577,14 @@ class InitFijiMacroDialog(QBaseDialog):
         self.selectedFolderPath = self.folderPath()
         self.filesStructure = self.filesStructureCombobox.currentText()
         is_multiple_files = self.filesStructure.find('separated') != -1
+        is_separate_channels = 'channels separated' in self.filesStructure
+        dst_folderpath = self.dstfolderPathLineEdit.text()
         self.init_macro_args = (
-            self.folderPath(), is_multiple_files, 
-            self.channelNamesLineEdit.text().split(',')
-            
+            self.folderPath(), 
+            is_multiple_files, 
+            is_separate_channels,
+            dst_folderpath,
+            self.channelNames(),
         )
         self.cancel = False
         self.close()
@@ -17897,6 +18181,7 @@ class PreProcessRecipeDialog(QBaseDialog):
     sigPreviewToggled = Signal(bool)
     sigValuesChanged = Signal(list)
     sigSavePreprocData = Signal(object)
+    sigClose = Signal(object)
     
     def __init__(
             self, 
@@ -17930,6 +18215,8 @@ class PreProcessRecipeDialog(QBaseDialog):
         keepInputDataTypeInfoButton.clicked.connect(
             self.showInfoKeepInputDataType
         )
+        self.keepInputDataTypeLayout = keepInputDataTypeLayout
+        
         self.preProcessParamsWidget = PreProcessParamsWidget(
             df_metadata=df_metadata, 
             addApplyButton=addApplyButton, 
@@ -18015,9 +18302,7 @@ class PreProcessRecipeDialog(QBaseDialog):
                 'Apply to all z-slices of current image'
             )
             buttonsLayout.addWidget(self.applyAllZslicesButton, row, col)
-            self.applyAllZslicesButton.clicked.connect(
-                partial(self.apply, signal=self.sigApplyZstack)
-            )
+            self.applyAllZslicesButton.clicked.connect(self.applyAllZslices)
             self.allButtons.append(self.applyAllZslicesButton)
         if isTimelapse:
             row += 1
@@ -18025,9 +18310,7 @@ class PreProcessRecipeDialog(QBaseDialog):
                 'Apply to all frames'
             )
             buttonsLayout.addWidget(self.applyAllFramesButton, row, col)
-            self.applyAllFramesButton.clicked.connect(
-                partial(self.apply, signal=self.sigApplyAllFrames)
-            )
+            self.applyAllFramesButton.clicked.connect(self.applyAllFrames)
             self.allButtons.append(self.applyAllFramesButton)
         if isMultiPos:
             row += 1
@@ -18064,6 +18347,17 @@ class PreProcessRecipeDialog(QBaseDialog):
         
         self.setLayout(mainLayout)
 
+    def applyAllZslices(self, checked=False):
+        # Preview needs to be turned off because we are computing on every 
+        # z-slice 
+        self.previewCheckbox.setChecked(False)
+        self.apply(signal=self.sigApplyZstack)
+    
+    def applyAllFrames(self, checked=False):
+        # Preview needs to be turned off because we are computing on all frames
+        self.previewCheckbox.setChecked(False)
+        self.apply(signal=self.sigApplyAllFrames)
+    
     def emitSigPreviewToggled(self):
         self.sigPreviewToggled.emit(self.previewCheckbox.isChecked())
 
@@ -18142,6 +18436,10 @@ class PreProcessRecipeDialog(QBaseDialog):
 
         self.cancel = False
         self.close()
+    
+    def close(self):
+        super().close()
+        self.sigClose.emit(self)
 
 class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
     def __init__(
@@ -18214,13 +18512,29 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
         self.cancel = False
         self.close()
 
+
+# class ComboDelegate(QStyledItemDelegate):
+#     def __init__(self, bad_values, parent=None):
+#         super().__init__(parent)
+#         self.bad_values = bad_values
+
+#     def paint(self, painter, option, index):
+#         text = index.data()
+#         if text in self.bad_values:
+#             option.palette.setColor(option.palette.Text, QColor("red"))
+#         super().paint(painter, option, index)
+        
 class CombineChannelsSetupDialog(PreProcessRecipeDialog):
+    sigApplyImage = Signal(dict, bool, str)
+    sigApplyZstack = Signal(dict, bool, str)
+    sigApplyAllFrames = Signal(dict, bool, str)
+    sigApplyAllPos = Signal(dict, bool, str)
     sigValuesChanged = Signal()
-    sigApplyAllFrames = Signal(dict, bool)
-    sigApplyAllPos = Signal(dict, bool)
-    sigApplyAllZslices = Signal(dict, bool)
-    sigApplyAllFramesZslices = Signal(dict, bool)
-    sigApplyImage = Signal(dict, bool)
+    sigSaveAsSegmCheckboxToggled = Signal(bool)
+
+    
+    # sigApplyAllZslices = Signal(dict, bool, str)
+    # sigApplyAllFramesZslices = Signal(dict, bool, str)
 
     def __init__(
             self,
@@ -18233,8 +18547,12 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             isMultiPos=False,
             ):
         
-        self.combineChannelsWidget = CombineChannelsWidget(channel_names)
-
+        self.combineChannelsWidget = CombineChannelsWidget(channel_names, parent=self)
+        self.warnExistingRecipeFile = self.combineChannelsWidget.warnExistingRecipeFile
+        self.communicateSavingRecipeFinished = self.combineChannelsWidget.communicateSavingRecipeFinished
+        self.saveRecipeUI = self.combineChannelsWidget.saveRecipeUI
+        self.selectRecipeFilepath = self.combineChannelsWidget.selectRecipeFilepath
+        
         super().__init__(
             isTimelapse=isTimelapse,
             isZstack=isZstack,
@@ -18245,76 +18563,357 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         )
 
         self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(
-            self.emitValuesChanged
+            self.emitValuesChangedSteps
         )
+        
 
+        self.segm_blinked = False
+        self.validFormula = True # allow empty formula
+        self.forbiddenChannels = set() # channels that cannot be combined
+
+        self.mainLayout.setSpacing(4)
+    
         self.mainLayout.insertWidget(2, self.combineChannelsWidget)
         self.combineChannelsWidget.groupbox.setCheckable(False)
-        self.combineChannelsWidget.groupbox.setTitle('Combine channels (Operator, Channel name, Multiplier, Add another channel)')
+        self.combineChannelsWidget.groupbox.setTitle('Combine and manipulate channels and/or segmentation files')
+        
+        self.formulaEditWidget = FormulaEditWidget(parent=self)
+        self._updateFormulaVariableNames()
+        self.formulaEditWidget.sigFormulaChanged.connect(self.formulaChanged)
+        self.formulaEditWidget.setToolTip(
+            'Enter a formula to combine the channels. For example '
+            '"img1 + img2 * 0.5"'
+        )
+        self.mainLayout.insertWidget(3, self.formulaEditWidget)
+        
+        buttonsLayoutSaveGroup = QGridLayout()
+        
+        row = 0
+        col = 0
+        loadRecipeButton = widgets.OpenFilePushButton('Load saved recipe')
+        self.loadRecipeButtonComb = loadRecipeButton
+        buttonsLayoutSaveGroup.addWidget(loadRecipeButton, row, col)
+        self.loadRecipeButtonComb.clicked.connect(self.selectAndLoadRecipe)
+        
+        col += 1
+        saveRecipeButton = widgets.savePushButton('Save current recipe')
+        self.saveRecipeButtonComb = saveRecipeButton
+        buttonsLayoutSaveGroup.addWidget(saveRecipeButton, row, col)
+        saveRecipeButton.clicked.connect(self.saveRecipe)
+        saveRecipeButton.setToolTip(
+            'Save the current recipe to a file\n'
+            f'Location: <b>{combine_channels_recipes_path}</b>'
+        )
+        
+        col += 1
+        loadLastRecipeButton = widgets.reloadPushButton('Load last recipe')
+        self.loadLastRecipeButtonComb = loadLastRecipeButton
+        buttonsLayoutSaveGroup.addWidget(loadLastRecipeButton, row, col)        
+        self.mainLayout.addLayout(buttonsLayoutSaveGroup)
+        loadLastRecipeButton.clicked.connect(self.loadLastRecipe)
+        self.setLoadLastRecipe()
+        
+        loadLastRecipeButton.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        loadLastRecipeButton.customContextMenuRequested.connect(
+            self._showLoadRecipeContextMenu
+        )
 
         self.cancel = True
 
-        self.setWindowTitle('Combine channels')
+        self.setWindowTitle('Combine and manipulate channels and/or segmentation files')
         self.preProcessParamsWidget.hide()
         self.mainLayout.removeWidget(self.preProcessParamsWidget)
 
         self.savePreprocButton.setText('Save combined data...')
+        
+        
+        tooltip = (
+            'Save as a segmentation file, for example '
+            'when combining a binary mask with a segmentation mask.'
+            )
+        label = QLabel('Save as segmentation:')
+        self.saveAsSegmlabel = label
+        label.setToolTip(tooltip)
+        self.saveAsSegmCheckbox = widgets.Toggle()
+        self.saveAsSegmCheckbox.setToolTip(tooltip)
+        self.saveAsSegmCheckbox.setChecked(False)
+        self.saveAsSegmCheckbox.setEnabled(False)
+        self.saveAsSegmCheckbox.toggled.connect(self.emitSaveAsSegmCheckboxToggled)
+        
+        self.keepInputDataTypeLayout.insertWidget(0, label)
+        self.keepInputDataTypeLayout.insertWidget(1, self.saveAsSegmCheckbox)
 
-    def warnMultipliers(self):
-        msg = widgets.myMessageBox(wrapText=False)
+    def setLoadLastRecipe(self):
+        filepath = self._lastRecipePath()
+        if not os.path.exists(filepath):
+            self.loadLastRecipeButtonComb.setEnabled(False)
 
-        text = html_utils.paragraph(
-            'Multipliers do not sum to 1. Are you sure?'
-        )
-
-        msg.warning(
-            self, 'Multipliers do not sum to 1!', text
-        )
-
-        return msg.cancel
-    
-    def warnMultipliersNot1(self):
-        msg = widgets.myMessageBox(wrapText=False)
-
-        text = html_utils.paragraph(
-            'Multipliers are not all 1. Are you sure?'
-        )
-
-        msg.warning(
-            self, 'Multipliers are not all 1!', text
-        )
-
-        return msg.cancel
-
-    def warnDefaultMultipliers(self):
-        msg = widgets.myMessageBox(wrapText=False)
-        text = html_utils.paragraph(
-            '''
-            Default multiplier were used everywhere. <br>
-            You can either change them so they sum to 1, or leave them as is.<br>
-            Please choose or cancel to readjust manually.
-            '''
-        )
-        _, keep_button, change_button = msg.warning(
-            self, 'Default multiplier', text, buttonsTexts=['Cancel', 'Keep current', 'Change so that sum is 1']
-        )
-        if msg.clickedButton==keep_button:
+    def returLoadSecondLastRecipe(self):
+        filepath = self._secondLastRecipePath()
+        if not os.path.exists(filepath):
             return False
-        elif msg.clickedButton==change_button:
-            for step in self.selectedSteps.values():
-                step['multiplier'] = 1/len(self.selectedSteps)
-            return False
-        return msg.cancel
+        return True
+
+    def _showLoadRecipeContextMenu(self, pos):
+        menu = QMenu(self)
+        action = menu.addAction('Load recipe from before the last one')
+        action.triggered.connect(self.loadPreviousRecipe)
+        action.setEnabled(self.returLoadSecondLastRecipe())
+        menu.exec(self.loadLastRecipeButtonComb.mapToGlobal(pos))
+
+    def loadPreviousRecipe(self):
+        filepath = self._secondLastRecipePath()
+        if not os.path.exists(filepath):
+            return
+
+        self.loadRecipe(filepath)
+
+    def loadLastRecipe(self):
+        filepath = self._lastRecipePath()
+        if not os.path.exists(filepath):
+            return
+            
+        self.loadRecipe(filepath)
+        
+    def saveLastRecipe(self):
+        os.makedirs(combine_channels_recipes_path, exist_ok=True)
+        filepath = self._lastRecipePath()
+
+        same = False
+        if os.path.exists(filepath):
+            steps_curr = self._getSaveRecipyDict()
+            with open(filepath, 'r') as f:
+                steps_prev = json.load(f)
+            same = self._recipesMatch(steps_curr, steps_prev)
+
+        if same:
+            return
+
+        if os.path.exists(filepath):
+            new_filename = self._secondLastRecipePath()
+            if os.path.exists(new_filename):
+                os.remove(new_filename)
+            os.rename(filepath, new_filename)
+        self.saveRecipe(filepath=filepath)
+
+
+    def _recipesMatch(self, steps_curr, steps_prev):
+        # Normalize current dict to strings for comparison with JSON-loaded dict
+        def normalize(d):
+            return {str(k): str(v) for k, v in d.items()}
+
+        for raw_key in steps_curr:
+            key = str(raw_key)
+            if key not in steps_prev:
+                return False
+            if key in ('formula', 'keep_input_data_type', 'save_as_segm'):
+                if str(steps_curr[raw_key]) != str(steps_prev[key]):
+                    return False
+            else:
+                step_dict = normalize(steps_curr[raw_key])
+                step_dict_prev = steps_prev[key]
+                for key2, val2 in step_dict.items():
+                    if key2 not in step_dict_prev:
+                        return False
+                    if val2 != str(step_dict_prev[key2]):
+                        return False
+        return True
+        
+    def _lastRecipePath(self):
+        return os.path.join(combine_channels_recipes_path, '.last_combine_channels_recipe.json')
     
+    def _secondLastRecipePath(self):
+        return os.path.join(combine_channels_recipes_path, '.previous_combine_channels_recipe.json')
+    
+    def _getSaveRecipyDict(self):
+        steps = self.combineChannelsWidget.steps() # already returns a copy
+        formula = self.formulaEditWidget.text()
+        steps['formula'] = formula
+        steps['keep_input_data_type'] = self.keepInputDataTypeToggle.isChecked()
+        steps['save_as_segm'] = self.saveAsSegmCheckbox.isChecked()
+        return steps
+        
+    def saveRecipe(self, dummy=None, filepath=None):
+        os.makedirs(combine_channels_recipes_path, exist_ok=True)
+        
+        filepath_provided = filepath is not None
+        if not filepath_provided:
+            folder_content = myutils.listdir(combine_channels_recipes_path)
+            num_recipes = len(folder_content)
+            default_text = f'{num_recipes + 1}'
+            proceed, filepath = self.saveRecipeUI(
+                combine_channels_recipes_path, '.json', 
+                'Save recipe', 'combine_channels_recipe',
+                'Insert a <b>filename</b> for the recipe:',
+                default_text
+            )
+        
+            if not proceed:
+                return
+            
+        steps = self._getSaveRecipyDict()
+        
+        with open(filepath, 'w') as f:
+            json.dump(steps, f, indent=2)
+        
+        if not filepath_provided:
+            self.communicateSavingRecipeFinished(filepath)
+    
+    def selectAndLoadRecipe(self):
+        filepath = self.selectRecipeFilepath(
+            combine_channels_recipes_path, 
+            'combine_channels_recipe', 'JSON', 'json'
+        )
+        if filepath is None:
+            return
+
+        self.loadRecipe(filepath)
+        
+    def loadRecipe(self, filepath):
+        with open(filepath, 'r') as f:
+            recipe = json.load(f)
+            
+        recipe = dict(sorted(recipe.items()))
+        keys_used = set()
+        for key, value in recipe.items():
+            if key == 'formula':
+                formula = value
+                continue
+            if key == 'keep_input_data_type':
+                self.keepInputDataTypeToggle.setChecked(value)
+                continue
+            if key == 'save_as_segm':
+                self.saveAsSegmCheckbox.setChecked(value)
+                continue
+            
+            name = value['name']
+            channel = value['channel']
+            binarize = value['binarize']
+            min_val = float(value['min_val'])
+            max_val = float(value['max_val'])
+            key = int(key)
+            stepWidgetsNum = len(self.combineChannelsWidget.stepsWidgets)
+            if key > stepWidgetsNum:
+                self.combineChannelsWidget.addStep()
+            
+            stepWidgets = self.combineChannelsWidget.stepsWidgets[key]
+            idx = stepWidgets['selector'].findText(channel)
+            if idx == -1:
+                stepWidgets['selector'].addItem(channel)
+                # stepWidgets['selector'].forbiddenItems.add(channel)
+                blinker = qutils.QControlBlink(
+                    stepWidgets['selector'], 
+                    qparent=self
+                )
+                blinker.start()
+                stepWidgets['selector'].blinker = blinker
+                self.forbiddenChannels.add(channel)
+            
+            stepWidgets['selector'].setCurrentText(channel)
+            stepWidgets['name_edit'].setText(name)
+            stepWidgets['binarize'].setCurrentText(binarize)
+            stepWidgets['minValueSpinbox'].setValue(min_val)
+            stepWidgets['maxValueSpinbox'].setValue(max_val)
+            
+            keys_used.add(key)
+        
+        # remove extra steps
+        keys_present = set(range(1, len(self.combineChannelsWidget.stepsWidgets)+1))
+        extra_keys = keys_present - keys_used
+        extra_keys = list(extra_keys)
+        extra_keys.sort(reverse=True)
+        for key in extra_keys:
+            self.combineChannelsWidget.removeStep(step_n = key) 
+            # updates key dynamically so I have to rely that missing indx are always last steps
+
+        # update formula
+        self.formulaEditWidget.setText(formula)
+        
+        for stepWidgets in self.combineChannelsWidget.stepsWidgets.values():
+            combo = stepWidgets['selector']
+            # set forbidden channels red in all steps
+            for i in range(combo.count()):
+                item = combo.itemText(i)
+                if item in self.forbiddenChannels:
+                    combo.setItemData(i, QColor('red'), Qt.ForegroundRole)
+        
+    def _updateFormulaVariableNames(self):
+        names = [
+            stepWidgets['name_edit'].text()
+            for stepWidgets in self.combineChannelsWidget.stepsWidgets.values()
+        ]
+        self.formulaEditWidget.setVariableNames(names)
+
+    def formulaChanged(self, formula_str, is_valid):
+        self.setButtonsEnabled(is_valid)
+        self.validFormula = is_valid
+        if is_valid:
+            self.sigValuesChanged.emit()
+    
+    def setButtonsEnabled(self, enabled):
+        for i in range(self.buttonsLayout.count()):
+            item = self.buttonsLayout.itemAt(i)
+            widget = item.widget()
+            if widget is None:
+                continue
+            if isinstance(widget, QPushButton):
+                label = widget.text().lower().rstrip().lstrip()
+                if 'apply' in label or 'save' in label or 'ok' in label:
+                    if enabled:
+                        try:
+                            widget.setEnabled(True)
+                        except:
+                            pass
+                    else:
+                        try:
+                            widget.setDisabled(True)
+                        except:
+                            pass
+                    
+    
+    def saveAsSegm(self):
+        return self.saveAsSegmCheckbox.isChecked()
+    
+    def emitSaveAsSegmCheckboxToggled(self):
+        if self.validFormula:
+            self.sigSaveAsSegmCheckboxToggled.emit(self.saveAsSegm())
+    
+    def autoCheckSaveAsSegmCheckbox(self):
+        any_not_seg = False
+        for step in self.combineChannelsWidget.steps().values():
+            channel = step['channel']
+            if 'segm' not in channel:
+                any_not_seg = True
+                break
+                
+        if any_not_seg:
+            self.saveAsSegmCheckbox.setChecked(False)
+            self.saveAsSegmCheckbox.setEnabled(False)
+        else:
+            if not self.segm_blinked:
+                self.saveAsSegmCheckbox.setEnabled(True)
+                self.blinker = qutils.QControlBlink(
+                    self.saveAsSegmCheckbox, 
+                    qparent=self
+                )
+                self.blinker.start()
+                self.segm_blinked = True
+
     def apply(self, checked=False, signal: Signal=None):
         steps = self.combineChannelsWidget.steps()
+        formula = self.formulaEditWidget.text()
         keep_input_dtype = self.keepInputDataTypeToggle.isChecked()
-        if not steps:
+        if not steps or not self.validFormula:
             return
         
         if signal is not None:
-            signal.emit(steps, keep_input_dtype)
+            try:
+                signal.emit(steps, formula)
+            except TypeError as err:
+                signal.emit(steps, keep_input_dtype, formula)
+            
 
+        self.saveLastRecipe()
         if self.hideOnClosing:
             self.setDisabled(True)
             self.infoLabel.setText(
@@ -18322,56 +18921,28 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
                 "<i>(Feel free to use Cell-ACDC while waiting)</i>"
             )
         else:
-            self.ok_cb()
+            self.ok_cb(saveLastRecipe=False)
+    # Not needed anymore since now we funnel all changes to the formulaEditWidget, which then verifies the formula and
+    # emits a signal via  formulaChangeda
+    # def emitValuesChanged(self):
+    #     if not self.validFormula:
+    #         return
+    #     self.sigValuesChanged.emit()
+        
+    def emitValuesChangedSteps(self):
+        self.autoCheckSaveAsSegmCheckbox()
+        self._updateFormulaVariableNames()
 
-    def emitValuesChanged(self):
-        self.sigValuesChanged.emit()
-
-    def ok_cb(self):
-        self.keepInputDataType = self.keepInputDataTypeToggle.isChecked()
-
-        self.selectedSteps = self.combineChannelsWidget.steps()
-
-        multipliers = [step['multiplier'] for step in self.selectedSteps.values()]
-        operators = [step['operator'] for step in self.selectedSteps.values()]
-        just_add_subt = all([op in ['+', '-'] for op in operators])
-
-        if len(operators) > 2 and not just_add_subt:
-            msg = widgets.myMessageBox(wrapText=False)
-            text = html_utils.paragraph(
-                '''
-                Multiplication and division operators are not recomended for more than 2 channels. <br>
-                Behaviour: <br>
-                Strictly goes through the steps and doesn't respect order of operators. <br>
-                Recommendation:<br>
-                Please reduce the used channels to 2 and run the utility several times.<br>
-                If this is something you need to do regularly, feel free to contact us via a github issue.
-                '''
-            )
-            msg.warning(
-                self, 'Invalid operator', text
-            )
+    def ok_cb(self, dummy=None, saveLastRecipe=True):
+        if not self.validFormula:
             return
         
-        is_default_multiplier = (
-            just_add_subt 
-            and all([w == 1 for w in multipliers]) 
-            and sum(multipliers) != 1
-        )
-        
-        if is_default_multiplier:
-            cancel = self.warnDefaultMultipliers()
-            if cancel:
-                return
-
-        elif just_add_subt and sum(multipliers) != 1:
-            cancel = self.warnMultipliers()
-            if cancel:
-                return
+        if saveLastRecipe:
+            self.saveLastRecipe()
             
-        elif not just_add_subt and not all([w == 1 for w in multipliers]):
-            cancel = self.warnMultipliersNot1()
-
+        self.keepInputDataType = self.keepInputDataTypeToggle.isChecked()
+        self.selectedSteps = self.combineChannelsWidget.steps()
+        self.formula = self.formulaEditWidget.text()
         self.cancel = False
         self.close()
 
@@ -18390,22 +18961,24 @@ class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
             )
         
         # add int input for number of workers
+
+        
+        self.mainLayout.addSpacing(20)
+
+        qutils.hide_and_delete_layout(self.buttonsLayout)
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        self.buttonsLayout = buttonsLayout
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        self.mainLayout.addLayout(buttonsLayout)
+        
         self.nThreadsSpinBox = QSpinBox()
         self.nThreadsSpinBox.setMinimum(1)
         self.nThreadsSpinBox.setValue(4)
         self.nThreadsSpinBox.setToolTip("Number of threads to use for processing")
         self.mainLayout.addWidget(QLabel("Number of threads:"))
         self.mainLayout.addWidget(self.nThreadsSpinBox)
-        
-        self.mainLayout.addSpacing(20)
-
-        qutils.hide_and_delete_layout(self.buttonsLayout)
-
-        buttonsLayout = widgets.CancelOkButtonsLayout()
-        buttonsLayout.okButton.clicked.connect(self.ok_cb)
-        buttonsLayout.cancelButton.clicked.connect(self.close)
-
-        self.mainLayout.addLayout(buttonsLayout)  
 
 class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
     def __init__(
@@ -18428,6 +19001,7 @@ class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
             hideOnClosing=hideOnClosing,
         )
 
+        # remove the preprocess buttons, we use the comb version of them
         qutils.delete_widget(self.loadLastRecipeButton)
         qutils.delete_widget(self.saveRecipeButton)
         qutils.delete_widget(self.loadRecipeButton)
@@ -18437,14 +19011,16 @@ class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
         self.allButtons.remove(self.loadRecipeButton)
 
         self.previewCheckbox.setChecked(True)
-
+        self.saveAsSegmlabel.setText('Save and view as segmentation')
+    
     def steps(self, return_keepInputDataType=False):
         steps = self.combineChannelsWidget.steps()
-        if not return_keepInputDataType:
-            return steps
+        formula = self.formulaEditWidget.text()
+        # if not return_keepInputDataType:
+        #     return steps, formula
         
         keep_input_dtype = self.keepInputDataTypeToggle.isChecked()
-        return steps, keep_input_dtype # why does this not work???s 
+        return steps, keep_input_dtype, formula
 
 class QCropTrangeTool(QBaseDialog):
     sigClose = Signal()
@@ -19021,4 +19597,95 @@ class AutoSaveIntervalDialog(QBaseDialog):
             self.autoSaveIntervalWidget.spinbox.value(), 
             self.autoSaveIntervalWidget.unitCombobox.currentText()
         )
+        self.close()
+
+class TestSegmModelInitalDialog(QBaseDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.cancel = True
+        
+        mainLayout = QVBoxLayout()
+        entriesLayout = widgets.FormLayout()
+        
+        row = 0
+        self.startFrameNumberSpinbox = widgets.SpinBox()
+        self.startFrameNumberSpinbox.setMinimum(1)
+        
+        self.startFrameNumberFormWidget = widgets.formWidget(
+            self.startFrameNumberSpinbox, 
+            labelTextLeft='Start frame number',
+            addActivateCheckbox=True
+        )
+        entriesLayout.addFormWidget(self.startFrameNumberFormWidget, row=row)
+        
+        row += 1
+        self.stopFrameNumberSpinbox = widgets.SpinBox()
+        self.stopFrameNumberSpinbox.setMinimum(1)
+        
+        self.stopFrameNumberFormWidget = widgets.formWidget(
+            self.stopFrameNumberSpinbox, 
+            labelTextLeft='Stop frame number',
+            addActivateCheckbox=True
+        )
+        entriesLayout.addFormWidget(self.stopFrameNumberFormWidget, row=row)
+        
+        row += 1
+        self.startZsliceNumberSpinbox = widgets.SpinBox()
+        self.startZsliceNumberSpinbox.setMinimum(1)
+        
+        self.startZsliceNumberFormWidget = widgets.formWidget(
+            self.startZsliceNumberSpinbox, 
+            labelTextLeft='Start z-slice number',
+            addActivateCheckbox=True
+        )
+        entriesLayout.addFormWidget(self.startZsliceNumberFormWidget, row=row)
+        
+        row += 1
+        self.stopZsliceNumberSpinbox = widgets.SpinBox()
+        self.stopZsliceNumberSpinbox.setMinimum(1)
+        
+        self.stopZsliceNumberFormWidget = widgets.formWidget(
+            self.stopZsliceNumberSpinbox, 
+            labelTextLeft='Stop z-slice number',
+            addActivateCheckbox=True
+        )
+        entriesLayout.addFormWidget(self.stopZsliceNumberFormWidget, row=row)
+        
+        row += 1
+        
+        self.isTimelapseToggleFormWidget = widgets.formWidget(
+            widgets.Toggle(), 
+            labelTextLeft='Is timelapse?',
+            stretchWidget=False,
+            valueGetterName='isChecked'
+        )
+        entriesLayout.addFormWidget(self.isTimelapseToggleFormWidget, row=row)
+        
+        
+        # self.stopFrameNumberSpinbox
+        # self.startZsliceNumberSpinbox
+        # self.stopZsliceNumberSpinbox
+        # self.isTimelapseToggle
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addLayout(entriesLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def ok_cb(self):
+        self.cancel = False
+        
+        self.start_frame_n = self.startFrameNumberFormWidget.value()
+        self.stop_frame_n = self.stopFrameNumberFormWidget.value()
+        self.start_z_slice_n = self.startZsliceNumberFormWidget.value()
+        self.stop_z_slice_n = self.stopZsliceNumberFormWidget.value()
+        self.is_timelapse = self.isTimelapseToggleFormWidget.value()
+        
         self.close()

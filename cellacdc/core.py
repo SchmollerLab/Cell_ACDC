@@ -24,8 +24,9 @@ import skimage.filters
 import skimage.segmentation
 import scipy.ndimage.morphology
 from itertools import product
-
+import pathlib
 from natsort import natsorted
+import sympy as sp
 
 from math import sqrt
 from scipy.stats import norm
@@ -2268,39 +2269,15 @@ def preprocess_image_from_recipe_multithread(
 
 def combine_channels_multithread(
         steps: Dict[str, Dict[str, Any]],
+        formula: str,
         images_paths: List[str],
         keep_input_data_type: bool,
         save_filepaths: List[str]=None,
         n_threads: int=None,
         signals=None,
-        logger_func: Callable=None
+        logger_func: Callable=None,
+        output_as_segm: bool = False,
     ):
-
-    channel_names = []
-    multipliers = []
-    operators = []
-    is_all_segm_masks = True
-    for step in steps.values():
-        channel_names.append(step['channel'])
-        multipliers.append(step['multiplier'])
-        operators.append(step['operator'])
-
-        channel = step['channel']
-        if '_segm' not in channel:
-            is_all_segm_masks = False
-            break
-
-        for images_path in images_paths:
-            ch_filepath = load.get_filepath_from_endname(
-                images_path, channel
-            )
-            if ch_filepath:
-                break
-        
-        if not ch_filepath.endswith('.npz'):
-            is_all_segm_masks = False
-            break
-    
     with ThreadPoolExecutor(max_workers=n_threads) as executor:
         if signals:
             signals.initProgressBar.emit(len(images_paths))
@@ -2309,19 +2286,14 @@ def combine_channels_multithread(
                 total=len(images_paths), ncols=100, desc='Combining channels'
             )
         
-        if is_all_segm_masks:
-            executor_func = combine_segm_masks_executor_map
-        else:
-            executor_func = combine_channels_executor_map
-
         func = partial(
-            executor_func,
-            channel_names=channel_names,
-            operators=operators,
-            multipliers=multipliers,
+            combine_channels_executor_map,
             keep_input_data_type=keep_input_data_type,
             return_img=False,
-            logger_func=logger_func
+            logger_func=logger_func,
+            output_as_segm=output_as_segm,
+            formula=formula,
+            steps=steps,
         )
         iterable = zip(images_paths, save_filepaths)
         result = executor.map(func, iterable)
@@ -2339,16 +2311,10 @@ def combine_channels_multithread_return_imgs(
         n_threads: int=None,
         signals=None,
         logger_func: Callable=None,
+        output_as_segm: bool = False,
+        formula: str = None,
     ):
 
-    channel_names = []
-    multipliers = []
-    operators = []
-
-    for step in steps.values():
-        channel_names.append(step['channel'])
-        multipliers.append(step['multiplier'])
-        operators.append(step['operator'])
 
     total = len(keys)
     
@@ -2365,12 +2331,12 @@ def combine_channels_multithread_return_imgs(
         func = partial(
             combine_channels_executor_map_return_img,
             data=data,
-            channel_names=channel_names,
-            operators=operators,
-            multipliers=multipliers,
             keep_input_data_type=keep_input_data_type,
             return_img=True,
             logger_func=logger_func,
+            output_as_segm=output_as_segm,
+            formula=formula,
+            steps=steps,
         )
         iterable = keys
         result = executor.map(func, iterable)
@@ -2388,13 +2354,13 @@ def combine_channels_multithread_return_imgs(
 
     if not logger_func:
         for txt in txts:
-            printl(txt)
+            print(txt)
     else:
         for txt in txts:
             try:
                 logger_func(txt)
             except Exception as err:
-                printl(txt)
+                print(txt)
 
     return output_imgs, keys_out
 
@@ -2404,80 +2370,166 @@ def combine_channels_executor_map(args, **kwargs):
     kwargs['images_path'] = images_path
     return combine_channels_func(**kwargs)
 
-def combine_segm_masks_executor_map(args, **kwargs):
-    images_path, save_filepath = args
-    kwargs['save_filepath'] = save_filepath
-    kwargs['images_path'] = images_path
-    return combine_segm_masks_func(**kwargs)
-
 def combine_channels_executor_map_return_img(args, **kwargs):
     key = args
     kwargs['key'] = key
     return combine_channels_func(**kwargs)
 
-def combine_segm_masks_func(
-        channel_names: List[str],
-        operators: List[str],
-        multipliers: List[float],
-        keep_input_data_type: bool,
-        save_filepath: str=None,
-        return_img: bool=False,
-        logger_func: Callable=None,
-        images_path: str = None,
-        key: str = None,
-        data = None,
-    ):
-    segm_data_li = []
-    for segm_endname in channel_names:
-        segm_filepath = load.get_filepath_from_endname(
-            images_path, segm_endname
-        )
-        segm_data = np.load(segm_filepath)['arr_0']
-        segm_data_li.append(segm_data.astype(np.float32))
-    
-    if all(x == "+" for x in operators):
-        output_segm = np.sum(segm_data_li, axis=0)
-        return output_segm
-    
-    for i in range(len(segm_data_li)):
-        if i == 0:
-            if operators[i] == "+":
-                output_segm = segm_data_li[0]
-            elif operators[i] == "-":
-                output_segm = -segm_data_li[0]
-            else:
-                raise ValueError(f'Invalid operator: {operators[i]}')
-            continue
-        
-        if operators[i] == "+":
-            output_segm += segm_data_li[i]
-        elif operators[i] == "-":
-            output_segm -= segm_data_li[i]
-        elif operators[i] == "*":
-            output_segm *= segm_data_li[i]
-        elif operators[i] == "/":
-            output_segm /= segm_data_li[i]
-        else:
-            raise ValueError(f'Invalid operator: {operators[i]}')
-    
-    output_segm[output_segm<0] = 0
-    output_segm = output_segm.astype(np.uint32)
+def _combine_channels_multiplier_apply(binarize, input_img):
+    if binarize == 'binarize':
+        input_img = (input_img > 0)
+    elif binarize == 'inverse binarize':
+        input_img = ~(input_img > 0)
+    return input_img
 
-    if return_img:
-        return output_segm, key, ''
-    
-    txt = f'Saving combined image to {save_filepath}'
-    if logger_func:
-        logger_func(txt)
+def _get_img_from_data_key(data, key, num_dim, seg=False):
+    n_dim_data = data.ndim - 1 # - 1 dim for x y
+    n_dim_key = len(key)
+    if seg and n_dim_key == n_dim_data + 1:
+        # here a 2D segmentation is used for 3D image
+        return data[key[1]]
+    if num_dim == 3: # t x y
+        return data[key[1]]
+    elif num_dim == 4: # t z x y
+        return data[key[1]][key[2]]
+    elif num_dim == 2: # z x y, but t is always there
+        return data[0]
+    else:
+        raise ValueError(
+            f'Invalid number of dimensions in img_data. {num_dim}'
+        )
+        
+def _log_printl_fallback(txt, logger_func):
+    if logger_func is not None:
+        try:
+            logger_func(txt)
+        except:
+            printl(txt)
+            pass
     else:
         printl(txt)
+        
+def _add_missing_dims(segm, target_shape, use_broadcast=False):
+    """
+    Expand segmentation by replicating existing data along missing dims.
+
+    Parameters
+    ----------
+    segm : np.ndarray
+    target_shape : tuple
+        Desired output shape (e.g. (Z, Y, X) or (T, Z, Y, X))
+    use_broadcast : bool
+        If True, uses zero-copy broadcast (read-only view)
+
+    Returns
+    -------
+    segm_expanded : np.ndarray
+    text : str
+    """
+    text = ''
+
+    if segm.shape == target_shape:
+        return segm, text
+
+    # 2D -> 3D (Y,X -> Z,Y,X)
+    if segm.ndim == 2 and len(target_shape) == 3:
+        text = (
+            'The segmentation mask is 2D but the image data is 3D. '
+            'Replicating mask across Z.'
+        )
+        y, x = segm.shape
+        z = target_shape[0]
+
+        segm = segm[np.newaxis, ...]  # (1, Y, X)
+
+        if use_broadcast:
+            segm_expanded = np.broadcast_to(segm, (z, y, x))
+        else:
+            segm_expanded = np.repeat(segm, z, axis=0)
+
+        return segm_expanded, text
+
+    # 3D -> 4D (T,Y,X -> T,Z,Y,X)
+    if segm.ndim == 3 and len(target_shape) == 4:
+        text = (
+            'The segmentation mask is 2Dt but the image data is 3Dt. '
+            'Replicating mask across Z.'
+        )
+        t, y, x = segm.shape
+        z = target_shape[1]
+
+        segm = segm[:, np.newaxis, ...]  # (T,1,Y,X)
+
+        if use_broadcast:
+            segm_expanded = np.broadcast_to(segm, (t, z, y, x))
+        else:
+            segm_expanded = np.repeat(segm, z, axis=1)
+
+        return segm_expanded, text
+
+    raise ValueError(
+        f'Invalid shape. segm: {segm.shape}, target: {target_shape}'
+    )
+        
+def _verify_shape_ndim(img_data, target_dims, target_shape, is_segm=False):
+    def _shape_mismatch_error(indices, img_data, target_shape):
+        mismatches = [
+            f'  axis {i}: got {img_data.shape[idx]}, expected {target_shape[i]}'
+            for idx, i in indices
+            if img_data.shape[idx] != target_shape[i]
+        ]
+        if mismatches:
+            raise ValueError(
+                f'Shape mismatch:\n' + '\n'.join(mismatches) + '\n'
+                f'img shape={img_data.shape}, target shape={target_shape}'
+            )
+
+    if img_data.ndim == target_dims:
+        # Check all axes directly
+        _shape_mismatch_error([(i, i) for i in range(target_dims)], img_data, target_shape)
+
+    elif is_segm and img_data.ndim + 1 == target_dims:
+        if target_dims == 3:
+            # 2D segm on 3D image: check Y, X (axes 1, 2)
+            _shape_mismatch_error([(1, 1), (2, 2)], img_data, target_shape)
+        elif target_dims == 4:
+            # 2D+t segm (T, Y, X) on 3D+t image (T, Z, Y, X): check T, Y, X
+            _shape_mismatch_error([(0, 0), (1, 2), (2, 3)], img_data, target_shape)
+        else:
+            raise ValueError(
+                f'Invalid segmentation mask dimensions: '
+                f'got {img_data.ndim}D mask for {target_dims}D target.'
+            )
+    else:
+        raise ValueError(
+            f'Invalid image dimensions: '
+            f'got {img_data.ndim}D data, expected {target_dims}D.'
+        )
+
+def _update_target_shape_target_dims(target_dims, target_shape, img_data):
+    if target_dims < img_data.ndim:
+        target_dims_old = target_dims
+        target_dims = img_data.ndim
+
+    img_shape = list(img_data.shape)
+    if img_data.ndim == 2:
+        img_shape = [0, 0] + img_shape
+    elif img_data.ndim == 3:
+        img_shape = img_shape[:1] + [0] + img_shape[1:]
     
-    io.savez_compressed(save_filepath, output_segm)
+    try:
+        for i in range(len(target_shape)):
+            if target_shape[i] < img_shape[i]:
+                target_shape[i] = img_shape[i]
+    except Exception as err:
+        printl(target_shape, img_shape)
+        raise err
+
+    return target_dims, target_shape
+        
 
 def combine_channels_func(
-        channel_names: List[str],
-        operators: List[str],
-        multipliers: List[float],
+        steps: Dict[str, Dict[str, Any]],
         keep_input_data_type: bool,
         save_filepath: str=None,
         return_img: bool=False,
@@ -2485,83 +2537,190 @@ def combine_channels_func(
         images_path: str = None,
         key: str = None,
         data = None,
-    ):
+        output_as_segm: bool = False,
+        formula: str = None,
+    ):# -> tuple[Any | ndarray, str, str | Any] | None:
     if not save_filepath and not return_img:
         raise ValueError('Either save_filepath must be provided or return_img must be true')
     
-    if return_img and not key:
-        raise ValueError('If return_img is true, key must be provided')
+    provided = sum(x is not None for x in (data, key))
+    provided += return_img
+    if provided not in (0, 3):
+        raise ValueError('return_img, data, and key must all be provided together or not at all')
     
-    ch_image_data_list = []
+    fluo_ch_data_list = dict()
+    segm_ch_data_list = dict()
+    
+    channel_names = [step['channel'] for step in steps.values()]
+    channel_keys = steps.keys()
+    segm_channels, fluo_channel_names, current_segm = myutils.separate_fluo_segment_channels(channel_names)
     original_dtype = None
-    if not data:
-        for channel in channel_names:
+    
+    target_dims = 0
+    target_shape = [0, 0, 0, 0]
+
+    if data is None:
+        for channel in fluo_channel_names:
             ch_filepath = load.get_filepath_from_endname(
                 images_path, channel
             )
             ch_image_data = load.load_image_file(ch_filepath)
-            if not original_dtype:
+            if original_dtype is None:
                 original_dtype = ch_image_data.dtype
+            
             ch_image_data = myutils.img_to_float(ch_image_data)
-            ch_image_data_list.append(ch_image_data)
+            target_dims, target_shape = _update_target_shape_target_dims(
+                 target_dims, target_shape, ch_image_data
+            )
+            fluo_ch_data_list[channel] = ch_image_data
+        for channel in segm_channels:
+            ch_filepath = load.get_filepath_from_endname(
+                images_path, channel
+            )
+            ch_image_data = load.load_image_file(ch_filepath)
+            if original_dtype is None:
+                original_dtype = ch_image_data.dtype
+
+            ch_image_data = ch_image_data.astype(np.uint32)
+            target_dims, target_shape = _update_target_shape_target_dims(
+                 target_dims, target_shape, ch_image_data
+            )
+            segm_ch_data_list[channel] = ch_image_data
     else:
         posData = data[key[0]]
+        n_dim = 4
+        if posData.SizeZ == 1:
+            n_dim -= 1
+        # if posData.SizeT == 1: # actually t is always there, we only need to subtract for curr. segm
+        #     n_dim -= 1
+        is_2D_segm_on_3D = posData.SizeZ != 1 and posData.allData_li[0]['labels'].ndim == 2
         fluo_data_dict = posData.fluo_data_dict
-        random_ch_name = f'{posData.basename}{channel_names[0]}'
-        num_dim = fluo_data_dict[random_ch_name].ndim
+        segm_data_dict = posData.ol_labels_data
+        imgs_path = posData.images_path
 
-        for channel in channel_names:
-            channel_full_name = f'{posData.basename}{channel}'
-            if num_dim == 3:
-                ch_image_data = fluo_data_dict[channel_full_name][key[1]]
-                if not original_dtype:
-                    original_dtype = ch_image_data.dtype
-                ch_image_data = myutils.img_to_float(ch_image_data)
-                ch_image_data_list.append(ch_image_data)
-            elif num_dim == 4:
-                ch_image_data = fluo_data_dict[channel_full_name][key[1]][key[2]]
-                if not original_dtype:
-                    original_dtype = ch_image_data.dtype
-                ch_image_data = myutils.img_to_float(ch_image_data)
-                ch_image_data_list.append(ch_image_data)
+        for channel in fluo_channel_names:
+            channel_path = load.get_filename_from_channel(
+                imgs_path, channel, basename=posData.basename
+            )
+            channel_full_name = pathlib.Path(channel_path).stem
+            # remove the file extension
+            
+            channel_img_data = _get_img_from_data_key(fluo_data_dict[channel_full_name], key, n_dim)
+            if original_dtype is None:
+                original_dtype = channel_img_data.dtype
+            channel_img_data_float = myutils.img_to_float(channel_img_data)
+            target_dims, target_shape = _update_target_shape_target_dims(
+                target_dims, target_shape, channel_img_data_float
+            )
+            fluo_ch_data_list[channel] = channel_img_data_float
+        for channel in segm_channels:
+            channel_img_data = _get_img_from_data_key(segm_data_dict[channel], key, n_dim, seg=True)
+            if original_dtype is None:
+                original_dtype = channel_img_data.dtype
+            channel_img_data_int = channel_img_data.astype(np.uint32)
+            target_dims, target_shape = _update_target_shape_target_dims(
+                target_dims, target_shape, channel_img_data_int
+            )
+            segm_ch_data_list[channel] = channel_img_data_int
+        if current_segm: # here we dont need to get/appply target dim, as we already ignore z slice key if segm is 2D and image 3D (time is always treated differently!)
+            if posData.SizeT == 1: # actually t is always there, we only need to subtract for curr. segm
+                n_dim -= 1
+            if posData.frame_i != key[1]:
+                if n_dim == 4 and not is_2D_segm_on_3D:
+                    channel_img_data = posData.allData_li[key[1]]['labels'][key[2]]
+                elif n_dim == 4 and is_2D_segm_on_3D:
+                    channel_img_data = posData.allData_li[key[1]]['labels']
+                elif n_dim == 3 and posData.SizeZ == 1:
+                    channel_img_data = posData.allData_li[key[1]]['labels']
+                elif n_dim == 3 and posData.SizeT == 1 and not is_2D_segm_on_3D:
+                    channel_img_data = posData.allData_li[0]['labels'][key[2]]
+                elif n_dim == 3 and posData.SizeT == 1 and is_2D_segm_on_3D:
+                    channel_img_data = posData.allData_li[0]['labels']
+                else:
+                    channel_img_data = posData.allData_li[0]['labels']
             else:
-                raise ValueError(
-                    f'Invalid number of dimensions, is your data maybe corrupted?\n Ndims: {num_dim}\n Channel name: {channel_full_name}'
-                )
-
-    for i in range(len(ch_image_data_list)):
-        multiplier = multipliers[i]
-        if multiplier == 1:
+                if n_dim == 4 and not is_2D_segm_on_3D:
+                    channel_img_data = posData.lab[key[2]]
+                elif n_dim == 4 and is_2D_segm_on_3D:
+                    channel_img_data = posData.lab
+                elif n_dim == 3 and posData.SizeZ != 1 and not is_2D_segm_on_3D:
+                    channel_img_data = posData.lab[key[2]]
+                else:
+                    channel_img_data = posData.lab
+            if original_dtype is None:
+                original_dtype = channel_img_data.dtype
+            channel_img_data_int = channel_img_data.astype(np.uint32)
+            target_dims, target_shape = _update_target_shape_target_dims(
+                target_dims, target_shape, channel_img_data_int
+            )
+            segm_ch_data_list['current segm.'] = channel_img_data_int
+    
+    target_shape_new = []
+    for dim in target_shape:
+        if dim == 0:
             continue
-        ch_image_data_list[i] = ch_image_data_list[i] * multipliers[i]
+        target_shape_new.append(dim)
+        
+    target_shape = tuple(target_shape_new)
+    # _log_printl_fallback(f'target shape: {target_shape}', logger_func)
+    for i, ch in zip(channel_keys, channel_names):
+        if ch in fluo_ch_data_list:
+            ch_image_data = fluo_ch_data_list[ch]
+            _verify_shape_ndim(ch_image_data, target_dims, target_shape, is_segm=False)
 
-    if all(x == "+" for x in operators):
-        output_img = np.sum(ch_image_data_list, axis=0)
+        elif ch in segm_ch_data_list:
+            ch_image_data = segm_ch_data_list[ch]
+            ch_image_data, text = _add_missing_dims(ch_image_data, target_shape)
+            if text:
+                _log_printl_fallback(text, logger_func)
+            _verify_shape_ndim(ch_image_data, target_dims, target_shape, is_segm=False) # false since we already expanded
+            segm_ch_data_list[ch] = ch_image_data
+        else:
+            raise ValueError(f'Channel "{ch}" not found.')
+        if steps[i]['channel'] != ch:
+            raise ValueError(f'Channel "{ch}" not found.')        
+        steps[i]['channel_data'] = ch_image_data
+    
+    for i, step_info in steps.items():
+        binarize = step_info['binarize']
+        steps[i]['channel_data'] = _combine_channels_multiplier_apply(
+            binarize, step_info['channel_data']
+        )
+        norm_min, norm_max = step_info['min_val'], step_info['max_val']
+        # use rescale_intensity to normalize
+        if norm_min == 0 and norm_max == 1:
+            continue # cases where either the fields where disabled/reset or default, where we already normalized
+        steps[i]['channel_data'] = skimage.exposure.rescale_intensity(
+            steps[i]['channel_data'], 
+            out_range=(norm_min, norm_max)
+        )
+    
+    if formula != '':
+        input_img_data = {step['name']: step['channel_data'] for step in steps.values()}
+        
+        symbols = {name: sp.Symbol(name) for name in input_img_data}
+        expr = sp.sympify(formula, locals=symbols)
+
+        used_vars = sorted(str(s) for s in expr.free_symbols)
+        func = sp.lambdify(
+            [symbols[v] for v in used_vars],  # fixed order!
+            expr,
+            modules="numpy"
+        )
+
+        args = [input_img_data[v] for v in used_vars]
+        output_img = func(*args)
     else:
-        for i in range(len(ch_image_data_list)):
-            if i == 0:
-                if operators[i] == "+":
-                    output_img = ch_image_data_list[0]
-                elif operators[i] == "-":
-                    output_img = -ch_image_data_list[0]
-                else:
-                    raise ValueError(f'Invalid operator: {operators[i]}')
-            else:
-                if operators[i] == "+":
-                    output_img += ch_image_data_list[i]
-                elif operators[i] == "-":
-                    output_img -= ch_image_data_list[i]
-                elif operators[i] == "*":
-                    output_img *= ch_image_data_list[i]
-                elif operators[i] == "/":
-                    output_img /= ch_image_data_list[i]
-                else:
-                    raise ValueError(f'Invalid operator: {operators[i]}')
+        key0 = list(steps.keys())[0]
+        output_img = steps[key0]['channel_data']
 
-    output_img = skimage.exposure.rescale_intensity(
-        output_img, out_range=(0, 1)
-    )
-    if keep_input_data_type:
+    if not output_as_segm:
+        output_img = skimage.exposure.rescale_intensity(
+            output_img, out_range=(0, 1)
+        )
+    
+    txt = ''
+    if keep_input_data_type and not output_as_segm:
         try:
             output_img = myutils.convert_to_dtype(
                 output_img, original_dtype
@@ -2570,7 +2729,6 @@ def combine_channels_func(
             warning = 'safe'
             prefix = ''
         except Exception as err:
-            traceback.print_exc()
             dtype_info = np.iinfo(original_dtype)
             dtype_max = dtype_info.max
             dtype_min = dtype_info.min
@@ -2581,7 +2739,7 @@ def combine_channels_func(
             if is_in_bounds:
                 output_img = output_img.astype(original_dtype)
                 method = 'output_img.astype(original_dtype)'
-                warning = 'safe if weights were set correctly'
+                warning = 'safe' # if weights were set correctly'
                 prefix = '[WARNING]: '
             else:
                 output_img = skimage.exposure.rescale_intensity(
@@ -2601,23 +2759,19 @@ def combine_channels_func(
         )
 
         if not return_img:
-            if logger_func is not None:
-                try:
-                    logger_func(txt)
-                except Exception as err:
-                    printl(txt)
-            else:
-                printl(txt)
-        
-        if return_img:
-            return output_img, key, txt
+            _log_printl_fallback(txt, logger_func)
+    elif output_as_segm:
+        output_img[output_img<0] = 0
+        output_img = output_img.astype(np.uint32)
     
-    txt = f'Saving combined image to {save_filepath}'
-    if logger_func is not None:
-        logger_func(txt)
-    else:
-        printl(txt)
-    io.save_image_data(
+    if return_img:
+        return output_img, key, txt
+    
+    txt = f'Saving combined {"segmentation" if output_as_segm else "image"} to {save_filepath}'
+    _log_printl_fallback(txt, logger_func)
+    
+
+    io.save_image_data( # handles saving img and segm
         save_filepath, output_img
     )
     return None
@@ -2625,7 +2779,11 @@ def combine_channels_func(
 def get_selected_channels(steps):
     selected_channel = set()
     for step in steps.values():
-        selected_channel.add(step['channel'])
+        ch = step['channel']
+        if ch == 'current segm.':
+            continue
+        selected_channel.add(ch)
+    
     return selected_channel
 
 def split_segm_masks_mother_bud_line(
@@ -3384,3 +3542,43 @@ def linear_fit_3d(xx, yy, zz):
     d = vh[0]
 
     return centroid, d
+
+def binary_fill_holes(mask, slice_by_slice=True):
+    if not slice_by_slice:
+        mask = scipy.ndimage.binary_fill_holes(mask)
+        return mask
+    
+    if mask.ndim == 2:
+        mask = scipy.ndimage.binary_fill_holes(mask)
+        return mask
+    
+    for z, mask_z in enumerate(mask):
+        if not np.any(mask_z):
+            continue
+        
+        mask[z] = scipy.ndimage.binary_fill_holes(mask_z)
+    
+    return mask
+
+def convex_hull_mask(mask: np.ndarray, slice_by_slice=True):
+    if not slice_by_slice:
+        mask = skimage.morphology.convex_hull_image(mask)
+        return mask
+    
+    if mask.ndim == 2:
+        mask = skimage.morphology.convex_hull_image(mask)
+        return mask
+    
+    mask_rp = skimage.measure.regionprops(mask.astype(np.uint8))
+    if len(mask_rp) == 0:
+        return mask
+    
+    mask_obj = mask_rp[0]
+    for z, mask_obj_img_z in enumerate(mask_obj.image):
+        if not np.any(mask_obj_img_z):
+            continue
+        
+        mask_obj_hull_z = skimage.morphology.convex_hull_image(mask_obj_img_z)
+        mask[mask_obj.slice][z] = mask_obj_hull_z
+    
+    return mask

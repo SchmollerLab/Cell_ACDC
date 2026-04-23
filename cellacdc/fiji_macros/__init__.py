@@ -10,15 +10,21 @@ from .. import acdc_fiji_path
 def init_macro(
         files_folderpath: os.PathLike, 
         is_multiple_files: bool,
+        is_separate_channels: bool,
+        dst_folderpath: os.PathLike, 
         channels: Iterable[str]
     ):
     macros_folderpath = os.path.join(acdc_fiji_path, 'macros')
     os.makedirs(macros_folderpath, exist_ok=True)
     
     macros_template_folderpath = os.path.dirname(os.path.abspath(__file__))
-    macro_template_filename = (
-        'multiple_files.ijm' if is_multiple_files else 'single_file.ijm'
-    )
+    if is_separate_channels:
+        macro_template_filename = 'multiple_files_separate_channels.ijm'
+    elif is_multiple_files:
+        macro_template_filename = 'multiple_files.ijm'
+    else:
+        macro_template_filename = 'single_file.ijm'
+        
     macro_template_filepath = os.path.join(
         macros_template_folderpath, macro_template_filename
     )
@@ -31,11 +37,17 @@ def init_macro(
         'channels = newArray(...)', 
         f'channels = newArray({channels_macro})'
     )
+    
     files_path = files_folderpath.replace('\\', '/')
     files_path = f'"{files_path}/"'
     macro_txt = macro_txt.replace('id = ...', f'id = {files_path}')
     
-    date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    dst_folderpath = dst_folderpath.replace('\\', '/')
+    macro_txt = macro_txt.replace(
+        'dst_folderpath = ...', f'dst_folderpath = "{dst_folderpath}"'
+    )
+    
+    date_time = datetime.datetime.now().strftime(r'%Y-%m-%d_%H-%M-%S')
     id = uuid4()
     macro_filename = f'{date_time}_{id}_{macro_template_filename}'
     macro_filepath = os.path.join(macros_folderpath, macro_filename)

@@ -1130,12 +1130,14 @@ class segmWorker(QObject):
             start_z_slice = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
         
         _lab = core.segm_model_segment(
-            self.mainWin.model, img, self.mainWin.model_kwargs, 
+            self.mainWin.model, img, 
+            self.mainWin.model_kwargs, 
             frame_i=posData.frame_i, 
             posData=posData, 
             start_z_slice=start_z_slice
         )
         posData.saveSamEmbeddings(logger_func=self.logger.info)
+
         if self.mainWin.applyPostProcessing:
             _lab = core.post_process_segm(
                 _lab, **self.mainWin.standardPostProcessKwargs
@@ -5572,26 +5574,22 @@ class SaveCombinedChannelsWorker(QObject):
     def __init__(
             self, 
             allPosData: Iterable['load.loadData'], 
-            appended_text_filename: str,
+            filename: str,
             debug: bool = False
         ):
         QObject.__init__(self)
         self.allPosData = allPosData
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
-        self.appended_text_filename = appended_text_filename
+        self.filename = filename
         self.debug = debug
     
     @worker_exception_handler
     def run(self):
         self.signals.initProgressBar.emit(0)
         for posData in self.allPosData:
-            processed_filename = (
-                f'{posData.basename}'
-                f'{self.appended_text_filename}{posData.ext}'
-            )
             processed_filepath = os.path.join(
-                posData.images_path, processed_filename
+                posData.images_path, self.filename
             )
             self.logger.log(f'Saving {processed_filepath}...')
             processed_data = posData.combinedChannelsDataArray()
@@ -5725,10 +5723,10 @@ class CustomPreprocessWorkerGUI(QObject):
 
         self.signals.finished.emit(self)
 
-class CombineWorkerGUI(CustomPreprocessWorkerGUI):
+class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
     sigDone = Signal(object, list)
     sigPreviewDone = Signal(object, list)
-    sigAskLoadFluoChannels = Signal(list, object)
+    sigAskLoadChannels = Signal(set, object)
 
     def __init__(self, mutex, waitCond, logger_func: Callable,):
 #                 signals_parent=None):
@@ -5747,9 +5745,11 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             data,
             steps: Dict[str, Any],
             key: Tuple[int, int, Union[int, str]],
-            keep_input_data_type: bool
+            keep_input_data_type: bool,
+            output_as_segm: bool,
+            formula: str,
         ):
-        self.dataQ.append((data, steps, key, keep_input_data_type))
+        self.dataQ.append((data, steps, key, keep_input_data_type,output_as_segm, formula))
         if len(self.dataQ) == 1:
             self.sigIsQueueEmpty.emit(False)
             # Wake up worker upon inserting first element
@@ -5760,14 +5760,19 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             data: Dict[str, np.ndarray], 
             steps: Dict[str, Any],
             keep_input_data_type: bool,
-            key: Tuple[Union[int, None], Union[int, None], Union[int, None]]
+            key: Tuple[Union[int, None], Union[int, None], Union[int, None]],
+            output_as_segm: bool,
+            formula: str,
         ):
         self._key = key
         self._steps = steps
         self._data = data
         self._keep_input_data_type = keep_input_data_type
+        self._output_as_segm = output_as_segm
+        self._formula = formula
 
-    def runJob(self, data=None, steps=None, keep_input_data_type=None, key=None):
+    def runJob(self, data=None, steps=None, keep_input_data_type=None, key=None,
+               output_as_segm=None, formula=None):
         if data is None:
             data = self._data
         if steps is None:
@@ -5776,18 +5781,24 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             keep_input_data_type = self._keep_input_data_type
         if key is None:
             key = self._key
+        if output_as_segm is None:
+            output_as_segm = self._output_as_segm
+        if formula is None:
+            formula = self._formula
 
-        if not steps:
+        if not steps and formula is None:
             return
 
-        return self.applySteps(data, steps, keep_input_data_type, key)
+        return self.applySteps(data, steps, keep_input_data_type, key, output_as_segm, formula=formula)
     
     def applySteps(
             self, 
             data: Dict[str, np.ndarray], 
             steps: List[Dict[str, Any]],
             keep_input_data_type: bool,
-            key: Tuple[Union[int, None], Union[int, None], Union[int, None]]
+            key: Tuple[Union[int, None], Union[int, None], Union[int, None]],
+            output_as_segm: bool,
+            formula: str,
         ):
 
         new_keys = []
@@ -5816,7 +5827,7 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
 
             new_keys_per_pos = list(itertools.product(*new_keys_per_pos))
             new_keys.extend(new_keys_per_pos)
-
+        
         output_imgs, out_keys = core.combine_channels_multithread_return_imgs(
             steps=steps,
             data=data,
@@ -5824,6 +5835,8 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             keys=new_keys,
             logger_func=self.logger,
             signals=self.signals,
+            output_as_segm=output_as_segm,
+            formula=formula,
 
         )
         return output_imgs, out_keys
@@ -5832,12 +5845,11 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
         if steps is None:
             steps = self._steps
         
-        requ_steps = core.get_selected_channels(steps)
-
+        required_channels = core.get_selected_channels(steps)
         if pos_i is None:
             pos_i = self._key[0]
 
-        return requ_steps, pos_i
+        return required_channels, pos_i
 
     @worker_exception_handler
     def run(self):
@@ -5849,10 +5861,13 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
                 self.logger.log('Combining channels worker paused.')
                 self.pause()
             elif len(self.dataQ) > 0:
-                data, steps, key, keep_input_data_type = self.dataQ.pop()
+                data, steps, key, keep_input_data_type, output_as_segm, formula = self.dataQ.pop()
                 requ_steps, pos_i = self.requiredChannels(steps, key[0])
-                self.emitsigAskLoadFluoChannels(requ_steps, pos_i)
-                output_imgs, out_keys = self.applySteps(data, steps, keep_input_data_type, key)
+                self.emitsigAskLoadChannels(requ_steps, pos_i)
+                output_imgs, out_keys = self.applySteps(
+                    data, steps, keep_input_data_type, key,
+                    output_as_segm=output_as_segm, formula=formula
+                )
                 self.sigPreviewDone.emit(output_imgs, out_keys)
                 if len(self.dataQ) == 0:
                     self.wait = True
@@ -5860,16 +5875,16 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             else:
                 self.logger.log('Combining channels worker resumed.')
                 requ_steps, pos_i = self.requiredChannels()
-                self.emitsigAskLoadFluoChannels(requ_steps, pos_i)
+                self.emitsigAskLoadChannels(requ_steps, pos_i)
                 output_imgs, out_keys = self.runJob()
                 self.sigDone.emit(output_imgs, out_keys)
                 self.wait = True
 
         self.signals.finished.emit(self)
     
-    def emitsigAskLoadFluoChannels(self, requChannels, pos_i):
+    def emitsigAskLoadChannels(self, requChannels, pos_i):
         self.mutex.lock()
-        self.sigAskLoadFluoChannels.emit(requChannels, pos_i)
+        self.sigAskLoadChannels.emit(requChannels, pos_i)
         self.waitCondLoadFluoChannels.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
@@ -6021,27 +6036,18 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             steps:  Dict[str, Dict[str, Any]],
             appended_text_filename: str,
             keep_input_data_type: bool,
-            n_threads: int = None
+            n_threads: int = None,
+            formula: str = None,
         ):
         save_filepaths = []
         images_path_to_process = []
-        out_ext = '.npz'
-        basename_ext = 'segm_'
+        if self.saveAsSegm:
+            out_ext = '.npz'
+            basename_ext = 'segm_'
+        else:
+            out_ext = '.tif'
+            basename_ext = ''
         for images_path in image_paths:
-            for step_n, step in steps.items():
-                channel = step['channel']
-                if '_segm' not in channel:
-                     basename_ext = ''
-                     
-                image_filepath = load.get_filepath_from_endname(
-                    images_path, channel
-                )
-                _, ext = os.path.splitext(image_filepath)
-                if ext != '.npz':
-                    out_ext = '.tif'
-                    basename_ext = ''
-                    break
-
             basename, channels = myutils.getBasenameAndChNames(images_path)
             
             savename = (
@@ -6058,7 +6064,9 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             save_filepaths=save_filepaths,
             signals=self.signals,
             logger_func=self.logger.log,
-            n_threads=n_threads
+            n_threads=n_threads,
+            output_as_segm=self.saveAsSegm,
+            formula=formula,
         )
     
     @worker_exception_handler
@@ -6096,12 +6104,14 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             image_paths += [os.path.join(exp_path, pos, 'Images') for pos in pos_foldernames]
 
         self.signals.initProgressBar.emit(len(pos_foldernames))
+        formula = self.formula
         self.applyPipeline(
             image_paths,
             selectedSteps,
             appendedName,
             self.keepInputDataType,
-            n_threads=self.nThreads
+            n_threads=self.nThreads,
+            formula=formula,
         )
 
         self.signals.finished.emit(self)
@@ -6165,7 +6175,7 @@ class saveDataWorker(QObject):
         load.save_acdc_df_file(
             all_frames_acdc_df, acdc_output_csv_path, 
             custom_annot_columns=custom_annot_columns, 
-            last_cca_frame_i=self.mainWin.last_cca_frame_i
+            last_cca_frame_i=self.mainWin.save_cca_until_frame_i
         )
         
     def _emitSigDebug(self, stuff_to_debug):
@@ -6206,11 +6216,29 @@ class saveDataWorker(QObject):
         
         self.mainWin._measurements_kernel._concat_and_save_acdc_df(
             acdc_dfs_li, keys, posData, self.mainWin.save_metrics,
-            saveDataWorker=self, last_cca_frame_i=self.mainWin.last_cca_frame_i
+            saveDataWorker=self, 
+            last_cca_frame_i=self.mainWin.save_cca_until_frame_i
         )
     
     def saveSegmData(self, posData, end_i, saved_segm_data):
         self.progress.emit(f'Saving segmentation data for {posData.relPath}...')
+        
+        
+        # extend saved_segm_data if needed
+        if posData.SizeT > 1:
+            missing_frames_number = end_i + 1 - len(saved_segm_data)
+            if missing_frames_number > 0:
+                saved_segm_data = np.concatenate(
+                    (
+                        saved_segm_data,
+                        np.zeros(
+                            (missing_frames_number, *saved_segm_data.shape[1:]),
+                            dtype=saved_segm_data.dtype
+                        )
+                    ),
+                )
+
+        
         for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
             if self.saveWin.aborted:
                 self.finished.emit()
@@ -6316,7 +6344,7 @@ class saveDataWorker(QObject):
                     stop_frame_n=end_i+1,
                     saveDataWorker=self,
                     save_metrics=self.mainWin.save_metrics,
-                    last_cca_frame_i=self.mainWin.last_cca_frame_i
+                    last_cca_frame_i=self.mainWin.save_cca_until_frame_i
                 )
             else:
                 self.saveAcdcDf(posData, end_i)
