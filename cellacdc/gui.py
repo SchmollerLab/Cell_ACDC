@@ -9054,7 +9054,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.lostObjContoursImage[:] = 0  
 
         contours = []
-        obj_contours = self.getObjContours(obj, all_external=True)
+        obj_contours = self.getObjContours(
+            obj,
+            all_external=True,
+            include_internal=self.showAllContoursToggle.isChecked()
+        )
         contours.extend(obj_contours)
         
         self.addLostObjsToImage(obj, lostID)
@@ -25314,19 +25318,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         allContours = dataDict.get('contours')    
         if allContours is not None and not force_calc:
             z = self.z_lab()
-            key = (obj.label, str(z), all_external, local)
+            key = (obj.label, str(z), all_external, local, include_internal)
             contours = allContours.get(key)
             if contours is not None:
                 return contours
         
-        obj_image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-        obj_bbox = self.getObjBbox(obj.bbox)
+        # obj_image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
+        # obj_bbox = self.getObjBbox(obj.bbox)
+        
         try:
             contours = core.get_obj_contours(
-                obj_image=obj_image, 
-                obj_bbox=obj_bbox, 
+                obj=obj,
+                # obj_image=obj_image, 
+                # obj_bbox=obj_bbox, 
                 local=local,
-                all_external=all_external
+                all_external=all_external,
+                all=include_internal
             )
         except Exception as e:
             if all_external:
@@ -25350,28 +25357,46 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         obj_image = self.getObjImage(obj.image, obj.bbox, z_slice=z)
         if obj_image is None:
             return
+
+        # Use cached regionprops contours only for true 2D objects.
+        is_2d_obj = len(obj.bbox) == 4
             
         all_external = False
         local = False
-        contours = core.get_obj_contours(
-            obj_image=obj_image, 
-            obj_bbox=obj_bbox, 
-            local=local,
-            all_external=all_external
-        )
-        key = (obj.label, str(z), all_external, local)
+        if is_2d_obj:
+            contours = core.get_obj_contours(
+                obj=obj,
+                local=local,
+                all_external=all_external
+            )
+        else:
+            contours = core.get_obj_contours(
+                obj_image=obj_image,
+                obj_bbox=obj_bbox,
+                local=local,
+                all_external=all_external
+            )
+        key = (obj.label, str(z), all_external, local, include_internal)
         dataDict['contours'][key] = contours
         
         all_external = True
         local = False
-        contours = core.get_obj_contours(
-            obj_image=obj_image, 
-            obj_bbox=obj_bbox, 
-            local=local,
-            all_external=all_external,
-            all=include_internal
-        )
-        key = (obj.label, str(z), all_external, local)
+        if is_2d_obj and include_internal:
+            contours = core.get_obj_contours(
+                obj=obj,
+                local=local,
+                all_external=all_external,
+                all=include_internal
+            )
+        else:
+            contours = core.get_obj_contours(
+                obj_image=obj_image,
+                obj_bbox=obj_bbox,
+                local=local,
+                all_external=all_external,
+                all=include_internal
+            )
+        key = (obj.label, str(z), all_external, local, include_internal)
         dataDict['contours'][key] = contours
 
         return dataDict
@@ -27233,7 +27258,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.highLightIDLayerImg1.setImage(self.highlightedLab)          
             self.labelsLayerImg1.setOpacity(alpha/3)
         else:
-            contours = self.getObjContours(obj, all_external=True)
+            contours = self.getObjContours(
+                obj,
+                all_external=True,
+                force_calc=False,
+                include_internal=self.showAllContoursToggle.isChecked()
+            )
             for cont in contours:
                 self.searchedIDitemLeft.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
         
@@ -27243,7 +27273,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.labelsLayerRightImg.setOpacity(alpha/3)
         else:
             if contours is None:
-                contours = self.getObjContours(obj, all_external=True)
+                contours = self.getObjContours(
+                    obj,
+                    all_external=True,
+                    force_calc=False,
+                    include_internal=self.showAllContoursToggle.isChecked()
+                )
             for cont in contours:
                 self.searchedIDitemRight.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)       
 
@@ -27437,7 +27472,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         contours = []
         for obj in skimage.measure.regionprops(posData.manualBackgroundLab):    
-            obj_contours = self.getObjContours(obj, all_external=True)  
+            obj_contours = self.getObjContours(
+                obj,
+                all_external=True,
+                include_internal=self.showAllContoursToggle.isChecked()
+            )
             contours.extend(obj_contours)
             textItem = self.manualBackgroundTextItems[obj.label]
             textItem.setText(f'{obj.label}')
@@ -27529,13 +27568,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.contoursImage[:] = 0
         
         contours = []
-        lab = self.currentLab2D
-        rp = skimage.measure.regionprops(lab) # any chance we dont need to update here?
+        posData = self.data[self.pos_i]
+        rp = posData.rp
+        if rp is None:
+            lab = self.currentLab2D
+            rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+            posData.rp = rp
         for obj in rp:    
             obj_contours = self.getObjContours(
                 obj, 
                 all_external=True, 
-                force_calc=compute,
+                force_calc=False,
                 include_internal=self.showAllContoursToggle.isChecked()
             )  
             contours.extend(obj_contours)
@@ -27557,7 +27600,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return obj
     
     def setLostObjectContour(self, obj):
-        allContours = self.getObjContours(obj, all_external=True)  
+        allContours = self.getObjContours(
+            obj,
+            all_external=True,
+            include_internal=self.showAllContoursToggle.isChecked()
+        )
         for objContours in allContours:
             xx = objContours[:,0] + 0.5
             yy = objContours[:,1] + 0.5
@@ -27569,7 +27616,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.isExportingVideo:
             return
         
-        allContours = self.getObjContours(obj, all_external=True)  
+        allContours = self.getObjContours(
+            obj,
+            all_external=True,
+            include_internal=self.showAllContoursToggle.isChecked()
+        )
         for objContours in allContours:
             xx = objContours[:,0] + 0.5
             yy = objContours[:,1] + 0.5
@@ -27607,7 +27658,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if not self.isObjVisible(obj.bbox):
                 continue
         
-            obj_contours = self.getObjContours(obj, all_external=True)
+            obj_contours = self.getObjContours(
+                obj,
+                all_external=True,
+                include_internal=self.showAllContoursToggle.isChecked()
+            )
             
             if ax == 0:
                 self.addLostObjsToImage(obj, lostID)
@@ -27657,7 +27712,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if not self.isObjVisible(obj.bbox):
                 continue
         
-            obj_contours = self.getObjContours(obj, all_external=True)
+            obj_contours = self.getObjContours(
+                obj,
+                all_external=True,
+                include_internal=self.showAllContoursToggle.isChecked()
+            )
             contours.extend(obj_contours)
 
         self.drawLostTrackedObjContoursImage(imageItem, contours)
@@ -27715,7 +27774,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return nearest_ID
     
     def setCcaIssueContour(self, obj):
-        objContours = self.getObjContours(obj, all_external=True)  
+        objContours = self.getObjContours(
+            obj,
+            all_external=True,
+            include_internal=self.showAllContoursToggle.isChecked()
+        )
         for cont in objContours:
             xx = cont[:,0] + 0.5
             yy = cont[:,1] + 0.5
@@ -27766,7 +27829,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for obj in posData.rp:
             if obj.label not in IDsCellsG1:
                 continue
-            objContours = self.getObjContours(obj)
+            objContours = self.getObjContours(obj, force_calc=False)
             if objContours is not None:
                 xx = objContours[:,0] + 0.5
                 yy = objContours[:,1] + 0.5
@@ -27811,7 +27874,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if obj is None:
                 return
 
-        contours = self.getObjContours(obj, all_external=True)
+        contours = self.getObjContours(
+            obj,
+            all_external=True,
+            force_calc=False,
+            include_internal=self.showAllContoursToggle.isChecked()
+        )
         if thickness is None:
             thickness = self.contLineWeight
         if color is None:
@@ -28212,7 +28280,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if drawMode == 'Draw contours':
                 for obj in skimage.measure.regionprops(ol_lab): #TODO contour opt
                     contours = self.getObjContours(
-                        obj, all_external=True
+                        obj,
+                        all_external=True,
+                        include_internal=self.showAllContoursToggle.isChecked()
                     )
                     for cont in contours:
                         contoursItem.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
@@ -28376,7 +28446,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
             lostObj = prev_rp.get_obj_from_ID(hoverLostID)
-            obj_contours = self.getObjContours(lostObj, all_external=True)
+            obj_contours = self.getObjContours(
+                lostObj,
+                all_external=True,
+                include_internal=self.showAllContoursToggle.isChecked()
+            )
             for cont in obj_contours:
                 xx = cont[:,0]
                 yy = cont[:,1]
@@ -28991,7 +29065,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         new_objs_1st_step, lost_objs_1st_step = annotInfo
         for lostObj, newObj in zip(lost_objs_1st_step, new_objs_1st_step):
-            allContours = self.getObjContours(lostObj, all_external=True) 
+            allContours = self.getObjContours(
+                lostObj,
+                all_external=True,
+                include_internal=self.showAllContoursToggle.isChecked()
+            ) 
             for objContours in allContours:
                 isObjVisible = self.isObjVisible(newObj.bbox)
                 if not isObjVisible:

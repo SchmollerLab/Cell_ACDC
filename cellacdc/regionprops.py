@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import ndimage as ndi
 import skimage.measure
+import cv2
 from . import printl, debugutils
 from skimage.measure._regionprops_utils import (
     _normalize_spacing,
@@ -8,12 +9,12 @@ from skimage.measure._regionprops_utils import (
 import traceback as traceback
 
 try:
-    from .precompiled.regionprops_helper import find_all_objects_2D, find_all_objects_3D
+    from .precompiled.precompiled_functions import find_all_objects_2D, find_all_objects_3D
     _CYTHON_FIND_OBJECTS = True
 except Exception:
     _CYTHON_FIND_OBJECTS = False
 # WARNING: Developers have already used
-#     7 hrs
+#     12 hrs
 # to optimize this.
 # In addition, implementing these optimizations in the codebase took
 #     7 hrs
@@ -204,7 +205,41 @@ class acdcRegionProperties(_RegionProperties):
     @property
     @_cached
     def contour(self):
-        pass
+        contours = self._contours_local(retrieve_mode=cv2.RETR_EXTERNAL)
+        if not contours:
+            return np.empty((0, 2), dtype=np.int32)
+
+        contour = max(contours, key=len)
+        contour = np.squeeze(contour, axis=1)
+        contour = np.vstack((contour, contour[0]))
+        return contour + self._xy_offset
+
+    @property
+    @_cached
+    def contour_all(self):
+        # Include both outer boundaries and holes.
+        contours = self._contours_local(retrieve_mode=cv2.RETR_CCOMP)
+        if not contours:
+            return []
+        offset = self._xy_offset
+        return [np.squeeze(cont, axis=1) + offset for cont in contours]
+
+    @property
+    @_cached
+    def _xy_offset(self):
+        if self._ndim != 2:
+            raise AttributeError('contour is only supported for 2D objects.')
+        slc = self.slice
+        return np.array([slc[1].start, slc[0].start], dtype=np.int32)
+
+    def _contours_local(self, retrieve_mode=cv2.RETR_EXTERNAL):
+        if self._ndim != 2:
+            raise AttributeError('contour is only supported for 2D objects.')
+        obj_image = np.ascontiguousarray(self.image, dtype=np.uint8)
+        contours, _ = cv2.findContours(
+            obj_image, retrieve_mode, cv2.CHAIN_APPROX_NONE
+        )
+        return contours
     
     # @property
     # def centroid_weighted(self):

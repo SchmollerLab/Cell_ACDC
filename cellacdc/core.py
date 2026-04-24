@@ -758,6 +758,19 @@ def get_obj_contours(
         only_longest_contour=True, 
         local=False,
     ):
+    if obj is not None and obj_image is None and not local:
+        if all_external and not all:
+            obj_image = np.ascontiguousarray(obj.image, dtype=np.uint8)
+            contours, _ = cv2.findContours(
+                obj_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+            )
+            min_y, min_x, _, _ = obj.bbox
+            return [np.squeeze(cont, axis=1)+[min_x, min_y] for cont in contours]
+        if all and hasattr(obj, 'contour_all'):
+            return obj.contour_all
+        if only_longest_contour and hasattr(obj, 'contour'):
+            return obj.contour
+
     if all:
         retrieveMode = cv2.RETR_CCOMP
     else:

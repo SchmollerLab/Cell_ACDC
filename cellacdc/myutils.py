@@ -2380,7 +2380,7 @@ def lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=None, z=None):
     rp = skimage.measure.regionprops(lab2D)
     rois = []
     for obj in rp:
-        cont = core.get_obj_contours(obj)
+        cont = core.get_obj_contours(obj=obj)
         yc, xc = obj.centroid
         x_str = str((int(xc))).zfill(ndigits)
         y_str = str((int(yc))).zfill(ndigits)

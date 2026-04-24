@@ -26,7 +26,7 @@ if GUI_INSTALLED:
 
 from . import printl
 from . import _core, error_below, error_close
-from . import _run, core, myutils
+from . import _run, core, myutils, regionprops as acdc_regionprops
 
 def matplotlib_cmap_to_lut(
         cmap: Union[Iterable, matplotlib.colors.Colormap, str], 
@@ -769,19 +769,22 @@ def plt_contours(
         clear_borders=True, obj_contours_kwargs=None
     ):
     if rp is None:
-        rp = skimage.measure.regionprops(lab)
+        rp = acdc_regionprops.acdcRegionprops(lab, precache_centroids=False)
 
     if plot_kwargs is None:
         plot_kwargs = {}
     
     if obj_contours_kwargs is None:
         obj_contours_kwargs = {}
+    elif 'include_internal' in obj_contours_kwargs:
+        obj_contours_kwargs = obj_contours_kwargs.copy()
+        obj_contours_kwargs['all'] = obj_contours_kwargs.pop('include_internal')
     
     for obj in rp:
         if only_IDs is not None and obj.label not in only_IDs:
             continue
         
-        contours = core.get_obj_contours(obj, **obj_contours_kwargs)
+        contours = core.get_obj_contours(obj=obj, **obj_contours_kwargs)
         if not isinstance(contours, list):
             contours = [contours]        
         

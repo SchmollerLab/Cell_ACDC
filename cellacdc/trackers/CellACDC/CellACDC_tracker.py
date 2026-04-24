@@ -9,6 +9,15 @@ from skimage.segmentation import relabel_sequential
 
 from cellacdc import core, printl, debugutils
 
+try:
+    from cellacdc.precompiled_functions import (
+        calc_IoA_matrix_2D as _calc_IoA_matrix_2D_cython,
+        calc_IoA_matrix_3D as _calc_IoA_matrix_3D_cython,
+    )
+    _HAS_CYTHON_IOA = True
+except ImportError:
+    _HAS_CYTHON_IOA = False
+
 DEBUG = False
 
 def _normalize_specific_IDs(specific_IDs):
@@ -34,12 +43,11 @@ def _filter_subset_assignments(old_IDs, tracked_IDs, all_curr_IDs, specific_IDs)
 
     return filtered_old_IDs, filtered_tracked_IDs
 
+@debugutils.line_benchmark
 def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
                    specific_IDs=None,
                    denom:str='area_prev'):
-    # maybe its faster to calculate IoU not via mask but via area1 / (area1 + area2 - intersection)
     specific_IDs = _normalize_specific_IDs(specific_IDs)
-    IDs_prev = []
     if IDs_curr_untracked is None:
         IDs_curr_untracked = [obj.label for obj in rp]
     elif not isinstance(IDs_curr_untracked, list):
@@ -50,70 +58,66 @@ def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
             ID for ID in IDs_curr_untracked if ID in specific_IDs
         ]
 
+    IDs_prev = [obj.label for obj in prev_rp]
+
     if not IDs_curr_untracked:
-        return np.zeros((0, len(prev_rp))), IDs_curr_untracked, [
-            obj.label for obj in prev_rp
-        ]
+        return np.zeros((0, len(prev_rp))), IDs_curr_untracked, IDs_prev
 
-    IoA_matrix = np.zeros((len(IDs_curr_untracked), len(prev_rp)))
-    rp_mapper = {obj.label: obj for obj in rp}
-    idx_mapper = {ID: i for i, ID in enumerate(IDs_curr_untracked)}
-    # For each ID in previous frame get IoA with all current IDs
-    # Rows: IDs in current frame, columns: IDs in previous frame
-
-    ### just an idea for having area_curr as a denom possibility: just switch all around...
-    # if denom == 'area_curr':
-    #     # switch prev with curr
-    #     prev_lab_temp, prev_rp_temp = prev_lab.copy(), prev_rp.copy()
-    #     prev_lab, prev_rp = lab.copy, rp.copy()
-    #     lab, rp = prev_lab_temp, prev_rp_temp
-
-    if not denom in ['area_prev', 'union']:
+    if denom not in ('area_prev', 'union'):
         raise ValueError(
             "Invalid denom value. Use 'area_prev' or 'union'."
         )
 
-    # prev_label_positions = {ID_prev: np.where(prev_lab == ID_prev)[0] for ID_prev in set(prev_lab) if ID_prev != 0}    
-    # if denom == 'union':
-    #     temp_lab = np.zeros(lab.shape, dtype=bool)
-    for j, obj_prev in enumerate(prev_rp):
-        ID_prev = obj_prev.label
-        IDs_prev.append(ID_prev)
-        
-        # if IDs is not None and ID_prev not in IDs:
-        #     continue
+    if _HAS_CYTHON_IOA:
+        use_union = denom == 'union'
+        curr_IDs_arr  = np.array(IDs_curr_untracked, dtype=np.uint32)
+        prev_IDs_arr  = np.array(IDs_prev,           dtype=np.uint32)
+        prev_areas_arr = np.array([obj.area for obj in prev_rp], dtype=np.uint32)
+        if use_union:
+            rp_mapper = {obj.label: obj for obj in rp}
+            curr_areas_arr = np.array(
+                [rp_mapper[ID].area for ID in IDs_curr_untracked], dtype=np.uint32
+            )
+        else:
+            curr_areas_arr = np.empty(0, dtype=np.uint32)
+        lab_u32      = np.asarray(lab,      dtype=np.uint32)
+        prev_lab_u32 = np.asarray(prev_lab, dtype=np.uint32)
+        if lab.ndim == 2:
+            IoA_matrix = _calc_IoA_matrix_2D_cython(
+                lab_u32, prev_lab_u32, curr_IDs_arr, prev_IDs_arr,
+                prev_areas_arr, curr_areas_arr, use_union,
+            )
+        else:
+            IoA_matrix = _calc_IoA_matrix_3D_cython(
+                lab_u32, prev_lab_u32, curr_IDs_arr, prev_IDs_arr,
+                prev_areas_arr, curr_areas_arr, use_union,
+            )
+        return IoA_matrix, IDs_curr_untracked, IDs_prev
 
-        if denom == 'area_prev': # or denom == 'area_curr':
+    # --- pure-Python fallback (used when Cython extension is not compiled) ---
+    IoA_matrix = np.zeros((len(IDs_curr_untracked), len(prev_rp)))
+    rp_mapper = {obj.label: obj for obj in rp}
+    idx_mapper = {ID: i for i, ID in enumerate(IDs_curr_untracked)}
+    for j, obj_prev in enumerate(prev_rp):
+        if denom == 'area_prev':
             denom_val = obj_prev.area
-        
-        # Get intersecting IDs between current and object in previous frame
         intersect_IDs, intersects = np.unique(
             lab[obj_prev.slice][obj_prev.image], return_counts=True
         )
         for intersect_ID, I in zip(intersect_IDs, intersects):
-            if intersect_ID == 0:
+            if intersect_ID == 0 or I == 0:
                 continue
-
-            if I == 0:
-                continue
-
             if denom == 'union':
                 if intersect_ID not in rp_mapper:
                     continue
                 obj_curr = rp_mapper[intersect_ID]
-                # temp_lab[obj_prev.slice][obj_prev.image] = True
-                # temp_lab[obj_curr.slice][obj_curr.image] = True
-                # denom_val = np.count_nonzero(temp_lab)
-                # temp_lab[:] = False
                 denom_val = obj_prev.area + obj_curr.area - I
                 if denom_val == 0:
                     continue
-            
             idx = idx_mapper.get(intersect_ID)
             if idx is None:
                 continue
-            IoA = I/denom_val
-            IoA_matrix[idx, j] = IoA
+            IoA_matrix[idx, j] = I / denom_val
     return IoA_matrix, IDs_curr_untracked, IDs_prev
 
 def assign(

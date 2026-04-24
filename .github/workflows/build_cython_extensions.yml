@@ -39,8 +39,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p cellacdc/precompiled
-          mv cellacdc/regionprops_helper.*.so cellacdc/precompiled/ 2>/dev/null || true
-          mv cellacdc/regionprops_helper.*.pyd cellacdc/precompiled/ 2>/dev/null || true
+          mv cellacdc/precompiled_functions.*.so cellacdc/precompiled/ 2>/dev/null || true
+          mv cellacdc/precompiled_functions.*.pyd cellacdc/precompiled/ 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
         with:
@@ -57,6 +57,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
+          token: ${{ secrets.PR_MANAGEMENT }}
 
       - uses: actions/download-artifact@v4
         with:

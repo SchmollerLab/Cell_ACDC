@@ -7,8 +7,8 @@ import numpy as np
 setup(
     ext_modules=cythonize(
         Extension(
-            "cellacdc.regionprops_helper",
-            sources=["cellacdc/regionprops_helper.pyx"],
+            "cellacdc.precompiled_functions",
+            sources=["cellacdc/precompiled_functions.pyx"],
             include_dirs=[np.get_include()],
         ),
         annotate=True,
@@ -21,7 +21,7 @@ import os
 
 src_dir = "cellacdc"
 for filename in os.listdir(src_dir):
-    if filename.startswith("regionprops_helper") and (filename.endswith(".so") or filename.endswith(".pyd")):
+    if filename.startswith("precompiled_functions") and (filename.endswith(".so") or filename.endswith(".pyd")):
         target_path = os.path.join("cellacdc", "precompiled", filename)
         shutil.move(os.path.join(src_dir, filename), target_path)
         print(f"Moved {filename} to {target_path}")
