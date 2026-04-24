@@ -2228,6 +2228,8 @@ class pgScatterSymbolsCombobox(QComboBox):
 
 
 class alphaNumericLineEdit(QLineEdit):
+    sigInvalidCharacterPressed = Signal(str)
+    
     def __init__(self, parent=None, additionalChars=''):
         super().__init__(parent)
 
@@ -2237,6 +2239,17 @@ class alphaNumericLineEdit(QLineEdit):
         self.setValidator(QRegularExpressionValidator(regExp))
 
         # self.setAlignment(Qt.AlignCenter)
+    
+    def keyPressEvent(self, event: QKeyEvent):
+        if not event.text():
+            return super().keyPressEvent(event)
+        
+        super().keyPressEvent(event)
+        
+        if event.text() in self.text():
+            return
+        
+        self.sigInvalidCharacterPressed.emit(event.text())
 
 class NumericCommaLineEdit(QLineEdit):
     def __init__(self, parent=None):
@@ -3807,10 +3820,10 @@ class selectStartStopFrames(QGroupBox):
         selectFramesLayout.addWidget(self.stopFrame_SB, 1, 1)
 
         self.warningLabel = QLabel()
-        palette = self.warningLabel.palette();
-        palette.setColor(self.warningLabel.backgroundRole(), Qt.red);
-        palette.setColor(self.warningLabel.foregroundRole(), Qt.red);
-        self.warningLabel.setPalette(palette);
+        palette = self.warningLabel.palette()
+        palette.setColor(self.warningLabel.backgroundRole(), Qt.red)
+        palette.setColor(self.warningLabel.foregroundRole(), Qt.red)
+        self.warningLabel.setPalette(palette)
         selectFramesLayout.addWidget(
             self.warningLabel, 2, 0, 1, 2, alignment=Qt.AlignCenter
         )

@@ -88,7 +88,7 @@ from . import _core
 from . import _types
 from . import plot
 from . import urls
-from .acdc_regex import float_regex, is_alphanumeric_filename
+from .acdc_regex import float_regex, is_alphanumeric_filename, to_alphanumeric
 from . import _base_widgets
 from . import io
 from . import cca_functions
@@ -1520,8 +1520,9 @@ class filenameDialog(QDialog):
 
         basenameLabel = QLabel(basename)
 
-        self.lineEdit = QLineEdit()
+        self.lineEdit = widgets.alphaNumericLineEdit()
         self.lineEdit.setAlignment(Qt.AlignCenter)
+        defaultEntry = to_alphanumeric(defaultEntry)
         self.lineEdit.setText(defaultEntry)
 
         extLabel = QLabel(ext)
@@ -1535,8 +1536,10 @@ class filenameDialog(QDialog):
         entryLayout.addWidget(
             self.filenameLabel, 1, 1, 1, 3, alignment=Qt.AlignCenter
         )
-        entryLayout.setColumnStretch(0, 1)
-        entryLayout.setColumnStretch(4, 1)
+        # entryLayout.setColumnStretch(0, 1)
+        entryLayout.setColumnStretch(2, 1)
+        
+        self.warningInvalidCharLabel = QLabel()
 
         okButton = widgets.okPushButton('Ok')
         cancelButton = widgets.cancelPushButton('Cancel')
@@ -1564,6 +1567,9 @@ class filenameDialog(QDialog):
         cancelButton.clicked.connect(self.close)
         okButton.clicked.connect(self.ok_cb)
         self.lineEdit.textChanged.connect(self.updateFilename)
+        self.lineEdit.sigInvalidCharacterPressed.connect(
+            self.warnInvalidCharacterPressed
+        )
         
         self.existingNames = []
         if existingNames:
@@ -1573,6 +1579,8 @@ class filenameDialog(QDialog):
         layout.addWidget(hintLabel)
         layout.addSpacing(20)
         layout.addLayout(entryLayout)
+        layout.addSpacing(10)
+        layout.addWidget(self.warningInvalidCharLabel)
         layout.addStretch(1)
         layout.addSpacing(20)
         layout.addLayout(buttonsLayout)
@@ -1604,9 +1612,14 @@ class filenameDialog(QDialog):
         msg.information(self, 'Filename help', text)
 
     def _text(self):
-        _text = self.lineEdit.text().replace(' ', '_')
-        _text = self.lineEdit.text().replace('.', '_')
-        return _text
+        return self.lineEdit.text()
+    
+    def warnInvalidCharacterPressed(self, character: str):
+        warning_text = html_utils.span(f"""
+            <code>{character}</code> is <b>not a valid</b> character.<br> 
+            Valid characters are letters, numbers, underscore, and dash.
+        """)
+        self.warningInvalidCharLabel.setText(warning_text)
 
     def checkExistingNames(self):
         is_existing = (
@@ -1629,7 +1642,6 @@ class filenameDialog(QDialog):
         )
         return msg.clickedButton == yesButton
 
-
     def updateFilename(self, text):
         if not text:
             self.filenameLabel.setText(f'{self.basename}{self.ext}')
@@ -1642,6 +1654,8 @@ class filenameDialog(QDialog):
                     self.filenameLabel.setText(f'{self.basename}_{text}{self.ext}')
             else:
                 self.filenameLabel.setText(f'{text}{self.ext}')
+        
+        self.warningInvalidCharLabel.setText('')
 
     def checkEmptyText(self):
         if self.allowEmpty:

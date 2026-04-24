@@ -31,6 +31,9 @@ def is_alphanumeric_filename(text, allow_space=True):
     is_single_or_no_dot = len(re.findall(r'\.', text)) <= 1
     return bool(re.match(pattern, text)) and is_single_or_no_dot
 
+def get_non_alphanumeric_characters(text):
+    return re.findall(r'[^\w\-.]', '_', text)
+    
 if __name__ == '__main__':
     import re
     s = '0.5, 2.5, nan, NaN'
