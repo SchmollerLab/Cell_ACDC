@@ -48,27 +48,31 @@ jobs:
           path: cellacdc/precompiled/
 
   commit:
-    needs: build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ github.workspace }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
-          token: ${{ secrets.PR_MANAGEMENT }}
+      needs: build
+      runs-on: ubuntu-latest
+      permissions:
+        contents: write
+      defaults:
+        run:
+          working-directory: ${{ github.workspace }}
+      steps:
+        - uses: actions/checkout@v4
+          with:
+            ref: ${{ github.ref_name }}
+            fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: precompiled-*
-          merge-multiple: true
-          path: cellacdc/precompiled/
+        - uses: actions/download-artifact@v4
+          with:
+            pattern: precompiled-*
+            merge-multiple: true
+            path: cellacdc/precompiled/
 
-      - name: Commit precompiled binaries
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add cellacdc/precompiled/
-          git diff --staged --quiet || git commit -m "ci: update precompiled Cython extensions"
-          git push origin HEAD:${{ github.ref_name }}
+        - name: Commit precompiled binaries
+          run: |
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add cellacdc/precompiled/
+            git diff --staged --quiet && echo "No changes to commit" && exit 0
+            git commit -m "ci: update precompiled Cython extensions [skip ci]"
+            git pull --rebase origin ${{ github.ref_name }}
+            git push origin HEAD:${{ github.ref_name }}
