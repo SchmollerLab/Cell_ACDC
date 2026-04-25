@@ -30,6 +30,8 @@ requirements_new.txt
 *.pyd
 *.so
 !cellacdc/precompiled/
+!cellacdc/precompiled/*.pyd
+!cellacdc/precompiled/*.so
 
 # Test output plots
 tests/_plots/
