@@ -29327,7 +29327,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         """)
         win = apps.filenameDialog(
             basename=basename,
-            ext=ext,
+            ext='.tif',
             hintText=txt,
             defaultEntry=channel_name,
             helpText=help_txt, 

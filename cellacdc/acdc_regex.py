@@ -32,7 +32,7 @@ def is_alphanumeric_filename(text, allow_space=True):
     return bool(re.match(pattern, text)) and is_single_or_no_dot
 
 def get_non_alphanumeric_characters(text):
-    return re.findall(r'[^\w\-.]', '_', text)
+    return re.findall(r'[^\w\-.]', text)
     
 if __name__ == '__main__':
     import re
