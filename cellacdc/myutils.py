@@ -1,6 +1,7 @@
 import os
 import re
 import ast
+import math
 
 import typing
 from typing import Literal, List, Callable, Tuple, Dict
@@ -272,14 +273,14 @@ def get_trimmed_list(li: list, max_num_digits=10):
     tom_num_digits = sum([len(str(val)) for val in li])
     avg_num_digits = tom_num_digits/len(li)
     max_num_vals = int(round(max_num_digits/avg_num_digits))
-    if tom_num_digits>max_num_digits:
-        li_str = li.copy()
-        del li_str[max_num_vals:-max_num_vals]
-        li_str.insert(max_num_vals, "...")
-        li_str = f"[{', '.join(map(str, li_str))}]"
-    else:
-        li_str = f"{[str(val) for val in li]}".replace('\'', '')
-    return li_str
+
+    if tom_num_digits > max_num_digits:
+        front_digits = math.ceil(max_num_vals / 2)
+        back_digits = max_num_vals // 2
+
+        li = li[:front_digits] + ['...'] + li[-back_digits:]
+
+    return  f"[{', '.join(map(str, li))}]"
 
 def get_trimmed_dict(di: dict, max_num_digits=10):
     di_str = di.copy()
