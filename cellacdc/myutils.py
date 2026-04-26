@@ -275,10 +275,10 @@ def get_trimmed_list(li: list, max_num_digits=10):
     max_num_vals = int(round(max_num_digits/avg_num_digits))
 
     if tom_num_digits > max_num_digits:
-        front_digits = math.ceil(max_num_vals / 2)
-        back_digits = max_num_vals // 2
+        front_vals = math.ceil(max_num_vals / 2)
+        back_vals = max_num_vals // 2
 
-        li = li[:front_digits] + ['...'] + li[-back_digits:]
+        li = li[:front_vals] + ['...'] + li[-back_vals:]
 
     return f"[{', '.join(map(str, li))}]"
 
