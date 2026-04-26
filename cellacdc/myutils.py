@@ -280,7 +280,7 @@ def get_trimmed_list(li: list, max_num_digits=10):
 
         li = li[:front_digits] + ['...'] + li[-back_digits:]
 
-    return  f"[{', '.join(map(str, li))}]"
+    return f"[{', '.join(map(str, li))}]"
 
 def get_trimmed_dict(di: dict, max_num_digits=10):
     di_str = di.copy()
