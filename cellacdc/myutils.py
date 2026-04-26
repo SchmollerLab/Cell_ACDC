@@ -277,7 +277,7 @@ def get_trimmed_list(li: list, max_num_digits=10):
         front_vals = ceil(max_num_vals / 2)
         back_vals = max_num_vals // 2
 
-        li = li[:front_vals] + ['...'] + li[-back_vals:]
+        li = li[:front_vals] + ['...'] + li[len(li) - back_vals:]
 
     return f"[{', '.join(map(str, li))}]"
 
