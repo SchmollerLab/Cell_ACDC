@@ -1,7 +1,6 @@
 import os
 import re
 import ast
-import math
 
 import typing
 from typing import Literal, List, Callable, Tuple, Dict
@@ -275,7 +274,7 @@ def get_trimmed_list(li: list, max_num_digits=10):
     max_num_vals = int(round(max_num_digits/avg_num_digits))
 
     if tom_num_digits > max_num_digits:
-        front_vals = math.ceil(max_num_vals / 2)
+        front_vals = ceil(max_num_vals / 2)
         back_vals = max_num_vals // 2
 
         li = li[:front_vals] + ['...'] + li[-back_vals:]
