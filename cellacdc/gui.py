@@ -7175,6 +7175,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # Draw clear region mouse release
         elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
+            self.isMouseDragImg1 = False
             self.freeRoiItem.closeCurve()
             self.clearObjsFreehandRegion()
         
