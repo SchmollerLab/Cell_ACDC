@@ -13,7 +13,7 @@ def _check_install_bioio_bioformats(qparent=None):
         'scyjava',
         installer='conda', 
         is_cli=qparent is None,
-        exact_version='1.10.2'
+        exact_version='1.10.2',
         parent=qparent
     )
     
