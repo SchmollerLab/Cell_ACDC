@@ -28923,7 +28923,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             tracked_lab = tracked_result
         
-        printl(assignments)
         if not return_assignments and not dont_return_tracked_lab:
             return tracked_lab
 
