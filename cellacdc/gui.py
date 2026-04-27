@@ -29358,7 +29358,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             folder:
             <copiable>{images_path}</copiable>
             <br>
-            How do you want to proceed?
         """)
         
         if ext == '.tif' or ext == '.npz':

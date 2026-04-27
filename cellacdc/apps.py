@@ -1521,7 +1521,7 @@ class filenameDialog(QDialog):
 
         basenameLabel = QLabel(basename)
 
-        self.lineEdit = widgets.alphaNumericLineEdit()
+        self.lineEdit = widgets.alphaNumericLineEdit(onlyWarn=True)
         self.lineEdit.setAlignment(Qt.AlignCenter)
         defaultEntry = to_alphanumeric(defaultEntry)
         defaultEntry = defaultEntry.replace('.', '_')
@@ -1569,8 +1569,8 @@ class filenameDialog(QDialog):
         cancelButton.clicked.connect(self.close)
         okButton.clicked.connect(self.ok_cb)
         self.lineEdit.textChanged.connect(self.updateFilename)
-        self.lineEdit.sigInvalidCharacterPressed.connect(
-            self.warnInvalidCharacterPressed
+        self.lineEdit.sigInvalidCharactersEntered.connect(
+            self.warnInvalidCharactersEntered
         )
         
         self.existingNames = []
@@ -1616,12 +1616,20 @@ class filenameDialog(QDialog):
     def _text(self):
         return self.lineEdit.text()
     
-    def warnInvalidCharacterPressed(self, character: str):
-        character = html.escape(character)
+    def warnInvalidCharactersEntered(self, characters: set[str]):
+        statement = 'is <b>not a valid</b> character'
+        if len(characters) > 1:
+            statement = 'are <b>not valid</b> chracters'
+            
+        characters_str = ', '.join(characters)
+        characters_str = html.escape(characters_str)
         warning_text = html_utils.span(f"""
-            <code>{character}</code> is <b>not a valid</b> character.<br> 
-            Valid characters are letters, numbers, underscore, and dash.
+            WARNING: "<code>{characters_str}</code>" {statement}.<br> 
         """)
+        warning_text = (
+            f'{warning_text}'
+            '<i>Valid characters are letters, numbers, underscore, and dash.</i>'
+        )
         self.warningInvalidCharLabel.setText(warning_text)
 
     def checkExistingNames(self):
@@ -1646,6 +1654,9 @@ class filenameDialog(QDialog):
         return msg.clickedButton == yesButton
 
     def updateFilename(self, text):
+        if self.lineEdit.invalidCharacters():
+            return
+        
         if not text:
             self.filenameLabel.setText(f'{self.basename}{self.ext}')
         else:
@@ -1693,6 +1704,9 @@ class filenameDialog(QDialog):
         return False
     
     def ok_cb(self, checked=True):
+        if self.warningInvalidCharLabel.text():
+            return
+        
         valid = self.checkExistingNames()
         if not valid:
             return
