@@ -269,7 +269,14 @@ class utilClass:
     pass
 
 def get_trimmed_list(li: list, max_num_digits=10):
+    if len(li) == 0:
+        return '[]'
+    
     tom_num_digits = sum([len(str(val)) for val in li])
+    
+    if tom_num_digits == 0:
+        return f"[{', '.join(map(str, li))}]"
+    
     avg_num_digits = tom_num_digits/len(li)
     max_num_vals = int(round(max_num_digits/avg_num_digits))
 
