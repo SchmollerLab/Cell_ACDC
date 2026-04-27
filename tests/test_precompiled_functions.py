@@ -185,7 +185,7 @@ class TestFindAllObjects2D:
     def test_empty_image_returns_empty(self):
         empty = np.zeros((64, 64), dtype=np.uint32)
         result = find_all_objects_2D(empty)
-        assert result == []
+        assert result == ([], [])
 
     def test_single_pixel_object(self):
         img = np.zeros((10, 10), dtype=np.uint32)
@@ -250,7 +250,7 @@ class TestFindAllObjects3D:
     def test_empty_image_returns_empty(self):
         empty = np.zeros((8, 16, 16), dtype=np.uint32)
         result = find_all_objects_3D(empty)
-        assert result == []
+        assert result == ([], [])
 
     def test_single_voxel_object(self):
         img = np.zeros((8, 8, 8), dtype=np.uint32)
