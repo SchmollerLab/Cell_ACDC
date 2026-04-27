@@ -1619,7 +1619,7 @@ class filenameDialog(QDialog):
     def warnInvalidCharactersEntered(self, characters: set[str]):
         statement = 'is <b>not a valid</b> character'
         if len(characters) > 1:
-            statement = 'are <b>not valid</b> chracters'
+            statement = 'are <b>not valid</b> characters'
             
         characters_str = ''.join(characters)
         characters_str = html.escape(characters_str)
