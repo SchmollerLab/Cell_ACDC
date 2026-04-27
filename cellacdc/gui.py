@@ -18374,7 +18374,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             return
         
-        self.store_zslices_rp()
         self.resetExpandLabel()
         self.updateAllImages()
         self.updateHighlightedAxis()
@@ -20699,7 +20698,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 posData=posData, data_frame_i=allData_li    
             )
         
-        self.store_zslices_rp()
 
         # Store dynamic metadata
         is_cell_dead_li = [False]*len(posData.rp)
@@ -21791,7 +21789,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.update_rp_metadata(draw=False)
         posData.IDs = posData.rp.IDs
-        self.get_zslices_rp()
         self.pointsLayerDfsToData(posData)
         return proceed_cca, never_visited
 
@@ -22873,75 +22870,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         objOpts = self.getObjTextAnnotOpts(obj, 'Draw only IDs', ax=1)
         return objOpts
-
-    def store_zslices_rp(self, force_update=False):
-        if not self.isSegm3D:
-            return
-        
-        posData = self.data[self.pos_i]        
-        are_zslices_rp_stored = (
-            posData.allData_li[posData.frame_i].get('z_slices_rp') is not None
-        )
-        if force_update or not are_zslices_rp_stored:
-            self._update_zslices_rp()
-        
-        posData.allData_li[posData.frame_i]['z_slices_rp'] = posData.zSlicesRp
     
-    def removeObjectFromRp(self, delIDs):
+    def removeObjectFromRp(self, delID):
         posData = self.data[self.pos_i]
         if not isinstance(delIDs, (list, set)):
             delIDs = [delIDs]
             
         posData.rp.update_regionprops_via_deletions(set(delIDs))
         posData.IDs = posData.rp.IDs
-
-        # rp = []
-        # IDs = []
-        # IDs_idxs = {}
-        # idx = 0
-        # for obj in posData.rp:
-        #     if obj.label == delID:
-        #         continue
-        #     rp.append(obj)
-        #     IDs.append(obj.label)
-        #     IDs_idxs[obj.label] = idx
-        #     idx += 1
         
-        # posData.rp = rp
-        # posData.IDs = IDs
-        # posData.IDs_idxs = IDs_idxs
+        posData.rp = rp
+        posData.IDs = IDs
+        posData.IDs_idxs = IDs_idxs
         
-        # if not self.isSegm3D:
-        #     return
-        
-        # zSlicesRp = {}
-        # for z, zSliceRp in posData.zSlicesRp.items():
-        #     if delID in zSliceRp:
-        #         continue
-            
-        #     zSlicesRp[z] = zSlicesRp
-        
-        # posData.zSlicesRp = zSlicesRp
-        # self.store_zslices_rp(force_update=True)
-    
-    def get_zslices_rp(self):
         if not self.isSegm3D:
             return
-        
-        posData = self.data[self.pos_i]
-        self.store_zslices_rp()
-        posData.zSlicesRp = posData.allData_li[posData.frame_i]['z_slices_rp']
-    
-    # @exec_time
-    def _update_zslices_rp(self):
-        if not self.isSegm3D:
-            return
-        
-        posData = self.data[self.pos_i]
-        posData.zSlicesRp = {}
-        for z, lab2d in enumerate(posData.lab):
-            lab2d_rp = regionprops.acdcRegionprops(lab2d, precache_centroids=False)
-            posData.zSlicesRp[z] = {obj.label:obj for obj in lab2d_rp}
     
     def instructHowDeleteID(self):
         if 'showInfoDeleteObject' not in self.df_settings.index:
@@ -23217,7 +23160,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData.IDs = posData.rp.IDs
         
         self.update_rp_metadata(draw=draw)        
-        self.store_zslices_rp(force_update=True)
 
         if not wl_update:
             return
