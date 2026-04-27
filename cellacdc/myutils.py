@@ -283,6 +283,9 @@ def get_trimmed_list(li: list, max_num_digits=10):
     if tom_num_digits > max_num_digits:
         front_vals = ceil(max_num_vals / 2)
         back_vals = max_num_vals // 2
+        
+        if front_vals + back_vals >= len(li):
+            return f"[{', '.join(map(str, li))}]"
 
         li = li[:front_vals] + ['...'] + li[len(li) - back_vals:]
 
