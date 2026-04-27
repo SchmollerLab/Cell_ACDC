@@ -3441,6 +3441,7 @@ def check_install_package(
             else:
                 pkg_command = _get_pkg_command_pip_install(
                     pkg_name, 
+                    exact_version=exact_version,
                     max_version=max_version, 
                     min_version=min_version,
                     including_higher_version=include_higher_version,
