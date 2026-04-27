@@ -395,3 +395,43 @@ def line_benchmark(func):
         return result
 
     return wrapper
+
+def check_unused_methods(node_name):
+    import ast
+    from pathlib import Path
+    from collections import Counter
+
+    file_path = Path("cellacdc/gui.py")
+    src = file_path.read_text(encoding="utf-8")
+    tree = ast.parse(src)
+
+    gui_cls = None
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == node_name:
+            gui_cls = node
+            break
+
+    if gui_cls is None:
+        raise RuntimeError(f"{node_name} class not found")
+
+    methods = []
+    refs = Counter()
+
+    for node in gui_cls.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            methods.append(node.name)
+
+            for n in ast.walk(node):
+                # Count any self.method reference (calls, signal connections, passing callbacks, etc.)
+                if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "self":
+                    refs[n.attr] += 1
+
+                # Also count guiWin.method(...) direct class-qualified calls inside class
+                if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == node_name:
+                    refs[n.attr] += 1
+
+    unused_inside_guiwin = [m for m in methods if refs[m] == 0]
+    print(f"Total methods: {len(methods)}")
+    print(f"Potentially unused inside {node_name}: {len(unused_inside_guiwin)}")
+    for m in sorted(unused_inside_guiwin):
+        print(m)

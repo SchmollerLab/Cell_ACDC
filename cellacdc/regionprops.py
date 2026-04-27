@@ -14,10 +14,10 @@ try:
 except Exception:
     _CYTHON_FIND_OBJECTS = False
 # WARNING: Developers have already used
-#     12 hrs
+#     14 hrs
 # to optimize this.
 # In addition, implementing these optimizations in the codebase took
-#     7 hrs
+#     9 hrs
 # Specifically the
 #    centroid (huge fain for 3D data)
 # stuff was targeted. 
@@ -65,7 +65,12 @@ def _acdc_regionprops_factory(
     if _CYTHON_FIND_OBJECTS:
         img_uint32 = label_image.astype(np.uint32, copy=False)
         if label_image.ndim == 2:
-            labels, bboxes = find_all_objects_2D(img_uint32)
+            out = find_all_objects_2D(img_uint32)
+            if len(out) == 0:
+                labels = np.empty((0,), dtype=np.uint32)
+                bboxes = np.empty((0, 4), dtype=np.int32)
+            else:
+                labels, bboxes = out
             for i in range(len(labels)):
                 sl = (slice(int(bboxes[i, 0]), int(bboxes[i, 1])),
                       slice(int(bboxes[i, 2]), int(bboxes[i, 3])))
@@ -75,7 +80,12 @@ def _acdc_regionprops_factory(
                     offset=offset_arr,
                 ))
         else:
-            labels, bboxes = find_all_objects_3D(img_uint32)
+            out = find_all_objects_3D(img_uint32)
+            if len(out) == 0:
+                labels = np.empty((0,), dtype=np.uint32)
+                bboxes = np.empty((0, 6), dtype=np.int32)
+            else:
+                labels, bboxes = out
             for i in range(len(labels)):
                 sl = (slice(int(bboxes[i, 0]), int(bboxes[i, 1])),
                       slice(int(bboxes[i, 2]), int(bboxes[i, 3])),
@@ -290,6 +300,21 @@ class acdcRegionprops:
         self.acdc_df = acdc_df
         self._rp = _acdc_regionprops_factory(lab, **kwargs)
         self.is3D = self.lab.ndim == 3
+        self._slice_rps = {
+            'z': {},
+            'y': {},
+            'x': {},
+        }
+        self._proj_rps = {
+            'z': {},
+            'y': {},
+            'x': {},
+        }
+        self._proj_labs = {
+            'z': {},
+            'y': {},
+            'x': {},
+        }
         self._centroid_mapper = {}
         self._centroid_IDs_exact = set()
         if IDs_loaded is None or ID_to_idx_loaded is None:
@@ -308,6 +333,52 @@ class acdcRegionprops:
         else:
             self._centroid_mapper = dict()
 
+    def get_slice_rp(self, slice_number, slicing='z'):
+        if not self.is3D:
+            raise ValueError('Slice-specific regionprops are only supported for 3D labels.')
+
+        slicing = self._normalize_slicing(slicing)
+        slice_number = int(slice_number)
+        self._validate_slice_number(slice_number, slicing)
+
+        rp = self._slice_rps[slicing].get(slice_number)
+        if rp is None:
+            lab_slice = self._get_lab_slice(self.lab, slice_number, slicing)
+            rp = acdcRegionprops(lab_slice, precache_centroids=False)
+            self._slice_rps[slicing][slice_number] = rp
+        return rp
+
+    def get_proj_rp(self, kind='max', slicing='z'):
+        if not self.is3D:
+            raise ValueError('Projection-specific regionprops are only supported for 3D labels.')
+
+        slicing = self._normalize_slicing(slicing)
+        kind = self._normalize_projection_kind(kind)
+
+        rp = self._proj_rps[slicing].get(kind)
+        if rp is None:
+            lab_proj = self._proj_labs[slicing].get(kind)
+            if lab_proj is None:
+                lab_proj = self._get_lab_projection(self.lab, slicing=slicing, kind=kind)
+                self._proj_labs[slicing][kind] = lab_proj
+            rp = acdcRegionprops(lab_proj, precache_centroids=False)
+            self._proj_rps[slicing][kind] = rp
+        return rp
+
+    def get_obj_from_slice_rp(self, ID, slice_number, slicing='z', warn=True):
+        rp = self.get_slice_rp(slice_number, slicing=slicing)
+        return rp.get_obj_from_ID(ID, warn=warn)
+
+    def get_obj_from_proj_rp(self, ID, kind='max', slicing='z', warn=True):
+        if kind.startswith('max'):
+            kind = 'max'
+        elif kind.startswith('mean'):
+            kind = 'mean'
+        elif kind.startswith('median'):
+            kind = 'median' 
+        rp = self.get_proj_rp(kind=kind, slicing=slicing)
+        return rp.get_obj_from_ID(ID, warn=warn)
+
     def __iter__(self):
         return iter(self._rp)
 
@@ -322,6 +393,210 @@ class acdcRegionprops:
 
     def __repr__(self):
         return repr(self._rp)
+
+    def _normalize_slicing(self, slicing):
+        slicing = str(slicing).lower()
+        if slicing not in ('z', 'y', 'x'):
+            raise ValueError(
+                f'Invalid slicing "{slicing}". Valid options are "z", "y", and "x".'
+            )
+        return slicing
+
+    def _slice_axis_index(self, slicing):
+        axis_map = {'z': 0, 'y': 1, 'x': 2}
+        return axis_map[slicing]
+
+    def _normalize_projection_kind(self, kind):
+        kind = str(kind).lower()
+        if kind not in ('max', 'mean', 'median'):
+            raise ValueError(
+                f'Invalid projection kind "{kind}". '
+                'Valid options are "max", "mean", and "median".'
+            )
+        return kind
+
+    def _validate_slice_number(self, slice_number, slicing):
+        axis = self._slice_axis_index(slicing)
+        axis_size = self.lab.shape[axis]
+        if slice_number < 0 or slice_number >= axis_size:
+            raise IndexError(
+                f'Slice number {slice_number} is out of bounds for slicing "{slicing}" '
+                f'with size {axis_size}.'
+            )
+
+    def _has_initialized_slice_rps(self):
+        return any(len(slice_dict) > 0 for slice_dict in self._slice_rps.values())
+
+    def _has_initialized_proj_rps(self):
+        return any(len(proj_dict) > 0 for proj_dict in self._proj_rps.values())
+
+    def _iter_initialized_slice_rps(self):
+        for slicing, slice_dict in self._slice_rps.items():
+            for slice_number, rp in slice_dict.items():
+                yield slicing, slice_number, rp
+
+    def _iter_initialized_proj_rps(self):
+        for slicing, proj_dict in self._proj_rps.items():
+            for kind, rp in proj_dict.items():
+                yield slicing, kind, rp
+
+    def _get_lab_slice(self, lab, slice_number, slicing):
+        if lab.ndim != 3:
+            raise ValueError(
+                f'Slice-specific regionprops are only supported for 3D labels, got {lab.ndim}D.'
+            )
+
+        slicing = self._normalize_slicing(slicing)
+        if slicing == 'z':
+            return lab[slice_number, :, :]
+        if slicing == 'y':
+            return lab[:, slice_number, :]
+        return lab[:, :, slice_number]
+
+    def _get_lab_projection(self, lab, slicing='z', kind='max'):
+        if lab.ndim != 3:
+            raise ValueError(
+                f'Projection-specific regionprops are only supported for 3D labels, got {lab.ndim}D.'
+            )
+
+        axis = self._slice_axis_index(self._normalize_slicing(slicing))
+        kind = self._normalize_projection_kind(kind)
+        if kind == 'max':
+            return np.max(lab, axis=axis)
+
+        if kind == 'mean':
+            projected = np.mean(lab, axis=axis)
+        else:
+            projected = np.median(lab, axis=axis)
+
+        # Regionprops requires integer labels.
+        return np.rint(projected).astype(lab.dtype, copy=False)
+
+    def _get_cached_or_new_lab_projection(self, slicing, kind):
+        lab_proj = self._proj_labs[slicing].get(kind)
+        if lab_proj is None:
+            lab_proj = self._get_lab_projection(self.lab, slicing=slicing, kind=kind)
+            self._proj_labs[slicing][kind] = lab_proj
+        return lab_proj
+
+    def _replace_cached_lab_projection(self, slicing, kind):
+        lab_proj = self._get_lab_projection(self.lab, slicing=slicing, kind=kind)
+        self._proj_labs[slicing][kind] = lab_proj
+        return lab_proj
+
+    def _apply_assignments_to_lab_from_rp(self, rp, lab, assignments):
+        active_assignments = {
+            int(old_ID): int(new_ID)
+            for old_ID, new_ID in assignments.items()
+            if old_ID != new_ID
+        }
+        if not active_assignments:
+            return lab
+
+        dst = lab.copy()
+        for obj in rp:
+            new_ID = active_assignments.get(obj.label)
+            if new_ID is None:
+                continue
+            dst[obj.slice][obj.image] = new_ID
+        return dst
+
+    def _apply_deletions_to_lab_from_rp(self, rp, lab, IDs_to_delete):
+        IDs_to_delete = set(IDs_to_delete)
+        if not IDs_to_delete:
+            return lab
+
+        dst = lab.copy()
+        for obj in rp:
+            if obj.label in IDs_to_delete:
+                dst[obj.slice][obj.image] = 0
+        return dst
+
+    def _sync_initialized_slice_rps_via_assignments(self, assignments):
+        if not self._has_initialized_slice_rps():
+            return
+
+        for slicing, slice_number, rp in self._iter_initialized_slice_rps():
+            lab_slice = self._get_lab_slice(self.lab, slice_number, slicing)
+            rp.update_regionprops_via_assignments(assignments, lab_slice)
+
+    def _sync_initialized_proj_rps_via_assignments(self, assignments):
+        if not self._has_initialized_proj_rps():
+            return
+
+        for slicing, kind, rp in self._iter_initialized_proj_rps():
+            lab_proj = self._get_cached_or_new_lab_projection(slicing, kind)
+            lab_proj = self._apply_assignments_to_lab_from_rp(
+                rp, lab_proj, assignments
+            )
+            self._proj_labs[slicing][kind] = lab_proj
+            rp.update_regionprops_via_assignments(assignments, lab_proj)
+
+    def _sync_initialized_slice_rps_via_deletions(self, IDs_to_delete):
+        if not self._has_initialized_slice_rps():
+            return
+
+        for _, _, rp in self._iter_initialized_slice_rps():
+            rp.update_regionprops_via_deletions(IDs_to_delete)
+
+    def _sync_initialized_proj_rps_via_deletions(self, IDs_to_delete):
+        if not self._has_initialized_proj_rps():
+            return
+
+        for slicing, kind, rp in self._iter_initialized_proj_rps():
+            lab_proj = self._get_cached_or_new_lab_projection(slicing, kind)
+            lab_proj = self._apply_deletions_to_lab_from_rp(
+                rp, lab_proj, IDs_to_delete
+            )
+            self._proj_labs[slicing][kind] = lab_proj
+            rp.update_regionprops_via_deletions(IDs_to_delete)
+
+    def _sync_initialized_slice_rps_via_update(self, specific_IDs_update_centroids=None):
+        if not self._has_initialized_slice_rps():
+            return
+
+        for slicing, slice_number, rp in self._iter_initialized_slice_rps():
+            lab_slice = self._get_lab_slice(self.lab, slice_number, slicing)
+            rp.update_regionprops(
+                lab_slice,
+                specific_IDs_update_centroids=specific_IDs_update_centroids,
+            )
+
+    def _sync_initialized_proj_rps_via_update(self, specific_IDs_update_centroids=None):
+        if not self._has_initialized_proj_rps():
+            return
+
+        for slicing, kind, rp in self._iter_initialized_proj_rps():
+            lab_proj = self._replace_cached_lab_projection(slicing, kind)
+            rp.update_regionprops(
+                lab_proj,
+                specific_IDs_update_centroids=specific_IDs_update_centroids,
+            )
+
+    def _normalize_cutout_bbox(self, cutout_bbox):
+        """Normalize cutout_bbox to always be 3D (6 values) for 3D data.
+        
+        Automatically expands 2D bbox (4 values: y_start, x_start, y_end, x_end)
+        to 3D bbox (6 values: z_start, y_start, x_start, z_end, y_end, x_end) 
+        covering all z-slices.
+        """
+        if self.is3D:
+            if len(cutout_bbox) == 4:
+                # 2D bbox: expand to 3D with full z range
+                y_start, x_start, y_end, x_end = cutout_bbox
+                return (0, y_start, x_start, self.lab.shape[0], y_end, x_end)
+            elif len(cutout_bbox) != 6:
+                raise ValueError(
+                    'For 3D labels, cutout_bbox should have 4 values (2D) or 6 values (3D): '
+                    f'got {len(cutout_bbox)}.'
+                )
+        else:
+            if len(cutout_bbox) != 4:
+                raise ValueError(
+                    'For 2D labels, cutout_bbox should have 4 values (y_start, x_start, y_end, x_end), '
+                    f'got {len(cutout_bbox)}.'
+                )
+        return cutout_bbox
 
     def _get_centroid_df_from_df(self):
         if self.acdc_df is None or len(self.acdc_df) == 0:
@@ -490,6 +765,12 @@ class acdcRegionprops:
         self._rp = new_rp
         self.lab = lab
         self.set_attributes()
+        self._sync_initialized_slice_rps_via_update(
+            specific_IDs_update_centroids=specific_IDs_update_centroids
+        )
+        self._sync_initialized_proj_rps_via_update(
+            specific_IDs_update_centroids=specific_IDs_update_centroids
+        )
 
     def _copy_custom_rp_attributes(self, new_obj, old_obj):
         if old_obj is None:
@@ -497,13 +778,14 @@ class acdcRegionprops:
         new_obj.dead = getattr(old_obj, 'dead', False)
         new_obj.excluded = getattr(old_obj, 'excluded', False)
 
-    def _get_bbox_slices(self, bbox):
+    def _get_bbox_slices(self, bbox, depth_axis=None):
         ndim = self.lab.ndim
         if len(bbox) != ndim * 2:
             raise ValueError(
                 f'Expected a bounding box with {ndim*2} values, '
                 f'got {len(bbox)}.'
             )
+        
         return tuple(
             slice(int(bbox[dim]), int(bbox[dim+ndim])) for dim in range(ndim)
         )
@@ -609,6 +891,8 @@ class acdcRegionprops:
         }
         if not active_assignments:
             self._set_label_image(lab)
+            self._sync_initialized_slice_rps_via_assignments({})
+            self._sync_initialized_proj_rps_via_assignments({})
             return
 
         # if not active_assignments:
@@ -651,7 +935,9 @@ class acdcRegionprops:
         self._centroid_mapper = centroid_mapper
         self._centroid_IDs_exact = centroid_IDs_exact
         self.set_attributes(update_centroid_mapper=False) # update the mapper
-    
+        self._sync_initialized_slice_rps_via_assignments(active_assignments)
+        self._sync_initialized_proj_rps_via_assignments(active_assignments)
+
     def update_regionprops_via_deletions(
             self, IDs_to_delete: set[int]
     ):
@@ -667,9 +953,11 @@ class acdcRegionprops:
             return
         self._rp = [obj for obj in self._rp if obj.label not in IDs_to_delete]
         self.set_attributes(deleted_IDs=IDs_to_delete) # for updating the IDs to indx, centroid mapper
+        self._sync_initialized_slice_rps_via_deletions(IDs_to_delete)
+        self._sync_initialized_proj_rps_via_deletions(IDs_to_delete)
         
     def update_regionprops_via_cutout(
-        self, lab, cutout_bbox, specific_IDs=None, debug=True
+        self, lab, cutout_bbox, specific_IDs=None, depth_axis=None
     ):
         """Only relabels the regionprops of a specific cutout.
         Is only faster for small cutouts. I dont have a number, but I would say
@@ -688,7 +976,9 @@ class acdcRegionprops:
             specific_IDs = set(specific_IDs)
 
         self.lab = lab
-        cutout_slices = self._get_bbox_slices(cutout_bbox)
+        # Normalize bbox to 3D (expands 2D bbox to full z-range)
+        cutout_bbox = self._normalize_cutout_bbox(cutout_bbox)
+        cutout_slices = self._get_bbox_slices(cutout_bbox, depth_axis=depth_axis)
         new_cutout = lab[cutout_slices]
         old_cutout_IDs = self._get_old_cutout_IDs_from_rp(cutout_bbox)
         rp_cutout_new = _acdc_regionprops_factory(new_cutout)
@@ -770,6 +1060,12 @@ class acdcRegionprops:
         self._rp = unaffected_rp + new_objs
         self._set_label_image(lab)
         self.set_attributes(update_centroid_mapper=False)
+        self._sync_initialized_slice_rps_via_update(
+            specific_IDs_update_centroids=target_IDs
+        )
+        self._sync_initialized_proj_rps_via_update(
+            specific_IDs_update_centroids=target_IDs
+        )
             
     def get_centroid(self, ID, exact=False):
         if exact and ID not in self._centroid_IDs_exact:
@@ -801,5 +1097,12 @@ class acdcRegionprops:
         new_instance._rp = [obj for obj in self._rp]
         new_instance._centroid_mapper = self._centroid_mapper.copy()
         new_instance._centroid_IDs_exact = self._centroid_IDs_exact.copy()
+        for slicing, slice_number, rp in self._iter_initialized_slice_rps():
+            new_instance._slice_rps[slicing][slice_number] = rp.copy()
+        for slicing, kind, rp in self._iter_initialized_proj_rps():
+            new_instance._proj_rps[slicing][kind] = rp.copy()
+        for slicing, proj_labs in self._proj_labs.items():
+            for kind, lab_proj in proj_labs.items():
+                new_instance._proj_labs[slicing][kind] = lab_proj.copy()
         new_instance.set_attributes(update_centroid_mapper=False)
         return new_instance

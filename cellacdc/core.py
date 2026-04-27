@@ -3055,16 +3055,25 @@ def split_connected_components(lab, rp=None, max_ID=None):
     return split_occured
 
 def split_along_convexity_defects(
-        ID, lab, max_ID, max_i=1, eps_percent=0.01
+        ID, lab, max_ID, max_i=1, eps_percent=0.01, rp=None
     ):
-    lab_ID_bool = lab == ID
+    if rp is not None:
+        obj = rp.get_obj_from_ID(ID)
+        lab_ID_bool = np.zeros_like(lab[obj.slice], dtype=bool)
+        lab_ID_bool[obj.image] = True
+    else:
+        lab_ID_bool = lab == ID
     # First try separating by labelling
     lab_ID = lab_ID_bool.astype(int)
     rp_ID = skimage.measure.regionprops(lab_ID)
     split_occured = split_connected_components(lab_ID, rp=rp_ID, max_ID=max_ID)
     if split_occured:
         success = True
-        lab[lab_ID_bool] = lab_ID[lab_ID_bool]
+        if rp is not None:
+            lab[obj.slice][obj.image] = lab_ID[obj.image]
+        else:
+            lab[lab_ID_bool] = lab_ID[lab_ID_bool]
+            
         rp_ID = skimage.measure.regionprops(lab_ID)
         separateIDs = [obj.label for obj in rp_ID]
         return lab, success, separateIDs
@@ -3112,7 +3121,10 @@ def split_along_convexity_defects(
     sep_bud_label = temp_sep_bud_lab
     sep_bud_label_mask = sep_bud_label != 0
     # plt.imshow_tk(sep_bud_label, dots_coords=np.asarray(defects_points))
-    lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
+    if rp is not None:
+        lab[obj.slice][sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
+    else:
+        lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
     max_i += 1
     success = True
     return lab, success, splittedIDs

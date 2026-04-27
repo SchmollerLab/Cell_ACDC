@@ -115,8 +115,8 @@ if os.name == 'nt':
 
 GREEN_HEX = _palettes.green()
 
-RP_OPT_NUM_CELLS_MIN = 0 # th for trying to do local updates to regionprops, rp becomes slow for high num of cells
-RP_OPT_PERC_CUTOUT_MAX = 0.1 # th for trying to do local updates to regionprops, 
+RP_OPT_NUM_CELLS_MIN = 30 # th for trying to do local updates to regionprops, rp becomes slow for high num of cells
+RP_OPT_PERC_CUTOUT_MAX = 0.3 # th for trying to do local updates to regionprops, 
                              # if region which we have to update is too large too 
                              # many cells are probably inside and its not worth
                              # local updating (since we actually need to call RP twice!)
@@ -1350,7 +1350,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.hullContToolButton.action = editToolBar.addWidget(self.hullContToolButton)
         self.checkableButtons.append(self.hullContToolButton)
         self.checkableQButtonsGroup.addButton(self.hullContToolButton)
-        self.functionsNotTested3D.append(self.hullContToolButton)
         self.widgetsWithShortcut['Hull contour'] = self.hullContToolButton
 
         self.fillHolesToolButton = QToolButton(self)
@@ -1362,7 +1361,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.checkableButtons.append(self.fillHolesToolButton)
         self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
-        self.functionsNotTested3D.append(self.fillHolesToolButton)
         self.widgetsWithShortcut['Fill holes'] = self.fillHolesToolButton
 
         self.moveLabelToolButton = QToolButton(self)
@@ -3782,8 +3780,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def showAllContoursToggled(self):
         if not self.isDataLoaded:
             return
-        
-        self.computeAllContours()
+
         self.updateAllImages()
     
     def gui_createImg1Widgets(self):
@@ -4946,6 +4943,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.zSliceSpinbox.hide()
         self.SizeZlabel.hide()
 
+    def rpCurr2D(self, frame_i=None, slice_i=None, depth_axis=None):
+        posData = self.data[self.pos_i]
+        if frame_i is None:
+            rp = posData.rp
+        else:
+            rp = posData.allData_li[frame_i]['regionprops']
+        if not self.isSegm3D:
+            return rp
+
+        if slice_i is None:
+            slice_i = self.zSliceScrollBar.sliderPosition()
+        if depth_axis is None:
+            depth_axis = self.switchPlaneCombobox.depthAxes()
+
+        rp2D = rp.get_slice_rp(slice_i, slicing=depth_axis)
+        return rp2D
+        
     @exception_handler
     def gui_mousePressEventImg2(self, event: QGraphicsSceneMouseEvent):
         modifiers = QGuiApplication.keyboardModifiers()
@@ -5153,7 +5167,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # self.set_2Dlab(lab2D)
             elif not shift:
                 result = core.split_along_convexity_defects(
-                    ID, self.get_2Dlab(posData.lab), max_ID
+                    ID, self.get_2Dlab(posData.lab), max_ID, rp=posData.rp
                 )
                 lab2D, success, splittedIDs = result
                 self.set_2Dlab(lab2D)
@@ -5236,10 +5250,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if ID in posData.lab:
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
-                obj = posData.rp.get_obj_from_ID(ID)
-                objMask = self.getObjImage(obj.image, obj.bbox)
-                localFill = scipy.ndimage.binary_fill_holes(objMask)
-                posData.lab[self.getObjSlice(obj.slice)][localFill] = ID
+                if not shift and self.isSegm3D:
+                    rp2D = self.rpCurr2D()
+                    obj = rp2D.get_obj_from_ID(ID)
+                else: # shift hold or 2D from the getgo
+                    obj = posData.rp.get_obj_from_ID(ID)
+
+                localFill = scipy.ndimage.binary_fill_holes(obj.image)
+
+                if not shift and self.isSegm3D:
+                    curr_z = self.zSliceScrollBar.sliderPosition()
+                    posData.lab[curr_z][obj.slice][localFill] = ID
+                else:
+                    posData.lab[obj.slice][localFill] = ID
 
                 # here it is impossible that hole filling overwrites an ID which
                 # otuches border
@@ -5277,22 +5300,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if ID in posData.lab:
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
-                obj = posData.rp.get_obj_from_ID(ID)
-                bbox = obj.bbox
-                objMask = self.getObjImage(obj.image, bbox)
-                preloaded_bbox = self.update_rp_get_bbox(custom_bbox=bbox)
-                
-                localHull = skimage.morphology.convex_hull_image(objMask)
-                hull_lab = posData.lab[self.getObjSlice(obj.slice)][localHull]
-                if preloaded_bbox is not False:
-                    IDs_overwritten = np.unique(hull_lab) # dont have to filter 0, includes original ID
-                hull_lab = ID
-                self.update_rp(preloaded_bbox=preloaded_bbox, specific_IDs=IDs_overwritten,
-                               ) 
-                # here it is better to use the current view as overwritten IDs 
-                # may be large and bbox could escalate quicky. We have to keep
-                # track of IDs_overwritten as rp could be changed of cells which
-                # are outside view range
+                if not shift and self.isSegm3D:
+                    rp2D = self.rpCurr2D()
+                    obj = rp2D.get_obj_from_ID(ID)
+                else:
+                    obj = posData.rp.get_obj_from_ID(ID)
+
+                localHull = skimage.morphology.convex_hull_image(obj.image)
+                if not shift and self.isSegm3D:
+                    curr_z = self.zSliceScrollBar.sliderPosition()
+                    hull_lab = posData.lab[curr_z][obj.slice]
+                else:
+                    hull_lab = posData.lab[obj.slice]
+
+                IDs_overwritten = np.unique(hull_lab[localHull])
+                IDs_overwritten = IDs_overwritten[IDs_overwritten != 0]
+                hull_lab[localHull] = ID
+
+                self.update_rp(use_bbox=True, specific_IDs=IDs_overwritten)
                 self.updateAllImages()
 
                 if not self.hullContToolButton.findChild(QAction).isChecked():
@@ -5306,29 +5331,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             x, y = event.pos().x(), event.pos().y()
             self.startMovingLabel(x, y)
 
-        # Fill holes
-        elif right_click and self.fillHolesToolButton.isChecked():
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
-            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
-            if ID == 0:
-                nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
-                )
-                clickedBkgrID = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter here the ID that you want to '
-                         'fill the holes of',
-                    parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID),
-                    isInteger=True
-                )
-                clickedBkgrID.exec_()
-                if clickedBkgrID.cancel:
-                    return
-                else:
-                    ID = clickedBkgrID.EntryID
+        # # Fill holes
+        # elif right_click and self.fillHolesToolButton.isChecked():
+        #     x, y = event.pos().x(), event.pos().y()
+        #     xdata, ydata = int(x), int(y)
+        #     ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+        #     if ID == 0:
+        #         nearest_ID = core.nearest_nonzero_2D(
+        #             self.get_2Dlab(posData.lab), y, x
+        #         )
+        #         clickedBkgrID = apps.QLineEditDialog(
+        #             title='Clicked on background',
+        #             msg='You clicked on the background.\n'
+        #                  'Enter here the ID that you want to '
+        #                  'fill the holes of',
+        #             parent=self, allowedValues=posData.IDs,
+        #             defaultTxt=str(nearest_ID),
+        #             isInteger=True
+        #         )
+        #         clickedBkgrID.exec_()
+        #         if clickedBkgrID.cancel:
+        #             return
+        #         else:
+        #             ID = clickedBkgrID.EntryID
 
         # Merge IDs
         elif right_click and self.mergeIDsButton.isChecked():
@@ -5358,7 +5383,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.storeUndoRedoStates(False)
             self.firstID = ID
             
-            centroid = posData.rp.get_centroid(ID)
+            centroid = posData.rp.get_centroid(ID) # maybe use 2D centroid here?
             yc, xc = self.getObjCentroid(centroid)
             self.clickObjYc, self.clickObjXc = int(yc), int(xc)
 
@@ -5692,7 +5717,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         expandedLab[self.currentLab2D>0] = 0
 
         # Get coords of the dilated/eroded object
-        expandedObj = skimage.measure.regionprops(expandedLab)[0]
+        expandedObj = regionprops.acdcRegionprops(expandedLab, precache_centroids=False)[0]
         expandedObj_bbox = expandedObj.bbox
         expandedObjCoords = (expandedObj.coords[:,-2], expandedObj.coords[:,-1])
 
@@ -6951,13 +6976,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.isMouseDragImg1 = False
 
             self.clearTempBrushImage()
+
+            erasedIDs = [ID for ID in self.erasedIDs if ID != 0]
         
             # Update data (rp, etc)
-            self.update_rp(use_curr_view=True) # only visible stuff can be deleted
+            self.update_rp(
+                use_curr_view=True,
+                specific_IDs=erasedIDs or None,
+            ) # only visible stuff can be deleted
 
             doUpdateImages = self.checkWarnDeletedIDwithEraser()
             
-            if doUpdateImages:
+            if not doUpdateImages:
                 self.updateAllImages()
 
         # Brush button mouse release
@@ -9017,7 +9047,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             rp = posData.allData_li[frame_i]['regionprops']
             if rp is None:
                 lab = posData.segm_data[frame_i]
-                rp = regionprops.acdcRegionprops(lab)
+                rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
                 posData.allData_li[frame_i]['regionprops'] = rp
             if searchedID in rp.IDs:
                 frame_i_found = frame_i
@@ -10185,7 +10215,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xxA, yyA = xx[::n], yy[::n]
             rr, cc = skimage.draw.polygon(yyA, xxA)
             self.autoContObjMask[rr, cc] = 1
-            rp = skimage.measure.regionprops(self.autoContObjMask)
+            rp = regionprops.acdcRegionprops(
+                self.autoContObjMask, precache_centroids=False
+            )
             if not rp:
                 return
             obj = rp[0]
@@ -11859,7 +11891,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         if how.find('contours') != -1:
-            rp_delmask = skimage.measure.regionprops(delMaskID.astype(np.uint8))
+            rp_delmask = regionprops.acdcRegionprops(
+                delMaskID.astype(np.uint8), precache_centroids=False
+            )
             if len(rp_delmask) > 0:
                 obj = rp_delmask[0]
                 self.addObjContourToContoursImage(obj=obj, ax=ax)  
@@ -11929,7 +11963,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             idx = delROIs_info['rois'].index(roi)
             delObjROImask = delROIs_info['delMasks'][idx]
             delIDsROI = delROIs_info['delIDsROI'][idx]   
-            delROIlabRp = skimage.measure.regionprops(out_lab)
+            delROIlabRp = regionprops.acdcRegionprops(
+                out_lab, precache_centroids=False
+            )
             for delObj in delROIlabRp:
                 isDelObj = np.any(ROImask[delObj.slice][delObj.image])
                 if not isDelObj:
@@ -12944,7 +12980,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.addExistingDelROIs()
             self.isFirstTimeOnNextFrame()
             self.setEnabledCcaToolbar(enabled=False)
-            self.clearComputedContours()
             self.realTimeTrackingToggle.setDisabled(False)
             self.realTimeTrackingToggle.label.setDisabled(False)
             if posData.cca_df is not None:
@@ -12961,7 +12996,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
-            self.computeAllContours()
             # RAWR!!!!!
             # self.computeAllObjToObjCostPairs()
             if proceed:
@@ -12985,7 +13019,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.navigateScrollBar.setMaximum(posData.SizeT)
             self.navSpinBox.setMaximum(posData.SizeT)
             self.clearGhost()
-            self.computeAllContours()
         elif mode == 'Custom annotations':
             self.setAutoSaveAnnotationsEnabled(True)
             self.setSwitchViewedPlaneDisabled(True)
@@ -12998,14 +13031,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.annotateToolbar.setVisible(True)
             self.clearGhost()
             self.doCustomAnnotation(0)
-            self.computeAllContours()
         elif mode == 'Snapshot':
             self.setAutoSaveAnnotationsEnabled(True)
             self.setSwitchViewedPlaneDisabled(False)
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
             self.doCustomAnnotation(0)
-            self.clearComputedContours()
         elif mode == 'Normal division: Lineage tree': # Mode activation for lineage tree
             # self.startLinTreeIntegrityCheckerWorker() # need to replace (postponed)
             proceed = self.initLinTree()
@@ -13662,7 +13693,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 regionLab = transformation.clear_objects_not_in_mask(
                     regionLab, mask
                 )
-                regionRp = skimage.measure.regionprops(regionLab)
+                regionRp = regionprops.acdcRegionprops(
+                    regionLab, precache_centroids=False
+                )
                 for obj in regionRp:
                     if np.all(mask[obj.slice][obj.image]):
                         continue
@@ -13676,7 +13709,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             regionLab[..., ~mask] = 0
         
-        regionRp = skimage.measure.regionprops(regionLab)
+        regionRp = regionprops.acdcRegionprops(
+            regionLab, precache_centroids=False
+        )
         clearIDs = [obj.label for obj in regionRp]
         
         if not clearIDs:
@@ -13895,7 +13930,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 rp = posData.allData_li[frame_i]['regionprops']
                 if rp is None:
                     lab = posData.segm_data[frame_i]
-                    rp = regionprops.acdcRegionprops(lab)
+                    rp = regionprops.acdcRegionprops(
+                        lab, precache_centroids=False
+                    )
                     posData.allData_li[frame_i]['regionprops'] = rp
                     
                 posData.allIDs.update(rp.IDs)
@@ -13947,7 +13984,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         numObjectsCurrentZslice = None
         if 'In current z-slice' in activeCategories:
             numObjectsCurrentZslice = len(
-                skimage.measure.regionprops(self.currentLab2D)
+                regionprops.acdcRegionprops(
+                    self.currentLab2D, precache_centroids=False
+                )
             )
         
         for pos_i, _posData in enumerate(self.data):
@@ -13959,7 +13998,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 numObjectsAllPos += len(IDs)
             else:
                 lab = _posData.segm_data[0]
-                rp = skimage.measure.regionprops(lab)
+                rp = regionprops.acdcRegionprops(
+                    lab, precache_centroids=False
+                )
                 numObjs = len(rp)
                 numObjectsAllPos += numObjs
                 
@@ -17814,7 +17855,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         posData = self.data[self.pos_i]
         lab_mask = (self.currentLab2D>0).astype(np.uint8)
-        rp = skimage.measure.regionprops(lab_mask)
+        rp = regionprops.acdcRegionprops(lab_mask, precache_centroids=False)
         if not rp:
             Y, X = lab_mask.shape
             xRange = -0.5, X+0.5
@@ -21508,7 +21549,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     #             # self.currentLab2D is defined at self.setImageImg2()
     #             lab = self.currentLab2D
     #         lab = self.get_2Dlab(lab)
-    #         rp = skimage.measure.regionprops(lab)
+    #         rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
     #         return rp
     #     else:
     #         return self.data[self.pos_i].rp
@@ -21733,7 +21774,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Requested frame was already visited. Load from RAM.
         never_visited = False
         posData.lab = self.get_labels(from_store=True)
-        # posData.rp = skimage.measure.regionprops(posData.lab)
+        # posData.rp = regionprops.acdcRegionprops(posData.lab, precache_centroids=False)
         posData.rp = posData.allData_li[posData.frame_i]['regionprops']
         df = posData.allData_li[posData.frame_i]['acdc_df']
         if df is None:
@@ -22873,15 +22914,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def removeObjectFromRp(self, delID):
         posData = self.data[self.pos_i]
-        if not isinstance(delIDs, (list, set)):
-            delIDs = [delIDs]
+        if not isinstance(delID, (list, set, tuple)):
+            delIDs = [delID]
+        else:
+            delIDs = list(delID)
             
         posData.rp.update_regionprops_via_deletions(set(delIDs))
         posData.IDs = posData.rp.IDs
-        
-        posData.rp = rp
-        posData.IDs = IDs
-        posData.IDs_idxs = IDs_idxs
         
         if not self.isSegm3D:
             return
@@ -23129,7 +23168,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             printl(f'''Warning: posData.rp is None for pos {self.pos_i}, 
                    frame {posData.frame_i}. Recomputing rp from labels.''')
             
-            posData.rp = regionprops.acdcRegionprops(posData.lab)
+            posData.rp = regionprops.acdcRegionprops(
+                posData.lab, precache_centroids=False
+            )
         
         if assignments is not None:
             # {old_ID: new_ID, ...}
@@ -23443,7 +23484,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
                     lab = posData.segm_data[i]
-                    rp = skimage.measure.regionprops(lab)
+                    rp = regionprops.acdcRegionprops(
+                        lab, precache_centroids=False
+                    )
                     keepLab = self._keepObjects(lab=lab, rp=rp)
                     posData.segm_data[i] = keepLab
                 
@@ -25374,33 +25417,42 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             Y, X = posData.img_data.shape[-2:]
         self.textAnnot[0].initItem((Y, X))
         self.textAnnot[1].initItem((Y, X))  
-    
+
+    def _get_obj_for_current_view_rp(self, obj, posData):
+        # 2D segmentation already has the correct regionprops object.
+        if not self.isSegm3D or not posData.rp.is3D:
+            return obj
+
+        slicing = self.switchPlaneCombobox.depthAxes()
+        zProjHow = self.zProjComboBox.currentText()
+        if zProjHow == 'single z-slice':
+            slice_selector = self.z_lab()
+            slice_number = slice_selector[-1] if isinstance(slice_selector, tuple) else slice_selector
+            obj_current_view = posData.rp.get_obj_from_slice_rp(
+                obj.label, slice_number, slicing=slicing, warn=False
+            )
+            return obj_current_view or obj
+
+        obj_current_view = posData.rp.get_obj_from_proj_rp(
+            obj.label, kind=zProjHow, slicing=slicing, warn=False
+        )
+        return obj_current_view or obj
+
     def getObjContours(
-            self, obj, all_external=False, local=False, force_calc=True,
-            include_internal=False
-        ):
+            self, obj, all_external=False, local=False,
+            include_internal=False, rp=None
+        ):# -> list[NDArray[integer[Any] | floating[Any]]] | Any | list | ...:# -> Any | list[NDArray[integer[Any] | floating[Any]]] | list | ...:
         posData = self.data[self.pos_i]
-        dataDict = posData.allData_li[posData.frame_i]
-        allContours = dataDict.get('contours')    
-        if allContours is not None and not force_calc:
-            z = self.z_lab()
-            key = (obj.label, str(z), all_external, local, include_internal)
-            contours = allContours.get(key)
-            if contours is not None:
-                return contours
-        
-        # obj_image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-        # obj_bbox = self.getObjBbox(obj.bbox)
+        obj_to_use = self._get_obj_for_current_view_rp(obj, posData)
         
         try:
             contours = core.get_obj_contours(
-                obj=obj,
-                # obj_image=obj_image, 
-                # obj_bbox=obj_bbox, 
+                obj=obj_to_use,
                 local=local,
                 all_external=all_external,
                 all=include_internal
             )
+                
         except Exception as e:
             if all_external:
                 contours = []
@@ -25409,97 +25461,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.logger.warning(
                 f'Object ID {obj.label} contours drawing failed. '
                 f'(bounding box = {obj.bbox})'
+                f'Error: {e}'
             )
         return contours
-    
-    def clearComputedContours(self):
-        for posData in self.data:
-            for frame_i, dataDict in enumerate(posData.allData_li):
-                dataDict['contours'] = {}
-
-    def _computeAllContours2D(
-            self, dataDict, obj, z, obj_bbox, include_internal=False
-        ):
-        obj_image = self.getObjImage(obj.image, obj.bbox, z_slice=z)
-        if obj_image is None:
-            return
-
-        # Use cached regionprops contours only for true 2D objects.
-        is_2d_obj = len(obj.bbox) == 4
-            
-        all_external = False
-        local = False
-        if is_2d_obj:
-            contours = core.get_obj_contours(
-                obj=obj,
-                local=local,
-                all_external=all_external
-            )
-        else:
-            contours = core.get_obj_contours(
-                obj_image=obj_image,
-                obj_bbox=obj_bbox,
-                local=local,
-                all_external=all_external
-            )
-        key = (obj.label, str(z), all_external, local, include_internal)
-        dataDict['contours'][key] = contours
-        
-        all_external = True
-        local = False
-        if is_2d_obj and include_internal:
-            contours = core.get_obj_contours(
-                obj=obj,
-                local=local,
-                all_external=all_external,
-                all=include_internal
-            )
-        else:
-            contours = core.get_obj_contours(
-                obj_image=obj_image,
-                obj_bbox=obj_bbox,
-                local=local,
-                all_external=all_external,
-                all=include_internal
-            )
-        key = (obj.label, str(z), all_external, local, include_internal)
-        dataDict['contours'][key] = contours
-
-        return dataDict
-    
-    def computeAllContours(self):
-        self.logger.info('Computing all contours...')
-        posData = self.data[self.pos_i]
-        zz = [None]
-        if self.isSegm3D:
-            zz.extend(range(posData.SizeZ))
-        
-        include_internal = self.showAllContoursToggle.isChecked()
-        for frame_i, dataDict in enumerate(posData.allData_li):
-            lab = dataDict['labels']
-            if lab is None:
-                break
-            
-            rp = dataDict['regionprops']
-            if rp is None:
-                rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
-                dataDict['regionprops'] = rp
-                
-            dataDict['contours'] = {}
-            for obj in rp:
-                obj_bbox = self.getObjBbox(obj.bbox)
-                for z in zz:
-                    if not self.isObjVisible(obj.bbox, z_slice=z):
-                        continue
-                    
-                    try:
-                        self._computeAllContours2D(
-                            dataDict, obj, z, obj_bbox,
-                            include_internal=include_internal
-                        )
-                    except Exception as err:
-                        # Contours computation fails on weird objects
-                        pass
     
     def computeAllObjToObjCostPairs(self):
         desc = (
@@ -25571,9 +25535,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 break
             
             prev_rp = posData.allData_li[frame_i-1]['regionprops']
+            all_contours = {}
+            rp_for_cost = []
+            for obj in rp:
+                try:
+                    cont = self.getObjContours(obj, force_calc=True)
+                except Exception:
+                    continue
+                if cont is None or len(cont) == 0:
+                    continue
+                key = (obj.label, 'None', False, False)
+                all_contours[key] = cont
+                rp_for_cost.append(obj)
+
+            prev_rp_for_cost = None
+            if prev_rp is not None:
+                ids_for_cost = {obj.label for obj in rp_for_cost}
+                prev_rp_for_cost = [
+                    obj for obj in prev_rp if obj.label in ids_for_cost
+                ]
+
+            if len(rp_for_cost) < 2:
+                self.computeAllObjCostPairsWorker.signals.progressBar.emit(1)
+                continue
+
             dist_matrix = core._compute_all_obj_to_obj_contour_dist_pairs(
-                dataDict['contours'], rp, 
-                prev_rp=prev_rp, 
+                all_contours, rp_for_cost,
+                prev_rp=prev_rp_for_cost,
                 restrict_search=True
             )
             dataDict['obj_to_obj_dist_cost_matrix_df'] = dist_matrix
@@ -25628,21 +25616,39 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if isOverlaySegmRightActive: 
             self.labelsLayerRightImg.setImage(currentLab2D, autoLevels=False)
     
-    def getObject2DimageFromZ(self, z, obj):
-        posData = self.data[self.pos_i]
-        z_min = obj.bbox[0]
-        local_z = z - z_min
-        if local_z >= posData.SizeZ or local_z < 0:
-            return
-        return obj.image[local_z]
+    # def getObject2DimageFromZ(self, z, obj):
+    #     posData = self.data[self.pos_i]
+    #     if posData.isSegm3D and posData.rp.is3D:
+    #         try:
+    #             # Use 2D slice regionprops for correct coordinates
+    #             slice_rp = posData.rp.get_slice_rp(z, 'z')
+    #             obj_2d = slice_rp.get_obj_from_ID(obj.label, warn=False)
+    #             if obj_2d is not None:
+    #                 return obj_2d.image
+    #         except (IndexError, AttributeError):
+    #             pass
+    #     z_min = obj.bbox[0]
+    #     local_z = z - z_min
+    #     if local_z >= posData.SizeZ or local_z < 0:
+    #         return
+    #     return obj.image[local_z]
     
-    def getObject2DsliceFromZ(self, z, obj):
-        posData = self.data[self.pos_i]
-        z_min = obj.bbox[0]
-        local_z = z - z_min
-        if local_z >= posData.SizeZ or local_z < 0:
-            return
-        return obj.image[local_z]
+    # def getObject2DsliceFromZ(self, z, obj):
+    #     posData = self.data[self.pos_i]
+    #     if posData.isSegm3D and posData.rp.is3D:
+    #         try:
+    #             # Use 2D slice regionprops for correct coordinates
+    #             slice_rp = posData.rp.get_slice_rp(z, 'z')
+    #             obj_2d = slice_rp.get_obj_from_ID(obj.label, warn=False)
+    #             if obj_2d is not None:
+    #                 return obj_2d.image
+    #         except (IndexError, AttributeError):
+    #             pass
+    #     z_min = obj.bbox[0]
+    #     local_z = z - z_min
+    #     if local_z >= posData.SizeZ or local_z < 0:
+    #         return
+    #     return obj.image[local_z]
 
     def isObjVisible(self, obj_bbox, debug=False, z_slice=None):
         if z_slice is None:
@@ -25683,13 +25689,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # required a projection
                 return obj_image.max(axis=0)
 
-            min_z = obj_bbox[0]
             if z_slice is None:
                 z_slice = self.z_lab()
             if isinstance(z_slice, tuple):
                 z_slice = z_slice[-1]
                 
-            local_z = z_slice - min_z
+            local_z = z_slice - obj_bbox[0]
             try:
                 obi_image_2d = obj_image[local_z]
             except Exception as err:
@@ -26613,7 +26618,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if self.annotContourCheckbox.isChecked():
             try:
-                obj = skimage.measure.regionprops(brushImage)[0]
+                obj = regionprops.acdcRegionprops(
+                    brushImage, precache_centroids=False
+                )[0]
             except IndexError:
                 return
             objContour = [self.getObjContours(obj)]
@@ -26662,7 +26669,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.clearObjFromMask(
                 self.contoursImage, mask, toLocalSlice=toLocalSlice
             )
-            erasedRp = skimage.measure.regionprops(self.erasedLab)
+            erasedRp = regionprops.acdcRegionprops(
+                self.erasedLab, precache_centroids=False
+            )
             for obj in erasedRp:
                 self.addObjContourToContoursImage(obj=obj, ax=ax)
         elif how.find('overlay segm. masks') != -1:
@@ -26694,7 +26703,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def _setTempImgExpandLabelContours(self, prevCoords, ax=0):
         self.contoursImage[prevCoords] = [0,0,0,0]
-        currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
+        currentLab2Drp = regionprops.acdcRegionprops(
+            self.currentLab2D, precache_centroids=False
+        )
         for obj in currentLab2Drp:
             if obj.label == self.expandingID:
                 # self.clearObjContour(obj=obj, ax=ax)
@@ -26721,7 +26732,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             how = self.getAnnotateHowRightImage()
         
         if how.find('contours') != -1:
-            currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
+            currentLab2Drp = regionprops.acdcRegionprops(
+                self.currentLab2D, precache_centroids=False
+            )
             for obj in currentLab2Drp:
                 if obj.label == self.movingID:
                     self.addObjContourToContoursImage(obj=obj, ax=ax)
@@ -27327,7 +27340,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             contours = self.getObjContours(
                 obj,
                 all_external=True,
-                force_calc=False,
                 include_internal=self.showAllContoursToggle.isChecked()
             )
             for cont in contours:
@@ -27342,7 +27354,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 contours = self.getObjContours(
                     obj,
                     all_external=True,
-                    force_calc=False,
                     include_internal=self.showAllContoursToggle.isChecked()
                 )
             for cont in contours:
@@ -27537,7 +27548,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.initManualBackgroundImage()
         
         contours = []
-        for obj in skimage.measure.regionprops(posData.manualBackgroundLab):    
+        for obj in regionprops.acdcRegionprops(
+            posData.manualBackgroundLab, precache_centroids=False
+        ):
             obj_contours = self.getObjContours(
                 obj,
                 all_external=True,
@@ -27617,7 +27630,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if posData.manualBackgroundLab is None:
             self.initManualBackgroundImage()
         
-        for obj in skimage.measure.regionprops(posData.manualBackgroundLab):
+        for obj in regionprops.acdcRegionprops(
+            posData.manualBackgroundLab, precache_centroids=False
+        ):
             textItem = pg.TextItem(text='', color='r', anchor=(0.5, 0.5))
             if obj.label in self.manualBackgroundTextItems:
                 continue
@@ -27636,15 +27651,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         contours = []
         posData = self.data[self.pos_i]
         rp = posData.rp
+        use_local_rp = (
+            self.isSegm3D
+            and self.zProjComboBox.currentText() == 'single z-slice'
+        )
         if rp is None:
             lab = self.currentLab2D
             rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
-            posData.rp = rp
+            if not use_local_rp:
+                posData.rp = rp
+        elif use_local_rp and rp.is3D:
+            rp = self.rpCurr2D()
+
         for obj in rp:    
             obj_contours = self.getObjContours(
                 obj, 
                 all_external=True, 
-                force_calc=False,
                 include_internal=self.showAllContoursToggle.isChecked()
             )  
             contours.extend(obj_contours)
@@ -27895,7 +27917,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for obj in posData.rp:
             if obj.label not in IDsCellsG1:
                 continue
-            objContours = self.getObjContours(obj, force_calc=False)
+            objContours = self.getObjContours(obj)
             if objContours is not None:
                 xx = objContours[:,0] + 0.5
                 yy = objContours[:,1] + 0.5
@@ -27943,7 +27965,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         contours = self.getObjContours(
             obj,
             all_external=True,
-            force_calc=False,
             include_internal=self.showAllContoursToggle.isChecked()
         )
         if thickness is None:
@@ -28004,8 +28025,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return delROIsIDs
     
     def setAllContoursImages(self, delROIsIDs=None, compute=True):
-        if compute:
-            self.computeAllContours()
         self.updateContoursImage(ax=0, delROIsIDs=delROIsIDs, compute=compute) #almost all from here
         self.updateContoursImage(ax=1, delROIsIDs=delROIsIDs, compute=compute)
 
@@ -28253,31 +28272,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         return lab, delMask
     
-    def removeStoredContours(self, delID, frame_i=None, z_slice=None):
-        posData = self.data[self.pos_i]
-        
-        if frame_i is None:
-            frame_i = posData.frame_i
-            
-        dataDict = posData.allData_li[posData.frame_i]
-        try:
-            newContours = {}
-            for key, contours in dataDict['contours'].items():
-                ID = key[0]
-                if ID == delID:
-                    continue
-                
-                if z_slice is not None:
-                    z_slice_i = key[1]
-                    if z_slice_i != z_slice:
-                        continue
-                
-                newContours[key] = contours
-            
-            dataDict['contours'] = newContours
-        except KeyError as err:
-            pass
-    
     @disableWindow
     def deleteIDmiddleClick(
             self, delIDs: Iterable, applyFutFrames, includeUnvisited,
@@ -28336,7 +28330,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.clearObjContour(ID=_delID, ax=1)  
             if z_slice is None:
                 self.removeObjectFromRp(_delID)    
-            self.removeStoredContours(_delID, z_slice=z_slice) 
         
         if shift and self.isSegm3D:
             self.update_rp()
@@ -28381,7 +28374,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             imageItem, contoursItem, gradItem = items
             contoursItem.clear()
             if drawMode == 'Draw contours':
-                for obj in skimage.measure.regionprops(ol_lab): #TODO contour opt
+                for obj in regionprops.acdcRegionprops(
+                    ol_lab, precache_centroids=False
+                ):
                     contours = self.getObjContours(
                         obj,
                         all_external=True,
@@ -28587,7 +28582,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             frame_i=prev_frame_i,
             return_copy=False
         )
-        rp = regionprops.acdcRegionprops(prev_lab)
+        rp = regionprops.acdcRegionprops(
+            prev_lab, precache_centroids=False
+        )
         posData.allData_li[prev_frame_i]['regionprops'] = rp
         prevIDs = rp.IDs
         return prevIDs
@@ -28750,7 +28747,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             maxID = max(posData.IDs, default=1)
         for obj in rp:
             lab_obj = skimage.measure.label(obj.image)
-            rp_lab_obj = skimage.measure.regionprops(lab_obj)
+            rp_lab_obj = regionprops.acdcRegionprops(
+                lab_obj, precache_centroids=False
+            )
             if len(rp_lab_obj)<=1:
                 continue
             lab_obj += maxID
@@ -32238,7 +32237,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         
         zoomLab = skimage.segmentation.clear_border(lab[zoomSlice])
-        zoomRp = skimage.measure.regionprops(zoomLab)
+        zoomRp = regionprops.acdcRegionprops(
+            zoomLab, precache_centroids=False
+        )
         zoomIDs = [obj.label for obj in zoomRp]
         return zoomIDs
     

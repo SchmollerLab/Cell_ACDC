@@ -447,8 +447,8 @@ Edit tools: Segmentation and tracking
     * Note: right-click on a background ROI to remove it.
     * HELP: Use this function if you need to set the background level specific for each object. Cell-ACDC will save the metrics `amount`, `concentration` and `corrected_mean` where the background correction will be performed by subtracting the mean of the signal in the background ROI (for each object).
 * **Delete everything outside segmented areas (** |delObjsOutSegmMaskAction| **):** Select a segmentation file and delete everything outside segmented area.
-* **Hull contour (** |hullContToolButton| **"K"):** Right-click on a cell to replace it with its hull contour. Use it to fill cracks and holes.
-* **Fill holes (** |fillHolesToolButton| **"F"):** Right-click on a cell to fill holes.
+* **Hull contour (** |hullContToolButton| **"K"):** Right-click on a cell to replace it with its hull contour. Use it to fill cracks and holes. Shift right click fill holes of the entire 3D object.
+* **Fill holes (** |fillHolesToolButton| **"F"):** Right-click on a cell to fill holes. Shift right click fill holes of the entire 3D object.
 * **Move object mask (** |moveLabelToolButton| **"P"):** Right-click drag and drop a labels to move it around.
 * **Expand/Shrink object mask (** |expandLabelToolButton| **"E"):** Leave mouse cursor on the label you want to expand/shrink and press arrow up/down on the keyboard to expand/shrink the mask.
 * **Edit ID (** |editIDbutton| **"N"):** Manually change ID of a cell by right-clicking on cell. When working with 3D segmentation masks, the default behaviour is to edit the ID in all z-slices. To edit the ID only on the viewed z-slice, hold "Shift" while right-clicking.
