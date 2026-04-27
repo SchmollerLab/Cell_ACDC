@@ -370,12 +370,7 @@ class acdcRegionprops:
         return rp.get_obj_from_ID(ID, warn=warn)
 
     def get_obj_from_proj_rp(self, ID, kind='max', slicing='z', warn=True):
-        if kind.startswith('max'):
-            kind = 'max'
-        elif kind.startswith('mean'):
-            kind = 'mean'
-        elif kind.startswith('median'):
-            kind = 'median' 
+        kind = self._normalize_projection_kind(kind)
         rp = self.get_proj_rp(kind=kind, slicing=slicing)
         return rp.get_obj_from_ID(ID, warn=warn)
 
@@ -407,11 +402,22 @@ class acdcRegionprops:
         return axis_map[slicing]
 
     def _normalize_projection_kind(self, kind):
-        kind = str(kind).lower()
-        if kind not in ('max', 'mean', 'median'):
+        kind = str(kind).lower().strip()
+        kind_norm = kind.replace('-', ' ').replace('_', ' ')
+
+        if kind_norm.startswith('max'):
+            return 'max'
+        if kind_norm.startswith('mean'):
+            return 'mean'
+        if kind_norm.startswith('median'):
+            return 'median'
+        if kind_norm.startswith('most common') or kind_norm.startswith('mode'):
+            return 'most_common'
+
+        if kind not in ('max', 'mean', 'median', 'most_common'):
             raise ValueError(
                 f'Invalid projection kind "{kind}". '
-                'Valid options are "max", "mean", and "median".'
+                'Valid options are "max", "mean", "median", and "most_common".'
             )
         return kind
 
@@ -463,6 +469,15 @@ class acdcRegionprops:
         kind = self._normalize_projection_kind(kind)
         if kind == 'max':
             return np.max(lab, axis=axis)
+
+        if kind == 'most_common':
+            moved = np.moveaxis(lab, axis, 0)
+            flat = moved.reshape(moved.shape[0], -1)
+            projected_flat = np.empty(flat.shape[1], dtype=lab.dtype)
+            for i in range(flat.shape[1]):
+                values, counts = np.unique(flat[:, i], return_counts=True)
+                projected_flat[i] = values[np.argmax(counts)]
+            return projected_flat.reshape(moved.shape[1:])
 
         if kind == 'mean':
             projected = np.mean(lab, axis=axis)

@@ -132,6 +132,27 @@ def test_projection_regionprops_are_lazy_and_initialized_on_access():
     assert zmax.get_obj_from_ID(4) is not None
 
 
+def test_projection_regionprops_support_most_common_kind():
+    lab = np.array(
+        [
+            [[0, 1], [2, 2]],
+            [[0, 1], [2, 3]],
+            [[4, 1], [0, 3]],
+        ],
+        dtype=np.uint16,
+    )
+
+    rp = acdcRegionprops(lab)
+    most_common = rp.get_proj_rp(kind='most common', slicing='z')
+
+    expected = np.array(
+        [[0, 1], [2, 3]],
+        dtype=np.uint16,
+    )
+    np.testing.assert_array_equal(most_common.lab, expected)
+    assert rp.get_obj_from_proj_rp(3, kind='most common z-projection', warn=False) is not None
+
+
 def test_get_obj_from_id_for_stored_slice_and_projection_rps():
     lab = np.zeros((4, 8, 8), dtype=np.uint16)
     lab[1:3, 2:5, 3:6] = 2

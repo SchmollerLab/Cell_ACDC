@@ -25434,7 +25434,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return obj_current_view or obj
 
         obj_current_view = posData.rp.get_obj_from_proj_rp(
-            obj.label, kind=zProjHow, slicing=slicing, warn=False
+            obj.label, kind='most_common', slicing=slicing, warn=False
         )
         return obj_current_view or obj
 
