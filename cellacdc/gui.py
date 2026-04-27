@@ -240,7 +240,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.original_df_lin_tree = None
         self.original_df_lin_tree_i = None
 
-    def setTooltips(self): #laoding tooltips for GUI from .\Cell_ACDC\docs\source\tooltips.rst
+    def setTooltips(self):
         tooltips = load.get_tooltips_from_docs()
 
         for key, tooltip in tooltips.items():
@@ -2469,7 +2469,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         menus = {}
         
         for toolName in allToolsList:
-            menus[toolName] = self.settingsMenu.addMenu(f'{toolName} tool')
+            menuItemText = f'{toolName} tool'.replace('  ', ' ')
+            menus[toolName] = self.settingsMenu.addMenu(menuItemText)
             
         self.keepToolActiveActions = dict()
         self.applyToolNewFrameActions = dict()
@@ -7116,11 +7117,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.assignBudMothButton.setChecked(False)
                     msg = widgets.myMessageBox()
                     txt = (
-                        f'You clicked FIRST on ID {budID} and then on {new_mothID}.\n'
+                        f'You clicked FIRST on ID {budID} and then on {new_mothID}.<br>'
                         f'For me this means that you want ID {budID} to be the '
-                        f'BUD of ID {new_mothID}.\n'
+                        f'BUD of ID {new_mothID}.<br>'
                         f'However <b>ID {budID} is bigger than {new_mothID}</b> '
-                        f'so maybe you shoul have clicked FIRST on {new_mothID}?\n\n'
+                        f'so maybe you should have clicked FIRST on {new_mothID}?<br><br>'
                         'What do you want me to do?'
                     )
                     txt = html_utils.paragraph(txt)
@@ -17212,11 +17213,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             **self.standardPostProcessKwargs,
             **self.customPostProcessFeatures
         }
-        posData.saveSegmHyperparams(
-            model_name, win.init_kwargs, win.model_kwargs,
-            post_process_params=post_process_params,
-            preproc_recipe=self.preproc_recipe
-        )
+        if askSegmParams:
+            posData.saveSegmHyperparams(
+                model_name, win.init_kwargs, win.model_kwargs,
+                post_process_params=post_process_params,
+                preproc_recipe=self.preproc_recipe
+            )
 
         if self.askRepeatSegment3D:
             self.segment3D = False
@@ -29279,36 +29281,93 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateAllImages()
         self.logger.info('Annotations correctly recovered.')
 
-    def warnUserCreationImagesFolder(self, images_path):
-        msg = widgets.myMessageBox(wrapText=False)
+    def askUserChannelName(self, filename_no_ext, ext):
+        help_txt = html_utils.paragraph(f"""
+            Cell-ACDC requires that every image file has a basename and some 
+            additional text, typically the channel name.<br><br>
+            The basename will be common to all created files, while the additional text is used to identify the image files.
+        """)
+
+        basename = filename_no_ext
+        underscore_splits = filename_no_ext.split('_')
+        if len(underscore_splits) > 1:
+            channel_name = underscore_splits[-1]
+            basename = '_'.join(underscore_splits[:-1])
+        else:
+            channel_name = 'channel_1'
+        
         txt = html_utils.paragraph(f"""
+            Provide some text (e.g., the channel name) to append at the end of the image file.
+        """)
+        win = apps.filenameDialog(
+            basename=basename,
+            ext=ext,
+            hintText=txt,
+            defaultEntry=channel_name,
+            helpText=help_txt, 
+            allowEmpty=False,
+            parent=self,
+            title='Provide channel name for image file',
+        )
+        win.exec_()
+        if win.cancel:
+            return False, ''
+
+        return True, win.entryText
+    
+    def warnUserCreationImagesFolder(self, images_path, ext):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = (f"""
             Cell-ACDC requires a specific folder structure to load the data.<br><br>
             Specifically, it requires the <b>image(s) to be located in a
             folder called <code>Images</code></b>.<br><br>
-            The <b>file format</b> of the images must be <b>TIFF</b> (.tif extension).<br><br>
+            The <b>file format</b> of the images must be <b>TIFF or NPZ</b> 
+            (.tif or .npz extension).<br><br>
             You can choose to let Cell-ACDC create the required data structure 
-            from your file, or you can stop the 
+            from your file,<br>
+            or you can stop the 
             process and manually place the image(s) into a folder called 
             <code>Images</code>.<br><br>
             If you choose to proceed, Cell-ACDC will create the following 
-            folder:<br><br>
-            <code>{images_path}</code>
-            <br><br>
-            How do you want to proceed?
+            folder:
+            <copiable>{images_path}</copiable>
+            <br>
         """)
-        copyButton = widgets.copyPushButton('Copy the image into the new folder')
-        moveButton = widgets.movePushButton('Move the image into the new folder')
-        _, copyButton, moveButton = msg.warning(
-            self, 'Creating Images folder', txt, 
-            buttonsTexts=('Cancel', copyButton, moveButton)
-        )
-        if msg.cancel:
-            return False, None
+        
+        if ext == '.tif' or ext == '.npz':
+            txt = f'{txt}How do you want to proceed?'
+        else:
+            txt = f'{txt}Do you want to proceed?'
+        txt = html_utils.paragraph(txt)
+        
+        if ext == '.tif' or ext == '.npz':
+            copyButton = widgets.copyPushButton(
+                'Copy the image into the new folder'
+            )
+            moveButton = widgets.movePushButton(
+                'Move the image into the new folder'
+            )
+            _, copyButton, moveButton = msg.information(
+                self, 'Creating Images folder', txt, 
+                buttonsTexts=('Cancel', copyButton, moveButton)
+            )
+            if msg.cancel:
+                return False, None
 
-        if msg.clickedButton == copyButton:
+            if msg.clickedButton == copyButton:
+                return True, True
+            elif msg.clickedButton == moveButton:
+                return True, False
+        
+        else:
+            msg.information(
+                self, 'Creating Images folder', txt, 
+                buttonsTexts=('Cancel', 'Yes, proceed')
+            )
+            if msg.cancel:
+                return False, None
+            
             return True, True
-        elif msg.clickedButton == moveButton:
-            return True, False
 
     @exception_handler
     def _openFile(self, file_path=None):
@@ -29323,34 +29382,72 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 ";;All Files (*)")[0]
             if not file_path:
                 return
+        
+        filename, ext = os.path.splitext(os.path.basename(file_path))
+        ext = ext.lower()
         dirpath = os.path.dirname(file_path)
         dirname = os.path.basename(dirpath)
+        filename = filename.rstrip('_')
+        channel_name = None
         do_copy = True
         if dirname != 'Images':
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             acdc_folder = f'{timestamp}_acdc'
             exp_path = os.path.join(dirpath, acdc_folder, 'Images')
-            proceed, do_copy = self.warnUserCreationImagesFolder(exp_path)
+            proceed, do_copy = self.warnUserCreationImagesFolder(exp_path, ext)
             if not proceed:
-                self.logger.info('Loading image file aborted.')
+                self.logger.info('Loading image file cancelled.')
                 return
+            
+            proceed, channel_name = self.askUserChannelName(
+                filename, '.tif'
+            )
+            if not proceed:
+                self.logger.info('Loading image file cancelled.')
+                return
+            
             os.makedirs(exp_path, exist_ok=True)
         else:
             exp_path = dirpath
 
-        filename, ext = os.path.splitext(os.path.basename(file_path))
+        if channel_name is not None:
+            # Check if user wants to use the existing channel name
+            underscore_splits = filename.split('_')
+            if len(underscore_splits) > 1:
+                default_ch_name = underscore_splits[-1]
+                if channel_name == default_ch_name:
+                    filename = '_'.join(underscore_splits[:-1])
+                    
+            basename = f'{filename}_'
+            new_filename = f'{filename}_{channel_name}{ext}'
+            df_metadata = pd.DataFrame({
+                'Description': ['basename'],
+                'values': [basename]
+            })
+            metadata_csv_filename = f'{basename}metadata.csv'
+            metadata_csv_filepath = os.path.join(
+                exp_path, metadata_csv_filename
+            )
+            df_metadata.to_csv(metadata_csv_filepath, index=False)
+        else:
+            new_filename = f'{filename}{ext}'
+        
+        if do_copy:
+            action_text = 'Copying'
+        else:
+            action_text = 'Moving'
+        
         if ext == '.tif' or ext == '.npz':
-            filename_ext = os.path.basename(file_path)
-            new_filepath = os.path.join(exp_path, filename_ext)
+            new_filepath = os.path.join(exp_path, new_filename)
             if not os.path.exists(new_filepath):
-                self.logger.info('Copying file to Image folder...')
+                self.logger.info(f'{action_text} file to Images folder...')
                 if do_copy:
                     shutil.copy2(file_path, new_filepath)
                 else:
                     shutil.move(file_path, new_filepath)
             self._openFolder(exp_path=exp_path, imageFilePath=new_filepath)
         else:
-            self.logger.info('Copying file to .tif format...')
+            self.logger.info(f'{action_text} file to .tif format...')
             data = load.loadData(file_path, '', log_func=self.logger.info)
             data.loadImgData()
             img = data.img_data
@@ -29363,7 +29460,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         data.img_data, cv2.COLOR_RGBA2GRAY
                     )
                 data.img_data = skimage.img_as_ubyte(data.img_data)
-            tif_path = os.path.join(exp_path, f'{filename}.tif')
+            new_filename_no_ext, ext = os.path.splitext(new_filename)
+            tif_filename = f'{new_filename_no_ext}.tif'
+            tif_path = os.path.join(exp_path, tif_filename)
             if data.img_data.ndim == 3:
                 SizeT = data.img_data.shape[0]
                 SizeZ = 1
