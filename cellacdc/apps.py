@@ -1621,7 +1621,7 @@ class filenameDialog(QDialog):
         if len(characters) > 1:
             statement = 'are <b>not valid</b> chracters'
             
-        characters_str = ', '.join(characters)
+        characters_str = ''.join(characters)
         characters_str = html.escape(characters_str)
         warning_text = html_utils.span(f"""
             WARNING: "<code>{characters_str}</code>" {statement}.<br> 
