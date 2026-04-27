@@ -13,6 +13,7 @@ def _check_install_bioio_bioformats(qparent=None):
         'scyjava',
         installer='conda', 
         is_cli=qparent is None,
+        exact_version='1.10.2'
         parent=qparent
     )
     
@@ -20,6 +21,10 @@ def _check_install_bioio_bioformats(qparent=None):
         'bioio-bioformats',
         installer='pip', 
         is_cli=qparent is None,
+        min_version='1.0.0',
+        max_version='2.0.0',
+        include_higher_version=False,
+        include_lower_version=True,
         parent=qparent
     )
     
