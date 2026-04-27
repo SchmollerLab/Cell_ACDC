@@ -3130,6 +3130,24 @@ def check_pkg_version(import_pkg_name, min_version, include_lower_version, raise
     else:
         return is_version_correct
 
+def check_pkg_exact_version(import_pkg_name, version: str, raise_err=True):
+    is_version_correct = False
+    try:
+        installed_version = get_package_version(import_pkg_name)
+        is_version_correct = (
+            packaging_version.parse(installed_version) 
+            == packaging_version.parse(version)
+        )
+    except Exception as err:
+        is_version_correct = False
+    
+    if raise_err and not is_version_correct:
+        raise ModuleNotFoundError(
+            f'{import_pkg_name}=={version} not installed.'
+        )
+    else:
+        return is_version_correct
+
 def check_pkg_max_version(
         import_pkg_name, max_version, include_higher_version, raise_err=True
     ):
@@ -3304,6 +3322,7 @@ def check_install_package(
         upgrade=False, 
         min_version='', 
         max_version='',
+        exact_version='',
         install_dependencies=True,
         return_outcome=False,
         installer: Literal['pip', 'conda']='pip',
@@ -3351,6 +3370,9 @@ def check_install_package(
         If not empty it must be a valid version `major[.minor][.patch]` where 
         minor and patch are optional. If the installed package is newer the 
         upgrade will be forced. 
+    exact_version : str, optional
+        If not empty, install this exact version. It must be a valid 
+        `major[.minor][.patch]`.
     install_dependencies : bool, optional
         If False, the `--no-deps` flag will be added to the pip command.
     return_outcome : bool, optional
@@ -3383,16 +3405,26 @@ def check_install_package(
             upgrade = True
             raise ModuleNotFoundError(
                 f'User requested to forcefully upgrade the package "{pkg_name}"')
+        if exact_version:
+            check_pkg_exact_version(import_pkg_name, exact_version)
         if min_version:
             check_pkg_version(import_pkg_name, min_version, include_lower_version)
         if max_version:
             check_pkg_max_version(import_pkg_name, max_version, include_higher_version)
     except ModuleNotFoundError:
         proceed = _install_package_msg(
-            pkg_name, note=note, parent=parent, upgrade=upgrade,
-            is_cli=is_cli, caller_name=caller_name, logger_func=logger_func,
-            pkg_command=pypi_name, max_version=max_version, 
-            min_version=min_version, installer=installer,
+            pkg_name, 
+            note=note, 
+            parent=parent, 
+            upgrade=upgrade,
+            is_cli=is_cli, 
+            caller_name=caller_name, 
+            logger_func=logger_func,
+            pkg_command=pypi_name, 
+            max_version=max_version, 
+            min_version=min_version,
+            exact_version=exact_version,
+            installer=installer,
             include_higher_version=include_higher_version,
             include_lower_version=include_lower_version
         )
@@ -3419,6 +3451,7 @@ def check_install_package(
             else:
                 pkg_command = _get_pkg_command_pip_install(
                     pkg_name, 
+                    exact_version=exact_version,
                     max_version=max_version, 
                     min_version=min_version,
                     including_higher_version=include_higher_version,
@@ -3539,15 +3572,18 @@ def download_fiji(logger_func=print):
 
 def _install_package_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC',
-        is_cli=False, pkg_command='', logger_func=print, max_version='', 
-        min_version='', installer: Literal['pip', 'conda']='pip',
+        is_cli=False, pkg_command='', logger_func=print, 
+        exact_version='', max_version='', min_version='', 
+        installer: Literal['pip', 'conda']='pip',
         include_higher_version: bool = False,
         include_lower_version: bool = False
     ):
     if is_cli:
         proceed = _install_package_cli_msg(
             pkg_name, note=note, upgrade=upgrade, caller_name=caller_name,
-            pkg_command=pkg_command, max_version=max_version, 
+            pkg_command=pkg_command, 
+            exact_version=exact_version,
+            max_version=max_version, 
             min_version=min_version, logger_func=logger_func, 
             installer=installer,
             include_higher_version=include_higher_version,
@@ -3557,6 +3593,7 @@ def _install_package_msg(
         proceed = _install_package_gui_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade, 
             caller_name=caller_name, pkg_command=pkg_command,
+            exact_version=exact_version,
             max_version=max_version, min_version=min_version, 
             logger_func=logger_func, installer=installer,
             including_higher_version=include_higher_version,
@@ -3652,8 +3689,17 @@ def _install_pytorch_cli(
         cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
         subprocess.check_call([sys.executable, *cmd_list], shell=True)
 
-def _get_pkg_command_pip_install(pkg_command, max_version='', min_version='',
-                                 including_lower_version=False, including_higher_version=False):
+def _get_pkg_command_pip_install(
+        pkg_command, 
+        exact_version='',
+        max_version='', 
+        min_version='',
+        including_lower_version=False, 
+        including_higher_version=False
+    ):
+    if exact_version:
+        pkg_command = f'{pkg_command}=={exact_version}'
+        return pkg_command
     
     if including_higher_version:
         sign_max = "<="
@@ -3670,11 +3716,12 @@ def _get_pkg_command_pip_install(pkg_command, max_version='', min_version='',
     
     if max_version:
         pkg_command = f'{pkg_command}{sign_max}{max_version}'
+        
     return pkg_command
 
 def _install_package_cli_msg(
         pkg_name, note='', upgrade=False, caller_name='Cell-ACDC',
-        logger_func=print, pkg_command='', max_version='', 
+        logger_func=print, pkg_command='', exact_version='', max_version='', 
         min_version='', installer: Literal['pip', 'conda']='pip',
         include_lower_version=False,
         include_higher_version=False
@@ -3683,7 +3730,8 @@ def _install_package_cli_msg(
         pkg_command = pkg_name
     
     pkg_command = _get_pkg_command_pip_install(
-        pkg_command, max_version=max_version, min_version=min_version,
+        pkg_command, exact_version=exact_version, 
+        max_version=max_version, min_version=min_version,
         including_lower_version=include_lower_version,
         including_higher_version=include_higher_version
     )
@@ -3726,7 +3774,8 @@ def _install_package_cli_msg(
         
 def _install_package_gui_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC', 
-        pkg_command='', logger_func=None, max_version='', min_version='',
+        pkg_command='', logger_func=None, exact_version='', 
+        max_version='', min_version='',
         including_lower_version=False, including_higher_version=False,
         installer: Literal['pip', 'conda']='pip'
     ):
@@ -3742,7 +3791,8 @@ def _install_package_gui_msg(
         pkg_command = pkg_name
     
     pkg_command = _get_pkg_command_pip_install(
-        pkg_command, max_version=max_version, min_version=min_version,
+        pkg_command, exact_version=exact_version,
+        max_version=max_version, min_version=min_version,
         including_lower_version=including_lower_version,
         including_higher_version=including_higher_version
     )
