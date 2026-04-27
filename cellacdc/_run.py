@@ -90,7 +90,7 @@ def _install_tables(parent_software='Cell-ACDC'):
                     )
                     print('-'*100)
                 
-                import pdb; pdb.set_trace()
+                # import pdb; pdb.set_trace()
                 try:
                     subprocess.check_call(alt_cmd_args2, shell=alt_shell)
                     break

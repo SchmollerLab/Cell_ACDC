@@ -204,10 +204,32 @@ def _run_ffmpeg(ffmep_exec_path, command_args):
         args_ffmpeg_executable = [f'chmod 755 {ffmpeg_exec_path}']
         subprocess.check_call(args_ffmpeg_executable, shell=True)
 
-    try:
-        ffmpeg_args = ['ffmpeg', *command_args]
-        subprocess.check_call(ffmpeg_args, shell=True)
-    except Exception as err:
-        ffmpeg_args = ['ffmpeg', *command_args_no_quotes]
-        args = ' '.join(ffmpeg_args)
-        subprocess.check_call(args, shell=True)
+    command_str = ' '.join(command_args)
+    command_no_quotes_str = ' '.join(command_args_no_quotes)
+    
+    commands_to_try = (
+        ['ffmpeg', *command_args], 
+        ['ffmpeg', *command_args_no_quotes],
+        f'ffmpeg {command_str}',
+        f'ffmpeg {command_no_quotes_str}',
+        [ffmpeg_exec_path, *command_args], 
+        [ffmpeg_exec_path, *command_args_no_quotes],
+        f'{ffmpeg_exec_path} {command_str}',
+        f'{ffmpeg_exec_path} {command_no_quotes_str}',
+    )
+    for command in commands_to_try:
+        print(
+            f'{separator}\n'
+            f'Attempting conversion to MP4 with the following command:\n\n'
+            f'`{command}`\n'
+            f'{separator}'
+        )
+        try:
+            subprocess.check_call(command, shell=True)
+            break
+        except Exception as err:
+            print(
+                f'{separator}\n'
+                f'[ERROR]: {err}\n'
+                f'{separator}'
+            )

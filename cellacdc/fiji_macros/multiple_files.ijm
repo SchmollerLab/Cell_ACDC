@@ -9,6 +9,7 @@ run("Bio-Formats Macro Extensions");
 
 //Dialog folder and get file list
 id = ...;
+dst_folderpath = ...;
 files_folder = id;
 files_folder_name = File.getName(files_folder);
 ids = getFileList(files_folder);
@@ -31,8 +32,8 @@ if (files_folder_name != "raw_microscopy_files") {
 }
 
 //Create TIFFs folder
-path = File.getParent(files_folder);
-wpath= replace(path, "/", "\\");
+path = dst_folderpath;
+wpath = replace(path, "/", "\\");
 osInfo = getInfo("os.name");
 WindowsIdx = indexOf(osInfo, "Windows");
 if (WindowsIdx != -1)

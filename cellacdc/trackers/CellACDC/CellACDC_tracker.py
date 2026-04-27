@@ -43,7 +43,6 @@ def _filter_subset_assignments(old_IDs, tracked_IDs, all_curr_IDs, specific_IDs)
 
     return filtered_old_IDs, filtered_tracked_IDs
 
-@debugutils.line_benchmark
 def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
                    specific_IDs=None,
                    denom:str='area_prev'):

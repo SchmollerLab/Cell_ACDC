@@ -5465,6 +5465,71 @@ class SimpleWorker(QObject):
         )
         self.signals.finished.emit(self.output)
 
+class CopyAllLostObjectsWorker(QObject):
+    navigateToFrame = Signal(int)
+    returnToFrame = Signal(int)
+    copyLostObjectMask = Signal(int)
+    refreshRp = Signal()
+    progressBar = Signal(int)
+    finished = Signal(object)
+    critical = Signal(object)
+
+    def __init__(self, gui, posData, for_future_frame_n, max_overlap_perc):
+        super().__init__()
+        self.gui = gui
+        self.posData = posData
+        self.for_future_frame_n = for_future_frame_n
+        self.max_overlap_perc = max_overlap_perc
+
+    @worker_exception_handler
+    def run(self):
+        current_frame_i = self.posData.frame_i
+        last_visited_frame_i = self.gui.get_last_tracked_i()
+        last_copied_frame_i = current_frame_i + self.for_future_frame_n + 1
+        frames_range = (current_frame_i, last_copied_frame_i)
+        overlap_warning = False
+        output = {}
+
+        for frame_i in range(*frames_range):
+            if frame_i == self.posData.SizeT:
+                break
+
+            if frame_i > self.posData.frame_i:
+                # Main thread navigates, runs tracking, updates rp/IDs, etc
+                self.navigateToFrame.emit(frame_i)
+
+            for lostObj in skimage.measure.regionprops(self.gui.lostObjImage):
+                overlap = np.count_nonzero(
+                    self.gui.currentLab2D[lostObj.slice][lostObj.image]
+                )
+                overlap_perc = overlap / lostObj.area * 100
+                if overlap_perc > self.max_overlap_perc:
+                    overlap_warning = True
+                    continue
+
+                self.copyLostObjectMask.emit(lostObj.label)
+
+            # Refresh rp so the next frame's updateLostNewCurrentIDs sees the
+            # copied IDs as belonging to this frame and marks them lost there.
+            self.refreshRp.emit()
+
+            self.progressBar.emit(1)
+
+        if self.for_future_frame_n == 0:
+            output['overlap_warning'] = overlap_warning
+            self.finished.emit(output)
+            return
+
+        # Back to current frame
+        self.returnToFrame.emit(current_frame_i)
+
+        if last_visited_frame_i < last_copied_frame_i:
+            output['doReinitLastSegmFrame'] = True
+            output['last_visited_frame_i'] = last_visited_frame_i
+
+        output['overlap_warning'] = overlap_warning
+        self.finished.emit(output)
+
 class SaveProcessedDataWorker(QObject):
     def __init__(
             self, 
@@ -6157,6 +6222,23 @@ class saveDataWorker(QObject):
     
     def saveSegmData(self, posData: load.loadData, end_i, saved_segm_data):
         self.progress.emit(f'Saving segmentation data for {posData.relPath}...')
+        
+        
+        # extend saved_segm_data if needed
+        if posData.SizeT > 1:
+            missing_frames_number = end_i + 1 - len(saved_segm_data)
+            if missing_frames_number > 0:
+                saved_segm_data = np.concatenate(
+                    (
+                        saved_segm_data,
+                        np.zeros(
+                            (missing_frames_number, *saved_segm_data.shape[1:]),
+                            dtype=saved_segm_data.dtype
+                        )
+                    ),
+                )
+
+        
         for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
             if self.saveWin.aborted:
                 self.finished.emit()

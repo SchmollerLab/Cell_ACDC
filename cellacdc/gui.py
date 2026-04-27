@@ -331,6 +331,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.whitelistOriginalIDs = None
         self.whyNavigateDisabled = set()
         self.autoSaveTimer = QTimer()
+        self.dirtyPointsLayerTableEndNames = set()
         
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
@@ -1492,7 +1493,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.functionsNotTested3D.append(self.delBorderObjAction)
         
         self.delNewObjAction.toolbar = editToolBar
-        self.functionsNotTested3D.append(self.delNewObjAction)
+        # self.functionsNotTested3D.append(self.delNewObjAction) so id this doesnt work in 3d i dont know anymore
 
         editToolBar.addAction(self.repeatTrackingAction)
         
@@ -2405,7 +2406,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Go to the `Settings --> Customise keyboard shortcuts...` menu '
             'on the top menubar\n'
             'to customise the action required to delete '
-            'an object with a click.'
+            'an object with a click.\n\n'
+            'When working with 3D segmentations, to delete only the z-slice mask, hold "Shift" while clicking.'
         )
         secondLevelToolbar.addAction(self.delObjToolAction)
         secondLevelToolbar.setMovable(False)
@@ -4949,6 +4951,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         modifiers = QGuiApplication.keyboardModifiers()
         alt = modifiers == Qt.AltModifier
         shift = modifiers == Qt.ShiftModifier
+        shift_regardless = bool(modifiers & Qt.ShiftModifier)
         isMod = alt
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -5084,7 +5087,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             includeUnvisited = posData.includeUnvisitedInfo['Delete ID']
 
             delID_mask = self.deleteIDmiddleClick(
-                delIDs, applyFutFrames, includeUnvisited
+                delIDs, applyFutFrames, includeUnvisited, shift=shift_regardless
             )
             if delID_mask.ndim == 3:
                 delID_mask = delID_mask[self.z_lab()]
@@ -7190,6 +7193,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # Draw clear region mouse release
         elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
+            self.isMouseDragImg1 = False
             self.freeRoiItem.closeCurve()
             self.clearObjsFreehandRegion()
         
@@ -7864,7 +7868,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         elif right_click and copyContourON:
             hoverLostID = self.ax1_lostObjScatterItem.hoverLostID
-            self.copyLostObjectContour(hoverLostID)
+            self.copyLostObjectMask(hoverLostID)
             self.update_rp(use_curr_view=True) # only visible
             self.updateAllImages()
             self.store_data()
@@ -9061,7 +9065,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         contours.extend(obj_contours)
         
-        self.addLostObjsToImage(obj, lostID)
+        self.addLostObjsToLostObjImage(obj, lostID)
         self.drawLostObjContoursImage(
             imageItem, contours, thickness=2, color=color
         )
@@ -13344,7 +13348,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.setManualAnnotModeEnabledTools(checked)
     
-    def copyLostObjectContour(self, ID: int):
+    def copyLostObjectMask(self, ID: int):
         posData = self.data[self.pos_i]
         mask = self.lostObjImage == ID
         lab2D = self.get_2Dlab(posData.lab)
@@ -13396,151 +13400,124 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs, curr_delRoiIDs
         )
         return out
-    
-    def copyAllLostObjectsWorkerCallback(
-            self, posData, for_future_frame_n, max_overlap_perc
-        ):
-        current_frame_i = posData.frame_i
-        last_visited_frame_i = self.get_last_tracked_i()
-        last_copied_frame_i = current_frame_i+for_future_frame_n+1
-        frames_range = (current_frame_i, last_copied_frame_i)
-        for frame_i in range(*frames_range):
-            if frame_i == posData.SizeT:
-                break
-            
-            if frame_i > posData.frame_i:
-                self.store_data(mainThread=False, autosave=False)
-                
-                posData.frame_i = frame_i
-                self.get_data()
-                self.tracking() # we already update rp inside here
-                # self.update_rp() 
-                self.updateLostNewCurrentIDs()
-                self.store_data(mainThread=False, autosave=False)
-                # delROIsIDs = self.getDelRoisIDs()
-                
-                self.lostObjContoursImage[:] = 0
-                prev_rp = posData.allData_li[frame_i-1]['regionprops']
-                for lostID in posData.lost_IDs:
-                    obj = prev_rp.get_obj_from_ID(lostID)
-                    self.addLostObjsToImage(obj, lostID, force=True)
-            
-            for lostObj in skimage.measure.regionprops(self.lostObjImage):
-                overlap = np.count_nonzero(
-                    self.currentLab2D[lostObj.slice][lostObj.image]
-                )
-                overlap_perc = overlap/lostObj.area*100
-                if overlap_perc > max_overlap_perc:
-                    self.copyAllLostObjectsWorker.overlapWarning = True
-                    continue
-                
-                self.copyLostObjectContour(lostObj.label)
-            
-            self.copyAllLostObjectsWorker.signals.progressBar.emit(1)           
-        
-        if for_future_frame_n == 0:
-            return
-        
-        # Back to current frame
-        self.store_data(autosave=False, mainThread=False)
-        posData.frame_i = current_frame_i
+
+    def _copyAllLostObjects_navigateToFrame(self, frame_i):
+        posData = self.data[self.pos_i]
+        self.store_data(mainThread=False, autosave=False)
+
+        posData.frame_i = frame_i
         self.get_data()
-        
-        if last_visited_frame_i >= last_copied_frame_i:
-            return
-        
-        self.copyAllLostObjectsWorker.output['doReinitLastSegmFrame'] = True
-        self.copyAllLostObjectsWorker.output['last_visited_frame_i'] = (
-            last_visited_frame_i
-        )
-    
+        self.tracking(wl_update=False)
+        self.currentLab2D = self.get_2Dlab(posData.lab)
+        self.update_rp() # cannot be more granular as lost obj could be anywhere
+        self.updateLostNewCurrentIDs()
+        self.store_data(mainThread=False, autosave=False)
+
+        self.lostObjContoursImage[:] = 0
+        self.lostObjImage[:] = 0
+        prev_rp = posData.allData_li[frame_i-1]['regionprops']
+        for lostID in posData.lost_IDs:
+            obj = prev_rp.get_obj_from_ID(lostID)
+            self.addLostObjsToLostObjImage(obj, lostID, force=True)
+
+    def _copyAllLostObjects_returnToFrame(self, frame_i):
+        posData = self.data[self.pos_i]
+        self.store_data(autosave=False, mainThread=False)
+        posData.frame_i = frame_i
+        self.get_data()
+
+    def _copyAllLostObjects_refreshRp(self):
+        self.update_rp(draw=False, wl_update=False) # need to change this when merging with opt.
+
     @disableWindow
     def copyAllLostObjects(self, for_future_frame_n, max_overlap_perc):
         if not self.copyLostObjButton.isChecked():
             return
-        
+
         posData = self.data[self.pos_i]
-        
-        desc = (
-            'Copying all lost objects...'
-        )
-        
+
+        desc = 'Copying all lost objects...'
+
         self.progressWin = apps.QDialogWorkerProgress(
             title=desc, parent=self.mainWin, pbarDesc=desc
         )
         self.progressWin.mainPbar.setMaximum(for_future_frame_n+1)
         self.progressWin.show(self.app)
-                              
+
         self.copyAllLostObjectsThread = QThread()
-        
-        self.copyAllLostObjectsWorker = workers.SimpleWorker(
-            posData, self.copyAllLostObjectsWorkerCallback, 
-            func_args=(for_future_frame_n, max_overlap_perc)
+
+        self.copyAllLostObjectsWorker = workers.CopyAllLostObjectsWorker(
+            self, posData, for_future_frame_n, max_overlap_perc
         )
-        self.copyAllLostObjectsWorker.overlapWarning = False
-        
-        self.copyAllLostObjectsWorker.moveToThread(
-            self.copyAllLostObjectsThread
+        self.copyAllLostObjectsWorker.moveToThread(self.copyAllLostObjectsThread)
+
+        self.copyAllLostObjectsWorker.navigateToFrame.connect(
+            self._copyAllLostObjects_navigateToFrame,
+            Qt.BlockingQueuedConnection
         )
-        
-        self.copyAllLostObjectsWorker.signals.finished.connect(
+        self.copyAllLostObjectsWorker.returnToFrame.connect(
+            self._copyAllLostObjects_returnToFrame,
+            Qt.BlockingQueuedConnection
+        )
+        self.copyAllLostObjectsWorker.copyLostObjectMask.connect(
+            self.copyLostObjectMask,
+            Qt.BlockingQueuedConnection
+        )
+        self.copyAllLostObjectsWorker.refreshRp.connect(
+            self._copyAllLostObjects_refreshRp,
+            Qt.BlockingQueuedConnection
+        )
+        self.copyAllLostObjectsWorker.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.copyAllLostObjectsWorker.critical.connect(
+            self.copyAllLostObjectsWorkerCritical
+        )
+        self.copyAllLostObjectsWorker.finished.connect(
             self.copyAllLostObjectsThread.quit
         )
-        self.copyAllLostObjectsWorker.signals.finished.connect(
+        self.copyAllLostObjectsWorker.finished.connect(
             self.copyAllLostObjectsWorker.deleteLater
         )
         self.copyAllLostObjectsThread.finished.connect(
             self.copyAllLostObjectsThread.deleteLater
         )
-        
-        self.copyAllLostObjectsWorker.signals.critical.connect(
-            self.copyAllLostObjectsWorkerCritical
-        )
-        self.copyAllLostObjectsWorker.signals.initProgressBar.connect(
-            self.workerInitProgressbar
-        )
-        self.copyAllLostObjectsWorker.signals.progressBar.connect(
-            self.workerUpdateProgressbar
-        )
-        self.copyAllLostObjectsWorker.signals.progress.connect(
-            self.workerProgress
-        )
-        self.copyAllLostObjectsWorker.signals.finished.connect(
+        self.copyAllLostObjectsWorker.finished.connect(
             self.copyAllLostObjectsWorkerFinished
         )
-        
+
         self.copyAllLostObjectsThread.started.connect(
             self.copyAllLostObjectsWorker.run
         )
         self.copyAllLostObjectsThread.start()
-        
+
         self.copyAllLostObjectsWorkerLoop = QEventLoop()
         self.copyAllLostObjectsWorkerLoop.exec_()
-    
+
     def copyAllLostObjectsWorkerCritical(self, error):
         self.copyAllLostObjectsWorkerLoop.exit()
         self.workerCritical(error)
-    
+
     def copyAllLostObjectsWorkerFinished(self, output):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
-        
+
         if output.get('doReinitLastSegmFrame', False):
             self.reInitLastSegmFrame(
-                from_frame_i=output.get('last_visited_frame_i'), 
-                updateImages=False, 
+                from_frame_i=output.get('last_visited_frame_i'),
+                updateImages=False,
                 force=True
             )
-        
-        if self.copyAllLostObjectsWorker.overlapWarning:
+
+        if output.get('overlap_warning', False):
             self.blinker = qutils.QControlBlink(
-                self.copyLostObjToolbar.maxOverlapNumberControl, 
+                self.copyLostObjToolbar.maxOverlapNumberControl,
                 qparent=self.mainWin
             )
             self.blinker.start()
-        
+
         self.copyAllLostObjectsWorkerLoop.exit()
         self.update_rp() # global op and obj added, no opt imo unless difference pic
         self.updateAllImages()
@@ -16957,9 +16934,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if acdc_df is None:
                 self.store_data(autosave=False)
             acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-
+            
             xx, yy = [], []
             for annotID in annotIDs_frame_i:
+                if annotID not in posData.rp.IDs:
+                    continue
                 obj = posData.rp.get_obj_from_ID(annotID)
                 acdc_df.at[annotID, state['name']] = 1
                 if not self.isObjVisible(obj.bbox):
@@ -18146,6 +18125,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.resetManualBackgroundItems()
         proceed_cca, never_visited = self.get_data(debug=False)
         self.pointsLayerLoadedDfsToData()
+        self.flushDirtyPointsLayersAutosave()
         self.initContoursImage()
         self.initDelRoiLab()
         self.initTextAnnot()
@@ -19773,6 +19753,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.copyLostObjButton.action.setVisible(False)
             self.segForLostIDsAction.setVisible(False)
             self.segForLostIDsAction.setDisabled(True)
+            self.delNewObjAction.setVisible(False)
+            self.delNewObjAction.setDisabled(True)
         else:
             self.imgGrad.rescaleAcrossTimeAction.setDisabled(False)
             self.annotateToolbar.setVisible(False)
@@ -19813,6 +19795,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.copyLostObjButton.action.setVisible(True)
             self.segForLostIDsAction.setVisible(True)
             self.segForLostIDsAction.setDisabled(False)
+            self.delNewObjAction.setVisible(True)
+            self.delNewObjAction.setDisabled(False)
         
         for ch, overlayItems in self.overlayLayersItems.items():
             lutItem = overlayItems[1]
@@ -21531,17 +21515,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     #     else:
     #         return self.data[self.pos_i].rp
 
-    def set_2Dlab(self, lab2D):
+    def set_2Dlab(self, lab2D, lab3D=None):
         posData = self.data[self.pos_i]
+        
+        if lab3D is None:
+            lab3D = posData.lab
+            
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
             if isZslice:
-                posData.lab[self.z_lab()] = lab2D
+                lab3D[self.z_lab()] = lab2D
             else:
-                posData.lab[:] = lab2D
+                lab3D[:] = lab2D
         else:
-            posData.lab = lab2D
+            lab3D = lab2D
 
     def get_labels(
             self, 
@@ -22625,6 +22613,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         self.autoSaveTimer.stop()
+        self.flushDirtyPointsLayersAutosave()
         self._enqueueAutoSave()
     
     def autoSaveTimerCountFrames(self):
@@ -22645,6 +22634,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         self.autoSaveTimeStartFrameIdx = posData.frame_i
+        self.flushDirtyPointsLayersAutosave()
         self._enqueueAutoSave()
     
     def enqAutosave(self):
@@ -23888,9 +23878,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
             )
     
-    def logLoadedTablePointsLayer(self, df):
+    def logLoadedTablePointsLayer(self, df, filename: str):
         separator = f'-'*100
-        text = f'{separator}\nFirst 10 rows of loaded table:\n\n{df.head(10)}\n{separator}'
+        header = f'First 10 rows of loaded table - "{filename}":'
+        footer = f'Number of points: {len(df)}'
+        text = (
+            f'{separator}\n'
+            f'{header}\n\n'
+            f'{df.head(10)}\n\n'
+            f'{footer}\n'
+            f'{separator}'
+        )
+        if filename:
+            text = f'{text}\nFilename: {filename}'
         self.logger.info(text)
     
     def buttonAddPointsByClickingActive(self):
@@ -24010,6 +24010,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         state = undoAddPointQueue.pop(-1)
         action.pointsData[self.pos_i] = state
+        self.markPointsLayerDirty(action=action)
         
         self.drawPointsLayers(computePointsLayers=False)
         
@@ -24063,7 +24064,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.autoPilotZoomToObjSpinBox.setValue(posData.IDs[0])
         self.zoomToObj(posData.rp[0])
     
-    def savePointsAddedByClickingFromEndname(self, tableEndName):
+    def savePointsAddedByClickingFromEndname(self, tableEndName, recovery=False):
         self.pointsLayerDataToDf(self.data[self.pos_i])
         for posData in self.data:
             if not posData.basename.endswith('_'):
@@ -24071,12 +24072,40 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 basename = posData.basename
             tableFilename = f'{basename}{tableEndName}.csv'
-            tableFilepath = os.path.join(posData.images_path, tableFilename)
+            if recovery:
+                tableFilepath = os.path.join(
+                    posData.recoveryFolderpath(), tableFilename
+                )
+            else:
+                tableFilepath = os.path.join(posData.images_path, tableFilename)
             df = posData.clickEntryPointsDfs.get(tableEndName)
             if df is None:
                 continue
             df = df.sort_values(['frame_i', 'Cell_ID'])
             df.to_csv(tableFilepath, index=False)
+
+    def markPointsLayerDirty(self, tableEndName=None, action=None):
+        if tableEndName is None and action is not None:
+            tableEndName = getattr(action, 'clickEntryTableEndName', None)
+
+        if tableEndName is None:
+            addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+            if addPointsByClickingButton is None:
+                return
+            tableEndName = addPointsByClickingButton.clickEntryTableEndName
+
+        self.dirtyPointsLayerTableEndNames.add(tableEndName)
+
+    def flushDirtyPointsLayersAutosave(self):
+        if not self.dirtyPointsLayerTableEndNames:
+            return
+
+        for tableEndName in tuple(self.dirtyPointsLayerTableEndNames): # avoid runtime error
+            self.savePointsAddedByClickingFromEndname(
+                tableEndName, recovery=True
+            )
+
+        self.dirtyPointsLayerTableEndNames.clear()
     
     @exception_handler
     def savePointsAddedByClicking(self, button, event):
@@ -24131,7 +24160,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         action.loadedDfInfo['y'], action.loadedDfInfo['x']
                     )
                 )
-                self.logLoadedTablePointsLayer(df)
+                self.logLoadedTablePointsLayer(df, filename=filename)
             
     def setPointsLayerLoadedDfEndanme(self, action):
         if action.loadedDfInfo is None:
@@ -24310,16 +24339,86 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             obj = posData.rp[0]
         
         self.autoPilotZoomToObjSpinBox.setValue(obj.label)
-        self.zoomToObj(obj)        
+        self.zoomToObj(obj)
+        
+    def getClickEntryTableFilepaths(self, posData, tableEndName):
+        if posData.basename.endswith('_'):
+            basename = posData.basename
+        else:
+            basename = f'{posData.basename}_'
+
+        csv_filename = f'{basename}{tableEndName}'
+        if not csv_filename.endswith('.csv'):
+            csv_filename = f'{csv_filename}.csv'
+
+        filepath = os.path.join(posData.images_path, csv_filename)
+        recovery_filepath = os.path.join(
+            posData.images_path, 'recovery', csv_filename
+        )
+        return filepath, recovery_filepath
+
+    def getClickEntryNewerRecoveryFilepaths(self, tableEndName):
+        newer_recovery_filepaths = []
+        for posData in self.data:
+            filepath, recovery_filepath = self.getClickEntryTableFilepaths(
+                posData, tableEndName
+            )
+            if not os.path.exists(filepath) or not os.path.exists(recovery_filepath):
+                continue
+
+            if os.path.getmtime(recovery_filepath) <= os.path.getmtime(filepath) + 15: # add a 15 second tolerance
+                continue
+
+            newer_recovery_filepaths.append((filepath, recovery_filepath))
+
+        return newer_recovery_filepaths
+
+    def askLoadNewerRecoveryClickEntryDfs(
+            self, tableEndName, newer_recovery_filepaths
+        ):
+        if not newer_recovery_filepaths:
+            return False
+
+        num_tables = len(newer_recovery_filepaths)
+        filepath, recovery_filepath = newer_recovery_filepaths[0]
+        main_timestamp = datetime.fromtimestamp(
+            os.path.getmtime(filepath)
+        ).strftime('%a %d. %b. %y - %H:%M:%S')
+        recovery_timestamp = datetime.fromtimestamp(
+            os.path.getmtime(recovery_filepath)
+        ).strftime('%a %d. %b. %y - %H:%M:%S')
+
+        if num_tables == 1:
+            text = html_utils.paragraph(
+                f'A newer recovery version of <code>{tableEndName}.csv</code> '
+                'was found.<br><br>'
+                f'Main table save date: <code>{main_timestamp}</code><br>'
+                f'Recovery save date: <code>{recovery_timestamp}</code><br><br>'
+                'Do you want to load the newer recovery version?'
+            )
+        else:
+            text = html_utils.paragraph(
+                f'Newer recovery versions of <code>{tableEndName}.csv</code> '
+                f'were found for <b>{num_tables} positions</b>.<br><br>'
+                f'Example main table save date: <code>{main_timestamp}</code><br>'
+                f'Example recovery save date: <code>{recovery_timestamp}</code><br><br>'
+                'Do you want to load the newer recovery version where available?'
+            )
+
+        msg = widgets.myMessageBox(wrapText=False)
+        _, yesButton, _ = msg.warning(
+            self.addPointsWin, 'Newer recovery table found', text,
+            buttonsTexts=('Cancel', 'Yes, load newer recovery', 'No, load main table')
+        )
+        return msg.clickedButton == yesButton
         
     def checkClickEntryTableEndnameExists(self, tableEndName, forceLoading):
         doesTableExists = False
         for posData in self.data:
-            files = myutils.listdir(posData.images_path)
-            for file in files:
-                if file.endswith(f'{tableEndName}.csv'):
-                    doesTableExists = True
-                    break
+            filepath, _ = self.getClickEntryTableFilepaths(posData, tableEndName)
+            if os.path.exists(filepath):
+                doesTableExists = True
+                break
         
         if not doesTableExists:
             return
@@ -24337,7 +24436,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if msg.clickedButton != yesButton:
                 return
 
-        self.loadClickEntryDfs(tableEndName)
+        newer_recovery_filepaths = self.getClickEntryNewerRecoveryFilepaths(
+            tableEndName
+        )
+        load_recovery_if_newer = self.askLoadNewerRecoveryClickEntryDfs(
+            tableEndName, newer_recovery_filepaths
+        )
+
+        self.loadClickEntryDfs(
+            tableEndName, loadRecoveryIfNewer=load_recovery_if_newer
+        )
 
     def checkLoadedTableIds(self, toolbar):
         if toolbar != self.promptSegmentPointsLayerToolbar:
@@ -24449,20 +24557,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.addPointsWin = None
     
-    def loadClickEntryDfs(self, tableEndName):
+    def loadClickEntryDfs(self, tableEndName, loadRecoveryIfNewer=False):
         for posData in self.data:
-            if posData.basename.endswith('_'):
-                basename = posData.basename
-            else:
-                basename = f'{posData.basename}_'
-            csv_filename = f'{basename}{tableEndName}'
-            if not csv_filename.endswith('.csv'):
-                csv_filename = f'{csv_filename}.csv'
-            filepath = os.path.join(posData.images_path, csv_filename)
+            filepath, recovery_filepath = self.getClickEntryTableFilepaths(
+                posData, tableEndName
+            )
+
+            if loadRecoveryIfNewer:
+                recovery_exists = os.path.exists(recovery_filepath)
+                main_exists = os.path.exists(filepath)
+                if (
+                    recovery_exists
+                    and (
+                        not main_exists
+                        or os.path.getmtime(recovery_filepath)
+                        > os.path.getmtime(filepath) + 15
+                    )
+                ):
+                    filepath = recovery_filepath
+                elif not main_exists:
+                    continue
+
             if not os.path.exists(filepath):
                 continue
-            
-            self.logger.info(f'Loading points from "{filepath}.csv"...')
+
+            self.logger.info(f'Loading points from "{filepath}"...')
             df = pd.read_csv(filepath)
             if 'id' not in df.columns:
                 df['id'] = range(1, len(df)+1)
@@ -24504,6 +24623,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     sliceFramePointsData['y'].remove(y)
                     sliceFramePointsData['id'].remove(point.data())
                     removed_ids.append(point.data())
+
+        if removed_ids:
+            self.markPointsLayerDirty(action=action)
         
         return removed_ids
     
@@ -24633,6 +24755,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 framePointsData['x'].append(x)
                 framePointsData['y'].append(y)
                 framePointsData['id'].append(id)
+
+        self.markPointsLayerDirty(action=action)
         
     def showPointsLayerIdsToggled(self, button, checked):
         button.action.scatterItem.drawIds = checked
@@ -27665,7 +27789,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             
             if ax == 0:
-                self.addLostObjsToImage(obj, lostID)
+                self.addLostObjsToLostObjImage(obj, lostID)
                 
             contours.extend(obj_contours)
 
@@ -28135,15 +28259,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         self.timestamp.setText(posData.frame_i)
     
-    def deleteIDFromLab(self, lab, delID, frame_i=None, delMask=None):
+    def deleteIDFromLab(
+            self, lab, delID, frame_i=None, delMask=None, shift=False
+        ):
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i if frame_i is None else frame_i
 
-
-        if frame_i==posData.frame_i:
-            rp = posData.rp
-        else:
-            rp = posData.allData_li[frame_i]['regionprops']
+        if shift and self.isSegm3D:
+            lab3D = lab
+            delMask3D = delMask
+            lab = self.get_2Dlab(lab)
+            if delMask is not None:
+                delMask = self.get_2Dlab(delMask)
+            rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+        else: 
+            if frame_i==posData.frame_i:
+                rp = posData.rp
+            else:
+                rp = posData.allData_li[frame_i]['regionprops']
 
         if isinstance(delID, int):
             delID = [delID]
@@ -28168,9 +28301,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             obj = rp.get_obj_from_ID(_delID)
             delMask[obj.slice][obj.image] = True
         lab[delMask] = 0
+        
+        if shift and self.isSegm3D:
+            self.set_2Dlab(lab, lab3D=lab3D)
+            lab = lab3D
+            if delMask3D is not None:
+                self.set_2Dlab(delMask, lab3D=delMask3D)
+                delMask = delMask3D
+        
         return lab, delMask
     
-    def removeStoredContours(self, delID, frame_i=None):
+    def removeStoredContours(self, delID, frame_i=None, z_slice=None):
         posData = self.data[self.pos_i]
         
         if frame_i is None:
@@ -28184,6 +28325,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if ID == delID:
                     continue
                 
+                if z_slice is not None:
+                    z_slice_i = key[1]
+                    if z_slice_i != z_slice:
+                        continue
+                
                 newContours[key] = contours
             
             dataDict['contours'] = newContours
@@ -28192,7 +28338,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     @disableWindow
     def deleteIDmiddleClick(
-            self, delIDs: Iterable, applyFutFrames, includeUnvisited
+            self, delIDs: Iterable, applyFutFrames, includeUnvisited,
+            shift=False
         ):
         self.clearHighlightedID()
 
@@ -28213,7 +28360,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
                 if lab is not None:
                     # Visited frame
-                    lab, _ = self.deleteIDFromLab(lab, delIDs, frame_i=i, delMask=delMask)
+                    lab, _ = self.deleteIDFromLab(
+                        lab, delIDs, frame_i=i, delMask=delMask, shift=shift
+                    )
 
                     # Store change
                     posData.allData_li[i]['labels'] = lab
@@ -28224,19 +28373,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
                     lab = posData.segm_data[i]
-                    lab, _ = self.deleteIDFromLab(lab, delIDs, frame_i=i, delMask=delMask)
+                    lab, _ = self.deleteIDFromLab(
+                        lab, delIDs, frame_i=i, delMask=delMask, shift=shift
+                    )
 
         # Back to current frame
         if applyFutFrames:
             posData.frame_i = current_frame_i
             self.get_data()   
 
-        posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delIDs, )
+        z_slice = None
+        if shift and self.isSegm3D:
+            z_slice = self.z_lab()
+            
+        posData.lab, delID_mask = self.deleteIDFromLab(
+            posData.lab, delIDs, shift=shift
+        )
         for _delID in delIDs:
             self.clearObjContour(ID=_delID, ax=0)     
             self.clearObjContour(ID=_delID, ax=1)  
-            self.removeObjectFromRp(_delID)    
-            self.removeStoredContours(_delID) 
+            if z_slice is None:
+                self.removeObjectFromRp(_delID)    
+            self.removeStoredContours(_delID, z_slice=z_slice) 
+        
+        if shift and self.isSegm3D:
+            self.update_rp()
 
         self.store_data(autosave=False)
         self.whitelistPropagateIDs(IDs_to_remove=delIDs, curr_frame_only=(not applyFutFrames))
@@ -28411,7 +28572,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setAllLostObjContoursImage(delROIsIDs=delROIsIDs)        
         self.setAllLostTrackedObjContoursImage(delROIsIDs=delROIsIDs)
 
-    def addLostObjsToImage(self, lostObj, lostID, force=False):
+    def addLostObjsToLostObjImage(self, lostObj, lostID, force=False):
         if not force:
             if not self.copyLostObjButton.isChecked():
                 return
@@ -31371,7 +31532,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.waitCond.wakeAll()
 
-    def showSetMeasurements(self, checked=False):
+    def showSetMeasurements(self, checked=False, qparent=None):
+        qparent = qparent if qparent is not None else self
+        if self.measurementsWin is not None:
+            self.measurementsWin.show()
+            self.measurementsWin.raise_()
+            self.measurementsWin.activateWindow()
+            return
+
         try:
             df_favourite_funcs = pd.read_csv(favourite_func_metrics_csv_path)
             favourite_funcs = df_favourite_funcs['favourite_func_name'].to_list()
@@ -31399,12 +31567,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             allPos_acdc_df_cols=list(allPos_acdc_df_cols),
             acdc_df_path=posData.images_path, posData=posData,
             addCombineMetricCallback=self.addCombineMetric,
-            allPosData=self.data, parent=self, 
+            allPosData=self.data, 
+            parent=qparent, 
             state=self.setMeasWinState
         )
+        self.measurementsWin.sigCancel.connect(self.setMeasurementsCancelled)
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
         self.measurementsWin.show()
-
+        
+    def setMeasurementsCancelled(self):
+        self.measurementsWin = None
+        
     def setMeasurements(self):
         posData = self.data[self.pos_i]
         if self.measurementsWin.delExistingCols:
@@ -31744,7 +31917,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             showDialog=False
         )
         setMeasurementsButton.disconnect()
-        setMeasurementsButton.clicked.connect(self.showSetMeasurements)
+        setMeasurementsButton.clicked.connect(
+            partial(
+                self.showSetMeasurements, 
+                qparent=msg,
+            )
+        )
         msg.exec_()
         save_metrics = msg.clickedButton == yesButton
         return save_metrics, msg.cancel

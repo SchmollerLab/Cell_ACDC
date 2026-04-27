@@ -1,5 +1,5 @@
 from collections import defaultdict, deque
-from typing import Dict, List, Union, Iterable
+from typing import Dict, List, Union, Iterable, Sequence
 import os
 import sys
 import operator
@@ -718,6 +718,11 @@ class CrossCursorPointButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':cross_cursor.svg'))
+
+class TestPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':test.svg'))
 
 class browseFileButton(PushButton):
     sigPathSelected = Signal(str)
@@ -2514,9 +2519,20 @@ class myMessageBox(_base_widgets.QBaseDialog):
     def splitLatexBlocks(self, text):
         texts = re.split(r"(<latex.*?>.+?)</latex>", text)
         return texts        
+    
+    def splitCopiableBlocks(self, texts: Sequence[str] | str):
+        if isinstance(texts, str):
+            texts = (texts,)
+        
+        texts_out = []
+        for text in texts:
+            texts_out.extend(re.split(r"(<copiable>.+?)</copiable>", text))
+        return texts_out  
 
     def addText(self, text):
         texts = self.splitLatexBlocks(text)
+        texts = self.splitCopiableBlocks(texts)
+        
         labelsWidget = LabelsWidget(texts, wrapText=self.wrapText)
         self.labelsWidgets.append(labelsWidget)
         self.labels.extend(labelsWidget.labels)
@@ -2755,6 +2771,9 @@ class myMessageBox(_base_widgets.QBaseDialog):
             factor = np.ceil(textWidth/screenWidth)
             lineLength = int(labelWidget.nCharsLongestLine/factor)
             for label in labelWidget.labels:
+                if isinstance(label, CopiableCommandWidget):
+                    continue
+                
                 text = label.text()
                 chunks = textwrap.wrap(text, lineLength)
                 text = '<br>'.join(chunks)
@@ -7728,6 +7747,9 @@ class CopiableCommandWidget(QGroupBox):
         
         self.setLayout(layout)        
     
+    def setWordWrap(self, wordWrap):
+        self.label.setWordWrap(wordWrap)
+    
     def copyToClipboard(self):
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
@@ -7746,8 +7768,13 @@ class CopiableCommandWidget(QGroupBox):
     
     def command(self):
         return self._command
-        
-
+    
+    def text(self):
+        return self.label.text()
+    
+    def setTextInteractionFlags(self, flags):
+        self.label.setTextInteractionFlags(flags)
+    
 def PostProcessSegmWidget(
         minimum, maximum, value, useSliders, isFloat=False, normalize=False,
         label=None
@@ -9750,6 +9777,7 @@ class LabelsWidget(QWidget):
         for t, text in enumerate(texts):
             if not text:
                 continue
+
             if text.startswith('<latex>'):
                 layout.addSpacing(10)
                 label = LatexLabel(text)
@@ -9761,6 +9789,13 @@ class LabelsWidget(QWidget):
                         layout.addSpacing(10)
                 except IndexError:
                     layout.addSpacing(10)
+            elif text.startswith('<copiable>'):
+                text = (
+                    text.removeprefix('<copiable>')
+                    .removeprefix('</copiable>')
+                )
+                label = CopiableCommandWidget(command=text, parent=self)
+                layout.addWidget(label)
             else:
                 label = QLabel(text)
                 label.setWordWrap(wrapText)
@@ -9774,7 +9809,7 @@ class LabelsWidget(QWidget):
             
             self.labels.append(label)
         
-        self.nCharsLongestLine = max(self.textLengths)
+        self.nCharsLongestLine = max(self.textLengths, default=1)
         
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
@@ -9798,7 +9833,7 @@ class LabelsWidget(QWidget):
         
         fixedTexts = []
         for text in texts:
-            if text.startswith('<latex>'):
+            if text.startswith('<latex>') or text.startswith('<copiable>'):
                 fixedTexts.append(text)
                 continue
             
@@ -11429,7 +11464,11 @@ class PointsLayersToolbar(ToolBar):
         yy = []
         xx = []
         ids = []
-        pointsDataPos = action.pointsData[self.guiWin.pos_i]
+        pos_i = self.guiWin.pos_i
+        if pos_i not in action.pointsData:
+            printl('No points data for position', pos_i) # should really not happen, but its not a disaster if it does
+            return df
+        pointsDataPos = action.pointsData[pos_i]
         for frame_i, framePointsData in pointsDataPos.items():
             if posData.SizeZ > 1:
                 for z, zSlicePointsData in framePointsData.items():
@@ -11905,3 +11944,52 @@ class WandControlsToolbar(ToolBar):
         )
         
         self.addSeparator()
+    
+class warnVisualCppRequired(myMessageBox):
+    def __init__(self, pkg_name='javabridge', parent=None):
+        super().__init__(parent)
+        self.screenShotWin = None
+
+        self.setIcon(iconName='SP_MessageBoxWarning')
+        self.setWindowTitle(f'Installation of {pkg_name} info')
+        txt = html_utils.paragraph(f"""
+            Installation of {pkg_name} on Windows requires
+            Microsoft Visual C++ 14.0 or higher.<br><br>
+            Cell-ACDC will anyway try to install {pkg_name} now.<br><br>
+            If the installation fails, please <b>close Cell-ACDC</b>,
+            then download and install <b>"Microsoft C++ Build Tools"</b>
+            from the link below
+            before trying this module again.<br><br>
+            <a href='https://visualstudio.microsoft.com/visual-cpp-build-tools/'>
+                https://visualstudio.microsoft.com/visual-cpp-build-tools/
+            </a><br><br>
+            <b>IMPORTANT</b>: when installing "Microsoft C++ Build Tools"
+            make sure to select <b>"Desktop development with C++"</b>.
+            Click "See the screenshot" for more details.
+        """)
+        seeScreenshotButton = QPushButton('See screenshot...')
+        okButton = okPushButton('Ok')
+        okButton = self.addButton('Ok')
+        okButton.disconnect()
+        okButton.clicked.connect(self.ok_cb)
+        self.addButton(seeScreenshotButton)
+        seeScreenshotButton.disconnect()
+        seeScreenshotButton.clicked.connect(
+            self.viewScreenshot
+        )
+        self.addCancelButton(connect=True)
+        self.addText(txt)
+
+    def ok_cb(self):
+        self.cancel = False
+        self.close()
+    
+    def viewScreenshot(self, checked=False):
+        self.screenShotWin = view_visualcpp_screenshot(self)
+        self.screenShotWin.show()
+
+    def closeEvent(self, event):
+        if self.screenShotWin is not None:
+            self.screenShotWin.close()
+            
+        return super().closeEvent(event)

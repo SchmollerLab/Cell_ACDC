@@ -40,7 +40,7 @@ def find_all_objects_2D(np.uint32_t[:, :] label_img):
             if j + 1 > ce[label]: ce[label] = <unsigned int>(j + 1)
 
     if max_label == 0:
-        return []
+        return [], []
 
     # Collect present labels into compact numpy arrays (avoids per-label tuple allocation)
     cdef unsigned int n_labels = 0
@@ -105,7 +105,7 @@ def find_all_objects_3D(np.uint32_t[:, :, :] label_img):
                 if k + 1 > ce[label]: ce[label] = <unsigned int>(k + 1)
 
     if max_label == 0:
-        return []
+        return [], []
 
     # Collect present labels into compact numpy arrays (avoids per-label tuple allocation)
     cdef unsigned int n_labels = 0
