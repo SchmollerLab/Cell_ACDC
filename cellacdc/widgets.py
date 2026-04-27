@@ -2243,6 +2243,16 @@ class alphaNumericLineEdit(QLineEdit):
     def keyPressEvent(self, event: QKeyEvent):
         if not event.text():
             return super().keyPressEvent(event)
+
+        if event.modifiers() & (
+            Qt.KeyboardModifier.ControlModifier
+            | Qt.KeyboardModifier.AltModifier
+            | Qt.KeyboardModifier.MetaModifier
+        ):
+            return super().keyPressEvent(event)
+
+        if not event.text().isprintable():
+            return super().keyPressEvent(event)
         
         super().keyPressEvent(event)
         

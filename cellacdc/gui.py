@@ -29327,7 +29327,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         """)
         win = apps.filenameDialog(
             basename=basename,
-            ext='.tif',
+            ext=ext,
             hintText=txt,
             defaultEntry=channel_name,
             helpText=help_txt, 
@@ -29347,7 +29347,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             Cell-ACDC requires a specific folder structure to load the data.<br><br>
             Specifically, it requires the <b>image(s) to be located in a
             folder called <code>Images</code></b>.<br><br>
-            The <b>file format</b> of the images must be <b>TIFF</b> (.tif extension).<br><br>
+            The <b>file format</b> of the images must be <b>TIFF or NPZ</b> 
+            (.tif or .npz extension).<br><br>
             You can choose to let Cell-ACDC create the required data structure 
             from your file,<br>
             or you can stop the 
@@ -29359,12 +29360,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             <br>
             How do you want to proceed?
         """)
+        
         if ext == '.tif' or ext == '.npz':
             txt = f'{txt}How do you want to proceed?'
         else:
             txt = f'{txt}Do you want to proceed?'
         txt = html_utils.paragraph(txt)
-        
         
         if ext == '.tif' or ext == '.npz':
             copyButton = widgets.copyPushButton(
@@ -29426,7 +29427,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return
             
             proceed, channel_name = self.askUserChannelName(
-                filename, ext
+                filename, '.tif'
             )
             if not proceed:
                 self.logger.info('Loading image file cancelled.')

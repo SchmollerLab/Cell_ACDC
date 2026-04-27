@@ -44,6 +44,7 @@ import math
 import time
 import sympy as sp
 import json
+import html
 
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
@@ -1523,6 +1524,7 @@ class filenameDialog(QDialog):
         self.lineEdit = widgets.alphaNumericLineEdit()
         self.lineEdit.setAlignment(Qt.AlignCenter)
         defaultEntry = to_alphanumeric(defaultEntry)
+        defaultEntry = defaultEntry.replace('.', '_')
         self.lineEdit.setText(defaultEntry)
 
         extLabel = QLabel(ext)
@@ -1615,6 +1617,7 @@ class filenameDialog(QDialog):
         return self.lineEdit.text()
     
     def warnInvalidCharacterPressed(self, character: str):
+        character = html.escape(character)
         warning_text = html_utils.span(f"""
             <code>{character}</code> is <b>not a valid</b> character.<br> 
             Valid characters are letters, numbers, underscore, and dash.
