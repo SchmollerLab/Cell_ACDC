@@ -7,7 +7,7 @@ on:
   push:
     paths:
       - "cellacdc/**/*.pyx"
-      - "setup.py"
+      - "precompile_functions.py"
   workflow_dispatch:
 
 jobs:
