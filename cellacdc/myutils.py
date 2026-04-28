@@ -1191,7 +1191,7 @@ def getBaseAcdcDf(rp):
             'was_manually_edited': minus1_list
         }
     ).set_index('Cell_ID')
-    if any(zz_centroid):
+    if len(centroid) == 3:
         df['z_centroid'] = zz_centroid
         
     return df
