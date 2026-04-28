@@ -128,6 +128,115 @@ def find_all_objects_3D(np.uint32_t[:, :, :] label_img):
             idx += 1
     return out_labels, out_bboxes
 
+def most_common_projection_3D(np.uint32_t[:, :, :] lab, int axis):
+    """Most-common-value projection for a 3-D label image along `axis`.
+
+    Tie-break matches np.unique(..., return_counts=True) + np.argmax(counts),
+    i.e. the smallest label wins when counts are equal.
+    """
+    if axis < 0 or axis > 2:
+        raise ValueError(f'axis must be 0, 1, or 2. Got {axis}.')
+
+    cdef Py_ssize_t z = lab.shape[0]
+    cdef Py_ssize_t y = lab.shape[1]
+    cdef Py_ssize_t x = lab.shape[2]
+    cdef Py_ssize_t i, j, a, b, depth
+    cdef unsigned int v, vv
+    cdef unsigned int best_label, best_count, curr_count
+    cdef bint seen
+    cdef np.uint32_t[:, :] out_view
+
+    if axis == 0:
+        depth = z
+        out = np.empty((y, x), dtype=np.uint32)
+        out_view = out
+        for i in range(y):
+            for j in range(x):
+                best_count = 0
+                best_label = UINT_MAX
+                for a in range(depth):
+                    v = lab[a, i, j]
+                    seen = False
+                    for b in range(a):
+                        if lab[b, i, j] == v:
+                            seen = True
+                            break
+                    if seen:
+                        continue
+
+                    curr_count = 1
+                    for b in range(a + 1, depth):
+                        if lab[b, i, j] == v:
+                            curr_count += 1
+
+                    if curr_count > best_count or (curr_count == best_count and v < best_label):
+                        best_count = curr_count
+                        best_label = v
+
+                out_view[i, j] = best_label
+        return out
+
+    if axis == 1:
+        depth = y
+        out = np.empty((z, x), dtype=np.uint32)
+        out_view = out
+        for i in range(z):
+            for j in range(x):
+                best_count = 0
+                best_label = UINT_MAX
+                for a in range(depth):
+                    v = lab[i, a, j]
+                    seen = False
+                    for b in range(a):
+                        if lab[i, b, j] == v:
+                            seen = True
+                            break
+                    if seen:
+                        continue
+
+                    curr_count = 1
+                    for b in range(a + 1, depth):
+                        if lab[i, b, j] == v:
+                            curr_count += 1
+
+                    if curr_count > best_count or (curr_count == best_count and v < best_label):
+                        best_count = curr_count
+                        best_label = v
+
+                out_view[i, j] = best_label
+        return out
+
+    depth = x
+    out = np.empty((z, y), dtype=np.uint32)
+    out_view = out
+    for i in range(z):
+        for j in range(y):
+            best_count = 0
+            best_label = UINT_MAX
+            for a in range(depth):
+                v = lab[i, j, a]
+                seen = False
+                for b in range(a):
+                    vv = lab[i, j, b]
+                    if vv == v:
+                        seen = True
+                        break
+                if seen:
+                    continue
+
+                curr_count = 1
+                for b in range(a + 1, depth):
+                    vv = lab[i, j, b]
+                    if vv == v:
+                        curr_count += 1
+
+                if curr_count > best_count or (curr_count == best_count and v < best_label):
+                    best_count = curr_count
+                    best_label = v
+
+            out_view[i, j] = best_label
+    return out
+
 def calc_IoA_matrix_2D(
         np.uint32_t[:, :] lab,
         np.uint32_t[:, :] prev_lab,

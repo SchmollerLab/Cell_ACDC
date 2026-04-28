@@ -153,6 +153,36 @@ def test_projection_regionprops_support_most_common_kind():
     assert rp.get_obj_from_proj_rp(3, kind='most common z-projection', warn=False) is not None
 
 
+def test_most_common_projection_uses_local_cutout_update(monkeypatch):
+    old_lab = np.zeros((3, 6, 6), dtype=np.uint16)
+    old_lab[:, 1:4, 1:4] = 1
+
+    rp = acdcRegionprops(old_lab)
+    proj_before = rp.get_proj_rp(kind='most_common', slicing='z')
+    expected_before = rp._get_lab_projection(old_lab, slicing='z', kind='most_common')
+    np.testing.assert_array_equal(proj_before.lab, expected_before)
+
+    new_lab = old_lab.copy()
+    new_lab[0:2, 2:5, 2:5] = 2
+
+    original_replace_cached = rp._replace_cached_lab_projection
+
+    def _replace_cached_should_not_run_for_most_common(slicing, kind):
+        if kind == 'most_common':
+            raise AssertionError(
+                'most_common projection should be updated locally for cutout updates.'
+            )
+        return original_replace_cached(slicing, kind)
+
+    monkeypatch.setattr(rp, '_replace_cached_lab_projection', _replace_cached_should_not_run_for_most_common)
+
+    rp.update_regionprops_via_cutout(new_lab, cutout_bbox=(2, 2, 5, 5))
+
+    proj_after = rp.get_proj_rp(kind='most_common', slicing='z')
+    expected_after = rp._get_lab_projection(new_lab, slicing='z', kind='most_common')
+    np.testing.assert_array_equal(proj_after.lab, expected_after)
+
+
 def test_get_obj_from_id_for_stored_slice_and_projection_rps():
     lab = np.zeros((4, 8, 8), dtype=np.uint16)
     lab[1:3, 2:5, 3:6] = 2

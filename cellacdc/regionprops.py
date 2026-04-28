@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import ndimage as ndi
+from scipy import stats as scipy_stats
 import skimage.measure
 import cv2
 from . import printl, debugutils
@@ -9,10 +10,19 @@ from skimage.measure._regionprops_utils import (
 import traceback as traceback
 
 try:
-    from cellacdc.precompiled.precompiled_functions import find_all_objects_2D, find_all_objects_3D
+    from cellacdc.precompiled.precompiled_functions import (
+        find_all_objects_2D,
+        find_all_objects_3D,
+    )
     _CYTHON_FIND_OBJECTS = True
 except Exception:
     _CYTHON_FIND_OBJECTS = False
+
+try:
+    from cellacdc.precompiled.precompiled_functions import most_common_projection_3D
+    _CYTHON_MOST_COMMON_PROJECTION = True
+except Exception:
+    _CYTHON_MOST_COMMON_PROJECTION = False
 # WARNING: Developers have already used
 #     14 hrs
 # to optimize this.
@@ -475,13 +485,7 @@ class acdcRegionprops:
             return np.max(lab, axis=axis)
 
         if kind == 'most_common':
-            moved = np.moveaxis(lab, axis, 0)
-            flat = moved.reshape(moved.shape[0], -1)
-            projected_flat = np.empty(flat.shape[1], dtype=lab.dtype)
-            for i in range(flat.shape[1]):
-                values, counts = np.unique(flat[:, i], return_counts=True)
-                projected_flat[i] = values[np.argmax(counts)]
-            return projected_flat.reshape(moved.shape[1:])
+            return self._compute_most_common_projection(lab, axis=axis)
 
         if kind == 'mean':
             projected = np.mean(lab, axis=axis)
@@ -490,6 +494,47 @@ class acdcRegionprops:
 
         # Regionprops requires integer labels.
         return np.rint(projected).astype(lab.dtype, copy=False)
+
+    def _compute_most_common_projection(self, lab, axis):
+        if _CYTHON_MOST_COMMON_PROJECTION:
+            lab_uint32 = lab.astype(np.uint32, copy=False)
+            projected = most_common_projection_3D(lab_uint32, int(axis))
+            return projected.astype(lab.dtype, copy=False)
+
+        moved = np.moveaxis(lab, axis, 0)
+        projected = scipy_stats.mode(moved, axis=0, keepdims=False).mode
+        return projected.astype(lab.dtype, copy=False)
+
+    def _get_projection_patch_slices(self, slicing, cutout_bbox):
+        z0, y0, x0, z1, y1, x1 = [int(v) for v in cutout_bbox]
+        if slicing == 'z':
+            return (slice(y0, y1), slice(x0, x1))
+        if slicing == 'y':
+            return (slice(z0, z1), slice(x0, x1))
+        return (slice(z0, z1), slice(y0, y1))
+
+    def _compute_most_common_projection_patch(self, slicing, cutout_bbox):
+        z0, y0, x0, z1, y1, x1 = [int(v) for v in cutout_bbox]
+        if slicing == 'z':
+            patch_lab = self.lab[:, y0:y1, x0:x1]
+        elif slicing == 'y':
+            patch_lab = self.lab[z0:z1, :, x0:x1]
+        else:
+            patch_lab = self.lab[z0:z1, y0:y1, :]
+
+        axis = self._slice_axis_index(slicing)
+        return self._compute_most_common_projection(patch_lab, axis=axis)
+
+    def _update_cached_most_common_projection_locally(self, slicing, cutout_bbox):
+        lab_proj = self._get_cached_or_new_lab_projection(slicing, 'most_common')
+        patch_slices = self._get_projection_patch_slices(slicing, cutout_bbox)
+        if any(slc.start >= slc.stop for slc in patch_slices):
+            return lab_proj
+
+        patch = self._compute_most_common_projection_patch(slicing, cutout_bbox)
+        lab_proj[patch_slices] = patch
+        self._proj_labs[slicing]['most_common'] = lab_proj
+        return lab_proj
 
     def _get_cached_or_new_lab_projection(self, slicing, kind):
         lab_proj = self._proj_labs[slicing].get(kind)
@@ -581,12 +626,21 @@ class acdcRegionprops:
                 specific_IDs_update_centroids=specific_IDs_update_centroids,
             )
 
-    def _sync_initialized_proj_rps_via_update(self, specific_IDs_update_centroids=None):
+    def _sync_initialized_proj_rps_via_update(
+            self,
+            specific_IDs_update_centroids=None,
+            cutout_bbox=None,
+        ):
         if not self._has_initialized_proj_rps():
             return
 
         for slicing, kind, rp in self._iter_initialized_proj_rps():
-            lab_proj = self._replace_cached_lab_projection(slicing, kind)
+            if cutout_bbox is not None and kind == 'most_common':
+                lab_proj = self._update_cached_most_common_projection_locally(
+                    slicing, cutout_bbox
+                )
+            else:
+                lab_proj = self._replace_cached_lab_projection(slicing, kind)
             rp.update_regionprops(
                 lab_proj,
                 specific_IDs_update_centroids=specific_IDs_update_centroids,
@@ -1083,7 +1137,8 @@ class acdcRegionprops:
             specific_IDs_update_centroids=target_IDs
         )
         self._sync_initialized_proj_rps_via_update(
-            specific_IDs_update_centroids=target_IDs
+            specific_IDs_update_centroids=target_IDs,
+            cutout_bbox=cutout_bbox,
         )
             
     def get_centroid(self, ID, exact=False):
