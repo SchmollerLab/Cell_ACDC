@@ -1,0 +1,84 @@
+name: GUI Automation Tests
+
+on:
+  push:
+    branches: [ main, optimizations ]
+  pull_request:
+    branches: [ main, optimizations ]
+  workflow_dispatch:
+
+jobs:
+  test-gui:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    env:
+      DISPLAY: ':99.0'
+      QT_QPA_PLATFORM: offscreen
+      PYTEST_TIMEOUT: 300
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Setup Ubuntu display and libraries
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libxkbcommon-x11-0 \
+          libxcb-icccm4 \
+          libxcb-image0 \
+          libxcb-keysyms1 \
+          libxcb-randr0 \
+          libxcb-render-util0 \
+          libxcb-xinerama0 \
+          libxcb-xfixes0 \
+          x11-utils \
+          xvfb
+        /sbin/start-stop-daemon --start --quiet --pidfile /tmp/custom_xvfb_99.pid \
+          --make-pidfile --background --exec /usr/bin/Xvfb -- :99 -screen 0 1920x1200x24 -ac +extension GLX
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        python -m pip install -e .
+        python -m pip install -r requirements_gui_pyqt5.txt
+        python -m pip install pytest pytest-timeout pytest-qt pyautogui pillow scikit-image tifffile
+        # Install optional dependencies that Cell-ACDC uses
+        python -m pip install tables --upgrade
+        python -m pip install cellpose --upgrade
+
+    - name: Create test dataset
+      run: |
+        python tests/utils/generate_test_dataset.py
+      continue-on-error: true
+
+    - name: Run GUI automation tests
+      run: |
+        pytest tests/gui_automation/test_gui_subprocess.py -v --tb=short --timeout=300
+      continue-on-error: true
+
+    - name: Collect screenshots on failure
+      if: always()
+      run: |
+        mkdir -p gui_test_artifacts
+        if [ -d "screenshots" ]; then
+          cp screenshots/* gui_test_artifacts/ 2>/dev/null || true
+        fi
+        ls -la gui_test_artifacts/ || echo "No screenshots collected"
+
+    - name: Upload GUI test artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: gui-test-artifacts-py${{ matrix.python-version }}
+        path: gui_test_artifacts/
+        retention-days: 7
