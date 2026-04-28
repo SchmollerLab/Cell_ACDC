@@ -32,7 +32,10 @@ def _format_tracking_result(
     if dont_return_tracked_lab:
         return add_info
 
-    return tracked_lab, add_info # no harm returning the assignments
+    if return_assignments:
+        return tracked_lab, add_info # no harm returning the assignments
+    
+    return tracked_lab
 
 
 class SearchRangeUnits:

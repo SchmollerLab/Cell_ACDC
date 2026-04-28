@@ -1159,27 +1159,27 @@ def getBaseAcdcDf(rp):
     zz_centroid = [0]*len(rp)
     
     if isinstance(rp, regionprops.acdcRegionprops):
-        for obj in rp:
+        for i, obj in enumerate(rp):
             ID = obj.label
             centroid = rp.get_centroid(ID, exact=True)
             xc, yc = centroid[-2:]
-            IDs.append(ID)
-            xx_centroid.append(xc)
-            yy_centroid.append(yc)
+            IDs[i] = ID
+            xx_centroid[i] = xc
+            yy_centroid[i] = yc
             if len(centroid) == 3:
                 zc = centroid[0]
-                zz_centroid.append(zc)
+                zz_centroid[i] = zc
         
     else:
-        for obj in rp:
+        for i, obj in enumerate(rp):
             centroid = obj.centroid
             xc, yc = centroid[-2:]
-            IDs.append(obj.label)
-            xx_centroid.append(xc)
-            yy_centroid.append(yc)
+            IDs[i] = obj.label
+            xx_centroid[i] = xc
+            yy_centroid[i] = yc
             if len(centroid) == 3:
                 zc = centroid[0]
-                zz_centroid.append(zc)
+                zz_centroid[i] = zc
             
     df = pd.DataFrame(
         {
@@ -1191,7 +1191,7 @@ def getBaseAcdcDf(rp):
             'was_manually_edited': minus1_list
         }
     ).set_index('Cell_ID')
-    if zz_centroid:
+    if any(zz_centroid):
         df['z_centroid'] = zz_centroid
         
     return df
