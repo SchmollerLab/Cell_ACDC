@@ -10,7 +10,7 @@ from skimage.segmentation import relabel_sequential
 from cellacdc import core, printl, debugutils
 
 try:
-    from cellacdc.precompiled_functions import (
+    from cellacdc.precompiled.precompiled_functions import (
         calc_IoA_matrix_2D as _calc_IoA_matrix_2D_cython,
         calc_IoA_matrix_3D as _calc_IoA_matrix_3D_cython,
     )

@@ -3369,18 +3369,18 @@ def count_objects_and_init_rps(posData: load.loadData, logger_func=print):
     # if len(missing_i) == 0:
     #     return allIDs, posData
     
-    add_data_dict = verify_add_data_segm_proximity(posData, logger_func)
-    centroids_loaded = ID_to_idx_loaded = centroids_IDs_exact_loaded = IDs_loaded = None
-    if add_data_dict['centroids'] is not None:
-        with open(add_data_dict['centroids'], 'rb') as f:
-            centroids_loaded = pickle.load(f)
-    # if add_data_dict['IDs'] is not None:
-    #     with open(add_data_dict['IDs'], 'rb') as f:
-    #         IDs_loaded = pickle.load(f)
-    if add_data_dict['centroids_IDs_exact'] is not None:
-        with open(add_data_dict['centroids_IDs_exact'], 'rb') as f:
-            centroids_IDs_exact_loaded = pickle.load(f)
-    # if add_data_dict['ID_to_idx'] is not None:
+    # add_data_dict = verify_add_data_segm_proximity(posData, logger_func)
+    # centroids_loaded = ID_to_idx_loaded = centroids_IDs_exact_loaded = IDs_loaded = None
+    # if add_data_dict['centroids'] is not None:
+    #     with open(add_data_dict['centroids'], 'rb') as f:
+    #         centroids_loaded = pickle.load(f)
+    # # if add_data_dict['IDs'] is not None:
+    # #     with open(add_data_dict['IDs'], 'rb') as f:
+    # #         IDs_loaded = pickle.load(f)
+    # if add_data_dict['centroids_IDs_exact'] is not None:
+    #     with open(add_data_dict['centroids_IDs_exact'], 'rb') as f:
+    #         centroids_IDs_exact_loaded = pickle.load(f)
+    # # if add_data_dict['ID_to_idx'] is not None:
     #     with open(add_data_dict['ID_to_idx'], 'rb') as f:
     #         ID_to_idx_loaded = pickle.load(f)
     # other ids:

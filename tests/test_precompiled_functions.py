@@ -18,7 +18,7 @@ from skimage.measure import regionprops
 # ---------------------------------------------------------------------------
 pytest.importorskip(
     "cellacdc.precompiled.precompiled_functions",
-    reason="Cython extension not compiled; run: python setup.py build_ext --inplace",
+    reason="Cython extension not compiled; run: python precompile_functions.py build_ext --inplace",
 )
 from cellacdc.precompiled.precompiled_functions import (
     find_all_objects_2D,

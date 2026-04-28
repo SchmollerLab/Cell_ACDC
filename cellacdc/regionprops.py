@@ -9,7 +9,7 @@ from skimage.measure._regionprops_utils import (
 import traceback as traceback
 
 try:
-    from .precompiled.precompiled_functions import find_all_objects_2D, find_all_objects_3D
+    from cellacdc.precompiled.precompiled_functions import find_all_objects_2D, find_all_objects_3D
     _CYTHON_FIND_OBJECTS = True
 except Exception:
     _CYTHON_FIND_OBJECTS = False
@@ -19,7 +19,11 @@ except Exception:
 # In addition, implementing these optimizations in the codebase took
 #     9 hrs
 # Specifically the
-#    centroid (huge fain for 3D data)
+#    centroid (huge gain for 3D data)
+#    contour caching
+#    better find objects implementation to avoid iterating over None lists
+#    bbox caching
+#    targeted updates to RP
 # stuff was targeted. 
 # If you decide to try and optimize it further, please update this warning :)
 
