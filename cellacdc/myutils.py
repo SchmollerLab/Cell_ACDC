@@ -1153,7 +1153,7 @@ def getBaseAcdcDf(rp):
     zeros_list = [0]*len(rp)
     nones_list = [None]*len(rp)
     minus1_list = [-1]*len(rp)
-    IDs = []
+    IDs = [0]*len(rp)
     xx_centroid = [0]*len(rp)
     yy_centroid = [0]*len(rp)
     zz_centroid = [0]*len(rp)
