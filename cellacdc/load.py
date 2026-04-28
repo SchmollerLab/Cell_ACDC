@@ -3108,7 +3108,7 @@ class loadData:
         
 
     def getSingleTimepointSegmSize(self):
-        if hasattr(self, 'single_timepoint_size'):
+        if hasattr(self, 'single_timepoint_size') and self.single_timepoint_size is not None:
             return self.single_timepoint_size
         if self.SizeT > 1:
             self.single_timepoint_size = np.prod(self.segm_data.shape[1:])
