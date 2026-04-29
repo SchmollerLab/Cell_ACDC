@@ -14197,6 +14197,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.editIDLabelAction.setVisible(visible)
         self.editIDspinboxAction.setVisible(visible)
         self.autoIDcheckboxAction.setVisible(visible)
+        showToolbar = (
+            visible
+            or self.brushSizeAction.isVisible()
+            or self.brushAutoFillAction.isVisible()
+            or self.brushAutoHideAction.isVisible()
+        )
+        self.brushEraserToolBar.setVisible(showToolbar)
     
     def resetCursors(self):
         self.ax1_cursor.setData([], [])
