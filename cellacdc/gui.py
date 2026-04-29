@@ -15275,11 +15275,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     # Stop at last visited frame since includeUnvisited = False
                     break
                 else:
-                    lab = posData.segm_data[i]
+                    IDs = posData.allData_li[i]['regionprops'].IDs
             else:
-                lab = posData.allData_li[i]['labels']
-            
-            if modID in lab:
+                IDs = posData.allData_li[i]['regionprops'].IDs            
+            if modID in IDs:
                 areFutureIDs_affected.append(True)
         
         if not last_tracked_i_found:
@@ -28875,6 +28874,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         kwargs_total.update(self.track_frame_params)
         
         kwargs = {k: v for k, v in kwargs_total.items() if k in self.realTimeTracker_kwargs}
+        printl(kwargs)
         tracked_result = self.realTimeTracker.track_frame(
             prev_lab, currentLab,
             **kwargs,
@@ -28927,6 +28927,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return tracked_lab
 
         # get assignments
+        printl(assignments)
         if assignments is None:
             assignments = dict()
             for obj in curr_rp:

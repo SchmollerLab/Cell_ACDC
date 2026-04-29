@@ -40,7 +40,6 @@ except Exception:
 _RegionProperties = skimage.measure._regionprops.RegionProperties
 _cached = skimage.measure._regionprops._cached
 
-# @debugutils.line_benchmark
 def _acdc_regionprops_factory(
         label_image,
         intensity_image=None,
@@ -80,11 +79,7 @@ def _acdc_regionprops_factory(
         img_uint32 = label_image.astype(np.uint32, copy=False)
         if label_image.ndim == 2:
             out = find_all_objects_2D(img_uint32)
-            if len(out) == 0:
-                labels = np.empty((0,), dtype=np.uint32)
-                bboxes = np.empty((0, 4), dtype=np.int32)
-            else:
-                labels, bboxes = out
+            labels, bboxes = out
             for i in range(len(labels)):
                 sl = (slice(int(bboxes[i, 0]), int(bboxes[i, 1])),
                       slice(int(bboxes[i, 2]), int(bboxes[i, 3])))
@@ -95,11 +90,7 @@ def _acdc_regionprops_factory(
                 ))
         else:
             out = find_all_objects_3D(img_uint32)
-            if len(out) == 0:
-                labels = np.empty((0,), dtype=np.uint32)
-                bboxes = np.empty((0, 6), dtype=np.int32)
-            else:
-                labels, bboxes = out
+            labels, bboxes = out
             for i in range(len(labels)):
                 sl = (slice(int(bboxes[i, 0]), int(bboxes[i, 1])),
                       slice(int(bboxes[i, 2]), int(bboxes[i, 3])),
@@ -749,7 +740,6 @@ class acdcRegionprops:
         # Update IDs and IDs_set separately and explicitly
         self.IDs_set = set(self.ID_to_idx)
         self.IDs = list(self.IDs_set)
-        
 
         if not update_centroid_mapper:
             return
@@ -773,7 +763,7 @@ class acdcRegionprops:
             if warn:
                 # get caller info
                 debugutils.print_call_stack()
-                printl(f"Warning: Object with ID {ID} not found in regionprops.")
+                print(f"Warning: Object with ID {ID} not found in regionprops.")
             return None
         
     def delete_IDs(self, IDs_to_delete: set[int], update_other_attrs=True):

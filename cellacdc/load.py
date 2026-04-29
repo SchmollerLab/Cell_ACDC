@@ -3489,6 +3489,7 @@ class loadData:
             }
             
     def saveSegmMetadataIni(self):
+        # need to be called in more locations, will be full yimplemented in workflow gui
         cp = config.ConfigParser()
         for segm_file, metadata in self.segmMetadata.items():
             cp[segm_file] = {}

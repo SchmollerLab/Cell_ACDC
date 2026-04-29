@@ -5,6 +5,7 @@ from tqdm import tqdm
 
 import numpy as np
 from skimage.measure import regionprops
+from cellacdc.regionprops import acdcRegionprops
 from skimage.segmentation import relabel_sequential
 
 from cellacdc import core, printl, debugutils
@@ -47,7 +48,9 @@ def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
                    specific_IDs=None,
                    denom:str='area_prev'):
     specific_IDs = _normalize_specific_IDs(specific_IDs)
-    if IDs_curr_untracked is None:
+    if IDs_curr_untracked is None and isinstance(rp, acdcRegionprops):
+        IDs_curr_untracked = rp.IDs
+    elif IDs_curr_untracked is None:
         IDs_curr_untracked = [obj.label for obj in rp]
     elif not isinstance(IDs_curr_untracked, list):
         IDs_curr_untracked = list(IDs_curr_untracked)
@@ -57,7 +60,11 @@ def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
             ID for ID in IDs_curr_untracked if ID in specific_IDs
         ]
 
-    IDs_prev = [obj.label for obj in prev_rp]
+    if isinstance(prev_rp, acdcRegionprops):
+        IDs_prev = prev_rp.IDs
+    
+    else:
+        IDs_prev = [obj.label for obj in prev_rp]
 
     if not IDs_curr_untracked:
         return np.zeros((0, len(prev_rp))), IDs_curr_untracked, IDs_prev
@@ -381,8 +388,14 @@ def track_frame(
 
     all_curr_IDs = (
         list(IDs_curr_untracked)
-        if IDs_curr_untracked is not None else [obj.label for obj in rp]
+        if IDs_curr_untracked is not None else None
     )
+    if isinstance(rp, acdcRegionprops) and all_curr_IDs is None:
+        all_curr_IDs = rp.IDs
+    elif all_curr_IDs is None:
+        all_curr_IDs = [obj.label for obj in rp]
+    elif not isinstance(all_curr_IDs, list):
+        all_curr_IDs = list(all_curr_IDs)
 
     if IoA_matrix is None:
         IoA_matrix, tracked_curr_IDs, IDs_prev = calc_Io_matrix(
