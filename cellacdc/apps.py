@@ -7459,7 +7459,6 @@ class PostProcessSegmDialog(QBaseDialog):
         if ccaAnnotRemoved:
             self.mainWin.updateAllImages()
 
-
         if origLab is None:
             origLab = self.origLab.copy()
 
