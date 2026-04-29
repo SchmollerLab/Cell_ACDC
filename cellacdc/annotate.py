@@ -171,7 +171,8 @@ class TextAnnotationsImageItem(pg.ImageItem):
     
     def highlightObject(self, obj, rp=None, getObjCentroidFunc=None):
         self.highlighterItem.texts = self.texts
-        self.highlighterItem.highlightObject(obj, rp=rp, getObjCentroidFunc=getObjCentroidFunc)
+        self.highlighterItem.highlightObject(
+            obj, rp=rp, getObjCentroidFunc=getObjCentroidFunc)
     
     def grayOutAnnotations(self, IDsToSkip=None):
         self.setOpacity(0.3)

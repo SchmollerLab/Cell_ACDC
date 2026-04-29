@@ -20,7 +20,6 @@ import tifffile
 import zipfile
 from natsort import natsorted
 import time
-import pickle
 
 import skimage
 import skimage.io
@@ -1651,7 +1650,10 @@ class loadData:
                 if hasattr(self.allData_li[frame_i]['regionprops'], 'IDs'):
                     IDsFrame = self.allData_li[frame_i]['regionprops'].IDs
                 else:
-                    IDsFrame = [obj.label for obj in self.allData_li[frame_i]['regionprops']]
+                    IDsFrame = [
+                        obj.label 
+                        for obj in self.allData_li[frame_i]['regionprops']
+                    ]
                 
                 if uniqueIDsVisited is not None:
                     uniqueIDsVisited.update(IDsFrame)
@@ -3104,8 +3106,7 @@ class loadData:
             elif SizeT > 1:
                 self.segm_data = np.zeros((SizeT, Y, X), int)
             else:
-                self.segm_data = np.zeros((Y, X), int)
-        
+                self.segm_data = np.zeros((Y, X), int)        
 
     def getSingleTimepointSegmSize(self):
         if hasattr(self, 'single_timepoint_size') and self.single_timepoint_size is not None:
@@ -3442,7 +3443,8 @@ class loadData:
         self.whitelist = whitelist.Whitelist(
             total_frames=self.SizeT,
         )
-        whitelist_path_legacy = self.segm_npz_path.replace('.npz', '_whitelistIDs.json')
+        whitelist_path_legacy = self.segm_npz_path.replace(
+            '.npz', '_whitelistIDs.json')
         segm_filename = os.path.basename(self.segm_npz_path).replace('.npz', '')
         segm_add_data_folder = os.path.join(self.images_path, segm_filename)
         os.makedirs(segm_add_data_folder, exist_ok=True)
@@ -3498,7 +3500,9 @@ class loadData:
             cp[segm_file]['acdc_df_segm'] = str(metadata.get('acdc_df_segm', ''))
             cp[segm_file]['sizeX'] = str(metadata.get('sizeX', ''))
             cp[segm_file]['sizeY'] = str(metadata.get('sizeY', ''))
-            cp[segm_file]['acdc_df_save_date'] = str(metadata.get('acdc_df_save_date', ''))
+            cp[segm_file]['acdc_df_save_date'] = str(
+                metadata.get('acdc_df_save_date', '')
+            )
         
         with open(self.segm_metadata_ini_path, 'w') as configfile:
             cp.write(configfile)
@@ -3546,40 +3550,6 @@ class loadData:
                 acdc_df_save_date = datetime.now()
             segm_metadata['acdc_df_save_date'] = acdc_df_save_date
         self.segmMetadata[segm_file] = segm_metadata
-
-    def saveCentroidsIDs(self):
-        centroids_mappers = dict()
-        centroids_IDs_exact = dict()
-        # IDs = dict()
-        # ID_to_idx = dict()
-        for i, data_dict in enumerate(self.allData_li):
-            rp = data_dict.get('regionprops', None)
-            if rp is None:
-                continue
-            centroids_mappers[i] = rp._centroid_mapper
-            centroids_IDs_exact[i] = rp._centroid_IDs_exact
-            # IDs[i] = rp.IDs
-            # ID_to_idx[i] = rp.ID_to_idx
-
-        segm_filename = os.path.basename(self.segm_npz_path).replace('.npz', '')
-        segm_add_data_folder = os.path.join(self.images_path, segm_filename)
-        os.makedirs(segm_add_data_folder, exist_ok=True)
-        centroids_path = os.path.join(segm_add_data_folder, 'centroids.pkl')
-        # IDs_path = os.path.join(segm_add_data_folder, 'IDs.pkl')
-        centroids_IDs_exact_path = os.path.join(segm_add_data_folder, 'centroids_IDs_exact.pkl')
-        # ID_to_idx_path = os.path.join(segm_add_data_folder, 'ID_to_idx.pkl')
-        
-        with open(centroids_path, 'wb') as f:
-            pickle.dump(centroids_mappers, f)
-        
-        with open(centroids_IDs_exact_path, 'wb') as f:
-            pickle.dump(centroids_IDs_exact, f)
-            
-        # with open(IDs_path, 'wb') as f:
-        #     pickle.dump(IDs, f)
-            
-        # with open(ID_to_idx_path, 'wb') as f:
-        #     pickle.dump(ID_to_idx, f)
             
 class select_exp_folder:
     def __init__(self):

@@ -121,65 +121,6 @@ def _acdc_regionprops_factory(
             ))
     return regions
 
-
-# class acdcRegionProperties(_RegionProperties):
-#     def __init__(
-#         self,
-#         slice,
-#         label,
-#         label_image,
-#         intensity_image,
-#         cache_active,
-#         *,
-#         extra_properties=None,
-#         spacing=None,
-#         offset=None,
-#     ):
-#         if intensity_image is not None:
-#             ndim = label_image.ndim
-#             if not (
-#                 intensity_image.shape[:ndim] == label_image.shape
-#                 and intensity_image.ndim in [ndim, ndim + 1]
-#             ):
-#                 raise ValueError(
-#                     'Label and intensity image shapes must match,'
-#                     ' except for channel (last) axis.'
-#                 )
-#             multichannel = label_image.shape < intensity_image.shape
-#         else:
-#             multichannel = False
-
-#         self.label = label
-#         if offset is None:
-#             offset = np.zeros((label_image.ndim,), dtype=int)
-#         self._offset = np.array(offset)
-
-#         self._slice = slice
-        
-#         self._label_image = label_image
-#         self._intensity_image = intensity_image
-
-#         self._cache_active = cache_active
-#         self._cache = {}
-#         self._ndim = label_image.ndim
-#         self._multichannel = multichannel
-#         self._spatial_axes = tuple(range(self._ndim))
-#         if spacing is None:
-#             spacing = np.full(self._ndim, 1.0)
-#         self._spacing = _normalize_spacing(spacing, self._ndim)
-#         self._pixel_area = np.prod(self._spacing)
-        
-#         self._extra_properties = {}
-#         if extra_properties is not None:
-#             for func in extra_properties:
-#                 name = func.__name__
-#                 if hasattr(self, name):
-#                     msg = (
-#                         f"Extra property '{name}' is shadowed by existing "
-#                         f"property and will be inaccessible. Consider "
-#                         f"renaming it."
-#                     )
-#             self._extra_properties = {func.__name__: func for func in extra_properties}
 class acdcRegionProperties(_RegionProperties):
     def __init__(
         self,
@@ -273,39 +214,6 @@ class acdcRegionProperties(_RegionProperties):
             obj_image, retrieve_mode, cv2.CHAIN_APPROX_NONE
         )
         return contours
-    
-    # @property
-    # def centroid_weighted(self):
-    #     ctr = self.centroid_weighted_local
-    #     return tuple(
-    #         idx + slc.start * spc
-    #         for idx, slc, spc in zip(ctr, self._slice, self._spacing)
-    #     )
-
-    # @property
-    # @_cached
-    # def image_intensity(self):
-    #     if self._intensity_image is None:
-    #         raise AttributeError('No intensity image specified.')
-    #     image = (
-    #         self.image
-    #         if not self._multichannel
-    #         else np.expand_dims(self.image, self._ndim)
-    #     )
-    #     return self._intensity_image[self._slice] * image
-
-    # @property
-    # def coords(self):
-    #     indices = np.argwhere(self.image)
-    #     object_offset = np.array([self._slice[i].start for i in range(self._ndim)])
-    #     return object_offset + indices + self._offset
-    
-    # @property
-    # def coords_scaled(self):
-    #     indices = np.argwhere(self.image)
-    #     object_offset = np.array([self._slice[i].start for i in range(self._ndim)])
-    #     return (object_offset + indices) * self._spacing + self._offset
-
 
 class acdcRegionprops:
     def __init__(
