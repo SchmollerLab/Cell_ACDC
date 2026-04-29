@@ -28930,10 +28930,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if assignments is None:
             assignments = dict()
             for obj in curr_rp:
-                old_lab = obj.label
-                new_lab = tracked_lab[obj.slice][obj.image][0]
-                assignments[old_lab] = new_lab
-            
+                try:
+                    old_lab = obj.label
+                    new_lab = tracked_lab[obj.slice][obj.image][0]
+                    assignments[old_lab] = new_lab
+                except:
+                    import pdb; pdb.set_trace()
+
         if dont_return_tracked_lab:
             return assignments
         return tracked_lab, assignments

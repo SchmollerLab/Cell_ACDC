@@ -208,6 +208,15 @@ class acdcRegionProperties(_RegionProperties):
     #     )
     
     @property
+    def image(self):
+        """Return cached object mask from the current label image."""
+        imgage = self._cache.get('image')
+        if imgage is None or not np.any(imgage):
+            self._cache['image'] = self._label_image[self._slice] == self.label
+        
+        return self._cache['image']
+
+    @property
     @_cached
     def bbox(self):
         """
@@ -933,6 +942,9 @@ class acdcRegionprops:
         }
 
     def _set_label_image(self, lab, objs=None, clear_cache=False):
+        if lab is None:
+            return
+
         self.lab = lab
         if objs is None:
             objs = self._rp
@@ -995,6 +1007,9 @@ class acdcRegionprops:
             # if active_assignments.get(ID, ID) in remapped_IDs
         }
 
+        # Rebind first so any property access during remap sees the current lab.
+        self._set_label_image(lab)
+
         for obj in self._rp:
             old_ID = obj.label
             new_ID = active_assignments.get(old_ID, old_ID)
@@ -1002,8 +1017,6 @@ class acdcRegionprops:
             # if obj.area == 0:
             #     # if area is 0, centroid is not defined and we should not trust the cached one
             #     print("area 0...")
-
-        self._set_label_image(lab, clear_cache=True)
 
         self._centroid_mapper = centroid_mapper
         self._centroid_IDs_exact = centroid_IDs_exact

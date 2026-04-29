@@ -32,11 +32,7 @@ def _format_tracking_result(
     if dont_return_tracked_lab:
         return add_info
 
-    if return_assignments:
-        return tracked_lab, add_info # no harm returning the assignments
-    
-    return tracked_lab
-
+    return tracked_lab, add_info # always return extra info
 
 class SearchRangeUnits:
     values = ['pixels', 'micrometre']
@@ -145,7 +141,7 @@ class tracker:
         ):
         """Track two consecutive frames in two steps. First step based on 
         `overlap_threshold` and second step tracks only lost objects to new 
-        objects detemined at first step.
+        objects determined at first step.
 
         Parameters
         ----------
