@@ -6923,7 +6923,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.warnEditingWithCca_df('Add new ID with curvature tool')
                 self.clearCurvItems()
                 self.curvTool_cb(True)
-                self.store_data()
             except ValueError:
                 self.clearCurvItems()
                 self.curvTool_cb(True)
@@ -7912,7 +7911,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.warnEditingWithCca_df('Add new ID with curvature tool')
                 self.clearCurvItems()
                 self.curvTool_cb(True)
-                self.store_data()
 
         elif left_click and canWand:
             x, y = event.pos().x(), event.pos().y()
@@ -10148,25 +10146,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xx, yy = self.curvHoverPlotItem.getData()
             if xx is None or yy is None:
                 return
-
-            xx = np.asarray(xx)
-            yy = np.asarray(yy)
-            finite = np.isfinite(xx) & np.isfinite(yy)
-            xx, yy = xx[finite], yy[finite]
-            if len(xx) < 3:
+            # Downsample by taking every nth coord
+            xxA, yyA = xx[::n], yy[::n]
+            rr, cc = skimage.draw.polygon(yyA, xxA)
+            self.autoContObjMask[rr, cc] = 1
+            rp = skimage.measure.regionprops(self.autoContObjMask)
+            if not rp:
                 return
-
-            keep = np.r_[True, (np.diff(xx) != 0) | (np.diff(yy) != 0)]
-            xx, yy = xx[keep], yy[keep]
-            if len(xx) < 3:
-                return
-
-            if xx[0] != xx[-1] or yy[0] != yy[-1]:
-                xx = np.r_[xx, xx[0]]
-                yy = np.r_[yy, yy[0]]
-
-            self.xxA_autoCont, self.yyA_autoCont = xx, yy
-            self.curvPlotItem.setData(xx, yy)
+            obj = rp[0]
+            cont = self.getObjContours(obj)
+            xxC, yyC = cont[:,0], cont[:,1]
+            xxA, yyA = xxC[::n], yyC[::n]
+            self.xxA_autoCont, self.yyA_autoCont = xxA, yyA
+            xxS, yyS = self.getSpline(xxA, yyA, per=True, appendFirst=True)
+            if len(xxS)>0:
+                self.curvPlotItem.setData(xxS, yyS)
         except (TypeError, ValueError):
             pass
 
@@ -11487,11 +11481,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 break
     
-    def getClosedSplineCoords(self, preserve_current=False):
+    def getClosedSplineCoords(self):
         xxS, yyS = self.curvPlotItem.getData()
-        if preserve_current:
-            return xxS, yyS
-
         bbox_area = (xxS.max()-xxS.min())*(yyS.max()-yyS.min())
         if bbox_area < 26_000:
             # Using 1000 is fast enough according to profiling
@@ -11625,7 +11616,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             self.updateAllImages()
         
-        self.store_data()
         self.isNewID = False
     
     def addDelROI(self, event):       
@@ -20236,10 +20226,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if xxS is None:
                 self.setUncheckedAllButtons()
                 return
-            N = len(xxS)
-            self.smoothAutoContWithSpline(n=int(N*0.05))
+            self.smoothAutoContWithSpline(n=1)
 
-        xxS, yyS = self.getClosedSplineCoords(preserve_current=isRightClick)
+        xxS, yyS = self.getClosedSplineCoords()
 
         if self.autoIDcheckbox.isChecked():
             self.setBrushID()
