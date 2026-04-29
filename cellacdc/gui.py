@@ -90,12 +90,13 @@ from . import cli
 from . import is_mac
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
-from .myutils import exec_time, setupLogger, ArgSpec
+from .myutils import setupLogger, ArgSpec
 from .help import welcome, about
 from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
     normal_division_lineage_tree)#, reorg_sister_cells_for_export)
 from . import debugutils
-
+from . import regionprops
+from . import exec_time
 from .plot import imshow
 from . import gui_utils
 
@@ -114,6 +115,11 @@ if os.name == 'nt':
 
 GREEN_HEX = _palettes.green()
 
+RP_OPT_NUM_CELLS_MIN = 30 # th for trying to do local updates to regionprops, rp becomes slow for high num of cells
+RP_OPT_PERC_CUTOUT_MAX = 0.3 # th for trying to do local updates to regionprops, 
+                             # if region which we have to update is too large too 
+                             # many cells are probably inside and its not worth
+                             # local updating (since we actually need to call RP twice!)
 custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
 shortcut_filepath = os.path.join(settings_folderpath, 'shortcuts.ini')
 
@@ -1344,7 +1350,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.hullContToolButton.action = editToolBar.addWidget(self.hullContToolButton)
         self.checkableButtons.append(self.hullContToolButton)
         self.checkableQButtonsGroup.addButton(self.hullContToolButton)
-        self.functionsNotTested3D.append(self.hullContToolButton)
         self.widgetsWithShortcut['Hull contour'] = self.hullContToolButton
 
         self.fillHolesToolButton = QToolButton(self)
@@ -1356,7 +1361,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.checkableButtons.append(self.fillHolesToolButton)
         self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
-        self.functionsNotTested3D.append(self.fillHolesToolButton)
         self.widgetsWithShortcut['Fill holes'] = self.fillHolesToolButton
 
         self.moveLabelToolButton = QToolButton(self)
@@ -2765,7 +2769,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Track current frame with real-time tracker...', self
         )
         self.repeatTrackingMenuAction.setDisabled(True)
-        self.repeatTrackingMenuAction.setShortcut('Shift+T')
+        self.repeatTrackingMenuAction.setShortcut('Ctrl+T')
 
         self.repeatTrackingVideoAction = QAction(
             'Select a tracker and track multiple frames...', self
@@ -3777,8 +3781,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def showAllContoursToggled(self):
         if not self.isDataLoaded:
             return
-        
-        self.computeAllContours()
+
         self.updateAllImages()
     
     def gui_createImg1Widgets(self):
@@ -4686,7 +4689,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         posData = self.data[self.pos_i]
 
-        allIDs, posData = core.count_objects(posData, self.logger.info)
+        allIDs, posData = core.count_objects_and_init_rps(
+            posData, self.logger.info)
         
         self.highLowResAction.setChecked(True)
         numItems = len(allIDs)
@@ -4941,6 +4945,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.zSliceSpinbox.hide()
         self.SizeZlabel.hide()
 
+    def rpCurr2D(self, frame_i=None, slice_i=None, depth_axis=None):
+        posData = self.data[self.pos_i]
+        if frame_i is None:
+            rp = posData.rp
+        else:
+            rp = posData.allData_li[frame_i]['regionprops']
+        if not self.isSegm3D:
+            return rp
+
+        if slice_i is None:
+            slice_i = self.zSliceScrollBar.sliderPosition()
+        if depth_axis is None:
+            depth_axis = self.switchPlaneCombobox.depthAxes()
+
+        rp2D = rp.get_slice_rp(slice_i, slicing=depth_axis)
+        return rp2D
+        
     @exception_handler
     def gui_mousePressEventImg2(self, event: QGraphicsSceneMouseEvent):
         modifiers = QGuiApplication.keyboardModifiers()
@@ -5129,7 +5150,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     return
                 else:
                     ID = sepID_prompt.EntryID
-                y, x = posData.rp[posData.IDs_idxs[ID]].centroid[-2:]
+                
+                centroid = posData.rp.get_centroid(ID)
+                y, x = self.getObjCentroid(centroid)
                 xdata, ydata = int(x), int(y)
 
             # Store undo state before modifying stuff
@@ -5146,7 +5169,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # self.set_2Dlab(lab2D)
             elif not shift:
                 result = core.split_along_convexity_defects(
-                    ID, self.get_2Dlab(posData.lab), max_ID
+                    ID, self.get_2Dlab(posData.lab), max_ID, rp=posData.rp
                 )
                 lab2D, success, splittedIDs = result
                 self.set_2Dlab(lab2D)
@@ -5184,7 +5207,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.storeManualSeparateDrawMode(manualSep.drawMode)
 
             # Update data (rp, etc)
-            self.update_rp()
+            bbox = self.update_rp_get_bbox(use_bbox=True, specific_IDs=ID) # use old ID to get bbox
+            specific_IDs = list(splittedIDs) + [ID]
+            self.update_rp(specific_IDs=specific_IDs, preloaded_bbox=bbox)
 
             # Repeat tracking
             self.trackSubsetIDs(splittedIDs)
@@ -5227,13 +5252,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if ID in posData.lab:
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
-                obj_idx = posData.IDs.index(ID)
-                obj = posData.rp[obj_idx]
-                objMask = self.getObjImage(obj.image, obj.bbox)
-                localFill = scipy.ndimage.binary_fill_holes(objMask)
-                posData.lab[self.getObjSlice(obj.slice)][localFill] = ID
+                if not shift and self.isSegm3D:
+                    rp2D = self.rpCurr2D()
+                    obj = rp2D.get_obj_from_ID(ID)
+                else: # shift hold or 2D from the getgo
+                    obj = posData.rp.get_obj_from_ID(ID)
 
-                self.update_rp()
+                localFill = scipy.ndimage.binary_fill_holes(obj.image)
+
+                if not shift and self.isSegm3D:
+                    curr_z = self.zSliceScrollBar.sliderPosition()
+                    posData.lab[curr_z][obj.slice][localFill] = ID
+                else:
+                    posData.lab[obj.slice][localFill] = ID
+
+                # here it is impossible that hole filling overwrites an ID which
+                # otuches border
+                
+                self.update_rp(use_bbox=True, specific_IDs=ID)
                 self.updateAllImages()
 
                 if not self.fillHolesToolButton.findChild(QAction).isChecked():
@@ -5266,13 +5302,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if ID in posData.lab:
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
-                obj_idx = posData.IDs.index(ID)
-                obj = posData.rp[obj_idx]
-                objMask = self.getObjImage(obj.image, obj.bbox)
-                localHull = skimage.morphology.convex_hull_image(objMask)
-                posData.lab[self.getObjSlice(obj.slice)][localHull] = ID
+                if not shift and self.isSegm3D:
+                    rp2D = self.rpCurr2D()
+                    obj = rp2D.get_obj_from_ID(ID)
+                else:
+                    obj = posData.rp.get_obj_from_ID(ID)
 
-                self.update_rp()
+                localHull = skimage.morphology.convex_hull_image(obj.image)
+                if not shift and self.isSegm3D:
+                    curr_z = self.zSliceScrollBar.sliderPosition()
+                    hull_lab = posData.lab[curr_z][obj.slice]
+                else:
+                    hull_lab = posData.lab[obj.slice]
+
+                IDs_overwritten = np.unique(hull_lab[localHull])
+                IDs_overwritten = IDs_overwritten[IDs_overwritten != 0]
+                hull_lab[localHull] = ID
+
+                self.update_rp(use_bbox=True, specific_IDs=IDs_overwritten)
                 self.updateAllImages()
 
                 if not self.hullContToolButton.findChild(QAction).isChecked():
@@ -5285,30 +5332,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             x, y = event.pos().x(), event.pos().y()
             self.startMovingLabel(x, y)
-
-        # Fill holes
-        elif right_click and self.fillHolesToolButton.isChecked():
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
-            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
-            if ID == 0:
-                nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
-                )
-                clickedBkgrID = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter here the ID that you want to '
-                         'fill the holes of',
-                    parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID),
-                    isInteger=True
-                )
-                clickedBkgrID.exec_()
-                if clickedBkgrID.cancel:
-                    return
-                else:
-                    ID = clickedBkgrID.EntryID
 
         # Merge IDs
         elif right_click and self.mergeIDsButton.isChecked():
@@ -5338,9 +5361,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.storeUndoRedoStates(False)
             self.firstID = ID
             
-            obj_idx = posData.IDs_idxs[ID]
-            obj = posData.rp[obj_idx]
-            yc, xc = self.getObjCentroid(obj.centroid)
+            centroid = posData.rp.get_centroid(ID) # maybe use 2D centroid here?
+            yc, xc = self.getObjCentroid(centroid)
             self.clickObjYc, self.clickObjXc = int(yc), int(xc)
 
         # Edit ID
@@ -5367,8 +5389,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     ID = editID_prompt.EntryID
             
-            obj_idx = posData.IDs_idxs[ID]
-            y, x = posData.rp[obj_idx].centroid[-2:]
+            centroid = posData.rp.get_centroid(ID, exact=True)
+            y, x = self.getObjCentroid(centroid)
             xdata, ydata = int(x), int(y)
 
             posData.disableAutoActivateViewerWindow = True
@@ -5640,7 +5662,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         ID = self.hoverLabelID
 
-        obj = posData.rp[posData.IDs.index(ID)]
+        obj = posData.rp.get_obj_from_ID(ID)
 
         if reinitExpandingLab:
             # Store undo state before modifying stuff
@@ -5673,7 +5695,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         expandedLab[self.currentLab2D>0] = 0
 
         # Get coords of the dilated/eroded object
-        expandedObj = skimage.measure.regionprops(expandedLab)[0]
+        expandedObj = regionprops.acdcRegionprops(
+            expandedLab, precache_centroids=False)[0]
+        expandedObj_bbox = expandedObj.bbox
         expandedObjCoords = (expandedObj.coords[:,-2], expandedObj.coords[:,-1])
 
         # Add the dilated/erored object
@@ -5683,7 +5707,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.set_2Dlab(lab_2D)
         self.currentLab2D = lab_2D
         
-        self.update_rp()
+        preloaded_bbox = self.update_rp_get_bbox(custom_bbox=expandedObj_bbox)
+        self.update_rp(preloaded_bbox=preloaded_bbox, specific_IDs=ID)
+        # we dont draw over other IDs so this is rare case where its fine
+        # to just have tight bbox and specific_IDs=ID 
         
         if self.labelsGrad.showLabelsImgAction.isChecked():
             self.img2.setImage(img=self.currentLab2D, autoLevels=False)
@@ -5706,7 +5733,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.searchedIDitemLeft.setData([], [])
         self.movingID = ID
         self.prevMovePos = (xdata, ydata)
-        movingObj = posData.rp[posData.IDs.index(ID)]
+        movingObj = posData.rp.get_obj_from_ID(ID)
         self.movingObjCoords = movingObj.coords.copy()
         yy, xx = movingObj.coords[:,-2], movingObj.coords[:,-1]
         self.currentLab2D[yy, xx] = 0
@@ -5978,11 +6005,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.highlightedID = self.getHighlightedID()
             if self.highlightedID == 0:
                 return
-            objIdx = posData.IDs_idxs[self.highlightedID]
-            obj_idx = posData.IDs_idxs.get(self.highlightedID)
-            if obj_idx is None:
+            obj = posData.rp.get_obj_from_ID(self.highlightedID)
+            if obj is None:
                 return
-            obj = posData.rp[objIdx]
             self.goToZsliceSearchedID(obj) 
     
     def setHighlightID(self, doHighlight):
@@ -6002,13 +6027,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         propsQGBox = self.guiTabControl.propsQGBox
-        obj_idx = posData.IDs_idxs.get(ID)
-        if obj_idx is None:
+        obj = posData.rp.get_obj_from_ID(ID)
+        if obj is None:
             s = f'Object ID {int(ID):d} does not exist'
             propsQGBox.notExistingIDLabel.setText(s)
             return
         
-        obj = posData.rp[obj_idx]
         self.goToZsliceSearchedID(obj)
         self.updatePropsWidget(int(ID))
 
@@ -6033,7 +6057,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return 
         
         if posData.rp is None:
-            self.update_rp()
+            self.update_rp() # IDK when can this happen?
 
         if not posData.IDs:
             # empty segmentation mask
@@ -6045,8 +6069,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         propsQGBox = self.guiTabControl.propsQGBox
 
-        obj_idx = posData.IDs_idxs.get(ID)
-        if obj_idx is None:
+        obj = posData.rp.get_obj_from_ID(ID)
+        if obj is None:
             s = f'Object ID {int(ID):d} does not exist'
             propsQGBox.notExistingIDLabel.setText(s)
             return
@@ -6062,8 +6086,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if doHighlight:
             self.highlightSearchedID(ID)
         
-        obj = posData.rp[obj_idx]
-
         if self.isSegm3D:
             if self.zProjComboBox.currentText() == 'single z-slice':
                 local_z = self.z_lab() - obj.bbox[0]
@@ -6349,9 +6371,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if ID == 0:
             self.BudMothTempLine.setData([x1, x2], [y1, y2])
         else:
-            obj_idx = posData.IDs_idxs[ID]
-            obj = posData.rp[obj_idx]
-            y2, x2 = self.getObjCentroid(obj.centroid)
+            centroid = posData.rp.get_centroid(ID)
+            y2, x2 = self.getObjCentroid(centroid)
             self.BudMothTempLine.setData([x1, x2], [y1, y2])
     
     def drawTempMergeObjsLine(self, event, posData, modifiers):
@@ -6364,9 +6385,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         y1, x1 = self.clickObjYc, self.clickObjXc
         ID = self.get_2Dlab(posData.lab)[ydata, xdata]
         if ID != 0:
-            obj_idx = posData.IDs_idxs[ID]
-            obj = posData.rp[obj_idx]
-            y2, x2 = self.getObjCentroid(obj.centroid)
+            centroid = posData.rp.get_centroid(ID)
+            y2, x2 = self.getObjCentroid(centroid)
         
         if modifier and ID > 0:
             self.mergeObjsTempLine.addPoint(x2, y2)
@@ -6529,7 +6549,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def warnAddingPointWithExistingId(self, point_id, table_endname=''):
         posData = self.data[self.pos_i]
-        if not point_id in posData.IDs_idxs:
+        if not point_id in posData.IDs:
             return True
         
         msg = widgets.myMessageBox(wrapText=False)
@@ -6786,7 +6806,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.isMovingLabel = False
 
             # Update data (rp, etc)
-            self.update_rp()
+            self.update_rp() # IDK can I do optimization here?
 
             # Repeat tracking
             self.tracking(enforce=True, assign_unique_new_IDs=False)
@@ -6820,31 +6840,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     return
                 else:
                     ID = mergeID_prompt.EntryID
-                    obj_idx = posData.IDs_idxs[ID]
-                    obj = posData.rp[obj_idx]
-                    y2, x2 = self.getObjCentroid(obj.centroid)
-                    self.mergeObjsTempLine.addPoint(x2, y2)
+                    centroid = posData.rp.get_centroid(ID)
+                    ydata, xdata = self.getObjCentroid(centroid)
+                    ydata, xdata = int(ydata), int(xdata)
             
             xx, yy = self.mergeObjsTempLine.getData()
             IDs_to_merge = lab2D[yy.astype(int), xx.astype(int)]
             for ID in IDs_to_merge:
                 if ID == 0:
                     continue
-                posData.lab[posData.lab==ID] = self.firstID
+                obj = posData.rp.get_obj_from_ID(ID)
+                
+                posData.lab[obj.slice][obj.image] = self.firstID
             
             self.mergeObjsTempLine.setData([], [])
             self.clickObjYc, self.clickObjXc = None, None
-
-            # Update data (rp, etc)
-            self.update_rp()
-
+            
+            bbox = self.update_rp_get_bbox(specific_IDs=IDs_to_merge,use_bbox=True) # use old IDs to get bbox
+            specific_IDs = list(IDs_to_merge) + [self.firstID]
+            self.update_rp(specific_IDs=specific_IDs,preloaded_bbox=bbox) # update with new IDs
             ask_back_prop = True
 
             if posData.frame_i == 0:
                 ask_back_prop = False
                 prev_IDs = []
             else:
-                prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
+                prev_IDs = (
+                    posData.allData_li[posData.frame_i-1]['regionprops'].IDs)
 
             if  all(ID not in prev_IDs for ID in IDs_to_merge):
                 ask_back_prop = False
@@ -6913,8 +6935,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
             self.isRightClickDragImg1 = False
             try:
-                self.curvToolSplineToObj(isRightClick=True)
-                self.update_rp()
+                mask, returnID = self.curvToolSplineToObj(isRightClick=True)
+                if mask is not None:
+                    self.update_rp() # how can I optimize this? I think not possible tbh
                 self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
@@ -6933,13 +6956,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.isMouseDragImg1 = False
 
             self.clearTempBrushImage()
+
+            erasedIDs = [ID for ID in self.erasedIDs if ID != 0]
         
             # Update data (rp, etc)
-            self.update_rp()
+            self.update_rp(
+                use_curr_view=True,
+                specific_IDs=erasedIDs or None,
+            ) # only visible stuff can be deleted
 
             doUpdateImages = self.checkWarnDeletedIDwithEraser()
             
-            if doUpdateImages:
+            if not doUpdateImages:
                 self.updateAllImages()
 
         # Brush button mouse release
@@ -6960,7 +6988,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.lab[self.flood_mask] = posData.brushID
             
             # Update data (rp, etc)
-            self.update_rp()
+            # only visible stuff can be added, plus doesnt draw over eixisting
+            self.update_rp(use_curr_view=True, specific_IDs=posData.brushID)
 
             # Repeat tracking
             self.trackManuallyAddedObject(posData.brushID, self.isNewID)
@@ -7041,7 +7070,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.isMovingLabel = False
 
             # Update data (rp, etc)
-            self.update_rp()
+            self.update_rp(use_curr_view=True) # only visible stuff can be moved
 
             # Repeat tracking
             self.tracking(enforce=True, assign_unique_new_IDs=False)
@@ -7076,9 +7105,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     return
                 else:
                     ID = mothID_prompt.EntryID
-                    obj_idx = posData.IDs.index(ID)
-                    y, x = posData.rp[obj_idx].centroid
-                    xdata, ydata = int(x), int(y)
+                    centroid = posData.rp.get_centroid(ID)
+                    ydata, xdata = self.getObjCentroid(centroid)
+                    ydata, xdata = int(ydata), int(xdata)
 
             if self.isSnapshot:
                 # Store undo state before modifying stuff
@@ -7109,11 +7138,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # on a mother
                 budID = self.get_2Dlab(posData.lab)[self.yClickBud, self.xClickBud]
                 new_mothID = self.get_2Dlab(posData.lab)[ydata, xdata]
-                bud_obj_idx = posData.IDs.index(budID)
-                new_moth_obj_idx = posData.IDs.index(new_mothID)
-                rp_budID = posData.rp[bud_obj_idx]
-                rp_new_mothID = posData.rp[new_moth_obj_idx]
-                if rp_budID.area >= rp_new_mothID.area:
+                bug_obj = posData.rp.get_obj_from_ID(budID)
+                new_mother_obj = posData.rp.get_obj_from_ID(new_mothID)
+                if bug_obj.area >= new_mother_obj.area:
                     self.assignBudMothButton.setChecked(False)
                     msg = widgets.myMessageBox()
                     txt = (
@@ -7852,7 +7879,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         elif right_click and copyContourON:
             hoverLostID = self.ax1_lostObjScatterItem.hoverLostID
             self.copyLostObjectMask(hoverLostID)
-            self.update_rp()
+            self.update_rp(use_curr_view=True) # only visible
             self.updateAllImages()
             self.store_data()
 
@@ -7902,7 +7929,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if closeSpline:
                 self.splineHoverON = False
                 self.curvToolSplineToObj()
-                self.update_rp()
+                self.update_rp()  # dont think I can optimize this
                 self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
@@ -7978,21 +8005,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData = self.data[self.pos_i]
             currentIDs = posData.IDs.copy()
             if manualTrackID in currentIDs:
-                tempID = max(currentIDs) + 1
-                posData.lab[posData.lab == clickedID] = tempID
-                posData.lab[posData.lab == manualTrackID] = clickedID
-                posData.lab[posData.lab == tempID] = manualTrackID
+                clicked_obj = posData.rp.get_obj_from_ID(clickedID)
+                manual_track_obj = posData.rp.get_obj_from_ID(manualTrackID)
+                posData.lab[clicked_obj.slice][clicked_obj.image] = manualTrackID
+                posData.lab[manual_track_obj.slice][manual_track_obj.image] = (
+                    clickedID)
                 self.manualTrackingToolbar.showWarning(
                     f'The ID {manualTrackID} already exists --> '
                     f'ID {manualTrackID} has been swapped with {clickedID}'
                 )
+                assignments = {clickedID: manualTrackID,
+                               manualTrackID: clickedID}
             else:
-                posData.lab[posData.lab == clickedID] = manualTrackID
+                clicked_obj = posData.rp.get_obj_from_ID(clickedID)
+                posData.lab[clicked_obj.slice][clicked_obj.image] = manualTrackID
                 self.manualTrackingToolbar.showInfo(
                     f'ID {clickedID} changed to {manualTrackID}.'
                 )
+                assignments = {clickedID: manualTrackID}
             
-            self.update_rp()
+            # only ID change, so use assignments
+            # not 3D ready yet? Otherwise I must set assignments to None
+            self.update_rp(assignments=assignments)
             self.updateAllImages()
         
         elif right_click and manualBackgroundON:
@@ -8056,9 +8090,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     return
                 else:
                     ID = divID_prompt.EntryID
-                    obj_idx = posData.IDs.index(ID)
-                    y, x = posData.rp[obj_idx].centroid
-                    xdata, ydata = int(x), int(y)
+                    centroid = posData.rp.get_centroid(ID)
+                    ydata, xdata = self.getObjCentroid(centroid)
+                    ydata, xdata = int(ydata), int(xdata)
 
             if not self.isSnapshot:
                 # Store undo state before modifying stuff
@@ -8101,8 +8135,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     ID = budID_prompt.EntryID
 
             obj_idx = posData.IDs.index(ID)
-            y, x = posData.rp[obj_idx].centroid
-            xdata, ydata = int(x), int(y)
+            centroid = posData.rp.get_centroid(ID)
+            ydata, xdata = self.getObjCentroid(centroid)
+            ydata, xdata = int(ydata), int(xdata)
 
             relationship = posData.cca_df.at[ID, 'relationship']
             is_history_known = posData.cca_df.at[ID, 'is_history_known']
@@ -8148,9 +8183,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     return
                 else:
                     ID = unknownID_prompt.EntryID
-                    obj_idx = posData.IDs.index(ID)
-                    y, x = posData.rp[obj_idx].centroid
-                    xdata, ydata = int(x), int(y)
+                    centroid = posData.rp.get_centroid(ID)
+                    ydata, xdata = self.getObjCentroid(centroid)
+                    ydata, xdata = int(ydata), int(xdata)
 
             self.annotateIsHistoryKnown(ID)
             if not self.setIsHistoryKnownButton.findChild(QAction).isChecked():
@@ -8177,9 +8212,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     return
                 else:
                     ID = clickedBkgrDialog.EntryID
-                    obj_idx = posData.IDs.index(ID)
-                    y, x = posData.rp[obj_idx].centroid
-                    xdata, ydata = int(x), int(y)
+                    centroid = posData.rp.get_centroid(ID)
+                    ydata, xdata = self.getObjCentroid(centroid)
+                    ydata, xdata = int(ydata), int(xdata)
 
             button = self.doCustomAnnotation(ID)
             if button is None:
@@ -8545,8 +8580,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.SegForLostIDsWorkerAskInstallGPU
         )
 
-        self.SegForLostIDsWorker.sigStoreData.connect(self.onSigStoreDataSegForLostIDsWorker)
-        self.SegForLostIDsWorker.sigUpdateRP.connect(self.onSigUpdateRPSegForLostIDsWorker)
+        self.SegForLostIDsWorker.sigStoreData.connect(
+            self.onSigStoreDataSegForLostIDsWorker)
+        self.SegForLostIDsWorker.sigUpdateRP.connect(
+            self.onSigUpdateRPSegForLostIDsWorker)
         # self.SegForLostIDsWorker.sigGetData.connect(self.onSigGetDataSegForLostIDsWorker)
         # self.SegForLostIDsWorker.sigGet2Dlab.connect(self.onSigGet2DlabSegForLostIDsWorker)
         # self.SegForLostIDsWorker.sigGetTrackedLostIDs.connect(self.onSigGetTrackedSegForLostIDsWorker)
@@ -8620,10 +8657,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             autosave=autosave, store_cca_df_copy=store_cca_df_copy)
         waitcond.wakeAll()
 
-    def onSigUpdateRP(self, waitcond, draw=True, debug=False, update_IDs=True, 
-                  wl_update=True, wl_track_og_curr=False):
-        self.update_rp(draw=draw, debug=debug, update_IDs=update_IDs,
-                        wl_update=wl_update, wl_track_og_curr=wl_track_og_curr)
+    def onSigUpdateRP(self, waitcond, 
+            draw=True, debug=False, # og stuff
+            assignments=None, deletionIDs=None, # very quick upates, rp labels are changed but rest is same
+            specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
+            wl_update=True, wl_track_og_curr=False,wl_update_lab=False, # wl stuff
+        ):
+        self.update_rp(draw=True, debug=False, # og stuff
+                       assignments=None, deletionIDs=None, # very quick upates, rp labels are changed but rest is same
+                       specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
+                       wl_update=True, wl_track_og_curr=False,wl_update_lab=False, # wl stuff
+                       )
         waitcond.wakeAll()
 
     def onSigGetData(self, waitcond, debug=False):
@@ -8632,7 +8676,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def SegForLostIDsWorkerFinished(self):
         self.updateAllImages()
-        self.update_rp()
+        self.update_rp() # will update when updating segoforlostIDs
         self.store_data(autosave=True)
         self.setFrameNavigationDisabled(disable=False, why='Segmentation for lost IDs')
 
@@ -8982,14 +9026,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for frame_i in range(len(posData.segm_data)):
             if frame_i >= len(posData.allData_li):
                 break
-            lab = posData.allData_li[frame_i]['labels']
-            if lab is None:
-                rp = skimage.measure.regionprops(posData.segm_data[frame_i])
-                IDs = set([obj.label for obj in rp])
-            else:
-                IDs = posData.allData_li[frame_i]['IDs']
             
-            if searchedID in IDs:
+            rp = posData.allData_li[frame_i]['regionprops']
+            if rp is None:
+                lab = posData.segm_data[frame_i]
+                rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+                posData.allData_li[frame_i]['regionprops'] = rp
+            if searchedID in rp.IDs:
                 frame_i_found = frame_i
                 break
             
@@ -9006,8 +9049,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def goToObjectID(self, ID):
         posData = self.data[self.pos_i]
-        objIdx = posData.IDs_idxs[ID]
-        obj = posData.rp[objIdx]
+        obj = posData.rp.get_obj_from_ID(ID)
         self.goToZsliceSearchedID(obj)
         
         self.highlightSearchedID(ID)
@@ -9018,8 +9060,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
-        prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
-        obj = prev_rp[prev_IDs_idxs[lostID]]
+        obj = prev_rp.get_obj_from_ID(lostID)
         self.goToZsliceSearchedID(obj)
         
         imageItem = self.getLostObjImageItem(0)
@@ -9030,7 +9071,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.lostObjContoursImage[:] = 0  
 
         contours = []
-        obj_contours = self.getObjContours(obj, all_external=True)
+        obj_contours = self.getObjContours(
+            obj,
+            all_external=True,
+            include_internal=self.showAllContoursToggle.isChecked()
+        )
         contours.extend(obj_contours)
         
         self.addLostObjsToLostObjImage(obj, lostID)
@@ -9042,8 +9087,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
-        prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
-        obj = prev_rp[prev_IDs_idxs[acceptedLostID]]
+        obj = prev_rp.get_obj_from_ID(acceptedLostID)
         self.goToZsliceSearchedID(obj)
         
         self.updateLostTrackedContoursImage(tracked_lost_IDs=[acceptedLostID])
@@ -9646,43 +9690,49 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lab = posData.lab
         
         # Store undo state before modifying stuff
+        # no risk of merging IDs if we are working with rp and dont updaet in the middle...
         self.storeUndoRedoStates(UndoFutFrames)
-        maxID = max(posData.IDs, default=0)
-        for old_ID, new_ID in oldIDnewIDMapper:
+        # could this be chained??? If yes we have to "simplify" to least swops to since we keep RP stale
+        # oldIDnewIDMapper
+        assignments = {}
+        for old_ID, new_ID in oldIDnewIDMapper: 
             if new_ID in currentIDs and not self.editIDmergeIDs:
-                tempID = maxID + 1
-                lab[lab == old_ID] = maxID + 1
-                lab[lab == new_ID] = old_ID
-                lab[lab == tempID] = new_ID
-                maxID += 1
+                objo = posData.rp.get_obj_from_ID(old_ID)
+                objn = posData.rp.get_obj_from_ID(new_ID)
 
-                old_ID_idx = currentIDs.index(old_ID)
-                new_ID_idx = currentIDs.index(new_ID)
+                # Relabel old_ID to new ID, save since rp is "stale"
+                slc_o = objo.slice
+                mask_o = objo.image
+                lab[slc_o][mask_o] = new_ID
 
-                # Append information for replicating the edit in tracking
-                # List of tuples (y, x, replacing ID)
-                objo = posData.rp[old_ID_idx]
-                yo, xo = self.getObjCentroid(objo.centroid)
-                objn = posData.rp[new_ID_idx]
-                yn, xn = self.getObjCentroid(objn.centroid)
-                if not math.isnan(yo) and not math.isnan(yn):
+                # Relabel new_ID to old_ID
+                slc_n = objn.slice
+                mask_n = objn.image
+                lab[slc_n][mask_n] = old_ID
+
+
+                # ¯\_(ツ)_/¯
+                objn_centroid = posData.rp.get_centroid(old_ID, exact=True) # 
+                yn, xn = self.getObjCentroid(objn_centroid)
+                if not math.isnan(yn):
                     yn, xn = int(yn), int(xn)
                     posData.editID_info.append((yn, xn, new_ID))
                     yo, xo = int(clicked_y), int(clicked_x)
                     posData.editID_info.append((yo, xo, old_ID))
+                assignments[new_ID] = old_ID
+                assignments[old_ID] = new_ID
             else:
-                lab[lab == old_ID] = new_ID
-                if new_ID > maxID:
-                    maxID = new_ID
-                old_ID_idx = posData.IDs.index(old_ID)
-
-                # Append information for replicating the edit in tracking
-                # List of tuples (y, x, replacing ID)
-                obj = posData.rp[old_ID_idx]
-                y, x = self.getObjCentroid(obj.centroid)
-                if not math.isnan(y) and not math.isnan(y):
+                # Use regionprops for old_ID
+                obj = posData.rp.get_obj_from_ID(old_ID)
+                slc = obj.slice
+                mask = obj.image
+                lab[slc][mask] = new_ID
+                centroid = posData.rp.get_centroid(old_ID, exact=True)
+                y, x = self.getObjCentroid(centroid)
+                if not math.isnan(y) and not math.isnan(x):
                     y, x = int(y), int(x)
                     posData.editID_info.append((y, x, new_ID))
+                assignments[old_ID] = new_ID
             
             self.updateAssignedObjsAcdcTrackerSecondStep(new_ID)
         
@@ -9690,7 +9740,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.set_2Dlab(lab)
         
         # Update rps
-        self.update_rp()
+        self.update_rp(
+            assignments=assignments if (shift and self.isSegm3D) else None)
 
         # Since we manually changed an ID we don't want to repeat tracking
         self.setAllTextAnnotations()        
@@ -10144,7 +10195,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xxA, yyA = xx[::n], yy[::n]
             rr, cc = skimage.draw.polygon(yyA, xxA)
             self.autoContObjMask[rr, cc] = 1
-            rp = skimage.measure.regionprops(self.autoContObjMask)
+            rp = regionprops.acdcRegionprops(
+                self.autoContObjMask, precache_centroids=False
+            )
             if not rp:
                 return
             obj = rp[0]
@@ -10244,14 +10297,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # If the cell with unknown history has a relative ID assigned to it
             # we set the cca of it to the status it had BEFORE the assignment
             posData.cca_df.loc[relID] = relID_cca
-
-        # Update cell cycle info LabelItems
-        obj_idx = posData.IDs.index(ID)
-        rp_ID = posData.rp[obj_idx]
-
-        if relID in posData.IDs:
-            relObj_idx = posData.IDs.index(relID)
-            rp_relID = posData.rp[relObj_idx]
         
         self.setAllTextAnnotations()
         self.drawAllMothBudLines()
@@ -10472,12 +10517,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.cca_df.at[relID, 'generation_num'] = 2
             posData.cca_df.at[relID, 'cell_cycle_stage'] = 'G1'
             posData.cca_df.at[relID, 'relationship'] = 'mother'
-
-        obj_idx = posData.IDs.index(ID)
-        relObj_idx = posData.IDs.index(relID)
-        rp_ID = posData.rp[obj_idx]
-        rp_relID = posData.rp[relObj_idx]
-
+            
         self.store_cca_df()
 
         # Update cell cycle info LabelItems
@@ -11539,14 +11579,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.storeUndoRedoStates(False)
 
         posData = self.data[self.pos_i]
-        posData.lab = skimage.segmentation.clear_border(
-            posData.lab, buffer_size=1
+        edge_ids = myutils.clear_border(posData.lab, return_edge_ids=True) # modifies inplace
+        self.update_rp(deletionIDs=edge_ids)
+        self.update_cca_df_deletedIDs(
+            posData, edge_ids, dropInPast=False, dropInFuture=False
         )
-        oldIDs = posData.IDs.copy()
-        self.update_rp()
-        removedIDs = [ID for ID in oldIDs if ID not in posData.IDs]
-        if posData.cca_df is not None:
-            posData.cca_df = posData.cca_df.drop(index=removedIDs)
         self.store_data()
         self.updateAllImages()
         
@@ -11560,7 +11597,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if frame_i == 0:
             return
         
-        prev_IDs = posData.allData_li[frame_i-1]['IDs']
+        prev_IDs = posData.allData_li[frame_i-1]['regionprops'].IDs
         curr_IDs = posData.IDs
         new_IDs = list(set(curr_IDs) - set(prev_IDs))
 
@@ -11569,7 +11606,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         lab[del_mask] = 0
         posData.lab = lab
         
-        self.update_rp()
+        self.update_rp(deletionIDs=new_IDs)
         
         if posData.cca_df is not None:
             posData.cca_df = posData.cca_df.drop(index=new_IDs)
@@ -11591,13 +11628,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.fillHolesID(posData.brushID, sender='brush')
         
         # Update data (rp, etc)
-        self.update_rp(update_IDs=self.isNewID,)
+        
+        power_brush = self.isPowerBrush()
+        # we have to delay for a second
+        self.update_rp(
+            use_curr_view=True, 
+            specific_IDs=posData.brushID if not power_brush else None
+        )
         
         # Repeat tracking
         if self.autoIDcheckbox.isChecked():
             self.trackManuallyAddedObject(posData.brushID, self.isNewID)
-        else:
-            self.update_rp(update_IDs=posData.brushID not in posData.IDs_idxs)
 
         # Update images
         if self.isNewID:
@@ -11769,7 +11810,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def delROImovingFinished(self, roi: pg.ROI):
         roi.setPen(color='r')
-        self.update_rp()
+        self.update_rp() # get bbox of delROI old and new, run update_rp on both seperately
         self.updateAllImages()
         QTimer.singleShot(
             300, partial(self.updateDelROIinFutureFrames, roi)
@@ -11807,7 +11848,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         delROIs_info['delIDsROI'][idx] = delIDs - restoredIDs
         self.set_2Dlab(lab2D)
-        self.update_rp()
+        self.update_rp() # get bbox of delROI old and new, run update_rp on both seperately
 
     def restoreDelROIimg1(self, delMaskID, delID, ax=0):
         if ax == 0:
@@ -11819,7 +11860,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         if how.find('contours') != -1:
-            rp_delmask = skimage.measure.regionprops(delMaskID.astype(np.uint8))
+            rp_delmask = regionprops.acdcRegionprops(
+                delMaskID.astype(np.uint8), precache_centroids=False
+            )
             if len(rp_delmask) > 0:
                 obj = rp_delmask[0]
                 self.addObjContourToContoursImage(obj=obj, ax=ax)  
@@ -11889,7 +11932,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             idx = delROIs_info['rois'].index(roi)
             delObjROImask = delROIs_info['delMasks'][idx]
             delIDsROI = delROIs_info['delIDsROI'][idx]   
-            delROIlabRp = skimage.measure.regionprops(out_lab)
+            delROIlabRp = regionprops.acdcRegionprops(
+                out_lab, precache_centroids=False
+            )
             for delObj in delROIlabRp:
                 isDelObj = np.any(ROImask[delObj.slice][delObj.image])
                 if not isDelObj:
@@ -12904,7 +12949,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.addExistingDelROIs()
             self.isFirstTimeOnNextFrame()
             self.setEnabledCcaToolbar(enabled=False)
-            self.clearComputedContours()
             self.realTimeTrackingToggle.setDisabled(False)
             self.realTimeTrackingToggle.label.setDisabled(False)
             if posData.cca_df is not None:
@@ -12921,9 +12965,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
-            self.computeAllContours()
             # RAWR!!!!!
-            # self.computeAllObjToObjCostPairs()
             if proceed:
                 self.setEnabledEditToolbarButton(enabled=False)
                 if self.isSnapshot:
@@ -12945,7 +12987,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.navigateScrollBar.setMaximum(posData.SizeT)
             self.navSpinBox.setMaximum(posData.SizeT)
             self.clearGhost()
-            self.computeAllContours()
         elif mode == 'Custom annotations':
             self.setAutoSaveAnnotationsEnabled(True)
             self.setSwitchViewedPlaneDisabled(True)
@@ -12958,14 +12999,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.annotateToolbar.setVisible(True)
             self.clearGhost()
             self.doCustomAnnotation(0)
-            self.computeAllContours()
         elif mode == 'Snapshot':
             self.setAutoSaveAnnotationsEnabled(True)
             self.setSwitchViewedPlaneDisabled(False)
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
             self.doCustomAnnotation(0)
-            self.clearComputedContours()
         elif mode == 'Normal division: Lineage tree': # Mode activation for lineage tree
             # self.startLinTreeIntegrityCheckerWorker() # need to replace (postponed)
             proceed = self.initLinTree()
@@ -13266,8 +13305,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             self.editIDspinbox.setValue(hoverID)
             try:
-                obj_idx = posData.IDs_idxs[hoverID]
-                obj = posData.rp[obj_idx]
+                obj = posData.rp.get_obj_from_ID(hoverID)
                 radius = 0.9 * obj.minor_axis_length / 2 # math.sqrt(obj.area/math.pi)*0.9
                 self.brushSizeSpinbox.setValue(round(radius))
             except Exception as err:
@@ -13370,16 +13408,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.get_data()
         self.tracking(wl_update=False)
         self.currentLab2D = self.get_2Dlab(posData.lab)
-        self.update_rp()
+        self.update_rp() # cannot be more granular as lost obj could be anywhere
         self.updateLostNewCurrentIDs()
         self.store_data(mainThread=False, autosave=False)
 
         self.lostObjContoursImage[:] = 0
         self.lostObjImage[:] = 0
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
-        prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs'] # need to change this when merging with opt.
         for lostID in posData.lost_IDs:
-            obj = prev_rp[prev_IDs_idxs[lostID]]
+            obj = prev_rp.get_obj_from_ID(lostID)
             self.addLostObjsToLostObjImage(obj, lostID, force=True)
 
     def _copyAllLostObjects_returnToFrame(self, frame_i):
@@ -13481,7 +13518,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.blinker.start()
 
         self.copyAllLostObjectsWorkerLoop.exit()
-        self.update_rp()
+        self.update_rp() # global op and obj added, no opt imo unless difference pic
         self.updateAllImages()
         self.store_data()
     
@@ -13624,7 +13661,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 regionLab = transformation.clear_objects_not_in_mask(
                     regionLab, mask
                 )
-                regionRp = skimage.measure.regionprops(regionLab)
+                regionRp = regionprops.acdcRegionprops(
+                    regionLab, precache_centroids=False
+                )
                 for obj in regionRp:
                     if np.all(mask[obj.slice][obj.image]):
                         continue
@@ -13638,7 +13677,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             regionLab[..., ~mask] = 0
         
-        regionRp = skimage.measure.regionprops(regionLab)
+        regionRp = regionprops.acdcRegionprops(
+            regionLab, precache_centroids=False
+        )
         clearIDs = [obj.label for obj in regionRp]
         
         if not clearIDs:
@@ -13697,7 +13738,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 frame_i = start_frame_i + i
                 lab = posData.allData_li[frame_i]['labels']
                 store = True
-                if lab is None:
+                if lab is None: # no rp update here?
                     if frame_i >= len(posData.segm_data):
                         lab = np.zeros_like(posData.segm_data[0])
                         posData.segm_data = np.append(
@@ -13713,6 +13754,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if store:
                     posData.frame_i = frame_i
                     posData.allData_li[frame_i]['labels'] = lab.copy()
+                    # no rp update here?
                     self.get_data()
                     self.store_data(autosave=False)
             
@@ -13725,7 +13767,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 roiLab, self.labelRoiSlice, posData.lab, posData.brushID
             )
 
-        self.update_rp()
+        self.update_rp() # get roi and set as bbox
         
         # Repeat tracking
         if self.autoIDcheckbox.isChecked():
@@ -13756,8 +13798,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def restoreHoverObjBrush(self):
         posData = self.data[self.pos_i]
         if self.ax1BrushHoverID in posData.IDs:
-            obj_idx = posData.IDs_idxs[self.ax1BrushHoverID]
-            obj = posData.rp[obj_idx]
+            obj = posData.rp.get_obj_from_ID(self.ax1BrushHoverID)
             if not self.isObjVisible(obj.bbox):
                 return
             
@@ -13849,15 +13890,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             for frame_i in range(len(posData.segm_data)):
                 if frame_i >= len(posData.allData_li):
                     break
+                
                 lab = posData.allData_li[frame_i]['labels']
                 if lab is None and onlyVisited:
                     break
                 
-                if lab is None:
-                    rp = skimage.measure.regionprops(posData.segm_data[frame_i])
-                else:
-                    rp = posData.allData_li[frame_i]['regionprops']
-                posData.allIDs.update([obj.label for obj in rp])
+                rp = posData.allData_li[frame_i]['regionprops']
+                if rp is None:
+                    lab = posData.segm_data[frame_i]
+                    rp = regionprops.acdcRegionprops(
+                        lab, precache_centroids=False
+                    )
+                    posData.allData_li[frame_i]['regionprops'] = rp
+                    
+                posData.allIDs.update(rp.IDs)
     
     def countObjectsTimelapse(self):
         if self.countObjsWindow is None:
@@ -13906,11 +13952,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         numObjectsCurrentZslice = None
         if 'In current z-slice' in activeCategories:
             numObjectsCurrentZslice = len(
-                skimage.measure.regionprops(self.currentLab2D)
+                regionprops.acdcRegionprops(
+                    self.currentLab2D, precache_centroids=False
+                )
             )
         
         for pos_i, _posData in enumerate(self.data):
-            IDs = _posData.allData_li[0]['IDs']
+            IDs = _posData.allData_li[0]['regionprops'].IDs
             if os.path.exists(_posData.acdc_output_csv_path):
                 numObjectsVisitedPosPrevious += len(IDs)
             if IDs:
@@ -13918,7 +13966,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 numObjectsAllPos += len(IDs)
             else:
                 lab = _posData.segm_data[0]
-                rp = skimage.measure.regionprops(lab)
+                rp = regionprops.acdcRegionprops(
+                    lab, precache_centroids=False
+                )
                 numObjs = len(rp)
                 numObjectsAllPos += numObjs
                 
@@ -14793,10 +14843,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if ev.key() == Qt.Key_Q and self.debug:
             try:
                 from . import _q_debug
-                _q_debug.q_debug(self)
+                _q_debug.q_debug(self, ev)
             except Exception as err:
                 printl(traceback.format_exc())
-                printl('[ERROR]: Error with "_qdebug" module. See Traceback above.')
+                printl('[ERROR]: Error with "_q_debug" module. See Traceback above.')
                 pass
 
         if not self.isDataLoaded:
@@ -15138,7 +15188,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.frame_i = past_frame_i
             self.get_data()
             
-            IDs = posData.allData_li[past_frame_i]['IDs']
+            IDs = posData.allData_li[past_frame_i]['regionprops'].IDs
             stop_loop = False
             for ID in IDs_to_merge:
                 if ID not in IDs:
@@ -15147,10 +15197,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
                 if ID == 0:
                     continue
-                posData.lab[posData.lab==ID] = self.firstID
-                self.update_rp()
-                
-                self.store_data(autosave=False)
+                obj = posData.rp.get_obj_from_ID(ID)
+                posData.lab[obj.slice][obj.image] = self.firstID
+            
+            preloaded_bbox = self.update_rp_get_bbox(specific_IDs=IDs_to_merge,use_bbox=True) # use old RP to get the correct bbox
+            specific_IDs = [*IDs_to_merge, self.firstID]
+            self.update_rp(preloaded_bbox=preloaded_bbox, specific_IDs=specific_IDs)
+            self.store_data(autosave=False)
             
             if stop_loop:
                 break
@@ -15189,11 +15242,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     # Stop at last visited frame since includeUnvisited = False
                     break
                 else:
-                    lab = posData.segm_data[i]
+                    IDs = posData.allData_li[i]['regionprops'].IDs
             else:
-                lab = posData.allData_li[i]['labels']
-            
-            if modID in lab:
+                IDs = posData.allData_li[i]['regionprops'].IDs            
+            if modID in IDs:
                 areFutureIDs_affected.append(True)
         
         if not last_tracked_i_found:
@@ -15673,8 +15725,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def repeatTracking(self):
         posData = self.data[self.pos_i]
-        prev_lab = self.get_2Dlab(posData.lab).copy()
-        self.tracking(enforce=True, DoManualEdit=False)
+        tracked_lab, assignments = self.tracking(
+            enforce=True, 
+            DoManualEdit=False, 
+            return_assignments=True, 
+            return_lab=True
+        )
+        posData.lab = tracked_lab
         if posData.editID_info:
             editedIDsInfo = {
                 posData.lab[y,x]:newID 
@@ -15705,18 +15762,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 detailsText=editIDul
             )
             if msg.cancel:
+                self.update_rp(assignments=assignments) # rp now stale as we return img
                 return
             if msg.clickedButton == keepManualEditButton:
-                allIDs = [obj.label for obj in posData.rp]
+                allIDs = posData.rp.IDs
                 lab2D = self.get_2Dlab(posData.lab)
-                self.manuallyEditTracking(lab2D, allIDs)
-                self.update_rp()
+                tracked_lab, assignments = self.manuallyEditTracking(
+                    lab2D, assignments) # here not use tracked lab?
+                self.update_rp(assignments=assignments) # rp now stale as we return img
                 self.setAllTextAnnotations()
                 self.highlightLostNew()
                 # self.checkIDsMultiContour()
             else:
+                self.update_rp(assignments=assignments) # rp now stale as we return img
                 posData.editID_info = []
-        if np.any(posData.lab != prev_lab):
+        else:
+            self.update_rp(assignments=assignments)
+        
+        # filter self assignments
+        assignments = {k: v for k, v in assignments.items() if k != v}
+        if assignments:
             if self.isSnapshot:
                 self.fixCcaDfAfterEdit('Repeat tracking')
                 self.updateAllImages()
@@ -15788,8 +15853,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.manualBackgroundObjItem.clear()
             return
         
-        ID_idx = posData.IDs_idxs[ID]
-        self.manualBackgroundObj = posData.rp[ID_idx]
+        self.manualBackgroundObj = posData.rp.get_obj_from_ID(ID)
         
         self.manualBackgroundToolbar.clearInfoText()
         self.manualBackgroundObj.contour = self.getObjContours(
@@ -16887,15 +16951,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             xx, yy = [], []
             for annotID in annotIDs_frame_i:
-                if annotID not in posData.IDs_idxs:
+                if annotID not in posData.rp.IDs:
                     continue
-            
-                obj_idx = posData.IDs_idxs[annotID]
-                obj = posData.rp[obj_idx]
+                obj = posData.rp.get_obj_from_ID(annotID)
                 acdc_df.at[annotID, state['name']] = 1
                 if not self.isObjVisible(obj.bbox):
                     continue
-                y, x = self.getObjCentroid(obj.centroid)
+                y, x = self.getObjCentroid(
+                    posData.rp.get_centroid(annotID, exact=True))
                 xx.append(x)
                 yy.append(y)
                 
@@ -17767,7 +17830,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         posData = self.data[self.pos_i]
         lab_mask = (self.currentLab2D>0).astype(np.uint8)
-        rp = skimage.measure.regionprops(lab_mask)
+        rp = regionprops.acdcRegionprops(lab_mask, precache_centroids=False)
         if not rp:
             Y, X = lab_mask.shape
             xRange = -0.5, X+0.5
@@ -18182,9 +18245,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData.accepted_lost_IDs[frame_i].extend(posData.lost_IDs)
         # This section is adding the lost cells to tracked_lost_centroids... TBH I dont know why this wasnt done in the first place
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
         accepted_lost_centroids = {
-            tuple(int(val) for val in prev_rp[prev_IDs_idxs[ID]].centroid) 
+            tuple(int(val) for val in prev_rp.get_centroid(ID, exact=True)) 
             for ID in posData.lost_IDs
         }
         try:
@@ -18264,8 +18326,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.statusBarLabel.setText(f'<p style="color:red;">{warn_txt}</p>')
         
         return False
-        
-    # @exec_time
+    
     def next_frame(self, warn=True):        
         proceed = self.checkIfFutureFrameManualAnnotPastFrames()
         if not proceed:
@@ -18329,7 +18390,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             return
         
-        self.store_zslices_rp()
         self.resetExpandLabel()
         self.updateAllImages()
         self.updateHighlightedAxis()
@@ -18794,6 +18854,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             create_new_segm=self.isNewFile,
             new_endname=self.newSegmEndName,
             end_filename_segm=selectedSegmEndName,
+            load_segm_info_ini=True
         )
         self.selectedSegmEndName = selectedSegmEndName
         self.labelBoolSegm = posData.labelBoolSegm
@@ -20219,7 +20280,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xxS, yyS = self.curvPlotItem.getData()
             if xxS is None:
                 self.setUncheckedAllButtons()
-                return
+                return None, None
             N = len(xxS)
             self.smoothAutoContWithSpline(n=int(N*0.05))
 
@@ -20237,6 +20298,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         newIDMask[self.currentLab2D!=0] = False
         self.currentLab2D[newIDMask] = curvToolID
         self.set_2Dlab(self.currentLab2D)
+        return newIDMask, curvToolID
 
     def addFluoChNameContextMenuAction(self, ch_name):
         posData = self.data[self.pos_i]
@@ -20535,37 +20597,67 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             segm_data.append(lab)
         return np.array(segm_data)
     
-    def trackNewIDtoNewIDsFutureFrame(self, newID, newIDmask):
+    def trackNewIDtoNewIDsFutureFrame(self, newID, obj, assignments):
+        # here RP is stale
         posData = self.data[self.pos_i]
         try:
             nextLab = posData.allData_li[posData.frame_i+1]['labels']
         except IndexError:
             # This is last frame --> there are no future frames
-            return
+            return None, assignments
         
         if nextLab is None:
-            return
+            return None, assignments
         
-        newID_lab = np.zeros_like(posData.lab)
-        newID_lab[newIDmask] = newID
-        newLab_rp = [posData.rp[posData.IDs_idxs[newID]]]
-        newLab_IDs = [newID]        
+        if obj is None:
+            return None, assignments
+             
+        
         nextRp = posData.allData_li[posData.frame_i+1]['regionprops']
+        nextLab = posData.allData_li[posData.frame_i+1]['labels']
+        reverse_assignments = {v:k for k, v in assignments.items()}
         
-        tracked_lab = self.trackFrame(
-            nextLab, nextRp, newID_lab, newLab_rp, newLab_IDs,
-            assign_unique_new_IDs=False
+        rp = posData.rp
+        lab = posData.lab
+        
+        # make rp remporarliy not stale anymore
+        rp.update_regionprops_via_assignments(assignments, lab) 
+        tracked_lab, assignments_new = self.trackFrame(
+            nextLab, nextRp, lab, rp, rp.IDs,
+            assign_unique_new_IDs=False, return_assignments=True,
+            specific_IDs=[newID], 
         )
-        trackedID = tracked_lab[newID_lab>0][0]
+        # restore rp
+        posData.rp.update_regionprops_via_assignments(reverse_assignments, lab)
+        
+        # clear self assignments
+        assignments_new = {
+            k:v for k, v in assignments_new.items() if k != v
+        }
+        if not assignments_new:
+            return None, assignments
+        
+        trackedIDs = list(assignments_new.values())
+
+        trackedID = trackedIDs[0]
         if trackedID == newID:
             # Object does not exist in future frame --> do not track
-            return
+            return None, assignments
         
-        if posData.IDs_idxs.get(trackedID) is not None:
+        if posData.rp.get_obj_from_ID(trackedID, warn=False) is not None:
             # Tracked ID already exists --> do not track to avoid merging
-            return
+            return None, assignments
                 
-        return trackedID
+
+        
+        # update assignments
+        assignments = {
+            old_ID: tracked_ID for old_ID, tracked_ID in assignments.items()
+            if old_ID != newID
+        }
+        assignments[newID] = trackedID
+        
+        return trackedID, assignments
     
     def store_manual_annot_data(
             self, posData=None, data_frame_i=None    
@@ -20608,21 +20700,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         #     self.lin_tree_ask_changes()
         
         allData_li = posData.allData_li[posData.frame_i]
-        allData_li['regionprops'] = posData.rp.copy()
+        allData_li['regionprops'] = posData.rp
         allData_li['labels'] = posData.lab.copy()
-        allData_li['IDs'] = posData.IDs.copy()
+        allData_li['regionprops'].IDs = posData.IDs
         allData_li['manualBackgroundLab'] = (
             posData.manualBackgroundLab
-        )
-        allData_li['IDs_idxs'] = (
-            posData.IDs_idxs.copy()
         )
         if self.manualAnnotPastButton.isChecked():
             self.store_manual_annot_data(
                 posData=posData, data_frame_i=allData_li    
             )
         
-        self.store_zslices_rp()
 
         # Store dynamic metadata
         is_cell_dead_li = [False]*len(posData.rp)
@@ -20638,13 +20726,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             is_cell_dead_li[i] = obj.dead
             is_cell_excluded_li[i] = obj.excluded
             IDs[i] = obj.label
-            try:
-                xx_centroid[i] = int(self.getObjCentroid(obj.centroid)[1])
-                yy_centroid[i] = int(self.getObjCentroid(obj.centroid)[0])
-            except Exception as err:
-                printl(obj, obj.centroid, obj.label, posData.frame_i)
+            centroid = posData.rp.get_centroid(obj.label, exact=True)
+            if centroid is None:
+                continue
+
             if self.isSegm3D:
-                zz_centroid[i] = int(obj.centroid[0])
+                zz_centroid[i] = int(centroid[0])
+                xx_centroid[i] = int(centroid[2])
+                yy_centroid[i] = int(centroid[1])
+            else:
+                xx_centroid[i] = int(centroid[1])
+                yy_centroid[i] = int(centroid[0])
             if obj.label in editedNewIDs:
                 areManuallyEdited[i] = 1
 
@@ -21422,17 +21514,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         newID = self.setBrushID(return_val=True)
         mapper = [(clickedID, newID)]
         self.applyEditID(clickedID, posData.IDs.copy(), mapper, x, y)
-            
-    def get_2Drp(self, lab=None):  
-        if self.isSegm3D:
-            if lab is None:
-                # self.currentLab2D is defined at self.setImageImg2()
-                lab = self.currentLab2D
-            lab = self.get_2Dlab(lab)
-            rp = skimage.measure.regionprops(lab)
-            return rp
-        else:
-            return self.data[self.pos_i].rp
 
     def set_2Dlab(self, lab2D, lab3D=None):
         posData = self.data[self.pos_i]
@@ -21525,10 +21606,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def addYXcentroidToDf(self, df):
         posData = self.data[self.pos_i]
         for obj in posData.rp:
-            y_centroid = int(self.getObjCentroid(obj.centroid)[0])
-            x_centroid = int(self.getObjCentroid(obj.centroid)[1])
-            df.at[obj.label, 'y_centroid'] = y_centroid
-            df.at[obj.label, 'x_centroid'] = x_centroid
+            ID = obj.label
+            centroid = posData.rp.get_centroid(obj, exact=True)
+            y_centroid = int(self.getObjCentroid(centroid)[0])
+            x_centroid = int(self.getObjCentroid(centroid)[1])
+            df.at[ID, 'y_centroid'] = y_centroid
+            df.at[ID, 'x_centroid'] = x_centroid
         return df
     
     def _get_editID_info(self, df):
@@ -21608,7 +21691,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData.lab = self.apply_manual_edits_to_lab_if_needed(
             labels
         )
-        posData.rp = skimage.measure.regionprops(posData.lab)
+        posData.rp = posData.allData_li[posData.frame_i]['regionprops']
+        # get stored IDs
         self.setManualBackgroundLab()
         
         if posData.acdc_df is not None:
@@ -21651,7 +21735,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Requested frame was already visited. Load from RAM.
         never_visited = False
         posData.lab = self.get_labels(from_store=True)
-        posData.rp = skimage.measure.regionprops(posData.lab)
+        # posData.rp = regionprops.acdcRegionprops(posData.lab, precache_centroids=False)
+        posData.rp = posData.allData_li[posData.frame_i]['regionprops']
         df = posData.allData_li[posData.frame_i]['acdc_df']
         if df is None:
             posData.binnedIDs = set()
@@ -21691,6 +21776,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 self.undoAction.setDisabled(True)
         self.UndoCount = 0
+        
         # If stored labels is None then it is the first time we visit this frame
         if posData.allData_li[posData.frame_i]['labels'] is None:
             proceed_cca, never_visited =  self._get_data_unvisited(
@@ -21704,11 +21790,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
         
         self.update_rp_metadata(draw=False)
-        posData.IDs = [obj.label for obj in posData.rp]
-        posData.IDs_idxs = {
-            ID:i for ID, i in zip(posData.IDs, range(len(posData.IDs)))
-        }
-        self.get_zslices_rp()
+        posData.IDs = posData.rp.IDs
         self.pointsLayerDfsToData(posData)
         return proceed_cca, never_visited
 
@@ -21734,7 +21816,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def getBaseCca_df(self, with_tree_cols=False): 
         posData = self.data[self.pos_i]
-        IDs = [obj.label for obj in posData.rp]
+        IDs = posData.rp.IDs
         cca_df = core.getBaseCca_df(IDs, with_tree_cols=with_tree_cols)
         return cca_df
     
@@ -22296,6 +22378,32 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return cca_df
         else:
             posData.cca_df = cca_df
+            
+    def _changeIDhelper(self, lab, oldID, newID, rp, assignments):
+        did_find_newID = False
+        if newID in rp.IDs: # should here also self.editIDmergeIDs?
+            # Relabel old_ID to tempID, safe as RP is safe so no merging
+            objo = rp.get_obj_from_ID(oldID, warn=False)
+            if objo is not None:
+                slc_o = objo.slice
+                mask_o = objo.image
+                lab[slc_o][mask_o] = newID
+                assignments[oldID] = newID
+            # Relabel new_ID to old_ID
+            objn = rp.get_obj_from_ID(newID) # here warn, we check in the if if it should be there
+            objn_slice = objn.slice
+            objn_mask = objn.image
+            lab[objn_slice][objn_mask] = oldID
+            assignments[newID] = oldID
+            did_find_newID = True
+        else:
+            obj = rp.get_obj_from_ID(oldID, warn=False)
+            if obj is not None:
+                slc = obj.slice
+                mask = obj.image
+                lab[slc][mask] = newID
+                assignments[oldID] = newID
+        return did_find_newID
 
     def changeIDfutureFrames(
             self, endFrame_i, oldIDnewIDMapper, includeUnvisited,
@@ -22312,6 +22420,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         segmSizeT = len(posData.segm_data)
         for i in range(posData.frame_i+1, segmSizeT):
+            assignments = {}
             lab = posData.allData_li[i]['labels']
             if lab is None and not includeUnvisited:
                 self.enqAutosave()
@@ -22325,27 +22434,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     lab = self.get_2Dlab(posData.lab)
                 else:
                     lab = posData.lab
-                
+
                 if self.onlyTracking:
                     self.tracking(enforce=True)
                 elif not posData.IDs:
                     continue
                 else:
-                    maxID = max(posData.IDs, default=0) + 1
                     for old_ID, new_ID in oldIDnewIDMapper:
-                        if new_ID in lab:
-                            tempID = maxID + 1 # lab.max() + 1
-                            lab[lab == old_ID] = tempID
-                            lab[lab == new_ID] = old_ID
-                            lab[lab == tempID] = new_ID
-                            maxID += 1
-                        else:
-                            lab[lab == old_ID] = new_ID
-                    
+                        self._changeIDhelper(
+                            lab, old_ID, new_ID, posData.rp, assignments)  
+
                     if shift and self.isSegm3D:
                         self.set_2Dlab(lab)
-                    
-                    self.update_rp(draw=False)
+
+                    self.update_rp(
+                        draw=False,
+                        assignments=assignments if not (shift and self.isSegm3D) else None)
                 self.store_data(autosave=i==endFrame_i)
             elif includeUnvisited:
                 # Unvisited frame (includeUnvisited = True)
@@ -22354,18 +22458,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     lab = self.get_2Dlab(lab)
                 else:
                     lab = lab
-                    
+
+                # get rp from allData_li... Its already init in core.countObjects
+                assignments = {}
+                rp = posData.allData_li[i]['regionprops']
                 for old_ID, new_ID in oldIDnewIDMapper:
-                    if new_ID in lab:
-                        tempID = lab.max() + 1
-                        lab[lab == old_ID] = tempID
-                        lab[lab == new_ID] = old_ID
-                        lab[lab == tempID] = new_ID
-                    else:
-                        lab[lab == old_ID] = new_ID
-                
+                    self._changeIDhelper(
+                        lab, old_ID, new_ID, rp, assignments) 
+
                 if shift and self.isSegm3D:
                     posData.segm_data[i][self.z_lab()] = lab
+                    rp.update_regionprops(lab)
+                else:
+                    rp.update_regionprops_via_assignments(assignments, lab)
         
         # Back to current frame
         posData.frame_i = self.current_frame_i
@@ -22639,14 +22744,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         scatterItem = self.getMothBudLineScatterItem(ax, isNew)
         relative_ID = cca_df_ID['relative_ID']
 
-        try:
-            relative_rp_idx = posData.IDs_idxs[relative_ID]
-        except KeyError:
-            return
-
-        relative_ID_obj = posData.rp[relative_rp_idx]
-        y1, x1 = self.getObjCentroid(obj.centroid)
-        y2, x2 = self.getObjCentroid(relative_ID_obj.centroid)
+        relative_ID_obj = posData.rp.get_obj_from_ID(relative_ID)
+        obj_centroid = posData.rp.get_centroid(ID)
+        rel_obj_centroid = posData.rp.get_centroid(relative_ID)
+        y1, x1 = self.getObjCentroid(obj_centroid)
+        y2, x2 = self.getObjCentroid(rel_obj_centroid)
         xx, yy = core.get_line(y1, x1, y2, x2, dashed=True)
         scatterItem.addPoints(xx, yy)
     
@@ -22688,14 +22790,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
 
             for ID in new_cells:
-                curr_obj = myutils.get_obj_by_label(rp, ID)
+                curr_obj = rp.get_obj_from_ID(ID)
                 lin_tree_df_ID = lin_tree_df.loc[ID]
 
                 # lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
                 if lin_tree_df_ID["parent_ID_tree"] == -1: # make sure that new obj where the parents are not known get skipped
                     continue
                 
-                mother_obj = myutils.get_obj_by_label(prev_rp, lin_tree_df_ID["parent_ID_tree"])
+                mother_obj = prev_rp.get_obj_from_ID(lin_tree_df_ID["parent_ID_tree"])
 
                 emerg_frame_i = lin_tree_df_ID["emerg_frame_i"]
                 isNew = emerg_frame_i == frame_i
@@ -22731,9 +22833,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         scatterItem = self.getMothBudLineScatterItem(ax, isNew)
-
-        y1, x1 = self.getObjCentroid(obj.centroid)
-        y2, x2 = self.getObjCentroid(mother_obj.centroid)
+        
+        posData = self.data[self.pos_i]
+        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        rp = posData.rp
+        if ID is None:
+            ID = obj.label
+        ID_mother = mother_obj.label
+        y1, x1 = self.getObjCentroid(rp.get_centroid(ID))
+        y2, x2 = self.getObjCentroid(prev_rp.get_centroid(ID_mother))
         xx, yy = core.get_line(y1, x1, y2, x2, dashed=True)
         scatterItem.addPoints(xx, yy)
 
@@ -22766,69 +22874,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         objOpts = self.getObjTextAnnotOpts(obj, 'Draw only IDs', ax=1)
         return objOpts
-
-    def store_zslices_rp(self, force_update=False):
-        if not self.isSegm3D:
-            return
-        
-        posData = self.data[self.pos_i]        
-        are_zslices_rp_stored = (
-            posData.allData_li[posData.frame_i].get('z_slices_rp') is not None
-        )
-        if force_update or not are_zslices_rp_stored:
-            self._update_zslices_rp()
-        
-        posData.allData_li[posData.frame_i]['z_slices_rp'] = posData.zSlicesRp
     
     def removeObjectFromRp(self, delID):
         posData = self.data[self.pos_i]
-        rp = []
-        IDs = []
-        IDs_idxs = {}
-        idx = 0
-        for obj in posData.rp:
-            if obj.label == delID:
-                continue
-            rp.append(obj)
-            IDs.append(obj.label)
-            IDs_idxs[obj.label] = idx
-            idx += 1
-        
-        posData.rp = rp
-        posData.IDs = IDs
-        posData.IDs_idxs = IDs_idxs
-        
-        if not self.isSegm3D:
-            return
-        
-        zSlicesRp = {}
-        for z, zSliceRp in posData.zSlicesRp.items():
-            if delID in zSliceRp:
-                continue
+        if not isinstance(delID, (list, set, tuple)):
+            delIDs = [delID]
+        else:
+            delIDs = list(delID)
             
-            zSlicesRp[z] = zSlicesRp
-        
-        posData.zSlicesRp = zSlicesRp
-        self.store_zslices_rp(force_update=True)
-    
-    def get_zslices_rp(self):
-        if not self.isSegm3D:
-            return
-        
-        posData = self.data[self.pos_i]
-        self.store_zslices_rp()
-        posData.zSlicesRp = posData.allData_li[posData.frame_i]['z_slices_rp']
-    
-    # @exec_time
-    def _update_zslices_rp(self):
-        if not self.isSegm3D:
-            return
-        
-        posData = self.data[self.pos_i]
-        posData.zSlicesRp = {}
-        for z, lab2d in enumerate(posData.lab):
-            lab2d_rp = skimage.measure.regionprops(lab2d)
-            posData.zSlicesRp[z] = {obj.label:obj for obj in lab2d_rp}
+        posData.rp.update_regionprops_via_deletions(set(delIDs))
+        posData.IDs = posData.rp.IDs
     
     def instructHowDeleteID(self):
         if 'showInfoDeleteObject' not in self.df_settings.index:
@@ -22871,7 +22926,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for ID in self.erasedIDs:
             if ID == 0:
                 continue
-            if ID in posData.IDs_idxs:
+            if posData.rp.get_obj_from_ID(ID, warn=False) is not None:
                 continue
             
             self.instructHowDeleteID()
@@ -22885,36 +22940,228 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return True
         
         return False
+
+    def _get_entire_depth_axis_from_2D_cutout(self, cutout):
+        # cutout = (xl, xr), (yt, yb), z is always on the y position if depth axis is changed
+        # cutout is in the current view; return grouped ranges in the order
+        # expected by update_rp_get_bbox before conversion to NumPy bbox order.
+        posData = self.data[self.pos_i]
+        if self.isSegm3D:
+            depthAxes = self.switchPlaneCombobox.depthAxes()
+            if depthAxes == 'z':
+                # cutout is (x, y) and we prepend the full z range.
+                z_max = posData.SizeZ
+                return ((0, z_max), cutout[0], cutout[1])
+            if depthAxes == 'y':
+                # cutout is (x, z); convert to (z, x, y).
+                y_max = posData.SizeY
+                return (cutout[1], cutout[0], (0, y_max))
+            elif depthAxes == 'x':
+                # cutout is (y, z); convert to (z, x, y).
+                x_max = posData.SizeX
+                return (cutout[1], (0, x_max), cutout[0])
+        else:
+            return cutout
+            
+    def _cutout_to_bbox(self, cutout):
+        """
+        Convert grouped view ranges into a flat bbox in NumPy array order.
+        2D input: ((x_min, x_max), (y_min, y_max)) → (y_min, x_min, y_max, x_max)
+        3D input: ((z_min, z_max), (y_min, y_max), (x_min, x_max)) → (z_min, y_min, x_min, z_max, y_max, x_max)
+        """
+        cutout = tuple(
+            (min(r[0], r[1]), max(r[0], r[1])) for r in cutout
+        )
+        if self.isSegm3D:
+            (z_min, z_max), (y_min, y_max), (x_min, x_max) = cutout
+            return (z_min, y_min, x_min, z_max, y_max, x_max)
+        else:
+            (x_min, x_max), (y_min, y_max) = cutout
+            return (y_min, x_min, y_max, x_max)
+        
+    def _get_perc_cutout_from_total_img(self, cutout):
+        posData = self.data[self.pos_i]
+        single_timepoint_segm_size = posData.getSingleTimepointSegmSize()
+        if self.isSegm3D:
+            size = (cutout[0][1] - cutout[0][0]) * (cutout[1][1] - cutout[1][0]) * (cutout[2][1] - cutout[2][0])
+        else:
+            size = (cutout[0][1] - cutout[0][0]) * (cutout[1][1] - cutout[1][0])
+        return size / single_timepoint_segm_size
+    
+    def update_rp_get_bbox(self, custom_bbox=None, use_bbox=False, use_curr_view=False,
+                  specific_IDs=None, add_frac_custom_bbox=0.05):
+        """
+        Returns an expanded bounding box (bbox) for the given IDs or custom_bbox.
+        Returns False if not enough cells or cutout is too large.
+        """
+        posData = self.data[self.pos_i]
+        if len(posData.rp.IDs) < RP_OPT_NUM_CELLS_MIN:
+            return False
+        if not isinstance(specific_IDs, (list, set, np.ndarray)) and specific_IDs is not None:
+            specific_IDs = [specific_IDs]
+        elif  specific_IDs is not None and len(specific_IDs) == 0:
+            specific_IDs = None
+        
+        # Helper to merge bboxes
+        def merge_bbox(b1, b2):
+            if len(b1) == 4:
+                return (
+                    min(b1[0], b2[0]), min(b1[1], b2[1]),
+                    max(b1[2], b2[2]), max(b1[3], b2[3])
+                )
+            else:
+                return (
+                    min(b1[0], b2[0]), min(b1[1], b2[1]), min(b1[2], b2[2]),
+                    max(b1[3], b2[3]), max(b1[4], b2[4]), max(b1[5], b2[5])
+                )
+
+        bbox = None
+        if custom_bbox or use_bbox:
+            if not custom_bbox and use_bbox and specific_IDs is not None:
+                rp_old = posData.rp
+                for ID in specific_IDs:
+                    b = rp_old.get_obj_from_ID(ID).bbox
+                    bbox = b if bbox is None else merge_bbox(bbox, b)
+            else:
+                bbox = custom_bbox
+
+            if bbox is None:
+                return False
+        
+        elif use_curr_view:
+            cutout = self.ax1ViewRange(integers=True)
+            cutout = self._get_entire_depth_axis_from_2D_cutout(cutout)
+            if len(cutout)==2:
+                (xl, xr), (yt, yb) = cutout
+            else:
+                (z1, z2), (xl, xr), (yt, yb) = cutout
+                z_min = min(z1, z2)
+                z_max = max(z1, z2)
+            x_min = min(xl, xr)
+            x_max = max(xl, xr)
+            y_min = min(yt, yb)
+            y_max = max(yt, yb)
+            bbox = (y_min, x_min, y_max, x_max) if len(cutout)==2 else (z_min, y_min, x_min, z_max, y_max, x_max)
+        # Expand bbox by a fraction
+        else:
+            raise ValueError('''Either custom_bbox or use_bbox or use_curr_view must be provided as True''')
+        
+        if len(bbox) == 4:
+            y_min, x_min, y_max, x_max = bbox
+            offset_y = int((y_max - y_min) * add_frac_custom_bbox)
+            offset_x = int((x_max - x_min) * add_frac_custom_bbox)
+            offset_y = 1 if offset_y == 0 else offset_y
+            offset_x = 1 if offset_x == 0 else offset_x
+            size_y, size_x = posData.SizeY, posData.SizeX
+            cutout = (
+                (max(0, x_min - offset_x), min(size_x, x_max + offset_x)),
+                (max(0, y_min - offset_y), min(size_y, y_max + offset_y))
+            )
+        else:
+            z_min, y_min, x_min, z_max, y_max, x_max = bbox
+            offset_z = int((z_max - z_min) * add_frac_custom_bbox)
+            offset_y = int((y_max - y_min) * add_frac_custom_bbox)
+            offset_x = int((x_max - x_min) * add_frac_custom_bbox)
+            offset_z = 1 if offset_z == 0 else offset_z
+            offset_y = 1 if offset_y == 0 else offset_y
+            offset_x = 1 if offset_x == 0 else offset_x
+            size_z, size_y, size_x = posData.SizeZ, posData.SizeY, posData.SizeX
+            cutout = (
+                (max(0, z_min - offset_z), min(size_z, z_max + offset_z)),
+                (max(0, y_min - offset_y), min(size_y, y_max + offset_y)),
+                (max(0, x_min - offset_x), min(size_x, x_max + offset_x))
+            )
+
+        perc_from_global = self._get_perc_cutout_from_total_img(cutout)
+        if perc_from_global > RP_OPT_PERC_CUTOUT_MAX:
+            return False
+        return self._cutout_to_bbox(cutout)
     
     @exception_handler
     def update_rp(
-            self, draw=True, debug=False, update_IDs=True, 
-            wl_update=True, wl_track_og_curr=False,wl_update_lab=False
+            self, draw=True, debug=False, # og stuff
+            assignments=None, deletionIDs=None, # very quick upates, rp labels are changed but rest is same
+            specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
+            wl_update=True, wl_track_og_curr=False,wl_update_lab=False, # wl stuff
         ):
+        """Updates posData.rp
 
+        Parameters
+        ----------
+        
+        """
+        #updating rp is very clostly, as it deletes all the cashed
+        if use_curr_view and use_bbox:
+            raise ValueError('''use_curr_view and use_bbox cannot be True at the 
+                             same time, as they are mutually exclusive''')
+        local_rp_update = bool(use_curr_view or use_bbox or preloaded_bbox)
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
-
         if wl_update:
             if self.whitelistOriginalIDs is None:
-                old_IDs = posData.allData_li[posData.frame_i]['IDs'].copy() # for whitelist stuff
+                old_IDs = posData.allData_li[posData.frame_i]['regionprops'].IDs.copy() # for whitelist stuff
             else:
                 old_IDs = self.whitelistOriginalIDs.copy()
                 self.whitelistOriginalIDs = None
         elif self.whitelistOriginalIDs is None:
-            self.whitelist_old_IDs = posData.allData_li[posData.frame_i]['IDs'].copy()
+            self.whitelist_old_IDs = (
+                posData.allData_li[posData.frame_i]['regionprops'].IDs.copy())
+        
+        # check if only one of assignments, deletionIDs or only_current_view is given
+        if sum([assignments is not None, 
+                deletionIDs is not None, 
+                local_rp_update, 
+                ]) > 1:
+            print(assignments is not None, deletionIDs is not None, local_rp_update)
+            raise ValueError('Only one of assignments, deletionIDs, '
+                             'use_curr_view or use_bbox, preloaded_bbox can be used '
+                             'at a time')
+        
+        if not isinstance(specific_IDs, (list, set, np.ndarray)) and specific_IDs is not None:
+            specific_IDs = [specific_IDs]
+        elif specific_IDs is not None and len(specific_IDs) == 0:
+            specific_IDs = None
 
-        posData.rp = skimage.measure.regionprops(posData.lab)
-        if update_IDs:
-            IDs = []
-            IDs_idxs = {}
-            for idx, obj in enumerate(posData.rp):
-                IDs.append(obj.label)
-                IDs_idxs[obj.label] = idx
-            posData.IDs = IDs
-            posData.IDs_idxs = IDs_idxs
+        
+        # posData.rp is an acdcRegionprops instance here.
+        # if rp is None (can sometimes happen appearantly???)
+        if posData.rp is None:
+            printl(f'''Warning: posData.rp is None for pos {self.pos_i}, 
+                   frame {posData.frame_i}. Recomputing rp from labels.''')
+            
+            posData.rp = regionprops.acdcRegionprops(
+                posData.lab, precache_centroids=False
+            )
+        
+        if assignments is not None:
+            # {old_ID: new_ID, ...}
+            posData.rp.update_regionprops_via_assignments(assignments, posData.lab)
+        elif deletionIDs is not None:
+            # (delID1, delID2, ...)
+            posData.rp.update_regionprops_via_deletions(deletionIDs)
+        elif local_rp_update:
+            # first get current view
+            if preloaded_bbox is None:
+                preloaded_bbox = self.update_rp_get_bbox(use_bbox=use_bbox, use_curr_view=use_curr_view,
+                                       specific_IDs=specific_IDs)
+            if preloaded_bbox is not False:
+                posData.rp.update_regionprops_via_cutout(
+                    posData.lab, cutout_bbox=preloaded_bbox, specific_IDs=specific_IDs
+                )
+                # if ID touches border but is not in specific_IDs, it will not be updated,
+                # so be careful!
+            else:
+                posData.rp.update_regionprops(
+                    posData.lab
+                )
+        else:
+            posData.rp.update_regionprops(
+                posData.lab,
+                specific_IDs_update_centroids=specific_IDs if preloaded_bbox is not False else None, # since sometimes I preload
+            )
+        posData.IDs = posData.rp.IDs
+        
         self.update_rp_metadata(draw=draw)        
-        self.store_zslices_rp(force_update=True)
 
         if not wl_update:
             return
@@ -23009,12 +23256,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def highlightLabelID(self, ID, ax=0):        
         posData = self.data[self.pos_i]
-        try:
-            obj = posData.rp[posData.IDs_idxs[ID]]
-        except KeyError:
+        obj = posData.rp.get_obj_from_ID(ID, warn=False)
+        if obj is None:
             return
         
-        self.textAnnot[ax].highlightObject(obj)
+        self.textAnnot[ax].highlightObject(
+            obj, rp=posData.rp, getObjCentroidFunc=self.getObjCentroid)
     
     def _keepObjects(self, keepIDs=None, lab=None, rp=None):
         posData = self.data[self.pos_i]
@@ -23044,7 +23291,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             IDs = posData.IDs
         
         for ID in IDs:
-            obj = posData.rp[posData.IDs_idxs[ID]]
+            obj = posData.rp.get_obj_from_ID(ID)
             self.textAnnot[ax].removeHighlightObject(obj)
     
     def updateKeepIDs(self, IDs):
@@ -23198,7 +23445,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
                     lab = posData.segm_data[i]
-                    rp = skimage.measure.regionprops(lab)
+                    rp = regionprops.acdcRegionprops(
+                        lab, precache_centroids=False
+                    )
                     keepLab = self._keepObjects(lab=lab, rp=rp)
                     posData.segm_data[i] = keepLab
                 
@@ -23280,7 +23529,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             
             if obj.excluded:
-                y, x = self.getObjCentroid(obj.centroid)
+                ID = obj.label
+                y, x = self.getObjCentroid(posData.rp.get_centroid(ID))
                 binnedIDs_xx.append(x)
                 binnedIDs_yy.append(y)
                 if updateLabel:
@@ -23288,7 +23538,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     how = self.drawIDsContComboBox.currentText()
             
             if obj.dead:
-                y, x = self.getObjCentroid(obj.centroid)
+                ID = obj.label
+                y, x = self.getObjCentroid(posData.rp.get_centroid(ID))
                 ripIDs_xx.append(x)
                 ripIDs_yy.append(y)
                 if updateLabel:
@@ -23968,10 +24219,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         if obj is None:
             ID = self.sender().value()
-            try:
-                ID_idx = posData.IDs_idxs[ID]
-                obj = obj = posData.rp[ID_idx]
-            except Exception as e:
+            obj = posData.rp.get_obj_from_ID(ID, warn=False)
+            if obj is None:
                 self.logger.warning(
                     f'ID {ID} does not exist (add points by clicking)'
                 )
@@ -24023,7 +24272,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         try:
-            ID_idx = posData.IDs_idxs[ID]
+            ID_idx = posData.rp.ID_to_idx[ID]
             if direction == 'next':
                 nextID_idx = ID_idx + 1
             else:
@@ -24151,7 +24400,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for posData in self.data:
             for tableEndName, df in posData.clickEntryPointsDfs.items():
                 for point_id in df['id'].values:
-                    if point_id in posData.IDs_idxs:
+                    if point_id in posData.rp.IDs:
                         proceed = self.warnAddingPointWithExistingId(
                             point_id, table_endname=tableEndName
                         )
@@ -24385,10 +24634,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def isPointIdAlreadyNew(self, point_id, action):
         posData = self.data[self.pos_i]
-        if point_id in posData.IDs_idxs:
+        if point_id in posData.rp.IDs:
             return False
         
-        is_ID = point_id in posData.IDs_idxs
+        is_ID = point_id in posData.rp.IDs
         pointsDataPos = action.pointsData.get(self.pos_i)
         if pointsDataPos is None:
             return not is_ID
@@ -24534,6 +24783,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Centroids (either weighted or not)
         # NOTE: if user requested to draw from table we load that in 
         # apps.AddPointsLayerDialog.ok_cb()
+        
+        # this does not have the updated centroid logic to avoid weird behaviours
         posData = self.data[self.pos_i]
         action.pointsData[self.pos_i] = {posData.frame_i: {}}
         if hasattr(action, 'weighingData'):
@@ -25127,30 +25378,42 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             Y, X = posData.img_data.shape[-2:]
         self.textAnnot[0].initItem((Y, X))
         self.textAnnot[1].initItem((Y, X))  
-    
+
+    def _get_obj_for_current_view_rp(self, obj, posData):
+        # 2D segmentation already has the correct regionprops object.
+        if not self.isSegm3D or not posData.rp.is3D:
+            return obj
+
+        slicing = self.switchPlaneCombobox.depthAxes()
+        zProjHow = self.zProjComboBox.currentText()
+        if zProjHow == 'single z-slice':
+            slice_selector = self.z_lab()
+            slice_number = slice_selector[-1] if isinstance(slice_selector, tuple) else slice_selector
+            obj_current_view = posData.rp.get_obj_from_slice_rp(
+                obj.label, slice_number, slicing=slicing, warn=False
+            )
+            return obj_current_view or obj
+
+        obj_current_view = posData.rp.get_obj_from_proj_rp(
+            obj.label, kind='most_common', slicing=slicing, warn=False
+        )
+        return obj_current_view or obj
+
     def getObjContours(
-            self, obj, all_external=False, local=False, force_calc=True,
-            include_internal=False
+            self, obj, all_external=False, local=False,
+            include_internal=False, rp=None
         ):
         posData = self.data[self.pos_i]
-        dataDict = posData.allData_li[posData.frame_i]
-        allContours = dataDict.get('contours')    
-        if allContours is not None and not force_calc:
-            z = self.z_lab()
-            key = (obj.label, str(z), all_external, local)
-            contours = allContours.get(key)
-            if contours is not None:
-                return contours
+        obj_to_use = self._get_obj_for_current_view_rp(obj, posData)
         
-        obj_image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-        obj_bbox = self.getObjBbox(obj.bbox)
         try:
             contours = core.get_obj_contours(
-                obj_image=obj_image, 
-                obj_bbox=obj_bbox, 
+                obj=obj_to_use,
                 local=local,
-                all_external=all_external
+                all_external=all_external,
+                all=include_internal
             )
+                
         except Exception as e:
             if all_external:
                 contours = []
@@ -25159,168 +25422,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.logger.warning(
                 f'Object ID {obj.label} contours drawing failed. '
                 f'(bounding box = {obj.bbox})'
+                f'Error: {e}'
             )
         return contours
-    
-    def clearComputedContours(self):
-        for posData in self.data:
-            for frame_i, dataDict in enumerate(posData.allData_li):
-                dataDict['contours'] = {}
-
-    def _computeAllContours2D(
-            self, dataDict, obj, z, obj_bbox, include_internal=False
-        ):
-        obj_image = self.getObjImage(obj.image, obj.bbox, z_slice=z)
-        if obj_image is None:
-            return
-            
-        all_external = False
-        local = False
-        contours = core.get_obj_contours(
-            obj_image=obj_image, 
-            obj_bbox=obj_bbox, 
-            local=local,
-            all_external=all_external
-        )
-        key = (obj.label, str(z), all_external, local)
-        dataDict['contours'][key] = contours
-        
-        all_external = True
-        local = False
-        contours = core.get_obj_contours(
-            obj_image=obj_image, 
-            obj_bbox=obj_bbox, 
-            local=local,
-            all_external=all_external,
-            all=include_internal
-        )
-        key = (obj.label, str(z), all_external, local)
-        dataDict['contours'][key] = contours
-
-        return dataDict
-    
-    def computeAllContours(self):
-        self.logger.info('Computing all contours...')
-        posData = self.data[self.pos_i]
-        zz = [None]
-        if self.isSegm3D:
-            zz.extend(range(posData.SizeZ))
-        
-        include_internal = self.showAllContoursToggle.isChecked()
-        for frame_i, dataDict in enumerate(posData.allData_li):
-            lab = dataDict['labels']
-            if lab is None:
-                break
-            
-            rp = dataDict['regionprops']
-            if rp is None:
-                rp = skimage.measure.regionprops(lab)
-                
-            dataDict['contours'] = {}
-            for obj in rp:
-                obj_bbox = self.getObjBbox(obj.bbox)
-                for z in zz:
-                    if not self.isObjVisible(obj.bbox, z_slice=z):
-                        continue
-                    
-                    try:
-                        self._computeAllContours2D(
-                            dataDict, obj, z, obj_bbox,
-                            include_internal=include_internal
-                        )
-                    except Exception as err:
-                        # Contours computation fails on weird objects
-                        pass
-    
-    def computeAllObjToObjCostPairs(self):
-        desc = (
-            'Computing all object-to-object cost matrices...'
-        )
-        self.logger.info(desc)
-        posData = self.data[self.pos_i]
-        
-        
-        self.progressWin = apps.QDialogWorkerProgress(
-            title=desc, parent=self, pbarDesc=desc
-        )
-        self.progressWin.mainPbar.setMaximum(0)
-        self.progressWin.show(self.app)
-        
-        self.computeAllObjCostPairsThread = QThread()
-        self.computeAllObjCostPairsWorker = workers.SimpleWorker(
-            posData, self._computeAllObjToObjCostPairs
-        )
-        
-        self.computeAllObjCostPairsWorker.moveToThread(
-            self.computeAllObjCostPairsThread
-        )
-        
-        self.computeAllObjCostPairsWorker.signals.finished.connect(
-            self.computeAllObjCostPairsThread.quit
-        )
-        self.computeAllObjCostPairsWorker.signals.finished.connect(
-            self.computeAllObjCostPairsWorker.deleteLater
-        )
-        self.computeAllObjCostPairsThread.finished.connect(
-            self.computeAllObjCostPairsThread.deleteLater
-        )
-        
-        self.computeAllObjCostPairsWorker.signals.critical.connect(
-            self.computeAllObjCostPairsWorkerCritical
-        )
-        self.computeAllObjCostPairsWorker.signals.initProgressBar.connect(
-            self.workerInitProgressbar
-        )
-        self.computeAllObjCostPairsWorker.signals.progressBar.connect(
-            self.workerUpdateProgressbar
-        )
-        self.computeAllObjCostPairsWorker.signals.progress.connect(
-            self.workerProgress
-        )
-        self.computeAllObjCostPairsWorker.signals.finished.connect(
-            self.computeAllObjCostPairsWorkerFinished
-        )
-        
-        self.computeAllObjCostPairsThread.started.connect(
-            self.computeAllObjCostPairsWorker.run
-        )
-        self.computeAllObjCostPairsThread.start()
-        
-        self.computeAllObjCostPairsWorkerLoop = QEventLoop()
-        self.computeAllObjCostPairsWorkerLoop.exec_()
-    
-    def _computeAllObjToObjCostPairs(self, posData):
-        self.computeAllObjCostPairsWorker.signals.initProgressBar.emit(
-            len(posData.allData_li)
-        )
-        for frame_i, dataDict in enumerate(posData.allData_li):
-            if frame_i == 0:
-                continue
-            
-            rp = dataDict['regionprops']
-            if rp is None:
-                break
-            
-            prev_rp = posData.allData_li[frame_i-1]['regionprops']
-            dist_matrix = core._compute_all_obj_to_obj_contour_dist_pairs(
-                dataDict['contours'], rp, 
-                prev_rp=prev_rp, 
-                restrict_search=True
-            )
-            dataDict['obj_to_obj_dist_cost_matrix_df'] = dist_matrix
-            self.computeAllObjCostPairsWorker.signals.progressBar.emit(1)
-        self.computeAllObjCostPairsWorker.signals.initProgressBar.emit(0)
-    
-    def computeAllObjCostPairsWorkerCritical(self, error):
-        self.computeAllObjCostPairsWorkerLoop.exit()
-        self.workerCritical(error)
-    
-    def computeAllObjCostPairsWorkerFinished(self, output):
-        if self.progressWin is not None:
-            self.progressWin.workerFinished = True
-            self.progressWin.close()
-            self.progressWin = None
-        self.computeAllObjCostPairsWorkerLoop.exit()
      
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
         if not hasattr(self, 'currentLab2D'):
@@ -25358,22 +25462,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if isOverlaySegmRightActive: 
             self.labelsLayerRightImg.setImage(currentLab2D, autoLevels=False)
-    
-    def getObject2DimageFromZ(self, z, obj):
-        posData = self.data[self.pos_i]
-        z_min = obj.bbox[0]
-        local_z = z - z_min
-        if local_z >= posData.SizeZ or local_z < 0:
-            return
-        return obj.image[local_z]
-    
-    def getObject2DsliceFromZ(self, z, obj):
-        posData = self.data[self.pos_i]
-        z_min = obj.bbox[0]
-        local_z = z - z_min
-        if local_z >= posData.SizeZ or local_z < 0:
-            return
-        return obj.image[local_z]
 
     def isObjVisible(self, obj_bbox, debug=False, z_slice=None):
         if z_slice is None:
@@ -25414,13 +25502,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # required a projection
                 return obj_image.max(axis=0)
 
-            min_z = obj_bbox[0]
             if z_slice is None:
                 z_slice = self.z_lab()
             if isinstance(z_slice, tuple):
                 z_slice = z_slice[-1]
                 
-            local_z = z_slice - min_z
+            local_z = z_slice - obj_bbox[0]
             try:
                 obi_image_2d = obj_image[local_z]
             except Exception as err:
@@ -26344,7 +26431,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if self.annotContourCheckbox.isChecked():
             try:
-                obj = skimage.measure.regionprops(brushImage)[0]
+                obj = regionprops.acdcRegionprops(
+                    brushImage, precache_centroids=False
+                )[0]
             except IndexError:
                 return
             objContour = [self.getObjContours(obj)]
@@ -26393,7 +26482,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.clearObjFromMask(
                 self.contoursImage, mask, toLocalSlice=toLocalSlice
             )
-            erasedRp = skimage.measure.regionprops(self.erasedLab)
+            erasedRp = regionprops.acdcRegionprops(
+                self.erasedLab, precache_centroids=False
+            )
             for obj in erasedRp:
                 self.addObjContourToContoursImage(obj=obj, ax=ax)
         elif how.find('overlay segm. masks') != -1:
@@ -26425,7 +26516,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def _setTempImgExpandLabelContours(self, prevCoords, ax=0):
         self.contoursImage[prevCoords] = [0,0,0,0]
-        currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
+        currentLab2Drp = regionprops.acdcRegionprops(
+            self.currentLab2D, precache_centroids=False
+        )
         for obj in currentLab2Drp:
             if obj.label == self.expandingID:
                 # self.clearObjContour(obj=obj, ax=ax)
@@ -26452,7 +26545,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             how = self.getAnnotateHowRightImage()
         
         if how.find('contours') != -1:
-            currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
+            currentLab2Drp = regionprops.acdcRegionprops(
+                self.currentLab2D, precache_centroids=False
+            )
             for obj in currentLab2Drp:
                 if obj.label == self.movingID:
                     self.addObjContourToContoursImage(obj=obj, ax=ax)
@@ -26557,7 +26652,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 for delID in deletedIDs:
                     dataDict = posData.allData_li[fut_frame_i]
-                    delIDexists = dataDict['IDs_idxs'].get(delID, False)
+                    rp = dataDict['regionprops']
+                    delIDexists = delID in rp.IDs
                     if not delIDexists:
                         continue
                     
@@ -26594,7 +26690,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 for delID in deletedIDs:
                     dataDict = posData.allData_li[past_frame_i]
-                    delIDexists = dataDict['IDs_idxs'].get(delID, False)
+                    rp = dataDict['regionprops']
+                    delIDexists = delID in rp.IDs
                     if not delIDexists:
                         continue
                     
@@ -26890,8 +26987,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         posData = self.data[self.pos_i]
-        objIdx = posData.IDs_idxs[hoverID]
-        obj = posData.rp[objIdx]
+        obj = posData.rp.get_obj_from_ID(hoverID)
         self.goToZsliceSearchedID(obj)
         self.highlightSearchedID(hoverID)
     
@@ -26955,12 +27051,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         posData = self.data[self.pos_i]
-        try:
-            objIdx = posData.IDs_idxs[hoverID]
-        except KeyError as err:
-            return 
+        obj = posData.rp.get_obj_from_ID(hoverID, warn=False)
+        if obj is None:
+            return
         
-        obj = posData.rp[objIdx]
         self.goToZsliceSearchedID(obj)
         
         for ID in self.keptObjectsIDs:
@@ -27025,11 +27119,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.highlightedID = ID
         self.highlightIDToolbar.setVisible(True)
 
-        objIdx = posData.IDs_idxs.get(ID)
-        if objIdx is None:
+        obj = posData.rp.get_obj_from_ID(ID, warn=False)
+        if obj is None:
             return
         
-        obj = posData.rp[objIdx]
         isObjVisible = self.isObjVisible(obj.bbox)
         if not isObjVisible:
             return
@@ -27057,7 +27150,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.highLightIDLayerImg1.setImage(self.highlightedLab)          
             self.labelsLayerImg1.setOpacity(alpha/3)
         else:
-            contours = self.getObjContours(obj, all_external=True)
+            contours = self.getObjContours(
+                obj,
+                all_external=True,
+                include_internal=self.showAllContoursToggle.isChecked()
+            )
             for cont in contours:
                 self.searchedIDitemLeft.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
         
@@ -27067,7 +27164,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.labelsLayerRightImg.setOpacity(alpha/3)
         else:
             if contours is None:
-                contours = self.getObjContours(obj, all_external=True)
+                contours = self.getObjContours(
+                    obj,
+                    all_external=True,
+                    include_internal=self.showAllContoursToggle.isChecked()
+                )
             for cont in contours:
                 self.searchedIDitemRight.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)       
 
@@ -27260,8 +27361,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.initManualBackgroundImage()
         
         contours = []
-        for obj in skimage.measure.regionprops(posData.manualBackgroundLab):    
-            obj_contours = self.getObjContours(obj, all_external=True)  
+        for obj in regionprops.acdcRegionprops(
+            posData.manualBackgroundLab, precache_centroids=False
+        ):
+            obj_contours = self.getObjContours(
+                obj,
+                all_external=True,
+                include_internal=self.showAllContoursToggle.isChecked()
+            )
             contours.extend(obj_contours)
             textItem = self.manualBackgroundTextItems[obj.label]
             textItem.setText(f'{obj.label}')
@@ -27277,7 +27384,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def setManualBackgrounNextID(self):
         posData = self.data[self.pos_i]
         currentID = self.manualBackgroundObj.label
-        idx = posData.IDs_idxs[currentID]
+        idx = posData.rp.ID_to_idx[currentID]
         next_idx = idx + 1
         if next_idx >= len(posData.IDs):
             return
@@ -27336,7 +27443,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if posData.manualBackgroundLab is None:
             self.initManualBackgroundImage()
         
-        for obj in skimage.measure.regionprops(posData.manualBackgroundLab):
+        for obj in regionprops.acdcRegionprops(
+            posData.manualBackgroundLab, precache_centroids=False
+        ):
             textItem = pg.TextItem(text='', color='r', anchor=(0.5, 0.5))
             if obj.label in self.manualBackgroundTextItems:
                 continue
@@ -27353,11 +27462,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.contoursImage[:] = 0
         
         contours = []
-        for obj in skimage.measure.regionprops(self.currentLab2D):    
+        posData = self.data[self.pos_i]
+        rp = posData.rp
+        use_local_rp = (
+            self.isSegm3D
+            and self.zProjComboBox.currentText() == 'single z-slice'
+        )
+        if rp is None:
+            lab = self.currentLab2D
+            rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+            if not use_local_rp:
+                posData.rp = rp
+        elif use_local_rp and rp.is3D:
+            rp = self.rpCurr2D()
+
+        for obj in rp:    
             obj_contours = self.getObjContours(
                 obj, 
                 all_external=True, 
-                force_calc=compute,
                 include_internal=self.showAllContoursToggle.isChecked()
             )  
             contours.extend(obj_contours)
@@ -27372,17 +27494,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def getObjFromID(self, ID):
         posData = self.data[self.pos_i]
-        try:
-            idx = posData.IDs_idxs[ID]
-        except KeyError as e:
+        obj = posData.rp.get_obj_from_ID(ID, warn=False)
+        if obj is None:
             # Object already cleared
             return
-        
-        obj = posData.rp[idx]
         return obj
     
     def setLostObjectContour(self, obj):
-        allContours = self.getObjContours(obj, all_external=True)  
+        allContours = self.getObjContours(
+            obj,
+            all_external=True,
+            include_internal=self.showAllContoursToggle.isChecked()
+        )
         for objContours in allContours:
             xx = objContours[:,0] + 0.5
             yy = objContours[:,1] + 0.5
@@ -27394,7 +27517,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.isExportingVideo:
             return
         
-        allContours = self.getObjContours(obj, all_external=True)  
+        allContours = self.getObjContours(
+            obj,
+            all_external=True,
+            include_internal=self.showAllContoursToggle.isChecked()
+        )
         for objContours in allContours:
             xx = objContours[:,0] + 0.5
             yy = objContours[:,1] + 0.5
@@ -27418,7 +27545,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         posData = self.data[self.pos_i]
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
         if posData.whitelist is not None and posData.whitelist.whitelistIDs is not None:
             whitelist = posData.whitelist.whitelistIDs[posData.frame_i-1]
         else:
@@ -27429,11 +27555,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if lostID in delROIsIDs or (whitelist is not None and lostID not in whitelist):
                 continue
             
-            obj = prev_rp[prev_IDs_idxs[lostID]]
+            obj = prev_rp.get_obj_from_ID(lostID)
             if not self.isObjVisible(obj.bbox):
                 continue
         
-            obj_contours = self.getObjContours(obj, all_external=True)
+            obj_contours = self.getObjContours(
+                obj,
+                all_external=True,
+                include_internal=self.showAllContoursToggle.isChecked()
+            )
             
             if ax == 0:
                 self.addLostObjsToLostObjImage(obj, lostID)
@@ -27474,17 +27604,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             tracked_lost_IDs = self.getTrackedLostIDs()
             
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
         contours = []
         for tracked_lost_ID in tracked_lost_IDs:
             if tracked_lost_ID in delROIsIDs:
                 continue
             
-            obj = prev_rp[prev_IDs_idxs[tracked_lost_ID]]
+            obj = prev_rp.get_obj_from_ID(tracked_lost_ID)
             if not self.isObjVisible(obj.bbox):
                 continue
         
-            obj_contours = self.getObjContours(obj, all_external=True)
+            obj_contours = self.getObjContours(
+                obj,
+                all_external=True,
+                include_internal=self.showAllContoursToggle.isChecked()
+            )
             contours.extend(obj_contours)
 
         self.drawLostTrackedObjContoursImage(imageItem, contours)
@@ -27542,13 +27675,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return nearest_ID
     
     def setCcaIssueContour(self, obj):
-        objContours = self.getObjContours(obj, all_external=True)  
+        objContours = self.getObjContours(
+            obj,
+            all_external=True,
+            include_internal=self.showAllContoursToggle.isChecked()
+        )
         for cont in objContours:
             xx = cont[:,0] + 0.5
             yy = cont[:,1] + 0.5
             self.ax1_lostObjScatterItem.addPoints(xx, yy)
+            
+        posData = self.data[self.pos_i]
         self.textAnnot[0].addObjAnnotation(
-            obj, 'lost_object', f'{obj.label}?', False
+            obj, 'lost_object', f'{obj.label}?', False,
+            rp=posData.rp, getObjCentroidFunc=self.getObjCentroid
         )
     
     def isLastVisitedAgainCca(self, curr_df, enforceAll=False):
@@ -27596,7 +27736,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 yy = objContours[:,1] + 0.5
                 self.ccaFailedScatterItem.addPoints(xx, yy)
             self.textAnnot[0].addObjAnnotation(
-                obj, 'green', f'{obj.label}?', False
+                obj, 'green', f'{obj.label}?', False,
+                rp=posData.rp, getObjCentroidFunc=self.getObjCentroid
             )
 
     def handleNoCellsInG1(self, numCellsG1, numNewCells):
@@ -27634,7 +27775,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if obj is None:
                 return
 
-        contours = self.getObjContours(obj, all_external=True)
+        contours = self.getObjContours(
+            obj,
+            all_external=True,
+            include_internal=self.showAllContoursToggle.isChecked()
+        )
         if thickness is None:
             thickness = self.contLineWeight
         if color is None:
@@ -27693,9 +27838,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return delROIsIDs
     
     def setAllContoursImages(self, delROIsIDs=None, compute=True):
-        if compute:
-            self.computeAllContours()
-        self.updateContoursImage(ax=0, delROIsIDs=delROIsIDs, compute=compute)
+        self.updateContoursImage(ax=0, delROIsIDs=delROIsIDs, compute=compute) #almost all from here
         self.updateContoursImage(ax=1, delROIsIDs=delROIsIDs, compute=compute)
 
     def setAllLostObjContoursImage(self, delROIsIDs=None):
@@ -27821,7 +27964,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 QAbstractSlider.SliderAction.SliderSingleStepSub
             )
     
-    # @exec_time
     @exception_handler
     def updateAllImages(
             self, image=None, computePointsLayers=True, computeContours=True,
@@ -27903,22 +28045,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lab = self.get_2Dlab(lab)
             if delMask is not None:
                 delMask = self.get_2Dlab(delMask)
-            rp = skimage.measure.regionprops(lab)
-            IDs_idxs = {obj.label: idx for idx, obj in enumerate(rp)}
-        else:
+            rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+        else: 
             if frame_i==posData.frame_i:
                 rp = posData.rp
-                IDs_idxs = posData.IDs_idxs
             else:
                 rp = posData.allData_li[frame_i]['regionprops']
-                IDs_idxs = posData.allData_li[frame_i]['IDs_idxs']
 
         if isinstance(delID, int):
             delID = [delID]
             
         is_any_id_present = False
         for _delID in delID:
-            if _delID in IDs_idxs:
+            if _delID in rp.IDs:
                 is_any_id_present = True
                 break
         
@@ -27931,10 +28070,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             delMask[:] = False
 
         for _delID in delID:
-            idx = IDs_idxs.get(_delID, None)
-            if idx is None:
+            if _delID not in rp.IDs:
                 continue
-            obj = rp[idx]
+            obj = rp.get_obj_from_ID(_delID)
             delMask[obj.slice][obj.image] = True
         lab[delMask] = 0
         
@@ -27946,31 +28084,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 delMask = delMask3D
         
         return lab, delMask
-    
-    def removeStoredContours(self, delID, frame_i=None, z_slice=None):
-        posData = self.data[self.pos_i]
-        
-        if frame_i is None:
-            frame_i = posData.frame_i
-            
-        dataDict = posData.allData_li[posData.frame_i]
-        try:
-            newContours = {}
-            for key, contours in dataDict['contours'].items():
-                ID = key[0]
-                if ID == delID:
-                    continue
-                
-                if z_slice is not None:
-                    z_slice_i = key[1]
-                    if z_slice_i != z_slice:
-                        continue
-                
-                newContours[key] = contours
-            
-            dataDict['contours'] = newContours
-        except KeyError as err:
-            pass
     
     @disableWindow
     def deleteIDmiddleClick(
@@ -28030,7 +28143,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.clearObjContour(ID=_delID, ax=1)  
             if z_slice is None:
                 self.removeObjectFromRp(_delID)    
-            self.removeStoredContours(_delID, z_slice=z_slice) 
         
         if shift and self.isSegm3D:
             self.update_rp()
@@ -28075,9 +28187,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             imageItem, contoursItem, gradItem = items
             contoursItem.clear()
             if drawMode == 'Draw contours':
-                for obj in skimage.measure.regionprops(ol_lab):
+                for obj in regionprops.acdcRegionprops(
+                    ol_lab, precache_centroids=False
+                ):
                     contours = self.getObjContours(
-                        obj, all_external=True
+                        obj,
+                        all_external=True,
+                        include_internal=self.showAllContoursToggle.isChecked()
                     )
                     for cont in contours:
                         contoursItem.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
@@ -28240,9 +28356,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.ax1_lostObjScatterItem.setData([], [])
         else:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-            prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
-            lostObj = prev_rp[prev_IDs_idxs[hoverLostID]]
-            obj_contours = self.getObjContours(lostObj, all_external=True)
+            lostObj = prev_rp.get_obj_from_ID(hoverLostID)
+            obj_contours = self.getObjContours(
+                lostObj,
+                all_external=True,
+                include_internal=self.showAllContoursToggle.isChecked()
+            )
             for cont in obj_contours:
                 xx = cont[:,0]
                 yy = cont[:,1]
@@ -28262,10 +28381,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if current_frame_i is None:
             return []
         
-        prev_frame_i = current_frame_i - 1
-        prevIDs = posData.allData_li[prev_frame_i]['IDs']
+        if current_frame_i == 0:
+            return []
         
-        if prevIDs:
+        prev_frame_i = current_frame_i - 1
+        if posData.allData_li[prev_frame_i]['regionprops'] is not None:
+            prevIDs = posData.allData_li[prev_frame_i]['regionprops'].IDs
             return prevIDs
         
         # IDs in previous frame were not stored --> load prev lab from HDD
@@ -28274,8 +28395,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             frame_i=prev_frame_i,
             return_copy=False
         )
-        rp = skimage.measure.regionprops(prev_lab)
-        prevIDs = [obj.label for obj in rp]
+        rp = regionprops.acdcRegionprops(
+            prev_lab, precache_centroids=False
+        )
+        posData.allData_li[prev_frame_i]['regionprops'] = rp
+        prevIDs = rp.IDs
         return prevIDs
             
     # @exec_time
@@ -28436,7 +28560,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             maxID = max(posData.IDs, default=1)
         for obj in rp:
             lab_obj = skimage.measure.label(obj.image)
-            rp_lab_obj = skimage.measure.regionprops(lab_obj)
+            rp_lab_obj = regionprops.acdcRegionprops(
+                lab_obj, precache_centroids=False
+            )
             if len(rp_lab_obj)<=1:
                 continue
             lab_obj += maxID
@@ -28490,105 +28616,87 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             added_IDs = [added_IDs]
         
         posData = self.data[self.pos_i]
-        tracked_lab = self.tracking(
+        tracked_lab, assignments = self.tracking(
             enforce=True, assign_unique_new_IDs=False, return_lab=True,
-            IDs=added_IDs
+            specific_IDs=added_IDs, return_assignments=True,
+            against_next=posData.frame_i==0
         )
+        
+        # RP not updated after tracking!!!
         self.clearAssignedObjsSecondStep()
         if tracked_lab is None:
             return
         
         # Track only new object
-        prevIDs = posData.allData_li[posData.frame_i-1]['IDs']
-
-        # mask = np.zeros(posData.lab.shape, dtype=bool)
-        update_rp = False
-
+        prevIDs = posData.allData_li[posData.frame_i-1]['regionprops'].IDs
+      
+        # assignments_new = dict()
+        # self.update_rp(assignments=assignments)
         for added_ID in added_IDs:
-            # try:
-            #     obj = posData.rp[added_ID] # ID not present
-            #     mask[obj.slice][obj.image] = True
-
-            # except IndexError as err:
-            mask = posData.lab == added_ID
+            
+            # check if added ID is already present
+            # here PR is "stale" so ID maps are not tracked
+            obj = posData.rp.get_obj_from_ID(added_ID, warn=False)
+            if obj is None:
+                continue
             try:
-                trackedID = tracked_lab[mask][0]
+                trackedID = tracked_lab[obj.slice][obj.image][0]
             except IndexError as err:
                 # added_ID is not present
                 continue 
             
             isTrackedIDalreadyPresentAndNotNew = (
-                posData.IDs_idxs.get(trackedID) is not None
+                posData.rp.ID_to_idx.get(trackedID) is not None
                 and added_ID != trackedID
             )
             if isTrackedIDalreadyPresentAndNotNew:
+                self.updatePointsLayerClickEntryTableEndname(
+                    'added obj already present', added_ID, trackedID
+                )
                 continue
             
             isTrackedIDinPrevIDs = trackedID in prevIDs
             if isTrackedIDinPrevIDs:
-                posData.lab[mask] = trackedID
+                posData.lab[obj.slice][obj.image] = trackedID
             else:
                 # New object where we can try to track against next frame
-                trackedID = self.trackNewIDtoNewIDsFutureFrame(added_ID, mask)
+                trackedID, assignments = self.trackNewIDtoNewIDsFutureFrame(added_ID, obj, assignments)
                 if trackedID is None:
                     self.clearAssignedObjsSecondStep()
                     continue
-                posData.lab[mask] = trackedID
+                posData.lab[obj.slice][obj.image] = trackedID
         
             self.keepOnlyNewIDAssignedObjsSecondStep(trackedID)
-            update_rp = True
         
-        if update_rp:
-            self.update_rp(wl_update=wl_update)
-    
+        self.update_rp(wl_update=wl_update, assignments=assignments)
+            
     def trackFrameCustomTracker(
-            self, prev_lab, currentLab, IDs=None, unique_ID=None
+            self, prev_lab, currentLab, specific_IDs=None, unique_ID=None,
+            return_assignments=True, dont_return_tracked_lab=False
         ):
         if unique_ID is None:
             unique_ID = self.setBrushID()
-        try:
-            tracked_result = self.realTimeTracker.track_frame(
-                prev_lab, currentLab,
-                unique_ID=unique_ID,
-                IDs=IDs,
-                **self.track_frame_params,
-            )
-        except TypeError as err:
-            if str(err).find('an unexpected keyword argument \'unique_ID\'') != -1:
-                try:
-                    tracked_result = self.realTimeTracker.track_frame(
-                        prev_lab, currentLab, IDs=IDs,
-                        **self.track_frame_params
-                    )
-                except TypeError as err:
-                    if str(err).find('an unexpected keyword argument \'IDs\'') != -1:
-                        tracked_result = self.realTimeTracker.track_frame(
-                            prev_lab, currentLab,
-                            **self.track_frame_params)
-                    else:
-                        raise err
-            elif str(err).find('an unexpected keyword argument \'IDs\'') != -1:
-                try:
-                    tracked_result = self.realTimeTracker.track_frame(
-                        prev_lab, currentLab,
-                        unique_ID=unique_ID,
-                        **self.track_frame_params
-                    )
-                except TypeError as err:
-                    if str(err).find('an unexpected keyword argument \'unique_ID\'') != -1:
-                        tracked_result = self.realTimeTracker.track_frame(
-                            prev_lab, currentLab,
-                            **self.track_frame_params
-                        )
-                    else:
-                        raise err
-            else:
-                raise err
+        
+        kwargs_total = {
+            'unique_ID': unique_ID,
+            'return_assignments': return_assignments,
+            'dont_return_tracked_lab': dont_return_tracked_lab,
+            'specific_IDs': specific_IDs
+        }
+        kwargs_total.update(self.track_frame_params)
+        
+        kwargs = {k: v for k, v in kwargs_total.items() if k in self.realTimeTracker_kwargs}
+        printl(kwargs)
+        tracked_result = self.realTimeTracker.track_frame(
+            prev_lab, currentLab,
+            **kwargs,
+        )
         return tracked_result
     
     def trackFrame(
             self, prev_lab, prev_rp, curr_lab, curr_rp, curr_IDs,
-            assign_unique_new_IDs=True, IDs=None, unique_ID=None
+            assign_unique_new_IDs=True, specific_IDs=None, unique_ID=None,
+            dont_return_tracked_lab=False, return_assignments=False,
         ):
         if self.trackWithAcdcAction.isChecked():
             tracked_result = CellACDC_tracker.track_frame(
@@ -28597,8 +28705,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 setBrushID_func=self.setBrushID,
                 posData=self.data[self.pos_i],
                 assign_unique_new_IDs=assign_unique_new_IDs, 
-                IDs=IDs,
-                unique_ID=unique_ID
+                specific_IDs=specific_IDs,
+                unique_ID=unique_ID,
+                return_assignments=return_assignments,
+                dont_return_tracked_lab=dont_return_tracked_lab
             )
         elif self.trackWithYeazAction.isChecked():
             tracked_result = self.tracking_yeaz.correspondence(
@@ -28607,17 +28717,44 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
         else:
             tracked_result = self.trackFrameCustomTracker(
-                prev_lab, curr_lab, IDs=IDs, unique_ID=unique_ID
+                prev_lab, curr_lab, specific_IDs=specific_IDs, unique_ID=unique_ID,
+                dont_return_tracked_lab=dont_return_tracked_lab, return_assignments=return_assignments
             )
 
         # Check if tracker also returns additional info
+        assignments = None
         if isinstance(tracked_result, tuple):
-            tracked_lab, tracked_lost_IDs = tracked_result
-            self.handleAdditionalInfoRealTimeTracker(prev_rp, tracked_lost_IDs)
+            tracked_lab, add_info = tracked_result
+            assignments = self.handleAdditionalInfoRealTimeTracker(
+                prev_rp, add_info)
+        elif isinstance(tracked_result, dict) and dont_return_tracked_lab:
+            add_info = tracked_result
+            if 'assignments' in add_info: # if still entire add_info is returned
+                assignments = self.handleAdditionalInfoRealTimeTracker(
+                    prev_rp, add_info)
+            else:
+                assignments = add_info # its just assignements
         else:
             tracked_lab = tracked_result
         
-        return tracked_lab
+        if not return_assignments and not dont_return_tracked_lab:
+            return tracked_lab
+
+        # get assignments
+        printl(assignments)
+        if assignments is None:
+            assignments = dict()
+            for obj in curr_rp:
+                try:
+                    old_lab = obj.label
+                    new_lab = tracked_lab[obj.slice][obj.image][0]
+                    assignments[old_lab] = new_lab
+                except:
+                    import pdb; pdb.set_trace()
+
+        if dont_return_tracked_lab:
+            return assignments
+        return tracked_lab, assignments
     
     def clearAssignedObjsSecondStep(self):
         posData = self.data[self.pos_i]
@@ -28627,37 +28764,32 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         if posData.frame_i == 0:
             return
-
-        subsetLab = np.zeros_like(posData.lab)
-        for subsetID in subsetIDs:
-            subsetLab[posData.lab == subsetID] = subsetID
         
         prev_lab = posData.allData_li[posData.frame_i-1]['labels']
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        tracked_lab = self.trackFrame(
+        assignments = self.trackFrame(
             prev_lab, prev_rp, posData.lab, posData.rp, posData.IDs,
-            assign_unique_new_IDs=True
+            assign_unique_new_IDs=True, specific_IDs=subsetIDs,
+            dont_return_tracked_lab=True
         )
-        doUpdateRp = False
-        for subsetID in subsetIDs:
-            subsetIDmask = posData.lab == subsetID
-            trackedID = tracked_lab[subsetIDmask][0]
-            if trackedID == subsetID:
-                continue
-            
-            is_manually_edited = False
-            for y, x, new_ID in posData.editID_info:
-                if new_ID == subsetID:
+        # I think assignments already avoids merging
+        assignments_new = dict()
+        for old_ID, new_ID in assignments.items():
+            # get "old" id based on assignments
+            if old_ID == new_ID:
+                continue # nothing to do
+
+            for y, x, editID in posData.editID_info:
+                if editID == old_ID or editID == new_ID:
                     # Do not track because it was manually edited
-                    break
+                    continue
                 
-            posData.lab[subsetIDmask] = tracked_lab[subsetIDmask]
-            doUpdateRp = True
+            
+            obj = posData.rp.get_obj_from_ID(old_ID) # pr is still old, so we need to get the old ID
+            posData.lab[obj.slice][obj.image] = new_ID
+            assignments_new[old_ID] = new_ID # old ID : new tracked ID
         
-        if not doUpdateRp:
-            return
-        
-        self.update_rp()
+        self.update_rp(assignments=assignments_new)
     
     def doSkipTracking(self, against_next: bool, enforce: bool):
         if self.isSnapshot:
@@ -28706,13 +28838,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             storeUndo=False, prev_lab=None, prev_rp=None,
             return_lab=False, assign_unique_new_IDs=True,
             separateByLabel=True, wl_update=True,
-            IDs=None, against_next=False,
+            against_next=False, specific_IDs=None , return_assignments=False
         ):
         posData = self.data[self.pos_i]
-        
+        return_tuple = (None, None) if return_assignments and return_lab else None
         if self.doSkipTracking(against_next, enforce):
             self.setLostNewOldPrevIDs()
-            return
+            return return_tuple
         
         """Tracking starts here"""
         staturBarLabelText = self.statusBarLabel.text()
@@ -28746,41 +28878,54 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if posData.frame_i < self.get_last_tracked_i():
             unique_ID = self.setBrushID(return_val=True)
         
-        tracked_lab = self.trackFrame(
+        tracked_lab, assignments = self.trackFrame(
             prev_lab, prev_rp, posData.lab, posData.rp, posData.IDs,
-            assign_unique_new_IDs=assign_unique_new_IDs, IDs=IDs,
-            unique_ID=unique_ID
+            assign_unique_new_IDs=assign_unique_new_IDs,
+            unique_ID=unique_ID, specific_IDs=specific_IDs,
+            return_assignments=True
         )
         
         if DoManualEdit:
             # Correct tracking with manually changed IDs
-            rp = skimage.measure.regionprops(tracked_lab)
-            IDs = [obj.label for obj in rp]
-            self.manuallyEditTracking(tracked_lab, IDs)
+            tracked_lab, assignments = self.manuallyEditTracking(tracked_lab, assignments)
 
         if return_lab:
             QTimer.singleShot(50, partial(
                 self.statusBarLabel.setText, staturBarLabelText
             ))
+            if return_assignments:
+                return tracked_lab, assignments
             return tracked_lab
         
         # Update labels, regionprops and determine new and lost IDs
         posData.lab = tracked_lab
-        self.update_rp(wl_update=wl_update, )
+        self.update_rp(wl_update=wl_update, assignments=assignments)
         self.setAllTextAnnotations()
         QTimer.singleShot(50, partial(
             self.statusBarLabel.setText, staturBarLabelText
         ))
+        if return_assignments and return_lab:
+            return tracked_lab, assignments
+        elif return_assignments:
+            return assignments
+        elif return_lab:
+            return tracked_lab
 
-    def handleAdditionalInfoRealTimeTracker(self, prev_rp, *args):
+    def handleAdditionalInfoRealTimeTracker(self, prev_rp, add_info):
+        assignments = None
         if self._rtTrackerName == 'CellACDC_normal_division':
-            tracked_lost_IDs = args[0]
+            tracked_lost_IDs = add_info['mothers']
             self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
+            assignments = add_info['assignments']
         elif self._rtTrackerName == 'CellACDC_2steps':
-            if args[0] is None:
-                return
-            posData = self.data[self.pos_i]
-            posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = args[0]
+            assignments = add_info['assignments']
+            if add_info['to_track_tracked_objs_2nd_step'] is not None:
+                posData = self.data[self.pos_i]
+                posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = add_info['to_track_tracked_objs_2nd_step']
+        elif self._rtTrackerName == 'Cell-ACDC':
+            assignments = add_info['assignments']
+            
+        return assignments
     
     def keepOnlyNewIDAssignedObjsSecondStep(self, trackedID):
         posData = self.data[self.pos_i]
@@ -28841,7 +28986,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         new_objs_1st_step, lost_objs_1st_step = annotInfo
         for lostObj, newObj in zip(lost_objs_1st_step, new_objs_1st_step):
-            allContours = self.getObjContours(lostObj, all_external=True) 
+            allContours = self.getObjContours(
+                lostObj,
+                all_external=True,
+                include_internal=self.showAllContoursToggle.isChecked()
+            ) 
             for objContours in allContours:
                 isObjVisible = self.isObjVisible(newObj.bbox)
                 if not isObjVisible:
@@ -28876,12 +29025,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         """        
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
+        prev_lab = posData.allData_li[frame_i-1]['labels']
         
         for obj in prev_rp:
             if obj.label not in tracked_lost_IDs:
                 continue
-            
-            int_centroid = tuple([int(val) for val in obj.centroid])
+            if isinstance(prev_rp, regionprops.acdcRegionprops):
+                ID = obj.ID
+                centroid = prev_rp.get_centroid(ID, exact=True)
+            else:
+                centroid = obj.centroid
+            int_centroid = tuple([int(val) for val in centroid])
+            # check if centroid has right ID
+            if prev_lab[int_centroid] != ID:
+                # get closest point with the right ID
+                coords = obj.coords
+                distances = np.sqrt(np.sum((coords - centroid) ** 2, axis=1))
+                closest_idx = np.argmin(distances)
+                int_centroid = tuple([int(val) for val in coords[closest_idx]])
             try:
                 posData.tracked_lost_centroids[frame_i].add(int_centroid)
             except KeyError:
@@ -28935,28 +29096,59 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData.trackedLostIDs = trackedLostIDs
 
         return trackedLostIDs
-    
-    def manuallyEditTracking(self, tracked_lab, allIDs):
+        
+    def manuallyEditTracking(self, tracked_lab, assignments):
         posData = self.data[self.pos_i]
         infoToRemove = []
-        # Correct tracking with manually changed IDs
-        maxID = max(allIDs, default=1)
-        for y, x, new_ID in posData.editID_info:
-            old_ID = tracked_lab[y, x]
-            if old_ID == 0 or old_ID == new_ID:
-                infoToRemove.append((y, x, new_ID))
+
+        if not assignments:
+            return tracked_lab, assignments
+
+        # !!! RP is stale so we need to reverse search for the ID
+        reversed_assignments = (
+            {tracked_id: stale_id for stale_id, tracked_id in assignments.items()}
+            if assignments else {}
+        )
+        stale_ids = set(posData.rp.IDs)
+
+        covered_edited_IDs = set()
+        for y, x, edited_ID in posData.editID_info:
+            new_ID = assignments.get(edited_ID, edited_ID) # ID in tracked lab
+            if new_ID in covered_edited_IDs:
+                # This ID has already been edited by sawpping for example
                 continue
-            if new_ID in allIDs:
-                tempID = maxID+1
-                tracked_lab[tracked_lab == old_ID] = tempID
-                tracked_lab[tracked_lab == new_ID] = old_ID
-                tracked_lab[tracked_lab == tempID] = new_ID
+            
+            if new_ID == 0 or new_ID == edited_ID: # edited ID is not tracked to a different ID
+                infoToRemove.append((y, x, edited_ID))
+                continue
+
+            old_RP_ID = reversed_assignments.get(edited_ID, edited_ID) # ID pre tracking
+            old_obj = posData.rp.get_obj_from_ID(old_RP_ID) # obj pre tracking
+
+            if edited_ID in stale_ids:
+                # a swap has been made by the user between an old ID (old_RP_ID) and a new ID (edited_ID)
+                new_obj = posData.rp.get_obj_from_ID(edited_ID)
+                tracked_lab[old_obj.slice][old_obj.image] = edited_ID
+                tracked_lab[new_obj.slice][new_obj.image] = old_RP_ID
+                # update assignemnets
+                assignments[old_RP_ID] = edited_ID
+                assignments[edited_ID] = old_RP_ID
+                # add the two swapped IDs
+                
+                covered_edited_IDs.add(edited_ID)
+                covered_edited_IDs.add(old_RP_ID)
+                
             else:
-                tracked_lab[tracked_lab == old_ID] = new_ID
-                if new_ID > maxID:
-                    maxID = new_ID
+                tracked_lab[old_obj.slice][old_obj.image] = edited_ID
+                
+                assignments[old_RP_ID] = edited_ID
+
+                covered_edited_IDs.add(edited_ID)
+
         for info in infoToRemove:
             posData.editID_info.remove(info)
+            
+        return tracked_lab, assignments
     
     def warnReinitLastSegmFrame(self):
         current_frame_n = self.navigateScrollBar.value()
@@ -30189,8 +30381,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             rtTracker = aliases[rtTracker]
         
         if rtTracker == 'Cell-ACDC':
+            self._rtTrackerName = 'Cell-ACDC'
+            self.realTimeTracker_kwargs = None # This is hard coded
             return
         if rtTracker == 'YeaZ':
+            self._rtTrackerName = 'YeaZ'
+            self.realTimeTracker_kwargs = None # This is hard coded
             return
         
         if self.isRealTimeTrackerInitialized and not force:
@@ -30208,6 +30404,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.realTimeTracker = realTimeTracker
         self.track_frame_params = track_frame_params
+        self.realTimeTracker_kwargs = inspect.signature(
+            self.realTimeTracker.track_frame).parameters
         self.logger.info(f'{rtTracker} tracker successfully initialized.')
         if 'image_channel_name' in self.track_frame_params:
             # Remove the channel name since it was already loaded in init_tracker
@@ -31956,7 +32154,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         
         zoomLab = skimage.segmentation.clear_border(lab[zoomSlice])
-        zoomRp = skimage.measure.regionprops(zoomLab)
+        zoomRp = regionprops.acdcRegionprops(
+            zoomLab, precache_centroids=False
+        )
         zoomIDs = [obj.label for obj in zoomRp]
         return zoomIDs
     
