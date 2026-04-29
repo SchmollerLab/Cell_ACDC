@@ -20225,18 +20225,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         xxS, yyS = self.getClosedSplineCoords()
 
-        if self.autoIDcheckboxAction.isChecked():
+        if self.autoIDcheckbox.isChecked():
             self.setBrushID()
             curvToolID = posData.brushID
         else:
             curvToolID = self.editIDspinbox.value()
+            posData.brushID = curvToolID
+
+        if curvToolID <= 0:
+            self.setBrushID()
+            curvToolID = posData.brushID
             
-        newIDMask = np.zeros(self.currentLab2D.shape, bool)
-        rr, cc = skimage.draw.polygon(yyS, xxS)
+        lab2D = self.get_2Dlab(posData.lab).copy()
+        newIDMask = np.zeros(lab2D.shape, bool)
+        rr, cc = skimage.draw.polygon(yyS, xxS, shape=lab2D.shape)
         newIDMask[rr, cc] = True
-        newIDMask[self.currentLab2D!=0] = False
-        self.currentLab2D[newIDMask] = curvToolID
-        self.set_2Dlab(self.currentLab2D)
+        newIDMask[lab2D!=0] = False
+        lab2D[newIDMask] = curvToolID
+        self.set_2Dlab(lab2D)
+        self.currentLab2D = lab2D
 
     def addFluoChNameContextMenuAction(self, ch_name):
         posData = self.data[self.pos_i]
@@ -21448,7 +21455,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 lab3D[:] = lab2D
         else:
-            lab3D = lab2D
+            if lab3D.shape == lab2D.shape:
+                lab3D[...] = lab2D
+            else:
+                posData.lab = lab2D
 
     def get_labels(
             self, 
