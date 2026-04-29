@@ -6915,7 +6915,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             try:
                 self.curvToolSplineToObj(isRightClick=True)
                 self.update_rp()
-                self.trackManuallyAddedObject(posData.brushID, True)
+                if self.autoIDcheckbox.isChecked():
+                    self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
                     self.updateAllImages()
@@ -7903,7 +7904,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.splineHoverON = False
                 self.curvToolSplineToObj()
                 self.update_rp()
-                self.trackManuallyAddedObject(posData.brushID, True)
+                if self.autoIDcheckbox.isChecked():
+                    self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
                     self.updateAllImages()
