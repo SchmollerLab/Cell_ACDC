@@ -20226,7 +20226,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if xxS is None:
                 self.setUncheckedAllButtons()
                 return
-            self.smoothAutoContWithSpline(n=1)
+            self.smoothAutoContWithSpline()
 
         xxS, yyS = self.getClosedSplineCoords()
 
