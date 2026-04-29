@@ -6923,6 +6923,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.warnEditingWithCca_df('Add new ID with curvature tool')
                 self.clearCurvItems()
                 self.curvTool_cb(True)
+                self.store_data()
             except ValueError:
                 self.clearCurvItems()
                 self.curvTool_cb(True)
@@ -7911,6 +7912,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.warnEditingWithCca_df('Add new ID with curvature tool')
                 self.clearCurvItems()
                 self.curvTool_cb(True)
+                self.store_data()
 
         elif left_click and canWand:
             x, y = event.pos().x(), event.pos().y()
@@ -10124,9 +10126,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     xx, yy = self.curvHoverPlotItem.getData()
                 except TypeError:
                     xx, yy = [], []
-                if x == xx[-1] and yy == yy[-1]:
+
+                if xx is None or yy is None or len(xx) == 0 or len(yy) == 0:
+                    xx, yy = [], []
+                elif x == xx[-1] and y == yy[-1]:
                     # Do not append point equal to last point
                     return
+
                 xx = np.r_[xx, x]
                 yy = np.r_[yy, y]
                 try:
@@ -10140,22 +10146,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def smoothAutoContWithSpline(self, n=3):
         try:
             xx, yy = self.curvHoverPlotItem.getData()
-            # Downsample by taking every nth coord
-            xxA, yyA = xx[::n], yy[::n]
-            rr, cc = skimage.draw.polygon(yyA, xxA)
-            self.autoContObjMask[rr, cc] = 1
-            rp = skimage.measure.regionprops(self.autoContObjMask)
-            if not rp:
+            if xx is None or yy is None:
                 return
-            obj = rp[0]
-            cont = self.getObjContours(obj)
-            xxC, yyC = cont[:,0], cont[:,1]
-            xxA, yyA = xxC[::n], yyC[::n]
-            self.xxA_autoCont, self.yyA_autoCont = xxA, yyA
-            xxS, yyS = self.getSpline(xxA, yyA, per=True, appendFirst=True)
-            if len(xxS)>0:
-                self.curvPlotItem.setData(xxS, yyS)
-        except TypeError:
+
+            xx = np.asarray(xx)
+            yy = np.asarray(yy)
+            finite = np.isfinite(xx) & np.isfinite(yy)
+            xx, yy = xx[finite], yy[finite]
+            if len(xx) < 3:
+                return
+
+            keep = np.r_[True, (np.diff(xx) != 0) | (np.diff(yy) != 0)]
+            xx, yy = xx[keep], yy[keep]
+            if len(xx) < 3:
+                return
+
+            if xx[0] != xx[-1] or yy[0] != yy[-1]:
+                xx = np.r_[xx, xx[0]]
+                yy = np.r_[yy, yy[0]]
+
+            self.xxA_autoCont, self.yyA_autoCont = xx, yy
+            self.curvPlotItem.setData(xx, yy)
+        except (TypeError, ValueError):
             pass
 
     def updateIsHistoryKnown():
@@ -11475,8 +11487,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 break
     
-    def getClosedSplineCoords(self):
+    def getClosedSplineCoords(self, preserve_current=False):
         xxS, yyS = self.curvPlotItem.getData()
+        if preserve_current:
+            return xxS, yyS
+
         bbox_area = (xxS.max()-xxS.min())*(yyS.max()-yyS.min())
         if bbox_area < 26_000:
             # Using 1000 is fast enough according to profiling
@@ -11610,6 +11625,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             self.updateAllImages()
         
+        self.store_data()
         self.isNewID = False
     
     def addDelROI(self, event):       
@@ -20223,7 +20239,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             N = len(xxS)
             self.smoothAutoContWithSpline(n=int(N*0.05))
 
-        xxS, yyS = self.getClosedSplineCoords()
+        xxS, yyS = self.getClosedSplineCoords(preserve_current=isRightClick)
 
         if self.autoIDcheckbox.isChecked():
             self.setBrushID()
