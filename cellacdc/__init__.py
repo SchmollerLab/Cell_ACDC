@@ -815,6 +815,7 @@ try:
         find_all_objects_3D,
         calc_IoA_matrix_2D,
         calc_IoA_matrix_3D,
+        most_common_projection_3D,
     )
     precompiled_import_success = True
 except Exception as err:
