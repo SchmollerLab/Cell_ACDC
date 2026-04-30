@@ -8801,7 +8801,6 @@ class ImShow(QBaseWindow):
             idxs_space = np.linspace(0, 1, len(groups))
             self.group_to_idx_mapper = dict(zip(groups, idxs_space))
 
-            g = 0
             for group, df in grouped:
                 yy = df['y'].values
                 xx = df['x'].values
@@ -8827,16 +8826,14 @@ class ImShow(QBaseWindow):
                     idx=p,
                     data=data
                 )
-                
-                g += 1
     
     def drawPoints(
             self, 
             points_coords: np.ndarray, 
+            group='', 
+            idx=None,
             colors=None, 
             data=None,
-            group='', 
-            idx=None
         ):  
         offset = 0.5 if np.issubdtype(points_coords.dtype, np.integer) else 0
         n_dim = points_coords.shape[1]
@@ -8871,14 +8868,18 @@ class ImShow(QBaseWindow):
                 imageItem.pointsItems = defaultdict(list)
                 scrollbar = imageItem.ScrollBars[0]
                 for first_coord in range(scrollbar.maximum()+1):
-                    idx = np.nonzero(points_coords[:,0] == first_coord)
-                    coords = points_coords[idx]
-                    _colors = colors[idx]
-                    if len(_colors) == 0:
-                        _colors = None
+                    coords_idx = np.nonzero(points_coords[:,0] == first_coord)
+                    coords = points_coords[coords_idx]
+                    if colors is None:
+                         _colors = None
+                    else:
+                        _colors = np.asarray(colors)[coords_idx]
+                        if len(_colors) == 0:
+                            _colors = None
                     
+                    _data = group
                     if data is not None:
-                        _data = data[idx]
+                        _data = data[coords_idx]
                         if len(_data) == 0:
                             _data = group
                             
