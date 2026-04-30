@@ -3992,6 +3992,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.navSpinBox.editingFinished.connect(
             self.navigateSpinboxEditingFinished
         )
+        self.navSpinBox.sigUpClicked.connect(
+            self.navigateSpinboxEditingFinished
+        )
+        self.navSpinBox.sigDownClicked.connect(
+            self.navigateSpinboxEditingFinished
+        )
 
         self.lastTrackedFrameLabel = QLabel()
         self.lastTrackedFrameLabel.setFont(_font)
