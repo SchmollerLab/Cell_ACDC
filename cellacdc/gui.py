@@ -20445,6 +20445,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.isSnapshot:
             self.PosScrollBarMoved(value)
         else:
+            mode = str(self.modeComboBox.currentText())
+            # Store data for current frame
+            if mode != 'Viewer':
+                self.store_data(debug=False)
             self.navigateScrollBarStartedMoving = True
             self.framesScrollBarMoved(value)
     
@@ -20507,6 +20511,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.framesScrollBarReleased()
 
     def framesScrollBarMoved(self, frame_n):
+        if self.navigateScrollBarStartedMoving:
+            mode = str(self.modeComboBox.currentText())
+            if mode != 'Viewer':
+                self.store_data(debug=False)
+                
         posData = self.data[self.pos_i]
         posData.frame_i = frame_n-1
         if posData.allData_li[posData.frame_i]['labels'] is None:
