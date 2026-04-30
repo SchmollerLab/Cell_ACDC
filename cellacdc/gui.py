@@ -6915,7 +6915,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             try:
                 self.curvToolSplineToObj(isRightClick=True)
                 self.update_rp()
-                self.trackManuallyAddedObject(posData.brushID, True)
+                if self.autoIDcheckbox.isChecked():
+                    self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
                     self.updateAllImages()
@@ -7903,7 +7904,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.splineHoverON = False
                 self.curvToolSplineToObj()
                 self.update_rp()
-                self.trackManuallyAddedObject(posData.brushID, True)
+                if self.autoIDcheckbox.isChecked():
+                    self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
                     self.updateAllImages()
@@ -10124,9 +10126,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     xx, yy = self.curvHoverPlotItem.getData()
                 except TypeError:
                     xx, yy = [], []
-                if x == xx[-1] and yy == yy[-1]:
+
+                if xx is None or yy is None or len(xx) == 0 or len(yy) == 0:
+                    xx, yy = [], []
+                elif x == xx[-1] and y == yy[-1]:
                     # Do not append point equal to last point
                     return
+
                 xx = np.r_[xx, x]
                 yy = np.r_[yy, y]
                 try:
@@ -10140,6 +10146,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def smoothAutoContWithSpline(self, n=3):
         try:
             xx, yy = self.curvHoverPlotItem.getData()
+            if xx is None or yy is None:
+                return
             # Downsample by taking every nth coord
             xxA, yyA = xx[::n], yy[::n]
             rr, cc = skimage.draw.polygon(yyA, xxA)
@@ -10155,7 +10163,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xxS, yyS = self.getSpline(xxA, yyA, per=True, appendFirst=True)
             if len(xxS)>0:
                 self.curvPlotItem.setData(xxS, yyS)
-        except TypeError:
+        except (TypeError, ValueError):
             pass
 
     def updateIsHistoryKnown():
@@ -14191,6 +14199,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.editIDLabelAction.setVisible(visible)
         self.editIDspinboxAction.setVisible(visible)
         self.autoIDcheckboxAction.setVisible(visible)
+        showToolbar = (
+            visible
+            or self.brushSizeAction.isVisible()
+            or self.brushAutoFillAction.isVisible()
+            or self.brushAutoHideAction.isVisible()
+        )
+        self.brushEraserToolBar.setVisible(showToolbar)
     
     def resetCursors(self):
         self.ax1_cursor.setData([], [])
@@ -20220,23 +20235,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if xxS is None:
                 self.setUncheckedAllButtons()
                 return
-            N = len(xxS)
-            self.smoothAutoContWithSpline(n=int(N*0.05))
+            self.smoothAutoContWithSpline()
 
         xxS, yyS = self.getClosedSplineCoords()
 
-        if self.autoIDcheckboxAction.isChecked():
+        if self.autoIDcheckbox.isChecked():
             self.setBrushID()
             curvToolID = posData.brushID
         else:
             curvToolID = self.editIDspinbox.value()
+            posData.brushID = curvToolID
+
+        if curvToolID <= 0:
+            self.setBrushID()
+            curvToolID = posData.brushID
             
-        newIDMask = np.zeros(self.currentLab2D.shape, bool)
-        rr, cc = skimage.draw.polygon(yyS, xxS)
+        lab2D = self.get_2Dlab(posData.lab).copy()
+        newIDMask = np.zeros(lab2D.shape, bool)
+        rr, cc = skimage.draw.polygon(yyS, xxS, shape=lab2D.shape)
         newIDMask[rr, cc] = True
-        newIDMask[self.currentLab2D!=0] = False
-        self.currentLab2D[newIDMask] = curvToolID
-        self.set_2Dlab(self.currentLab2D)
+        newIDMask[lab2D!=0] = False
+        lab2D[newIDMask] = curvToolID
+        self.set_2Dlab(lab2D)
+        self.currentLab2D = lab2D
 
     def addFluoChNameContextMenuAction(self, ch_name):
         posData = self.data[self.pos_i]
@@ -21448,7 +21469,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 lab3D[:] = lab2D
         else:
-            lab3D = lab2D
+            if lab3D.shape == lab2D.shape:
+                lab3D[...] = lab2D
+            else:
+                posData.lab = lab2D
 
     def get_labels(
             self, 
