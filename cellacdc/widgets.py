@@ -8770,12 +8770,12 @@ class ImShow(QBaseWindow):
                 _pen = pg.mkPen(width=2, color=rgb)
                 brush.append(_brush)
                 pen.append(_pen)
-        
+            
         item = pg.ScatterPlotItem(
             xx, yy, symbol='o', pxMode=False, size=3,
             brush=brush, pen=pen,
             hoverable=True, hoverBrush=hoverBrush, 
-            tip=None, data=data
+            data=data
         ) 
         return item
 
@@ -8816,13 +8816,27 @@ class ImShow(QBaseWindow):
                 if 'color' in df.columns:
                     colors = df['color'].values
                 
+                data = None
+                if 'data' in df.columns:
+                    data = df['data'].values
+                
                 self.drawPoints(
-                    points_coords, colors=colors, group=group, idx=p)
+                    points_coords, 
+                    colors=colors, 
+                    group=group, 
+                    idx=p,
+                    data=data
+                )
                 
                 g += 1
     
     def drawPoints(
-            self, points_coords: np.ndarray, colors=None, group='', idx=None
+            self, 
+            points_coords: np.ndarray, 
+            colors=None, 
+            data=None,
+            group='', 
+            idx=None
         ):  
         offset = 0.5 if np.issubdtype(points_coords.dtype, np.integer) else 0
         n_dim = points_coords.shape[1]
@@ -8835,6 +8849,9 @@ class ImShow(QBaseWindow):
             ImageItems = self.ImageItems
         
         if n_dim == 2:
+            if data is None:
+                data = group
+                
             zz = [0]*len(points_coords)
             self.points_coords = np.column_stack((zz, points_coords))
             for p, plotItem in enumerate(PlotItems):
@@ -8842,7 +8859,7 @@ class ImShow(QBaseWindow):
                 xx = points_coords[:, 1] + offset
                 yy = points_coords[:, 0] + offset  
                 pointsItem = self._createPointsScatterItem(
-                    xx, yy, group, data=group, colors=colors
+                    xx, yy, group, data=data, colors=colors
                 )
                 pointsItem.z = 0
                 plotItem.addItem(pointsItem)
@@ -8859,10 +8876,16 @@ class ImShow(QBaseWindow):
                     _colors = colors[idx]
                     if len(_colors) == 0:
                         _colors = None
+                    
+                    if data is not None:
+                        _data = data[idx]
+                        if len(_data) == 0:
+                            _data = group
+                            
                     xx = coords[:, 2] + offset
                     yy = coords[:, 1] + offset
                     pointsItem = self._createPointsScatterItem(
-                        xx, yy, group, data=group, colors=_colors
+                        xx, yy, group, data=_data, colors=_colors
                     )
                     pointsItem.z = first_coord
                     plotItem.addItem(pointsItem)
