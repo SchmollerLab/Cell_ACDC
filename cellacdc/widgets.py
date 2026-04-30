@@ -8751,15 +8751,30 @@ class ImShow(QBaseWindow):
         lut[1:] = rgbas
         return lut
     
-    def _createPointsScatterItem(self, group, data=None):
-        cmap = matplotlib.colormaps['jet_r']
-        idx = self.group_to_idx_mapper[group]
-        r, g, b = [round(c*255) for c in cmap(idx)][:3]
+    def _createPointsScatterItem(self, xx, yy, group, colors=None, data=None):
+        if colors is None:
+            cmap = matplotlib.colormaps['jet_r']
+            idx = self.group_to_idx_mapper[group]
+            r, g, b = [round(c*255) for c in cmap(idx)][:3]
+            brush = pg.mkBrush(color=(r,g,b,100))
+            pen = pg.mkPen(width=2, color=(r,g,b))
+            hoverBrush = pg.mkBrush((r,g,b,200))
+        else:
+            brush = []
+            pen = []
+            hoverBrush = None
+            for color in colors:
+                rgb = matplotlib.colors.to_rgb(color)
+                rgb = [round(c*255) for c in rgb]
+                _brush = pg.mkBrush(color=(*rgb,100))
+                _pen = pg.mkPen(width=2, color=rgb)
+                brush.append(_brush)
+                pen.append(_pen)
+        
         item = pg.ScatterPlotItem(
-            [], [], symbol='o', pxMode=False, size=3,
-            brush=pg.mkBrush(color=(r,g,b,100)),
-            pen=pg.mkPen(width=2, color=(r,g,b)),
-            hoverable=True, hoverBrush=pg.mkBrush((r,g,b,200)), 
+            xx, yy, symbol='o', pxMode=False, size=3,
+            brush=brush, pen=pen,
+            hoverable=True, hoverBrush=hoverBrush, 
             tip=None, data=data
         ) 
         return item
@@ -8786,6 +8801,7 @@ class ImShow(QBaseWindow):
             idxs_space = np.linspace(0, 1, len(groups))
             self.group_to_idx_mapper = dict(zip(groups, idxs_space))
 
+            g = 0
             for group, df in grouped:
                 yy = df['y'].values
                 xx = df['x'].values
@@ -8795,9 +8811,19 @@ class ImShow(QBaseWindow):
                     points_coords = np.column_stack((zz, points_coords))
                 if len(group) == 1:
                     group = group[0]
-                self.drawPoints(points_coords, group=group, idx=p)
+                
+                colors = None
+                if 'color' in df.columns:
+                    colors = df['color'].values
+                
+                self.drawPoints(
+                    points_coords, colors=colors, group=group, idx=p)
+                
+                g += 1
     
-    def drawPoints(self, points_coords: np.ndarray, group='', idx=None):  
+    def drawPoints(
+            self, points_coords: np.ndarray, colors=None, group='', idx=None
+        ):  
         offset = 0.5 if np.issubdtype(points_coords.dtype, np.integer) else 0
         n_dim = points_coords.shape[1]
         
@@ -8813,12 +8839,13 @@ class ImShow(QBaseWindow):
             self.points_coords = np.column_stack((zz, points_coords))
             for p, plotItem in enumerate(PlotItems):
                 imageItem = ImageItems[p]
-                pointsItem = self._createPointsScatterItem(group, data=group)
-                pointsItem.z = 0
-                plotItem.addItem(pointsItem)
                 xx = points_coords[:, 1] + offset
                 yy = points_coords[:, 0] + offset  
-                pointsItem.setData(xx, yy)
+                pointsItem = self._createPointsScatterItem(
+                    xx, yy, group, data=group, colors=colors
+                )
+                pointsItem.z = 0
+                plotItem.addItem(pointsItem)
                 imageItem.pointsItems = {group: [pointsItem]}
         elif n_dim == 3:
             self.points_coords = points_coords
@@ -8827,13 +8854,18 @@ class ImShow(QBaseWindow):
                 imageItem.pointsItems = defaultdict(list)
                 scrollbar = imageItem.ScrollBars[0]
                 for first_coord in range(scrollbar.maximum()+1):
-                    pointsItem = self._createPointsScatterItem(group, data=group)
-                    pointsItem.z = first_coord
-                    plotItem.addItem(pointsItem)
-                    coords = points_coords[points_coords[:,0] == first_coord]
+                    idx = np.nonzero(points_coords[:,0] == first_coord)
+                    coords = points_coords[idx]
+                    _colors = colors[idx]
+                    if len(_colors) == 0:
+                        _colors = None
                     xx = coords[:, 2] + offset
                     yy = coords[:, 1] + offset
-                    pointsItem.setData(xx, yy)
+                    pointsItem = self._createPointsScatterItem(
+                        xx, yy, group, data=group, colors=_colors
+                    )
+                    pointsItem.z = first_coord
+                    plotItem.addItem(pointsItem)
                     pointsItem.setVisible(False)
                     imageItem.pointsItems[group].append(pointsItem)
                 self.setPointsVisible(imageItem)
