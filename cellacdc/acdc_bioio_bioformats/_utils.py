@@ -71,6 +71,7 @@ def saveImgDataChannel(
         to_h5: bool, 
         timeRangeToSave: Tuple[int, int],
     ):
+    savedSizeT = timeRangeToSave[1] - timeRangeToSave[0] + 1
     if to_h5:
         filename = getFilename(
             filenameNOext, s0p, chName, series, '.h5'
@@ -85,7 +86,7 @@ def saveImgDataChannel(
         imgData = reader.read(
             c=ch_idx, z=0, t=0, series=series, rescale=False
         )
-        shape = (SizeT, SizeZ, *imgData.shape)
+        shape = (savedSizeT, SizeZ, *imgData.shape)
         chunks = (1,1,*imgData.shape)
         imgData_ch = h5f.create_dataset(
             'data', shape, dtype=imgData.dtype,
@@ -107,12 +108,12 @@ def saveImgDataChannel(
         ncols=100, 
         desc=f'Reading image (z 0/{SizeZ}, t 0/{numFrames})'
     )
-    for t in framesRange:
+    for out_t, t in enumerate(framesRange):
         imgData_z = []
         dimsIdx['t'] = t
         for z in range(SizeZ):
             pbar.set_description(
-                f'Reading image (z {z+1}/{SizeZ}, t {t+1}/{numFrames})'
+                f'Reading image (z {z+1}/{SizeZ}, t {out_t+1}/{numFrames})'
             )
             dimsIdx['z'] = z
             idx = None
@@ -121,7 +122,7 @@ def saveImgDataChannel(
                 index=idx
             )
             if to_h5:
-                imgData_ch[t, z] = imgData
+                imgData_ch[out_t, z] = imgData
             else:
                 imgData_z.append(imgData)
             
@@ -136,7 +137,7 @@ def saveImgDataChannel(
         imgData_ch = np.squeeze(np.array(imgData_ch, dtype=imgData.dtype))
         myutils.to_tiff(
             filePath, imgData_ch, 
-            SizeT=SizeT,
+            SizeT=savedSizeT,
             SizeZ=SizeZ,
             TimeIncrement=TimeIncrement,
             PhysicalSizeZ=PhysicalSizeZ,
