@@ -696,6 +696,7 @@ class bioFormatsWorker(QObject):
             self, reader, series, images_path, filenameNOext, s0p, chName,
             ch_idx, idxs, SizeZ
         ):
+        savedSizeT = self.timeRangeToSave[1] - self.timeRangeToSave[0] + 1
         if self.to_h5:
             filename = self.getFilename(
                 filenameNOext, s0p, chName, series, '.h5'
@@ -710,7 +711,7 @@ class bioFormatsWorker(QObject):
             imgData = reader.read(
                 c=ch_idx, z=0, t=0, series=series, rescale=False
             )
-            shape = (self.SizeT, self.SizeZ, *imgData.shape)
+            shape = (savedSizeT, self.SizeZ, *imgData.shape)
             chunks = (1,1,*imgData.shape)
             imgData_ch = h5f.create_dataset(
                 'data', shape, dtype=imgData.dtype,
@@ -735,12 +736,12 @@ class bioFormatsWorker(QObject):
             ncols=100, 
             desc=f'Reading image (z 0/{SizeZ}, t 0/{numFrames})'
         )
-        for t in framesRange:
+        for out_t, t in enumerate(framesRange):
             imgData_z = []
             dimsIdx['t'] = t
             for z in range(SizeZ):
                 pbar.set_description(
-                    f'Reading image (z {z+1}/{SizeZ}, t {t+1}/{numFrames})'
+                    f'Reading image (z {z+1}/{SizeZ}, t {out_t+1}/{numFrames})'
                 )
                 dimsIdx['z'] = z
                 if self.rawDataStruct != 2:
@@ -752,7 +753,7 @@ class bioFormatsWorker(QObject):
                     index=idx
                 )
                 if self.to_h5:
-                    imgData_ch[t, z] = imgData
+                    imgData_ch[out_t, z] = imgData
                 else:
                     imgData_z.append(imgData)
                 
@@ -767,7 +768,7 @@ class bioFormatsWorker(QObject):
             imgData_ch = np.squeeze(np.array(imgData_ch, dtype=imgData.dtype))
             myutils.to_tiff(
                 filePath, imgData_ch, 
-                SizeT=self.SizeT,
+                SizeT=savedSizeT,
                 SizeZ=self.SizeZ,
                 TimeIncrement=self.TimeIncrement,
                 PhysicalSizeZ=self.PhysicalSizeZ,
@@ -807,9 +808,12 @@ class bioFormatsWorker(QObject):
             return_basename=True
         )
         metadata_csv_path = os.path.join(images_path, metadata_filename)
+        savedSizeT = (
+            self.timeRangeToSave[1] - self.timeRangeToSave[0] + 1
+        )
         df = pd.DataFrame({
             'LensNA': self.LensNA,
-            'SizeT': self.SizeT,
+            'SizeT': savedSizeT,
             'SizeZ': self.SizeZ,
             'TimeIncrement': self.TimeIncrement,
             'PhysicalSizeZ': self.PhysicalSizeZ,

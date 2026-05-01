@@ -26139,8 +26139,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             img = self.get_2Dimg_from_3D(img)
         else:
             img = posData.img_data[frame_i].copy()
-        return img
-    
+
+        if img.ndim == 2:
+            return img
+        if img.ndim == 3 and img.shape[-1] in (3, 4):
+            return img
+
+        raise ValueError(
+            'Raw image for display must be 2D (Y, X) or RGB/A (Y, X, 3 or 4); '
+            f'got shape={getattr(img, "shape", None)}, ndim={getattr(img, "ndim", None)} '
+            f'for frame_i={frame_i} (metadata SizeT={posData.SizeT}, SizeZ={posData.SizeZ}). '
+            'Check that metadata SizeT/SizeZ matches the loaded array (e.g. squeezed TIFF vs CSV).'
+        )
+
     def initFloodMaskImage(self):
         posData = self.data[self.pos_i]
         self.flood_img = posData.img_data[posData.frame_i]
