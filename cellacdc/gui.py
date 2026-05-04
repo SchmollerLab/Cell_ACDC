@@ -20451,10 +20451,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.isSnapshot:
             self.PosScrollBarMoved(value)
         else:
-            mode = str(self.modeComboBox.currentText())
-            # Store data for current frame
-            if mode != 'Viewer':
-                self.store_data(debug=False)
             self.navigateScrollBarStartedMoving = True
             self.framesScrollBarMoved(value)
     
@@ -20512,9 +20508,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         elif action == SliderSingleStepSub:
             self.prev_cb()
         elif action == SliderPageStepAdd:
-            self.framesScrollBarReleased()
+            self.framesScrollBarReleased(do_store_data=True)
         elif action == SliderPageStepSub:
-            self.framesScrollBarReleased()
+            self.framesScrollBarReleased(do_store_data=True)
 
     def framesScrollBarMoved(self, frame_n):
         if self.navigateScrollBarStartedMoving:
@@ -20549,9 +20545,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateHighlightedAxis()
         self.navigateScrollBarStartedMoving = False
 
-    def framesScrollBarReleased(self):
-        self.navigateScrollBarStartedMoving = True
+    def framesScrollBarReleased(self, do_store_data=False):
         posData = self.data[self.pos_i]
+        if posData.frame_i == self.navigateScrollBar.sliderPosition()-1:
+            # Slider released without changing value --> do nothing
+            return
+        
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Viewer' and do_store_data:
+            self.store_data(debug=False)
+            
+        self.navigateScrollBarStartedMoving = True
         posData.frame_i = self.navigateScrollBar.sliderPosition()-1
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
