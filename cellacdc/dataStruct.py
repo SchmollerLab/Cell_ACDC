@@ -711,7 +711,7 @@ class bioFormatsWorker(QObject):
             imgData = reader.read(
                 c=ch_idx, z=0, t=0, series=series, rescale=False
             )
-            shape = (savedSizeT, self.SizeZ, *imgData.shape)
+            shape = (savedSizeT, SizeZ, *imgData.shape)
             chunks = (1,1,*imgData.shape)
             imgData_ch = h5f.create_dataset(
                 'data', shape, dtype=imgData.dtype,
