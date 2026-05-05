@@ -3992,6 +3992,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.navSpinBox.editingFinished.connect(
             self.navigateSpinboxEditingFinished
         )
+        self.navSpinBox.sigUpClicked.connect(
+            self.navigateSpinboxEditingFinished
+        )
+        self.navSpinBox.sigDownClicked.connect(
+            self.navigateSpinboxEditingFinished
+        )
 
         self.lastTrackedFrameLabel = QLabel()
         self.lastTrackedFrameLabel.setFont(_font)
@@ -20502,11 +20508,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         elif action == SliderSingleStepSub:
             self.prev_cb()
         elif action == SliderPageStepAdd:
-            self.framesScrollBarReleased()
+            self.framesScrollBarReleased(do_store_data=True)
         elif action == SliderPageStepSub:
-            self.framesScrollBarReleased()
+            self.framesScrollBarReleased(do_store_data=True)
 
     def framesScrollBarMoved(self, frame_n):
+        if self.navigateScrollBarStartedMoving:
+            mode = str(self.modeComboBox.currentText())
+            if mode != 'Viewer':
+                self.store_data(debug=False)
+                
         posData = self.data[self.pos_i]
         posData.frame_i = frame_n-1
         if posData.allData_li[posData.frame_i]['labels'] is None:
@@ -20534,9 +20545,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateHighlightedAxis()
         self.navigateScrollBarStartedMoving = False
 
-    def framesScrollBarReleased(self):
-        self.navigateScrollBarStartedMoving = True
+    def framesScrollBarReleased(self, do_store_data=False):
         posData = self.data[self.pos_i]
+        if posData.frame_i == self.navigateScrollBar.sliderPosition()-1:
+            # Slider released without changing value --> do nothing
+            return
+        
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Viewer' and do_store_data:
+            self.store_data(debug=False)
+            
+        self.navigateScrollBarStartedMoving = True
         posData.frame_i = self.navigateScrollBar.sliderPosition()-1
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
