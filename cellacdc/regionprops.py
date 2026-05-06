@@ -40,7 +40,6 @@ except Exception:
 _RegionProperties = skimage.measure._regionprops.RegionProperties
 _cached = skimage.measure._regionprops._cached
 
-# @debugutils.line_benchmark
 def _acdc_regionprops_factory(
         label_image,
         intensity_image=None,
@@ -80,11 +79,7 @@ def _acdc_regionprops_factory(
         img_uint32 = label_image.astype(np.uint32, copy=False)
         if label_image.ndim == 2:
             out = find_all_objects_2D(img_uint32)
-            if len(out) == 0:
-                labels = np.empty((0,), dtype=np.uint32)
-                bboxes = np.empty((0, 4), dtype=np.int32)
-            else:
-                labels, bboxes = out
+            labels, bboxes = out
             for i in range(len(labels)):
                 sl = (slice(int(bboxes[i, 0]), int(bboxes[i, 1])),
                       slice(int(bboxes[i, 2]), int(bboxes[i, 3])))
@@ -95,11 +90,7 @@ def _acdc_regionprops_factory(
                 ))
         else:
             out = find_all_objects_3D(img_uint32)
-            if len(out) == 0:
-                labels = np.empty((0,), dtype=np.uint32)
-                bboxes = np.empty((0, 6), dtype=np.int32)
-            else:
-                labels, bboxes = out
+            labels, bboxes = out
             for i in range(len(labels)):
                 sl = (slice(int(bboxes[i, 0]), int(bboxes[i, 1])),
                       slice(int(bboxes[i, 2]), int(bboxes[i, 3])),
@@ -121,65 +112,6 @@ def _acdc_regionprops_factory(
             ))
     return regions
 
-
-# class acdcRegionProperties(_RegionProperties):
-#     def __init__(
-#         self,
-#         slice,
-#         label,
-#         label_image,
-#         intensity_image,
-#         cache_active,
-#         *,
-#         extra_properties=None,
-#         spacing=None,
-#         offset=None,
-#     ):
-#         if intensity_image is not None:
-#             ndim = label_image.ndim
-#             if not (
-#                 intensity_image.shape[:ndim] == label_image.shape
-#                 and intensity_image.ndim in [ndim, ndim + 1]
-#             ):
-#                 raise ValueError(
-#                     'Label and intensity image shapes must match,'
-#                     ' except for channel (last) axis.'
-#                 )
-#             multichannel = label_image.shape < intensity_image.shape
-#         else:
-#             multichannel = False
-
-#         self.label = label
-#         if offset is None:
-#             offset = np.zeros((label_image.ndim,), dtype=int)
-#         self._offset = np.array(offset)
-
-#         self._slice = slice
-        
-#         self._label_image = label_image
-#         self._intensity_image = intensity_image
-
-#         self._cache_active = cache_active
-#         self._cache = {}
-#         self._ndim = label_image.ndim
-#         self._multichannel = multichannel
-#         self._spatial_axes = tuple(range(self._ndim))
-#         if spacing is None:
-#             spacing = np.full(self._ndim, 1.0)
-#         self._spacing = _normalize_spacing(spacing, self._ndim)
-#         self._pixel_area = np.prod(self._spacing)
-        
-#         self._extra_properties = {}
-#         if extra_properties is not None:
-#             for func in extra_properties:
-#                 name = func.__name__
-#                 if hasattr(self, name):
-#                     msg = (
-#                         f"Extra property '{name}' is shadowed by existing "
-#                         f"property and will be inaccessible. Consider "
-#                         f"renaming it."
-#                     )
-#             self._extra_properties = {func.__name__: func for func in extra_properties}
 class acdcRegionProperties(_RegionProperties):
     def __init__(
         self,
@@ -207,6 +139,15 @@ class acdcRegionProperties(_RegionProperties):
     #         for i in range(self._ndim)
     #     )
     
+    @property
+    def image(self):
+        """Return cached object mask from the current label image."""
+        imgage = self._cache.get('image')
+        if imgage is None or not np.any(imgage):
+            self._cache['image'] = self._label_image[self._slice] == self.label
+        
+        return self._cache['image']
+
     @property
     @_cached
     def bbox(self):
@@ -264,39 +205,6 @@ class acdcRegionProperties(_RegionProperties):
             obj_image, retrieve_mode, cv2.CHAIN_APPROX_NONE
         )
         return contours
-    
-    # @property
-    # def centroid_weighted(self):
-    #     ctr = self.centroid_weighted_local
-    #     return tuple(
-    #         idx + slc.start * spc
-    #         for idx, slc, spc in zip(ctr, self._slice, self._spacing)
-    #     )
-
-    # @property
-    # @_cached
-    # def image_intensity(self):
-    #     if self._intensity_image is None:
-    #         raise AttributeError('No intensity image specified.')
-    #     image = (
-    #         self.image
-    #         if not self._multichannel
-    #         else np.expand_dims(self.image, self._ndim)
-    #     )
-    #     return self._intensity_image[self._slice] * image
-
-    # @property
-    # def coords(self):
-    #     indices = np.argwhere(self.image)
-    #     object_offset = np.array([self._slice[i].start for i in range(self._ndim)])
-    #     return object_offset + indices + self._offset
-    
-    # @property
-    # def coords_scaled(self):
-    #     indices = np.argwhere(self.image)
-    #     object_offset = np.array([self._slice[i].start for i in range(self._ndim)])
-    #     return (object_offset + indices) * self._spacing + self._offset
-
 
 class acdcRegionprops:
     def __init__(
@@ -740,7 +648,6 @@ class acdcRegionprops:
         # Update IDs and IDs_set separately and explicitly
         self.IDs_set = set(self.ID_to_idx)
         self.IDs = list(self.IDs_set)
-        
 
         if not update_centroid_mapper:
             return
@@ -764,7 +671,7 @@ class acdcRegionprops:
             if warn:
                 # get caller info
                 debugutils.print_call_stack()
-                printl(f"Warning: Object with ID {ID} not found in regionprops.")
+                print(f"Warning: Object with ID {ID} not found in regionprops.")
             return None
         
     def delete_IDs(self, IDs_to_delete: set[int], update_other_attrs=True):
@@ -933,6 +840,9 @@ class acdcRegionprops:
         }
 
     def _set_label_image(self, lab, objs=None, clear_cache=False):
+        if lab is None:
+            return
+
         self.lab = lab
         if objs is None:
             objs = self._rp
@@ -995,6 +905,9 @@ class acdcRegionprops:
             # if active_assignments.get(ID, ID) in remapped_IDs
         }
 
+        # Rebind first so any property access during remap sees the current lab.
+        self._set_label_image(lab)
+
         for obj in self._rp:
             old_ID = obj.label
             new_ID = active_assignments.get(old_ID, old_ID)
@@ -1002,8 +915,6 @@ class acdcRegionprops:
             # if obj.area == 0:
             #     # if area is 0, centroid is not defined and we should not trust the cached one
             #     print("area 0...")
-
-        self._set_label_image(lab, clear_cache=True)
 
         self._centroid_mapper = centroid_mapper
         self._centroid_IDs_exact = centroid_IDs_exact

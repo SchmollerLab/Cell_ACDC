@@ -6,7 +6,6 @@ from cellacdc.myutils import checked_reset_index, checked_reset_index_Cell_ID
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
-from cellacdc.myutils import exec_time
 from cellacdc._types import NotGUIParam
 import copy
 import cellacdc.debugutils as debugutils

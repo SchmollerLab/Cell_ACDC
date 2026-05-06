@@ -1034,22 +1034,6 @@ def showInExplorer(path):
     else:
         os.startfile(path)
 
-def exec_time(func):
-    @wraps(func)
-    def inner_function(self, *args, **kwargs):
-        t0 = time.perf_counter()
-        if func.__code__.co_argcount==1 and func.__defaults__ is None:
-            result = func(self)
-        elif func.__code__.co_argcount>1 and func.__defaults__ is None:
-            result = func(self, *args)
-        else:
-            result = func(self, *args, **kwargs)
-        t1 = time.perf_counter()
-        s = f'{func.__name__} execution time = {(t1-t0)*1000:.3f} ms'
-        printl(s, is_decorator=True)
-        return result
-    return inner_function
-
 def setRetainSizePolicy(widget, retain=True):
     sp = widget.sizePolicy()
     sp.setRetainSizeWhenHidden(retain)
@@ -1158,28 +1142,15 @@ def getBaseAcdcDf(rp):
     yy_centroid = [0]*len(rp)
     zz_centroid = [0]*len(rp)
     
-    if isinstance(rp, regionprops.acdcRegionprops):
-        for i, obj in enumerate(rp):
-            ID = obj.label
-            centroid = rp.get_centroid(ID, exact=True)
-            xc, yc = centroid[-2:]
-            IDs[i] = ID
-            xx_centroid[i] = xc
-            yy_centroid[i] = yc
-            if len(centroid) == 3:
-                zc = centroid[0]
-                zz_centroid[i] = zc
-        
-    else:
-        for i, obj in enumerate(rp):
-            centroid = obj.centroid
-            xc, yc = centroid[-2:]
-            IDs[i] = obj.label
-            xx_centroid[i] = xc
-            yy_centroid[i] = yc
-            if len(centroid) == 3:
-                zc = centroid[0]
-                zz_centroid[i] = zc
+    for i, obj in enumerate(rp):
+        centroid = obj.centroid
+        xc, yc = centroid[-2:]
+        IDs[i] = obj.label
+        xx_centroid[i] = xc
+        yy_centroid[i] = yc
+        if len(centroid) == 3:
+            zc = centroid[0]
+            zz_centroid[i] = zc
             
     df = pd.DataFrame(
         {

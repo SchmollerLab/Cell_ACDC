@@ -815,12 +815,10 @@ try:
         find_all_objects_3D,
         calc_IoA_matrix_2D,
         calc_IoA_matrix_3D,
+        most_common_projection_3D,
     )
     precompiled_import_success = True
 except Exception as err:
     import traceback
     print('[WARNING]: could not import precompiled functions, falling back to pure python versions. ')
     traceback.print_exc()
-    
-if precompiled_import_success:
-    print('Precompiled functions imported successfully.')

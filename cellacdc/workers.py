@@ -6270,7 +6270,6 @@ class saveDataWorker(QObject):
         
         # save rp info about segm
         self.progress.emit(f'Saving additional data for {posData.relPath}...')
-        posData.saveCentroidsIDs()
         posData.segm_data = saved_segm_data
         # Allow single 2D/3D image
         if posData.SizeT == 1:
