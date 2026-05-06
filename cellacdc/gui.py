@@ -21642,7 +21642,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     shape = (posData.SizeY, posData.SizeX)
                 labels = np.zeros(shape, dtype=np.uint32)
-                rp = regionprops.acdcRegionprops(lab_mask, precache_centroids=False)
+                rp = regionprops.acdcRegionprops(labels, precache_centroids=False)
                 if frame_i == posData.frame_i:
                     posData.rp = rp
                     posData.IDs = []
