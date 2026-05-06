@@ -127,11 +127,18 @@ deepsea = [
     "munkres",
 ]
 
+renderer3d = [
+    "vispy>=0.16.1",
+    "PyOpenGL",
+]
+
 all = [
     "PyQt6",
     "torchvision",
     "tensorflow<2.16",
     "tables",
+    "vispy>=0.16.1",
+    "PyOpenGL",
 ]
 dev = [
     "pytest",

@@ -199,7 +199,31 @@ def resetViewRange(func):
         QTimer.singleShot(200, self.resetRange)
         return result
     return inner_function
-      
+
+
+# Dropdown text for the 3-D volume renderer option.  Defined once here so that
+# all gui.py code that matches against it uses the same string.
+_ZPROJMODE_3D = '3D z-render'
+
+
+class _GuiWinRenderer3DAdapter:
+    """Thin adapter that wires a guiWin instance to VolumeRenderer3DWindow."""
+
+    def __init__(self, gui_win):
+        self._gui = gui_win
+
+    def get_current_zstack(self):
+        return self._gui._get_current_zstack()
+
+    def get_voxel_sizes(self):
+        return self._gui._get_current_voxel_sizes()
+
+    def on_renderer_closed(self):
+        # When the user closes the 3D window, revert the dropdown to max proj.
+        if self._gui.zProjComboBox.currentText() == _ZPROJMODE_3D:
+            self._gui.zProjComboBox.setCurrentText('max z-projection')
+
+
 class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
              gui_combine.CombineGuiElements, 
              gui_combine.CombineGUIWorker):
@@ -295,6 +319,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.progressWin = None
         self.slideshowWin = None
         self.ccaTableWin = None
+        self._renderer3d_window = None
         self.exportToImageWindow = None
         self.customAnnotButton = None
         self.ccaCheckerRunning = False
@@ -3924,7 +3949,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'single z-slice',
             'max z-projection',
             'mean z-projection',
-            'median z-proj.'
+            'median z-proj.',
+            _ZPROJMODE_3D,
         ])
         self.zProjLockViewButton = widgets.LockPushButton()
         self.zProjLockViewButton.setCheckable(True)
@@ -12499,6 +12525,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.SizeZlabel.hide()
             self.switchPlaneCombobox.hide()
             self.switchPlaneCombobox.setDisabled(True)
+            # Close the 3D renderer if open — no z-stack data available.
+            self._hide_3d_renderer_if_open()
         
         self.imgGrad.rescaleAcrossZstackAction.setDisabled(not enabled)
         for ch, overlayItems in self.overlayLayersItems.items():
@@ -20092,17 +20120,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setOverlayImages()
 
     def updateZproj(self, how):
+        # Persist effective 2-D projection mode (_ZPROJMODE_3D falls back to max)
+        persist_how = 'max z-projection' if how == _ZPROJMODE_3D else how
         for p, posData in enumerate(self.data[self.pos_i:]):
             if self.zProjLockViewButton.isChecked():
                 idx = [
-                    (posData.filename, frame_i) 
+                    (posData.filename, frame_i)
                     for frame_i in range(posData.SizeT)
                 ]
             else:
                 idx = [(posData.filename, posData.frame_i)]
-            posData.segmInfo_df.loc[idx, 'which_z_proj_gui'] = how
+            posData.segmInfo_df.loc[idx, 'which_z_proj_gui'] = persist_how
             posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
-            
+
+        # Hide the 3D renderer whenever we leave 3D-render mode.
+        if how != _ZPROJMODE_3D:
+            self._hide_3d_renderer_if_open()
+
         posData = self.data[self.pos_i]
         if how == 'single z-slice':
             self.zSliceScrollBar.setDisabled(False)
@@ -20110,12 +20144,235 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.zSliceCheckbox.setDisabled(False)
             self.setZprojDisabled(False)
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
+        elif how == _ZPROJMODE_3D:
+            self.zSliceScrollBar.setDisabled(True)
+            self.zSliceSpinbox.setDisabled(True)
+            self.zSliceCheckbox.setDisabled(True)
+            self.setZprojDisabled(self.isSegm3D)
+            self._launch_3d_renderer()
+            self.updateAllImages()
         else:
             self.zSliceScrollBar.setDisabled(True)
             self.zSliceSpinbox.setDisabled(True)
             self.zSliceCheckbox.setDisabled(True)
             self.setZprojDisabled(self.isSegm3D)
             self.updateAllImages()
+
+    def _get_current_voxel_sizes(self):
+        """Return (dz, dy, dx) physical voxel sizes in µm, or None if unavailable."""
+        try:
+            posData = self.data[self.pos_i]
+            dz = float(getattr(posData, 'PhysicalSizeZ', 1.0) or 1.0)
+            dy = float(getattr(posData, 'PhysicalSizeY', 1.0) or 1.0)
+            dx = float(getattr(posData, 'PhysicalSizeX', 1.0) or 1.0)
+            return (dz, dy, dx)
+        except Exception:
+            return None
+
+    def _get_overlay_zstacks(self):
+        """Return list of (data, opacity, cmap) for each active overlay volume.
+
+        Covers three sources:
+          1. Fluorescence overlay channels (alpha scrollbar opacity, toolbar gate).
+          2. Primary segmentation mask — when 'overlay segm. masks' is selected
+             and labelsAlphaSlider > 0.
+          3. Overlay labels channels — when the overlay-labels button is checked.
+        """
+        _FLUO_CMAPS = ['green', 'magenta', 'cyan', 'yellow', 'orange']
+        _LABEL_CMAPS = ['blue', 'cyan', 'magenta']
+        if not self.isDataLoaded:
+            return []
+        posData = self.data[self.pos_i]
+        if posData.SizeZ <= 1:
+            return []
+        result = []
+
+        # -- 1. Fluorescence overlay channels ----------------------------------
+        if getattr(self, 'checkedOverlayChannels', None):
+            for i, (chName, items) in enumerate(self.overlayLayersItems.items()):
+                if chName not in self.checkedOverlayChannels:
+                    continue
+                imageItem, lutItem, alphaSB = items[:3]
+                toolbutton = items[3]
+                if not toolbutton.isChecked() or not toolbutton.isVisible():
+                    continue
+                _, filename = self.getPathFromChName(chName, posData)
+                if filename is None or filename not in posData.ol_data_dict:
+                    continue
+                data = posData.ol_data_dict[filename][posData.frame_i]
+                if data.ndim != 3:
+                    continue
+                opacity = alphaSB.value() / alphaSB.maximum()
+                cmap = _FLUO_CMAPS[i % len(_FLUO_CMAPS)]
+                result.append((data, opacity, cmap))
+
+        # -- 2. Primary segmentation mask (2D or 3D segmentation) -------------
+        how = self.drawIDsContComboBox.currentText()
+        labels_alpha = self.imgGrad.labelsAlphaSlider.value()
+        if 'overlay segm. masks' in how and labels_alpha > 0 and posData.lab is not None:
+            lab = posData.lab
+            if lab.ndim == 3:
+                mask = (lab > 0).astype(np.float32)
+            elif lab.ndim == 2:
+                # 2D segmentation on a 3D z-stack: extrude along Z (cylinder)
+                mask = np.repeat(
+                    (lab > 0).astype(np.float32)[np.newaxis], posData.SizeZ, axis=0
+                )
+            else:
+                mask = None
+            if mask is not None:
+                result.append((mask, float(labels_alpha), 'red', 'mip'))
+
+        # -- 3. Overlay label channels -----------------------------------------
+        ol_labels_active = (
+            getattr(self, 'overlayLabelsButton', None) is not None
+            and self.overlayLabelsButton.isChecked()
+            and getattr(self, 'drawModeOverlayLabelsChannels', None)
+            and posData.ol_labels_data is not None
+        )
+        if ol_labels_active:
+            for j, segmEndname in enumerate(self.drawModeOverlayLabelsChannels):
+                if segmEndname not in posData.ol_labels_data:
+                    continue
+                ol_lab = posData.ol_labels_data[segmEndname][posData.frame_i]
+                if ol_lab.ndim == 3:
+                    mask = (ol_lab > 0).astype(np.float32)
+                elif ol_lab.ndim == 2:
+                    mask = np.repeat(
+                        (ol_lab > 0).astype(np.float32)[np.newaxis], posData.SizeZ, axis=0
+                    )
+                else:
+                    continue
+                cmap = _LABEL_CMAPS[j % len(_LABEL_CMAPS)]
+                result.append((mask, 0.5, cmap, 'mip'))
+
+        return result
+
+    def _get_current_zstack(self):
+        """Return a (Z, Y, X) float32 array for the current position and frame.
+
+        For colour z-stacks (Z, Y, X, C) the luminance channel is extracted.
+        Returns None when no 3-D data is loaded.
+        """
+        if not self.isDataLoaded:
+            return None
+        posData = self.data[self.pos_i]
+        if posData.SizeZ <= 1:
+            return None
+        data = posData.img_data[posData.frame_i]
+        if data.ndim == 4:
+            # (Z, Y, X, C) — average channels to produce greyscale volume
+            data = data.mean(axis=-1)
+        if data.ndim != 3:
+            return None
+        return data
+
+    def _launch_3d_renderer(self):
+        """Create (if needed) and show the 3D renderer; feed current data."""
+        from . import renderer3d  # renderer3d itself only needs numpy/qtpy
+
+        data = self._get_current_zstack()
+        if data is None:
+            return
+
+        first_launch = self._renderer3d_window is None
+        try:
+            if first_launch:
+                adapter = _GuiWinRenderer3DAdapter(self)
+                self._renderer3d_window = renderer3d.create_renderer(
+                    parent=None,
+                    hide_on_close=True,
+                    adapter=adapter,
+                )
+            self._renderer3d_window.update_volume(data)
+            self._renderer3d_window.update_overlay_volumes(
+                self._get_overlay_zstacks()
+            )
+            voxel_sizes = self._get_current_voxel_sizes()
+            if voxel_sizes is not None:
+                self._renderer3d_window.set_voxel_scale(*voxel_sizes)
+        except Exception as exc:
+            from qtpy.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self, '3D Renderer unavailable',
+                f'Could not start the 3D renderer:\n{exc}\n\n'
+                'Make sure vispy and PyOpenGL are installed:\n'
+                '  pip install vispy PyOpenGL'
+            )
+            self._renderer3d_window = None
+            self.zProjComboBox.setCurrentText('max z-projection')
+            return
+
+        posData = self.data[self.pos_i]
+        self._renderer3d_window.setWindowTitle(
+            f'3D Z-Stack Renderer  —  '
+            f'Pos {self.pos_i + 1}, Frame {posData.frame_i + 1}'
+        )
+        if first_launch:
+            self._position_renderer3d_window()
+        self._renderer3d_window.show()
+        self._renderer3d_window.raise_()
+
+    def _position_renderer3d_window(self):
+        """Place the renderer window to the right of (or below) the main window."""
+        win = self._renderer3d_window
+        if win is None:
+            return
+        try:
+            screen = self.screen()
+            if screen is None:
+                return
+            available = screen.availableGeometry()
+            main = self.frameGeometry()
+            rw, rh = win.width(), win.height()
+            # Prefer: to the right of the main window, aligned at the top.
+            x = main.right() + 4
+            y = main.top()
+            if x + rw > available.right():
+                # Not enough space to the right — place below main window.
+                x = max(available.left(), main.left())
+                y = main.bottom() + 4
+            # Clamp to screen bounds.
+            x = max(available.left(), min(x, available.right() - rw))
+            y = max(available.top(), min(y, available.bottom() - rh))
+            win.move(x, y)
+        except Exception:
+            pass  # positioning is best-effort
+
+    def _hide_3d_renderer_if_open(self):
+        """Hide the 3D renderer window without triggering the close-adapter callback."""
+        win = getattr(self, '_renderer3d_window', None)
+        if win is not None and win.isVisible():
+            # Temporarily detach the adapter so hiding doesn't trigger
+            # on_renderer_closed → setCurrentText → updateZproj recursion.
+            adapter = win._adapter
+            win._adapter = None
+            win.hide()
+            win._adapter = adapter
+
+    def _update_3d_renderer_if_active(self):
+        """Push new volume data to the renderer when the frame changes."""
+        if self._renderer3d_window is None:
+            return
+        if not self._renderer3d_window.isVisible():
+            return
+        if self.zProjComboBox.currentText() != _ZPROJMODE_3D:
+            return
+        data = self._get_current_zstack()
+        if data is None:
+            return
+        self._renderer3d_window.update_volume(data)
+        self._renderer3d_window.update_overlay_volumes(
+            self._get_overlay_zstacks()
+        )
+        voxel_sizes = self._get_current_voxel_sizes()
+        if voxel_sizes is not None:
+            self._renderer3d_window.set_voxel_scale(*voxel_sizes)
+        posData = self.data[self.pos_i]
+        self._renderer3d_window.setWindowTitle(
+            f'3D Z-Stack Renderer  —  '
+            f'Pos {self.pos_i + 1}, Frame {posData.frame_i + 1}'
+        )
     
     def setZprojDisabled(self, disabled, storePrevState=False):
         self.combineChannelsAction.setDisabled(disabled)
@@ -25089,6 +25346,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 ol_img = img.mean(axis=0)
             elif zProjHow == 'median z-proj.':
                 ol_img = np.median(img, axis=0)
+            else:
+                ol_img = img[z].copy()
         else:
             ol_img = img.copy()
 
@@ -26042,6 +26301,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if posData.SizeZ == 1:
             return None
         zProjHow = self.zProjComboBox.currentText()
+        if zProjHow == _ZPROJMODE_3D:
+            # The 3D renderer handles display; report max projection for 2D consumers.
+            return 'max z-projection'
         if zProjHow != 'single z-slice':
             return zProjHow
         
@@ -26075,20 +26337,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         idx = (posData.filename, frame_i)
         zProjHow_L0 = self.zProjComboBox.currentText()
+        # _ZPROJMODE_3D uses the GPU renderer window; the 2D view falls back to
+        # max projection so the main canvas always shows something useful.
+        if zProjHow_L0 == _ZPROJMODE_3D:
+            zProjHow_L0 = 'max z-projection'
         if isLayer0:
             try:
                 z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
             except ValueError as e:
-                z = posData.segmInfo_df.loc[idx, 'z_slice_used_gui'].iloc[0] 
+                z = posData.segmInfo_df.loc[idx, 'z_slice_used_gui'].iloc[0]
             zProjHow = zProjHow_L0
         else:
             z = self.zSliceOverlay_SB.sliderPosition()
             zProjHow_L1 = self.zProjOverlay_CB.currentText()
-            if zProjHow_L1 == 'same as above': 
+            if zProjHow_L1 == 'same as above':
                 zProjHow = zProjHow_L0
             else:
                 zProjHow = zProjHow_L1
-        
+
         if zProjHow == 'single z-slice':
             img = imgData[z] #.copy()
         elif zProjHow == 'max z-projection':
@@ -26114,8 +26380,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         except ValueError as e:
             zProjHow = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
         
-        self.zProjComboBox.setCurrentText(zProjHow)
-        
+        # Don't override the combobox when the 3D renderer is active: the 2D
+        # projection stored in segmInfo_df is a fallback ('max z-projection'),
+        # not the true current selection.
+        if self.zProjComboBox.currentText() != _ZPROJMODE_3D:
+            self.zProjComboBox.setCurrentText(zProjHow)
+
         reconnect = False
         try:
             self.zSliceScrollBar.actionTriggered.disconnect()
@@ -27930,10 +28200,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setManualBackgroundImage()
         self.annotateAssignedObjsAcdcTrackerSecondStep()
         
-        self.highlightSearchedID(self.highlightedID, force=True) 
-        self.updateTimestampFrame()   
-        
+        self.highlightSearchedID(self.highlightedID, force=True)
+        self.updateTimestampFrame()
+
         posData.visited = True
+
+        self._update_3d_renderer_if_active()
 
     def updateTimestampFrame(self):
         if not hasattr(self, 'timestamp'):
@@ -30124,13 +30396,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.loadOverlayData([channelName], addToExisting=True)
             else:
                 _, filename = self.getPathFromChName(channelName, posData)
+                if posData.ol_data is None:
+                    posData.ol_data = {}
                 posData.ol_data[filename] = (
                     posData.ol_data_dict[filename].copy()
                 )
-            
-            self.checkedOverlayChannels.add(channelName)    
+
+            self.checkedOverlayChannels.add(channelName)
         else:
-            self.checkedOverlayChannels.remove(channelName)
+            self.checkedOverlayChannels.discard(channelName)
             imageItem = self.overlayLayersItems[channelName][0]
             imageItem.clear()
         
@@ -32868,6 +33142,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.slideshowWin.close()
         if self.ccaTableWin is not None:
             self.ccaTableWin.close()
+        _r3d = getattr(self, '_renderer3d_window', None)
+        if _r3d is not None:
+            # Allow actual destruction (not just hide) so the OpenGL context
+            # is released before the Qt application exits.
+            _r3d._hide_on_close = False
+            _r3d.close()
+            self._renderer3d_window = None
         
         proceed = self.askSaveOnClosing(event)
         if not proceed:
