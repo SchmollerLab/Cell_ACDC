@@ -21746,6 +21746,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             labels
         )
         posData.rp = posData.allData_li[posData.frame_i]['regionprops']
+        if posData.rp is None:
+            posData.rp = regionprops.acdcRegionprops(labels, precache_centroids=False)
         # get stored IDs
         self.setManualBackgroundLab()
         
