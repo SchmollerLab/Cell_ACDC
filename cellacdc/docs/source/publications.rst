@@ -16,6 +16,8 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Kim, J., et al. <i>A Fkh1/2 binding site array in the WHI5 promoter drives sub-scaling transcription</i>. <b>Cell Reports</b> (2026) DOI: <a href="https://doi.org/10.1016/j.celrep.2026.117304">10.1016/j.celrep.2026.117304</a>.</li><br>
+      <li>Benedikt, A. et al. <i>Retrograde signalling mediates cellular adaptation to mitochondrial DNA copy number alterations</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.04.22.720057">10.64898/2026.04.22.720057</a>.</li><br>
       <li>Lanz, M. C., et al. <i>Cell enlargement drives aging-associated proteome remodeling and shortens replicative lifespan</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.02.15.706013">10.64898/2026.02.15.706013</a>.</li><br>
       <li>Lambiase, A., et al. <i>Acteoside exerts neuroprotective effects by preventing α-synuclein aggregation and oxidative stress in models of Parkinson’s disease</i>. <b>Neurotherapeutics</b> (2025) DOI: <a href="https://doi.org/10.1016/j.neurot.2025.e00825">10.1016/j.neurot.2025.e00825</a>.</li><br>
       <li>Wunder, T., et al. <i>Conserved and Lineage-Specific Roles of KEA-Mediated Ion Homeostasis in Chlamydomonas</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.64898/2025.12.03.692059">10.64898/2025.12.03.692059</a>.</li><br>

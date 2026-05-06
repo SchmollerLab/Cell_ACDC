@@ -3995,6 +3995,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.navSpinBox.editingFinished.connect(
             self.navigateSpinboxEditingFinished
         )
+        self.navSpinBox.sigUpClicked.connect(
+            self.navigateSpinboxEditingFinished
+        )
+        self.navSpinBox.sigDownClicked.connect(
+            self.navigateSpinboxEditingFinished
+        )
 
         self.lastTrackedFrameLabel = QLabel()
         self.lastTrackedFrameLabel.setFont(_font)
@@ -6959,7 +6965,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 mask, returnID = self.curvToolSplineToObj(isRightClick=True)
                 if mask is not None:
                     self.update_rp() # how can I optimize this? I think not possible tbh
-                self.trackManuallyAddedObject(posData.brushID, True)
+                if self.autoIDcheckbox.isChecked():
+                    self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
                     self.updateAllImages()
@@ -7951,7 +7958,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.splineHoverON = False
                 self.curvToolSplineToObj()
                 self.update_rp()  # dont think I can optimize this
-                self.trackManuallyAddedObject(posData.brushID, True)
+                if self.autoIDcheckbox.isChecked():
+                    self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
                     self.updateAllImages()
@@ -10196,9 +10204,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     xx, yy = self.curvHoverPlotItem.getData()
                 except TypeError:
                     xx, yy = [], []
-                if x == xx[-1] and yy == yy[-1]:
+
+                if xx is None or yy is None or len(xx) == 0 or len(yy) == 0:
+                    xx, yy = [], []
+                elif x == xx[-1] and y == yy[-1]:
                     # Do not append point equal to last point
                     return
+
                 xx = np.r_[xx, x]
                 yy = np.r_[yy, y]
                 try:
@@ -10212,6 +10224,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def smoothAutoContWithSpline(self, n=3):
         try:
             xx, yy = self.curvHoverPlotItem.getData()
+            if xx is None or yy is None:
+                return
             # Downsample by taking every nth coord
             xxA, yyA = xx[::n], yy[::n]
             rr, cc = skimage.draw.polygon(yyA, xxA)
@@ -10229,7 +10243,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xxS, yyS = self.getSpline(xxA, yyA, per=True, appendFirst=True)
             if len(xxS)>0:
                 self.curvPlotItem.setData(xxS, yyS)
-        except TypeError:
+        except (TypeError, ValueError):
             pass
 
     def updateIsHistoryKnown():
@@ -14274,6 +14288,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.editIDLabelAction.setVisible(visible)
         self.editIDspinboxAction.setVisible(visible)
         self.autoIDcheckboxAction.setVisible(visible)
+        showToolbar = (
+            visible
+            or self.brushSizeAction.isVisible()
+            or self.brushAutoFillAction.isVisible()
+            or self.brushAutoHideAction.isVisible()
+        )
+        self.brushEraserToolBar.setVisible(showToolbar)
     
     def resetCursors(self):
         self.ax1_cursor.setData([], [])
@@ -20308,23 +20329,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if xxS is None:
                 self.setUncheckedAllButtons()
                 return None, None
-            N = len(xxS)
-            self.smoothAutoContWithSpline(n=int(N*0.05))
+            self.smoothAutoContWithSpline()
 
         xxS, yyS = self.getClosedSplineCoords()
 
-        if self.autoIDcheckboxAction.isChecked():
+        if self.autoIDcheckbox.isChecked():
             self.setBrushID()
             curvToolID = posData.brushID
         else:
             curvToolID = self.editIDspinbox.value()
+            posData.brushID = curvToolID
+
+        if curvToolID <= 0:
+            self.setBrushID()
+            curvToolID = posData.brushID
             
-        newIDMask = np.zeros(self.currentLab2D.shape, bool)
-        rr, cc = skimage.draw.polygon(yyS, xxS)
+        lab2D = self.get_2Dlab(posData.lab).copy()
+        newIDMask = np.zeros(lab2D.shape, bool)
+        rr, cc = skimage.draw.polygon(yyS, xxS, shape=lab2D.shape)
         newIDMask[rr, cc] = True
-        newIDMask[self.currentLab2D!=0] = False
-        self.currentLab2D[newIDMask] = curvToolID
-        self.set_2Dlab(self.currentLab2D)
+        newIDMask[lab2D!=0] = False
+        lab2D[newIDMask] = curvToolID
+        self.set_2Dlab(lab2D)
+        self.currentLab2D = lab2D
         return newIDMask, curvToolID
 
     def addFluoChNameContextMenuAction(self, ch_name):
@@ -20570,11 +20597,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         elif action == SliderSingleStepSub:
             self.prev_cb()
         elif action == SliderPageStepAdd:
-            self.framesScrollBarReleased()
+            self.framesScrollBarReleased(do_store_data=True)
         elif action == SliderPageStepSub:
-            self.framesScrollBarReleased()
+            self.framesScrollBarReleased(do_store_data=True)
 
     def framesScrollBarMoved(self, frame_n):
+        if self.navigateScrollBarStartedMoving:
+            mode = str(self.modeComboBox.currentText())
+            if mode != 'Viewer':
+                self.store_data(debug=False)
+                
         posData = self.data[self.pos_i]
         posData.frame_i = frame_n-1
         if posData.allData_li[posData.frame_i]['labels'] is None:
@@ -20602,9 +20634,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateHighlightedAxis()
         self.navigateScrollBarStartedMoving = False
 
-    def framesScrollBarReleased(self):
-        self.navigateScrollBarStartedMoving = True
+    def framesScrollBarReleased(self, do_store_data=False):
         posData = self.data[self.pos_i]
+        if posData.frame_i == self.navigateScrollBar.sliderPosition()-1:
+            # Slider released without changing value --> do nothing
+            return
+        
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Viewer' and do_store_data:
+            self.store_data(debug=False)
+            
+        self.navigateScrollBarStartedMoving = True
         posData.frame_i = self.navigateScrollBar.sliderPosition()-1
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
@@ -21570,7 +21610,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 lab3D[:] = lab2D
         else:
-            lab3D = lab2D
+            if lab3D.shape == lab2D.shape:
+                lab3D[...] = lab2D
+            else:
+                posData.lab = lab2D
 
     def get_labels(
             self, 
@@ -26391,8 +26434,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             img = self.get_2Dimg_from_3D(img)
         else:
             img = posData.img_data[frame_i].copy()
-        return img
-    
+
+        if img.ndim == 2:
+            return img
+        if img.ndim == 3 and img.shape[-1] in (3, 4):
+            return img
+
+        raise ValueError(
+            'Raw image for display must be 2D (Y, X) or RGB/A (Y, X, 3 or 4); '
+            f'got shape={getattr(img, "shape", None)}, ndim={getattr(img, "ndim", None)} '
+            f'for frame_i={frame_i} (metadata SizeT={posData.SizeT}, SizeZ={posData.SizeZ}). '
+            'Check that metadata SizeT/SizeZ matches the loaded array (e.g. squeezed TIFF vs CSV).'
+        )
+
     def initFloodMaskImage(self):
         posData = self.data[self.pos_i]
         self.flood_img = posData.img_data[posData.frame_i]
