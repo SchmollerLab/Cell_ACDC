@@ -20587,6 +20587,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 posData.lab = posData.segm_data[posData.frame_i]
             else:
                 posData.lab = np.zeros_like(posData.segm_data[0])
+            rp = regionprops.acdcRegionprops(posData.lab, precache_centroids=False)
+            posData.rp = rp
+            posData.IDs = []
+            posData.allData_li[posData.frame_i]['regionprops'] = rp
         else:
             posData.lab = posData.allData_li[posData.frame_i]['labels']
 
@@ -20740,6 +20744,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         #     self.lin_tree_ask_changes()
         
         allData_li = posData.allData_li[posData.frame_i]
+        
+
         allData_li['regionprops'] = posData.rp
         allData_li['labels'] = posData.lab.copy()
         allData_li['regionprops'].IDs = posData.IDs
@@ -20748,7 +20754,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         if self.manualAnnotPastButton.isChecked():
             self.store_manual_annot_data(
-                posData=posData, data_frame_i=allData_li    
+                posData=posData, data_frame_i=allData_li
             )
         
 
@@ -21636,6 +21642,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     shape = (posData.SizeY, posData.SizeX)
                 labels = np.zeros(shape, dtype=np.uint32)
+                rp = regionprops.acdcRegionprops(lab_mask, precache_centroids=False)
+                if frame_i == posData.frame_i:
+                    posData.rp = rp
+                    posData.IDs = []
+                posData.allData_li[frame_i]['regionprops'] = rp
                 return_copy = False
         
         if return_copy:
@@ -21832,6 +21843,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 posData, lin_tree_init=lin_tree_init, debug=debug
             )
         
+        if posData.rp is None: #
+            rp = regionprops.acdcRegionprops(posData.lab, precache_centroids=False)
+            posData.rp = rp
+            posData.allData_li[posData.frame_i]['regionprops'] = rp
         self.update_rp_metadata(draw=False)
         posData.IDs = posData.rp.IDs
         self.pointsLayerDfsToData(posData)
