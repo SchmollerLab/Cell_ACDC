@@ -345,6 +345,7 @@ class Logger(logging.Logger):
             level=logging.DEBUG
         ):
         super().__init__(f'{name}-{module}', level=level)
+        self.propagate = False  # prevent UnicodeEncodeError via root StreamHandler
         self._stdout = sys.stdout
         self._stderr = StdErr(logger=self)
         sys.stderr = self._stderr
@@ -368,8 +369,13 @@ class Logger(logging.Logger):
         log_to_file : bool, optional
             If True, call `info` method with `text`. Default is True
         """     
-        if write_to_stdout:   
-            self._stdout.write(text)
+        if write_to_stdout:
+            try:
+                self._stdout.write(text)
+            except UnicodeEncodeError:
+                self._stdout.write(text.encode(
+                    self._stdout.encoding, errors='replace'
+                ).decode(self._stdout.encoding))
             
         if not log_to_file:
             return
@@ -379,8 +385,11 @@ class Logger(logging.Logger):
         
         if not text:
             return 
-        
-        self.debug(text)
+
+        try:
+            self.debug(text)
+        except UnicodeEncodeError:
+            self.debug(text.encode('ascii', errors='replace').decode('ascii'))
 
     def close(self):
         for handler in self.handlers:
@@ -615,7 +624,7 @@ def setupLogger(module='base', logs_path=None, caller='Cell-ACDC'):
     log_filename = f'{date_time}_{module}_{id}_stdout.log'
     log_path = os.path.join(logs_path, log_filename)
 
-    output_file_handler = logging.FileHandler(log_path, mode='w')
+    output_file_handler = logging.FileHandler(log_path, mode='w', encoding='utf-8')
 
     # Format your logs (optional)
     formatter = logging.Formatter(
