@@ -26521,16 +26521,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             brushImage[toLocalSlice][mask] = ID
         
         if self.annotContourCheckbox.isChecked():
-            try:
-                obj = regionprops.acdcRegionprops(
-                    brushImage, precache_centroids=False
-                )[0]
-            except IndexError:
-                return
-            objContour = [self.getObjContours(obj)]
-            # objContour = core.get_obj_contours(
-            #     obj_image=(brushImage>0).astype(np.uint8), local=True
-            # )
+            brushMask = np.ascontiguousarray((brushImage > 0), dtype=np.uint8)
+            objContour = core.get_obj_contours(
+                obj_image=brushMask, obj_bbox=None, all_external=True, local=True
+            )
             self.brushContourImage[:] = 0
             img = self.brushContourImage
             color = self.brushContoursRgba
@@ -26573,11 +26567,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.clearObjFromMask(
                 self.contoursImage, mask, toLocalSlice=toLocalSlice
             )
-            erasedRp = regionprops.acdcRegionprops(
-                self.erasedLab, precache_centroids=False
-            )
-            for obj in erasedRp:
-                self.addObjContourToContoursImage(obj=obj, ax=ax)
+            thickness = self.contLineWeight
+            color = self.contLineColor
+            for erasedID in np.unique(self.erasedLab):
+                if erasedID == 0:
+                    continue
+                erasedMask = np.ascontiguousarray(
+                    (self.erasedLab == erasedID), dtype=np.uint8
+                )
+                contours = core.get_obj_contours(
+                    obj_image=erasedMask, obj_bbox=None,
+                    all_external=True, local=True
+                )
+                cv2.drawContours(self.contoursImage, contours, -1, color, thickness)
+            imageItem = self.getContoursImageItem(ax)
+            if imageItem is not None:
+                imageItem.setImage(self.contoursImage)
         elif how.find('overlay segm. masks') != -1:
             labelsImage = self.getLabelsLayerImage(ax=ax)
             self.clearObjFromMask(labelsImage, mask, toLocalSlice=toLocalSlice)           
@@ -26607,14 +26612,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def _setTempImgExpandLabelContours(self, prevCoords, ax=0):
         self.contoursImage[prevCoords] = [0,0,0,0]
-        currentLab2Drp = regionprops.acdcRegionprops(
-            self.currentLab2D, precache_centroids=False
+        expandMask = np.ascontiguousarray(
+            (self.currentLab2D == self.expandingID), dtype=np.uint8
         )
-        for obj in currentLab2Drp:
-            if obj.label == self.expandingID:
-                # self.clearObjContour(obj=obj, ax=ax)
-                self.addObjContourToContoursImage(obj=obj, ax=ax, force=True)
-                break
+        contours = core.get_obj_contours(
+            obj_image=expandMask, obj_bbox=None, all_external=True, local=True
+        )
+        imageItem = self.getContoursImageItem(ax, force=True)
+        if imageItem is not None:
+            thickness = self.contLineWeight
+            color = self.contLineColor
+            cv2.drawContours(self.contoursImage, contours, -1, color, thickness)
+            imageItem.setImage(self.contoursImage)
     
     def setTempImgExpandLabel(self, prevCoords, expandedObjCoords, ax=0):
         if ax == 0:
@@ -26636,13 +26645,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             how = self.getAnnotateHowRightImage()
         
         if how.find('contours') != -1:
-            currentLab2Drp = regionprops.acdcRegionprops(
-                self.currentLab2D, precache_centroids=False
+            moveMask = np.ascontiguousarray(
+                (self.currentLab2D == self.movingID), dtype=np.uint8
             )
-            for obj in currentLab2Drp:
-                if obj.label == self.movingID:
-                    self.addObjContourToContoursImage(obj=obj, ax=ax)
-                    break
+            contours = core.get_obj_contours(
+                obj_image=moveMask, obj_bbox=None, all_external=True, local=True
+            )
+            imageItem = self.getContoursImageItem(ax)
+            if imageItem is not None:
+                thickness = self.contLineWeight
+                color = self.contLineColor
+                cv2.drawContours(self.contoursImage, contours, -1, color, thickness)
+                imageItem.setImage(self.contoursImage)
         elif how.find('overlay segm. masks') != -1:
             if ax == 0:
                 self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
