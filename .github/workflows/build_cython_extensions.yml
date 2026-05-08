@@ -56,6 +56,8 @@ jobs:
 
         - uses: actions/download-artifact@v6
           with:
+            pattern: precompiled-*
+            merge-multiple: true
             path: artifacts/
 
         - name: Flatten artifacts into precompiled directory
@@ -68,17 +70,33 @@ jobs:
             echo "Total files:"
             find cellacdc/precompiled/ -type f | grep -E '\.(pyd|so)$' | wc -l
 
+        - name: Validate artifact count
+          run: |
+            EXPECTED_COUNT=12
+            FILE_COUNT=$(find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) | wc -l)
+            echo "Expected files: $EXPECTED_COUNT"
+            echo "Found files: $FILE_COUNT"
+            if [ "$FILE_COUNT" -lt "$EXPECTED_COUNT" ]; then
+              echo "Missing binaries: expected at least $EXPECTED_COUNT, found $FILE_COUNT"
+              exit 1
+            fi
+
         - name: Commit precompiled binaries
           run: |
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add -A cellacdc/precompiled/
+            git add -f cellacdc/precompiled/*.pyd cellacdc/precompiled/*.so
+            git add cellacdc/precompiled/__init__.py
             FILE_COUNT=$(find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) | wc -l)
             echo "Files to commit: $FILE_COUNT"
             if [ "$FILE_COUNT" -eq 0 ]; then
               echo "No precompiled files found, skipping commit"
               exit 0
             fi
-            git commit -m "ci: update precompiled Cython extensions [skip ci]" || echo "No changes to commit"
-            git pull --rebase origin ${{ github.ref_name }} || true
-            git push origin HEAD:${{ github.ref_name }} || echo "Nothing to push"
+            if git diff --cached --quiet; then
+              echo "No changes to commit"
+              exit 0
+            fi
+            git commit -m "ci: update precompiled Cython extensions [skip ci]"
+            git pull --rebase origin ${{ github.ref_name }}
+            git push origin HEAD:${{ github.ref_name }}

@@ -2038,6 +2038,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         brushEraserToolBar.addWidget(QLabel('  '))
         self.brushAutoFillCheckbox = QCheckBox('Auto-fill holes')
+        self.brushAutoFillCheckbox.setTristate(False)
         self.brushAutoFillAction = brushEraserToolBar.addWidget(
             self.brushAutoFillCheckbox
         )
@@ -5424,7 +5425,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return
 
             if editID.assignNewID:
-                self.assignNewIDfromClickedID(ID, event)
+                self.assignNewIDfromClickedID(ID, event, shift=shift)
                 return
             
             if not self.doNotAskAgainExistingID:    
@@ -5815,7 +5816,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         posData = self.data[self.pos_i]
-        Y, X = self.get_2Dlab(posData.lab).shape
+        Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
         xdata, ydata = int(x), int(y)
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
             return
@@ -5825,7 +5826,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         # Brush dragging mouse --> keep brushing
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
-            lab_2D = self.get_2Dlab(posData.lab)
+            lab_2D = self.get_2Dlab(posData.lab, force_z=False)
 
             # t1 = time.perf_counter()
 
@@ -5862,7 +5863,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             # t5 = time.perf_counter()
 
-            lab2D = self.get_2Dlab(posData.lab)
+            lab2D = self.get_2Dlab(posData.lab, force_z=False)
             brushMask = np.logical_and(
                 lab2D[diskSlice] == posData.brushID, diskMask
             )
@@ -5887,7 +5888,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Eraser dragging mouse --> keep erasing
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             posData = self.data[self.pos_i]
-            lab_2D = self.get_2Dlab(posData.lab)
+            lab_2D = self.get_2Dlab(posData.lab, force_z=False)
             rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
@@ -5975,18 +5976,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.zoomRectItem.setSize((w, h))
 
     # @exec_time
-    def fillHolesID(self, ID, sender='brush'):
+    def fillHolesID(self, ID, sender='brush', enabled=None):
         posData = self.data[self.pos_i]
         if sender == 'brush':
-            if not self.brushAutoFillCheckbox.isChecked():
+            if enabled is None:
+                enabled = self.brushAutoFillCheckbox.isChecked()
+
+            if not enabled:
+                return False
+
+            if not self.brushButton.isChecked():
                 return False
             
-            lab2D = self.get_2Dlab(posData.lab)
+            lab2D = self.get_2Dlab(posData.lab, force_z=False)
             mask = lab2D == ID
             filledMask = scipy.ndimage.binary_fill_holes(mask)
-            lab2D[filledMask] = ID
+            newFilledMask = np.logical_and(filledMask, ~mask)
+            if not np.any(newFilledMask):
+                return False
 
-            self.set_2Dlab(lab2D)
+            # Apply only newly filled pixels to avoid rewriting the full 3D
+            # stack when editing in projection mode.
+            self.applyBrushMask(newFilledMask, ID)
             return True
         return False
 
@@ -6715,7 +6726,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if mode == 'Viewer':
             return
 
-        Y, X = self.get_2Dlab(posData.lab).shape
+        Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
@@ -6724,7 +6735,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Eraser dragging mouse --> keep erasing
         if self.isMouseDragImg2 and self.eraserButton.isChecked():
             posData = self.data[self.pos_i]
-            lab_2D = self.get_2Dlab(posData.lab)
+            lab_2D = self.get_2Dlab(posData.lab, force_z=False)
             Y, X = lab_2D.shape
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
@@ -6755,7 +6766,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Brush paint dragging mouse --> keep painting
         if self.isMouseDragImg2 and self.brushButton.isChecked():
             posData = self.data[self.pos_i]
-            lab_2D = self.get_2Dlab(posData.lab)
+            lab_2D = self.get_2Dlab(posData.lab, force_z=False)
             Y, X = lab_2D.shape
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
@@ -6795,7 +6806,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if mode == 'Viewer':
             return
 
-        Y, X = self.get_2Dlab(posData.lab).shape
+        Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
         try:
             x, y = event.pos().x(), event.pos().y()
         except Exception as e:
@@ -6826,7 +6837,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         elif self.mergeIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            lab2D = self.get_2Dlab(posData.lab)
+            lab2D = self.get_2Dlab(posData.lab, force_z=False)
             ID = lab2D[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
@@ -6911,7 +6922,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if mode == 'Viewer':
             return
         
-        Y, X = self.get_2Dlab(posData.lab).shape
+        Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
@@ -9677,7 +9688,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y, shift=False, doPropagateUnvisited=False
         ):  
         posData = self.data[self.pos_i]
-        
         # Ask to propagate change to all future visited frames
         key = 'Edit ID'
         askAction = self.askHowFutureFramesActions[key]
@@ -11639,7 +11649,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def brushReleased(self):
         posData = self.data[self.pos_i]
-        self.fillHolesID(posData.brushID, sender='brush')
+        do_auto_fill = self.brushAutoFillCheckbox.isChecked()
+        self.fillHolesID(posData.brushID, sender='brush', enabled=do_auto_fill)
         
         # Update data (rp, etc)
         
@@ -21553,13 +21564,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 posData.lab[mask] = ID
 
     def assignNewIDfromClickedID(
-            self, clickedID: int, event: QGraphicsSceneMouseEvent
+            self, clickedID: int, event: QGraphicsSceneMouseEvent, shift: bool = False
         ):
         posData = self.data[self.pos_i]
         x, y = event.pos().x(), event.pos().y()
         newID = self.setBrushID(return_val=True)
         mapper = [(clickedID, newID)]
-        self.applyEditID(clickedID, posData.IDs.copy(), mapper, x, y)
+        self.applyEditID(clickedID, posData.IDs.copy(), mapper, x, y, shift=shift)
 
     def set_2Dlab(self, lab2D, lab3D=None):
         posData = self.data[self.pos_i]
