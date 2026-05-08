@@ -9688,6 +9688,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y, shift=False, doPropagateUnvisited=False
         ):  
         posData = self.data[self.pos_i]
+        rp = self.rpCurr2D() if (shift and self.isSegm3D) else posData.rp
+        use_3D_obj_centroid = not (shift and self.isSegm3D)
         # Ask to propagate change to all future visited frames
         key = 'Edit ID'
         askAction = self.askHowFutureFramesActions[key]
@@ -9715,8 +9717,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         assignments = {}
         for old_ID, new_ID in oldIDnewIDMapper: 
             if new_ID in currentIDs and not self.editIDmergeIDs:
-                objo = posData.rp.get_obj_from_ID(old_ID)
-                objn = posData.rp.get_obj_from_ID(new_ID)
+                objo = rp.get_obj_from_ID(old_ID)
+                objn = rp.get_obj_from_ID(new_ID)
 
                 # Relabel old_ID to new ID, save since rp is "stale"
                 slc_o = objo.slice
@@ -9730,26 +9732,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
 
                 # ¯\_(ツ)_/¯
-                objn_centroid = posData.rp.get_centroid(old_ID, exact=True) # 
-                yn, xn = self.getObjCentroid(objn_centroid)
-                if not math.isnan(yn):
-                    yn, xn = int(yn), int(xn)
-                    posData.editID_info.append((yn, xn, new_ID))
-                    yo, xo = int(clicked_y), int(clicked_x)
-                    posData.editID_info.append((yo, xo, old_ID))
+                if use_3D_obj_centroid:
+                    objn_centroid = rp.get_centroid(old_ID, exact=True) # 
+                    yn, xn = self.getObjCentroid(objn_centroid)
+                    if not math.isnan(yn):
+                        yn, xn = int(yn), int(xn)
+                        posData.editID_info.append((yn, xn, new_ID))
+                        yo, xo = int(clicked_y), int(clicked_x)
+                        posData.editID_info.append((yo, xo, old_ID))
                 assignments[new_ID] = old_ID
                 assignments[old_ID] = new_ID
             else:
                 # Use regionprops for old_ID
-                obj = posData.rp.get_obj_from_ID(old_ID)
+                obj = rp.get_obj_from_ID(old_ID)
                 slc = obj.slice
                 mask = obj.image
                 lab[slc][mask] = new_ID
-                centroid = posData.rp.get_centroid(old_ID, exact=True)
-                y, x = self.getObjCentroid(centroid)
-                if not math.isnan(y) and not math.isnan(x):
-                    y, x = int(y), int(x)
-                    posData.editID_info.append((y, x, new_ID))
+                if use_3D_obj_centroid:
+                    centroid = rp.get_centroid(old_ID, exact=True)
+                    y, x = self.getObjCentroid(centroid)
+                    if not math.isnan(y) and not math.isnan(x):
+                        y, x = int(y), int(x)
+                        posData.editID_info.append((y, x, new_ID))
                 assignments[old_ID] = new_ID
             
             self.updateAssignedObjsAcdcTrackerSecondStep(new_ID)
@@ -9758,8 +9762,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.set_2Dlab(lab)
         
         # Update rps
-        self.update_rp(
-            assignments=assignments if (shift and self.isSegm3D) else None)
+        # When shift is active we edited the 2D slice of a 3D lab; the cached 
+        # slice/image data in the old RP objects is stale so we must do a full 
+        # recompute rather than the fast assignments-only path.
+        self.update_rp(assignments=None if (shift and self.isSegm3D) else assignments)
 
         # Since we manually changed an ID we don't want to repeat tracking
         self.setAllTextAnnotations()        
@@ -15765,10 +15771,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         posData.lab = tracked_lab
         if posData.editID_info:
+            lab2D = self.get_2Dlab(posData.lab)
             editedIDsInfo = {
-                posData.lab[y,x]:newID 
+                lab2D[y,x]:newID 
                 for y, x, newID in posData.editID_info
-                if posData.lab[y,x] != newID
+                if lab2D[y,x] != newID
             }
             editedIDsInfoItems = [
                 f'ID {oldID} --> {newID}'
@@ -22503,8 +22510,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.get_data(lin_tree_init=False)
                 if shift and self.isSegm3D:
                     lab = self.get_2Dlab(posData.lab)
+                    rp = self.rpCurr2D()
                 else:
                     lab = posData.lab
+                    rp = posData.rp
 
                 if self.onlyTracking:
                     self.tracking(enforce=True)
@@ -22513,7 +22522,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     for old_ID, new_ID in oldIDnewIDMapper:
                         self._changeIDhelper(
-                            lab, old_ID, new_ID, posData.rp, assignments)  
+                            lab, old_ID, new_ID, rp, assignments)  
 
                     if shift and self.isSegm3D:
                         self.set_2Dlab(lab)
@@ -22527,12 +22536,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 lab = posData.segm_data[i]
                 if shift and self.isSegm3D:
                     lab = self.get_2Dlab(lab)
+                    rp = self.rpCurr2D(frame_i=i)
                 else:
                     lab = lab
+                    rp = posData.allData_li[i]['regionprops']
 
-                # get rp from allData_li... Its already init in core.countObjects
                 assignments = {}
-                rp = posData.allData_li[i]['regionprops']
                 for old_ID, new_ID in oldIDnewIDMapper:
                     self._changeIDhelper(
                         lab, old_ID, new_ID, rp, assignments) 
