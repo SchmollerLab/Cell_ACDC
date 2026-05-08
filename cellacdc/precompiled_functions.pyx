@@ -1,6 +1,6 @@
 # precompiled_functions.pyx
 # cython: boundscheck=False, wraparound=False, cdivision=True
-# rand change to trigger gh actions: 1
+# rand change to trigger gh actions: 2
 import numpy as np
 cimport numpy as np
 from libc.limits cimport UINT_MAX

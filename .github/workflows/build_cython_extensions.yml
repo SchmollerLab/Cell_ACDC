@@ -33,12 +33,23 @@ jobs:
       - name: Build extension
         run: |
           python -m pip install --upgrade "setuptools>=77" cython numpy
+          # Remove existing binaries so only the freshly built one remains for upload
+          python -c "
+          import os, glob
+          for f in glob.glob('cellacdc/precompiled/*.so') + glob.glob('cellacdc/precompiled/*.pyd'):
+              os.remove(f)
+              print(f'Removed existing: {f}')
+          "
           python "${{ github.workspace }}/precompile_functions.py" build_ext --inplace --build-temp "${{ github.workspace }}/build/temp"
+          echo "Built binary:"
+          ls cellacdc/precompiled/
 
       - uses: actions/upload-artifact@v6
         with:
           name: precompiled-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: cellacdc/precompiled/
+          path: |
+            cellacdc/precompiled/*.so
+            cellacdc/precompiled/*.pyd
 
   commit:
       needs: build
@@ -56,8 +67,6 @@ jobs:
 
         - uses: actions/download-artifact@v6
           with:
-            pattern: precompiled-*
-            merge-multiple: true
             path: artifacts/
 
         - name: Flatten artifacts into precompiled directory
@@ -85,7 +94,7 @@ jobs:
           run: |
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add -f cellacdc/precompiled/*.pyd cellacdc/precompiled/*.so
+            find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) -print0 | xargs -0 git add -f
             git add cellacdc/precompiled/__init__.py
             FILE_COUNT=$(find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) | wc -l)
             echo "Files to commit: $FILE_COUNT"
