@@ -1,6 +1,5 @@
 import numpy as np
 from scipy import ndimage as ndi
-from scipy import stats as scipy_stats
 import skimage.measure
 import cv2
 from . import printl, debugutils
@@ -15,14 +14,19 @@ try:
         find_all_objects_3D,
     )
     _CYTHON_FIND_OBJECTS = True
+    print('regionprops: imported precompiled find-objects helpers.')
 except Exception:
     _CYTHON_FIND_OBJECTS = False
+    print('[WARNING]: regionprops could not import precompiled find-objects helpers, falling back to scipy.ndimage.find_objects.')
 
 try:
     from cellacdc.precompiled.precompiled_functions import most_common_projection_3D
     _CYTHON_MOST_COMMON_PROJECTION = True
+    print('regionprops: imported precompiled most-common projection helper.')
 except Exception:
     _CYTHON_MOST_COMMON_PROJECTION = False
+    print('[WARNING]: regionprops could not import precompiled most-common projection helper, falling back to NumPy implementation.')
+    
 # WARNING: Developers have already used
 #     14 hrs
 # to optimize this.
@@ -39,6 +43,25 @@ except Exception:
 
 _RegionProperties = skimage.measure._regionprops.RegionProperties
 _cached = skimage.measure._regionprops._cached
+
+def _most_common_projection_ignore_zero_numpy(lab, axis):
+    """Most-common projection that ignores label 0 unless all values are 0."""
+    moved = np.moveaxis(lab, axis, 0)
+    depth = moved.shape[0]
+    flat = moved.reshape(depth, -1)
+    out = np.zeros(flat.shape[1], dtype=lab.dtype)
+
+    for col in range(flat.shape[1]):
+        line = flat[:, col]
+        nonzero = line[line != 0]
+        if nonzero.size == 0:
+            continue
+
+        labels, counts = np.unique(nonzero, return_counts=True)
+        # np.unique sorts ascending, so ties are resolved by smallest label.
+        out[col] = labels[np.argmax(counts)]
+
+    return out.reshape(moved.shape[1:])
 
 def _acdc_regionprops_factory(
         label_image,
@@ -409,8 +432,7 @@ class acdcRegionprops:
             projected = most_common_projection_3D(lab_uint32, int(axis))
             return projected.astype(lab.dtype, copy=False)
 
-        moved = np.moveaxis(lab, axis, 0)
-        projected = scipy_stats.mode(moved, axis=0, keepdims=False).mode
+        projected = _most_common_projection_ignore_zero_numpy(lab, axis)
         return projected.astype(lab.dtype, copy=False)
 
     def _get_projection_patch_slices(self, slicing, cutout_bbox):
@@ -421,15 +443,16 @@ class acdcRegionprops:
             return (slice(z0, z1), slice(x0, x1))
         return (slice(z0, z1), slice(y0, y1))
 
-    def _compute_most_common_projection_patch(self, slicing, cutout_bbox):
+    def _get_projection_patch_lab(self, slicing, cutout_bbox):
         z0, y0, x0, z1, y1, x1 = [int(v) for v in cutout_bbox]
         if slicing == 'z':
-            patch_lab = self.lab[:, y0:y1, x0:x1]
-        elif slicing == 'y':
-            patch_lab = self.lab[z0:z1, :, x0:x1]
-        else:
-            patch_lab = self.lab[z0:z1, y0:y1, :]
+            return self.lab[:, y0:y1, x0:x1]
+        if slicing == 'y':
+            return self.lab[z0:z1, :, x0:x1]
+        return self.lab[z0:z1, y0:y1, :]
 
+    def _compute_most_common_projection_patch(self, slicing, cutout_bbox):
+        patch_lab = self._get_projection_patch_lab(slicing, cutout_bbox)
         axis = self._slice_axis_index(slicing)
         return self._compute_most_common_projection(patch_lab, axis=axis)
 

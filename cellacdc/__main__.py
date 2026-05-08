@@ -39,11 +39,6 @@ if cellacdc_installation_path != site_packages:
 from cellacdc import _run
 
 def run():
-    from cellacdc import precompiled_import_success
-    if precompiled_import_success:
-        print('Precompiled functions imported successfully.')
-    
-    
     from cellacdc.config import parser_args
 
     PARAMS_PATH = parser_args['params']

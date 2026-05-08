@@ -153,9 +153,11 @@ def most_common_projection_3D(np.uint32_t[:, :, :] lab, int axis):
         for i in range(y):
             for j in range(x):
                 best_count = 0
-                best_label = UINT_MAX
+                best_label = 0
                 for a in range(depth):
                     v = lab[a, i, j]
+                    if v == 0:
+                        continue
                     seen = False
                     for b in range(a):
                         if lab[b, i, j] == v:
@@ -164,6 +166,7 @@ def most_common_projection_3D(np.uint32_t[:, :, :] lab, int axis):
                     if seen:
                         continue
 
+                    # Count all remaining occurrences of this label along the full axis.
                     curr_count = 1
                     for b in range(a + 1, depth):
                         if lab[b, i, j] == v:
@@ -183,9 +186,11 @@ def most_common_projection_3D(np.uint32_t[:, :, :] lab, int axis):
         for i in range(z):
             for j in range(x):
                 best_count = 0
-                best_label = UINT_MAX
+                best_label = 0
                 for a in range(depth):
                     v = lab[i, a, j]
+                    if v == 0:
+                        continue
                     seen = False
                     for b in range(a):
                         if lab[i, b, j] == v:
@@ -212,9 +217,11 @@ def most_common_projection_3D(np.uint32_t[:, :, :] lab, int axis):
     for i in range(z):
         for j in range(y):
             best_count = 0
-            best_label = UINT_MAX
+            best_label = 0
             for a in range(depth):
                 v = lab[i, j, a]
+                if v == 0:
+                    continue
                 seen = False
                 for b in range(a):
                     vv = lab[i, j, b]
