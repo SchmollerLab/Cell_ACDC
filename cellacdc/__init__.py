@@ -818,7 +818,5 @@ try:
         most_common_projection_3D,
     )
     precompiled_import_success = True
-except Exception as err:
-    import traceback
-    print('[WARNING]: could not import precompiled functions, falling back to pure python versions. ')
-    traceback.print_exc()
+except Exception:
+    pass

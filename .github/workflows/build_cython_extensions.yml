@@ -33,12 +33,23 @@ jobs:
       - name: Build extension
         run: |
           python -m pip install --upgrade "setuptools>=77" cython numpy
+          # Remove existing binaries so only the freshly built one remains for upload
+          python -c "
+          import os, glob
+          for f in glob.glob('cellacdc/precompiled/*.so') + glob.glob('cellacdc/precompiled/*.pyd'):
+              os.remove(f)
+              print(f'Removed existing: {f}')
+          "
           python "${{ github.workspace }}/precompile_functions.py" build_ext --inplace --build-temp "${{ github.workspace }}/build/temp"
+          echo "Built binary:"
+          ls cellacdc/precompiled/
 
       - uses: actions/upload-artifact@v6
         with:
           name: precompiled-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: cellacdc/precompiled/
+          path: |
+            cellacdc/precompiled/*.so
+            cellacdc/precompiled/*.pyd
 
   commit:
       needs: build
@@ -68,17 +79,33 @@ jobs:
             echo "Total files:"
             find cellacdc/precompiled/ -type f | grep -E '\.(pyd|so)$' | wc -l
 
+        - name: Validate artifact count
+          run: |
+            EXPECTED_COUNT=12
+            FILE_COUNT=$(find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) | wc -l)
+            echo "Expected files: $EXPECTED_COUNT"
+            echo "Found files: $FILE_COUNT"
+            if [ "$FILE_COUNT" -lt "$EXPECTED_COUNT" ]; then
+              echo "Missing binaries: expected at least $EXPECTED_COUNT, found $FILE_COUNT"
+              exit 1
+            fi
+
         - name: Commit precompiled binaries
           run: |
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add -A cellacdc/precompiled/
+            find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) -print0 | xargs -0 git add -f
+            git add cellacdc/precompiled/__init__.py
             FILE_COUNT=$(find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) | wc -l)
             echo "Files to commit: $FILE_COUNT"
             if [ "$FILE_COUNT" -eq 0 ]; then
               echo "No precompiled files found, skipping commit"
               exit 0
             fi
-            git commit -m "ci: update precompiled Cython extensions [skip ci]" || echo "No changes to commit"
-            git pull --rebase origin ${{ github.ref_name }} || true
-            git push origin HEAD:${{ github.ref_name }} || echo "Nothing to push"
+            if git diff --cached --quiet; then
+              echo "No changes to commit"
+              exit 0
+            fi
+            git commit -m "ci: update precompiled Cython extensions [skip ci]"
+            git pull --rebase origin ${{ github.ref_name }}
+            git push origin HEAD:${{ github.ref_name }}

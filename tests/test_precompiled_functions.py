@@ -23,6 +23,9 @@ pytest.importorskip(
 from cellacdc.precompiled.precompiled_functions import (
     find_all_objects_2D,
     find_all_objects_3D,
+    most_common_projection_3D,
+    object_projections_and_size_3D,
+    object_projection_and_size_3D,
     calc_IoA_matrix_2D,
     calc_IoA_matrix_3D,
 )
@@ -262,6 +265,127 @@ class TestFindAllObjects3D:
     def test_bbox_dtype_is_uint32(self, label_3d):
         _, bboxes = find_all_objects_3D(label_3d)
         assert bboxes.dtype == np.uint32
+
+
+# ---------------------------------------------------------------------------
+# most_common_projection_3D
+# ---------------------------------------------------------------------------
+
+class TestMostCommonProjection3D:
+    @pytest.mark.parametrize(
+        "axis, expected",
+        [
+            (
+                0,
+                np.array(
+                    [
+                        [1, 1],
+                        [1, 2],
+                        [2, 2],
+                        [2, 2],
+                        [1, 0],
+                        [1, 0],
+                    ],
+                    dtype=np.uint32,
+                ),
+            ),
+            (1, np.array([[1, 2]], dtype=np.uint32)),
+            (2, np.array([[1, 1, 2, 2, 1, 1]], dtype=np.uint32)),
+        ],
+    )
+    def test_counts_across_full_axis_not_runs(self, axis, expected):
+        """A label split into multiple runs must still be counted globally."""
+        lab = np.array(
+            [
+                [
+                    [1, 1],
+                    [1, 2],
+                    [2, 2],
+                    [2, 2],
+                    [1, 0],
+                    [1, 0],
+                ]
+            ],
+            dtype=np.uint32,
+        )
+        out = most_common_projection_3D(lab, axis)
+        assert out.shape == expected.shape
+        np.testing.assert_array_equal(out, expected)
+
+    @pytest.mark.parametrize("axis", [0, 1, 2])
+    def test_ignores_zero_but_returns_zero_if_no_nonzero(self, axis):
+        lab = np.zeros((3, 4, 5), dtype=np.uint32)
+        out = most_common_projection_3D(lab, axis)
+        assert out.dtype == np.uint32
+        np.testing.assert_array_equal(out, np.zeros_like(out, dtype=np.uint32))
+
+    def test_invalid_axis_raises(self):
+        lab = np.zeros((2, 2, 2), dtype=np.uint32)
+        with pytest.raises(ValueError):
+            most_common_projection_3D(lab, 3)
+
+
+# ---------------------------------------------------------------------------
+# object_projections_and_size_3D
+# ---------------------------------------------------------------------------
+
+class TestObjectProjectionsAndSize3D:
+    def test_matches_numpy_binary_projections_and_voxel_count_for_one_id(self):
+        cutout = np.zeros((4, 5, 6), dtype=np.uint32)
+        cutout[0, 1, 2] = 5
+        cutout[1, 1, 2] = 5
+        cutout[2, 3, 4] = 5
+        cutout[3, 0, 1] = 9
+        cutout[0, 0, 0] = 7
+
+        obj_mask = cutout == 5
+        proj_z, proj_y, proj_x, size = object_projections_and_size_3D(cutout, 5)
+
+        np.testing.assert_array_equal(proj_z, np.any(obj_mask, axis=0).astype(np.uint8))
+        np.testing.assert_array_equal(proj_y, np.any(obj_mask, axis=1).astype(np.uint8))
+        np.testing.assert_array_equal(proj_x, np.any(obj_mask, axis=2).astype(np.uint8))
+        assert size == int(np.count_nonzero(obj_mask))
+
+    def test_missing_id_returns_zero_projections_and_zero_size(self):
+        cutout = np.zeros((3, 4, 5), dtype=np.uint32)
+        cutout[1, 2, 3] = 4
+        proj_z, proj_y, proj_x, size = object_projections_and_size_3D(cutout, 8)
+
+        np.testing.assert_array_equal(proj_z, np.zeros((4, 5), dtype=np.uint8))
+        np.testing.assert_array_equal(proj_y, np.zeros((3, 5), dtype=np.uint8))
+        np.testing.assert_array_equal(proj_x, np.zeros((3, 4), dtype=np.uint8))
+        assert size == 0
+
+    def test_projection_dtype_is_uint8(self):
+        cutout = np.zeros((2, 3, 4), dtype=np.uint32)
+        cutout[1, 2, 3] = 7
+        proj_z, proj_y, proj_x, _ = object_projections_and_size_3D(cutout, 7)
+
+        assert proj_z.dtype == np.uint8
+        assert proj_y.dtype == np.uint8
+        assert proj_x.dtype == np.uint8
+
+
+class TestObjectProjectionAndSize3D:
+    @pytest.mark.parametrize("axis", [0, 1, 2])
+    def test_matches_numpy_projection_for_axis(self, axis):
+        cutout = np.zeros((4, 5, 6), dtype=np.uint32)
+        cutout[0, 1, 2] = 5
+        cutout[1, 1, 2] = 5
+        cutout[2, 3, 4] = 5
+        cutout[3, 0, 1] = 9
+
+        proj, size = object_projection_and_size_3D(cutout, 5, axis)
+
+        expected_mask = cutout == 5
+        expected_proj = np.any(expected_mask, axis=axis).astype(np.uint8)
+        np.testing.assert_array_equal(proj, expected_proj)
+        assert size == int(np.count_nonzero(expected_mask))
+
+    def test_invalid_axis_raises(self):
+        cutout = np.zeros((2, 3, 4), dtype=np.uint32)
+        with pytest.raises(ValueError):
+            object_projection_and_size_3D(cutout, 1, 3)
 
 
 # ---------------------------------------------------------------------------

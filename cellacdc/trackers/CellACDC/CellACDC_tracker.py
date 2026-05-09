@@ -16,8 +16,10 @@ try:
         calc_IoA_matrix_3D as _calc_IoA_matrix_3D_cython,
     )
     _HAS_CYTHON_IOA = True
+    print('tracking: imported precompiled IoA helpers.')
 except ImportError:
     _HAS_CYTHON_IOA = False
+    print('[WARNING]: tracking could not import precompiled IoA helpers, falling back to NumPy implementation.')
 
 DEBUG = False
 

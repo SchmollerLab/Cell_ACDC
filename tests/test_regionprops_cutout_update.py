@@ -1,3 +1,4 @@
+import pytest
 import numpy as np
 
 from cellacdc.regionprops import acdcRegionprops
@@ -146,7 +147,7 @@ def test_projection_regionprops_support_most_common_kind():
     most_common = rp.get_proj_rp(kind='most common', slicing='z')
 
     expected = np.array(
-        [[0, 1], [2, 3]],
+        [[4, 1], [2, 3]],
         dtype=np.uint16,
     )
     np.testing.assert_array_equal(most_common.lab, expected)
@@ -180,6 +181,70 @@ def test_most_common_projection_uses_local_cutout_update(monkeypatch):
 
     proj_after = rp.get_proj_rp(kind='most_common', slicing='z')
     expected_after = rp._get_lab_projection(new_lab, slicing='z', kind='most_common')
+    np.testing.assert_array_equal(proj_after.lab, expected_after)
+
+
+@pytest.mark.parametrize('slicing', ['z', 'y', 'x'])
+def test_most_common_projection_uses_local_cutout_update_for_all_slicings(monkeypatch, slicing):
+    old_lab = np.zeros((4, 7, 8), dtype=np.uint16)
+    old_lab[1:3, 1:4, 1:4] = 1
+    old_lab[0:2, 4:6, 4:7] = 2
+
+    rp = acdcRegionprops(old_lab)
+    proj_before = rp.get_proj_rp(kind='most_common', slicing=slicing)
+    expected_before = rp._get_lab_projection(old_lab, slicing=slicing, kind='most_common')
+    np.testing.assert_array_equal(proj_before.lab, expected_before)
+
+    new_lab = old_lab.copy()
+    new_lab[:, 2:6, 3:7] = np.array(
+        [
+            [
+                [0, 2, 2, 0],
+                [3, 3, 2, 0],
+                [3, 3, 2, 0],
+                [0, 0, 0, 0],
+            ],
+            [
+                [0, 2, 2, 0],
+                [3, 3, 3, 0],
+                [3, 3, 3, 0],
+                [0, 0, 0, 0],
+            ],
+            [
+                [0, 0, 0, 0],
+                [3, 3, 3, 0],
+                [3, 3, 3, 0],
+                [0, 0, 0, 0],
+            ],
+            [
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+            ],
+        ],
+        dtype=np.uint16,
+    )
+
+    original_replace_cached = rp._replace_cached_lab_projection
+
+    def _replace_cached_should_not_run_for_most_common(slicing_name, kind):
+        if kind == 'most_common':
+            raise AssertionError(
+                'most_common projection should be updated locally for cutout updates.'
+            )
+        return original_replace_cached(slicing_name, kind)
+
+    monkeypatch.setattr(
+        rp,
+        '_replace_cached_lab_projection',
+        _replace_cached_should_not_run_for_most_common,
+    )
+
+    rp.update_regionprops_via_cutout(new_lab, cutout_bbox=(2, 3, 6, 7))
+
+    proj_after = rp.get_proj_rp(kind='most_common', slicing=slicing)
+    expected_after = rp._get_lab_projection(new_lab, slicing=slicing, kind='most_common')
     np.testing.assert_array_equal(proj_after.lab, expected_after)
 
 
@@ -244,3 +309,20 @@ def test_slice_regionprops_update_from_2d_cutout_on_3d():
     assert rp.get_slice_rp(3, 'z').get_obj_from_ID(6, warn=False) is not None
     assert rp.get_slice_rp(6, 'y').get_obj_from_ID(6, warn=False) is not None
     assert rp.get_slice_rp(7, 'x').get_obj_from_ID(6, warn=False) is not None
+
+
+def test_projection_lab_sorted_draws_large_first_small_on_top():
+    lab = np.zeros((4, 8, 8), dtype=np.uint16)
+    # Larger object
+    lab[0:4, 1:7, 1:7] = 1
+    # Smaller object overlapping the center
+    lab[1:3, 3:5, 3:5] = 2
+
+    rp = acdcRegionprops(lab)
+    proj = rp.get_projection_lab_sorted(slicing='z')
+
+    # Small object should be visible on top in overlap area.
+    np.testing.assert_array_equal(proj[3:5, 3:5], np.full((2, 2), 2, dtype=np.uint16))
+    assert proj[2, 2] == 1
+
+
