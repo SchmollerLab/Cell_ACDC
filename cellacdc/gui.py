@@ -8466,11 +8466,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         except KeyError:
             prev_models = []
 
-        custom_first = prev_models[0] if prev_models else ''
         has_last_recipe = bool(prev_models) and os.path.exists(recipe_json_path)
         win = apps.QDialogSelectModel(
             parent=self,
-            customFirst=custom_first,
             allowMultiSelection=True,
             lastSelection=prev_models,
             addSelectLastSelectionButton=bool(prev_models),

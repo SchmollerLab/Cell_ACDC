@@ -382,40 +382,39 @@ class SegForLostIDsWorker(QObject):
             prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
             prev_IDs = posData.allData_li[frame_i-1]['regionprops'].IDs_set
 
-            new_labs = np.zeros([1, *posData.lab.shape], dtype=np.uint32)
-            for i in range(1):
-                curr_lab = self.guiWin.get_2Dlab(posData.lab)
-                tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
-                new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
+            new_labs = []
+            curr_lab = self.guiWin.get_2Dlab(posData.lab)
+            tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
+            new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
 
-                missing_IDs = prev_IDs - posData.rp.IDs_set - set(tracked_lost_IDs)
-                missing_IDs_global.update(missing_IDs)
+            missing_IDs = prev_IDs - posData.rp.IDs_set - set(tracked_lost_IDs)
+            missing_IDs_global.update(missing_IDs)
 
-                assigned_IDs_prev = assigned_IDs.copy()
-                out = segm_utils.single_cell_seg(
-                    model, prev_lab, curr_lab, curr_img,
-                    missing_IDs, new_unique_ID,
-                    posData,
-                    distance_filler_growth=args_new['distance_filler_growth'],
-                    overlap_threshold=args_new['overlap_threshold'],
-                    padding=args_new['padding'],
-                    model_kwargs=model_kwargs,
-                    preproc_recipe=preproc_recipe,
-                    applyPostProcessing=applyPostProcessing,
-                    standardPostProcessKwargs=standardPostProcessKwargs,
-                    customPostProcessFeatures=customPostProcessFeatures,
-                    customPostProcessGroupedFeatures=customPostProcessGroupedFeatures,
-                )
-                new_lab, assigned_IDs, IDs_bboxs, bboxs = out
+            assigned_IDs_prev = assigned_IDs.copy()
+            out = segm_utils.single_cell_seg(
+                model, prev_lab, curr_lab, curr_img,
+                missing_IDs, new_unique_ID,
+                posData,
+                distance_filler_growth=args_new['distance_filler_growth'],
+                overlap_threshold=args_new['overlap_threshold'],
+                padding=args_new['padding'],
+                model_kwargs=model_kwargs,
+                preproc_recipe=preproc_recipe,
+                applyPostProcessing=applyPostProcessing,
+                standardPostProcessKwargs=standardPostProcessKwargs,
+                customPostProcessFeatures=customPostProcessFeatures,
+                customPostProcessGroupedFeatures=customPostProcessGroupedFeatures,
+            )
+            new_lab, assigned_IDs, IDs_bboxs, bboxs = out
 
-                IDs_bboxs_list.append(IDs_bboxs)
-                bboxs_list.append(bboxs)
-                posData.lab = new_lab
-                self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
-                newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
-                self.emitTrackManuallyAddedObject(newly_assigned_IDs, True, False, False)
-                new_labs[i] = posData.lab.copy()
-                self.signals.progressBar.emit(1)
+            IDs_bboxs_list.append(IDs_bboxs)
+            bboxs_list.append(bboxs)
+            posData.lab = new_lab
+            self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
+            newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
+            self.emitTrackManuallyAddedObject(newly_assigned_IDs, True, False, False)
+            new_labs.append(posData.lab.copy())
+            self.signals.progressBar.emit(1)
 
             if self._debug:
                 originals = []
@@ -470,7 +469,11 @@ class SegForLostIDsWorker(QObject):
                     for label in filtered_IDs:
                         obj = rp_model_lab.get_obj_from_ID(label)
                         
-                        original_bbox_lab[obj.slice][obj.image] = label # here the stuff should be tracked, so we keep the ID!
+                        # Avoid chained indexing by creating a view, modifying it, and assigning it back
+                        # This ensures changes propagate back to original_bbox_lab and original_lab
+                        bbox_view = original_bbox_lab[obj.slice]
+                        bbox_view[obj.image] = label
+                        original_bbox_lab[obj.slice] = bbox_view
                 
                 # original_lab[box_x_min:box_x_max, box_y_min:box_y_max] = original_bbox_lab
                 

@@ -1738,7 +1738,7 @@ def download_java():
 
 def get_model_path(model_name, create_temp_dir=True):
     if model_name == 'Automatic thresholding':
-        model_name == 'thresholding'
+        model_name = 'thresholding'
         
     model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
     
@@ -4146,13 +4146,31 @@ def init_tracker(
         return tracker, track_params
 
 def import_segment_module(model_name):
+    original_model_name = model_name
+    if model_name == 'Automatic thresholding':
+        model_name = 'thresholding'
+
     try:
         acdcSegment = import_module(f'cellacdc.models.{model_name}.acdcSegment')
     except ModuleNotFoundError as e:
+        # Do not mask missing dependencies imported by the module itself.
+        expected_missing_module = f'cellacdc.models.{model_name}'
+        if e.name != expected_missing_module:
+            raise
+
         # Check if custom model
         cp = config.ConfigParser()
         cp.read(models_list_file_path)
-        model_path = cp[model_name]['path']
+        model_key = None
+        for key in (original_model_name, model_name):
+            if key in cp:
+                model_key = key
+                break
+
+        if model_key is None:
+            raise
+
+        model_path = cp[model_key]['path']
         spec = importlib.util.spec_from_file_location('acdcSegment', model_path)
         acdcSegment = importlib.util.module_from_spec(spec)
         sys.modules['acdcSegment'] = acdcSegment

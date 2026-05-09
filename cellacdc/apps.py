@@ -5803,18 +5803,13 @@ class ModelSelectionWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         if allowMultiSelection:
+            items = models
             self._picker = MultiPickListWidget(
                 items=items,
                 excludedItems=[self._ADD_CUSTOM],
                 parent=self,
             )
             self._picker.listBox.setFont(font)
-            # Style the "Add custom model…" entry
-            add_item = self._picker.listBox.item(
-                self._picker.listBox.count() - 1
-            )
-            if add_item is not None:
-                add_item.setFont(italicFont)
             self._picker.sigSelectionChanged.connect(self.sigSelectionChanged)
             self.listBox = self._picker.listBox
             layout.addWidget(self._picker)
@@ -5935,6 +5930,10 @@ class QDialogSelectModel(QDialog):
             selectLastRecipeButton.clicked.connect(self.selectLastRecipe)
             selectLastRecipeButton.setEnabled(bool(self.lastSelection))
             bottomLayout.addWidget(selectLastRecipeButton)
+        if allowMultiSelection:
+            addCustomModelButton = QPushButton('Add custom model...')
+            addCustomModelButton.clicked.connect(self.addCustomModel)
+            bottomLayout.addWidget(addCustomModelButton)
         bottomLayout.addWidget(okButton)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
 
@@ -5972,6 +5971,28 @@ class QDialogSelectModel(QDialog):
         self.loadLastRecipe = True
         self.selectedModel = self.lastSelection.copy()
         self.close()
+
+    def _runAddCustomModelWorkflow(self):
+        modelFilePath = addCustomModelMessages(self)
+        if modelFilePath is None:
+            return None
+
+        myutils.store_custom_model_path(modelFilePath)
+        modelName = os.path.basename(os.path.dirname(modelFilePath))
+        self.modelSelector.registerCustomModel(modelName)
+        return modelName
+
+    def addCustomModel(self):
+        modelName = self._runAddCustomModelWorkflow()
+        if modelName is None:
+            return
+
+        if self.allowMultiSelection:
+            self.modelSelector.addModelSelection(modelName)
+        else:
+            item = QListWidgetItem(modelName)
+            self.listBox.addItem(item)
+            self.listBox.setCurrentItem(item)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key_Escape:
@@ -6019,15 +6040,6 @@ class QDialogSelectModel(QDialog):
 
         if self.allowMultiSelection:
             if not self.selectionSequence:
-                current_name = self.modelSelector.currentModelName()
-                if current_name == 'Add custom model...':
-                    modelFilePath = addCustomModelMessages(self)
-                    if modelFilePath is None:
-                        return
-                    myutils.store_custom_model_path(modelFilePath)
-                    modelName = os.path.basename(os.path.dirname(modelFilePath))
-                    self.modelSelector.registerCustomModel(modelName)
-                    self.modelSelector.addModelSelection(modelName)
                 return
 
             selected_models = list(self.selectionSequence)
@@ -6063,11 +6075,9 @@ class QDialogSelectModel(QDialog):
         item = selected_items[0]
         model = item.text()
         if model == 'Add custom model...':
-            modelFilePath = addCustomModelMessages(self)
-            if modelFilePath is None:
+            modelName = self._runAddCustomModelWorkflow()
+            if modelName is None:
                 return
-            myutils.store_custom_model_path(modelFilePath)
-            modelName = os.path.basename(os.path.dirname(modelFilePath))
             item = QListWidgetItem(modelName)
             self.listBox.addItem(item)
             self.listBox.setCurrentItem(item)
