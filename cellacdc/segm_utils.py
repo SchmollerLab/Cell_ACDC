@@ -184,12 +184,17 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
         curr_img: current frame image
         IDs: list of IDs of the cells to segment
         new_unique_ID: ID to start labeling new cells
-        win: from the gui window which sets model params
         posData: position data (see rest of acdc)
         distance_filler_growth: distance to grow the other IDs to fill the background
         overlap_threshold: minimum overlap percentage to consider a cell already segmented
         padding: padding around the cell to segment
         export_bbox_for_training: if True, export bounding boxes for training model
+        model_kwargs: keyword arguments to pass to the segmentation model
+        preproc_recipe: preprocessing recipe to apply before segmentation
+        applyPostProcessing: if True, apply post-processing to the segmentation
+        standardPostProcessKwargs: keyword arguments for standard post-processing
+        customPostProcessFeatures: custom features for post-processing segmentation
+        customPostProcessGroupedFeatures: custom grouped features for post-processing
 
     Returns:
         curr_lab: current frame segmentation with the segmented cells

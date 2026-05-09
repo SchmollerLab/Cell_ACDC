@@ -301,12 +301,6 @@ class SegForLostIDsWorker(QObject):
 
         model_settings = self.guiWin.SegForLostIDsSettings['models_settings']
 
-        # Use the persistent per-guiWin cache so modules are not re-imported
-        # on every button click.  A model appearing twice in the list still
-        # gets its own fresh model instance (init_segm_model is always called
-        # per entry), but the underlying module object is reused.
-        _module_cache: dict = self.guiWin.segForLostIDs_acdcSegments
-
         n_models = len(model_settings)
         total_steps = 2 * n_models
         self.signals.initProgressBar.emit(total_steps)
@@ -349,24 +343,20 @@ class SegForLostIDsWorker(QObject):
                 if 'use_gpu' in init_kwargs:
                     init_kwargs_new = dict(init_kwargs_new, use_gpu=False)
 
-            if base_model_name not in _module_cache:
-                try:
-                    self.logger.info(f'Importing {base_model_name}...')
-                    acdcSegment = myutils.import_segment_module(base_model_name)
-                    _module_cache[base_model_name] = acdcSegment
-                except (IndexError, ImportError, KeyError):
-                    self.logger.warning(
-                        f'Cannot import {base_model_name} model. '
-                        'Please install it first.'
-                    )
-                    self.signals.critical.emit(
-                        (self, f'Cannot import {base_model_name} model. '
-                        'Please install it first.')
-                    )
-                    self.signals.finished.emit(self)
-                    return
-            else:
-                acdcSegment = _module_cache[base_model_name]
+            try:
+                self.logger.info(f'Importing {base_model_name}...')
+                acdcSegment = myutils.import_segment_module(base_model_name)
+            except (IndexError, ImportError, KeyError):
+                self.logger.warning(
+                    f'Cannot import {base_model_name} model. '
+                    'Please install it first.'
+                )
+                self.signals.critical.emit(
+                    (self, f'Cannot import {base_model_name} model. '
+                    'Please install it first.')
+                )
+                self.signals.finished.emit(self)
+                return
 
             model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new)
             if model is None:
@@ -378,7 +368,7 @@ class SegForLostIDsWorker(QObject):
                 return
             if self._debug:
                 try:
-                    model.setupLogger(self.guiwin.logger)
+                    model.setupLogger(self.guiWin.logger)
                 except Exception:
                     pass
 
@@ -432,6 +422,7 @@ class SegForLostIDsWorker(QObject):
                 models = []
 
             posData.lab = original_lab.copy()
+            self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
 
             global_area_mean = np.mean([obj.area for obj in posData.rp])
             for i, (IDs_bboxs, bboxs) in enumerate(zip(IDs_bboxs_list, bboxs_list)):
@@ -479,13 +470,14 @@ class SegForLostIDsWorker(QObject):
                     for label in filtered_IDs:
                         obj = rp_model_lab.get_obj_from_ID(label)
                         
-                        original_bbox_lab[obj.slice][obj.label] = label # here the stuff should be tracked, so we keep the ID!
+                        original_bbox_lab[obj.slice][obj.image] = label # here the stuff should be tracked, so we keep the ID!
                 
                 # original_lab[box_x_min:box_x_max, box_y_min:box_y_max] = original_bbox_lab
                 
                 self.signals.progressBar.emit(1)
 
             posData.lab = original_lab
+            self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
 
         # if self._debug:
         #     originals = np.concatenate(originals, axis=0)

@@ -544,9 +544,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.lin_tree_df_colnames = self.lin_tree_df_int_cols + self.lin_tree_df_bool_col + self.lin_tree_col_checks
         self.SegForLostIDsSettings = {}
-        # Persistent cache of imported acdcSegment modules for SegForLostIDs,
-        # keyed by model name so re-clicking the button doesn't re-import.
-        self.segForLostIDs_acdcSegments: dict = {}
     
     def setWindowIcon(self, icon=None):
         if icon is None:
@@ -8540,7 +8537,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'padding',
             'size_perc_diff',
             'distance_filler_growth',
-            'max_iterations',
             'allow_only_tracked_cells'
         ]
         extra_types = {
@@ -8548,7 +8544,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'padding': float,
             'size_perc_diff': float,
             'distance_filler_growth': float,
-            'max_iterations': int,
             'allow_only_tracked_cells': bool,
         }
         extra_defaults = {
@@ -8556,7 +8551,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'padding': 0.8,
             'size_perc_diff': 0.3,
             'distance_filler_growth': 1.,
-            'max_iterations': 2,
             'allow_only_tracked_cells': False,
         }
         extra_desc = {
@@ -8577,12 +8571,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 'noise sampled from background to ensure that they do not '
                 'get segmented again. This parameter controls the additional '
                 'padding around the already segmented cells.'
-            ),
-            'max_iterations': (
-                'The algorithm will try and segment the maximum amount of '
-                'cells in the image by running the model several times and '
-                'filling new found cells with background noise. '
-                'How many of these iterations should be run?'
             ),
             'allow_only_tracked_cells': (
                 'If no new cell IDs should be permitted '
@@ -8606,13 +8594,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.logger.error(f'Error importing {base_model_name}: {e}')
                 return
 
-            if model_idx == 0:
-                extra_params = all_extra_params
-            else:
-                extra_params = [
-                    param for param in all_extra_params
-                    if param != 'max_iterations'
-                ]
+            extra_params = all_extra_params
 
             extra_ArgSpec = []
             for param in extra_params:

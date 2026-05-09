@@ -5692,6 +5692,12 @@ class MultiPickListWidget(QWidget):
 
         if insertBeforeLabel is not None:
             target = self._itemsMap.get(insertBeforeLabel)
+            if target is None:
+                for row in range(self.listBox.count()):
+                    row_item = self.listBox.item(row)
+                    if row_item is not None and row_item.text() == insertBeforeLabel:
+                        target = row_item
+                        break
             if target is not None:
                 row = self.listBox.row(target)
                 self.listBox.insertItem(row, item)
@@ -5700,6 +5706,7 @@ class MultiPickListWidget(QWidget):
         else:
             self.listBox.addItem(item)
 
+        self._itemsMap[label] = item
         self._addCounterWidget(label, item)
         return item
 
