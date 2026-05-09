@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import skimage.measure
-from . import printl, myutils
+from . import printl, myutils, regionprops
 import json
 from typing import Set, List, Tuple
 import time
@@ -222,14 +222,14 @@ class Whitelist:
                 
             new_IDs = self.originalLabsIDs[i] - self.originalLabsIDs[i-1]
             
-            rp = None
             if frame_i==i and curr_rp is not None:
                 rp = curr_rp
             else:
-                rp = skimage.measure.regionprops(self.originalLabs[i])
+                rp = regionprops.acdcRegionprops(self.originalLabs[i],
+                                                 precache_centroids=False)
 
             self.new_centroids.append({
-                tuple(map(int, obj.centroid)) for obj in rp if obj.label in new_IDs
+                tuple(map(int, rp.get_centroid(label))) for label in new_IDs
             })
                 
 
@@ -411,7 +411,7 @@ class Whitelist:
                 printl('Using curr_lab')
             IDs_curr = {obj.label for obj in skimage.measure.regionprops(lab)}
         else:
-            IDs_curr = allData_li[frame_i]['IDs']
+            IDs_curr = allData_li[frame_i]['regionprops'].IDs_set
             if self._debug:
                 printl('Using allData_li')
             
@@ -488,7 +488,7 @@ class Whitelist:
                 IDs = set(IDs_curr)
             elif allData_li is not None:
                 try:
-                    IDs = set(allData_li[i]['IDs'])
+                    IDs = allData_li[i]['regionprops'].IDs_set
                 except KeyError:
                     pass
             if IDs is None:
@@ -746,7 +746,7 @@ class Whitelist:
                 printl('Using index_lab_combo')
             IDs_curr = {obj.label for obj in skimage.measure.regionprops(lab)}
         elif curr_rp is not None:
-            IDs_curr = {obj.label for obj in curr_rp}
+            IDs_curr = curr_rp.IDs_set
             if self._debug:
                 printl('Using rp')
         elif curr_lab is not None:
@@ -755,7 +755,7 @@ class Whitelist:
                 printl('Using curr_lab')
             IDs_curr = {obj.label for obj in skimage.measure.regionprops(lab)}
         else:
-            IDs_curr = allData_li[frame_i]['IDs']
+            IDs_curr = allData_li[frame_i]['regionprops'].IDs_set
             if self._debug:
                 printl('Using allData_li')
             
@@ -872,7 +872,7 @@ class Whitelist:
                 if frame_i == i:
                     IDs_curr_loc = IDs_curr
                 else:
-                    IDs_curr_loc = set(allData_li[i]['IDs'])
+                    IDs_curr_loc =allData_li[i]['regionprops'].IDs_set
 
             new_whitelist = self.get(i, try_create_new_whitelists).copy()
             old_whitelist = new_whitelist.copy()
@@ -939,12 +939,12 @@ class WhitelistGUIElements:
         if not self.whitelistCheckOriginalLabels():
             return
         old_cell_IDs = posData.whitelist.originalLabsIDs[frame_i]
-        prev_cell_IDs = posData.allData_li[frame_i-1]['IDs']
+        prev_cell_IDs = posData.allData_li[frame_i-1]['regionprops'].IDs_set
         self.whitelistTrackOGCurr(against_prev=True)
         new_cell_IDs = posData.whitelist.originalLabsIDs[frame_i]
 
         new_IDs = new_cell_IDs - old_cell_IDs
-        new_IDs = new_IDs & set(prev_cell_IDs)
+        new_IDs = new_IDs & prev_cell_IDs
 
         self.whitelistUpdateLab(
             track_og_curr=False, IDs_to_add=new_IDs,
@@ -1066,7 +1066,7 @@ class WhitelistGUIElements:
                 self.store_data(autosave=False)
 
             if frame_i > 0:
-                missing_IDs = set(posData.IDs) - set(posData.allData_li[frame_i-1]['IDs'])
+                missing_IDs = posData.IDs_set - posData.allData_li[frame_i-1]['regionprops'].IDs_set
                 self.trackManuallyAddedObject(missing_IDs,isNewID=True, wl_update=False)
 
             self.setAllTextAnnotations()
@@ -1502,7 +1502,7 @@ class WhitelistGUIElements:
         ### against what should I track?
 
         if lab is not None and not rp:
-            rp = skimage.measure.regionprops(lab)
+            rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
         
         changed_frame = False
         if lab is None:
@@ -1520,7 +1520,7 @@ class WhitelistGUIElements:
                 rp = posData.rp
                 lab = posData.lab
         og_lab = posData.whitelist.originalLabs[frame_i]
-        og_rp = skimage.measure.regionprops(og_lab)
+        og_rp = regionprops.acdcRegionprops(og_lab, precache_centroids=False)
         # lab = lab.copy()
 
         denom_overlap_matrix = 'union' if not against_prev else 'area_prev'
@@ -1530,7 +1530,6 @@ class WhitelistGUIElements:
                 denom_overlap_matrix=denom_overlap_matrix,
                 posData = posData,
                 setBrushID_func=self.setBrushID,
-                IDs=IDs,
                 # assign_unique_new_IDs=False,
         )
 
@@ -1583,7 +1582,7 @@ class WhitelistGUIElements:
         else:
             og_lab = posData.whitelist.originalLabs[frame_i]
 
-        og_rp = skimage.measure.regionprops(og_lab)
+        og_rp = regionprops.acdcRegionprops(og_lab, precache_centroids=False)
 
         denom_overlap_matrix = 'union' if not against_prev else 'area_prev'
 
