@@ -164,9 +164,15 @@ def find_overlapping_bboxs(IDs, bboxs, order=1):
 #     return np.unique(border_labels[border_labels != 0])
 
 def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
-                    win, posData, distance_filler_growth=1,
+                    posData, distance_filler_growth=1,
                     overlap_threshold=0.5, padding=0.4,
                     export_bbox_for_training=False,
+                    model_kwargs=None,
+                    preproc_recipe=None,
+                    applyPostProcessing=False,
+                    standardPostProcessKwargs=None,
+                    customPostProcessFeatures=None,
+                    customPostProcessGroupedFeatures=None,
                     ):
     """
     Function to segment single cells in the current frame using the previous frame segmentation as a reference. 
@@ -194,12 +200,10 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
     if export_bbox_for_training:
         bboxs_for_debug = []
 
-    model_kwargs = win.model_kwargs
-    preproc_recipe = win.preproc_recipe
-    applyPostProcessing = win.applyPostProcessing
-    standardPostProcessKwargs = win.standardPostProcessKwargs
-    customPostProcessFeatures = win.customPostProcessFeatures
-    customPostProcessGroupedFeatures = win.customPostProcessGroupedFeatures
+    if model_kwargs is None:
+        model_kwargs = {}
+    if standardPostProcessKwargs is None:
+        standardPostProcessKwargs = {}
 
     prev_rp = skimage.measure.regionprops(prev_lab)
     prev_lab_shape = prev_lab.shape

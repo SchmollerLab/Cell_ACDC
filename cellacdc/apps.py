@@ -5578,49 +5578,335 @@ class SelectPromptableModelDialog(QBaseDialog):
         self.close()
 
 
+class MultiPickListWidget(QWidget):
+    """Generic list widget with multi-pick (repeated-selection) support.
+
+    Each pickable row shows ``-  count  +`` controls.  Left-clicking adds
+    one instance; right-clicking or Ctrl+left-click removes one.  The same
+    item can appear multiple times in :attr:`selectionSequence`.
+
+    Parameters
+    ----------
+    items:
+        Initial list of item labels.
+    excludedItems:
+        Labels that are shown in the list but *not* given +/- controls
+        (e.g. placeholder entries like "Add custom model…").  Click events
+        on these are silently ignored.
+    parent:
+        Optional parent widget.
+    """
+
+    sigSelectionChanged = Signal(list)  # emits selectionSequence on every change
+
+    def __init__(self, items=None, excludedItems=None, parent=None):
+        super().__init__(parent)
+
+        self._excludedItems = set(excludedItems or [])
+        self._itemsMap = {}          # label → QListWidgetItem
+        self._countMap = defaultdict(int)
+        self._countLabelMap = {}
+        self.selectionSequence = []
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.listBox = widgets.listWidget(isMultipleSelection=False)
+        self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+
+        for label in (items or []):
+            self._addListItem(label)
+
+        if self._itemsMap:
+            self.listBox.setCurrentRow(0)
+
+        self.listBox.itemClicked.connect(self._onItemClicked)
+        self.listBox.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.listBox.customContextMenuRequested.connect(self._onRightClick)
+
+        layout.addWidget(self.listBox)
+
+    @property
+    def itemsMap(self):
+        """Dict mapping label → QListWidgetItem for all pickable items."""
+        return dict(self._itemsMap)
+
+    def currentItemName(self):
+        """Return the label of the currently highlighted item, or ``None``."""
+        item = self.listBox.currentItem()
+        return item.text() if item is not None else None
+
+    def addSelection(self, label):
+        """Add one instance of *label* to the selection."""
+        if label not in self._itemsMap:
+            return
+        self.selectionSequence.append(label)
+        self._countMap[label] += 1
+        self._updateCountLabel(label)
+        self.listBox.setCurrentItem(self._itemsMap[label])
+        self.sigSelectionChanged.emit(list(self.selectionSequence))
+
+    def removeSelection(self, label):
+        """Remove the last instance of *label* from the selection."""
+        if self._countMap.get(label, 0) <= 0:
+            return
+        for i in range(len(self.selectionSequence) - 1, -1, -1):
+            if self.selectionSequence[i] == label:
+                self.selectionSequence.pop(i)
+                break
+        self._countMap[label] = max(0, self._countMap[label] - 1)
+        self._updateCountLabel(label)
+        self.sigSelectionChanged.emit(list(self.selectionSequence))
+
+    def resetSelection(self):
+        """Clear all selections and reset all counters to zero."""
+        self.selectionSequence = []
+        self._countMap = defaultdict(int)
+        for label in self._countLabelMap:
+            self._updateCountLabel(label)
+        self.sigSelectionChanged.emit([])
+
+    def setSelectionFromList(self, labels):
+        """Set the selection to *labels* (duplicates supported)."""
+        self.resetSelection()
+        for label in labels:
+            self.addSelection(label)
+
+    def registerItem(self, label, insertBeforeLabel=None):
+        """Dynamically add a new pickable item.
+
+        Parameters
+        ----------
+        label:
+            Text for the new item.
+        insertBeforeLabel:
+            If given, insert the new item immediately before this label.
+            If not found or not given, the item is appended.
+
+        Returns the created ``QListWidgetItem``.
+        """
+        if label in self._itemsMap:
+            return self._itemsMap[label]
+
+        item = QListWidgetItem(label)
+
+        if insertBeforeLabel is not None:
+            target = self._itemsMap.get(insertBeforeLabel)
+            if target is not None:
+                row = self.listBox.row(target)
+                self.listBox.insertItem(row, item)
+            else:
+                self.listBox.addItem(item)
+        else:
+            self.listBox.addItem(item)
+
+        self._addCounterWidget(label, item)
+        return item
+
+    def _addListItem(self, label):
+        """Create a QListWidgetItem and, if pickable, attach a counter widget."""
+        item = QListWidgetItem(label)
+        self.listBox.addItem(item)
+        if label not in self._excludedItems:
+            self._itemsMap[label] = item
+            self._addCounterWidget(label, item)
+
+    def _addCounterWidget(self, label, item):
+        rowWidget = QWidget()
+        rowLayout = QHBoxLayout(rowWidget)
+        rowLayout.setContentsMargins(4, 0, 4, 0)
+        rowLayout.setSpacing(6)
+
+        nameLabel = QLabel(label)
+        minusBtn = QPushButton('-')
+        plusBtn = QPushButton('+')
+        countLabel = QLabel(str(self._countMap.get(label, 0)))
+
+        minusBtn.setFixedWidth(24)
+        plusBtn.setFixedWidth(24)
+        countLabel.setMinimumWidth(20)
+        countLabel.setAlignment(Qt.AlignCenter)
+
+        minusBtn.clicked.connect(lambda _, lbl=label: self.removeSelection(lbl))
+        plusBtn.clicked.connect(lambda _, lbl=label: self.addSelection(lbl))
+
+        rowLayout.addWidget(nameLabel)
+        rowLayout.addStretch(1)
+        rowLayout.addWidget(minusBtn)
+        rowLayout.addWidget(countLabel)
+        rowLayout.addWidget(plusBtn)
+
+        self._countLabelMap[label] = countLabel
+        self.listBox.setItemWidget(item, rowWidget)
+
+    def _updateCountLabel(self, label):
+        lbl = self._countLabelMap.get(label)
+        if lbl is not None:
+            lbl.setText(str(self._countMap.get(label, 0)))
+
+    def _onItemClicked(self, item):
+        label = item.text()
+        if label in self._excludedItems:
+            return
+        modifiers = QApplication.keyboardModifiers()
+        if modifiers & Qt.ControlModifier:
+            self.removeSelection(label)
+        else:
+            self.addSelection(label)
+
+    def _onRightClick(self, pos):
+        item = self.listBox.itemAt(pos)
+        if item is None:
+            return
+        label = item.text()
+        if label in self._excludedItems:
+            return
+        self.removeSelection(label)
+
+
+class ModelSelectionWidget(QWidget):
+    """List widget for selecting segmentation models.
+
+    Thin wrapper around :class:`MultiPickListWidget` that populates the list
+    with the installed models and adds a special "Add custom model…" entry.
+
+    ``sigSelectionChanged`` and ``selectionSequence`` are proxied from the
+    underlying :class:`MultiPickListWidget`.
+    """
+
+    _ADD_CUSTOM = 'Add custom model...'
+
+    sigSelectionChanged = Signal(list)
+
+    def __init__(self, parent=None, customFirst='', allowMultiSelection=False):
+        super().__init__(parent)
+
+        self.allowMultiSelection = allowMultiSelection
+
+        models = myutils.get_list_of_models()
+        if customFirst:
+            try:
+                models.insert(0, models.pop(models.index(customFirst)))
+            except ValueError:
+                pass
+
+        items = models + [self._ADD_CUSTOM]
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        if allowMultiSelection:
+            self._picker = MultiPickListWidget(
+                items=items,
+                excludedItems=[self._ADD_CUSTOM],
+                parent=self,
+            )
+            self._picker.listBox.setFont(font)
+            # Style the "Add custom model…" entry
+            add_item = self._picker.listBox.item(
+                self._picker.listBox.count() - 1
+            )
+            if add_item is not None:
+                add_item.setFont(italicFont)
+            self._picker.sigSelectionChanged.connect(self.sigSelectionChanged)
+            self.listBox = self._picker.listBox
+            layout.addWidget(self._picker)
+        else:
+            self.listBox = widgets.listWidget(isMultipleSelection=False)
+            self.listBox.setFont(font)
+            self.listBox.addItems(models)
+            add_item = QListWidgetItem(self._ADD_CUSTOM)
+            add_item.setFont(italicFont)
+            self.listBox.addItem(add_item)
+            self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+            self.listBox.setCurrentRow(0)
+            self._picker = None
+            layout.addWidget(self.listBox)
+
+    # ------------------------------------------------------------------
+    # Proxy helpers (multi-selection mode only)
+    # ------------------------------------------------------------------
+
+    @property
+    def selectionSequence(self):
+        return self._picker.selectionSequence if self._picker is not None else []
+
+    @property
+    def modelItemsMap(self):
+        return self._picker.itemsMap if self._picker is not None else {}
+
+    def currentModelName(self):
+        if self._picker is not None:
+            return self._picker.currentItemName()
+        item = self.listBox.currentItem()
+        return item.text() if item is not None else None
+
+    def addModelSelection(self, name):
+        if self._picker is not None:
+            self._picker.addSelection(name)
+
+    def removeModelSelection(self, name):
+        if self._picker is not None:
+            self._picker.removeSelection(name)
+
+    def resetSelectionSequence(self):
+        if self._picker is not None:
+            self._picker.resetSelection()
+
+    def setSelectionFromList(self, models):
+        if self._picker is not None:
+            self._picker.setSelectionFromList(models)
+
+    def registerCustomModel(self, model_name):
+        """Add a newly registered custom model and return its item."""
+        if self._picker is not None:
+            return self._picker.registerItem(
+                model_name, insertBeforeLabel=self._ADD_CUSTOM
+            )
+        item = QListWidgetItem(model_name)
+        self.listBox.insertItem(self.listBox.count() - 1, item)
+        return item
+
+
 class QDialogSelectModel(QDialog):
     def __init__(
-            self, parent=None, addSkipSegmButton=False, customFirst=''
+            self, parent=None, addSkipSegmButton=False, customFirst='',
+            allowMultiSelection=False, lastSelection=None,
+            addSelectLastSelectionButton=False,
+            addSelectLastRecipeButton=False
         ):
         self.cancel = True
+        self.loadLastRecipe = False
         super().__init__(parent)
         self.setWindowTitle('Select model')
 
-        mainLayout = QVBoxLayout()
-        topLayout = QVBoxLayout()
-        bottomLayout = QHBoxLayout()
+        self.allowMultiSelection = allowMultiSelection
+        self.lastSelection = [
+            m for m in (lastSelection or []) if isinstance(m, str)
+        ]
 
+        mainLayout = QVBoxLayout()
         self.mainLayout = mainLayout
 
         label = QLabel(html_utils.paragraph(
             'Select model to use for segmentation: '
         ))
-        # padding: top, left, bottom, right
         label.setStyleSheet("padding:0px 0px 3px 0px;")
-        topLayout.addWidget(label, alignment=Qt.AlignCenter)
+        mainLayout.addWidget(label, alignment=Qt.AlignCenter)
 
-        listBox = widgets.listWidget()
-        models = myutils.get_list_of_models()
+        self.modelSelector = ModelSelectionWidget(
+            parent=self,
+            customFirst=customFirst,
+            allowMultiSelection=allowMultiSelection,
+        )
+        # Convenience aliases kept for backward compatibility
+        self.listBox = self.modelSelector.listBox
+        mainLayout.addWidget(self.modelSelector)
 
-        if customFirst:
-            try:
-                idx = models.index(customFirst)
-                models.insert(0, models.pop(idx))
-            except ValueError:
-                print(f'Warning: {customFirst} not found in models list.')
-                pass
+        if not allowMultiSelection:
+            self.listBox.itemDoubleClicked.connect(self.ok_cb)
 
-        listBox.setFont(font)
-        listBox.addItems(models)
-        addCustomModelItem = QListWidgetItem('Add custom model...')
-        addCustomModelItem.setFont(italicFont)
-        listBox.addItem(addCustomModelItem)
-        listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        listBox.setCurrentRow(0)
-        self.listBox = listBox
-        listBox.itemDoubleClicked.connect(self.ok_cb)
-        topLayout.addWidget(listBox)
-
+        bottomLayout = QHBoxLayout()
         cancelButton = widgets.cancelPushButton('Cancel')
         okButton = widgets.okPushButton(' Ok ')
         okButton.setShortcut(Qt.Key_Enter)
@@ -5632,35 +5918,142 @@ class QDialogSelectModel(QDialog):
             skipSegmButton = widgets.SkipPushButton('Skip segmentation')
             bottomLayout.addWidget(skipSegmButton)
             skipSegmButton.clicked.connect(self.skipSegm)
+        if addSelectLastSelectionButton and allowMultiSelection:
+            selectLastSelButton = QPushButton('Select last selection')
+            selectLastSelButton.clicked.connect(self.selectLastSelection)
+            selectLastSelButton.setEnabled(bool(self.lastSelection))
+            bottomLayout.addWidget(selectLastSelButton)
+        if addSelectLastRecipeButton and allowMultiSelection:
+            selectLastRecipeButton = QPushButton('Select last recipe')
+            selectLastRecipeButton.clicked.connect(self.selectLastRecipe)
+            selectLastRecipeButton.setEnabled(bool(self.lastSelection))
+            bottomLayout.addWidget(selectLastRecipeButton)
         bottomLayout.addWidget(okButton)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
 
-        mainLayout.addLayout(topLayout)
         mainLayout.addLayout(bottomLayout)
         self.setLayout(mainLayout)
 
-        # Connect events
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
 
         self.setStyleSheet(LISTWIDGET_STYLESHEET)
-    
+
+    @property
+    def selectionSequence(self):
+        return self.modelSelector.selectionSequence
+
+    @property
+    def modelItemsMap(self):
+        return self.modelSelector.modelItemsMap
+
     def skipSegm(self):
         self.cancel = False
         self.selectedModel = 'skip_segmentation'
         self.close()
-    
+
+    def selectLastSelection(self):
+        if not self.lastSelection:
+            return
+        self.modelSelector.setSelectionFromList(self.lastSelection)
+
+    def selectLastRecipe(self):
+        if not self.lastSelection:
+            return
+        self.selectLastSelection()
+        self.cancel = False
+        self.loadLastRecipe = True
+        self.selectedModel = self.lastSelection.copy()
+        self.close()
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key_Escape:
             event.ignore()
             return
-            
         super().keyPressEvent(event)
 
-    def ok_cb(self, event):
+    def askSelectedModelsOrder(self, selected_models):
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Order selected models')
+        dialog.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+
+        layout = QVBoxLayout(dialog)
+        infoTxt = html_utils.paragraph(
+            'Drag and drop to change the order of the selected models.<br>'
+            'The top model will run first.'
+        )
+        layout.addWidget(QLabel(infoTxt))
+
+        modelOrderView = widgets.ReorderableListView(
+            selected_models, parent=dialog, isSingleSelection=True
+        )
+        layout.addWidget(modelOrderView)
+
+        buttonsLayout = QHBoxLayout()
+        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton('Ok')
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+        layout.addLayout(buttonsLayout)
+
+        cancelButton.clicked.connect(dialog.reject)
+        okButton.clicked.connect(dialog.accept)
+
+        if dialog.exec_() != QDialog.Accepted:
+            return None
+
+        return modelOrderView.items()
+
+    def ok_cb(self, event=None):
         self.clickedButton = self.sender()
         self.cancel = False
-        item = self.listBox.currentItem()
+
+        if self.allowMultiSelection:
+            if not self.selectionSequence:
+                current_name = self.modelSelector.currentModelName()
+                if current_name == 'Add custom model...':
+                    modelFilePath = addCustomModelMessages(self)
+                    if modelFilePath is None:
+                        return
+                    myutils.store_custom_model_path(modelFilePath)
+                    modelName = os.path.basename(os.path.dirname(modelFilePath))
+                    self.modelSelector.registerCustomModel(modelName)
+                    self.modelSelector.addModelSelection(modelName)
+                return
+
+            selected_models = list(self.selectionSequence)
+            if len(selected_models) > 1:
+                ordered_models = self.askSelectedModelsOrder(selected_models)
+                if ordered_models is None:
+                    return
+                selected_models = ordered_models
+
+            if (
+                len(selected_models) == 1
+                and selected_models[0] == 'Automatic thresholding'
+            ):
+                self.selectedModel = 'thresholding'
+            else:
+                self.selectedModel = selected_models
+            self.close()
+            return
+
+        selected_items = self.listBox.selectedItems()
+        if not selected_items:
+            return
+
+        selected_models = [item.text() for item in selected_items]
+        if len(selected_models) > 1:
+            ordered_models = self.askSelectedModelsOrder(selected_models)
+            if ordered_models is None:
+                return
+            self.selectedModel = ordered_models
+            self.close()
+            return
+
+        item = selected_items[0]
         model = item.text()
         if model == 'Add custom model...':
             modelFilePath = addCustomModelMessages(self)
@@ -5678,7 +6071,7 @@ class QDialogSelectModel(QDialog):
             self.selectedModel = model
             self.close()
 
-    def cancel_cb(self, event):
+    def cancel_cb(self, event=None):
         self.cancel = True
         self.selectedModel = None
         self.close()
@@ -19352,12 +19745,59 @@ class SelectFoldersToAnalyse(QBaseDialog):
         return expPathsPosFoldernamesMapper
     
     def ok_cb(self):
-        self.cancel = False
+        #verify all selected folders have Images folder:
+        faultyFolders = []
+        for path, selected_pos in self.expFolderToPosFoldernamesMapper().items():
+            if selected_pos == ['']:
+                images_path = myutils.get_images_folderpath(path)
+                if images_path is None or not os.path.exists(images_path):
+                    faultyFolders.append(path)
+                    
+            else:
+                for pos in selected_pos:
+                    pos_path = os.path.join(path, pos)
+                    images_path = myutils.get_images_folderpath(pos_path)
+                    if images_path is None or not os.path.exists(images_path):
+                        faultyFolders.append(pos_path)
+        
+        if faultyFolders:
+            self.warnNoAllValid(faultyFolders)
+            return
+            
         self.paths = self.pathsList()
         self.selectedExpFolderToPosFoldernamesMapper = (
             self.expFolderToPosFoldernamesMapper()
         )
+        if not self.selectedExpFolderToPosFoldernamesMapper:
+            self.warnEmptySelection()
+            return
+        self.cancel = False
+
         self.close()
+        
+    def warnNoAllValid(self, faultyFolders=None):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            Some of the selected folders (see below) do not contain an Images folder.<br><br>
+            Please, make sure to select Position folders, the Images folder inside Position folders, or any folder containing Position folders as sub-directories.<br><br>
+            Thank you for your patience!<br><br>
+            Selected folders:
+            <ul>
+                {''.join(f'<li>{folder}</li>' for folder in faultyFolders)}
+            </ul>
+        """)
+        msg.warning(
+            self, 'Some folders are not valid', txt
+        )
+    
+    def warnEmptySelection(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            No folder was selected.<br><br>
+            """)
+        msg.warning(
+            self, 'No folder selected', txt
+        )
     
     def warnNoValidPathsFound(self, selected_path):
         msg = widgets.myMessageBox(wrapText=False)
@@ -19426,11 +19866,11 @@ class SelectFoldersToAnalyse(QBaseDialog):
         myutils.addToRecentPaths(selected_path)
         
         folder_type = myutils.determine_folder_type(selected_path)     
-        is_pos_folder, is_images_folder, folder_path = folder_type 
+        is_pos_folder, is_images_folder, folder_path = folder_type
         if is_pos_folder:
             paths = [selected_path]
         elif is_images_folder:
-            paths = [os.path.dirname(selected_path)]
+            paths = [os.path.dirname(selected_path) if selected_path.endswith('Images') else selected_path]
         elif self.scanTree:
             print(f'Scanning selected folder "{selected_path}"...')
             exp_paths = path.get_posfolderpaths_walk(selected_path)
