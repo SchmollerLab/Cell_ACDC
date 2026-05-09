@@ -1464,10 +1464,9 @@ class QDialogListbox(QDialog):
     
     def ok_cb(self, checked=False):
         self.clickedButton = self.sender()
-        self.cancel = False
         selectedItems = self.listBox.selectedItems()
-        self.selectedItemsText = [item.text() for item in selectedItems]
-        if not self.allowSingleSelection and len(self.selectedItemsText) < 2:
+        selectedItemsText = [item.text() for item in selectedItems]
+        if not self.allowSingleSelection and len(selectedItemsText) < 2:
             msg = myMessageBox(wrapText=False, showCentered=False)
             txt = html_utils.paragraph(
                 'You need to <b>select two or more items</b>.<br><br>'
@@ -1477,9 +1476,12 @@ class QDialogListbox(QDialog):
             msg.warning(self, 'Select two or more items', txt)
             return
         
-        if not self.allowEmptySelection and not self.selectedItemsText:
+        if not self.allowEmptySelection and not selectedItemsText:
             self.warnSelectionEmpty()
             return
+
+        self.cancel = False
+        self.selectedItemsText = selectedItemsText
         
         self.sigSelectionConfirmed.emit(self.selectedItemsText)
         self.close()

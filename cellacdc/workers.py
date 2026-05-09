@@ -423,7 +423,8 @@ class SegForLostIDsWorker(QObject):
             posData.lab = original_lab.copy()
             self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
 
-            global_area_mean = np.mean([obj.area for obj in posData.rp])
+            global_areas = [obj.area for obj in posData.rp]
+            global_area_mean = np.mean(global_areas) if len(global_areas) > 0 else None
             for i, (IDs_bboxs, bboxs) in enumerate(zip(IDs_bboxs_list, bboxs_list)):
                 model_lab = new_labs[i]
                 if self._debug:
@@ -449,19 +450,30 @@ class SegForLostIDsWorker(QObject):
                     areas = [obj.area for obj in rp_original_lab_cleared]
                     if len(areas) > 0:
                         area_mean = np.mean(areas)
-                    else:
+                    elif global_area_mean is not None:
                         area_mean = global_area_mean
-                    if args_new['allow_only_tracked_cells']:
-                        filtered_IDs = [obj.label for obj in rp_model_lab
-                                if obj.area > (1 - args_new['size_perc_diff']) * area_mean
-                                and obj.area < (1 + args_new['size_perc_diff']) * area_mean
-                                and obj.label not in original_IDs
-                                and obj.label in missing_IDs_global]
                     else:
-                        filtered_IDs = [obj.label for obj in rp_model_lab
-                                if obj.area > (1 - args_new['size_perc_diff']) * area_mean
-                                and obj.area < (1 + args_new['size_perc_diff']) * area_mean
-                                and obj.label not in original_IDs]
+                        model_areas = [obj.area for obj in rp_model_lab]
+                        area_mean = np.mean(model_areas) if len(model_areas) > 0 else None
+
+                    skip_size_filter = area_mean is None
+                    if not skip_size_filter:
+                        min_area = (1 - args_new['size_perc_diff']) * area_mean
+                        max_area = (1 + args_new['size_perc_diff']) * area_mean
+
+                    if args_new['allow_only_tracked_cells']:
+                        filtered_IDs = [
+                            obj.label for obj in rp_model_lab
+                            if (skip_size_filter or (obj.area > min_area and obj.area < max_area))
+                            and obj.label not in original_IDs
+                            and obj.label in missing_IDs_global
+                        ]
+                    else:
+                        filtered_IDs = [
+                            obj.label for obj in rp_model_lab
+                            if (skip_size_filter or (obj.area > min_area and obj.area < max_area))
+                            and obj.label not in original_IDs
+                        ]
         
                     if self._debug or DEBUG:
                         filtered_sizes = [(obj.label, obj.area) for obj in rp_model_lab if obj.label in filtered_IDs]

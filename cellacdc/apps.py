@@ -6036,7 +6036,6 @@ class QDialogSelectModel(QDialog):
 
     def ok_cb(self, event=None):
         self.clickedButton = self.sender()
-        self.cancel = False
 
         if self.allowMultiSelection:
             if not self.selectionSequence:
@@ -6056,6 +6055,7 @@ class QDialogSelectModel(QDialog):
                 self.selectedModel = 'thresholding'
             else:
                 self.selectedModel = selected_models
+            self.cancel = False
             self.close()
             return
 
@@ -6069,6 +6069,7 @@ class QDialogSelectModel(QDialog):
             if ordered_models is None:
                 return
             self.selectedModel = ordered_models
+            self.cancel = False
             self.close()
             return
 
@@ -6083,9 +6084,11 @@ class QDialogSelectModel(QDialog):
             self.listBox.setCurrentItem(item)
         elif model == 'Automatic thresholding':
             self.selectedModel = 'thresholding'
+            self.cancel = False
             self.close()
         else:
             self.selectedModel = model
+            self.cancel = False
             self.close()
 
     def cancel_cb(self, event=None):
