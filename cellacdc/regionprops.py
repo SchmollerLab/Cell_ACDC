@@ -12,11 +12,15 @@ try:
     from cellacdc.precompiled.precompiled_functions import (
         find_all_objects_2D,
         find_all_objects_3D,
+        object_projections_and_size_3D,
+        object_projection_and_size_3D,
     )
     _CYTHON_FIND_OBJECTS = True
+    _CYTHON_OBJECT_PROJECTIONS = True
     print('regionprops: imported precompiled find-objects helpers.')
 except Exception:
     _CYTHON_FIND_OBJECTS = False
+    _CYTHON_OBJECT_PROJECTIONS = False
     print('[WARNING]: regionprops could not import precompiled find-objects helpers, falling back to scipy.ndimage.find_objects.')
 
 try:
@@ -62,6 +66,12 @@ def _most_common_projection_ignore_zero_numpy(lab, axis):
         out[col] = labels[np.argmax(counts)]
 
     return out.reshape(moved.shape[1:])
+
+def _object_projection_and_size_numpy(cutout, obj_id, axis):
+    mask = cutout == obj_id
+    proj = np.any(mask, axis=axis).astype(np.uint8)
+    size = int(np.count_nonzero(mask))
+    return proj, size
 
 def _acdc_regionprops_factory(
         label_image,
@@ -434,6 +444,83 @@ class acdcRegionprops:
 
         projected = _most_common_projection_ignore_zero_numpy(lab, axis)
         return projected.astype(lab.dtype, copy=False)
+
+    def _projection_canvas_shape(self, slicing):
+        slicing = self._normalize_slicing(slicing)
+        if slicing == 'z':
+            return (self.lab.shape[1], self.lab.shape[2])
+        if slicing == 'y':
+            return (self.lab.shape[0], self.lab.shape[2])
+        return (self.lab.shape[0], self.lab.shape[1])
+
+    def _project_cutout_for_slicing_and_size(self, cutout, obj_id, slicing):
+        axis = self._slice_axis_index(slicing)
+        if _CYTHON_OBJECT_PROJECTIONS:
+            cutout_uint32 = cutout.astype(np.uint32, copy=False)
+            proj, size = object_projection_and_size_3D(
+                cutout_uint32, int(obj_id), int(axis)
+            )
+            return proj.astype(bool, copy=False), int(size)
+
+        proj, size = _object_projection_and_size_numpy(cutout, int(obj_id), int(axis))
+        return proj.astype(bool, copy=False), int(size)
+
+    def _project_object_from_bbox(self, lab, obj_id, bbox, slicing):
+        z0, y0, x0, z1, y1, x1 = [int(v) for v in bbox]
+        if z0 >= z1 or y0 >= y1 or x0 >= x1:
+            return None
+
+        cutout = lab[z0:z1, y0:y1, x0:x1]
+        proj_mask, size = self._project_cutout_for_slicing_and_size(
+            cutout, obj_id, slicing
+        )
+        if size == 0:
+            return None
+
+        if slicing == 'z':
+            out_slice = (slice(y0, y1), slice(x0, x1))
+        elif slicing == 'y':
+            out_slice = (slice(z0, z1), slice(x0, x1))
+        else:
+            out_slice = (slice(z0, z1), slice(y0, y1))
+
+        return out_slice, proj_mask, int(size)
+
+    def _iter_projected_objects_sorted(self, slicing='z', lab=None):
+        if not self.is3D:
+            raise ValueError('Projection helpers are only supported for 3D labels.')
+
+        slicing = self._normalize_slicing(slicing)
+        if lab is None:
+            lab = self.lab
+
+        projected = []
+        for obj in self._rp:
+            if len(obj.bbox) != 6:
+                continue
+            out = self._project_object_from_bbox(lab, obj.label, obj.bbox, slicing)
+            if out is None:
+                continue
+            out_slice, proj_mask, size = out
+            projected.append((int(obj.label), int(size), out_slice, proj_mask))
+
+        # Draw large objects first, then smaller objects so small ones stay visible on top.
+        projected.sort(key=lambda entry: (-entry[1], entry[0]))
+        return projected
+
+    def get_projection_lab_sorted(self, slicing='z', dtype=None):
+        if not self.is3D:
+            raise ValueError('Projection helpers are only supported for 3D labels.')
+
+        slicing = self._normalize_slicing(slicing)
+        out_shape = self._projection_canvas_shape(slicing)
+        if dtype is None:
+            dtype = self.lab.dtype
+
+        lab_proj = np.zeros(out_shape, dtype=dtype)
+        for label, _, out_slice, proj_mask in self._iter_projected_objects_sorted(slicing=slicing):
+            lab_proj[out_slice][proj_mask] = label
+        return lab_proj
 
     def _get_projection_patch_slices(self, slicing, cutout_bbox):
         z0, y0, x0, z1, y1, x1 = [int(v) for v in cutout_bbox]

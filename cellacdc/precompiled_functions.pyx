@@ -245,6 +245,95 @@ def most_common_projection_3D(np.uint32_t[:, :, :] lab, int axis):
             out_view[i, j] = best_label
     return out
 
+def object_projections_and_size_3D(
+        np.uint32_t[:, :, :] cutout,
+        unsigned int obj_id,
+):
+    """Return binary XY/XZ/YZ projections and voxel count for specified object in a cutout."""
+    cdef Py_ssize_t z = cutout.shape[0]
+    cdef Py_ssize_t y = cutout.shape[1]
+    cdef Py_ssize_t x = cutout.shape[2]
+    cdef Py_ssize_t i, j, k
+    cdef unsigned int size = 0
+
+    cdef np.ndarray[np.uint8_t, ndim=2] proj_z = np.zeros((y, x), dtype=np.uint8)
+    cdef np.ndarray[np.uint8_t, ndim=2] proj_y = np.zeros((z, x), dtype=np.uint8)
+    cdef np.ndarray[np.uint8_t, ndim=2] proj_x = np.zeros((z, y), dtype=np.uint8)
+    cdef np.uint8_t[:, :] proj_z_view = proj_z
+    cdef np.uint8_t[:, :] proj_y_view = proj_y
+    cdef np.uint8_t[:, :] proj_x_view = proj_x
+
+    for i in range(z):
+        for j in range(y):
+            for k in range(x):
+                if cutout[i, j, k] != obj_id:
+                    continue
+                size += 1
+                proj_z_view[j, k] = 1
+                proj_y_view[i, k] = 1
+                proj_x_view[i, j] = 1
+
+    return proj_z, proj_y, proj_x, size
+
+def object_projection_and_size_3D(
+        np.uint32_t[:, :, :] cutout,
+        unsigned int obj_id,
+        int axis,
+):
+    """Return one binary projection and voxel count for one object in a 3-D cutout.
+
+    axis=0 -> XY projection (collapse z)
+    axis=1 -> XZ projection (collapse y)
+    axis=2 -> YZ projection (collapse x)
+    """
+    if axis < 0 or axis > 2:
+        raise ValueError(f'axis must be 0, 1, or 2. Got {axis}.')
+
+    cdef Py_ssize_t z = cutout.shape[0]
+    cdef Py_ssize_t y = cutout.shape[1]
+    cdef Py_ssize_t x = cutout.shape[2]
+    cdef Py_ssize_t i, j, k
+    cdef unsigned int size = 0
+
+    cdef np.ndarray[np.uint8_t, ndim=2] proj
+    cdef np.uint8_t[:, :] proj_view
+
+    if axis == 0:
+        proj = np.zeros((y, x), dtype=np.uint8)
+        proj_view = proj
+        for i in range(z):
+            for j in range(y):
+                for k in range(x):
+                    if cutout[i, j, k] != obj_id:
+                        continue
+                    size += 1
+                    proj_view[j, k] = 1
+        return proj, size
+
+    if axis == 1:
+        proj = np.zeros((z, x), dtype=np.uint8)
+        proj_view = proj
+        for i in range(z):
+            for j in range(y):
+                for k in range(x):
+                    if cutout[i, j, k] != obj_id:
+                        continue
+                    size += 1
+                    proj_view[i, k] = 1
+        return proj, size
+
+    proj = np.zeros((z, y), dtype=np.uint8)
+    proj_view = proj
+    for i in range(z):
+        for j in range(y):
+            for k in range(x):
+                if cutout[i, j, k] != obj_id:
+                    continue
+                size += 1
+                proj_view[i, j] = 1
+
+    return proj, size
+
 def calc_IoA_matrix_2D(
         np.uint32_t[:, :] lab,
         np.uint32_t[:, :] prev_lab,

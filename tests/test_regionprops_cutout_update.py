@@ -309,3 +309,20 @@ def test_slice_regionprops_update_from_2d_cutout_on_3d():
     assert rp.get_slice_rp(3, 'z').get_obj_from_ID(6, warn=False) is not None
     assert rp.get_slice_rp(6, 'y').get_obj_from_ID(6, warn=False) is not None
     assert rp.get_slice_rp(7, 'x').get_obj_from_ID(6, warn=False) is not None
+
+
+def test_projection_lab_sorted_draws_large_first_small_on_top():
+    lab = np.zeros((4, 8, 8), dtype=np.uint16)
+    # Larger object
+    lab[0:4, 1:7, 1:7] = 1
+    # Smaller object overlapping the center
+    lab[1:3, 3:5, 3:5] = 2
+
+    rp = acdcRegionprops(lab)
+    proj = rp.get_projection_lab_sorted(slicing='z')
+
+    # Small object should be visible on top in overlap area.
+    np.testing.assert_array_equal(proj[3:5, 3:5], np.full((2, 2), 2, dtype=np.uint16))
+    assert proj[2, 2] == 1
+
+

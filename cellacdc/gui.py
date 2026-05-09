@@ -5008,9 +5008,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
-        Y, X = self.get_2Dlab(posData.lab).shape
+        Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
         if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab, force_z=False)[ydata, xdata]
         else:
             return
 
@@ -7614,7 +7614,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if left_click and canBrush:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            lab_2D = self.get_2Dlab(posData.lab)
+            lab_2D = self.get_2Dlab(posData.lab, force_z=False)
             Y, X = lab_2D.shape
             
             # Store undo state before modifying stuff
@@ -7652,7 +7652,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.setImageImg2(updateLookuptable=False)
 
             how = self.drawIDsContComboBox.currentText()
-            lab2D = self.get_2Dlab(posData.lab)
+            lab2D = self.get_2Dlab(posData.lab, force_z=False)
             self.globalBrushMask = np.zeros(lab2D.shape, dtype=bool)
             brushMask = localLab == posData.brushID
             brushMask = np.logical_and(brushMask, diskMask)
@@ -7665,7 +7665,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         elif left_click and canErase:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            lab_2D = self.get_2Dlab(posData.lab)
+            lab_2D = self.get_2Dlab(posData.lab, force_z=False)
             Y, X = lab_2D.shape
 
             # Store undo state before modifying stuff
@@ -9830,14 +9830,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
         posData = self.data[self.pos_i]
-        lab_2D = self.get_2Dlab(posData.lab)
+        lab_2D = self.get_2Dlab(posData.lab, force_z=False)
         ID = lab_2D[ydata, xdata]
         self.isHoverZneighID = False
         if self.isSegm3D:
+            zProjHow = self.zProjComboBox.currentText()
+            isZslice = zProjHow == 'single z-slice'
             z = self.z_lab()
             SizeZ = posData.lab.shape[0]
             doNotLinkThroughZ = self.brushButton.isChecked() and shift
-            if doNotLinkThroughZ:
+            if not isZslice:
+                # In projection mode, ID comes from the projected 2D label image.
+                if self.brushHoverCenterModeAction.isChecked() or ID>0:
+                    hoverID = ID
+                else:
+                    masked_lab = lab_2D[ymin:ymax, xmin:xmax][diskMask]
+                    hoverID = np.bincount(masked_lab).argmax()
+            elif doNotLinkThroughZ:
                 if self.brushHoverCenterModeAction.isChecked() or ID>0:
                     hoverID = ID
                 else:
@@ -9872,11 +9881,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     hoverIDc = 0
 
-                if hoverIDa > 0:
+                # When clicking directly on an object, prefer current-slice ID.
+                if hoverIDb > 0:
+                    hoverID = hoverIDb
+                elif hoverIDa > 0:
                     hoverID = hoverIDa
                     self.isHoverZneighID = True
-                elif hoverIDb > 0:
-                    hoverID = hoverIDb
                 elif hoverIDc > 0:
                     hoverID = hoverIDc
                     self.isHoverZneighID = True
@@ -9907,7 +9917,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             shift = modifiers == Qt.ShiftModifier
         
         posData = self.data[self.pos_i]
-        Y, X = self.get_2Dlab(posData.lab).shape
+        Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
             return
 
@@ -21482,7 +21492,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if isZslice:
                 return lab[self.z_lab()]
             else:
-                return lab.max(axis=0)
+                if self.switchPlaneCombobox.isEnabled():
+                    slicing = self.switchPlaneCombobox.depthAxes()
+                else:
+                    slicing = 'z'
+
+                posData = self.data[self.pos_i]
+                rp = getattr(posData, 'rp', None)
+                if rp is not None and rp.is3D:
+                    return rp.get_projection_lab_sorted(slicing=slicing)
+
+                rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+                return rp.get_projection_lab_sorted(slicing=slicing)
         else:
             return lab
 
@@ -25537,6 +25558,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.extendLabelsLUT(maxID+10)
 
         currentLab2D = self.currentLab2D
+        if (
+            self.isSegm3D
+            and self.zProjComboBox.currentText() != 'single z-slice'
+            and getattr(posData, 'rp', None) is not None
+            and posData.rp.is3D
+        ):
+            slicing = self.switchPlaneCombobox.depthAxes()
+            currentLab2D = posData.rp.get_projection_lab_sorted(slicing=slicing)
+            self.currentLab2D = currentLab2D
+
         if isOverlaySegmLeftActive:
             self.labelsLayerImg1.setImage(currentLab2D, autoLevels=False)
 
@@ -26462,6 +26493,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.get_data()
                 
     def initTempLayerBrush(self, ID, ax=0):
+        posData = self.data[self.pos_i]
         if ax == 0:
             how = self.drawIDsContComboBox.currentText()
         else:
@@ -26471,7 +26503,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         Y, X = self.img1.image.shape[:2]
         tempImage = np.zeros((Y, X), dtype=np.uint32)
         if how.find('contours') != -1:
-            tempImage[self.currentLab2D==ID] = ID
+            # Keep the currently edited object visible while painting.
+            obj = None
+            rp = getattr(posData, 'rp', None)
+            if rp is not None:
+                obj = rp.get_obj_from_ID(ID, warn=False)
+            if obj is not None:
+                obj = self._get_obj_for_current_view_rp(obj, posData)
+
+            if (
+                obj is not None
+                and hasattr(obj, 'slice')
+                and hasattr(obj, 'image')
+                and len(obj.slice) == 2
+                and obj.image.ndim == 2
+            ):
+                tempImage[obj.slice][obj.image] = ID
+            else:
+                tempImage[self.currentLab2D == ID] = ID
             self.brushImage = tempImage.copy()
             self.brushContourImage = np.zeros((Y, X, 4), dtype=np.uint8)
             color = self.imgGrad.contoursColorButton.color()
@@ -26507,6 +26556,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     # @exec_time
     def setTempImg1Brush(self, init: bool, mask, ID, toLocalSlice=None, ax=0):
+        posData = self.data[self.pos_i]
         if init:
             self.initTempLayerBrush(ID, ax=ax)
         
@@ -26522,6 +26572,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if self.annotContourCheckbox.isChecked():
             brushMask = np.ascontiguousarray((brushImage > 0), dtype=np.uint8)
+
             objContour = core.get_obj_contours(
                 obj_image=brushMask, obj_bbox=None, all_external=True, local=True
             )
@@ -26595,13 +26646,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.labelsLayerRightImg.image, autoLevels=False
                 )
 
-    def _setTempImgExpandLabelSegmMasks(self, prevCoords, ax=0):
+    def _setTempImgExpandLabelSegmMasks(self, prevCoords, expandedObjCoords, ax=0):
         # Remove previous overlaid mask
         labelsImage = self.getLabelsLayerImage(ax=ax)
         labelsImage[prevCoords] = 0
         
-        # Overlay new moved mask
-        labelsImage[prevCoords] = self.expandingID
+        # Overlay new expanded mask
+        labelsImage[expandedObjCoords] = self.expandingID
 
         if ax == 0:
             self.labelsLayerImg1.setImage(
@@ -26630,13 +26681,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             how = self.drawIDsContComboBox.currentText()
         else:
             how = self.getAnnotateHowRightImage()
-        
-        self._setTempImgExpandLabelContours(prevCoords, ax=ax)
-        
-        # if how.find('overlay segm. masks') != -1:
-        #     self._setTempImgExpandLabelSegmMasks(ax=ax)
-        # else:
-        #     self._setTempImgExpandLabelContours(ax=ax)
+
+        if how.find('overlay segm. masks') != -1:
+            self._setTempImgExpandLabelSegmMasks(
+                prevCoords, expandedObjCoords, ax=ax
+            )
+        else:
+            self._setTempImgExpandLabelContours(prevCoords, ax=ax)
 
     def setTempImg1MoveLabel(self, ax=0):
         if ax == 0:
@@ -27581,12 +27632,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         elif use_local_rp and rp.is3D:
             rp = self.rpCurr2D()
 
-        for obj in rp:    
+        for obj in rp:
             obj_contours = self.getObjContours(
-                obj, 
-                all_external=True, 
+                obj,
+                all_external=True,
                 include_internal=self.showAllContoursToggle.isChecked()
-            )  
+            )
             contours.extend(obj_contours)
 
         thickness = self.contLineWeight
