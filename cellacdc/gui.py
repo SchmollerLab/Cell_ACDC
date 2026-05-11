@@ -8502,7 +8502,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     })
                 self.SegForLostIDsSettings = {'models_settings': model_settings}
                 # Restore model names in settings
-                restored_models = [m['base_model_name'] for m in model_settings]
+                restored_models = [
+                    'Automatic thresholding'
+                    if m['base_model_name'] == 'thresholding'
+                    else m['base_model_name']
+                    for m in model_settings
+                ]
                 self.df_settings.at['SegForLostIDsModel', 'value'] = (
                     ', '.join(restored_models)
                 )
@@ -8525,11 +8530,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 ', '.join(selected_models)
             )
             self.df_settings.to_csv(self.settings_csv_path)
-
-        model_name = 'local_seg'
-
-        idx = self.modelNames.index(model_name)
-        acdcSegment = self.acdcSegment_li[idx]
 
         all_extra_params = [
             'overlap_threshold',
@@ -8579,18 +8579,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         model_settings = []
         remembered_extra_args = {}
-        for model_idx, base_model_name in enumerate(selected_models):
+        for model_idx, selected_model_name in enumerate(selected_models):
+            model_name = selected_model_name
+            if model_name == 'Automatic thresholding':
+                model_name = 'thresholding'
             try:
-                if (
-                        acdcSegment is None
-                        or base_model_name != self.local_seg_base_model_name
-                    ):
-                    self.logger.info(f'Importing {base_model_name}...')
-                    acdcSegment = myutils.import_segment_module(base_model_name)
-                    self.acdcSegment_li[idx] = acdcSegment
-                    self.local_seg_base_model_name = base_model_name
-            except (IndexError, ImportError, KeyError) as e:
-                self.logger.error(f'Error importing {base_model_name}: {e}')
+                if selected_model_name in self.modelNames:
+                    idx = self.modelNames.index(selected_model_name)
+                    acdcSegment = self.acdcSegment_li[idx]
+                    if acdcSegment is None:
+                        self.logger.info(f'Importing {model_name}...')
+                        acdcSegment = myutils.import_segment_module(model_name)
+                        self.acdcSegment_li[idx] = acdcSegment
+                else:
+                    self.logger.info(f'Importing {model_name}...')
+                    acdcSegment = myutils.import_segment_module(model_name)
+            except (ImportError, KeyError) as e:
+                self.logger.error(f'Error importing {model_name}: {e}')
                 return
 
             extra_params = all_extra_params
@@ -8611,15 +8616,35 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 arg for arg in segment_params if arg[0] != 'diameter'
             ]
 
+            initLastParams = True
+            if model_name == 'thresholding':
+                win_thresh = apps.QDialogAutomaticThresholding(
+                    parent=self, isSegm3D=self.isSegm3D
+                )
+                win_thresh.exec_()
+                if win_thresh.cancel:
+                    self.logger.info('Segmentation for lost IDs cancelled.')
+                    return
+                self.model_kwargs = win_thresh.segment_kwargs
+                thresh_method = self.model_kwargs['threshold_method']
+                gauss_sigma = self.model_kwargs['gauss_sigma']
+                segment_params = myutils.insertModelArgSpec(
+                    segment_params, 'threshold_method', thresh_method
+                )
+                segment_params = myutils.insertModelArgSpec(
+                    segment_params, 'gauss_sigma', gauss_sigma
+                )
+                initLastParams = False
+
             extraParamsTitle = (
                 f'Settings for local segmentation '
                 f'({model_idx + 1}/{len(selected_models)})'
             )
             win = self.initSegmModelParams(
-                base_model_name, acdcSegment, init_params, segment_params,
+                model_name, acdcSegment, init_params, segment_params,
                 extraParams=extra_ArgSpec,
                 extraParamsTitle=extraParamsTitle,
-                initLastParams=True,
+                initLastParams=initLastParams,
                 ini_filename='segmentation_for_lostIDs.ini',
             )
 
@@ -8649,7 +8674,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 'win': win,
                 'init_kwargs_new': init_kwargs_new,
                 'args_new': args_new,
-                'base_model_name': base_model_name,
+                'base_model_name': model_name,
                 'init_kwargs': dict(win.init_kwargs),
                 'model_kwargs': dict(win.model_kwargs),
                 'preproc_recipe': win.preproc_recipe,
