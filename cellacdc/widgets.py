@@ -71,6 +71,7 @@ from . import urls
 from . import _core, core
 from . import QtScoped
 from . import prompts
+from . import fonts
 from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER
 from . import _base_widgets
@@ -84,8 +85,7 @@ PROGRESSBAR_QCOLOR = _palettes.QProgressBarColor()
 PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR = _palettes.QProgressBarHighlightedTextColor()
 TEXT_COLOR = _palettes.text_float_rgba()
 
-font = QFont()
-font.setPixelSize(12)
+font = fonts.font
 
 custom_cmaps_filepath = os.path.join(settings_folderpath, 'custom_colormaps.ini')
 
@@ -1075,7 +1075,7 @@ class _ReorderableListModel(QAbstractListModel):
 
     def __init__(self, items, parent=None):
         QAbstractItemModel.__init__(self, parent)
-        self.nodes = items
+        self.nodes = list(items)
         self.lastDroppedItems = []
         self.pendingRemoveRowsAfterDrop = False
 
@@ -1286,7 +1286,7 @@ class ReorderableListView(QListView):
         self.setStyleSheet(styleSheet)
     
     def setItems(self, items):
-        self._model.nodes = items
+        self._model.nodes = list(items)
     
     def items(self):
         return self._model.nodes
@@ -12086,3 +12086,304 @@ class warnVisualCppRequired(myMessageBox):
             self.screenShotWin.close()
             
         return super().closeEvent(event)
+    
+    
+class MultiPickListWidget(QWidget):
+    """Generic list widget with multi-pick (repeated-selection) support.
+
+    Each pickable row shows ``-  count  +`` controls.  Left-clicking adds
+    one instance; right-clicking or Ctrl+left-click removes one.  The same
+    item can appear multiple times in :attr:`selectionSequence`.
+
+    Parameters
+    ----------
+    items:
+        Initial list of item labels.
+    excludedItems:
+        Labels that are shown in the list but *not* given +/- controls
+        (e.g. placeholder entries like "Add custom model…").  Click events
+        on these are silently ignored.
+    parent:
+        Optional parent widget.
+    """
+
+    sigSelectionChanged = Signal(list)  # emits selectionSequence on every change
+
+    def __init__(self, items=None, excludedItems=None, parent=None):
+        super().__init__(parent)
+
+        self._excludedItems = set(excludedItems or [])
+        self._itemsMap = {}          # label → QListWidgetItem
+        self._countMap = defaultdict(int)
+        self._countLabelMap = {}
+        self.selectionSequence = []
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.listBox = listWidget(isMultipleSelection=False)
+        self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+
+        for label in (items or []):
+            self._addListItem(label)
+
+        if self._itemsMap:
+            self.listBox.setCurrentRow(0)
+
+        self.listBox.itemClicked.connect(self._onItemClicked)
+        self.listBox.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.listBox.customContextMenuRequested.connect(self._onRightClick)
+
+        # self.listBox.setStyleSheet(LISTWIDGET_STYLESHEET)
+        # self.setStyleSheet(LISTWIDGET_STYLESHEET)
+        layout.addWidget(self.listBox)
+        
+
+    @property
+    def itemsMap(self):
+        """Dict mapping label → QListWidgetItem for all pickable items."""
+        return dict(self._itemsMap)
+
+    def currentItemName(self):
+        """Return the label of the currently highlighted item, or ``None``."""
+        item = self.listBox.currentItem()
+        return item.text() if item is not None else None
+
+    def addSelection(self, label):
+        """Add one instance of *label* to the selection."""
+        if label not in self._itemsMap:
+            return
+        self.selectionSequence.append(label)
+        self._countMap[label] += 1
+        self._updateCountLabel(label)
+        self.listBox.setCurrentItem(self._itemsMap[label])
+        self.sigSelectionChanged.emit(list(self.selectionSequence))
+
+    def removeSelection(self, label):
+        """Remove the last instance of *label* from the selection."""
+        if self._countMap.get(label, 0) <= 0:
+            return
+        for i in range(len(self.selectionSequence) - 1, -1, -1):
+            if self.selectionSequence[i] == label:
+                self.selectionSequence.pop(i)
+                break
+        self._countMap[label] = max(0, self._countMap[label] - 1)
+        self._updateCountLabel(label)
+        self.sigSelectionChanged.emit(list(self.selectionSequence))
+
+    def resetSelection(self):
+        """Clear all selections and reset all counters to zero."""
+        self.selectionSequence = []
+        self._countMap = defaultdict(int)
+        for label in self._countLabelMap:
+            self._updateCountLabel(label)
+        self.sigSelectionChanged.emit([])
+
+    def setSelectionFromList(self, labels):
+        """Set the selection to *labels* (duplicates supported)."""
+        self.resetSelection()
+        for label in labels:
+            self.addSelection(label)
+
+    def registerItem(self, label, insertBeforeLabel=None):
+        """Dynamically add a new pickable item.
+
+        Parameters
+        ----------
+        label:
+            Text for the new item.
+        insertBeforeLabel:
+            If given, insert the new item immediately before this label.
+            If not found or not given, the item is appended.
+
+        Returns the created ``QListWidgetItem``.
+        """
+        if label in self._itemsMap:
+            return self._itemsMap[label]
+
+        item = QListWidgetItem(label)
+
+        if insertBeforeLabel is not None:
+            target = self._itemsMap.get(insertBeforeLabel)
+            if target is None:
+                for row in range(self.listBox.count()):
+                    row_item = self.listBox.item(row)
+                    if row_item is not None and row_item.text() == insertBeforeLabel:
+                        target = row_item
+                        break
+            if target is not None:
+                row = self.listBox.row(target)
+                self.listBox.insertItem(row, item)
+            else:
+                self.listBox.addItem(item)
+        else:
+            self.listBox.addItem(item)
+
+        self._itemsMap[label] = item
+        self._addCounterWidget(label, item)
+        return item
+
+    def _addListItem(self, label):
+        """Create a QListWidgetItem and, if pickable, attach a counter widget."""
+        item = QListWidgetItem(label)
+        self.listBox.addItem(item)
+        if label not in self._excludedItems:
+            self._itemsMap[label] = item
+            self._addCounterWidget(label, item)
+
+    def _addCounterWidget(self, label, item):
+        rowWidget = QWidget()
+        rowLayout = QHBoxLayout(rowWidget)
+        rowLayout.setContentsMargins(4, 0, 4, 0)
+        rowLayout.setSpacing(6)
+
+        nameLabelPlaceholder = QSpacerItem(2, 0)
+        minusBtn = QPushButton('-')
+        plusBtn = QPushButton('+')
+        countLabel = QLabel(str(self._countMap.get(label, 0)))
+
+        minusBtn.setFixedWidth(24)
+        plusBtn.setFixedWidth(24)
+        countLabel.setMinimumWidth(20)
+        countLabel.setAlignment(Qt.AlignCenter)
+
+        minusBtn.clicked.connect(lambda _, lbl=label: self.removeSelection(lbl))
+        plusBtn.clicked.connect(lambda _, lbl=label: self.addSelection(lbl))
+
+        rowLayout.addItem(nameLabelPlaceholder)
+        rowLayout.addStretch(1)
+        rowLayout.addWidget(minusBtn)
+        rowLayout.addWidget(countLabel)
+        rowLayout.addWidget(plusBtn)
+
+        self._countLabelMap[label] = countLabel
+        self._updateCountLabel(label)
+        self.listBox.setItemWidget(item, rowWidget)
+
+    def _updateCountLabel(self, label):
+        lbl = self._countLabelMap.get(label)
+        if lbl is not None:
+            count = self._countMap.get(label, 0)
+            lbl.setText(str(count))
+            if count <= 0:
+                lbl.setStyleSheet('color: gray;')
+            else:
+                lbl.setStyleSheet('')
+
+    def _onItemClicked(self, item):
+        label = item.text()
+        if label in self._excludedItems:
+            return
+        modifiers = QApplication.keyboardModifiers()
+        if modifiers & Qt.ControlModifier:
+            self.removeSelection(label)
+        else:
+            self.addSelection(label)
+
+    def _onRightClick(self, pos):
+        item = self.listBox.itemAt(pos)
+        if item is None:
+            return
+        label = item.text()
+        if label in self._excludedItems:
+            return
+        self.removeSelection(label)
+
+
+class ModelSelectionWidget(QWidget):
+    """List widget for selecting segmentation models.
+
+    Thin wrapper around :class:`MultiPickListWidget` that populates the list
+    with the installed models and adds a special "Add custom model…" entry.
+
+    ``sigSelectionChanged`` and ``selectionSequence`` are proxied from the
+    underlying :class:`MultiPickListWidget`.
+    """
+
+    _ADD_CUSTOM = 'Add custom model...'
+
+    sigSelectionChanged = Signal(list)
+
+    def __init__(self, parent=None, customFirst='', allowMultiSelection=False):
+        super().__init__(parent)
+
+        self.allowMultiSelection = allowMultiSelection
+
+        models = myutils.get_list_of_models()
+        if customFirst:
+            try:
+                models.insert(0, models.pop(models.index(customFirst)))
+            except ValueError:
+                pass
+
+        items = models + [self._ADD_CUSTOM]
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        if allowMultiSelection:
+            items = models
+            self._picker = MultiPickListWidget(
+                items=items,
+                excludedItems=[self._ADD_CUSTOM],
+                parent=self,
+            )
+            self._picker.listBox.setFont(font)
+            self._picker.sigSelectionChanged.connect(self.sigSelectionChanged)
+            self.listBox = self._picker.listBox
+            layout.addWidget(self._picker)
+        else:
+            self.listBox = listWidget(isMultipleSelection=False)
+            self.listBox.setFont(font)
+            self.listBox.addItems(models)
+            add_item = QListWidgetItem(self._ADD_CUSTOM)
+            add_item.setFont(fonts.italicFont)
+            self.listBox.addItem(add_item)
+            self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+            self.listBox.setCurrentRow(0)
+            self._picker = None
+            layout.addWidget(self.listBox)
+
+    # ------------------------------------------------------------------
+    # Proxy helpers (multi-selection mode only)
+    # ------------------------------------------------------------------
+
+    @property
+    def selectionSequence(self):
+        return self._picker.selectionSequence if self._picker is not None else []
+
+    @property
+    def modelItemsMap(self):
+        return self._picker.itemsMap if self._picker is not None else {}
+
+    def currentModelName(self):
+        if self._picker is not None:
+            return self._picker.currentItemName()
+        item = self.listBox.currentItem()
+        return item.text() if item is not None else None
+
+    def addModelSelection(self, name):
+        if self._picker is not None:
+            self._picker.addSelection(name)
+
+    def removeModelSelection(self, name):
+        if self._picker is not None:
+            self._picker.removeSelection(name)
+
+    def resetSelectionSequence(self):
+        if self._picker is not None:
+            self._picker.resetSelection()
+
+    def setSelectionFromList(self, models):
+        if self._picker is not None:
+            self._picker.setSelectionFromList(models)
+
+    def registerCustomModel(self, model_name):
+        """Add a newly registered custom model and return its item."""
+        if self._picker is not None:
+            return self._picker.registerItem(
+                model_name, insertBeforeLabel=self._ADD_CUSTOM
+            )
+        item = QListWidgetItem(model_name)
+        self.listBox.insertItem(self.listBox.count() - 1, item)
+        return item

@@ -3285,7 +3285,7 @@ def check_file_time_proximity(file1, file2, max_seconds=300, logger_func=print):
         logger_func(f'Warning: The files "{file1}" and "{file2}" were not saved within {max_seconds} seconds of each other.')
         return False
 
-def verify_acdc_df_segm(posData: load.loadData, logger_func=print):
+def verify_acdc_df_segm(posData: 'load.loadData', logger_func=print):
     if posData.segmMetadata is None:
         return None
     segm_info = posData.segmMetadata[os.path.basename(posData.segm_npz_path)]
@@ -3304,7 +3304,7 @@ def verify_acdc_df_segm(posData: load.loadData, logger_func=print):
     
     return csv_filepath
 
-def verify_add_data_segm_proximity(posData: load.loadData, logger_func=print):
+def verify_add_data_segm_proximity(posData: 'load.loadData', logger_func=print):
     segm_path = posData.segm_npz_path
     segm_filename = os.path.basename(segm_path).replace('.npz', '')
     add_data_folder = os.path.join(posData.images_path, segm_filename)
@@ -3336,7 +3336,7 @@ def verify_add_data_segm_proximity(posData: load.loadData, logger_func=print):
 # Total time spend optimising here
 #     >5 hrs
 # please update this if you try to optimize again
-def count_objects_and_init_rps(posData: load.loadData, logger_func=print):
+def count_objects_and_init_rps(posData: 'load.loadData', logger_func=print):
     allIDs = set()
 
     segm_data = posData.segm_data

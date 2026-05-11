@@ -38,6 +38,22 @@ def find_overlap(lab_1, lab_2):
 
     return ID_overlap
 
+def get_best_overlapping_label(label_img, obj, allowed_labels):
+    allowed_labels = set(allowed_labels)
+    if len(allowed_labels) == 0:
+        return None
+
+    overlapping_labels = label_img[obj.slice][obj.image]
+    if overlapping_labels.size == 0:
+        return None
+
+    overlapping_labels = overlapping_labels[np.isin(overlapping_labels, tuple(allowed_labels))]
+    if overlapping_labels.size == 0:
+        return None
+
+    labels, counts = np.unique(overlapping_labels, return_counts=True)
+    return labels[np.argmax(counts)]
+
 def get_obj_from_rps(rps, ID):
     for obj in rps:
         if obj.label == ID:

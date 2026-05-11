@@ -94,17 +94,12 @@ from . import _base_widgets
 from . import io
 from . import cca_functions
 from . import path
+from . import fonts
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
 BACKGROUND_RGBA = _palettes.get_disabled_colors()['Button']
-
-font = QFont()
-font.setPixelSize(12)
-italicFont = QFont()
-italicFont.setPixelSize(12)
-italicFont.setItalic(True)
 
 class ArgWidget:
     def __init__(self, name, type, widget, defaultVal, valueSetter, valueGetter, changeSig=None):
@@ -838,7 +833,7 @@ class AddPointsLayerDialog(QBaseDialog):
 
         self.setLayout(mainLayout)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def addCentroidsSection(self, row, layout, **kwargs):
         sectionWidgets = []
@@ -1441,7 +1436,7 @@ class EditPointsLayerAppearanceDialog(QBaseDialog):
 
         self.setLayout(mainLayout)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def restoreState(self, state):
         self.appearanceGroupbox.restoreState(state)
@@ -1588,7 +1583,7 @@ class filenameDialog(QDialog):
         layout.addLayout(buttonsLayout)
 
         self.setLayout(layout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         if defaultEntry:
             self.updateFilename(defaultEntry)
@@ -1856,7 +1851,7 @@ class TrackSubCellObjectsDialog(QBaseDialog):
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def createThirdSegmToggled(self, checked):
         self.appendTextWidget.setDisabled(not checked)
@@ -3026,9 +3021,7 @@ class QDialogMetadataXML(QDialog):
         self.imageViewer = None
         super().__init__(parent)
         self.setWindowTitle(title)
-        font = QFont()
-        font.setPixelSize(12)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         mainLayout = QVBoxLayout()
         entriesLayout = QGridLayout()
@@ -3922,7 +3915,7 @@ class CellACDCTrackerParamsWin(QDialog):
         layout.addLayout(buttonsLayout)
         layout.addStretch(1)
         self.setLayout(layout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
     def showInfo(self):
         msg = widgets.myMessageBox(wrapText=False)
@@ -4114,7 +4107,7 @@ class BayesianTrackerParamsWin(QDialog):
         layout.addLayout(buttonsLayout)
         layout.addStretch(1)
         self.setLayout(layout)
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def selectFeatures(self):
         features = measurements.get_btrack_features()
@@ -4340,7 +4333,7 @@ class DeltaTrackerParamsWin(QDialog):
         layout.addLayout(buttonsLayout)
         layout.addStretch(1)
         self.setLayout(layout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
     def methodChanged(self, method):
         if method == 'mothermachine':
@@ -4565,7 +4558,7 @@ class QDialogCombobox(QDialog):
         self.loop = None
 
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
     def ok_cb(self, checked=False):
         self.cancel = False
@@ -4741,7 +4734,7 @@ class MultiTimePointFilePattern(QBaseDialog):
 
         self.setLayout(mainLayout)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def segmFolderpathSelected(self, path):
         self.segmFolderPathEntry.setText(path)
@@ -4941,7 +4934,7 @@ class QDialogAutomaticThresholding(QBaseDialog):
         cancelButton.clicked.connect(self.close)
 
         self.setLayout(layout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         self.configPars = self.loadLastSelection()
 
@@ -5102,7 +5095,7 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
         )
 
         self.setLayout(self.mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def saveSelection(self):
         saved_selections = io.get_saved_moth_bud_tot_selections()
@@ -5507,7 +5500,7 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         self.mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(self.mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def ok_cb(self):
         self.cancel = False
@@ -5577,305 +5570,13 @@ class SelectPromptableModelDialog(QBaseDialog):
         self.model_name = self.listBox.currentItem().text()
         self.close()
 
-
-class MultiPickListWidget(QWidget):
-    """Generic list widget with multi-pick (repeated-selection) support.
-
-    Each pickable row shows ``-  count  +`` controls.  Left-clicking adds
-    one instance; right-clicking or Ctrl+left-click removes one.  The same
-    item can appear multiple times in :attr:`selectionSequence`.
-
-    Parameters
-    ----------
-    items:
-        Initial list of item labels.
-    excludedItems:
-        Labels that are shown in the list but *not* given +/- controls
-        (e.g. placeholder entries like "Add custom model…").  Click events
-        on these are silently ignored.
-    parent:
-        Optional parent widget.
-    """
-
-    sigSelectionChanged = Signal(list)  # emits selectionSequence on every change
-
-    def __init__(self, items=None, excludedItems=None, parent=None):
-        super().__init__(parent)
-
-        self._excludedItems = set(excludedItems or [])
-        self._itemsMap = {}          # label → QListWidgetItem
-        self._countMap = defaultdict(int)
-        self._countLabelMap = {}
-        self.selectionSequence = []
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self.listBox = widgets.listWidget(isMultipleSelection=False)
-        self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-
-        for label in (items or []):
-            self._addListItem(label)
-
-        if self._itemsMap:
-            self.listBox.setCurrentRow(0)
-
-        self.listBox.itemClicked.connect(self._onItemClicked)
-        self.listBox.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.listBox.customContextMenuRequested.connect(self._onRightClick)
-
-        layout.addWidget(self.listBox)
-
-    @property
-    def itemsMap(self):
-        """Dict mapping label → QListWidgetItem for all pickable items."""
-        return dict(self._itemsMap)
-
-    def currentItemName(self):
-        """Return the label of the currently highlighted item, or ``None``."""
-        item = self.listBox.currentItem()
-        return item.text() if item is not None else None
-
-    def addSelection(self, label):
-        """Add one instance of *label* to the selection."""
-        if label not in self._itemsMap:
-            return
-        self.selectionSequence.append(label)
-        self._countMap[label] += 1
-        self._updateCountLabel(label)
-        self.listBox.setCurrentItem(self._itemsMap[label])
-        self.sigSelectionChanged.emit(list(self.selectionSequence))
-
-    def removeSelection(self, label):
-        """Remove the last instance of *label* from the selection."""
-        if self._countMap.get(label, 0) <= 0:
-            return
-        for i in range(len(self.selectionSequence) - 1, -1, -1):
-            if self.selectionSequence[i] == label:
-                self.selectionSequence.pop(i)
-                break
-        self._countMap[label] = max(0, self._countMap[label] - 1)
-        self._updateCountLabel(label)
-        self.sigSelectionChanged.emit(list(self.selectionSequence))
-
-    def resetSelection(self):
-        """Clear all selections and reset all counters to zero."""
-        self.selectionSequence = []
-        self._countMap = defaultdict(int)
-        for label in self._countLabelMap:
-            self._updateCountLabel(label)
-        self.sigSelectionChanged.emit([])
-
-    def setSelectionFromList(self, labels):
-        """Set the selection to *labels* (duplicates supported)."""
-        self.resetSelection()
-        for label in labels:
-            self.addSelection(label)
-
-    def registerItem(self, label, insertBeforeLabel=None):
-        """Dynamically add a new pickable item.
-
-        Parameters
-        ----------
-        label:
-            Text for the new item.
-        insertBeforeLabel:
-            If given, insert the new item immediately before this label.
-            If not found or not given, the item is appended.
-
-        Returns the created ``QListWidgetItem``.
-        """
-        if label in self._itemsMap:
-            return self._itemsMap[label]
-
-        item = QListWidgetItem(label)
-
-        if insertBeforeLabel is not None:
-            target = self._itemsMap.get(insertBeforeLabel)
-            if target is None:
-                for row in range(self.listBox.count()):
-                    row_item = self.listBox.item(row)
-                    if row_item is not None and row_item.text() == insertBeforeLabel:
-                        target = row_item
-                        break
-            if target is not None:
-                row = self.listBox.row(target)
-                self.listBox.insertItem(row, item)
-            else:
-                self.listBox.addItem(item)
-        else:
-            self.listBox.addItem(item)
-
-        self._itemsMap[label] = item
-        self._addCounterWidget(label, item)
-        return item
-
-    def _addListItem(self, label):
-        """Create a QListWidgetItem and, if pickable, attach a counter widget."""
-        item = QListWidgetItem(label)
-        self.listBox.addItem(item)
-        if label not in self._excludedItems:
-            self._itemsMap[label] = item
-            self._addCounterWidget(label, item)
-
-    def _addCounterWidget(self, label, item):
-        rowWidget = QWidget()
-        rowLayout = QHBoxLayout(rowWidget)
-        rowLayout.setContentsMargins(4, 0, 4, 0)
-        rowLayout.setSpacing(6)
-
-        nameLabel = QLabel(label)
-        minusBtn = QPushButton('-')
-        plusBtn = QPushButton('+')
-        countLabel = QLabel(str(self._countMap.get(label, 0)))
-
-        minusBtn.setFixedWidth(24)
-        plusBtn.setFixedWidth(24)
-        countLabel.setMinimumWidth(20)
-        countLabel.setAlignment(Qt.AlignCenter)
-
-        minusBtn.clicked.connect(lambda _, lbl=label: self.removeSelection(lbl))
-        plusBtn.clicked.connect(lambda _, lbl=label: self.addSelection(lbl))
-
-        rowLayout.addWidget(nameLabel)
-        rowLayout.addStretch(1)
-        rowLayout.addWidget(minusBtn)
-        rowLayout.addWidget(countLabel)
-        rowLayout.addWidget(plusBtn)
-
-        self._countLabelMap[label] = countLabel
-        self.listBox.setItemWidget(item, rowWidget)
-
-    def _updateCountLabel(self, label):
-        lbl = self._countLabelMap.get(label)
-        if lbl is not None:
-            lbl.setText(str(self._countMap.get(label, 0)))
-
-    def _onItemClicked(self, item):
-        label = item.text()
-        if label in self._excludedItems:
-            return
-        modifiers = QApplication.keyboardModifiers()
-        if modifiers & Qt.ControlModifier:
-            self.removeSelection(label)
-        else:
-            self.addSelection(label)
-
-    def _onRightClick(self, pos):
-        item = self.listBox.itemAt(pos)
-        if item is None:
-            return
-        label = item.text()
-        if label in self._excludedItems:
-            return
-        self.removeSelection(label)
-
-
-class ModelSelectionWidget(QWidget):
-    """List widget for selecting segmentation models.
-
-    Thin wrapper around :class:`MultiPickListWidget` that populates the list
-    with the installed models and adds a special "Add custom model…" entry.
-
-    ``sigSelectionChanged`` and ``selectionSequence`` are proxied from the
-    underlying :class:`MultiPickListWidget`.
-    """
-
-    _ADD_CUSTOM = 'Add custom model...'
-
-    sigSelectionChanged = Signal(list)
-
-    def __init__(self, parent=None, customFirst='', allowMultiSelection=False):
-        super().__init__(parent)
-
-        self.allowMultiSelection = allowMultiSelection
-
-        models = myutils.get_list_of_models()
-        if customFirst:
-            try:
-                models.insert(0, models.pop(models.index(customFirst)))
-            except ValueError:
-                pass
-
-        items = models + [self._ADD_CUSTOM]
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        if allowMultiSelection:
-            items = models
-            self._picker = MultiPickListWidget(
-                items=items,
-                excludedItems=[self._ADD_CUSTOM],
-                parent=self,
-            )
-            self._picker.listBox.setFont(font)
-            self._picker.sigSelectionChanged.connect(self.sigSelectionChanged)
-            self.listBox = self._picker.listBox
-            layout.addWidget(self._picker)
-        else:
-            self.listBox = widgets.listWidget(isMultipleSelection=False)
-            self.listBox.setFont(font)
-            self.listBox.addItems(models)
-            add_item = QListWidgetItem(self._ADD_CUSTOM)
-            add_item.setFont(italicFont)
-            self.listBox.addItem(add_item)
-            self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-            self.listBox.setCurrentRow(0)
-            self._picker = None
-            layout.addWidget(self.listBox)
-
-    # ------------------------------------------------------------------
-    # Proxy helpers (multi-selection mode only)
-    # ------------------------------------------------------------------
-
-    @property
-    def selectionSequence(self):
-        return self._picker.selectionSequence if self._picker is not None else []
-
-    @property
-    def modelItemsMap(self):
-        return self._picker.itemsMap if self._picker is not None else {}
-
-    def currentModelName(self):
-        if self._picker is not None:
-            return self._picker.currentItemName()
-        item = self.listBox.currentItem()
-        return item.text() if item is not None else None
-
-    def addModelSelection(self, name):
-        if self._picker is not None:
-            self._picker.addSelection(name)
-
-    def removeModelSelection(self, name):
-        if self._picker is not None:
-            self._picker.removeSelection(name)
-
-    def resetSelectionSequence(self):
-        if self._picker is not None:
-            self._picker.resetSelection()
-
-    def setSelectionFromList(self, models):
-        if self._picker is not None:
-            self._picker.setSelectionFromList(models)
-
-    def registerCustomModel(self, model_name):
-        """Add a newly registered custom model and return its item."""
-        if self._picker is not None:
-            return self._picker.registerItem(
-                model_name, insertBeforeLabel=self._ADD_CUSTOM
-            )
-        item = QListWidgetItem(model_name)
-        self.listBox.insertItem(self.listBox.count() - 1, item)
-        return item
-
-
 class QDialogSelectModel(QDialog):
     def __init__(
             self, parent=None, addSkipSegmButton=False, customFirst='',
             allowMultiSelection=False, lastSelection=None,
             addSelectLastSelectionButton=False,
-            addSelectLastRecipeButton=False
+            addSelectLastRecipeButton=False,
+            custom_title=None,
         ):
         self.cancel = True
         self.loadLastRecipe = False
@@ -5890,13 +5591,15 @@ class QDialogSelectModel(QDialog):
         mainLayout = QVBoxLayout()
         self.mainLayout = mainLayout
 
+        title = custom_title or 'Select model to use for segmentation: '
+        
         label = QLabel(html_utils.paragraph(
-            'Select model to use for segmentation: '
+            title
         ))
         label.setStyleSheet("padding:0px 0px 3px 0px;")
         mainLayout.addWidget(label, alignment=Qt.AlignCenter)
 
-        self.modelSelector = ModelSelectionWidget(
+        self.modelSelector = widgets.ModelSelectionWidget(
             parent=self,
             customFirst=customFirst,
             allowMultiSelection=allowMultiSelection,
@@ -5921,17 +5624,17 @@ class QDialogSelectModel(QDialog):
             bottomLayout.addWidget(skipSegmButton)
             skipSegmButton.clicked.connect(self.skipSegm)
         if addSelectLastSelectionButton and allowMultiSelection:
-            selectLastSelButton = QPushButton('Select last selection')
+            selectLastSelButton = widgets.reloadPushButton('Load last selection...')
             selectLastSelButton.clicked.connect(self.selectLastSelection)
             selectLastSelButton.setEnabled(bool(self.lastSelection))
             bottomLayout.addWidget(selectLastSelButton)
         if addSelectLastRecipeButton and allowMultiSelection:
-            selectLastRecipeButton = QPushButton('Select last recipe')
+            selectLastRecipeButton = widgets.reloadPushButton('Load last recipe...')
             selectLastRecipeButton.clicked.connect(self.selectLastRecipe)
             selectLastRecipeButton.setEnabled(bool(self.lastSelection))
             bottomLayout.addWidget(selectLastRecipeButton)
         if allowMultiSelection:
-            addCustomModelButton = QPushButton('Add custom model...')
+            addCustomModelButton = widgets.addPushButton('Add custom model...')
             addCustomModelButton.clicked.connect(self.addCustomModel)
             bottomLayout.addWidget(addCustomModelButton)
         bottomLayout.addWidget(okButton)
@@ -5943,7 +5646,6 @@ class QDialogSelectModel(QDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
 
-        self.setStyleSheet(LISTWIDGET_STYLESHEET)
 
     @property
     def selectionSequence(self):
@@ -6138,7 +5840,7 @@ class ViewTextDialog(QBaseDialog):
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
 class startStopFramesDialog(QBaseDialog):
     def __init__(
@@ -6173,7 +5875,7 @@ class startStopFramesDialog(QBaseDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
 
     def ok_cb(self):
         if self.selectFramesGroupbox.warningLabel.text():
@@ -6599,7 +6301,8 @@ class QDialogMetadata(QDialog):
         self.addAdditionalValues(additionalValues)
 
         self.setLayout(mainLayout)
-        self.setFont(font)
+        if font is not None:
+            self.setFont(font)
         # self.setModal(True)
     
     def showWhySizeTisGrayed(self):
@@ -7136,9 +6839,7 @@ class randomWalkerDialog(QDialog):
         seeHereLabel.setTextFormat(Qt.RichText)
         seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
         seeHereLabel.setOpenExternalLinks(True)
-        font = QFont()
-        font.setPixelSize(12)
-        seeHereLabel.setFont(font)
+        seeHereLabel.setFont(fonts.font)
         seeHereLabel.setStyleSheet("padding:12px 0px 0px 0px;")
         paramsLayout.addWidget(seeHereLabel, row, 0, 1, 2)
 
@@ -7525,7 +7226,7 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
         layout.addLayout(buttonsLayout, 2, 1)
 
         self.setLayout(layout)
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def copyErrorMessage(self):
         cb = QApplication.clipboard()
@@ -8442,7 +8143,7 @@ class imageViewer(QMainWindow):
         if alphaScrollBar is None:
             alphaScrollBar = QScrollBar(Qt.Horizontal)
         label = QLabel(f'Alpha {channelName}')
-        label.setFont(font)
+        label.setFont(fonts.font)
         label.hide()
         alphaScrollBar.imageItem = imageItem
         alphaScrollBar.label = label
@@ -8997,7 +8698,7 @@ class selectPositionsMultiExp(QBaseDialog):
             QAbstractItemView.SelectionMode.ExtendedSelection
         )
         self.treeWidget.setHeaderHidden(True)
-        self.treeWidget.setFont(font)
+        self.treeWidget.setFont(fonts.font)
         for exp_path, positions in expPaths.items():
             pathLevels = exp_path.split(os.sep)
             posFoldersInfo = None
@@ -9934,7 +9635,7 @@ class QLineEditDialog(QDialog):
             entryWidget.setText(defaultTxt)
             if not self.allowText:
                 entryWidget.textChanged[str].connect(self.onTextChanged)
-        entryWidget.setFont(font)
+        entryWidget.setFont(fonts.font)
         entryWidget.setAlignment(Qt.AlignCenter)
 
         self.entryWidget = entryWidget
@@ -9942,7 +9643,7 @@ class QLineEditDialog(QDialog):
         if allowedValues is not None:
             notValidLabel = QLabel()
             notValidLabel.setStyleSheet('color: red')
-            notValidLabel.setFont(font)
+            notValidLabel.setFont(fonts.font)
             notValidLabel.setAlignment(Qt.AlignCenter)
             self.notValidLabel = notValidLabel
 
@@ -10468,7 +10169,7 @@ class QtSelectItems(QDialog):
         listBox.addItems(items)
         listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         listBox.setCurrentRow(0)
-        listBox.setFont(font)
+        listBox.setFont(fonts.font)
         topLayout.addWidget(listBox)
         listBox.hide()
         self.ListBox = listBox
@@ -10490,7 +10191,7 @@ class QtSelectItems(QDialog):
         if showInFileManagerPath is not None:
             showInFileManagerButton.clicked.connect(self.showInFileManager)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
 
     def setSelectedItems(self, selectedItemsText):
         if self.multiPosButton.isChecked():
@@ -11388,9 +11089,7 @@ class QDialogZsliceAbsent(QDialog):
 
         self.setLayout(mainLayout)
 
-        font = QFont()
-        font.setPixelSize(12)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         # self.setModal(True)
     
@@ -12251,7 +11950,7 @@ class QDialogModelParams(QDialog):
             printl(traceback.format_exc())
         
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
         # self.setModal(True)
     
     def warningNoSegmRecipes(self):
@@ -13458,7 +13157,7 @@ class combineMetricsEquationDialog(QBaseDialog):
 
         metricsTreeWidget = QTreeWidget()
         metricsTreeWidget.setHeaderHidden(True)
-        metricsTreeWidget.setFont(font)
+        metricsTreeWidget.setFont(fonts.font)
         self.metricsTreeWidget = metricsTreeWidget
 
         for chName in allChNames:
@@ -13649,7 +13348,7 @@ class combineMetricsEquationDialog(QBaseDialog):
         testButton.clicked.connect(self.test_cb)
 
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         self.setStyleSheet(TREEWIDGET_STYLESHEET)
 
@@ -13910,7 +13609,7 @@ class stopFrameDialog(QBaseDialog):
             _spinBox = QSpinBox()
             _spinBox.setMaximum(214748364)
             _spinBox.setAlignment(Qt.AlignCenter)
-            _spinBox.setFont(font)
+            _spinBox.setFont(fonts.font)
             if posData.acdc_df is not None:
                 _val = posData.acdc_df.index.get_level_values(0).max()+1
             else:
@@ -14029,7 +13728,7 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         for i, (acdc_df_endname, acdc_df) in enumerate(acdcDfs.items()):
             metricsTreeWidget = QTreeWidget()
             metricsTreeWidget.setHeaderHidden(True)
-            metricsTreeWidget.setFont(font)
+            metricsTreeWidget.setFont(fonts.font)
 
             classified_metrics = measurements.classify_acdc_df_colnames(
                 acdc_df, allChNames
@@ -14217,7 +13916,7 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         # self.newColNameLineEdit.editingFinished.connect(self.equationChanged)
 
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         self.setStyleSheet(TREEWIDGET_STYLESHEET)
     
@@ -14405,7 +14104,7 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
 
         row += 1
         self.equationsList = widgets.TreeWidget()
-        self.equationsList.setFont(font)
+        self.equationsList.setFont(fonts.font)
         self.equationsList.setHeaderLabels(['Metric', 'Expression'])
         self.equationsList.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -14714,7 +14413,7 @@ class ShortcutEditorDialog(QBaseDialog):
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
         self.setLayout(mainLayout)
     
     def checkDuplicateShortcuts(self, text):
@@ -14841,7 +14540,7 @@ class SelectAcdcDfVersionToRestore(QBaseDialog):
         
         self.setLayout(mainLayout)
         
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def ok_cb(self):
         self.cancel = False
@@ -15057,7 +14756,7 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
 
         self.setLayout(self._layout)
 
-        # self.setFont(font)
+        # self.setFont(fonts.font)
 
         self.addButton.clicked.connect(self.addFeatureField)
 
@@ -15340,7 +15039,7 @@ class ScaleBarPropertiesDialog(QBaseDialog):
         mainLayout.addStretch()
         
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
         
         self.unitCombobox.currentTextChanged.connect(self.updateLengthUnit)
         self.colorButton.clicked.disconnect()
@@ -15459,7 +15158,7 @@ class SetColumnNamesDialog(QBaseDialog):
         
         self.setLayout(mainLayout)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def _warnNonUniqueCategories(self, category_1, category_2):
         txt = html_utils.paragraph(f"""
@@ -15520,7 +15219,7 @@ class CombineFeaturesCalculator(QBaseDialog):
         
         metricsTreeWidget = QTreeWidget()
         metricsTreeWidget.setHeaderHidden(True)
-        metricsTreeWidget.setFont(font)
+        metricsTreeWidget.setFont(fonts.font)
         self.metricsTreeWidget = metricsTreeWidget
         
         for groupName, features in features_groups.items():
@@ -15565,7 +15264,7 @@ class CombineFeaturesCalculator(QBaseDialog):
         
         metricsTreeWidget.itemDoubleClicked.connect(self.addFeatureName)
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         self.setStyleSheet(TREEWIDGET_STYLESHEET)
     
@@ -15851,7 +15550,7 @@ class QInput(QBaseDialog):
 
         self.buttonsLayout = buttonsLayout
 
-        self.setFont(font)
+        self.setFont(fonts.font)
         self.setLayout(self.mainLayout)
     
     def askText(self, prompt, infoText='', allowEmpty=False):
@@ -16321,7 +16020,7 @@ class TimestampPropertiesDialog(QBaseDialog):
         mainLayout.addStretch()
         
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
         
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
@@ -19725,7 +19424,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
         
         self.setAcceptDrops(True)
         
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def dragEnterEvent(self, event):
         event.acceptProposedAction()

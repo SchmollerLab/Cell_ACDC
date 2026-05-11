@@ -8473,6 +8473,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lastSelection=prev_models,
             addSelectLastSelectionButton=bool(prev_models),
             addSelectLastRecipeButton=has_last_recipe,
+            custom_title='Select model(s) for segmentation of lost IDs',
         )
         win.exec_()
         if win.cancel:

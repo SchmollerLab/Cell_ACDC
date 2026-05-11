@@ -461,13 +461,26 @@ class SegForLostIDsWorker(QObject):
                         min_area = (1 - args_new['size_perc_diff']) * area_mean
                         max_area = (1 + args_new['size_perc_diff']) * area_mean
 
+                    prev_bbox_lab = prev_lab[box_x_min:box_x_max, box_y_min:box_y_max]
+                    relabeled_IDs = {}
                     if args_new['allow_only_tracked_cells']:
-                        filtered_IDs = [
-                            obj.label for obj in rp_model_lab
-                            if (skip_size_filter or (obj.area > min_area and obj.area < max_area))
-                            and obj.label not in original_IDs
-                            and obj.label in missing_IDs_global
-                        ]
+                        filtered_IDs = []
+                        for obj in rp_model_lab:
+                            if not (skip_size_filter or (obj.area > min_area and obj.area < max_area)):
+                                continue
+                            if obj.label in original_IDs:
+                                continue
+
+                            target_ID = segm_utils.get_best_overlapping_label(
+                                prev_bbox_lab,
+                                obj,
+                                missing_IDs_global,
+                            )
+                            if target_ID is None:
+                                continue
+
+                            filtered_IDs.append(obj.label)
+                            relabeled_IDs[obj.label] = target_ID
                     else:
                         filtered_IDs = [
                             obj.label for obj in rp_model_lab
@@ -480,12 +493,11 @@ class SegForLostIDsWorker(QObject):
                         self.logger.info(f"Filtered sizes: {filtered_sizes}")
                     for label in filtered_IDs:
                         obj = rp_model_lab.get_obj_from_ID(label)
+                        target_label = relabeled_IDs.get(label, label)
                         
                         # Avoid chained indexing by creating a view, modifying it, and assigning it back
                         # This ensures changes propagate back to original_bbox_lab and original_lab
-                        bbox_view = original_bbox_lab[obj.slice]
-                        bbox_view[obj.image] = label
-                        original_bbox_lab[obj.slice] = bbox_view
+                        original_bbox_lab[obj.slice][obj.image] = target_label
                 
                 # original_lab[box_x_min:box_x_max, box_y_min:box_y_max] = original_bbox_lab
                 
