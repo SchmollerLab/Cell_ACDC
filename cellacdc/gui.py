@@ -20891,7 +20891,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def framesScrollBarReleased(self, do_store_data=False):
         posData = self.data[self.pos_i]
-        if posData.frame_i == self.navigateScrollBar.sliderPosition()-1:
+        if (
+            posData.frame_i == self.navigateScrollBar.sliderPosition()-1
+            and self.navigateScrollBarStartedMoving
+        ):
             # Slider released without changing value --> do nothing
             return
         
