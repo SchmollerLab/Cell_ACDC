@@ -5577,11 +5577,13 @@ class QDialogSelectModel(QDialog):
             addSelectLastSelectionButton=False,
             addSelectLastRecipeButton=False,
             custom_title=None,
+            info_label='',
         ):
         self.cancel = True
         self.loadLastRecipe = False
         super().__init__(parent)
         self.setWindowTitle('Select model')
+        self.info_label = info_label
 
         self.allowMultiSelection = allowMultiSelection
         self.lastSelection = []
@@ -5596,12 +5598,24 @@ class QDialogSelectModel(QDialog):
         self.mainLayout = mainLayout
 
         title = custom_title or 'Select model to use for segmentation: '
-        
+
+        titleContainer = QWidget(self)
+        titleLayout = QGridLayout(titleContainer)
+        titleLayout.setContentsMargins(0, 0, 0, 0)
+        titleLayout.setSpacing(0)
         label = QLabel(html_utils.paragraph(
             title
         ))
         label.setStyleSheet("padding:0px 0px 3px 0px;")
-        mainLayout.addWidget(label, alignment=Qt.AlignCenter)
+        titleLayout.addWidget(label, 0, 0, Qt.AlignCenter)
+        if info_label:
+            moreInfoButton = widgets.infoPushButton()
+            moreInfoButton.clicked.connect(self.showInfoLabel)
+            moreInfoButton.setSizePolicy(
+                QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+            )
+            titleLayout.addWidget(moreInfoButton, 0, 0, Qt.AlignTop | Qt.AlignRight)
+        mainLayout.addWidget(titleContainer)
 
         self.modelSelector = widgets.ModelSelectionWidget(
             parent=self,
@@ -5699,6 +5713,13 @@ class QDialogSelectModel(QDialog):
             item = QListWidgetItem(modelName)
             self.listBox.addItem(item)
             self.listBox.setCurrentItem(item)
+
+    def showInfoLabel(self):
+        if not self.info_label:
+            return
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = html_utils.paragraph(self.info_label)
+        msg.information(self, 'More info', txt)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key_Escape:

@@ -8469,6 +8469,34 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             prev_models = []
 
         has_last_recipe = bool(prev_models) and os.path.exists(recipe_json_path)
+        seg_for_lost_ids_info = (
+            '<b>Segmentation for lost IDs settings</b><br><br>'
+            'Use this dialog to define the segmentation workflow used for '
+            'resegmenting local neighborhood lost IDs. Other already segmented cells are filled '
+            'with background, which makes even dimm cells seem bright after '
+            'rescaling before resegmentation. This is especially usefull for '
+            'cells which have varying intensities over time, like FUCCI cells. <br><br>'
+            '<b>How model selection works</b><br>'
+            '- You can select one model or multiple models.<br>'
+            '- In multi-selection mode you can include the same model multiple '
+            'times (for example, model A, then model B, then model A again).<br>'
+            '- After confirming, you can reorder the selected models. The order '
+            'is the execution order. '
+            '- You then will be asked to set model parameters in the order selected. <br><br>'
+            '    - Pay special attention to the additional "Settings for local '
+            'segmentation" section, here you can for example select any image as input.<br><br>'
+            '<b>Load last selection...</b><br>'
+            'Restores only the list of selected model names (the recipe order '
+            'selection), then lets you continue configuring parameters.<br><br>'
+            '<b>Load last recipe...</b><br>'
+            'Loads the complete saved recipe from disk, including model order and '
+            'all model-specific settings (when available).<br><br>'
+            '<b>Add custom model...</b><br>'
+            'Lets you register an additional local custom model and include it in '
+            'the sequence.<br><br>'
+            'Tip: if you want to run the same model twice with different '
+            'parameters, add it twice and configure each step independently.'
+        )
         win = apps.QDialogSelectModel(
             parent=self,
             allowMultiSelection=True,
@@ -8476,6 +8504,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             addSelectLastSelectionButton=bool(prev_models),
             addSelectLastRecipeButton=has_last_recipe,
             custom_title='Select model(s) for segmentation of lost IDs',
+            info_label=seg_for_lost_ids_info,
         )
         win.exec_()
         if win.cancel:
