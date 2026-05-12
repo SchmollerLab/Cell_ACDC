@@ -8452,6 +8452,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax1.exportMaskImageItem = self.exportMaskImageItem
 
     def SegForLostIDsSetSettings(self):
+        posData = self.data[self.pos_i]
+        displayed_input_label = 'Displayed image'
 
         recipe_json_path = os.path.join(
             settings_folderpath, 'segmentation_for_lostIDs_recipe.json'
@@ -8532,11 +8534,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.df_settings.to_csv(self.settings_csv_path)
 
         all_extra_params = [
+            'image_channel_name',
             'overlap_threshold',
             'padding',
             'size_perc_diff',
             'distance_filler_growth',
-            'allow_only_tracked_cells'
+            'allow_only_tracked_cells',
         ]
         extra_types = {
             'overlap_threshold': float,
@@ -8544,6 +8547,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'size_perc_diff': float,
             'distance_filler_growth': float,
             'allow_only_tracked_cells': bool,
+            'image_channel_name': str,
         }
         extra_defaults = {
             'overlap_threshold': 0.5,
@@ -8551,6 +8555,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'size_perc_diff': 0.3,
             'distance_filler_growth': 1.,
             'allow_only_tracked_cells': False,
+            'image_channel_name': displayed_input_label,
         }
         extra_desc = {
             'overlap_threshold': (
@@ -8574,7 +8579,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'allow_only_tracked_cells': (
                 'If no new cell IDs should be permitted '
                 '(based on real time tracking)'
-            )
+            ),
+            'image_channel_name': (
+                'Image channel used as model input. '
+                'Select "Displayed image" to use exactly what is currently '
+                'shown in the viewer, or select a specific fluorescence '
+                'channel.'
+            ),
         }
 
         model_settings = []
@@ -8599,6 +8610,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return
 
             extra_params = all_extra_params
+
+            available_fluo_channels = [
+                ch for ch in posData.chNames if ch != self.user_ch_name
+            ]
+            channel_options = [displayed_input_label, *available_fluo_channels]
+
+            class _SegForLostIDsInputChannelType:
+                values = channel_options
+
+            extra_types['image_channel_name'] = _SegForLostIDsInputChannelType
 
             extra_ArgSpec = []
             for param in extra_params:
@@ -8662,13 +8683,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             for key, val in win.extra_kwargs.items():
                 if key in extra_params:
-                    args_new[key] = val
+                    if key == 'image_channel_name':
+                        init_kwargs_new[key] = val
+                    else:
+                        args_new[key] = val
 
             for key, val in remembered_extra_args.items():
+                if key == 'image_channel_name':
+                    init_kwargs_new.setdefault(key, val)
+                    continue
                 args_new.setdefault(key, val)
 
             if model_idx == 0:
                 remembered_extra_args = args_new.copy()
+                remembered_extra_args['image_channel_name'] = (
+                    init_kwargs_new.get('image_channel_name', displayed_input_label)
+                )
 
             model_settings.append({
                 'win': win,
@@ -8766,6 +8796,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.onSigStoreDataSegForLostIDsWorker)
         self.SegForLostIDsWorker.sigUpdateRP.connect(
             self.onSigUpdateRPSegForLostIDsWorker)
+        self.SegForLostIDsWorker.sigGetSegForLostIDsInputImg.connect(
+            self.onSigGetInputImgSegForLostIDsWorker
+        )
         # self.SegForLostIDsWorker.sigGetData.connect(self.onSigGetDataSegForLostIDsWorker)
         # self.SegForLostIDsWorker.sigGet2Dlab.connect(self.onSigGet2DlabSegForLostIDsWorker)
         # self.SegForLostIDsWorker.sigGetTrackedLostIDs.connect(self.onSigGetTrackedSegForLostIDsWorker)
@@ -8828,6 +8861,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def onSigTrackManuallyAddedObjectSegForLostIDsWorker(self, added_IDs, isNewID, wl_update, wl_track_og_curr):
         self.trackManuallyAddedObject(added_IDs, isNewID, wl_update=wl_update, wl_track_og_curr=wl_track_og_curr)
+        self.SegForLostIDsWaitCond.wakeAll()
+
+    def onSigGetInputImgSegForLostIDsWorker(self, image_channel_name):
+        displayed_input_label = 'Displayed image'
+        posData = self.data[self.pos_i]
+
+        if (
+                not image_channel_name
+                or image_channel_name == displayed_input_label
+            ):
+            img = self.getDisplayedImg1()
+            self.SegForLostIDsWorker.inputImgForSegForLostIDs = img
+            self.SegForLostIDsWaitCond.wakeAll()
+            return
+
+        self.getChData(requ_ch={image_channel_name})
+
+        _, filename = self.getPathFromChName(image_channel_name, posData)
+        fluo_data = posData.fluo_data_dict.get(filename)
+        if posData.SizeT > 1:
+            fluo_img_data = fluo_data[posData.frame_i]
+        else:
+            fluo_img_data = fluo_data
+
+        self.SegForLostIDsWorker.inputImgForSegForLostIDs = fluo_img_data
         self.SegForLostIDsWaitCond.wakeAll()
 
         

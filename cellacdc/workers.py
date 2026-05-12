@@ -202,6 +202,7 @@ class SegForLostIDsWorker(QObject):
     sigshowImageDebug = Signal(object)
     sigStoreData = Signal(bool)
     sigUpdateRP = Signal(bool, bool)
+    sigGetSegForLostIDsInputImg = Signal(str)
     # sigGetData = Signal()
     # sigGet2Dlab = Signal()
     # sigGetTrackedLostIDs = Signal()
@@ -217,6 +218,7 @@ class SegForLostIDsWorker(QObject):
         self.mutex = mutex
         self.waitCond = waitCond
         self._debug = debug
+        self.inputImgForSegForLostIDs = None
 
     def emitSigAskInit(self):
         self.mutex.lock()
@@ -241,6 +243,15 @@ class SegForLostIDsWorker(QObject):
         self.sigUpdateRP.emit(wl_track_og_curr, wl_update)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
+
+    def emitGetSegForLostIDsInputImg(self, image_channel_name):
+        self.mutex.lock()
+        self.sigGetSegForLostIDsInputImg.emit(image_channel_name)
+        self.waitCond.wait(self.mutex)
+        img = self.inputImgForSegForLostIDs
+        self.inputImgForSegForLostIDs = None
+        self.mutex.unlock()
+        return img
 
     # def emitSigGetData(self):
     #     self.mutex.lock()
@@ -307,7 +318,10 @@ class SegForLostIDsWorker(QObject):
 
         for model_idx, model_settings_i in enumerate(model_settings):
             base_model_name = model_settings_i['base_model_name']
-            init_kwargs_new = model_settings_i['init_kwargs_new']
+            init_kwargs_new = dict(model_settings_i['init_kwargs_new'])
+            image_channel_name = init_kwargs_new.pop(
+                'image_channel_name', 'Displayed image'
+            )
             args_new = model_settings_i['args_new']
             init_kwargs = model_settings_i.get('init_kwargs', {})
             model_kwargs = model_settings_i.get('model_kwargs', {})
@@ -378,7 +392,13 @@ class SegForLostIDsWorker(QObject):
             IDs_bboxs_list = []
             bboxs_list = []
 
-            curr_img = self.guiWin.getDisplayedImg1()
+            curr_img = self.emitGetSegForLostIDsInputImg(image_channel_name)
+            if curr_img is None:
+                self.signals.critical.emit(
+                    (self, 'Could not get input image for SegForLostIDsWorker')
+                )
+                self.signals.finished.emit(self)
+                return
             prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
             prev_IDs = posData.allData_li[frame_i-1]['regionprops'].IDs_set
 
