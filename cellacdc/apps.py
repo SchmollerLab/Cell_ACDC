@@ -5584,9 +5584,13 @@ class QDialogSelectModel(QDialog):
         self.setWindowTitle('Select model')
 
         self.allowMultiSelection = allowMultiSelection
-        self.lastSelection = [
-            m for m in (lastSelection or []) if isinstance(m, str)
-        ]
+        self.lastSelection = []
+        for m in (lastSelection or []):
+            if not isinstance(m, str):
+                continue
+            if m == 'thresholding':
+                m = 'Automatic thresholding'
+            self.lastSelection.append(m)
 
         mainLayout = QVBoxLayout()
         self.mainLayout = mainLayout
@@ -5750,13 +5754,7 @@ class QDialogSelectModel(QDialog):
                     return
                 selected_models = ordered_models
 
-            if (
-                len(selected_models) == 1
-                and selected_models[0] == 'Automatic thresholding'
-            ):
-                self.selectedModel = 'thresholding'
-            else:
-                self.selectedModel = selected_models
+            self.selectedModel = selected_models
             self.cancel = False
             self.close()
             return
@@ -5785,7 +5783,7 @@ class QDialogSelectModel(QDialog):
             self.listBox.addItem(item)
             self.listBox.setCurrentItem(item)
         elif model == 'Automatic thresholding':
-            self.selectedModel = 'thresholding'
+            self.selectedModel = model
             self.cancel = False
             self.close()
         else:

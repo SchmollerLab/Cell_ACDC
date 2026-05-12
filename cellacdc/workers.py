@@ -495,8 +495,6 @@ class SegForLostIDsWorker(QObject):
                         obj = rp_model_lab.get_obj_from_ID(label)
                         target_label = relabeled_IDs.get(label, label)
                         
-                        # Avoid chained indexing by creating a view, modifying it, and assigning it back
-                        # This ensures changes propagate back to original_bbox_lab and original_lab
                         original_bbox_lab[obj.slice][obj.image] = target_label
                 
                 # original_lab[box_x_min:box_x_max, box_y_min:box_y_max] = original_bbox_lab
