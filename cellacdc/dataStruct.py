@@ -80,6 +80,7 @@ class bioFormatsWorker(QObject):
     )
     critical = Signal(object)
     sigFinishedReadingSampleImageData = Signal(object)
+    sigAskUseSymLink = Signal()
 
     def __init__(
             self, raw_src_path, rawFilenames, exp_dst_path,
@@ -528,7 +529,7 @@ class bioFormatsWorker(QObject):
 
             if self.metadataWin.cancel:
                 return True
-
+            
             if not self.metadataWin.requestedReadingSampleImageDataAgain:
                 break
             LensNA = self.metadataWin.LensNA
@@ -1023,6 +1024,13 @@ class bioFormatsWorker(QObject):
                         except Exception as e:
                             self.progress.emit(e)
 
+    def emitAskUseSymLink(self):
+        self.mutex.lock()
+        self.sigAskUseSymLink.emit()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.cancel
+    
     @worker_exception_handler
     def run(self):
         raw_src_path = self.raw_src_path
@@ -1036,7 +1044,7 @@ class bioFormatsWorker(QObject):
             
         self.cancelled = False
         self.isCriticalError = False
-        
+        self.useSymLink = False
         for p, filename in enumerate(self.rawFilenames):
             pos_n = p + self.start_pos_n
             if self.rawDataStruct == 0:
@@ -1045,7 +1053,13 @@ class bioFormatsWorker(QObject):
                     if cancel:
                         self.cancelled = True
                         break
-
+                
+                if p == 0:
+                    cancel = self.emitAskUseSymLink()
+                    if cancel:
+                        self.cancelled = True
+                        break
+                
                 self.numPos = self.SizeS
                 self.numPosDigits = len(str(self.numPos))
                 if p == 0:
@@ -1066,6 +1080,12 @@ class bioFormatsWorker(QObject):
                     if cancel:
                         self.cancelled = True
                         break
+                
+                cancel = self.emitAskUseSymLink()
+                if cancel:
+                    self.cancelled = True
+                    break
+                
                 self.numPos = len(self.rawFilenames)
                 self.numPosDigits = len(str(self.numPos))
                 if p == 0:
@@ -1088,14 +1108,19 @@ class bioFormatsWorker(QObject):
         if self.rawDataStruct == 2:
             filename = self.rawFilenames[0]
             if not self.overWriteMetadata:
-                abort = self.readMetadata(raw_src_path, filename)
-                if abort:
+                cancel = self.readMetadata(raw_src_path, filename)
+                if cancel:
                     self.cancelled = True
                     if self.bioformats_backend == 'python-bioformats':
                         javabridge.kill_vm()
                     self.finished.emit()
                     return
-      
+                
+            cancel = self.emitAskUseSymLink()
+            if cancel:
+                self.cancelled = True
+                return
+            
             self.numPos = len(self.posNums)
             self.numPosDigits = len(str(self.numPos))
             self.initPbar.emit(self.numPos*self.SizeC)
@@ -1646,6 +1671,7 @@ class createDataStructWin(QMainWindow):
         self.worker.critical.connect(self.workerCritical)
         self.worker.criticalError.connect(self.criticalBioFormats)
         self.worker.confirmMetadata.connect(self.askConfirmMetadata)
+        self.worker.sigAskUseSymLink.connect(self.askUseSymLink)
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
@@ -2155,6 +2181,40 @@ class createDataStructWin(QMainWindow):
         self.worker.metadataWin = self.metadataWin
         self.waitCond.wakeAll()
 
+    def askUseSymLink(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        important_text = ("""
+            If you choose to use symbolic links, the source data file(s) cannot 
+            be moved from their current location, otherwise the link will 
+            be broken.
+        """)
+        important_admon = html_utils.to_admonition(
+            important_text, admonition_type='important'
+        )
+        txt = html_utils.paragraph(f"""
+            Cell-ACDC can either copy the image data to TIFF files, or use 
+            symbolic links to the source image data.<br><br>
+            
+            A symbolic link is a special type of file that acts as a pointer or alias, 
+            referring to another file by its path rather than its content.<br><br>
+            
+            With symbolic links, <b>no image data will be copied</b> and only files 
+            you will generate later (e.g., segmentation data)<br>
+            will be created in the respective Position folders.<br>
+            {important_admon}<br>
+            What do you want to do?
+        """)
+        _, copyButton, useSymLinkButton = msg.question(
+            self, 'Use symbolic links?', txt, 
+            buttonsTexts=(
+                'Cancel', 
+                widgets.copyPushButton('Copy image data to TIFF files'),
+                widgets.SegmentPushButton('Use symbolic links')
+            )
+        )
+        self.worker.useSymLink = msg.clickedButton == useSymLinkButton
+        self.waitCond.wakeAll()
+    
     def askPosFoldersExisting(self, exp_dst_path):
         pos_foldernames = myutils.get_pos_foldernames(exp_dst_path)
         if not pos_foldernames:

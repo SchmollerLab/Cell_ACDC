@@ -448,6 +448,12 @@ class reloadPushButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':reload.svg'))
 
+class SegmentPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':segment.svg'))
+
+
 class savePushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
