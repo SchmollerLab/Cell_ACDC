@@ -238,7 +238,7 @@ def load_image_data_from_symlink(
         channel_name: str, 
     ):
     section_name = f'channel_name.{channel_name}'
-    section = cp_symlink[section]
+    section = cp_symlink[section_name]
     source_filepath = section['source_filepath']
     frames_range = section['frames_range']
     zslices_range = section['zslices_range']

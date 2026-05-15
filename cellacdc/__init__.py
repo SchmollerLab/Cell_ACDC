@@ -807,3 +807,12 @@ single_pos_index_cols = (
     'experiment_folderpath', 
     'Position_n'
 )
+
+valid_image_data_ends = (
+    '_aligned.npz', 
+    '_aligned.h5', 
+    '.h5', 
+    '.tif', 
+    '.npz',
+    '_symlink.ini'
+)

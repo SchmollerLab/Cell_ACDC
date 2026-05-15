@@ -98,8 +98,8 @@ from . import debugutils
 
 from .plot import imshow
 from . import gui_utils
-
 from . import gui_combine
+from . import valid_image_data_ends
 
 np.seterr(invalid='ignore')
 
@@ -23368,13 +23368,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Load overlay frames and align if needed
         filename = os.path.basename(fluo_path)
         filename_noEXT, ext = os.path.splitext(filename)
+        fluo_data = load.load_image_file(fluo_path)
         if ext == '.npy' or ext == '.npz':
-            fluo_data = np.load(fluo_path)
-            try:
-                fluo_data = np.squeeze(fluo_data['arr_0'])
-            except Exception as e:
-                fluo_data = np.squeeze(fluo_data)
-
             # Load background data
             bkgrData_path = os.path.join(
                 posData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
@@ -23385,8 +23380,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             aligned_filename = f'{filename_noEXT}_aligned.npz'
             aligned_path = os.path.join(posData.images_path, aligned_filename)
             if os.path.exists(aligned_path):
-                fluo_data = np.load(aligned_path)['arr_0']
-
                 # Load background data
                 bkgrData_path = os.path.join(
                     posData.images_path, f'{aligned_filename}_bkgrRoiData.npz'
@@ -23394,23 +23387,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if os.path.exists(bkgrData_path):
                     bkgrData = np.load(bkgrData_path)
             else:
-                fluo_data = self.loadNonAlignedFluoChannel(fluo_path)
-                if fluo_data is None:
-                    return None, None
-
                 # Load background data
                 bkgrData_path = os.path.join(
                     posData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
                 )
                 if os.path.exists(bkgrData_path):
                     bkgrData = np.load(bkgrData_path)
-        elif isGuiThread:
-            txt = html_utils.paragraph(
-                f'File format {ext} is not supported!\n'
-                'Choose either .tif or .npz files.'
-            )
-            msg = widgets.myMessageBox()
-            msg.critical(self, 'File not supported', txt)
+        elif ext.startswith('.ini;;'):
+            ...
+        else:
             return None, None
 
         return fluo_data, bkgrData
@@ -24948,27 +24933,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.zSliceOverlay_SB.valueChanged.disconnect()
             self.zProjOverlay_CB.currentTextChanged.disconnect()
             self.zProjOverlay_CB.activated.disconnect()
-
-
+            
     def criticalFluoChannelNotFound(self, fluo_ch, posData):
-        msg = widgets.myMessageBox(showCentered=False)
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         ls = "\n".join(myutils.listdir(posData.images_path))
-        msg.setDetailedText(
+        detailsText = (
             f'Files present in the {posData.relPath} folder:\n'
             f'{ls}'
         )
         title = 'Requested channel data not found!'
-        txt = html_utils.paragraph(
-            f'The folder <code>{posData.pos_path}</code> '
-            '<b>does not contain</b> '
-            'either one of the following files:<br><br>'
-            f'{posData.basename}{fluo_ch}.tif<br>'
-            f'{posData.basename}{fluo_ch}_aligned.npz<br><br>'
-            'Data loading aborted.'
-        )
-        msg.addShowInFileManagerButton(posData.images_path)
-        okButton = msg.warning(
-            self, title, txt, buttonsTexts=('Ok')
+        href = f'<a href="{issues_url}">GitHub page</a>'
+        txt = html_utils.paragraph(f"""
+            The folder
+            <copiable>{posData.images_path}</copiable>
+            <b>does not contain</b> valid image data files.<br><br>
+            Valid files are <code>.tif</code>, 
+            <code>_aligned.npz</code>, <code>.h5</code>, 
+            or <code>_symlink.ini</code>.<br><br>
+            If you need help understanding this, feel free to contact us by 
+            opening an issue on our {href}.<br><br>
+            Thank you for your patience!
+        """)
+        msg.warning(
+            self, title, txt, buttonsTexts=('Ok'), 
+            path_to_browse=posData.images_path,
+            detailsText=detailsText,
         )
 
     def imgGradLUTfinished_cb(self):
@@ -30302,24 +30291,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
 
     def getPathFromChName(self, chName, posData):
-        ls = myutils.listdir(posData.images_path)
-        endnames = {f[len(posData.basename):]:f for f in ls}
-        validEnds = ['_aligned.npz', '_aligned.h5', '.h5', '.tif', '.npz']
-        for end in validEnds:
-            files = [
-                filename for endname, filename in endnames.items()
-                if endname == f'{chName}{end}'
-            ]
-            if files:
-                filename = files[0]
-                break
-        else:
-            self.criticalFluoChannelNotFound(chName, posData)
+        channel_file_path = load.get_filename_from_channel(
+            posData.images_path, chName
+        )
+        if not channel_file_path:
             self.app.restoreOverrideCursor()
             return None, None
 
-        fluo_path = os.path.join(posData.images_path, filename)
-        filename, _ = os.path.splitext(filename)
+        # The function `get_filename_from_channel` will append ';;channel_name' 
+        # when the imgPath is the symlink.ini file
+        parts = channel_file_path.split(';;')
+        fluo_path = channel_file_path
+        if len(parts) == 2:
+            filename = os.path.basename(channel_file_path)
+        else:
+            filename, _ = os.path.splitext(filename)
+            
         return fluo_path, filename
     
     def loadPosTriggered(self):

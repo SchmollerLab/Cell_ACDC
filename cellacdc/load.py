@@ -940,6 +940,7 @@ def get_filename_from_channel(
     if basename is None:
         basename = ''
     
+    symlink_channel_filepath = ''
     channel_filepath = ''
     h5_aligned_path = ''
     h5_path = ''
@@ -967,7 +968,9 @@ def get_filename_from_channel(
             continue
 
         channelDataPath = os.path.join(images_path, file)
-        if file == f'{basename}{channel_name}':
+        if file.endswith('_symlink.ini'):
+            symlink_channel_filepath = f'{channelDataPath};;{channel_name}'
+        elif file == f'{basename}{channel_name}':
             channel_filepath = channelDataPath
         elif file.endswith(f'{basename}{channel_name}_aligned.h5'):
             h5_aligned_path = channelDataPath
@@ -978,7 +981,11 @@ def get_filename_from_channel(
         elif file.endswith(f'{basename}{channel_name}.tif'):
             tif_path = channelDataPath
     
-    if channel_filepath:
+    if symlink_channel_filepath:
+        if logger is not None:
+            logger(f'Using channel file ({symlink_channel_filepath})...')
+        return symlink_channel_filepath
+    elif channel_filepath:
         if logger is not None:
             logger(f'Using channel file ({channel_filepath})...')
         return channel_filepath
@@ -1001,14 +1008,31 @@ def get_filename_from_channel(
     else:
         return ''
 
+def read_img_data_from_symlink(symlink_filepath, channel_name):
+    from cellacdc.acdc_bioio_bioformats._utils import (
+        load_image_data_from_symlink
+    )
+    cp_symlink = config.ConfigParser()
+    cp_symlink.read(symlink_filepath)
+    img_data = load_image_data_from_symlink(cp_symlink, channel_name)
+    img_data = np.squeeze(img_data)
+    return img_data
+
 def imread(path):
     if path.endswith('.tif') or path.endswith('.tiff'):
         return tifffile.imread(path)
     else:
         return skimage.io.imread(path)
 
-def load_image_file(filepath):
-    if filepath.endswith('.h5'):
+def load_image_file(filepath: str | os.PathLike):
+    # The function `get_filename_from_channel` will append ';;channel_name' 
+    # when the imgPath is the symlink.ini file
+    parts = filepath.split(';;')
+    if len(parts) == 2:
+        filepath, channel_name = parts
+        if filepath.endswith('symlink.ini'):
+            img_data = read_img_data_from_symlink(filepath, channel_name)
+    elif filepath.endswith('.h5'):
         with h5py.File(filepath, 'r') as h5f:
             img_data = h5f['data'][()]
     elif filepath.endswith('.npz'):
@@ -1019,6 +1043,9 @@ def load_image_file(filepath):
         img_data = np.load(filepath)
     else:
         img_data = imread(filepath)
+    
+    printl(img_data.max())
+    
     return np.squeeze(img_data)
 
 def load_image_data_from_channel(images_path: os.PathLike, channel_name: str):
@@ -1289,7 +1316,9 @@ class loadData:
         self.bkgrROIs = []
         self.loadedFluoChannels = set()
         self.parent = QParent
-        self.imgPath = imgPath
+        # The function `get_filename_from_channel` will append ';;channel_name' 
+        # when the imgPath is the symlink.ini file
+        self.imgPath = imgPath.split(';;')[0]
         self.user_ch_name = user_ch_name
         self.images_path = os.path.dirname(imgPath)
         self.images_folder_files = os.listdir(self.images_path)
@@ -1521,15 +1550,10 @@ class loadData:
         self.z0_window = 0
         self.t0_window = 0
         if imgPath.endswith('symlink.ini'):
-            from cellacdc.acdc_bioio_bioformats._utils import (
-                load_image_data_from_symlink
+            img_data = read_img_data_from_symlink(
+                imgPath, self.user_ch_name
             )
-            cp_symlink = config.ConfigParser()
-            cp_symlink.read(imgPath)
-            img_data = load_image_data_from_symlink(
-                cp_symlink, self.user_ch_name
-            )
-            self.img_data = np.squeeze(img_data)
+            self.img_data = img_data
             self.dset = self.img_data
             self.img_data_shape = self.img_data.shape
         elif self.ext == '.h5':
@@ -4048,11 +4072,11 @@ def get_channel_names_from_symlink(symlink_ini_filepath):
     cp_symlink = config.ConfigParser()
     cp_symlink.read(symlink_ini_filepath)
     channel_names = []
-    for section in cp_symlink.sections():
-        if not section.startswith('channel_name.'):
+    for section_name in cp_symlink.sections():
+        if not section_name.startswith('channel_name.'):
             continue
         
-        channel_name = channel_names.split('.')[-1]
+        channel_name = section_name.split('.')[-1]
         channel_names.append(channel_name)
     
     return channel_names

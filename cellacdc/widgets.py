@@ -2864,7 +2864,8 @@ class myMessageBox(_base_widgets.QBaseDialog):
             commands=None, path_to_browse=None, browse_button_text=None,
             url_to_open=None, open_url_button_text='Open url', 
             image_paths=None, wrapDetails=True,
-            add_do_not_show_again_checkbox=False
+            add_do_not_show_again_checkbox=False,
+            details_expanded=True
         ):
         if parent is not None:
             self.setParent(parent)
@@ -2921,7 +2922,9 @@ class myMessageBox(_base_widgets.QBaseDialog):
                 buttons.append(button)
         
         if detailsText is not None:
-            self.setDetailedText(detailsText, visible=True, wrap=wrapDetails)
+            self.setDetailedText(
+                detailsText, visible=details_expanded, wrap=wrapDetails
+            )
         
         if add_do_not_show_again_checkbox:
             self.addDoNotShowAgainCheckbox()
