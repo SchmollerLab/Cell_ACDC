@@ -12,6 +12,9 @@ import numpy as np
 import h5py
 
 from cellacdc import myutils, bioio_sample_data_folderpath
+from cellacdc.config import ConfigParser
+
+from cellacdc.acdc_bioio_bioformats import ImageReader
 
 def setup_argparser():
     ap = argparse.ArgumentParser(
@@ -53,6 +56,61 @@ def getFilename(
     else:
         return filename
 
+def read_img_data(
+        reader, 
+        ch_idx, 
+        series, 
+        framesRange, 
+        zslicesRange,
+        img_data_container,
+        use_symlinks=False,
+        to_h5=False,
+    ):
+    numFrames = len(framesRange)
+    SizeZ = len(zslicesRange)
+    num_imgs = numFrames*SizeZ
+    pbar = tqdm(
+        total=num_imgs, 
+        ncols=100, 
+        desc=f'Reading image (z 0/{SizeZ}, t 0/{numFrames})'
+    )
+    for out_t, t in enumerate(framesRange):
+        imgData_z = []
+        for z in zslicesRange:
+            pbar.set_description(
+                f'Reading image (z {z+1}/{SizeZ}, t {out_t+1}/{numFrames})'
+            )
+            idx = None
+            imgData = reader.read(
+                c=ch_idx, 
+                z=z, 
+                t=t, 
+                series=series, 
+                rescale=False,
+                index=idx
+            )
+            if use_symlinks:
+                pass
+            elif to_h5:
+                img_data_container[out_t, z] = imgData
+            else:
+                imgData_z.append(imgData)
+            
+            pbar.update()
+
+        if to_h5:
+            continue
+        
+        if use_symlinks:
+            continue
+        
+        imgData_z = np.squeeze(np.array(imgData_z, dtype=imgData.dtype))
+        img_data_container.append(imgData_z)
+        
+    pbar.close()
+    
+    return img_data_container
+
 def saveImgDataChannel(
         reader, 
         series: int, 
@@ -70,9 +128,20 @@ def saveImgDataChannel(
         PhysicalSizeX: float,
         to_h5: bool, 
         timeRangeToSave: Tuple[int, int],
+        use_symlinks: bool,
+        src_data_filepath: os.PathLike, 
+        lazy_load: bool,
     ):
     savedSizeT = timeRangeToSave[1] - timeRangeToSave[0] + 1
-    if to_h5:
+    if use_symlinks:
+        filename = getFilename(
+            filenameNOext, s0p, 'symlink', series, '.ini'
+        )
+        symlink_ini_filepath = os.path.join(images_path, filename)
+        cp_symlink = ConfigParser()
+        if os.path.exists(symlink_ini_filepath):
+            cp_symlink.read(symlink_ini_filepath)
+    elif to_h5:
         filename = getFilename(
             filenameNOext, s0p, chName, series, '.h5'
         )
@@ -99,42 +168,38 @@ def saveImgDataChannel(
         imgData_ch = []
 
     framesRange = range(timeRangeToSave[0]-1, timeRangeToSave[1])
+    zslicesRange = range(SizeZ)
     filePath = os.path.join(images_path, filename)
-    dimsIdx = {'c': ch_idx} 
-    numFrames = len(framesRange)
-    num_imgs = numFrames*SizeZ
-    pbar = tqdm(
-        total=num_imgs, 
-        ncols=100, 
-        desc=f'Reading image (z 0/{SizeZ}, t 0/{numFrames})'
+    imgData_ch = read_img_data(
+        reader, 
+        ch_idx, 
+        series, 
+        framesRange, 
+        zslicesRange,
+        imgData_ch,
+        use_symlinks=use_symlinks,
+        to_h5=to_h5,
     )
-    for out_t, t in enumerate(framesRange):
-        imgData_z = []
-        dimsIdx['t'] = t
-        for z in range(SizeZ):
-            pbar.set_description(
-                f'Reading image (z {z+1}/{SizeZ}, t {out_t+1}/{numFrames})'
-            )
-            dimsIdx['z'] = z
-            idx = None
-            imgData = reader.read(
-                c=ch_idx, z=z, t=t, series=series, rescale=False,
-                index=idx
-            )
-            if to_h5:
-                imgData_ch[out_t, z] = imgData
-            else:
-                imgData_z.append(imgData)
-            
-            pbar.update()
 
-        if not to_h5:
-            imgData_z = np.squeeze(np.array(imgData_z, dtype=imgData.dtype))
-            imgData_ch.append(imgData_z)
-    pbar.close()
-
-    if not to_h5:
-        imgData_ch = np.squeeze(np.array(imgData_ch, dtype=imgData.dtype))
+    if use_symlinks:
+        save_symlink(
+            cp_symlink,
+            symlink_ini_filepath,
+            chName, 
+            src_data_filepath,
+            (timeRangeToSave[0]-1, timeRangeToSave[1]),
+            (0, SizeZ),
+            ch_idx,
+            series,
+            lazy_load
+        )
+    elif to_h5:
+        h5f.close()
+        shutil.move(tempFilepath, filePath)
+        shutil.rmtree(tempDir)
+    else:
+        imgData_first = imgData_ch[0][0]
+        imgData_ch = np.squeeze(np.array(imgData_ch, dtype=imgData_first.dtype))
         myutils.to_tiff(
             filePath, imgData_ch, 
             SizeT=savedSizeT,
@@ -144,10 +209,59 @@ def saveImgDataChannel(
             PhysicalSizeY=PhysicalSizeY,
             PhysicalSizeX=PhysicalSizeX,
         )
-    else:
-        h5f.close()
-        shutil.move(tempFilepath, filePath)
-        shutil.rmtree(tempDir)
+
+def save_symlink(
+        cp_symlink: ConfigParser,
+        symlink_ini_filepath: os.PathLike,
+        channel_name: str, 
+        source_filepath: os.PathLike,
+        frames_range: tuple[int],
+        zslices_range: tuple[int],
+        channel_index: int,
+        series_index: int,
+        lazy_load: bool
+    ):
+    cp_symlink[channel_name] = {
+        'source_filepath': source_filepath,
+        'frames_range': ','.join([str(val) for val in frames_range]),
+        'zslices_range': ','.join([str(val) for val in zslices_range]),
+        'channel_index': str(channel_index),
+        'series_index': str(series_index),
+        'lazy_load': str(lazy_load)
+    }
+    
+    with open(symlink_ini_filepath, 'w') as configfile:
+        cp_symlink.write(configfile)
+
+def load_image_data_from_symlink(
+        cp_symlink: ConfigParser,
+        channel_name: str, 
+    ):
+    source_filepath = cp_symlink[channel_name]['source_filepath']
+    frames_range = cp_symlink[channel_name]['frames_range']
+    zslices_range = cp_symlink[channel_name]['zslices_range']
+    channel_index = int(cp_symlink[channel_name]['channel_index'])
+    series_index = int(cp_symlink[channel_name]['series_index'])
+    lazy_load = cp_symlink[channel_name].getboolean('lazy_load')
+    frames_range = [int(val) for val in frames_range.split(',')]
+    zslices_range = [int(val) for val in zslices_range.split(',')]
+    
+    img_data_container = []
+    with ImageReader(source_filepath, lazy_load=lazy_load) as reader:
+        img_data_container = read_img_data(
+            reader, 
+            channel_index, 
+            series_index, 
+            range(*frames_range), 
+            range(*zslices_range),
+            img_data_container,
+            use_symlinks=False,
+            to_h5=False,
+        )
+    dtype = img_data_container[0][0].dtype
+    img_data = np.squeeze(np.array(img_data_container, dtype=dtype))
+    
+    return img_data
 
 def dump_exception(err, error_id):
     import pickle

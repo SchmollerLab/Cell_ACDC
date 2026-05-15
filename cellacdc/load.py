@@ -651,7 +651,9 @@ def load_acdc_df_file(
         return acdc_df
 
 def save_acdc_df_file(
-        acdc_df, csv_path, custom_annot_columns=None, 
+        acdc_df: pd.DataFrame, 
+        csv_path: os.PathLike, 
+        custom_annot_columns=None, 
         last_cca_frame_i=None
     ):
     if custom_annot_columns is not None:
@@ -675,6 +677,13 @@ def save_acdc_df_file(
         max_frame_i = acdc_df.index.get_level_values('frame_i').max()
         if last_cca_frame_i < max_frame_i:
             acdc_df.loc[last_cca_frame_i+1:, cca_df_colnames] = pd.NA
+    
+    try:
+        images_path = os.path.dirname(csv_path)
+        basename = get_basename(images_path)
+        acdc_df.insert(0, 'basename', basename)
+    except Exception as err:
+        pass
     
     try:
         acdc_df.to_csv(csv_path)
@@ -1511,7 +1520,19 @@ class loadData:
             imgPath = self.imgPath
         self.z0_window = 0
         self.t0_window = 0
-        if self.ext == '.h5':
+        if imgPath.endswith('symlink.ini'):
+            from cellacdc.acdc_bioio_bioformats._utils import (
+                load_image_data_from_symlink
+            )
+            cp_symlink = config.ConfigParser()
+            cp_symlink.read(imgPath)
+            img_data = load_image_data_from_symlink(
+                cp_symlink, self.user_ch_name
+            )
+            self.img_data = np.squeeze(img_data)
+            self.dset = self.img_data
+            self.img_data_shape = self.img_data.shape
+        elif self.ext == '.h5':
             self.h5f = h5py.File(imgPath, 'r')
             self.dset = self.h5f['data']
             self.img_data_shape = self.dset.shape
@@ -1545,7 +1566,6 @@ class loadData:
                 self.img_data = np.squeeze(self.dset[:self.loadSizeT])
             elif is2D:
                 self.img_data = np.squeeze(self.dset[:])
-
         elif self.ext == '.npz':
             self.img_data = np.squeeze(np.load(imgPath)['arr_0'])
             self.dset = self.img_data
@@ -4102,6 +4122,13 @@ def search_filepath_in_pos_path_from_endname(
     for file in images_files:
         if file == to_match:
             return os.path.join(images_path, file)
+
+def get_basename(images_path):
+    images_files = myutils.listdir(images_path)
+    sample_filepath = os.path.join(images_path, images_files[0])
+    posData = loadData(sample_filepath, '')
+    posData.getBasenameAndChNames()
+    return posData.basename
 
 def search_filepath_from_endname(exp_path, endname, include_spotmax_out=False):
     pos_foldernames = myutils.get_pos_foldernames(exp_path)

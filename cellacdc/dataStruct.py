@@ -909,6 +909,9 @@ class bioFormatsWorker(QObject):
                 
                 if not self.lazy_load:
                     command = f'{command}, -a'
+                
+                if self.useSymLink:
+                    command = f'{command}, -u'
                     
                 args = [sys.executable, _process.__file__, '-c', command]
                 subprocess.run(args)
@@ -976,6 +979,9 @@ class bioFormatsWorker(QObject):
                     )
                     if self.to_h5:
                         command = f'{command}, -to_h5'
+                    
+                    if self.useSymLink:
+                        command = f'{command}, -u'
                     
                     args = [sys.executable, _process.__file__, '-c', command]
                     subprocess.run(args)
@@ -1081,10 +1087,11 @@ class bioFormatsWorker(QObject):
                         self.cancelled = True
                         break
                 
-                cancel = self.emitAskUseSymLink()
-                if cancel:
-                    self.cancelled = True
-                    break
+                if p == 0:
+                    cancel = self.emitAskUseSymLink()
+                    if cancel:
+                        self.cancelled = True
+                        break
                 
                 self.numPos = len(self.rawFilenames)
                 self.numPosDigits = len(str(self.numPos))
@@ -2192,7 +2199,7 @@ class createDataStructWin(QMainWindow):
             important_text, admonition_type='important'
         )
         txt = html_utils.paragraph(f"""
-            Cell-ACDC can either copy the image data to TIFF files, or use 
+            Cell-ACDC can either copy the image data to TIFF or H5 files, or use 
             symbolic links to the source image data.<br><br>
             
             A symbolic link is a special type of file that acts as a pointer or alias, 
@@ -2213,6 +2220,7 @@ class createDataStructWin(QMainWindow):
             )
         )
         self.worker.useSymLink = msg.clickedButton == useSymLinkButton
+        self.worker.cancel = msg.cancel
         self.waitCond.wakeAll()
     
     def askPosFoldersExisting(self, exp_dst_path):

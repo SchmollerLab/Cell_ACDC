@@ -135,6 +135,13 @@ try:
         action='store_true', 
         help='Whether to read entire position into RAM or not.'
     )
+    
+    ap.add_argument(
+        '-u', 
+        '--use_symlinks', 
+        action='store_true', 
+        help='Whether to use symbolic links or copy image data'
+    )
 
     args = vars(ap.parse_args())
     raw_filepath = args['filepath']
@@ -156,6 +163,7 @@ try:
     PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX = zyx_physical_sizes
 
     to_h5 = args['to_h5']
+    use_symlinks = args['use_symlinks']
 
     time_range_to_save_li = args['time_range_to_save'].split()
     timeRangeToSave = [int(val) for val in time_range_to_save_li]
@@ -176,7 +184,7 @@ try:
                 reader, series, images_path, filename_no_ext, s0p,
                 chName, c, {}, SizeT, SizeZ, TimeIncrement, PhysicalSizeZ,
                 PhysicalSizeY, PhysicalSizeX, to_h5, 
-                timeRangeToSave
+                timeRangeToSave, use_symlinks, raw_filepath, lazy_load
                 )
             pbar.update()
         pbar.close()

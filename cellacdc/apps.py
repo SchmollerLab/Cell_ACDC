@@ -3377,7 +3377,7 @@ class QDialogMetadataXML(QDialog):
                 "it is very likely that metadata from the metadata reader\n"
                 "will be correct also for all the next positions.\n\n"
                 "Click this button to stop showing this dialog and use\n"
-                "the metadata from the reader\n"
+                "the metadata from the reader for all the next files.\n"
                 "(except for channel names, I will use the manually entered)"
             )
             buttonsLayout.addWidget(trustButton, 1, 1)
