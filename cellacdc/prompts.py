@@ -117,6 +117,14 @@ class select_channel_name:
             if channel_names:
                 return channel_names, False
         
+        # Next, check if there is the symlink.ini file
+        for file in myutils.listdir(images_path):
+            if file.endswith('_symlink.ini'):
+                channel_names = load.get_channel_names_from_symlink(
+                    os.path.join(images_path, file)
+                )
+                return channel_names, False
+        
         # Find basename as intersection of filenames
         channel_names = set()
         self.basenameNotFound = False

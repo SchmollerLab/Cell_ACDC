@@ -4044,6 +4044,19 @@ def get_tooltips_from_docs():
             tipdict[name] = f"Name: {title}\nShortcut: {shortcut}\n\n{desc}"
     return tipdict
 
+def get_channel_names_from_symlink(symlink_ini_filepath):
+    cp_symlink = config.ConfigParser()
+    cp_symlink.read(symlink_ini_filepath)
+    channel_names = []
+    for section in cp_symlink.sections():
+        if not section.startswith('channel_name.'):
+            continue
+        
+        channel_name = channel_names.split('.')[-1]
+        channel_names.append(channel_name)
+    
+    return channel_names
+
 def save_df_to_csv_temp_path(df, csv_filename, **to_csv_kwargs):
     tempDir = tempfile.mkdtemp()
     tempFilepath = os.path.join(tempDir, csv_filename)

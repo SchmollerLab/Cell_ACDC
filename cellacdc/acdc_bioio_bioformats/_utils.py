@@ -221,7 +221,7 @@ def save_symlink(
         series_index: int,
         lazy_load: bool
     ):
-    cp_symlink[channel_name] = {
+    cp_symlink[f'channel_name.{channel_name}'] = {
         'source_filepath': source_filepath,
         'frames_range': ','.join([str(val) for val in frames_range]),
         'zslices_range': ','.join([str(val) for val in zslices_range]),
@@ -237,12 +237,14 @@ def load_image_data_from_symlink(
         cp_symlink: ConfigParser,
         channel_name: str, 
     ):
-    source_filepath = cp_symlink[channel_name]['source_filepath']
-    frames_range = cp_symlink[channel_name]['frames_range']
-    zslices_range = cp_symlink[channel_name]['zslices_range']
-    channel_index = int(cp_symlink[channel_name]['channel_index'])
-    series_index = int(cp_symlink[channel_name]['series_index'])
-    lazy_load = cp_symlink[channel_name].getboolean('lazy_load')
+    section_name = f'channel_name.{channel_name}'
+    section = cp_symlink[section]
+    source_filepath = section['source_filepath']
+    frames_range = section['frames_range']
+    zslices_range = section['zslices_range']
+    channel_index = int(section['channel_index'])
+    series_index = int(section['series_index'])
+    lazy_load = section.getboolean('lazy_load')
     frames_range = [int(val) for val in frames_range.split(',')]
     zslices_range = [int(val) for val in zslices_range.split(',')]
     
