@@ -9569,6 +9569,7 @@ class QLineEditDialog(QDialog):
 
         # Add layouts
         mainLayout.addLayout(LineEditLayout)
+        mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)

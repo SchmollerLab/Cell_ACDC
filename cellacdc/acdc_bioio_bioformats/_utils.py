@@ -227,7 +227,8 @@ def save_symlink(
         'zslices_range': ','.join([str(val) for val in zslices_range]),
         'channel_index': str(channel_index),
         'series_index': str(series_index),
-        'lazy_load': str(lazy_load)
+        'lazy_load': str(lazy_load),
+        'use_bioio': 'True',
     }
     
     with open(symlink_ini_filepath, 'w') as configfile:

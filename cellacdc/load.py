@@ -997,13 +997,18 @@ def get_filename_from_channel(
         return ''
 
 def read_img_data_from_symlink(symlink_filepath, channel_name):
-    from cellacdc.acdc_bioio_bioformats._utils import (
-        load_image_data_from_symlink
-    )
     cp_symlink = config.ConfigParser()
     cp_symlink.read(symlink_filepath)
-    img_data = load_image_data_from_symlink(cp_symlink, channel_name)
-    img_data = np.squeeze(img_data)
+    channel_section = f'channel_name.{channel_name}'
+    if cp_symlink[channel_section].getboolean('use_bioio', True):
+        from cellacdc.acdc_bioio_bioformats._utils import (
+            load_image_data_from_symlink as bioio_load_image_data_from_symlink
+        )
+        
+        img_data = bioio_load_image_data_from_symlink(cp_symlink, channel_name)
+        img_data = np.squeeze(img_data)
+    else:
+        img_data = load_image_data_from_symlink(cp_symlink, channel_name)
     return img_data
 
 def imread(path):
@@ -4271,3 +4276,51 @@ def load_image_and_bkgr_data(image_filepath: os.PathLike):
         return None, None
 
     return img_data, bkgrData
+
+def save_symlink_ini_from_image_filepath(
+        image_filepath: os.PathLike,
+        images_folderpath: os.PathLike,
+        channel_name: str 
+    ):
+    filename = os.path.basename(image_filepath)
+    filename_no_ext, ext = os.path.splitext(filename)
+    symlink_ini_filename = f'{filename_no_ext}_symlink.ini'
+    symlink_ini_filepath = os.path.join(images_folderpath, symlink_ini_filename)
+    cp_symlink = config.ConfigParser()
+    cp_symlink[f'channel_name.{channel_name}'] = {
+        'source_filepath': image_filepath,
+        'frames_range': '0,1',
+        'zslices_range': '0,1',
+        'channel_index': '0',
+        'series_index': '0',
+        'lazy_load': 'False',
+        'use_bioio': 'False',
+    }
+    with open(symlink_ini_filepath, 'w') as configfile:
+        cp_symlink.write(configfile)
+
+def load_image_data_from_symlink(
+        cp_symlink: config.ConfigParser,
+        channel_name: str, 
+    ):
+    section_name = f'channel_name.{channel_name}'
+    section = cp_symlink[section_name]
+    source_filepath = section['source_filepath']
+    img_data = load_image_file(source_filepath)
+    is_rgb = (
+        img_data.ndim == 3 and img_data.shape[-1] == 3
+    )
+    is_rgba = (
+        img_data.ndim == 4 and img_data.shape[-1] == 4
+    )
+    
+    if not is_rgb and not is_rgba:
+        return img_data
+    
+    if is_rgb:
+        img_data = skimage.color.rgb2gray(img_data)
+    else:
+        img_data = cv2.cvtColor(img_data, cv2.COLOR_RGBA2GRAY)
+    
+    img_data = skimage.img_as_ubyte(img_data)
+    return img_data

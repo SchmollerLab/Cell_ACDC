@@ -29290,13 +29290,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateAllImages()
         self.logger.info('Annotations correctly recovered.')
 
-    def askUserChannelName(self, filename_no_ext, ext):
-        help_txt = html_utils.paragraph(f"""
-            Cell-ACDC requires that every image file has a basename and some 
-            additional text, typically the channel name.<br><br>
-            The basename will be common to all created files, while the additional text is used to identify the image files.
-        """)
-
+    def askUserChannelName(self, filename_no_ext):
         basename = filename_no_ext
         underscore_splits = filename_no_ext.split('_')
         if len(underscore_splits) > 1:
@@ -29306,32 +29300,38 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             channel_name = 'channel_1'
         
         txt = html_utils.paragraph(f"""
-            Provide some text (e.g., the channel name) to append at the end of the image file.
+            Provide some text (e.g., the channel name) to identify the image file.
         """)
-        win = apps.filenameDialog(
-            basename=basename,
-            ext=ext,
-            hintText=txt,
-            defaultEntry=channel_name,
-            helpText=help_txt, 
-            allowEmpty=False,
+        
+        win = apps.QLineEditDialog(
+            title='Provide id text for image file',
+            msg=txt,
+            defaultTxt=channel_name,
             parent=self,
-            title='Provide channel name for image file',
+            allowEmpty=False,
+            allowText=True
         )
         win.exec_()
         if win.cancel:
-            return False, ''
-
-        return True, win.entryText
+            return True, ''
+        
+        return False, win.enteredValue
     
-    def warnUserCreationImagesFolder(self, images_path, ext):
+    def askUserCreationImagesFolder(self, images_path, ext):
         msg = widgets.myMessageBox(wrapText=False)
         txt = (f"""
             Cell-ACDC requires a specific folder structure to load the data.<br><br>
             Specifically, it requires the <b>image(s) to be located in a
             folder called <code>Images</code></b>.<br><br>
-            The <b>file format</b> of the images must be <b>TIFF or NPZ</b> 
-            (.tif or .npz extension).<br><br>
+            The <b>file format</b> of the images must be <b>TIFF, H5, or NPZ</b> 
+            (.tif, .h5, or .npz extension).<br><br>
+            However, Cell-ACDC can also create a <b>symbolic link</b> to the image file.<br><br> 
+            A symbolic link is a special type of file that acts as a pointer or alias,<br>
+            referring to another file by its path rather than its content.<br><br>
+            With the symbolic link, no data will be copied or moved, but the 
+            source data file's location<br>
+            cannot change, otherwise the link will be broken.<br><br>
+            Note that any new file created by Cell-ACDC will be saved in the newly created <code>Images</code> folder (see below).<br><br>            
             You can choose to let Cell-ACDC create the required data structure 
             from your file,<br>
             or you can stop the 
@@ -29341,14 +29341,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             folder:
             <copiable>{images_path}</copiable>
             <br>
+            How do you want to proceed?
         """)
-        
-        if ext == '.tif' or ext == '.npz':
-            txt = f'{txt}How do you want to proceed?'
-        else:
-            txt = f'{txt}Do you want to proceed?'
         txt = html_utils.paragraph(txt)
-        
+        symlinkButton = widgets.SegmentPushButton(
+            'Create symbolic link to the image'
+        )
+        copyButton = None
+        moveButton = None
         if ext == '.tif' or ext == '.npz':
             copyButton = widgets.copyPushButton(
                 'Copy the image into the new folder'
@@ -29356,27 +29356,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             moveButton = widgets.movePushButton(
                 'Move the image into the new folder'
             )
-            _, copyButton, moveButton = msg.information(
-                self, 'Creating Images folder', txt, 
-                buttonsTexts=('Cancel', copyButton, moveButton)
+            buttonsTexts = (
+                'Cancel', 
+                copyButton, 
+                moveButton,
+                symlinkButton
             )
-            if msg.cancel:
-                return False, None
-
-            if msg.clickedButton == copyButton:
-                return True, True
-            elif msg.clickedButton == moveButton:
-                return True, False
-        
         else:
-            msg.information(
-                self, 'Creating Images folder', txt, 
-                buttonsTexts=('Cancel', 'Yes, proceed')
+            copyButton = widgets.copyPushButton(
+                'Create grayscale TIFF file in the new folder'
             )
-            if msg.cancel:
-                return False, None
-            
-            return True, True
+            buttonsTexts=('Cancel', copyButton, symlinkButton)
+        
+        msg.information(
+            self, 'Creating Images folder', txt, buttonsTexts=buttonsTexts
+        )
+        do_copy = msg.clickedButton == copyButton
+        do_move = msg.clickedButton == moveButton
+        use_symlink = msg.clickedButton == symlinkButton
+        
+        return msg.cancel, do_copy, do_move, use_symlink
 
     @exception_handler
     def _openFile(self, file_path=None):
@@ -29403,15 +29402,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             acdc_folder = f'{timestamp}_acdc'
             exp_path = os.path.join(dirpath, acdc_folder, 'Images')
-            proceed, do_copy = self.warnUserCreationImagesFolder(exp_path, ext)
-            if not proceed:
+            out = self.askUserCreationImagesFolder(exp_path, ext)
+            cancel, do_copy, do_move, use_symlink = out
+            if cancel:
                 self.logger.info('Loading image file cancelled.')
                 return
             
-            proceed, channel_name = self.askUserChannelName(
-                filename, '.tif'
-            )
-            if not proceed:
+            cancel, channel_name = self.askUserChannelName(filename)
+            if cancel:
                 self.logger.info('Loading image file cancelled.')
                 return
             
@@ -29430,8 +29428,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             basename = f'{filename}_'
             new_filename = f'{filename}_{channel_name}{ext}'
             df_metadata = pd.DataFrame({
-                'Description': ['basename'],
-                'values': [basename]
+                'Description': ['basename', 'channel_0_name'],
+                'values': [basename, channel_name]
             })
             metadata_csv_filename = f'{basename}metadata.csv'
             metadata_csv_filepath = os.path.join(
@@ -29443,10 +29441,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if do_copy:
             action_text = 'Copying'
-        else:
+        elif do_move:
             action_text = 'Moving'
+        elif use_symlink:
+            action_text = 'Creating symbolic link'
         
-        if ext == '.tif' or ext == '.npz':
+        if use_symlink:
+            symlink_filepath = load.save_symlink_ini_from_image_filepath(
+                file_path, exp_path, channel_name
+            )
+            self._openFolder(exp_path=exp_path, imageFilePath=symlink_filepath)
+        elif ext == '.tif' or ext == '.npz':
             new_filepath = os.path.join(exp_path, new_filename)
             if not os.path.exists(new_filepath):
                 self.logger.info(f'{action_text} file to Images folder...')
