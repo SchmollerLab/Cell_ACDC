@@ -1075,26 +1075,8 @@ def getAcdcDfSegmPaths(images_path):
     return paths
 
 def getChannelFilePath(images_path, chName):
-    file = ''
-    alignedFilePath = ''
-    tifFilePath = ''
-    h5FilePath = ''
-    for file in listdir(images_path):
-        filePath = os.path.join(images_path, file)
-        if file.endswith(f'{chName}_aligned.npz'):
-            alignedFilePath = filePath
-        elif file.endswith(f'{chName}.tif'):
-            tifFilePath = filePath
-        elif file.endswith(f'{chName}.h5'):
-            h5FilePath = filePath
-    if alignedFilePath:
-        return alignedFilePath
-    elif h5FilePath:
-        return h5FilePath
-    elif tifFilePath:
-        return tifFilePath
-    else:
-        return ''
+    channel_filepath = load.get_filename_from_channel(images_path, chName)
+    return channel_filepath
 
 def get_number_fstring_formatter(dtype, precision=4):
     if np.issubdtype(dtype, np.integer):
@@ -1109,6 +1091,10 @@ def get_chname_from_basename(filename, basename, remove_ext=True):
     aligned_idx = chName.find('_aligned')
     if aligned_idx != -1:
         chName = chName[:aligned_idx]
+    
+    if chName.startswith('symlink.ini;;'):
+        chName = chName.split(';;')[1]
+        
     return chName
 
 def getBaseAcdcDf(rp):

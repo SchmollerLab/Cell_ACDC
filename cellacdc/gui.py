@@ -3186,7 +3186,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             image_data = posData.img_data
         else:
             channel = imageItem.channelName
-            _, filename = self.getPathFromChName(channel, posData)
+            _, filename = self.getPathAndFilenameNoExtFromChName(channel, posData)
             image_data = posData.fluo_data_dict[filename]
         
         triggeredByUser = True
@@ -6121,7 +6121,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         selectedChannel = intensMeasurQGBox.channelCombobox.currentText()
         
         try:
-            _, filename = self.getPathFromChName(selectedChannel, posData)
+            _, filename = self.getPathAndFilenameNoExtFromChName(selectedChannel, posData)
             image = posData.ol_data_dict[filename][posData.frame_i]
         except Exception as e:
             image = posData.img_data[posData.frame_i]
@@ -23363,41 +23363,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def load_fluo_data(self, fluo_path, isGuiThread=True):
         self.logger.info(f'Loading fluorescence image data from "{fluo_path}"...')
-        bkgrData = None
-        posData = self.data[self.pos_i]
-        # Load overlay frames and align if needed
-        filename = os.path.basename(fluo_path)
-        filename_noEXT, ext = os.path.splitext(filename)
-        fluo_data = load.load_image_file(fluo_path)
-        if ext == '.npy' or ext == '.npz':
-            # Load background data
-            bkgrData_path = os.path.join(
-                posData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
-            )
-            if os.path.exists(bkgrData_path):
-                bkgrData = np.load(bkgrData_path)
-        elif ext == '.tif' or ext == '.tiff':
-            aligned_filename = f'{filename_noEXT}_aligned.npz'
-            aligned_path = os.path.join(posData.images_path, aligned_filename)
-            if os.path.exists(aligned_path):
-                # Load background data
-                bkgrData_path = os.path.join(
-                    posData.images_path, f'{aligned_filename}_bkgrRoiData.npz'
-                )
-                if os.path.exists(bkgrData_path):
-                    bkgrData = np.load(bkgrData_path)
-            else:
-                # Load background data
-                bkgrData_path = os.path.join(
-                    posData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
-                )
-                if os.path.exists(bkgrData_path):
-                    bkgrData = np.load(bkgrData_path)
-        elif ext.startswith('.ini;;'):
-            ...
-        else:
-            return None, None
-
+        fluo_data, bkgrData = load.load_image_and_bkgr_data(fluo_path)
         return fluo_data, bkgrData
 
     def setOverlayColors(self):
@@ -23448,7 +23414,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 ol_data = {}
             for i, ol_ch in enumerate(ol_channels):
-                _, filename = self.getPathFromChName(ol_ch, posData)
+                _, filename = self.getPathAndFilenameNoExtFromChName(ol_ch, posData)
                 ol_data[filename] = (
                     posData.ol_data_dict[filename].copy()
                 )                        
@@ -24538,7 +24504,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 action.weighingData.append(wData)
                 continue
 
-            path, filename = self.getPathFromChName(weighingChannel, posData)
+            path, filename = self.getPathAndFilenameNoExtFromChName(weighingChannel, posData)
             if path is None:
                 self.criticalFluoChannelNotFound(weighingChannel, posData) 
                 action.weighingData = []
@@ -30112,7 +30078,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if channelName not in posData.loadedFluoChannels:
                 self.loadOverlayData([channelName], addToExisting=True)
             else:
-                _, filename = self.getPathFromChName(channelName, posData)
+                _, filename = self.getPathAndFilenameNoExtFromChName(channelName, posData)
                 posData.ol_data[filename] = (
                     posData.ol_data_dict[filename].copy()
                 )
@@ -30290,24 +30256,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Load fluorescence images?', msg.clickedButton.text()
         )
 
-    def getPathFromChName(self, chName, posData):
+    def getPathAndFilenameNoExtFromChName(self, chName, posData):
         channel_file_path = load.get_filename_from_channel(
             posData.images_path, chName
         )
         if not channel_file_path:
             self.app.restoreOverrideCursor()
             return None, None
-
+        
         # The function `get_filename_from_channel` will append ';;channel_name' 
         # when the imgPath is the symlink.ini file
-        parts = channel_file_path.split(';;')
-        fluo_path = channel_file_path
-        if len(parts) == 2:
-            filename = os.path.basename(channel_file_path)
+        filename = os.path.basename(channel_file_path)
+        filename_no_ext, ext = os.path.splitext(filename)
+        if not ext.startswith('.ini;;'):
+            filename = filename_no_ext
         else:
-            filename, _ = os.path.splitext(filename)
-            
-        return fluo_path, filename
+            filename_no_ext = filename.replace('.ini', '')
+        
+        return channel_file_path, filename_no_ext
     
     def loadPosTriggered(self):
         if not self.isDataLoaded:
@@ -30433,7 +30399,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for p, posData in enumerate(self.data):
             # posData.ol_data = None
             for fluo_ch in fluo_channels:
-                fluo_path, filename = self.getPathFromChName(fluo_ch, posData)
+                fluo_path, filename = self.getPathAndFilenameNoExtFromChName(fluo_ch, posData)
                 if fluo_path is None:
                     self.criticalFluoChannelNotFound(fluo_ch, posData)
                     return False
@@ -30500,7 +30466,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
 
         fluo_ch = self.secondChannelName
-        fluo_path, filename = self.getPathFromChName(fluo_ch, posData)
+        fluo_path, filename = self.getPathAndFilenameNoExtFromChName(fluo_ch, posData)
         if filename in posData.fluo_data_dict:
             fluo_data = posData.fluo_data_dict[filename]
         else:
@@ -31149,27 +31115,34 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.worker.abort = True
             self.waitCond.wakeAll()
             return
+        
+        parts = filename[len(posData.basename):].split(';;')
+        if len(parts) == 2:
+            channel_name = parts[1]
+        else:
+            channel_name = parts[0]
+            
         if win.useMiddleSlice:
-            user_ch_name = filename[len(posData.basename):]
             for _posData in self.data:
                 if _posData is None:
                     continue
-                _, filename = self.getPathFromChName(user_ch_name, _posData)
-                df = myutils.getDefault_SegmInfo_df(_posData, filename)
+                
+                _, _filename = self.getPathAndFilenameNoExtFromChName(channel_name, _posData)
+                printl(_filename)
+                df = myutils.getDefault_SegmInfo_df(_posData, _filename)
                 _posData.segmInfo_df = pd.concat([df, _posData.segmInfo_df])
                 unique_idx = ~_posData.segmInfo_df.index.duplicated()
                 _posData.segmInfo_df = _posData.segmInfo_df[unique_idx]
                 _posData.segmInfo_df.to_csv(_posData.segmInfo_df_csv_path)
         elif win.useSameAsCh:
-            user_ch_name = filename[len(posData.basename):]
             for _posData in self.data:
                 if _posData is None:
                     continue
-                _, srcFilename = self.getPathFromChName(
+                _, srcFilename = self.getPathAndFilenameNoExtFromChName(
                     win.selectedChannel, _posData
                 )
                 cellacdc_df = _posData.segmInfo_df.loc[srcFilename].copy()
-                _, dstFilename = self.getPathFromChName(user_ch_name, _posData)
+                _, dstFilename = self.getPathAndFilenameNoExtFromChName(channel_name, _posData)
                 if dstFilename is None:
                     self.worker.abort = True
                     self.waitCond.wakeAll()
@@ -31194,12 +31167,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 _posData.segmInfo_df.to_csv(_posData.segmInfo_df_csv_path)
         elif win.runDataPrep:
             user_ch_file_paths = []
-            user_ch_name = filename[len(self.data[self.pos_i].basename):]
             for _posData in self.data:
                 if _posData is None:
                     continue
                 user_ch_path = load.get_filename_from_channel(
-                    _posData.images_path, user_ch_name
+                    _posData.images_path, channel_name
                 )
                 if user_ch_path is None:
                     self.worker.abort = True

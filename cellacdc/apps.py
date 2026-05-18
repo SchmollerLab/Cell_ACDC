@@ -10918,7 +10918,8 @@ class QDialogZsliceAbsent(QDialog):
         buttonsLayout = QGridLayout()
 
         txt = html_utils.paragraph(f"""
-            You loaded the fluorescent file called<br><br>{filename}<br><br>
+            You loaded the fluorescent file called<br><br>
+            <code>{filename}</code><br><br>
             however you <b>never selected which z-slice</b><br> you want to use
             when calculating metrics<br> (e.g., mean, median, amount...etc.)<br><br>
             Choose one of following options:

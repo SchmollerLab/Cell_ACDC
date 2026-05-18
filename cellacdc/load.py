@@ -839,20 +839,8 @@ def read_acdc_df_from_archive(archive_path, key):
 def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []
     for images_path in images_paths:
-        img_aligned_found = False
-        for filename in myutils.listdir(images_path):
-            if filename.find(f'{user_ch_name}_aligned.np') != -1:
-                img_path_aligned = f'{images_path}/{filename}'
-                img_aligned_found = True
-            elif filename.find(f'{user_ch_name}.tif') != -1:
-                img_path_tif = f'{images_path}/{filename}'
-
-        if img_aligned_found:
-            img_path = img_path_aligned
-        else:
-            img_path = img_path_tif
+        img_path = get_filename_from_channel(images_path, user_ch_name)
         user_ch_file_paths.append(img_path)
-        print(f'Loading {img_path}...')
     return user_ch_file_paths
 
 def get_acdc_output_files(images_path):
@@ -1044,8 +1032,6 @@ def load_image_file(filepath: str | os.PathLike):
     else:
         img_data = imread(filepath)
     
-    printl(img_data.max())
-    
     return np.squeeze(img_data)
 
 def load_image_data_from_channel(images_path: os.PathLike, channel_name: str):
@@ -1113,7 +1099,6 @@ def get_endname_from_filepath(filepath, allow_empty=False):
     
     return endname
     
-
 def get_endnames_from_basename(basename, filenames):
     return [os.path.splitext(f)[0][len(basename):] for f in filenames]
 
@@ -1338,8 +1323,13 @@ class loadData:
         path_li = os.path.normpath(imgPath).split(os.sep)
         self.relPath = f'{f"{os.sep}".join(path_li[-relPathDepth:])}'
         filename_ext = os.path.basename(imgPath)
+        filename, ext = os.path.splitext(filename_ext)
+        if ext.startswith('.ini;;') and ';;' not in filename:
+            # This is needed to make the filename unique to the channel, 
+            # since the symlink.ini file is shared for all channels
+            filename = f'{filename};;{user_ch_name}'
         self.filename_ext = filename_ext
-        self.filename, self.ext = os.path.splitext(filename_ext)
+        self.filename, self.ext = filename, ext
         self._additionalMetadataValues = None
         self.loadLastEntriesMetadata()
         self.attempFixBasenameBug()
@@ -1417,6 +1407,10 @@ class loadData:
             if chName.endswith('_aligned'):
                 aligned_idx = chName.find('_aligned')
                 chName = chName[:aligned_idx]
+            
+            if ';;' in chName:
+                chName = chName.split(';;')[-1]
+            
             loadedChNames.append(chName)
 
         if returnList:
@@ -4237,3 +4231,43 @@ def read_measurements_workflow_from_config(filepath):
             
             ini_items[section][option] = value
     return ini_items
+
+def load_image_and_bkgr_data(image_filepath: os.PathLike):
+    images_path = os.path.dirname(image_filepath)
+    bkgrData = None
+    # Load overlay frames and align if needed
+    filename = os.path.basename(image_filepath)
+    filename_noEXT, ext = os.path.splitext(filename)
+    img_data = load_image_file(image_filepath)
+    if ext == '.npy' or ext == '.npz':
+        # Load background data
+        bkgrData_path = os.path.join(
+            images_path, f'{filename_noEXT}_bkgrRoiData.npz'
+        )
+        if os.path.exists(bkgrData_path):
+            bkgrData = np.load(bkgrData_path)
+    elif ext == '.tif' or ext == '.tiff':
+        aligned_filename = f'{filename_noEXT}_aligned.npz'
+        aligned_path = os.path.join(images_path, aligned_filename)
+        if os.path.exists(aligned_path):
+            # Load background data
+            bkgrData_path = os.path.join(
+                images_path, f'{aligned_filename}_bkgrRoiData.npz'
+            )
+            if os.path.exists(bkgrData_path):
+                bkgrData = np.load(bkgrData_path)
+        else:
+            # Load background data
+            bkgrData_path = os.path.join(
+                images_path, f'{filename_noEXT}_bkgrRoiData.npz'
+            )
+            if os.path.exists(bkgrData_path):
+                bkgrData = np.load(bkgrData_path)
+    elif ext.startswith('.ini;;'):
+        # If the file is .ini, it's a raw file that was not cropped, 
+        # hence `_bkgrRoiData.npz` file does not exist.
+        pass
+    else:
+        return None, None
+
+    return img_data, bkgrData

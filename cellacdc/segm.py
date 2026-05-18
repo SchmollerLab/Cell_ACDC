@@ -396,58 +396,32 @@ class segmWin(QMainWindow):
                 self.criticalImagesFolderEmpty(images_path)
                 self.close()
                 return
-            if ch_name_selector.is_first_call:
-                ch_names, warn = (
-                    ch_name_selector.get_available_channels(
-                        filenames, images_path
-                ))
-                if not ch_names:
-                    self.criticalNoTifFound(images_path)
-                    self.close()
-                    return
-                elif len(ch_names) > 1:
-                    ch_name_selector.QtPrompt(self, ch_names)
-                else:
-                    ch_name_selector.channel_name = ch_names[0]
-                ch_name_selector.setUserChannelName()
-                if ch_name_selector.was_aborted:
-                    self.processStopped()
-                    return
-                else:
-                    user_ch_name = ch_name_selector.channel_name
 
-            aligned_npz_found = False
-            tif_found = False
-            dataPrep_fn = None
-            for filename in filenames:
-                if filename.find(f'{user_ch_name}_aligned.npz') != -1:
-                    img_path = os.path.join(images_path, filename)
-                    idx = filename.find('_aligned.npz')
-                    dataPrep_fn = filename[:idx]
-                    aligned_npz_found = True
-                elif filename.find(f'{user_ch_name}.tif') != -1:
-                    img_path = os.path.join(images_path, filename)
-                    tif_found = True
+        ref_images_path = images_paths[0]
+        filenames = myutils.listdir(ref_images_path)
+        ch_names, warn = (
+            ch_name_selector.get_available_channels(
+                filenames, ref_images_path
+        ))
+        if not ch_names:
+            self.criticalNoTifFound(ref_images_path)
+            self.close()
+            return
+        elif len(ch_names) > 1:
+            ch_name_selector.QtPrompt(self, ch_names)
+        else:
+            ch_name_selector.channel_name = ch_names[0]
+        ch_name_selector.setUserChannelName()
+        if ch_name_selector.was_aborted:
+            self.processStopped()
+            return
+        else:
+            user_ch_name = ch_name_selector.channel_name
 
-            if not aligned_npz_found and not tif_found:
-                print('')
-                print('-------------------------------------------------------')
-                self.log(f'The folder {images_path}\n does not contain the file '
-                      f'{user_ch_name}_aligned.npz\n or the file {user_ch_name}.tif. '
-                      'Skipping it.')
-                print('-------------------------------------------------------')
-                print('')
-            elif not aligned_npz_found and tif_found:
-                print('')
-                print('-------------------------------------------------------')
-                self.log(f'The folder {images_path}\n does not contain the file '
-                      f'{user_ch_name}_aligned.npz. Segmenting .tif data.')
-                print('-------------------------------------------------------')
-                print('')
-                user_ch_file_paths.append(img_path)
-            elif aligned_npz_found:
-                user_ch_file_paths.append(img_path)
-
+        user_ch_file_paths = load.get_user_ch_paths(
+            images_paths, user_ch_name
+        )
+        
         self.numPos = len(user_ch_file_paths)
 
         selectROI = False
