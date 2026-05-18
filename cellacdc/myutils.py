@@ -555,6 +555,12 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
         except Exception as err:
             info_txts.append('Qt: Not installed')
     
+    try:
+        branch_name = get_git_branch_name()
+        info_txts.append(f'Git branch: "{branch_name}"')
+    except Exception as err:
+        pass
+    
     info_txts.append(f'Working directory: {os.getcwd()}')
     
     if not cli_formatted_text:
@@ -1024,6 +1030,14 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
             traceback.print_exc()
     
     return 'ND'  
+
+def get_git_branch_name():
+    command = 'git rev-parse --abbrev-ref HEAD'
+    output = _subprocess_run_command(
+        command, shell=False, callback='check_output'
+    )
+    branch_name = output.decode().strip()
+    return branch_name
 
 def showInExplorer(path):
     if is_mac:
