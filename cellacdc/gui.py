@@ -31147,7 +31147,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     win.selectedChannel, _posData
                 )
                 cellacdc_df = _posData.segmInfo_df.loc[srcFilename].copy()
-                _, dstFilename = self.getPathAndFilenameNoExtFromChName(channel_name, _posData)
+                _, dstFilename = self.getPathAndFilenameNoExtFromChName(
+                    channel_name, _posData
+                )
                 if dstFilename is None:
                     self.worker.abort = True
                     self.waitCond.wakeAll()
@@ -31197,9 +31199,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             dataPrepWin.SizeT = self.data[0].SizeT
             dataPrepWin.SizeZ = self.data[0].SizeZ
             dataPrepWin.metadataAlreadyAsked = True
-            self.logger.info(f'Loading channel {user_ch_name} data...')
+            self.logger.info(f'Loading channel {channel_name} data...')
             dataPrepWin.loadFiles(
-                exp_path, user_ch_file_paths, user_ch_name
+                exp_path, user_ch_file_paths, channel_name
             )
             dataPrepWin.startAction.setDisabled(True)
             dataPrepWin.onlySelectingZslice = True
