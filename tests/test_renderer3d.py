@@ -200,7 +200,9 @@ def test_set_voxel_scale_noop_without_node():
     from cellacdc.renderer3d import VolumeRenderer3DWindow
 
     class _Bare(VolumeRenderer3DWindow):
-        def _init_vispy(self): pass
+        def _init_vispy(self):
+            if self._volume_node is None:
+                return
         def _init_ui(self): self._controls = None
 
     r = _Bare()
@@ -220,7 +222,9 @@ def test_set_voxel_scale_stride_correction():
     from unittest.mock import MagicMock
 
     class _Bare(VolumeRenderer3DWindow):
-        def _init_vispy(self): pass
+        def _init_vispy(self):
+            if self._volume_node is None:
+                return
         def _init_ui(self): self._controls = None
 
     r = _Bare()
@@ -263,7 +267,9 @@ def test_voxel_scale_persists_across_node_rebuild():
     from unittest.mock import MagicMock
 
     class _Bare(VolumeRenderer3DWindow):
-        def _init_vispy(self): pass
+        def _init_vispy(self):
+            if self._volume_node is None:
+                return
         def _init_ui(self): self._controls = None
 
     r = _Bare()
@@ -301,7 +307,9 @@ def test_step_size_noop_without_node():
     from cellacdc.renderer3d import VolumeRenderer3DWindow
 
     class _Bare(VolumeRenderer3DWindow):
-        def _init_vispy(self): pass
+        def _init_vispy(self):
+            if self._volume_node is None:
+                return
         def _init_ui(self): self._controls = None
 
     r = _Bare()
@@ -314,7 +322,9 @@ def test_set_opacity_noop_without_node():
     from cellacdc.renderer3d import VolumeRenderer3DWindow
 
     class _Bare(VolumeRenderer3DWindow):
-        def _init_vispy(self): pass
+        def _init_vispy(self):
+            if self._volume_node is None:
+                return
         def _init_ui(self): self._controls = None
 
     r = _Bare()
@@ -328,7 +338,9 @@ def test_set_opacity_clamps_to_unit_range():
     from unittest.mock import MagicMock, call, patch
 
     class _Bare(VolumeRenderer3DWindow):
-        def _init_vispy(self): pass
+        def _init_vispy(self):
+            if self._volume_node is None:
+                return
         def _init_ui(self): self._controls = None
 
     r = _Bare()
@@ -372,7 +384,9 @@ def test_apply_mode_cutoffs_noop_without_node():
     from cellacdc.renderer3d import VolumeRenderer3DWindow
 
     class _Bare(VolumeRenderer3DWindow):
-        def _init_vispy(self): pass
+        def _init_vispy(self):
+            if self._volume_node is None:
+                return
         def _init_ui(self): self._controls = None
 
     r = _Bare()
@@ -413,7 +427,9 @@ def test_plane_thickness_noop_without_node():
     from cellacdc.renderer3d import VolumeRenderer3DWindow
 
     class _Bare(VolumeRenderer3DWindow):
-        def _init_vispy(self): pass
+        def _init_vispy(self):
+            if self._volume_node is None:
+                return
         def _init_ui(self): self._controls = None
 
     r = _Bare()
@@ -427,7 +443,9 @@ def test_zplane_uniforms_noop_without_node():
     from cellacdc.renderer3d import VolumeRenderer3DWindow
 
     class _Bare(VolumeRenderer3DWindow):
-        def _init_vispy(self): pass
+        def _init_vispy(self):
+            if self._volume_node is None:
+                return
         def _init_ui(self): self._controls = None
 
     r = _Bare()
@@ -925,7 +943,9 @@ def test_apply_voxel_scale_updates_canvas():
     from unittest.mock import MagicMock
 
     class _Bare(VolumeRenderer3DWindow):
-        def _init_vispy(self): pass
+        def _init_vispy(self):
+            if self._volume_node is None:
+                return
         def _init_ui(self): self._controls = None
 
     r = _Bare()
