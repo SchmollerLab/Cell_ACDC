@@ -908,11 +908,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.viewMenu = menuBar.addMenu("&View")
         self.viewMenu.addSeparator()
         self.viewMenu.addAction(self.viewCcaTableAction)
+        self.viewMenu.addAction(self.launch3dRendererAction)
 
         # Image menu
         ImageMenu = menuBar.addMenu("&Image")
         ImageMenu.addSeparator()
         ImageMenu.addAction(self.imgPropertiesAction)
+        self.viewMenu.addAction(self.launch3dRendererAction)
         self.defaultRescaleIntensLutMenu = ImageMenu.addMenu(
             "Default method to rescale intensities (LUT)"
         )
@@ -1086,6 +1088,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         navigateToolBar.addAction(self.findIdAction)
         
         navigateToolBar.addWidget(self.zoomRectButton)
+        navigateToolBar.addAction(self.launch3dRendererAction)
 
         self.slideshowButton = QToolButton(self)
         self.slideshowButton.setIcon(QIcon(":eye-plus.svg"))
@@ -2914,6 +2917,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.manuallyEditCcaAction.setShortcut('Ctrl+Shift+P')
         self.manuallyEditCcaAction.setDisabled(True)
+        
+        self.launch3dRendererAction = QAction(
+            'Launch 3D renderer...', self
+        )
+        self.launch3dRendererAction.setIcon(QIcon(":3d.svg"))
+        self.launch3dRendererAction.setToolTip(
+            'Launch the 3D renderer in a separate window'
+        )
+        self.launch3dRendererAction.setDisabled(True)
 
         self.viewCcaTableAction = QAction(
             'View cell cycle annotations...', self
@@ -3385,6 +3397,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.loadPosAction.triggered.connect(self.loadPosTriggered)
         # self.reloadAction.triggered.connect(self.reload_cb)
         self.findIdAction.triggered.connect(self.findID)
+        self.launch3dRendererAction.triggered.connect(
+            self.launch3dRendererButton.click
+        )
         self.zoomRectButton.toggled.connect(self.zoomRectActionToggled)
         self.autoPilotButton.toggled.connect(self.autoPilotToggled)
         self.skipToNewIdAction.triggered.connect(self.skipForwardToNewID)        
@@ -3934,6 +3949,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         # z-slice scrollbars
         self.zSliceScrollBar = widgets.linkedQScrollbar(Qt.Horizontal)
+        
+        self.launch3dRendererButton = widgets.threeDPushButton()
+        self.launch3dRendererButton.setToolTip(
+            'Launch the 3D renderer in a separate window'
+        )
+        self.launch3dRendererButton.hide()
 
         self.zProjComboBox = widgets.ComboBox()
         self.zProjComboBox.setFont(_font)
@@ -4037,11 +4058,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             zSliceCheckboxLayout, row, 0, alignment=Qt.AlignRight
         )
         bottomLeftLayout.addWidget(self.zSliceScrollBar, row, 1, 1, 2)
-        bottomLeftLayout.addWidget(self.zProjComboBox, row, 3)
-        bottomLeftLayout.addWidget(self.zProjLockViewButton, row, 4)
-        bottomLeftLayout.addWidget(self.switchPlaneCombobox, row, 5)
+        bottomLeftLayout.addWidget(self.launch3dRendererButton, row, 3)
+        bottomLeftLayout.addWidget(self.zProjComboBox, row, 4)
+        bottomLeftLayout.addWidget(self.zProjLockViewButton, row, 5)
+        bottomLeftLayout.addWidget(self.switchPlaneCombobox, row, 6)
         self.zSliceSpinbox.connectValueChanged(self.onZsliceSpinboxValueChange)
-        self.zSliceSpinbox.editingFinished.connect(self.zSliceScrollBarReleased)
+        self.zSliceSpinbox.editingFinished.connect(
+            self.zSliceScrollBarReleased
+        )
 
         row += 1
         bottomLeftLayout.addWidget(
@@ -12498,6 +12522,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.zSliceScrollBar.show()
             self.zSliceCheckbox.show()
             self.zSliceSpinbox.show()
+            self.launch3dRendererButton.show()
+            self.launch3dRendererAction.setDisabled(False)
             self.switchPlaneCombobox.show()
             self.switchPlaneCombobox.setDisabled(False)
             self.SizeZlabel.show()
@@ -12516,6 +12542,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.SizeZlabel.hide()
             self.switchPlaneCombobox.hide()
             self.switchPlaneCombobox.setDisabled(True)
+            self.launch3dRendererButton.hide()
+            self.launch3dRendererAction.setDisabled(True)
             # Close the 3D renderer if open — no z-stack data available.
             self._hide_3d_renderer_if_open()
         
@@ -19868,6 +19896,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.zProjComboBox.activated.disconnect()
                 self.switchPlaneCombobox.sigPlaneChanged.disconnect()
                 self.zProjLockViewButton.toggled.disconnect()
+                self.launch3dRendererButton.clicked.disconnect()
             except Exception as e:
                 pass
             self.zSliceScrollBar.actionTriggered.connect(
@@ -19875,6 +19904,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             self.zSliceScrollBar.sliderReleased.connect(
                 self.zSliceScrollBarReleased
+            )
+            self.launch3dRendererButton.clicked.connect(
+                self._launch_3d_renderer
             )
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
             self.zProjComboBox.activated.connect(self.clearComboBoxFocus)
@@ -20245,7 +20277,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return None
         return data
 
-    def _launch_3d_renderer(self):
+    @exception_handler
+    def _launch_3d_renderer(self, *args, **kwargs):
         """Create (if needed) and show the 3D renderer; feed current data."""
         from . import renderer3d  # renderer3d itself only needs numpy/qtpy
 
@@ -20253,33 +20286,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if data is None:
             return
 
+        myutils.check_install_package(
+            'VisPy',
+            import_pkg_name='vispy',
+            pypi_name='vispy',
+            parent=self,
+        )
+        
+        myutils.check_install_package(
+            'PyOpenGL',
+            parent=self,
+        )
+        
         first_launch = self._renderer3d_window is None
-        try:
-            if first_launch:
-                adapter = _GuiWinRenderer3DAdapter(self)
-                self._renderer3d_window = renderer3d.create_renderer(
-                    parent=None,
-                    hide_on_close=True,
-                    adapter=adapter,
-                )
-            self._renderer3d_window.update_volume(data)
-            self._renderer3d_window.update_overlay_volumes(
-                self._get_overlay_zstacks()
+        if first_launch:
+            adapter = _GuiWinRenderer3DAdapter(self)
+            self._renderer3d_window = renderer3d.create_renderer(
+                parent=None,
+                hide_on_close=True,
+                adapter=adapter,
             )
-            voxel_sizes = self._get_current_voxel_sizes()
-            if voxel_sizes is not None:
-                self._renderer3d_window.set_voxel_scale(*voxel_sizes)
-        except Exception as exc:
-            from qtpy.QtWidgets import QMessageBox
-            QMessageBox.warning(
-                self, '3D Renderer unavailable',
-                f'Could not start the 3D renderer:\n{exc}\n\n'
-                'Make sure vispy and PyOpenGL are installed:\n'
-                '  pip install vispy PyOpenGL'
-            )
-            self._renderer3d_window = None
-            self.zProjComboBox.setCurrentText('max z-projection')
-            return
+        self._renderer3d_window.update_volume(data)
+        self._renderer3d_window.update_overlay_volumes(
+            self._get_overlay_zstacks()
+        )
+        voxel_sizes = self._get_current_voxel_sizes()
+        if voxel_sizes is not None:
+            self._renderer3d_window.set_voxel_scale(*voxel_sizes)
 
         posData = self.data[self.pos_i]
         self._renderer3d_window.setWindowTitle(
