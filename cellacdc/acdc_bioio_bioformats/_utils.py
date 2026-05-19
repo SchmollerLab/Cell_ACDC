@@ -133,6 +133,7 @@ def saveImgDataChannel(
         lazy_load: bool,
     ):
     savedSizeT = timeRangeToSave[1] - timeRangeToSave[0] + 1
+    imgData_ch = []
     if use_symlinks:
         filename = getFilename(
             filenameNOext, s0p, 'symlink', series, '.ini'
@@ -165,7 +166,6 @@ def saveImgDataChannel(
         filename = getFilename(
             filenameNOext, s0p, chName, series, '.tif'
         )
-        imgData_ch = []
 
     framesRange = range(timeRangeToSave[0]-1, timeRangeToSave[1])
     zslicesRange = range(SizeZ)

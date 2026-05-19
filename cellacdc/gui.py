@@ -29450,7 +29450,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             symlink_filepath = load.save_symlink_ini_from_image_filepath(
                 file_path, exp_path, channel_name
             )
-            self._openFolder(exp_path=exp_path, imageFilePath=symlink_filepath)
+            self._openFolder(
+                exp_path=exp_path, 
+                imageFilePath=symlink_filepath,
+                user_ch_name=channel_name
+            )
         elif ext == '.tif' or ext == '.npz':
             new_filepath = os.path.join(exp_path, new_filename)
             if not os.path.exists(new_filepath):
@@ -29756,7 +29760,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     @exception_handler
     def _openFolder(
-            self, checked=False, exp_path=None, imageFilePath=''
+            self, 
+            checked=False, 
+            exp_path=None, 
+            imageFilePath='', 
+            user_ch_name=None
         ):
         """Main function to load data.
 
@@ -29816,7 +29824,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ch_name_selector = prompts.select_channel_name(
             which_channel='segm', allow_abort=False
         )
-        user_ch_name = None
         if not is_pos_folder and not is_images_folder and not imageFilePath:
             images_paths = self._loadFromExperimentFolder(exp_path)
             if not images_paths:
@@ -29841,9 +29848,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             filename = os.path.basename(imageFilePath)
             self.ch_names = ch_names
-            user_ch_name = [
-                chName for chName in ch_names if filename.find(chName)!=-1
-            ][0]
+            if user_ch_name is None:
+                user_ch_name = [
+                    chName for chName in ch_names if filename.find(chName)!=-1
+                ][0]
             images_paths = [exp_path]
             pos_path = os.path.dirname(exp_path)
             exp_path = os.path.dirname(pos_path)

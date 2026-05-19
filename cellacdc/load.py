@@ -964,7 +964,8 @@ def get_filename_from_channel(
         if file.endswith('_symlink.ini'):
             cp_symlink = config.ConfigParser()
             cp_symlink.read(filepath)
-            if channel_name in cp_symlink.sections():
+            channel_section = f'channel_name.{channel_name}'
+            if channel_section in cp_symlink.sections():
                 symlink_channel_filepath = f'{filepath};;{channel_name}'
                 
         if file == f'{basename}{channel_name}':
@@ -979,12 +980,7 @@ def get_filename_from_channel(
             tif_path = filepath
     
     if symlink_channel_filepath:
-        cp_symlink = config.ConfigParser()
-        cp_symlink.read(symlink_channel_filepath)
-        if channel_name in cp_symlink.sections():
-            if logger is not None:
-                logger(f'Using channel file ({symlink_channel_filepath})...')
-            return symlink_channel_filepath
+        return symlink_channel_filepath
     
     if channel_filepath:
         if logger is not None:
@@ -1026,7 +1022,10 @@ def read_img_data_from_symlink(symlink_filepath, channel_name):
         img_data = bioio_load_image_data_from_symlink(cp_symlink, channel_name)
         img_data = np.squeeze(img_data)
     else:
-        img_data = load_image_data_from_symlink(cp_symlink, channel_name)
+        img_data = load_image_data_from_symlink(
+            cp_symlink=cp_symlink, 
+            channel_name=channel_name
+        )
     return img_data
 
 def imread(path):
@@ -4316,11 +4315,18 @@ def save_symlink_ini_from_image_filepath(
     }
     with open(symlink_ini_filepath, 'w') as configfile:
         cp_symlink.write(configfile)
+    
+    return symlink_ini_filepath
 
 def load_image_data_from_symlink(
-        cp_symlink: config.ConfigParser,
-        channel_name: str, 
+        cp_symlink: config.ConfigParser=None,
+        channel_name: str='', 
+        cp_symlink_filepath: os.PathLike=None
     ):
+    if cp_symlink_filepath is not None:
+        cp_symlink = config.ConfigParser()
+        cp_symlink.read(cp_symlink_filepath)
+
     section_name = f'channel_name.{channel_name}'
     section = cp_symlink[section_name]
     source_filepath = section['source_filepath']
@@ -4329,7 +4335,7 @@ def load_image_data_from_symlink(
         img_data.ndim == 3 and img_data.shape[-1] == 3
     )
     is_rgba = (
-        img_data.ndim == 4 and img_data.shape[-1] == 4
+        img_data.ndim == 3 and img_data.shape[-1] == 4
     )
     
     if not is_rgb and not is_rgba:

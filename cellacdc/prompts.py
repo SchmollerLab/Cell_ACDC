@@ -29,6 +29,7 @@ class select_channel_name:
         self.last_sel_channel = self._load_last_selection()
         self.was_aborted = False
         self.allow_abort = allow_abort
+        self.basename = None
 
     def _get_available_channels_from_metadata(
             self, metadata_csv_path, filenames, channelExt
@@ -108,7 +109,7 @@ class select_channel_name:
                 break
         
         chNames_found = False
-        channel_names = set()
+        channel_names = None
         basename = None
         if metadata_csv_path is not None:
             channel_names = self._get_available_channels_from_metadata(
@@ -123,10 +124,10 @@ class select_channel_name:
                 channel_names = load.get_channel_names_from_symlink(
                     os.path.join(images_path, file)
                 )
-                return channel_names, False
+                if self.basename is not None:
+                    return channel_names, False
         
         # Find basename as intersection of filenames
-        channel_names = set()
         self.basenameNotFound = False
         isBasenamePresent = myutils.checkDataIntegrity(filenames, images_path)
         if basename is None:
@@ -156,6 +157,10 @@ class select_channel_name:
             basename = file[i:i+k]
         self.basename = basename
         
+        if channel_names is not None:
+            return channel_names, False
+        
+        channel_names = set()
         basenameNotFound = [False]
         for file in filenames:
             if file.endswith('edited.h5'):
