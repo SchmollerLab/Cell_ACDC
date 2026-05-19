@@ -39,7 +39,7 @@ from . import cca_functions
 from . import sorted_cols
 from . import io
 from . import core
-from . import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+from . import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, ACDC_IMAGE_EXTENSIONS
 
 from . import GUI_INSTALLED
 
@@ -682,8 +682,12 @@ def save_acdc_df_file(
         images_path = os.path.dirname(csv_path)
         basename = get_basename(images_path)
         acdc_df.insert(0, 'basename', basename)
+        if 'basename' in acdc_df.columns:
+            acdc_df['basename'] = basename
+        else:
+            acdc_df.insert(0, 'basename', basename)
     except Exception as err:
-        pass
+        printl(f'[WARNING]: Failed to set basename column for "{csv_path}": {err}')
     
     try:
         acdc_df.to_csv(csv_path)
@@ -1042,6 +1046,15 @@ def load_image_file(filepath: str | os.PathLike):
         filepath, channel_name = parts
         if filepath.endswith('symlink.ini'):
             img_data = read_img_data_from_symlink(filepath, channel_name)
+        else:
+            raise ValueError(
+                "Malformed image filepath with ';;channel_name' suffix: "
+                f"{filepath} does not point to a symlink.ini file."
+            )
+    elif len(parts) > 2:
+        raise ValueError(
+            f"Malformed image filepath: expected at most one ';;' separator, got {filepath!r}"
+        )
     elif filepath.endswith('.h5'):
         with h5py.File(filepath, 'r') as h5f:
             img_data = h5f['data'][()]
@@ -4304,6 +4317,7 @@ def save_symlink_ini_from_image_filepath(
     symlink_ini_filename = f'{filename_no_ext}_symlink.ini'
     symlink_ini_filepath = os.path.join(images_folderpath, symlink_ini_filename)
     cp_symlink = config.ConfigParser()
+    use_bioio = 'True' if ext in ACDC_IMAGE_EXTENSIONS else 'False'
     cp_symlink[f'channel_name.{channel_name}'] = {
         'source_filepath': image_filepath,
         'frames_range': '0,1',
@@ -4311,7 +4325,7 @@ def save_symlink_ini_from_image_filepath(
         'channel_index': '0',
         'series_index': '0',
         'lazy_load': 'False',
-        'use_bioio': 'False',
+        'use_bioio': use_bioio,
     }
     with open(symlink_ini_filepath, 'w') as configfile:
         cp_symlink.write(configfile)

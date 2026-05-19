@@ -69,6 +69,9 @@ IMAGE_EXTENSIONS = (
 VIDEO_EXTENSIONS = (
     '.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv',
 )
+ACDC_IMAGE_EXTENSIONS = (
+    *IMAGE_EXTENSIONS, '.h5', '.npy', '.npz'
+)
 
 def _warn_ask_install_package(
         commands: Iterable[str], note_txt='', caller='SpotMAX'

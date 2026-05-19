@@ -1092,8 +1092,8 @@ def get_chname_from_basename(filename, basename, remove_ext=True):
     if aligned_idx != -1:
         chName = chName[:aligned_idx]
     
-    if chName.startswith('symlink.ini;;'):
-        chName = chName.split(';;')[1]
+    if ';;' in chName:
+        chName = chName.split(';;')[-1]
         
     return chName
 
