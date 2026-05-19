@@ -208,6 +208,8 @@ def test_set_voxel_scale_noop_without_node():
     r = _Bare()
     r._volume_node = None
     r.set_voxel_scale(0.5, 0.2, 0.2)  # must not raise
+    r.close()
+    del r
 
 
 def test_set_voxel_scale_stride_correction():
@@ -248,6 +250,9 @@ def test_set_voxel_scale_stride_correction():
     assert abs(scale[0] - 1.0)  < 1e-6, f"scale-x wrong: {scale[0]}"
     assert abs(scale[1] - 0.25) < 1e-6, f"scale-y wrong: {scale[1]}"
     assert abs(scale[2] - 1.25) < 1e-6, f"scale-z wrong: {scale[2]}"
+    
+    r.close()
+    del r
 
 
 def test_voxel_scale_persists_across_node_rebuild():
@@ -279,6 +284,9 @@ def test_voxel_scale_persists_across_node_rebuild():
     assert r._voxel_dz == 2.0
     assert r._voxel_dy == 1.0
     assert r._voxel_dx == 1.0
+    
+    r.close()
+    del r
 
 
 def test_write_png_stdlib(tmp_path):
@@ -315,6 +323,8 @@ def test_step_size_noop_without_node():
     r = _Bare()
     r._volume_node = None
     r.set_step_size(0.5)  # must not raise
+    r.close()
+    del r
 
 
 def test_set_opacity_noop_without_node():
@@ -330,6 +340,8 @@ def test_set_opacity_noop_without_node():
     r = _Bare()
     r._volume_node = None
     r.set_opacity(0.5)  # must not raise
+    r.close()
+    del r
 
 
 def test_set_opacity_clamps_to_unit_range():
@@ -362,6 +374,9 @@ def test_set_opacity_clamps_to_unit_range():
 
     r.set_opacity(0.7)    # in-range → pass through
     assert abs(assigned[-1] - 0.7) < 1e-9
+    
+    r.close()
+    del r
 
 
 def test_mip_cutoff_mode_sets():
@@ -392,6 +407,9 @@ def test_apply_mode_cutoffs_noop_without_node():
     r = _Bare()
     r._volume_node = None
     r._apply_mode_cutoffs('mip', 0.1, 0.9)  # must not raise
+    
+    r.close()
+    del r
 
 
 def test_depiction_modes_structure():
@@ -436,6 +454,8 @@ def test_plane_thickness_noop_without_node():
     r._volume_node = None
     r.set_plane_thickness(5.0)   # must not raise
     r.set_plane_thickness(0.0)   # must clamp silently (no node)
+    r.close()
+    del r
 
 
 def test_zplane_uniforms_noop_without_node():
@@ -453,6 +473,8 @@ def test_zplane_uniforms_noop_without_node():
     r._last_shape = None
     r.set_depiction('plane')       # must not raise
     r.set_zplane_position(0.5)     # must not raise
+    r.close()
+    del r
 
 
 def test_set_plane_uniforms_geometry():
@@ -966,3 +988,6 @@ def test_apply_voxel_scale_updates_canvas():
 
     assert len(assigned) == 1, "transform must be set exactly once"
     r._canvas.update.assert_called_once()
+    
+    r.close()
+    del r
