@@ -200,12 +200,6 @@ def resetViewRange(func):
         return result
     return inner_function
 
-
-# Dropdown text for the 3-D volume renderer option.  Defined once here so that
-# all gui.py code that matches against it uses the same string.
-_ZPROJMODE_3D = '3D z-render'
-
-
 class _GuiWinRenderer3DAdapter:
     """Thin adapter that wires a guiWin instance to VolumeRenderer3DWindow."""
 
@@ -219,9 +213,7 @@ class _GuiWinRenderer3DAdapter:
         return self._gui._get_current_voxel_sizes()
 
     def on_renderer_closed(self):
-        # When the user closes the 3D window, revert the dropdown to max proj.
-        if self._gui.zProjComboBox.currentText() == _ZPROJMODE_3D:
-            self._gui.zProjComboBox.setCurrentText('max z-projection')
+        pass
 
 
 class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
@@ -3950,7 +3942,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'max z-projection',
             'mean z-projection',
             'median z-proj.',
-            _ZPROJMODE_3D,
         ])
         self.zProjLockViewButton = widgets.LockPushButton()
         self.zProjLockViewButton.setCheckable(True)
@@ -20120,8 +20111,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setOverlayImages()
 
     def updateZproj(self, how):
-        # Persist effective 2-D projection mode (_ZPROJMODE_3D falls back to max)
-        persist_how = 'max z-projection' if how == _ZPROJMODE_3D else how
         for p, posData in enumerate(self.data[self.pos_i:]):
             if self.zProjLockViewButton.isChecked():
                 idx = [
@@ -20130,12 +20119,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 ]
             else:
                 idx = [(posData.filename, posData.frame_i)]
-            posData.segmInfo_df.loc[idx, 'which_z_proj_gui'] = persist_how
+            posData.segmInfo_df.loc[idx, 'which_z_proj_gui'] = how
             posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
-
-        # Hide the 3D renderer whenever we leave 3D-render mode.
-        if how != _ZPROJMODE_3D:
-            self._hide_3d_renderer_if_open()
 
         posData = self.data[self.pos_i]
         if how == 'single z-slice':
@@ -20144,13 +20129,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.zSliceCheckbox.setDisabled(False)
             self.setZprojDisabled(False)
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
-        elif how == _ZPROJMODE_3D:
-            self.zSliceScrollBar.setDisabled(True)
-            self.zSliceSpinbox.setDisabled(True)
-            self.zSliceCheckbox.setDisabled(True)
-            self.setZprojDisabled(self.isSegm3D)
-            self._launch_3d_renderer()
-            self.updateAllImages()
         else:
             self.zSliceScrollBar.setDisabled(True)
             self.zSliceSpinbox.setDisabled(True)
@@ -20355,8 +20333,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self._renderer3d_window is None:
             return
         if not self._renderer3d_window.isVisible():
-            return
-        if self.zProjComboBox.currentText() != _ZPROJMODE_3D:
             return
         data = self._get_current_zstack()
         if data is None:
@@ -26301,9 +26277,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if posData.SizeZ == 1:
             return None
         zProjHow = self.zProjComboBox.currentText()
-        if zProjHow == _ZPROJMODE_3D:
-            # The 3D renderer handles display; report max projection for 2D consumers.
-            return 'max z-projection'
         if zProjHow != 'single z-slice':
             return zProjHow
         
@@ -26337,10 +26310,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         idx = (posData.filename, frame_i)
         zProjHow_L0 = self.zProjComboBox.currentText()
-        # _ZPROJMODE_3D uses the GPU renderer window; the 2D view falls back to
-        # max projection so the main canvas always shows something useful.
-        if zProjHow_L0 == _ZPROJMODE_3D:
-            zProjHow_L0 = 'max z-projection'
         if isLayer0:
             try:
                 z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
@@ -26379,12 +26348,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
         except ValueError as e:
             zProjHow = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
-        
-        # Don't override the combobox when the 3D renderer is active: the 2D
-        # projection stored in segmInfo_df is a fallback ('max z-projection'),
-        # not the true current selection.
-        if self.zProjComboBox.currentText() != _ZPROJMODE_3D:
-            self.zProjComboBox.setCurrentText(zProjHow)
 
         reconnect = False
         try:
