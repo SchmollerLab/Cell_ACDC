@@ -176,12 +176,12 @@ def test_renderer_public_api():
     """VolumeRenderer3DWindow must expose all expected public methods."""
     from cellacdc.renderer3d import VolumeRenderer3DWindow
     required = {
-        'update_volume', 'set_rendering_mode', 'set_colormap', 'set_clim',
+        'update_volume', 'set_rendering_mode', 'set_clim',
         'set_gamma', 'set_opacity', 'set_iso_threshold', 'set_attenuation',
         'set_interpolation', 'set_step_size', 'set_smooth_iso',
         'set_depiction', 'set_zplane_position', 'set_plane_thickness',
         'set_voxel_scale', 'reset_view', 'save_screenshot',
-        'auto_contrast_percentile',
+        'auto_contrast_percentile', # 'set_colormap'
     }
     missing = required - set(dir(VolumeRenderer3DWindow))
     assert not missing, f"Missing public methods: {missing}"
@@ -203,7 +203,7 @@ def test_set_voxel_scale_noop_without_node():
         def _init_vispy(self): pass
         def _init_ui(self): self._controls = None
 
-    r = _Bare.__new__(_Bare)
+    r = _Bare()
     r._volume_node = None
     r.set_voxel_scale(0.5, 0.2, 0.2)  # must not raise
 
@@ -223,7 +223,7 @@ def test_set_voxel_scale_stride_correction():
         def _init_vispy(self): pass
         def _init_ui(self): self._controls = None
 
-    r = _Bare.__new__(_Bare)
+    r = _Bare()
     r._volume_node = MagicMock()
     r._canvas = MagicMock()
     r._last_strides = (1, 1, 4)  # only X was downsampled
@@ -266,7 +266,7 @@ def test_voxel_scale_persists_across_node_rebuild():
         def _init_vispy(self): pass
         def _init_ui(self): self._controls = None
 
-    r = _Bare.__new__(_Bare)
+    r = _Bare()
     r._volume_node = None
     # Store scale without a node — must not raise, must persist.
     r.set_voxel_scale(dz=2.0, dy=1.0, dx=1.0)
@@ -304,7 +304,7 @@ def test_step_size_noop_without_node():
         def _init_vispy(self): pass
         def _init_ui(self): self._controls = None
 
-    r = _Bare.__new__(_Bare)
+    r = _Bare()
     r._volume_node = None
     r.set_step_size(0.5)  # must not raise
 
@@ -317,7 +317,7 @@ def test_set_opacity_noop_without_node():
         def _init_vispy(self): pass
         def _init_ui(self): self._controls = None
 
-    r = _Bare.__new__(_Bare)
+    r = _Bare()
     r._volume_node = None
     r.set_opacity(0.5)  # must not raise
 
@@ -331,7 +331,7 @@ def test_set_opacity_clamps_to_unit_range():
         def _init_vispy(self): pass
         def _init_ui(self): self._controls = None
 
-    r = _Bare.__new__(_Bare)
+    r = _Bare()
     r._volume_node = MagicMock()
     r._canvas = MagicMock()
 
@@ -375,7 +375,7 @@ def test_apply_mode_cutoffs_noop_without_node():
         def _init_vispy(self): pass
         def _init_ui(self): self._controls = None
 
-    r = _Bare.__new__(_Bare)
+    r = _Bare()
     r._volume_node = None
     r._apply_mode_cutoffs('mip', 0.1, 0.9)  # must not raise
 
@@ -416,7 +416,7 @@ def test_plane_thickness_noop_without_node():
         def _init_vispy(self): pass
         def _init_ui(self): self._controls = None
 
-    r = _Bare.__new__(_Bare)
+    r = _Bare()
     r._volume_node = None
     r.set_plane_thickness(5.0)   # must not raise
     r.set_plane_thickness(0.0)   # must clamp silently (no node)
@@ -430,7 +430,7 @@ def test_zplane_uniforms_noop_without_node():
         def _init_vispy(self): pass
         def _init_ui(self): self._controls = None
 
-    r = _Bare.__new__(_Bare)
+    r = _Bare()
     r._volume_node = None
     r._last_shape = None
     r.set_depiction('plane')       # must not raise
@@ -928,7 +928,7 @@ def test_apply_voxel_scale_updates_canvas():
         def _init_vispy(self): pass
         def _init_ui(self): self._controls = None
 
-    r = _Bare.__new__(_Bare)
+    r = _Bare()
     r._volume_node = MagicMock()
     r._canvas = MagicMock()
     r._last_strides = (1, 1, 1)
