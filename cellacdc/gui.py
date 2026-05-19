@@ -31133,7 +31133,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     continue
                 
                 _, _filename = self.getPathAndFilenameNoExtFromChName(channel_name, _posData)
-                printl(_filename)
                 df = myutils.getDefault_SegmInfo_df(_posData, _filename)
                 _posData.segmInfo_df = pd.concat([df, _posData.segmInfo_df])
                 unique_idx = ~_posData.segmInfo_df.index.duplicated()

@@ -2215,7 +2215,7 @@ class createDataStructWin(QMainWindow):
             self, 'Use symbolic links?', txt, 
             buttonsTexts=(
                 'Cancel', 
-                widgets.copyPushButton('Copy image data to TIFF files'),
+                widgets.copyPushButton('Copy image data into Position folders'),
                 widgets.SegmentPushButton('Use symbolic links')
             )
         )

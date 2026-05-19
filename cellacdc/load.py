@@ -840,6 +840,11 @@ def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []
     for images_path in images_paths:
         img_path = get_filename_from_channel(images_path, user_ch_name)
+        if not img_path:
+            raise FileNotFoundError(
+                f'Could not find a file for channel "{user_ch_name}" '
+                f'in images path "{images_path}".'
+            )
         user_ch_file_paths.append(img_path)
     return user_ch_file_paths
 
@@ -955,46 +960,59 @@ def get_filename_from_channel(
         if is_channel_to_skip:
             continue
 
-        channelDataPath = os.path.join(images_path, file)
+        filepath = os.path.join(images_path, file)
         if file.endswith('_symlink.ini'):
-            symlink_channel_filepath = f'{channelDataPath};;{channel_name}'
-        elif file == f'{basename}{channel_name}':
-            channel_filepath = channelDataPath
+            cp_symlink = config.ConfigParser()
+            cp_symlink.read(filepath)
+            if channel_name in cp_symlink.sections():
+                symlink_channel_filepath = f'{filepath};;{channel_name}'
+                
+        if file == f'{basename}{channel_name}':
+            channel_filepath = filepath
         elif file.endswith(f'{basename}{channel_name}_aligned.h5'):
-            h5_aligned_path = channelDataPath
+            h5_aligned_path = filepath
         elif file.endswith(f'{basename}{channel_name}.h5'):
-            h5_path = channelDataPath
+            h5_path = filepath
         elif file.endswith(f'{basename}{channel_name}_aligned.npz'):
-            npz_aligned_path = channelDataPath
+            npz_aligned_path = filepath
         elif file.endswith(f'{basename}{channel_name}.tif'):
-            tif_path = channelDataPath
+            tif_path = filepath
     
     if symlink_channel_filepath:
-        if logger is not None:
-            logger(f'Using channel file ({symlink_channel_filepath})...')
-        return symlink_channel_filepath
-    elif channel_filepath:
+        cp_symlink = config.ConfigParser()
+        cp_symlink.read(symlink_channel_filepath)
+        if channel_name in cp_symlink.sections():
+            if logger is not None:
+                logger(f'Using channel file ({symlink_channel_filepath})...')
+            return symlink_channel_filepath
+    
+    if channel_filepath:
         if logger is not None:
             logger(f'Using channel file ({channel_filepath})...')
         return channel_filepath
-    elif h5_aligned_path:
+    
+    
+    if h5_aligned_path:
         if logger is not None:
             logger(f'Using .h5 aligned file ({h5_aligned_path})...')
         return h5_aligned_path
-    elif h5_path:
+    
+    if h5_path:
         if logger is not None:
             logger(f'Using .h5 file ({h5_path})...')
         return h5_path
-    elif npz_aligned_path:
+    
+    if npz_aligned_path:
         if logger is not None:
             logger(f'Using .npz aligned file ({npz_aligned_path})...')
         return npz_aligned_path
-    elif tif_path:
+    
+    if tif_path:
         if logger is not None:
             logger(f'Using .tif file ({tif_path})...')
         return tif_path
-    else:
-        return ''
+
+    return ''
 
 def read_img_data_from_symlink(symlink_filepath, channel_name):
     cp_symlink = config.ConfigParser()
