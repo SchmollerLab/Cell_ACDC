@@ -31,6 +31,7 @@ jobs:
         python -m pip install flake8 pytest
         python -m pip install -e .
         python -m pip install -r requirements_gui_pyqt6.txt
+        python -m pip install -r requirements_test.txt
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
