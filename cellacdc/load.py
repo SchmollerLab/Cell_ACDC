@@ -4317,7 +4317,7 @@ def save_symlink_ini_from_image_filepath(
     symlink_ini_filename = f'{filename_no_ext}_symlink.ini'
     symlink_ini_filepath = os.path.join(images_folderpath, symlink_ini_filename)
     cp_symlink = config.ConfigParser()
-    use_bioio = 'True' if ext in ACDC_IMAGE_EXTENSIONS else 'False'
+    use_bioio = 'False' if ext in ACDC_IMAGE_EXTENSIONS else 'True'
     cp_symlink[f'channel_name.{channel_name}'] = {
         'source_filepath': image_filepath,
         'frames_range': '0,1',
