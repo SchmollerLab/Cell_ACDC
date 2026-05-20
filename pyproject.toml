@@ -142,12 +142,7 @@ cellsam = [
 
 microsam = [
     "torch",
-    "torchvision",
-    "zarr",
-    "pooch",
-    "xxhash",
-    "micro-sam @ git+https://github.com/keejkrej/micro-sam.git",
-    "segment_anything",
+    "micro-sam @ git+https://github.com/keejkrej/micro-sam.git@cellacdc",
 ]
 
 all = [
