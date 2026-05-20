@@ -80,13 +80,13 @@ class TrackSubCellFeatures(NewThreadMultipleExpBaseUtil):
     
     def workerFinished(self, worker, aborted=False):
         if aborted:
-            txt = 'Tracking sub-cellular objects aborted.'
+            txt = 'Tracking sub-cellular objects cancelled.'
         else:
             txt = 'Tracking sub-cellular objects completed.'
         self.logger.info(txt)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
-            msg.warning(self, 'Process completed', html_utils.paragraph(txt))
+            msg.warning(self, 'Process cancelled', html_utils.paragraph(txt))
         else:
             msg.information(self, 'Process completed', html_utils.paragraph(txt))
         super().workerFinished(worker)

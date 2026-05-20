@@ -1029,7 +1029,7 @@ class mainWin(QMainWindow):
             buttonsTexts=('Cancel', 'Ok')
         )
         if msg.cancel:
-            print(f'{utilityName} aborted by the user.')
+            print(f'{utilityName} cancelled by the user.')
             return
         
         mostRecentPath = myutils.getMostRecentPath()
@@ -1038,7 +1038,7 @@ class mainWin(QMainWindow):
             mostRecentPath
         )
         if not exp_path:
-            print(f'{utilityName} aborted by the user.')
+            print(f'{utilityName} cancelled by the user.')
             return
         
         myutils.addToRecentPaths(exp_path)
@@ -1072,7 +1072,7 @@ class mainWin(QMainWindow):
                     buttonsTexts=('Cancel', 'Try again')
                 )
                 if msg.cancel:
-                    print(f'{utilityName} aborted by the user.')
+                    print(f'{utilityName} cancelled by the user.')
                     return
 
         if len(posFolders) > 1:
@@ -1111,7 +1111,7 @@ class mainWin(QMainWindow):
                 buttonsTexts=('Cancel', 'Ok')
             )
             if msg.cancel:
-                self.logger.info(f'{utilityName} aborted by the user.')
+                self.logger.info(f'{utilityName} cancelled by the user.')
                 return
         
         expPaths = {}
@@ -1150,7 +1150,7 @@ class mainWin(QMainWindow):
                 if not selected_exp_paths:
                     cancel = self.warnNoValidExpPaths(exp_path)
                     if cancel:
-                        self.logger.info(f'{utilityName} aborted by the user.')
+                        self.logger.info(f'{utilityName} cancelled by the user.')
                         return
                     continue
             
@@ -1162,7 +1162,7 @@ class mainWin(QMainWindow):
                             selected_path, exp_path
                         )
                         if not proceed:
-                            self.logger.info(f'{utilityName} aborted by the user.')
+                            self.logger.info(f'{utilityName} cancelled by the user.')
                             return
                         warn_exp_already_selected = False
                     expPaths[exp_path].extend(pos_folders)
@@ -1185,7 +1185,7 @@ class mainWin(QMainWindow):
                 break
         
         if not expPaths:
-            self.logger.info(f'{utilityName} aborted by the user.')
+            self.logger.info(f'{utilityName} cancelled by the user.')
             return
 
         if len(expPaths) > 1 or is_multi_pos:
@@ -1197,7 +1197,7 @@ class mainWin(QMainWindow):
             )
             selectPosWin.exec_()
             if selectPosWin.cancel:
-                self.logger.info(f'{utilityName} aborted by the user.')
+                self.logger.info(f'{utilityName} cancelled by the user.')
                 return
             selectedExpPaths = selectPosWin.selectedPaths
         else:
@@ -1839,7 +1839,7 @@ class mainWin(QMainWindow):
             buttonsTexts=('Cancel', *buttons)
         )
         if msg.cancel:
-            self.logger.info('Creating data structure process aborted by the user.')
+            self.logger.info('Creating data structure process cancelled by the user.')
             self.restoreDefaultButtons()
             return
         

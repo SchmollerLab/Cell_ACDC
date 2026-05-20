@@ -45,7 +45,7 @@ except ModuleNotFoundError:
     cancel = myutils._install_package_msg('YeastMate')
     if cancel:
         raise ModuleNotFoundError(
-            'User aborted YeastMate installation'
+            'User cancelled YeastMate installation'
         )
 
     subprocess.check_call(

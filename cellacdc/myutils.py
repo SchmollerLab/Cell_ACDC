@@ -767,7 +767,7 @@ def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
         )
         if msg.cancel:
             raise TypeError(
-                'Process aborted by the user.'
+                'Process cancelled by the user.'
             )
         return False
     return True
@@ -3433,7 +3433,7 @@ def check_install_package(
         if not proceed:
             if raise_on_cancel:
                 raise ModuleNotFoundError(
-                    f'User aborted {pkg_name} installation'
+                    f'User cancelled {pkg_name} installation'
                 )
             else:
                 return traceback.format_exc()
@@ -3511,7 +3511,7 @@ def check_matplotlib_version(qparent=None):
     proceed = _install_package_msg('matplotlib', parent=qparent, upgrade=True)
     if not proceed:
         raise ModuleNotFoundError(
-            f'User aborted "matplotlib" installation'
+            f'User cancelled "matplotlib" installation'
         )
     import subprocess
     try:

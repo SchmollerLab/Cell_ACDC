@@ -295,9 +295,9 @@ class renameFilesWin(QMainWindow):
 
     def doAbort(self):
         if self.allowExit:
-            exit('Execution aborted by the user')
+            exit('Execution cancelled by the user')
         else:
-            print('Conversion task aborted by the user.')
+            print('Conversion task cancelled by the user.')
             return True
 
     def closeEvent(self, event):

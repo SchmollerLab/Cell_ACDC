@@ -1,60 +1,3 @@
-"""
-Standalone 3D volume renderer for z-stack microscopy data.
-
-This module is self-contained and only depends on: numpy, qtpy, vispy.
-It is designed to be used independently or integrated into other applications
-via a thin adapter — see the Cell_ACDC adapter in gui.py for an example.
-
-Volume rendering follows the napari/vispy approach:
-
-Rendering
-  - GPU-accelerated raycasting via ``vispy.scene.visuals.Volume``
-  - 7 rendering modes: MIP, MinIP, Attenuated MIP, ISO, Translucent, Additive, Average
-  - Smooth ISO pre-filter (Gaussian σ=1, approximates napari's Sobel-Feldman shader)
-  - Plane cross-sections: XY / XZ / YZ (napari ``layer.depiction``)
-  - Anisotropic voxel-scale correction via ``STTransform``
-  - GPU-aware stride downsampling; vmin/vmax computed on full-resolution data
-
-Display
-  - TurntableCamera (elevation=30°, azimuth=−60°) — left-drag orbit, scroll zoom
-  - XYZ axis indicator at the volume corner (red=X, green=Y, blue=Z)
-  - Opacity, gamma, colormap, interpolation, ray-marching step size
-  - Percentile auto-contrast (1st–99.5th) and full-range [0, 1] reset
-  - Keyboard shortcuts: Ctrl+R reset view · Ctrl+A auto contrast · Ctrl+S screenshot
-  - QSettings persistence across sessions
-
-Standalone usage (no Cell_ACDC required)::
-
-    from qtpy.QtWidgets import QApplication
-    from cellacdc.renderer3d import create_renderer
-    import numpy as np
-    import sys
-
-    app = QApplication(sys.argv)
-    zstack = np.load('my_zstack.npy')   # shape (Z, Y, X)
-
-    renderer = create_renderer()
-    renderer.update_volume(zstack)
-    renderer.set_voxel_scale(dz=0.5, dy=0.2, dx=0.2)  # µm/pixel
-    renderer.auto_contrast_percentile()                  # brighten dim signals
-    renderer.show()
-
-    sys.exit(app.exec())
-
-To integrate into a host application, subclass :class:`VolumeRendererAdapter`
-and pass the instance to :func:`create_renderer`::
-
-    class MyAdapter(VolumeRendererAdapter):
-        def get_current_zstack(self):
-            return my_app.current_volume()   # (Z, Y, X) array
-        def get_voxel_sizes(self):
-            return my_app.voxel_sizes_um()   # (dz, dy, dx)
-        def on_renderer_closed(self):
-            my_app.on_3d_closed()
-
-    renderer = create_renderer(adapter=MyAdapter())
-"""
-
 from __future__ import annotations
 
 import numpy as np
@@ -75,6 +18,12 @@ from qtpy.QtWidgets import (
 )
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QKeySequence
+
+import pyqtgraph as pg
+
+from cellacdc import printl
+from cellacdc import widgets
+from cellacdc._run import _setup_app
 
 # ---------------------------------------------------------------------------
 # Rendering-mode registry
@@ -239,30 +188,6 @@ class VolumeRendererControls(QWidget):
         self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         row1.addWidget(self._mode_combo)
 
-        # Contrast limits
-        row1.addWidget(QLabel('Clim:'))
-        self._clim_min = QDoubleSpinBox()
-        self._clim_min.setRange(0.0, 1.0)
-        self._clim_min.setSingleStep(0.01)
-        self._clim_min.setDecimals(3)
-        self._clim_min.setValue(0.0)
-        self._clim_min.setFixedWidth(65)
-        self._clim_min.setToolTip('Lower contrast limit (0–1 normalised)')
-        self._clim_min.valueChanged.connect(self._on_clim_changed)
-        row1.addWidget(self._clim_min)
-
-        row1.addWidget(QLabel('–'))
-
-        self._clim_max = QDoubleSpinBox()
-        self._clim_max.setRange(0.0, 1.0)
-        self._clim_max.setSingleStep(0.01)
-        self._clim_max.setDecimals(3)
-        self._clim_max.setValue(1.0)
-        self._clim_max.setFixedWidth(65)
-        self._clim_max.setToolTip('Upper contrast limit (0–1 normalised)')
-        self._clim_max.valueChanged.connect(self._on_clim_changed)
-        row1.addWidget(self._clim_max)
-
         auto_btn = QPushButton('Auto')
         auto_btn.setFixedWidth(42)
         auto_btn.setToolTip(
@@ -417,20 +342,6 @@ class VolumeRendererControls(QWidget):
         self._opacity_spin.valueChanged.connect(self._on_opacity_changed)
         row2.addWidget(self._opacity_spin)
 
-        # Reset View
-        reset_btn = QPushButton('⟳ View')
-        reset_btn.setFixedWidth(58)
-        reset_btn.setToolTip('Reset camera to default orientation  (Ctrl+R)')
-        reset_btn.clicked.connect(self._renderer.reset_view)
-        row2.addWidget(reset_btn)
-
-        # Save screenshot
-        save_btn = QPushButton('💾 PNG')
-        save_btn.setFixedWidth(58)
-        save_btn.setToolTip('Save current 3D view as a PNG image  (Ctrl+S)')
-        save_btn.clicked.connect(self._renderer.save_screenshot)
-        row2.addWidget(save_btn)
-
         row2.addStretch()
 
         # Initial visibility for mode-specific controls
@@ -532,7 +443,7 @@ class VolumeRenderer3DWindow(QMainWindow):
 
         renderer = VolumeRenderer3DWindow()
         renderer.update_volume(zstack_array)   # (Z, Y, X) numpy array
-        renderer.show()
+        renderer.run()
 
     The window hides (rather than closes) when the user presses X so the GPU
     state is preserved for re-display.  Pass ``hide_on_close=False`` to
@@ -540,15 +451,21 @@ class VolumeRenderer3DWindow(QMainWindow):
     """
 
     def __init__(
-        self,
-        parent: QWidget | None = None,
-        hide_on_close: bool = True,
-        adapter: VolumeRendererAdapter | None = None,
-    ) -> None:
+            self,
+            parent: QWidget | None = None,
+            hide_on_close: bool = False,
+            adapter: VolumeRendererAdapter | None = None,
+            channels: list[str] | None = None,
+        ) -> None:
+        self.app, self.splashScreen = _setup_app(splashscreen=True)  
         super().__init__(parent)
         self.setWindowTitle('3D Z-Stack Renderer')
         self.resize(960, 720)
+        
+        if channels is None:
+            channels = ['Contrast']  # default single channel name
 
+        self.channels = channels
         self._hide_on_close = hide_on_close
         self._adapter = adapter
         self._volume_node = None
@@ -588,29 +505,66 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._axis_visual = scene.visuals.XYZAxis(parent=self._view.scene)
         self._axis_visual.visible = False
 
+    def _add_lut_items(self, scene_layout: QHBoxLayout) -> None:
+        self.lut_items_graphics_layout = pg.GraphicsLayoutWidget()
+        self.lut_items_graphics_layout.setBackground('black')
+        self.lut_items_layout = self.lut_items_graphics_layout.addLayout(
+            row=0, col=0
+        )
+        self.lut_items = {}
+        total_width = 0
+        for c, channel in enumerate(self.channels):
+            lut_item = widgets.baseHistogramLUTitem(
+                parent=self, 
+                name=channel, 
+                axisLabel=channel,
+                include_rescale_lut_options=False
+            )
+            self.lut_items[channel] = lut_item
+            self.lut_items_layout.addItem(lut_item, row=c, col=0)
+            
+            lut_item.sigLookupTableChanged.connect(self._on_lut_changed)
+            
+            total_width += lut_item.sizeHint(Qt.PreferredSize).width()
+        
+        scene_layout.addWidget(self.lut_items_graphics_layout, stretch=0)
+        
+        # Add some padding to prevent clipping
+        self.lut_items_graphics_layout.setFixedWidth(int(total_width + 20))  
+    
+    def _on_lut_changed(self, lut_item: widgets.baseHistogramLUTitem) -> None:
+        ticks = lut_item.gradient.listTicks()
+        ticks_pos = [x for t, x in ticks]
+        min_val = min(ticks_pos) if ticks_pos else 0.0
+        max_val = max(ticks_pos) if ticks_pos else 1.0
+        self.set_clim(min_val, max_val)
+    
     # -- Qt UI ----------------------------------------------------------------
-
+    
     def _init_ui(self) -> None:
+        self.topToolBar = widgets.VolumeRendererToolbar(parent=self)
+        self.addToolBar(Qt.TopToolBarArea, self.topToolBar)
+        
+        self.topToolBar.sigHomeView.connect(self.reset_view)
+        self.topToolBar.sigSave.connect(self.save_screenshot)
+        
         controls_box = QGroupBox('Rendering Controls')
         self._controls = VolumeRendererControls(self, parent=controls_box)
         box_layout = QVBoxLayout(controls_box)
         box_layout.setContentsMargins(4, 4, 4, 4)
         box_layout.addWidget(self._controls)
+        
+        scene_layout = QHBoxLayout()
+        lut_items = self._add_lut_items(scene_layout)
+        scene_layout.addWidget(self._canvas.native, stretch=1)
 
         central = QWidget()
         main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-        main_layout.addWidget(self._canvas.native, stretch=1)
+        main_layout.addLayout(scene_layout)
         main_layout.addWidget(controls_box)
         self.setCentralWidget(central)
-
-        # Keyboard shortcuts
-        QShortcut(QKeySequence('Ctrl+R'), self).activated.connect(self.reset_view)
-        QShortcut(QKeySequence('Ctrl+A'), self).activated.connect(
-            self.auto_contrast_percentile
-        )
-        QShortcut(QKeySequence('Ctrl+S'), self).activated.connect(self.save_screenshot)
 
         # Restore settings saved in a previous session.
         self._load_settings()
@@ -1330,16 +1284,22 @@ class VolumeRenderer3DWindow(QMainWindow):
                 self._adapter.on_renderer_closed()
         else:
             super().closeEvent(event)
+    
+    def run(self) -> None:
+        """Start the Qt event loop (if not already running)."""
+        super().show()
+        self.splashScreen.close()
+        self.app.exec_()
 
 
 # ---------------------------------------------------------------------------
 # Convenience factory
 # ---------------------------------------------------------------------------
 def create_renderer(
-    parent: QWidget | None = None,
-    hide_on_close: bool = True,
-    adapter: VolumeRendererAdapter | None = None,
-) -> VolumeRenderer3DWindow:
+        parent: QWidget | None = None,
+        hide_on_close: bool = True,
+        adapter: VolumeRendererAdapter | None = None,
+    ) -> VolumeRenderer3DWindow:
     """Return a new :class:`VolumeRenderer3DWindow` instance."""
     return VolumeRenderer3DWindow(
         parent=parent,

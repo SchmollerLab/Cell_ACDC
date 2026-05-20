@@ -434,11 +434,21 @@ def download_model_params():
             )
             print(e)
             pass
-                
+
 def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     from qtpy import QtCore
     if QtCore.QCoreApplication.instance() is not None:
-        return QtCore.QCoreApplication.instance(), None
+        class DummySplashScreen:
+            def __init__(self):
+                pass
+            
+            def show(self):
+                pass
+            
+            def close(self):
+                pass
+            
+        return QtCore.QCoreApplication.instance(), DummySplashScreen()
     
     from qtpy import QtWidgets
     # Handle high resolution displays:

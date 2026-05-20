@@ -103,7 +103,7 @@ class _WorkflowKernel:
             print('-'*60)
             self.logger.info(f'[ERROR]: {error}{error_up_str}')
             err_msg = (
-                'Cell-ACDC aborted due to **error**. '
+                'Cell-ACDC cancelled due to **error**. '
                 'More details above or in the following log file:\n\n'
                 f'{self.log_path}\n\n'
                 'If you cannot solve it, you can report this error by opening '

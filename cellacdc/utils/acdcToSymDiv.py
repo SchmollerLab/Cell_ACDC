@@ -218,10 +218,10 @@ class AcdcToSymDivUtil(QDialog):
             self.progressWin.close()
         
         if worker.abort:
-            txt = 'Adding lineage tree table ABORTED.'
+            txt = 'Adding lineage tree table cancelled.'
             self.logger.info(txt)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-            msg.warning(self, 'Process aborted', html_utils.paragraph(txt))
+            msg.warning(self, 'Process cancelled', html_utils.paragraph(txt))
         elif worker.errors or worker.missingAnnotErrors:
             if worker.errors:
                 self.warnErrors(worker.errors)

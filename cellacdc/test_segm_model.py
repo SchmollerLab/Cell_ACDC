@@ -97,7 +97,7 @@ win = widgets.QDialogListbox(
 win.exec_()
 
 if win.cancel:
-    sys.exit('Execution aborted')
+    sys.exit('Execution cancelled')
 
 model_name = win.selectedItemsText[0]
 if model_name == 'Automatic thresholding':

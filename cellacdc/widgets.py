@@ -5262,7 +5262,14 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
     sigAddColormap = Signal(object, str)
     sigRescaleIntes = Signal(object)
 
-    def __init__(self, name='image', axisLabel='', parent=None, **kwargs):
+    def __init__(
+            self, 
+            name='image', 
+            axisLabel='', 
+            parent=None, 
+            include_rescale_lut_options=True,
+            **kwargs
+        ):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
 
         super().__init__(**kwargs)
@@ -5294,53 +5301,54 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         self.gradient.menu.removeAction(HSV_action)
         self.gradient.menu.removeAction(RGB_ation)
         
-        # Rescale intensities (LUT)
-        rescaleIntensMenu = self.gradient.menu.addMenu(
-            'Rescale intensities (LUT)'
-        )
-        rescaleActionGroup = QActionGroup(self)
-        rescaleActionGroup.setExclusive(True)
-        
-        self.rescaleEach2DimgAction = QAction(
-            'Rescale each 2D image', rescaleIntensMenu
-        )
-        self.rescaleEach2DimgAction.setCheckable(True)
-        self.rescaleEach2DimgAction.setChecked(True)
-        rescaleActionGroup.addAction(self.rescaleEach2DimgAction)
-        rescaleIntensMenu.addAction(self.rescaleEach2DimgAction)
-        
-        self.rescaleAcrossZstackAction = QAction(
-            'Rescale across z-stack', rescaleIntensMenu
-        )
-        self.rescaleAcrossZstackAction.setCheckable(True)
-        self.rescaleAcrossZstackAction.setChecked(False)
-        rescaleActionGroup.addAction(self.rescaleAcrossZstackAction)
-        rescaleIntensMenu.addAction(self.rescaleAcrossZstackAction)
-        
-        self.rescaleAcrossTimeAction = QAction(
-            'Rescale across time frames', rescaleIntensMenu
-        )
-        self.rescaleAcrossTimeAction.setCheckable(True)
-        self.rescaleAcrossTimeAction.setChecked(False)
-        rescaleActionGroup.addAction(self.rescaleAcrossTimeAction)
-        rescaleIntensMenu.addAction(self.rescaleAcrossTimeAction)
-        
-        self.customRescaleAction = QAction(
-            'Choose custom levels...', rescaleIntensMenu
-        )
-        self.customRescaleAction.setCheckable(True)
-        rescaleActionGroup.addAction(self.customRescaleAction)
-        rescaleIntensMenu.addAction(self.customRescaleAction)
-        
-        self.doNotRescaleAction = QAction(
-            'Do no rescale, display raw image', rescaleIntensMenu
-        )
-        self.doNotRescaleAction.setCheckable(True)
-        rescaleActionGroup.addAction(self.doNotRescaleAction)
-        rescaleIntensMenu.addAction(self.doNotRescaleAction)
-        
-        self.rescaleActionGroup = rescaleActionGroup
-        rescaleActionGroup.triggered.connect(self.rescaleActionTriggered)
+        if include_rescale_lut_options:
+            # Rescale intensities (LUT)
+            rescaleIntensMenu = self.gradient.menu.addMenu(
+                'Rescale intensities (LUT)'
+            )
+            rescaleActionGroup = QActionGroup(self)
+            rescaleActionGroup.setExclusive(True)
+            
+            self.rescaleEach2DimgAction = QAction(
+                'Rescale each 2D image', rescaleIntensMenu
+            )
+            self.rescaleEach2DimgAction.setCheckable(True)
+            self.rescaleEach2DimgAction.setChecked(True)
+            rescaleActionGroup.addAction(self.rescaleEach2DimgAction)
+            rescaleIntensMenu.addAction(self.rescaleEach2DimgAction)
+            
+            self.rescaleAcrossZstackAction = QAction(
+                'Rescale across z-stack', rescaleIntensMenu
+            )
+            self.rescaleAcrossZstackAction.setCheckable(True)
+            self.rescaleAcrossZstackAction.setChecked(False)
+            rescaleActionGroup.addAction(self.rescaleAcrossZstackAction)
+            rescaleIntensMenu.addAction(self.rescaleAcrossZstackAction)
+            
+            self.rescaleAcrossTimeAction = QAction(
+                'Rescale across time frames', rescaleIntensMenu
+            )
+            self.rescaleAcrossTimeAction.setCheckable(True)
+            self.rescaleAcrossTimeAction.setChecked(False)
+            rescaleActionGroup.addAction(self.rescaleAcrossTimeAction)
+            rescaleIntensMenu.addAction(self.rescaleAcrossTimeAction)
+            
+            self.customRescaleAction = QAction(
+                'Choose custom levels...', rescaleIntensMenu
+            )
+            self.customRescaleAction.setCheckable(True)
+            rescaleActionGroup.addAction(self.customRescaleAction)
+            rescaleIntensMenu.addAction(self.customRescaleAction)
+            
+            self.doNotRescaleAction = QAction(
+                'Do no rescale, display raw image', rescaleIntensMenu
+            )
+            self.doNotRescaleAction.setCheckable(True)
+            rescaleActionGroup.addAction(self.doNotRescaleAction)
+            rescaleIntensMenu.addAction(self.doNotRescaleAction)
+            
+            self.rescaleActionGroup = rescaleActionGroup
+            rescaleActionGroup.triggered.connect(self.rescaleActionTriggered)
 
         # Add custom colormap action
         self.customCmapsMenu = self.gradient.menu.addMenu('Custom colormaps')
@@ -12084,3 +12092,31 @@ class warnVisualCppRequired(myMessageBox):
             self.screenShotWin.close()
             
         return super().closeEvent(event)
+
+class VolumeRendererToolbar(ToolBar):
+    sigHomeView = Signal()
+    sigSave = Signal()
+    
+    def __init__(self, name='Volume Renderer Toolbar', parent=None):
+        
+        super().__init__(name, parent)
+        
+        self.parentWin = parent
+        
+        self.setContextMenuPolicy(Qt.PreventContextMenu)
+        
+        self.homeViewAction = QAction(QIcon(':home.svg'), 'Home view', self)
+        self.homeViewAction.setShortcut('H')
+        self.homeViewAction.setToolTip(
+            'Reset the view to the default orientation and zoom level'
+        )
+        self.addAction(self.homeViewAction)
+        
+        self.saveAction = QAction(QIcon(':file-save.svg'), 'Save', self)
+        self.saveAction.setShortcut('Ctrl+S')
+        self.saveAction.setToolTip(
+            'Save the current view to PNG file'
+        )
+        self.addAction(self.saveAction)
+        
+        self.saveAction.triggered.connect(self.sigSave.emit)

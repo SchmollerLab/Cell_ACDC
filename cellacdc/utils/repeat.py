@@ -142,8 +142,8 @@ class repeatDataPrepWindow(QDialog):
                 )
                 if select_folder.cancel:
                     self.logger.info(
-                        'Process aborted by the user '
-                        '(cancelled at Postion selection)'
+                        'Process cancelled by the user '
+                        'during Position selection.'
                     )
                     self.stop()
                     return

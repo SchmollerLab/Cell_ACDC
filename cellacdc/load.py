@@ -3619,7 +3619,7 @@ class select_exp_folder:
         self.root.quit()
         self.root.destroy()
         if self.allow_abort:
-            exit('Execution aborted by the user')
+            exit('Execution cancelled by the user')
 
 
 def load_shifts(parent_path, basename=None):

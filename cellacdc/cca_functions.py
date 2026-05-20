@@ -78,7 +78,7 @@ def configuration_dialog():
             win.exec_()
             if win.cancel:
                 print('******************************')
-                print('Execution aborted by the user')
+                print('Execution cancelled by the user')
                 print('******************************')
                 raise InterruptedError
             pos = win.selectedItemsText
@@ -131,7 +131,7 @@ def get_segm_endname(images_path, basename):
     )
     selectSegmWin.exec_()
     if selectSegmWin.cancel:
-        raise FileNotFoundError(f'Segmentation file selection aborted by the user.')
+        raise FileNotFoundError(f'Segmentation file selection cancelled by the user.')
     
     return selectSegmWin.selectedItemsText[0]
     

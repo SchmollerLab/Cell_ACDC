@@ -288,7 +288,7 @@ class select_channel_name:
     def _abort(self):
         self.was_aborted = True
         if self.allow_abort:
-            exit('Execution aborted by the user')
+            exit('Execution cancelled by the user')
 
 def exportToImageFinished(filepath, qparent=None):
     from cellacdc import widgets

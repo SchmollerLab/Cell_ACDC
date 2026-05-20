@@ -42,7 +42,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
         )
         selectImageFile.exec_()
         if selectImageFile.cancel:
-            self.logger.info('napari-arboretum utility aborted.')
+            self.logger.info('napari-arboretum utility cancelled.')
             return
 
         imageFile = selectImageFile.selectedItemsText[0]
@@ -65,7 +65,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
             )
             win.exec_()
             if win.cancel:
-                self.logger.info('napari-arboretum utility aborted.')
+                self.logger.info('napari-arboretum utility cancelled.')
                 return
             selectedSegmEndName = win.selectedItemText
         else:
@@ -97,7 +97,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
         )
         selectProps.exec_()
         if selectProps.cancel:
-            self.logger.info('napari-arboretum utility aborted.')
+            self.logger.info('napari-arboretum utility cancelled.')
             return
         
         for col in selectProps.selectedItemsText:

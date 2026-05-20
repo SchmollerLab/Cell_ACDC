@@ -2347,7 +2347,7 @@ class dataPrepWin(QMainWindow):
                 )
                 if msg.cancel:
                     self.setEnabledCropActions(True)
-                    self.titleLabel.setText('Process aborted', color='w')
+                    self.titleLabel.setText('Process cancelled', color='w')
                     return
                 if yes == msg.clickedButton:
                     doZip = True

@@ -15659,7 +15659,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         win.exec_()
         if win.cancel:
-            self.logger.info('Tracking aborted.')
+            self.logger.info('Tracking cancelled.')
             return
 
         trackerName = win.selectedItemsText[0]
@@ -15680,7 +15680,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData, trackerName, qparent=self, return_init_params=True
         )
         if self.track_params is None:
-            self.logger.info('Tracking aborted.')
+            self.logger.info('Tracking cancelled.')
             return
         
         warningText = myutils.validate_tracker_input(
@@ -15711,7 +15711,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 last_cca_i, start_n
             )
             if not proceed:
-                self.logger.info('Tracking aborted.')
+                self.logger.info('Tracking cancelled.')
                 return
             
             self.logger.info(f'Removing annotations from frame n. {start_n}.')
@@ -17083,7 +17083,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         win.exec_()
         if win.cancel:
-            self.logger.info('Segmentation on multiple frames aborted.')
+            self.logger.info('Segmentation on multiple frames cancelled.')
             return
 
         idx = self.segmActionsVideo.index(action)
@@ -17304,8 +17304,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
             )
             if msg.cancel:
-                self.titleLabel.setText('Segmentation process aborted.')
-                self.logger.info('Segmentation process aborted.')
+                self.titleLabel.setText('Segmentation process cancelled.')
+                self.logger.info('Segmentation process cancelled.')
                 return
             self.segment3D = msg.clickedButton == segment3DButton
             if msg.doNotShowAgainCheckbox.isChecked():
@@ -17328,8 +17328,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             selectZtool.exec_()
             self.update_z_slice(orignal_z)
             if selectZtool.cancel:
-                self.titleLabel.setText('Segmentation process aborted.')
-                self.logger.info('Segmentation process aborted.')
+                self.titleLabel.setText('Segmentation process cancelled.')
+                self.logger.info('Segmentation process cancelled.')
                 return
             startZ = selectZtool.lowerZscrollbar.value()
             stopZ = selectZtool.upperZscrollbar.value()
@@ -17695,7 +17695,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         win.exec_()
         if win.cancel:
-            self.titleLabel.setText('Segmentation aborted.')
+            self.titleLabel.setText('Segmentation cancelled.')
             return
 
         use_gpu = win.init_kwargs.get('gpu', False)
@@ -20295,6 +20295,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         myutils.check_install_package(
             'PyOpenGL',
+            import_pkg_name='OpenGL',
+            pypi_name='PyOpenGL',
             parent=self,
         )
         
@@ -22199,7 +22201,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 msg = 'Cell cycle analysis initialised!'
                 self.titleLabel.setText(msg, color='g')
             elif msg.cancel:
-                msg = 'Cell cycle analysis aborted.'
+                msg = 'Cell cycle analysis cancelled.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.modeComboBox.setCurrentText(defaultMode)
@@ -22218,7 +22220,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 buttonsTexts=('Yes', 'No', 'Cancel')
             )
             if msg.cancel:
-                msg = 'Cell cycle analysis aborted.'
+                msg = 'Cell cycle analysis cancelled.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.modeComboBox.setCurrentText(defaultMode)
@@ -22351,7 +22353,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 msg = 'Lineage tree analysis initialised!'
                 self.titleLabel.setText(msg, color='g')
             elif msg.cancel:
-                msg = 'Lineage tree analysis aborted.'
+                msg = 'Lineage tree analysis cancelled.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.modeComboBox.setCurrentText(defaultMode)
@@ -22379,7 +22381,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.updateAllImages() # i dont think I need to change this
                 self.updateScrollbars() # i dont think I need to change this
             elif msg.cancel:
-                msg = 'Lineage tree analysis aborted.'
+                msg = 'Lineage tree analysis cancelled.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.modeComboBox.setCurrentText(defaultMode)
@@ -25103,7 +25105,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.initLabelRoiModelDialog = apps.QDialogSelectModel(parent=self)
         self.initLabelRoiModelDialog.exec_()
         if self.initLabelRoiModelDialog.cancel:
-            self.logger.info('Magic labeller aborted.')
+            self.logger.info('Magic labeller cancelled.')
             self.initLabelRoiModelDialog = None
             return True
         self.app.setOverrideCursor(Qt.WaitCursor)
@@ -25230,7 +25232,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'either one of the following files:<br><br>'
             f'{posData.basename}{fluo_ch}.tif<br>'
             f'{posData.basename}{fluo_ch}_aligned.npz<br><br>'
-            'Data loading aborted.'
+            'Data loading cancelled.'
         )
         msg.addShowInFileManagerButton(posData.images_path)
         okButton = msg.warning(
@@ -30012,7 +30014,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def loadingDataAborted(self):
         self.openFolderAction.setEnabled(True)
-        self.titleLabel.setText('Loading data aborted.')
+        self.titleLabel.setText('Loading data cancelled.')
     
     def cleanUpOnError(self):
         self.onEscape()

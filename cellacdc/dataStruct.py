@@ -1303,7 +1303,7 @@ class createDataStructWin(QMainWindow):
             cancel = myutils.install_javabridge_help(parent=self)
             if cancel:
                 raise ModuleNotFoundError(
-                    'User aborted javabridge installation'
+                    'User cancelled javabridge installation'
                 )
 
             isGitInstalled = myutils.check_git_installed(parent=self)
@@ -1357,7 +1357,7 @@ class createDataStructWin(QMainWindow):
                 cancel = myutils.install_java()
                 if cancel:
                     raise ModuleNotFoundError(
-                        'User aborted Java installation'
+                        'User cancelled Java installation'
                     )
                     return
 
@@ -1371,7 +1371,7 @@ class createDataStructWin(QMainWindow):
             cancel = myutils.install_java()
             if cancel:
                 raise ModuleNotFoundError(
-                    'User aborted Java installation'
+                    'User cancelled Java installation'
                 )
                 return
             myutils.install_javabridge(

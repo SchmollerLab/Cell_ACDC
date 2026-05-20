@@ -75,7 +75,7 @@ win = widgets.QDialogListbox(
 win.exec_()
 
 if win.cancel:
-    sys.exit('Execution aborted')
+    sys.exit('Execution cancelled during tracker selection')
 
 trackerName = win.selectedItemsText[0]
 
@@ -84,7 +84,7 @@ tracker, track_params = myutils.init_tracker(
     posData, trackerName, qparent=None, realTime=REAL_TIME_TRACKER
 )
 if track_params is None:
-    exit('Execution aborted')    
+    exit('Execution cancelled during tracker initialization')    
 print(posData.segm_data.shape)
 lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
 

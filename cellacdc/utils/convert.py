@@ -422,18 +422,18 @@ class convertFileFormatWin(QMainWindow):
 
     def doAbort(self):
         if self.allowExit:
-            exit('Execution aborted by the user')
+            exit('Execution cancelled by the user')
         else:
-            print('Conversion task aborted by the user.')
+            print('Conversion task cancelled by the user.')
             return True
 
     def closeEvent(self, event):
         if not self.success:
             msg = widgets.myMessageBox(showCentered=False)
             txt = html_utils.paragraph("""
-                Conversion process aborted.
+                Conversion process cancelled.
             """)
-            msg.warning(self, 'Process aborted', txt)
+            msg.warning(self, 'Process cancelled', txt)
         
         if self.actionToEnable is not None:
             self.actionToEnable.setDisabled(False)
