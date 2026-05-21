@@ -1,4 +1,5 @@
 from __future__ import annotations
+from functools import partial
 
 import numpy as np
 
@@ -11,10 +12,11 @@ from qtpy.QtWidgets import (
     QLabel,
     QMainWindow,
     QPushButton,
-    QShortcut,
     QSlider,
     QVBoxLayout,
     QWidget,
+    QGraphicsProxyWidget,
+    QGridLayout
 )
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QKeySequence
@@ -160,25 +162,121 @@ class VolumeRendererAdapter:
 class VolumeRendererControls(QWidget):
     """Parameter panel that drives a VolumeRenderer3DWindow."""
 
-    def __init__(self, renderer: 'VolumeRenderer3DWindow', parent: QWidget | None = None):
+    def __init__(
+            self, 
+            renderer: 'VolumeRenderer3DWindow', 
+            parent: QWidget | None = None,
+            channels: list[str] | None = None,
+        ):
         super().__init__(parent)
         self._renderer = renderer
+        if channels is None:
+            channels = ['Channel 1']  # default single channel name
+        self._channels = channels
         self._build()
 
     def _build(self) -> None:
-        # Two-row layout: top = rendering parameters, bottom = display parameters.
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(4, 2, 4, 2)
-        outer.setSpacing(2)
+        layout = widgets.FormLayout()
+        self.setLayout(layout)
+        
+        row = 0
+        self._gamma_spin = widgets.sliderWithSpinBox(
+            title_loc='in_line', 
+            isFloat=True, 
+            parent=self,
+            normalize_factor=10
+        )
+        
+        self._gamma_spin.setRange(0.1, 5.0)
+        self._gamma_spin.setSingleStep(0.1)
+        self._gamma_spin.setValue(1.0)
+        self._gamma_spin.setToolTip('Gamma correction')
+        self._gamma_spin.valueChanged.connect(self._on_gamma_changed)
+        _gamma_form_widget = widgets.formWidget(
+            self._gamma_spin,
+            labelTextLeft='Gamma:',
+        )
+        layout.addFormWidget(_gamma_form_widget, row=row)
+        
+        row += 1
+        self._step_spin = widgets.sliderWithSpinBox(
+            title_loc='in_line', 
+            isFloat=True, 
+            parent=self,
+            normalize_factor=10
+        )
+        self._step_spin.setRange(0.1, 2.0)
+        self._step_spin.setSingleStep(0.1)
+        self._step_spin.setValue(_DEFAULT_STEP_SIZE)
+        self._step_spin.setDecimals(2)
+        self._step_spin.setToolTip(
+            'Ray-marching step size relative to voxel size.\n'
+            'Smaller = sharper rendering; larger = faster.'
+        )
+        self._step_spin.valueChanged.connect(self._on_step_changed)
+        _step_form_widget = widgets.formWidget(
+            self._step_spin,
+            labelTextLeft='Step:',
+        )
+        layout.addFormWidget(_step_form_widget, row=row)
 
+        row += 1
+        self._opacity_spins = {}
+        for r, channel in enumerate(self._channels):
+            opacity_spin = widgets.sliderWithSpinBox(
+                title_loc='in_line', 
+                isFloat=True, 
+                parent=self,
+                normalize_factor=20
+            )
+            opacity_spin.setRange(0.0, 1.0)
+            opacity_spin.setSingleStep(0.05)
+            opacity_spin.setValue(1.0)
+            opacity_spin.setDecimals(2)
+            opacity_spin.setToolTip(
+                f'Opacity for {channel} (0 = transparent, 1 = opaque).\n'
+                'Mirrors napari\'s layer opacity control.'
+            )
+            opacity_spin.valueChanged.connect(
+                partial(self._on_opacity_changed, channel=channel)
+            )
+            _opacity_form_widget = widgets.formWidget(
+                opacity_spin,
+                labelTextLeft=f'Opacity ({channel}):',
+            )
+            layout.addFormWidget(_opacity_form_widget, row=row+r)
+            self._opacity_spins[channel] = opacity_spin
+
+        layout.addNewColumn(with_separator=True)
+
+        row = 0
+        self._mode_combo = QComboBox()
+        for mode_id, label in RENDERING_MODES:
+            self._mode_combo.addItem(label, mode_id)
+        self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        _mode_form_widget = widgets.formWidget(
+            self._mode_combo,
+            labelTextLeft='Rendering mode:',
+        )
+        layout.addFormWidget(_mode_form_widget, row=row)
+        
+        # Interpolation (napari: interpolation3d)
+        row += 1
+        self._interp_combo = QComboBox()
+        for iid, ilabel in INTERPOLATION_MODES:
+            self._interp_combo.addItem(ilabel, iid)
+        self._interp_combo.setToolTip(
+            'Volume texture interpolation (Linear = smooth, Nearest = pixelated)'
+        )
+        self._interp_combo.currentIndexChanged.connect(self._on_interp_changed)
+        _interp_form_widget = widgets.formWidget(
+            self._interp_combo,
+            labelTextLeft='Interpolation:',
+        )
+        layout.addFormWidget(_interp_form_widget, row=row)
+        
         row1 = QHBoxLayout()
-        row1.setSpacing(6)
         row2 = QHBoxLayout()
-        row2.setSpacing(6)
-        outer.addLayout(row1)
-        outer.addLayout(row2)
-
-        # ── Row 1: Rendering parameters ──────────────────────────────────────
 
         # Rendering mode
         row1.addWidget(QLabel('Render:'))
@@ -187,34 +285,6 @@ class VolumeRendererControls(QWidget):
             self._mode_combo.addItem(label, mode_id)
         self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         row1.addWidget(self._mode_combo)
-
-        auto_btn = QPushButton('Auto')
-        auto_btn.setFixedWidth(42)
-        auto_btn.setToolTip(
-            'Auto contrast: set limits to the 1st–99.5th percentile\n'
-            'of the raw volume data (excludes outlier voxels).\n'
-            'Useful for fluorescence data with bright artefacts.\n'
-            'Shortcut: Ctrl+A'
-        )
-        auto_btn.clicked.connect(self._on_auto_clim)
-        row1.addWidget(auto_btn)
-
-        reset_clim_btn = QPushButton('Full')
-        reset_clim_btn.setFixedWidth(36)
-        reset_clim_btn.setToolTip('Reset contrast limits to full range [0, 1]')
-        reset_clim_btn.clicked.connect(self._on_reset_clim)
-        row1.addWidget(reset_clim_btn)
-
-        # Gamma
-        row1.addWidget(QLabel('γ:'))
-        self._gamma_spin = QDoubleSpinBox()
-        self._gamma_spin.setRange(0.1, 5.0)
-        self._gamma_spin.setSingleStep(0.1)
-        self._gamma_spin.setValue(1.0)
-        self._gamma_spin.setFixedWidth(55)
-        self._gamma_spin.setToolTip('Gamma correction')
-        self._gamma_spin.valueChanged.connect(self._on_gamma_changed)
-        row1.addWidget(self._gamma_spin)
 
         # ISO threshold + smooth option (iso mode only)
         self._iso_label = QLabel('ISO:')
@@ -256,31 +326,7 @@ class VolumeRendererControls(QWidget):
 
         # ── Row 2: Display / camera parameters ───────────────────────────────
 
-        # Interpolation (napari: interpolation3d)
-        row2.addWidget(QLabel('Interp:'))
-        self._interp_combo = QComboBox()
-        for iid, ilabel in INTERPOLATION_MODES:
-            self._interp_combo.addItem(ilabel, iid)
-        self._interp_combo.setToolTip(
-            'Volume texture interpolation (Linear = smooth, Nearest = pixelated)'
-        )
-        self._interp_combo.currentIndexChanged.connect(self._on_interp_changed)
-        row2.addWidget(self._interp_combo)
-
-        # Ray-marching step size (napari: relative_step_size)
-        row2.addWidget(QLabel('Step:'))
-        self._step_spin = QDoubleSpinBox()
-        self._step_spin.setRange(0.1, 2.0)
-        self._step_spin.setSingleStep(0.1)
-        self._step_spin.setValue(_DEFAULT_STEP_SIZE)
-        self._step_spin.setDecimals(2)
-        self._step_spin.setFixedWidth(55)
-        self._step_spin.setToolTip(
-            'Ray-marching step size relative to voxel size.\n'
-            'Smaller = sharper rendering; larger = faster.'
-        )
-        self._step_spin.valueChanged.connect(self._on_step_changed)
-        row2.addWidget(self._step_spin)
+        
 
         # Depiction (napari: layer.depiction — volume vs plane)
         row2.addWidget(QLabel('Depict:'))
@@ -327,21 +373,6 @@ class VolumeRendererControls(QWidget):
         self._plane_thick_label.setVisible(False)
         self._plane_thick_spin.setVisible(False)
 
-        # Opacity — mirrors napari's layer.opacity → node.opacity
-        row2.addWidget(QLabel('Opacity:'))
-        self._opacity_spin = QDoubleSpinBox()
-        self._opacity_spin.setRange(0.0, 1.0)
-        self._opacity_spin.setSingleStep(0.05)
-        self._opacity_spin.setValue(1.0)
-        self._opacity_spin.setDecimals(2)
-        self._opacity_spin.setFixedWidth(55)
-        self._opacity_spin.setToolTip(
-            'Overall volume opacity (0 = transparent, 1 = opaque).\n'
-            'Mirrors napari\'s layer opacity control.'
-        )
-        self._opacity_spin.valueChanged.connect(self._on_opacity_changed)
-        row2.addWidget(self._opacity_spin)
-
         row2.addStretch()
 
         # Initial visibility for mode-specific controls
@@ -371,19 +402,6 @@ class VolumeRendererControls(QWidget):
         if lo >= hi:
             return
         self._renderer.set_clim(lo, hi)
-
-    def _on_auto_clim(self) -> None:
-        # Delegate to renderer so it can use the cached raw data for percentile.
-        self._renderer.auto_contrast_percentile()
-
-    def _on_reset_clim(self) -> None:
-        self._clim_min.blockSignals(True)
-        self._clim_max.blockSignals(True)
-        self._clim_min.setValue(0.0)
-        self._clim_max.setValue(1.0)
-        self._clim_min.blockSignals(False)
-        self._clim_max.blockSignals(False)
-        self._renderer.set_clim(0.0, 1.0)
 
     def _on_gamma_changed(self, value: float) -> None:
         self._renderer.set_gamma(value)
@@ -428,8 +446,8 @@ class VolumeRendererControls(QWidget):
     def _on_plane_thickness_changed(self, value: float) -> None:
         self._renderer.set_plane_thickness(value)
 
-    def _on_opacity_changed(self, value: float) -> None:
-        self._renderer.set_opacity(value)
+    def _on_opacity_changed(self, value: float, channel: str) -> None:
+        self._renderer.set_opacity(value, channel=channel)
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +481,7 @@ class VolumeRenderer3DWindow(QMainWindow):
         self.resize(960, 720)
         
         if channels is None:
-            channels = ['Contrast']  # default single channel name
+            channels = ['Channel 1']  # default single channel name
 
         self.channels = channels
         self._hide_on_close = hide_on_close
@@ -514,16 +532,32 @@ class VolumeRenderer3DWindow(QMainWindow):
         self.lut_items = {}
         total_width = 0
         for c, channel in enumerate(self.channels):
+            auto_btn = QPushButton('Auto')
+            auto_btn_proxy = QGraphicsProxyWidget()
+            auto_btn_proxy.setWidget(auto_btn)
+            self.lut_items_layout.addItem(auto_btn_proxy, row=0, col=c)
+            
+            reset_btn = QPushButton('Reset')
+            reset_btn_proxy = QGraphicsProxyWidget()
+            reset_btn_proxy.setWidget(reset_btn)
+            self.lut_items_layout.addItem(reset_btn_proxy, row=1, col=c)
+            
             lut_item = widgets.baseHistogramLUTitem(
                 parent=self, 
                 name=channel, 
                 axisLabel=channel,
                 include_rescale_lut_options=False
             )
-            self.lut_items[channel] = lut_item
-            self.lut_items_layout.addItem(lut_item, row=c, col=0)
+            self.lut_items[channel] = (lut_item, auto_btn, reset_btn)
+            self.lut_items_layout.addItem(lut_item, row=2, col=c)
             
             lut_item.sigLookupTableChanged.connect(self._on_lut_changed)
+            auto_btn.clicked.connect(
+                partial(self._on_auto_clim, lut_item=lut_item)
+            )
+            reset_btn.clicked.connect(
+                partial(self._on_reset_clim, lut_item=lut_item)
+            )
             
             total_width += lut_item.sizeHint(Qt.PreferredSize).width()
         
@@ -539,6 +573,25 @@ class VolumeRenderer3DWindow(QMainWindow):
         max_val = max(ticks_pos) if ticks_pos else 1.0
         self.set_clim(min_val, max_val)
     
+    def _on_auto_clim(self, lut_item: widgets.baseHistogramLUTitem) -> None:
+        lo, hi = self.get_auto_contrast_percentile()
+        max_tick_val = -np.inf
+        min_tick_val = np.inf
+        for tick, x in lut_item.gradient.listTicks():
+            if x > max_tick_val:
+                high_tick = tick
+                max_tick_val = x
+            
+            if x < min_tick_val:
+                low_tick = tick
+                min_tick_val = x
+            
+        lut_item.gradient.setTickValue(high_tick, hi)
+        lut_item.gradient.setTickValue(low_tick, lo)
+
+    def _on_reset_clim(self, lut_item: widgets.baseHistogramLUTitem) -> None:
+        lut_item.resetState()
+
     # -- Qt UI ----------------------------------------------------------------
     
     def _init_ui(self) -> None:
@@ -567,7 +620,7 @@ class VolumeRenderer3DWindow(QMainWindow):
         self.setCentralWidget(central)
 
         # Restore settings saved in a previous session.
-        self._load_settings()
+        # self._load_settings()
 
     # -- Settings persistence -------------------------------------------------
 
@@ -763,7 +816,14 @@ class VolumeRenderer3DWindow(QMainWindow):
         current_cmap = 'grays'
         current_interp = self._controls._interp_combo.currentData() or 'linear'
         current_step = self._controls._step_spin.value()
-        clim = (self._controls._clim_min.value(), self._controls._clim_max.value())
+        channels = list(self.lut_items.keys())
+        first_channel = channels[0]
+        lut_item = self.lut_items[first_channel][0]
+        ticks = lut_item.gradient.listTicks()
+        ticks_pos = [x for t, x in ticks]
+        min_val = min(ticks_pos) if ticks_pos else 0.0
+        max_val = max(ticks_pos) if ticks_pos else 1.0
+        clim = (min_val, max_val)
 
         shape_changed = vol.shape != self._last_shape
 
@@ -782,7 +842,8 @@ class VolumeRenderer3DWindow(QMainWindow):
                 parent=self._view.scene,
             )
             self._volume_node.gamma = self._controls._gamma_spin.value()
-            self._volume_node.opacity = self._controls._opacity_spin.value()
+            self._volume_node.opacity = (
+                self._controls._opacity_spins[first_channel].value())
             if current_mode in _ATTN_MODES:
                 self._volume_node.attenuation = self._controls._attn_spin.value()
             if current_mode in _ISO_MODES:
@@ -959,9 +1020,9 @@ class VolumeRenderer3DWindow(QMainWindow):
             self._apply_mode_cutoffs(current_mode, lo, hi)
             self._canvas.update()
 
-    def auto_contrast_percentile(
-        self, lo_pct: float = 1.0, hi_pct: float = 99.5
-    ) -> None:
+    def get_auto_contrast_percentile(
+            self, lo_pct: float = 1.0, hi_pct: float = 99.5
+        ) -> tuple[float, float]:
         """
         Set contrast limits to the *lo_pct*–*hi_pct* percentile of the raw
         volume data, clipped to [0, 1] in the normalised space.
@@ -995,14 +1056,7 @@ class VolumeRenderer3DWindow(QMainWindow):
                 if hi <= lo:
                     lo, hi = 0.0, 1.0
 
-        c = self._controls
-        c._clim_min.blockSignals(True)
-        c._clim_max.blockSignals(True)
-        c._clim_min.setValue(lo)
-        c._clim_max.setValue(hi)
-        c._clim_min.blockSignals(False)
-        c._clim_max.blockSignals(False)
-        self.set_clim(lo, hi)
+        return lo, hi
 
     def set_gamma(self, value: float) -> None:
         if self._volume_node is not None:
@@ -1012,7 +1066,7 @@ class VolumeRenderer3DWindow(QMainWindow):
         if self._volume_node is not None or self._overlay_nodes:
             self._canvas.update()
 
-    def set_opacity(self, value: float) -> None:
+    def set_opacity(self, value: float, channel: str | None = None) -> None:
         """
         Set the overall volume opacity (0 = fully transparent, 1 = opaque).
 
@@ -1276,7 +1330,7 @@ class VolumeRenderer3DWindow(QMainWindow):
     # -- Qt overrides ---------------------------------------------------------
 
     def closeEvent(self, event):
-        self._save_settings()
+        # self._save_settings()
         if self._hide_on_close:
             event.ignore()
             self.hide()
