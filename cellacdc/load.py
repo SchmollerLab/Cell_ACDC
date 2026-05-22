@@ -3698,6 +3698,9 @@ class OMEXML:
     
     def parse_metadata(self):
         self.omexml_string = self.read_omexml_string()
+        if self.omexml_string is None:
+            return
+        
         self.root = ET.fromstring(self.omexml_string)
         self.ome_schema = re.findall(r'({.+})OME', self.root.tag)[0]
     
