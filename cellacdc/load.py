@@ -21,6 +21,8 @@ import zipfile
 from natsort import natsorted
 import time
 
+from functools import partial
+
 import skimage
 import skimage.io
 import skimage.measure    
@@ -3510,15 +3512,25 @@ class select_exp_folder:
     def __init__(self):
         self.exp_path = None
 
+    def doNotAskAgainCallback(self, selectWindow):
+        self.doNotAskAgain = True
+        selectWindow.setAllSelected(True)
+        selectWindow.cancel = False
+        selectWindow.close()
+    
     def QtPrompt(
             self, parentQWidget, values,
             current=0, title='Select Position folder',
             CbLabel="Select folder to load:",
-            showinexplorer_button=False, full_paths=None,
-            allow_cancel=True, show=False, toggleMulti=False,
+            showinexplorer_button=False, 
+            full_paths=None,
+            allow_cancel=True, 
+            show=False, 
+            toggleMulti=False,
             allowMultiSelection=True, 
             informativeText='',
-            selectedValues=None
+            selectedValues=None,
+            addDoNotAskAgain=False
         ):
         from . import apps
         font = QtGui.QFont()
@@ -3529,6 +3541,16 @@ class select_exp_folder:
             showInFileManagerPath=self.exp_path
         )
         win.setFont(font)
+        self.doNotAskAgain = False
+        if addDoNotAskAgain:
+            doNotAskAgainButton = widgets.SkipPushButton(
+                'Select all Positions for next experiment folders'
+            )
+            win.buttonsLayout.insertWidget(3, doNotAskAgainButton)
+            doNotAskAgainButton.clicked.connect(
+                partial(self.doNotAskAgainCallback, selectWindow=win)
+            )
+        
         toFront = win.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
         win.setWindowState(toFront)
         win.activateWindow()
@@ -4196,6 +4218,13 @@ def get_basename(images_path):
     posData.getBasenameAndChNames()
     return posData.basename
 
+def get_channel_names(images_path):
+    images_files = myutils.listdir(images_path)
+    sample_filepath = os.path.join(images_path, images_files[0])
+    posData = loadData(sample_filepath, '')
+    posData.getBasenameAndChNames()
+    return posData.chNames
+
 def search_filepath_from_endname(exp_path, endname, include_spotmax_out=False):
     pos_foldernames = myutils.get_pos_foldernames(exp_path)
     for pos in pos_foldernames:
@@ -4310,13 +4339,20 @@ def load_image_and_bkgr_data(image_filepath: os.PathLike):
 def save_symlink_ini_from_image_filepath(
         image_filepath: os.PathLike,
         images_folderpath: os.PathLike,
-        channel_name: str 
+        channel_name: str,
+        basename: str=''
     ):
     filename = os.path.basename(image_filepath)
     filename_no_ext, ext = os.path.splitext(filename)
-    symlink_ini_filename = f'{filename_no_ext}_symlink.ini'
+    if not basename:
+        symlink_ini_filename = f'{filename_no_ext}_symlink.ini'
+    else:
+        symlink_ini_filename = f'{basename}symlink.ini'
     symlink_ini_filepath = os.path.join(images_folderpath, symlink_ini_filename)
     cp_symlink = config.ConfigParser()
+    if os.path.exists(symlink_ini_filepath):
+        cp_symlink.read(symlink_ini_filepath)
+        
     use_bioio = 'False' if ext in ACDC_IMAGE_EXTENSIONS else 'True'
     cp_symlink[f'channel_name.{channel_name}'] = {
         'source_filepath': image_filepath,
@@ -4331,6 +4367,57 @@ def save_symlink_ini_from_image_filepath(
         cp_symlink.write(configfile)
     
     return symlink_ini_filepath
+
+def create_symlinked_pos_folder(
+        src_pos_folderpath: os.PathLike,
+        dst_pos_folderpath: os.PathLike,
+        segm_endanmes_to_copy: None | list[str]=None
+    ):
+    if segm_endanmes_to_copy is None:
+        segm_endanmes_to_copy = []
+    
+    src_images_path = os.path.join(src_pos_folderpath, 'Images')
+    dst_images_path = os.path.join(dst_pos_folderpath, 'Images')
+    os.makedirs(dst_images_path, exist_ok=True)
+    
+    basename = get_basename(src_images_path)
+    channel_names = get_channel_names(src_images_path)
+    symlink_ini_filename = f'{basename}symlink.ini'
+    for file in myutils.listdir(src_images_path):
+        filepath = os.path.join(src_images_path, file)
+        dst_filepath = os.path.join(dst_images_path, file)
+        for channel in channel_names:
+            if file == f'{basename}{channel}.tif':
+                save_symlink_ini_from_image_filepath(
+                    filepath, dst_images_path, channel, 
+                    basename=basename
+                )
+            
+            elif file == f'{basename}{channel}.h5':
+                save_symlink_ini_from_image_filepath(
+                    filepath, dst_images_path, channel,
+                    basename=basename
+                )
+        
+        if file.endswith('metadata.csv'):
+            shutil.copy2(filepath, dst_filepath)
+        elif file.endswith('metadataXML.txt'):
+            shutil.copy2(filepath, dst_filepath)
+        
+        if not segm_endanmes_to_copy:
+            continue
+        
+        if file.endswith('segm_hyperparams.ini'):
+            shutil.copy2(filepath, dst_filepath)
+        elif file.endswith('segmInfo.csv'):
+            shutil.copy2(filepath, dst_filepath)
+        
+        for segm_endname in segm_endanmes_to_copy:
+            acdc_output_endname = segm_endname.replace('segm', 'acdc_output')
+            if file == f'{basename}{segm_endname}.npz':
+                shutil.copy2(filepath, dst_filepath)
+            if file == f'{basename}{acdc_output_endname}.csv':
+                shutil.copy2(filepath, dst_filepath)
 
 def load_image_data_from_symlink(
         cp_symlink: config.ConfigParser=None,

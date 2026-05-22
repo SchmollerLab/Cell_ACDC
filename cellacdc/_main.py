@@ -1796,6 +1796,15 @@ class mainWin(QMainWindow):
             """, 'important'
         )
         
+        symlink_info_admon = html_utils.to_admonition(
+            f"""
+            A symbolic link is a special type of file that acts as a pointer or alias, 
+            referring to another file by its path rather than its content.<br>
+            If you already created a Cell-ACDC compatible data structure and you just want to re-use the same Position folders,<br> 
+            you can create symbolic links to them.
+            """, 'note'
+        )
+        
         issues_href = f'<a href="{issues_url}">GitHub page</a>'
         txt = html_utils.paragraph(f"""
     To process microscopy files, Cell-ACDC uses the {bioio_href} library.<br><br>
@@ -1810,7 +1819,12 @@ class mainWin(QMainWindow):
     
     {conda_important_admon}<br>
     
-    Alternatively, if you <b>already pre-processed your microscopy files into .tif 
+    Alternatively, you can choose to create new Position folders with 
+    symbolic links to existing Position folders.<br>
+    
+    {symlink_info_admon}<br>
+    
+    Finally, if you <b>already pre-processed your microscopy files into .tif 
     files</b>,<br>
     you can choose to simply re-structure them into the Cell-ACDC compatible 
     format.<br><br>
@@ -1825,10 +1839,15 @@ class mainWin(QMainWindow):
         useBioFormatsButton = QPushButton(
             QIcon(':ome.svg'), ' Use BioIO ', msg
         )
+        symLinkToPosButton = QPushButton(
+            QIcon(':segment.svg'), 
+            'Create a symbolic link to existing Position(s) ', 
+            msg
+        )
         restructButton = QPushButton(
             QIcon(':folders.svg'), ' Re-structure image files ', msg
         )
-        buttons = [useBioFormatsButton, restructButton]
+        buttons = [useBioFormatsButton, symLinkToPosButton, restructButton]
         if is_mac:
             useFijiMacroButton = QPushButton(
                 QIcon(':fiji-logo.svg'), ' Use Fiji Macro ', msg
@@ -1869,7 +1888,15 @@ class mainWin(QMainWindow):
                     self.restoreDefaultButtons()
             elif useFijiMacro:
                 self.runFijiMacroWorkflow()
-        if msg.clickedButton == restructButton:
+        
+        if msg.clickedButton == symLinkToPosButton:
+            self.dataStructWin = dataStruct.CreateSymLinkToPosWin(
+                parent=self, version=self._version
+            )
+            self.dataStructWin.show()
+            self.dataStructWin.main()
+        
+        elif msg.clickedButton == restructButton:
             self.progressWin = apps.QDialogWorkerProgress(
                 title='Re-structure image files log', parent=self,
                 pbarDesc='Re-structuring image files running...'

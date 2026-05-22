@@ -10052,6 +10052,8 @@ class QtSelectItems(QDialog):
         multiPosButton.setCheckable(True)
         self.multiPosButton = multiPosButton
         bottomLayout.addWidget(multiPosButton, alignment=Qt.AlignLeft)
+        
+        self.buttonsLayout = bottomLayout
 
         listBox = widgets.listWidget()
         listBox.addItems(items)
@@ -10081,6 +10083,11 @@ class QtSelectItems(QDialog):
 
         self.setFont(font)
 
+    def setAllSelected(self, selected: bool):
+        for i in range(self.ListBox.count()):
+            item = self.ListBox.item(i)
+            item.setSelected(selected)
+    
     def setSelectedItems(self, selectedItemsText):
         if self.multiPosButton.isChecked():
             for i in range(self.ListBox.count()):
@@ -19246,13 +19253,14 @@ class SelectFoldersToAnalyse(QBaseDialog):
             onlyExpPaths=False, 
             scanFolderTree=True,
             instructionsText='Select experiment folders to analyse',
-            askSelectPosFolders=False
+            askSelectPosFolders=False,
+            title='Select experiments to analyse'
         ):
         super().__init__(parent)
         
         self.cancel = True
         self.onlyExpPaths = onlyExpPaths
-        self.setWindowTitle('Select experiments to analyse')
+        self.setWindowTitle(title)
         self.scanTree = scanFolderTree
         self.askSelectPosFolders = askSelectPosFolders
         
@@ -19309,7 +19317,10 @@ class SelectFoldersToAnalyse(QBaseDialog):
         
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        mainLayout.addStretch(1)
+        mainLayout.setStretch(0, 0)
+        mainLayout.setStretch(1, 0)
+        mainLayout.setStretch(2, 1)
+        mainLayout.setStretch(3, 0)
         
         self.setLayout(mainLayout)
         
@@ -19399,10 +19410,16 @@ class SelectFoldersToAnalyse(QBaseDialog):
             return list(exp_paths.keys())
         
         paths = []
+        doNotAskAgain = False
         for exp_path, pos_foldernames in exp_paths.items():
             if len(pos_foldernames) == 1:
                 paths.append(exp_path)
                 continue
+            
+            if doNotAskAgain:
+                for pos in pos_foldernames:
+                    paths.append(os.path.join(exp_path, pos))
+                    continue
             
             informativeText = html_utils.paragraph(
                 'The following experiment folder<br><br>'
@@ -19415,10 +19432,17 @@ class SelectFoldersToAnalyse(QBaseDialog):
             select_folder.QtPrompt(
                 self, values, toggleMulti=True, 
                 informativeText=informativeText,
-                selectedValues=values
+                selectedValues=values, 
+                addDoNotAskAgain=True
             )
             if select_folder.cancel:
                 return
+            
+            if select_folder.doNotAskAgain:
+                doNotAskAgain = True
+                for pos in pos_foldernames:
+                    paths.append(os.path.join(exp_path, pos))
+                    continue
             
             for pos in select_folder.selected_pos:
                 paths.append(os.path.join(exp_path, pos))

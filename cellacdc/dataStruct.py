@@ -1,5 +1,6 @@
 import sys
 import os
+import logging
 
 from typing import Literal
 
@@ -46,6 +47,7 @@ from . import acdc_fiji_path
 from . import fiji_macros
 from . import acdc_regex
 from . import io
+from . import workers
 
 if os.name == 'nt':
     try:
@@ -1180,20 +1182,20 @@ class createDataStructWin(QMainWindow):
         ):
         super().__init__(parent)
 
+        if version is None:
+            version = myutils.read_version()
+        
         self._version = version
 
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
-            module='dataStruct'
+            module='dataStruct-bioformats'
         )
         self.logger = logger
         self.log_path = log_path
         self.log_filename = log_filename
         self.logs_path = logs_path
 
-        if self._version is not None:
-            logger.info(f'Initializing Data structure module v{self._version}...')
-        else:
-            logger.info(f'Initializing Data structure module...')
+        logger.info(f'Initializing Data structure module v{self._version}...')
 
         self.start_JVM = start_JVM
         self.allowExit = allowExit
@@ -1205,7 +1207,6 @@ class createDataStructWin(QMainWindow):
             settings_csv_path, index_col='setting'
         )
 
-        version = myutils.read_version()
         self.setWindowTitle(f"Cell-ACDC v{version} - Data structure")
         self.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
@@ -1269,12 +1270,12 @@ class createDataStructWin(QMainWindow):
         self.logWin.setReadOnly(True)
         mainLayout.addWidget(self.logWin)
 
-        abortButton = widgets.cancelPushButton(' Stop processs ')
-        abortButton.clicked.connect(self.close)
+        cancelButton = widgets.cancelPushButton(' Stop processs ')
+        cancelButton.clicked.connect(self.close)
         
         buttonsLayout = QHBoxLayout()
         buttonsLayout.addStretch(1)
-        buttonsLayout.addWidget(abortButton)
+        buttonsLayout.addWidget(cancelButton)
         
         mainLayout.addLayout(buttonsLayout)
 
@@ -2463,4 +2464,316 @@ class InitFijiMacro:
     def cancel(self):
         self.logger.info('Running Bio-Formats from Fiji process cancelled.')
         
+class CreateSymLinkToPosWin(QMainWindow):
+    def __init__(
+            self, 
+            parent=None, 
+            version=None
+        ):
+        super().__init__(parent)
         
+        self.cancel = True
+
+        self._version = version
+        
+        self.logWin = QPlainTextEdit()
+        self.logWin.setReadOnly(True)
+
+        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+            module='dataStruct-symLinkToPos', QLogWidget=self.logWin
+        )
+        self.logger = logger
+        self.log_path = log_path
+        self.log_filename = log_filename
+        self.logs_path = logs_path     
+        
+        logger.info(
+            'Initializing Data structure module (symbolic link to Positions) '
+            f'v{self._version}...'
+        )
+
+        mainContainer = QWidget()
+        self.setCentralWidget(mainContainer)
+        
+        mainLayout = QVBoxLayout()
+        
+        mainContainer.setLayout(mainLayout)
+        
+        infoText = html_utils.paragraph("""
+            This module allows you to create symbolic links to your 
+            existing Position folders, instead of copying the raw microscopy files into them.<br><br>
+            To so so, follow the instructions in the pop-up windows.<br><br>
+            Progress will be displayed below.
+        """)
+        
+        infoLabel = QLabel(infoText)
+        
+        self.pbar = widgets.ProgressBarWithETA()
+        self.pbar.setValue(0)
+        self.pbar.setMaximum(0)
+        
+        mainLayout.addWidget(infoLabel)
+        mainLayout.addWidget(self.pbar)
+        mainLayout.addWidget(self.logWin)
+        
+        buttonsLayout = QHBoxLayout()
+        cancelButton = widgets.cancelPushButton(' Close ')
+        cancelButton.clicked.connect(self.cancelProcess)
+        
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+    
+    def main(self):
+        self.logger.info('Creating symbolic links to Position folders started.')
+        self.logger.info('Asking to select Position folders...')
+        selectFoldersWin = apps.SelectFoldersToAnalyse(
+            parent=self, 
+            instructionsText=
+                'Select experiment or specific <b>Position folders '
+                'to link<b>',
+            askSelectPosFolders=True,
+            title='Select Position folders to link'
+        )
+        selectFoldersWin.exec_()
+        if selectFoldersWin.cancel:
+            self.cancelProcess()
+            return
+        
+        expToPosFoldersMapper = (
+            selectFoldersWin.selectedExpFolderToPosFoldernamesMapper
+        )
+        
+        tot_num_pos = sum([
+            len(pos_folders) 
+            for _, pos_folders in expToPosFoldersMapper.items()
+        ])
+        self.pbar.setMaximum(tot_num_pos)
+        
+        text = html_utils.paragraph("""
+            The newly created folders with the symbolic links will 
+            have the <b>same folder structure of the source folders</b>.<br><br>
+            You will now be asked to <b>select the destination folder</b> where to 
+            create all new experiment folders.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'Select destination folder', text)
+        if msg.cancel:
+            self.cancelProcess()
+            return
+        
+        dst_folderpath = apps.get_existing_directory(
+            allow_images_path=False,
+            parent=self, 
+            caption='Select folder where to save configuration file',
+            basedir=myutils.getMostRecentPath(),
+            # options=QFileDialog.DontUseNativeDialog
+        )
+        if not dst_folderpath:
+            self.cancelProcess()
+            return
+        
+        exp_segm_files_to_copy_mapper = self.askSegmFilesToCopy(
+            expToPosFoldersMapper
+        )
+        if exp_segm_files_to_copy_mapper is None:
+            self.cancelProcess()
+            return
+        
+        self.startWorker(
+            expToPosFoldersMapper, 
+            dst_folderpath, 
+            exp_segm_files_to_copy_mapper
+        )
+        success = self.waitWorker()
+        
+        if success:
+            self.log_succes(dst_folderpath)
+        else:
+            self.log_failure()
+        
+        self.cancel = False
+        self.close()
+    
+    def log_succes(self, dst_folderpath):
+        self.logger.info('Symbolic links created successfully!')
+        
+        text = html_utils.paragraph(f"""
+            Symbolic links created successfully!<br><br>
+            Destination folder:
+            <copiable>{dst_folderpath}</copiable>
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(
+            self, 'Symbolic links created successfully!', text,
+            path_to_browse=dst_folderpath
+        )
+    
+    def log_failure(self):
+        self.logger.info('Failed creating symbolic links to Position folders.')
+        
+        text = html_utils.paragraph(f"""
+            Failed creating symbolic links to Position folders :(.<br><br>
+            More information in the terminal or in the following log file:
+            <copiable>{self.log_path}</copiable>
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Symbolic links creation failed', text,
+            path_to_browse=self.logs_path,
+            browse_button_text='Browse log files folder'
+        )
+    
+    def closeEvent(self, event):
+        try:
+            self.loop.exit()
+        except Exception as err:
+            pass
+    
+    def askSegmFilesToCopy(self, exp_pos_mapper):
+        text = html_utils.paragraph("""
+            If existing, Cell-ACDC can <b>copy the segmentation files</b> to 
+            the newly created Position folders<br><br>
+            You can choose to copy all of them, or let Cell-ACDC ask you 
+            specific files to copy.<br><br>
+            How do you want to proceed?
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        _, noButton, copyAllButton, selectButton = msg.question(
+            self, 
+            'Copy segmentation files?', 
+            text,
+            buttonsTexts=(
+                'Cancel', 
+                'No, do not copy segm. files', 
+                widgets.copyPushButton('Copy all segm. files'), 
+                widgets.setPushButton('Let me select segm. files to copy')
+            )
+        )
+        if msg.cancel:
+            return
+        
+        if msg.clickedButton == noButton:
+            exp_segm_files_mapper = {
+                exp_path: [] for exp_path in exp_pos_mapper.keys()
+            }
+            return exp_segm_files_mapper
+        
+        exp_segm_files_mapper = {}
+        copy_all = msg.clickedButton == copyAllButton
+        for exp_path, pos_foldernames in exp_pos_mapper.items():
+            existingSegmEndNames = load.get_segm_endnames_from_exp_path(
+                exp_path
+            )
+            
+            if copy_all:
+                exp_segm_files_mapper[exp_path] = list(existingSegmEndNames)
+                continue
+            
+            images_path = os.path.join(exp_path, pos_foldernames[0], 'Images')
+            basename = load.get_basename(images_path)
+            
+            win = apps.SelectSegmFileDialog(
+                existingSegmEndNames, 
+                exp_path, 
+                parent=self,
+                basename=basename,
+                allowMultipleSelection=True
+            )
+            win.exec_()
+            if win.cancel:
+                return
+            
+            exp_segm_files_mapper[exp_path] = list(win.selectedItemTexts)
+        
+        return exp_segm_files_mapper
+    
+    def startWorker(
+            self, 
+            exp_pos_mapper, 
+            dst_folderpath, 
+            exp_segm_files_to_copy_mapper
+        ):
+        printl(exp_segm_files_to_copy_mapper)
+        self._worker_thread = QThread()
+        
+        self._worker = workers.CreateSymLinkToPosWinWorker(
+            exp_pos_mapper, 
+            dst_folderpath, 
+            exp_segm_files_to_copy_mapper
+        )
+        self._worker.success = False
+
+        self._worker.signals.finished.connect(
+            self._worker_thread.quit
+        )
+        self._worker.signals.finished.connect(
+            self._worker.deleteLater
+        )
+        self._worker.signals.finished.connect(self._worker_thread.deleteLater)
+        
+        self._worker.signals.progress.connect(self.workerProgress)
+        self._worker.signals.progressBar.connect(self.workerUpdateProgressbar)
+        self._worker.signals.finished.connect(self.workerFinished)
+        self._worker.signals.critical.connect(self.workerCritical)
+        
+        self._worker_thread.started.connect( self._worker.run)
+        self._worker_thread.start()
+    
+    def workerProgress(self, text, loggerLevel='INFO'):
+        self.logger.log(getattr(logging, loggerLevel), text)
+    
+    def workerUpdateProgressbar(self, step):
+        self.pbar.update(step)
+    
+    @exception_handler
+    def workerCritical(self, worker_out: tuple[QObject, Exception]):
+        worker, error = worker_out
+        self._worker.success = False
+        try:
+            self.loop.exit()
+        except Exception as err:
+            pass
+        
+        try:
+            self._worker.thread().quit()
+            self._worker.deleteLater()
+            self._worker.thread().deleteLater()
+        except Exception as err:
+            # Worker already closed
+            pass
+        
+        raise error
+    
+    def waitWorker(self):
+        self.loop = QEventLoop()
+        self.loop.exec_()
+        
+        return self._worker.success
+    
+    def workerFinished(self):
+        self._worker.success = True
+        try:
+            self.loop.exit()
+        except Exception as err:
+            pass
+    
+    def cancelProcess(self):
+        try:
+            self.loop.exit()
+        except Exception as err:
+            pass
+        
+        text = html_utils.paragraph(f"""
+            Creating symbolic links to Position folders process cancelled.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Symbolic links creation cancelled', text,
+            path_to_browse=self.logs_path,
+            browse_button_text='Browse log files folder'
+        )
+
+        self.close()
