@@ -435,12 +435,16 @@ class mainWin(QMainWindow):
         concatMenu.addAction(self.concatAcdcDfsAction)    
         if SPOTMAX_INSTALLED:
             concatMenu.addAction(self.concatSpotmaxDfsAction) 
+            
+        folderDataStructMenu = utilsMenu.addMenu(
+            'Folder structure'
+        )
+        folderDataStructMenu.addAction(self.batchConverterAction)
+        folderDataStructMenu.addAction(self.symLinkPosAction)
 
         dataPrepMenu = utilsMenu.addMenu(
             'Image and segmentation files preprocessing'
         )
-                 
-        dataPrepMenu.addAction(self.batchConverterAction)
         dataPrepMenu.addAction(self.repeatDataPrepAction)
         dataPrepMenu.addAction(self.alignAction)
         dataPrepMenu.addAction(self.resizeImagesAction)
@@ -787,6 +791,10 @@ class mainWin(QMainWindow):
         self.batchConverterAction = QAction(
             'Create required data structure from image files...'
         )
+        self.symLinkPosAction = QAction(
+            'Create new folders with symbolic link to existing Position folders...'
+        )
+        
         self.repeatDataPrepAction = QAction(
             'Re-apply data prep steps to selected channels...'
         )
@@ -902,11 +910,15 @@ class mainWin(QMainWindow):
         )        
         
         self.batchConverterAction.triggered.connect(
-                self.launchImageBatchConverter
-            )
+            self.launchImageBatchConverter
+        )
+        self.symLinkPosAction.triggered.connect(
+            self.launchSymLinkPosProcess
+        )
+        
         self.repeatDataPrepAction.triggered.connect(
-                self.launchRepeatDataPrep
-            )
+            self.launchRepeatDataPrep
+        )
         self.welcomeGuideAction.triggered.connect(self.launchWelcomeGuide)
         self.toSymDivAction.triggered.connect(self.launchToSymDicUtil)
         self.calcMetricsAcdcDf.triggered.connect(self.launchCalcMetricsUtil)
@@ -1757,9 +1769,16 @@ class mainWin(QMainWindow):
         self.batchConverterWin = utilsConvert.ImagesToPositions(parent=self)
         self.batchConverterWin.show()
     
+    def launchSymLinkPosProcess(self):
+        self.dataStructWin = dataStruct.CreateSymLinkToPosWin(
+            parent=self, version=self._version
+        )
+        self.dataStructWin.show()
+        self.dataStructWin.main()
+    
     def launchRepeatDataPrep(self):
-        self.batchConverterWin = utilsRepeat.repeatDataPrepWindow(parent=self)
-        self.batchConverterWin.show()
+        self.repeatDataPrepWin = utilsRepeat.repeatDataPrepWindow(parent=self)
+        self.repeatDataPrepWin.show()
 
     def launchDataStruct(self, checked=False):
         self.dataStructButton.setPalette(self.moduleLaunchedPalette)
