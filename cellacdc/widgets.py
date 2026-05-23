@@ -5531,6 +5531,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         # action.triggered.connect(self.gradient.contextMenuClicked)
         action.delButton.clicked.connect(self.removeCustomGradient)
         action.cmap = colors.pg_ticks_to_colormap(gradient_ticks['ticks'])
+        action.cmap.name = gradient_name
         # self.gradient.menu.insertAction(self.saveColormapAction, action)
         self.customCmapsMenu.addAction(action)
         self.gradient.length = self.originalLength

@@ -20,8 +20,13 @@ if GUI_INSTALLED:
 try:
     import networkx as nx
     NETWORKX_INSTALLED = True
-except:
+except Exception as err:
     NETWORKX_INSTALLED = False
+
+try:
+    from vispy.color import Colormap as VisPyColormap
+except Exception as err:
+    pass
 
 __all__ = ['ColorMap']
 
@@ -367,3 +372,28 @@ def grayscale_apply_lut(image, lut):
 def get_complementary_color(rgba_str: str) -> str:
     r, g, b, a = rgba_str_to_values(rgba_str)
     return f'rgba({255 - r}, {255 - g}, {255 - b}, {a})'
+
+def pg_to_vispy_cmap(pg_cmap, n=256):
+    """Convert PyQtGraph colormap to vispy
+
+    Parameters
+    ----------
+    pg_cmap : pyqtgraph.colormap.ColorMap
+        PyQtGraph Colormap. For example, it can be obtained with 
+        `pyqtgraph.HistogramLUTItem.gradient.colorMap()`
+    n : int, optional
+        Number of colors, by default 256
+
+    Returns
+    -------
+    vispy.color.Colormap
+        VisPy colormap
+    """
+    
+    # Sample the colormap
+    colors = pg_cmap.getLookupTable(0.0, 1.0, n)
+
+    # Normalize to 0–1 (VisPy expects floats)
+    colors = np.array(colors) / 255.0
+
+    return VisPyColormap(colors)
