@@ -816,3 +816,27 @@ default_index_cols = (
 )
 
 single_pos_index_cols = ("experiment_folderpath", "Position_n")
+
+_SCRIPT_API_EXPORTS = {
+    "Viewer": ("cellacdc.viewer", "Viewer"),
+    "current_viewer": ("cellacdc.viewer", "current_viewer"),
+    "run": ("cellacdc._event_loop", "run"),
+    "get_qapp": ("cellacdc._event_loop", "get_qapp"),
+    "quit_app": ("cellacdc._event_loop", "quit_app"),
+}
+
+__all__ = list(_SCRIPT_API_EXPORTS)
+
+
+def __getattr__(name: str):
+    if name in _SCRIPT_API_EXPORTS:
+        module_name, attr_name = _SCRIPT_API_EXPORTS[name]
+        import importlib
+
+        module = importlib.import_module(module_name)
+        return getattr(module, attr_name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(set(globals()) | set(_SCRIPT_API_EXPORTS))

@@ -443,6 +443,57 @@ def download_model_params():
             pass
 
 
+def setup_gui_runtime(*, splashscreen=False):
+    """Shared Qt/pyqtgraph/model-download setup for CLI and script API."""
+    _setup_symlink_app_name_macos()
+
+    requires_exit = _setup_gui_libraries(exit_at_end=False)
+
+    _setup_numpy()
+
+    download_model_params()
+
+    if requires_exit:
+        _exit_on_setup()
+
+    from qtpy import QtWidgets, QtCore
+
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            myappid = "schmollerlab.cellacdc.pyqt.v1"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
+
+    try:
+        QtWidgets.QApplication.setAttribute(
+            QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+        )
+    except Exception:
+        pass
+
+    import pyqtgraph as pg
+
+    pg.setConfigOption("imageAxisOrder", "row-major")
+    try:
+        import numba  # noqa: F401
+
+        pg.setConfigOption("useNumba", True)
+    except Exception:
+        pass
+
+    try:
+        import cupy  # noqa: F401
+
+        pg.setConfigOption("useCupy", True)
+    except Exception:
+        pass
+
+    return _setup_app(splashscreen=splashscreen)
+
+
 def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     from qtpy import QtCore
 

@@ -192,6 +192,33 @@ Alternatively, you can also use **Cite this repository** button on the right
 ribbon of the GitHub page.
 
 
+Using Cell-ACDC from a script
+=============================
+
+Cell-ACDC can be launched from a Python script or notebook with a napari-style
+API. Install the GUI dependencies first:
+
+.. code-block:: bash
+
+   pip install "cellacdc[gui]"
+
+Then open the annotation GUI directly in **Segmentation and Tracking** mode:
+
+.. code-block:: python
+
+   import cellacdc
+
+   viewer = cellacdc.Viewer()
+   viewer.open("/path/to/experiment")
+   cellacdc.run()
+
+In a Jupyter notebook with ``%gui qt``, ``cellacdc.run()`` is a no-op because
+IPython already runs the Qt event loop.
+
+For view-only inspection of arrays without segmentation, use
+``cellacdc.plot.imshow`` instead.
+
+
 **IMPORTANT**: when citing Cell-ACDC make sure to also cite the paper of the 
 segmentation models and trackers you used! 
 See `here <https://cell-acdc.readthedocs.io/en/latest/citation.html>`__ 

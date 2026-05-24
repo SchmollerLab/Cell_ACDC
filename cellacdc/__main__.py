@@ -73,65 +73,7 @@ def main():
 
 
 def run_gui():
-    from ._run import (
-        _setup_gui_libraries,
-        _setup_symlink_app_name_macos,
-        _setup_numpy,
-        download_model_params,
-        _exit_on_setup,
-    )
-
-    _setup_symlink_app_name_macos()
-
-    requires_exit = _setup_gui_libraries(exit_at_end=False)
-
-    _setup_numpy()
-
-    download_model_params()
-
-    if requires_exit:
-        _exit_on_setup()
-
-    from qtpy import QtGui, QtWidgets, QtCore
-
-    if os.name == "nt":
-        try:
-            # Set taskbar icon in windows
-            import ctypes
-
-            myappid = "schmollerlab.cellacdc.pyqt.v1"  # arbitrary string
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-        except Exception as e:
-            pass
-
-    # Needed by pyqtgraph with display resolution scaling
-    try:
-        QtWidgets.QApplication.setAttribute(
-            QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-        )
-    except Exception as e:
-        pass
-
-    import pyqtgraph as pg
-
-    # Interpret image data as row-major instead of col-major
-    pg.setConfigOption("imageAxisOrder", "row-major")
-    try:
-        import numba
-
-        pg.setConfigOption("useNumba", True)
-    except Exception as e:
-        pass
-
-    try:
-        import cupy as cp
-
-        pg.setConfigOption("useCupy", True)
-    except Exception as e:
-        pass
-
-    # Create the application
-    app, splashScreen = _run._setup_app(splashscreen=True)
+    app, splashScreen = _run.setup_gui_runtime(splashscreen=True)
 
     from cellacdc import utils, printl
 
