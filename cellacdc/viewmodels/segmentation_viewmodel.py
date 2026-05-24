@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from cellacdc.models.segmentation_model import SegmentationModel
 
-from .model_registry import ModelRegistryViewModel
+from .model_registry_viewmodel import ModelRegistryViewModel
 
 
 @dataclass(frozen=True)

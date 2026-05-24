@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 
 from cellacdc.models.frame_navigation_model import FrameNavigationModel
 
-from .frame_metadata import FrameMetadataViewModel
-from .label_edits import LabelEditViewModel
+from .frame_metadata_viewmodel import FrameMetadataViewModel
+from .label_edits_viewmodel import LabelEditViewModel
 
 
 @dataclass(frozen=True)

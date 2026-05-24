@@ -8,7 +8,7 @@ from cellacdc.models.magic_prompts_model import (
     MagicPromptsModel,
     MagicPromptZoom,
 )
-from cellacdc.viewmodels.model_registry import ModelRegistryViewModel
+from cellacdc.viewmodels.model_registry_viewmodel import ModelRegistryViewModel
 
 
 @dataclass(frozen=True)

@@ -13,8 +13,8 @@ from cellacdc.models.data_loading_model import (
     OpenImageFileTarget,
 )
 
-from .formatting import FormattingViewModel
-from .workspace import WorkspaceViewModel
+from .formatting_viewmodel import FormattingViewModel
+from .workspace_viewmodel import WorkspaceViewModel
 
 
 @dataclass(frozen=True)

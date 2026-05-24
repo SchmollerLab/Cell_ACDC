@@ -13,10 +13,10 @@ from cellacdc.domain.visited_frames import (
     update_last_visited_frame_state,
 )
 
-from .cca_edits import CcaEditViewModel
-from .frame_metadata import FrameMetadataViewModel
-from .tables import TableViewModel
-from .workspace import WorkspaceViewModel
+from .cca_edits_viewmodel import CcaEditViewModel
+from .frame_metadata_viewmodel import FrameMetadataViewModel
+from .tables_viewmodel import TableViewModel
+from .workspace_viewmodel import WorkspaceViewModel
 
 
 DEFAULT_SESSION_SETTINGS = {

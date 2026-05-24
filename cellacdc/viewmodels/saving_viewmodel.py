@@ -11,11 +11,11 @@ from cellacdc.models.saving_model import (
     SavingModel,
 )
 
-from .cca_workflows import CcaWorkflowViewModel
-from .formatting import FormattingViewModel
+from .cca_workflows_viewmodel import CcaWorkflowViewModel
+from .formatting_viewmodel import FormattingViewModel
 from .measurements_viewmodel import MeasurementsViewModel
 from .tracking_viewmodel import TrackingViewModel
-from .workspace import WorkspaceViewModel
+from .workspace_viewmodel import WorkspaceViewModel
 
 
 @dataclass(frozen=True)

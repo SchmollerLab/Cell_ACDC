@@ -11,10 +11,10 @@ from cellacdc.domain.tracking import (
 )
 from cellacdc.models.tracking_model import TrackingModel
 
-from .edit_id import EditIdViewModel
-from .geometry import GeometryViewModel
-from .label_edits import LabelEditViewModel
-from .model_registry import ModelRegistryViewModel
+from .edit_id_viewmodel import EditIdViewModel
+from .geometry_viewmodel import GeometryViewModel
+from .label_edits_viewmodel import LabelEditViewModel
+from .model_registry_viewmodel import ModelRegistryViewModel
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from cellacdc.models.points_layers_model import PointsLayersModel
 
-from .points import PointsViewModel
+from .points_viewmodel import PointsViewModel
 
 
 @dataclass(frozen=True)

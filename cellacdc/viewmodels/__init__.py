@@ -42,42 +42,42 @@ from .canvas_right_image_viewmodel import CanvasRightImageViewModel
 from .canvas_selection_viewmodel import CanvasSelectionViewModel
 from .canvas_tool_viewmodel import CanvasToolViewModel
 from .cell_cycle_viewmodel import CellCycleViewModel
-from .cca_edits import CcaEditViewModel, CcaFrameEditResult
-from .cca_workflows import CcaWorkflowViewModel
+from .cca_edits_viewmodel import CcaEditViewModel, CcaFrameEditResult
+from .cca_workflows_viewmodel import CcaWorkflowViewModel
 from .curvature_viewmodel import CurvatureViewModel
 from .custom_annotations_viewmodel import CustomAnnotationsViewModel
 from .data_loading_viewmodel import DataLoadingViewModel
 from .deleted_rois_viewmodel import DeletedRoisViewModel
 from .display_decorations_viewmodel import DisplayDecorationsViewModel
 from .draw_clear_region_viewmodel import DrawClearRegionViewModel
-from .edit_id import EditIdViewModel
+from .edit_id_viewmodel import EditIdViewModel
 from .exporting_viewmodel import ExportingViewModel
-from .frame_metadata import FrameMetadataViewModel
+from .frame_metadata_viewmodel import FrameMetadataViewModel
 from .frame_navigation_viewmodel import FrameNavigationViewModel
-from .formatting import FormattingViewModel
-from .geometry import GeometryViewModel
+from .formatting_viewmodel import FormattingViewModel
+from .geometry_viewmodel import GeometryViewModel
 from .graphics_viewmodel import GraphicsViewModel
 from .image_controls_viewmodel import ImageControlsViewModel
 from .image_display_viewmodel import ImageDisplayViewModel
 from .label_editing_viewmodel import LabelEditingViewModel
-from .label_edits import LabelEditViewModel
+from .label_edits_viewmodel import LabelEditViewModel
 from .label_roi_viewmodel import LabelRoiViewModel
 from .label_transform_tools_viewmodel import LabelTransformToolsViewModel
 from .layout_controls_viewmodel import LayoutControlsViewModel
-from .lineage import LineageViewModel
+from .lineage_viewmodel import LineageViewModel
 from .lineage_interactions_viewmodel import LineageInteractionsViewModel
 from .magic_prompts_viewmodel import MagicPromptsViewModel
 from .main_menu_viewmodel import MainMenuViewModel
 from .main_toolbar_viewmodel import MainToolbarViewModel
-from .main import MainGuiViewModel
+from .main_viewmodel import MainGuiViewModel
 from .measurements_viewmodel import MeasurementsViewModel
 from .mode_controls_viewmodel import ModeControlsViewModel
-from .model_registry import ModelRegistryViewModel
-from .object_counts import ObjectCountViewModel
+from .model_registry_viewmodel import ModelRegistryViewModel
+from .object_counts_viewmodel import ObjectCountViewModel
 from .object_cleanup_viewmodel import ObjectCleanupViewModel
 from .object_properties_viewmodel import ObjectPropertiesViewModel
 from .object_search_viewmodel import ObjectSearchViewModel
-from .points import PointsViewModel
+from .points_viewmodel import PointsViewModel
 from .points_layers_viewmodel import PointsLayersViewModel
 from .preprocessing_viewmodel import PreprocessingViewModel
 from .quick_settings_viewmodel import QuickSettingsViewModel
@@ -86,13 +86,13 @@ from .seg_for_lost_ids_viewmodel import SegForLostIdsViewModel
 from .segmentation_viewmodel import SegmentationViewModel
 from .session_viewmodel import SessionViewModel
 from .status_hover_viewmodel import StatusHoverViewModel
-from .tables import TableViewModel
+from .tables_viewmodel import TableViewModel
 from .tool_activation_viewmodel import ToolActivationViewModel
 from .tracking_viewmodel import TrackingViewModel
 from .undo_redo_viewmodel import UndoRedoViewModel
 from .worker_viewmodel import WorkerViewModel
 from .window_events_viewmodel import WindowEventsViewModel
-from .workspace import WorkspaceViewModel
+from .workspace_viewmodel import WorkspaceViewModel
 
 __all__ = [
     'AcdcFrameMetadataResult',

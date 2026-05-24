@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 
 from cellacdc.models.canvas_selection_model import CanvasSelectionModel
 
-from .geometry import GeometryViewModel
-from .label_edits import LabelEditViewModel
+from .geometry_viewmodel import GeometryViewModel
+from .label_edits_viewmodel import LabelEditViewModel
 
 
 @dataclass(frozen=True)

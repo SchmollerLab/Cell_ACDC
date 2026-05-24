@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from cellacdc.models.object_cleanup_model import ObjectCleanupModel
 
-from .workspace import WorkspaceViewModel
+from .workspace_viewmodel import WorkspaceViewModel
 
 
 @dataclass(frozen=True)

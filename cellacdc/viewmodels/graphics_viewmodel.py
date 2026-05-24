@@ -12,10 +12,10 @@ from cellacdc.models.graphics_model import (
     OverlayVisibilityPlan,
 )
 
-from .formatting import FormattingViewModel
-from .geometry import GeometryViewModel
-from .label_edits import LabelEditViewModel
-from .workspace import WorkspaceViewModel
+from .formatting_viewmodel import FormattingViewModel
+from .geometry_viewmodel import GeometryViewModel
+from .label_edits_viewmodel import LabelEditViewModel
+from .workspace_viewmodel import WorkspaceViewModel
 
 
 @dataclass(frozen=True)

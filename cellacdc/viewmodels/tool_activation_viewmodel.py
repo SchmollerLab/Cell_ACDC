@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from cellacdc.models.tool_activation_model import ToolActivationModel
 
-from .label_edits import LabelEditViewModel
+from .label_edits_viewmodel import LabelEditViewModel
 from .tracking_viewmodel import TrackingViewModel
 
 

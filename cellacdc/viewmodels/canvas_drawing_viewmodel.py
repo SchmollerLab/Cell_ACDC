@@ -7,8 +7,8 @@ import numpy as np
 
 from cellacdc.models.canvas_drawing_model import CanvasDrawingModel
 
-from .geometry import GeometryViewModel
-from .label_edits import LabelEditViewModel
+from .geometry_viewmodel import GeometryViewModel
+from .label_edits_viewmodel import LabelEditViewModel
 
 
 @dataclass(frozen=True)

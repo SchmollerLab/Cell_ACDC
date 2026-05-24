@@ -11,7 +11,7 @@ from cellacdc.models.image_display_model import (
     RightPaneVisibilityPlan,
 )
 
-from .formatting import FormattingViewModel
+from .formatting_viewmodel import FormattingViewModel
 from .preprocessing_viewmodel import PreprocessingViewModel
 
 

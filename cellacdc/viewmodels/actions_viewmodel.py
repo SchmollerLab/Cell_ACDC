@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from cellacdc.models.actions_model import ActionsModel
 
 from .app_shell_viewmodel import AppShellViewModel
-from .model_registry import ModelRegistryViewModel
+from .model_registry_viewmodel import ModelRegistryViewModel
 
 
 @dataclass(frozen=True)

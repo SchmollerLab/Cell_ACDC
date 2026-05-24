@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from cellacdc.models.window_events_model import WindowEventsModel
 
-from .geometry import GeometryViewModel
+from .geometry_viewmodel import GeometryViewModel
 
 
 @dataclass(frozen=True)

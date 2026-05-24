@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 
 from cellacdc.models.label_editing_model import LabelEditingModel
 
-from .cca_edits import CcaEditViewModel
-from .edit_id import EditIdViewModel
-from .geometry import GeometryViewModel
-from .label_edits import LabelEditViewModel
+from .cca_edits_viewmodel import CcaEditViewModel
+from .edit_id_viewmodel import EditIdViewModel
+from .geometry_viewmodel import GeometryViewModel
+from .label_edits_viewmodel import LabelEditViewModel
 
 
 @dataclass(frozen=True)

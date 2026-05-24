@@ -10,10 +10,10 @@ from cellacdc.models.cell_cycle_model import (
     CellCycleModel,
 )
 
-from .cca_edits import CcaEditViewModel
-from .cca_workflows import CcaWorkflowViewModel
-from .lineage import LineageViewModel
-from .model_registry import ModelRegistryViewModel
+from .cca_edits_viewmodel import CcaEditViewModel
+from .cca_workflows_viewmodel import CcaWorkflowViewModel
+from .lineage_viewmodel import LineageViewModel
+from .model_registry_viewmodel import ModelRegistryViewModel
 
 
 @dataclass(frozen=True)

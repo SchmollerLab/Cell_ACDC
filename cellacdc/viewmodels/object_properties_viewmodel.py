@@ -8,7 +8,7 @@ import numpy as np
 from cellacdc.models.object_properties_model import ObjectPropertiesModel
 
 from .measurements_viewmodel import MeasurementsViewModel
-from .object_counts import ObjectCountViewModel
+from .object_counts_viewmodel import ObjectCountViewModel
 
 
 
