@@ -1,11 +1,18 @@
-from typing import List, Dict, Any, Tuple
-from . import core, workers, widgets, html_utils, apps, preprocess, myutils, printl
-from qtpy.QtCore import QThread, QTimer, QMutex, QWaitCondition
-from natsort import natsorted
-import numpy as np
-# from gui import guiWin
+"""Combine channels GUI mixin extracted from gui_combine.py."""
 
-class CombineGuiElements:
+from __future__ import annotations
+
+from typing import Any, Dict, List, Tuple
+
+import numpy as np
+from natsort import natsorted
+from qtpy.QtCore import QMutex, QThread, QTimer, QWaitCondition
+
+from cellacdc import apps, core, html_utils, myutils, preprocess, printl, widgets, workers
+
+
+
+class CombineGui:
     def _setup_vars_combine(self):
         self.combineWorker = None
         self.combineDialog = None
@@ -310,7 +317,7 @@ class CombineGuiElements:
         self.combineDialog.activateWindow()
         self.combineDialog.emitSigPreviewToggled()
         
-class CombineGUIWorker:
+class CombineWorker:
     def combineEnqueueCurrentImage(self, steps, keep_input_data_type, formula):
         posData = self.data[self.pos_i]
 

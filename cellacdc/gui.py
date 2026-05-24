@@ -5,9 +5,12 @@ import numpy as np
 from qtpy.QtCore import Qt, QTimer, Signal
 from qtpy.QtWidgets import QMainWindow, QButtonGroup, QWidget
 
-from . import myutils, autopilot, whitelist, gui_combine
+from . import myutils, autopilot, favourite_func_metrics_csv_path, settings_folderpath
 from .myutils import setupLogger
 from .gui_decorators import get_data_exception_handler, resetViewRange
+
+custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
+shortcut_filepath = os.path.join(settings_folderpath, 'shortcuts.ini')
 from .mixins import (
     Actions,
     AnnotationDisplay,
@@ -21,6 +24,8 @@ from .mixins import (
     CanvasSelection,
     CanvasTool,
     CellCycle,
+    CombineGui,
+    CombineWorker,
     CurvatureTools,
     CustomAnnotations,
     DataLoading,
@@ -57,6 +62,7 @@ from .mixins import (
     ToolActivation,
     Tracking,
     UndoRedo,
+    WhitelistGui,
     WindowEvents,
     Worker,
 )
@@ -72,9 +78,10 @@ if os.name == 'nt':
         pass
 
 
-class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
-             gui_combine.CombineGuiElements,
-             gui_combine.CombineGUIWorker,
+class guiWin(QMainWindow,
+             WhitelistGui,
+             CombineGui,
+             CombineWorker,
              Geometry,
              Worker,
              Session,

@@ -14,6 +14,7 @@ from .canvas_right_image import CanvasRightImage
 from .canvas_selection import CanvasSelection
 from .canvas_tool import CanvasTool
 from .cell_cycle import CellCycle
+from .combine import CombineGui, CombineWorker
 from .curvature_tools import CurvatureTools
 from .custom_annotations import CustomAnnotations
 from .data_loading import DataLoading
@@ -50,5 +51,6 @@ from .status_hover import StatusHover
 from .tool_activation import ToolActivation
 from .tracking import Tracking
 from .undo_redo import UndoRedo
+from .whitelist import WhitelistGui
 from .window_events import WindowEvents
 from .worker import Worker
