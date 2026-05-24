@@ -173,3 +173,46 @@ def interactive_video_segm_context_from_worker(worker) -> InteractiveSegmContext
         progress_callback=worker.progressBar,
         logger_func=worker.logger.log,
     )
+
+
+def configure_measurements_kernel_for_cli(
+    kernel: Any,
+    channels: list[str] | str,
+    end_filename_segm: str = "segm",
+    *,
+    channels_to_skip: list[str] | None = None,
+    channels_to_process: list[str] | None = None,
+    is_segm_3d: bool = False,
+    is_timelapse: bool = False,
+    is_zstack: bool = False,
+) -> Any:
+    """Configure a ComputeMeasurementsKernel for headless graph runs (no GUI/INI)."""
+    from cellacdc import measurements
+
+    if isinstance(channels, str):
+        channels = [name.strip() for name in channels.split("\n") if name.strip()]
+
+    kernel.init_args(channels, end_filename_segm)
+    kernel.chNamesToSkip = list(channels_to_skip or [])
+    kernel.chNamesToProcess = list(channels_to_process or channels)
+    kernel.metricsToSave = None
+    kernel.metricsToSkip = {ch: [] for ch in channels}
+    kernel.calc_for_each_zslice_mapper = {ch: False for ch in channels}
+    kernel.calc_size_for_each_zslice = False
+    kernel.save_object_counts_table = False
+    kernel.mixedChCombineMetricsToSkip = []
+    kernel.regionPropsToSave = (
+        measurements.get_props_names_3D()
+        if is_segm_3d
+        else measurements.get_props_names()
+    )
+    kernel.sizeMetricsToSave = list(
+        measurements.get_size_metrics_desc(is_segm_3d, is_timelapse).keys()
+    )
+    kernel.chIndipendCustomMetricsToSave = list(
+        measurements.ch_indipend_custom_metrics_desc(
+            is_zstack,
+            isSegm3D=is_segm_3d,
+        ).keys()
+    )
+    return kernel

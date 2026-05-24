@@ -20,7 +20,7 @@ class TestComponentImports(unittest.TestCase):
     def test_widgets_module_compiles(self):
         import py_compile
 
-        py_compile.compile("cellacdc/widgets.py", doraise=True)
+        py_compile.compile("cellacdc/widgets/__init__.py", doraise=True)
 
 
 if __name__ == "__main__":

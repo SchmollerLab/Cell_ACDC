@@ -1,6 +1,7 @@
 """LangGraph-style workflow modeling for Cell-ACDC pipelines."""
 
 from .adapters import (
+    configure_measurements_kernel_for_cli,
     runnable_config_from_segm_kernel,
     sync_segm_kernel_from_context,
     update_workflow_context_from_segm_kernel,
@@ -30,6 +31,7 @@ from .state import (
 __all__ = [
     "BatchState",
     "CompiledStateGraph",
+    "configure_measurements_kernel_for_cli",
     "END",
     "FullWorkflowState",
     "InteractiveSegmContext",
