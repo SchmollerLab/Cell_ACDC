@@ -6,6 +6,7 @@ import os
 from functools import partial
 
 import numpy as np
+import pandas as pd
 import skimage.measure
 from qtpy.QtWidgets import QAction
 

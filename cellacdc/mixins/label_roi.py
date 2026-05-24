@@ -327,7 +327,7 @@ class LabelRoi(BrushTools):
         self.labelRoiStopFrameNoSpinbox.setValue(posData.SizeT)
 
     def labelRoiViewCurrentModel(self):
-        from . import config
+        from cellacdc import config
 
         ini_path = os.path.join(settings_folderpath, "last_params_segm_models.ini")
         configPars = config.ConfigParser()

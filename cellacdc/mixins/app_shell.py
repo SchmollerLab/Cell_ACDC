@@ -14,6 +14,7 @@ from cellacdc import (
     base_cca_dict,
     cca_df_colnames,
     html_utils,
+    load,
     settings_csv_path,
     widgets,
 )
@@ -192,7 +193,7 @@ class AppShell(Actions, Session):
     def initProfileModels(self):
         self.logger.info("Initiliazing profilers...")
 
-        from ._profile.spline_to_obj import model
+        from cellacdc._profile.spline_to_obj import model
 
         self.splineToObjModel = model.Model()
 

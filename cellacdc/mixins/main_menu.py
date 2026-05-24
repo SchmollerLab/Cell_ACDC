@@ -135,7 +135,8 @@ class MainMenu:
         SegmMenu.addAction(self.postProcessSegmAction)
         SegmMenu.addAction(self.autoSegmAction)
         SegmMenu.addAction(self.relabelSequentialAction)
-        SegmMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
+        if hasattr(self, "nonViewerEditMenuOpened"):
+            SegmMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
 
         # Tracking menu
         trackingMenu = menuBar.addMenu("&Tracking")
@@ -151,7 +152,8 @@ class MainMenu:
         trackingMenu.addAction(self.repeatTrackingVideoAction)
 
         trackingMenu.addAction(self.repeatTrackingMenuAction)
-        trackingMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
+        if hasattr(self, "nonViewerEditMenuOpened"):
+            trackingMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
 
         if self.mainWin is not None:
             trackingMenu.addAction(self.mainWin.applyTrackingFromTableAction)
