@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def nearest_ID_to_centroid(a, y, x, max_iterations=10, distance_threshold=5):
     """
     Return cell ID by checking `max_iterations` nearest non-zero pixels
@@ -8,11 +9,11 @@ def nearest_ID_to_centroid(a, y, x, max_iterations=10, distance_threshold=5):
     """
     if not isinstance(a, np.ndarray):
         a = np.array(a)  # Ensure a is a numpy array
-        
+
     r, c = np.nonzero(a)
     if r.size == 0:
         return None
-    
+
     distances = np.linalg.norm(np.array([r, c]).T - np.array([y, x]), axis=1)
     sorted_indices = np.argsort(distances)
     sorted_IDs = a[r, c][sorted_indices]

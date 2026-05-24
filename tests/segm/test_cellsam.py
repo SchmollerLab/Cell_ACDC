@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from cellacdc import myutils
+from cellacdc import utils
 from tests.utils import (
     ensure_cellsam,
     get_test_posdata,
@@ -34,7 +34,7 @@ class TestCellSAMAutomaticSegmentation:
         """Test CellSAM automatic segmentation on sampled frames (every 20th)."""
         frames, frame_indices = test_frames
 
-        acdcSegment = myutils.import_segment_module("cellsam")
+        acdcSegment = utils.import_segment_module("cellsam")
 
         model = acdcSegment.Model(
             model_type="General",
@@ -59,6 +59,8 @@ class TestCellSAMAutomaticSegmentation:
             validate_labels(labels, frame.shape)
             print_segmentation_results(labels, frame, frame_i)
             save_segmentation_overlay(
-                labels, frame, frame_i,
+                labels,
+                frame,
+                frame_i,
                 plots_dir / f"test_cellsam_segmentation_frame_{frame_i:04d}.png",
             )

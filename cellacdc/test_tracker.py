@@ -2,7 +2,7 @@ import os
 import sys
 import numpy as np
 import skimage.measure
-from cellacdc import core, myutils, widgets, load, html_utils
+from cellacdc import core, utils, widgets, load, html_utils
 from cellacdc import data, data_path
 from cellacdc import transformation
 from cellacdc.plot import imshow
@@ -10,7 +10,8 @@ from cellacdc import io
 
 try:
     import pytest
-    pytest.skip('skipping this test since it is gui based', allow_module_level=True)
+
+    pytest.skip("skipping this test since it is gui based", allow_module_level=True)
 except Exception as e:
     pass
 
@@ -18,12 +19,12 @@ import qtpy.compat
 from cellacdc._run import _setup_app
 
 # Ask which model to use --> Test if new model is visible
-app, splashScreen = _setup_app(splashscreen=True)  
+app, splashScreen = _setup_app(splashscreen=True)
 splashScreen.close()
 
-channel_name = 'SiR_Hoechst'
-end_filename_segm = 'segm' # 'segm_test'
-START_FRAME = 0 
+channel_name = "SiR_Hoechst"
+end_filename_segm = "segm"  # 'segm_test'
+START_FRAME = 0
 STOP_FRAME = 10
 # PLOT_FRAME = 499
 SAVE = False
@@ -39,16 +40,15 @@ test_data = None
 
 if test_data is None:
     tif_filepath, _ = qtpy.compat.getopenfilename(
-        basedir=myutils.getMostRecentPath(),
-        filters=('Images (*.tif)')
+        basedir=utils.getMostRecentPath(), filters=("Images (*.tif)")
     )
     if not tif_filepath:
-        exit('Execution cancelled.')
-    
+        exit("Execution cancelled.")
+
     images_path = os.path.dirname(tif_filepath)
-    basename = os.path.commonprefix(myutils.listdir(images_path))
+    basename = os.path.commonprefix(utils.listdir(images_path))
     filename, ext = os.path.splitext(os.path.basename(tif_filepath))
-    channel = filename[len(basename):]
+    channel = filename[len(basename) :]
     posData = load.loadData(tif_filepath, channel)
 else:
     posData = test_data.posData()
@@ -56,41 +56,39 @@ else:
 
 posData.loadImgData()
 posData.loadOtherFiles(
-    load_segm_data=True, 
-    load_metadata=True,
-    end_filename_segm=end_filename_segm
+    load_segm_data=True, load_metadata=True, end_filename_segm=end_filename_segm
 )
 
-lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
+lab_stack = posData.segm_data[START_FRAME : STOP_FRAME + 1]
 
-imshow(lab_stack, axis_titles=['Before tracking'], annotate_labels_idxs=[0])
+imshow(lab_stack, axis_titles=["Before tracking"], annotate_labels_idxs=[0])
 
-trackers = myutils.get_list_of_trackers()
-txt = html_utils.paragraph('''
+trackers = utils.get_list_of_trackers()
+txt = html_utils.paragraph("""
     <b>Select the tracker</b> to use<br><br>
-''')
+""")
 win = widgets.QDialogListbox(
-    'Select tracker', txt, trackers, multiSelection=False, parent=None
+    "Select tracker", txt, trackers, multiSelection=False, parent=None
 )
 win.exec_()
 
 if win.cancel:
-    sys.exit('Execution aborted')
+    sys.exit("Execution aborted")
 
 trackerName = win.selectedItemsText[0]
 
 # Load tracker
-tracker, track_params = myutils.init_tracker(
+tracker, track_params = utils.init_tracker(
     posData, trackerName, qparent=None, realTime=REAL_TIME_TRACKER
 )
 if track_params is None:
-    exit('Execution aborted')    
+    exit("Execution aborted")
 print(posData.segm_data.shape)
-lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
+lab_stack = posData.segm_data[START_FRAME : STOP_FRAME + 1]
 
 if SCRUMBLE_IDs:
     # Scrumble IDs last frame
-    
+
     last_lab = lab_stack[-1]
     last_rp = skimage.measure.regionprops(lab_stack[-1])
     IDs = [obj.label for obj in last_rp]
@@ -106,53 +104,52 @@ if SCRUMBLE_IDs:
         obj_to_del = last_rp[random_idx]
         last_lab[obj_to_del.slice][obj_to_del.image] = 0
 
-print(f'Tracking data with shape {lab_stack.shape}')
+print(f"Tracking data with shape {lab_stack.shape}")
 
 trackerInputImage = None
-if 'image' in track_params:
-    trackerInputImage = track_params.pop('image')[START_FRAME:STOP_FRAME+1]
+if "image" in track_params:
+    trackerInputImage = track_params.pop("image")[START_FRAME : STOP_FRAME + 1]
 
-if 'image_channel_name' in track_params:
-    # Store the channel name for the tracker for loading it 
+if "image_channel_name" in track_params:
+    # Store the channel name for the tracker for loading it
     # in case of multiple pos
-    track_params.pop('image_channel_name')
+    track_params.pop("image_channel_name")
 
 tracked_stack = core.tracker_track(
-    lab_stack, tracker, track_params, 
-    intensity_img=trackerInputImage,
-    logger_func=print
+    lab_stack, tracker, track_params, intensity_img=trackerInputImage, logger_func=print
 )
 
-if hasattr(posData, 'acdc_output_csv_path'):
+if hasattr(posData, "acdc_output_csv_path"):
     posData.fromTrackerToAcdcDf(tracker, tracked_stack, save=True)
 
 first_untracked_lab = lab_stack[0]
 uniqueID = max(np.max(lab_stack), np.max(tracked_stack)) + 1
 
 retracked_video = transformation.retrack_based_on_untracked_first_frame(
-    tracked_stack.copy(), first_untracked_lab, uniqueID=uniqueID        
+    tracked_stack.copy(), first_untracked_lab, uniqueID=uniqueID
 )
 
 if SAVE:
     try:
         io.savez_compressed(
-            posData.segm_npz_path.replace('segm', 'segm_tracked'), 
-            tracked_stack
+            posData.segm_npz_path.replace("segm", "segm_tracked"), tracked_stack
         )
     except Exception as e:
-        import pdb; pdb.set_trace()
+        import pdb
+
+        pdb.set_trace()
 
 
 imshow(
-    posData.loadChannelData(''),
+    posData.loadChannelData(""),
     tracked_stack,
     retracked_video,
     lab_stack,
     axis_titles=[
-        'Intensity channel', 
-        'After tracking',
-        'After re-tracking first frame', 
-        'Before tracking'
+        "Intensity channel",
+        "After tracking",
+        "After re-tracking first frame",
+        "Before tracking",
     ],
-    annotate_labels_idxs=[1, 2, 3]
+    annotate_labels_idxs=[1, 2, 3],
 )

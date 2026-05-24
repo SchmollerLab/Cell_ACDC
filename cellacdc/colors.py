@@ -19,27 +19,30 @@ if GUI_INSTALLED:
 
 try:
     import networkx as nx
+
     NETWORKX_INSTALLED = True
 except:
     NETWORKX_INSTALLED = False
 
-__all__ = ['ColorMap']
+__all__ = ["ColorMap"]
 
 FLUO_CHANNELS_COLORS = {
-    'mCardinal': (255, 0, 255), 
-    'mNeonGreen': (0, 255, 0),
-    'NeonGreen': (0, 255, 0),
-    'mNG': (0, 255, 0), 
-    'mScarlet': (255, 0, 255), 
-    'mScarlet-I3': (255, 0, 255), 
-    'mKate': (255, 0, 255), 
-    'mKate2': (255, 0, 255),
-    'GFP': (0, 255, 0),
-    'EGFP': (0, 255, 0),
-    'mCitrine': (255, 255, 0)
+    "mCardinal": (255, 0, 255),
+    "mNeonGreen": (0, 255, 0),
+    "NeonGreen": (0, 255, 0),
+    "mNG": (0, 255, 0),
+    "mScarlet": (255, 0, 255),
+    "mScarlet-I3": (255, 0, 255),
+    "mKate": (255, 0, 255),
+    "mKate2": (255, 0, 255),
+    "GFP": (0, 255, 0),
+    "EGFP": (0, 255, 0),
+    "mCitrine": (255, 255, 0),
 }
 
 _mapCache = {}
+
+
 def getFromMatplotlib(name):
     """
     Added to pyqtgraph 0.12 copied/pasted here to allow pyqtgraph <0.12. Link:
@@ -55,44 +58,48 @@ def getFromMatplotlib(name):
         return None
     cm = None
     col_map = plt.get_cmap(name)
-    if hasattr(col_map, '_segmentdata'): # handle LinearSegmentedColormap
+    if hasattr(col_map, "_segmentdata"):  # handle LinearSegmentedColormap
         data = col_map._segmentdata
-        if ('red' in data) and isinstance(data['red'], (Sequence, np.ndarray)):
-            positions = set() # super-set of handle positions in individual channels
-            for key in ['red','green','blue']:
+        if ("red" in data) and isinstance(data["red"], (Sequence, np.ndarray)):
+            positions = set()  # super-set of handle positions in individual channels
+            for key in ["red", "green", "blue"]:
                 for tup in data[key]:
                     positions.add(tup[0])
-            col_data = np.zeros((len(positions),4 ))
-            col_data[:,-1] = sorted(positions)
-            for idx, key in enumerate(['red','green','blue']):
-                positions = np.zeros( len(data[key] ) )
-                comp_vals = np.zeros( len(data[key] ) )
-                for idx2, tup in enumerate( data[key] ):
+            col_data = np.zeros((len(positions), 4))
+            col_data[:, -1] = sorted(positions)
+            for idx, key in enumerate(["red", "green", "blue"]):
+                positions = np.zeros(len(data[key]))
+                comp_vals = np.zeros(len(data[key]))
+                for idx2, tup in enumerate(data[key]):
                     positions[idx2] = tup[0]
-                    comp_vals[idx2] = tup[1] # these are sorted in the raw data
-                col_data[:,idx] = np.interp(col_data[:,3], positions, comp_vals)
-            cm = ColorMap(pos=col_data[:,-1], color=255*col_data[:,:3]+0.5)
+                    comp_vals[idx2] = tup[1]  # these are sorted in the raw data
+                col_data[:, idx] = np.interp(col_data[:, 3], positions, comp_vals)
+            cm = ColorMap(pos=col_data[:, -1], color=255 * col_data[:, :3] + 0.5)
         # some color maps (gnuplot in particular) are defined by RGB component functions:
-        elif ('red' in data) and isinstance(data['red'], Callable):
+        elif ("red" in data) and isinstance(data["red"], Callable):
             col_data = np.zeros((64, 4))
-            col_data[:,-1] = np.linspace(0., 1., 64)
-            for idx, key in enumerate(['red','green','blue']):
-                col_data[:,idx] = np.clip( data[key](col_data[:,-1]), 0, 1)
-            cm = ColorMap(pos=col_data[:,-1], color=255*col_data[:,:3]+0.5)
-    elif hasattr(col_map, 'colors'): # handle ListedColormap
+            col_data[:, -1] = np.linspace(0.0, 1.0, 64)
+            for idx, key in enumerate(["red", "green", "blue"]):
+                col_data[:, idx] = np.clip(data[key](col_data[:, -1]), 0, 1)
+            cm = ColorMap(pos=col_data[:, -1], color=255 * col_data[:, :3] + 0.5)
+    elif hasattr(col_map, "colors"):  # handle ListedColormap
         col_data = np.array(col_map.colors)
-        cm = ColorMap(pos=np.linspace(0.0, 1.0, col_data.shape[0]),
-                      color=255*col_data[:,:3]+0.5 )
+        cm = ColorMap(
+            pos=np.linspace(0.0, 1.0, col_data.shape[0]),
+            color=255 * col_data[:, :3] + 0.5,
+        )
     if cm is not None:
         cm.name = name
         _mapCache[name] = cm
     return cm
 
+
 def get_pg_gradient(colors):
-    ticks_pos = np.linspace(0,1,len(colors))
+    ticks_pos = np.linspace(0, 1, len(colors))
     ticks = [(tick_pos, color) for tick_pos, color in zip(ticks_pos, colors)]
-    gradient = {'ticks': ticks, 'mode': 'rgb'}
+    gradient = {"ticks": ticks, "mode": "rgb"}
     return gradient
+
 
 def lighten_color(color, amount=0.3, hex=True):
     """
@@ -109,31 +116,33 @@ def lighten_color(color, amount=0.3, hex=True):
         c = matplotlib.colors.cnames[color]
     except:
         c = color
-    
+
     c = colorsys.rgb_to_hls(*matplotlib.colors.to_rgb(c))
     lightened_c = colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
     if hex:
-        lightened_c = tuple([int(round(v*255)) for v in lightened_c])
-        lightened_c = '#%02x%02x%02x' % lightened_c
+        lightened_c = tuple([int(round(v * 255)) for v in lightened_c])
+        lightened_c = "#%02x%02x%02x" % lightened_c
     return lightened_c
 
-def rgb_str_to_values(rgbString, errorRgb=(255,255,255)):
+
+def rgb_str_to_values(rgbString, errorRgb=(255, 255, 255)):
     try:
-        r, g, b = re.findall(r'(\d+), (\d+), (\d+)', rgbString)[0]
+        r, g, b = re.findall(r"(\d+), (\d+), (\d+)", rgbString)[0]
         r, g, b = int(r), int(g), int(b)
     except TypeError:
         try:
             r, g, b = rgbString
         except Exception as e:
-            print('======================')
+            print("======================")
             traceback.print_exc()
-            print('======================')
+            print("======================")
             r, g, b = errorRgb
     return r, g, b
 
-def rgba_str_to_values(rgbaString, errorRgb=(255,255,255,255)):
+
+def rgba_str_to_values(rgbaString, errorRgb=(255, 255, 255, 255)):
     try:
-        m = re.findall(r'(\d+), *(\d+), *(\d+),* *(\d+)*', rgbaString)
+        m = re.findall(r"(\d+), *(\d+), *(\d+),* *(\d+)*", rgbaString)
         r, g, b, a = m[0]
         if a:
             r, g, b, a = int(r), int(g), int(b), int(a)
@@ -147,12 +156,14 @@ def rgba_str_to_values(rgbaString, errorRgb=(255,255,255,255)):
             r, g, b, a = errorRgb
     return r, g, b, a
 
-def get_lut_from_colors(colors, name='mycmap', N=256, to_uint8=False):
+
+def get_lut_from_colors(colors, name="mycmap", N=256, to_uint8=False):
     cmap = LinearSegmentedColormap.from_list(name, colors, N=256)
-    lut = np.array([cmap(i)[:3] for i in np.linspace(0,1,256)])
+    lut = np.array([cmap(i)[:3] for i in np.linspace(0, 1, 256)])
     if to_uint8:
-        lut = (lut*255).astype(np.uint8)
+        lut = (lut * 255).astype(np.uint8)
     return lut
+
 
 def plt_colormap_to_pg_lut(name: str, ncolors=256):
     cmap = plt.get_cmap(name)
@@ -160,6 +171,7 @@ def plt_colormap_to_pg_lut(name: str, ncolors=256):
     lut_float = np.array(colors)
     lut = np.round(lut_float * 255).astype(np.uint8)
     return lut
+
 
 def invertRGB(rgb_img, max_val=1.0):
     # see https://forum.image.sc/t/invert-rgb-image-without-changing-colors/33571
@@ -169,42 +181,43 @@ def invertRGB(rgb_img, max_val=1.0):
     GB_mean = np.mean([G, B], axis=0)
     RB_mean = np.mean([R, B], axis=0)
     RG_mean = np.mean([R, G], axis=0)
-    rgb_img[:, :, 0] = max_val-GB_mean
-    rgb_img[:, :, 1] = max_val-RB_mean
-    rgb_img[:, :, 2] = max_val-RG_mean
+    rgb_img[:, :, 0] = max_val - GB_mean
+    rgb_img[:, :, 1] = max_val - RB_mean
+    rgb_img[:, :, 2] = max_val - RG_mean
     return rgb_img
 
-def rescale_RGB(rgb_img, saturation_val=1.0):
-    rescaled_rgb = rgb_img-rgb_img.min()
-    max_val = rescaled_rgb.max()
-    brightness = saturation_val/max_val
-    return rescaled_rgb*brightness
-    
 
-def get_greedy_lut(lab, lut, ids=None):    
+def rescale_RGB(rgb_img, saturation_val=1.0):
+    rescaled_rgb = rgb_img - rgb_img.min()
+    max_val = rescaled_rgb.max()
+    brightness = saturation_val / max_val
+    return rescaled_rgb * brightness
+
+
+def get_greedy_lut(lab, lut, ids=None):
     if ids is None:
         ids = [obj.label for obj in skimage.measure.regionprops(lab)]
-    
+
     if len(ids) == 0:
         return lut
-    
+
     if len(ids) == 1:
         greedy_lut = np.copy(lut)
         greedy_lut[:] = greedy_lut[-1]
-        greedy_lut[0] = [0]*lut.shape[-1]
+        greedy_lut[0] = [0] * lut.shape[-1]
         return greedy_lut
-    
+
     max_ID = max(ids, default=0)
     if max_ID + 1 > len(lut):
         # Repeat lut entries if not enough colors
-        lut = np.concatenate([lut]*((max_ID // len(lut))+1), axis=0)
-    
+        lut = np.concatenate([lut] * ((max_ID // len(lut)) + 1), axis=0)
+
     if lab.ndim == 3:
         lab = lab.max(axis=0)
-    
+
     expanded = skimage.segmentation.expand_labels(lab, distance=7)
-    adj_M = np.zeros([expanded.max() + 1]*2, dtype=bool)
-    
+    adj_M = np.zeros([expanded.max() + 1] * 2, dtype=bool)
+
     # Taken from https://stackoverflow.com/questions/26486898/matrix-of-labels-to-adjacency-matrix
     adj_M[expanded[:, :-1], expanded[:, 1:]] = 1
     adj_M[expanded[:, 1:], expanded[:, :-1]] = 1
@@ -216,15 +229,14 @@ def get_greedy_lut(lab, lut, ids=None):
     # adj_M = adj_M[1:, 1:]
 
     graph = nx.from_numpy_array(adj_M)
-    color_ids = nx.coloring.greedy_color(
-        graph, strategy='connected_sequential'
-    )
-    
-    n_foregr_colors = len(lut)-1
+    color_ids = nx.coloring.greedy_color(graph, strategy="connected_sequential")
+
+    n_foregr_colors = len(lut) - 1
     n_colors_greedy = max([color_id for color_id in color_ids.values()])
     color_idxs = {
-        id:abs(int(n_foregr_colors * c/n_colors_greedy)-n_foregr_colors)
-        for id, c in color_ids.items() if id!=0
+        id: abs(int(n_foregr_colors * c / n_colors_greedy) - n_foregr_colors)
+        for id, c in color_ids.items()
+        if id != 0
     }
 
     greedy_lut = np.copy(lut)
@@ -232,64 +244,76 @@ def get_greedy_lut(lab, lut, ids=None):
 
     return greedy_lut
 
+
 def rgb_uint_to_html_hex(rgb):
     r, g, b = rgb
-    hex_color = f'#{r:02x}{g:02x}{b:02x}'
+    hex_color = f"#{r:02x}{g:02x}{b:02x}"
     return hex_color
 
+
 def hex_to_rgb(hex):
-    if hex.startswith('#'):
+    if hex.startswith("#"):
         hex = hex[1:]
-        
-    return tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))
+
+    return tuple(int(hex[i : i + 2], 16) for i in (0, 2, 4))
+
 
 def hierarchical_weights(alphas):
     alphas = np.array([1.0, *alphas])
     if len(alphas) == 0:
         return alphas
-    
+
     weights = []
-    for i, a_ref in enumerate(alphas):        
-        weight = np.prod(1-alphas[i+1:]) * a_ref
+    for i, a_ref in enumerate(alphas):
+        weight = np.prod(1 - alphas[i + 1 :]) * a_ref
         weights.append(weight)
-        
+
     return weights[::-1]
+
 
 def hierarchical_blend(images, weights):
     if len(images) == 1:
         return images[0]
-    
+
     # Stack all images and do weighted sum
     stacked = np.stack(images, axis=0)  # shape: (N, H, W)
     return np.tensordot(weights, stacked, axes=(0, 0))
 
+
 def merge_two_grayscale_imgs(
-        img1, img2, rgb1, rgb2, alpha=0.5,
-        brightness1=1.0, brightness2=1.0, dtype=np.uint8, 
-        inverted=False
-    ):
+    img1,
+    img2,
+    rgb1,
+    rgb2,
+    alpha=0.5,
+    brightness1=1.0,
+    brightness2=1.0,
+    dtype=np.uint8,
+    inverted=False,
+):
     if img1.max() > 1.0:
         img1 = skimage.exposure.rescale_intensity(img1, out_range=(0, 1.0))
-        
+
     if img2.max() > 1.0:
         img2 = skimage.exposure.rescale_intensity(img2, out_range=(0, 1.0))
-        
-    img1_bright = np.clip(img1*brightness1, 0, 1.0) 
-    img2_bright = np.clip(img2*brightness1, 0, 1.0)     
-    
-    img1_rgb = (skimage.color.gray2rgb(img1_bright)*rgb1).astype(dtype)
-    img2_rgb = (skimage.color.gray2rgb(img2_bright)*rgb2).astype(dtype)
-    
-    merge = (alpha*img1_rgb + (1-alpha)*img2_rgb).astype(dtype)
-    
+
+    img1_bright = np.clip(img1 * brightness1, 0, 1.0)
+    img2_bright = np.clip(img2 * brightness1, 0, 1.0)
+
+    img1_rgb = (skimage.color.gray2rgb(img1_bright) * rgb1).astype(dtype)
+    img2_rgb = (skimage.color.gray2rgb(img2_bright) * rgb2).astype(dtype)
+
+    merge = (alpha * img1_rgb + (1 - alpha) * img2_rgb).astype(dtype)
+
     if inverted:
         merge_inverted = merge.copy()
-        merge_inverted[..., 0] = 255-((merge[..., 1]+merge[..., 2])/2)
-        merge_inverted[..., 1] = 255-((merge[..., 0]+merge[..., 2])/2)
-        merge_inverted[..., 2] = 255-((merge[..., 1]+merge[..., 0])/2)
+        merge_inverted[..., 0] = 255 - ((merge[..., 1] + merge[..., 2]) / 2)
+        merge_inverted[..., 1] = 255 - ((merge[..., 0] + merge[..., 2]) / 2)
+        merge_inverted[..., 2] = 255 - ((merge[..., 1] + merge[..., 0]) / 2)
         merge = merge_inverted
 
     return merge
+
 
 def pg_ticks_to_colormap(ticks):
     positions = []
@@ -297,49 +321,51 @@ def pg_ticks_to_colormap(ticks):
     for pos, color in ticks:
         positions.append(pos)
         colors.append(color)
-    
+
     cmap = ColorMap(positions, colors)
     return cmap
 
-def color_palette(name='Okabe_lto', **sns_color_palette_kwargs):
+
+def color_palette(name="Okabe_lto", **sns_color_palette_kwargs):
     """Create seaborn color palette (default or custom ones).
 
     Parameters
     ----------
     name : str, optional
         Name of the color palette. Default 'Okabe_lto'.
-    
+
     References
     ----------
     https://thenode.biologists.com/data-visualization-with-flying-colors/research/
     https://www.nature.com/articles/nmeth.1618
     """
-    if name == 'Okabe_lto':
+    if name == "Okabe_lto":
         colors = (
-            '#0072B2', 
-            '#F0E442', 
-            '#009E73', 
-            '#56B4E9', 
-            '#E69F00', 
-            '#000000', 
-            '#CC79A7', 
-            '#D55E00', 
+            "#0072B2",
+            "#F0E442",
+            "#009E73",
+            "#56B4E9",
+            "#E69F00",
+            "#000000",
+            "#CC79A7",
+            "#D55E00",
         )
         return sns.color_palette(colors)
-    elif name == 'Wong':
+    elif name == "Wong":
         colors = (
-            (0, 0, 0), 
-            (230, 159, 0), 
-            (86, 180, 233), 
-            (0, 158, 115), 
-            (240, 228, 66), 
-            (0, 114, 178), 
-            (213, 94, 0), 
-            (204, 121, 167), 
+            (0, 0, 0),
+            (230, 159, 0),
+            (86, 180, 233),
+            (0, 158, 115),
+            (240, 228, 66),
+            (0, 114, 178),
+            (213, 94, 0),
+            (204, 121, 167),
         )
         return sns.color_palette(colors)
-    
+
     return sns.color_palette(**sns_color_palette_kwargs)
+
 
 def grayscale_apply_lut(image, lut):
     """
@@ -359,11 +385,12 @@ def grayscale_apply_lut(image, lut):
     """
     # Normalize image to [0, N-1]
     N = lut.shape[0]
-    img = np.clip(image, 0, 1) if image.dtype.kind == 'f' else image / 255.0
+    img = np.clip(image, 0, 1) if image.dtype.kind == "f" else image / 255.0
     indices = np.clip((img * (N - 1)).astype(int), 0, N - 1)
     rgba = lut[indices]
     return rgba
 
+
 def get_complementary_color(rgba_str: str) -> str:
     r, g, b, a = rgba_str_to_values(rgba_str)
-    return f'rgba({255 - r}, {255 - g}, {255 - b}, {a})'
+    return f"rgba({255 - r}, {255 - g}, {255 - b}, {a})"

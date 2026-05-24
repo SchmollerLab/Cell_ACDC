@@ -41,7 +41,7 @@ Adding a segmentation model
 
 Adding a segmentation model in a few steps:
 
-1. Create a **new folder** with the models's name (e.g., YeastMate) inside the ``/cellacdc/models`` folder.
+1. Create a **new folder** with the models's name (e.g., YeastMate) inside the ``/cellacdc/segmenters`` folder.
 
 .. tip:: 
     If you **don't know where Cell-ACDC was installed**, open the main launcher and click on the ``Help --> About Cell-ACDC`` menu on the top menu bar.
@@ -90,7 +90,7 @@ Adding a segmentation model in a few steps:
 
 The **model parameters** will be **automatically inferred from the class you created** in the ``acdcSegment.py`` file, and a widget with those parameters will pop-up. In this widget you can set the model parameters (or press Ok without changing anything if you want to go with default parameters).
 
-Have a loot at the ``/cellacdc/models`` folder `here <https://github.com/SchmollerLab/Cell_ACDC/tree/main/cellacdc/models>`__ for **examples**. You can for example see the ``__init__.py`` file `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/models/YeaZ_v2/__init__.py>`__ and the ``acdcSegment.py`` file `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/models/YeaZ_v2/acdcSegment.py>`__ for YeaZ2.
+Have a loot at the ``/cellacdc/segmenters`` folder `here <https://github.com/SchmollerLab/Cell_ACDC/tree/main/cellacdc/segmenters>`__ for **examples**. You can for example see the ``__init__.py`` file `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/segmenters/YeaZ_v2/__init__.py>`__ and the ``acdcSegment.py`` file `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/segmenters/YeaZ_v2/acdcSegment.py>`__ for YeaZ2.
 
 
 Adding a tracker

@@ -1,14 +1,16 @@
 from . import urls, html_utils
 
-forum_href = html_utils.href_tag('forum page', urls.forum_url)
+forum_href = html_utils.href_tag("forum page", urls.forum_url)
 
 utilsInfo = {
-    'Convert _segm.npz file(s) to ImageJ ROIs...': (f"""
+    "Convert _segm.npz file(s) to ImageJ ROIs...": (
+        f"""
         Not documented yet. You can ask help about utilities  on our {forum_href}.<br><br>
         Thank you <b>for your patience</b>! 
-    """),
-
-    'Create connected 3D segmentation mask from z-slices segmentation...': (f"""
+    """
+    ),
+    "Create connected 3D segmentation mask from z-slices segmentation...": (
+        f"""
         This utility is used to create a 3D segmentation mask by projecting the 
         center z-slice of the 3D objects to their own z-boundaries.<br><br>
         
@@ -16,15 +18,17 @@ utilsInfo = {
         a "cylindrical" object,<br>
         where the largest z-slice is projected up and down to the max and 
         min z-slice.
-    """),
-
-    'Track sub-cellular objects (assign same ID as the cell they belong to)...': (f"""
+    """
+    ),
+    "Track sub-cellular objects (assign same ID as the cell they belong to)...": (
+        f"""
         Not documented yet. You can ask help about utilities 
         on our {forum_href}.<br><br>
         Thank you <b>for your patience</b>! 
-    """),
-
-    'Apply tracking info from tabular data...': (f"""
+    """
+    ),
+    "Apply tracking info from tabular data...": (
+        f"""
         This utility is used to <b>load the information of an external 
         tracker</b> into Cell-ACDC.<br><br>
         
@@ -44,41 +48,48 @@ utilsInfo = {
         
         Note that to use this utility you <b>need to have a Cell-ACDC 
         compatible segmentation file</b>.
-    """),
-
-    'Create required data structure from image files...': (f"""
+    """
+    ),
+    "Create required data structure from image files...": (
+        f"""
         Not documented yet. You can ask help about utilities 
         on our {forum_href}.<br><br>
         Thank you <b>for your patience</b>! 
-    """),
-
-    'Re-apply data prep steps to selected channels...': (f"""
+    """
+    ),
+    "Re-apply data prep steps to selected channels...": (
+        f"""
         Not documented yet. You can ask help about utilities 
         on our {forum_href}.<br><br>
         Thank you <b>for your patience</b>! 
-    """),
-
-    'Concatenate acdc output tables from multiple Positions...': (f"""
+    """
+    ),
+    "Concatenate acdc output tables from multiple Positions...": (
+        f"""
         Not documented yet. You can ask help about utilities 
         on our {forum_href}.<br><br>
         Thank you <b>for your patience</b>! 
-    """),
-
-    'Compute measurements for one or more experiments...': (f"""
+    """
+    ),
+    "Compute measurements for one or more experiments...": (
+        f"""
         Not documented yet. You can ask help about utilities 
         on our {forum_href}.<br><br>
         Thank you <b>for your patience</b>! 
-    """),
-
-    'Combine measurements from multiple segmentation files...': (f"""
+    """
+    ),
+    "Combine measurements from multiple segmentation files...": (
+        f"""
         Not documented yet. You can ask help about utilities 
         on our {forum_href}.<br><br>
         Thank you <b>for your patience</b>! 
-    """),
-
-    'Add lineage tree table to one or more experiments...': (f"""
+    """
+    ),
+    "Add lineage tree table to one or more experiments...": (
+        f"""
         Not documented yet. You can ask help about utilities 
         on our {forum_href}.<br><br>
         Thank you <b>for your patience</b>! 
-    """)
+    """
+    ),
 }

@@ -192,6 +192,57 @@ Alternatively, you can also use **Cite this repository** button on the right
 ribbon of the GitHub page.
 
 
+Using Cell-ACDC from a script
+=============================
+
+Cell-ACDC can be launched from a Python script or notebook with a napari-style
+API. Install the GUI dependencies first:
+
+.. code-block:: bash
+
+   pip install "cellacdc[gui]"
+
+Build a unified :class:`ExperimentData` object from arrays or from a path, then
+pass it to the viewer:
+
+.. code-block:: python
+
+   import cellacdc
+   import numpy as np
+
+   image = np.zeros((100, 128, 128), dtype=np.uint16)  # T, Y, X
+   data = cellacdc.ExperimentData.from_arrays(image, axes="tyx")
+   viewer = cellacdc.Viewer(data)
+   cellacdc.run()
+
+The convenience helper mirrors ``napari.imshow`` and returns both the viewer
+and the data object:
+
+.. code-block:: python
+
+   data = cellacdc.ExperimentData.from_arrays(image, axes="tyx")
+   viewer, data = cellacdc.imshow(data)
+   cellacdc.run()
+
+Path-based loading:
+
+.. code-block:: python
+
+   data = cellacdc.ExperimentData.from_path("/path/to/experiment")
+   viewer, data = cellacdc.imshow(data)
+   cellacdc.run()
+
+Optional ``labels`` can be supplied when creating data from arrays. When no
+``workspace`` path is given, Cell-ACDC uses a temporary folder so segmentation
+outputs can still be saved from the GUI.
+
+In a Jupyter notebook with ``%gui qt``, ``cellacdc.run()`` is a no-op because
+IPython already runs the Qt event loop.
+
+For view-only inspection of arrays without segmentation, use
+``cellacdc.plot.imshow`` instead.
+
+
 **IMPORTANT**: when citing Cell-ACDC make sure to also cite the paper of the 
 segmentation models and trackers you used! 
 See `here <https://cell-acdc.readthedocs.io/en/latest/citation.html>`__ 

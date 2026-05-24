@@ -12,48 +12,80 @@ import gc
 
 from qtpy import QtCore, QtWidgets
 from qtpy.QtWidgets import (
-    QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
-    QMenu, QHBoxLayout, QFileDialog, QGroupBox, QCheckBox, QSplashScreen
+    QMainWindow,
+    QVBoxLayout,
+    QPushButton,
+    QLabel,
+    QAction,
+    QMenu,
+    QHBoxLayout,
+    QFileDialog,
+    QGroupBox,
+    QCheckBox,
+    QSplashScreen,
 )
 from qtpy.QtCore import (
-    Qt, QProcess, Signal, Slot, QTimer, QSize,
-    QSettings, QUrl, QCoreApplication
+    Qt,
+    QProcess,
+    Signal,
+    Slot,
+    QTimer,
+    QSize,
+    QSettings,
+    QUrl,
+    QCoreApplication,
 )
 from qtpy.QtGui import (
-    QFontDatabase, QIcon, QDesktopServices, QFont, QColor, 
-    QPalette, QGuiApplication, QPixmap
+    QFontDatabase,
+    QIcon,
+    QDesktopServices,
+    QFont,
+    QColor,
+    QPalette,
+    QGuiApplication,
+    QPixmap,
 )
 import qtpy.compat
 
 from . import (
-    dataPrep, segm, gui, dataStruct, load, help, myutils,
-    cite_url, html_utils, widgets, apps, dataReStruct
+    dataPrep,
+    segm,
+    gui,
+    dataStruct,
+    load,
+    help,
+    utils,
+    cite_url,
+    html_utils,
+    widgets,
+    apps,
+    dataReStruct,
 )
 from .help import about
-from .utils import concat as utilsConcat
-from .utils import convert as utilsConvert
-from .utils import rename as utilsRename
-from .utils import align as utilsAlign
-from .utils import compute as utilsCompute
-from .utils import repeat as utilsRepeat
-from .utils import toImageJroi as utilsToImageJroi
-from .utils.resize import util as utilsResizePositionsUtil
-from .utils import fromImageJroiToSegm as utilsFromImageJroi
-from .utils import toObjCoords as utilsToObjCoords
-from .utils import acdcToSymDiv as utilsSymDiv
-from .utils import trackSubCellObjects as utilsTrackSubCell
-from .utils import createConnected3Dsegm as utilsConnected3Dsegm
-from .utils import countObjects as utilsCountObjectsInSegm
-from .utils import fucciPreprocess as utilsFucciPreprocess
-from .utils import customPreprocess as utilsCustomPreprocess
-from .utils import combineChannels as utilsCombineChannels
-from .utils import filterObjFromCoordsTable as utilsFilterObjsFromTable
-from .utils import stack2Dinto3Dsegm as utilsStack2Dto3D
-from .utils import computeMultiChannel as utilsComputeMultiCh
-from .utils import applyTrackFromTable as utilsApplyTrackFromTab
-from .utils import applyTrackFromTrackMateXML as utilsApplyTrackFromTrackMate
-from .utils import fillHolesInSegm
-from .utils import generateMothBudTotalTable as utilsGenerateMothBudTotTable
+from .tools import concat as utilsConcat
+from .tools import convert as utilsConvert
+from .tools import rename as utilsRename
+from .tools import align as utilsAlign
+from .tools import compute as utilsCompute
+from .tools import repeat as utilsRepeat
+from .tools import toImageJroi as utilsToImageJroi
+from .tools.resize import util as utilsResizePositionsUtil
+from .tools import fromImageJroiToSegm as utilsFromImageJroi
+from .tools import toObjCoords as utilsToObjCoords
+from .tools import acdcToSymDiv as utilsSymDiv
+from .tools import trackSubCellObjects as utilsTrackSubCell
+from .tools import createConnected3Dsegm as utilsConnected3Dsegm
+from .tools import countObjects as utilsCountObjectsInSegm
+from .tools import fucciPreprocess as utilsFucciPreprocess
+from .tools import customPreprocess as utilsCustomPreprocess
+from .tools import combineChannels as utilsCombineChannels
+from .tools import filterObjFromCoordsTable as utilsFilterObjsFromTable
+from .tools import stack2Dinto3Dsegm as utilsStack2Dto3D
+from .tools import computeMultiChannel as utilsComputeMultiCh
+from .tools import applyTrackFromTable as utilsApplyTrackFromTab
+from .tools import applyTrackFromTrackMateXML as utilsApplyTrackFromTrackMate
+from .tools import fillHolesInSegm
+from .tools import generateMothBudTotalTable as utilsGenerateMothBudTotTable
 from .info import utilsInfo
 from . import is_win, is_linux, settings_folderpath, issues_url, is_mac
 from . import settings_csv_path
@@ -63,21 +95,21 @@ from . import _warnings
 from . import exception_handler
 from . import user_profile_path
 from . import cellacdc_path
-from . config import parser_args
+from .config import parser_args
 
 try:
     import spotmax
     from spotmax import _run as spotmaxRun
+
     spotmax_filepath = os.path.dirname(os.path.abspath(spotmax.__file__))
-    spotmax_logo_path = os.path.join(
-        spotmax_filepath, 'resources', 'spotMAX_logo.svg'
-    )
+    spotmax_logo_path = os.path.join(spotmax_filepath, "resources", "spotMAX_logo.svg")
     SPOTMAX_INSTALLED = True
 except Exception as e:
     # traceback.print_exc()
     if not isinstance(e, ModuleNotFoundError):
         traceback.print_exc()
     SPOTMAX_INSTALLED = False
+
 
 def restart():
     QCoreApplication.quit()
@@ -86,7 +118,8 @@ def restart():
     # process.setStandardOutputFile(QProcess.nullDevice())
     status = process.startDetached()
     if status:
-        print('Restarting Cell-ACDC...')
+        print("Restarting Cell-ACDC...")
+
 
 class mainWin(QMainWindow):
     def __init__(self, app, parent=None):
@@ -95,22 +128,20 @@ class mainWin(QMainWindow):
         scheme = self.getColorScheme()
         self.welcomeGuide = None
         self._do_restart = False
-        
+
         super().__init__(parent)
         self.setWindowTitle("Cell-ACDC")
         self.setWindowIcon(QIcon(":icon.ico"))
         self.setAcceptDrops(True)
-        
+
         self.checkUserDataFolderPath = True
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
-            module='main'
-        )
+        logger, logs_path, log_path, log_filename = utils.setupLogger(module="main")
         self.logger = logger
         self.log_path = log_path
         self.log_filename = log_filename
-        self.logs_path = logs_path        
-        
+        self.logs_path = logs_path
+
         if not is_linux:
             self.loadFonts()
 
@@ -125,19 +156,23 @@ class mainWin(QMainWindow):
         mainLayout = QVBoxLayout()
         mainLayout.addStretch()
 
-        welcomeLabel = QLabel(html_utils.paragraph(
-            '<b>Welcome to Cell-ACDC!</b>',
-            center=True, font_size='18px'
-        ))
+        welcomeLabel = QLabel(
+            html_utils.paragraph(
+                "<b>Welcome to Cell-ACDC!</b>", center=True, font_size="18px"
+            )
+        )
         # padding: top, left, bottom, right
         welcomeLabel.setStyleSheet("padding:0px 0px 5px 0px;")
         mainLayout.addWidget(welcomeLabel)
 
-        label = QLabel(html_utils.paragraph(
-            'Press any of the following buttons<br>'
-            'to <b>launch</b> the respective module',
-            center=True, font_size='14px'
-        ))
+        label = QLabel(
+            html_utils.paragraph(
+                "Press any of the following buttons<br>"
+                "to <b>launch</b> the respective module",
+                center=True,
+                font_size="14px",
+            )
+        )
         # padding: top, left, bottom, right
         label.setStyleSheet("padding:0px 0px 10px 0px;")
         mainLayout.addWidget(label)
@@ -145,16 +180,16 @@ class mainWin(QMainWindow):
         mainLayout.addStretch()
 
         iconSize = 26
-        
+
         modulesButtonsGroupBox = QGroupBox()
-        modulesButtonsGroupBox.setTitle('Modules')
+        modulesButtonsGroupBox.setTitle("Modules")
         modulesButtonsGroupBoxLayout = QVBoxLayout()
         modulesButtonsGroupBox.setLayout(modulesButtonsGroupBoxLayout)
-        
+
         dataStructButton = widgets.setPushButton(
-            '  0. Create data structure from microscopy/image file(s)...  '
+            "  0. Create data structure from microscopy/image file(s)...  "
         )
-        dataStructButton.setIconSize(QSize(iconSize,iconSize))
+        dataStructButton.setIconSize(QSize(iconSize, iconSize))
         font = QFont()
         font.setPixelSize(13)
         dataStructButton.setFont(font)
@@ -162,9 +197,9 @@ class mainWin(QMainWindow):
         self.dataStructButton = dataStructButton
         modulesButtonsGroupBoxLayout.addWidget(dataStructButton)
 
-        dataPrepButton = QPushButton('  1. Launch data prep module...')
-        dataPrepButton.setIcon(QIcon(':prep.svg'))
-        dataPrepButton.setIconSize(QSize(iconSize,iconSize))
+        dataPrepButton = QPushButton("  1. Launch data prep module...")
+        dataPrepButton.setIcon(QIcon(":prep.svg"))
+        dataPrepButton.setIconSize(QSize(iconSize, iconSize))
         font = QFont()
         font.setPixelSize(13)
         dataPrepButton.setFont(font)
@@ -172,16 +207,16 @@ class mainWin(QMainWindow):
         self.dataPrepButton = dataPrepButton
         modulesButtonsGroupBoxLayout.addWidget(dataPrepButton)
 
-        segmButton = QPushButton('  2. Launch segmentation module...')
-        segmButton.setIcon(QIcon(':segment.svg'))
-        segmButton.setIconSize(QSize(iconSize,iconSize))
+        segmButton = QPushButton("  2. Launch segmentation module...")
+        segmButton.setIcon(QIcon(":segment.svg"))
+        segmButton.setIconSize(QSize(iconSize, iconSize))
         segmButton.setFont(font)
         segmButton.clicked.connect(self.launchSegm)
         self.segmButton = segmButton
         modulesButtonsGroupBoxLayout.addWidget(segmButton)
 
-        guiButton = QPushButton('  3. Launch GUI...')
-        guiButton.setIcon(QIcon(':logo.svg'))
+        guiButton = QPushButton("  3. Launch GUI...")
+        guiButton.setIcon(QIcon(":logo.svg"))
         guiButton.setIconSize(QSize(iconSize, iconSize))
         guiButton.setFont(font)
         guiButton.clicked.connect(self.launchGui)
@@ -189,25 +224,25 @@ class mainWin(QMainWindow):
         modulesButtonsGroupBoxLayout.addWidget(guiButton)
 
         if SPOTMAX_INSTALLED:
-            spotmaxButton = QPushButton('  4. Launch SpotMAX...')
+            spotmaxButton = QPushButton("  4. Launch SpotMAX...")
             spotmaxButton.setIcon(QIcon(spotmax_logo_path))
-            spotmaxButton.setIconSize(QSize(iconSize,iconSize))
+            spotmaxButton.setIconSize(QSize(iconSize, iconSize))
             spotmaxButton.setFont(font)
             self.spotmaxButton = spotmaxButton
             spotmaxButton.clicked.connect(self.launchSpotmaxGui)
             modulesButtonsGroupBoxLayout.addWidget(spotmaxButton)
-        
+
         mainLayout.addWidget(modulesButtonsGroupBox)
         mainLayout.addSpacing(10)
-        
+
         controlsButtonsGroupBox = QGroupBox()
-        controlsButtonsGroupBox.setTitle('Controls')
+        controlsButtonsGroupBox.setTitle("Controls")
         controlsButtonsGroupBoxLayout = QVBoxLayout()
         controlsButtonsGroupBox.setLayout(controlsButtonsGroupBoxLayout)
-        
-        showAllWindowsButton = QPushButton('  Restore open windows')
-        showAllWindowsButton.setIcon(QIcon(':eye.svg'))
-        showAllWindowsButton.setIconSize(QSize(iconSize,iconSize))
+
+        showAllWindowsButton = QPushButton("  Restore open windows")
+        showAllWindowsButton.setIcon(QIcon(":eye.svg"))
+        showAllWindowsButton.setIconSize(QSize(iconSize, iconSize))
         showAllWindowsButton.setFont(font)
         self.showAllWindowsButton = showAllWindowsButton
         showAllWindowsButton.clicked.connect(self.showAllWindows)
@@ -217,20 +252,17 @@ class mainWin(QMainWindow):
         font.setPixelSize(13)
 
         closeLayout = QHBoxLayout()
-        restartButton = QPushButton(
-            QIcon(":reload.svg"),
-            '  Restart Cell-ACDC'
-        )
+        restartButton = QPushButton(QIcon(":reload.svg"), "  Restart Cell-ACDC")
         restartButton.setFont(font)
         restartButton.setIconSize(QSize(iconSize, iconSize))
         restartButton.clicked.connect(self.close)
         self.restartButton = restartButton
         self.restartButton.hide()
         closeLayout.addWidget(restartButton)
-        
+
         closeLayout.addWidget(showAllWindowsButton)
 
-        closeButton = QPushButton(QIcon(":close.svg"), '  Close application')
+        closeButton = QPushButton(QIcon(":close.svg"), "  Close application")
         closeButton.setIconSize(QSize(iconSize, iconSize))
         self.closeButton = closeButton
         # closeButton.setIconSize(QSize(24,24))
@@ -239,9 +271,9 @@ class mainWin(QMainWindow):
         closeLayout.addWidget(closeButton)
 
         controlsButtonsGroupBoxLayout.addLayout(closeLayout)
-        
+
         mainLayout.addWidget(controlsButtonsGroupBox)
-        
+
         mainContainer.setLayout(mainLayout)
 
         self.guiWins = []
@@ -250,81 +282,87 @@ class mainWin(QMainWindow):
         self._version = None
         self.progressWin = None
         self.forceClose = False
-    
+
     def addStatusBar(self, scheme):
         self.statusbar = self.statusBar()
         # Permanent widget
-        label = QLabel('Dark mode')
+        label = QLabel("Dark mode")
         widget = QtWidgets.QWidget()
         layout = QHBoxLayout()
         widget.setLayout(layout)
         layout.addWidget(label)
-        self.darkModeToggle = widgets.Toggle(label_text='Dark mode')
+        self.darkModeToggle = widgets.Toggle(label_text="Dark mode")
         self.darkModeToggle.ignoreEvent = False
-        self.darkModeToggle.warnMessageBox  = True
-        if scheme == 'dark':
+        self.darkModeToggle.warnMessageBox = True
+        if scheme == "dark":
             self.darkModeToggle.ignoreEvent = True
             self.darkModeToggle.setChecked(True)
         self.darkModeToggle.toggled.connect(self.onDarkModeToggled)
         layout.addWidget(self.darkModeToggle)
         self.statusBarLayout = layout
         self.statusbar.addWidget(widget)
-    
+
     def getColorScheme(self):
         from ._palettes import get_color_scheme
+
         return get_color_scheme()
-    
+
     def onDarkModeToggled(self, checked):
         if self.darkModeToggle.ignoreEvent:
             self.darkModeToggle.ignoreEvent = False
             return
         from ._palettes import getPaletteColorScheme
-        scheme = 'dark' if checked else 'light'
+
+        scheme = "dark" if checked else "light"
         load.rename_qrc_resources_file(scheme)
         if not os.path.exists(settings_csv_path):
-            df_settings = pd.DataFrame(
-                {'setting': [], 'value': []}).set_index('setting')
+            df_settings = pd.DataFrame({"setting": [], "value": []}).set_index(
+                "setting"
+            )
         else:
-            df_settings = pd.read_csv(settings_csv_path, index_col='setting')
-        df_settings.at['colorScheme', 'value'] = scheme
+            df_settings = pd.read_csv(settings_csv_path, index_col="setting")
+        df_settings.at["colorScheme", "value"] = scheme
         df_settings.to_csv(settings_csv_path)
         if self.darkModeToggle.warnMessageBox:
             _warnings.warnRestartCellACDCcolorModeToggled(
-                scheme, app_name='Cell-ACDC', parent=self
+                scheme, app_name="Cell-ACDC", parent=self
             )
             self.darkModeToggle.warnMessageBox = True
         self.setStatusBarRestartCellACDC()
         self.darkModeToggle.setDisabled(True)
-    
+
     def setStatusBarRestartCellACDC(self):
-        self.statusBarLayout.addWidget(QLabel(html_utils.paragraph(
-            '<i>Restart Cell-ACDC for the change to take effect</i>', 
-            font_color='red'
-        )))
-    
+        self.statusBarLayout.addWidget(
+            QLabel(
+                html_utils.paragraph(
+                    "<i>Restart Cell-ACDC for the change to take effect</i>",
+                    font_color="red",
+                )
+            )
+        )
+
     def checkConfigFiles(self):
-        print('Loading configuration files...')
+        print("Loading configuration files...")
         paths_to_check = [
-            gui.favourite_func_metrics_csv_path, 
-            # gui.custom_annot_path, 
-            gui.shortcut_filepath, 
-            os.path.join(settings_folderpath, 'recentPaths.csv'), 
-            load.last_entries_metadata_path, 
-            load.additional_metadata_path, 
-            load.last_selected_measurements_ini_path
+            gui.favourite_func_metrics_csv_path,
+            # gui.custom_annot_path,
+            gui.shortcut_filepath,
+            os.path.join(settings_folderpath, "recentPaths.csv"),
+            load.last_entries_metadata_path,
+            load.additional_metadata_path,
+            load.last_selected_measurements_ini_path,
         ]
         for path in paths_to_check:
             load.remove_duplicates_file(path)
-    
-    def dragEnterEvent(self, event) -> None:
-        ...
-    
+
+    def dragEnterEvent(self, event) -> None: ...
+
     def log(self, text):
         self.logger.info(text)
-        
+
         if self.progressWin is None:
             return
-    
+
         self.progressWin.log(text)
 
     def setVersion(self, version):
@@ -352,18 +390,19 @@ class mainWin(QMainWindow):
 
     def launchWelcomeGuide(self, checked=False):
         if not os.path.exists(settings_csv_path):
-            idx = ['showWelcomeGuide']
-            values = ['Yes']
+            idx = ["showWelcomeGuide"]
+            values = ["Yes"]
             self.df_settings = pd.DataFrame(
-                {'setting': idx, 'value': values}).set_index('setting')
+                {"setting": idx, "value": values}
+            ).set_index("setting")
             self.df_settings.to_csv(settings_csv_path)
-        self.df_settings = pd.read_csv(settings_csv_path, index_col='setting')
-        if 'showWelcomeGuide' not in self.df_settings.index:
-            self.df_settings.at['showWelcomeGuide', 'value'] = 'Yes'
+        self.df_settings = pd.read_csv(settings_csv_path, index_col="setting")
+        if "showWelcomeGuide" not in self.df_settings.index:
+            self.df_settings.at["showWelcomeGuide", "value"] = "Yes"
             self.df_settings.to_csv(settings_csv_path)
 
         show = (
-            self.df_settings.at['showWelcomeGuide', 'value'] == 'Yes'
+            self.df_settings.at["showWelcomeGuide", "value"] == "Yes"
             or self.sender() is not None
         )
         if not show:
@@ -374,7 +413,7 @@ class mainWin(QMainWindow):
         self.welcomeGuide.showPage(self.welcomeGuide.welcomeItem)
 
     def setColorsAndText(self):
-        self.moduleLaunchedColor = '#f1dd00'
+        self.moduleLaunchedColor = "#f1dd00"
         self.moduleLaunchedQColor = QColor(self.moduleLaunchedColor)
         defaultColor = self.guiButton.palette().button().color().name()
         self.defaultButtonPalette = self.guiButton.palette()
@@ -384,12 +423,8 @@ class mainWin(QMainWindow):
         self.defaultTextDataPrepButton = self.dataPrepButton.text()
         self.defaultTextSegmButton = self.segmButton.text()
         self.moduleLaunchedPalette = self.guiButton.palette()
-        self.moduleLaunchedPalette.setColor(
-            QPalette.Button, self.moduleLaunchedQColor
-        )
-        self.moduleLaunchedPalette.setColor(
-            QPalette.ButtonText, QColor(0, 0, 0)
-        )
+        self.moduleLaunchedPalette.setColor(QPalette.Button, self.moduleLaunchedQColor)
+        self.moduleLaunchedPalette.setColor(QPalette.ButtonText, QColor(0, 0, 0))
 
     def createMenuBar(self):
         menuBar = self.menuBar()
@@ -397,12 +432,12 @@ class mainWin(QMainWindow):
 
         self.recentPathsMenu = QMenu("&Recent paths", self)
         # On macOS an empty menu would not appear --> add dummy action
-        self.recentPathsMenu.addAction('dummy macos')
+        self.recentPathsMenu.addAction("dummy macos")
         menuBar.addMenu(self.recentPathsMenu)
 
         utilsMenu = menuBar.addMenu("&Utilities")
 
-        convertMenu = utilsMenu.addMenu('Convert file formats')
+        convertMenu = utilsMenu.addMenu("Convert file formats")
         convertMenu.addAction(self.npzToNpyAction)
         convertMenu.addAction(self.npzToTiffAction)
         convertMenu.addAction(self.TiffToNpzAction)
@@ -411,35 +446,33 @@ class mainWin(QMainWindow):
         convertMenu.addAction(self.fromImageJroiAction)
         convertMenu.addAction(self.toObjsCoordsAction)
 
-        segmMenu = utilsMenu.addMenu('Segmentation')
+        segmMenu = utilsMenu.addMenu("Segmentation")
         segmMenu.addAction(self.createConnected3Dsegm)
         segmMenu.addAction(self.stack2Dto3DsegmAction)
         segmMenu.addAction(self.filterObjsFromTableAction)
         segmMenu.addAction(self.fillHolesInSegmAction)
 
-        trackingMenu = utilsMenu.addMenu('Tracking and lineage')
+        trackingMenu = utilsMenu.addMenu("Tracking and lineage")
         trackingMenu.addAction(self.trackSubCellFeaturesAction)
         trackingMenu.addAction(self.applyTrackingFromTableAction)
         trackingMenu.addAction(self.applyTrackingFromTrackMateXMLAction)
-        trackingMenu.addAction(self.toSymDivAction)        
-        
+        trackingMenu.addAction(self.toSymDivAction)
+
         self.trackingMenu = trackingMenu
 
-        measurementsMenu = utilsMenu.addMenu('Measurements')
+        measurementsMenu = utilsMenu.addMenu("Measurements")
         measurementsMenu.addAction(self.calcMetricsAcdcDf)
         measurementsMenu.addAction(self.countObjectsInSegmAction)
-        measurementsMenu.addAction(self.combineMetricsMultiChannelAction) 
-        measurementsMenu.addAction(self.generateMothBudTotTableAction) 
-        
-        concatMenu = utilsMenu.addMenu('Concatenate')
-        concatMenu.addAction(self.concatAcdcDfsAction)    
-        if SPOTMAX_INSTALLED:
-            concatMenu.addAction(self.concatSpotmaxDfsAction) 
+        measurementsMenu.addAction(self.combineMetricsMultiChannelAction)
+        measurementsMenu.addAction(self.generateMothBudTotTableAction)
 
-        dataPrepMenu = utilsMenu.addMenu(
-            'Image and segmentation files preprocessing'
-        )
-                 
+        concatMenu = utilsMenu.addMenu("Concatenate")
+        concatMenu.addAction(self.concatAcdcDfsAction)
+        if SPOTMAX_INSTALLED:
+            concatMenu.addAction(self.concatSpotmaxDfsAction)
+
+        dataPrepMenu = utilsMenu.addMenu("Image and segmentation files preprocessing")
+
         dataPrepMenu.addAction(self.batchConverterAction)
         dataPrepMenu.addAction(self.repeatDataPrepAction)
         dataPrepMenu.addAction(self.alignAction)
@@ -447,17 +480,17 @@ class mainWin(QMainWindow):
         dataPrepMenu.addAction(self.fucciPreprocessAction)
         dataPrepMenu.addAction(self.customPreprocessAction)
         dataPrepMenu.addAction(self.combineChannelsAction)
-        
+
         utilsMenu.addAction(self.renameAction)
 
         self.utilsMenu = utilsMenu
 
         utilsMenu.addSeparator()
-        utilsHelpAction = utilsMenu.addAction('Help...')
+        utilsHelpAction = utilsMenu.addAction("Help...")
         utilsHelpAction.triggered.connect(self.showUtilsHelp)
-    
+
         menuBar.addMenu(utilsMenu)
-        
+
         self.settingsMenu = QMenu("&Settings", self)
         self.settingsMenu.addAction(self.changeUserProfileFolderPathAction)
         self.settingsMenu.addAction(self.openUserProfileFolderAction)
@@ -485,12 +518,11 @@ class mainWin(QMainWindow):
         if SPOTMAX_INSTALLED:
             helpMenu.addAction(self.updateSPOTMAXAction)
 
-        
         utilsMenu.addAction(self.debugAction)
-        self.debugAction.setVisible(parser_args['debug'])
+        self.debugAction.setVisible(parser_args["debug"])
 
         menuBar.addMenu(helpMenu)
-    
+
     def showUtilsHelp(self):
         treeInfo = {}
         for action in self.utilsMenu.actions():
@@ -502,34 +534,35 @@ class mainWin(QMainWindow):
                     )
             else:
                 treeInfo = self._addActionToTree(action, treeInfo)
-         
+
         self.utilsHelpWin = apps.TreeSelectorDialog(
-            title='Utilities help', 
+            title="Utilities help",
             infoTxt="Double click on a utility's name to get help about it<br>",
-            parent=self, multiSelection=False, widthFactor=2, heightFactor=1.5
+            parent=self,
+            multiSelection=False,
+            widthFactor=2,
+            heightFactor=1.5,
         )
         self.utilsHelpWin.addTree(treeInfo)
         self.utilsHelpWin.sigItemDoubleClicked.connect(self._showUtilHelp)
         self.utilsHelpWin.exec_()
-    
+
     def resetUserProfileFolderPath(self):
         from . import user_profile_path, user_home_path
-        
+
         if os.path.samefile(user_profile_path, user_home_path):
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(
-                'The user profile data is already in the default folder.'
+                "The user profile data is already in the default folder."
             )
-            msg.warning(self, 'Reset user profile data', txt)
+            msg.warning(self, "Reset user profile data", txt)
             return
-        
+
         acdc_folders = load.get_all_acdc_folders(user_profile_path)
-        acdc_folders_format = [
-            f'&nbsp;&nbsp;&nbsp;{folder}' for folder in acdc_folders
-        ]
-        acdc_folders_format = '<br>'.join(acdc_folders_format)
-        
-        txt = (f"""
+        acdc_folders_format = [f"&nbsp;&nbsp;&nbsp;{folder}" for folder in acdc_folders]
+        acdc_folders_format = "<br>".join(acdc_folders_format)
+
+        txt = f"""
             Current user profile path:<br><br>
             <code>{user_profile_path}</code><br><br>
             The user profile contains the following Cell-ACDC folders:<br><br>
@@ -537,86 +570,87 @@ class mainWin(QMainWindow):
             After clicking "Ok" you <b>Cell-ACDC will migrate</b> 
             the user profile data to the following folder:<br><br>
             <code>{user_home_path}</code>.<br>
-        """)
-        
+        """
+
         txt = html_utils.paragraph(txt)
-        
+
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(
-            self, 'Reset default user profile folder path', txt, 
-            buttonsTexts=('Cancel', 'Ok')
+            self,
+            "Reset default user profile folder path",
+            txt,
+            buttonsTexts=("Cancel", "Ok"),
         )
         if msg.cancel:
-            self.logger.info('Resetting user profile folder path cancelled.')
+            self.logger.info("Resetting user profile folder path cancelled.")
             return
-        
-        
+
         new_user_profile_path = user_home_path
-        
+
         self.startMigrateUserProfileWorker(
             user_profile_path, new_user_profile_path, acdc_folders
         )
-    
-    def changeUserProfileFolderPath(self):        
+
+    def changeUserProfileFolderPath(self):
         acdc_folders = load.get_all_acdc_folders(user_profile_path)
-        acdc_folders_format = [
-            f'&nbsp;&nbsp;&nbsp;{folder}' for folder in acdc_folders
-        ]
-        acdc_folders_format = '<br>'.join(acdc_folders_format)
-        
-        txt = (f"""
+        acdc_folders_format = [f"&nbsp;&nbsp;&nbsp;{folder}" for folder in acdc_folders]
+        acdc_folders_format = "<br>".join(acdc_folders_format)
+
+        txt = f"""
             Current user profile path:<br><br>
             <code>{user_profile_path}</code><br><br>
             The user profile contains the following Cell-ACDC folders:<br><br>
             <code>{acdc_folders_format}</code><br><br>
             After clicking "Ok" you will be <b>asked to select the folder</b> where 
             you want to <b>migrate</b> the user profile data.<br>
-        """)
-        
+        """
+
         txt = html_utils.paragraph(txt)
-        
+
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(
-            self, 'Change user profile folder path', txt, 
-            buttonsTexts=('Cancel', 'Ok')
+            self, "Change user profile folder path", txt, buttonsTexts=("Cancel", "Ok")
         )
         if msg.cancel:
-            self.logger.info('Changing user profile folder path cancelled.')
+            self.logger.info("Changing user profile folder path cancelled.")
             return
 
         from qtpy.compat import getexistingdirectory
+
         new_user_profile_path = getexistingdirectory(
             parent=self,
-            caption='Select folder for user profile data', 
-            basedir=user_profile_path
+            caption="Select folder for user profile data",
+            basedir=user_profile_path,
         )
         if not new_user_profile_path:
-            self.logger.info('Changing user profile folder path cancelled.')
+            self.logger.info("Changing user profile folder path cancelled.")
             return
-        
+
         if os.path.samefile(user_profile_path, new_user_profile_path):
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(
-                'The user profile data is already in the selected folder.'
+                "The user profile data is already in the selected folder."
             )
-            msg.warning(self, 'Change user profile data folder', txt)
+            msg.warning(self, "Change user profile data folder", txt)
             return
-        
+
         self.startMigrateUserProfileWorker(
             user_profile_path, new_user_profile_path, acdc_folders
         )
-        
+
     def startMigrateUserProfileWorker(self, src_path, dst_path, acdc_folders):
         self.progressWin = apps.QDialogWorkerProgress(
-            title='Migrate user profile data', parent=self,
-            pbarDesc='Migrating user profile data...',
-            showInnerPbar=True
+            title="Migrate user profile data",
+            parent=self,
+            pbarDesc="Migrating user profile data...",
+            showInnerPbar=True,
         )
         self.progressWin.sigClosed.connect(self.progressWinClosed)
         self.progressWin.show(self.app)
-        
+
         from . import workers
-        self.workerName = 'Migrating user profile data'
+
+        self.workerName = "Migrating user profile data"
         self._thread = QtCore.QThread()
         self.migrateWorker = workers.MigrateUserProfileWorker(
             src_path, dst_path, acdc_folders
@@ -625,27 +659,21 @@ class mainWin(QMainWindow):
         self.migrateWorker.finished.connect(self._thread.quit)
         self.migrateWorker.finished.connect(self.migrateWorker.deleteLater)
         self._thread.finished.connect(self._thread.deleteLater)
-        
+
         self.migrateWorker.progress.connect(self.workerProgress)
         self.migrateWorker.critical.connect(self.workerCritical)
         self.migrateWorker.finished.connect(self.migrateWorkerFinished)
-        
-        self.migrateWorker.signals.initProgressBar.connect(
-            self.workerInitProgressbar
-        )
-        self.migrateWorker.signals.progressBar.connect(
-            self.workerUpdateProgressbar
-        )
-        self.migrateWorker.signals.sigInitInnerPbar.connect(
-            self.workerInitInnerPbar
-        )
+
+        self.migrateWorker.signals.initProgressBar.connect(self.workerInitProgressbar)
+        self.migrateWorker.signals.progressBar.connect(self.workerUpdateProgressbar)
+        self.migrateWorker.signals.sigInitInnerPbar.connect(self.workerInitInnerPbar)
         self.migrateWorker.signals.sigUpdateInnerPbar.connect(
             self.workerUpdateInnerPbar
         )
-        
+
         self._thread.started.connect(self.migrateWorker.run)
         self._thread.start()
-    
+
     def workerInitProgressbar(self, totalIter):
         self.progressWin.mainPbar.setValue(0)
         if totalIter == 1:
@@ -654,16 +682,16 @@ class mainWin(QMainWindow):
 
     def workerUpdateProgressbar(self, step):
         self.progressWin.mainPbar.update(step)
-    
+
     def workerInitInnerPbar(self, totalIter):
         self.progressWin.innerPbar.setValue(0)
         if totalIter == 1:
             totalIter = 0
         self.progressWin.innerPbar.setMaximum(totalIter)
-    
+
     def workerUpdateInnerPbar(self, step):
         self.progressWin.innerPbar.update(step)
-    
+
     def migrateWorkerFinished(self, worker):
         self.workerFinished()
         msg = widgets.myMessageBox(wrapText=False)
@@ -671,27 +699,34 @@ class mainWin(QMainWindow):
             To make this change effective, please <b>restart</b> Cell-ACDC.<br><br>
             Thanks!
         """)
-        self.statusBarLayout.addWidget(QLabel(html_utils.paragraph(
-            '<i>Restart Cell-ACDC for the change to take effect</i>', 
-            font_color='red'
-        )))
-        msg.information(self, 'Restart Cell-ACDC', txt)
-    
+        self.statusBarLayout.addWidget(
+            QLabel(
+                html_utils.paragraph(
+                    "<i>Restart Cell-ACDC for the change to take effect</i>",
+                    font_color="red",
+                )
+            )
+        )
+        msg.information(self, "Restart Cell-ACDC", txt)
+
     def _showUtilHelp(self, item):
         if item.parent() is None:
             return
         utilityName = item.text(0)
         infoText = html_utils.paragraph(utilsInfo[utilityName])
-        runUtilityButton = widgets.playPushButton('Run utility...')
+        runUtilityButton = widgets.playPushButton("Run utility...")
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         msg.information(
-            self.utilsHelpWin, f'"{utilityName}" help', infoText,
-            buttonsTexts=(runUtilityButton, 'Close'), showDialog=False
+            self.utilsHelpWin,
+            f'"{utilityName}" help',
+            infoText,
+            buttonsTexts=(runUtilityButton, "Close"),
+            showDialog=False,
         )
         runUtilityButton.utilityName = utilityName
         runUtilityButton.clicked.connect(self._runUtility)
         msg.exec_()
-    
+
     def _runUtility(self):
         self.utilsHelpWin.ok_cb()
         utilityName = self.sender().utilityName
@@ -708,15 +743,15 @@ class mainWin(QMainWindow):
             else:
                 action.trigger()
                 break
-    
+
     def _addActionToTree(self, action, treeInfo, parentMenu=None):
         if action.isSeparator():
             return treeInfo
-        
+
         text = action.text()
         if text not in utilsInfo:
             return treeInfo
-        
+
         if parentMenu is None:
             treeInfo[text] = []
         elif parentMenu.title() not in treeInfo:
@@ -726,115 +761,109 @@ class mainWin(QMainWindow):
         return treeInfo
 
     def createActions(self):
-        self.changeUserProfileFolderPathAction = QAction(
-            'Change user profile path...'
-        )
+        self.changeUserProfileFolderPathAction = QAction("Change user profile path...")
         self.resetUserProfileFolderPathAction = QAction(
-            'Reset default user profile path'
+            "Reset default user profile path"
         )
-        self.npzToNpyAction = QAction('Convert .npz file(s) to .npy...')
-        self.npzToTiffAction = QAction('Convert .npz file(s) to .tif...')
-        self.TiffToNpzAction = QAction('Convert .tif file(s) to _segm.npz...')
-        self.h5ToNpzAction = QAction('Convert .h5 file(s) to _segm.npz...')
+        self.npzToNpyAction = QAction("Convert .npz file(s) to .npy...")
+        self.npzToTiffAction = QAction("Convert .npz file(s) to .tif...")
+        self.TiffToNpzAction = QAction("Convert .tif file(s) to _segm.npz...")
+        self.h5ToNpzAction = QAction("Convert .h5 file(s) to _segm.npz...")
         self.toImageJroiAction = QAction(
-            'Convert Cell-ACDC segmentation file(s) (segm.npz) to ImageJ ROIs...'
+            "Convert Cell-ACDC segmentation file(s) (segm.npz) to ImageJ ROIs..."
         )
         self.fromImageJroiAction = QAction(
-            'Convert ImageJ ROIs to Cell-ACDC segmentation file(s) (segm.npz)...'
+            "Convert ImageJ ROIs to Cell-ACDC segmentation file(s) (segm.npz)..."
         )
         self.toObjsCoordsAction = QAction(
-            'Convert .npz segmentation file(s) to object coordinates (CSV)...'
+            "Convert .npz segmentation file(s) to object coordinates (CSV)..."
         )
-        
+
         self.fucciPreprocessAction = QAction(
-            'Combine FUCCI channels and enhance nuclear signal...'
-        ) 
-        
+            "Combine FUCCI channels and enhance nuclear signal..."
+        )
+
         self.customPreprocessAction = QAction(
-            'Setup and run custom image preprocessing...'
+            "Setup and run custom image preprocessing..."
         )
 
         self.combineChannelsAction = QAction(
-            'Combine and manipulate channels and/or segmentation files...'
+            "Combine and manipulate channels and/or segmentation files..."
         )
-        
+
         self.countObjectsInSegmAction = QAction(
-            'Count objects in segmentation mask and save to CSV file...'
+            "Count objects in segmentation mask and save to CSV file..."
         )
-        
+
         self.createConnected3Dsegm = QAction(
-            'Create connected 3D segmentation mask from z-slices segmentation...'
+            "Create connected 3D segmentation mask from z-slices segmentation..."
         )
-        self.fillHolesInSegmAction = QAction(
-            'Fill holes in segmentation masks...'
-        )
+        self.fillHolesInSegmAction = QAction("Fill holes in segmentation masks...")
         self.filterObjsFromTableAction = QAction(
-            'Filter segmented objects using a table of coordinates (e.g., centroids)...'
-        ) 
+            "Filter segmented objects using a table of coordinates (e.g., centroids)..."
+        )
         self.stack2Dto3DsegmAction = QAction(
-            'Stack 2D segmentation objects into 3D objects...'
-        )  
+            "Stack 2D segmentation objects into 3D objects..."
+        )
         self.trackSubCellFeaturesAction = QAction(
-            'Track and/or count sub-cellular objects (assign same ID as the '
-            'cell they belong to)...'
-        )    
+            "Track and/or count sub-cellular objects (assign same ID as the "
+            "cell they belong to)..."
+        )
         self.applyTrackingFromTableAction = QAction(
-            'Apply tracking info from tabular data...'
+            "Apply tracking info from tabular data..."
         )
         self.applyTrackingFromTrackMateXMLAction = QAction(
-            'Apply tracking info from TrackMate XML file...'
+            "Apply tracking info from TrackMate XML file..."
         )
         self.batchConverterAction = QAction(
-            'Create required data structure from image files...'
+            "Create required data structure from image files..."
         )
         self.repeatDataPrepAction = QAction(
-            'Re-apply data prep steps to selected channels...'
+            "Re-apply data prep steps to selected channels..."
         )
         # self.TiffToHDFAction = QAction('Convert .tif file(s) to .h5py...')
         self.concatAcdcDfsAction = QAction(
-            'Concatenate acdc output tables from multiple Positions and experiments...'
+            "Concatenate acdc output tables from multiple Positions and experiments..."
         )
         if SPOTMAX_INSTALLED:
             self.concatSpotmaxDfsAction = QAction(
-                'Concatenate spotMAX output tables from multiple Positions and experiments...'
+                "Concatenate spotMAX output tables from multiple Positions and experiments..."
             )
         self.calcMetricsAcdcDf = QAction(
-            'Compute measurements for one or more experiments...'
+            "Compute measurements for one or more experiments..."
         )
         self.combineMetricsMultiChannelAction = QAction(
-            'Combine measurements from multiple segmentation files...'
+            "Combine measurements from multiple segmentation files..."
         )
         self.generateMothBudTotTableAction = QAction(
-            'Generate mothers, buds, and total cell table...'
+            "Generate mothers, buds, and total cell table..."
         )
         self.toSymDivAction = QAction(
-            'Add lineage tree table to one or more experiments...'
+            "Add lineage tree table to one or more experiments..."
         )
-        self.renameAction = QAction('Rename files by appending additional text...')
-        self.alignAction = QAction('Align or revert alignment...')
+        self.renameAction = QAction("Rename files by appending additional text...")
+        self.alignAction = QAction("Align or revert alignment...")
 
-        self.arboretumAction = QAction(
-            'View lineage tree in napari-arboretum...'
-        )
+        self.arboretumAction = QAction("View lineage tree in napari-arboretum...")
 
         self.resizeImagesAction = QAction(
-            'Resize images (downscale or upscale) in one or more experiments...'
+            "Resize images (downscale or upscale) in one or more experiments..."
         )
-        self.welcomeGuideAction = QAction('Welcome Guide')
-        self.userManualAction = QAction('User documentation...')
-        self.aboutAction = QAction('About Cell-ACDC')
-        self.citeAction = QAction('Cite us...')
-        self.contributeAction = QAction('Contribute...')
-        self.showLogsAction = QAction('Show log files...')
-        self.openUserProfileFolderAction = QAction('Open user profile path...')
-        self.openSettingsFolderAction = QAction('Open settings folder...')
-        self.updateACDCAction = QAction('Update Cell-ACDC...')
-        self.updateSPOTMAXAction = QAction('Update SpotMAX...')
-        
+        self.welcomeGuideAction = QAction("Welcome Guide")
+        self.userManualAction = QAction("User documentation...")
+        self.aboutAction = QAction("About Cell-ACDC")
+        self.citeAction = QAction("Cite us...")
+        self.contributeAction = QAction("Contribute...")
+        self.showLogsAction = QAction("Show log files...")
+        self.openUserProfileFolderAction = QAction("Open user profile path...")
+        self.openSettingsFolderAction = QAction("Open settings folder...")
+        self.updateACDCAction = QAction("Update Cell-ACDC...")
+        self.updateSPOTMAXAction = QAction("Update SpotMAX...")
+
         if SPOTMAX_INSTALLED:
-            self.aboutSmaxAction = QAction('About SpotMAX')
-        
-        self.debugAction = QAction('Daje de mac')
+            self.aboutSmaxAction = QAction("About SpotMAX")
+
+        self.debugAction = QAction("Daje de mac")
 
     def connectActions(self):
         self.changeUserProfileFolderPathAction.triggered.connect(
@@ -846,39 +875,26 @@ class mainWin(QMainWindow):
         self.alignAction.triggered.connect(self.launchAlignUtil)
         self.concatAcdcDfsAction.triggered.connect(self.launchConcatUtil)
         if SPOTMAX_INSTALLED:
-            self.concatSpotmaxDfsAction.triggered.connect(
-                self.launchConcatSpotmaxUtil
-            )
+            self.concatSpotmaxDfsAction.triggered.connect(self.launchConcatSpotmaxUtil)
         self.npzToNpyAction.triggered.connect(self.launchConvertFormatUtil)
         self.npzToTiffAction.triggered.connect(self.launchConvertFormatUtil)
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.h5ToNpzAction.triggered.connect(self.launchConvertFormatUtil)
-        self.fromImageJroiAction.triggered.connect(
-            self.launchFromImageJroiToSegmUtil
-        )
+        self.fromImageJroiAction.triggered.connect(self.launchFromImageJroiToSegmUtil)
         self.resizeImagesAction.triggered.connect(self.launchResizeUtil)
         self.toImageJroiAction.triggered.connect(self.launchToImageJroiUtil)
-        self.toObjsCoordsAction.triggered.connect(
-            self.launchToObjectsCoordsUtil
-        )
-        
-        self.fucciPreprocessAction.triggered.connect(
-            self.launchFucciPreprocessUtil
-        )
-        
-        self.customPreprocessAction.triggered.connect(
-            self.launchCustomPreprocessUtil
-        )
+        self.toObjsCoordsAction.triggered.connect(self.launchToObjectsCoordsUtil)
 
-        self.combineChannelsAction.triggered.connect(
-            self.launchCombineChannelsUtil
-        )
-        
-        
+        self.fucciPreprocessAction.triggered.connect(self.launchFucciPreprocessUtil)
+
+        self.customPreprocessAction.triggered.connect(self.launchCustomPreprocessUtil)
+
+        self.combineChannelsAction.triggered.connect(self.launchCombineChannelsUtil)
+
         self.countObjectsInSegmAction.triggered.connect(
             self.launchCountObjectsInSegmActionUtil
         )
-        
+
         self.createConnected3Dsegm.triggered.connect(
             self.launchConnected3DsegmActionUtil
         )
@@ -888,9 +904,7 @@ class mainWin(QMainWindow):
         self.stack2Dto3DsegmAction.triggered.connect(
             self.launchStack2Dto3DsegmActionUtil
         )
-        self.fillHolesInSegmAction.triggered.connect(
-            self.launchFillHolesActionUtil
-        )
+        self.fillHolesInSegmAction.triggered.connect(self.launchFillHolesActionUtil)
         self.trackSubCellFeaturesAction.triggered.connect(
             self.launchTrackSubCellFeaturesUtil
         )
@@ -899,14 +913,10 @@ class mainWin(QMainWindow):
         )
         self.generateMothBudTotTableAction.triggered.connect(
             self.launchGenerateMothBudTotTableUtil
-        )        
-        
-        self.batchConverterAction.triggered.connect(
-                self.launchImageBatchConverter
-            )
-        self.repeatDataPrepAction.triggered.connect(
-                self.launchRepeatDataPrep
-            )
+        )
+
+        self.batchConverterAction.triggered.connect(self.launchImageBatchConverter)
+        self.repeatDataPrepAction.triggered.connect(self.launchRepeatDataPrep)
         self.welcomeGuideAction.triggered.connect(self.launchWelcomeGuide)
         self.toSymDivAction.triggered.connect(self.launchToSymDicUtil)
         self.calcMetricsAcdcDf.triggered.connect(self.launchCalcMetricsUtil)
@@ -915,16 +925,14 @@ class mainWin(QMainWindow):
         if SPOTMAX_INSTALLED:
             self.aboutSmaxAction.triggered.connect(self.showAboutSmax)
 
-        self.userManualAction.triggered.connect(myutils.browse_docs)
+        self.userManualAction.triggered.connect(utils.browse_docs)
         self.contributeAction.triggered.connect(self.showContribute)
         self.citeAction.triggered.connect(
             partial(QDesktopServices.openUrl, QUrl(cite_url))
         )
         self.recentPathsMenu.aboutToShow.connect(self.populateOpenRecent)
         self.showLogsAction.triggered.connect(self.showLogFiles)
-        self.openUserProfileFolderAction.triggered.connect(
-            self.openUserProfileFolder
-        )
+        self.openUserProfileFolderAction.triggered.connect(self.openUserProfileFolder)
         self.openSettingsFolderAction.triggered.connect(self.openSettingsFolder)
         self.updateACDCAction.triggered.connect(self.launchUpdateACDC)
         if SPOTMAX_INSTALLED:
@@ -935,35 +943,40 @@ class mainWin(QMainWindow):
         self.applyTrackingFromTrackMateXMLAction.triggered.connect(
             self.launchApplyTrackingFromTrackMateXML
         )
-        
+
         self.debugAction.triggered.connect(self._debug)
-    
+
     def openSettingsFolder(self):
         from . import settings_folderpath
-        myutils.showInExplorer(settings_folderpath)
-    
+
+        utils.showInExplorer(settings_folderpath)
+
     def openUserProfileFolder(self):
         from . import user_profile_path
-        myutils.showInExplorer(user_profile_path)
-    
+
+        utils.showInExplorer(user_profile_path)
+
     def showLogFiles(self):
-        logs_path = myutils.get_logs_path()
-        myutils.showInExplorer(logs_path)
-    
+        logs_path = utils.get_logs_path()
+        utils.showInExplorer(logs_path)
+
     def launchUpdateSpotmax(self):
-        res = myutils.update_package(self, 'spotmax',)
+        res = utils.update_package(
+            self,
+            "spotmax",
+        )
         if res:
-            self.showUpdateInfo('spotMAX')
+            self.showUpdateInfo("spotMAX")
         else:
-            self.showNoUpdateInfo('spotMAX')
+            self.showNoUpdateInfo("spotMAX")
 
     def launchUpdateACDC(self):
-        res = myutils.update_package(self, 'cellacdc')
+        res = utils.update_package(self, "cellacdc")
         if res:
-            self.showUpdateInfo('Cell-ACDC')
+            self.showUpdateInfo("Cell-ACDC")
         else:
-            self.showNoUpdateInfo('Cell-ACDC')
-    
+            self.showNoUpdateInfo("Cell-ACDC")
+
     def showNoUpdateInfo(self, package_name):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(f"""
@@ -971,7 +984,7 @@ class mainWin(QMainWindow):
             It is recommended to install git for a better update experience.<br>
             <a href="https://git-scm.com/downloads">Download Git</a>
         """)
-        msg.information(self, f'No update for {package_name} performed', txt)
+        msg.information(self, f"No update for {package_name} performed", txt)
 
     def showUpdateInfo(self, package_name):
         msg = widgets.myMessageBox()
@@ -979,18 +992,18 @@ class mainWin(QMainWindow):
             {package_name} has been updated.<br>
             Please <b>restart</b> the application for the changes to take effect.
         """)
-        msg.information(self, f'Update {package_name}', txt)
+        msg.information(self, f"Update {package_name}", txt)
 
     def populateOpenRecent(self):
         # Step 0. Remove the old options from the menu
         self.recentPathsMenu.clear()
         # Step 1. Read recent Paths
-        recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
+        recentPaths_path = os.path.join(settings_folderpath, "recentPaths.csv")
         if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            recentPaths = df['path'].to_list()
+            df = pd.read_csv(recentPaths_path, index_col="index")
+            if "opened_last_on" in df.columns:
+                df = df.sort_values("opened_last_on", ascending=False)
+            recentPaths = df["path"].to_list()
         else:
             recentPaths = []
         # Step 2. Dynamically create the actions
@@ -999,7 +1012,7 @@ class mainWin(QMainWindow):
             if not os.path.exists(path):
                 continue
             action = QAction(path, self)
-            action.triggered.connect(partial(myutils.showInExplorer, path))
+            action.triggered.connect(partial(utils.showInExplorer, path))
             actions.append(action)
         # Step 3. Add the actions to the menu
         self.recentPathsMenu.addActions(actions)
@@ -1011,12 +1024,13 @@ class mainWin(QMainWindow):
     def showAbout(self):
         self.aboutWin = about.QDialogAbout(parent=self)
         self.aboutWin.show()
-    
+
     def showAboutSmax(self):
         from spotmax.dialogs import AboutSpotMAXDialog
+
         win = AboutSpotMAXDialog(parent=self)
         win.exec_()
-    
+
     def getSelectedPosPath(self, utilityName):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
@@ -1024,27 +1038,23 @@ class mainWin(QMainWindow):
             to <b>select one position folder</b> that contains timelapse
             data.
         """)
-        msg.information(
-            self, f'{utilityName}', txt,
-            buttonsTexts=('Cancel', 'Ok')
-        )
+        msg.information(self, f"{utilityName}", txt, buttonsTexts=("Cancel", "Ok"))
         if msg.cancel:
-            print(f'{utilityName} aborted by the user.')
+            print(f"{utilityName} aborted by the user.")
             return
-        
-        mostRecentPath = myutils.getMostRecentPath()
+
+        mostRecentPath = utils.getMostRecentPath()
         exp_path = QFileDialog.getExistingDirectory(
-            self, 'Select Position_n folder',
-            mostRecentPath
+            self, "Select Position_n folder", mostRecentPath
         )
         if not exp_path:
-            print(f'{utilityName} aborted by the user.')
+            print(f"{utilityName} aborted by the user.")
             return
-        
-        myutils.addToRecentPaths(exp_path)
+
+        utils.addToRecentPaths(exp_path)
         baseFolder = os.path.basename(exp_path)
-        isPosFolder = re.search(r'Position_(\d+)$', baseFolder) is not None
-        isImagesFolder = baseFolder == 'Images'
+        isPosFolder = re.search(r"Position_(\d+)$", baseFolder) is not None
+        isImagesFolder = baseFolder == "Images"
         if isImagesFolder:
             posPath = os.path.dirname(exp_path)
             posFolders = [os.path.basename(posPath)]
@@ -1054,48 +1064,44 @@ class mainWin(QMainWindow):
             posFolders = [os.path.basename(posPath)]
             exp_path = os.path.dirname(exp_path)
         else:
-            posFolders = myutils.get_pos_foldernames(exp_path)
+            posFolders = utils.get_pos_foldernames(exp_path)
             if not posFolders:
                 msg = widgets.myMessageBox()
-                msg.addShowInFileManagerButton(
-                    exp_path, txt='Show selected folder...'
-                )
+                msg.addShowInFileManagerButton(exp_path, txt="Show selected folder...")
                 _ls = "\n".join(os.listdir(exp_path))
-                msg.setDetailedText(f'Files present in the folder:\n{_ls}')
+                msg.setDetailedText(f"Files present in the folder:\n{_ls}")
                 txt = html_utils.paragraph(f"""
                     The selected folder:<br><br>
                     <code>{exp_path}</code><br><br>
                     does not contain any valid Position folders.<br>
                 """)
                 msg.warning(
-                    self, 'Not valid folder', txt,
-                    buttonsTexts=('Cancel', 'Try again')
+                    self, "Not valid folder", txt, buttonsTexts=("Cancel", "Try again")
                 )
                 if msg.cancel:
-                    print(f'{utilityName} aborted by the user.')
+                    print(f"{utilityName} aborted by the user.")
                     return
 
         if len(posFolders) > 1:
             win = apps.QDialogCombobox(
-                'Select position folder', posFolders, 'Select position folder',
-                'Positions: ', parent=self
+                "Select position folder",
+                posFolders,
+                "Select position folder",
+                "Positions: ",
+                parent=self,
             )
             win.exec_()
             posPath = os.path.join(exp_path, win.selectedItemText)
         else:
             posPath = os.path.join(exp_path, posFolders[0])
-        
+
         return posPath
 
-    def getSelectedExpPaths(
-            self, utilityName, 
-            exp_folderpath=None, 
-            custom_txt=None
-        ):
+    def getSelectedExpPaths(self, utilityName, exp_folderpath=None, custom_txt=None):
         # self._debug()
-        
+
         if exp_folderpath is None:
-            self.logger.info('Asking to select experiment folders...')
+            self.logger.info("Asking to select experiment folders...")
             msg = widgets.myMessageBox()
             if custom_txt:
                 txt = html_utils.paragraph(custom_txt)
@@ -1106,54 +1112,51 @@ class mainWin(QMainWindow):
                     Next, you will be able to <b>choose specific Positions</b>
                     from each selected experiment.
                 """)
-            msg.information(
-                self, f'{utilityName}', txt,
-                buttonsTexts=('Cancel', 'Ok')
-            )
+            msg.information(self, f"{utilityName}", txt, buttonsTexts=("Cancel", "Ok"))
             if msg.cancel:
-                self.logger.info(f'{utilityName} aborted by the user.')
+                self.logger.info(f"{utilityName} aborted by the user.")
                 return
-        
+
         expPaths = {}
-        mostRecentPath = myutils.getMostRecentPath()
+        mostRecentPath = utils.getMostRecentPath()
         warn_exp_already_selected = True
         while True:
             if exp_folderpath is None:
                 exp_path = qtpy.compat.getexistingdirectory(
-                    parent=self, 
-                    caption='Select experiment folder containing Position_n folders',
+                    parent=self,
+                    caption="Select experiment folder containing Position_n folders",
                     basedir=mostRecentPath,
                     # options=QFileDialog.DontUseNativeDialog
                 )
                 if not exp_path:
                     break
-                myutils.addToRecentPaths(exp_path)
-            else: 
+                utils.addToRecentPaths(exp_path)
+            else:
                 exp_path = exp_folderpath
             selected_path = exp_path
             baseFolder = os.path.basename(exp_path)
-            isPosFolder = myutils.is_pos_folderpath(exp_path)
-            isImagesFolder = baseFolder == 'Images'
+            isPosFolder = utils.is_pos_folderpath(exp_path)
+            isImagesFolder = baseFolder == "Images"
             if isImagesFolder:
                 posPath = os.path.dirname(exp_path)
                 posFolders = [os.path.basename(posPath)]
                 exp_path = os.path.dirname(posPath)
-                selected_exp_paths = {exp_path:posFolders}
+                selected_exp_paths = {exp_path: posFolders}
             elif isPosFolder:
                 posPath = exp_path
                 posFolders = [os.path.basename(posPath)]
                 exp_path = os.path.dirname(exp_path)
-                selected_exp_paths = {exp_path:posFolders}
+                selected_exp_paths = {exp_path: posFolders}
             else:
                 self.logger.info(f'Scanning selected folder "{exp_path}"...')
                 selected_exp_paths = path.get_posfolderpaths_walk(exp_path)
                 if not selected_exp_paths:
                     cancel = self.warnNoValidExpPaths(exp_path)
                     if cancel:
-                        self.logger.info(f'{utilityName} aborted by the user.')
+                        self.logger.info(f"{utilityName} aborted by the user.")
                         return
                     continue
-            
+
             is_multi_pos = False
             for exp_path, pos_folders in selected_exp_paths.items():
                 if exp_path in expPaths:
@@ -1162,68 +1165,67 @@ class mainWin(QMainWindow):
                             selected_path, exp_path
                         )
                         if not proceed:
-                            self.logger.info(f'{utilityName} aborted by the user.')
+                            self.logger.info(f"{utilityName} aborted by the user.")
                             return
                         warn_exp_already_selected = False
                     expPaths[exp_path].extend(pos_folders)
                 else:
                     expPaths[exp_path] = pos_folders
-                
+
                 if len(pos_folders) > 1 and not is_multi_pos:
                     is_multi_pos = True
-            
+
             mostRecentPath = exp_path
             msg = widgets.myMessageBox(wrapText=False)
             txt = html_utils.paragraph("""
                 Do you want to select <b>additional experiment folders</b>?
             """)
             noButton, yesButton = msg.question(
-                self, 'Select additional experiments?', txt,
-                buttonsTexts=('No', 'Yes')
+                self, "Select additional experiments?", txt, buttonsTexts=("No", "Yes")
             )
             if msg.clickedButton == noButton:
                 break
-        
+
         if not expPaths:
-            self.logger.info(f'{utilityName} aborted by the user.')
+            self.logger.info(f"{utilityName} aborted by the user.")
             return
 
         if len(expPaths) > 1 or is_multi_pos:
             infoPaths = self.getInfoPosStatus(expPaths, utilityName)
             selectPosWin = apps.selectPositionsMultiExp(
-                expPaths, 
-                infoPaths=infoPaths, 
-                parent=self
+                expPaths, infoPaths=infoPaths, parent=self
             )
             selectPosWin.exec_()
             if selectPosWin.cancel:
-                self.logger.info(f'{utilityName} aborted by the user.')
+                self.logger.info(f"{utilityName} aborted by the user.")
                 return
             selectedExpPaths = selectPosWin.selectedPaths
         else:
             selectedExpPaths = expPaths
-        
+
         return selectedExpPaths
-    
+
     def warnNoValidExpPaths(self, selected_path):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             The selected folder does 
             <b>not contain any valid experiment folders</b>.
         """)
-        command = selected_path.replace('\\', os.sep)
-        command = selected_path.replace('/', os.sep)
+        command = selected_path.replace("\\", os.sep)
+        command = selected_path.replace("/", os.sep)
         msg.warning(
-            self, 'No valid folders found', txt,
-            buttonsTexts=('Cancel', 'Try again'), 
-            commands=(command,), 
-            path_to_browse=selected_path
+            self,
+            "No valid folders found",
+            txt,
+            buttonsTexts=("Cancel", "Try again"),
+            commands=(command,),
+            path_to_browse=selected_path,
         )
         return msg.cancel
-    
+
     def warnExpPathAlreadySelected(self, selected_path, exp_path):
-        selected_text = myutils.to_relative_path(selected_path)
-        exp_text = myutils.to_relative_path(exp_path)
+        selected_text = utils.to_relative_path(selected_path)
+        exp_text = utils.to_relative_path(exp_path)
         txt = html_utils.paragraph(f""" 
             The experiment folder of the selected path was already previously selected.<br><br>
             Are you adding Position folders one by one? If yes, you do not 
@@ -1238,27 +1240,28 @@ class mainWin(QMainWindow):
         """)
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(
-            self, 'Folder already selected!', txt, 
-            buttonsTexts=('Cancel', 'Yes'), 
-            path_to_browse=selected_path
+            self,
+            "Folder already selected!",
+            txt,
+            buttonsTexts=("Cancel", "Yes"),
+            path_to_browse=selected_path,
         )
         return not msg.cancel
-    
+
     def _debug(self):
         try:
             from . import _q_debug
+
             _q_debug.q_debug(self)
         except Exception as err:
             raise err
-    
+
     def askRestartAcdc(self):
-        txt = html_utils.paragraph(
-            'Are you sure you want to restart Cell-ACDC?<br>'
-        )
+        txt = html_utils.paragraph("Are you sure you want to restart Cell-ACDC?<br>")
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Restart?', txt, buttonsTexts=('Cancel', 'Yes'))
+        msg.warning(self, "Restart?", txt, buttonsTexts=("Cancel", "Yes"))
         return msg.cancel
-    
+
     def keyPressEvent(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl_shift = modifiers == Qt.ControlModifier | Qt.ShiftModifier
@@ -1270,190 +1273,202 @@ class mainWin(QMainWindow):
                 self.close()
                 return
         return super().keyPressEvent(event)
-    
+
     def launchApplyTrackingFromTrackMateXML(self):
-        posPath = self.getSelectedPosPath('Apply tracking info from tabular data')
+        posPath = self.getSelectedPosPath("Apply tracking info from tabular data")
         if posPath is None:
             return
-        
-        title = 'Apply tracking info from TrackMate XML file utility'
-        infoText = 'Launching apply tracking info from from TrackMate XML data...'
+
+        title = "Apply tracking info from TrackMate XML file utility"
+        infoText = "Launching apply tracking info from from TrackMate XML data..."
         self.applyTrackMateXMLWin = (
             utilsApplyTrackFromTrackMate.ApplyTrackingInfoFromTrackMateUtil(
-                self.app, title, infoText, parent=self, 
-                callbackOnFinished=self.applyTrackingFromTackmateXMLFinished
+                self.app,
+                title,
+                infoText,
+                parent=self,
+                callbackOnFinished=self.applyTrackingFromTackmateXMLFinished,
             )
         )
         self.applyTrackMateXMLWin.show()
         func = partial(
-            self._runApplyTrackingFromTrackMateXML, posPath, 
-            self.applyTrackMateXMLWin
+            self._runApplyTrackingFromTrackMateXML, posPath, self.applyTrackMateXMLWin
         )
         QTimer.singleShot(200, func)
-    
+
     def _runApplyTrackingFromTrackMateXML(self, posPath, win):
         success = win.run(posPath)
         if not success:
             self.logger.info(
-                'Apply tracking info from TrackMate XML cancelled by the user.'
+                "Apply tracking info from TrackMate XML cancelled by the user."
             )
-            win.close()  
-    
+            win.close()
+
     def launchApplyTrackingFromTableUtil(self):
-        posPath = self.getSelectedPosPath('Apply tracking info from tabular data')
+        posPath = self.getSelectedPosPath("Apply tracking info from tabular data")
         if posPath is None:
             return
-        
-        title = 'Apply tracking info from tabular data utility'
-        infoText = 'Launching apply tracking info from tabular data...'
-        self.applyTrackWin = (
-            utilsApplyTrackFromTab.ApplyTrackingInfoFromTableUtil(
-                self.app, title, infoText, parent=self, 
-                callbackOnFinished=self.applyTrackingFromTableFinished
-            )
+
+        title = "Apply tracking info from tabular data utility"
+        infoText = "Launching apply tracking info from tabular data..."
+        self.applyTrackWin = utilsApplyTrackFromTab.ApplyTrackingInfoFromTableUtil(
+            self.app,
+            title,
+            infoText,
+            parent=self,
+            callbackOnFinished=self.applyTrackingFromTableFinished,
         )
         self.applyTrackWin.show()
-        func = partial(
-            self._runApplyTrackingFromTableUtil, posPath, self.applyTrackWin
-        )
+        func = partial(self._runApplyTrackingFromTableUtil, posPath, self.applyTrackWin)
         QTimer.singleShot(200, func)
 
     def _runApplyTrackingFromTableUtil(self, posPath, win):
         success = win.run(posPath)
         if not success:
             self.logger.info(
-                'Apply tracking info from tabular data cancelled by the user.'
+                "Apply tracking info from tabular data cancelled by the user."
             )
-            win.close()          
-        
+            win.close()
+
     def applyTrackingFromTackmateXMLFinished(self):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(
-            'Apply tracking info from TrackMate XML data completed.'
+            "Apply tracking info from TrackMate XML data completed."
         )
-        msg.information(self, 'Process completed', txt)
-        self.logger.info('Apply tracking info from TrackMate XML data completed.')
+        msg.information(self, "Process completed", txt)
+        self.logger.info("Apply tracking info from TrackMate XML data completed.")
         self.applyTrackMateXMLWin.close()
-    
+
     def applyTrackingFromTableFinished(self):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        txt = html_utils.paragraph(
-            'Apply tracking info from tabular data completed.'
-        )
-        msg.information(self, 'Process completed', txt)
-        self.logger.info('Apply tracking info from tabular data completed.')
+        txt = html_utils.paragraph("Apply tracking info from tabular data completed.")
+        msg.information(self, "Process completed", txt)
+        self.logger.info("Apply tracking info from tabular data completed.")
         self.applyTrackWin.close()
-    
+
     def launchNapariUtil(self, action):
-        myutils.check_install_package('napari', parent=self)
+        utils.check_install_package("napari", parent=self)
         if action == self.arboretumAction:
             self._launchArboretum()
 
     def _launchArboretum(self):
-        myutils.check_install_package('napari_arboretum', parent=self)
+        utils.check_install_package("napari_arboretum", parent=self)
 
         from cellacdc.napari_utils import arboretum
-        
-        posPath = self.getSelectedPosPath('napari-arboretum')
+
+        posPath = self.getSelectedPosPath("napari-arboretum")
         if posPath is None:
             return
 
-        title = 'napari-arboretum utility'
-        infoText = 'Launching napari-arboretum to visualize lineage tree...'
+        title = "napari-arboretum utility"
+        infoText = "Launching napari-arboretum to visualize lineage tree..."
         self.arboretumWindow = arboretum.NapariArboretumDialog(
             posPath, self.app, title, infoText, parent=self
         )
         self.arboretumWindow.show()
-    
+
     def launchToObjectsCoordsUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
 
         selectedExpPaths = self.getSelectedExpPaths(
-            'From _segm.npz to objects coordinates (CSV)'
+            "From _segm.npz to objects coordinates (CSV)"
         )
         if selectedExpPaths is None:
             return
-        
-        title = 'Convert _segm.npz file(s) to objects coordinates (CSV)'
-        infoText = 'Launching to to objects coordinates process...'
+
+        title = "Convert _segm.npz file(s) to objects coordinates (CSV)"
+        infoText = "Launching to to objects coordinates process..."
         progressDialogueTitle = (
-            'Converting _segm.npz file(s) to to objects coordinates (CSV)'
+            "Converting _segm.npz file(s) to to objects coordinates (CSV)"
         )
         self.toObjCoordsWin = utilsToObjCoords.toObjCoordsUtil(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
         )
         self.toObjCoordsWin.show()
-    
+
     def launchFromImageJroiToSegmUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
-        myutils.check_install_package('roifile', parent=self)
+        utils.check_install_package("roifile", parent=self)
 
         import roifile
 
-        selectedExpPaths = self.getSelectedExpPaths(
-            'From ImageJ ROIs to _segm.npz'
-        )
+        selectedExpPaths = self.getSelectedExpPaths("From ImageJ ROIs to _segm.npz")
         if selectedExpPaths is None:
             return
-        
-        title = 'Convert ImageJ ROIs to _segm.npz file(s)'
-        infoText = 'Launching ImageJ ROIs conversion process...'
-        progressDialogueTitle = 'Converting ImageJ ROIs to _segm.npz file(s)'
+
+        title = "Convert ImageJ ROIs to _segm.npz file(s)"
+        infoText = "Launching ImageJ ROIs conversion process..."
+        progressDialogueTitle = "Converting ImageJ ROIs to _segm.npz file(s)"
         self.toImageJroiWin = utilsFromImageJroi.fromImageJRoiToSegmUtil(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
-        )
-        self.toImageJroiWin.show() 
-    
-    def launchResizeUtil(self):
-        self.logger.info(f'Launching utility "{self.sender().text()}"')
-        
-        selectedExpPaths = self.getSelectedExpPaths(
-            'From _segm.npz to ImageJ ROIs'
-        )
-        if selectedExpPaths is None:
-            return
-        
-        title = 'Resize images'
-        infoText = 'Launching resizing images process...'
-        progressDialogueTitle = 'Resize images'
-        self.resizeUtilWin = utilsResizePositionsUtil.ResizePositionsUtil(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
-        )
-        self.resizeUtilWin.show()
-    
-    def launchToImageJroiUtil(self):
-        self.logger.info(f'Launching utility "{self.sender().text()}"')
-        myutils.check_install_package('roifile', parent=self)
-
-        import roifile
-
-        selectedExpPaths = self.getSelectedExpPaths(
-            'From _segm.npz to ImageJ ROIs'
-        )
-        if selectedExpPaths is None:
-            return
-        
-        title = 'Convert _segm.npz file(s) to ImageJ ROIs'
-        infoText = 'Launching to ImageJ ROIs process...'
-        progressDialogueTitle = 'Converting _segm.npz file(s) to ImageJ ROIs'
-        self.toImageJroiWin = utilsToImageJroi.toImageRoiUtil(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
         )
         self.toImageJroiWin.show()
-    
+
+    def launchResizeUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+
+        selectedExpPaths = self.getSelectedExpPaths("From _segm.npz to ImageJ ROIs")
+        if selectedExpPaths is None:
+            return
+
+        title = "Resize images"
+        infoText = "Launching resizing images process..."
+        progressDialogueTitle = "Resize images"
+        self.resizeUtilWin = utilsResizePositionsUtil.ResizePositionsUtil(
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
+        )
+        self.resizeUtilWin.show()
+
+    def launchToImageJroiUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        utils.check_install_package("roifile", parent=self)
+
+        import roifile
+
+        selectedExpPaths = self.getSelectedExpPaths("From _segm.npz to ImageJ ROIs")
+        if selectedExpPaths is None:
+            return
+
+        title = "Convert _segm.npz file(s) to ImageJ ROIs"
+        infoText = "Launching to ImageJ ROIs process..."
+        progressDialogueTitle = "Converting _segm.npz file(s) to ImageJ ROIs"
+        self.toImageJroiWin = utilsToImageJroi.toImageRoiUtil(
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
+        )
+        self.toImageJroiWin.show()
+
     def launchGenerateMothBudTotTableUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
-        
-        title = 'Generate mothers, buds, and total cell table'
-        infoText = 'Launching generate mothers, buds, and total cell table...'
+
+        title = "Generate mothers, buds, and total cell table"
+        infoText = "Launching generate mothers, buds, and total cell table..."
         self.genMothBudTotalTableWin = (
             utilsGenerateMothBudTotTable.GenerateMothBudTotalUtil(
-                self.app, title, infoText, parent=self, 
-                callbackOnFinished=self.generateMothBudTotTableFinished
+                self.app,
+                title,
+                infoText,
+                parent=self,
+                callbackOnFinished=self.generateMothBudTotTableFinished,
             )
         )
         self.genMothBudTotalTableWin.show()
@@ -1461,74 +1476,82 @@ class mainWin(QMainWindow):
             self._runGenerateMothBudTotTableUtil, self.genMothBudTotalTableWin
         )
         QTimer.singleShot(200, func)
-    
+
     def _runGenerateMothBudTotTableUtil(self, win):
         success = win.run()
         if not success:
             self.logger.info(
-                'Generating mothers, buds, and total cell table cancelled by the user.'
+                "Generating mothers, buds, and total cell table cancelled by the user."
             )
-            win.close()  
-    
+            win.close()
+
     def generateMothBudTotTableFinished(self):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(
-            'Generating mothers, buds, and total cell table completed.'
+            "Generating mothers, buds, and total cell table completed."
         )
-        msg.information(self, 'Process completed', txt)
-        self.logger.info(
-            'Generating mothers, buds, and total cell table completed.'
-        )
+        msg.information(self, "Process completed", txt)
+        self.logger.info("Generating mothers, buds, and total cell table completed.")
         self.genMothBudTotalTableWin.close()
-    
+
     def launchCombineMeatricsMultiChanneliUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths(
-            'Combine measurements from multiple channels'
+            "Combine measurements from multiple channels"
         )
         if selectedExpPaths is None:
             return
-        
-        title = 'Compute measurements from multiple channels'
-        infoText = 'Launching compute measurements from multiple channels process...'
-        progressDialogueTitle = 'Compute measurements from multiple channels'
+
+        title = "Compute measurements from multiple channels"
+        infoText = "Launching compute measurements from multiple channels process..."
+        progressDialogueTitle = "Compute measurements from multiple channels"
         self.multiChannelWin = utilsComputeMultiCh.ComputeMetricsMultiChannel(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
         )
         self.multiChannelWin.show()
-    
+
     def launchFucciPreprocessUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
-        selectedExpPaths = self.getSelectedExpPaths(
-            'Combine FUCCI channels'
-        )
+        selectedExpPaths = self.getSelectedExpPaths("Combine FUCCI channels")
         if selectedExpPaths is None:
             return
-        
-        title = 'Combine FUCCI channels'
-        infoText = 'Launching Combine FUCCI channels process...'
-        progressDialogueTitle = 'Combining FUCCI channels'
+
+        title = "Combine FUCCI channels"
+        infoText = "Launching Combine FUCCI channels process..."
+        progressDialogueTitle = "Combining FUCCI channels"
         self.fucciPreprocessWin = utilsFucciPreprocess.FucciPreprocessUtil(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
         )
         self.fucciPreprocessWin.show()
-    
+
     def launchCustomPreprocessUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths(
-            'Pre-process images with custom recipe'
+            "Pre-process images with custom recipe"
         )
         if selectedExpPaths is None:
             return
-        
-        title = 'Pre-process images with custom recipe' 
-        infoText = 'Launching Pre-process images with custom recipe process...'
-        progressDialogueTitle = 'Pre-process images'
+
+        title = "Pre-process images with custom recipe"
+        infoText = "Launching Pre-process images with custom recipe process..."
+        progressDialogueTitle = "Pre-process images"
         self.customPreprocessWin = utilsCustomPreprocess.CustomPreprocessUtil(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
         )
         self.customPreprocessWin.show()
 
@@ -1542,147 +1565,175 @@ class mainWin(QMainWindow):
                     recepies will be applied to all of them.
                 """
         selectedExpPaths = self.getSelectedExpPaths(
-            'Combine and manipulate channels and/or segmentation files',
-            custom_txt=custom_txt
-        )
-        if selectedExpPaths is None:
-            return
-        
-        title = 'Combine and manipulate channels and/or segmentation files' 
-        infoText = 'Launching combine and manipulate channels utility...'
-        progressDialogueTitle = 'Combine and manipulate channels and/or segmentation files'
-        self.CombineChannelsWin = utilsCombineChannels.CombineChannelsUtil(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
-        )
-        self.CombineChannelsWin.show()
-    
-    def launchConnected3DsegmActionUtil(self):
-        self.logger.info(f'Launching utility "{self.sender().text()}"')
-        selectedExpPaths = self.getSelectedExpPaths(
-            'Create connected 3D segmentation mask'
-        )
-        if selectedExpPaths is None:
-            return
-        
-        title = 'Create connected 3D segmentation mask'
-        infoText = 'Launching connected 3D segmentation mask creation process...'
-        progressDialogueTitle = 'Creating connected 3D segmentation mask'
-        self.connected3DsegmWin = utilsConnected3Dsegm.CreateConnected3Dsegm(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
-        )
-        self.connected3DsegmWin.show()
-    
-    def launchCountObjectsInSegmActionUtil(self):
-        self.logger.info(f'Launching utility "{self.sender().text()}"')
-        selectedExpPaths = self.getSelectedExpPaths(
-            'Create connected 3D segmentation mask'
-        )
-        if selectedExpPaths is None:
-            return
-        
-        title = 'Count objects in segmentation mask'
-        infoText = 'Launching count objects in segmentation masks process...'
-        progressDialogueTitle = 'Counting objects in segmentation mask'
-        self.connected3DsegmWin = utilsCountObjectsInSegm.CountObjectsInsegm(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
-        )
-        self.connected3DsegmWin.show()
-    
-    def launchFillHolesActionUtil(self):
-        self.logger.info(f'Launching utility "{self.sender().text()}"')
-        selectedExpPaths = self.getSelectedExpPaths(
-            'Fill holes in segmentation masks'
+            "Combine and manipulate channels and/or segmentation files",
+            custom_txt=custom_txt,
         )
         if selectedExpPaths is None:
             return
 
-        title = 'Fill holes in segmentation masks'
-        infoText = 'Launching fill holes in segmentation masks process...'
-        progressDialogueTitle = 'Filling holes in segmentation masks'
+        title = "Combine and manipulate channels and/or segmentation files"
+        infoText = "Launching combine and manipulate channels utility..."
+        progressDialogueTitle = (
+            "Combine and manipulate channels and/or segmentation files"
+        )
+        self.CombineChannelsWin = utilsCombineChannels.CombineChannelsUtil(
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
+        )
+        self.CombineChannelsWin.show()
+
+    def launchConnected3DsegmActionUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths(
+            "Create connected 3D segmentation mask"
+        )
+        if selectedExpPaths is None:
+            return
+
+        title = "Create connected 3D segmentation mask"
+        infoText = "Launching connected 3D segmentation mask creation process..."
+        progressDialogueTitle = "Creating connected 3D segmentation mask"
+        self.connected3DsegmWin = utilsConnected3Dsegm.CreateConnected3Dsegm(
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
+        )
+        self.connected3DsegmWin.show()
+
+    def launchCountObjectsInSegmActionUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths(
+            "Create connected 3D segmentation mask"
+        )
+        if selectedExpPaths is None:
+            return
+
+        title = "Count objects in segmentation mask"
+        infoText = "Launching count objects in segmentation masks process..."
+        progressDialogueTitle = "Counting objects in segmentation mask"
+        self.connected3DsegmWin = utilsCountObjectsInSegm.CountObjectsInsegm(
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
+        )
+        self.connected3DsegmWin.show()
+
+    def launchFillHolesActionUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths("Fill holes in segmentation masks")
+        if selectedExpPaths is None:
+            return
+
+        title = "Fill holes in segmentation masks"
+        infoText = "Launching fill holes in segmentation masks process..."
+        progressDialogueTitle = "Filling holes in segmentation masks"
         self.fillHolesWin = fillHolesInSegm.fillHolesInSegm(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
         )
         self.fillHolesWin.show()
 
     def launchFilterObjsFromTableActionUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths(
-            'Create connected 3D segmentation mask'
+            "Create connected 3D segmentation mask"
         )
         if selectedExpPaths is None:
             return
-        
-        title = 'Filter segmented objects from coordinates'
-        infoText = 'Launching Filter segmented objects from coordinates process...'
-        progressDialogueTitle = 'Filtering objects'
+
+        title = "Filter segmented objects from coordinates"
+        infoText = "Launching Filter segmented objects from coordinates process..."
+        progressDialogueTitle = "Filtering objects"
         self.filterObjsFromTableWin = (
-                utilsFilterObjsFromTable.FilterObjsFromCoordsTable(
-                selectedExpPaths, self.app, title, infoText, 
-                progressDialogueTitle, parent=self
+            utilsFilterObjsFromTable.FilterObjsFromCoordsTable(
+                selectedExpPaths,
+                self.app,
+                title,
+                infoText,
+                progressDialogueTitle,
+                parent=self,
             )
         )
         self.filterObjsFromTableWin.show()
-    
+
     def launchStack2Dto3DsegmActionUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths(
-            'Create 3D segmentation mask from 2D'
+            "Create 3D segmentation mask from 2D"
         )
         if selectedExpPaths is None:
             return
-        
+
         SizeZwin = apps.NumericEntryDialog(
-            title='Number of z-slices', 
-            instructions='Enter number of z-slices required',
-            currentValue=1, parent=self, 
-            stretch=True
+            title="Number of z-slices",
+            instructions="Enter number of z-slices required",
+            currentValue=1,
+            parent=self,
+            stretch=True,
         )
         SizeZwin.exec_()
         if SizeZwin.cancel:
             return
-        
-        title = 'Create stacked 3D segmentation mask'
-        infoText = 'Launching stacked 3D segmentation mask creation process...'
-        progressDialogueTitle = 'Creating stacked 3D segmentation mask'
+
+        title = "Create stacked 3D segmentation mask"
+        infoText = "Launching stacked 3D segmentation mask creation process..."
+        progressDialogueTitle = "Creating stacked 3D segmentation mask"
         self.stack2DsegmWin = utilsStack2Dto3D.Stack2DsegmTo3Dsegm(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            SizeZwin.value, parent=self
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            SizeZwin.value,
+            parent=self,
         )
         self.stack2DsegmWin.show()
 
     def launchTrackSubCellFeaturesUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
-        selectedExpPaths = self.getSelectedExpPaths(
-            'Track sub-cellular objects'
-        )
+        selectedExpPaths = self.getSelectedExpPaths("Track sub-cellular objects")
         if selectedExpPaths is None:
             return
-        
+
         win = apps.TrackSubCellObjectsDialog()
         win.exec_()
         if win.cancel:
             return
-        
-        title = 'Track sub-cellular objects'
-        infoText = 'Launching sub-cellular objects tracker...'
-        progressDialogueTitle = 'Tracking sub-cellular objects'
+
+        title = "Track sub-cellular objects"
+        infoText = "Launching sub-cellular objects tracker..."
+        progressDialogueTitle = "Tracking sub-cellular objects"
         self.trackSubCellObjWin = utilsTrackSubCell.TrackSubCellFeatures(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            win.trackSubCellObjParams, parent=self
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            win.trackSubCellObjParams,
+            parent=self,
         )
         self.trackSubCellObjWin.show()
 
-    
     def launchCalcMetricsUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
-        selectedExpPaths = self.getSelectedExpPaths('Compute measurements utility')
+        selectedExpPaths = self.getSelectedExpPaths("Compute measurements utility")
         if selectedExpPaths is None:
             return
-        
+
         self._lauchCalcMetricsUtil(selectedExpPaths)
 
     def _lauchCalcMetricsUtil(self, selectedExpPaths):
@@ -1690,10 +1741,10 @@ class mainWin(QMainWindow):
             selectedExpPaths, self.app, parent=self
         )
         self.calcMeasWin.show()
-    
+
     def launchToSymDicUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
-        selectedExpPaths = self.getSelectedExpPaths('Lineage tree utility')
+        selectedExpPaths = self.getSelectedExpPaths("Lineage tree utility")
         if selectedExpPaths is None:
             return
 
@@ -1701,18 +1752,18 @@ class mainWin(QMainWindow):
             selectedExpPaths, self.app, parent=self
         )
         self.toSymDivWin.show()
-    
+
     def getInfoPosStatus(self, expPaths, utilityName):
-        if 'spotmax' in utilityName.lower():
-            caller = 'SpotMAX'
+        if "spotmax" in utilityName.lower():
+            caller = "SpotMAX"
         else:
-            caller = 'Cell-ACDC'
+            caller = "Cell-ACDC"
         infoPaths = {}
         for exp_path, posFoldernames in expPaths.items():
             posFoldersInfo = {}
             for pos in posFoldernames:
                 pos_path = os.path.join(exp_path, pos)
-                status = myutils.get_pos_status(pos_path, caller=caller)
+                status = utils.get_pos_status(pos_path, caller=caller)
                 posFoldersInfo[pos] = status
             infoPaths[exp_path] = posFoldersInfo
         return infoPaths
@@ -1722,9 +1773,7 @@ class mainWin(QMainWindow):
         if isUtilnabled:
             self.sender().setDisabled(True)
             self.renameWin = utilsRename.renameFilesWin(
-                parent=self,
-                actionToEnable=self.sender(),
-                mainWin=self
+                parent=self, actionToEnable=self.sender(), mainWin=self
             )
             self.renameWin.show()
             self.renameWin.main()
@@ -1735,7 +1784,7 @@ class mainWin(QMainWindow):
 
     def launchConvertFormatUtil(self, checked=False):
         s = self.sender().text()
-        m = re.findall(r'Convert \.(\w+) file\(s\) to (.*)\.(\w+)...', s)
+        m = re.findall(r"Convert \.(\w+) file\(s\) to (.*)\.(\w+)...", s)
         from_, info, to = m[0]
         isConvertEnabled = self.sender().isEnabled()
         if isConvertEnabled:
@@ -1743,8 +1792,10 @@ class mainWin(QMainWindow):
             self.convertWin = utilsConvert.convertFileFormatWin(
                 parent=self,
                 actionToEnable=self.sender(),
-                mainWin=self, from_=from_, to=to,
-                info=info
+                mainWin=self,
+                from_=from_,
+                to=to,
+                info=info,
             )
             self.convertWin.show()
             self.convertWin.main()
@@ -1752,50 +1803,49 @@ class mainWin(QMainWindow):
             geometry = self.convertWin.saveGeometry()
             self.convertWin.setWindowState(Qt.WindowActive)
             self.convertWin.restoreGeometry(geometry)
-    
+
     def launchImageBatchConverter(self):
         self.batchConverterWin = utilsConvert.ImagesToPositions(parent=self)
         self.batchConverterWin.show()
-    
+
     def launchRepeatDataPrep(self):
         self.batchConverterWin = utilsRepeat.repeatDataPrepWindow(parent=self)
         self.batchConverterWin.show()
 
     def launchDataStruct(self, checked=False):
         self.dataStructButton.setPalette(self.moduleLaunchedPalette)
-        self.dataStructButton.setText(
-            '0. Creating data structure running...'
-        )
+        self.dataStructButton.setText("0. Creating data structure running...")
 
         QTimer.singleShot(100, self._showDataStructWin)
 
     def _showDataStructWin(self):
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-        bioformats_url = 'https://www.openmicroscopy.org/bio-formats/'
-        bioformats_href = html_utils.href_tag(
-            '<b>Bio-Formats</b>', bioformats_url
+        bioformats_url = "https://www.openmicroscopy.org/bio-formats/"
+        bioformats_href = html_utils.href_tag("<b>Bio-Formats</b>", bioformats_url)
+
+        bioio_url = "https://bioio-devs.github.io/bioio/"
+        bioio_href = html_utils.href_tag("<b>BioIO</b>", bioio_url)
+
+        aicsimageio_url = "https://allencellmodeling.github.io/aicsimageio/#"
+        aicsimageio_href = html_utils.href_tag("<b>AICSImageIO</b>", aicsimageio_url)
+
+        acdc_fiji_macros_url = (
+            "https://cell-acdc.readthedocs.io/en/latest/data-structure-fiji.html"
         )
-        
-        bioio_url = 'https://bioio-devs.github.io/bioio/'
-        bioio_href = html_utils.href_tag('<b>BioIO</b>', bioio_url)
-        
-        aicsimageio_url = 'https://allencellmodeling.github.io/aicsimageio/#'
-        aicsimageio_href = html_utils.href_tag('<b>AICSImageIO</b>', aicsimageio_url)
-        
-        acdc_fiji_macros_url = 'https://cell-acdc.readthedocs.io/en/latest/data-structure-fiji.html'
         acdc_fiji_macros_href = html_utils.href_tag(
-            'Cell-ACDC Fiji macros guide', acdc_fiji_macros_url
+            "Cell-ACDC Fiji macros guide", acdc_fiji_macros_url
         )
-        
+
         conda_important_admon = html_utils.to_admonition(
             f"""
             Java can be installed only using <code>conda</code>! 
             If you are not using conda and the file format of your files requires Bio-Formats,<br>
             you will need to use the provided ImageJ/Fiji macros.<br>
             See this guide for more information: {acdc_fiji_macros_href}
-            """, 'important'
+            """,
+            "important",
         )
-        
+
         issues_href = f'<a href="{issues_url}">GitHub page</a>'
         txt = html_utils.paragraph(f"""
     To process microscopy files, Cell-ACDC uses the {bioio_href} library.<br><br>
@@ -1822,27 +1872,24 @@ class mainWin(QMainWindow):
         # useAICSImageIO = QPushButton(
         #     QIcon(':AICS_logo.svg'), ' Use AICSImageIO ', msg
         # )
-        useBioFormatsButton = QPushButton(
-            QIcon(':ome.svg'), ' Use BioIO ', msg
-        )
+        useBioFormatsButton = QPushButton(QIcon(":ome.svg"), " Use BioIO ", msg)
         restructButton = QPushButton(
-            QIcon(':folders.svg'), ' Re-structure image files ', msg
+            QIcon(":folders.svg"), " Re-structure image files ", msg
         )
         buttons = [useBioFormatsButton, restructButton]
         if is_mac:
             useFijiMacroButton = QPushButton(
-                QIcon(':fiji-logo.svg'), ' Use Fiji Macro ', msg
+                QIcon(":fiji-logo.svg"), " Use Fiji Macro ", msg
             )
             buttons.insert(1, useFijiMacroButton)
         msg.question(
-            self, 'How to structure files', txt, 
-            buttonsTexts=('Cancel', *buttons)
+            self, "How to structure files", txt, buttonsTexts=("Cancel", *buttons)
         )
         if msg.cancel:
-            self.logger.info('Creating data structure process aborted by the user.')
+            self.logger.info("Creating data structure process aborted by the user.")
             self.restoreDefaultButtons()
             return
-        
+
         useBioFormats = msg.clickedButton == useBioFormatsButton
         useFijiMacro = False
         if is_mac:
@@ -1852,63 +1899,61 @@ class mainWin(QMainWindow):
                 self.dataStructWin = dataStruct.createDataStructWin(
                     parent=self, version=self._version
                 )
-                if self.dataStructWin.bioformats_backend == 'python-bioformats':
+                if self.dataStructWin.bioformats_backend == "python-bioformats":
                     self.dataStructButton.setPalette(self.defaultButtonPalette)
                     self.dataStructButton.setText(
-                        '0. Restart Cell-ACDC to enable module 0 again.')
+                        "0. Restart Cell-ACDC to enable module 0 again."
+                    )
                     self.dataStructButton.setToolTip(
-                        'Due to an interal limitation of the Java Virtual Machine\n'
-                        'moduel 0 can be launched only once.\n'
-                        'To use it again close and reopen Cell-ACDC'
+                        "Due to an interal limitation of the Java Virtual Machine\n"
+                        "moduel 0 can be launched only once.\n"
+                        "To use it again close and reopen Cell-ACDC"
                     )
                     self.dataStructButton.setDisabled(True)
-                
+
                 self.dataStructWin.show()
                 self.dataStructWin.main()
-                if self.dataStructWin.bioformats_backend != 'python-bioformats': 
+                if self.dataStructWin.bioformats_backend != "python-bioformats":
                     self.restoreDefaultButtons()
             elif useFijiMacro:
                 self.runFijiMacroWorkflow()
         if msg.clickedButton == restructButton:
             self.progressWin = apps.QDialogWorkerProgress(
-                title='Re-structure image files log', parent=self,
-                pbarDesc='Re-structuring image files running...'
+                title="Re-structure image files log",
+                parent=self,
+                pbarDesc="Re-structuring image files running...",
             )
             self.progressWin.sigClosed.connect(self.progressWinClosed)
             self.progressWin.show(self.app)
-            self.workerName = 'Re-structure image files'
+            self.workerName = "Re-structure image files"
             success = dataReStruct.run(self)
             if not success:
                 self.progressWin.workerFinished = True
                 self.progressWin.close()
                 self.restoreDefaultButtons()
-                self.logger.info('Re-structuring files NOT completed.')
-    
+                self.logger.info("Re-structuring files NOT completed.")
+
     def runFijiMacroWorkflow(self):
         self.progressWin = apps.QDialogWorkerProgress(
-            title='Initialising Fiji', 
-            parent=self,
-            pbarDesc='Initialising Fiji...'
+            title="Initialising Fiji", parent=self, pbarDesc="Initialising Fiji..."
         )
         self.progressWin.show(self.app)
         self.progressWin.mainPbar.setMaximum(0)
-        
+
         QTimer.singleShot(100, self._runFijiMacroWindow)
-    
+
     def _runFijiMacroWindow(self):
-        self.dataStructWin = (
-            dataStruct.InitFijiMacro(self)
-        )
+        self.dataStructWin = dataStruct.InitFijiMacro(self)
         self.dataStructWin.run()
         self.progressWin.workerFinished = True
         self.progressWin.close()
         self.restoreDefaultButtons()
         self.progressWin = None
-    
+
     def progressWinClosed(self):
         self.progressWin = None
         self._gc_collect()
-    
+
     def workerInitProgressbar(self, totalIter):
         if self.progressWin is None:
             return
@@ -1917,52 +1962,48 @@ class mainWin(QMainWindow):
         if totalIter == 1:
             totalIter = 0
         self.progressWin.mainPbar.setMaximum(totalIter)
-    
+
     def workerFinished(self, worker=None):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        txt = html_utils.paragraph(
-            f'{self.workerName} process finished.'
-        )
-        msg.information(self, 'Process finished', txt)
+        txt = html_utils.paragraph(f"{self.workerName} process finished.")
+        msg.information(self, "Process finished", txt)
 
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
-        
+
         self.restoreDefaultButtons()
-    
+
     @exception_handler
     def workerCritical(self, error):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
-        raise error        
-    
+        raise error
+
     def workerUpdateProgressbar(self, step):
         if self.progressWin is None:
             return
 
         self.progressWin.mainPbar.update(step)
-    
-    def workerProgress(self, text, loggerLevel='INFO'):
+
+    def workerProgress(self, text, loggerLevel="INFO"):
         if self.progressWin is not None:
             self.progressWin.logConsole.append(text)
         self.logger.log(getattr(logging, loggerLevel), text)
 
     def restoreDefaultButtons(self):
         self.dataStructButton.setText(
-            '0. Create data structure from microscopy/image file(s)...'
+            "0. Create data structure from microscopy/image file(s)..."
         )
         self.dataStructButton.setPalette(self.defaultButtonPalette)
 
     def launchDataPrep(self, checked=False):
-        dataPrepWin = dataPrep.dataPrepWin(
-            mainWin=self, version=self._version
-        )
+        dataPrepWin = dataPrep.dataPrepWin(mainWin=self, version=self._version)
         dataPrepWin.sigClose.connect(self.dataPrepClosed)
         dataPrepWin.show()
         self.dataPrepWins.append(dataPrepWin)
-    
+
     def dataPrepClosed(self, dataPrepWin):
         try:
             self.dataPrepWins.remove(dataPrepWin)
@@ -1977,13 +2018,15 @@ class mainWin(QMainWindow):
         defaultText = self.defaultTextSegmButton
         if c != self.moduleLaunchedColor:
             self.segmButton.setPalette(self.moduleLaunchedPalette)
-            self.segmButton.setText('Segmentation is running. '
-                                    'Check progress in the terminal/console')
+            self.segmButton.setText(
+                "Segmentation is running. Check progress in the terminal/console"
+            )
             self.segmWin = segm.segmWin(
                 buttonToRestore=(self.segmButton, defaultColor, defaultText),
-                mainWin=self, version=self._version
+                mainWin=self,
+                version=self._version,
             )
-            self.segmWin.sigClosed.connect(self.segmWinClosed) 
+            self.segmWin.sigClosed.connect(self.segmWinClosed)
             self.segmWin.show()
             self.segmWin.main()
         else:
@@ -1996,63 +2039,67 @@ class mainWin(QMainWindow):
         self._gc_collect()
 
     def launchGui(self, checked=False):
-        self.logger.info('Opening GUI...')
+        self.logger.info("Opening GUI...")
         guiWin = gui.guiWin(
-            self.app, mainWin=self, version=self._version, 
-            launcherSlot=self.launchGui
+            self.app, mainWin=self, version=self._version, launcherSlot=self.launchGui
         )
         self.guiWins.append(guiWin)
         guiWin.sigClosed.connect(self.guiClosed)
         guiWin.run()
-    
+
     def launchSpotmaxGui(self, checked=False):
         from spotmax import icon_path, logo_path
         # logoDialog = apps.LogoDialog(logo_path, icon_path, parent=self)
-        
+
         splashScreen = QSplashScreen()
         splashScreen.setPixmap(QPixmap(logo_path))
         splashScreen.show()
 
         QTimer.singleShot(300, partial(self._launchSpotMaxGui, splashScreen))
-    
+
     def _launchSpotMaxGui(self, splashScreen):
-        self.logger.info('Launching spotMAX...')
+        self.logger.info("Launching spotMAX...")
         spotmaxWin = spotmaxRun.run_gui(
-            app=self.app, mainWin=self, launcherSlot=self.launchSpotmaxGui, 
-            
+            app=self.app,
+            mainWin=self,
+            launcherSlot=self.launchSpotmaxGui,
         )
         spotmaxWin.sigClosed.connect(self.spotmaxGuiClosed)
         self.spotmaxWins.append(spotmaxWin)
         splashScreen.close()
-    
+
     def spotmaxGuiClosed(self, spotmaxWin):
         self.spotmaxWins.remove(spotmaxWin)
         self._gc_collect()
-        
+
     def guiClosed(self, guiWin):
         try:
             self.guiWins.remove(guiWin)
         except ValueError:
             pass
         self._gc_collect()
-        
+
     def _gc_collect(self):
         QTimer.singleShot(100, gc.collect)
 
     def launchAlignUtil(self, checked=False):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths(
-            'Align frames in X and Y with phase cross-correlation'
+            "Align frames in X and Y with phase cross-correlation"
         )
         if selectedExpPaths is None:
             return
-        
-        title = 'Align frames'
-        infoText = 'Aligning frames in X and Y with phase cross-correlation...'
-        progressDialogueTitle = 'Align frames'
+
+        title = "Align frames"
+        infoText = "Aligning frames in X and Y with phase cross-correlation..."
+        progressDialogueTitle = "Align frames"
         self.alignWindow = utilsAlign.alignWin(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
         )
         self.alignWindow.show()
 
@@ -2061,40 +2108,48 @@ class mainWin(QMainWindow):
             f'Launching utility "Concatenate tables from multipe positions"'
         )
         selectedExpPaths = self.getSelectedExpPaths(
-            'Concatenate acdc_output files', exp_folderpath=exp_folderpath
+            "Concatenate acdc_output files", exp_folderpath=exp_folderpath
         )
         if selectedExpPaths is None:
             return
-        
-        title = 'Concatenate acdc_output files'
-        infoText = 'Launching concatenate acdc_output files process...'
-        progressDialogueTitle = 'Concatenate acdc_output files'
+
+        title = "Concatenate acdc_output files"
+        infoText = "Launching concatenate acdc_output files process..."
+        progressDialogueTitle = "Concatenate acdc_output files"
         self.concatWindow = utilsConcat.ConcatWin(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
         )
         self.concatWindow.show()
-    
+
     def launchConcatSpotmaxUtil(self, checked=False, exp_folderpath=None):
         self.logger.info(
             f'Launching utility "Concatenate tables from multipe positions"'
         )
         selectedExpPaths = self.getSelectedExpPaths(
-            'Concatenate spotMAX output files', 
+            "Concatenate spotMAX output files",
             exp_folderpath=exp_folderpath,
         )
         if selectedExpPaths is None:
             return
-        
-        title = 'Concatenate spotMAX output files'
-        infoText = 'Launching concatenate spotMAX output files process...'
-        progressDialogueTitle = 'Concatenate spotMAX output files'
+
+        title = "Concatenate spotMAX output files"
+        infoText = "Launching concatenate spotMAX output files process..."
+        progressDialogueTitle = "Concatenate spotMAX output files"
         self.concatWindow = utilsConcat.ConcatWin(
-            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            parent=self
+            selectedExpPaths,
+            self.app,
+            title,
+            infoText,
+            progressDialogueTitle,
+            parent=self,
         )
         self.concatWindow.show()
-    
+
     def showEvent(self, event):
         self.showAllWindows()
         # self.setFocus()
@@ -2102,55 +2157,56 @@ class mainWin(QMainWindow):
         if not self.checkUserDataFolderPath:
             return
         self.checkMigrateUserDataFolderPath()
-    
+
     def checkMigrateUserDataFolderPath(self):
         from . import user_home_path
+
         user_home_acdc_folders = load.get_all_acdc_folders(user_home_path)
         if not user_home_acdc_folders:
             self.checkUserDataFolderPath = False
             return
 
-        if 'doNotAskMigrate' in self.df_settings.index:
-            if str(self.df_settings.at['doNotAskMigrate', 'value']) == 'Yes':
+        if "doNotAskMigrate" in self.df_settings.index:
+            if str(self.df_settings.at["doNotAskMigrate", "value"]) == "Yes":
                 return
-        
+
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
-            'Starting from version 1.4.0, Cell-ACDC default <b>user profile path</b> '
-            f'has been <b>changed</b> to <code>{user_profile_path}</code><br><br>'
-            'Since you have some profile data saved in the old path, Cell-ACDC '
-            'can now migrate everything to the new folder.<br><br>'
-            'Do you want to <b>migrate now?</b><br>'
+            "Starting from version 1.4.0, Cell-ACDC default <b>user profile path</b> "
+            f"has been <b>changed</b> to <code>{user_profile_path}</code><br><br>"
+            "Since you have some profile data saved in the old path, Cell-ACDC "
+            "can now migrate everything to the new folder.<br><br>"
+            "Do you want to <b>migrate now?</b><br>"
         )
         acdc_folders_format = [
-            f'&nbsp;&nbsp;&nbsp;<code>{os.path.join(user_home_path, folder)}</code>' 
+            f"&nbsp;&nbsp;&nbsp;<code>{os.path.join(user_home_path, folder)}</code>"
             for folder in user_home_acdc_folders
         ]
-        acdc_folders_format = '<br>'.join(acdc_folders_format)
+        acdc_folders_format = "<br>".join(acdc_folders_format)
         detailsText = (
-            f'Folders found in the previous location:<br><br>{acdc_folders_format}'
+            f"Folders found in the previous location:<br><br>{acdc_folders_format}"
         )
-        doNotAskAgainCheckbox = QCheckBox('Do not ask again')
+        doNotAskAgainCheckbox = QCheckBox("Do not ask again")
         msg.warning(
-            self, 'Migrate old user profile', txt, 
-            buttonsTexts=('Cancel', 'Yes'),
+            self,
+            "Migrate old user profile",
+            txt,
+            buttonsTexts=("Cancel", "Yes"),
             detailsText=detailsText,
-            widgets=doNotAskAgainCheckbox
+            widgets=doNotAskAgainCheckbox,
         )
         if doNotAskAgainCheckbox.isChecked():
-            self.df_settings.at['doNotAskMigrate', 'value'] = 'Yes'
+            self.df_settings.at["doNotAskMigrate", "value"] = "Yes"
             self.df_settings.to_csv(settings_csv_path)
         if msg.cancel:
-            self.logger.info(
-                'Migrating old user profile cancelled.'
-            )
+            self.logger.info("Migrating old user profile cancelled.")
             self.checkUserDataFolderPath = False
             return
         self.startMigrateUserProfileWorker(
             user_home_path, user_profile_path, user_home_acdc_folders
         )
         self.checkUserDataFolderPath = False
-        
+
     def showAllWindows(self):
         openModules = self.getOpenModules()
         for win in openModules:
@@ -2168,32 +2224,32 @@ class mainWin(QMainWindow):
         super().show()
         h = self.dataPrepButton.geometry().height()
         f = 1.5
-        self.dataStructButton.setMinimumHeight(int(h*f))
-        self.dataPrepButton.setMinimumHeight(int(h*f))
-        self.segmButton.setMinimumHeight(int(h*f))
-        self.guiButton.setMinimumHeight(int(h*f))
-        if hasattr(self, 'spotmaxButton'):
-            self.spotmaxButton.setMinimumHeight(int(h*f))
-        self.showAllWindowsButton.setMinimumHeight(int(h*f))
-        self.restartButton.setMinimumHeight(int(int(h*f)))
-        self.closeButton.setMinimumHeight(int(int(h*f)))
+        self.dataStructButton.setMinimumHeight(int(h * f))
+        self.dataPrepButton.setMinimumHeight(int(h * f))
+        self.segmButton.setMinimumHeight(int(h * f))
+        self.guiButton.setMinimumHeight(int(h * f))
+        if hasattr(self, "spotmaxButton"):
+            self.spotmaxButton.setMinimumHeight(int(h * f))
+        self.showAllWindowsButton.setMinimumHeight(int(h * f))
+        self.restartButton.setMinimumHeight(int(int(h * f)))
+        self.closeButton.setMinimumHeight(int(int(h * f)))
         # iconWidth = int(self.closeButton.iconSize().width()*1.3)
         # self.closeButton.setIconSize(QSize(iconWidth, iconWidth))
         self.setColorsAndText()
         self.readSettings()
         if self.app.toggle_dark_mode:
-            self.darkModeToggle.warnMessageBox  = False
+            self.darkModeToggle.warnMessageBox = False
             self.darkModeToggle.setChecked(True)
 
     def saveWindowGeometry(self):
-        settings = QSettings('schmollerlab', 'acdc_main')
+        settings = QSettings("schmollerlab", "acdc_main")
         settings.setValue("geometry", self.saveGeometry())
 
     def readSettings(self):
-        settings = QSettings('schmollerlab', 'acdc_main')
-        if settings.value('geometry') is not None:
+        settings = QSettings("schmollerlab", "acdc_main")
+        if settings.value("geometry") is not None:
             self.restoreGeometry(settings.value("geometry"))
-    
+
     def getOpenModules(self):
         c2 = self.segmButton.palette().button().color().name()
         launchedColor = self.moduleLaunchedColor
@@ -2209,7 +2265,6 @@ class mainWin(QMainWindow):
             openModules.extend(self.spotmaxWins)
         return openModules
 
-
     def checkOpenModules(self):
         openModules = self.getOpenModules()
 
@@ -2218,11 +2273,11 @@ class mainWin(QMainWindow):
 
         msg = widgets.myMessageBox()
         warn_txt = html_utils.paragraph(
-            'There are still <b>other Cell-ACDC windows open</b>.<br><br>'
-            'Are you sure you want to close everything?'
+            "There are still <b>other Cell-ACDC windows open</b>.<br><br>"
+            "Are you sure you want to close everything?"
         )
         _, yesButton = msg.warning(
-           self, 'Modules still open!', warn_txt, buttonsTexts=('Cancel', 'Yes')
+            self, "Modules still open!", warn_txt, buttonsTexts=("Cancel", "Yes")
         )
 
         return msg.clickedButton == yesButton, openModules
@@ -2253,9 +2308,9 @@ class mainWin(QMainWindow):
                 restart()
             except Exception as e:
                 traceback.print_exc()
-                print('-----------------------------------------')
-                print('Failed to restart Cell-ACDC. Please restart manually')
+                print("-----------------------------------------")
+                print("Failed to restart Cell-ACDC. Please restart manually")
         else:
-            self.logger.info('**********************************************')
-            self.logger.info(f'Cell-ACDC closed. {myutils.get_salute_string()}')
-            self.logger.info('**********************************************')
+            self.logger.info("**********************************************")
+            self.logger.info(f"Cell-ACDC closed. {utils.get_salute_string()}")
+            self.logger.info("**********************************************")

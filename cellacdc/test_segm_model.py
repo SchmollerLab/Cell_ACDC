@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from importlib import import_module
 
 from cellacdc._run import _setup_app
-from cellacdc import apps, myutils, widgets, data, core, load
+from cellacdc import apps, utils, widgets, data, core, load
 from cellacdc import prompts
 
 import skimage.color
@@ -16,7 +16,8 @@ import qtpy.compat
 
 try:
     import pytest
-    pytest.skip('skipping this test since it is gui based', allow_module_level=True)
+
+    pytest.skip("skipping this test since it is gui based", allow_module_level=True)
 except Exception as e:
     pass
 
@@ -29,40 +30,39 @@ test_data = None
 # test_data = data.BABYtestData()
 # test_data = data.YeastMitoSnapshotData()
 
-app, splashScreen = _setup_app(splashscreen=True)  
+app, splashScreen = _setup_app(splashscreen=True)
 splashScreen.close()
 
 initialWindow = apps.TestSegmModelInitalDialog()
 initialWindow.exec_()
 if initialWindow.cancel:
-    print('Execution cancelled.')
+    print("Execution cancelled.")
     exit()
 
 start_frame_idx = initialWindow.start_frame_n
 if start_frame_idx is not None:
     start_frame_idx -= 1
-    
-stop_frame_n = initialWindow.stop_frame_n 
+
+stop_frame_n = initialWindow.stop_frame_n
 
 start_z_slice_idx = initialWindow.start_z_slice_n
 if start_z_slice_idx is not None:
     start_z_slice_idx -= 1
-    
+
 stop_z_slice_n = initialWindow.stop_z_slice_n
 is_timelapse = initialWindow.is_timelapse
 
 if test_data is None:
     tif_filepath, _ = qtpy.compat.getopenfilename(
-        basedir=myutils.getMostRecentPath(),
-        filters=('Images (*.tif)')
+        basedir=utils.getMostRecentPath(), filters=("Images (*.tif)")
     )
     if not tif_filepath:
-        exit('Execution cancelled.')
-    
+        exit("Execution cancelled.")
+
     images_path = os.path.dirname(tif_filepath)
-    basename = os.path.commonprefix(myutils.listdir(images_path))
+    basename = os.path.commonprefix(utils.listdir(images_path))
     filename, ext = os.path.splitext(os.path.basename(tif_filepath))
-    channel = filename[len(basename):]
+    channel = filename[len(basename) :]
     posData = load.loadData(tif_filepath, channel)
     posData.loadImgData()
     image_data = posData.img_data
@@ -71,46 +71,44 @@ else:
     posData = test_data.posData()
     image_data = test_data.image_data()
     images_path = test_data.images_path
-    
+
 posData.loadOtherFiles(load_segm_data=False, load_metadata=True)
 posData.buildPaths()
 
 if is_timelapse:
-    img = image_data[
-        start_frame_idx:stop_frame_n, 
-        start_z_slice_idx:stop_z_slice_n
-    ]
+    img = image_data[start_frame_idx:stop_frame_n, start_z_slice_idx:stop_z_slice_n]
 else:
     img = image_data[start_z_slice_idx:stop_z_slice_n]
 
 from cellacdc.plot import imshow
+
 imshow(img)
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-models = myutils.get_list_of_models()
+models = utils.get_list_of_models()
 win = widgets.QDialogListbox(
-    'Select model',
-    'Select model to use for segmentation: ',
+    "Select model",
+    "Select model to use for segmentation: ",
     models,
-    multiSelection=False
+    multiSelection=False,
 )
 win.exec_()
 
 if win.cancel:
-    sys.exit('Execution aborted')
+    sys.exit("Execution aborted")
 
 model_name = win.selectedItemsText[0]
-if model_name == 'Automatic thresholding':
-    model_name = 'thresholding'
+if model_name == "Automatic thresholding":
+    model_name = "thresholding"
 # Check if model needs to be downloaded
 downloadWin = apps.downloadModel(model_name, parent=None)
 downloadWin.download()
 
 # Load model as a module
-acdcSegment = myutils.import_segment_module(model_name)
+acdcSegment = utils.import_segment_module(model_name)
 
 # Read all models parameters
-init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+init_params, segment_params = utils.getModelArgSpec(acdcSegment)
 
 # Prompt user to enter the model parameters
 try:
@@ -119,46 +117,54 @@ except AttributeError:
     url = None
 
 out = prompts.init_segm_model_params(
-    posData, model_name, init_params, segment_params, 
-    help_url=url, qparent=None, init_last_params=True
+    posData,
+    model_name,
+    init_params,
+    segment_params,
+    help_url=url,
+    qparent=None,
+    init_last_params=True,
 )
-win = out.get('win')
+win = out.get("win")
 if win.cancel:
-    exit('Execution cancelled.')
+    exit("Execution cancelled.")
 
 # Initialize model
 segm_data = None
 init_kwargs = win.init_kwargs
-segm_endname = init_kwargs.pop('segm_endname', None)
+segm_endname = init_kwargs.pop("segm_endname", None)
 if segm_endname is not None:
     segm_filepath, _ = load.get_path_from_endname(segm_endname, images_path)
-    segm_data = np.load(segm_filepath)['arr_0']
+    segm_data = np.load(segm_filepath)["arr_0"]
 
 
-model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+model = utils.init_segm_model(acdcSegment, posData, win.init_kwargs)
 if model is None:
-    sys.exit('Segmentation model was not initialized correctly!')
-is_segment3DT_available = any(
-    [name=='segment3DT' for name in dir(model)]
-)
+    sys.exit("Segmentation model was not initialized correctly!")
+is_segment3DT_available = any([name == "segment3DT" for name in dir(model)])
 
 if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
     img = skimage.color.rgb2gray(img)
 
-print('Input image shape: ', img.shape)
-print('Segmentation process started...')
+print("Input image shape: ", img.shape)
+print("Segmentation process started...")
 
 lab = core.segm_model_segment(
-    model, img, win.model_kwargs, frame_i=start_frame_idx, 
-    preproc_recipe=win.preproc_recipe, posData=posData, 
+    model,
+    img,
+    win.model_kwargs,
+    frame_i=start_frame_idx,
+    preproc_recipe=win.preproc_recipe,
+    posData=posData,
     is_timelapse_model_and_data=is_segment3DT_available and is_timelapse,
 )
 
 from cellacdc.plot import imshow
+
 imshow(
-    img, 
-    lab, 
+    img,
+    lab,
     window_title=f'Result of segmenting with "{model_name}" model',
-    axis_titles=['Input image', 'Segmentation result'], 
+    axis_titles=["Input image", "Segmentation result"],
     annotate_labels_idxs=[1],
 )

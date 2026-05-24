@@ -19,19 +19,34 @@ import skimage.morphology
 from tqdm import tqdm
 
 from qtpy.QtWidgets import (
-    QApplication, QMainWindow, QFileDialog,
-    QVBoxLayout, QPushButton, QLabel, QProgressBar, QHBoxLayout,
-    QStyleFactory, QWidget, QMessageBox, QTextEdit
+    QApplication,
+    QMainWindow,
+    QFileDialog,
+    QVBoxLayout,
+    QPushButton,
+    QLabel,
+    QProgressBar,
+    QHBoxLayout,
+    QStyleFactory,
+    QWidget,
+    QMessageBox,
+    QTextEdit,
 )
 from qtpy.QtCore import (
-    Qt, QEventLoop, Signal, QObject, QMutex, QWaitCondition, QThread, 
-    QTimer
+    Qt,
+    QEventLoop,
+    Signal,
+    QObject,
+    QMutex,
+    QWaitCondition,
+    QThread,
+    QTimer,
 )
 from qtpy import QtGui
 import qtpy.compat
 
 # Custom modules
-from . import prompts, load, myutils, apps, core, dataPrep, widgets
+from . import prompts, load, utils, apps, core, dataPrep, widgets
 from . import html_utils, printl
 from . import exception_handler
 from . import workers
@@ -39,20 +54,23 @@ from . import recentPaths_path
 from . import config
 from . import urls
 
-if os.name == 'nt':
+if os.name == "nt":
     try:
         # Set taskbar icon in windows
         import ctypes
-        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
+
+        myappid = "schmollerlab.cellacdc.pyqt.v1"  # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except:
         pass
 
+
 class QTerminal(QTextEdit):
     def write(self, message):
-        message = message.replace('\r ', '')
+        message = message.replace("\r ", "")
         if message:
             self.setText(message)
+
 
 class SegmWorkerSignals(QObject):
     finished = Signal(object)
@@ -66,6 +84,7 @@ class SegmWorkerSignals(QObject):
     debug = Signal(object)
     critical = Signal(object)
 
+
 import os
 import time
 
@@ -74,28 +93,25 @@ import pandas as pd
 
 from cellacdc import load, core, features, cli
 
+
 class SegmWorker(QObject):
-    def __init__(
-            self, img_path, mainWin, stop_frame_n
-        ):
+    def __init__(self, img_path, mainWin, stop_frame_n):
         QObject.__init__(self)
         self.signals = SegmWorkerSignals()
         self.img_path = img_path
         self.stop_frame_n = stop_frame_n
         self.mainWin = mainWin
         self.init_kernel(mainWin)
-    
+
     def init_kernel(self, mainWin):
         use_ROI = not mainWin.ROIdeactivatedByUser
-        self.kernel = cli.SegmKernel(
-            mainWin.logger, mainWin.log_path, is_cli=False
-        )
+        self.kernel = cli.SegmKernel(mainWin.logger, mainWin.log_path, is_cli=False)
         self.kernel.init_args(
-            mainWin.user_ch_name, 
+            mainWin.user_ch_name,
             mainWin.endFilenameSegm,
-            mainWin.model_name, 
+            mainWin.model_name,
             mainWin.do_tracking,
-            mainWin.applyPostProcessing, 
+            mainWin.applyPostProcessing,
             mainWin.save,
             mainWin.image_chName_tracker,
             mainWin.standardPostProcessKwargs,
@@ -107,7 +123,7 @@ class SegmWorker(QObject):
             mainWin.use3DdataFor2Dsegm,
             mainWin.model_kwargs,
             mainWin.track_params,
-            mainWin.SizeT, 
+            mainWin.SizeT,
             mainWin.SizeZ,
             model=mainWin.model,
             tracker=mainWin.tracker,
@@ -115,24 +131,21 @@ class SegmWorker(QObject):
             signals=self.signals,
             logger_func=self.signals.progress.emit,
             innerPbar_available=mainWin.innerPbar_available,
-            is_segment3DT_available=mainWin.is_segment3DT_available, 
-            preproc_recipe=mainWin.preproc_recipe, 
+            is_segment3DT_available=mainWin.is_segment3DT_available,
+            preproc_recipe=mainWin.preproc_recipe,
             reduce_memory_usage=mainWin.reduce_memory_usage,
             use_freehand_ROI=mainWin.useFreeHandROI,
         )
-    
+
     def run_kernels(self):
-        self.kernel.run(
-            self.img_path, 
-            self.stop_frame_n
-        )
+        self.kernel.run(self.img_path, self.stop_frame_n)
         if self.mainWin._measurements_kernel is None:
             return
-        
-        segm_endname = self.kernel.segm_endname.replace('.npz', '')
+
+        segm_endname = self.kernel.segm_endname.replace(".npz", "")
         self.mainWin._measurements_kernel.run(
-            img_path=self.img_path, 
-            stop_frame_n=self.stop_frame_n, 
+            img_path=self.img_path,
+            stop_frame_n=self.stop_frame_n,
             end_filename_segm=segm_endname,
         )
 
@@ -140,14 +153,19 @@ class SegmWorker(QObject):
     def run(self):
         self.run_kernels()
         self.signals.finished.emit(self)
-    
+
+
 class segmWin(QMainWindow):
     sigClosed = Signal()
-    
+
     def __init__(
-            self, parent=None, allowExit=False, buttonToRestore=None, 
-            mainWin=None, version=None
-        ):
+        self,
+        parent=None,
+        allowExit=False,
+        buttonToRestore=None,
+        mainWin=None,
+        version=None,
+    ):
         super().__init__(parent)
 
         self.allowExit = allowExit
@@ -155,23 +173,21 @@ class segmWin(QMainWindow):
         self.mainWin = mainWin
         if mainWin is not None:
             self.app = mainWin.app
-            
+
         self._version = version
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
-            module='segm'
-        )
+        logger, logs_path, log_path, log_filename = utils.setupLogger(module="segm")
         self.logger = logger
         self.log_path = log_path
         self.log_filename = log_filename
         self.logs_path = logs_path
 
         if self._version is not None:
-            logger.info(f'Initializing Segmentation module v{self._version}...')
+            logger.info(f"Initializing Segmentation module v{self._version}...")
         else:
-            logger.info(f'Initializing Segmentation module...')
+            logger.info(f"Initializing Segmentation module...")
 
-        self.setWindowTitle(f'Cell-ACDC v{self._version} - Segment')
+        self.setWindowTitle(f"Cell-ACDC v{self._version} - Segment")
         self.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
         mainContainer = QWidget()
@@ -212,7 +228,7 @@ class segmWin(QMainWindow):
         self.progressLabel = widgets.Label(self, force_html=True)
         self.mainLayout.addWidget(self.progressLabel)
 
-        abortButton = widgets.cancelPushButton('Stop processs')
+        abortButton = widgets.cancelPushButton("Stop processs")
         abortButton.clicked.connect(self.close)
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(abortButton)
@@ -224,25 +240,25 @@ class segmWin(QMainWindow):
 
     def getMostRecentPath(self):
         if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            self.MostRecentPath = df.iloc[0]['path']
+            df = pd.read_csv(recentPaths_path, index_col="index")
+            if "opened_last_on" in df.columns:
+                df = df.sort_values("opened_last_on", ascending=False)
+            self.MostRecentPath = df.iloc[0]["path"]
             if not isinstance(self.MostRecentPath, str):
-                self.MostRecentPath = ''
+                self.MostRecentPath = ""
         else:
-            self.MostRecentPath = ''
+            self.MostRecentPath = ""
 
     def addToRecentPaths(self, exp_path):
         if not os.path.exists(exp_path):
             return
         if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            recentPaths = df['path'].to_list()
-            if 'opened_last_on' in df.columns:
-                openedOn = df['opened_last_on'].to_list()
+            df = pd.read_csv(recentPaths_path, index_col="index")
+            recentPaths = df["path"].to_list()
+            if "opened_last_on" in df.columns:
+                openedOn = df["opened_last_on"].to_list()
             else:
-                openedOn = [np.nan]*len(recentPaths)
+                openedOn = [np.nan] * len(recentPaths)
             if exp_path in recentPaths:
                 pop_idx = recentPaths.index(exp_path)
                 recentPaths.pop(pop_idx)
@@ -256,10 +272,13 @@ class segmWin(QMainWindow):
         else:
             recentPaths = [exp_path]
             openedOn = [datetime.datetime.now()]
-        df = pd.DataFrame({'path': recentPaths,
-                           'opened_last_on': pd.Series(openedOn,
-                                                       dtype='datetime64[ns]')})
-        df.index.name = 'index'
+        df = pd.DataFrame(
+            {
+                "path": recentPaths,
+                "opened_last_on": pd.Series(openedOn, dtype="datetime64[ns]"),
+            }
+        )
+        df.index.name = "index"
         df.to_csv(recentPaths_path)
 
     def addPbar(self, add_inner=False):
@@ -267,7 +286,7 @@ class segmWin(QMainWindow):
         QPbar = widgets.ProgressBar(self)
         pBarLayout.addWidget(QPbar)
         ETA_label = QLabel()
-        ETA_label.setText('ETA: NDh:NDm:NDs')
+        ETA_label.setText("ETA: NDh:NDm:NDs")
         pBarLayout.addWidget(ETA_label)
         if add_inner:
             self.innerQPbar = QPbar
@@ -281,7 +300,7 @@ class segmWin(QMainWindow):
             screen = self.screen()
             screenHeight = screen.size().height()
             screenWidth = screen.size().width()
-            self.resize(int(screenWidth*0.5), int(screenHeight*0.6))
+            self.resize(int(screenWidth * 0.5), int(screenHeight * 0.6))
 
     def askHowToHandleROI(self):
         if len(self.posData.dataPrepFreeRoiPoints) > 0:
@@ -293,42 +312,44 @@ class segmWin(QMainWindow):
             """)
             msg = widgets.myMessageBox(wrapText=False)
             _, noButton, yesButton = msg.question(
-                self, 'Use the free-hand ROI?', txt,
-                buttonsTexts = (
-                    'Cancel', 
-                    'No, segment the entire image', 
-                    'Yes, use the free-hand ROI'
-                )
+                self,
+                "Use the free-hand ROI?",
+                txt,
+                buttonsTexts=(
+                    "Cancel",
+                    "No, segment the entire image",
+                    "Yes, use the free-hand ROI",
+                ),
             )
             return False, False, msg.clickedButton == yesButton
-        
-        idx_slice = pd.IndexSlice[:, 'cropped']
+
+        idx_slice = pd.IndexSlice[:, "cropped"]
         df_ROI = self.posData.dataPrep_ROIcoords
         if df_ROI is None:
-            href = html_utils.href_tag('here', urls.dataprep_docs)
+            href = html_utils.href_tag("here", urls.dataprep_docs)
             txt = html_utils.paragraph(f"""
                 Do you want to segment only a rectangluar sub-region (ROI) of 
                 the image?<br><br>
                 If yes, Cell-ACDC will launch the Data-prep module later.<br><br>
                 See {href} for more details on how to use the Data-prep module.       
             """)
-        elif int(df_ROI.loc[idx_slice, 'value'].iloc[0]) > 0:
+        elif int(df_ROI.loc[idx_slice, "value"].iloc[0]) > 0:
             # Data is cropped, do not ask to segment a roi
             return False, False, False
         else:
-            xl_slice = pd.IndexSlice[:, 'x_left']
-            xr_slice = pd.IndexSlice[:, 'x_right']
-            yt_slice = pd.IndexSlice[:, 'y_top']
-            yb_slice = pd.IndexSlice[:, 'y_bottom']
+            xl_slice = pd.IndexSlice[:, "x_left"]
+            xr_slice = pd.IndexSlice[:, "x_right"]
+            yt_slice = pd.IndexSlice[:, "y_top"]
+            yb_slice = pd.IndexSlice[:, "y_bottom"]
             SizeY, SizeX = self.posData.img_data.shape[-2:]
-            x0 = int(df_ROI.loc[xl_slice, 'value'].iloc[0])
-            x1 = int(df_ROI.loc[xr_slice, 'value'].iloc[0])
-            y0 = int(df_ROI.loc[yt_slice, 'value'].iloc[0])
-            y1 = int(df_ROI.loc[yb_slice, 'value'].iloc[0])
-            if x0 == 0 and y0 == 0 and y1==SizeY and y1 == SizeX:
+            x0 = int(df_ROI.loc[xl_slice, "value"].iloc[0])
+            x1 = int(df_ROI.loc[xr_slice, "value"].iloc[0])
+            y0 = int(df_ROI.loc[yt_slice, "value"].iloc[0])
+            y1 = int(df_ROI.loc[yb_slice, "value"].iloc[0])
+            if x0 == 0 and y0 == 0 and y1 == SizeY and y1 == SizeX:
                 # ROI is present but with same shape as image --> ignore
                 return False, False, False
-            
+
             note = html_utils.to_admonition("""
                 If you need to modify the existing ROI, cancel the process 
                 now and launch Data-prep again.
@@ -340,67 +361,61 @@ class segmWin(QMainWindow):
                 {note}             
             """)
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        _, yesButton, noButton = msg.question(self, 'ROI?', txt,
-            buttonsTexts = ('Cancel','Yes','No')
+        _, yesButton, noButton = msg.question(
+            self, "ROI?", txt, buttonsTexts=("Cancel", "Yes", "No")
         )
         return msg.cancel, msg.clickedButton == yesButton, False
-    
+
     def main(self):
         selectFoldersWin = apps.SelectFoldersToAnalyse(
-            parent=self, 
-            instructionsText=
-                'Select experiment folders to analyse using '
-                'the same set of parameters',
-            askSelectPosFolders=True
+            parent=self,
+            instructionsText="Select experiment folders to analyse using "
+            "the same set of parameters",
+            askSelectPosFolders=True,
         )
         selectFoldersWin.exec_()
         if selectFoldersWin.cancel:
             self.processStopped()
             return
-        
-        expToPosFoldersMapper = (
-            selectFoldersWin.selectedExpFolderToPosFoldernamesMapper
-        )
+
+        expToPosFoldersMapper = selectFoldersWin.selectedExpFolderToPosFoldernamesMapper
 
         font = QtGui.QFont()
         font.setPixelSize(13)
 
         self.setWindowTitle(
-            f'Cell-ACDC v{self._version} - Segmentation and Tracking workflow'
+            f"Cell-ACDC v{self._version} - Segmentation and Tracking workflow"
         )
 
         self.addPbar()
         self.addlogTerminal()
 
-        self.log('Loading data...')
-        self.progressLabel.setText('Loading data...')
+        self.log("Loading data...")
+        self.progressLabel.setText("Loading data...")
 
         ch_name_selector = prompts.select_channel_name(
-            which_channel='segm', allow_abort=True
+            which_channel="segm", allow_abort=True
         )
 
         images_paths = []
         for exp_path, pos_foldernames in expToPosFoldersMapper.items():
             for pos_foldername in pos_foldernames:
-                images_path = os.path.join(
-                    exp_path, pos_foldername, 'Images'
-                )
+                images_path = os.path.join(exp_path, pos_foldername, "Images")
                 images_paths.append(images_path)
 
         user_ch_file_paths = []
         for images_path in images_paths:
-            print('')
-            self.log(f'Processing {images_path}')
-            filenames = myutils.listdir(images_path)
+            print("")
+            self.log(f"Processing {images_path}")
+            filenames = utils.listdir(images_path)
             if not filenames:
                 self.criticalImagesFolderEmpty(images_path)
                 self.close()
                 return
             if ch_name_selector.is_first_call:
-                ch_names, warn = (
-                    ch_name_selector.get_available_channels(
-                        filenames, images_path
-                ))
+                ch_names, warn = ch_name_selector.get_available_channels(
+                    filenames, images_path
+                )
                 if not ch_names:
                     self.criticalNoTifFound(images_path)
                     self.close()
@@ -420,30 +435,34 @@ class segmWin(QMainWindow):
             tif_found = False
             dataPrep_fn = None
             for filename in filenames:
-                if filename.find(f'{user_ch_name}_aligned.npz') != -1:
+                if filename.find(f"{user_ch_name}_aligned.npz") != -1:
                     img_path = os.path.join(images_path, filename)
-                    idx = filename.find('_aligned.npz')
+                    idx = filename.find("_aligned.npz")
                     dataPrep_fn = filename[:idx]
                     aligned_npz_found = True
-                elif filename.find(f'{user_ch_name}.tif') != -1:
+                elif filename.find(f"{user_ch_name}.tif") != -1:
                     img_path = os.path.join(images_path, filename)
                     tif_found = True
 
             if not aligned_npz_found and not tif_found:
-                print('')
-                print('-------------------------------------------------------')
-                self.log(f'The folder {images_path}\n does not contain the file '
-                      f'{user_ch_name}_aligned.npz\n or the file {user_ch_name}.tif. '
-                      'Skipping it.')
-                print('-------------------------------------------------------')
-                print('')
+                print("")
+                print("-------------------------------------------------------")
+                self.log(
+                    f"The folder {images_path}\n does not contain the file "
+                    f"{user_ch_name}_aligned.npz\n or the file {user_ch_name}.tif. "
+                    "Skipping it."
+                )
+                print("-------------------------------------------------------")
+                print("")
             elif not aligned_npz_found and tif_found:
-                print('')
-                print('-------------------------------------------------------')
-                self.log(f'The folder {images_path}\n does not contain the file '
-                      f'{user_ch_name}_aligned.npz. Segmenting .tif data.')
-                print('-------------------------------------------------------')
-                print('')
+                print("")
+                print("-------------------------------------------------------")
+                self.log(
+                    f"The folder {images_path}\n does not contain the file "
+                    f"{user_ch_name}_aligned.npz. Segmenting .tif data."
+                )
+                print("-------------------------------------------------------")
+                print("")
                 user_ch_file_paths.append(img_path)
             elif aligned_npz_found:
                 user_ch_file_paths.append(img_path)
@@ -468,7 +487,7 @@ class segmWin(QMainWindow):
             load_last_tracked_i=False,
             load_metadata=True,
             load_dataprep_free_roi=True,
-            load_customCombineMetrics=True
+            load_customCombineMetrics=True,
         )
         proceed = self.posData.askInputMetadata(
             self.numPos,
@@ -476,7 +495,7 @@ class segmWin(QMainWindow):
             ask_TimeIncrement=False,
             ask_PhysicalSizes=False,
             save=True,
-            forceEnableAskSegm3D=True
+            forceEnableAskSegm3D=True,
         )
         # Store metadata for all other positions loaded
         for other_img_path in user_ch_file_paths[1:]:
@@ -489,127 +508,130 @@ class segmWin(QMainWindow):
             )
             self._posData.isSegm3D = self.posData.isSegm3D
             try:
-                _SizeT = int(self._posData.metadata_df.at['SizeT', 'values'])
+                _SizeT = int(self._posData.metadata_df.at["SizeT", "values"])
                 if _SizeT == self.posData.SizeT:
                     continue
-                
-                self._posData.metadata_df.at['SizeT', 'values'] = self.posData.SizeT
+
+                self._posData.metadata_df.at["SizeT", "values"] = self.posData.SizeT
                 self._posData.SizeT = self.posData.SizeT
             except Exception as err:
                 self._posData.SizeT = self.posData.SizeT
-            
+
             self._posData.saveMetadata()
-            
+
         self.isSegm3D = self.posData.isSegm3D
         self.SizeT = self.posData.SizeT
         self.SizeZ = self.posData.SizeZ
         if not proceed:
             self.processStopped()
             return
-        
+
         # Ask which model
         win = apps.QDialogSelectModel(
-            parent=self, addSkipSegmButton=self.posData.SizeT>1
+            parent=self, addSkipSegmButton=self.posData.SizeT > 1
         )
         win.exec_()
         if win.cancel:
             self.processStopped()
             return
-        
+
         model_name = win.selectedModel
 
-        if model_name == 'thresholding':
-            win = apps.QDialogAutomaticThresholding(
-                parent=self, isSegm3D=self.isSegm3D
-            )
+        if model_name == "thresholding":
+            win = apps.QDialogAutomaticThresholding(parent=self, isSegm3D=self.isSegm3D)
             win.exec_()
             if win.cancel:
                 self.processStopped()
                 return
             self.model_kwargs = win.segment_kwargs
 
-        self.log(f'Downloading {model_name} (if needed)...')
+        self.log(f"Downloading {model_name} (if needed)...")
         self.downloadWin = apps.downloadModel(model_name, parent=self)
         self.downloadWin.download()
-        
-        self.log(f'Importing {model_name}...')
+
+        self.log(f"Importing {model_name}...")
         self.model_name = model_name
-        acdcSegment = myutils.import_segment_module(model_name)
-        self.acdcSegment =  acdcSegment
+        acdcSegment = utils.import_segment_module(model_name)
+        self.acdcSegment = acdcSegment
 
         # Read all models parameters
-        init_params, segment_params = myutils.getModelArgSpec(self.acdcSegment)
+        init_params, segment_params = utils.getModelArgSpec(self.acdcSegment)
 
         # Prompt user to enter the model parameters
         try:
             url = acdcSegment.url_help()
         except AttributeError:
             url = None
-        
+
         out = prompts.init_segm_model_params(
-            self.posData, model_name, init_params, segment_params, 
-            help_url=url, qparent=self, init_last_params=False,
-            add_additional_segm_params=True
+            self.posData,
+            model_name,
+            init_params,
+            segment_params,
+            help_url=url,
+            qparent=self,
+            init_last_params=False,
+            add_additional_segm_params=True,
         )
-        win = out.get('win')
+        win = out.get("win")
         if win.cancel:
             self.processStopped()
             return
-        
-        if model_name != 'thresholding':
+
+        if model_name != "thresholding":
             self.model_kwargs = win.model_kwargs
         self.standardPostProcessKwargs = win.standardPostProcessKwargs
         self.customPostProcessFeatures = win.customPostProcessFeatures
-        self.customPostProcessGroupedFeatures = (
-            win.customPostProcessGroupedFeatures
-        )
+        self.customPostProcessGroupedFeatures = win.customPostProcessGroupedFeatures
 
         self.applyPostProcessing = win.applyPostProcessing
         self.secondChannelName = win.secondChannelName
-        
-        myutils.log_segm_params(
-            model_name, win.init_kwargs, win.model_kwargs, 
-            logger_func=self.logger.info, 
-            preproc_recipe=win.preproc_recipe, 
-            apply_post_process=self.applyPostProcessing, 
-            standard_postprocess_kwargs=self.standardPostProcessKwargs, 
-            custom_postprocess_features=self.customPostProcessFeatures
+
+        utils.log_segm_params(
+            model_name,
+            win.init_kwargs,
+            win.model_kwargs,
+            logger_func=self.logger.info,
+            preproc_recipe=win.preproc_recipe,
+            apply_post_process=self.applyPostProcessing,
+            standard_postprocess_kwargs=self.standardPostProcessKwargs,
+            custom_postprocess_features=self.customPostProcessFeatures,
         )
 
         init_kwargs = win.init_kwargs
         self.init_model_kwargs = init_kwargs
         self.preproc_recipe = win.preproc_recipe
         self.reduce_memory_usage = win.reduceMemoryUsage
-        
+
         if self.secondChannelName is not None:
-            init_kwargs['is_rgb'] = True
-        
-        self.model = myutils.init_segm_model(acdcSegment, self.posData, init_kwargs)
+            init_kwargs["is_rgb"] = True
+
+        self.model = utils.init_segm_model(acdcSegment, self.posData, init_kwargs)
         if self.model is None:
-            self.logger.info('Segmentation model was not initialized correctly!')
+            self.logger.info("Segmentation model was not initialized correctly!")
             self.processStopped()
             return
         try:
             self.model.setupLogger(self.logger)
         except Exception as e:
             pass
-        
+
         self.predictCcaState_model = None
 
         self.is_segment3DT_available = False
-        if self.posData.SizeT>1 and not self.isSegm3D:
+        if self.posData.SizeT > 1 and not self.isSegm3D:
             self.is_segment3DT_available = any(
-                [name=='segment3DT' for name in dir(acdcSegment.Model)]
+                [name == "segment3DT" for name in dir(acdcSegment.Model)]
             )
 
         self.innerPbar_available = False
-        if len(user_ch_file_paths)>1 and self.posData.SizeT>1:
+        if len(user_ch_file_paths) > 1 and self.posData.SizeT > 1:
             self.addPbar(add_inner=True)
             self.innerPbar_available = True
-            
+
         # Check if there are segmentation already computed
         self.selectedSegmFile = None
-        self.endFilenameSegm = 'segm.npz'
+        self.endFilenameSegm = "segm.npz"
         self.isNewSegmFile = False
         askNewName = True
         isMultiSegm = False
@@ -619,55 +641,55 @@ class segmWin(QMainWindow):
             if len(segm_files) > 0:
                 isMultiSegm = True
                 break
-        
-        sam_only_embeddings = self.model_kwargs.get('only_embeddings', False)
+
+        sam_only_embeddings = self.model_kwargs.get("only_embeddings", False)
         self.save = not sam_only_embeddings
         if isMultiSegm and not sam_only_embeddings:
             askNewName = self.askMultipleSegm(
-                segm_files, isTimelapse=self.posData.SizeT>1
+                segm_files, isTimelapse=self.posData.SizeT > 1
             )
             if askNewName is None:
                 self.save = False
                 self.processStopped()
                 return
-        
+
         if self.selectedSegmFile is not None:
-            self.endFilenameSegm = self.selectedSegmFile[len(self.posData.basename):]
-        
+            self.endFilenameSegm = self.selectedSegmFile[len(self.posData.basename) :]
+
         if askNewName and self.save:
             self.isNewSegmFile = True
             win = apps.filenameDialog(
-                basename=f'{self.posData.basename}segm',
-                hintText='Insert a <b>filename</b> for the segmentation file:<br>',
-                existingNames=segm_files
+                basename=f"{self.posData.basename}segm",
+                hintText="Insert a <b>filename</b> for the segmentation file:<br>",
+                existingNames=segm_files,
             )
             win.exec_()
             if win.cancel:
                 self.processStopped()
                 return
             if win.entryText:
-                self.endFilenameSegm = f'segm_{win.entryText}.npz'
+                self.endFilenameSegm = f"segm_{win.entryText}.npz"
             else:
-                self.endFilenameSegm = f'segm.npz'
+                self.endFilenameSegm = f"segm.npz"
 
         # Save hyperparams
+        post_process_params = {"applied_postprocessing": self.applyPostProcessing}
         post_process_params = {
-            'applied_postprocessing': self.applyPostProcessing
-        }
-        post_process_params = {
-            **post_process_params, 
+            **post_process_params,
             **self.standardPostProcessKwargs,
-            **self.customPostProcessFeatures
+            **self.customPostProcessFeatures,
         }
-        
+
         for other_img_path in user_ch_file_paths:
             self._posData = load.loadData(other_img_path, user_ch_name, QParent=self)
             self._posData.getBasenameAndChNames(qparent=self)
             self._posData.buildPaths()
             self._posData.saveSegmHyperparams(
-                model_name, self.init_model_kwargs, self.model_kwargs, 
-                post_process_params=post_process_params, 
-                preproc_recipe=self.preproc_recipe
+                model_name,
+                self.init_model_kwargs,
+                self.model_kwargs,
+                post_process_params=post_process_params,
+                preproc_recipe=self.preproc_recipe,
             )
 
         # Ask ROI
@@ -701,16 +723,16 @@ class segmWin(QMainWindow):
             if self._posData.segmInfo_df is None:
                 isSegmInfoPresent = False
                 break
-        
+
         self.use3DdataFor2Dsegm = False
         if self.posData.SizeZ > 1 and not self.isSegm3D:
             cancel, use3DdataFor2Dsegm = self.askHowToHandle2DsegmOn3Ddata()
             if cancel:
                 self.processStopped()
                 return
-            
+
             self.use3DdataFor2Dsegm = use3DdataFor2Dsegm
-        
+
         segm2D_never_visualized_dataPrep = (
             not self.isSegm3D
             and self.posData.SizeZ > 1
@@ -739,21 +761,19 @@ class segmWin(QMainWindow):
             )
             dataPrepWin.show()
             if selectROI:
-                dataPrepWin.titleText = (
-                """
+                dataPrepWin.titleText = """
                 If you need to crop press the green tick button,<br>
                 otherwise you can close the window.
                 """
-                )
             else:
-                print('')
+                print("")
                 self.log(
-                    f'WARNING: The image data in {img_path} is 3D but '
-                    f'_segmInfo.csv file not found. Launching dataPrep.py...'
+                    f"WARNING: The image data in {img_path} is 3D but "
+                    f"_segmInfo.csv file not found. Launching dataPrep.py..."
                 )
                 self.logTerminal.setText(
-                    f'The image data in {img_path} is 3D but '
-                    f'_segmInfo.csv file not found. Launching dataPrep.py...'
+                    f"The image data in {img_path} is 3D but "
+                    f"_segmInfo.csv file not found. Launching dataPrep.py..."
                 )
                 msg = widgets.myMessageBox()
                 txt = html_utils.paragraph(f"""
@@ -766,15 +786,13 @@ class segmWin(QMainWindow):
                     or projection for each Position or frame</b>.
                 """)
                 msg.warning(
-                    self, '3D z-stacks info missing', txt, 
-                    buttonsTexts=('Cancel', 'Ok')
+                    self, "3D z-stacks info missing", txt, buttonsTexts=("Cancel", "Ok")
                 )
                 if msg.cancel:
                     self.processStopped()
                     return
 
-                dataPrepWin.titleText = (
-                """
+                dataPrepWin.titleText = """
                 Select z-slice (or projection) for each frame/position.<br>
                 Then, if you want to segment the entire field of view,
                 close the window.<br>
@@ -782,11 +800,9 @@ class segmWin(QMainWindow):
                 press the "Start" button, draw the ROI<br>
                 and confirm with the green tick button.
                 """
-                )
                 autoStart = False
             dataPrepWin.initLoading()
-            dataPrepWin.loadFiles(
-                exp_path, user_ch_file_paths, user_ch_name)
+            dataPrepWin.loadFiles(exp_path, user_ch_file_paths, user_ch_name)
             if self.posData.SizeZ == 1:
                 dataPrepWin.prepData(None)
             loop = QEventLoop(self)
@@ -794,10 +810,7 @@ class segmWin(QMainWindow):
             loop.exec_()
 
             # If data was aligned then we make sure to load it here
-            user_ch_file_paths = load.get_user_ch_paths(
-                images_paths,
-                user_ch_name
-            )
+            user_ch_file_paths = load.get_user_ch_paths(images_paths, user_ch_name)
             img_path = user_ch_file_paths[0]
 
             self.posData = load.loadData(img_path, user_ch_name, QParent=self)
@@ -813,33 +826,36 @@ class segmWin(QMainWindow):
                 load_dataPrep_ROIcoords=True,
                 load_bkgr_data=False,
                 load_last_tracked_i=False,
-                load_metadata=True
+                load_metadata=True,
             )
             self.posData.isSegm3D = self.isSegm3D
-        elif self.posData.SizeZ > 1 and not self.isSegm3D and not self.use3DdataFor2Dsegm:
+        elif (
+            self.posData.SizeZ > 1 and not self.isSegm3D and not self.use3DdataFor2Dsegm
+        ):
             df = self.posData.segmInfo_df.loc[self.posData.filename]
-            zz = df['z_slice_used_dataPrep'].to_list()
+            zz = df["z_slice_used_dataPrep"].to_list()
 
         isROIactive = False
-        if self.posData.dataPrep_ROIcoords is not None and not self.ROIdeactivatedByUser:
+        if (
+            self.posData.dataPrep_ROIcoords is not None
+            and not self.ROIdeactivatedByUser
+        ):
             df_roi = self.posData.dataPrep_ROIcoords.loc[0]
-            isROIactive = df_roi.at['cropped', 'value'] == 0
-            x0, x1, y0, y1 = df_roi['value'][:4]
+            isROIactive = df_roi.at["cropped", "value"] == 0
+            x0, x1, y0, y1 = df_roi["value"][:4]
             df_roi = self.posData.dataPrep_ROIcoords.loc[0]
-            isROIactive = df_roi.at['cropped', 'value'] == 0
-            x0, x1, y0, y1 = df_roi['value'][:4]
+            isROIactive = df_roi.at["cropped", "value"] == 0
+            x0, x1, y0, y1 = df_roi["value"][:4]
 
         self.image_chName_tracker = None
         self.do_tracking = False
         self.tracker = None
         self.track_params = {}
         self.tracker_init_params = {}
-        self.trackerName = ''
+        self.trackerName = ""
         self.stopFrames = [1 for _ in range(len(user_ch_file_paths))]
         if self.posData.SizeT > 1:
-            win = apps.askStopFrameSegm(
-                user_ch_file_paths, user_ch_name, parent=self
-            )
+            win = apps.askStopFrameSegm(user_ch_file_paths, user_ch_name, parent=self)
             win.setFont(font)
             win.exec_()
             if win.cancel:
@@ -849,16 +865,18 @@ class segmWin(QMainWindow):
             self.stopFrames = win.stopFrames
 
             # Ask whether to track the frames
-            trackers = myutils.get_list_of_trackers()
-            txt = html_utils.paragraph('''
+            trackers = utils.get_list_of_trackers()
+            txt = html_utils.paragraph("""
                 Do you want to track the objects?<br><br>
                 If yes, <b>select the tracker</b> to use<br><br>
-            ''')
+            """)
             win = widgets.QDialogListbox(
-                'Track objects?', txt,
-                trackers, additionalButtons=['Do not track'],
+                "Track objects?",
+                txt,
+                trackers,
+                additionalButtons=["Do not track"],
                 multiSelection=False,
-                parent=self
+                parent=self,
             )
             win.exec_()
             if win.cancel:
@@ -868,14 +886,14 @@ class segmWin(QMainWindow):
             self.image_chName_tracker = None
             if win.clickedButton in win._additionalButtons:
                 self.do_tracking = False
-                trackerName = ''
+                trackerName = ""
                 self.trackerName = trackerName
             else:
                 self.do_tracking = True
                 trackerName = win.selectedItemsText[0]
                 self.trackerName = trackerName
-                init_tracker_output = myutils.init_tracker(
-                        self.posData, trackerName, return_init_params=True, qparent=self
+                init_tracker_output = utils.init_tracker(
+                    self.posData, trackerName, return_init_params=True, qparent=self
                 )
                 self.tracker, self.track_params, self.tracker_init_params = (
                     init_tracker_output
@@ -883,24 +901,21 @@ class segmWin(QMainWindow):
                 if self.track_params is None:
                     self.processStopped()
                     return
-                
-                if 'image_channel_name' in self.track_params:
-                    # Store the channel name for the tracker for loading it 
+
+                if "image_channel_name" in self.track_params:
+                    # Store the channel name for the tracker for loading it
                     # in case of multiple pos
                     self.image_chName_tracker = self.track_params.pop(
-                        'image_channel_name'
+                        "image_channel_name"
                     )
 
-        self.progressLabel.setText('Starting main worker...')
+        self.progressLabel.setText("Starting main worker...")
 
         max = 0
         for i, imgPath in enumerate(user_ch_file_paths):
             self._posData = load.loadData(imgPath, user_ch_name)
             self._posData.getBasenameAndChNames(qparent=self)
-            self._posData.loadOtherFiles(
-                load_segm_data=False,
-                load_metadata=True
-            )
+            self._posData.loadOtherFiles(load_segm_data=False, load_metadata=True)
             if self.posData.SizeT > 1:
                 max += self.stopFrames[i]
             else:
@@ -912,7 +927,7 @@ class segmWin(QMainWindow):
         if self.innerPbar_available:
             self.QPbar.setMaximum(len(user_ch_file_paths))
         else:
-            self.QPbar.setMaximum(max*2)
+            self.QPbar.setMaximum(max * 2)
 
         self.exec_time_per_iter = 0
         self.exec_time_per_frame = 0
@@ -923,172 +938,164 @@ class segmWin(QMainWindow):
         self.exp_path = exp_path
         self.user_ch_file_paths = user_ch_file_paths
         self.user_ch_name = user_ch_name
-        
+
         proceed, measurements_kernel = self.askSaveMeasurements()
         if not proceed:
-            self.logger.info('Segmentation process interrupted.')
+            self.logger.info("Segmentation process interrupted.")
             self.close()
             return
         self._measurements_kernel = measurements_kernel
-        
+
         proceed = self.askRunNowOrSaveConfigFile()
         if not proceed:
-            self.logger.info('Segmentation process interrupted.')
+            self.logger.info("Segmentation process interrupted.")
             self.close()
             return
-        
+
         t0 = time.perf_counter()
         for pos_idx, img_path in enumerate(self.user_ch_file_paths):
             stop_frame_n = self.stopFrames[pos_idx]
-            segmWorker, segmThread = self.startSegmWorker(
-                img_path, stop_frame_n
-            )
+            segmWorker, segmThread = self.startSegmWorker(img_path, stop_frame_n)
             self.waitSegmWorker(segmWorker)
             if segmWorker.is_error:
                 break
-            
+
         t1 = time.perf_counter()
-        
-        self.processFinished(t1-t0)
+
+        self.processFinished(t1 - t0)
 
     def criticalImagesFolderEmpty(self, images_path):
-        err_title = 'The images folder is empty'
+        err_title = "The images folder is empty"
         err_msg = html_utils.paragraph(
-            'The following folder<br><br>'
-            f'<code>{images_path}</code><br><br>'
-            '<b>is empty</b>.<br><br>'
+            "The following folder<br><br>"
+            f"<code>{images_path}</code><br><br>"
+            "<b>is empty</b>.<br><br>"
         )
         msg = widgets.myMessageBox()
         msg.addShowInFileManagerButton(images_path)
         msg.critical(self, err_title, err_msg)
-    
+
     def criticalNoTifFound(self, images_path):
-        err_title = 'No .tif files found in folder.'
+        err_title = "No .tif files found in folder."
         err_msg = html_utils.paragraph(
-            'The following folder<br><br>'
-            f'<code>{images_path}</code><br><br>'
-            '<b>does not contain .tif or .h5 files</b>.<br><br>'
+            "The following folder<br><br>"
+            f"<code>{images_path}</code><br><br>"
+            "<b>does not contain .tif or .h5 files</b>.<br><br>"
             'Only .tif or .h5 files can be loaded with "Open Folder" button.<br><br>'
-            'Try with <code>File --> Open image/video file...</code> '
-            'and directly select the file you want to load.'
+            "Try with <code>File --> Open image/video file...</code> "
+            "and directly select the file you want to load."
         )
         msg = widgets.myMessageBox()
         msg.addShowInFileManagerButton(images_path)
         msg.critical(self, err_title, err_msg)
-    
+
     def waitSegmWorker(self, worker):
         worker.loop = QEventLoop(self)
         worker.loop.exec_()
-    
+
     def _saveConfigurationFile(self, filepath):
         init_args = {
-            'user_ch_name': self.user_ch_name, 
-            'segm_endname': self.endFilenameSegm,
-            'model_name': self.model_name,
-            'tracker_name': self.trackerName, 
-            'do_tracking': self.do_tracking,
-            'do_postprocess': self.applyPostProcessing,
-            'do_save': self.save,
-            'image_channel_tracker': self.image_chName_tracker,
-            'isSegm3D': self.isSegm3D,
-            'use_ROI': not self.ROIdeactivatedByUser,
-            'second_channel_name': self.secondChannelName,
-            'use3DdataFor2Dsegm': self.use3DdataFor2Dsegm,
-            'reduce_memory_usage': self.reduce_memory_usage,
+            "user_ch_name": self.user_ch_name,
+            "segm_endname": self.endFilenameSegm,
+            "model_name": self.model_name,
+            "tracker_name": self.trackerName,
+            "do_tracking": self.do_tracking,
+            "do_postprocess": self.applyPostProcessing,
+            "do_save": self.save,
+            "image_channel_tracker": self.image_chName_tracker,
+            "isSegm3D": self.isSegm3D,
+            "use_ROI": not self.ROIdeactivatedByUser,
+            "second_channel_name": self.secondChannelName,
+            "use3DdataFor2Dsegm": self.use3DdataFor2Dsegm,
+            "reduce_memory_usage": self.reduce_memory_usage,
         }
-        metadata_params = {
-            'SizeT': self.SizeT,
-            'SizeZ': self.SizeZ
-        }
+        metadata_params = {"SizeT": self.SizeT, "SizeZ": self.SizeZ}
         track_params = {
-            key:value for key, value in self.track_params.items()
-            if key != 'image'
+            key: value for key, value in self.track_params.items() if key != "image"
         }
         ini_items = {
-            'workflow': {'type': 'segmentation and/or tracking'},
-            'initialization': init_args,
-            'metadata': metadata_params,
-            'init_segmentation_model_params': self.init_model_kwargs,
-            'segmentation_model_params': self.model_kwargs,
-            'init_tracker_params': self.tracker_init_params,
-            'tracker_params': track_params,
-            'standard_postprocess_features': self.standardPostProcessKwargs,
-            'custom_postprocess_features': self.customPostProcessFeatures, 
+            "workflow": {"type": "segmentation and/or tracking"},
+            "initialization": init_args,
+            "metadata": metadata_params,
+            "init_segmentation_model_params": self.init_model_kwargs,
+            "segmentation_model_params": self.model_kwargs,
+            "init_tracker_params": self.tracker_init_params,
+            "tracker_params": track_params,
+            "standard_postprocess_features": self.standardPostProcessKwargs,
+            "custom_postprocess_features": self.customPostProcessFeatures,
         }
-        preprocessing_items = config.preprocess_recipe_to_ini_items(
-            self.preproc_recipe
-        )
+        preprocessing_items = config.preprocess_recipe_to_ini_items(self.preproc_recipe)
         ini_items = {**ini_items, **preprocessing_items}
-                
+
         grouped_features = self.customPostProcessGroupedFeatures
         for category, metrics_names in grouped_features.items():
             category_params = {}
             if isinstance(metrics_names, dict):
                 for channel, channel_metrics in metrics_names.items():
-                    values = '\n'.join(channel_metrics)
-                    values = f'\n{values}'
+                    values = "\n".join(channel_metrics)
+                    values = f"\n{values}"
                     category_params[channel] = values
             else:
-                values = '\n'.join(metrics_names)
-                values = f'\n{values}'
-                category_params['names'] = values
-            ini_items[f'postprocess_features.{category}'] = category_params
+                values = "\n".join(metrics_names)
+                values = f"\n{values}"
+                category_params["names"] = values
+            ini_items[f"postprocess_features.{category}"] = category_params
 
         if self._measurements_kernel is not None:
-            ini_items['measurements'] = (
+            ini_items["measurements"] = (
                 self._measurements_kernel.to_workflow_config_params()
             )
-        
+
         load.save_workflow_to_config(
             filepath, ini_items, self.user_ch_file_paths, self.stopFrames
         )
-        
+
         self.logger.info(f'Segmentation workflow saved to "{filepath}"')
-        
+
         txt = html_utils.paragraph(
-            'Segmentation workflow successfully saved to the following location:<br><br>'
-            f'<code>{filepath}</code><br><br>'
-            'You can run the segmentation workflow with the following command:'
+            "Segmentation workflow successfully saved to the following location:<br><br>"
+            f"<code>{filepath}</code><br><br>"
+            "You can run the segmentation workflow with the following command:"
         )
         command = f'acdc -p "{filepath}"'
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(
-            self, 'Workflow save', txt, 
+            self,
+            "Workflow save",
+            txt,
             commands=(command,),
-            path_to_browse=os.path.dirname(filepath)
+            path_to_browse=os.path.dirname(filepath),
         )
-    
+
     def saveWorkflowToConfigFile(self):
-        timestamp = datetime.datetime.now().strftime(
-            r'%Y-%m-%d_%H-%M'
-        )
+        timestamp = datetime.datetime.now().strftime(r"%Y-%m-%d_%H-%M")
         win = apps.filenameDialog(
-            parent=self, 
-            ext='.ini', 
-            title='Insert filename for configuration file',
-            hintText='Insert filename for the configuration file',
-            allowEmpty=False, 
-            defaultEntry=f'{timestamp}_acdc_segm_track_workflow'
+            parent=self,
+            ext=".ini",
+            title="Insert filename for configuration file",
+            hintText="Insert filename for the configuration file",
+            allowEmpty=False,
+            defaultEntry=f"{timestamp}_acdc_segm_track_workflow",
         )
         win.exec_()
         if win.cancel:
             return False
-        
+
         config_filename = win.filename
-        mostRecentPath = myutils.getMostRecentPath()
+        mostRecentPath = utils.getMostRecentPath()
         folder_path = apps.get_existing_directory(
             allow_images_path=False,
-            parent=self, 
-            caption='Select folder where to save configuration file',
+            parent=self,
+            caption="Select folder where to save configuration file",
             basedir=mostRecentPath,
             # options=QFileDialog.DontUseNativeDialog
         )
         if not folder_path:
             return False
-        
+
         config_filepath = os.path.join(folder_path, config_filename)
         self._saveConfigurationFile(config_filepath)
-    
+
     def showHelpSaveMeasurements(self, parent=None):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
@@ -1099,73 +1106,72 @@ class segmWin(QMainWindow):
             If you plan to visualize and correct segmentation results, and 
             you need the measurements, you will anyway need to compute<br>
             and save them after correcting the segmentations.
-        """
-        )
-        msg.information(parent, 'Help - Save measurements', txt)
-    
+        """)
+        msg.information(parent, "Help - Save measurements", txt)
+
     def askSaveMeasurements(self):
         measurements_kernel = None
-        
+
         if not self.save:
             return True, measurements_kernel
-        
-        acdcOutputEndname = (
-            self.endFilenameSegm.replace('segm', 'acdc_output')
-            .replace('.npz', '.csv')
+
+        acdcOutputEndname = self.endFilenameSegm.replace("segm", "acdc_output").replace(
+            ".npz", ".csv"
         )
         txt = html_utils.paragraph(f"""
             Do you also want to <b>save measurements</b> in the 
             <code>{acdcOutputEndname}</code> table after segmentation?
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        saveButton = widgets.savePushButton('Yes, save measurements')
-        noSaveButton = widgets.noPushButton('Do not save measurements')
-        helpButton = widgets.helpPushButton('Help...')
+        saveButton = widgets.savePushButton("Yes, save measurements")
+        noSaveButton = widgets.noPushButton("Do not save measurements")
+        helpButton = widgets.helpPushButton("Help...")
         msg.question(
-            self, 'Save measurements?', txt, 
-            buttonsTexts=(
-                'Cancel', helpButton, noSaveButton, saveButton
-            ),
-            showDialog=False
+            self,
+            "Save measurements?",
+            txt,
+            buttonsTexts=("Cancel", helpButton, noSaveButton, saveButton),
+            showDialog=False,
         )
         helpButton.clicked.disconnect()
-        helpButton.clicked.connect(
-            partial(self.showHelpSaveMeasurements, parent=msg)
-        )
+        helpButton.clicked.connect(partial(self.showHelpSaveMeasurements, parent=msg))
         msg.exec_()
         if msg.cancel:
             return False, measurements_kernel
-        
+
         if not msg.clickedButton == saveButton:
             return True, measurements_kernel
-        
-        self.logger.info('Setting up measurements...')
-        
-        segmEndname = self.endFilenameSegm.replace('.npz', '')
+
+        self.logger.info("Setting up measurements...")
+
+        segmEndname = self.endFilenameSegm.replace(".npz", "")
         images_path = os.path.dirname(self.user_ch_file_paths[0])
         pos_path = os.path.dirname(images_path)
         exp_path = os.path.dirname(pos_path)
         pos_foldernames = [
-            os.path.basename(os.path.dirname(os.path.dirname(img_path))) 
+            os.path.basename(os.path.dirname(os.path.dirname(img_path)))
             for img_path in self.user_ch_file_paths
         ]
         selectedExpPaths = {exp_path: pos_foldernames}
-        
-        from .utils import compute as utilsCompute
+
+        from .tools import compute as utilsCompute
+
         self.calcMeasUtility = utilsCompute.computeMeasurmentsUtilWin(
-            selectedExpPaths, self.app, segmEndname=segmEndname, 
-            parent=self, doRunComputation=False
+            selectedExpPaths,
+            self.app,
+            segmEndname=segmEndname,
+            parent=self,
+            doRunComputation=False,
         )
         self.calcMeasUtility.runWorker(
-            showProgress=False, 
-            stopFrameNumber=self.stopFrames
+            showProgress=False, stopFrameNumber=self.stopFrames
         )
         self.waitCalcMeasUtility()
-        
+
         measurements_kernel = self.calcMeasUtility.worker.kernel
-        
+
         return not self.calcMeasUtility.cancel, measurements_kernel
-    
+
     def waitCalcMeasUtility(self):
         self.waitCalcMeasUtilityTimer = QTimer(self)
         self.waitCalcMeasUtilityTimer.timeout.connect(
@@ -1179,7 +1185,7 @@ class segmWin(QMainWindow):
         if calcMeasUtility.isWorkerFinished:
             self.waitCalcMeasUtilityLoop.exit()
             self.waitCalcMeasUtilityTimer.stop()
-    
+
     def askRunNowOrSaveConfigFile(self):
         txt = html_utils.paragraph("""
             Do you want to <b>run</b> the segmentation process <b>now</b><br>
@@ -1190,24 +1196,24 @@ class segmWin(QMainWindow):
             (i.e., headless).<br>
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        saveButton = widgets.savePushButton('Save and run later')
-        runNowButton = widgets.playPushButton('Run now')
+        saveButton = widgets.savePushButton("Save and run later")
+        runNowButton = widgets.playPushButton("Run now")
         _, saveButton, runNowButton = msg.question(
-            self, 'Run workflow now?', txt, 
-            buttonsTexts=(
-                'Cancel', saveButton, runNowButton
-            )
+            self,
+            "Run workflow now?",
+            txt,
+            buttonsTexts=("Cancel", saveButton, runNowButton),
         )
         if msg.cancel:
             return False
-        
+
         if msg.clickedButton == saveButton:
             saved = self.saveWorkflowToConfigFile()
             if not saved:
                 return False
-        
+
         return msg.clickedButton == runNowButton
-        
+
     def askMultipleSegm(self, segm_files, isTimelapse=True):
         txt = html_utils.paragraph("""
             At least one of the loaded positions <b>already contains a
@@ -1216,25 +1222,22 @@ class segmWin(QMainWindow):
             <i>NOTE: you will be able to choose a stop frame later.</i><br>
         """)
         msg = widgets.myMessageBox(resizeButtons=False)
-        msg.setWindowTitle('Multiple segmentation files')
+        msg.setWindowTitle("Multiple segmentation files")
         msg.addText(txt)
         if len(segm_files) > 1:
-            overWriteText = 'Select segm. file to overwrite...'
+            overWriteText = "Select segm. file to overwrite..."
         else:
-            overWriteText = 'Overwrite existing segmentation file'
+            overWriteText = "Overwrite existing segmentation file"
         overWriteButton = widgets.savePushButton(overWriteText)
-        doNotSaveButton = widgets.noPushButton('Do not save')
-        newButton = widgets.newFilePushButton('Save as...')
+        doNotSaveButton = widgets.noPushButton("Do not save")
+        newButton = widgets.newFilePushButton("Save as...")
         msg.addCancelButton(connect=True)
         msg.addButton(overWriteButton)
         msg.addButton(newButton)
         msg.addButton(doNotSaveButton)
-        if len(segm_files)>1:
+        if len(segm_files) > 1:
             overWriteButton.clicked.disconnect()
-            func = partial(
-                self.selectSegmFile, segm_files, True, msg,
-                overWriteButton
-            )
+            func = partial(self.selectSegmFile, segm_files, True, msg, overWriteButton)
             overWriteButton.clicked.connect(func)
         else:
             self.selectedSegmFile = segm_files[0]
@@ -1253,29 +1256,25 @@ class segmWin(QMainWindow):
             return askNewName
 
     def askHowToHandle2DsegmOn3Ddata(self):
-        txt = html_utils.paragraph(
-            'How do you want to handle 3D data?'
-        )
-        use3DButton = widgets.threeDPushButton(
-            'Pass all z-slices to the model'
-        )
+        txt = html_utils.paragraph("How do you want to handle 3D data?")
+        use3DButton = widgets.threeDPushButton("Pass all z-slices to the model")
         convertTo2DButton = widgets.twoDPushButton(
-            'Use or select z-slices or projection from Data prep'
+            "Use or select z-slices or projection from Data prep"
         )
-        buttons = (
-            'Cancel', use3DButton, convertTo2DButton
-        )
+        buttons = ("Cancel", use3DButton, convertTo2DButton)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.question(self, 'How to handle 3D data', txt, buttonsTexts=buttons)
-        
+        msg.question(self, "How to handle 3D data", txt, buttonsTexts=buttons)
+
         return msg.cancel, msg.clickedButton == use3DButton
-    
+
     def selectSegmFile(self, segm_files, isOverwrite, msg, button):
-        action = 'overwrite' if isOverwrite else 'concatenate to'
+        action = "overwrite" if isOverwrite else "concatenate to"
         selectSegmFileWin = widgets.QDialogListbox(
-            'Select segmentation file',
-            f'Select segmentation file to {action}:\n',
-            segm_files, multiSelection=False, parent=msg
+            "Select segmentation file",
+            f"Select segmentation file to {action}:\n",
+            segm_files,
+            multiSelection=False,
+            parent=msg,
         )
         selectSegmFileWin.exec_()
         if selectSegmFileWin.cancel:
@@ -1287,12 +1286,12 @@ class segmWin(QMainWindow):
         button.clicked.disconnect()
         button.clicked.connect(msg.buttonCallBack)
         button.click()
-    
+
     def log(self, text):
         self.logger.info(text)
         try:
             self.logTerminal.append(text)
-            self.logTerminal.append('-'*30)
+            self.logTerminal.append("-" * 30)
             maxScrollbar = self.logTerminal.verticalScrollBar().maximum()
             self.logTerminal.verticalScrollBar().setValue(maxScrollbar)
         except AttributeError:
@@ -1312,7 +1311,7 @@ class segmWin(QMainWindow):
 
     def create_tqdm_pbar(self, num_frames):
         self.tqdm_pbar = tqdm(
-            total=num_frames, unit=' frames', ncols=75, file=self.logTerminal
+            total=num_frames, unit=" frames", ncols=75, file=self.logTerminal
         )
 
     def update_tqdm_pbar(self, step):
@@ -1322,22 +1321,23 @@ class segmWin(QMainWindow):
         self.tqdm_pbar.close()
 
     def setPredictBuddingModel(self):
-        self.downloadYeastMate = apps.downloadModel('YeastMate', parent=self)
+        self.downloadYeastMate = apps.downloadModel("YeastMate", parent=self)
         self.downloadYeastMate.download()
         import models.YeastMate.acdcSegment as yeastmate
+
         self.predictCcaState_model = yeastmate.Model()
 
     def startSegmWorker(self, img_path, stop_frame_n):
         thread = QThread()
-        
+
         worker = SegmWorker(img_path, self, stop_frame_n)
         worker.is_error = False
-        
+
         worker.moveToThread(thread)
         worker.signals.finished.connect(thread.quit)
         worker.signals.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
-        
+
         worker.signals.finished.connect(self.segmWorkerFinished)
         worker.signals.progress.connect(self.segmWorkerProgress)
         worker.signals.progressBar.connect(self.segmWorkerProgressBar)
@@ -1347,12 +1347,12 @@ class segmWin(QMainWindow):
         worker.signals.progress_tqdm.connect(self.update_tqdm_pbar)
         worker.signals.signal_close_tqdm.connect(self.close_tqdm)
         worker.signals.critical.connect(self.workerCritical)
-        
+
         thread.started.connect(worker.run)
         thread.start()
-        
+
         return worker, thread
-    
+
     @exception_handler
     def workerCritical(self, out: Tuple[QObject, Exception]):
         worker, error = out
@@ -1364,73 +1364,67 @@ class segmWin(QMainWindow):
         apps.imshow_tk(lab)
 
     def segmWorkerProgress(self, text):
-        print('-----------------------------------------')
+        print("-----------------------------------------")
         self.logger.info(text)
         self.progressLabel.setText(text)
 
     def segmWorkerProgressBar(self, step):
-        self.QPbar.setValue(self.QPbar.value()+step)
-        steps_left = self.QPbar.maximum()-self.QPbar.value()
+        self.QPbar.setValue(self.QPbar.value() + step)
+        steps_left = self.QPbar.maximum() - self.QPbar.value()
         # Update ETA every two calls of this function
-        if steps_left%2 == 0:
+        if steps_left % 2 == 0:
             t = time.time()
             self.exec_time_per_iter = t - self.time_last_pbar_update
-            groups_2steps_left = steps_left/2
-            seconds = round(self.exec_time_per_iter*groups_2steps_left)
-            ETA = myutils.seconds_to_ETA(seconds)
-            self.ETA_label.setText(f'ETA: {ETA}')
+            groups_2steps_left = steps_left / 2
+            seconds = round(self.exec_time_per_iter * groups_2steps_left)
+            ETA = utils.seconds_to_ETA(seconds)
+            self.ETA_label.setText(f"ETA: {ETA}")
             self.exec_time_per_iter = 0
             self.time_last_pbar_update = t
 
     def segmWorkerInnerProgressBar(self, step):
-        self.innerQPbar.setValue(self.innerQPbar.value()+step)
+        self.innerQPbar.setValue(self.innerQPbar.value() + step)
         t = time.time()
         self.exec_time_per_frame = t - self.time_last_innerPbar_update
-        steps_left = self.QPbar.maximum()-self.QPbar.value()
-        seconds = round(self.exec_time_per_frame*steps_left)
-        ETA = myutils.seconds_to_ETA(seconds)
-        self.innerETA_label.setText(f'ETA: {ETA}')
+        steps_left = self.QPbar.maximum() - self.QPbar.value()
+        seconds = round(self.exec_time_per_frame * steps_left)
+        ETA = utils.seconds_to_ETA(seconds)
+        self.innerETA_label.setText(f"ETA: {ETA}")
         self.exec_time_per_frame = 0
         self.time_last_innerPbar_update = t
 
         # Estimate total ETA
         current_numFrames = self.QPbar.maximum()
-        tot_seconds = round(self.exec_time_per_frame*current_numFrames)
+        tot_seconds = round(self.exec_time_per_frame * current_numFrames)
         numPos = self.QPbar.maximum()
-        allPos_seconds = tot_seconds*numPos
-        tot_seconds_left = allPos_seconds-tot_seconds
-        ETA = myutils.seconds_to_ETA(round(tot_seconds_left))
-        total_ETA = self.ETA_label.setText(f'ETA: {ETA}')
+        allPos_seconds = tot_seconds * numPos
+        tot_seconds_left = allPos_seconds - tot_seconds
+        ETA = utils.seconds_to_ETA(round(tot_seconds_left))
+        total_ETA = self.ETA_label.setText(f"ETA: {ETA}")
 
-    def segmWorkerFinished(self, worker):     
+    def segmWorkerFinished(self, worker):
         worker.loop.exit()
-    
+
     def processFinished(self, total_exec_time):
-        short_txt = 'Segmentation process finished!'
+        short_txt = "Segmentation process finished!"
         exec_time = round(total_exec_time)
         delta = datetime.timedelta(seconds=exec_time)
-        exec_time_delta = str(delta).split(',')[-1].strip()
-        h, m, s = str(exec_time_delta).split(':')
-        exec_time_delta = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
+        exec_time_delta = str(delta).split(",")[-1].strip()
+        h, m, s = str(exec_time_delta).split(":")
+        exec_time_delta = f"{int(h):02}h:{int(m):02}m:{int(s):02}s"
         items = (
-            f'Total execution time: <code>{exec_time_delta}</code><br>',
-            f'Selected folder: <code>{self.exp_path}</code>'
+            f"Total execution time: <code>{exec_time_delta}</code><br>",
+            f"Selected folder: <code>{self.exp_path}</code>",
         )
-        txt = (
-            'Segmentation task ended.'
-            f'{html_utils.to_list(items)}'
-        )
-        steps_left = self.QPbar.maximum()-self.QPbar.value()
-        self.QPbar.setValue(self.QPbar.value()+steps_left)
-        
-        txt = html_utils.paragraph(
-            f'{txt}<br>{myutils.get_salute_string()}'
-        )
+        txt = f"Segmentation task ended.{html_utils.to_list(items)}"
+        steps_left = self.QPbar.maximum() - self.QPbar.value()
+        self.QPbar.setValue(self.QPbar.value() + steps_left)
+
+        txt = html_utils.paragraph(f"{txt}<br>{utils.get_salute_string()}")
         self.progressLabel.setText(short_txt)
         msg = widgets.myMessageBox(self, wrapText=False)
         msg.information(
-            self, 'Segmentation task ended.', txt,
-            path_to_browse=self.exp_path
+            self, "Segmentation task ended.", txt, path_to_browse=self.exp_path
         )
         try:
             del self.posData
@@ -1453,7 +1447,7 @@ class segmWin(QMainWindow):
 
         msg = widgets.myMessageBox(showCentered=False)
         closeAnswer = msg.warning(
-            self, 'Execution cancelled', 'Segmentation task cancelled.'
+            self, "Execution cancelled", "Segmentation task cancelled."
         )
         try:
             del self.posData
@@ -1468,9 +1462,7 @@ class segmWin(QMainWindow):
         except AttributeError:
             pass
         self.close()
-    
 
-    
     def warnSegmWorkerStillRunning(self):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
@@ -1479,38 +1471,36 @@ class segmWin(QMainWindow):
             Are you sure you want to continue?
         """)
         noButton, yesButton = msg.warning(
-            self, 'Process still running', txt, 
-            buttonsTexts=(
-                'No, wait for the process to end', 
-                'Yes, close Cell-ACDC'
-            )
+            self,
+            "Process still running",
+            txt,
+            buttonsTexts=("No, wait for the process to end", "Yes, close Cell-ACDC"),
         )
         if msg.cancel:
             return False
         return msg.clickedButton == yesButton
 
     def closeEvent(self, event):
-        print('')
-        self.log('Closing segmentation module...')
+        print("")
+        self.log("Closing segmentation module...")
         if self.buttonToRestore is not None:
             button, color, text = self.buttonToRestore
             button.setText(text)
-            button.setStyleSheet(
-                f'QPushButton {{background-color: {color};}}')
+            button.setStyleSheet(f"QPushButton {{background-color: {color};}}")
             self.mainWin.setWindowState(Qt.WindowNoState)
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
-        
-        self.log('Closing segmentation module logger...')
+
+        self.log("Closing segmentation module logger...")
         handlers = self.logger.handlers[:]
         for handler in handlers:
             handler.close()
             self.logger.removeHandler(handler)
-        
+
         try:
             self.model.closeLogger()
         except Exception as e:
             pass
-        
-        self.log('Segmentation module closed.')
+
+        self.log("Segmentation module closed.")
         self.sigClosed.emit()

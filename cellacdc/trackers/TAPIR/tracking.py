@@ -4,6 +4,7 @@ import tree
 
 from tapnet import tapir_model
 
+
 def build_model(frames, query_points):
     """Compute point tracks and occlusions given frames and query points."""
     model = tapir_model.TAPIR()
@@ -14,6 +15,7 @@ def build_model(frames, query_points):
         query_chunk_size=64,
     )
     return outputs
+
 
 def preprocess_frames(frames):
     """Preprocess frames to model inputs.
@@ -40,8 +42,11 @@ def postprocess_occlusions(occlusions, expected_dist):
         visibles: [num_points, num_frames], bool
     """
     # visibles = occlusions < 0
-    visibles = (1 - jax.nn.sigmoid(occlusions)) * (1 - jax.nn.sigmoid(expected_dist)) > 0.5
+    visibles = (1 - jax.nn.sigmoid(occlusions)) * (
+        1 - jax.nn.sigmoid(expected_dist)
+    ) > 0.5
     return visibles
+
 
 def inference(frames, query_points, model_apply, params, state):
     """Inference on one video.
@@ -65,7 +70,9 @@ def inference(frames, query_points, model_apply, params, state):
     outputs, _ = model_apply(params, state, rng, frames, query_points)
     outputs = tree.map_structure(lambda x: np.array(x[0]), outputs)
     tracks, occlusions, expected_dist = (
-        outputs['tracks'], outputs['occlusion'], outputs['expected_dist']
+        outputs["tracks"],
+        outputs["occlusion"],
+        outputs["expected_dist"],
     )
 
     # Binarize occlusions
