@@ -410,8 +410,8 @@ def printl(*objects, pretty=False, is_decorator=False, idx=1, **kwargs):
 
 parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')
-models_path = os.path.join(cellacdc_path, 'models')
-promptable_models_path = os.path.join(cellacdc_path, 'promptable_models')
+segmenters_path = os.path.join(cellacdc_path, 'segmenters')
+segmenters_promptable_path = os.path.join(cellacdc_path, 'segmenters_promptable')
 data_path = os.path.join(parent_path, 'data')
 resources_folderpath = os.path.join(cellacdc_path, 'resources')
 resources_filepath = os.path.join(cellacdc_path, 'resources_light.qrc')
@@ -419,10 +419,16 @@ logs_path = os.path.join(user_profile_path, '.acdc-logs')
 acdc_fiji_path = os.path.join(user_profile_path, 'acdc-fiji')
 acdc_ffmpeg_path = os.path.join(user_profile_path, 'acdc-ffmpeg')
 resources_path = os.path.join(cellacdc_path, 'resources_light.qrc')
-models_list_file_path = os.path.join(settings_folderpath, 'custom_models_paths.ini')
-promptable_models_list_file_path = os.path.join(
+segmenters_list_file_path = os.path.join(
+    settings_folderpath, 'custom_models_paths.ini'
+)
+segmenters_promptable_list_file_path = os.path.join(
     settings_folderpath, 'custom_promptable_models_paths.ini'
 )
+models_path = segmenters_path
+promptable_models_path = segmenters_promptable_path
+models_list_file_path = segmenters_list_file_path
+promptable_models_list_file_path = segmenters_promptable_list_file_path
 favourite_func_metrics_csv_path = os.path.join(
     settings_folderpath, 'favourite_func_metrics.csv'
 )

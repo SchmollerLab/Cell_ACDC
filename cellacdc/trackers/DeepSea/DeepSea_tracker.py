@@ -15,9 +15,9 @@ from deepsea.model import DeepSeaTracker
 from deepsea.utils import track_cells
 
 from cellacdc import myutils, printl
-from cellacdc.models.DeepSea import _init_model, _resize_img
-from cellacdc.models.DeepSea import image_size as segm_image_size
-from cellacdc.models.DeepSea import _get_segm_transforms
+from cellacdc.segmenters.DeepSea import _init_model, _resize_img
+from cellacdc.segmenters.DeepSea import image_size as segm_image_size
+from cellacdc.segmenters.DeepSea import _get_segm_transforms
 from cellacdc.core import get_labels_to_IDs_mapper
 
 from . import _get_tracker_transforms

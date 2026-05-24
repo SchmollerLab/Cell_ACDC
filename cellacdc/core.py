@@ -2167,7 +2167,7 @@ def cellpose_v3_run_denoise(
         isZstack=False
     ):
     if denoise_model is None:
-        from cellacdc.models.cellpose_v3 import _denoise
+        from cellacdc.segmenters.cellpose_v3 import _denoise
         denoise_model = _denoise.CellposeDenoiseModel(**init_params)
     
     denoised_img = denoise_model.run(image, timelapse=timelapse,isZstack=isZstack, **run_params)# may have to give rgb stuff too!

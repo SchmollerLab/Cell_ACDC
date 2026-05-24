@@ -62,10 +62,10 @@ cellacdc/metrics/*
 !cellacdc/metrics/CV.py
 !cellacdc/metrics/combine_metrics_example.py
 !cellacdc/metrics/channel_indipendent_metric_example.py
-cellacdc/models/beno
-cellacdc/models/Simone_cellpose
+cellacdc/segmenters/beno
+cellacdc/segmenters/Simone_cellpose
 cellacdc/timon_tests
-cellacdc/models/test_segm_model
+cellacdc/segmenters/test_segm_model
 cellacdc/trackers/example
 cellacdc/test_qt_app.py
 cellacdc/test_qthread.py
@@ -98,7 +98,7 @@ UserManual/*
 # Ignore models folder but keep the folder with placeholder.txt dummy file
 models/*
 !models/placeholder.txt
-cellacdc/models/*/model/*
+cellacdc/segmenters/*/model/*
 
 # Hide placeholder.txt dummy file (probably works only on Linux)
 !models/.placeholder.txt

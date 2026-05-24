@@ -26,8 +26,8 @@ prune publications
 prine notebooks
 prune FijiMacros
 
-exclude cellacdc/models/YeastMate/detectron2
-exclude cellacdc/models/YeastMate/pycocotools
+exclude cellacdc/segmenters/YeastMate/detectron2
+exclude cellacdc/segmenters/YeastMate/pycocotools
 
 exclude requirements.txt
 exclude not_installed_requirements.txt

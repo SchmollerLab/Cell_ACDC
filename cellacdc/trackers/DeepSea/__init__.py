@@ -1,4 +1,4 @@
-from cellacdc.models import DeepSea
+from cellacdc.segmenters import DeepSea
 
 from deepsea import tracker_transforms
 

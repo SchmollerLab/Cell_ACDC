@@ -6533,7 +6533,7 @@ class MagicPromptsWorker(QObject):
     
     @worker_exception_handler
     def run(self):
-        from cellacdc.promptable_models import utils
+        from cellacdc.segmenters_promptable import utils
         
         for row in self.df_points.itertuples():
             prompt_id = row.id

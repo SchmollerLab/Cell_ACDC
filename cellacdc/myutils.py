@@ -55,7 +55,7 @@ from . import _warnings
 from . import urls
 from . import qrc_resources_path
 from . import settings_folderpath
-from .models._cellpose_base import min_target_versions_cp
+from .segmenters._cellpose_base import min_target_versions_cp
 
 if GUI_INSTALLED:
     from qtpy.QtWidgets import QMessageBox
@@ -1721,7 +1721,7 @@ def get_model_path(model_name, create_temp_dir=True):
     if model_name == 'Automatic thresholding':
         model_name == 'thresholding'
         
-    model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
+    model_info_path = os.path.join(models_path, model_name, 'model')
     
     if os.path.exists(model_info_path):
         for file in listdir(model_info_path):
@@ -2038,7 +2038,7 @@ def check_v123_model_path(model_name):
     # while from v1.2.4 we save them on user folder. If we find the
     # weights in the package we move them to user folder without downloading
     # new ones.
-    v123_model_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
+    v123_model_path = os.path.join(models_path, model_name, 'model')
     exists = check_model_exists(v123_model_path, model_name)
     if exists:
         return v123_model_path
@@ -2067,7 +2067,7 @@ def migrate_to_new_user_profile_path(path_to_migrate: os.PathLike):
     return os.path.join(user_profile_path, folder)
 
 def _write_model_location_to_txt(model_name):
-    model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
+    model_info_path = os.path.join(models_path, model_name, 'model')
     model_path = os.path.join(user_profile_path, f'acdc-{model_name}')
     file = 'weights_location_path.txt'
     with open(os.path.join(model_info_path, file), 'w') as txt:
@@ -4008,7 +4008,7 @@ def run_fiji_command(command=None, logger_func=print):
 def import_promptable_segment_module(model_name):
     try:
         acdcPromptSegment = import_module(
-            f'cellacdc.promptable_models.{model_name}.acdcPromptSegment'
+            f'cellacdc.segmenters_promptable.{model_name}.acdcPromptSegment'
         )
     except ModuleNotFoundError as e:
         # Check if custom model
@@ -4128,7 +4128,7 @@ def init_tracker(
 
 def import_segment_module(model_name):
     try:
-        acdcSegment = import_module(f'cellacdc.models.{model_name}.acdcSegment')
+        acdcSegment = import_module(f'cellacdc.segmenters.{model_name}.acdcSegment')
     except ModuleNotFoundError as e:
         # Check if custom model
         cp = config.ConfigParser()

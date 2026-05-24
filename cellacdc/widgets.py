@@ -11841,7 +11841,7 @@ class YeazV2SelectModelNameCombobox(ComboBox):
         self.initItems()
     
     def initItems(self):
-        from cellacdc.models.YeaZ_v2 import load_models_filepath
+        from cellacdc.segmenters.YeaZ_v2 import load_models_filepath
         models_name, models_name_filepath_mapper = load_models_filepath()
         self.addItems(models_name)
     
@@ -11877,7 +11877,7 @@ class YeazV2SelectModelNameCombobox(ComboBox):
 
         model_name = modelNameWindow.enteredValue
         
-        from cellacdc.models.YeaZ_v2 import add_model_filepath
+        from cellacdc.segmenters.YeaZ_v2 import add_model_filepath
         add_model_filepath(model_name, model_filepath)
         
         self.addItem(model_name)

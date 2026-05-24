@@ -369,7 +369,7 @@ def download_model_params():
     if parser_args['StarDistModelsDownload'] or parser_args['AllModelsDownload']:
         print('[INFO]: Downloading StarDist models...')
         try:
-            from cellacdc.models import STARDIST_MODELS
+            from cellacdc.segmenters import STARDIST_MODELS
             from stardist.models import StarDist2D, StarDist3D
             for model_type in [StarDist2D, StarDist3D]:
                 for model_name in STARDIST_MODELS:
