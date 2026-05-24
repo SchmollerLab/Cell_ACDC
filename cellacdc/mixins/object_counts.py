@@ -11,14 +11,14 @@ from cellacdc.domain.object_counts import (
 )
 
 
-class ObjectCountViewModel:
+class ObjectCountMixin:
     """Application-facing object count and label-frame commands."""
-
-    def current_labels(self, pos_data, *, curr_lab=None, frame_i=None):
-        return current_labels(pos_data, curr_lab=curr_lab, frame_i=frame_i)
 
     def collect_all_ids(self, pos_data, *, only_visited: bool = False) -> set[int]:
         return collect_all_ids(pos_data, only_visited=only_visited)
+
+    def current_labels(self, pos_data, *, curr_lab=None, frame_i=None):
+        return current_labels(pos_data, curr_lab=curr_lab, frame_i=frame_i)
 
     def snapshot_object_counts(
         self,

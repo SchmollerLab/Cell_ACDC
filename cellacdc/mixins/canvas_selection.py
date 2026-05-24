@@ -15,103 +15,23 @@ from qtpy.QtWidgets import QAction, QGraphicsSceneMouseEvent
 from cellacdc import apps, exception_handler
 
 
-class CanvasSelectionView:
+class CanvasSelectionMixin:
     """Qt-facing adapter for canvas selection workflows."""
 
     """Headless decisions for canvas selection workflows."""
 
-    viewer_mode = 'Viewer'
-    segmentation_mode = 'Segmentation and Tracking'
-
-    def should_drag_image(
-        self,
-        *,
-        left_click: bool,
-        eraser_on: bool,
-        brush_on: bool,
-        middle_click: bool,
-        pan_click: bool,
-    ) -> bool:
-        return pan_click or (
-            left_click and not eraser_on and not brush_on and not middle_click
-        )
-
-    def should_blink_viewer_mode(
-        self,
-        *,
-        mode: str,
-        middle_click: bool,
-        right_action_on: bool = False,
-        custom_action_on: bool = False,
-        right_click: bool = False,
-    ) -> bool:
-        if mode != self.viewer_mode:
-            return False
-        if middle_click:
-            return True
-        return (right_action_on or custom_action_on) and (
-            right_click or middle_click
-        )
-
-    def should_show_labels_menu(
-        self,
-        *,
-        right_click: bool,
-        right_action_on: bool,
-        middle_click: bool,
-        event_from_img1: bool,
-    ) -> bool:
-        return (
-            right_click
-            and not right_action_on
-            and not middle_click
-            and not event_from_img1
-        )
+    viewer_mode = "Viewer"
+    segmentation_mode = "Segmentation and Tracking"
 
     def can_delete(self, *, mode: str, is_snapshot: bool) -> bool:
         return mode == self.segmentation_mode or is_snapshot
 
-    def is_viewer_mode(self, mode: str) -> bool:
-        return mode == self.viewer_mode
-
-    def should_process_release(
-        self,
-        *,
-        mode: str,
-        in_bounds: bool,
-    ) -> bool:
-        return mode != self.viewer_mode and in_bounds
-
-
-    LEGACY_METHODS = (
-        'gui_mousePressEventImg2',
-        'gui_mouseReleaseEventImg2',
-    )
-
-    def __init__(self, host):
-        object.__setattr__(self, 'host', host)
-    def __getattr__(self, name):
-        return getattr(self.host, name)
-
-    def __setattr__(self, name, value):
-        if name in {'host'}:
-            object.__setattr__(self, name, value)
-        else:
-            setattr(self.host, name, value)
-
-    def bind_legacy_methods(self):
-        for name in self.LEGACY_METHODS:
-            setattr(self.host, name, getattr(self, name))
-
     @exception_handler
     def gui_mousePressEventImg2(self, event: QGraphicsSceneMouseEvent):
-        if self._dispatch_tool_event_if_enabled(event, phase='press', image='img2'):
-            return
         modifiers = QGuiApplication.keyboardModifiers()
         alt = modifiers == Qt.AltModifier
         shift = modifiers == Qt.ShiftModifier
         shift_regardless = bool(modifiers & Qt.ShiftModifier)
-        isMod = alt
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         left_click = event.button() == Qt.MouseButton.LeftButton and not alt
@@ -124,13 +44,9 @@ class CanvasSelectionView:
         self.typingEditID = False
 
         # Drag image if neither brush or eraser are On pressed
-        dragImg = self.should_drag_image(
-            left_click=left_click,
-            eraser_on=eraserON,
-            brush_on=brushON,
-            middle_click=middle_click,
-            pan_click=isPanImageClick,
-        )
+        dragImg = left_click and not eraserON and not brushON and not middle_click
+        if isPanImageClick:
+            dragImg = True
 
         # Enable dragging of the image window like pyqtgraph original code
         if dragImg:
@@ -138,11 +54,8 @@ class CanvasSelectionView:
             event.ignore()
             return
 
-        if self.should_blink_viewer_mode(
-            mode=mode,
-            middle_click=middle_click,
-        ):
-            self.mode_controls_view.startBlinkingModeCB()
+        if mode == "Viewer" and middle_click:
+            self.startBlinkingModeCB()
             event.ignore()
             return
 
@@ -155,52 +68,41 @@ class CanvasSelectionView:
             return
 
         # Check if right click on ROI
-        isClickOnDelRoi = self.canvas_context_menu_view.clicked_deleted_roi(
-            event,
-            left_click,
-            right_click,
-        )
+        isClickOnDelRoi = self.gui_clickedDelRoi(event, left_click, right_click)
         if isClickOnDelRoi:
             return
 
         # show gradient widget menu if none of the right-click actions are ON
         # and event is not coming from image 1
-        is_right_click_action_ON = any([
-            b.isChecked() for b in self.checkableQButtonsGroup.buttons()
-        ])
-        is_right_click_custom_ON = any([
-            b.isChecked() for b in self.customAnnotDict.keys()
-        ])
+        is_right_click_action_ON = any(
+            [b.isChecked() for b in self.checkableQButtonsGroup.buttons()]
+        )
+        is_right_click_custom_ON = any(
+            [b.isChecked() for b in self.customAnnotDict.keys()]
+        )
         is_event_from_img1 = False
-        if hasattr(event, 'isImg1Sender'):
+        if hasattr(event, "isImg1Sender"):
             is_event_from_img1 = event.isImg1Sender
 
         is_only_right_click = (
             right_click and not is_right_click_action_ON and not middle_click
         )
 
-        showLabelsGradMenu = self.should_show_labels_menu(
-            right_click=right_click,
-            right_action_on=is_right_click_action_ON,
-            middle_click=middle_click,
-            event_from_img1=is_event_from_img1,
-        )
+        showLabelsGradMenu = is_only_right_click and not is_event_from_img1
 
         if showLabelsGradMenu:
             self.labelsGrad.showMenu(event)
             event.ignore()
             return
 
-        editInViewerMode = self.should_blink_viewer_mode(
-            mode=mode,
-            middle_click=middle_click,
-            right_action_on=is_right_click_action_ON,
-            custom_action_on=is_right_click_custom_ON,
-            right_click=right_click,
+        editInViewerMode = (
+            (is_right_click_action_ON or is_right_click_custom_ON)
+            and (right_click or middle_click)
+            and mode == "Viewer"
         )
 
         if editInViewerMode:
-            self.mode_controls_view.startBlinkingModeCB()
+            self.startBlinkingModeCB()
             event.ignore()
             return
 
@@ -209,31 +111,26 @@ class CanvasSelectionView:
         # Brush and eraser are mutually exclusive but we want to keep the eraser
         # or brush ON and disable them temporarily to allow left-click with
         # separate ON
-        canDelete = self.can_delete(
-            mode=mode,
-            is_snapshot=self.isSnapshot,
-        )
+        canDelete = mode == "Segmentation and Tracking" or self.isSnapshot
 
         # Delete ID (set to 0)
         if middle_click and canDelete:
-            t0 = time.perf_counter()
+            time.perf_counter()
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             delID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if delID == 0:
-                nearest_ID = self.nearest_nonzero_2d(
-                    self.get_2Dlab(posData.lab), y, x
-                )
+                nearest_ID = core.nearest_nonzero_2D(self.get_2Dlab(posData.lab), y, x)
                 delID_prompt = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.<br>'
-                        'Enter here ID(s) that you want to delete<br><br>'
-                        'You can enter multiple IDs separated by comma',
-                    parent=self.host,
+                    title="Clicked on background",
+                    msg="You clicked on the background.<br>"
+                    "Enter here ID(s) that you want to delete<br><br>"
+                    "You can enter multiple IDs separated by comma",
+                    parent=self,
                     allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
                     allowList=True,
-                    isInteger=True
+                    isInteger=True,
                 )
                 delID_prompt.exec_()
                 if delID_prompt.cancel:
@@ -243,13 +140,17 @@ class CanvasSelectionView:
                 delIDs = [delID]
 
             # Ask to propagate change to all future visited frames
-            key = 'Delete ID'
+            key = "Delete ID"
             askAction = self.askHowFutureFramesActions[key]
             doNotShow = not askAction.isChecked()
-            (UndoFutFrames, applyFutFrames, endFrame_i,
-            doNotShowAgain) = self.propagateChange(
-                delIDs, key, doNotShow,
-                posData.UndoFutFrames_DelID, posData.applyFutFrames_DelID
+            (UndoFutFrames, applyFutFrames, endFrame_i, doNotShowAgain) = (
+                self.propagateChange(
+                    delIDs,
+                    key,
+                    doNotShow,
+                    posData.UndoFutFrames_DelID,
+                    posData.applyFutFrames_DelID,
+                )
             )
 
             if UndoFutFrames is None:
@@ -260,7 +161,7 @@ class CanvasSelectionView:
             posData.doNotShowAgain_DelID = doNotShowAgain
             posData.UndoFutFrames_DelID = UndoFutFrames
             posData.applyFutFrames_DelID = applyFutFrames
-            includeUnvisited = posData.includeUnvisitedInfo['Delete ID']
+            includeUnvisited = posData.includeUnvisitedInfo["Delete ID"]
 
             delID_mask = self.deleteIDmiddleClick(
                 delIDs, applyFutFrames, includeUnvisited, shift=shift_regardless
@@ -269,21 +170,21 @@ class CanvasSelectionView:
                 delID_mask = delID_mask[self.z_lab()]
 
             if self.isSnapshot:
-                self.fixCcaDfAfterEdit('Delete ID')
+                self.fixCcaDfAfterEdit("Delete ID")
             else:
-                self.warnEditingWithCca_df('Delete ID', update_images=False)
+                self.warnEditingWithCca_df("Delete ID", update_images=False)
 
             self.setImageImg2()
             delROIsIDs = self.setAllTextAnnotations()
             self.setAllContoursImages(delROIsIDs=delROIsIDs, compute=False)
 
             how = self.drawIDsContComboBox.currentText()
-            if how.find('overlay segm. masks') != -1:
+            if how.find("overlay segm. masks") != -1:
                 self.labelsLayerImg1.image[delID_mask] = 0
                 self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
 
             how_ax2 = self.getAnnotateHowRightImage()
-            if how_ax2.find('overlay segm. masks') != -1:
+            if how_ax2.find("overlay segm. masks") != -1:
                 self.labelsLayerRightImg.image[delID_mask] = 0
                 self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
 
@@ -295,15 +196,15 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero_2d(
-                    self.get_2Dlab(posData.lab), y, x)
+                nearest_ID = core.nearest_nonzero_2D(self.get_2Dlab(posData.lab), y, x)
                 sepID_prompt = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter here ID that you want to split',
-                    parent=self.host, allowedValues=posData.IDs,
+                    title="Clicked on background",
+                    msg="You clicked on the background.\n"
+                    "Enter here ID that you want to split",
+                    parent=self,
+                    allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
-                    isInteger=True
+                    isInteger=True,
                 )
                 sepID_prompt.exec_()
                 if sepID_prompt.cancel:
@@ -319,16 +220,17 @@ class CanvasSelectionView:
 
             if self.isSegm3D and not shift:
                 z = self.zSliceScrollBar.sliderPosition()
-                posData.lab, splittedIDs = (
-                    self.separate_with_label(
-                        posData.lab, posData.rp, [ID], max_ID,
-                        click_coords_list=[(z, ydata, xdata)]
-                    )
+                posData.lab, splittedIDs = measure.separate_with_label(
+                    posData.lab,
+                    posData.rp,
+                    [ID],
+                    max_ID,
+                    click_coords_list=[(z, ydata, xdata)],
                 )
                 success = True
                 # self.set_2Dlab(lab2D)
             elif not shift:
-                result = self.split_along_convexity_defects(
+                result = core.split_along_convexity_defects(
                     ID, self.get_2Dlab(posData.lab), max_ID
                 )
                 lab2D, success, splittedIDs = result
@@ -340,14 +242,16 @@ class CanvasSelectionView:
             if not success:
                 posData.disableAutoActivateViewerWindow = True
                 img = self.getDisplayedImg1()
-                col = 'manual_separate_draw_mode'
-                drawMode = self.df_settings.at[col, 'value']
+                col = "manual_separate_draw_mode"
+                drawMode = self.df_settings.at[col, "value"]
                 manualSep = apps.manualSeparateGui(
-                    self.get_2Dlab(posData.lab), ID, img,
+                    self.get_2Dlab(posData.lab),
+                    ID,
+                    img,
                     fontSize=self.fontSize,
                     IDcolor=self.lut[ID],
-                    parent=self.host,
-                    drawMode=drawMode
+                    parent=self,
+                    drawMode=drawMode,
                 )
                 manualSep.setState(self.lastManualSeparateState)
                 manualSep.show()
@@ -360,15 +264,11 @@ class CanvasSelectionView:
                     return
                 self.lastManualSeparateState = manualSep.state()
                 lab2D = self.get_2Dlab(posData.lab)
-                lab2D[manualSep.lab!=0] = manualSep.lab[manualSep.lab!=0]
+                lab2D[manualSep.lab != 0] = manualSep.lab[manualSep.lab != 0]
                 self.set_2Dlab(lab2D)
                 splittedIDs = [obj.label for obj in manualSep.rp]
                 posData.disableAutoActivateViewerWindow = False
-                self.canvas_tool_view.store_manual_separate_draw_mode(
-                    self.df_settings,
-                    self.settings_csv_path,
-                    manualSep.drawMode,
-                )
+                self.storeManualSeparateDrawMode(manualSep.drawMode)
 
             # Update data (rp, etc)
             self.update_rp()
@@ -377,10 +277,10 @@ class CanvasSelectionView:
             self.trackSubsetIDs(splittedIDs)
 
             if self.isSnapshot:
-                self.fixCcaDfAfterEdit('Separate IDs')
+                self.fixCcaDfAfterEdit("Separate IDs")
                 self.updateAllImages()
             else:
-                self.warnEditingWithCca_df('Separate IDs')
+                self.warnEditingWithCca_df("Separate IDs")
 
             self.store_data()
 
@@ -393,17 +293,16 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero_2d(
-                    self.get_2Dlab(posData.lab), y, x
-                )
+                nearest_ID = core.nearest_nonzero_2D(self.get_2Dlab(posData.lab), y, x)
                 clickedBkgrID = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter here the ID that you want to '
-                         'fill the holes of',
-                    parent=self.host, allowedValues=posData.IDs,
+                    title="Clicked on background",
+                    msg="You clicked on the background.\n"
+                    "Enter here the ID that you want to "
+                    "fill the holes of",
+                    parent=self,
+                    allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
-                    isInteger=True
+                    isInteger=True,
                 )
                 clickedBkgrID.exec_()
                 if clickedBkgrID.cancel:
@@ -432,17 +331,16 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero_2d(
-                    self.get_2Dlab(posData.lab), y, x
-                )
+                nearest_ID = core.nearest_nonzero_2D(self.get_2Dlab(posData.lab), y, x)
                 mergeID_prompt = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter here the ID that you want to '
-                         'replace with Hull contour',
-                    parent=self.host, allowedValues=posData.IDs,
+                    title="Clicked on background",
+                    msg="You clicked on the background.\n"
+                    "Enter here the ID that you want to "
+                    "replace with Hull contour",
+                    parent=self,
+                    allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
-                    isInteger=True
+                    isInteger=True,
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -471,7 +369,7 @@ class CanvasSelectionView:
             self.storeUndoRedoStates(False)
 
             x, y = event.pos().x(), event.pos().y()
-            self.label_transform_tools_view.start_moving_label(x, y)
+            self.startMovingLabel(x, y)
 
         # Fill holes
         elif right_click and self.fillHolesToolButton.isChecked():
@@ -479,17 +377,16 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero_2d(
-                    self.get_2Dlab(posData.lab), y, x
-                )
+                nearest_ID = core.nearest_nonzero_2D(self.get_2Dlab(posData.lab), y, x)
                 clickedBkgrID = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter here the ID that you want to '
-                         'fill the holes of',
-                    parent=self.host, allowedValues=posData.IDs,
+                    title="Clicked on background",
+                    msg="You clicked on the background.\n"
+                    "Enter here the ID that you want to "
+                    "fill the holes of",
+                    parent=self,
+                    allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
-                    isInteger=True
+                    isInteger=True,
                 )
                 clickedBkgrID.exec_()
                 if clickedBkgrID.cancel:
@@ -503,16 +400,15 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero_2d(
-                    self.get_2Dlab(posData.lab), y, x
-                )
+                nearest_ID = core.nearest_nonzero_2D(self.get_2Dlab(posData.lab), y, x)
                 mergeID_prompt = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter here first ID that you want to merge',
-                    parent=self.host, allowedValues=posData.IDs,
+                    title="Clicked on background",
+                    msg="You clicked on the background.\n"
+                    "Enter here first ID that you want to merge",
+                    parent=self,
+                    allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
-                    isInteger=True
+                    isInteger=True,
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -532,22 +428,19 @@ class CanvasSelectionView:
 
         # Edit ID
         elif right_click and self.editIDbutton.isChecked():
-            if self._dispatch_tool_event_if_enabled(event, phase='press', image='img2'):
-                return
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero_2d(
-                    self.get_2Dlab(posData.lab), y, x
-                )
+                nearest_ID = core.nearest_nonzero_2D(self.get_2Dlab(posData.lab), y, x)
                 editID_prompt = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                        'Enter here ID that you want to replace with a new one',
-                    parent=self.host, allowedValues=posData.IDs,
+                    title="Clicked on background",
+                    msg="You clicked on the background.\n"
+                    "Enter here ID that you want to replace with a new one",
+                    parent=self,
+                    allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
-                    isInteger=True
+                    isInteger=True,
                 )
                 editID_prompt.show(block=True)
 
@@ -569,13 +462,14 @@ class CanvasSelectionView:
                 and posData.frame_i < posData.SizeT - 1
             )
             editID = apps.EditIDDialog(
-                ID, posData.IDs,
+                ID,
+                posData.IDs,
                 doNotShowAgain=self.doNotAskAgainExistingID,
-                parent=self.host,
+                parent=self,
                 entryID=self.getNearestLostObjID(y, x),
                 nextUniqueID=self.setBrushID(return_val=True),
                 allIDs=posData.allIDs,
-                addPropagateCheckbox=addPropagateCheckbox
+                addPropagateCheckbox=addPropagateCheckbox,
             )
             editID.show(block=True)
             if editID.cancel:
@@ -593,9 +487,13 @@ class CanvasSelectionView:
             self.doNotAskAgainExistingID = editID.doNotAskAgainExistingID
 
             self.applyEditID(
-                ID, currentIDs, editID.how, x, y,
+                ID,
+                currentIDs,
+                editID.how,
+                x,
+                y,
                 shift=shift,
-                doPropagateUnvisited=editID.doPropagateFutureFrames
+                doPropagateUnvisited=editID.doPropagateFutureFrames,
             )
 
         elif (right_click or left_click) and self.keepIDsButton.isChecked():
@@ -603,16 +501,15 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero_2d(
-                    self.get_2Dlab(posData.lab), y, x
-                )
+                nearest_ID = core.nearest_nonzero_2D(self.get_2Dlab(posData.lab), y, x)
                 keepID_win = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                        'Enter ID that you want to keep',
-                    parent=self.host, allowedValues=posData.IDs,
+                    title="Clicked on background",
+                    msg="You clicked on the background.\n"
+                    "Enter ID that you want to keep",
+                    parent=self,
+                    allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
-                    isInteger=True
+                    isInteger=True,
                 )
                 keepID_win.exec_()
                 if keepID_win.cancel:
@@ -635,16 +532,15 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero_2d(
-                    self.get_2Dlab(posData.lab), y, x
-                )
+                nearest_ID = core.nearest_nonzero_2D(self.get_2Dlab(posData.lab), y, x)
                 binID_prompt = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter ID that you want to remove from the analysis',
-                    parent=self.host, allowedValues=posData.IDs,
+                    title="Clicked on background",
+                    msg="You clicked on the background.\n"
+                    "Enter ID that you want to remove from the analysis",
+                    parent=self,
+                    allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
-                    isInteger=True
+                    isInteger=True,
                 )
                 binID_prompt.exec_()
                 if binID_prompt.cancel:
@@ -653,14 +549,17 @@ class CanvasSelectionView:
                     ID = binID_prompt.EntryID
 
             # Ask to propagate change to all future visited frames
-            key = 'Exclude cell from analysis'
+            key = "Exclude cell from analysis"
             askAction = self.askHowFutureFramesActions[key]
             doNotShow = not askAction.isChecked()
-            (UndoFutFrames, applyFutFrames, endFrame_i,
-            doNotShowAgain) = self.propagateChange(
-                ID, key, doNotShow,
-                posData.UndoFutFrames_BinID,
-                posData.applyFutFrames_BinID
+            (UndoFutFrames, applyFutFrames, endFrame_i, doNotShowAgain) = (
+                self.propagateChange(
+                    ID,
+                    key,
+                    doNotShow,
+                    posData.UndoFutFrames_BinID,
+                    posData.applyFutFrames_BinID,
+                )
             )
 
             if UndoFutFrames is None:
@@ -677,7 +576,7 @@ class CanvasSelectionView:
             if applyFutFrames:
                 # Store current data before going to future frames
                 self.store_data()
-                for i in range(posData.frame_i+1, endFrame_i+1):
+                for i in range(posData.frame_i + 1, endFrame_i + 1):
                     posData.frame_i = i
                     self.get_data()
                     if ID in posData.binnedIDs:
@@ -685,7 +584,7 @@ class CanvasSelectionView:
                     else:
                         posData.binnedIDs.add(ID)
                     self.update_rp_metadata(draw=False)
-                    self.store_data(autosave=i==endFrame_i)
+                    self.store_data(autosave=i == endFrame_i)
 
                 self.app.restoreOverrideCursor()
 
@@ -716,16 +615,15 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero_2d(
-                    self.get_2Dlab(posData.lab), y, x
-                )
+                nearest_ID = core.nearest_nonzero_2D(self.get_2Dlab(posData.lab), y, x)
                 ripID_prompt = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter ID that you want to annotate as dead',
-                    parent=self.host, allowedValues=posData.IDs,
+                    title="Clicked on background",
+                    msg="You clicked on the background.\n"
+                    "Enter ID that you want to annotate as dead",
+                    parent=self,
+                    allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
-                    isInteger=True
+                    isInteger=True,
                 )
                 ripID_prompt.exec_()
                 if ripID_prompt.cancel:
@@ -734,14 +632,17 @@ class CanvasSelectionView:
                     ID = ripID_prompt.EntryID
 
             # Ask to propagate change to all future visited frames
-            key = 'Annotate cell as dead'
+            key = "Annotate cell as dead"
             askAction = self.askHowFutureFramesActions[key]
             doNotShow = not askAction.isChecked()
-            (UndoFutFrames, applyFutFrames, endFrame_i,
-            doNotShowAgain) = self.propagateChange(
-                ID, key, doNotShow,
-                posData.UndoFutFrames_RipID,
-                posData.applyFutFrames_RipID
+            (UndoFutFrames, applyFutFrames, endFrame_i, doNotShowAgain) = (
+                self.propagateChange(
+                    ID,
+                    key,
+                    doNotShow,
+                    posData.UndoFutFrames_RipID,
+                    posData.applyFutFrames_RipID,
+                )
             )
 
             if UndoFutFrames is None:
@@ -757,7 +658,7 @@ class CanvasSelectionView:
             if applyFutFrames:
                 # Store current data before going to future frames
                 self.store_data()
-                for i in range(posData.frame_i+1, endFrame_i+1):
+                for i in range(posData.frame_i + 1, endFrame_i + 1):
                     posData.frame_i = i
                     self.get_data()
                     if ID in posData.ripIDs:
@@ -765,7 +666,7 @@ class CanvasSelectionView:
                     else:
                         posData.ripIDs.add(ID)
                     self.update_rp_metadata(draw=False)
-                    self.store_data(autosave=i==endFrame_i)
+                    self.store_data(autosave=i == endFrame_i)
                 self.app.restoreOverrideCursor()
 
             # Back to current frame
@@ -788,37 +689,29 @@ class CanvasSelectionView:
             self.store_data()
 
             if self.isSnapshot:
-                self.fixCcaDfAfterEdit('Annotate ID as dead')
+                self.fixCcaDfAfterEdit("Annotate ID as dead")
                 self.updateAllImages()
             else:
-                self.warnEditingWithCca_df('Annotate ID as dead')
+                self.warnEditingWithCca_df("Annotate ID as dead")
 
             if not self.ripCellButton.findChild(QAction).isChecked():
                 self.ripCellButton.setChecked(False)
 
     @exception_handler
     def gui_mouseReleaseEventImg2(self, event):
-        if self._dispatch_tool_event_if_enabled(event, phase='release', image='img2'):
-            return
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
+        if mode == "Viewer":
+            return
 
         Y, X = self.get_2Dlab(posData.lab).shape
         try:
             x, y = event.pos().x(), event.pos().y()
-        except Exception as e:
+        except Exception:
             return
 
         xdata, ydata = int(x), int(y)
-        in_bounds = self.is_in_bounds(xdata, ydata, X, Y)
-        if self.is_viewer_mode(mode):
-            return
-
-        should_process = self.should_process_release(
-            mode=mode,
-            in_bounds=in_bounds,
-        )
-        if not should_process:
+        if not myutils.is_in_bounds(xdata, ydata, X, Y):
             self.isMouseDragImg2 = False
             self.updateAllImages()
             return
@@ -845,17 +738,16 @@ class CanvasSelectionView:
             lab2D = self.get_2Dlab(posData.lab)
             ID = lab2D[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero_2d(
-                    lab2D, y, x
-                )
+                nearest_ID = core.nearest_nonzero_2D(lab2D, y, x)
                 mergeID_prompt = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter ID that you want to merge with ID '
-                         f'{self.firstID}',
-                    parent=self.host, allowedValues=posData.IDs,
+                    title="Clicked on background",
+                    msg="You clicked on the background.\n"
+                    "Enter ID that you want to merge with ID "
+                    f"{self.firstID}",
+                    parent=self,
+                    allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
-                    isInteger=True
+                    isInteger=True,
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -872,7 +764,7 @@ class CanvasSelectionView:
             for ID in IDs_to_merge:
                 if ID == 0:
                     continue
-                posData.lab[posData.lab==ID] = self.firstID
+                posData.lab[posData.lab == ID] = self.firstID
 
             self.mergeObjsTempLine.setData([], [])
             self.clickObjYc, self.clickObjXc = None, None
@@ -886,29 +778,89 @@ class CanvasSelectionView:
                 ask_back_prop = False
                 prev_IDs = []
             else:
-                prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
+                prev_IDs = posData.allData_li[posData.frame_i - 1]["IDs"]
 
-            if  all(ID not in prev_IDs for ID in IDs_to_merge):
+            if all(ID not in prev_IDs for ID in IDs_to_merge):
                 ask_back_prop = False
 
             if not self.isFrameCcaAnnotated() and ask_back_prop:
-                proceed = self.askPropagateChangePast(f'Merge IDs {IDs_to_merge}')
+                proceed = self.askPropagateChangePast(f"Merge IDs {IDs_to_merge}")
                 if proceed:
                     self.propagateMergeObjsPast(IDs_to_merge)
-                    self.whitelistPropagateIDs(only_future_frames=False, update_lab=True) # in the update_rp() call, this should also be done
+                    self.whitelistPropagateIDs(
+                        only_future_frames=False, update_lab=True
+                    )  # in the update_rp() call, this should also be done
 
             # Repeat tracking
             self.tracking(
-                enforce=True, assign_unique_new_IDs=False,
-                separateByLabel=False
+                enforce=True, assign_unique_new_IDs=False, separateByLabel=False
             )
 
             if self.isSnapshot:
-                self.fixCcaDfAfterEdit('Merge IDs')
+                self.fixCcaDfAfterEdit("Merge IDs")
                 self.updateAllImages()
             else:
-                self.warnEditingWithCca_df('Merge IDs')
+                self.warnEditingWithCca_df("Merge IDs")
 
             if not self.mergeIDsButton.findChild(QAction).isChecked():
                 self.mergeIDsButton.setChecked(False)
             self.store_data()
+
+    def is_viewer_mode(self, mode: str) -> bool:
+        return mode == self.viewer_mode
+
+    def should_blink_viewer_mode(
+        self,
+        *,
+        mode: str,
+        middle_click: bool,
+        right_action_on: bool = False,
+        custom_action_on: bool = False,
+        right_click: bool = False,
+    ) -> bool:
+        if mode != self.viewer_mode:
+            return False
+        if middle_click:
+            return True
+        return (right_action_on or custom_action_on) and (right_click or middle_click)
+
+    def should_drag_image(
+        self,
+        *,
+        left_click: bool,
+        eraser_on: bool,
+        brush_on: bool,
+        middle_click: bool,
+        pan_click: bool,
+    ) -> bool:
+        return pan_click or (
+            left_click and not eraser_on and not brush_on and not middle_click
+        )
+
+    def should_process_release(
+        self,
+        *,
+        mode: str,
+        in_bounds: bool,
+    ) -> bool:
+        return mode != self.viewer_mode and in_bounds
+
+    LEGACY_METHODS = (
+        "gui_mousePressEventImg2",
+        "gui_mouseReleaseEventImg2",
+    )
+
+    def should_show_labels_menu(
+        self,
+        *,
+        right_click: bool,
+        right_action_on: bool,
+        middle_click: bool,
+        event_from_img1: bool,
+    ) -> bool:
+        return (
+            right_click
+            and not right_action_on
+            and not middle_click
+            and not event_from_img1
+        )

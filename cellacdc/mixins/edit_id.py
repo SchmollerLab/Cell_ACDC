@@ -15,21 +15,8 @@ from cellacdc.domain.edit_id import (
 )
 
 
-class EditIdViewModel:
+class EditIdMixin:
     """Application-facing commands for manual ID edit metadata."""
-
-    def project_centroid(
-        self,
-        centroid,
-        *,
-        is_3d: bool = False,
-        depth_axis: str = 'z',
-    ) -> tuple[float, float]:
-        return project_centroid(
-            centroid,
-            is_3d=is_3d,
-            depth_axis=depth_axis,
-        )
 
     def add_yx_centroids_to_df(
         self,
@@ -37,7 +24,7 @@ class EditIdViewModel:
         regionprops,
         *,
         is_3d: bool = False,
-        depth_axis: str = 'z',
+        depth_axis: str = "z",
     ) -> pd.DataFrame:
         return add_yx_centroids_to_df(
             df,
@@ -46,13 +33,25 @@ class EditIdViewModel:
             depth_axis=depth_axis,
         )
 
+    def apply_manual_edit_tracking(
+        self,
+        tracked_labels: np.ndarray,
+        edit_id_info,
+        all_ids,
+    ) -> ManualEditTrackingResult:
+        return apply_manual_edit_tracking(
+            tracked_labels,
+            edit_id_info,
+            all_ids,
+        )
+
     def edit_id_info_from_df(
         self,
         df: pd.DataFrame,
         regionprops=None,
         *,
         is_3d: bool = False,
-        depth_axis: str = 'z',
+        depth_axis: str = "z",
     ) -> list[tuple[int, int, int]]:
         return edit_id_info_from_df(
             df,
@@ -68,14 +67,15 @@ class EditIdViewModel:
     ) -> dict[int, int]:
         return manual_edit_conflicts(labels, edit_id_info)
 
-    def apply_manual_edit_tracking(
+    def project_centroid(
         self,
-        tracked_labels: np.ndarray,
-        edit_id_info,
-        all_ids,
-    ) -> ManualEditTrackingResult:
-        return apply_manual_edit_tracking(
-            tracked_labels,
-            edit_id_info,
-            all_ids,
+        centroid,
+        *,
+        is_3d: bool = False,
+        depth_axis: str = "z",
+    ) -> tuple[float, float]:
+        return project_centroid(
+            centroid,
+            is_3d=is_3d,
+            depth_axis=depth_axis,
         )

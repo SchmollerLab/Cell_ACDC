@@ -19,8 +19,29 @@ from cellacdc.domain.points import (
 )
 
 
-class PointsViewModel:
+class PointsMixin:
     """Application-facing commands for point-layer data transforms."""
+
+    def add_click_point(
+        self,
+        points_data_pos,
+        frame_i: int,
+        x: float,
+        y: float,
+        point_id: int,
+        *,
+        size_z: int = 1,
+        z_slice: int | None = None,
+    ):
+        return add_click_point(
+            points_data_pos,
+            frame_i,
+            x,
+            y,
+            point_id,
+            size_z=size_z,
+            z_slice=z_slice,
+        )
 
     def click_points_table_filename(
         self,
@@ -28,6 +49,22 @@ class PointsViewModel:
         table_endname: str,
     ) -> str:
         return click_points_table_filename(basename, table_endname)
+
+    def click_points_table_to_data(self, df, *, size_z: int = 1):
+        return click_points_table_to_data(df, size_z=size_z)
+
+    def flatten_frame_points_data(
+        self,
+        frame_points_data,
+        *,
+        z_slice: int | None = None,
+        z_radius: int = 0,
+    ):
+        return flatten_frame_points_data(
+            frame_points_data,
+            z_slice=z_slice,
+            z_radius=z_radius,
+        )
 
     def load_click_points_table(self, filepath):
         return load_click_points_table(filepath)
@@ -44,32 +81,6 @@ class PointsViewModel:
         x_col,
     ):
         return points_table_to_data(df, t_col, z_col, y_col, x_col)
-
-    def save_click_points_table(
-        self,
-        filepath,
-        df,
-        sort_by=('frame_i', 'Cell_ID'),
-    ):
-        return save_click_points_table(filepath, df, sort_by=sort_by)
-
-    def click_points_table_to_data(self, df, *, size_z: int = 1):
-        return click_points_table_to_data(df, size_z=size_z)
-
-    def remove_click_points(
-        self,
-        frame_points_data,
-        points,
-        *,
-        z_slice: int | None = None,
-        z_radius: int = 0,
-    ) -> list[int]:
-        return remove_click_points(
-            frame_points_data,
-            points,
-            z_slice=z_slice,
-            z_radius=z_radius,
-        )
 
     def next_click_point_id(
         self,
@@ -100,36 +111,25 @@ class PointsViewModel:
             known_ids,
         )
 
-    def add_click_point(
-        self,
-        points_data_pos,
-        frame_i: int,
-        x: float,
-        y: float,
-        point_id: int,
-        *,
-        size_z: int = 1,
-        z_slice: int | None = None,
-    ):
-        return add_click_point(
-            points_data_pos,
-            frame_i,
-            x,
-            y,
-            point_id,
-            size_z=size_z,
-            z_slice=z_slice,
-        )
-
-    def flatten_frame_points_data(
+    def remove_click_points(
         self,
         frame_points_data,
+        points,
         *,
         z_slice: int | None = None,
         z_radius: int = 0,
-    ):
-        return flatten_frame_points_data(
+    ) -> list[int]:
+        return remove_click_points(
             frame_points_data,
+            points,
             z_slice=z_slice,
             z_radius=z_radius,
         )
+
+    def save_click_points_table(
+        self,
+        filepath,
+        df,
+        sort_by=("frame_i", "Cell_ID"),
+    ):
+        return save_click_points_table(filepath, df, sort_by=sort_by)

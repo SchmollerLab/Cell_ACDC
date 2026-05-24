@@ -11,7 +11,15 @@ from qtpy.QtCore import Qt, QSettings, QTimer
 from qtpy.QtGui import QCursor, QFont, QKeyEvent, QKeySequence, QPixmap
 from qtpy.QtWidgets import QAbstractSlider, QCheckBox, QMainWindow
 
-from cellacdc import apps, exception_handler, html_utils, is_mac, printl, qutils, widgets
+from cellacdc import (
+    apps,
+    exception_handler,
+    html_utils,
+    is_mac,
+    printl,
+    qutils,
+    widgets,
+)
 from cellacdc.plot import imshow
 
 
@@ -19,330 +27,8 @@ _font = QFont()
 _font.setPixelSize(11)
 
 
-class WindowEventsView:
+class WindowEventsMixin:
     """Qt-facing adapter for main-window and pointer event handling."""
-
-    LEGACY_METHODS = (
-        'onKeyHome',
-        'onKeyEnd',
-        'onKeyPageUp',
-        'onKeyPageDown',
-        'keyUpCallback',
-        'keyDownCallback',
-        'dragEnterEvent',
-        'dropEvent',
-        'changeEvent',
-        'leaveEvent',
-        'enterEvent',
-        'isPanImageClick',
-        'middleClickText',
-        'isDefaultMiddleClick',
-        'isMiddleClick',
-        'resizeBottomLayoutLineClicked',
-        'resizeBottomLayoutLineDragged',
-        'resizeBottomLayoutLineReleased',
-        'mousePressEvent',
-        'resizeLeaveSpaceTerminalBelow',
-        '_resizeLeaveSpaceTerminalBelow',
-        'checkSetDelObjActionActive',
-        'changeRightClickToLeftOnMac',
-        'checkTriggerKeyPressShortcuts',
-        '_temp_debug',
-        'checkOverlayToolbuttonClicked',
-        'keyPressCheckSetSpinboxValue',
-        'editingSpinboxValueTimerCallback',
-        'keyPressEvent',
-        'doubleRightClickTimerCallBack',
-        'doubleKeyTimerCallBack',
-        'doubleKeySpacebarTimerCallback',
-        'updateBrushCursorOnShiftRelease',
-        'onShiftReleased',
-        'keyReleaseEvent',
-        'clearMemory',
-        'askCloseAllWindows',
-        'stopPreprocWorker',
-        'closeEvent',
-        'readSettings',
-        'saveWindowGeometry',
-        'storeDefaultAndCustomColors',
-        'showEvent',
-        'super_show',
-        'show',
-        'resizeSlidersArea',
-        '_resizeSlidersArea',
-        'resizeEvent',
-        'gui_createCursors',
-    )
-
-    def __init__(self, host):
-        object.__setattr__(self, 'host', host)
-    def __getattr__(self, name):
-        return getattr(self.host, name)
-
-    def __setattr__(self, name, value):
-        if name in {'host'}:
-            object.__setattr__(self, name, value)
-        else:
-            setattr(self.host, name, value)
-
-    def bind_legacy_methods(self):
-        for name in self.LEGACY_METHODS:
-            setattr(self.host, name, getattr(self, name))
-
-    def onKeyHome(self):
-        self.zSliceScrollBar.triggerAction(
-            QAbstractSlider.SliderAction.SliderSingleStepAdd
-        )
-
-    def onKeyEnd(self):
-        self.zSliceScrollBar.triggerAction(
-            QAbstractSlider.SliderAction.SliderSingleStepSub
-        )
-
-    def onKeyPageUp(self):
-        isAutoPilotActive = (
-            self.autoPilotZoomToObjToggle.isChecked()
-            and self.autoPilotZoomToObjToolbar.isVisible()
-        )
-        if isAutoPilotActive:
-            self.pointsLayerAutoPilot('next')
-        elif self.zSliceScrollBar.isVisible():
-            self.zSliceScrollBar.triggerAction(
-                QAbstractSlider.SliderAction.SliderSingleStepAdd
-            )
-
-    def onKeyPageDown(self):
-        isAutoPilotActive = (
-            self.autoPilotZoomToObjToggle.isChecked()
-            and self.autoPilotZoomToObjToolbar.isVisible()
-        )
-        if isAutoPilotActive:
-            self.pointsLayerAutoPilot('prev')
-        elif self.zSliceScrollBar.isVisible():
-            self.zSliceScrollBar.triggerAction(
-                QAbstractSlider.SliderAction.SliderSingleStepAdd
-            )
-
-    def keyUpCallback(
-            self, isBrushActive, isWandActive, isExpandLabelActive,
-            isLabelRoiCircActive
-        ):
-        isAutoPilotActive = (
-            self.autoPilotZoomToObjToggle.isChecked()
-            and self.autoPilotZoomToObjToolbar.isVisible()
-        )
-        if isBrushActive:
-            brushSize = self.brushSizeSpinbox.value()
-            self.brushSizeSpinbox.setValue(brushSize+1)
-        elif isWandActive:
-            wandTolerance = self.wandControlsToolbar.toleranceSpinbox.value()
-            self.wandControlsToolbar.toleranceSpinbox.setValue(wandTolerance+1)
-        elif isExpandLabelActive:
-            self.label_transform_tools_view.expand_label(dilation=True)
-            self.expandFootprintSize += 1
-        elif isLabelRoiCircActive:
-            val = self.labelRoiCircularRadiusSpinbox.value()
-            self.labelRoiCircularRadiusSpinbox.setValue(val+1)
-        elif isAutoPilotActive:
-            self.pointsLayerAutoPilot('next')
-        else:
-            self.zSliceScrollBar.triggerAction(
-                QAbstractSlider.SliderAction.SliderSingleStepAdd
-            )
-
-    def keyDownCallback(
-            self, isBrushActive, isWandActive, isExpandLabelActive,
-            isLabelRoiCircActive
-        ):
-        isAutoPilotActive = (
-            self.autoPilotZoomToObjToggle.isChecked()
-            and self.autoPilotZoomToObjToolbar.isVisible()
-        )
-        if isBrushActive:
-            brushSize = self.brushSizeSpinbox.value()
-            self.brushSizeSpinbox.setValue(brushSize-1)
-        elif isWandActive:
-            wandTolerance = self.wandControlsToolbar.toleranceSpinbox.value()
-            self.wandControlsToolbar.toleranceSpinbox.setValue(wandTolerance-1)
-        elif isExpandLabelActive:
-            self.label_transform_tools_view.expand_label(dilation=False)
-            self.expandFootprintSize += 1
-        elif isLabelRoiCircActive:
-            val = self.labelRoiCircularRadiusSpinbox.value()
-            self.labelRoiCircularRadiusSpinbox.setValue(val-1)
-        elif isAutoPilotActive:
-            self.pointsLayerAutoPilot('prev')
-        elif self.isNavigateActionOnNextFrame():
-            posData = self.data[self.pos_i]
-            self.rightImageFramesScrollbar.setValue(posData.frame_i+2)
-        else:
-            self.zSliceScrollBar.triggerAction(
-                QAbstractSlider.SliderAction.SliderSingleStepSub
-            )
-
-    def dragEnterEvent(self, event):
-        file_path = event.mimeData().urls()[0].toLocalFile()
-        if os.path.isdir(file_path):
-            basename = os.path.basename(file_path)
-            if basename.find('Position_') != -1 or basename == 'Images':
-                event.acceptProposedAction()
-            else:
-                event.ignore()
-        else:
-            event.acceptProposedAction()
-
-    def dropEvent(self, event):
-        event.setDropAction(Qt.CopyAction)
-        file_path = event.mimeData().urls()[0].toLocalFile()
-        self.logger.info(f'Dragged and dropped path "{file_path}"')
-        if os.path.isdir(file_path):
-            self.openFolder(exp_path=file_path)
-        else:
-            self.openFile(file_path=file_path)
-
-    def changeEvent(self, event):
-        try:
-            self.delObjToolAction.setChecked(False)
-        except Exception as err:
-            return
-
-    def leaveEvent(self, event):
-        if self.slideshowWin is not None:
-            posData = self.data[self.pos_i]
-            mainWinGeometry = self.geometry()
-            slideshowWinGeometry = self.slideshowWin.geometry()
-
-            overlap = self.windows_overlap_from_bounds(
-                main_left=mainWinGeometry.left(),
-                main_top=mainWinGeometry.top(),
-                main_width=mainWinGeometry.width(),
-                main_height=mainWinGeometry.height(),
-                other_left=slideshowWinGeometry.left(),
-                other_top=slideshowWinGeometry.top(),
-            )
-            autoActivate = self.should_auto_activate_viewer(
-                is_data_loaded=self.isDataLoaded,
-                windows_overlap=overlap,
-                disable_auto_activate=posData.disableAutoActivateViewerWindow,
-            )
-
-            if autoActivate:
-                self.slideshowWin.setFocus()
-                self.slideshowWin.activateWindow()
-
-    def enterEvent(self, event):
-        event.accept()
-        if self.slideshowWin is not None:
-            posData = self.data[self.pos_i]
-            mainWinGeometry = self.geometry()
-            slideshowWinGeometry = self.slideshowWin.geometry()
-
-            overlap = self.windows_overlap_from_bounds(
-                main_left=mainWinGeometry.left(),
-                main_top=mainWinGeometry.top(),
-                main_width=mainWinGeometry.width(),
-                main_height=mainWinGeometry.height(),
-                other_left=slideshowWinGeometry.left(),
-                other_top=slideshowWinGeometry.top(),
-            )
-            autoActivate = self.should_auto_activate_viewer(
-                is_data_loaded=self.isDataLoaded,
-                windows_overlap=overlap,
-                disable_auto_activate=posData.disableAutoActivateViewerWindow,
-            )
-
-            if autoActivate:
-                # self.setFocus()
-                self.activateWindow()
-
-    def isPanImageClick(self, mouseEvent, modifiers):
-        return self.is_pan_image_click(
-            mouse_button=mouseEvent.button(),
-            left_button=Qt.MouseButton.LeftButton,
-            modifiers=modifiers,
-            alt_modifier=Qt.AltModifier,
-        )
-
-    def middleClickText(self):
-        if self.delObjAction is None and is_mac:
-            return self.middle_click_text(
-                has_del_object_action=False,
-                is_mac=is_mac,
-            )
-
-        if self.delObjAction is None:
-            return self.middle_click_text(
-                has_del_object_action=False,
-                is_mac=is_mac,
-            )
-
-        delObjKeySequence, delObjQtButton = self.delObjAction
-
-        if delObjQtButton == Qt.MouseButton.LeftButton:
-            buttonName = 'Left click'
-        elif delObjQtButton == Qt.MouseButton.RightButton:
-            buttonName = 'Right click'
-        else:
-            buttonName = 'Middle click'
-
-        if delObjKeySequence is None:
-            keySequenceText = None
-        else:
-            keySequenceText = delObjKeySequence.toString()
-
-        return self.middle_click_text(
-            has_del_object_action=True,
-            is_mac=is_mac,
-            button_name=buttonName,
-            key_sequence_text=keySequenceText,
-        )
-
-    def isDefaultMiddleClick(self, mouseEvent, modifiers):
-        return self.is_default_middle_click(
-            mouse_button=mouseEvent.button(),
-            modifiers=modifiers,
-            is_mac=is_mac,
-            brush_is_checked=self.brushButton.isChecked(),
-            left_button=Qt.MouseButton.LeftButton,
-            middle_button=Qt.MouseButton.MiddleButton,
-            control_modifier=Qt.ControlModifier,
-        )
-
-    def isMiddleClick(self, mouseEvent, modifiers):
-        if self.delObjAction is None:
-            return self.isDefaultMiddleClick(mouseEvent, modifiers)
-
-        delObjKeySequence, delObjQtButton = self.delObjAction
-        mouseEventButton = self.changeRightClickToLeftOnMac(mouseEvent)
-        return self.is_configured_middle_click(
-            mouse_button=mouseEventButton,
-            configured_button=delObjQtButton,
-            key_sequence_is_none=delObjKeySequence is None,
-            tool_is_checked=self.delObjToolAction.isChecked(),
-        )
-
-    def resizeBottomLayoutLineClicked(self, event):
-        pass
-
-    def resizeBottomLayoutLineDragged(self, event):
-        if not self.img1BottomGroupbox.isVisible():
-            return
-        newBottomLayoutHeight = self.bottomScrollArea.minimumHeight() - event.y()
-        self.bottomScrollArea.setFixedHeight(newBottomLayoutHeight)
-
-    def resizeBottomLayoutLineReleased(self):
-        QTimer.singleShot(100, self.autoRange)
-
-    def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.RightButton:
-            pos = self.resizeBottomLayoutLine.mapFromGlobal(event.globalPos())
-            if pos.y()>=0:
-                self.gui_raiseBottomLayoutContextMenu(event)
-        return QMainWindow.mousePressEvent(self.host, event)
-
-    def resizeLeaveSpaceTerminalBelow(self):
-        self.setWindowState(Qt.WindowMaximized)
-        QTimer.singleShot(200, self._resizeLeaveSpaceTerminalBelow)
 
     def _resizeLeaveSpaceTerminalBelow(self):
         geometry = self.geometry()
@@ -350,7 +36,96 @@ class WindowEventsView:
         top = geometry.top()
         width = geometry.width()
         height = geometry.height()
-        self.setGeometry(left, top+10, width, height-200)
+        self.setGeometry(left, top + 10, width, height - 200)
+
+    def _resizeSlidersArea(self):
+        self.navigateScrollBar.setFixedHeight(self.newHeight)
+        self.zSliceScrollBar.setFixedHeight(self.newHeight)
+        self.zSliceOverlay_SB.setFixedHeight(self.newHeight)
+        self.zProjComboBox.setFixedHeight(self.newHeight)
+        self.zProjOverlay_CB.setFixedHeight(self.newHeight)
+        self.navSpinBox.setFixedHeight(self.newHeight)
+        self.zSliceSpinbox.setFixedHeight(self.newHeight)
+        try:
+            self.img1.alphaScrollbar.setFixedHeight(self.newHeight)
+        except Exception:
+            pass
+        try:
+            for channel, items in self.overlayLayersItems.items():
+                alphaScrollbar = items[2]
+                alphaScrollbar.setFixedHeight(self.newHeight)
+        except:
+            pass
+        checkBoxStyleSheet = (
+            "QCheckBox::indicator {"
+            f"width: {self.newCheckBoxesHeight}px;"
+            f"height: {self.newCheckBoxesHeight}px"
+            "}"
+        )
+        for i in range(self.annotOptionsLayout.count()):
+            widget = self.annotOptionsLayout.itemAt(i).widget()
+            if isinstance(widget, QCheckBox):
+                widget.setStyleSheet(checkBoxStyleSheet)
+        for i in range(self.annotOptionsLayoutRight.count()):
+            widget = self.annotOptionsLayoutRight.itemAt(i).widget()
+            if isinstance(widget, QCheckBox):
+                widget.setStyleSheet(checkBoxStyleSheet)
+        self.zSliceCheckbox.setStyleSheet(checkBoxStyleSheet)
+
+    def _temp_debug(self, id=None):
+        posData = self.data[self.pos_i]
+        imshow(posData.lab, annotate_labels_idxs=[0])
+
+    def askCloseAllWindows(self):
+        txt = html_utils.paragraph("""
+            There are other open windows that were created from this window.
+            <br><br>
+            If you proceed, the <b>other windows will be closed too.<br>
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, "Open windows", txt, buttonsTexts=("Cancel", "Ok, close now"))
+        return msg.cancel
+
+    def changeEvent(self, event):
+        try:
+            self.delObjToolAction.setChecked(False)
+        except Exception:
+            return
+
+    def changeRightClickToLeftOnMac(self, mouseEvent):
+        button = mouseEvent.button()
+        if not is_mac:
+            return button
+
+        delObjKeySequence, delObjQtButton = self.delObjAction
+        if delObjKeySequence is None:
+            return button
+
+        if not delObjKeySequence.toString() == "Control":
+            return button
+
+        if button != Qt.MouseButton.RightButton:
+            return button
+
+        if delObjQtButton == Qt.MouseButton.LeftButton:
+            # On mac, pressing "Control" and clicking with left button changes
+            # it to a right click button --> here, left click is required for
+            # delete object --> force return of left click
+            return Qt.MouseButton.LeftButton
+
+        return button
+
+    def checkOverlayToolbuttonClicked(self, event):
+        success = False
+        try:
+            n = int(event.text())
+            toolbutton = self.allOverlayToolbuttonsByIdx.get(n, None)
+            toolbutton.click()
+            success = True
+        except Exception:
+            # printl(traceback.format_exc())
+            success = False
+        return success
 
     def checkSetDelObjActionActive(self, event):
         if self.delObjAction is None and self.is_win:
@@ -363,7 +138,7 @@ class WindowEventsView:
             return
 
         delObjKeySequence, delObjQtButton = self.delObjAction
-        keySequenceText = widgets.QKeyEventToString(event).rstrip('+')
+        keySequenceText = widgets.QKeyEventToString(event).rstrip("+")
 
         if delObjKeySequence is None:
             # self.delObjToolAction.setChecked(True)
@@ -383,30 +158,6 @@ class WindowEventsView:
         if keySequenceText == delObjKeySequenceText:
             self.delObjToolAction.setChecked(True)
 
-    def changeRightClickToLeftOnMac(self, mouseEvent):
-        button = mouseEvent.button()
-        if not is_mac:
-            return button
-
-        delObjKeySequence, delObjQtButton = self.delObjAction
-        if delObjKeySequence is None:
-            return button
-
-        if not delObjKeySequence.toString() == 'Control':
-            return button
-
-        if button != Qt.MouseButton.RightButton:
-            return button
-
-        if delObjQtButton == Qt.MouseButton.LeftButton:
-            # On mac, pressing "Control" and clicking with left button changes
-            # it to a right click button --> here, left click is required for
-            # delete object --> force return of left click
-            return Qt.MouseButton.LeftButton
-
-        return button
-
-
     def checkTriggerKeyPressShortcuts(self, event: QKeyEvent):
         isBrushKey = event.key() == self.brushButton.keyPressShortcut
         isEraserKey = event.key() == self.eraserButton.keyPressShortcut
@@ -415,7 +166,7 @@ class WindowEventsView:
 
         modifierText = widgets.modifierKeyToText(event.modifiers())
         for widget in self.widgetsWithShortcut.values():
-            if not hasattr(widget, 'keyPressShortcut'):
+            if not hasattr(widget, "keyPressShortcut"):
                 continue
 
             if event.key() == widget.keyPressShortcut:
@@ -427,41 +178,289 @@ class WindowEventsView:
 
             shortcutText = widget.keyPressShortcut.toString()
             try:
-                mod, key = shortcutText.split('+')
+                mod, key = shortcutText.split("+")
                 if modifierText == mod and event.key() == QKeySequence(key):
                     widget.trigger()
 
-            except Exception as e:
+            except Exception:
                 pass
 
         return isBrushKey, isEraserKey
 
-    def _temp_debug(self, id=None):
-        posData = self.data[self.pos_i]
-        imshow(posData.lab, annotate_labels_idxs=[0])
+    def clearMemory(self):
+        if not hasattr(self, "data"):
+            return
+        self.logger.info("Clearing memory...")
+        for posData in self.data:
+            try:
+                del posData.img_data
+            except Exception:
+                pass
+            try:
+                del posData.segm_data
+            except Exception:
+                pass
+            try:
+                del posData.ol_data_dict
+            except Exception:
+                pass
+            try:
+                del posData.fluo_data_dict
+            except Exception:
+                pass
+            try:
+                del posData.ol_data
+            except Exception:
+                pass
+        del self.data
 
-    def checkOverlayToolbuttonClicked(self, event):
-        success = False
-        try:
-            n = int(event.text())
-            toolbutton = self.allOverlayToolbuttonsByIdx.get(n, None)
-            toolbutton.click()
-            success = True
-        except Exception as e:
-            # printl(traceback.format_exc())
-            success = False
-        return success
+    def closeEvent(self, event):
+        self.setDisabled(False)
+        cancel = self.checkAskSavePointsLayers()
+        if cancel:
+            event.ignore()
+            return
+
+        self.onEscape()
+        self.saveWindowGeometry()
+
+        if self.newWindows:
+            cancel = self.askCloseAllWindows()
+            if cancel:
+                event.ignore()
+                return
+
+            for window in self.newWindows:
+                window.close()
+
+        if self.slideshowWin is not None:
+            self.slideshowWin.close()
+        if self.ccaTableWin is not None:
+            self.ccaTableWin.close()
+
+        proceed = self.askSaveOnClosing(event)
+        if not proceed:
+            event.ignore()
+            return
+
+        self.autoSaveClose()
+
+        if self.autoSaveActiveWorkers:
+            progressWin = apps.QDialogWorkerProgress(
+                title="Closing autosaving worker",
+                parent=self,
+                pbarDesc="Closing autosaving worker...",
+            )
+            progressWin.show(self.app)
+            progressWin.mainPbar.setMaximum(0)
+            self.waitCloseAutoSaveWorkerLoop = qutils.QWhileLoop(
+                self._waitCloseAutoSaveWorker, period=250
+            )
+            self.waitCloseAutoSaveWorkerLoop.exec_()
+            progressWin.workerFinished = True
+            progressWin.close()
+
+        self.stopPreprocWorker()
+        self.stopCombineWorker()
+        self.stopCcaIntegrityCheckerWorker()
+
+        # Close the inifinte loop of the thread
+        if self.lazyLoader is not None:
+            self.lazyLoader.exit = True
+            self.lazyLoaderWaitCond.wakeAll()
+            self.waitReadH5cond.wakeAll()
+
+        if self.storeStateWorker is not None:
+            # Close storeStateWorker
+            self.storeStateWorker._stop()
+            while self.storeStateWorker.isFinished:
+                time.sleep(0.05)
+
+        # Block main thread while separate threads closes
+        time.sleep(0.1)
+
+        self.clearMemory()
+
+        self.logger.info("Closing GUI logger...")
+        self.logger.close()
+
+        if self.lazyLoader is None:
+            self.sigClosed.emit(self)
+
+        gc.collect()
+
+    def doubleKeySpacebarTimerCallback(self):
+        if self.isKeyDoublePress:
+            self.doubleKeyTimeElapsed = False
+            return
+        self.doubleKeyTimeElapsed = True
+        self.countKeyPress = 0
+
+    def doubleKeyTimerCallBack(self):
+        if self.isKeyDoublePress:
+            self.doubleKeyTimeElapsed = False
+            return
+        self.doubleKeyTimeElapsed = True
+        self.countKeyPress = 0
+        if self.Button is None:
+            return
+
+        isBrushChecked = self.Button.isChecked()
+        if isBrushChecked and self.uncheck:
+            self.Button.setChecked(False)
+        c = self.defaultToolBarButtonColor
+        self.Button.setStyleSheet(f"background-color: {c}")
+
+    def doubleRightClickTimerCallBack(self):
+        if self.isDoubleRightClick:
+            self.doubleRightClickTimeElapsed = False
+            return
+        self.doubleRightClickTimeElapsed = True
+        self.countRightClicks = 0
+
+        # Time to double right click on img1 expired --> single right-click
+        self.gui_imgGradShowContextMenu(*self._img1_click_xy)
+
+    def dragEnterEvent(self, event):
+        file_path = event.mimeData().urls()[0].toLocalFile()
+        if os.path.isdir(file_path):
+            basename = os.path.basename(file_path)
+            if basename.find("Position_") != -1 or basename == "Images":
+                event.acceptProposedAction()
+            else:
+                event.ignore()
+        else:
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        event.setDropAction(Qt.CopyAction)
+        file_path = event.mimeData().urls()[0].toLocalFile()
+        self.logger.info(f'Dragged and dropped path "{file_path}"')
+        os.path.basename(file_path)
+        if os.path.isdir(file_path):
+            exp_path = file_path
+            self.openFolder(exp_path=exp_path)
+        else:
+            self.openFile(file_path=file_path)
+
+    def editingSpinboxValueTimerCallback(self):
+        self.typingEditID = False
+
+    def enterEvent(self, event):
+        event.accept()
+        if self.slideshowWin is not None:
+            posData = self.data[self.pos_i]
+            mainWinGeometry = self.geometry()
+            mainWinLeft = mainWinGeometry.left()
+            mainWinTop = mainWinGeometry.top()
+            mainWinWidth = mainWinGeometry.width()
+            mainWinHeight = mainWinGeometry.height()
+            mainWinRight = mainWinLeft + mainWinWidth
+            mainWinBottom = mainWinTop + mainWinHeight
+
+            slideshowWinGeometry = self.slideshowWin.geometry()
+            slideshowWinLeft = slideshowWinGeometry.left()
+            slideshowWinTop = slideshowWinGeometry.top()
+            slideshowWinGeometry.width()
+            slideshowWinGeometry.height()
+
+            # Determine if overlap
+            overlap = (slideshowWinTop < mainWinBottom) and (
+                slideshowWinLeft < mainWinRight
+            )
+
+            autoActivate = (
+                self.isDataLoaded
+                and not overlap
+                and not posData.disableAutoActivateViewerWindow
+            )
+
+            if autoActivate:
+                # self.setFocus()
+                self.activateWindow()
+
+    def gui_createCursors(self):
+        pixmap = QPixmap(":wand_cursor.svg")
+        self.wandCursor = QCursor(pixmap, 16, 16)
+
+        pixmap = QPixmap(":curv_cursor.svg")
+        self.curvCursor = QCursor(pixmap, 16, 16)
+
+        pixmap = QPixmap(":addDelPolyLineRoi_cursor.svg")
+        self.polyLineRoiCursor = QCursor(pixmap, 16, 16)
+
+        pixmap = QPixmap(":cross_cursor.svg")
+        self.addPointsCursor = QCursor(pixmap, 16, 16)
+
+    def isDefaultMiddleClick(self, mouseEvent, modifiers):
+        if is_mac:
+            middle_click = (
+                mouseEvent.button() == Qt.MouseButton.LeftButton
+                and modifiers == Qt.ControlModifier
+                and not self.brushButton.isChecked()
+            )
+        else:
+            middle_click = mouseEvent.button() == Qt.MouseButton.MiddleButton
+        return middle_click
+
+    def isMiddleClick(self, mouseEvent, modifiers):
+        if self.delObjAction is None:
+            return self.isDefaultMiddleClick(mouseEvent, modifiers)
+
+        delObjKeySequence, delObjQtButton = self.delObjAction
+        if delObjKeySequence is None:
+            # Setting only middle click on mac is allowed, however the
+            # delObjKeySequence is None and the tool button is never checked
+            isDelObjectActive = True
+        else:
+            isDelObjectActive = self.delObjToolAction.isChecked()
+
+        mouseEventButton = self.changeRightClickToLeftOnMac(mouseEvent)
+
+        middle_click = mouseEventButton == delObjQtButton and isDelObjectActive
+
+        return middle_click
+
+    def isPanImageClick(self, mouseEvent, modifiers):
+        left_click = mouseEvent.button() == Qt.MouseButton.LeftButton
+        return modifiers == Qt.AltModifier and left_click
+
+    def keyDownCallback(
+        self, isBrushActive, isWandActive, isExpandLabelActive, isLabelRoiCircActive
+    ):
+        isAutoPilotActive = (
+            self.autoPilotZoomToObjToggle.isChecked()
+            and self.autoPilotZoomToObjToolbar.isVisible()
+        )
+        if isBrushActive:
+            brushSize = self.brushSizeSpinbox.value()
+            self.brushSizeSpinbox.setValue(brushSize - 1)
+        elif isWandActive:
+            wandTolerance = self.wandControlsToolbar.toleranceSpinbox.value()
+            self.wandControlsToolbar.toleranceSpinbox.setValue(wandTolerance - 1)
+        elif isExpandLabelActive:
+            self.expandLabel(dilation=False)
+            self.expandFootprintSize += 1
+        elif isLabelRoiCircActive:
+            val = self.labelRoiCircularRadiusSpinbox.value()
+            self.labelRoiCircularRadiusSpinbox.setValue(val - 1)
+        elif isAutoPilotActive:
+            self.pointsLayerAutoPilot("prev")
+        elif self.isNavigateActionOnNextFrame():
+            posData = self.data[self.pos_i]
+            self.rightImageFramesScrollbar.setValue(posData.frame_i + 2)
+        else:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepSub
+            )
 
     def keyPressCheckSetSpinboxValue(self, event, spinbox):
         """Check if the key pressed is a digit and set the spinbox value
-
-    """Headless placeholder for main-window event rules."""
-
         accordingly."""
         try:
             n = int(event.text())
             if self.typingEditID:
-                value = int(f'{spinbox.value()}{n}')
+                value = int(f"{spinbox.value()}{n}")
             else:
                 value = n
                 self.typingEditID = True
@@ -469,23 +468,18 @@ class WindowEventsView:
 
             try:
                 spinbox.timer.stop()
-            except Exception as err:
+            except Exception:
                 pass
 
             spinbox.timer = QTimer(spinbox)
-            spinbox.timer.timeout.connect(
-                self.editingSpinboxValueTimerCallback
-            )
+            spinbox.timer.timeout.connect(self.editingSpinboxValueTimerCallback)
             spinbox.timer.start(2000)
             spinbox.timer.setSingleShot(True)
             success = True
-        except Exception as e:
+        except Exception:
             # printl(traceback.format_exc())
             success = False
         return success
-
-    def editingSpinboxValueTimerCallback(self):
-        self.typingEditID = False
 
     @exception_handler
     def keyPressEvent(self, ev):
@@ -496,16 +490,17 @@ class WindowEventsView:
 
         if ev.key() == Qt.Key_Q and self.debug:
             try:
-                from cellacdc import _q_debug
+                from . import _q_debug
+
                 _q_debug.q_debug(self)
-            except Exception as err:
+            except Exception:
                 printl(traceback.format_exc())
                 printl('[ERROR]: Error with "_qdebug" module. See Traceback above.')
                 pass
 
         if not self.isDataLoaded:
             self.logger.warning(
-                'Data not loaded yet. Key pressing events are not connected.'
+                "Data not loaded yet. Key pressing events are not connected."
             )
             return
 
@@ -534,17 +529,22 @@ class WindowEventsView:
         self.checkSetDelObjActionActive(ev)
 
         self.isZmodifier = (
-            ev.key()== Qt.Key_Z and not isAltModifier
-            and not isCtrlModifier and not isShiftModifier
+            ev.key() == Qt.Key_Z
+            and not isAltModifier
+            and not isCtrlModifier
+            and not isShiftModifier
         )
         if isShiftModifier:
             if self.brushButton.isChecked():
                 # Force default brush symbol with shift down
                 self.setHoverToolSymbolColor(
-                    1, 1, self.ax2_BrushCirclePen,
+                    1,
+                    1,
+                    self.ax2_BrushCirclePen,
                     (self.ax2_BrushCircle, self.ax1_BrushCircle),
-                    self.brushButton, brush=self.ax2_BrushCircleBrush,
-                    ID=0
+                    self.brushButton,
+                    brush=self.ax2_BrushCircleBrush,
+                    ID=0,
                 )
             if self.isSegm3D:
                 self.changeBrushID()
@@ -555,14 +555,12 @@ class WindowEventsView:
             if isButtonClicked:
                 return
 
-        isBrushActive = (
-            self.brushButton.isChecked() or self.eraserButton.isChecked()
-        )
+        isBrushActive = self.brushButton.isChecked() or self.eraserButton.isChecked()
         isManualTrackingActive = self.manualTrackingButton.isChecked()
         isManualBackgroundActive = self.manualBackgroundButton.isChecked()
         isTypingIDFunctionChecked = False
         if self.brushButton.isChecked() and not self.autoIDcheckbox.isChecked():
-            success = self.keyPressCheckSetSpinboxValue(ev, self.editIDspinbox)
+            self.keyPressCheckSetSpinboxValue(ev, self.editIDspinbox)
             isTypingIDFunctionChecked = True
 
         if isManualTrackingActive:
@@ -577,9 +575,9 @@ class WindowEventsView:
 
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
         if (
-                addPointsByClickingButton is not None
-                and addPointsByClickingButton.toolbar.isVisible()
-            ):
+            addPointsByClickingButton is not None
+            and addPointsByClickingButton.toolbar.isVisible()
+        ):
             isTypingIDFunctionChecked = self.keyPressCheckSetSpinboxValue(
                 ev, addPointsByClickingButton.rightClickIDSpinbox
             )
@@ -592,16 +590,14 @@ class WindowEventsView:
             and self.labelRoiIsCircularRadioButton.isChecked()
         )
         how = self.drawIDsContComboBox.currentText()
-        isOverlaySegm = how.find('overlay segm. masks') != -1
-        if ev.key()==Qt.Key_Up and not isCtrlModifier:
+        isOverlaySegm = how.find("overlay segm. masks") != -1
+        if ev.key() == Qt.Key_Up and not isCtrlModifier:
             self.keyUpCallback(
-                isBrushActive, isWandActive, isExpandLabelActive,
-                isLabelRoiCircActive
+                isBrushActive, isWandActive, isExpandLabelActive, isLabelRoiCircActive
             )
-        elif ev.key()==Qt.Key_Down and not isCtrlModifier:
+        elif ev.key() == Qt.Key_Down and not isCtrlModifier:
             self.keyDownCallback(
-                isBrushActive, isWandActive, isExpandLabelActive,
-                isLabelRoiCircActive
+                isBrushActive, isWandActive, isExpandLabelActive, isLabelRoiCircActive
             )
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
             if isTypingIDFunctionChecked:
@@ -618,13 +614,13 @@ class WindowEventsView:
         elif isCtrlModifier and isOverlaySegm:
             if ev.key() == Qt.Key_Up:
                 val = self.imgGrad.labelsAlphaSlider.value()
-                delta = 5/self.imgGrad.labelsAlphaSlider.maximum()
-                val = val+delta
+                delta = 5 / self.imgGrad.labelsAlphaSlider.maximum()
+                val = val + delta
                 self.imgGrad.labelsAlphaSlider.setValue(val, emitSignal=True)
             elif ev.key() == Qt.Key_Down:
                 val = self.imgGrad.labelsAlphaSlider.value()
-                delta = 5/self.imgGrad.labelsAlphaSlider.maximum()
-                val = val-delta
+                delta = 5 / self.imgGrad.labelsAlphaSlider.maximum()
+                val = val - delta
                 self.imgGrad.labelsAlphaSlider.setValue(val, emitSignal=True)
         elif ev.key() == self.zoomOutKeyValue:
             self.zoomToCells(enforce=True)
@@ -679,80 +675,27 @@ class WindowEventsView:
                     c = self.defaultToolBarButtonColor
                 else:
                     c = self.doublePressKeyButtonColor
-                self.Button.setStyleSheet(f'background-color: {c}')
+                self.Button.setStyleSheet(f"background-color: {c}")
                 self.countKeyPress = 0
                 if self.xHoverImg is not None:
                     xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
                     if isBrushKey:
                         self.setHoverToolSymbolColor(
-                            xdata, ydata, self.ax2_BrushCirclePen,
+                            xdata,
+                            ydata,
+                            self.ax2_BrushCirclePen,
                             (self.ax2_BrushCircle, self.ax1_BrushCircle),
-                            self.brushButton, brush=self.ax2_BrushCircleBrush
+                            self.brushButton,
+                            brush=self.ax2_BrushCircleBrush,
                         )
                     elif isEraserKey:
                         self.setHoverToolSymbolColor(
-                            xdata, ydata, self.eraserCirclePen,
+                            xdata,
+                            ydata,
+                            self.eraserCirclePen,
                             (self.ax2_EraserCircle, self.ax1_EraserCircle),
-                            self.eraserButton
+                            self.eraserButton,
                         )
-
-    def doubleRightClickTimerCallBack(self):
-        if self.isDoubleRightClick:
-            self.doubleRightClickTimeElapsed = False
-            return
-        self.doubleRightClickTimeElapsed = True
-        self.countRightClicks = 0
-
-        # Time to double right click on img1 expired --> single right-click
-        self.canvas_context_menu_view.show_img_gradient_context_menu(
-            *self._img1_click_xy
-        )
-
-    def doubleKeyTimerCallBack(self):
-        if self.isKeyDoublePress:
-            self.doubleKeyTimeElapsed = False
-            return
-        self.doubleKeyTimeElapsed = True
-        self.countKeyPress = 0
-        if self.Button is None:
-            return
-
-        isBrushChecked = self.Button.isChecked()
-        if isBrushChecked and self.uncheck:
-            self.Button.setChecked(False)
-        c = self.defaultToolBarButtonColor
-        self.Button.setStyleSheet(f'background-color: {c}')
-
-    def doubleKeySpacebarTimerCallback(self):
-        if self.isKeyDoublePress:
-            self.doubleKeyTimeElapsed = False
-            return
-        self.doubleKeyTimeElapsed = True
-        self.countKeyPress = 0
-
-        # # Spacebar single press --> toggle next visualization
-        # currentIndex = self.drawIDsContComboBox.currentIndex()
-        # nItems = self.drawIDsContComboBox.count()
-        # nextIndex = currentIndex+1
-        # if nextIndex < nItems:
-        #     self.drawIDsContComboBox.setCurrentIndex(nextIndex)
-        # else:
-        #     self.drawIDsContComboBox.setCurrentIndex(0)
-
-    def updateBrushCursorOnShiftRelease(self):
-        xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
-        self.setHoverToolSymbolColor(
-            xdata, ydata, self.ax2_BrushCirclePen,
-            (self.ax2_BrushCircle, self.ax1_BrushCircle),
-            self.brushButton, brush=self.ax2_BrushCircleBrush,
-            byPassShiftCheck=True
-        )
-        if self.isSegm3D:
-            self.changeBrushID()
-
-    def onShiftReleased(self):
-        if self.brushButton.isChecked() and self.xHoverImg is not None:
-            self.updateBrushCursorOnShiftRelease()
 
     def keyReleaseEvent(self, ev):
         if self.app.overrideCursor() == Qt.SizeAllCursor:
@@ -784,14 +727,12 @@ class WindowEventsView:
                 showCentered=False, wrapText=False
             )
             txt = html_utils.paragraph(f"""
-            Please, <b>do not keep the key "{ev.text().upper()}"
+            Please, <b>do not keep the key "{ev.text().upper()}" 
             pressed.</b><br><br>
             It confuses me :)<br><br>
             Thanks!
             """)
-            self.warnKeyPressedMsg.warning(
-                self.host, 'Release the key, please', txt
-            )
+            self.warnKeyPressedMsg.warning(self, "Release the key, please", txt)
             self.warnKeyPressedMsg = None
         elif ev.isAutoRepeat() and ev.key() == Qt.Key_Z and self.isZmodifier:
             self.zKeptDown = True
@@ -802,201 +743,154 @@ class WindowEventsView:
                 self.zSliceCheckbox.setChecked(not self.zSliceCheckbox.isChecked())
             self.zKeptDown = False
 
-    def clearMemory(self):
-        if not hasattr(self, 'data'):
-            return
-        self.logger.info('Clearing memory...')
-        for posData in self.data:
-            try:
-                del posData.img_data
-            except Exception as e:
-                pass
-            try:
-                del posData.segm_data
-            except Exception as e:
-                pass
-            try:
-                del posData.ol_data_dict
-            except Exception as e:
-                pass
-            try:
-                del posData.fluo_data_dict
-            except Exception as e:
-                pass
-            try:
-                del posData.ol_data
-            except Exception as e:
-                pass
-        del self.data
-
-    def askCloseAllWindows(self):
-        txt = html_utils.paragraph("""
-            There are other open windows that were created from this window.
-            <br><br>
-            If you proceed, the <b>other windows will be closed too.<br>
-        """)
-        msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(
-            self.host, 'Open windows', txt,
-            buttonsTexts=('Cancel', 'Ok, close now')
+    def keyUpCallback(
+        self, isBrushActive, isWandActive, isExpandLabelActive, isLabelRoiCircActive
+    ):
+        isAutoPilotActive = (
+            self.autoPilotZoomToObjToggle.isChecked()
+            and self.autoPilotZoomToObjToolbar.isVisible()
         )
-        return msg.cancel
+        if isBrushActive:
+            brushSize = self.brushSizeSpinbox.value()
+            self.brushSizeSpinbox.setValue(brushSize + 1)
+        elif isWandActive:
+            wandTolerance = self.wandControlsToolbar.toleranceSpinbox.value()
+            self.wandControlsToolbar.toleranceSpinbox.setValue(wandTolerance + 1)
+        elif isExpandLabelActive:
+            self.expandLabel(dilation=True)
+            self.expandFootprintSize += 1
+        elif isLabelRoiCircActive:
+            val = self.labelRoiCircularRadiusSpinbox.value()
+            self.labelRoiCircularRadiusSpinbox.setValue(val + 1)
+        elif isAutoPilotActive:
+            self.pointsLayerAutoPilot("next")
+        else:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
+            )
 
-    def stopPreprocWorker(self):
-        self.logger.info('Closing pre-processing worker...')
-        try:
-            self.preprocWorker.stop()
-        except Exception as err:
-            pass
-
-    def closeEvent(self, event):
-        self.setDisabled(False)
-        cancel = self.checkAskSavePointsLayers()
-        if cancel:
-            event.ignore()
-            return
-
-        self.onEscape()
-        self.saveWindowGeometry()
-
-        if self.newWindows:
-            cancel = self.askCloseAllWindows()
-            if cancel:
-                event.ignore()
-                return
-
-            for window in self.newWindows:
-                window.close()
-
+    def leaveEvent(self, event):
         if self.slideshowWin is not None:
-            self.slideshowWin.close()
-        if self.ccaTableWin is not None:
-            self.ccaTableWin.close()
+            posData = self.data[self.pos_i]
+            mainWinGeometry = self.geometry()
+            mainWinLeft = mainWinGeometry.left()
+            mainWinTop = mainWinGeometry.top()
+            mainWinWidth = mainWinGeometry.width()
+            mainWinHeight = mainWinGeometry.height()
+            mainWinRight = mainWinLeft + mainWinWidth
+            mainWinBottom = mainWinTop + mainWinHeight
 
-        proceed = self.askSaveOnClosing(event)
-        if not proceed:
-            event.ignore()
-            return
+            slideshowWinGeometry = self.slideshowWin.geometry()
+            slideshowWinLeft = slideshowWinGeometry.left()
+            slideshowWinTop = slideshowWinGeometry.top()
+            slideshowWinGeometry.width()
+            slideshowWinGeometry.height()
 
-        self.autoSaveClose()
-
-        if self.autoSaveActiveWorkers:
-            progressWin = apps.QDialogWorkerProgress(
-                title='Closing autosaving worker', parent=self.host,
-                pbarDesc='Closing autosaving worker...'
+            # Determine if overlap
+            overlap = (slideshowWinTop < mainWinBottom) and (
+                slideshowWinLeft < mainWinRight
             )
-            progressWin.show(self.app)
-            progressWin.mainPbar.setMaximum(0)
-            self.waitCloseAutoSaveWorkerLoop = qutils.QWhileLoop(
-                self._waitCloseAutoSaveWorker, period=250
+
+            autoActivate = (
+                self.isDataLoaded
+                and not overlap
+                and not posData.disableAutoActivateViewerWindow
             )
-            self.waitCloseAutoSaveWorkerLoop.exec_()
-            progressWin.workerFinished = True
-            progressWin.close()
 
-        self.stopPreprocWorker()
-        self.stopCombineWorker()
-        self.stopCcaIntegrityCheckerWorker()
+            if autoActivate:
+                self.slideshowWin.setFocus()
+                self.slideshowWin.activateWindow()
 
-        # Close the inifinte loop of the thread
-        if self.lazyLoader is not None:
-            self.lazyLoader.exit = True
-            self.lazyLoaderWaitCond.wakeAll()
-            self.waitReadH5cond.wakeAll()
+    def middleClickText(self):
+        if self.delObjAction is None and is_mac:
+            return "Command + Left Click"
 
-        if self.storeStateWorker is not None:
-            # Close storeStateWorker
-            self.storeStateWorker._stop()
-            while self.storeStateWorker.isFinished:
-                time.sleep(0.05)
+        if self.delObjAction is None:
+            return "Middle Click"
 
-        # Block main thread while separate threads closes
-        time.sleep(0.1)
+        delObjKeySequence, delObjQtButton = self.delObjAction
 
-        self.clearMemory()
+        if delObjQtButton == Qt.MouseButton.LeftButton:
+            buttonName = "Left click"
+        elif delObjQtButton == Qt.MouseButton.RightButton:
+            buttonName = "Right click"
+        else:
+            buttonName = "Middle click"
 
-        self.logger.info('Closing GUI logger...')
-        self.logger.close()
+        if delObjKeySequence is None:
+            return buttonName
 
-        if self.lazyLoader is None:
-            self.sigClosed.emit(self)
+        return f"{delObjKeySequence.toString()} + {buttonName}"
 
-        gc.collect()
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.RightButton:
+            pos = self.resizeBottomLayoutLine.mapFromGlobal(event.globalPos())
+            if pos.y() >= 0:
+                self.gui_raiseBottomLayoutContextMenu(event)
+        return super().mousePressEvent(event)
+
+    def onKeyEnd(self):
+        self.zSliceScrollBar.triggerAction(
+            QAbstractSlider.SliderAction.SliderSingleStepSub
+        )
+
+    def onKeyHome(self):
+        self.zSliceScrollBar.triggerAction(
+            QAbstractSlider.SliderAction.SliderSingleStepAdd
+        )
+
+    def onKeyPageDown(self):
+        isAutoPilotActive = (
+            self.autoPilotZoomToObjToggle.isChecked()
+            and self.autoPilotZoomToObjToolbar.isVisible()
+        )
+        if isAutoPilotActive:
+            self.pointsLayerAutoPilot("prev")
+        elif self.zSliceScrollBar.isVisible():
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
+            )
+
+    def onKeyPageUp(self):
+        isAutoPilotActive = (
+            self.autoPilotZoomToObjToggle.isChecked()
+            and self.autoPilotZoomToObjToolbar.isVisible()
+        )
+        if isAutoPilotActive:
+            self.pointsLayerAutoPilot("next")
+        elif self.zSliceScrollBar.isVisible():
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
+            )
+
+    def onShiftReleased(self):
+        if self.brushButton.isChecked() and self.xHoverImg is not None:
+            self.updateBrushCursorOnShiftRelease()
 
     def readSettings(self):
-        settings = QSettings('schmollerlab', 'acdc_gui')
-        if settings.value('geometry') is not None:
+        settings = QSettings("schmollerlab", "acdc_gui")
+        if settings.value("geometry") is not None:
             self.restoreGeometry(settings.value("geometry"))
-        # self.restoreState(settings.value("windowState"))
 
-    def saveWindowGeometry(self):
-        settings = QSettings('schmollerlab', 'acdc_gui')
-        settings.setValue("geometry", self.saveGeometry())
-        # settings.setValue("windowState", self.saveState())
+    def resizeBottomLayoutLineClicked(self, event):
+        pass
 
-    def storeDefaultAndCustomColors(self):
-        c = self.overlayButton.palette().button().color().name()
-        self.defaultToolBarButtonColor = c
-        self.doublePressKeyButtonColor = '#fa693b'
+    def resizeBottomLayoutLineDragged(self, event):
+        if not self.img1BottomGroupbox.isVisible():
+            return
+        newBottomLayoutHeight = self.bottomScrollArea.minimumHeight() - event.y()
+        self.bottomScrollArea.setFixedHeight(newBottomLayoutHeight)
 
-    def showEvent(self, event):
-        if self.mainWin is not None:
-            if not self.mainWin.isMinimized():
-                return
-            self.mainWin.showAllWindows()
-        # self.setFocus()
-        self.activateWindow()
+    def resizeBottomLayoutLineReleased(self):
+        QTimer.singleShot(100, self.autoRange)
 
-    def super_show(self):
-        QMainWindow.show(self.host)
+    def resizeEvent(self, event):
+        if hasattr(self, "ax1"):
+            self.ax1.autoRange()
 
-    def show(self):
-        self.setFont(_font)
-        QMainWindow.show(self.host)
-
-        self.setWindowState(Qt.WindowNoState)
-        self.setWindowState(Qt.WindowActive)
-        self.raise_()
-
-        self.readSettings()
-        self.storeDefaultAndCustomColors()
-
-        self.h = self.navSpinBox.size().height()
-        fontSizeFactor = None
-        heightFactor = None
-        if 'bottom_sliders_zoom_perc' in self.df_settings.index:
-            val = int(self.df_settings.at['bottom_sliders_zoom_perc', 'value'])
-            if val != 100:
-                fontSizeFactor = val/100
-                heightFactor = val/100
-
-        self.defaultWidgetHeightBottomLayout = self.h
-        self.checkBoxesHeight = 14
-        self.fontPixelSize = 11
-        self.defaultBottomLayoutHeight = self.img1BottomGroupbox.height()
-
-        self.bottomLayout.setStretch(0, 0)
-        self.bottomLayout.addSpacing(self.quickSettingsGroupbox.width())
-        self.resizeSlidersArea(
-            fontSizeFactor=fontSizeFactor, heightFactor=heightFactor
-        )
-        self.bottomScrollArea.hide()
-
-        self.gui_initImg1BottomWidgets()
-        self.img1BottomGroupbox.hide()
-
-        w = self.showPropsDockButton.width()
-        h = self.showPropsDockButton.height()
-
-        self.showPropsDockButton.setMaximumWidth(15)
-        self.showPropsDockButton.setMaximumHeight(120)
-
-        for toolbar in self.controlToolBars:
-            toolbar.setMinimumHeight(
-                self.secondLevelToolbar.sizeHint().height()
-            )
-
-        self.graphLayout.setFocus()
+    def resizeLeaveSpaceTerminalBelow(self):
+        self.setWindowState(Qt.WindowMaximized)
+        QTimer.singleShot(200, self._resizeLeaveSpaceTerminalBelow)
 
     def resizeSlidersArea(self, fontSizeFactor=None, heightFactor=None):
         global _font
@@ -1004,13 +898,13 @@ class WindowEventsView:
             self.newCheckBoxesHeight = self.checkBoxesHeight
             self.newHeight = self.h
         else:
-            self.newHeight = round(self.h*heightFactor)
-            self.newCheckBoxesHeight = round(self.checkBoxesHeight*heightFactor)
+            self.newHeight = round(self.h * heightFactor)
+            self.newCheckBoxesHeight = round(self.checkBoxesHeight * heightFactor)
 
         if fontSizeFactor is None:
             newFontSize = self.fontPixelSize
         else:
-            newFontSize = round(self.fontPixelSize*fontSizeFactor)
+            newFontSize = round(self.fontPixelSize * fontSizeFactor)
         newFont = QFont()
         newFont.setPixelSize(newFontSize)
         _font = newFont
@@ -1030,7 +924,7 @@ class WindowEventsView:
         self.rightBottomGroupbox.setFont(newFont)
         try:
             self.img1.alphaScrollbar.label.setFont(newFont)
-        except Exception as e:
+        except Exception:
             pass
         for i in range(self.annotOptionsLayout.count()):
             widget = self.annotOptionsLayout.itemAt(i).widget()
@@ -1046,53 +940,87 @@ class WindowEventsView:
             pass
         QTimer.singleShot(100, self._resizeSlidersArea)
 
-    def _resizeSlidersArea(self):
-        self.navigateScrollBar.setFixedHeight(self.newHeight)
-        self.zSliceScrollBar.setFixedHeight(self.newHeight)
-        self.zSliceOverlay_SB.setFixedHeight(self.newHeight)
-        self.zProjComboBox.setFixedHeight(self.newHeight)
-        self.zProjOverlay_CB.setFixedHeight(self.newHeight)
-        self.navSpinBox.setFixedHeight(self.newHeight)
-        self.zSliceSpinbox.setFixedHeight(self.newHeight)
+    def saveWindowGeometry(self):
+        settings = QSettings("schmollerlab", "acdc_gui")
+        settings.setValue("geometry", self.saveGeometry())
+
+    def show(self):
+        self.setFont(_font)
+        QMainWindow.show(self)
+
+        self.setWindowState(Qt.WindowNoState)
+        self.setWindowState(Qt.WindowActive)
+        self.raise_()
+
+        self.readSettings()
+        self.storeDefaultAndCustomColors()
+
+        self.h = self.navSpinBox.size().height()
+        fontSizeFactor = None
+        heightFactor = None
+        if "bottom_sliders_zoom_perc" in self.df_settings.index:
+            val = int(self.df_settings.at["bottom_sliders_zoom_perc", "value"])
+            if val != 100:
+                fontSizeFactor = val / 100
+                heightFactor = val / 100
+
+        self.defaultWidgetHeightBottomLayout = self.h
+        self.checkBoxesHeight = 14
+        self.fontPixelSize = 11
+        self.defaultBottomLayoutHeight = self.img1BottomGroupbox.height()
+
+        self.bottomLayout.setStretch(0, 0)
+        self.bottomLayout.addSpacing(self.quickSettingsGroupbox.width())
+        self.resizeSlidersArea(fontSizeFactor=fontSizeFactor, heightFactor=heightFactor)
+        self.bottomScrollArea.hide()
+
+        self.gui_initImg1BottomWidgets()
+        self.img1BottomGroupbox.hide()
+
+        self.showPropsDockButton.width()
+        self.showPropsDockButton.height()
+
+        self.showPropsDockButton.setMaximumWidth(15)
+        self.showPropsDockButton.setMaximumHeight(120)
+
+        for toolbar in self.controlToolBars:
+            toolbar.setMinimumHeight(self.secondLevelToolbar.sizeHint().height())
+
+        self.graphLayout.setFocus()
+
+    def showEvent(self, event):
+        if self.mainWin is not None:
+            if not self.mainWin.isMinimized():
+                return
+            self.mainWin.showAllWindows()
+        # self.setFocus()
+        self.activateWindow()
+
+    def stopPreprocWorker(self):
+        self.logger.info("Closing pre-processing worker...")
         try:
-            self.img1.alphaScrollbar.setFixedHeight(self.newHeight)
-        except Exception as e:
+            self.preprocWorker.stop()
+        except Exception:
             pass
-        try:
-            for channel, items in self.overlayLayersItems.items():
-                alphaScrollbar = items[2]
-                alphaScrollbar.setFixedHeight(self.newHeight)
-        except:
-            pass
-        checkBoxStyleSheet = (
-            'QCheckBox::indicator {'
-                f'width: {self.newCheckBoxesHeight}px;'
-                f'height: {self.newCheckBoxesHeight}px'
-            '}'
+
+    def storeDefaultAndCustomColors(self):
+        c = self.overlayButton.palette().button().color().name()
+        self.defaultToolBarButtonColor = c
+        self.doublePressKeyButtonColor = "#fa693b"
+
+    def super_show(self):
+        super().show()
+
+    def updateBrushCursorOnShiftRelease(self):
+        xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
+        self.setHoverToolSymbolColor(
+            xdata,
+            ydata,
+            self.ax2_BrushCirclePen,
+            (self.ax2_BrushCircle, self.ax1_BrushCircle),
+            self.brushButton,
+            brush=self.ax2_BrushCircleBrush,
+            byPassShiftCheck=True,
         )
-        for i in range(self.annotOptionsLayout.count()):
-            widget = self.annotOptionsLayout.itemAt(i).widget()
-            if isinstance(widget, QCheckBox):
-                widget.setStyleSheet(checkBoxStyleSheet)
-        for i in range(self.annotOptionsLayoutRight.count()):
-            widget = self.annotOptionsLayoutRight.itemAt(i).widget()
-            if isinstance(widget, QCheckBox):
-                widget.setStyleSheet(checkBoxStyleSheet)
-        self.zSliceCheckbox.setStyleSheet(checkBoxStyleSheet)
-
-    def resizeEvent(self, event):
-        if hasattr(self, 'ax1'):
-            self.ax1.autoRange()
-
-    def gui_createCursors(self):
-        pixmap = QPixmap(":wand_cursor.svg")
-        self.wandCursor = QCursor(pixmap, 16, 16)
-
-        pixmap = QPixmap(":curv_cursor.svg")
-        self.curvCursor = QCursor(pixmap, 16, 16)
-
-        pixmap = QPixmap(":addDelPolyLineRoi_cursor.svg")
-        self.polyLineRoiCursor = QCursor(pixmap, 16, 16)
-
-        pixmap = QPixmap(":cross_cursor.svg")
-        self.addPointsCursor = QCursor(pixmap, 16, 16)
+        if self.isSegm3D:
+            self.changeBrushID()

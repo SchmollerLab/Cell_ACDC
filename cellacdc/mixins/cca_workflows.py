@@ -51,50 +51,11 @@ from cellacdc.domain.cell_cycle_history import (
 )
 
 
-class CcaWorkflowViewModel:
+class CcaWorkflowMixin:
     """Application-facing commands for CCA workflows and propagation."""
-
-    def base_status(self, base_values=None):
-        return base_cell_cycle_annotation_status(base_values)
-
-    def collect_existing_new_id_rows(self, *args, **kwargs):
-        return collect_existing_new_id_cca_rows_from_frames(*args, **kwargs)
-
-    def dead_or_excluded_mother_pairs(self, *args, **kwargs):
-        return dead_or_excluded_mother_pairs(*args, **kwargs)
-
-    def division_undo_blocking_frame(self, *args, **kwargs):
-        return division_undo_blocking_frame(*args, **kwargs)
-
-    def extract_annotations(self, *args, **kwargs):
-        return extract_cell_cycle_annotations(*args, **kwargs)
-
-    def fix_will_divide_without_next_generation(self, *args, **kwargs):
-        return fix_will_divide_without_next_generation(*args, **kwargs)
-
-    def missing_annotation_items(self, *args, **kwargs):
-        return missing_cell_cycle_annotation_items(*args, **kwargs)
-
-    def overlay_last_annotated(self, *args, **kwargs):
-        return overlay_last_annotated_cca(*args, **kwargs)
-
-    def propagate_s_phase_disappearance_divisions(self, *args, **kwargs):
-        return propagate_s_phase_disappearance_divisions(*args, **kwargs)
-
-    def reset_will_divide_for_generations(self, *args, **kwargs):
-        return reset_will_divide_for_generations(*args, **kwargs)
-
-    def s_phase_relative_ids_gone(self, *args, **kwargs):
-        return s_phase_relative_ids_gone(*args, **kwargs)
 
     def annotate_division(self, *args, **kwargs):
         return annotate_division(*args, **kwargs)
-
-    def undo_division_annotation(self, *args, **kwargs):
-        return undo_division_annotation(*args, **kwargs)
-
-    def undo_bud_mother_assignment(self, *args, **kwargs):
-        return undo_bud_mother_assignment(*args, **kwargs)
 
     def apply_auto_assignments(self, *args, **kwargs):
         return apply_auto_cca_assignments(*args, **kwargs)
@@ -114,17 +75,44 @@ class CcaWorkflowViewModel:
     def auto_repeat_frame_state(self, *args, **kwargs):
         return auto_cca_repeat_frame_state(*args, **kwargs)
 
+    def base_status(self, base_values=None):
+        return base_cell_cycle_annotation_status(base_values)
+
+    def bud_mother_change_eligibility(self, *args, **kwargs):
+        return bud_mother_change_eligibility(*args, **kwargs)
+
+    def collect_existing_new_id_rows(self, *args, **kwargs):
+        return collect_existing_new_id_cca_rows_from_frames(*args, **kwargs)
+
+    def dead_or_excluded_mother_pairs(self, *args, **kwargs):
+        return dead_or_excluded_mother_pairs(*args, **kwargs)
+
+    def division_undo_blocking_frame(self, *args, **kwargs):
+        return division_undo_blocking_frame(*args, **kwargs)
+
+    def extract_annotations(self, *args, **kwargs):
+        return extract_cell_cycle_annotations(*args, **kwargs)
+
+    def fix_will_divide_without_next_generation(self, *args, **kwargs):
+        return fix_will_divide_without_next_generation(*args, **kwargs)
+
+    def known_history_status_for_bud(self, *args, **kwargs):
+        return known_history_status_for_bud(*args, **kwargs)
+
+    def missing_annotation_items(self, *args, **kwargs):
+        return missing_cell_cycle_annotation_items(*args, **kwargs)
+
+    def mother_assignment_eligibility(self, *args, **kwargs):
+        return mother_assignment_eligibility(*args, **kwargs)
+
     def nearest_point_2d_yx(self, *args, **kwargs):
         return nearest_point_2d_yx(*args, **kwargs)
 
+    def overlay_last_annotated(self, *args, **kwargs):
+        return overlay_last_annotated_cca(*args, **kwargs)
+
     def prepare_auto_current_frame(self, *args, **kwargs):
         return prepare_auto_cca_current_frame(*args, **kwargs)
-
-    def uncorrected_new_ids_for_auto(self, *args, **kwargs):
-        return uncorrected_new_ids_for_auto_cca(*args, **kwargs)
-
-    def propagate_deleted_ids(self, *args, **kwargs):
-        return propagate_deleted_cell_cycle_ids(*args, **kwargs)
 
     def prepare_missing_frame_annotations(self, *args, **kwargs):
         return prepare_missing_cell_cycle_frame_annotations(*args, **kwargs)
@@ -132,17 +120,20 @@ class CcaWorkflowViewModel:
     def previous_relative_status_before_bud_emergence(self, *args, **kwargs):
         return previous_relative_status_before_bud_emergence(*args, **kwargs)
 
-    def bud_mother_change_eligibility(self, *args, **kwargs):
-        return bud_mother_change_eligibility(*args, **kwargs)
-
-    def mother_assignment_eligibility(self, *args, **kwargs):
-        return mother_assignment_eligibility(*args, **kwargs)
-
     def propagate_bud_mother_assignment(self, *args, **kwargs):
         return propagate_bud_mother_assignment(*args, **kwargs)
 
+    def propagate_deleted_ids(self, *args, **kwargs):
+        return propagate_deleted_cell_cycle_ids(*args, **kwargs)
+
+    def propagate_history_knowledge(self, *args, **kwargs):
+        return propagate_history_knowledge(*args, **kwargs)
+
     def propagate_manual_division_annotation(self, *args, **kwargs):
         return propagate_manual_division_annotation(*args, **kwargs)
+
+    def propagate_s_phase_disappearance_divisions(self, *args, **kwargs):
+        return propagate_s_phase_disappearance_divisions(*args, **kwargs)
 
     def propagate_swap_mothers_assignment(self, *args, **kwargs):
         return propagate_swap_mothers_assignment(*args, **kwargs)
@@ -150,11 +141,20 @@ class CcaWorkflowViewModel:
     def propagate_will_divide(self, *args, **kwargs):
         return propagate_will_divide(*args, **kwargs)
 
+    def reset_will_divide_for_generations(self, *args, **kwargs):
+        return reset_will_divide_for_generations(*args, **kwargs)
+
+    def s_phase_relative_ids_gone(self, *args, **kwargs):
+        return s_phase_relative_ids_gone(*args, **kwargs)
+
     def swap_mothers_eligibility(self, *args, **kwargs):
         return swap_mothers_eligibility(*args, **kwargs)
 
-    def known_history_status_for_bud(self, *args, **kwargs):
-        return known_history_status_for_bud(*args, **kwargs)
+    def uncorrected_new_ids_for_auto(self, *args, **kwargs):
+        return uncorrected_new_ids_for_auto_cca(*args, **kwargs)
 
-    def propagate_history_knowledge(self, *args, **kwargs):
-        return propagate_history_knowledge(*args, **kwargs)
+    def undo_bud_mother_assignment(self, *args, **kwargs):
+        return undo_bud_mother_assignment(*args, **kwargs)
+
+    def undo_division_annotation(self, *args, **kwargs):
+        return undo_division_annotation(*args, **kwargs)

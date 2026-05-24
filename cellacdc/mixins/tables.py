@@ -7,7 +7,7 @@ import pandas as pd
 from cellacdc.myutils import checked_reset_index_Cell_ID, fix_acdc_df_dtypes
 
 
-class TableViewModel:
+class TableMixin:
     """Application-facing commands for dataframe normalization."""
 
     def checked_reset_index_cell_id(self, dataframe: pd.DataFrame) -> pd.DataFrame:

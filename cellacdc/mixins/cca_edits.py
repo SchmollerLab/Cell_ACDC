@@ -35,7 +35,7 @@ from cellacdc.domain.cell_cycle_frames import (
 
 
 @dataclass(frozen=True)
-class CcaFrameEditResult:
+class CcaFrameEditResultMixin:
     """Result of a current-frame CCA edit command."""
 
     cca_df: pd.DataFrame
@@ -48,6 +48,19 @@ class CcaEditViewModel:
     command shape that binds view events to scriptable domain operations.
     """
 
+    def add_base_annotation(
+        self,
+        cca_df: pd.DataFrame,
+        cell_ids,
+        *,
+        base_values: dict | None = None,
+    ) -> pd.DataFrame:
+        return add_base_cell_cycle_annotation(
+            cca_df,
+            cell_ids,
+            base_values=base_values,
+        )
+
     def add_missing_ids(
         self,
         cca_df: pd.DataFrame | None,
@@ -57,22 +70,12 @@ class CcaEditViewModel:
             cca_df=merge_missing_cca_ids(cca_df, base_cca_df),
         )
 
-    def relabel_ids(
+    def apply_manual_changes(
         self,
         cca_df: pd.DataFrame,
-        old_ids,
-        new_ids,
-    ) -> CcaFrameEditResult:
-        return CcaFrameEditResult(
-            cca_df=relabel_cca_ids(cca_df, old_ids, new_ids),
-        )
-
-    def delete_ids(
-        self,
-        cca_df: pd.DataFrame,
-        deleted_ids,
-    ) -> CcaDeletedIdsResult:
-        return delete_cca_ids(cca_df, deleted_ids)
+        changes,
+    ) -> pd.DataFrame:
+        return apply_manual_cca_changes(cca_df, changes)
 
     def apply_snapshot_id_edits(
         self,
@@ -91,38 +94,6 @@ class CcaEditViewModel:
             base_values=base_values,
         )
 
-    def apply_manual_changes(
-        self,
-        cca_df: pd.DataFrame,
-        changes,
-    ) -> pd.DataFrame:
-        return apply_manual_cca_changes(cca_df, changes)
-
-    def normalize_loaded_frame_annotations(
-        self,
-        acdc_df: pd.DataFrame | None,
-        cca_colnames,
-        int_colnames=(),
-    ) -> pd.DataFrame | None:
-        return normalize_loaded_cell_cycle_frame_annotations(
-            acdc_df,
-            cca_colnames,
-            int_colnames,
-        )
-
-    def add_base_annotation(
-        self,
-        cca_df: pd.DataFrame,
-        cell_ids,
-        *,
-        base_values: dict | None = None,
-    ) -> pd.DataFrame:
-        return add_base_cell_cycle_annotation(
-            cca_df,
-            cell_ids,
-            base_values=base_values,
-        )
-
     def build_base_annotations(
         self,
         cell_ids,
@@ -138,15 +109,12 @@ class CcaEditViewModel:
             tree_values=tree_values,
         )
 
-    def last_annotated_frame_index(self, acdc_dfs) -> int:
-        return last_annotated_cell_cycle_frame_index(acdc_dfs)
-
     def concat_annotations(
         self,
         frame_records,
         cca_colnames,
         *,
-        acdc_key: str = 'acdc_df',
+        acdc_key: str = "acdc_df",
         size_t: int | None = None,
     ) -> pd.DataFrame | None:
         return concat_cell_cycle_annotations(
@@ -156,18 +124,54 @@ class CcaEditViewModel:
             size_t=size_t,
         )
 
-    def split_concat_annotations(
+    def delete_ids(
         self,
-        global_cca_df: pd.DataFrame | None,
-        *,
-        size_t: int | None = None,
-        frame_level: str = 'frame_i',
-    ) -> list[tuple[int, pd.DataFrame]]:
-        return split_concat_cell_cycle_annotations(
-            global_cca_df,
-            size_t=size_t,
-            frame_level=frame_level,
+        cca_df: pd.DataFrame,
+        deleted_ids,
+    ) -> CcaDeletedIdsResult:
+        return delete_cca_ids(cca_df, deleted_ids)
+
+    def has_annotations(self, acdc_df: pd.DataFrame | None) -> bool:
+        return has_cell_cycle_annotations(acdc_df)
+
+    def last_annotated_frame_index(self, acdc_dfs) -> int:
+        return last_annotated_cell_cycle_frame_index(acdc_dfs)
+
+    def normalize_loaded_frame_annotations(
+        self,
+        acdc_df: pd.DataFrame | None,
+        cca_colnames,
+        int_colnames=(),
+    ) -> pd.DataFrame | None:
+        return normalize_loaded_cell_cycle_frame_annotations(
+            acdc_df,
+            cca_colnames,
+            int_colnames,
         )
+
+    def prepare_checker_annotations(
+        self,
+        cca_df: pd.DataFrame | None,
+        *,
+        checker_running: bool = True,
+    ) -> pd.DataFrame | None:
+        return prepare_cell_cycle_checker_annotations(
+            cca_df,
+            checker_running=checker_running,
+        )
+
+    def relabel_ids(
+        self,
+        cca_df: pd.DataFrame,
+        old_ids,
+        new_ids,
+    ) -> CcaFrameEditResult:
+        return CcaFrameEditResult(
+            cca_df=relabel_cca_ids(cca_df, old_ids, new_ids),
+        )
+
+    def remove_annotations(self, acdc_df: pd.DataFrame | None, cca_colnames):
+        return remove_cell_cycle_annotations(acdc_df, cca_colnames)
 
     def remove_future_annotations(
         self,
@@ -177,7 +181,7 @@ class CcaEditViewModel:
         *,
         size_t: int | None = None,
         concatenated_acdc_df: pd.DataFrame | None = None,
-        acdc_key: str = 'acdc_df',
+        acdc_key: str = "acdc_df",
     ):
         return remove_future_cell_cycle_annotations(
             frame_records,
@@ -187,9 +191,6 @@ class CcaEditViewModel:
             concatenated_acdc_df=concatenated_acdc_df,
             acdc_key=acdc_key,
         )
-
-    def remove_annotations(self, acdc_df: pd.DataFrame | None, cca_colnames):
-        return remove_cell_cycle_annotations(acdc_df, cca_colnames)
 
     def reset_future_flags(self, cca_df: pd.DataFrame) -> pd.DataFrame:
         return reset_cca_future_flags(cca_df)
@@ -217,15 +218,17 @@ class CcaEditViewModel:
             with_tree_cols=with_tree_cols,
         )
 
-    def prepare_checker_annotations(
+    def split_concat_annotations(
         self,
-        cca_df: pd.DataFrame | None,
+        global_cca_df: pd.DataFrame | None,
         *,
-        checker_running: bool = True,
-    ) -> pd.DataFrame | None:
-        return prepare_cell_cycle_checker_annotations(
-            cca_df,
-            checker_running=checker_running,
+        size_t: int | None = None,
+        frame_level: str = "frame_i",
+    ) -> list[tuple[int, pd.DataFrame]]:
+        return split_concat_cell_cycle_annotations(
+            global_cca_df,
+            size_t=size_t,
+            frame_level=frame_level,
         )
 
     def store_frame_annotations(
@@ -244,6 +247,3 @@ class CcaEditViewModel:
             store_checker_copy=store_checker_copy,
             store_cca_df_copy=store_cca_df_copy,
         )
-
-    def has_annotations(self, acdc_df: pd.DataFrame | None) -> bool:
-        return has_cell_cycle_annotations(acdc_df)

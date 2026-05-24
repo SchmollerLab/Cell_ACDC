@@ -22,29 +22,8 @@ from cellacdc.myutils import (
 )
 
 
-class ModelRegistryViewModel:
+class ModelRegistryMixin:
     """Application-facing commands for available model registries."""
-
-    def segmentation_models(self, *, include_local_seg: bool = False):
-        models = list(get_list_of_models())
-        if include_local_seg and 'local_seg' not in models:
-            models.append('local_seg')
-        return models
-
-    def real_time_trackers(self):
-        return get_list_of_real_time_trackers()
-
-    def real_time_tracker_aliases(self, *, reverse: bool = False):
-        return aliases_real_time_trackers(reverse=reverse)
-
-    def model_arg_specs(self, acdc_segment):
-        return getModelArgSpec(acdc_segment)
-
-    def import_segmentation_module(self, model_name):
-        return import_segment_module(model_name)
-
-    def check_install_package(self, model_name):
-        return check_install_package(model_name)
 
     def check_gpu_available(
         self,
@@ -61,8 +40,11 @@ class ModelRegistryViewModel:
             do_not_warn=do_not_warn,
         )
 
-    def init_segmentation_model(self, acdc_segment, position_data, init_kwargs):
-        return init_segm_model(acdc_segment, position_data, init_kwargs)
+    def check_install_package(self, model_name):
+        return check_install_package(model_name)
+
+    def import_segmentation_module(self, model_name):
+        return import_segment_module(model_name)
 
     def init_prompt_segmentation_model(
         self,
@@ -76,11 +58,30 @@ class ModelRegistryViewModel:
             init_kwargs,
         )
 
+    def init_segmentation_model(self, acdc_segment, position_data, init_kwargs):
+        return init_segm_model(acdc_segment, position_data, init_kwargs)
+
     def init_tracker(self, position_data, tracker_name, **kwargs):
         return init_tracker(position_data, tracker_name, **kwargs)
 
-    def validate_tracker_input(self, tracker, segmentation_video):
-        return validate_tracker_input(tracker, segmentation_video)
+    def insert_model_arg_spec(
+        self,
+        params,
+        param_name,
+        param_value,
+        *,
+        param_type=None,
+        desc="",
+        docstring="",
+    ):
+        return insertModelArgSpec(
+            params,
+            param_name,
+            param_value,
+            param_type=param_type,
+            desc=desc,
+            docstring=docstring,
+        )
 
     def log_segmentation_params(
         self,
@@ -105,30 +106,29 @@ class ModelRegistryViewModel:
             custom_postprocess_features=custom_postprocess_features,
         )
 
+    def model_arg_specs(self, acdc_segment):
+        return getModelArgSpec(acdc_segment)
+
+    def real_time_tracker_aliases(self, *, reverse: bool = False):
+        return aliases_real_time_trackers(reverse=reverse)
+
+    def real_time_trackers(self):
+        return get_list_of_real_time_trackers()
+
+    def segmentation_models(self, *, include_local_seg: bool = False):
+        models = list(get_list_of_models())
+        if include_local_seg and "local_seg" not in models:
+            models.append("local_seg")
+        return models
+
+    def set_default_arg_specs_from_kwargs(self, params, kwargs):
+        return setDefaultValueArgSpecsFromKwargs(params, kwargs)
+
     def store_custom_model_path(self, model_file_path):
         return store_custom_model_path(model_file_path)
 
     def store_custom_promptable_model_path(self, model_file_path):
         return store_custom_promptable_model_path(model_file_path)
 
-    def set_default_arg_specs_from_kwargs(self, params, kwargs):
-        return setDefaultValueArgSpecsFromKwargs(params, kwargs)
-
-    def insert_model_arg_spec(
-        self,
-        params,
-        param_name,
-        param_value,
-        *,
-        param_type=None,
-        desc='',
-        docstring='',
-    ):
-        return insertModelArgSpec(
-            params,
-            param_name,
-            param_value,
-            param_type=param_type,
-            desc=desc,
-            docstring=docstring,
-        )
+    def validate_tracker_input(self, tracker, segmentation_video):
+        return validate_tracker_input(tracker, segmentation_video)

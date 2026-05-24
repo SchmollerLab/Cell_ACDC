@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import numpy as np
 import skimage.segmentation
 
 from qtpy.QtCore import Qt
@@ -13,23 +12,12 @@ from qtpy.QtWidgets import QAction, QMessageBox
 from cellacdc import apps, exception_handler, html_utils, widgets
 
 
-class CanvasDrawingView:
+class CanvasDrawingMixin:
     """Qt-facing adapter for canvas drawing workflows."""
 
     """Headless decisions for canvas drawing workflows."""
 
-    viewer_mode = 'Viewer'
-
-    def should_process_canvas_event(
-        self,
-        *,
-        mode: str,
-        in_bounds: bool,
-    ) -> bool:
-        return mode != self.viewer_mode and in_bounds
-
-    def should_clear_after_out_of_bounds(self, *, image: str) -> bool:
-        return image == 'img1'
+    viewer_mode = "Viewer"
 
     def calculate_brush_mask(
         self,
@@ -50,29 +38,12 @@ class CanvasDrawingView:
             mask[rr_poly, cc_poly] = True
         return mask
 
-
-
     LEGACY_METHODS = (
-        'gui_addCreatedAxesItems',
-        'gui_mouseDragEventImg1',
-        'gui_mouseDragEventImg2',
-        'gui_mouseReleaseEventImg1',
+        "gui_addCreatedAxesItems",
+        "gui_mouseDragEventImg1",
+        "gui_mouseDragEventImg2",
+        "gui_mouseReleaseEventImg1",
     )
-
-    def __init__(self, host):
-        object.__setattr__(self, 'host', host)
-    def __getattr__(self, name):
-        return getattr(self.host, name)
-
-    def __setattr__(self, name, value):
-        if name in {'host'}:
-            object.__setattr__(self, name, value)
-        else:
-            setattr(self.host, name, value)
-
-    def bind_legacy_methods(self):
-        for name in self.LEGACY_METHODS:
-            setattr(self.host, name, getattr(self, name))
 
     def gui_addCreatedAxesItems(self):
         self.ax1.addItem(self.ax1_contoursImageItem)
@@ -102,38 +73,34 @@ class CanvasDrawingView:
     def gui_mouseDragEventImg1(self, event):
         x, y = event.pos().x(), event.pos().y()
 
-        if hasattr(self, 'scaleBar'):
+        if hasattr(self, "scaleBar"):
             if self.scaleBarDialog is not None:
-                self.scaleBarDialog.locCombobox.setCurrentText('Custom')
+                self.scaleBarDialog.locCombobox.setCurrentText("Custom")
             if self.scaleBar.isHighlighted() and self.scaleBar.clicked:
-                self.scaleBar.setLocationProperty('custom')
+                self.scaleBar.setLocationProperty("custom")
                 self.scaleBar.move(x, y)
                 return
 
-        if hasattr(self, 'timestamp'):
+        if hasattr(self, "timestamp"):
             if self.timestampDialog is not None:
-                self.timestampDialog.locCombobox.setCurrentText('Custom')
+                self.timestampDialog.locCombobox.setCurrentText("Custom")
             if self.timestamp.isHighlighted() and self.timestamp.clicked:
-                self.timestamp.setLocationProperty('custom')
+                self.timestamp.setLocationProperty("custom")
                 self.timestamp.move(x, y)
                 return
 
         mode = str(self.modeComboBox.currentText())
+        if mode == "Viewer":
+            return
+
         posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab).shape
         xdata, ydata = int(x), int(y)
-        in_bounds = self.is_in_bounds(xdata, ydata, X, Y)
-        if not self.should_process_canvas_event(
-            mode=mode,
-            in_bounds=in_bounds,
-        ):
-            return
-
-        if self._dispatch_tool_event_if_enabled(event, phase='drag', image='img1'):
+        if not myutils.is_in_bounds(xdata, ydata, X, Y):
             return
 
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
-            self.curvature_tools_view.drawAutoContour(y, x)
+            self.drawAutoContour(y, x)
 
         # Brush dragging mouse --> keep brushing
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
@@ -142,29 +109,30 @@ class CanvasDrawingView:
             # t1 = time.perf_counter()
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
-            rrPoly, ccPoly = self.curvature_tools_view.getPolygonBrush(
-                (y, x), Y, X
-            )
+            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
             # t2 = time.perf_counter()
 
             diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
 
             # Build brush mask
-            mask = self.calculate_brush_mask(
-                lab_2D.shape, ymin, xmin, ymax, xmax, diskMask, rrPoly, ccPoly
-            )
+            mask = np.zeros(lab_2D.shape, bool)
+            mask[diskSlice][diskMask] = True
+            mask[rrPoly, ccPoly] = True
 
             modifiers = QGuiApplication.keyboardModifiers()
             ctrl = modifiers == Qt.ControlModifier
 
             # t3 = time.perf_counter()
             if not self.isPowerBrush() and not ctrl:
-                mask[lab_2D!=0] = False
+                mask[lab_2D != 0] = False
                 self.setHoverToolSymbolColor(
-                    xdata, ydata, self.ax2_BrushCirclePen,
+                    xdata,
+                    ydata,
+                    self.ax2_BrushCirclePen,
                     (self.ax2_BrushCircle, self.ax1_BrushCircle),
-                    self.brushButton, brush=self.ax2_BrushCircleBrush
+                    self.brushButton,
+                    brush=self.ax2_BrushCircleBrush,
                 )
 
             # t4 = time.perf_counter()
@@ -177,12 +145,9 @@ class CanvasDrawingView:
             # t5 = time.perf_counter()
 
             lab2D = self.get_2Dlab(posData.lab)
-            brushMask = np.logical_and(
-                lab2D[diskSlice] == posData.brushID, diskMask
-            )
+            brushMask = np.logical_and(lab2D[diskSlice] == posData.brushID, diskMask)
             self.setTempImg1Brush(
-                False, brushMask, posData.brushID,
-                toLocalSlice=diskSlice
+                False, brushMask, posData.brushID, toLocalSlice=diskSlice
             )
 
             # t6 = time.perf_counter()
@@ -202,26 +167,27 @@ class CanvasDrawingView:
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             posData = self.data[self.pos_i]
             lab_2D = self.get_2Dlab(posData.lab)
-            rrPoly, ccPoly = self.curvature_tools_view.getPolygonBrush(
-                (y, x), Y, X
-            )
+            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
             diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
 
             # Build eraser mask
-            mask = self.calculate_brush_mask(
-                lab_2D.shape, ymin, xmin, ymax, xmax, diskMask, rrPoly, ccPoly
-            )
+            mask = np.zeros(lab_2D.shape, bool)
+            mask[ymin:ymax, xmin:xmax][diskMask] = True
+            mask[rrPoly, ccPoly] = True
 
             if self.eraseOnlyOneID:
-                mask[lab_2D!=self.erasedID] = False
+                mask[lab_2D != self.erasedID] = False
                 self.setHoverToolSymbolColor(
-                    xdata, ydata, self.eraserCirclePen,
+                    xdata,
+                    ydata,
+                    self.eraserCirclePen,
                     (self.ax2_EraserCircle, self.ax1_EraserCircle),
-                    self.eraserButton, hoverRGB=self.img2.lut[self.erasedID],
-                    ID=self.erasedID
+                    self.eraserButton,
+                    hoverRGB=self.img2.lut[self.erasedID],
+                    ID=self.erasedID,
                 )
 
             self.erasedIDs.update(lab_2D[mask])
@@ -232,7 +198,7 @@ class CanvasDrawingView:
             for erasedID in self.erasedIDs:
                 if erasedID == 0:
                     continue
-                self.erasedLab[lab_2D==erasedID] = erasedID
+                self.erasedLab[lab_2D == erasedID] = erasedID
                 self.erasedLab[mask] = 0
 
             eraserMask = mask[diskSlice]
@@ -242,7 +208,7 @@ class CanvasDrawingView:
         # Move label dragging mouse --> keep moving
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
-            self.label_transform_tools_view.move_label(x, y)
+            self.moveLabel(x, y)
 
         # Wand dragging mouse --> keep doing the magic
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
@@ -253,25 +219,19 @@ class CanvasDrawingView:
             else:
                 seed = (ydata, xdata)
 
-            flood_mask = skimage.segmentation.flood(
-                self.flood_img, seed, tolerance=tol
-            )
+            flood_mask = skimage.segmentation.flood(self.flood_img, seed, tolerance=tol)
             drawUnderMask = np.logical_or(
-                posData.lab==0, posData.lab==posData.brushID
+                posData.lab == 0, posData.lab == posData.brushID
             )
             flood_mask = np.logical_and(flood_mask, drawUnderMask)
 
             self.flood_mask[flood_mask] = True
 
             if self.wandControlsToolbar.autoFillHolesCheckbox.isChecked():
-                self.flood_mask = self.binary_fill_holes(
-                    self.flood_mask
-                )
+                self.flood_mask = core.binary_fill_holes(self.flood_mask)
 
             if self.wandControlsToolbar.useConvexHullCheckbox.isChecked():
-                self.flood_mask = self.convex_hull_mask(
-                    self.flood_mask
-                )
+                self.flood_mask = core.convex_hull_mask(self.flood_mask)
 
             self.setTempBrushMaskFromWand(self.flood_mask)
 
@@ -279,7 +239,7 @@ class CanvasDrawingView:
         elif self.isMouseDragImg1 and self.labelRoiButton.isChecked():
             if self.labelRoiIsRectRadioButton.isChecked():
                 x0, y0 = self.labelRoiItem.pos()
-                w, h = (xdata-x0), (ydata-y0)
+                w, h = (xdata - x0), (ydata - y0)
                 self.labelRoiItem.setSize((w, h))
             elif self.labelRoiIsFreeHandRadioButton.isChecked():
                 self.freeRoiItem.addPoint(xdata, ydata)
@@ -291,25 +251,20 @@ class CanvasDrawingView:
         # Label ROI dragging mouse --> draw ROI
         elif self.isMouseDragImg1 and self.zoomRectButton.isChecked():
             x0, y0 = self.zoomRectItem.pos()
-            w, h = (xdata-x0), (ydata-y0)
+            w, h = (xdata - x0), (ydata - y0)
             self.zoomRectItem.setSize((w, h))
 
     @exception_handler
     def gui_mouseDragEventImg2(self, event):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
+        if mode == "Viewer":
+            return
 
         Y, X = self.get_2Dlab(posData.lab).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
-        in_bounds = self.is_in_bounds(xdata, ydata, X, Y)
-        if not self.should_process_canvas_event(
-            mode=mode,
-            in_bounds=in_bounds,
-        ):
-            return
-
-        if self._dispatch_tool_event_if_enabled(event, phase='drag', image='img2'):
+        if not myutils.is_in_bounds(xdata, ydata, X, Y):
             return
 
         # Eraser dragging mouse --> keep erasing
@@ -319,25 +274,26 @@ class CanvasDrawingView:
             Y, X = lab_2D.shape
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            brushSize = self.brushSizeSpinbox.value()
-            rrPoly, ccPoly = self.curvature_tools_view.getPolygonBrush(
-                (y, x), Y, X
-            )
+            self.brushSizeSpinbox.value()
+            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
             # Build eraser mask
-            mask = self.calculate_brush_mask(
-                lab_2D.shape, ymin, xmin, ymax, xmax, diskMask, rrPoly, ccPoly
-            )
+            mask = np.zeros(lab_2D.shape, bool)
+            mask[ymin:ymax, xmin:xmax][diskMask] = True
+            mask[rrPoly, ccPoly] = True
 
             if self.eraseOnlyOneID:
-                mask[lab_2D!=self.erasedID] = False
+                mask[lab_2D != self.erasedID] = False
                 self.setHoverToolSymbolColor(
-                    xdata, ydata, self.eraserCirclePen,
+                    xdata,
+                    ydata,
+                    self.eraserCirclePen,
                     (self.ax2_EraserCircle, self.ax1_EraserCircle),
-                    self.eraserButton, hoverRGB=self.img2.lut[self.erasedID],
-                    ID=self.erasedID
+                    self.eraserButton,
+                    hoverRGB=self.img2.lut[self.erasedID],
+                    ID=self.erasedID,
                 )
 
             self.erasedIDs.update(lab_2D[mask])
@@ -354,23 +310,24 @@ class CanvasDrawingView:
             xdata, ydata = int(x), int(y)
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
-            rrPoly, ccPoly = self.curvature_tools_view.getPolygonBrush(
-                (y, x), Y, X
-            )
+            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
             # Build brush mask
-            mask = self.calculate_brush_mask(
-                lab_2D.shape, ymin, xmin, ymax, xmax, diskMask, rrPoly, ccPoly
-            )
+            mask = np.zeros(lab_2D.shape, bool)
+            mask[ymin:ymax, xmin:xmax][diskMask] = True
+            mask[rrPoly, ccPoly] = True
 
             # If user double-pressed 'b' then draw over the labels
             color = self.brushButton.palette().button().color().name()
             if color != self.doublePressKeyButtonColor:
-                mask[lab_2D!=0] = False
+                mask[lab_2D != 0] = False
                 self.setHoverToolSymbolColor(
-                    xdata, ydata, self.ax2_BrushCirclePen,
+                    xdata,
+                    ydata,
+                    self.ax2_BrushCirclePen,
                     (self.ax2_BrushCircle, self.ax1_BrushCircle),
-                    self.eraserButton, brush=self.ax2_BrushCircleBrush
+                    self.eraserButton,
+                    brush=self.ax2_BrushCircleBrush,
                 )
 
             # Apply brush mask
@@ -381,53 +338,40 @@ class CanvasDrawingView:
         # Move label dragging mouse --> keep moving
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
-            self.label_transform_tools_view.move_label(x, y)
+            self.moveLabel(x, y)
 
     @exception_handler
     def gui_mouseReleaseEventImg1(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
-        ctrl = modifiers == Qt.ControlModifier
         alt = modifiers == Qt.AltModifier
         right_click = event.button() == Qt.MouseButton.RightButton and not alt
 
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
-        if self.is_viewer_mode(mode):
-            return
-
-        if self._dispatch_tool_event_if_enabled(event, phase='release', image='img1'):
+        if mode == "Viewer":
             return
 
         Y, X = self.get_2Dlab(posData.lab).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
-        in_bounds = self.is_in_bounds(xdata, ydata, X, Y)
-        if not self.should_process_canvas_event(
-            mode=mode,
-            in_bounds=in_bounds,
-        ):
-            if self.should_clear_after_out_of_bounds(image='img1'):
-                self.isMouseDragImg2 = False
-                self.updateAllImages()
+        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+            self.isMouseDragImg2 = False
+            self.updateAllImages()
             return
 
-        if hasattr(self, 'scaleBar'):
+        if hasattr(self, "scaleBar"):
             if self.scaleBar.isHighlighted() and self.scaleBar.clicked:
                 self.scaleBar.clicked = False
                 return
 
-        if hasattr(self, 'timestamp'):
+        if hasattr(self, "timestamp"):
             if self.timestamp.isHighlighted() and self.timestamp.clicked:
                 self.timestamp.clicked = False
                 return
 
         sendRightClickImg2 = (
-            self.canvas_tool_view.should_forward_img1_release_to_img2(
-                right_click=right_click,
-                mode=mode,
-                is_snapshot=self.isSnapshot,
-            )
-        )
+            mode == "Segmentation and Tracking" or self.isSnapshot
+        ) and right_click
         if sendRightClickImg2:
             # Allow right-click actions on both images
             self.gui_mouseReleaseEventImg2(event)
@@ -436,22 +380,20 @@ class CanvasDrawingView:
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
             self.isRightClickDragImg1 = False
             try:
-                self.curvature_tools_view.curvToolSplineToObj(
-                    isRightClick=True
-                )
+                self.curvToolSplineToObj(isRightClick=True)
                 self.update_rp()
                 if self.autoIDcheckbox.isChecked():
                     self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
-                    self.fixCcaDfAfterEdit('Add new ID with curvature tool')
+                    self.fixCcaDfAfterEdit("Add new ID with curvature tool")
                     self.updateAllImages()
                 else:
-                    self.warnEditingWithCca_df('Add new ID with curvature tool')
-                self.curvature_tools_view.clearCurvItems()
-                self.curvature_tools_view.curvTool_cb(True)
+                    self.warnEditingWithCca_df("Add new ID with curvature tool")
+                self.clearCurvItems()
+                self.curvTool_cb(True)
             except ValueError:
-                self.curvature_tools_view.clearCurvItems()
-                self.curvature_tools_view.curvTool_cb(True)
+                self.clearCurvItems()
+                self.curvTool_cb(True)
                 pass
 
         # Eraser mouse release --> update IDs and contours
@@ -492,10 +434,10 @@ class CanvasDrawingView:
             self.trackManuallyAddedObject(posData.brushID, self.isNewID)
 
             if self.isSnapshot:
-                self.fixCcaDfAfterEdit('Add new ID with magic-wand')
+                self.fixCcaDfAfterEdit("Add new ID with magic-wand")
                 self.updateAllImages()
             else:
-                self.warnEditingWithCca_df('Add new ID with magic-wand')
+                self.warnEditingWithCca_df("Add new ID with magic-wand")
 
         # Label ROI mouse release --> label the ROI with labelRoiWorker
         elif self.isMouseDragImg1 and self.labelRoiButton.isChecked():
@@ -541,25 +483,26 @@ class CanvasDrawingView:
                 start_n = self.labelRoiStartFrameNoSpinbox.value()
                 stop_n = self.labelRoiStopFrameNoSpinbox.value()
                 self.progressWin = apps.QDialogWorkerProgress(
-                    title='ROI segmentation', parent=self.host,
-                    pbarDesc=f'Segmenting frames n. {start_n} to {stop_n}...'
+                    title="ROI segmentation",
+                    parent=self,
+                    pbarDesc=f"Segmenting frames n. {start_n} to {stop_n}...",
                 )
                 self.progressWin.show(self.app)
-                self.progressWin.mainPbar.setMaximum(stop_n-start_n)
-
+                self.progressWin.mainPbar.setMaximum(stop_n - start_n)
 
             self.app.restoreOverrideCursor()
             labelRoiWorker = self.labelRoiActiveWorkers[-1]
             labelRoiWorker.start(
-                roiImg, posData,
+                roiImg,
+                posData,
                 roiSecondChannel=roiSecondChannel,
-                isTimelapse=isTimelapse
+                isTimelapse=isTimelapse,
             )
             self.app.setOverrideCursor(Qt.WaitCursor)
             self.logger.info(
-                f'Magic labeller started on image ROI = {self.labelRoiSlice}...'
+                f"Magic labeller started on image ROI = {self.labelRoiSlice}..."
             )
-            self.titleLabel.setText('Magic labeller is doing its magic...')
+            self.titleLabel.setText("Magic labeller is doing its magic...")
             self.setDisabled(True)
 
         # Move label mouse released, update move
@@ -586,16 +529,15 @@ class CanvasDrawingView:
                 return
 
             if ID == 0:
-                nearest_ID = self.nearest_nonzero_2d(
-                    self.get_2Dlab(posData.lab), y, x
-                )
+                nearest_ID = core.nearest_nonzero_2D(self.get_2Dlab(posData.lab), y, x)
                 mothID_prompt = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter ID that you want to annotate as mother cell',
-                    parent=self.host, allowedValues=posData.IDs,
+                    title="Clicked on background",
+                    msg="You clicked on the background.\n"
+                    "Enter ID that you want to annotate as mother cell",
+                    parent=self,
+                    allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
-                    isInteger=True
+                    isInteger=True,
                 )
                 mothID_prompt.exec_()
                 if mothID_prompt.cancel:
@@ -610,22 +552,20 @@ class CanvasDrawingView:
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
 
-            relationship = posData.cca_df.at[ID, 'relationship']
-            ccs = posData.cca_df.at[ID, 'cell_cycle_stage']
-            is_history_known = posData.cca_df.at[ID, 'is_history_known']
+            relationship = posData.cca_df.at[ID, "relationship"]
+            ccs = posData.cca_df.at[ID, "cell_cycle_stage"]
+            is_history_known = posData.cca_df.at[ID, "is_history_known"]
             # We allow assiging a cell in G1 as mother only on first frame
             # OR if the history is unknown
-            if relationship == 'bud' and posData.frame_i > 0 and is_history_known:
+            if relationship == "bud" and posData.frame_i > 0 and is_history_known:
                 self.assignBudMothButton.setChecked(False)
                 txt = html_utils.paragraph(
-                    f'You clicked on <b>ID {ID}</b> which is a <b>BUD</b>.<br><br>'
-                    'To assign a bud <b>start by clicking on the bud</b> '
-                    'and release on a cell in G1'
+                    f"You clicked on <b>ID {ID}</b> which is a <b>BUD</b>.<br><br>"
+                    "To assign a bud <b>start by clicking on the bud</b> "
+                    "and release on a cell in G1"
                 )
                 msg = widgets.myMessageBox()
-                msg.critical(
-                    self.host, 'Released on a bud', txt
-                )
+                msg.critical(self, "Released on a bud", txt)
                 self.assignBudMothButton.setChecked(True)
                 return
 
@@ -643,26 +583,29 @@ class CanvasDrawingView:
                     self.assignBudMothButton.setChecked(False)
                     msg = widgets.myMessageBox()
                     txt = (
-                        f'You clicked FIRST on ID {budID} and then on {new_mothID}.<br>'
-                        f'For me this means that you want ID {budID} to be the '
-                        f'BUD of ID {new_mothID}.<br>'
-                        f'However <b>ID {budID} is bigger than {new_mothID}</b> '
-                        f'so maybe you should have clicked FIRST on {new_mothID}?<br><br>'
-                        'What do you want me to do?'
+                        f"You clicked FIRST on ID {budID} and then on {new_mothID}.<br>"
+                        f"For me this means that you want ID {budID} to be the "
+                        f"BUD of ID {new_mothID}.<br>"
+                        f"However <b>ID {budID} is bigger than {new_mothID}</b> "
+                        f"so maybe you should have clicked FIRST on {new_mothID}?<br><br>"
+                        "What do you want me to do?"
                     )
                     txt = html_utils.paragraph(txt)
                     swapButton, keepButton = msg.warning(
-                        self.host, 'Which one is bud?', txt,
+                        self,
+                        "Which one is bud?",
+                        txt,
                         buttonsTexts=(
-                            f'Assign ID {new_mothID} as the bud of ID {budID}',
-                            f'Keep ID {budID} as the bud of  ID {new_mothID}'
-                        )
+                            f"Assign ID {new_mothID} as the bud of ID {budID}",
+                            f"Keep ID {budID} as the bud of  ID {new_mothID}",
+                        ),
                     )
                     if msg.clickedButton == swapButton:
-                        (xdata, ydata,
-                        self.xClickBud, self.yClickBud) = (
-                            self.xClickBud, self.yClickBud,
-                            xdata, ydata
+                        (xdata, ydata, self.xClickBud, self.yClickBud) = (
+                            self.xClickBud,
+                            self.yClickBud,
+                            xdata,
+                            ydata,
                         )
                     self.assignBudMothButton.setChecked(True)
 
@@ -671,26 +614,21 @@ class CanvasDrawingView:
                 budID = self.get_2Dlab(posData.lab)[ydata, xdata]
                 # Allow assigning an unknown cell ONLY to another unknown cell
                 txt = (
-                    f'You started by clicking on ID {budID} which has '
-                    'UNKNOWN history, but you then clicked/released on '
-                    f'ID {ID} which has KNOWN history.\n\n'
-                    'Only two cells with UNKNOWN history can be assigned as '
-                    'relative of each other.'
+                    f"You started by clicking on ID {budID} which has "
+                    "UNKNOWN history, but you then clicked/released on "
+                    f"ID {ID} which has KNOWN history.\n\n"
+                    "Only two cells with UNKNOWN history can be assigned as "
+                    "relative of each other."
                 )
                 msg = QMessageBox()
-                msg.critical(
-                    self.host,
-                    'Released on a cell with KNOWN history',
-                    txt,
-                    msg.Ok,
-                )
+                msg.critical(self, "Released on a cell with KNOWN history", txt, msg.Ok)
                 self.assignBudMothButton.setChecked(True)
                 return
 
             self.clickedOnHistoryKnown = is_history_known
             self.xClickMoth, self.yClickMoth = xdata, ydata
 
-            if ccs != 'G1' and posData.frame_i > 0:
+            if ccs != "G1" and posData.frame_i > 0:
                 self.assignBudMothButton.setChecked(False)
                 self.onMotherNotInG1(ID)
                 self.assignBudMothButton.setChecked(True)
@@ -707,9 +645,20 @@ class CanvasDrawingView:
         elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
             self.isMouseDragImg1 = False
             self.freeRoiItem.closeCurve()
-            self.draw_clear_region_view.clear_objects_in_freehand_region()
+            self.clearObjsFreehandRegion()
 
         # Zoom rect mouse release
         elif self.isMouseDragImg1 and self.zoomRectButton.isChecked():
             self.isMouseDragImg1 = False
             self.zoomRectDone()
+
+    def should_clear_after_out_of_bounds(self, *, image: str) -> bool:
+        return image == "img1"
+
+    def should_process_canvas_event(
+        self,
+        *,
+        mode: str,
+        in_bounds: bool,
+    ) -> bool:
+        return mode != self.viewer_mode and in_bounds

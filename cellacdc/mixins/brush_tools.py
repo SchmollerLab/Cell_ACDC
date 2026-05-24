@@ -10,78 +10,179 @@ from qtpy.QtWidgets import QCheckBox
 from cellacdc import html_utils, settings_csv_path, widgets
 
 
-class BrushToolsView:
+class BrushToolsMixin:
     """Qt-facing adapter around brush and eraser tool workflows."""
 
-    LEGACY_METHODS = (
-        'instructHowDeleteID',
-        'checkWarnDeletedIDwithEraser',
-        'brushAutoFillToggled',
-        'brushAutoHideToggled',
-        'fillHolesID',
-        'brushReleased',
-        'brushSize_cb',
-        'autoIDtoggled',
-        'Brush_cb',
-        'showEditIDwidgets',
-        'resetCursors',
-        'updateEraserCursor',
-        'setDiskMask',
-        'getDiskMask',
-        'applyEraserMask',
-        'changeBrushID',
-        'applyBrushMask',
-        'setBrushID',
-        'initFloodMaskImage',
-        'getMagicWandFloodTolerance',
-        'initTempLayerBrush',
-        '_setTempImageBrushContour',
-        'setTempBrushMaskFromWand',
-        'setTempImg1Brush',
-        'getLabelsLayerImage',
-        'clearObjFromMask',
-        'setTempImg1Eraser',
-        'Eraser_cb',
-    )
+    # @exec_time
 
-    def __init__(self, host):
-        object.__setattr__(self, 'host', host)
+    # @exec_time
 
-    def __getattr__(self, name):
-        return getattr(self.host, name)
+    # @exec_time
 
-    def __setattr__(self, name, value):
-        if name in {'host'}:
-            object.__setattr__(self, name, value)
+    # @exec_time
+
+    def Brush_cb(self, checked):
+        if checked:
+            self.typingEditID = False
+            self.setDiskMask()
+            self.setHoverToolSymbolData(
+                [],
+                [],
+                (
+                    self.ax1_EraserCircle,
+                    self.ax2_EraserCircle,
+                    self.ax1_EraserX,
+                    self.ax2_EraserX,
+                ),
+            )
+            self.updateBrushCursor(self.xHoverImg, self.yHoverImg)
+            self.setBrushID()
+
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.sender())
+            c = self.defaultToolBarButtonColor
+            self.eraserButton.setStyleSheet(f"background-color: {c}")
+            self.connectLeftClickButtons()
+            self.setFocusGraphics()
         else:
-            setattr(self.host, name, value)
+            self.ax1_lostObjScatterItem.setVisible(True)
+            self.ax2_lostObjScatterItem.setVisible(True)
+            self.ax1_lostTrackedScatterItem.setVisible(True)
+            self.ax2_lostTrackedScatterItem.setVisible(True)
 
-    def checked_setting_value(self, checked: bool) -> str:
-        return 'Yes' if checked else 'No'
+            self.setHoverToolSymbolData(
+                [],
+                [],
+                (self.ax2_BrushCircle, self.ax1_BrushCircle),
+            )
+            self.resetCursors()
 
-    def default_delete_object_info_value(self) -> str:
-        return 'Yes'
+        self.showEditIDwidgets(checked)
+        self.enableSizeSpinbox(checked)
 
-    def should_show_delete_object_info(self, setting_value: Any) -> bool:
-        return setting_value == 'Yes'
+    def Eraser_cb(self, checked):
+        if checked:
+            self.setDiskMask()
+            self.setHoverToolSymbolData(
+                [],
+                [],
+                (self.ax2_BrushCircle, self.ax1_BrushCircle),
+            )
+            self.updateEraserCursor(self.xHoverImg, self.yHoverImg)
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.sender())
+            c = self.defaultToolBarButtonColor
+            self.brushButton.setStyleSheet(f"background-color: {c}")
+            self.connectLeftClickButtons()
+        else:
+            self.setHoverToolSymbolData(
+                [],
+                [],
+                (
+                    self.ax1_EraserCircle,
+                    self.ax2_EraserCircle,
+                    self.ax1_EraserX,
+                    self.ax2_EraserX,
+                ),
+            )
+            self.resetCursors()
+            self.updateAllImages()
 
-    def delete_object_info_value(
-        self,
-        do_not_show_again_checked: bool,
-    ) -> str:
-        return (
-            'No'
-            if do_not_show_again_checked
-            else 'Yes'
+        self.showEditIDwidgets(checked)
+        self.enableSizeSpinbox(checked)
+
+    def _setTempImageBrushContour(self):
+        pass
+
+    def applyBrushMask(self, mask, ID, toLocalSlice=None):
+        posData = self.data[self.pos_i]
+        if self.isSegm3D:
+            zProjHow = self.zProjComboBox.currentText()
+            isZslice = zProjHow == "single z-slice"
+            if isZslice:
+                if toLocalSlice is not None:
+                    toLocalSlice = (self.z_lab(), *toLocalSlice)
+                    posData.lab[toLocalSlice][mask] = ID
+                else:
+                    posData.lab[self.z_lab()][mask] = ID
+            else:
+                if toLocalSlice is not None:
+                    for z in range(len(posData.lab)):
+                        _slice = (z, *toLocalSlice)
+                        posData.lab[_slice][mask] = ID
+                else:
+                    posData.lab[:, mask] = ID
+        else:
+            if toLocalSlice is not None:
+                posData.lab[toLocalSlice][mask] = ID
+            else:
+                posData.lab[mask] = ID
+
+    def applyEraserMask(self, mask):
+        posData = self.data[self.pos_i]
+        if self.isSegm3D:
+            zProjHow = self.zProjComboBox.currentText()
+            isZslice = zProjHow == "single z-slice"
+            if isZslice:
+                posData.lab[self.z_lab(), mask] = 0
+            else:
+                posData.lab[:, mask] = 0
+        else:
+            posData.lab[mask] = 0
+
+    def autoIDtoggled(self, checked):
+        self.editIDspinboxAction.setDisabled(checked)
+        self.editIDLabelAction.setDisabled(checked)
+        if not checked and self.editIDspinbox.value() == 0:
+            newID = self.setBrushID(return_val=True)
+            self.editIDspinbox.setValue(newID)
+
+    def brushAutoFillToggled(self, checked):
+        val = "Yes" if checked else "No"
+        self.df_settings.at["brushAutoFill", "value"] = val
+        self.df_settings.to_csv(self.settings_csv_path)
+
+    def brushAutoHideToggled(self, checked):
+        val = "Yes" if checked else "No"
+        self.df_settings.at["brushAutoHide", "value"] = val
+        self.df_settings.to_csv(self.settings_csv_path)
+
+    def brushReleased(self):
+        posData = self.data[self.pos_i]
+        self.fillHolesID(posData.brushID, sender="brush")
+
+        # Update data (rp, etc)
+        self.update_rp(
+            update_IDs=self.isNewID,
         )
 
-    def should_fill_holes(
-        self,
-        sender: str,
-        *,
-        auto_fill_checked: bool,
-    ) -> bool:
-        return sender == 'brush' and auto_fill_checked
+        # Repeat tracking
+        if self.autoIDcheckbox.isChecked():
+            self.trackManuallyAddedObject(posData.brushID, self.isNewID)
+        else:
+            self.update_rp(update_IDs=posData.brushID not in posData.IDs_idxs)
+
+        # Update images
+        if self.isNewID:
+            editTxt = "Add new ID with brush tool"
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit(editTxt)
+                self.updateAllImages()
+            else:
+                self.warnEditingWithCca_df(editTxt)
+        else:
+            self.updateAllImages()
+
+        self.isNewID = False
+
+    def brushSize_cb(self, value):
+        self.ax2_EraserCircle.setSize(value * 2)
+        self.ax1_BrushCircle.setSize(value * 2)
+        self.ax2_BrushCircle.setSize(value * 2)
+        self.ax1_EraserCircle.setSize(value * 2)
+        self.ax2_EraserX.setSize(value)
+        self.ax1_EraserX.setSize(value)
+        self.setDiskMask()
 
     def brush_toolbar_visible(
         self,
@@ -100,321 +201,8 @@ class BrushToolsView:
             )
         )
 
-    def disk_mask(self, brush_size: int):
-        import skimage.morphology
-        return skimage.morphology.disk(brush_size, dtype=bool)
-
-    def disk_mask_bounds(
-        self,
-        image_shape: tuple[int, int],
-        brush_size: int,
-        xdata: int,
-        ydata: int,
-        disk_mask,
-    ):
-        y_size, x_size = image_shape
-        y_bottom, x_left = ydata - brush_size, xdata - brush_size
-        y_top, x_right = ydata + brush_size + 1, xdata + brush_size + 1
-
-        if x_left < 0:
-            if y_bottom < 0:
-                disk_mask = disk_mask.copy()
-                disk_mask = disk_mask[-y_bottom:, -x_left:]
-                y_bottom = 0
-            elif y_top > y_size:
-                disk_mask = disk_mask.copy()
-                disk_mask = disk_mask[0:y_size - y_bottom, -x_left:]
-                y_top = y_size
-            else:
-                disk_mask = disk_mask.copy()
-                disk_mask = disk_mask[:, -x_left:]
-            x_left = 0
-
-        elif x_right > x_size:
-            if y_bottom < 0:
-                disk_mask = disk_mask.copy()
-                disk_mask = disk_mask[-y_bottom:, 0:x_size - x_left]
-                y_bottom = 0
-            elif y_top > y_size:
-                disk_mask = disk_mask.copy()
-                disk_mask = disk_mask[0:y_size - y_bottom, 0:x_size - x_left]
-                y_top = y_size
-            else:
-                disk_mask = disk_mask.copy()
-                disk_mask = disk_mask[:, 0:x_size - x_left]
-            x_right = x_size
-
-        elif y_bottom < 0:
-            disk_mask = disk_mask.copy()
-            disk_mask = disk_mask[-y_bottom:]
-            y_bottom = 0
-
-        elif y_top > y_size:
-            disk_mask = disk_mask.copy()
-            disk_mask = disk_mask[0:y_size - y_bottom]
-            y_top = y_size
-
-        return y_bottom, x_left, y_top, x_right, disk_mask
-
-    def magic_wand_flood_tolerance(
-        self,
-        tolerance_percent: float,
-        image_min: float,
-        image_max: float,
-    ):
-        if tolerance_percent == 0:
-            return None
-        return (image_max - image_min) * (tolerance_percent / 100)
-
-    def bind_legacy_methods(self):
-        for name in self.LEGACY_METHODS:
-            setattr(self.host, name, getattr(self, name))
-
-    def instructHowDeleteID(self):
-        if 'showInfoDeleteObject' not in self.df_settings.index:
-            self.df_settings.at['showInfoDeleteObject', 'value'] = (
-                self.default_delete_object_info_value()
-            )
-
-        showInfoDeleteObject = self.should_show_delete_object_info(
-            self.df_settings.at['showInfoDeleteObject', 'value']
-        )
-        if not showInfoDeleteObject:
-            return
-
-        actionText = self.middleClickText()
-        msg = widgets.myMessageBox(wrapText=False)
-        txt = html_utils.paragraph(
-            'You have deleted an object using the eraser tool.<br><br>'
-            'Did you know that you can use the "Delete object" action<br>'
-            'to <b>delete an object with a single click</b>?<br><br>'
-            f'To do so, use the following action: <code>{actionText}</code><br><br>'
-            'Note: You can also set a custom shortcut by going to the menu<br>'
-            '<code>Settings --&gt; Customise keyboard shortcuts...</code>.'
-        )
-        doNotShowAgainCheckbox = QCheckBox('Do not show again')
-        msg.information(
-            self.host, 'Delete objects with single click', txt,
-            widgets=doNotShowAgainCheckbox
-        )
-
-        showInfoDeleteObjectValue = self.delete_object_info_value(
-            doNotShowAgainCheckbox.isChecked()
-        )
-        self.df_settings.at['showInfoDeleteObject', 'value'] = (
-            showInfoDeleteObjectValue
-        )
-        self.df_settings.to_csv(settings_csv_path)
-
-    def checkWarnDeletedIDwithEraser(self):
-        posData = self.data[self.pos_i]
-
-        for ID in self.erasedIDs:
-            if ID == 0:
-                continue
-            if ID in posData.IDs_idxs:
-                continue
-
-            self.instructHowDeleteID()
-
-            if self.isSnapshot:
-                self.fixCcaDfAfterEdit('Delete ID with eraser')
-                self.updateAllImages()
-            else:
-                self.warnEditingWithCca_df('Delete ID with eraser')
-
-            return True
-
-        return False
-
-    def brushAutoFillToggled(self, checked):
-        val = self.checked_setting_value(checked)
-        self.df_settings.at['brushAutoFill', 'value'] = val
-        self.df_settings.to_csv(self.settings_csv_path)
-
-    def brushAutoHideToggled(self, checked):
-        val = self.checked_setting_value(checked)
-        self.df_settings.at['brushAutoHide', 'value'] = val
-        self.df_settings.to_csv(self.settings_csv_path)
-
-    # @exec_time
-    def fillHolesID(self, ID, sender='brush'):
-        posData = self.data[self.pos_i]
-        if sender == 'brush':
-            if not self.should_fill_holes(
-                sender,
-                auto_fill_checked=self.brushAutoFillCheckbox.isChecked(),
-            ):
-                return False
-
-            lab2D = self.get_2Dlab(posData.lab)
-            result = self.host.view_model.label_edits.fill_label_holes(
-                lab2D,
-                ID,
-            )
-            self.set_2Dlab(result.labels)
-            return True
-        return False
-
-    def brushReleased(self):
-        posData = self.data[self.pos_i]
-        self.fillHolesID(posData.brushID, sender='brush')
-
-        # Update data (rp, etc)
-        self.update_rp(update_IDs=self.isNewID,)
-
-        # Repeat tracking
-        if self.autoIDcheckbox.isChecked():
-            self.trackManuallyAddedObject(posData.brushID, self.isNewID)
-        else:
-            self.update_rp(update_IDs=posData.brushID not in posData.IDs_idxs)
-
-        # Update images
-        if self.isNewID:
-            editTxt = 'Add new ID with brush tool'
-            if self.isSnapshot:
-                self.fixCcaDfAfterEdit(editTxt)
-                self.updateAllImages()
-            else:
-                self.warnEditingWithCca_df(editTxt)
-        else:
-            self.updateAllImages()
-
-        self.isNewID = False
-
-    def brushSize_cb(self, value):
-        self.ax2_EraserCircle.setSize(value*2)
-        self.ax1_BrushCircle.setSize(value*2)
-        self.ax2_BrushCircle.setSize(value*2)
-        self.ax1_EraserCircle.setSize(value*2)
-        self.ax2_EraserX.setSize(value)
-        self.ax1_EraserX.setSize(value)
-        self.setDiskMask()
-
-    def autoIDtoggled(self, checked):
-        self.editIDspinboxAction.setDisabled(checked)
-        self.editIDLabelAction.setDisabled(checked)
-        if not checked and self.editIDspinbox.value() == 0:
-            newID = self.setBrushID(return_val=True)
-            self.editIDspinbox.setValue(newID)
-
-    def Brush_cb(self, checked):
-        if checked:
-            self.typingEditID = False
-            self.setDiskMask()
-            self.setHoverToolSymbolData(
-                [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
-                         self.ax1_EraserX, self.ax2_EraserX)
-            )
-            self.updateBrushCursor(self.xHoverImg, self.yHoverImg)
-            self.setBrushID()
-
-            self.disconnectLeftClickButtons()
-            self.uncheckLeftClickButtons(self.sender())
-            c = self.defaultToolBarButtonColor
-            self.eraserButton.setStyleSheet(f'background-color: {c}')
-            self.connectLeftClickButtons()
-            self.image_controls_view.setFocusGraphics()
-        else:
-            self.ax1_lostObjScatterItem.setVisible(True)
-            self.ax2_lostObjScatterItem.setVisible(True)
-            self.ax1_lostTrackedScatterItem.setVisible(True)
-            self.ax2_lostTrackedScatterItem.setVisible(True)
-
-            self.setHoverToolSymbolData(
-                [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
-            )
-            self.resetCursors()
-
-        self.showEditIDwidgets(checked)
-        self.mode_controls_view.enableSizeSpinbox(checked)
-
-    def showEditIDwidgets(self, visible):
-        self.editIDLabelAction.setVisible(visible)
-        self.editIDspinboxAction.setVisible(visible)
-        self.autoIDcheckboxAction.setVisible(visible)
-        showToolbar = (
-            self.brush_toolbar_visible(
-                visible,
-                brush_size_visible=self.brushSizeAction.isVisible(),
-                auto_fill_visible=self.brushAutoFillAction.isVisible(),
-                auto_hide_visible=self.brushAutoHideAction.isVisible(),
-            )
-        )
-        self.brushEraserToolBar.setVisible(showToolbar)
-
-    def resetCursors(self):
-        self.ax1_cursor.setData([], [])
-        self.ax2_cursor.setData([], [])
-        while self.app.overrideCursor() is not None:
-            self.app.restoreOverrideCursor()
-
-    def updateEraserCursor(self, x, y, xyLocked=None, isHoverImg1=True):
-        if x is None:
-            return
-
-        xdata, ydata = int(x), int(y)
-        _img = self.currentLab2D
-        Y, X = _img.shape
-
-        if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
-            return
-
-        size = self.brushSizeSpinbox.value()*2
-        self.setHoverToolSymbolData(
-            [x], [y], self.activeEraserCircleCursors(isHoverImg1),
-            size=size
-        )
-        self.setHoverToolSymbolData(
-            [x], [y], self.activeEraserXCursors(isHoverImg1),
-            size=int(size/2)
-        )
-
-        isMouseDrag = (
-            self.isMouseDragImg1 or self.isMouseDragImg2
-        )
-        if isMouseDrag:
-            return
-
-        if xyLocked is not None:
-            xdata, ydata = xyLocked
-
-        self.setHoverToolSymbolColor(
-            xdata, ydata, self.eraserCirclePen,
-            self.activeEraserCircleCursors(isHoverImg1),
-            self.eraserButton, hoverRGB=None
-        )
-
-    def setDiskMask(self):
-        brushSize = self.brushSizeSpinbox.value()
-        self.diskMask = self.disk_mask(brushSize)
-
-    def getDiskMask(self, xdata, ydata):
-        brushSize = self.brushSizeSpinbox.value()
-        return self.disk_mask_bounds(
-            self.currentLab2D.shape[-2:],
-            brushSize,
-            xdata,
-            ydata,
-            self.diskMask,
-        )
-
-    # @exec_time
-    def applyEraserMask(self, mask):
-        posData = self.data[self.pos_i]
-        if self.isSegm3D:
-            zProjHow = self.zProjComboBox.currentText()
-            isZslice = zProjHow == 'single z-slice'
-            if isZslice:
-                posData.lab[self.z_lab(), mask] = 0
-            else:
-                posData.lab[:, mask] = 0
-        else:
-            posData.lab[mask] = 0
-
     def changeBrushID(self):
-        """Function called when pressing or releasing shift
-        """
+        """Function called when pressing or releasing shift"""
         if not self.isSegm3D:
             # Changing brush ID with shift is only for 3D segm
             return
@@ -456,39 +244,290 @@ class BrushToolsView:
         brushIDmask = self.get_2Dlab(posData.lab) == self.changedID
         self.applyBrushMask(brushIDmask, brushID)
         if self.isMouseDragImg1:
-            self.brushColor = self.lut[posData.brushID]/255
+            self.brushColor = self.lut[posData.brushID] / 255
             self.setTempImg1Brush(True, brushIDmask, posData.brushID)
 
-    def applyBrushMask(self, mask, ID, toLocalSlice=None):
+    def checkWarnDeletedIDwithEraser(self):
         posData = self.data[self.pos_i]
-        if self.isSegm3D:
-            zProjHow = self.zProjComboBox.currentText()
-            isZslice = zProjHow == 'single z-slice'
-            if isZslice:
-                if toLocalSlice is not None:
-                    toLocalSlice = (self.z_lab(), *toLocalSlice)
-                    posData.lab[toLocalSlice][mask] = ID
-                else:
-                    posData.lab[self.z_lab()][mask] = ID
+
+        for ID in self.erasedIDs:
+            if ID == 0:
+                continue
+            if ID in posData.IDs_idxs:
+                continue
+
+            self.instructHowDeleteID()
+
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit("Delete ID with eraser")
+                self.updateAllImages()
             else:
-                if toLocalSlice is not None:
-                    for z in range(len(posData.lab)):
-                        _slice = (z, *toLocalSlice)
-                        posData.lab[_slice][mask] = ID
-                else:
-                    posData.lab[:, mask] = ID
+                self.warnEditingWithCca_df("Delete ID with eraser")
+
+            return True
+
+        return False
+
+    def checked_setting_value(self, checked: bool) -> str:
+        return "Yes" if checked else "No"
+
+    def clearObjFromMask(self, image, mask, toLocalSlice=None):
+        if mask is None:
+            return image
+
+        if toLocalSlice is None:
+            image[mask] = 0
         else:
-            if toLocalSlice is not None:
-                posData.lab[toLocalSlice][mask] = ID
+            image[toLocalSlice][mask] = 0
+
+        return image
+
+    def default_delete_object_info_value(self) -> str:
+        return "Yes"
+
+    def delete_object_info_value(
+        self,
+        do_not_show_again_checked: bool,
+    ) -> str:
+        return "No" if do_not_show_again_checked else "Yes"
+
+    def disk_mask(self, brush_size: int):
+        import skimage.morphology
+
+        return skimage.morphology.disk(brush_size, dtype=bool)
+
+    def disk_mask_bounds(
+        self,
+        image_shape: tuple[int, int],
+        brush_size: int,
+        xdata: int,
+        ydata: int,
+        disk_mask,
+    ):
+        y_size, x_size = image_shape
+        y_bottom, x_left = ydata - brush_size, xdata - brush_size
+        y_top, x_right = ydata + brush_size + 1, xdata + brush_size + 1
+
+        if x_left < 0:
+            if y_bottom < 0:
+                disk_mask = disk_mask.copy()
+                disk_mask = disk_mask[-y_bottom:, -x_left:]
+                y_bottom = 0
+            elif y_top > y_size:
+                disk_mask = disk_mask.copy()
+                disk_mask = disk_mask[0 : y_size - y_bottom, -x_left:]
+                y_top = y_size
             else:
-                posData.lab[mask] = ID
+                disk_mask = disk_mask.copy()
+                disk_mask = disk_mask[:, -x_left:]
+            x_left = 0
+
+        elif x_right > x_size:
+            if y_bottom < 0:
+                disk_mask = disk_mask.copy()
+                disk_mask = disk_mask[-y_bottom:, 0 : x_size - x_left]
+                y_bottom = 0
+            elif y_top > y_size:
+                disk_mask = disk_mask.copy()
+                disk_mask = disk_mask[0 : y_size - y_bottom, 0 : x_size - x_left]
+                y_top = y_size
+            else:
+                disk_mask = disk_mask.copy()
+                disk_mask = disk_mask[:, 0 : x_size - x_left]
+            x_right = x_size
+
+        elif y_bottom < 0:
+            disk_mask = disk_mask.copy()
+            disk_mask = disk_mask[-y_bottom:]
+            y_bottom = 0
+
+        elif y_top > y_size:
+            disk_mask = disk_mask.copy()
+            disk_mask = disk_mask[0 : y_size - y_bottom]
+            y_top = y_size
+
+        return y_bottom, x_left, y_top, x_right, disk_mask
+
+    def fillHolesID(self, ID, sender="brush"):
+        posData = self.data[self.pos_i]
+        if sender == "brush":
+            if not self.brushAutoFillCheckbox.isChecked():
+                return False
+
+            lab2D = self.get_2Dlab(posData.lab)
+            mask = lab2D == ID
+            filledMask = scipy.ndimage.binary_fill_holes(mask)
+            lab2D[filledMask] = ID
+
+            self.set_2Dlab(lab2D)
+            return True
+        return False
+
+    def getDiskMask(self, xdata, ydata):
+        Y, X = self.currentLab2D.shape[-2:]
+
+        brushSize = self.brushSizeSpinbox.value()
+        yBottom, xLeft = ydata - brushSize, xdata - brushSize
+        yTop, xRight = ydata + brushSize + 1, xdata + brushSize + 1
+
+        if xLeft < 0:
+            if yBottom < 0:
+                # Disk mask out of bounds top-left
+                diskMask = self.diskMask.copy()
+                diskMask = diskMask[-yBottom:, -xLeft:]
+                yBottom = 0
+            elif yTop > Y:
+                # Disk mask out of bounds bottom-left
+                diskMask = self.diskMask.copy()
+                diskMask = diskMask[0 : Y - yBottom, -xLeft:]
+                yTop = Y
+            else:
+                # Disk mask out of bounds on the left
+                diskMask = self.diskMask.copy()
+                diskMask = diskMask[:, -xLeft:]
+            xLeft = 0
+
+        elif xRight > X:
+            if yBottom < 0:
+                # Disk mask out of bounds top-right
+                diskMask = self.diskMask.copy()
+                diskMask = diskMask[-yBottom:, 0 : X - xLeft]
+                yBottom = 0
+            elif yTop > Y:
+                # Disk mask out of bounds bottom-right
+                diskMask = self.diskMask.copy()
+                diskMask = diskMask[0 : Y - yBottom, 0 : X - xLeft]
+                yTop = Y
+            else:
+                # Disk mask out of bounds on the right
+                diskMask = self.diskMask.copy()
+                diskMask = diskMask[:, 0 : X - xLeft]
+            xRight = X
+
+        elif yBottom < 0:
+            # Disk mask out of bounds on top
+            diskMask = self.diskMask.copy()
+            diskMask = diskMask[-yBottom:]
+            yBottom = 0
+
+        elif yTop > Y:
+            # Disk mask out of bounds on bottom
+            diskMask = self.diskMask.copy()
+            diskMask = diskMask[0 : Y - yBottom]
+            yTop = Y
+
+        else:
+            # Disk mask fully inside the image
+            diskMask = self.diskMask
+
+        return yBottom, xLeft, yTop, xRight, diskMask
+
+    def getLabelsLayerImage(self, ax=0):
+        if ax == 0:
+            return self.labelsLayerImg1.image
+        else:
+            return self.labelsLayerRightImg.image
+
+    def getMagicWandFloodTolerance(self):
+        tol_perc = self.wandControlsToolbar.toleranceSpinbox.value()
+        if tol_perc == 0:
+            return
+
+        posData = self.data[self.pos_i]
+        _min, _max = posData.img_data_min_max
+        tol_fraction = tol_perc / 100
+        tol = (_max - _min) * tol_fraction
+
+        return tol
+
+    def initFloodMaskImage(self):
+        posData = self.data[self.pos_i]
+        self.flood_img = posData.img_data[posData.frame_i]
+        if not self.isSegm3D and posData.SizeZ > 1:
+            self.flood_img = self.get_2Dimg_from_3D(self.flood_img)
+            return
+
+    def initTempLayerBrush(self, ID, ax=0):
+        if ax == 0:
+            how = self.drawIDsContComboBox.currentText()
+        else:
+            how = self.getAnnotateHowRightImage()
+
+        self.hideItemsHoverBrush(ID=ID, force=True)
+        Y, X = self.img1.image.shape[:2]
+        tempImage = np.zeros((Y, X), dtype=np.uint32)
+        if how.find("contours") != -1:
+            tempImage[self.currentLab2D == ID] = ID
+            self.brushImage = tempImage.copy()
+            self.brushContourImage = np.zeros((Y, X, 4), dtype=np.uint8)
+            color = self.imgGrad.contoursColorButton.color()
+            self.brushContoursRgba = color.getRgb()
+            opacity = 1.0
+        else:
+            opacity = self.imgGrad.labelsAlphaSlider.value()
+            color = self.lut[ID]
+            lut = np.zeros((2, 4), dtype=np.uint8)
+            lut[1, -1] = 255
+            lut[1, :-1] = color
+            self.tempLayerImg1.setLookupTable(lut)
+        self.tempLayerImg1.setOpacity(opacity)
+        self.tempLayerImg1.setImage(tempImage, force_set_linked=True)
+
+    def instructHowDeleteID(self):
+        if "showInfoDeleteObject" not in self.df_settings.index:
+            self.df_settings.at["showInfoDeleteObject", "value"] = "Yes"
+
+        showInfoDeleteObject = (
+            self.df_settings.at["showInfoDeleteObject", "value"] == "Yes"
+        )
+        if not showInfoDeleteObject:
+            return
+
+        actionText = self.middleClickText()
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            "You have deleted an object using the eraser tool.<br><br>"
+            'Did you know that you can use the "Delete object" action<br>'
+            "to <b>delete an object with a single click</b>?<br><br>"
+            f"To do so, use the following action: <code>{actionText}</code><br><br>"
+            "Note: You can also set a custom shortcut by going to the menu<br>"
+            "<code>Settings --&gt; Customise keyboard shortcuts...</code>."
+        )
+        doNotShowAgainCheckbox = QCheckBox("Do not show again")
+        msg.information(
+            self,
+            "Delete objects with single click",
+            txt,
+            widgets=doNotShowAgainCheckbox,
+        )
+
+        showInfoDeleteObjectValue = (
+            "No" if doNotShowAgainCheckbox.isChecked() else "Yes"
+        )
+        self.df_settings.at["showInfoDeleteObject", "value"] = showInfoDeleteObjectValue
+        self.df_settings.to_csv(settings_csv_path)
+
+    def magic_wand_flood_tolerance(
+        self,
+        tolerance_percent: float,
+        image_min: float,
+        image_max: float,
+    ):
+        if tolerance_percent == 0:
+            return None
+        return (image_max - image_min) * (tolerance_percent / 100)
+
+    def resetCursors(self):
+        self.ax1_cursor.setData([], [])
+        self.ax2_cursor.setData([], [])
+        while self.app.overrideCursor() is not None:
+            self.app.restoreOverrideCursor()
 
     def setBrushID(self, useCurrentLab=True, return_val=False):
         # Make sure that the brushed ID is always a new one based on
         # already visited frames
         posData = self.data[self.pos_i]
         wl_init = posData.whitelist and posData.whitelist.whitelistIDs
-        id_groups = []
         if useCurrentLab:
             IDs_tot = set(posData.IDs)
             if wl_init:
@@ -501,90 +540,58 @@ class BrushToolsView:
                         IDs_tot.update(posData.whitelist.whitelistIDs[posData.frame_i])
                 except:
                     pass
-            id_groups.append(IDs_tot)
+            newID = max(IDs_tot, default=0)
+        else:
+            newID = 0
         for frame_i, storedData in enumerate(posData.allData_li):
             if frame_i == posData.frame_i:
                 continue
-            lab = storedData['labels']
+            lab = storedData["labels"]
             if lab is not None:
-                rp = storedData['regionprops']
+                rp = storedData["regionprops"]
                 IDs_tot = {obj.label for obj in rp}
                 if wl_init:
-                    if self.whitelistCheckOriginalLabels(warning=False, frame_i=frame_i):
+                    if self.whitelistCheckOriginalLabels(
+                        warning=False, frame_i=frame_i
+                    ):
                         IDs_tot.update(posData.whitelist.originalLabsIDs[frame_i])
                     if posData.whitelist.whitelistIDs[frame_i]:
                         IDs_tot.update(posData.whitelist.whitelistIDs[frame_i])
-                id_groups.append(IDs_tot)
+                _max = max(IDs_tot, default=0)
+                if _max > newID:
+                    newID = _max
             else:
                 break
 
-        posData.brushID = (
-            self.host.view_model.label_edits.next_available_label_id(
-                id_groups,
-                manual_edit_info=posData.editID_info,
-            )
-        )
+        for y, x, manual_ID in posData.editID_info:
+            if manual_ID > newID:
+                newID = manual_ID
+        posData.brushID = newID + 1
         if return_val:
             return posData.brushID
 
-    def initFloodMaskImage(self):
-        posData = self.data[self.pos_i]
-        self.flood_img = posData.img_data[posData.frame_i]
-        if not self.isSegm3D and posData.SizeZ > 1:
-            self.flood_img = self.get_2Dimg_from_3D(self.flood_img)
-            return
-
-    def getMagicWandFloodTolerance(self):
-        tol_perc = self.wandControlsToolbar.toleranceSpinbox.value()
-        posData = self.data[self.pos_i]
-        _min, _max = posData.img_data_min_max
-        return self.magic_wand_flood_tolerance(tol_perc, _min, _max)
-
-    def initTempLayerBrush(self, ID, ax=0):
-        if ax == 0:
-            how = self.drawIDsContComboBox.currentText()
-        else:
-            how = self.getAnnotateHowRightImage()
-
-        self.hideItemsHoverBrush(ID=ID, force=True)
-        Y, X = self.img1.image.shape[:2]
-        tempImage = np.zeros((Y, X), dtype=np.uint32)
-        if how.find('contours') != -1:
-            tempImage[self.currentLab2D==ID] = ID
-            self.brushImage = tempImage.copy()
-            self.brushContourImage = np.zeros((Y, X, 4), dtype=np.uint8)
-            color = self.imgGrad.contoursColorButton.color()
-            self.brushContoursRgba = color.getRgb()
-            opacity = 1.0
-        else:
-            opacity = self.imgGrad.labelsAlphaSlider.value()
-            color = self.lut[ID]
-            lut = np.zeros((2, 4), dtype=np.uint8)
-            lut[1,-1] = 255
-            lut[1,:-1] = color
-            self.tempLayerImg1.setLookupTable(lut)
-        self.tempLayerImg1.setOpacity(opacity)
-        self.tempLayerImg1.setImage(tempImage, force_set_linked=True)
-
-    def _setTempImageBrushContour(self):
-        pass
+    def setDiskMask(self):
+        brushSize = self.brushSizeSpinbox.value()
+        # diam = brushSize*2
+        # center = (brushSize, brushSize)
+        # diskShape = (diam+1, diam+1)
+        # diskMask = np.zeros(diskShape, bool)
+        # rr, cc = skimage.draw.disk(center, brushSize+1, shape=diskShape)
+        # diskMask[rr, cc] = True
+        self.diskMask = skimage.morphology.disk(brushSize, dtype=bool)
 
     def setTempBrushMaskFromWand(self, flood_mask, init=False):
         if not np.any(flood_mask):
             return
 
         posData = self.data[self.pos_i]
-        mask = np.logical_or(
-            flood_mask,
-            posData.lab==posData.brushID
-        )
+        mask = np.logical_or(flood_mask, posData.lab == posData.brushID)
         if mask.ndim == 3:
             z_slice = self.zSliceScrollBar.sliderPosition()
             mask = mask[z_slice]
 
         self.setTempImg1Brush(init, mask, posData.brushID)
 
-    # @exec_time
     def setTempImg1Brush(self, init: bool, mask, ID, toLocalSlice=None, ax=0):
         if init:
             self.initTempLayerBrush(ID, ax=ax)
@@ -605,6 +612,9 @@ class BrushToolsView:
             except IndexError:
                 return
             objContour = [self.getObjContours(obj)]
+            # objContour = core.get_obj_contours(
+            #     obj_image=(brushImage>0).astype(np.uint8), local=True
+            # )
             self.brushContourImage[:] = 0
             img = self.brushContourImage
             color = self.brushContoursRgba
@@ -613,24 +623,6 @@ class BrushToolsView:
         else:
             self.tempLayerImg1.setImage(brushImage, force_set_linked=True)
 
-    def getLabelsLayerImage(self, ax=0):
-        if ax == 0:
-            return self.labelsLayerImg1.image
-        else:
-            return self.labelsLayerRightImg.image
-
-    def clearObjFromMask(self, image, mask, toLocalSlice=None):
-        if mask is None:
-            return image
-
-        if toLocalSlice is None:
-            image[mask] = 0
-        else:
-            image[toLocalSlice][mask] = 0
-
-        return image
-
-    # @exec_time
     def setTempImg1Eraser(self, mask, init=False, toLocalSlice=None, ax=0):
         if init:
             self.erasedLab = np.zeros_like(self.currentLab2D)
@@ -643,14 +635,12 @@ class BrushToolsView:
         if ax == 1 and not self.labelsGrad.showRightImgAction.isChecked():
             return
 
-        if how.find('contours') != -1:
-            self.clearObjFromMask(
-                self.contoursImage, mask, toLocalSlice=toLocalSlice
-            )
+        if how.find("contours") != -1:
+            self.clearObjFromMask(self.contoursImage, mask, toLocalSlice=toLocalSlice)
             erasedRp = skimage.measure.regionprops(self.erasedLab)
             for obj in erasedRp:
                 self.addObjContourToContoursImage(obj=obj, ax=ax)
-        elif how.find('overlay segm. masks') != -1:
+        elif how.find("overlay segm. masks") != -1:
             labelsImage = self.getLabelsLayerImage(ax=ax)
             self.clearObjFromMask(labelsImage, mask, toLocalSlice=toLocalSlice)
             if ax == 0:
@@ -662,25 +652,60 @@ class BrushToolsView:
                     self.labelsLayerRightImg.image, autoLevels=False
                 )
 
-    def Eraser_cb(self, checked):
-        if checked:
-            self.setDiskMask()
-            self.setHoverToolSymbolData(
-                [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
-            )
-            self.updateEraserCursor(self.xHoverImg, self.yHoverImg)
-            self.disconnectLeftClickButtons()
-            self.uncheckLeftClickButtons(self.sender())
-            c = self.defaultToolBarButtonColor
-            self.brushButton.setStyleSheet(f'background-color: {c}')
-            self.connectLeftClickButtons()
-        else:
-            self.setHoverToolSymbolData(
-                [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
-                         self.ax1_EraserX, self.ax2_EraserX)
-            )
-            self.resetCursors()
-            self.updateAllImages()
+    def should_fill_holes(
+        self,
+        sender: str,
+        *,
+        auto_fill_checked: bool,
+    ) -> bool:
+        return sender == "brush" and auto_fill_checked
 
-        self.showEditIDwidgets(checked)
-        self.mode_controls_view.enableSizeSpinbox(checked)
+    def should_show_delete_object_info(self, setting_value: Any) -> bool:
+        return setting_value == "Yes"
+
+    def showEditIDwidgets(self, visible):
+        self.editIDLabelAction.setVisible(visible)
+        self.editIDspinboxAction.setVisible(visible)
+        self.autoIDcheckboxAction.setVisible(visible)
+        showToolbar = (
+            visible
+            or self.brushSizeAction.isVisible()
+            or self.brushAutoFillAction.isVisible()
+            or self.brushAutoHideAction.isVisible()
+        )
+        self.brushEraserToolBar.setVisible(showToolbar)
+
+    def updateEraserCursor(self, x, y, xyLocked=None, isHoverImg1=True):
+        if x is None:
+            return
+
+        xdata, ydata = int(x), int(y)
+        _img = self.currentLab2D
+        Y, X = _img.shape
+
+        if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
+            return
+
+        size = self.brushSizeSpinbox.value() * 2
+        self.setHoverToolSymbolData(
+            [x], [y], self.activeEraserCircleCursors(isHoverImg1), size=size
+        )
+        self.setHoverToolSymbolData(
+            [x], [y], self.activeEraserXCursors(isHoverImg1), size=int(size / 2)
+        )
+
+        isMouseDrag = self.isMouseDragImg1 or self.isMouseDragImg2
+        if isMouseDrag:
+            return
+
+        if xyLocked is not None:
+            xdata, ydata = xyLocked
+
+        self.setHoverToolSymbolColor(
+            xdata,
+            ydata,
+            self.eraserCirclePen,
+            self.activeEraserCircleCursors(isHoverImg1),
+            self.eraserButton,
+            hoverRGB=None,
+        )

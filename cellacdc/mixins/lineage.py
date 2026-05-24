@@ -14,7 +14,7 @@ from cellacdc.domain.lineage import (
 from cellacdc.myutils import get_obj_by_label, sort_IDs_dist
 
 
-class LineageViewModel:
+class LineageMixin:
     """Application-facing commands for lineage annotation tables."""
 
     def has_lineage_tree_annotations(
@@ -22,7 +22,7 @@ class LineageViewModel:
         acdc_df: pd.DataFrame | None,
         lineage_tree=None,
         *,
-        parent_column: str = 'parent_ID_tree',
+        parent_column: str = "parent_ID_tree",
     ) -> bool:
         return has_lineage_tree_annotations(
             acdc_df,
@@ -30,12 +30,8 @@ class LineageViewModel:
             parent_column=parent_column,
         )
 
-    def remove_lineage_tree_annotations(
-        self,
-        acdc_df: pd.DataFrame | None,
-        lineage_tree_colnames,
-    ) -> LineageAnnotationsRemovalResult:
-        return remove_lineage_tree_annotations(acdc_df, lineage_tree_colnames)
+    def object_by_label(self, regionprops, label):
+        return get_obj_by_label(regionprops, label)
 
     def remove_future_lineage_tree_annotations(
         self,
@@ -44,7 +40,7 @@ class LineageViewModel:
         from_frame_i: int,
         *,
         size_t: int | None = None,
-        acdc_key: str = 'acdc_df',
+        acdc_key: str = "acdc_df",
     ) -> LineageFutureRemovalResult:
         return remove_future_lineage_tree_annotations(
             frame_records,
@@ -54,8 +50,12 @@ class LineageViewModel:
             acdc_key=acdc_key,
         )
 
-    def object_by_label(self, regionprops, label):
-        return get_obj_by_label(regionprops, label)
+    def remove_lineage_tree_annotations(
+        self,
+        acdc_df: pd.DataFrame | None,
+        lineage_tree_colnames,
+    ) -> LineageAnnotationsRemovalResult:
+        return remove_lineage_tree_annotations(acdc_df, lineage_tree_colnames)
 
     def sort_ids_by_distance(self, regionprops, *, point=None, label=None):
         return sort_IDs_dist(regionprops, point=point, ID=label)

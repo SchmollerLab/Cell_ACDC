@@ -47,8 +47,42 @@ from cellacdc.measure import separate_with_label
 from cellacdc.myutils import get_trimmed_list
 
 
-class LabelEditViewModel:
+class LabelEditMixin:
     """Application-facing commands for editing label arrays."""
+
+    def apply_deleted_roi_masks(
+        self,
+        labels_2d: np.ndarray,
+        roi_masks,
+        deleted_masks,
+        deleted_ids_by_roi,
+    ) -> DeletedRoiApplyResult:
+        return apply_deleted_roi_masks(
+            labels_2d,
+            roi_masks,
+            deleted_masks,
+            deleted_ids_by_roi,
+        )
+
+    def apply_id_mapping(
+        self,
+        labels: np.ndarray,
+        old_new_pairs,
+        *,
+        existing_ids=None,
+        merge_existing: bool = False,
+        start_max_id: int | None = None,
+    ) -> LabelIdMappingResult:
+        return apply_label_id_mapping(
+            labels,
+            old_new_pairs,
+            existing_ids=existing_ids,
+            merge_existing=merge_existing,
+            start_max_id=start_max_id,
+        )
+
+    def binary_fill_holes(self, mask: np.ndarray, *, slice_by_slice: bool = True):
+        return core_binary_fill_holes(mask, slice_by_slice=slice_by_slice)
 
     def clear_border_labels(
         self,
@@ -58,13 +92,14 @@ class LabelEditViewModel:
     ) -> LabelBorderClearResult:
         return clear_border_labels(labels, buffer_size=buffer_size)
 
-    def remove_new_labels(
-        self,
-        labels: np.ndarray,
-        previous_ids,
-        current_ids,
-    ) -> LabelIdsRemovalResult:
-        return remove_new_label_ids(labels, previous_ids, current_ids)
+    def collect_deleted_roi_ids(self, deleted_ids_by_roi) -> set[int]:
+        return collect_deleted_roi_ids(deleted_ids_by_roi)
+
+    def convex_hull_mask(self, mask: np.ndarray, *, slice_by_slice: bool = True):
+        return core_convex_hull_mask(mask, slice_by_slice=slice_by_slice)
+
+    def count_objects(self, position_data, logger_func):
+        return core_count_objects(position_data, logger_func)
 
     def fill_label_holes(
         self,
@@ -73,18 +108,8 @@ class LabelEditViewModel:
     ) -> LabelHoleFillResult:
         return fill_label_holes(labels_2d, label_id)
 
-    def select_labels_in_region(
-        self,
-        labels: np.ndarray,
-        mask: np.ndarray,
-        *,
-        enclosed_only: bool = False,
-    ) -> LabelRegionSelectionResult:
-        return select_labels_in_region(
-            labels,
-            mask,
-            enclosed_only=enclosed_only,
-        )
+    def format_trimmed_ids(self, ids, *, max_num_digits=10):
+        return get_trimmed_list(list(ids), max_num_digits=max_num_digits)
 
     def index_label_roi(
         self,
@@ -104,6 +129,114 @@ class LabelEditViewModel:
             clear_border=clear_border,
             replace_existing=replace_existing,
         )
+
+    def label_ids_from_labels(self, labels: np.ndarray) -> list[int]:
+        return label_ids_from_labels(labels)
+
+    def label_ids_in_masks(
+        self,
+        labels: np.ndarray,
+        masks,
+        *,
+        additional_labels: np.ndarray | None = None,
+    ) -> set[int]:
+        return label_ids_in_masks(
+            labels,
+            masks,
+            additional_labels=additional_labels,
+        )
+
+    def line_roi_mask(
+        self,
+        shape: tuple[int, ...],
+        point1,
+        point2,
+        *,
+        z_slice=None,
+    ) -> np.ndarray:
+        return line_roi_mask(shape, point1, point2, z_slice=z_slice)
+
+    def move_label_object(
+        self,
+        labels: np.ndarray,
+        object_coords: np.ndarray,
+        label_id: int,
+        *,
+        delta_y: int,
+        delta_x: int,
+        shape: tuple[int, int] | None = None,
+    ) -> LabelMoveResult:
+        return move_label_object(
+            labels,
+            object_coords,
+            label_id,
+            delta_y=delta_y,
+            delta_x=delta_x,
+            shape=shape,
+        )
+
+    def nearest_nonzero_2d(
+        self,
+        labels_2d: np.ndarray,
+        y,
+        x,
+        *,
+        max_dist=None,
+        return_coords: bool = False,
+    ):
+        return nearest_nonzero_2D(
+            labels_2d,
+            y,
+            x,
+            max_dist=max_dist,
+            return_coords=return_coords,
+        )
+
+    def nearest_nonzero_z_from_centroid(self, obj, *, current_z: int = -1):
+        return nearest_nonzero_z_idx_from_z_centroid(obj, current_z=current_z)
+
+    def next_available_label_id(
+        self,
+        id_groups=(),
+        *,
+        manual_edit_info=(),
+        base_id: int = 0,
+    ) -> int:
+        return next_available_label_id(
+            id_groups,
+            manual_edit_info=manual_edit_info,
+            base_id=base_id,
+        )
+
+    def polygon_roi_mask(
+        self,
+        shape: tuple[int, ...],
+        points,
+        *,
+        z_slice=None,
+    ) -> np.ndarray:
+        return polygon_roi_mask(shape, points, z_slice=z_slice)
+
+    def rectangle_roi_mask(
+        self,
+        shape: tuple[int, ...],
+        origin,
+        size,
+        *,
+        z_slice=None,
+    ) -> np.ndarray:
+        return rectangle_roi_mask(shape, origin, size, z_slice=z_slice)
+
+    def remap_id_set(self, ids, old_ids, new_ids) -> set[int]:
+        return remap_id_set(ids, old_ids, new_ids)
+
+    def remove_new_labels(
+        self,
+        labels: np.ndarray,
+        previous_ids,
+        current_ids,
+    ) -> LabelIdsRemovalResult:
+        return remove_new_label_ids(labels, previous_ids, current_ids)
 
     def resize_label_object(
         self,
@@ -126,42 +259,6 @@ class LabelEditViewModel:
             seed_labels=seed_labels,
         )
 
-    def move_label_object(
-        self,
-        labels: np.ndarray,
-        object_coords: np.ndarray,
-        label_id: int,
-        *,
-        delta_y: int,
-        delta_x: int,
-        shape: tuple[int, int] | None = None,
-    ) -> LabelMoveResult:
-        return move_label_object(
-            labels,
-            object_coords,
-            label_id,
-            delta_y=delta_y,
-            delta_x=delta_x,
-            shape=shape,
-        )
-
-    def apply_id_mapping(
-        self,
-        labels: np.ndarray,
-        old_new_pairs,
-        *,
-        existing_ids=None,
-        merge_existing: bool = False,
-        start_max_id: int | None = None,
-    ) -> LabelIdMappingResult:
-        return apply_label_id_mapping(
-            labels,
-            old_new_pairs,
-            existing_ids=existing_ids,
-            merge_existing=merge_existing,
-            start_max_id=start_max_id,
-        )
-
     def restore_deleted_roi_labels(
         self,
         labels_2d: np.ndarray,
@@ -181,83 +278,18 @@ class LabelEditViewModel:
             enforce=enforce,
         )
 
-    def label_ids_in_masks(
+    def select_labels_in_region(
         self,
         labels: np.ndarray,
-        masks,
+        mask: np.ndarray,
         *,
-        additional_labels: np.ndarray | None = None,
-    ) -> set[int]:
-        return label_ids_in_masks(
+        enclosed_only: bool = False,
+    ) -> LabelRegionSelectionResult:
+        return select_labels_in_region(
             labels,
-            masks,
-            additional_labels=additional_labels,
+            mask,
+            enclosed_only=enclosed_only,
         )
-
-    def collect_deleted_roi_ids(self, deleted_ids_by_roi) -> set[int]:
-        return collect_deleted_roi_ids(deleted_ids_by_roi)
-
-    def apply_deleted_roi_masks(
-        self,
-        labels_2d: np.ndarray,
-        roi_masks,
-        deleted_masks,
-        deleted_ids_by_roi,
-    ) -> DeletedRoiApplyResult:
-        return apply_deleted_roi_masks(
-            labels_2d,
-            roi_masks,
-            deleted_masks,
-            deleted_ids_by_roi,
-        )
-
-    def polygon_roi_mask(
-        self,
-        shape: tuple[int, ...],
-        points,
-        *,
-        z_slice=None,
-    ) -> np.ndarray:
-        return polygon_roi_mask(shape, points, z_slice=z_slice)
-
-    def line_roi_mask(
-        self,
-        shape: tuple[int, ...],
-        point1,
-        point2,
-        *,
-        z_slice=None,
-    ) -> np.ndarray:
-        return line_roi_mask(shape, point1, point2, z_slice=z_slice)
-
-    def rectangle_roi_mask(
-        self,
-        shape: tuple[int, ...],
-        origin,
-        size,
-        *,
-        z_slice=None,
-    ) -> np.ndarray:
-        return rectangle_roi_mask(shape, origin, size, z_slice=z_slice)
-
-    def next_available_label_id(
-        self,
-        id_groups=(),
-        *,
-        manual_edit_info=(),
-        base_id: int = 0,
-    ) -> int:
-        return next_available_label_id(
-            id_groups,
-            manual_edit_info=manual_edit_info,
-            base_id=base_id,
-        )
-
-    def label_ids_from_labels(self, labels: np.ndarray) -> list[int]:
-        return label_ids_from_labels(labels)
-
-    def remap_id_set(self, ids, old_ids, new_ids) -> set[int]:
-        return remap_id_set(ids, old_ids, new_ids)
 
     def separate_with_label(
         self,
@@ -275,26 +307,6 @@ class LabelEditViewModel:
             max_id,
             click_coords_list=click_coords_list,
         )
-
-    def nearest_nonzero_2d(
-        self,
-        labels_2d: np.ndarray,
-        y,
-        x,
-        *,
-        max_dist=None,
-        return_coords: bool = False,
-    ):
-        return nearest_nonzero_2D(
-            labels_2d,
-            y,
-            x,
-            max_dist=max_dist,
-            return_coords=return_coords,
-        )
-
-    def nearest_nonzero_z_from_centroid(self, obj, *, current_z: int = -1):
-        return nearest_nonzero_z_idx_from_z_centroid(obj, current_z=current_z)
 
     def split_along_convexity_defects(
         self,
@@ -325,15 +337,3 @@ class LabelEditViewModel:
             rp=regionprops,
             max_ID=max_id,
         )
-
-    def binary_fill_holes(self, mask: np.ndarray, *, slice_by_slice: bool = True):
-        return core_binary_fill_holes(mask, slice_by_slice=slice_by_slice)
-
-    def convex_hull_mask(self, mask: np.ndarray, *, slice_by_slice: bool = True):
-        return core_convex_hull_mask(mask, slice_by_slice=slice_by_slice)
-
-    def count_objects(self, position_data, logger_func):
-        return core_count_objects(position_data, logger_func)
-
-    def format_trimmed_ids(self, ids, *, max_num_digits=10):
-        return get_trimmed_list(list(ids), max_num_digits=max_num_digits)

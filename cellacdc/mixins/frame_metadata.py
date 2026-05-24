@@ -12,7 +12,7 @@ from cellacdc.domain.frame_metadata import (
 from cellacdc.myutils import get_empty_stored_data_dict
 
 
-class FrameMetadataViewModel:
+class FrameMetadataMixin:
     """Application-facing commands for per-frame ACDC metadata tables."""
 
     def build_acdc_frame_metadata(
@@ -22,7 +22,7 @@ class FrameMetadataViewModel:
         edit_id_info=(),
         existing_df: pd.DataFrame | None = None,
         is_3d: bool = False,
-        depth_axis: str = 'z',
+        depth_axis: str = "z",
     ) -> AcdcFrameMetadataResult:
         return build_acdc_frame_metadata(
             regionprops,
@@ -36,8 +36,8 @@ class FrameMetadataViewModel:
         self,
         frame_records,
         *,
-        labels_key: str = 'labels',
-        acdc_key: str = 'acdc_df',
+        labels_key: str = "labels",
+        acdc_key: str = "acdc_df",
     ) -> pd.DataFrame | None:
         return concat_visited_acdc_frames(
             frame_records,

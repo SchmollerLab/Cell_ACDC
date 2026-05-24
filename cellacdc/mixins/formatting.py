@@ -12,11 +12,11 @@ from cellacdc.myutils import (
 )
 
 
-class FormattingViewModel:
+class FormattingMixin:
     """Application-facing commands for display string formatting."""
 
-    def number_fstring_formatter(self, dtype, *, precision=4):
-        return get_number_fstring_formatter(dtype, precision=precision)
+    def bytes_to_gb(self, size_bytes):
+        return _bytes_to_GB(size_bytes)
 
     def channel_name_from_basename(
         self,
@@ -31,15 +31,6 @@ class FormattingViewModel:
             remove_ext=remove_ext,
         )
 
-    def bytes_to_gb(self, size_bytes):
-        return _bytes_to_GB(size_bytes)
-
-    def seconds_to_eta(self, seconds):
-        return seconds_to_ETA(seconds)
-
-    def salute_string(self):
-        return get_salute_string()
-
     def distant_gray(
         self,
         desired_gray,
@@ -53,5 +44,14 @@ class FormattingViewModel:
             threshold=threshold,
         )
 
+    def number_fstring_formatter(self, dtype, *, precision=4):
+        return get_number_fstring_formatter(dtype, precision=precision)
+
     def rgb_to_gray(self, red, green, blue):
         return rgb_to_gray(red, green, blue)
+
+    def salute_string(self):
+        return get_salute_string()
+
+    def seconds_to_eta(self, seconds):
+        return seconds_to_ETA(seconds)

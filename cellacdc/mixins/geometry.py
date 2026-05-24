@@ -8,24 +8,8 @@ from cellacdc.myutils import get_slices_local_into_global_arr, is_in_bounds
 from cellacdc.transformation import crop_2D, snap_xy_to_closest_angle
 
 
-class GeometryViewModel:
+class GeometryMixin:
     """Application-facing commands for geometric interaction transforms."""
-
-    def snap_xy_to_closest_angle(
-        self,
-        x0,
-        y0,
-        x1,
-        y1,
-        angle_factor=15,
-    ):
-        return snap_xy_to_closest_angle(
-            x0,
-            y0,
-            x1,
-            y1,
-            angle_factor=angle_factor,
-        )
 
     def crop_2d(
         self,
@@ -42,48 +26,19 @@ class GeometryViewModel:
             return_copy=return_copy,
         )
 
-    def line_coords(self, y1, x1, y2, x2, *, dashed=True):
-        return get_line(y1, x1, y2, x2, dashed=dashed)
-
-    def is_in_bounds(self, x, y, width, height):
-        return is_in_bounds(x, y, width, height)
-
-    def windows_overlap_from_bounds(
-        self,
-        *,
-        main_left,
-        main_top,
-        main_width,
-        main_height,
-        other_left,
-        other_top,
-    ) -> bool:
-        main_right = main_left + main_width
-        main_bottom = main_top + main_height
-        return (other_top < main_bottom) and (other_left < main_right)
-
-    def should_auto_activate_viewer(
-        self,
-        *,
-        is_data_loaded: bool,
-        windows_overlap: bool,
-        disable_auto_activate: bool,
-    ) -> bool:
-        return (
-            is_data_loaded
-            and not windows_overlap
-            and not disable_auto_activate
-        )
-
-    def is_pan_image_click(
+    def is_configured_middle_click(
         self,
         *,
         mouse_button,
-        left_button,
-        modifiers,
-        alt_modifier,
+        configured_button,
+        key_sequence_is_none: bool,
+        tool_is_checked: bool,
     ) -> bool:
-        return modifiers == alt_modifier and mouse_button == left_button
+        if key_sequence_is_none:
+            is_del_object_active = True
+        else:
+            is_del_object_active = tool_is_checked
+        return mouse_button == configured_button and is_del_object_active
 
     def is_default_middle_click(
         self,
@@ -104,19 +59,24 @@ class GeometryViewModel:
             )
         return mouse_button == middle_button
 
-    def is_configured_middle_click(
+    def is_in_bounds(self, x, y, width, height):
+        return is_in_bounds(x, y, width, height)
+
+    def is_pan_image_click(
         self,
         *,
         mouse_button,
-        configured_button,
-        key_sequence_is_none: bool,
-        tool_is_checked: bool,
+        left_button,
+        modifiers,
+        alt_modifier,
     ) -> bool:
-        if key_sequence_is_none:
-            is_del_object_active = True
-        else:
-            is_del_object_active = tool_is_checked
-        return mouse_button == configured_button and is_del_object_active
+        return modifiers == alt_modifier and mouse_button == left_button
+
+    def line_coords(self, y1, x1, y2, x2, *, dashed=True):
+        return get_line(y1, x1, y2, x2, dashed=dashed)
+
+    def local_to_global_slices(self, bbox_coords, global_shape):
+        return get_slices_local_into_global_arr(bbox_coords, global_shape)
 
     def middle_click_text(
         self,
@@ -127,12 +87,12 @@ class GeometryViewModel:
         key_sequence_text: str | None = None,
     ) -> str:
         if not has_del_object_action and is_mac:
-            return 'Command + Left Click'
+            return "Command + Left Click"
         if not has_del_object_action:
-            return 'Middle Click'
+            return "Middle Click"
         if key_sequence_text is None:
             return button_name
-        return f'{key_sequence_text} + {button_name}'
+        return f"{key_sequence_text} + {button_name}"
 
     def object_contours(
         self,
@@ -170,5 +130,41 @@ class GeometryViewModel:
             restrict_search=restrict_search,
         )
 
-    def local_to_global_slices(self, bbox_coords, global_shape):
-        return get_slices_local_into_global_arr(bbox_coords, global_shape)
+    def should_auto_activate_viewer(
+        self,
+        *,
+        is_data_loaded: bool,
+        windows_overlap: bool,
+        disable_auto_activate: bool,
+    ) -> bool:
+        return is_data_loaded and not windows_overlap and not disable_auto_activate
+
+    def snap_xy_to_closest_angle(
+        self,
+        x0,
+        y0,
+        x1,
+        y1,
+        angle_factor=15,
+    ):
+        return snap_xy_to_closest_angle(
+            x0,
+            y0,
+            x1,
+            y1,
+            angle_factor=angle_factor,
+        )
+
+    def windows_overlap_from_bounds(
+        self,
+        *,
+        main_left,
+        main_top,
+        main_width,
+        main_height,
+        other_left,
+        other_top,
+    ) -> bool:
+        main_right = main_left + main_width
+        main_bottom = main_top + main_height
+        return (other_top < main_bottom) and (other_left < main_right)

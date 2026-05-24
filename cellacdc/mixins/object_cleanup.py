@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import numpy as np
-import numpy as np
 from qtpy.QtCore import QThread
 
 from cellacdc import apps, widgets, workers
 
 
-class ObjectCleanupView:
+class ObjectCleanupMixin:
     """Qt-facing adapter around the object-cleanup view-model."""
 
     """Headless object-cleanup result shaping."""
@@ -19,96 +18,89 @@ class ObjectCleanupView:
             return cleared_segm_data[np.newaxis]
         return cleared_segm_data
 
-    def frame_labels(self, cleared_segm_data):
-        return list(enumerate(cleared_segm_data))
-
-
-    def __init__(self, host):
-        self.host = host
     def delete_objects_outside_mask_action_triggered(self):
-        pos_data = self.host.data[self.host.pos_i]
+        pos_data = self.data[self.pos_i]
         existing_segm_endnames = self.segmentation_roi_endnames(
             basename=pos_data.basename,
             images_path=pos_data.images_path,
         )
         select_segm_win = widgets.QDialogListbox(
-            'Select segmentation file',
-            'Select segmentation file to use as ROI:\n',
+            "Select segmentation file",
+            "Select segmentation file to use as ROI:\n",
             existing_segm_endnames,
             multiSelection=False,
-            parent=self.host,
+            parent=self,
         )
         select_segm_win.exec_()
         if select_segm_win.cancel:
-            self.host.logger.info('Delete objects process cancelled.')
+            self.logger.info("Delete objects process cancelled.")
             return
 
         selected_segm_endname = select_segm_win.selectedItemsText[0]
         self.start_delete_objects_outside_mask_worker(selected_segm_endname)
 
-    def start_delete_objects_outside_mask_worker(self, selected_segm_endname):
-        self.host.store_data(autosave=False)
-        pos_data = self.host.data[self.host.pos_i]
-        segm_data = np.squeeze(self.host.getStoredSegmData())
-
-        self.host.progressWin = apps.QDialogWorkerProgress(
-            title='Deleting objects outside of ROIs',
-            parent=self.host,
-            pbarDesc='Deleting objects outside of ROIs...',
-        )
-        self.host.progressWin.show(self.host.app)
-        self.host.progressWin.mainPbar.setMaximum(0)
-
-        self.host.thread = QThread()
-        self.host.worker = workers.DelObjectsOutsideSegmROIWorker(
-            selected_segm_endname,
-            segm_data,
-            pos_data.images_path,
-        )
-        self.host.worker.moveToThread(self.host.thread)
-        self.host.worker.finished.connect(self.host.thread.quit)
-        self.host.worker.finished.connect(self.host.worker.deleteLater)
-        self.host.thread.finished.connect(self.host.thread.deleteLater)
-
-        self.host.worker.progress.connect(self.host.workerProgress)
-        self.host.worker.critical.connect(self.host.workerCritical)
-        self.host.worker.finished.connect(
-            self.delete_objects_outside_mask_worker_finished
-        )
-        self.host.worker.debug.connect(self.host.workerDebug)
-
-        self.host.thread.started.connect(self.host.worker.run)
-        self.host.thread.start()
-
     def delete_objects_outside_mask_worker_finished(self, result):
-        pos_data = self.host.data[self.host.pos_i]
+        pos_data = self.data[self.pos_i]
         worker, cleared_segm_data, del_ids = result
         cleared_segm_data = self.cleared_segmentation_frames(
             cleared_segm_data,
             size_t=pos_data.SizeT,
         )
 
-        self.host.update_cca_df_deletedIDs(pos_data, del_ids)
+        self.update_cca_df_deletedIDs(pos_data, del_ids)
 
         current_frame_i = pos_data.frame_i
-        for frame_i, cleared_lab in self.frame_labels(
-            cleared_segm_data
-        ):
-            pos_data.allData_li[frame_i]['labels'] = cleared_lab
+        for frame_i, cleared_lab in self.frame_labels(cleared_segm_data):
+            pos_data.allData_li[frame_i]["labels"] = cleared_lab
             pos_data.frame_i = frame_i
-            self.host.get_data()
-            self.host.store_data(autosave=False)
+            self.get_data()
+            self.store_data(autosave=False)
 
         pos_data.frame_i = current_frame_i
-        self.host.get_data()
+        self.get_data()
 
-        if self.host.progressWin is not None:
-            self.host.progressWin.workerFinished = True
-            self.host.progressWin.close()
-            self.host.progressWin = None
-        self.host.logger.info('Deleting objects outside of ROIs finished.')
-        self.host.titleLabel.setText(
-            'Deleting objects outside of ROIs finished.',
-            color='w',
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+        self.logger.info("Deleting objects outside of ROIs finished.")
+        self.titleLabel.setText(
+            "Deleting objects outside of ROIs finished.",
+            color="w",
         )
-        self.host.updateAllImages()
+        self.updateAllImages()
+
+    def frame_labels(self, cleared_segm_data):
+        return list(enumerate(cleared_segm_data))
+
+    def start_delete_objects_outside_mask_worker(self, selected_segm_endname):
+        self.store_data(autosave=False)
+        pos_data = self.data[self.pos_i]
+        segm_data = np.squeeze(self.getStoredSegmData())
+
+        self.progressWin = apps.QDialogWorkerProgress(
+            title="Deleting objects outside of ROIs",
+            parent=self,
+            pbarDesc="Deleting objects outside of ROIs...",
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(0)
+
+        self.thread = QThread()
+        self.worker = workers.DelObjectsOutsideSegmROIWorker(
+            selected_segm_endname,
+            segm_data,
+            pos_data.images_path,
+        )
+        self.worker.moveToThread(self.thread)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        self.worker.progress.connect(self.workerProgress)
+        self.worker.critical.connect(self.workerCritical)
+        self.worker.finished.connect(self.delete_objects_outside_mask_worker_finished)
+        self.worker.debug.connect(self.workerDebug)
+
+        self.thread.started.connect(self.worker.run)
+        self.thread.start()

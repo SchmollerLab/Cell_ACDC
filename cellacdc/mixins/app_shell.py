@@ -10,72 +10,67 @@ from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import QWidget
 
 from cellacdc import (
-    _warnings, base_cca_dict, cca_df_colnames, html_utils,
-    settings_csv_path, widgets,
+    _warnings,
+    base_cca_dict,
+    cca_df_colnames,
+    html_utils,
+    settings_csv_path,
+    widgets,
 )
 from cellacdc.help import about, welcome
 
 
-class AppShellView:
+class AppShellMixin:
     """Qt-facing adapter around application shell lifecycle actions."""
 
     """Headless application shell service wrappers."""
 
-    def read_version(self) -> str:
-        return myutils.read_version()
+    def _set_qwidget_disabled(self, disabled: bool):
+        QWidget.setDisabled(self, disabled)
 
-    def tooltips_from_docs(self) -> dict:
-        return get_tooltips_from_docs()
+    def about(self):
+        pass
 
     def browse_docs(self):
         return myutils.browse_docs()
 
-    def show_in_file_manager(self, path: str):
-        return myutils.showInExplorer(path)
+    def cleanUpOnError(self):
+        self.onEscape()
+        caller = "Cell-ACDC"
+        if self.module.startswith("spotmax"):
+            caller = "spotMAX"
+        txt = f"WARNING: {caller} is in error state. Please, restart."
+        _hl = "*" * 100
+        self.titleLabel.setText(txt, color="r")
+        self.logger.info(f"{_hl}\n{txt}\n{_hl}")
 
-    def rename_qrc_resources_file(self, color_scheme: str):
-        return rename_qrc_resources_file(color_scheme)
+    def copyContent(self):
+        pass
 
+    def cutContent(self):
+        pass
 
-    LEGACY_METHODS = (
-        'initGlobalAttr',
-        'initProfileModels',
-        'setDisabled',
-        'determineSlideshowWinPos',
-        'setTooltips',
-        'setWindowIcon',
-        'setWindowTitle',
-        'onToggleColorScheme',
-        'showAbout',
-        'openLogFile',
-        'showLogFiles',
-        'showInExplorer_cb',
-        'showTipsAndTricks',
-        'openNewWindow',
-        'cleanUpOnError',
-        'copyContent',
-        'pasteContent',
-        'cutContent',
-        'about',
-    )
+    def determineSlideshowWinPos(self):
+        screens = self.app.screens()
+        self.numScreens = len(screens)
+        winScreen = self.screen()
 
-    def __init__(self, host):
-        object.__setattr__(self, 'host', host)
-    def __getattr__(self, name):
-        return getattr(self.host, name)
+        # Center main window and determine location of slideshow window
+        # depending on number of screens available
+        if self.numScreens > 1:
+            for screen in screens:
+                if screen != winScreen:
+                    winScreen = screen
+                    break
 
-    def __setattr__(self, name, value):
-        if name in {'host'}:
-            object.__setattr__(self, name, value)
-        else:
-            setattr(self.host, name, value)
-
-    def bind_legacy_methods(self):
-        for name in self.LEGACY_METHODS:
-            setattr(self.host, name, getattr(self, name))
-
-    def _set_qwidget_disabled(self, disabled: bool):
-        QWidget.setDisabled(self.host, disabled)
+        winScreenGeom = winScreen.geometry()
+        winScreenCenter = winScreenGeom.center()
+        winScreenCenterX = winScreenCenter.x()
+        winScreenCenterY = winScreenCenter.y()
+        winScreenGeom.left()
+        winScreenGeom.top()
+        self.slideshowWinLeft = winScreenCenterX - int(850 / 2)
+        self.slideshowWinTop = winScreenCenterY - int(800 / 2)
 
     def initGlobalAttr(self):
         self.setOverlayColors()
@@ -113,13 +108,13 @@ class AppShellView:
             self.keptIDsLineEdit, self.keepIDsConfirmAction
         )
         self._ZprojWidgersEnabledState = None
-        self.imgValueFormatter = 'd'
-        self.rawValueFormatter = 'd'
+        self.imgValueFormatter = "d"
+        self.rawValueFormatter = "d"
         self.lastHoverID = -1
         self.annotOptionsToRestore = None
         self.annotOptionsToRestoreRight = None
         self.rescaleIntensChannelHowMapper = {
-            self.user_ch_name: 'Rescale each 2D image'
+            self.user_ch_name: "Rescale each 2D image"
         }
         self.timestampDialog = None
         self.scaleBarDialog = None
@@ -160,20 +155,17 @@ class AppShellView:
         self.clickObjYc, self.clickObjXc = None, None
 
         self.cca_df_colnames = cca_df_colnames
-        self.cca_df_dtypes = [
-            str, int, int, str, int, int, bool, bool, int
-        ]
+        self.cca_df_dtypes = [str, int, int, str, int, int, bool, bool, int]
         self.cca_df_default_values = list(base_cca_dict.values())
         self.cca_df_int_cols = [
             col for col in cca_df_colnames if type(base_cca_dict[col]) == int
         ]
         self.lin_tree_df_bool_col = [
-            col for col in cca_df_colnames
-            if isinstance(base_cca_dict[col], bool)
+            col for col in cca_df_colnames if isinstance(base_cca_dict[col], bool)
         ]
 
         self.lin_tree_col_checks = [
-            'generation_num',
+            "generation_num",
         ]
 
         # self.lin_tree_df_colnames = set(base_cca_df.keys()) | set(lineage_tree_cols)
@@ -182,18 +174,18 @@ class AppShellView:
         # # ]
         # self.lin_tree_df_default_values = list(base_cca_df.values()) + lineage_tree_cols_std_val
         self.lin_tree_df_int_cols = [
-            'generation_num',
-            'relative_ID',
-            'emerg_frame_i',
-            'division_frame_i',
-            'corrected_on_frame_i'
+            "generation_num",
+            "relative_ID",
+            "emerg_frame_i",
+            "division_frame_i",
+            "corrected_on_frame_i",
         ]
         self.lin_tree_df_bool_col = [
-            'is_history_known',
+            "is_history_known",
         ]
 
         self.lin_tree_col_checks = [
-            'generation_num',
+            "generation_num",
         ]
 
         self.lin_tree_df_colnames = (
@@ -201,25 +193,94 @@ class AppShellView:
             + self.lin_tree_df_bool_col
             + self.lin_tree_col_checks
         )
-        self.SegForLostIDsSettings =  {}
+        self.SegForLostIDsSettings = {}
 
     def initProfileModels(self):
-        self.logger.info('Initiliazing profilers...')
+        self.logger.info("Initiliazing profilers...")
 
-        from cellacdc._profile.spline_to_obj import model
+        from ._profile.spline_to_obj import model
 
         self.splineToObjModel = model.Model()
 
         self.splineToObjModel.fit()
 
-    def setDisabled(self, disabled:bool, keepDisabled:bool=None, force:bool=False):
+    def onToggleColorScheme(self):
+        if self.toggleColorSchemeAction.text().find("light") != -1:
+            self._colorScheme = "light"
+        else:
+            self._colorScheme = "dark"
+        self.gui_updateSwitchColorSchemeActionText()
+        _warnings.warnRestartCellACDCcolorModeToggled(
+            self._colorScheme, app_name=self._appName, parent=self
+        )
+        load.rename_qrc_resources_file(self._colorScheme)
+        self.statusBarLabel.setText(
+            html_utils.paragraph(
+                f"<i>Restart {self._appName} for the change to take effect</i>",
+                font_color="red",
+            )
+        )
+        self.df_settings.at["colorScheme", "value"] = self._colorScheme
+        self.df_settings.to_csv(settings_csv_path)
+
+    def openLogFile(self):
+        self.logger.info(f'Opening log file "{self.log_path}"...')
+        myutils.showInExplorer(self.log_path)
+
+    def openNewWindow(self):
+        self.logger.info("Opening a new window...")
+        if self.launcherSlot is not None:
+            self.launcherSlot()
+            return
+
+        winClass = self.__class__
+        win = winClass(
+            self.app, parent=self, mainWin=self.mainWin, version=self._version
+        )
+        win.run()
+        self.newWindows.append(win)
+
+    def pasteContent(self):
+        pass
+
+    def read_version(self) -> str:
+        return myutils.read_version()
+
+    def rename_qrc_resources_file(self, color_scheme: str):
+        return rename_qrc_resources_file(color_scheme)
+
+    LEGACY_METHODS = (
+        "initGlobalAttr",
+        "initProfileModels",
+        "setDisabled",
+        "determineSlideshowWinPos",
+        "setTooltips",
+        "setWindowIcon",
+        "setWindowTitle",
+        "onToggleColorScheme",
+        "showAbout",
+        "openLogFile",
+        "showLogFiles",
+        "showInExplorer_cb",
+        "showTipsAndTricks",
+        "openNewWindow",
+        "cleanUpOnError",
+        "copyContent",
+        "pasteContent",
+        "cutContent",
+        "about",
+    )
+
+    def setDisabled(
+        self, disabled: bool, keepDisabled: bool = None, force: bool = False
+    ):
         if force:
             if disabled:
-                self._set_qwidget_disabled(disabled)
+                super().setDisabled(disabled)
                 return
             else:
                 self.keepDisabled = False
-                self._set_qwidget_disabled(disabled)
+                super().setDisabled(disabled)
                 return
 
         if keepDisabled is not None:
@@ -227,53 +288,27 @@ class AppShellView:
 
         if self.keepDisabled:
             if disabled:
-                self._set_qwidget_disabled(disabled)
+                super().setDisabled(disabled)
                 return
             else:
                 return
         else:
-            self._set_qwidget_disabled(disabled)
-
-    def determineSlideshowWinPos(self):
-        screens = self.app.screens()
-        self.numScreens = len(screens)
-        winScreen = self.screen()
-
-        # Center main window and determine location of slideshow window
-        # depending on number of screens available
-        if self.numScreens > 1:
-            for screen in screens:
-                if screen != winScreen:
-                    winScreen = screen
-                    break
-
-        winScreenGeom = winScreen.geometry()
-        winScreenCenter = winScreenGeom.center()
-        winScreenCenterX = winScreenCenter.x()
-        winScreenCenterY = winScreenCenter.y()
-        winScreenLeft = winScreenGeom.left()
-        winScreenTop = winScreenGeom.top()
-        self.slideshowWinLeft = winScreenCenterX - int(850/2)
-        self.slideshowWinTop = winScreenCenterY - int(800/2)
+            super().setDisabled(disabled)
 
     def setTooltips(self):
-        tooltips = self.tooltips_from_docs()
+        tooltips = load.get_tooltips_from_docs()
 
         for key, tooltip in tooltips.items():
             setShortcut = getattr(self, key).shortcut().toString()
-            if 'Shortcut: ' in tooltip:
-                tooltip = tooltip.replace('Shortcut: ', '\nShortcut: ')
+            if "Shortcut: " in tooltip:
+                tooltip = tooltip.replace("Shortcut: ", "\nShortcut: ")
             elif setShortcut != "":
                 tooltip = re.sub(
-                    r'Shortcut: \"(.*)\"',
-                    f"Shortcut: \"{setShortcut}\"",
-                    tooltip
+                    r"Shortcut: \"(.*)\"", f'Shortcut: "{setShortcut}"', tooltip
                 )
             else:
                 tooltip = re.sub(
-                    r'Shortcut: \"(.*)\"',
-                    f"Shortcut: \"No shortcut\"",
-                    tooltip
+                    r"Shortcut: \"(.*)\"", 'Shortcut: "No shortcut"', tooltip
                 )
 
             getattr(self, key).setToolTip(tooltip)
@@ -282,87 +317,34 @@ class AppShellView:
     def setWindowIcon(self, icon=None):
         if icon is None:
             icon = QIcon(":icon.ico")
-        QWidget.setWindowIcon(self.host, icon)
+        super().setWindowIcon(icon)
 
     def setWindowTitle(self, title=None):
         if title is None:
-            title = f'Cell-ACDC v{self._acdc_version} - GUI'
-        QWidget.setWindowTitle(self.host, title)
-
-    def onToggleColorScheme(self):
-        if self.toggleColorSchemeAction.text().find('light') != -1:
-            self._colorScheme = 'light'
-        else:
-            self._colorScheme = 'dark'
-        self.gui_updateSwitchColorSchemeActionText()
-        _warnings.warnRestartCellACDCcolorModeToggled(
-            self._colorScheme, app_name=self._appName, parent=self.host
-        )
-        self.rename_qrc_resources_file(self._colorScheme)
-        self.statusBarLabel.setText(html_utils.paragraph(
-            f'<i>Restart {self._appName} for the change to take effect</i>',
-            font_color='red'
-        ))
-        self.df_settings.at['colorScheme', 'value'] = self._colorScheme
-        self.df_settings.to_csv(settings_csv_path)
+            title = f"Cell-ACDC v{self._acdc_version} - GUI"
+        super().setWindowTitle(title)
 
     def showAbout(self):
-        self.aboutWin = about.QDialogAbout(parent=self.host)
+        self.aboutWin = about.QDialogAbout(parent=self)
         self.aboutWin.show()
-
-    def openLogFile(self):
-        self.logger.info(f'Opening log file "{self.log_path}"...')
-        self.show_in_file_manager(self.log_path)
-
-    def showLogFiles(self):
-        log_files_path = os.path.dirname(self.log_path)
-        self.logger.info(f'Opening log files folder "{log_files_path}"...')
-        self.show_in_file_manager(log_files_path)
 
     def showInExplorer_cb(self):
         posData = self.data[self.pos_i]
         path = posData.images_path
-        self.show_in_file_manager(path)
+        myutils.showInExplorer(path)
+
+    def showLogFiles(self):
+        log_files_path = os.path.dirname(self.log_path)
+        self.logger.info(f'Opening log files folder "{log_files_path}"...')
+        myutils.showInExplorer(log_files_path)
 
     def showTipsAndTricks(self):
         self.welcomeWin = welcome.welcomeWin()
         self.welcomeWin.showAndSetSize()
         self.welcomeWin.showPage(self.welcomeWin.quickStartItem)
 
-    def openNewWindow(self):
-        self.logger.info('Opening a new window...')
-        if self.launcherSlot is not None:
-            self.launcherSlot()
-            return
+    def show_in_file_manager(self, path: str):
+        return myutils.showInExplorer(path)
 
-        winClass = self.__class__
-        win = winClass(
-            self.app,
-            parent=self.host,
-            mainWin=self.mainWin,
-            version=self._version,
-        )
-        win.run()
-        self.newWindows.append(win)
-
-    def cleanUpOnError(self):
-        self.onEscape()
-        caller = 'Cell-ACDC'
-        if self.module.startswith('spotmax'):
-            caller = 'spotMAX'
-        txt = f'WARNING: {caller} is in error state. Please, restart.'
-        _hl = '*'*100
-        self.titleLabel.setText(txt, color='r')
-        self.logger.info(f'{_hl}\n{txt}\n{_hl}')
-
-    def copyContent(self):
-        pass
-
-    def pasteContent(self):
-        pass
-
-    def cutContent(self):
-        pass
-
-    def about(self):
-        pass
+    def tooltips_from_docs(self) -> dict:
+        return get_tooltips_from_docs()

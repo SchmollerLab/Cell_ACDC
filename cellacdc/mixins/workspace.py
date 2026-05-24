@@ -12,8 +12,29 @@ from cellacdc.myutils import (
 )
 
 
-class WorkspaceViewModel:
+class WorkspaceMixin:
     """Application-facing commands for filesystem workspace discovery."""
+
+    def add_recent_path(self, path, *, logger=None):
+        return addToRecentPaths(str(path), logger=logger)
+
+    def determine_folder_type(self, folder_path):
+        is_pos_folder, is_images_folder, folder_path = determine_folder_type(
+            str(folder_path)
+        )
+        return is_pos_folder, bool(is_images_folder), folder_path
+
+    def endnames(self, basename, files):
+        return load.get_endnames(basename, files)
+
+    def listdir(self, path):
+        return listdir(str(path))
+
+    def most_recent_path(self):
+        return getMostRecentPath()
+
+    def path_from_endname(self, end_name, images_path, *, ext=None):
+        return load.get_path_from_endname(end_name, str(images_path), ext=ext)
 
     def position_folder_names(
         self,
@@ -26,26 +47,5 @@ class WorkspaceViewModel:
             check_if_is_sub_folder=check_if_is_sub_folder,
         )
 
-    def listdir(self, path):
-        return listdir(str(path))
-
-    def add_recent_path(self, path, *, logger=None):
-        return addToRecentPaths(str(path), logger=logger)
-
-    def most_recent_path(self):
-        return getMostRecentPath()
-
-    def determine_folder_type(self, folder_path):
-        is_pos_folder, is_images_folder, folder_path = determine_folder_type(
-            str(folder_path)
-        )
-        return is_pos_folder, bool(is_images_folder), folder_path
-
     def segmentation_files(self, images_path):
         return load.get_segm_files(str(images_path))
-
-    def endnames(self, basename, files):
-        return load.get_endnames(basename, files)
-
-    def path_from_endname(self, end_name, images_path, *, ext=None):
-        return load.get_path_from_endname(end_name, str(images_path), ext=ext)

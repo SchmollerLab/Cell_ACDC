@@ -8,212 +8,67 @@ from cellacdc import apps, html_utils, widgets
 
 
 from collections import defaultdict
-class UndoRedoView:
+
+
+class UndoRedoMixin:
     """Qt-facing adapter around undo/redo actions and state restoration."""
 
-    LEGACY_METHODS = (
-        'clearUndoQueue',
-        'askPropagateChangePast',
-        'propagateMergeObjsPast',
-        'propagateChange',
-        'addCcaState',
-        'addCurrentState',
-        'getCurrentState',
-        'storeUndoRedoStates',
-        'storeUndoRedoCca',
-        'undoCustomAnnotation',
-        'UndoCca',
-        'undo',
-        'redo',
-    )
+    # @exec_time
 
-    def __init__(self, host):
-        object.__setattr__(self, 'host', host)
-    def __getattr__(self, name):
-        return getattr(self.host, name)
-
-    def __setattr__(self, name, value):
-        if name in {'host'}:
-            object.__setattr__(self, name, value)
-        else:
-            setattr(self.host, name, value)
-
-    def bind_legacy_methods(self):
-        for name in self.LEGACY_METHODS:
-            setattr(self.host, name, getattr(self, name))
-
-    def clearUndoQueue(self):
+    def UndoCca(self):
         posData = self.data[self.pos_i]
-        self.UndoCount = 0
-        self.redoAction.setEnabled(False)
-        self.undoAction.setEnabled(False)
-        posData.UndoRedoStates = self.empty_frame_stacks(
-            posData.SizeT
-        )
-        posData.UndoRedoCcaStates = self.empty_frame_stacks(
-            posData.SizeT
-        )
-        if hasattr(self, 'undoAddPointQueueMapper'):
-            self.undoAddPointQueueMapper = (
-                self.empty_add_point_queue()
-            )
+        # Undo current ccaState
+        storeState = False
+        if self.UndoCount == 0:
+            undoId = uuid.uuid4()
+            self.addCcaState(posData.frame_i, posData.cca_df, undoId)
+            storeState = True
 
-    def askPropagateChangePast(self, change_txt):
-        txt = html_utils.paragraph(f"""
+        # Get previously stored state
+        self.UndoCount += 1
+        currentCcaStates = posData.UndoRedoCcaStates[posData.frame_i]
+        prevCcaState = currentCcaStates[self.UndoCount]
+        posData.cca_df = prevCcaState["cca_df"]
+        self.store_cca_df()
+        self.updateAllImages()
 
-    """Headless undo/redo stack operations."""
+        # Check if we have undone all states
+        if len(currentCcaStates) > self.UndoCount:
+            # There are no states left to undo for current frame_i
+            self.undoAction.setEnabled(False)
 
-    def empty_frame_stacks(self, size_t: int) -> list[list]:
-        return [[] for _ in range(size_t)]
-
-    def empty_add_point_queue(self):
-        return defaultdict(list)
-
-    def trim_stack(self, states: list, *, max_size: int) -> None:
-        if len(states) > max_size:
-            states.pop(-1)
-
-    def can_undo_labels(self, undo_count: int, states: list) -> bool:
-        return undo_count < len(states) - 1
-
-    def can_redo_labels(self, undo_count: int) -> bool:
-        return undo_count > 0
-
-    def should_disable_undo_after_cca(
-        self,
-        undo_count: int,
-        states: list,
-    ) -> bool:
-        return len(states) > undo_count
-
-            Do you want to propagate the change "{change_txt}" to the past frames?
-        """)
-        msg = widgets.myMessageBox(wrapText=False)
-        yesButton, _ = msg.question(
-            self.host, 'Propagate change to past frames', txt,
-            buttonsTexts=('Yes', 'No')
-        )
-        return msg.clickedButton == yesButton
-
-    def propagateMergeObjsPast(self, IDs_to_merge):
-        self.store_data(autosave=False)
-        posData = self.data[self.pos_i]
-        current_frame_i = posData.frame_i
-        for past_frame_i in range(posData.frame_i-1, -1, -1):
-            posData.frame_i = past_frame_i
-            self.get_data()
-
-            IDs = posData.allData_li[past_frame_i]['IDs']
-            stop_loop = False
-            for ID in IDs_to_merge:
-                if ID not in IDs:
-                    stop_loop = True
+        # Undo all past and future frames that has a last status inserted
+        # when modyfing current frame
+        prevStateId = prevCcaState["id"]
+        for frame_i in range(0, posData.SizeT):
+            if storeState:
+                cca_df_i = self.get_cca_df(frame_i=frame_i, return_df=True)
+                if cca_df_i is None:
                     break
+                # Store current state to enable redoing it
+                self.addCcaState(frame_i, cca_df_i, undoId)
 
-                if ID == 0:
-                    continue
-                posData.lab[posData.lab==ID] = self.firstID
-                self.update_rp()
+            CcaStates_i = posData.UndoRedoCcaStates[frame_i]
+            if len(CcaStates_i) <= self.UndoCount:
+                # There are no states to undo for frame_i
+                continue
 
-                self.store_data(autosave=False)
+            CcaState_i = CcaStates_i[self.UndoCount]
+            id_i = CcaState_i["id"]
+            if id_i != prevStateId:
+                # The id of the state in frame_i is different from current frame
+                continue
 
-            if stop_loop:
-                break
+            cca_df_i = CcaState_i["cca_df"]
+            self.store_cca_df(frame_i=frame_i, cca_df=cca_df_i, autosave=False)
 
-        posData.frame_i = current_frame_i
-        self.get_data()
-
-    def propagateChange(
-            self, modID, modTxt, doNotShow, UndoFutFrames,
-            applyFutFrames, applyTrackingB=False, force=False
-        ):
-        """
-        This function determines whether there are already visited future frames
-        that contains "modID". If so, it triggers a pop-up asking the user
-        what to do (propagate change to future frames o not)
-        """
-        posData = self.data[self.pos_i]
-        # Do not check the future for the last frame
-        if posData.frame_i+1 == posData.SizeT:
-            # No future frames to propagate the change to
-            return False, False, None, doNotShow
-
-        includeUnvisited = posData.includeUnvisitedInfo.get(modTxt, False)
-        future_scan = self.host.view_model.tracking.scan_future_id_propagation(
-            modID,
-            current_frame_i=posData.frame_i,
-            frame_labels=(
-                data_dict['labels'] for data_dict in posData.allData_li
-            ),
-            fallback_frame_labels=posData.segm_data,
-            include_unvisited=includeUnvisited,
-            total_frames=posData.SizeT,
-        )
-        last_tracked_i = future_scan.last_tracked_i
-
-        if last_tracked_i == posData.frame_i and not includeUnvisited:
-            # No future frames to propagate the change to
-            return False, False, None, doNotShow
-
-        if not future_scan.has_affected_future_ids and not force:
-            # There are future frames but they are not affected by the change
-            return UndoFutFrames, False, None, doNotShow
-
-        # Ask what to do unless the user has previously checked doNotShowAgain
-        if doNotShow:
-            endFrame_i = last_tracked_i
-            if applyFutFrames and not UndoFutFrames and modTxt == 'Edit ID':
-                self.whitelistSyncIDsOG(frame_is=range(posData.frame_i, endFrame_i+1))
-            return UndoFutFrames, applyFutFrames, endFrame_i, doNotShow
-        else:
-            addApplyAllButton = (
-                modTxt == 'Delete ID' or modTxt == 'Edit ID'
-                or modTxt == 'Assign new ID'
-            )
-            ffa = apps.FutureFramesAction_QDialog(
-                posData.frame_i+1, last_tracked_i, modTxt,
-                applyTrackingB=applyTrackingB, parent=self.host,
-                addApplyAllButton=addApplyAllButton
-            )
-            ffa.exec_()
-            decision = ffa.decision
-
-            if decision is None:
-                return None, None, None, doNotShow
-
-            endFrame_i = ffa.endFrame_i
-            doNotShowAgain = ffa.doNotShowCheckbox.isChecked()
-            askAction = self.askHowFutureFramesActions[modTxt]
-            askAction.setChecked( not doNotShowAgain)
-            askAction.setDisabled(False)
-
-            self.onlyTracking = False
-            if decision == 'apply_and_reinit':
-                UndoFutFrames = True
-                applyFutFrames = False
-            elif decision == 'apply_and_NOTreinit':
-                UndoFutFrames = False
-                applyFutFrames = False
-            elif decision == 'apply_to_all_visited':
-                UndoFutFrames = False
-                applyFutFrames = True
-            elif decision == 'only_tracking':
-                UndoFutFrames = False
-                applyFutFrames = True
-                self.onlyTracking = True
-            elif decision == 'apply_to_all':
-                UndoFutFrames = False
-                applyFutFrames = True
-                posData.includeUnvisitedInfo[modTxt] = True
-
-            if applyFutFrames and not UndoFutFrames and modTxt == 'Edit ID':
-                self.whitelistSyncIDsOG(frame_is=range(posData.frame_i, endFrame_i+1))
-        return UndoFutFrames, applyFutFrames, endFrame_i, doNotShowAgain
+        self.resetWillDivideInfo()
+        self.enqAutosave()
 
     def addCcaState(self, frame_i, cca_df, undoId):
         posData = self.data[self.pos_i]
         posData.UndoRedoCcaStates[frame_i].insert(
-            0, {'id': undoId, 'cca_df': cca_df.copy()}
+            0, {"id": undoId, "cca_df": cca_df.copy()}
         )
 
     def addCurrentState(self, storeImage=False, storeOnlyZoom=False):
@@ -229,9 +84,8 @@ class UndoRedoView:
             image = None
 
         if storeOnlyZoom:
-            labels, crop_slice = self.host.view_model.geometry.crop_2d(
-                self.currentLab2D, self.ax1.viewRange(), tolerance=10,
-                return_copy=False
+            labels, crop_slice = transformation.crop_2D(
+                self.currentLab2D, self.ax1.viewRange(), tolerance=10, return_copy=False
             )
             if self.isSegm3D:
                 z = self.z_lab(checkIfProj=True)
@@ -250,74 +104,246 @@ class UndoRedoView:
             crop_slice = None
 
         state = {
-            'image': image,
-            'labels': labels,
-            'editID_info': posData.editID_info.copy(),
-            'binnedIDs': posData.binnedIDs.copy(),
-            'keptObejctsIDs': self.keptObjectsIDs.copy(),
-            'ripIDs': posData.ripIDs.copy(),
-            'cca_df': cca_df,
-            'crop_slice': crop_slice
+            "image": image,
+            "labels": labels,
+            "editID_info": posData.editID_info.copy(),
+            "binnedIDs": posData.binnedIDs.copy(),
+            "keptObejctsIDs": self.keptObjectsIDs.copy(),
+            "ripIDs": posData.ripIDs.copy(),
+            "cca_df": cca_df,
+            "crop_slice": crop_slice,
         }
         posData.UndoRedoStates[posData.frame_i].insert(0, state)
 
-        # posData.storedLab = np.array(posData.lab, order='K', copy=True)
-        # self.storeStateWorker.callbackOnDone = callbackOnDone
-        # self.storeStateWorker.enqueue(posData, self.img1.image)
+    def askPropagateChangePast(self, change_txt):
+        txt = html_utils.paragraph(f"""
+            Do you want to propagate the change "{change_txt}" to the past frames?
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        yesButton, _ = msg.question(
+            self, "Propagate change to past frames", txt, buttonsTexts=("Yes", "No")
+        )
+        return msg.clickedButton == yesButton
+
+    def can_redo_labels(self, undo_count: int) -> bool:
+        return undo_count > 0
+
+    def can_undo_labels(self, undo_count: int, states: list) -> bool:
+        return undo_count < len(states) - 1
+
+    def clearUndoQueue(self):
+        posData = self.data[self.pos_i]
+        self.UndoCount = 0
+        self.redoAction.setEnabled(False)
+        self.undoAction.setEnabled(False)
+        posData.UndoRedoStates = [[] for _ in range(posData.SizeT)]
+        posData.UndoRedoCcaStates = [[] for _ in range(posData.SizeT)]
+        if hasattr(self, "undoAddPointQueueMapper"):
+            self.undoAddPointQueueMapper = defaultdict(list)
+
+    def empty_add_point_queue(self):
+        return defaultdict(list)
+
+    def empty_frame_stacks(self, size_t: int) -> list[list]:
+        return [[] for _ in range(size_t)]
 
     def getCurrentState(self):
         posData = self.data[self.pos_i]
         i = posData.frame_i
         c = self.UndoCount
         state = posData.UndoRedoStates[i][c]
-        if state['image'] is None:
+        if state["image"] is None:
             image_left = None
         else:
-            image_left = state['image'].copy()
+            image_left = state["image"].copy()
 
-        crop_slice = state['crop_slice']
+        crop_slice = state["crop_slice"]
         if crop_slice is None:
-            posData.lab = state['labels'].copy()
+            posData.lab = state["labels"].copy()
         elif self.isSegm3D:
             z_slice, slice_y, slice_x = crop_slice
-            posData.lab[..., z_slice, slice_y, slice_x] = state['labels'].copy()
+            posData.lab[..., z_slice, slice_y, slice_x] = state["labels"].copy()
         else:
             slice_y, slice_x = crop_slice
-            posData.lab[..., slice_y, slice_x] = state['labels'].copy()
+            posData.lab[..., slice_y, slice_x] = state["labels"].copy()
 
-        posData.editID_info = state['editID_info'].copy()
-        posData.binnedIDs = state['binnedIDs'].copy()
-        posData.ripIDs = state['ripIDs'].copy()
-        self.keptObjectsIDs = state['keptObejctsIDs'].copy()
-        cca_df = state['cca_df']
+        posData.editID_info = state["editID_info"].copy()
+        posData.binnedIDs = state["binnedIDs"].copy()
+        posData.ripIDs = state["ripIDs"].copy()
+        self.keptObjectsIDs = state["keptObejctsIDs"].copy()
+        cca_df = state["cca_df"]
         if cca_df is not None:
-            posData.cca_df = state['cca_df'].copy()
+            posData.cca_df = state["cca_df"].copy()
         else:
             posData.cca_df = None
         return image_left
 
-    # @exec_time
-    def storeUndoRedoStates(
-            self, UndoFutFrames, storeImage=False, storeOnlyZoom=False
-        ):
+    def propagateChange(
+        self,
+        modID,
+        modTxt,
+        doNotShow,
+        UndoFutFrames,
+        applyFutFrames,
+        applyTrackingB=False,
+        force=False,
+    ):
+        """
+        This function determines whether there are already visited future frames
+        that contains "modID". If so, it triggers a pop-up asking the user
+        what to do (propagate change to future frames o not)
+        """
         posData = self.data[self.pos_i]
-        if UndoFutFrames:
-            # Since we modified current frame all future frames that were already
-            # visited are not valid anymore. Undo changes there
-            self.reInitLastSegmFrame(updateImages=False)
+        # Do not check the future for the last frame
+        if posData.frame_i + 1 == posData.SizeT:
+            # No future frames to propagate the change to
+            return False, False, None, doNotShow
 
-        # Keep only 5 Undo/Redo states
-        self.trim_label_states(
-            posData.UndoRedoStates[posData.frame_i]
-        )
+        includeUnvisited = posData.includeUnvisitedInfo.get(modTxt, False)
+        areFutureIDs_affected = []
+        # Get number of future frames already visited and check if future
+        # frames has an ID affected by the change
+        last_tracked_i_found = False
+        segmSizeT = len(posData.segm_data)
+        for i in range(posData.frame_i + 1, segmSizeT):
+            if posData.allData_li[i]["labels"] is None:
+                if not last_tracked_i_found:
+                    # We set last tracked frame at -1 first None found
+                    last_tracked_i = i - 1
+                    last_tracked_i_found = True
+                if not includeUnvisited:
+                    # Stop at last visited frame since includeUnvisited = False
+                    break
+                else:
+                    lab = posData.segm_data[i]
+            else:
+                lab = posData.allData_li[i]["labels"]
 
-        # Restart count from the most recent state (index 0)
-        # NOTE: index 0 is most recent state before doing last change
-        self.UndoCount = 0
-        self.undoAction.setEnabled(True)
-        self.addCurrentState(
-            storeImage=storeImage, storeOnlyZoom=storeOnlyZoom
-        )
+            if modID in lab:
+                areFutureIDs_affected.append(True)
+
+        if not last_tracked_i_found:
+            # All frames have been visited in segm&track mode
+            last_tracked_i = posData.SizeT - 1
+
+        if last_tracked_i == posData.frame_i and not includeUnvisited:
+            # No future frames to propagate the change to
+            return False, False, None, doNotShow
+
+        if not areFutureIDs_affected and not force:
+            # There are future frames but they are not affected by the change
+            return UndoFutFrames, False, None, doNotShow
+
+        # Ask what to do unless the user has previously checked doNotShowAgain
+        if doNotShow:
+            endFrame_i = last_tracked_i
+            if applyFutFrames and not UndoFutFrames and modTxt == "Edit ID":
+                self.whitelistSyncIDsOG(frame_is=range(posData.frame_i, endFrame_i + 1))
+            return UndoFutFrames, applyFutFrames, endFrame_i, doNotShow
+        else:
+            addApplyAllButton = (
+                modTxt == "Delete ID"
+                or modTxt == "Edit ID"
+                or modTxt == "Assign new ID"
+            )
+            ffa = apps.FutureFramesAction_QDialog(
+                posData.frame_i + 1,
+                last_tracked_i,
+                modTxt,
+                applyTrackingB=applyTrackingB,
+                parent=self,
+                addApplyAllButton=addApplyAllButton,
+            )
+            ffa.exec_()
+            decision = ffa.decision
+
+            if decision is None:
+                return None, None, None, doNotShow
+
+            endFrame_i = ffa.endFrame_i
+            doNotShowAgain = ffa.doNotShowCheckbox.isChecked()
+            askAction = self.askHowFutureFramesActions[modTxt]
+            askAction.setChecked(not doNotShowAgain)
+            askAction.setDisabled(False)
+
+            self.onlyTracking = False
+            if decision == "apply_and_reinit":
+                UndoFutFrames = True
+                applyFutFrames = False
+            elif decision == "apply_and_NOTreinit":
+                UndoFutFrames = False
+                applyFutFrames = False
+            elif decision == "apply_to_all_visited":
+                UndoFutFrames = False
+                applyFutFrames = True
+            elif decision == "only_tracking":
+                UndoFutFrames = False
+                applyFutFrames = True
+                self.onlyTracking = True
+            elif decision == "apply_to_all":
+                UndoFutFrames = False
+                applyFutFrames = True
+                posData.includeUnvisitedInfo[modTxt] = True
+
+            if applyFutFrames and not UndoFutFrames and modTxt == "Edit ID":
+                self.whitelistSyncIDsOG(frame_is=range(posData.frame_i, endFrame_i + 1))
+        return UndoFutFrames, applyFutFrames, endFrame_i, doNotShowAgain
+
+    def propagateMergeObjsPast(self, IDs_to_merge):
+        self.store_data(autosave=False)
+        posData = self.data[self.pos_i]
+        current_frame_i = posData.frame_i
+        for past_frame_i in range(posData.frame_i - 1, -1, -1):
+            posData.frame_i = past_frame_i
+            self.get_data()
+
+            IDs = posData.allData_li[past_frame_i]["IDs"]
+            stop_loop = False
+            for ID in IDs_to_merge:
+                if ID not in IDs:
+                    stop_loop = True
+                    break
+
+                if ID == 0:
+                    continue
+                posData.lab[posData.lab == ID] = self.firstID
+                self.update_rp()
+
+                self.store_data(autosave=False)
+
+            if stop_loop:
+                break
+
+        posData.frame_i = current_frame_i
+        self.get_data()
+
+    def redo(self):
+        self.data[self.pos_i]
+        # Get previously stored state
+        if self.UndoCount > 0:
+            self.UndoCount -= 1
+            # Since we have redone then it is possible to undo
+            self.undoAction.setEnabled(True)
+
+            # Restore state
+            image_left = self.getCurrentState()
+            self.update_rp()
+            self.updateAllImages(image=image_left)
+            self.store_data()
+
+        if not self.UndoCount > 0:
+            # We have redone all available states
+            self.redoAction.setEnabled(False)
+
+        if self.whitelistIDsButton.isChecked():
+            self.whitelistHighlightIDs()
+
+    def should_disable_undo_after_cca(
+        self,
+        undo_count: int,
+        states: list,
+    ) -> bool:
+        return len(states) > undo_count
 
     def storeUndoRedoCca(self, frame_i, cca_df, undoId):
         if self.isSnapshot:
@@ -339,63 +365,29 @@ class UndoRedoView:
         self.addCcaState(frame_i, cca_df, undoId)
 
         # Keep only 10 Undo/Redo states
-        self.trim_cca_states(posData.UndoRedoCcaStates[frame_i])
+        if len(posData.UndoRedoCcaStates[frame_i]) > 10:
+            posData.UndoRedoCcaStates[frame_i].pop(-1)
 
-    def undoCustomAnnotation(self):
-        pass
-
-    def UndoCca(self):
+    def storeUndoRedoStates(self, UndoFutFrames, storeImage=False, storeOnlyZoom=False):
         posData = self.data[self.pos_i]
-        # Undo current ccaState
-        storeState = False
-        if self.UndoCount == 0:
-            undoId = uuid.uuid4()
-            self.addCcaState(posData.frame_i, posData.cca_df, undoId)
-            storeState = True
+        if UndoFutFrames:
+            # Since we modified current frame all future frames that were already
+            # visited are not valid anymore. Undo changes there
+            self.reInitLastSegmFrame(updateImages=False)
 
+        # Keep only 5 Undo/Redo states
+        if len(posData.UndoRedoStates[posData.frame_i]) > 5:
+            posData.UndoRedoStates[posData.frame_i].pop(-1)
 
-        # Get previously stored state
-        self.UndoCount += 1
-        currentCcaStates = posData.UndoRedoCcaStates[posData.frame_i]
-        prevCcaState = currentCcaStates[self.UndoCount]
-        posData.cca_df = prevCcaState['cca_df']
-        self.store_cca_df()
-        self.updateAllImages()
+        # Restart count from the most recent state (index 0)
+        # NOTE: index 0 is most recent state before doing last change
+        self.UndoCount = 0
+        self.undoAction.setEnabled(True)
+        self.addCurrentState(storeImage=storeImage, storeOnlyZoom=storeOnlyZoom)
 
-        # Check if we have undone all states
-        if self.should_disable_undo_after_cca(
-                self.UndoCount, currentCcaStates
-        ):
-            # There are no states left to undo for current frame_i
-            self.undoAction.setEnabled(False)
-
-        # Undo all past and future frames that has a last status inserted
-        # when modyfing current frame
-        prevStateId = prevCcaState['id']
-        for frame_i in range(0, posData.SizeT):
-            if storeState:
-                cca_df_i = self.get_cca_df(frame_i=frame_i, return_df=True)
-                if cca_df_i is None:
-                    break
-                # Store current state to enable redoing it
-                self.addCcaState(frame_i, cca_df_i, undoId)
-
-            CcaStates_i = posData.UndoRedoCcaStates[frame_i]
-            if len(CcaStates_i) <= self.UndoCount:
-                # There are no states to undo for frame_i
-                continue
-
-            CcaState_i = CcaStates_i[self.UndoCount]
-            id_i = CcaState_i['id']
-            if id_i != prevStateId:
-                # The id of the state in frame_i is different from current frame
-                continue
-
-            cca_df_i = CcaState_i['cca_df']
-            self.store_cca_df(frame_i=frame_i, cca_df=cca_df_i, autosave=False)
-
-        self.resetWillDivideInfo()
-        self.enqAutosave()
+    def trim_stack(self, states: list, *, max_size: int) -> None:
+        if len(states) > max_size:
+            states.pop(-1)
 
     def undo(self):
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
@@ -410,10 +402,7 @@ class UndoRedoView:
 
         posData = self.data[self.pos_i]
         # Get previously stored state
-        if self.can_undo_labels(
-                self.UndoCount,
-                posData.UndoRedoStates[posData.frame_i],
-        ):
+        if self.UndoCount < len(posData.UndoRedoStates[posData.frame_i]) - 1:
             self.UndoCount += 1
             # Since we have undone then it is possible to redo
             self.redoAction.setEnabled(True)
@@ -424,33 +413,12 @@ class UndoRedoView:
             self.updateAllImages(image=image_left)
             self.store_data()
 
-        if not self.can_undo_labels(
-                self.UndoCount,
-                posData.UndoRedoStates[posData.frame_i],
-        ):
+        if not self.UndoCount < len(posData.UndoRedoStates[posData.frame_i]) - 1:
             # We have undone all available states
             self.undoAction.setEnabled(False)
 
         if self.whitelistIDsButton.isChecked():
             self.whitelistHighlightIDs()
 
-    def redo(self):
-        posData = self.data[self.pos_i]
-        # Get previously stored state
-        if self.can_redo_labels(self.UndoCount):
-            self.UndoCount -= 1
-            # Since we have redone then it is possible to undo
-            self.undoAction.setEnabled(True)
-
-            # Restore state
-            image_left = self.getCurrentState()
-            self.update_rp()
-            self.updateAllImages(image=image_left)
-            self.store_data()
-
-        if not self.can_redo_labels(self.UndoCount):
-            # We have redone all available states
-            self.redoAction.setEnabled(False)
-
-        if self.whitelistIDsButton.isChecked():
-            self.whitelistHighlightIDs()
+    def undoCustomAnnotation(self):
+        pass
