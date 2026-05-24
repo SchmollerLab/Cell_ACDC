@@ -10,13 +10,39 @@ from qtpy.QtGui import QIcon, QKeySequence
 from qtpy.QtWidgets import QAction, QActionGroup, QToolButton
 
 from cellacdc import apps, is_mac, settings_folderpath, widgets
-from cellacdc.viewmodels.actions_viewmodel import ActionsViewModel
 
 shortcut_filepath = os.path.join(settings_folderpath, 'shortcuts.ini')
 
 
 class ActionsView:
     """Qt-facing adapter around action construction and shortcut editing."""
+
+    """Headless decisions for action and shortcut workflows."""
+
+    keyboard_shortcuts_section = 'keyboard.shortcuts'
+    delete_object_section = 'delete_object.action'
+    delete_key_option = 'Key sequence'
+    delete_button_option = 'Mouse button'
+
+    def default_delete_object_texts(self, *, is_mac: bool) -> tuple[str, str]:
+        if is_mac:
+            return 'Ctrl', 'Left click'
+        return '', 'Middle click'
+
+    def sanitize_key_sequence_text(self, text) -> str:
+        if text is None:
+            return ''
+        return str(text).encode('ascii', 'ignore').decode('utf-8')
+
+    def delete_object_button_text(self, *, is_left_click: bool) -> str:
+        return 'Left click' if is_left_click else 'Middle click'
+
+    def delete_object_button_is_left_click(self, text: str) -> bool:
+        return text == 'Left click'
+
+    def should_restore_default_delete_action(self, *, had_error: bool) -> bool:
+        return had_error
+
 
     LEGACY_METHODS = (
         'gui_createActions',
@@ -28,15 +54,13 @@ class ActionsView:
         'gui_connectEditActions',
     )
 
-    def __init__(self, host, view_model: ActionsViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -139,7 +163,7 @@ class ActionsView:
         self.skipToNewIdAction.setDisabled(True)
 
         # Edit actions
-        models = self.view_model.model_registry.segmentation_models(
+        models = self.model_registry.segmentation_models(
             include_local_seg=True
         )
         self.segmActions = []
@@ -215,14 +239,14 @@ class ActionsView:
         self.trackWithYeazAction.setCheckable(True)
         self.trackingAlgosGroup.addAction(self.trackWithYeazAction)
 
-        rt_trackers = self.view_model.model_registry.real_time_trackers()
+        rt_trackers = self.model_registry.real_time_trackers()
         for rt_tracker in rt_trackers:
             rtTrackerAction = QAction(rt_tracker, self.host)
             rtTrackerAction.setCheckable(True)
             self.trackingAlgosGroup.addAction(rtTrackerAction)
 
         self.trackWithAcdcAction.setChecked(True)
-        aliases = self.view_model.model_registry.real_time_tracker_aliases()
+        aliases = self.model_registry.real_time_tracker_aliases()
 
         if 'tracking_algorithm' in self.df_settings.index:
             trackingAlgo = self.df_settings.at['tracking_algorithm', 'value']
@@ -529,7 +553,7 @@ class ActionsView:
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
         self.UserManualAction.triggered.connect(
-            self.view_model.app_shell.browse_docs
+            self.app_shell.browse_docs
         )
         self.openLogFileAction.triggered.connect(self.openLogFile)
         self.showLogFilesAction.triggered.connect(self.showLogFiles)
@@ -571,8 +595,8 @@ class ActionsView:
         if os.path.exists(shortcut_filepath):
             cp.read(shortcut_filepath)
 
-        shortcuts_section = self.view_model.keyboard_shortcuts_section
-        delete_section = self.view_model.delete_object_section
+        shortcuts_section = self.keyboard_shortcuts_section
+        delete_section = self.delete_object_section
         if shortcuts_section not in cp:
             cp[shortcuts_section] = {}
 
@@ -590,14 +614,14 @@ class ActionsView:
             self.delObjAction = None
         else:
             delObjKeySequenceText = (
-                cp[delete_section][self.view_model.delete_key_option]
+                cp[delete_section][self.delete_key_option]
             )
             delObjButtonText = (
-                cp[delete_section][self.view_model.delete_button_option]
+                cp[delete_section][self.delete_button_option]
             )
             delObjQtButton = (
                 Qt.MouseButton.LeftButton
-                if self.view_model.delete_object_button_is_left_click(
+                if self.delete_object_button_is_left_click(
                     delObjButtonText
                 )
                 else Qt.MouseButton.MiddleButton
@@ -651,8 +675,8 @@ class ActionsView:
         if os.path.exists(shortcut_filepath):
             cp.read(shortcut_filepath)
 
-        shortcuts_section = self.view_model.keyboard_shortcuts_section
-        delete_section = self.view_model.delete_object_section
+        shortcuts_section = self.keyboard_shortcuts_section
+        delete_section = self.delete_object_section
         if shortcuts_section not in cp:
             cp[shortcuts_section] = {}
 
@@ -674,18 +698,18 @@ class ActionsView:
                 delObjKeySequenceText = delObjKeySequence.toString()
 
             delObjKeySequenceText = (
-                self.view_model.sanitize_key_sequence_text(
+                self.sanitize_key_sequence_text(
                     delObjKeySequenceText
                 )
             )
-            delObjButtonText = self.view_model.delete_object_button_text(
+            delObjButtonText = self.delete_object_button_text(
                 is_left_click=(
                     delObjQtButton == Qt.MouseButton.LeftButton
                 )
             )
             cp[delete_section] = {
-                self.view_model.delete_key_option: delObjKeySequenceText,
-                self.view_model.delete_button_option: delObjButtonText
+                self.delete_key_option: delObjKeySequenceText,
+                self.delete_button_option: delObjButtonText
             }
         except Exception as err:
             self.logger.warning(
@@ -700,7 +724,7 @@ class ActionsView:
 
     def editShortcuts_cb(self):
         delObjKeySequenceText, delObjButtonText = (
-            self.view_model.default_delete_object_texts(is_mac=is_mac)
+            self.default_delete_object_texts(is_mac=is_mac)
         )
 
         if self.delObjAction is not None:
@@ -710,11 +734,11 @@ class ActionsView:
             else:
                 delObjKeySequenceText = delObjKeySequence.toString()
             delObjKeySequenceText = (
-                self.view_model.sanitize_key_sequence_text(
+                self.sanitize_key_sequence_text(
                     delObjKeySequenceText
                 )
             )
-            delObjButtonText = self.view_model.delete_object_button_text(
+            delObjButtonText = self.delete_object_button_text(
                 is_left_click=(
                     delObjQtButton == Qt.MouseButton.LeftButton
                 )

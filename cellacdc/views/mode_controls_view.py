@@ -5,28 +5,62 @@ from __future__ import annotations
 from qtpy.QtCore import QTimer
 
 from cellacdc import disableWindow
-from cellacdc.viewmodels.mode_controls_viewmodel import ModeControlsViewModel
 
 
 class ModeControlsView:
     """Qt-facing adapter around mode-control decisions."""
 
-    def __init__(self, host, view_model: ModeControlsViewModel):
-        object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
+    """Headless decisions for mode toolbar and action state."""
 
+    viewer_mode = 'Viewer'
+    segmentation_mode = 'Segmentation and Tracking'
+    snapshot_mode = 'Snapshot'
+    cca_mode = 'Cell cycle analysis'
+    custom_annotations_mode = 'Custom annotations'
+
+    def should_start_blinking(
+        self,
+        mode: str,
+        *,
+        ruler_checked: bool = False,
+    ) -> bool:
+        return mode == self.viewer_mode and not ruler_checked
+
+    def blink_styles(self, flag: bool) -> tuple[str, bool]:
+        if flag:
+            return 'background-color: orange', False
+        return 'background-color: none', True
+
+    def should_store_on_mode_change(self, previous_mode: str) -> bool:
+        return previous_mode != self.viewer_mode
+
+    def is_cca_mode(self, mode: str) -> bool:
+        return mode == self.cca_mode
+
+    def undo_redo_target(self, mode: str) -> str:
+        if mode in {self.segmentation_mode, self.snapshot_mode}:
+            return 'labels'
+        if mode == self.cca_mode:
+            return 'cca'
+        if mode == self.custom_annotations_mode:
+            return 'custom_annotations'
+        return 'disabled'
+
+
+    def __init__(self, host):
+        object.__setattr__(self, 'host', host)
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
 
     def nonViewerEditMenuOpened(self):
         mode = str(self.modeComboBox.currentText())
-        if self.view_model.should_start_blinking(
+        if self.should_start_blinking(
             mode,
             ruler_checked=self.rulerButton.isChecked(),
         ):
@@ -38,7 +72,7 @@ class ModeControlsView:
             self.stopBlinkTimer.stop()
         except Exception as e:
             pass
-        if not self.view_model.should_start_blinking(
+        if not self.should_start_blinking(
             str(self.modeComboBox.currentText()),
             ruler_checked=self.rulerButton.isChecked(),
         ):
@@ -51,7 +85,7 @@ class ModeControlsView:
         self.stopBlinkTimer.start(2000)
 
     def blinkModeComboBox(self):
-        style, next_flag = self.view_model.blink_styles(self.flag)
+        style, next_flag = self.blink_styles(self.flag)
         self.modeComboBox.setStyleSheet(style)
         self.flag = next_flag
 
@@ -91,7 +125,7 @@ class ModeControlsView:
         self.autoSegmAction.setEnabled(enabled)
         self.editToolBar.setVisible(enabled)
         mode = self.modeComboBox.currentText()
-        ccaON = self.view_model.is_cca_mode(mode)
+        ccaON = self.is_cca_mode(mode)
         for action in self.editToolBar.actions():
             button = self.editToolBar.widgetForAction(action)
             # Keep binCellButton active in cca mode
@@ -123,7 +157,7 @@ class ModeControlsView:
         except Exception as e:
             pass
         mode = self.modeComboBox.currentText()
-        target = self.view_model.undo_redo_target(mode)
+        target = self.undo_redo_target(mode)
         if target == 'labels':
             self.undoAction.triggered.connect(self.undo_redo_view.undo)
             self.redoAction.triggered.connect(self.undo_redo_view.redo)
@@ -192,7 +226,7 @@ class ModeControlsView:
         mode = text
         prevMode = self.modeComboBox.previousText()
         self.annotateToolbar.setVisible(False)
-        if self.view_model.should_store_on_mode_change(prevMode):
+        if self.should_store_on_mode_change(prevMode):
             self.store_data(autosave=True)
 
         self.copyLostObjButton.setChecked(False)

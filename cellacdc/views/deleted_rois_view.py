@@ -7,15 +7,49 @@ import uuid
 
 import numpy as np
 import pyqtgraph as pg
+from collections.abc import Iterable
 import skimage.measure
 from qtpy.QtCore import QRect, QRectF, QTimer
 
 from cellacdc import widgets
-from cellacdc.viewmodels.deleted_rois_viewmodel import DeletedRoisViewModel
 
 
 class DeletedRoisView:
     """Qt-facing adapter around deleted-ROI workflows."""
+
+    """Headless decisions for deleted-ROI display and propagation."""
+
+    def roi_axis(
+        self,
+        *,
+        is_polyline: bool,
+        labels_image_visible: bool,
+    ) -> str:
+        if is_polyline or not labels_image_visible:
+            return 'left'
+        return 'right'
+
+    def should_render_deleted_roi(self, annotation_mode: str) -> bool:
+        return 'nothing' not in annotation_mode
+
+    def should_render_deleted_roi_contours(self, annotation_mode: str) -> bool:
+        return 'contours' in annotation_mode
+
+    def should_render_deleted_roi_overlay(self, annotation_mode: str) -> bool:
+        return 'overlay segm. masks' in annotation_mode
+
+    def should_initialize_overlay_masks(
+        self,
+        init: bool,
+        annotation_mode: str,
+    ) -> bool:
+        return init and not self.should_render_deleted_roi_contours(
+            annotation_mode
+        )
+
+    def labels_to_skip(self, deleted_ids: Iterable[int]) -> dict[int, bool]:
+        return {deleted_id: True for deleted_id in deleted_ids}
+
 
     LEGACY_METHODS = (
         'removeAlldelROIsCurrentFrame',
@@ -47,15 +81,13 @@ class DeletedRoisView:
         'addExistingDelROIs',
     )
 
-    def __init__(self, host, view_model: DeletedRoisViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -126,7 +158,7 @@ class DeletedRoisView:
             delROIs_info['delIDsROI'].pop(idx)
             delROIs_info['state'].pop(idx)
 
-        target_axis = self.view_model.roi_axis(
+        target_axis = self.roi_axis(
             is_polyline=isinstance(self.roi_to_del, pg.PolyLineROI),
             labels_image_visible=self.labelsGrad.showLabelsImgAction.isChecked(),
         )
@@ -187,7 +219,7 @@ class DeletedRoisView:
     def addDelROI(self, event):
         roi, key = self.createDelROI()
         self.addRoiToDelRoiInfo(roi)
-        target_axis = self.view_model.roi_axis(
+        target_axis = self.roi_axis(
             is_polyline=False,
             labels_image_visible=self.labelsGrad.showLabelsImgAction.isChecked(),
         )
@@ -376,15 +408,15 @@ class DeletedRoisView:
         else:
             how = self.getAnnotateHowRightImage()
 
-        if not self.view_model.should_render_deleted_roi(how):
+        if not self.should_render_deleted_roi(how):
             return
 
-        if self.view_model.should_render_deleted_roi_contours(how):
+        if self.should_render_deleted_roi_contours(how):
             rp_delmask = skimage.measure.regionprops(delMaskID.astype(np.uint8))
             if len(rp_delmask) > 0:
                 obj = rp_delmask[0]
                 self.addObjContourToContoursImage(obj=obj, ax=ax)
-        elif self.view_model.should_render_deleted_roi_overlay(how):
+        elif self.should_render_deleted_roi_overlay(how):
             if ax == 0:
                 self.labelsLayerImg1.setImage(
                     self.currentLab2D, autoLevels=False
@@ -538,7 +570,7 @@ class DeletedRoisView:
         if ax == 1 and not self.labelsGrad.showRightImgAction.isChecked():
             return
 
-        if self.view_model.should_initialize_overlay_masks(init, how):
+        if self.should_initialize_overlay_masks(init, how):
             self.setOverlaySegmMasks(force=True)
             return
 
@@ -554,15 +586,15 @@ class DeletedRoisView:
             return
         delIDs = delROIs_info['delIDsROI'][idx]
         delMask = delROIs_info['delMasks'][idx]
-        if not self.view_model.should_render_deleted_roi(how):
+        if not self.should_render_deleted_roi(how):
             return
-        elif self.view_model.should_render_deleted_roi_contours(how):
+        elif self.should_render_deleted_roi_contours(how):
             self.updateContoursImage(ax=ax)
 
         if not delIDs:
             return
 
-        if self.view_model.should_render_deleted_roi_overlay(how):
+        if self.should_render_deleted_roi_overlay(how):
             lab = self.currentLab2D.copy()
             lab[delMask > 0] = 0
             if ax == 0:
@@ -571,7 +603,7 @@ class DeletedRoisView:
                 self.labelsLayerRightImg.setImage(lab, autoLevels=False)
 
         self.setAllTextAnnotations(
-            labelsToSkip=self.view_model.labels_to_skip(delIDs)
+            labelsToSkip=self.labels_to_skip(delIDs)
         )
 
     def applyDelROIs(self):
@@ -611,7 +643,7 @@ class DeletedRoisView:
         posData = self.data[self.pos_i]
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         for r, roi in enumerate(delROIs_info['rois']):
-            target_axis = self.view_model.roi_axis(
+            target_axis = self.roi_axis(
                 is_polyline=isinstance(roi, pg.PolyLineROI),
                 labels_image_visible=(
                     self.labelsGrad.showLabelsImgAction.isChecked()

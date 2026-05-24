@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
+import numpy as np
 import skimage.segmentation
 
 from qtpy.QtCore import Qt, QTimer
@@ -11,25 +12,57 @@ from qtpy.QtGui import QGuiApplication, QMouseEvent
 from qtpy.QtWidgets import QAction, QMessageBox
 
 from cellacdc import apps, exception_handler
-from cellacdc.viewmodels.canvas_events_viewmodel import CanvasEventsViewModel
 
 
 class CanvasEventsView:
     """Qt-facing adapter for canvas mouse event routing."""
 
+    """Headless canvas event routing rules and brush mask computations."""
+
+    def calculate_brush_mask(
+        self,
+        image_shape: tuple[int, int],
+        ymin: int,
+        xmin: int,
+        ymax: int,
+        xmax: int,
+        disk_mask: np.ndarray,
+        rr_poly: np.ndarray | None = None,
+        cc_poly: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Computes a 2D boolean mask for brush/eraser updates."""
+        mask = np.zeros(image_shape, dtype=bool)
+        disk_slice = (slice(ymin, ymax), slice(xmin, xmax))
+        mask[disk_slice][disk_mask] = True
+        if rr_poly is not None and cc_poly is not None:
+            mask[rr_poly, cc_poly] = True
+        return mask
+
+    def map_mouse_coordinates_to_label_id(
+        self,
+        mouse_pos: tuple[float, float],
+        label_matrix: np.ndarray,
+    ) -> int:
+        """Resolves float pixel coordinate lookup to integer label ID."""
+        x, y = mouse_pos
+        xdata, ydata = int(x), int(y)
+        height, width = label_matrix.shape
+        if 0 <= xdata < width and 0 <= ydata < height:
+            return int(label_matrix[ydata, xdata])
+        return 0
+
+
     LEGACY_METHODS = (
         'gui_mousePressEventImg1',
     )
 
-    def __init__(self, host, view_model: CanvasEventsViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -322,8 +355,8 @@ class CanvasEventsView:
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
         Y, X = self.get_2Dlab(posData.lab).shape
-        if self.view_model.geometry.is_in_bounds(xdata, ydata, X, Y):
-            ID = self.view_model.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
+        if self.geometry.is_in_bounds(xdata, ydata, X, Y):
+            ID = self.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
         else:
             return
 
@@ -488,7 +521,7 @@ class CanvasEventsView:
                 xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
                 x0, y0 = xxRA[0], yyRA[0]
                 if ctrl:
-                    x1, y1 = self.view_model.snap_xy_to_closest_angle(
+                    x1, y1 = self.snap_xy_to_closest_angle(
                         x0, y0, xdata, ydata
                     )
                 else:
@@ -529,9 +562,9 @@ class CanvasEventsView:
         elif left_click and canKeep:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = self.view_model.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
+            ID = self.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 keepID_win = apps.QLineEditDialog(
@@ -560,10 +593,10 @@ class CanvasEventsView:
         elif left_click and canWhitelistIDs:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = self.view_model.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
+            ID = self.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
 
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 keepID_win = apps.QLineEditDialog(
@@ -683,7 +716,7 @@ class CanvasEventsView:
             self.storeUndoRedoStates(False)
 
             self.isNewID = False
-            posData.brushID = self.view_model.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
+            posData.brushID = self.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
             if posData.brushID == 0:
                 self.setBrushID()
                 self.updateLookuptable(
@@ -712,14 +745,14 @@ class CanvasEventsView:
 
             if self.wandControlsToolbar.autoFillHolesCheckbox.isChecked():
                 self.flood_mask = (
-                    self.view_model.binary_fill_holes(
+                    self.binary_fill_holes(
                         self.flood_mask
                     )
                 )
 
             if self.wandControlsToolbar.useConvexHullCheckbox.isChecked():
                 self.flood_mask = (
-                    self.view_model.convex_hull_mask(
+                    self.convex_hull_mask(
                         self.flood_mask
                     )
                 )
@@ -770,7 +803,7 @@ class CanvasEventsView:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
 
-            delID = self.view_model.map_mouse_coordinates_to_label_id((x, y), posData.manualBackgroundLab)
+            delID = self.map_mouse_coordinates_to_label_id((x, y), posData.manualBackgroundLab)
             if delID == 0:
                 return
 
@@ -809,9 +842,9 @@ class CanvasEventsView:
 
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = self.view_model.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
+            ID = self.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 divID_prompt = apps.QLineEditDialog(
@@ -852,9 +885,9 @@ class CanvasEventsView:
 
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = self.view_model.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
+            ID = self.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 budID_prompt = apps.QLineEditDialog(
@@ -900,9 +933,9 @@ class CanvasEventsView:
 
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = self.view_model.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
+            ID = self.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 unknownID_prompt = apps.QLineEditDialog(
@@ -930,9 +963,9 @@ class CanvasEventsView:
         elif isCustomAnnot:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = self.view_model.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
+            ID = self.map_mouse_coordinates_to_label_id((x, y), self.get_2Dlab(posData.lab))
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 clickedBkgrDialog = apps.QLineEditDialog(

@@ -13,28 +13,88 @@ from qtpy.QtGui import QGuiApplication
 from qtpy.QtWidgets import QAction, QGraphicsSceneMouseEvent
 
 from cellacdc import apps, exception_handler
-from cellacdc.viewmodels.canvas_selection_viewmodel import (
-    CanvasSelectionViewModel,
-)
 
 
 class CanvasSelectionView:
     """Qt-facing adapter for canvas selection workflows."""
+
+    """Headless decisions for canvas selection workflows."""
+
+    viewer_mode = 'Viewer'
+    segmentation_mode = 'Segmentation and Tracking'
+
+    def should_drag_image(
+        self,
+        *,
+        left_click: bool,
+        eraser_on: bool,
+        brush_on: bool,
+        middle_click: bool,
+        pan_click: bool,
+    ) -> bool:
+        return pan_click or (
+            left_click and not eraser_on and not brush_on and not middle_click
+        )
+
+    def should_blink_viewer_mode(
+        self,
+        *,
+        mode: str,
+        middle_click: bool,
+        right_action_on: bool = False,
+        custom_action_on: bool = False,
+        right_click: bool = False,
+    ) -> bool:
+        if mode != self.viewer_mode:
+            return False
+        if middle_click:
+            return True
+        return (right_action_on or custom_action_on) and (
+            right_click or middle_click
+        )
+
+    def should_show_labels_menu(
+        self,
+        *,
+        right_click: bool,
+        right_action_on: bool,
+        middle_click: bool,
+        event_from_img1: bool,
+    ) -> bool:
+        return (
+            right_click
+            and not right_action_on
+            and not middle_click
+            and not event_from_img1
+        )
+
+    def can_delete(self, *, mode: str, is_snapshot: bool) -> bool:
+        return mode == self.segmentation_mode or is_snapshot
+
+    def is_viewer_mode(self, mode: str) -> bool:
+        return mode == self.viewer_mode
+
+    def should_process_release(
+        self,
+        *,
+        mode: str,
+        in_bounds: bool,
+    ) -> bool:
+        return mode != self.viewer_mode and in_bounds
+
 
     LEGACY_METHODS = (
         'gui_mousePressEventImg2',
         'gui_mouseReleaseEventImg2',
     )
 
-    def __init__(self, host, view_model: CanvasSelectionViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -64,7 +124,7 @@ class CanvasSelectionView:
         self.typingEditID = False
 
         # Drag image if neither brush or eraser are On pressed
-        dragImg = self.view_model.should_drag_image(
+        dragImg = self.should_drag_image(
             left_click=left_click,
             eraser_on=eraserON,
             brush_on=brushON,
@@ -78,7 +138,7 @@ class CanvasSelectionView:
             event.ignore()
             return
 
-        if self.view_model.should_blink_viewer_mode(
+        if self.should_blink_viewer_mode(
             mode=mode,
             middle_click=middle_click,
         ):
@@ -119,7 +179,7 @@ class CanvasSelectionView:
             right_click and not is_right_click_action_ON and not middle_click
         )
 
-        showLabelsGradMenu = self.view_model.should_show_labels_menu(
+        showLabelsGradMenu = self.should_show_labels_menu(
             right_click=right_click,
             right_action_on=is_right_click_action_ON,
             middle_click=middle_click,
@@ -131,7 +191,7 @@ class CanvasSelectionView:
             event.ignore()
             return
 
-        editInViewerMode = self.view_model.should_blink_viewer_mode(
+        editInViewerMode = self.should_blink_viewer_mode(
             mode=mode,
             middle_click=middle_click,
             right_action_on=is_right_click_action_ON,
@@ -149,7 +209,7 @@ class CanvasSelectionView:
         # Brush and eraser are mutually exclusive but we want to keep the eraser
         # or brush ON and disable them temporarily to allow left-click with
         # separate ON
-        canDelete = self.view_model.can_delete(
+        canDelete = self.can_delete(
             mode=mode,
             is_snapshot=self.isSnapshot,
         )
@@ -161,7 +221,7 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             delID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if delID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 delID_prompt = apps.QLineEditDialog(
@@ -235,7 +295,7 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x)
                 sepID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -260,7 +320,7 @@ class CanvasSelectionView:
             if self.isSegm3D and not shift:
                 z = self.zSliceScrollBar.sliderPosition()
                 posData.lab, splittedIDs = (
-                    self.view_model.separate_with_label(
+                    self.separate_with_label(
                         posData.lab, posData.rp, [ID], max_ID,
                         click_coords_list=[(z, ydata, xdata)]
                     )
@@ -268,7 +328,7 @@ class CanvasSelectionView:
                 success = True
                 # self.set_2Dlab(lab2D)
             elif not shift:
-                result = self.view_model.split_along_convexity_defects(
+                result = self.split_along_convexity_defects(
                     ID, self.get_2Dlab(posData.lab), max_ID
                 )
                 lab2D, success, splittedIDs = result
@@ -333,7 +393,7 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 clickedBkgrID = apps.QLineEditDialog(
@@ -372,7 +432,7 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 mergeID_prompt = apps.QLineEditDialog(
@@ -419,7 +479,7 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 clickedBkgrID = apps.QLineEditDialog(
@@ -443,7 +503,7 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 mergeID_prompt = apps.QLineEditDialog(
@@ -478,7 +538,7 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 editID_prompt = apps.QLineEditDialog(
@@ -543,7 +603,7 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 keepID_win = apps.QLineEditDialog(
@@ -575,7 +635,7 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 binID_prompt = apps.QLineEditDialog(
@@ -656,7 +716,7 @@ class CanvasSelectionView:
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 ripID_prompt = apps.QLineEditDialog(
@@ -750,11 +810,11 @@ class CanvasSelectionView:
             return
 
         xdata, ydata = int(x), int(y)
-        in_bounds = self.view_model.is_in_bounds(xdata, ydata, X, Y)
-        if self.view_model.is_viewer_mode(mode):
+        in_bounds = self.is_in_bounds(xdata, ydata, X, Y)
+        if self.is_viewer_mode(mode):
             return
 
-        should_process = self.view_model.should_process_release(
+        should_process = self.should_process_release(
             mode=mode,
             in_bounds=in_bounds,
         )
@@ -785,7 +845,7 @@ class CanvasSelectionView:
             lab2D = self.get_2Dlab(posData.lab)
             ID = lab2D[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     lab2D, y, x
                 )
                 mergeID_prompt = apps.QLineEditDialog(

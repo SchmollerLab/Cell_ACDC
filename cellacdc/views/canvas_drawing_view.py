@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import numpy as np
 import skimage.segmentation
 
 from qtpy.QtCore import Qt
@@ -10,13 +11,46 @@ from qtpy.QtGui import QGuiApplication
 from qtpy.QtWidgets import QAction, QMessageBox
 
 from cellacdc import apps, exception_handler, html_utils, widgets
-from cellacdc.viewmodels.canvas_drawing_viewmodel import (
-    CanvasDrawingViewModel,
-)
 
 
 class CanvasDrawingView:
     """Qt-facing adapter for canvas drawing workflows."""
+
+    """Headless decisions for canvas drawing workflows."""
+
+    viewer_mode = 'Viewer'
+
+    def should_process_canvas_event(
+        self,
+        *,
+        mode: str,
+        in_bounds: bool,
+    ) -> bool:
+        return mode != self.viewer_mode and in_bounds
+
+    def should_clear_after_out_of_bounds(self, *, image: str) -> bool:
+        return image == 'img1'
+
+    def calculate_brush_mask(
+        self,
+        image_shape: tuple[int, int],
+        ymin: int,
+        xmin: int,
+        ymax: int,
+        xmax: int,
+        disk_mask: np.ndarray,
+        rr_poly: np.ndarray | None = None,
+        cc_poly: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Computes a 2D boolean mask for brush/eraser updates."""
+        mask = np.zeros(image_shape, dtype=bool)
+        disk_slice = (slice(ymin, ymax), slice(xmin, xmax))
+        mask[disk_slice][disk_mask] = True
+        if rr_poly is not None and cc_poly is not None:
+            mask[rr_poly, cc_poly] = True
+        return mask
+
+
 
     LEGACY_METHODS = (
         'gui_addCreatedAxesItems',
@@ -25,15 +59,13 @@ class CanvasDrawingView:
         'gui_mouseReleaseEventImg1',
     )
 
-    def __init__(self, host, view_model: CanvasDrawingViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -90,8 +122,8 @@ class CanvasDrawingView:
         posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab).shape
         xdata, ydata = int(x), int(y)
-        in_bounds = self.view_model.is_in_bounds(xdata, ydata, X, Y)
-        if not self.view_model.should_process_canvas_event(
+        in_bounds = self.is_in_bounds(xdata, ydata, X, Y)
+        if not self.should_process_canvas_event(
             mode=mode,
             in_bounds=in_bounds,
         ):
@@ -119,7 +151,7 @@ class CanvasDrawingView:
             diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
 
             # Build brush mask
-            mask = self.view_model.calculate_brush_mask(
+            mask = self.calculate_brush_mask(
                 lab_2D.shape, ymin, xmin, ymax, xmax, diskMask, rrPoly, ccPoly
             )
 
@@ -179,7 +211,7 @@ class CanvasDrawingView:
             diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
 
             # Build eraser mask
-            mask = self.view_model.calculate_brush_mask(
+            mask = self.calculate_brush_mask(
                 lab_2D.shape, ymin, xmin, ymax, xmax, diskMask, rrPoly, ccPoly
             )
 
@@ -232,12 +264,12 @@ class CanvasDrawingView:
             self.flood_mask[flood_mask] = True
 
             if self.wandControlsToolbar.autoFillHolesCheckbox.isChecked():
-                self.flood_mask = self.view_model.binary_fill_holes(
+                self.flood_mask = self.binary_fill_holes(
                     self.flood_mask
                 )
 
             if self.wandControlsToolbar.useConvexHullCheckbox.isChecked():
-                self.flood_mask = self.view_model.convex_hull_mask(
+                self.flood_mask = self.convex_hull_mask(
                     self.flood_mask
                 )
 
@@ -270,8 +302,8 @@ class CanvasDrawingView:
         Y, X = self.get_2Dlab(posData.lab).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
-        in_bounds = self.view_model.is_in_bounds(xdata, ydata, X, Y)
-        if not self.view_model.should_process_canvas_event(
+        in_bounds = self.is_in_bounds(xdata, ydata, X, Y)
+        if not self.should_process_canvas_event(
             mode=mode,
             in_bounds=in_bounds,
         ):
@@ -295,7 +327,7 @@ class CanvasDrawingView:
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
             # Build eraser mask
-            mask = self.view_model.calculate_brush_mask(
+            mask = self.calculate_brush_mask(
                 lab_2D.shape, ymin, xmin, ymax, xmax, diskMask, rrPoly, ccPoly
             )
 
@@ -327,7 +359,7 @@ class CanvasDrawingView:
             )
 
             # Build brush mask
-            mask = self.view_model.calculate_brush_mask(
+            mask = self.calculate_brush_mask(
                 lab_2D.shape, ymin, xmin, ymax, xmax, diskMask, rrPoly, ccPoly
             )
 
@@ -360,7 +392,7 @@ class CanvasDrawingView:
 
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
-        if self.view_model.is_viewer_mode(mode):
+        if self.is_viewer_mode(mode):
             return
 
         if self._dispatch_tool_event_if_enabled(event, phase='release', image='img1'):
@@ -369,12 +401,12 @@ class CanvasDrawingView:
         Y, X = self.get_2Dlab(posData.lab).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
-        in_bounds = self.view_model.is_in_bounds(xdata, ydata, X, Y)
-        if not self.view_model.should_process_canvas_event(
+        in_bounds = self.is_in_bounds(xdata, ydata, X, Y)
+        if not self.should_process_canvas_event(
             mode=mode,
             in_bounds=in_bounds,
         ):
-            if self.view_model.should_clear_after_out_of_bounds(image='img1'):
+            if self.should_clear_after_out_of_bounds(image='img1'):
                 self.isMouseDragImg2 = False
                 self.updateAllImages()
             return
@@ -554,7 +586,7 @@ class CanvasDrawingView:
                 return
 
             if ID == 0:
-                nearest_ID = self.view_model.nearest_nonzero_2d(
+                nearest_ID = self.nearest_nonzero_2d(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 mothID_prompt = apps.QLineEditDialog(

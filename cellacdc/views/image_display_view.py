@@ -6,6 +6,8 @@ from functools import partial
 
 import numpy as np
 import pyqtgraph as pg
+from dataclasses import dataclass
+from typing import Literal
 import skimage.exposure
 import skimage.measure
 from qtpy.QtCore import QTimer
@@ -20,11 +22,59 @@ from cellacdc import (
     myutils,
     settings_csv_path,
 )
-from cellacdc.viewmodels.image_display_viewmodel import ImageDisplayViewModel
 
 
 class ImageDisplayView:
     """Qt-facing adapter for image display, LUT, and cursor workflows."""
+
+    """Headless display settings and image-display rules."""
+
+    def right_pane_visibility_plan(
+        self,
+        mode: RightPaneMode,
+        checked: bool,
+    ) -> RightPaneVisibilityPlan:
+        settings_updates = {
+            'isNextFrameVisible': 'No',
+            'isRightImageVisible': 'No',
+            'isLabelsVisible': 'No',
+        }
+        if checked:
+            setting_key = {
+                'next_frame': 'isNextFrameVisible',
+                'right_image': 'isRightImageVisible',
+                'labels': 'isLabelsVisible',
+            }[mode]
+            settings_updates[setting_key] = 'Yes'
+
+        return RightPaneVisibilityPlan(
+            mode=mode,
+            checked=checked,
+            settings_updates=settings_updates,
+        )
+
+    def invert_bw_setting_value(self, checked: bool) -> str:
+        return 'Yes' if checked else 'No'
+
+    def labels_alpha_plan(
+        self,
+        value: float,
+        *,
+        keep_ids_checked: bool,
+    ) -> LabelsAlphaPlan:
+        opacity = value / 3 if keep_ids_checked else value
+        return LabelsAlphaPlan(setting_value=value, opacity=opacity)
+
+    def intensity_normalization_setting_value(self, how: str) -> str:
+        return how
+
+    def rescale_intensity_setting_update(
+        self,
+        channel: str,
+        how: str,
+    ) -> tuple[str, str]:
+        return f'how_rescale_intensities_{channel}', how
+
 
     LEGACY_METHODS = (
         'getDisplayedImg1',
@@ -107,15 +157,13 @@ class ImageDisplayView:
         'resetRange',
     )
 
-    def __init__(self, host, view_model: ImageDisplayViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -316,7 +364,7 @@ class ImageDisplayView:
         for pos_i, _posData in enumerate(self.data):
             n_dim_img = _posData.img_data.ndim
             _posData.equalized_img_data = (
-                self.view_model.preprocessing.create_preprocessed_data()
+                self.preprocessing.create_preprocessed_data()
             )
             for frame_i, img_frame in enumerate(_posData.img_data):
                 if n_dim_img == 4:
@@ -339,10 +387,10 @@ class ImageDisplayView:
         self.updateAllImages()
 
     def getDistantGray(self, desiredGray, bkgrGray):
-        return self.view_model.formatting.distant_gray(desiredGray, bkgrGray)
+        return self.formatting.distant_gray(desiredGray, bkgrGray)
 
     def RGBtoGray(self, R, G, B):
-        return self.view_model.formatting.rgb_to_gray(R, G, B)
+        return self.formatting.rgb_to_gray(R, G, B)
 
     def ruler_cb(self, checked):
         if checked:
@@ -393,7 +441,7 @@ class ImageDisplayView:
                 pass
 
     def showNextFrameImageItem(self, checked):
-        plan = self.view_model.right_pane_visibility_plan(
+        plan = self.right_pane_visibility_plan(
             'next_frame', checked
         )
         self.rightImageFramesScrollbar.setVisible(checked)
@@ -426,7 +474,7 @@ class ImageDisplayView:
         self.setBottomLayoutStretch()
 
     def showRightImageItem(self, checked):
-        plan = self.view_model.right_pane_visibility_plan(
+        plan = self.right_pane_visibility_plan(
             'right_image', checked
         )
         self.rightImageFramesScrollbar.setVisible(not checked)
@@ -457,7 +505,7 @@ class ImageDisplayView:
         self.setBottomLayoutStretch()
 
     def showLabelImageItem(self, checked):
-        plan = self.view_model.right_pane_visibility_plan('labels', checked)
+        plan = self.right_pane_visibility_plan('labels', checked)
         self.rightImageFramesScrollbar.setVisible(not checked)
         self.rightImageFramesScrollbar.setDisabled(checked)
         self.setTwoImagesLayout(checked)
@@ -543,7 +591,7 @@ class ImageDisplayView:
         if not normalize:
             return img
 
-        return self.view_model.preprocessing.normalize_display_image(img, how)
+        return self.preprocessing.normalize_display_image(img, how)
 
     def invertBw(self, checked, update=True):
         self.invertBwAlreadyCalledOnce = True
@@ -581,7 +629,7 @@ class ImageDisplayView:
             self.slideshowWin.is_bw_inverted = checked
             self.slideshowWin.update_img()
         self.df_settings.at['is_bw_inverted', 'value'] = (
-            self.view_model.invert_bw_setting_value(checked)
+            self.invert_bw_setting_value(checked)
         )
         self.df_settings.to_csv(self.settings_csv_path)
         if checked:
@@ -627,7 +675,7 @@ class ImageDisplayView:
             dtype = self.img1.image.dtype
             n_digits = len(str(int(self.img1.image.max())))
             self.imgValueFormatter = (
-                self.view_model.formatting.number_fstring_formatter(
+                self.formatting.number_fstring_formatter(
                     dtype, precision=abs(n_digits-5)
                 )
             )
@@ -636,7 +684,7 @@ class ImageDisplayView:
         dtype = rawImgData.dtype
         n_digits = len(str(int(rawImgData.max())))
         self.rawValueFormatter = (
-            self.view_model.formatting.number_fstring_formatter(
+            self.formatting.number_fstring_formatter(
                 dtype, precision=abs(n_digits-5)
             )
         )
@@ -841,7 +889,7 @@ class ImageDisplayView:
         return self.getRawImageLayer0(frame_i)
 
     def updateLabelsAlpha(self, value):
-        plan = self.view_model.labels_alpha_plan(
+        plan = self.labels_alpha_plan(
             value,
             keep_ids_checked=self.keepIDsButton.isChecked(),
         )
@@ -998,7 +1046,7 @@ class ImageDisplayView:
     def normaliseIntensitiesActionTriggered(self, action):
         how = action.text()
         self.df_settings.at['how_normIntensities', 'value'] = (
-            self.view_model.intensity_normalization_setting_value(how)
+            self.intensity_normalization_setting_value(how)
         )
         self.df_settings.to_csv(self.settings_csv_path)
         self.updateAllImages()
@@ -1205,7 +1253,7 @@ class ImageDisplayView:
         how = action.text()
 
         setting, setting_value = (
-            self.view_model.rescale_intensity_setting_update(channel, how)
+            self.rescale_intensity_setting_update(channel, how)
         )
         self.df_settings.at[setting, 'value'] = setting_value
         self.df_settings.to_csv(self.settings_csv_path)

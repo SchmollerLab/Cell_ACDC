@@ -2,18 +2,60 @@
 
 from __future__ import annotations
 
-from cellacdc.viewmodels.draw_clear_region_viewmodel import (
-    DrawClearRegionViewModel,
-)
 
 
+from dataclasses import dataclass
 class DrawClearRegionView:
     """Qt-facing adapter around the scriptable draw-clear view-model."""
 
-    def __init__(self, host, view_model: DrawClearRegionViewModel):
-        self.host = host
-        self.view_model = view_model
+    """Headless draw-clear-region decision rules."""
 
+    single_z_slice_projection = 'single z-slice'
+
+    def toolbar_state(
+        self,
+        *,
+        checked: bool,
+        is_segm_3d: bool,
+        size_z: int,
+    ) -> DrawClearRegionToolbarState:
+        if not is_segm_3d:
+            return DrawClearRegionToolbarState(update_z_control=True)
+        if not checked:
+            return DrawClearRegionToolbarState(update_z_control=False)
+        return DrawClearRegionToolbarState(
+            update_z_control=True,
+            z_control_enabled=True,
+            size_z=size_z,
+        )
+
+    def z_range_for_projection(
+        self,
+        *,
+        is_segm_3d: bool,
+        z_projection: str,
+        size_z: int,
+        single_z_range,
+    ):
+        if not is_segm_3d:
+            return None
+        if z_projection == self.single_z_slice_projection:
+            return single_z_range
+        return (0, size_z)
+
+    def is_single_z_projection(self, z_projection: str) -> bool:
+        return z_projection == self.single_z_slice_projection
+
+    def empty_selection_warning(self, *, enclosed_only: bool) -> str:
+        if enclosed_only:
+            return (
+                'None of the objects in the freehand region are fully enclosed'
+            )
+        return 'None of the objects are touching the freehand region'
+
+
+    def __init__(self, host):
+        self.host = host
     def toggle(self, checked):
         pos_data = self.host.data[self.host.pos_i]
         if checked:
@@ -22,7 +64,7 @@ class DrawClearRegionView:
             self.host.connectLeftClickButtons()
 
         self.host.drawClearRegionToolbar.setVisible(checked)
-        state = self.view_model.toolbar_state(
+        state = self.toolbar_state(
             checked=checked,
             is_segm_3d=self.host.isSegm3D,
             size_z=pos_data.SizeZ,
@@ -63,7 +105,7 @@ class DrawClearRegionView:
 
         if not clear_ids:
             self.host.logger.warning(
-                self.view_model.empty_selection_warning(
+                self.empty_selection_warning(
                     enclosed_only=enclosed_only
                 )
             )
@@ -79,11 +121,11 @@ class DrawClearRegionView:
         single_z_range = None
         if self.host.isSegm3D:
             z_projection = self.host.zProjComboBox.currentText()
-            if self.view_model.is_single_z_projection(z_projection):
+            if self.is_single_z_projection(z_projection):
                 single_z_range = self.host.drawClearRegionToolbar.zRange(
                     self.host.z_lab(), size_z
                 )
-        return self.view_model.z_range_for_projection(
+        return self.z_range_for_projection(
             is_segm_3d=self.host.isSegm3D,
             z_projection=z_projection,
             size_z=size_z,

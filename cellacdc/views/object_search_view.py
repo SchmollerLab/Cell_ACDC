@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from qtpy.QtCore import QEventLoop, QThread
 
 from cellacdc import apps, html_utils, widgets, workers
-from cellacdc.viewmodels.object_search_viewmodel import ObjectSearchViewModel
 
 
 class ObjectSearchView:
     """Qt-facing adapter around object-search commands."""
 
-    def __init__(self, host, view_model: ObjectSearchViewModel):
+    def __init__(self, host):
         self.host = host
-        self.view_model = view_model
-
     def findID(self, checked=False, ID=None):
         pos_data = self.host.data[self.host.pos_i]
         if ID is None:
@@ -148,7 +146,7 @@ class ObjectSearchView:
         self.host.searchIDworker.signals.initProgressBar.emit(0)
         self.host.setAllIDs()
         self.host.searchIDworker.signals.initProgressBar.emit(posData.SizeT)
-        frame_i_found = self.view_model.find_frame_with_id(
+        frame_i_found = self.find_frame_with_id(
             posData,
             searchedID,
             progress_callback=self.host.searchIDworker.signals.progressBar.emit,
@@ -158,6 +156,23 @@ class ObjectSearchView:
     def warnIDnotFound(self, searchedID):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
+
+    """Headless object-search operations."""
+
+    def find_frame_with_id(
+        self,
+        pos_data,
+        searched_id: int,
+        *,
+        progress_callback: Callable[[int], None] | None = None,
+    ) -> int | None:
+        return find_frame_with_id(
+            pos_data.segm_data,
+            pos_data.allData_li,
+            searched_id,
+            progress_callback=progress_callback,
+        )
+
             Object ID {searchedID} was not found.<br><br>
         """)
         msg.warning(self.host, f'ID {searchedID} not found', txt)

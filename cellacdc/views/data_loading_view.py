@@ -11,6 +11,14 @@ import numpy as np
 import pandas as pd
 import psutil
 import skimage
+import os
+from dataclasses import dataclass
+from datetime import datetime
+import cv2
+import numpy as np
+import pandas as pd
+import skimage
+import skimage.color
 import skimage.io
 from natsort import natsorted
 from qtpy.QtCore import QEventLoop, QMutex, Qt, QThread, QTimer, QWaitCondition
@@ -32,7 +40,6 @@ from cellacdc import (
     widgets,
     workers,
 )
-from cellacdc.viewmodels.data_loading_viewmodel import DataLoadingViewModel
 
 GREEN_HEX = _palettes.green()
 
@@ -86,15 +93,13 @@ class DataLoadingView:
         'openRecentFile',
     )
 
-    def __init__(self, host, view_model: DataLoadingViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -121,7 +126,7 @@ class DataLoadingView:
     def getFileExtensions(self, images_path):
         alignedFound = any(
             f.find('_aligned.np') != -1
-            for f in self.view_model.workspace.listdir(images_path)
+            for f in self.workspace.listdir(images_path)
         )
         if alignedFound:
             extensions = (
@@ -158,7 +163,7 @@ class DataLoadingView:
                 _, filename = self.getPathFromChName(user_ch_name, _posData)
                 df = myutils.getDefault_SegmInfo_df(_posData, filename)
                 _posData.segmInfo_df = (
-                    self.view_model.merge_default_segm_info(
+                    self.merge_default_segm_info(
                         _posData.segmInfo_df, df
                     )
                 )
@@ -178,7 +183,7 @@ class DataLoadingView:
                     return
                 dst_df = myutils.getDefault_SegmInfo_df(_posData, dstFilename)
                 _posData.segmInfo_df = (
-                    self.view_model.copy_single_zslice_segm_info(
+                    self.copy_single_zslice_segm_info(
                         _posData.segmInfo_df,
                         dst_df,
                         src_filename=srcFilename,
@@ -206,6 +211,191 @@ class DataLoadingView:
             dataPrepWin.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
             dataPrepWin.titleText = (
             """
+
+    """Headless data-loading rules and path plans."""
+
+    def open_image_file_context(
+            self, file_path: str, timestamp: str | None = None
+    ) -> OpenImageFileContext:
+        filename_no_ext, ext = os.path.splitext(os.path.basename(file_path))
+        filename_no_ext = filename_no_ext.rstrip('_')
+        ext = ext.lower()
+        dirpath = os.path.dirname(file_path)
+        dirname = os.path.basename(dirpath)
+        requires_images_folder = dirname != 'Images'
+        acdc_folder = None
+
+        if requires_images_folder:
+            timestamp = timestamp or datetime.now().strftime('%Y%m%d_%H%M%S')
+            acdc_folder = f'{timestamp}_acdc'
+            exp_path = os.path.join(dirpath, acdc_folder, 'Images')
+        else:
+            exp_path = dirpath
+
+        return OpenImageFileContext(
+            file_path=file_path,
+            filename_no_ext=filename_no_ext,
+            extension=ext,
+            source_dirpath=dirpath,
+            source_dirname=dirname,
+            exp_path=exp_path,
+            acdc_folder=acdc_folder,
+            requires_images_folder=requires_images_folder,
+        )
+
+    def channel_name_suggestion(
+            self, filename_no_ext: str
+    ) -> ChannelNameSuggestion:
+        underscore_splits = filename_no_ext.split('_')
+        if len(underscore_splits) > 1:
+            return ChannelNameSuggestion(
+                basename='_'.join(underscore_splits[:-1]),
+                channel_name=underscore_splits[-1],
+            )
+
+        return ChannelNameSuggestion(
+            basename=filename_no_ext,
+            channel_name='channel_1',
+        )
+
+    def open_image_file_target(
+            self,
+            context: OpenImageFileContext,
+            channel_name: str | None = None,
+    ) -> OpenImageFileTarget:
+        filename_no_ext = context.filename_no_ext
+        basename = None
+        metadata_csv_filename = None
+        metadata_csv_filepath = None
+
+        if channel_name is not None:
+            underscore_splits = filename_no_ext.split('_')
+            if len(underscore_splits) > 1:
+                default_ch_name = underscore_splits[-1]
+                if channel_name == default_ch_name:
+                    filename_no_ext = '_'.join(underscore_splits[:-1])
+
+            basename = f'{filename_no_ext}_'
+            metadata_csv_filename = f'{basename}metadata.csv'
+            metadata_csv_filepath = os.path.join(
+                context.exp_path, metadata_csv_filename
+            )
+            new_filename = (
+                f'{filename_no_ext}_{channel_name}{context.extension}'
+            )
+        else:
+            new_filename = f'{filename_no_ext}{context.extension}'
+
+        new_filepath = os.path.join(context.exp_path, new_filename)
+        tif_filename_no_ext = os.path.splitext(new_filename)[0]
+        tif_filename = f'{tif_filename_no_ext}.tif'
+        tif_path = os.path.join(context.exp_path, tif_filename)
+
+        return OpenImageFileTarget(
+            context=context,
+            filename_no_ext=filename_no_ext,
+            channel_name=channel_name,
+            basename=basename,
+            new_filename=new_filename,
+            new_filepath=new_filepath,
+            metadata_csv_filename=metadata_csv_filename,
+            metadata_csv_filepath=metadata_csv_filepath,
+            tif_filename=tif_filename,
+            tif_path=tif_path,
+            direct_copy_supported=context.extension in ('.tif', '.npz'),
+        )
+
+    def empty_data_plan(self, exp_path: str) -> EmptyDataPlan:
+        pos_path = os.path.join(exp_path, 'Position_1')
+        images_path = os.path.join(pos_path, 'Images')
+        basename = 'test_empty_'
+        tif_filename = f'{basename}channel_1.tif'
+        metadata_filename = f'{basename}metadata.csv'
+
+        return EmptyDataPlan(
+            exp_path=exp_path,
+            pos_path=pos_path,
+            images_path=images_path,
+            basename=basename,
+            tif_filename=tif_filename,
+            tif_filepath=os.path.join(images_path, tif_filename),
+            metadata_filename=metadata_filename,
+            metadata_filepath=os.path.join(images_path, metadata_filename),
+        )
+
+    def copy_action_text(self, do_copy: bool) -> str:
+        return 'Copying' if do_copy else 'Moving'
+
+    def is_imagej_dtype(self, dtype: np.dtype) -> bool:
+        return dtype in (np.uint8, np.uint32, np.float32)
+
+    def prepare_tiff_image_data(self, image: np.ndarray) -> ImageDataPreparation:
+        converted_rgb_to_gray = False
+        converted_dtype = False
+        prepared_image = image
+
+        if (
+                prepared_image.ndim == 3
+                and (prepared_image.shape[-1] == 3
+                     or prepared_image.shape[-1] == 4)
+        ):
+            converted_rgb_to_gray = True
+            if prepared_image.shape[-1] == 3:
+                prepared_image = skimage.color.rgb2gray(prepared_image)
+            else:
+                prepared_image = cv2.cvtColor(
+                    prepared_image, cv2.COLOR_RGBA2GRAY
+                )
+            prepared_image = skimage.img_as_ubyte(prepared_image)
+
+        if not self.is_imagej_dtype(prepared_image.dtype):
+            converted_dtype = True
+            prepared_image = skimage.img_as_ubyte(prepared_image)
+
+        return ImageDataPreparation(
+            image=prepared_image,
+            converted_rgb_to_gray=converted_rgb_to_gray,
+            converted_dtype=converted_dtype,
+        )
+
+    def merge_default_segm_info(
+            self,
+            existing_df: pd.DataFrame,
+            default_df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        merged_df = pd.concat([default_df, existing_df])
+        unique_idx = ~merged_df.index.duplicated()
+        return merged_df[unique_idx]
+
+    def copy_single_zslice_segm_info(
+            self,
+            existing_df: pd.DataFrame,
+            default_dst_df: pd.DataFrame,
+            *,
+            src_filename: str,
+            dst_filename: str,
+    ) -> pd.DataFrame:
+        dst_df = default_dst_df.copy()
+        src_df = existing_df.loc[src_filename].copy()
+
+        for z_info in src_df.itertuples():
+            frame_i = z_info.Index
+            if z_info.which_z_proj != 'single z-slice':
+                continue
+
+            src_idx = (src_filename, frame_i)
+            if existing_df.at[src_idx, 'resegmented_in_gui']:
+                col = 'z_slice_used_gui'
+            else:
+                col = 'z_slice_used_dataPrep'
+
+            z_slice = existing_df.at[src_idx, col]
+            dst_idx = (dst_filename, frame_i)
+            dst_df.at[dst_idx, 'z_slice_used_dataPrep'] = z_slice
+            dst_df.at[dst_idx, 'z_slice_used_gui'] = z_slice
+
+        return self.merge_default_segm_info(existing_df, dst_df)
+
             Select z-slice (or projection) for each frame/position.<br>
             Once happy, close the window.
             """)
@@ -236,9 +426,9 @@ class DataLoadingView:
         # self.worker.waitCond.wakeAll()
 
     def warnMemoryNotSufficient(self, total_ram, available_ram, required_ram):
-        total_ram = self.view_model.formatting.bytes_to_gb(total_ram)
-        available_ram = self.view_model.formatting.bytes_to_gb(available_ram)
-        required_ram = self.view_model.formatting.bytes_to_gb(required_ram)
+        total_ram = self.formatting.bytes_to_gb(total_ram)
+        available_ram = self.formatting.bytes_to_gb(available_ram)
+        required_ram = self.formatting.bytes_to_gb(required_ram)
         required_perc = round(100*required_ram/available_ram)
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(f"""
@@ -402,7 +592,7 @@ class DataLoadingView:
         )
 
     def getPathFromChName(self, chName, posData):
-        ls = self.view_model.workspace.listdir(posData.images_path)
+        ls = self.workspace.listdir(posData.images_path)
         endnames = {f[len(posData.basename):]:f for f in ls}
         validEnds = ['_aligned.npz', '_aligned.h5', '.h5', '.tif', '.npz']
         for end in validEnds:
@@ -478,7 +668,7 @@ class DataLoadingView:
 
     def criticalFluoChannelNotFound(self, fluo_ch, posData):
         msg = widgets.myMessageBox(showCentered=False)
-        ls = "\n".join(self.view_model.workspace.listdir(posData.images_path))
+        ls = "\n".join(self.workspace.listdir(posData.images_path))
         msg.setDetailedText(
             f'Files present in the {posData.relPath} folder:\n'
             f'{ls}'
@@ -517,10 +707,10 @@ class DataLoadingView:
         for filePath in user_ch_file_paths:
             _posData = load.loadData(filePath, user_ch_name, log_func=self.logger.info)
             _posData.getBasenameAndChNames(qparent=self.host)
-            segm_files = self.view_model.workspace.segmentation_files(
+            segm_files = self.workspace.segmentation_files(
                 _posData.images_path
             )
-            _existingEndnames = self.view_model.workspace.endnames(
+            _existingEndnames = self.workspace.endnames(
                 _posData.basename, segm_files
             )
             existingSegmEndNames.update(_existingEndnames)
@@ -1159,10 +1349,10 @@ class DataLoadingView:
         )
 
     def addToRecentPaths(self, path, logger=None):
-        self.view_model.workspace.add_recent_path(path, logger=self.logger)
+        self.workspace.add_recent_path(path, logger=self.logger)
 
     def getMostRecentPath(self):
-        return self.view_model.workspace.most_recent_path()
+        return self.workspace.most_recent_path()
 
     @exception_handler
     def _openFolder(
@@ -1217,7 +1407,7 @@ class DataLoadingView:
         self.addToRecentPaths(exp_path, logger=self.logger)
         self.addPathToOpenRecentMenu(exp_path)
 
-        folder_type = self.view_model.workspace.determine_folder_type(exp_path)
+        folder_type = self.workspace.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
 
         self.titleLabel.setText('Loading data...', color=self.titleColor)
@@ -1245,7 +1435,7 @@ class DataLoadingView:
 
         elif imageFilePath:
             # images_path = exp_path because called by openFile func
-            filenames = self.view_model.workspace.listdir(exp_path)
+            filenames = self.workspace.listdir(exp_path)
             ch_names, basenameNotFound = (
                 ch_name_selector.get_available_channels(filenames, exp_path)
             )
@@ -1262,7 +1452,7 @@ class DataLoadingView:
 
         # Get info from first position selected
         images_path = self.images_paths[0]
-        filenames = self.view_model.workspace.listdir(images_path)
+        filenames = self.workspace.listdir(images_path)
         if ch_name_selector.is_first_call and user_ch_name is None:
             ch_names, _ = ch_name_selector.get_available_channels(
                 filenames, images_path
@@ -1390,7 +1580,7 @@ class DataLoadingView:
             The basename will be common to all created files, while the additional text is used to identify the image files.
         """)
 
-        suggestion = self.view_model.channel_name_suggestion(filename_no_ext)
+        suggestion = self.channel_name_suggestion(filename_no_ext)
         basename = suggestion.basename
         channel_name = suggestion.channel_name
 
@@ -1481,7 +1671,7 @@ class DataLoadingView:
         if not file_path:
             return
 
-        context = self.view_model.open_image_file_context(file_path)
+        context = self.open_image_file_context(file_path)
         channel_name = None
         do_copy = True
         if context.requires_images_folder:
@@ -1501,7 +1691,7 @@ class DataLoadingView:
 
             os.makedirs(context.exp_path, exist_ok=True)
 
-        target = self.view_model.open_image_file_target(
+        target = self.open_image_file_target(
             context, channel_name=channel_name
         )
         if target.has_metadata:
@@ -1511,7 +1701,7 @@ class DataLoadingView:
             })
             df_metadata.to_csv(target.metadata_csv_filepath, index=False)
 
-        action_text = self.view_model.copy_action_text(do_copy)
+        action_text = self.copy_action_text(do_copy)
 
         if target.direct_copy_supported:
             if not os.path.exists(target.new_filepath):
@@ -1529,7 +1719,7 @@ class DataLoadingView:
                 context.file_path, '', log_func=self.logger.info
             )
             data.loadImgData()
-            preparation = self.view_model.prepare_tiff_image_data(
+            preparation = self.prepare_tiff_image_data(
                 data.img_data
             )
             if preparation.converted_rgb_to_gray:
@@ -1566,7 +1756,7 @@ class DataLoadingView:
         if not exp_path:
             return
 
-        plan = self.view_model.empty_data_plan(exp_path)
+        plan = self.empty_data_plan(exp_path)
         if os.path.exists(plan.images_path):
             raise FileExistsError(
                 f'The following path already exists "{plan.images_path}"'

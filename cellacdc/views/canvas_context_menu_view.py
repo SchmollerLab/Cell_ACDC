@@ -3,30 +3,63 @@
 from __future__ import annotations
 
 import pyqtgraph as pg
+from dataclasses import dataclass
 from qtpy.QtCore import QPoint
 from qtpy.QtWidgets import QAction, QMenu
 
-from cellacdc.viewmodels.canvas_context_menu_viewmodel import (
-    CanvasContextMenuViewModel,
-)
 
 
 class CanvasContextMenuView:
     """Qt-facing adapter around canvas context-menu contracts."""
 
-    def __init__(self, host, view_model: CanvasContextMenuViewModel):
-        self.host = host
-        self.view_model = view_model
+    """Headless canvas context-menu decision rules."""
 
+    scale_bar_target = 'scale_bar'
+    timestamp_target = 'timestamp'
+    gradient_target = 'gradient'
+
+    def image_gradient_menu_target(
+        self,
+        *,
+        scale_bar_highlighted: bool,
+        timestamp_highlighted: bool,
+    ) -> str:
+        if scale_bar_highlighted:
+            return self.scale_bar_target
+        if timestamp_highlighted:
+            return self.timestamp_target
+        return self.gradient_target
+
+    def deleted_roi_click_decision(
+        self,
+        *,
+        clicked_on_roi: bool,
+        left_click: bool,
+        right_click: bool,
+    ) -> DeletedRoiClickDecision:
+        if not clicked_on_roi:
+            return DeletedRoiClickDecision(handled=False)
+        if right_click:
+            return DeletedRoiClickDecision(
+                handled=True,
+                show_context_menu=True,
+            )
+        if left_click:
+            return DeletedRoiClickDecision(handled=True, drag_roi=True)
+        return DeletedRoiClickDecision(handled=False)
+
+
+    def __init__(self, host):
+        self.host = host
     def show_img_gradient_context_menu(self, x, y):
-        target = self.view_model.image_gradient_menu_target(
+        target = self.image_gradient_menu_target(
             scale_bar_highlighted=self._scale_bar_highlighted(),
             timestamp_highlighted=self._timestamp_highlighted(),
         )
-        if target == self.view_model.scale_bar_target:
+        if target == self.scale_bar_target:
             self.host.scaleBar.showContextMenu(x, y)
             return
-        if target == self.view_model.timestamp_target:
+        if target == self.timestamp_target:
             self.host.timestamp.showContextMenu(x, y)
             return
         self.host.imgGrad.gradient.menu.popup(QPoint(int(x), int(y)))
@@ -54,7 +87,7 @@ class CanvasContextMenuView:
                 ]
             else:
                 clicked_on_roi = roi_mask[int(y), int(x)]
-            decision = self.view_model.deleted_roi_click_decision(
+            decision = self.deleted_roi_click_decision(
                 clicked_on_roi=clicked_on_roi,
                 left_click=left_click,
                 right_click=right_click,

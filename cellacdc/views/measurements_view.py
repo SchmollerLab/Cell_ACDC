@@ -5,16 +5,59 @@ from __future__ import annotations
 import pandas as pd
 
 from cellacdc import apps, cli, favourite_func_metrics_csv_path, widgets
-from cellacdc.viewmodels.measurements_viewmodel import MeasurementsViewModel
 
 
 class MeasurementsView:
     """Qt-facing adapter around measurement view-model contracts."""
 
-    def __init__(self, host, view_model: MeasurementsViewModel):
-        self.host = host
-        self.view_model = view_model
+    """Headless measurement calculation and setup rules."""
 
+    def rotational_volume(
+        self,
+        obj,
+        physical_size_y=1,
+        physical_size_x=1,
+        logger=None,
+    ):
+        return _calc_rot_vol(
+            obj,
+            physical_size_y,
+            physical_size_x,
+            logger=logger,
+        )
+
+    def custom_metrics_instructions(self):
+        return measurements.add_metrics_instructions()
+
+    def metrics_examples_path(self):
+        return measurements.metrics_path
+
+    def all_acdc_df_columns(self, all_pos_data):
+        columns = set()
+        for pos_data in all_pos_data:
+            for data_dict in pos_data.allData_li:
+                acdc_df = data_dict['acdc_df']
+                if acdc_df is None:
+                    continue
+                columns.update(acdc_df.columns)
+        return columns
+
+    def not_loaded_channels(self, all_channel_names, loaded_channel_names):
+        return [c for c in all_channel_names if c not in loaded_channel_names]
+
+    def drop_unchecked_measurements(self, acdc_df, columns, regionprops):
+        if acdc_df is None:
+            return None
+        acdc_df = acdc_df.drop(columns=columns, errors='ignore')
+        for col_rp in regionprops:
+            drop_df_rp = acdc_df.filter(regex=fr'{col_rp}.*', axis=1)
+            drop_cols_rp = drop_df_rp.columns
+            acdc_df = acdc_df.drop(columns=drop_cols_rp, errors='ignore')
+        return acdc_df
+
+
+    def __init__(self, host):
+        self.host = host
     def init_metrics_to_save(self, pos_data):
         self.host._measurements_kernel._init_metrics_to_save(pos_data)
 
@@ -41,14 +84,14 @@ class MeasurementsView:
 
         favourite_funcs = self._favourite_metric_functions()
         pos_data = self.host.data[self.host.pos_i]
-        all_pos_acdc_df_cols = self.view_model.all_acdc_df_columns(
+        all_pos_acdc_df_cols = self.all_acdc_df_columns(
             self.host.data
         )
         loaded_ch_names = pos_data.setLoadedChannelNames(returnList=True)
         pos_data.fluo_data_dict.pop(self.host.user_ch_name, None)
         if self.host.user_ch_name not in loaded_ch_names:
             loaded_ch_names.insert(0, self.host.user_ch_name)
-        not_loaded_ch_names = self.view_model.not_loaded_channels(
+        not_loaded_ch_names = self.not_loaded_channels(
             self.host.ch_names,
             loaded_ch_names,
         )
@@ -86,8 +129,8 @@ class MeasurementsView:
         self.host.measurementsWin = None
 
     def add_custom_metric(self, checked=False):
-        txt = self.view_model.custom_metrics_instructions()
-        metrics_path = self.view_model.metrics_examples_path()
+        txt = self.custom_metrics_instructions()
+        metrics_path = self.metrics_examples_path()
         msg = widgets.myMessageBox()
         msg.addShowInFileManagerButton(metrics_path, 'Show example...')
         title = 'Add custom metrics instructions'
@@ -151,7 +194,7 @@ class MeasurementsView:
         for pos_data in self.host.data:
             for data_dict in pos_data.allData_li:
                 data_dict['acdc_df'] = (
-                    self.view_model.drop_unchecked_measurements(
+                    self.drop_unchecked_measurements(
                         data_dict['acdc_df'],
                         del_cols,
                         del_rps,

@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import numpy as np
+import numpy as np
 import skimage.measure
 from tqdm import tqdm
 
 from cellacdc import apps, exception_handler, html_utils, widgets
-from cellacdc.viewmodels.object_properties_viewmodel import (
-    ObjectPropertiesViewModel,
-)
 
 
 class ObjectPropertiesView:
@@ -50,15 +48,13 @@ class ObjectPropertiesView:
         'updatePropsWidget',
     )
 
-    def __init__(self, host, view_model: ObjectPropertiesViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -82,7 +78,7 @@ class ObjectPropertiesView:
             self.setHighlightID(False)
         else:
             self.highlightedID = self.guiTabControl.propsQGBox.idSB.value()
-            if self.view_model.should_show_3d_property_controls(
+            if self.should_show_3d_property_controls(
                 self.isSegm3D
             ):
                 self.guiTabControl.propsQGBox.cellVolVox3D_SB.show()
@@ -117,14 +113,14 @@ class ObjectPropertiesView:
 
     def setAllIDs(self, onlyVisited=False):
         for posData in self.data:
-            posData.allIDs = self.view_model.object_counts.collect_all_ids(
+            posData.allIDs = self.object_counts.collect_all_ids(
                 posData,
                 only_visited=onlyVisited,
             )
 
     def countObjectsTimelapse(self):
         if self.countObjsWindow is None:
-            activeCategories = self.view_model.timelapse_default_categories()
+            activeCategories = self.timelapse_default_categories()
         else:
             activeCategories = self.countObjsWindow.activeCategories()
 
@@ -145,13 +141,13 @@ class ObjectPropertiesView:
     def countObjectsSnapshots(self):
         posData = self.data[self.pos_i]
         if self.countObjsWindow is None:
-            activeCategories = self.view_model.snapshot_default_categories(
+            activeCategories = self.snapshot_default_categories(
                 is_segm_3d=self.isSegm3D
             )
         else:
             activeCategories = self.countObjsWindow.activeCategories()
 
-        allCategoryCountMapper = self.view_model.object_counts.snapshot_object_counts(
+        allCategoryCountMapper = self.object_counts.snapshot_object_counts(
             self.data,
             self.pos_i,
             current_lab_2d=self.currentLab2D,
@@ -178,7 +174,7 @@ class ObjectPropertiesView:
 
 
     def updateObjectCounts(self):
-        if not self.view_model.should_update_object_counts(
+        if not self.should_update_object_counts(
             window_exists=self.countObjsWindow is not None,
             is_visible=(
                 self.countObjsWindow.isVisible()
@@ -371,7 +367,7 @@ class ObjectPropertiesView:
         if self.highlightedID > 0:
             return self.highlightedID
 
-        doHighlight = self.view_model.should_highlight_props_id(
+        doHighlight = self.should_highlight_props_id(
             dock_visible=self.propsDockWidget.isVisible(),
             highlight_checked=self.guiTabControl.highlightCheckbox.isChecked(),
             searched_highlight_checked=(
@@ -404,7 +400,7 @@ class ObjectPropertiesView:
         if ID == self.highlightedID and not force:
             return
 
-        doHighlight = self.view_model.should_highlight_props_id(
+        doHighlight = self.should_highlight_props_id(
             dock_visible=self.propsDockWidget.isVisible(),
             highlight_checked=self.guiTabControl.highlightCheckbox.isChecked(),
             searched_highlight_checked=(
@@ -575,6 +571,170 @@ class ObjectPropertiesView:
         self.current_frame_i = posData.frame_i
         if posData.frame_i > 0:
             txt = html_utils.paragraph("""
+
+    """Headless decisions for object-property and highlight workflows."""
+
+    def timelapse_default_categories(self) -> set[str]:
+        return {
+            'In current frame',
+            'In all visited frames',
+            'In entire video',
+            'Unique objects in all visited frames',
+            'Unique objects in entire video',
+        }
+
+    def snapshot_default_categories(self, *, is_segm_3d: bool) -> set[str]:
+        categories = {
+            'In current position',
+            'In all visited positions (current session)',
+            'In all visited positions (previous sessions)',
+            'In all loaded positions',
+        }
+        if is_segm_3d:
+            categories.add('In current z-slice')
+        return categories
+
+    def should_update_object_counts(
+        self,
+        *,
+        window_exists: bool,
+        is_visible: bool,
+        live_preview_checked: bool,
+    ) -> bool:
+        return window_exists and is_visible and live_preview_checked
+
+    def should_show_3d_property_controls(self, is_segm_3d: bool) -> bool:
+        return is_segm_3d
+
+    def should_highlight_props_id(
+        self,
+        *,
+        dock_visible: bool,
+        highlight_checked: bool,
+        searched_highlight_checked: bool,
+    ) -> bool:
+        return (
+            dock_visible
+            and (highlight_checked or searched_highlight_checked)
+        )
+
+    def should_update_props_widget(
+        self,
+        *,
+        dock_visible: bool,
+        object_id: int,
+        current_props_id: int,
+    ) -> bool:
+        return dock_visible and object_id != 0 and object_id != current_props_id
+
+    def calculate_area_pxl(
+        self,
+        *,
+        is_segm_3d: bool,
+        z_proj_text: str,
+        z_lab: int,
+        bbox_0: int,
+        obj_image: np.ndarray,
+        obj_area: int,
+    ) -> int:
+        if is_segm_3d:
+            if z_proj_text == 'single z-slice':
+                local_z = z_lab - bbox_0
+                return int(np.count_nonzero(obj_image[local_z]))
+            else:
+                return int(np.count_nonzero(obj_image.max(axis=0)))
+        else:
+            return obj_area
+
+    def calculate_area_um2(
+        self,
+        *,
+        area_pxl: int,
+        physical_size_x: float,
+        physical_size_y: float,
+    ) -> float:
+        return area_pxl * physical_size_y * physical_size_x
+
+    def calculate_vol_3d(
+        self,
+        *,
+        obj_area: int,
+        physical_size_x: float,
+        physical_size_y: float,
+        physical_size_z: float,
+    ) -> tuple[float, float]:
+        vol_vox_3D = obj_area
+        vol_fl_3D = vol_vox_3D * physical_size_z * physical_size_y * physical_size_x
+        return float(vol_vox_3D), float(vol_fl_3D)
+
+    def calculate_elongation(
+        self,
+        *,
+        major_axis_length: float,
+        minor_axis_length: float,
+    ) -> float:
+        minor_axis = max(1.0, minor_axis_length)
+        return major_axis_length / minor_axis
+
+    def get_object_and_background_images(
+        self,
+        *,
+        image: np.ndarray,
+        is_segm_3d: bool,
+        pos_data_size_z: int,
+        z_slice: int,
+        obj_slice: tuple,
+        obj_image: np.ndarray,
+        img1_image: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        if pos_data_size_z > 1 and not is_segm_3d:
+            obj_data = image[z_slice][obj_slice][obj_image]
+            img = img1_image if img1_image is not None else image[z_slice]
+        else:
+            obj_data = image[obj_slice][obj_image]
+            img = image
+        return obj_data, img
+
+    def calculate_intensity_statistics(
+        self,
+        obj_data: np.ndarray,
+    ) -> dict[str, float]:
+        if obj_data.size == 0:
+            return {'min': 0.0, 'max': 0.0, 'mean': 0.0, 'median': 0.0}
+        return {
+            'min': float(np.min(obj_data)),
+            'max': float(np.max(obj_data)),
+            'mean': float(np.mean(obj_data)),
+            'median': float(np.median(obj_data)),
+        }
+
+    def calculate_additional_measure(
+        self,
+        *,
+        func_desc: str,
+        func: callable,
+        obj_data: np.ndarray,
+        img: np.ndarray,
+        lab: np.ndarray,
+        obj_area: int,
+        vol_vox: float,
+    ) -> float:
+        if func_desc in ('Concentration', 'Amount'):
+            background_pixels = img[lab == 0]
+            bkgr_val = (
+                float(np.median(background_pixels))
+                if background_pixels.size > 0
+                else 0.0
+            )
+            amount = func(obj_data, bkgr_val, obj_area)
+            if func_desc == 'Concentration':
+                return amount / vol_vox
+            else:
+                return amount
+        else:
+            return float(func(obj_data))
+
+
                 Do you want to <b>remove un-kept objects in the past</b> frames too?
             """)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
@@ -703,7 +863,7 @@ class ObjectPropertiesView:
             Current labels for the position data
         """
         posData = self.data[self.pos_i]
-        return self.view_model.object_counts.current_labels(
+        return self.object_counts.current_labels(
             posData,
             curr_lab=curr_lab,
             frame_i=frame_i,
@@ -773,7 +933,7 @@ class ObjectPropertiesView:
 
         ID = int(ID)
 
-        update = self.view_model.should_update_props_widget(
+        update = self.should_update_props_widget(
             dock_visible=self.propsDockWidget.isVisible(),
             object_id=ID,
             current_props_id=self.currentPropsID,
@@ -808,7 +968,7 @@ class ObjectPropertiesView:
         self.currentPropsID = ID
         propsQGBox.idSB.setValue(ID)
 
-        doHighlight = self.view_model.should_highlight_props_id(
+        doHighlight = self.should_highlight_props_id(
             dock_visible=True,
             highlight_checked=self.guiTabControl.highlightCheckbox.isChecked(),
             searched_highlight_checked=(
@@ -820,7 +980,7 @@ class ObjectPropertiesView:
 
         obj = posData.rp[obj_idx]
 
-        area_pxl = self.view_model.calculate_area_pxl(
+        area_pxl = self.calculate_area_pxl(
             is_segm_3d=self.isSegm3D,
             z_proj_text=self.zProjComboBox.currentText(),
             z_lab=self.z_lab(),
@@ -836,7 +996,7 @@ class ObjectPropertiesView:
         PhysicalSizeY = pixelSizeQGBox.pixelHeightWidget.value()
         PhysicalSizeZ = pixelSizeQGBox.voxelDepthWidget.value()
 
-        area_um2 = self.view_model.calculate_area_um2(
+        area_um2 = self.calculate_area_um2(
             area_pxl=area_pxl,
             physical_size_x=PhysicalSizeX,
             physical_size_y=PhysicalSizeY,
@@ -845,7 +1005,7 @@ class ObjectPropertiesView:
         propsQGBox.cellAreaUm2DSB.setValue(area_um2)
 
         if self.isSegm3D:
-            vol_vox_3D, vol_fl_3D = self.view_model.calculate_vol_3d(
+            vol_vox_3D, vol_fl_3D = self.calculate_vol_3d(
                 obj_area=obj.area,
                 physical_size_x=PhysicalSizeX,
                 physical_size_y=PhysicalSizeY,
@@ -854,13 +1014,13 @@ class ObjectPropertiesView:
             propsQGBox.cellVolVox3D_SB.setValue(vol_vox_3D)
             propsQGBox.cellVolFl3D_DSB.setValue(vol_fl_3D)
 
-        vol_vox, vol_fl = self.view_model.measurements.rotational_volume(
+        vol_vox, vol_fl = self.measurements.rotational_volume(
             obj, PhysicalSizeY, PhysicalSizeX
         )
         propsQGBox.cellVolVoxSB.setValue(int(vol_vox))
         propsQGBox.cellVolFlDSB.setValue(vol_fl)
 
-        elongation = self.view_model.calculate_elongation(
+        elongation = self.calculate_elongation(
             major_axis_length=obj.major_axis_length,
             minor_axis_length=obj.minor_axis_length,
         )
@@ -882,7 +1042,7 @@ class ObjectPropertiesView:
         except Exception as e:
             image = posData.img_data[posData.frame_i]
 
-        objData, img = self.view_model.get_object_and_background_images(
+        objData, img = self.get_object_and_background_images(
             image=image,
             is_segm_3d=self.isSegm3D,
             pos_data_size_z=posData.SizeZ,
@@ -892,7 +1052,7 @@ class ObjectPropertiesView:
             img1_image=self.img1.image,
         )
 
-        stats = self.view_model.calculate_intensity_statistics(objData)
+        stats = self.calculate_intensity_statistics(objData)
         intensMeasurQGBox.minimumDSB.setValue(stats['min'])
         intensMeasurQGBox.maximumDSB.setValue(stats['max'])
         intensMeasurQGBox.meanDSB.setValue(stats['mean'])
@@ -901,7 +1061,7 @@ class ObjectPropertiesView:
         funcDesc = intensMeasurQGBox.additionalMeasCombobox.currentText()
         func = intensMeasurQGBox.additionalMeasCombobox.functions[funcDesc]
 
-        value = self.view_model.calculate_additional_measure(
+        value = self.calculate_additional_measure(
             func_desc=funcDesc,
             func=func,
             obj_data=objData,
@@ -912,4 +1072,3 @@ class ObjectPropertiesView:
         )
 
         intensMeasurQGBox.additionalMeasCombobox.indicator.setValue(value)
-

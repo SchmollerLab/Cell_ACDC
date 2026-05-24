@@ -11,7 +11,6 @@ import numpy as np
 from qtpy.QtCore import QObject, QMutex, QThread, QTimer, QWaitCondition
 
 from cellacdc import apps, exception_handler, html_utils, issues_url, widgets, workers
-from cellacdc.viewmodels.worker_viewmodel import WorkerViewModel
 
 
 class WorkerView:
@@ -50,15 +49,13 @@ class WorkerView:
         'workerDebug',
     )
 
-    def __init__(self, host, view_model: WorkerViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -180,7 +177,7 @@ class WorkerView:
         self.autoSaveWorkerTimer.start(150)
 
     def autoSaveWorkerTimerCallback(self, worker, posData):
-        if self.view_model.should_enqueue_autosave(self.isSaving):
+        if self.should_enqueue_autosave(self.isSaving):
             self.autoSaveWorkerTimer.stop()
             worker._enqueue(posData)
 
@@ -198,7 +195,7 @@ class WorkerView:
     def workerProgress(self, text, loggerLevel='INFO'): # used in cca and lin tree
         if self.progressWin is not None:
             self.progressWin.logConsole.append(text)
-        loggerLevel = self.view_model.progress_log_level(loggerLevel)
+        loggerLevel = self.progress_log_level(loggerLevel)
         self.logger.log(getattr(logging, loggerLevel), text)
 
     def workerFinished(self):
@@ -221,7 +218,7 @@ class WorkerView:
         self.titleLabel.setText('Pre-processed data saved!', color='w')
 
     def loadingNewChunk(self, chunk_range):
-        desc = self.view_model.lazy_loader_progress_description(chunk_range)
+        desc = self.lazy_loader_progress_description(chunk_range)
         self.progressWin = apps.QDialogWorkerProgress(
             title='Loading data...', parent=self.host, pbarDesc=desc
         )
@@ -262,6 +259,36 @@ class WorkerView:
 
         href = f'<a href="{issues_url}">GitHub page</a>'
         txt = html_utils.paragraph(f"""
+
+    """Headless worker progress and lifecycle decisions."""
+
+    def progress_log_level(self, logger_level: str = 'INFO') -> str:
+        return logger_level or 'INFO'
+
+    def progressbar_maximum(self, total_iterations: int) -> int:
+        if total_iterations == 1:
+            return 0
+        return total_iterations
+
+    def lazy_loader_progress_description(self, chunk_range) -> str:
+        coord0_chunk, coord1_chunk = chunk_range
+        return (
+            f'Loading new window, range = ({coord0_chunk}, {coord1_chunk})...'
+        )
+
+    def should_enqueue_autosave(self, is_saving: bool) -> bool:
+        return not is_saving
+
+    def should_disable_realtime_tracking(
+        self,
+        tracking_on_never_visited_frames: bool,
+        realtime_tracking_enabled: bool,
+    ) -> bool:
+        return (
+            tracking_on_never_visited_frames
+            and realtime_tracking_enabled
+        )
+
             Unfortunately the experimental feature
             <code>check cell cycle annotations integrity</code> raised a
             critical error.<br><br>
@@ -320,7 +347,7 @@ class WorkerView:
             self.progressWin = None
         self.logger.info('Worker process ended.')
         askDisableRealTimeTracking = (
-            self.view_model.should_disable_realtime_tracking(
+            self.should_disable_realtime_tracking(
                 self.trackingWorker.trackingOnNeverVisitedFrames,
                 self.realTimeTrackingToggle.isChecked(),
             )
@@ -367,7 +394,7 @@ class WorkerView:
 
     def workerInitProgressbar(self, totalIter):
         self.progressWin.mainPbar.setValue(0)
-        maximum = self.view_model.progressbar_maximum(totalIter)
+        maximum = self.progressbar_maximum(totalIter)
         self.progressWin.mainPbar.setMaximum(maximum)
 
     def workerUpdateProgressbar(self, step):
@@ -375,7 +402,7 @@ class WorkerView:
 
     def workerInitInnerPbar(self, totalIter):
         self.progressWin.innerPbar.setValue(0)
-        maximum = self.view_model.progressbar_maximum(totalIter)
+        maximum = self.progressbar_maximum(totalIter)
         self.progressWin.innerPbar.setMaximum(maximum)
 
     def workerUpdateInnerPbar(self, step):

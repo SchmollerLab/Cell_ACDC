@@ -9,12 +9,11 @@ import traceback
 from collections import defaultdict
 
 import pyqtgraph as pg
+import os
+import pandas as pd
 from qtpy.QtGui import QColor
 
 from cellacdc import apps, html_utils, settings_folderpath, widgets
-from cellacdc.viewmodels.custom_annotations_viewmodel import (
-    CustomAnnotationsViewModel,
-)
 
 
 custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
@@ -23,15 +22,13 @@ custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
 class CustomAnnotationsView:
     """Qt-facing adapter around custom annotation buttons and dialogs."""
 
-    def __init__(self, host, view_model: CustomAnnotationsViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -39,7 +36,7 @@ class CustomAnnotationsView:
     def readSavedCustomAnnot(self):
         if os.path.exists(custom_annot_path):
             self.logger.info('Loading saved custom annotations...')
-        tempAnnot = self.view_model.read_saved_annotations(
+        tempAnnot = self.read_saved_annotations(
             custom_annot_path, logger_func=self.logger.info
         )
 
@@ -85,7 +82,7 @@ class CustomAnnotationsView:
                 keySequence = widgets.KeySequenceFromText(keySequence)
             else:
                 keySequence = None
-            toolTip = self.view_model.tooltip(annotState)
+            toolTip = self.tooltip(annotState)
             keepActive = annotState.get('keepActive', True)
             isHideChecked = annotState.get('isHideChecked', True)
 
@@ -179,7 +176,7 @@ class CustomAnnotationsView:
                 acdc_df = data_dict['acdc_df']
                 if acdc_df is None:
                     continue
-                result = self.view_model.ensure_column(
+                result = self.ensure_column(
                     acdc_df, name
                 )
                 data_dict['acdc_df'] = result.dataframe
@@ -188,7 +185,7 @@ class CustomAnnotationsView:
                 )
                     
             if posData.acdc_df is not None:
-                result = self.view_model.ensure_column(
+                result = self.ensure_column(
                     posData.acdc_df,
                     name,
                 )
@@ -220,6 +217,83 @@ class CustomAnnotationsView:
         if len(items) == 0:
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph("""
+
+    """Headless custom annotation table updates."""
+
+    def read_saved_annotations(
+        self,
+        annotations_path: str,
+        *,
+        logger_func=None,
+    ) -> dict:
+        if not os.path.exists(annotations_path):
+            return {}
+        return load.read_json(annotations_path, logger_func=logger_func)
+
+    def tooltip(self, annotation_state: dict) -> str:
+        return myutils.getCustomAnnotTooltip(annotation_state)
+
+    def ensure_column(
+        self,
+        acdc_df: pd.DataFrame,
+        annotation_name: str,
+    ) -> CustomAnnotationColumnResult:
+        return ensure_custom_annotation_column(acdc_df, annotation_name)
+
+    def column_exists(
+        self,
+        frame_records,
+        annotation_name: str,
+        *,
+        summary_acdc_df: pd.DataFrame | None = None,
+    ) -> bool:
+        return custom_annotation_column_exists(
+            frame_records,
+            annotation_name,
+            summary_acdc_df=summary_acdc_df,
+        )
+
+    def drop_column(
+        self,
+        acdc_df: pd.DataFrame | None,
+        annotation_name: str,
+    ) -> pd.DataFrame | None:
+        return drop_custom_annotation_column(acdc_df, annotation_name)
+
+    def rename_column(
+        self,
+        acdc_df: pd.DataFrame | None,
+        old_name: str,
+        new_name: str,
+    ) -> pd.DataFrame | None:
+        return rename_custom_annotation_column(acdc_df, old_name, new_name)
+
+    def remap_ids(self, annotated_ids_by_frame, old_ids, new_ids) -> dict:
+        return remap_custom_annotation_ids(
+            annotated_ids_by_frame,
+            old_ids,
+            new_ids,
+        )
+
+    def update_frame(
+        self,
+        acdc_df: pd.DataFrame,
+        annotation_name: str,
+        annotated_ids,
+        *,
+        clicked_id: int = 0,
+        click_is_active: bool = False,
+        existing_ids=None,
+    ) -> CustomAnnotationFrameUpdate:
+        return update_custom_annotation_frame(
+            acdc_df,
+            annotation_name,
+            annotated_ids,
+            clicked_id=clicked_id,
+            click_is_active=click_is_active,
+            existing_ids=existing_ids,
+        )
+
             There are no custom annotations saved.<br><br>
             Click on "Add custom annotation" button to start adding new 
             annotations.
@@ -337,7 +411,7 @@ class CustomAnnotationsView:
     
     def checkNameExists(self, name):
         posData = self.data[self.pos_i]
-        if self.view_model.column_exists(
+        if self.column_exists(
                 posData.allData_li,
                 name,
                 summary_acdc_df=posData.acdc_df,
@@ -413,7 +487,7 @@ class CustomAnnotationsView:
             old_name = self.customAnnotDict[button]['state']['name']
             new_name = self.addAnnotWin.state['name']
             posData.allData_li[posData.frame_i]['acdc_df'] = (
-                self.view_model.rename_column(
+                self.rename_column(
                     acdc_df, old_name, new_name
                 )
             )
@@ -479,7 +553,7 @@ class CustomAnnotationsView:
                 self.store_data(autosave=False)
             acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
 
-            result = self.view_model.update_frame(
+            result = self.update_frame(
                 acdc_df,
                 state['name'],
                 annotIDs_frame_i,
@@ -552,7 +626,7 @@ class CustomAnnotationsView:
             if removeOnlyButton:
                 continue
 
-            posData.acdc_df = self.view_model.drop_column(
+            posData.acdc_df = self.drop_column(
                 posData.acdc_df,
                 name,
             )
@@ -561,7 +635,7 @@ class CustomAnnotationsView:
                 if acdc_df is None:
                     continue
                 posData.allData_li[frame_i]['acdc_df'] = (
-                    self.view_model.drop_column(
+                    self.drop_column(
                         acdc_df, name
                     )
                 )

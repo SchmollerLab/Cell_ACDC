@@ -5,20 +5,58 @@ from __future__ import annotations
 import numpy as np
 
 from cellacdc import apps, widgets
-from cellacdc.viewmodels.display_decorations_viewmodel import (
-    DisplayDecorationsViewModel,
-)
 
 
 class DisplayDecorationsView:
     """Qt-facing adapter around display-decoration contracts."""
 
-    def __init__(self, host, view_model: DisplayDecorationsViewModel):
-        self.host = host
-        self.view_model = view_model
+    """Headless display-decoration decision rules."""
 
+    def clamped_view_range(self, image_shape, view_range):
+        y_size, x_size = image_shape[:2]
+        x_range, y_range = view_range
+        x_min = 0 if x_range[0] < 0 else x_range[0]
+        y_min = 0 if y_range[0] < 0 else y_range[0]
+        x_max = x_size if x_range[1] >= x_size else x_range[1]
+        y_max = y_size if y_range[1] >= y_size else y_range[1]
+        return int(y_min), int(y_max), int(x_min), int(x_max)
+
+    def integer_view_range(self, view_range):
+        x_range, y_range = view_range
+        return (
+            [round(x_range[0]), round(x_range[1])],
+            [round(y_range[0]), round(y_range[1])],
+        )
+
+    def should_move_decoration(
+        self,
+        *,
+        dialog_open: bool,
+        move_with_zoom: bool,
+    ) -> bool:
+        return dialog_open or move_with_zoom
+
+    def should_store_view_range(
+        self,
+        *,
+        has_range_reset_state: bool,
+        is_range_reset: bool = False,
+    ) -> bool:
+        return has_range_reset_state and is_range_reset
+
+    def should_update_timestamp_frame(
+        self,
+        *,
+        has_timestamp: bool,
+        timestamp_enabled: bool,
+    ) -> bool:
+        return has_timestamp and timestamp_enabled
+
+
+    def __init__(self, host):
+        self.host = host
     def get_view_range(self):
-        return self.view_model.clamped_view_range(
+        return self.clamped_view_range(
             self.host.img1.image.shape,
             self.host.ax1.viewRange(),
         )
@@ -27,7 +65,7 @@ class DisplayDecorationsView:
         view_range = self._ax1_raw_view_range()
         if not integers:
             return view_range
-        return self.view_model.integer_view_range(view_range)
+        return self.integer_view_range(view_range)
 
     def view_range_changed(
         self,
@@ -43,7 +81,7 @@ class DisplayDecorationsView:
             )
         else:
             scale_bar_move_with_zoom = False
-        if self.view_model.should_move_decoration(
+        if self.should_move_decoration(
             dialog_open=self.host.scaleBarDialog is not None,
             move_with_zoom=scale_bar_move_with_zoom,
         ):
@@ -55,7 +93,7 @@ class DisplayDecorationsView:
             )
         else:
             timestamp_move_with_zoom = False
-        if self.view_model.should_move_decoration(
+        if self.should_move_decoration(
             dialog_open=self.host.timestampDialog is not None,
             move_with_zoom=timestamp_move_with_zoom,
         ):
@@ -64,7 +102,7 @@ class DisplayDecorationsView:
         self.host._viewRange = view_range
 
     def store_view_range(self):
-        if not self.view_model.should_store_view_range(
+        if not self.should_store_view_range(
             has_range_reset_state=hasattr(self.host, 'isRangeReset'),
             is_range_reset=getattr(self.host, 'isRangeReset', False),
         ):
@@ -180,7 +218,7 @@ class DisplayDecorationsView:
         self.host.timestampDialog.show()
 
     def update_timestamp_frame(self):
-        if not self.view_model.should_update_timestamp_frame(
+        if not self.should_update_timestamp_frame(
             has_timestamp=hasattr(self.host, 'timestamp'),
             timestamp_enabled=self.host.addTimestampAction.isChecked(),
         ):

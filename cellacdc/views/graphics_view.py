@@ -9,6 +9,9 @@ import cv2
 import matplotlib
 import numpy as np
 import pyqtgraph as pg
+from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+import numpy as np
 import skimage.exposure
 import skimage.measure
 from natsort import natsorted
@@ -27,7 +30,6 @@ from cellacdc import (
     widgets,
     workers,
 )
-from cellacdc.viewmodels.graphics_viewmodel import GraphicsViewModel
 
 _font = QFont()
 _font.setPixelSize(11)
@@ -170,15 +172,13 @@ class GraphicsView:
         'gui_initImg1BottomWidgets',
     )
 
-    def __init__(self, host, view_model: GraphicsViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -942,6 +942,165 @@ class GraphicsView:
             toggleText = 'de-activate'
         msg = widgets.myMessageBox(wrapText=False)
         important_txt = ("""
+
+    """Headless graphics workflow rules."""
+
+    def overlay_toolbutton_checked(
+        self,
+        channel: str,
+        *,
+        checked_channels: Iterable[str],
+        is_single_channel: bool,
+    ) -> bool:
+        return not is_single_channel and channel in set(checked_channels)
+
+    def overlay_toolbutton_click_checked_channels(
+        self,
+        *,
+        clicked_channel: str,
+        all_channels: Iterable[str],
+        checked_channels: Iterable[str],
+        toolbar_single_channel: bool,
+    ) -> set[str]:
+        all_channels = set(all_channels)
+        checked_channels = set(checked_channels)
+        if not checked_channels or toolbar_single_channel:
+            checked_channels.add(clicked_channel)
+
+        if toolbar_single_channel:
+            return {clicked_channel}
+
+        return checked_channels & all_channels
+
+    def overlay_visibility_plan(
+        self,
+        *,
+        all_channels: Iterable[str],
+        checked_channels: Iterable[str],
+        overlay_enabled: bool,
+    ) -> OverlayVisibilityPlan:
+        checked_channels = set(checked_channels)
+        return OverlayVisibilityPlan(
+            channel_visible={
+                channel: overlay_enabled and channel in checked_channels
+                for channel in all_channels
+            }
+        )
+
+    def overlay_channel_opacity_map(
+        self,
+        base_channel: str,
+        active_channel_alpha_values: Mapping[str, float],
+    ) -> dict[str, float]:
+        channels = list(active_channel_alpha_values)
+        alpha_values = list(active_channel_alpha_values.values())
+        opacities = self._base_first_hierarchical_opacities(alpha_values)
+        channel_opacity_mapper = {
+            channel: opacities[i + 1]
+            for i, channel in enumerate(channels)
+        }
+        channel_opacity_mapper[base_channel] = opacities[0]
+        return channel_opacity_mapper
+
+    def overlay_item_opacity_plan(
+        self,
+        *,
+        all_channels: Iterable[str],
+        base_channel: str,
+        checked_channels: Iterable[str],
+        toolbar_single_channel: bool,
+        active_channel_alpha_values: Mapping[str, float],
+    ) -> OverlayOpacityPlan:
+        checked_channels = set(checked_channels)
+        channel_opacity_mapper = self.overlay_channel_opacity_map(
+            base_channel,
+            active_channel_alpha_values,
+        )
+        is_single_channel = toolbar_single_channel or len(checked_channels) == 1
+
+        opacities = {}
+        alpha_scrollbar_disabled = {}
+        for channel in all_channels:
+            if channel in checked_channels and is_single_channel:
+                op_val = 1.0
+            elif channel in checked_channels:
+                op_val = channel_opacity_mapper[channel]
+            else:
+                op_val = 0.0
+
+            if op_val == 0:
+                op_val = 0.01
+
+            opacities[channel] = min(op_val, 0.999)
+            if channel != base_channel:
+                alpha_scrollbar_disabled[channel] = op_val == 0
+
+        return OverlayOpacityPlan(
+            opacities=opacities,
+            alpha_scrollbar_disabled=alpha_scrollbar_disabled,
+        )
+
+    def _base_first_hierarchical_opacities(
+        self,
+        alpha_values: Iterable[float],
+    ) -> list[float]:
+        alphas = [1.0, *alpha_values]
+        if not alphas:
+            return alphas
+
+        weights = []
+        for i, alpha_ref in enumerate(alphas):
+            weight = alpha_ref
+            for alpha in alphas[i + 1:]:
+                weight *= 1 - alpha
+            weights.append(weight)
+
+        return weights
+
+    def generate_labels_image_lut(self, base_lut: np.ndarray) -> np.ndarray:
+        """Converts a 3-channel base LUT to a 4-channel RGBA LUT with background as transparent."""
+        import numpy as np
+        lut = np.zeros((len(base_lut), 4), dtype=np.uint8)
+        lut[:, -1] = 255
+        lut[:, :-1] = base_lut
+        lut[0] = [0, 0, 0, 0]
+        return lut
+
+    def extend_labels_lut(self, base_lut: np.ndarray, len_new_lut: int) -> np.ndarray:
+        """Extends base_lut to include IDs greater than original length of base_lut."""
+        import numpy as np
+        if len_new_lut <= len(base_lut):
+            return base_lut
+
+        num_new_colors = len_new_lut - len(base_lut)
+        _lut = np.zeros((len_new_lut, 3), np.uint8)
+        _lut[:len(base_lut)] = base_lut
+        
+        random_idx = np.random.randint(0, len(base_lut), size=num_new_colors)
+        for i, idx in enumerate(random_idx):
+            rgb = base_lut[idx]
+            _lut[len(base_lut) + i] = rgb
+        return _lut
+
+    def apply_lut_dimming_for_kept_objects(
+        self,
+        lut: np.ndarray,
+        kept_object_ids: list[int],
+        keep_ids_enabled: bool,
+    ) -> np.ndarray:
+        """Applies dimming to non-kept objects in the LUT if keep_ids is enabled."""
+        import numpy as np
+        if not keep_ids_enabled:
+            return lut
+
+        dimmed_lut = np.round(lut * 0.3).astype(np.uint8)
+        valid_ids = [idx for idx in kept_object_ids if idx < len(lut)]
+        if valid_ids:
+            kept_lut = np.round(dimmed_lut[valid_ids] / 0.3).astype(np.uint8)
+            dimmed_lut[valid_ids] = kept_lut
+        return dimmed_lut
+
+
             The toggle to activate 3D segmentation is visible only when
             the <code>Number of z-slices</code> is greater than 1.
         """)
@@ -1335,7 +1494,7 @@ class GraphicsView:
         if segmEndname == 'combined segm.':
              posData.ol_labels_data['combined segm.'] = posData.combine_img_data
              return
-        filePath, filename = self.view_model.workspace.path_from_endname(
+        filePath, filename = self.workspace.path_from_endname(
             segmEndname, posData.images_path
         )
         self.logger.info(f'Loading "{segmEndname}.npz"...')
@@ -1566,7 +1725,7 @@ class GraphicsView:
 
         rgba_imgs_info = {}
         for filename in posData.ol_data:
-            chName = self.view_model.formatting.channel_name_from_basename(
+            chName = self.formatting.channel_name_from_basename(
                 filename, posData.basename, remove_ext=False
             )
             if chName not in self.checkedOverlayChannels:
@@ -1636,7 +1795,7 @@ class GraphicsView:
                 alphaSB.value()/alphaSB.maximum()
             )
 
-        return self.view_model.overlay_channel_opacity_map(
+        return self.overlay_channel_opacity_map(
             self.user_ch_name,
             active_channel_alpha_values,
         )
@@ -1679,7 +1838,7 @@ class GraphicsView:
 
     def extendLabelsLUT(self, lenNewLut):
         if lenNewLut > len(self.lut):
-            self.lut = self.view_model.extend_labels_lut(self.lut, lenNewLut)
+            self.lut = self.extend_labels_lut(self.lut, lenNewLut)
             self.initLabelsImageItems()
             return True
         return False
@@ -1690,7 +1849,7 @@ class GraphicsView:
         self.initLabelsImageItems()
 
     def getLabelsImageLut(self):
-        return self.view_model.generate_labels_image_lut(self.lut)
+        return self.generate_labels_image_lut(self.lut)
 
     def initLabelsImageItems(self):
         lut = self.getLabelsImageLut()
@@ -1735,7 +1894,7 @@ class GraphicsView:
         if updateLevels:
             self.img2.setLevels([0, len(lut)])
 
-        lut = self.view_model.apply_lut_dimming_for_kept_objects(
+        lut = self.apply_lut_dimming_for_kept_objects(
             lut,
             getattr(self, 'keptObjectsIDs', []),
             self.keepIDsButton.isChecked(),
@@ -1906,7 +2065,7 @@ class GraphicsView:
         for channel, items in self.overlayLayersItems.items():
             _, lutItem, alphaSB, toolbutton = items[:4]
             toolbutton.setChecked(
-                self.view_model.overlay_toolbutton_checked(
+                self.overlay_toolbutton_checked(
                     channel,
                     checked_channels=self.checkedOverlayChannels,
                     is_single_channel=self.overlayToolbar.isSingleChannel(),
@@ -1914,7 +2073,7 @@ class GraphicsView:
             )
 
     def setOverlayItemsVisible(self):
-        visibility_plan = self.view_model.overlay_visibility_plan(
+        visibility_plan = self.overlay_visibility_plan(
             all_channels=self.overlayLayersItems.keys(),
             checked_channels=self.checkedOverlayChannels,
             overlay_enabled=self.overlayButton.isChecked(),
@@ -1943,7 +2102,7 @@ class GraphicsView:
             if button.isChecked()
         }
         planned_checked_channels = (
-            self.view_model.overlay_toolbutton_click_checked_channels(
+            self.overlay_toolbutton_click_checked_channels(
                 clicked_channel=channelName,
                 all_channels=self.allOverlayToolbuttons.keys(),
                 checked_channels=checked_channels,
@@ -1974,7 +2133,7 @@ class GraphicsView:
             active_channel_alpha_values[imageItem.channelName] = (
                 alphaSB.value()/alphaSB.maximum()
             )
-        opacity_plan = self.view_model.overlay_item_opacity_plan(
+        opacity_plan = self.overlay_item_opacity_plan(
             all_channels=self.allOverlayToolbuttons.keys(),
             base_channel=self.user_ch_name,
             checked_channels=checked_channels,
@@ -2079,7 +2238,7 @@ class GraphicsView:
 
         posData = self.data[self.pos_i]
 
-        allIDs, posData = self.view_model.label_edits.count_objects(
+        allIDs, posData = self.label_edits.count_objects(
             posData, self.logger.info
         )
 
@@ -2377,7 +2536,7 @@ class GraphicsView:
         except Exception as err:
             pass
 
-        _, y_nearest, x_nearest = self.view_model.label_edits.nearest_nonzero_2d(
+        _, y_nearest, x_nearest = self.label_edits.nearest_nonzero_2d(
             lostObjsContourMask, y, x, return_coords=True
         )
         nearest_ID = self.get_2Dlab(prev_lab)[y_nearest, x_nearest]
@@ -2458,7 +2617,7 @@ class GraphicsView:
         obj_image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
         obj_bbox = self.getObjBbox(obj.bbox)
         try:
-            contours = self.view_model.geometry.object_contours(
+            contours = self.geometry.object_contours(
                 obj_image=obj_image,
                 obj_bbox=obj_bbox,
                 local=local,
@@ -2489,7 +2648,7 @@ class GraphicsView:
 
         all_external = False
         local = False
-        contours = self.view_model.geometry.object_contours(
+        contours = self.geometry.object_contours(
             obj_image=obj_image,
             obj_bbox=obj_bbox,
             local=local,
@@ -2500,7 +2659,7 @@ class GraphicsView:
 
         all_external = True
         local = False
-        contours = self.view_model.geometry.object_contours(
+        contours = self.geometry.object_contours(
             obj_image=obj_image,
             obj_bbox=obj_bbox,
             local=local,
@@ -2614,7 +2773,7 @@ class GraphicsView:
                 break
 
             prev_rp = posData.allData_li[frame_i-1]['regionprops']
-            dist_matrix = self.view_model.geometry.object_to_object_contour_distance_matrix(
+            dist_matrix = self.geometry.object_to_object_contour_distance_matrix(
                 dataDict['contours'], rp,
                 previous_regionprops=prev_rp,
                 restrict_search=True,

@@ -2,23 +2,137 @@
 
 from __future__ import annotations
 
-from cellacdc.viewmodels.status_hover_viewmodel import StatusHoverViewModel
 
 
+import math
+import os
+import re
 class StatusHoverView:
     """Qt-facing adapter around status/hover view-model contracts."""
 
-    def __init__(self, host, view_model: StatusHoverViewModel):
-        self.host = host
-        self.view_model = view_model
+    """Headless status-bar and hover formatting rules."""
 
+    def channel_hover_text(self, description, channel, value, format_spec):
+        return f'<b>{description} {channel}</b>: value={value:{format_spec}}'
+
+    def object_hover_text(self, *, label_id, max_id, object_count):
+        return (
+            f'<b>Objects</b>: ID={label_id}, <i>max ID={max_id}, '
+            f'num. of objects={object_count}</i>'
+        )
+
+    def base_hover_text(
+        self,
+        *,
+        x,
+        y,
+        width,
+        height,
+        x_left,
+        y_top,
+        x_right,
+        y_bottom,
+        axis_index,
+    ):
+        return (
+            f'x={x:d}, y={y:d} | '
+            f'W={width:d}, H={height:d} | '
+            f'x_left={x_left:d}, y_top={y_top:d} | '
+            f'x_right={x_right:d}, y_bottom={y_bottom:d} | '
+            f'(ax{axis_index})'
+        )
+
+    def replace_view_range_status(
+        self,
+        text,
+        *,
+        width,
+        height,
+        x_left,
+        y_top,
+        x_right,
+        y_bottom,
+    ):
+        pattern = (
+            r'W=.*?, H=.*? \| '
+            r'x_left=.*?, y_top=.*? \| '
+            r'x_right=.*?, y_bottom=.*? \| '
+        )
+        replacing = (
+            f'W={width:d}, H={height:d} | '
+            f'x_left={x_left:d}, y_top={y_top:d} | '
+            f'x_right={x_right:d}, y_bottom={y_bottom:d} | '
+        )
+        return re.sub(pattern, replacing, text)
+
+    def highlight_state(
+        self,
+        *,
+        x,
+        y,
+        bbox,
+        enabled,
+        active_tool,
+        blocked_by_other_highlight=False,
+    ):
+        if not enabled or active_tool is not None or blocked_by_other_highlight:
+            return None
+        y_min, x_min, y_max, x_max = bbox
+        return x_min <= x <= x_max and y_min <= y <= y_max
+
+    def mouse_data_coords_right_image(self, text):
+        if not text:
+            return None
+        ax_idx = int(re.findall(r'\(ax(\d)\)', text)[0])
+        if ax_idx == 0:
+            return None
+        coords = re.findall(r'x=(\d+), y=(\d+) \|', text)[0]
+        return tuple([int(val) for val in coords])
+
+    def ruler_length_text(self, text):
+        length_text = re.findall(r'length = (.*)\)', text)[0]
+        length_text = length_text.replace('pxl', 'pixels')
+        return f'{length_text})'
+
+    def ruler_measurement_text(self, *, length_pixels, pixel_to_um):
+        return (
+            f'length = {int(length_pixels)} pxl '
+            f'({length_pixels*pixel_to_um:.2f} μm)'
+        )
+
+    def euclidean_length(self, x_values, y_values):
+        return math.sqrt(
+            (x_values[0]-x_values[1])**2 + (y_values[0]-y_values[1])**2
+        )
+
+    def status_bar_text(
+        self,
+        *,
+        pos_foldername,
+        basename,
+        filename,
+        segm_npz_path,
+    ):
+        segmented_channel_name = filename[len(basename):]
+        segm_filename = os.path.basename(segm_npz_path)
+        segm_end_name = segm_filename[len(basename):]
+        return (
+            f'{pos_foldername} || '
+            f'Basename: {basename} || '
+            f'Segmented channel: {segmented_channel_name} || '
+            f'Segmentation file name: {segm_end_name}'
+        )
+
+
+    def __init__(self, host):
+        self.host = host
     def channel_hover_values(self, descr, channel, value, ff=None):
         if ff is None:
             n_digits = len(str(int(value)))
             ff = self.host.view_model.formatting.number_fstring_formatter(
                 type(value), precision=abs(n_digits-5)
             )
-        return self.view_model.channel_hover_text(descr, channel, value, ff)
+        return self.channel_hover_text(descr, channel, value, ff)
 
     def add_overlay_hover_values_formatted(self, txt, xdata, ydata):
         pos_data = self.host.data[self.host.pos_i]
@@ -60,7 +174,7 @@ class StatusHoverView:
             hasattr(self.host, 'scaleBar')
             and self.host.scaleBar.isHighlighted()
         )
-        highlighted = self.view_model.highlight_state(
+        highlighted = self.highlight_state(
             x=x,
             y=y,
             bbox=self.host.timestamp.bbox(),
@@ -75,7 +189,7 @@ class StatusHoverView:
     def check_highlight_scale_bar(self, x, y, active_tool_button):
         if not hasattr(self.host, 'scaleBar'):
             return
-        highlighted = self.view_model.highlight_state(
+        highlighted = self.highlight_state(
             x=x,
             y=y,
             bbox=self.host.scaleBar.bbox(),
@@ -87,7 +201,7 @@ class StatusHoverView:
         self.host.scaleBar.setHighlighted(highlighted)
 
     def mouse_data_coords_right_image(self):
-        return self.view_model.mouse_data_coords_right_image(
+        return self.mouse_data_coords_right_image(
             self.host.wcLabel.text()
         )
 
@@ -97,7 +211,7 @@ class StatusHoverView:
         )
         width = round(xr - xl)
         height = round(yb - yt)
-        txt = self.view_model.replace_view_range_status(
+        txt = self.replace_view_range_status(
             self.host.wcLabel.text(),
             width=width,
             height=height,
@@ -115,7 +229,7 @@ class StatusHoverView:
         width = round(xr - xl)
         height = round(yb - yt)
         axis_index = 0 if is_ax0 else 1
-        txt = self.view_model.base_hover_text(
+        txt = self.base_hover_text(
             x=xdata,
             y=ydata,
             width=width,
@@ -141,7 +255,7 @@ class StatusHoverView:
         txt = self.add_overlay_hover_values_formatted(txt, xdata, ydata)
 
         label_id = self.host.currentLab2D[ydata, xdata]
-        label_txt = self.view_model.object_hover_text(
+        label_txt = self.object_hover_text(
             label_id=label_id,
             max_id=max(pos_data.IDs, default=0),
             object_count=len(pos_data.IDs),
@@ -150,7 +264,7 @@ class StatusHoverView:
         return self.add_ruler_measurement_text(txt)
 
     def ruler_length_text(self):
-        return self.view_model.ruler_length_text(self.host.wcLabel.text())
+        return self.ruler_length_text(self.host.wcLabel.text())
 
     def add_ruler_measurement_text(self, txt):
         pos_data = self.host.data[self.host.pos_i]
@@ -158,14 +272,14 @@ class StatusHoverView:
         if xx is None:
             return txt
 
-        length_pixels = self.view_model.euclidean_length(xx, yy)
+        length_pixels = self.euclidean_length(xx, yy)
         depth_axes = self.host.switchPlaneCombobox.depthAxes()
         if depth_axes != 'z':
             pixel_to_um = pos_data.PhysicalSizeZ
         else:
             pixel_to_um = pos_data.PhysicalSizeX
 
-        length_txt = self.view_model.ruler_measurement_text(
+        length_txt = self.ruler_measurement_text(
             length_pixels=length_pixels,
             pixel_to_um=pixel_to_um,
         )
@@ -174,7 +288,7 @@ class StatusHoverView:
     def set_status_bar_label(self, log=True):
         self.host.statusbar.clearMessage()
         pos_data = self.host.data[self.host.pos_i]
-        txt = self.view_model.status_bar_text(
+        txt = self.status_bar_text(
             pos_foldername=pos_data.pos_foldername,
             basename=pos_data.basename,
             filename=pos_data.filename,

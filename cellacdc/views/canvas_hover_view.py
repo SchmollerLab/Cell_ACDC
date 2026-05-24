@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import pyqtgraph as pg
+from typing import Any
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QGuiApplication
 
 from cellacdc import html_utils, widgets
-from cellacdc.viewmodels.canvas_hover_viewmodel import CanvasHoverViewModel
 
 
 class CanvasHoverView:
@@ -28,15 +28,13 @@ class CanvasHoverView:
         'drawTempRulerLine',
     )
 
-    def __init__(self, host, view_model: CanvasHoverViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -51,7 +49,7 @@ class CanvasHoverView:
             return
 
         xdata, ydata = int(x), int(y)
-        if not self.view_model.point_in_bounds(
+        if not self.point_in_bounds(
             self.currentLab2D.shape,
             xdata,
             ydata,
@@ -83,7 +81,7 @@ class CanvasHoverView:
             self.resetCursors()
 
         self.gui_hoverEventImg1(event, isHoverImg1=False)
-        setMirroredCursor = self.view_model.should_set_mirrored_cursor(
+        setMirroredCursor = self.should_set_mirrored_cursor(
             override_cursor_is_none=self.app.overrideCursor() is None,
             is_exit=event.isExit(),
             mirrored_cursor_enabled=self.showMirroredCursorAction.isChecked(),
@@ -100,7 +98,7 @@ class CanvasHoverView:
             return
 
         xdata, ydata = int(x), int(y)
-        if not self.view_model.point_in_bounds(
+        if not self.point_in_bounds(
             self.currentLab2D.shape,
             xdata,
             ydata,
@@ -124,7 +122,7 @@ class CanvasHoverView:
         except AttributeError:
             return
 
-        self.xHoverImg, self.yHoverImg = self.view_model.hover_position(
+        self.xHoverImg, self.yHoverImg = self.hover_position(
             event.isExit(),
             event.pos(),
         )
@@ -140,7 +138,7 @@ class CanvasHoverView:
         cursorsInfo = self.gui_setCursor(modifiers, event)
         self.highlightHoverLostObj(modifiers, event)
 
-        drawRulerLine = self.view_model.should_draw_ruler_line(
+        drawRulerLine = self.should_draw_ruler_line(
             ruler_checked=self.rulerButton.isChecked(),
             add_deleted_polyline_checked=(
                 self.addDelPolyLineRoiButton.isChecked()
@@ -154,7 +152,7 @@ class CanvasHoverView:
         if not event.isExit():
             x, y = event.pos()
             xdata, ydata = int(x), int(y)
-            if self.view_model.point_in_bounds(
+            if self.point_in_bounds(
                 self.img1.image.shape[:2],
                 xdata,
                 ydata,
@@ -265,7 +263,7 @@ class CanvasHoverView:
         if drawSpline:
             self.curvature_tools_view.hoverEventDrawSpline(event)
 
-        setMirroredCursor = self.view_model.should_set_mirrored_cursor(
+        setMirroredCursor = self.should_set_mirrored_cursor(
             override_cursor_is_none=self.app.overrideCursor() is None,
             is_exit=event.isExit(),
             mirrored_cursor_enabled=self.showMirroredCursorAction.isChecked(),
@@ -332,7 +330,7 @@ class CanvasHoverView:
         self.ax1.addItem(self.ax1_cursor)
 
     def _cursor_flags(self, modifiers, event):
-        return self.view_model.cursor_flags(
+        return self.cursor_flags(
             is_exit=event.isExit(),
             no_modifier=modifiers == Qt.NoModifier,
             shift=modifiers == Qt.ShiftModifier,
@@ -431,6 +429,121 @@ class CanvasHoverView:
 
         msg = widgets.myMessageBox(wrapText=False)
         txt = (f"""
+
+    """Headless decisions for hover and cursor state."""
+
+    def point_in_bounds(
+        self,
+        image_shape: tuple[int, int],
+        xdata: int,
+        ydata: int,
+    ) -> bool:
+        y_size, x_size = image_shape
+        return 0 <= xdata < x_size and 0 <= ydata < y_size
+
+    def hover_position(self, is_exit: bool, position) -> tuple[Any, Any]:
+        if is_exit:
+            return None, None
+        return position
+
+    def should_set_mirrored_cursor(
+        self,
+        *,
+        override_cursor_is_none: bool,
+        is_exit: bool,
+        mirrored_cursor_enabled: bool,
+        is_hover_img1: bool = True,
+    ) -> bool:
+        return (
+            override_cursor_is_none
+            and not is_exit
+            and is_hover_img1
+            and mirrored_cursor_enabled
+        )
+
+    def should_draw_ruler_line(
+        self,
+        *,
+        ruler_checked: bool,
+        add_deleted_polyline_checked: bool,
+        temp_segment_on: bool,
+        is_exit: bool,
+    ) -> bool:
+        return (
+            (ruler_checked or add_deleted_polyline_checked)
+            and temp_segment_on
+            and not is_exit
+        )
+
+    def cursor_flags(
+        self,
+        *,
+        is_exit: bool,
+        no_modifier: bool,
+        shift: bool,
+        ctrl: bool,
+        alt: bool,
+        brush_checked: bool,
+        eraser_checked: bool,
+        add_deleted_polyline_checked: bool,
+        label_roi_checked: bool,
+        label_roi_circular_checked: bool,
+        wand_checked: bool,
+        move_label_checked: bool,
+        expand_label_checked: bool,
+        curvature_checked: bool,
+        keep_ids_checked: bool,
+        custom_annotation_available: bool,
+        manual_tracking_checked: bool,
+        manual_background_checked: bool,
+        zoom_rect_checked: bool,
+        edit_id_checked: bool,
+        magic_prompts_checked: bool,
+        points_layer_checked: bool,
+        add_points_by_clicking_active: bool,
+    ) -> dict[str, bool]:
+        return {
+            'setBrushCursor': (
+                brush_checked and not is_exit and (no_modifier or shift or ctrl)
+            ),
+            'setEraserCursor': eraser_checked and not is_exit and no_modifier,
+            'setAddDelPolyLineCursor': (
+                add_deleted_polyline_checked and not is_exit and no_modifier
+            ),
+            'setLabelRoiCircCursor': (
+                label_roi_checked
+                and not is_exit
+                and (no_modifier or shift or ctrl)
+                and label_roi_circular_checked
+            ),
+            'setWandCursor': wand_checked and not is_exit and no_modifier,
+            'setLabelRoiCursor': label_roi_checked and not is_exit and no_modifier,
+            'setMoveLabelCursor': move_label_checked and not is_exit and no_modifier,
+            'setExpandLabelCursor': (
+                expand_label_checked and not is_exit and no_modifier
+            ),
+            'setCurvCursor': curvature_checked and not is_exit and no_modifier,
+            'setKeepObjCursor': keep_ids_checked and not is_exit and no_modifier,
+            'setCustomAnnotCursor': (
+                custom_annotation_available and not is_exit and no_modifier
+            ),
+            'setManualTrackingCursor': (
+                manual_tracking_checked and not is_exit and no_modifier
+            ),
+            'setManualBackgroundCursor': (
+                manual_background_checked and not is_exit and no_modifier
+            ),
+            'setAddPointCursor': (
+                (points_layer_checked or magic_prompts_checked)
+                and add_points_by_clicking_active
+                and not is_exit
+                and no_modifier
+            ),
+            'setZoomRectCursor': zoom_rect_checked and not is_exit and no_modifier,
+            'setEditIDCursor': edit_id_checked and not is_exit,
+            'setPanImageCursor': alt and not is_exit,
+        }
+
             Cell ID {point_id} <b>already exists</b>!<br><br>
             Are you sure you want to add this point?
         """)
@@ -455,7 +568,7 @@ class CanvasHoverView:
         except AttributeError:
             return
 
-        self.xHoverImg, self.yHoverImg = self.view_model.hover_position(
+        self.xHoverImg, self.yHoverImg = self.hover_position(
             event.isExit(),
             event.pos(),
         )

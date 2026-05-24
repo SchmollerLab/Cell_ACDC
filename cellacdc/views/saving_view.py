@@ -9,6 +9,8 @@ from functools import partial
 from typing import Literal
 
 import pandas as pd
+from dataclasses import dataclass
+from typing import Literal
 from qtpy.QtCore import QEventLoop, QMutex, QThread, QTimer, QWaitCondition
 from qtpy.QtGui import QFont
 from qtpy.QtWidgets import QCheckBox, QMessageBox
@@ -18,7 +20,6 @@ from cellacdc import _warnings, apps, disableWindow, exception_handler
 from cellacdc import cca_df_colnames, html_utils, settings_csv_path, widgets
 from cellacdc import load
 from cellacdc import workers
-from cellacdc.viewmodels.saving_viewmodel import SavingViewModel
 
 
 _font = QFont()
@@ -77,15 +78,13 @@ class SavingView:
         'askSaveOnClosing',
     )
 
-    def __init__(self, host, view_model: SavingViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -184,7 +183,7 @@ class SavingView:
 
     def enqAutosave(self):
         mode = str(self.modeComboBox.currentText())
-        if self.view_model.should_clear_autosave_status(mode=mode):
+        if self.should_clear_autosave_status(mode=mode):
             if self.statusBarLabel.text().endswith('Autosaving...'):
                 self.statusBarLabel.setText(
                     self.statusBarLabel.text().replace(' | Autosaving...', '')
@@ -194,7 +193,7 @@ class SavingView:
         if not self.autoSaveActiveWorkers:
             self.gui_createAutoSaveWorker()
 
-        if not self.view_model.should_enqueue_autosave(
+        if not self.should_enqueue_autosave(
             mode=mode,
             has_active_workers=bool(self.autoSaveActiveWorkers),
         ):
@@ -207,7 +206,7 @@ class SavingView:
         autoSaveIntevalValue, autoSaveIntervalUnit = (
             self.autoSaveIntevalValueUnit
         )
-        schedule = self.view_model.autosave_schedule(
+        schedule = self.autosave_schedule(
             autoSaveIntevalValue, autoSaveIntervalUnit
         )
         if schedule is None:
@@ -273,7 +272,7 @@ class SavingView:
                 obj_iter = tqdm(rp, ncols=100, position=2, leave=False)
                 for i, obj in enumerate(obj_iter):
                     vol_vox, vol_fl = (
-                        self.view_model.measurements.rotational_volume(
+                        self.measurements.rotational_volume(
                             obj, PhysicalSizeY, PhysicalSizeX
                         )
                     )
@@ -290,6 +289,126 @@ class SavingView:
             return "", True, True
 
         help_txt = html_utils.paragraph(f"""
+
+    """Headless decisions for save and autosave workflows."""
+
+    viewer_mode = 'Viewer'
+    segmentation_mode = 'Segmentation and Tracking'
+    cell_cycle_mode = 'Cell cycle analysis'
+
+    def should_clear_autosave_status(self, *, mode: str) -> bool:
+        return mode == self.viewer_mode
+
+    def should_enqueue_autosave(self, *, mode: str, has_active_workers: bool):
+        return mode != self.viewer_mode and has_active_workers
+
+    def autosave_schedule(
+        self,
+        value: float,
+        unit: Literal['minutes', 'frames'],
+    ) -> AutosaveSchedule | None:
+        if value == 0:
+            return None
+        if unit == 'frames':
+            return AutosaveSchedule(use_frame_timer=True)
+        return AutosaveSchedule(
+            use_frame_timer=False,
+            interval_ms=round(value * 60 * 1000),
+        )
+
+    def autosave_interval_change(
+        self,
+        value: float,
+        unit: Literal['minutes', 'frames'],
+    ) -> AutosaveIntervalChange:
+        return AutosaveIntervalChange(
+            value=value,
+            unit=unit,
+            settings_updates={
+                'autoSaveIntevalValue': str(value),
+                'autoSaveIntervalUnit': unit,
+            },
+            log_message=f'Autosave interval changed to: {value} {unit}',
+            tooltip=(
+                'Change autosave interval to every N frames or minutes\n\n'
+                f'Current autosave interval: {value} {unit}'
+            ),
+            start_frame_timer=unit == 'frames',
+        )
+
+    def concatenate_prompt_plan(
+        self,
+        *,
+        has_main_window: bool,
+        is_quick_save: bool,
+        setting_exists: bool,
+        show_setting_value: str | None,
+    ) -> ConcatenatePromptPlan:
+        if not has_main_window or is_quick_save:
+            return ConcatenatePromptPlan(
+                should_prompt=False,
+                ensure_setting=False,
+            )
+
+        should_prompt = show_setting_value != 'No'
+        return ConcatenatePromptPlan(
+            should_prompt=should_prompt,
+            ensure_setting=not setting_exists,
+        )
+
+    def concatenate_prompt_setting(self, *, do_not_show_again: bool) -> str:
+        if do_not_show_again:
+            return 'No'
+        return 'Yes'
+
+    def autosave_segmentation_enabled(self, *, mode: str, checked: bool) -> bool:
+        if mode != self.segmentation_mode:
+            return False
+        return checked
+
+    def autosave_annotations_enabled(self, *, mode: str, checked: bool) -> bool:
+        if mode != self.viewer_mode:
+            return False
+        return checked
+
+    def save_as_basename(self, basename: str) -> str:
+        if basename.endswith('_'):
+            return f'{basename}segm'
+        return f'{basename}_segm'
+
+    def quick_save_positions(self, position_foldername: str) -> set[str]:
+        return {position_foldername}
+
+    def should_ask_positions(
+        self,
+        *,
+        is_snapshot: bool,
+        is_quick_save: bool,
+        position_count: int,
+    ) -> bool:
+        return is_snapshot and not is_quick_save and position_count > 1
+
+    def should_compute_volume_metrics(
+        self,
+        *,
+        save_metrics: bool,
+        mode: str,
+    ) -> bool:
+        return save_metrics or mode == self.cell_cycle_mode
+
+    def save_finished_title(
+        self,
+        *,
+        aborted: bool,
+        worker_aborted: bool,
+        is_quick_save: bool,
+    ) -> tuple[str, str | None]:
+        if aborted or worker_aborted:
+            return 'Saving process cancelled.', 'r'
+        if is_quick_save:
+            return 'Saved segmentation file and annotations', None
+        return 'Saved!', None
+
             You have <b>whitelisted IDs</b> in the current position.<br>
             Do you want to save the <b>not whitelisted</b> segmentation data<br>
             This will allow you to <b>revisit the original segmentation</b>.<br>
@@ -300,10 +419,10 @@ class SavingView:
             Do you want to save the <b>not whitelisted</b> segmentation data?<br>
             """)
 
-        found_files = self.view_model.workspace.segmentation_files(
+        found_files = self.workspace.segmentation_files(
             posData.images_path
         )
-        existingEndnames = self.view_model.workspace.endnames(
+        existingEndnames = self.workspace.endnames(
             posData.basename, found_files
         )
 
@@ -334,7 +453,7 @@ class SavingView:
         if self.isSnapshot:
             return True
 
-        frame_i = self.view_model.tracking.last_tracked_frame_index(
+        frame_i = self.tracking.last_tracked_frame_index(
             (data_dict['labels'] for data_dict in posData.allData_li),
             first_frame_fallback=-1,
         )
@@ -382,7 +501,7 @@ class SavingView:
         if self.isSnapshot:
             return True
 
-        frame_i = self.view_model.tracking.last_tracked_frame_index(
+        frame_i = self.tracking.last_tracked_frame_index(
             (data_dict['labels'] for data_dict in posData.allData_li),
             first_frame_fallback=-1,
         )
@@ -524,10 +643,10 @@ class SavingView:
 
         existingFilenames = set()
         for _posData in self.data:
-            segm_files = self.view_model.workspace.segmentation_files(
+            segm_files = self.workspace.segmentation_files(
                 _posData.images_path
             )
-            _existingEndnames = self.view_model.workspace.endnames(
+            _existingEndnames = self.workspace.endnames(
                 _posData.basename, segm_files
             )
             existingFilenames.update([
@@ -535,7 +654,7 @@ class SavingView:
                 for endname in _existingEndnames
             ])
         posData = self.data[self.pos_i]
-        basename = self.view_model.save_as_basename(posData.basename)
+        basename = self.save_as_basename(posData.basename)
         win = apps.filenameDialog(
             basename=basename,
             hintText='Insert a <b>filename</b> for the segmentation file:<br>',
@@ -610,7 +729,7 @@ class SavingView:
             self.saveWin.QPbar.setValue(self.saveWin.QPbar.value()+step)
             steps_left = self.saveWin.QPbar.maximum()-self.saveWin.QPbar.value()
             seconds = round(exec_time*steps_left)
-            ETA = self.view_model.formatting.seconds_to_eta(seconds)
+            ETA = self.formatting.seconds_to_eta(seconds)
             self.saveWin.ETA_label.setText(f'ETA: {ETA}')
 
     def quickSave(self):
@@ -625,7 +744,7 @@ class SavingView:
 
         missing_cca_items = [
             (item.cca_df, self.data[item.position_i], item.frame_i)
-            for item in self.view_model.cca_workflows.missing_annotation_items(
+            for item in self.cca_workflows.missing_annotation_items(
                 (posData.allData_li for posData in self.data),
                 cca_df_colnames,
                 is_snapshot=self.isSnapshot,
@@ -733,7 +852,7 @@ class SavingView:
                 return True
 
         self.posToSave = None
-        if self.view_model.should_ask_positions(
+        if self.should_ask_positions(
             is_snapshot=self.isSnapshot,
             is_quick_save=isQuickSave,
             position_count=len(self.data),
@@ -747,7 +866,7 @@ class SavingView:
 
         if isQuickSave:
             # Quick save only current pos
-            self.posToSave = self.view_model.quick_save_positions(
+            self.posToSave = self.quick_save_positions(
                 self.data[self.pos_i].pos_foldername
             )
 
@@ -777,7 +896,7 @@ class SavingView:
             self.activateWindow()
             return True
 
-        if self.view_model.should_compute_volume_metrics(
+        if self.should_compute_volume_metrics(
             save_metrics=self.save_metrics,
             mode=mode,
         ):
@@ -852,7 +971,7 @@ class SavingView:
         worker, thread = self.autoSaveActiveWorkers[-1]
 
         if enabled:
-            worker.isAutoSaveON = self.view_model.autosave_segmentation_enabled(
+            worker.isAutoSaveON = self.autosave_segmentation_enabled(
                 mode=self.modeComboBox.currentText(),
                 checked=self.autoSaveToggle.isChecked(),
             )
@@ -867,7 +986,7 @@ class SavingView:
 
         if enabled:
             worker.isAutoSaveAnnotON = (
-                self.view_model.autosave_annotations_enabled(
+                self.autosave_annotations_enabled(
                     mode=self.modeComboBox.currentText(),
                     checked=self.autoSaveToggle.isChecked(),
                 )
@@ -885,7 +1004,7 @@ class SavingView:
         worker, thread = self.autoSaveActiveWorkers[-1]
 
         mode = self.modeComboBox.currentText()
-        worker.isAutoSaveON = self.view_model.autosave_segmentation_enabled(
+        worker.isAutoSaveON = self.autosave_segmentation_enabled(
             mode=mode,
             checked=checked,
         )
@@ -901,7 +1020,7 @@ class SavingView:
 
         mode = self.modeComboBox.currentText()
         worker.isAutoSaveAnnotON = (
-            self.view_model.autosave_annotations_enabled(
+            self.autosave_annotations_enabled(
                 mode=mode,
                 checked=checked,
             )
@@ -915,7 +1034,7 @@ class SavingView:
     def autoSaveIntervalValueChanged(
             self, value: float, unit: Literal['minutes', 'frames']
         ):
-        interval_change = self.view_model.autosave_interval_change(
+        interval_change = self.autosave_interval_change(
             value,
             unit,
         )
@@ -938,7 +1057,7 @@ class SavingView:
     def autoSaveIntervalSetTooltip(self, tooltip=None):
         if tooltip is None:
             value, unit = self.autoSaveIntevalValueUnit
-            tooltip = self.view_model.autosave_interval_change(
+            tooltip = self.autosave_interval_change(
                 value,
                 unit,
             ).tooltip
@@ -972,7 +1091,7 @@ class SavingView:
             self.df_settings.at['showAskConcatenate', 'value']
             if setting_exists else None
         )
-        prompt_plan = self.view_model.concatenate_prompt_plan(
+        prompt_plan = self.concatenate_prompt_plan(
             has_main_window=self.mainWin is not None,
             is_quick_save=self._isQuickSave,
             setting_exists=setting_exists,
@@ -995,7 +1114,7 @@ class SavingView:
             buttonsTexts=('No', 'Yes'),
             widgets=doNotShowAgainCheckbox
         )
-        show_ask_concatenate = self.view_model.concatenate_prompt_setting(
+        show_ask_concatenate = self.concatenate_prompt_setting(
             do_not_show_again=doNotShowAgainCheckbox.isChecked()
         )
         self.df_settings.at['showAskConcatenate', 'value'] = (
@@ -1024,7 +1143,7 @@ class SavingView:
     def saveDataFinished(self):
         self.setDisabled(False, keepDisabled=False)
         self.activateWindow()
-        title_text, color = self.view_model.save_finished_title(
+        title_text, color = self.save_finished_title(
             aborted=self.saveWin.aborted,
             worker_aborted=self.worker.abort,
             is_quick_save=self._isQuickSave,
@@ -1052,7 +1171,7 @@ class SavingView:
         self.askConcatenate()
 
         if self.closeGUI:
-            salute_string = self.view_model.formatting.salute_string()
+            salute_string = self.formatting.salute_string()
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(
                 'Data <b>saved!</b>. The GUI will now close.<br><br>'

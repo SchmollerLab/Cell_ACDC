@@ -2,22 +2,41 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QFormLayout, QLabel, QVBoxLayout
 
 from cellacdc import apps, settings_csv_path, widgets
-from cellacdc.viewmodels.quick_settings_viewmodel import (
-    QuickSettingsViewModel,
-)
 
 
 class QuickSettingsView:
     """Qt-facing adapter around quick-settings view-model contracts."""
 
-    def __init__(self, host, view_model: QuickSettingsViewModel):
-        self.host = host
-        self.view_model = view_model
+    """Headless quick-settings decision rules."""
 
+    def font_size_setting(
+        self,
+        saved_font_size,
+        *,
+        has_px_mode: bool,
+    ) -> FontSizeSetting:
+        saved_font_size = str(saved_font_size)
+        if saved_font_size.find('pt') != -1:
+            saved_font_size = saved_font_size[:-2]
+        font_size = int(saved_font_size)
+        if has_px_mode:
+            return FontSizeSetting(value=font_size)
+        return FontSizeSetting(
+            value=2*font_size,
+            add_px_mode_setting=True,
+        )
+
+    def should_update_all_contours(self, *, is_data_loaded: bool) -> bool:
+        return is_data_loaded
+
+
+    def __init__(self, host):
+        self.host = host
     def create_show_props_button(self, side='left'):
         self.host.leftSideDocksLayout = QVBoxLayout()
         self.host.leftSideDocksLayout.setSpacing(0)
@@ -66,7 +85,7 @@ class QuickSettingsView:
         self.host.quickSettingsLayout.addStretch(1)
 
     def show_all_contours_toggled(self):
-        if not self.view_model.should_update_all_contours(
+        if not self.should_update_all_contours(
             is_data_loaded=self.host.isDataLoaded
         ):
             return
@@ -191,7 +210,7 @@ class QuickSettingsView:
         self.host.fontSizeSpinBox.setMinimum(1)
         self.host.fontSizeSpinBox.setMaximum(99)
         layout.addRow('Font size', self.host.fontSizeSpinBox)
-        font_size_setting = self.view_model.font_size_setting(
+        font_size_setting = self.font_size_setting(
             self.host.df_settings.at['fontSize', 'value'],
             has_px_mode='pxMode' in self.host.df_settings.index,
         )

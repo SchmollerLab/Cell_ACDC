@@ -11,13 +11,60 @@ from qtpy.QtGui import QGuiApplication
 from qtpy.QtWidgets import QAction
 
 from cellacdc import apps, disableWindow, exception_handler
-from cellacdc.viewmodels.label_editing_viewmodel import (
-    LabelEditingViewModel,
-)
 
 
 class LabelEditingView:
     """Qt-facing adapter around manual label editing."""
+
+    """Headless decisions for manual label editing."""
+
+    def should_apply_manual_edits(self, edited_labels_by_z) -> bool:
+        return bool(edited_labels_by_z)
+
+    def should_store_zslice_regionprops(self, *, is_segm_3d: bool) -> bool:
+        return is_segm_3d
+
+    def should_update_zslice_regionprops(
+        self,
+        *,
+        force_update: bool,
+        already_stored: bool,
+    ) -> bool:
+        return force_update or not already_stored
+
+    def should_prompt_for_background_id(self, clicked_id: int) -> bool:
+        return clicked_id == 0
+
+    def is_power_button_color(
+        self,
+        *,
+        button_color: str,
+        power_color: str,
+    ) -> bool:
+        return button_color == power_color
+
+    def should_force_new_hover_id(
+        self,
+        *,
+        brush_active: bool,
+        shift_pressed: bool,
+    ) -> bool:
+        return brush_active and shift_pressed
+
+    def should_restore_brush_id_from_hover(
+        self,
+        *,
+        is_hover_z_neighbor: bool,
+        shift_pressed: bool,
+        last_hover_id: int,
+        hover_id: int,
+    ) -> bool:
+        return (
+            is_hover_z_neighbor
+            and not shift_pressed
+            and last_hover_id != hover_id
+        )
+
 
     LEGACY_METHODS = (
         'mergeObjs_cb',
@@ -46,15 +93,13 @@ class LabelEditingView:
         'isPowerButton',
     )
 
-    def __init__(self, host, view_model: LabelEditingViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -79,7 +124,7 @@ class LabelEditingView:
         depth_axis = (
             self.switchPlaneCombobox.depthAxes() if self.isSegm3D else 'z'
         )
-        return self.view_model.edit_id.add_yx_centroids_to_df(
+        return self.edit_id.add_yx_centroids_to_df(
             df,
             posData.rp,
             is_3d=self.isSegm3D,
@@ -91,7 +136,7 @@ class LabelEditingView:
         depth_axis = (
             self.switchPlaneCombobox.depthAxes() if self.isSegm3D else 'z'
         )
-        return self.view_model.edit_id.edit_id_info_from_df(
+        return self.edit_id.edit_id_info_from_df(
             df,
             posData.rp,
             is_3d=self.isSegm3D,
@@ -102,7 +147,7 @@ class LabelEditingView:
         posData = self.data[self.pos_i]
         data_frame_i = posData.allData_li[posData.frame_i]
         edited_lab_dict = data_frame_i['manually_edited_lab']['lab']
-        if not self.view_model.should_apply_manual_edits(edited_lab_dict):
+        if not self.should_apply_manual_edits(edited_lab_dict):
             return lab
 
         # zoom_slice = data_frame_i['manually_edited_lab']['zoom_slice']
@@ -119,7 +164,7 @@ class LabelEditingView:
         return lab
 
     def store_zslices_rp(self, force_update=False):
-        if not self.view_model.should_store_zslice_regionprops(
+        if not self.should_store_zslice_regionprops(
             is_segm_3d=self.isSegm3D
         ):
             return
@@ -128,7 +173,7 @@ class LabelEditingView:
         are_zslices_rp_stored = (
             posData.allData_li[posData.frame_i].get('z_slices_rp') is not None
         )
-        if self.view_model.should_update_zslice_regionprops(
+        if self.should_update_zslice_regionprops(
             force_update=force_update,
             already_stored=are_zslices_rp_stored,
         ):
@@ -242,13 +287,13 @@ class LabelEditingView:
         self.storeUndoRedoStates(False)
 
         posData = self.data[self.pos_i]
-        clear_result = self.view_model.label_edits.clear_border_labels(
+        clear_result = self.label_edits.clear_border_labels(
             posData.lab, buffer_size=1
         )
         posData.lab = clear_result.labels
         self.update_rp()
         if posData.cca_df is not None:
-            deletion_result = self.view_model.cca_edits.delete_ids(
+            deletion_result = self.cca_edits.delete_ids(
                 posData.cca_df,
                 clear_result.removed_ids,
             )
@@ -268,7 +313,7 @@ class LabelEditingView:
 
         prev_IDs = posData.allData_li[frame_i-1]['IDs']
         curr_IDs = posData.IDs
-        removal_result = self.view_model.label_edits.remove_new_labels(
+        removal_result = self.label_edits.remove_new_labels(
             posData.lab,
             prev_IDs,
             curr_IDs,
@@ -279,7 +324,7 @@ class LabelEditingView:
         self.update_rp()
 
         if posData.cca_df is not None:
-            deletion_result = self.view_model.cca_edits.delete_ids(
+            deletion_result = self.cca_edits.delete_ids(
                 posData.cca_df,
                 new_IDs,
             )
@@ -290,12 +335,12 @@ class LabelEditingView:
     def getClickedID(self, xdata, ydata, text=''):
         posData = self.data[self.pos_i]
         ID = self.get_2Dlab(posData.lab)[ydata, xdata]
-        if self.view_model.should_prompt_for_background_id(ID):
+        if self.should_prompt_for_background_id(ID):
             msg = (
                 'You clicked on the background.\n'
                 f'Enter here the ID {text}'
             )
-            nearest_ID = self.view_model.label_edits.nearest_nonzero_2d(
+            nearest_ID = self.label_edits.nearest_nonzero_2d(
                 self.get_2Dlab(posData.lab), xdata, ydata
             )
             clickedBkgrID = apps.QLineEditDialog(
@@ -490,7 +535,7 @@ class LabelEditingView:
         self.storeUndoRedoStates(UndoFutFrames)
         maxID = max(posData.IDs, default=0)
         for old_ID, new_ID in oldIDnewIDMapper:
-            result = self.view_model.label_edits.apply_id_mapping(
+            result = self.label_edits.apply_id_mapping(
                 lab,
                 [(old_ID, new_ID)],
                 existing_ids=currentIDs,
@@ -604,7 +649,7 @@ class LabelEditingView:
                 else:
                     maxID = max(posData.IDs, default=0) + 1
                     for old_ID, new_ID in oldIDnewIDMapper:
-                        result = self.view_model.label_edits.apply_id_mapping(
+                        result = self.label_edits.apply_id_mapping(
                             lab,
                             [(old_ID, new_ID)],
                             start_max_id=maxID,
@@ -625,7 +670,7 @@ class LabelEditingView:
                     lab = lab
 
                 for old_ID, new_ID in oldIDnewIDMapper:
-                    self.view_model.label_edits.apply_id_mapping(
+                    self.label_edits.apply_id_mapping(
                         lab, [(old_ID, new_ID)]
                     )
 
@@ -717,7 +762,7 @@ class LabelEditingView:
                 else:
                     hoverID = 0
         else:
-            if self.view_model.should_force_new_hover_id(
+            if self.should_force_new_hover_id(
                 brush_active=self.brushButton.isChecked(),
                 shift_pressed=shift,
             ):
@@ -745,7 +790,7 @@ class LabelEditingView:
 
         posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab).shape
-        if not self.view_model.geometry.is_in_bounds(xdata, ydata, X, Y):
+        if not self.geometry.is_in_bounds(xdata, ydata, X, Y):
             return
 
         self.isHoverZneighID = False
@@ -771,7 +816,7 @@ class LabelEditingView:
             except IndexError:
                 pass
 
-        checkChangeID = self.view_model.should_restore_brush_id_from_hover(
+        checkChangeID = self.should_restore_brush_id_from_hover(
             is_hover_z_neighbor=self.isHoverZneighID,
             shift_pressed=shift,
             last_hover_id=self.lastHoverID,
@@ -786,21 +831,21 @@ class LabelEditingView:
 
     def isPowerBrush(self):
         color = self.brushButton.palette().button().color().name()
-        return self.view_model.is_power_button_color(
+        return self.is_power_button_color(
             button_color=color,
             power_color=self.doublePressKeyButtonColor,
         )
 
     def isPowerEraser(self):
         color = self.eraserButton.palette().button().color().name()
-        return self.view_model.is_power_button_color(
+        return self.is_power_button_color(
             button_color=color,
             power_color=self.doublePressKeyButtonColor,
         )
 
     def isPowerButton(self, button):
         color = button.palette().button().color().name()
-        return self.view_model.is_power_button_color(
+        return self.is_power_button_color(
             button_color=color,
             power_color=self.doublePressKeyButtonColor,
         )

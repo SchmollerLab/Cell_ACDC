@@ -13,7 +13,6 @@ from qtpy.QtWidgets import QAbstractSlider, QCheckBox, QMainWindow
 
 from cellacdc import apps, exception_handler, html_utils, is_mac, printl, qutils, widgets
 from cellacdc.plot import imshow
-from cellacdc.viewmodels.window_events_viewmodel import WindowEventsViewModel
 
 
 _font = QFont()
@@ -75,15 +74,13 @@ class WindowEventsView:
         'gui_createCursors',
     )
 
-    def __init__(self, host, view_model: WindowEventsViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -215,7 +212,7 @@ class WindowEventsView:
             mainWinGeometry = self.geometry()
             slideshowWinGeometry = self.slideshowWin.geometry()
 
-            overlap = self.view_model.windows_overlap_from_bounds(
+            overlap = self.windows_overlap_from_bounds(
                 main_left=mainWinGeometry.left(),
                 main_top=mainWinGeometry.top(),
                 main_width=mainWinGeometry.width(),
@@ -223,7 +220,7 @@ class WindowEventsView:
                 other_left=slideshowWinGeometry.left(),
                 other_top=slideshowWinGeometry.top(),
             )
-            autoActivate = self.view_model.should_auto_activate_viewer(
+            autoActivate = self.should_auto_activate_viewer(
                 is_data_loaded=self.isDataLoaded,
                 windows_overlap=overlap,
                 disable_auto_activate=posData.disableAutoActivateViewerWindow,
@@ -240,7 +237,7 @@ class WindowEventsView:
             mainWinGeometry = self.geometry()
             slideshowWinGeometry = self.slideshowWin.geometry()
 
-            overlap = self.view_model.windows_overlap_from_bounds(
+            overlap = self.windows_overlap_from_bounds(
                 main_left=mainWinGeometry.left(),
                 main_top=mainWinGeometry.top(),
                 main_width=mainWinGeometry.width(),
@@ -248,7 +245,7 @@ class WindowEventsView:
                 other_left=slideshowWinGeometry.left(),
                 other_top=slideshowWinGeometry.top(),
             )
-            autoActivate = self.view_model.should_auto_activate_viewer(
+            autoActivate = self.should_auto_activate_viewer(
                 is_data_loaded=self.isDataLoaded,
                 windows_overlap=overlap,
                 disable_auto_activate=posData.disableAutoActivateViewerWindow,
@@ -259,7 +256,7 @@ class WindowEventsView:
                 self.activateWindow()
 
     def isPanImageClick(self, mouseEvent, modifiers):
-        return self.view_model.is_pan_image_click(
+        return self.is_pan_image_click(
             mouse_button=mouseEvent.button(),
             left_button=Qt.MouseButton.LeftButton,
             modifiers=modifiers,
@@ -268,13 +265,13 @@ class WindowEventsView:
 
     def middleClickText(self):
         if self.delObjAction is None and is_mac:
-            return self.view_model.middle_click_text(
+            return self.middle_click_text(
                 has_del_object_action=False,
                 is_mac=is_mac,
             )
 
         if self.delObjAction is None:
-            return self.view_model.middle_click_text(
+            return self.middle_click_text(
                 has_del_object_action=False,
                 is_mac=is_mac,
             )
@@ -293,7 +290,7 @@ class WindowEventsView:
         else:
             keySequenceText = delObjKeySequence.toString()
 
-        return self.view_model.middle_click_text(
+        return self.middle_click_text(
             has_del_object_action=True,
             is_mac=is_mac,
             button_name=buttonName,
@@ -301,7 +298,7 @@ class WindowEventsView:
         )
 
     def isDefaultMiddleClick(self, mouseEvent, modifiers):
-        return self.view_model.is_default_middle_click(
+        return self.is_default_middle_click(
             mouse_button=mouseEvent.button(),
             modifiers=modifiers,
             is_mac=is_mac,
@@ -317,7 +314,7 @@ class WindowEventsView:
 
         delObjKeySequence, delObjQtButton = self.delObjAction
         mouseEventButton = self.changeRightClickToLeftOnMac(mouseEvent)
-        return self.view_model.is_configured_middle_click(
+        return self.is_configured_middle_click(
             mouse_button=mouseEventButton,
             configured_button=delObjQtButton,
             key_sequence_is_none=delObjKeySequence is None,
@@ -457,6 +454,9 @@ class WindowEventsView:
 
     def keyPressCheckSetSpinboxValue(self, event, spinbox):
         """Check if the key pressed is a digit and set the spinbox value
+
+    """Headless placeholder for main-window event rules."""
+
         accordingly."""
         try:
             n = int(event.text())

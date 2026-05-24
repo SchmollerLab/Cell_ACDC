@@ -14,11 +14,28 @@ from cellacdc import (
     settings_csv_path, widgets,
 )
 from cellacdc.help import about, welcome
-from cellacdc.viewmodels.app_shell_viewmodel import AppShellViewModel
 
 
 class AppShellView:
     """Qt-facing adapter around application shell lifecycle actions."""
+
+    """Headless application shell service wrappers."""
+
+    def read_version(self) -> str:
+        return myutils.read_version()
+
+    def tooltips_from_docs(self) -> dict:
+        return get_tooltips_from_docs()
+
+    def browse_docs(self):
+        return myutils.browse_docs()
+
+    def show_in_file_manager(self, path: str):
+        return myutils.showInExplorer(path)
+
+    def rename_qrc_resources_file(self, color_scheme: str):
+        return rename_qrc_resources_file(color_scheme)
+
 
     LEGACY_METHODS = (
         'initGlobalAttr',
@@ -42,15 +59,13 @@ class AppShellView:
         'about',
     )
 
-    def __init__(self, host, view_model: AppShellViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -242,7 +257,7 @@ class AppShellView:
         self.slideshowWinTop = winScreenCenterY - int(800/2)
 
     def setTooltips(self):
-        tooltips = self.view_model.tooltips_from_docs()
+        tooltips = self.tooltips_from_docs()
 
         for key, tooltip in tooltips.items():
             setShortcut = getattr(self, key).shortcut().toString()
@@ -283,7 +298,7 @@ class AppShellView:
         _warnings.warnRestartCellACDCcolorModeToggled(
             self._colorScheme, app_name=self._appName, parent=self.host
         )
-        self.view_model.rename_qrc_resources_file(self._colorScheme)
+        self.rename_qrc_resources_file(self._colorScheme)
         self.statusBarLabel.setText(html_utils.paragraph(
             f'<i>Restart {self._appName} for the change to take effect</i>',
             font_color='red'
@@ -297,17 +312,17 @@ class AppShellView:
 
     def openLogFile(self):
         self.logger.info(f'Opening log file "{self.log_path}"...')
-        self.view_model.show_in_file_manager(self.log_path)
+        self.show_in_file_manager(self.log_path)
 
     def showLogFiles(self):
         log_files_path = os.path.dirname(self.log_path)
         self.logger.info(f'Opening log files folder "{log_files_path}"...')
-        self.view_model.show_in_file_manager(log_files_path)
+        self.show_in_file_manager(log_files_path)
 
     def showInExplorer_cb(self):
         posData = self.data[self.pos_i]
         path = posData.images_path
-        self.view_model.show_in_file_manager(path)
+        self.show_in_file_manager(path)
 
     def showTipsAndTricks(self):
         self.welcomeWin = welcome.welcomeWin()

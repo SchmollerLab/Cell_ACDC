@@ -6,6 +6,8 @@ import traceback
 import uuid
 
 from tqdm import tqdm
+from dataclasses import dataclass
+import pandas as pd
 from qtpy.QtCore import QMutex, QThread, QTimer, QWaitCondition
 from qtpy.QtWidgets import QCheckBox, QMessageBox, QPushButton
 
@@ -14,7 +16,6 @@ from cellacdc import (
     exception_handler, html_utils,
 )
 from cellacdc import widgets, workers
-from cellacdc.viewmodels.cell_cycle_viewmodel import CellCycleViewModel
 
 
 class CellCycleView:
@@ -105,15 +106,13 @@ class CellCycleView:
         'swapMothers',
     )
 
-    def __init__(self, host, view_model: CellCycleViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -124,16 +123,96 @@ class CellCycleView:
 
     def nearest_point_2Dyx(self, points, all_others):
         """
+
+    """Headless cell-cycle workflow rules."""
+
+    def annotated_edit_warning_plan(
+        self,
+        *,
+        is_snapshot: bool,
+        acdc_df_missing: bool,
+        lineage_tree_missing: bool,
+        cell_cycle_stage_present: bool,
+        lineage_tree_present: bool,
+        remembered_skip_warning: bool,
+    ) -> AnnotatedEditWarningPlan:
+        if is_snapshot:
+            return AnnotatedEditWarningPlan(proceed_without_warning=True)
+
+        no_annotation_source = acdc_df_missing and lineage_tree_missing
+        no_annotations = not cell_cycle_stage_present and not lineage_tree_present
+        if no_annotation_source or no_annotations or remembered_skip_warning:
+            return AnnotatedEditWarningPlan(
+                proceed_without_warning=True,
+                update_images=True,
+            )
+
+        warn_type = (
+            'cell cycle annotations'
+            if cell_cycle_stage_present
+            else 'lineage tree annotations'
+        )
+        return AnnotatedEditWarningPlan(
+            proceed_without_warning=False,
+            should_prompt=True,
+            warn_type=warn_type,
+        )
+
+    def check_mothers_exclusion_or_dead(
+        self,
+        acdc_df: pd.DataFrame,
+        mother_ids: list[int],
+    ) -> list[int]:
+        """Checks tracking rules for cell exclusions or deaths."""
+        if acdc_df is None or not mother_ids:
+            return []
+
+        valid_ids = [m_id for m_id in mother_ids if m_id in acdc_df.index]
+        if not valid_ids:
+            return []
+
+        mothers_df = acdc_df.loc[valid_ids]
+        excluded_mask = (
+            (mothers_df.get('is_cell_dead', 0) > 0)
+            | (mothers_df.get('is_cell_excluded', 0) > 0)
+        )
+        return mothers_df[excluded_mask].index.tolist()
+
+    def evaluate_sister_relations(
+        self,
+        prev_cca_df: pd.DataFrame,
+        current_ids: set[int],
+    ) -> list[int]:
+        """Determines S-phase mother-bud dependencies and sister relation tracking rules."""
+        if prev_cca_df is None or not current_ids:
+            return []
+
+        current_ids_set = set(current_ids)
+        disappeared_ids = []
+        for cc_series in prev_cca_df.itertuples():
+            if getattr(cc_series, 'cell_cycle_stage', None) != 'S':
+                continue
+
+            cell_id = cc_series.Index
+            relative_id = getattr(cc_series, 'relative_ID', -1)
+            if relative_id == -1:
+                continue
+            if relative_id not in current_ids_set and cell_id in current_ids_set:
+                disappeared_ids.append(relative_id)
+
+        return disappeared_ids
+
+
         Given 2D array of [y, x] coordinates points and all_others return the
         [y, x] coordinates of the two points (one from points and one from all_others)
         that have the absolute minimum distance
         """
-        return self.view_model.cca_workflows.nearest_point_2d_yx(points, all_others)
+        return self.cca_workflows.nearest_point_2d_yx(points, all_others)
 
     def isCurrentFrameCcaVisited(self):
         posData = self.data[self.pos_i]
         curr_df = posData.allData_li[posData.frame_i]['acdc_df']
-        return self.view_model.cca_edits.has_annotations(curr_df)
+        return self.cca_edits.has_annotations(curr_df)
 
     def warnScellsGone(self, ScellsIDsGone, frame_i):
         msg = widgets.myMessageBox()
@@ -190,7 +269,7 @@ class CellCycleView:
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         prev_cca_df = prev_acdc_df[self.cca_df_colnames].copy()
 
-        ScellsIDsGone = self.view_model.evaluate_sister_relations(prev_cca_df, posData.IDs)
+        ScellsIDsGone = self.evaluate_sister_relations(prev_cca_df, posData.IDs)
 
 
         if not ScellsIDsGone:
@@ -208,7 +287,7 @@ class CellCycleView:
             (frame_i, self.get_cca_df(frame_i=frame_i, return_df=True))
             for frame_i in range(posData.frame_i-2, -1, -1)
         )
-        propagation_result = self.view_model.cca_workflows.propagate_s_phase_disappearance_divisions(
+        propagation_result = self.cca_workflows.propagate_s_phase_disappearance_divisions(
             prev_cca_df,
             posData.cca_df,
             posData.frame_i,
@@ -292,7 +371,7 @@ class CellCycleView:
             (frame_i, posData.allData_li[frame_i]['acdc_df'])
             for frame_i in range(posData.frame_i-2, -1, -1)
         )
-        result = self.view_model.cca_workflows.collect_existing_new_id_rows(
+        result = self.cca_workflows.collect_existing_new_id_rows(
             posData.new_IDs,
             past_acdc_frames,
             self.cca_df_colnames,
@@ -306,7 +385,7 @@ class CellCycleView:
             # but they could be -1 for cells in G1
             return
 
-        posData.cca_df = self.view_model.cca_edits.add_base_annotation(
+        posData.cca_df = self.cca_edits.add_base_annotation(
             posData.cca_df,
             ID,
             base_values=base_cca_dict,
@@ -316,7 +395,7 @@ class CellCycleView:
     def getBaseCca_df(self, with_tree_cols=False):
         posData = self.data[self.pos_i]
         IDs = [obj.label for obj in posData.rp]
-        return self.view_model.cca_edits.build_base_annotations(
+        return self.cca_edits.build_base_annotations(
             IDs,
             with_tree_cols=with_tree_cols,
             base_values=base_cca_dict,
@@ -325,7 +404,7 @@ class CellCycleView:
 
     def get_last_cca_frame_i(self):
         posData = self.data[self.pos_i]
-        return self.view_model.cca_edits.last_annotated_frame_index(
+        return self.cca_edits.last_annotated_frame_index(
             dict_frame_i['acdc_df']
             for dict_frame_i in posData.allData_li
         )
@@ -473,14 +552,14 @@ class CellCycleView:
                 mother_contours[ID] = self.getObjContours(obj)
 
             bud_contours = dict(zip(posData.new_IDs, newIDs_contours))
-            return self.view_model.cca_workflows.auto_cost_matrix_from_contours(
+            return self.cca_workflows.auto_cost_matrix_from_contours(
                 IDsCellsG1,
                 posData.new_IDs,
                 mother_contours,
                 bud_contours,
             )
 
-        return self.view_model.cca_workflows.auto_cost_matrix_from_distances(
+        return self.cca_workflows.auto_cost_matrix_from_distances(
             dist_matrix_df,
             IDsCellsG1,
             posData.new_IDs,
@@ -533,7 +612,7 @@ class CellCycleView:
         # For the last visited frame we perform assignment again only on
         # IDs where we didn't manually correct assignment
         if isLastVisitedAgain and not enforceAll:
-            posData.new_IDs = self.view_model.cca_workflows.uncorrected_new_ids_for_auto(
+            posData.new_IDs = self.cca_workflows.uncorrected_new_ids_for_auto(
                 posData.new_IDs,
                 curr_df,
             )
@@ -552,7 +631,7 @@ class CellCycleView:
         acdc_df = posData.allData_li[posData.frame_i-1]['acdc_df']
         prev_cca_df = acdc_df[self.cca_df_colnames].copy()
 
-        init_result = self.view_model.cca_workflows.prepare_auto_current_frame(
+        init_result = self.cca_workflows.prepare_auto_current_frame(
             prev_cca_df,
             curr_df,
             self.cca_df_colnames,
@@ -568,7 +647,7 @@ class CellCycleView:
             return notEnoughG1Cells, proceed
 
         # Get cells in G1 (exclude dead) and check if there are enough cells in G1
-        IDsCellsG1 = self.view_model.cca_workflows.auto_candidate_mother_ids(
+        IDsCellsG1 = self.cca_workflows.auto_candidate_mother_ids(
             prev_cca_df,
             acdc_df,
             posData.IDs,
@@ -599,16 +678,16 @@ class CellCycleView:
         )
 
         # Assign buds to mothers
-        assignments = self.view_model.cca_workflows.auto_assignments_from_cost(
+        assignments = self.cca_workflows.auto_assignments_from_cost(
             cost,
             IDsCellsG1,
             posData.new_IDs,
         )
-        posData.cca_df = self.view_model.cca_workflows.apply_auto_assignments(
+        posData.cca_df = self.cca_workflows.apply_auto_assignments(
             posData.cca_df,
             assignments,
             posData.frame_i,
-            self.view_model.cca_workflows.base_status(base_cca_dict),
+            self.cca_workflows.base_status(base_cca_dict),
             previous_cca_df=prev_cca_df,
             current_ids=posData.IDs,
         )
@@ -624,7 +703,7 @@ class CellCycleView:
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
 
-        prep_result = self.view_model.cca_workflows.prepare_missing_frame_annotations(
+        prep_result = self.cca_workflows.prepare_missing_frame_annotations(
             posData.allData_li,
             self.cca_df_colnames,
             last_cca_frame_i,
@@ -639,7 +718,7 @@ class CellCycleView:
             posData.frame_i = frame_i
             self.get_data()
             cca_df = self.getBaseCca_df()
-            cca_df = self.view_model.cca_workflows.overlay_last_annotated(
+            cca_df = self.cca_workflows.overlay_last_annotated(
                 cca_df,
                 last_annotated_cca_df,
                 cca_df_colnames,
@@ -654,14 +733,14 @@ class CellCycleView:
 
     def addMissingIDs_cca_df(self, posData):
         base_cca_df = self.getBaseCca_df()
-        result = self.view_model.cca_edits.add_missing_ids(
+        result = self.cca_edits.add_missing_ids(
             posData.cca_df,
             base_cca_df,
         )
         posData.cca_df = result.cca_df
 
     def update_cca_df_relabelling(self, posData, oldIDs, newIDs):
-        result = self.view_model.cca_edits.relabel_ids(
+        result = self.cca_edits.relabel_ids(
             posData.cca_df,
             oldIDs,
             newIDs,
@@ -679,7 +758,7 @@ class CellCycleView:
         self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
 
         try:
-            deletion_result = self.view_model.cca_edits.delete_ids(
+            deletion_result = self.cca_edits.delete_ids(
                 posData.cca_df,
                 deletedIDs,
             )
@@ -721,7 +800,7 @@ class CellCycleView:
                 else:
                     existing_ids_by_frame[frame_i] = set(existingIDs)
 
-        propagation_result = self.view_model.cca_workflows.propagate_deleted_ids(
+        propagation_result = self.cca_workflows.propagate_deleted_ids(
             None,
             posData.frame_i,
             deletedIDs,
@@ -755,7 +834,7 @@ class CellCycleView:
             self.addIDBaseCca_df(posData, newID)
 
     def update_cca_df_snapshots(self, editTxt, posData):
-        result = self.view_model.cca_edits.apply_snapshot_id_edits(
+        result = self.cca_edits.apply_snapshot_id_edits(
             posData.cca_df,
             editTxt,
             posData.IDs,
@@ -795,7 +874,7 @@ class CellCycleView:
         next_df = None
         if posData.frame_i+1 < posData.SizeT:
             next_df = posData.allData_li[posData.frame_i+1]['acdc_df']
-        result = self.view_model.cca_workflows.auto_repeat_frame_state(
+        result = self.cca_workflows.auto_repeat_frame_state(
             curr_df,
             next_df,
             posData.new_IDs,
@@ -838,18 +917,18 @@ class CellCycleView:
             proceed = True
             # Annotate the new IDs with unknown history
             for ID in posData.new_IDs:
-                posData.cca_df = self.view_model.cca_edits.add_base_annotation(
+                posData.cca_df = self.cca_edits.add_base_annotation(
                     posData.cca_df,
                     ID,
                     base_values=base_cca_dict,
                 )
-                cca_df_ID = self.view_model.cca_workflows.known_history_status_for_bud(
+                cca_df_ID = self.cca_workflows.known_history_status_for_bud(
                     ID,
                     (
                         (i, self.get_cca_df(frame_i=i, return_df=True))
                         for i in range(posData.frame_i-1, -1, -1)
                     ),
-                    self.view_model.cca_workflows.base_status(base_cca_dict),
+                    self.cca_workflows.base_status(base_cca_dict),
                 )
                 posData.ccaStatus_whenEmerged[ID] = cca_df_ID
         else:
@@ -863,7 +942,7 @@ class CellCycleView:
     def isFrameCcaAnnotated(self):
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-        return self.view_model.cca_edits.has_annotations(acdc_df)
+        return self.cca_edits.has_annotations(acdc_df)
 
     def warnEditingWithCca_df(
             self, editTxt, return_answer=False, get_answer=False,
@@ -878,18 +957,18 @@ class CellCycleView:
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
 
-        cell_cycle_stage_present = self.view_model.cca_edits.has_annotations(
+        cell_cycle_stage_present = self.cca_edits.has_annotations(
             acdc_df
         )
         lineage_tree_present = (
-            self.view_model.lineage.has_lineage_tree_annotations(
+            self.lineage.has_lineage_tree_annotations(
                 acdc_df,
                 self.lineage_tree,
             )
         )
 
         action = self.warnEditingWithAnnotActions.get(editTxt, None)
-        warning_plan = self.view_model.annotated_edit_warning_plan(
+        warning_plan = self.annotated_edit_warning_plan(
             is_snapshot=self.isSnapshot,
             acdc_df_missing=acdc_df is None,
             lineage_tree_missing=self.lineage_tree is None,
@@ -1062,7 +1141,7 @@ class CellCycleView:
 
     def getConcatCcaDf(self):
         posData = self.data[self.pos_i]
-        return self.view_model.cca_edits.concat_annotations(
+        return self.cca_edits.concat_annotations(
             posData.allData_li,
             self.cca_df_colnames,
             size_t=posData.SizeT,
@@ -1070,7 +1149,7 @@ class CellCycleView:
 
     def storeFromConcatCcaDf(self, global_cca_df):
         posData = self.data[self.pos_i]
-        for frame_i, cca_df in self.view_model.cca_edits.split_concat_annotations(
+        for frame_i, cca_df in self.cca_edits.split_concat_annotations(
             global_cca_df,
             size_t=posData.SizeT,
         ):
@@ -1083,7 +1162,7 @@ class CellCycleView:
         if global_cca_df is None:
             return
 
-        global_cca_df = self.view_model.cca_workflows.fix_will_divide_without_next_generation(global_cca_df)
+        global_cca_df = self.cca_workflows.fix_will_divide_without_next_generation(global_cca_df)
         self.storeFromConcatCcaDf(global_cca_df)
 
     def ccaCheckerStopChecking(self):
@@ -1107,7 +1186,7 @@ class CellCycleView:
         self.ccaCheckerStopChecking()
 
         self.setNavigateScrollBarMaximum()
-        removal_result = self.view_model.cca_edits.remove_future_annotations(
+        removal_result = self.cca_edits.remove_future_annotations(
             posData.allData_li,
             self.cca_df_colnames,
             from_frame_i,
@@ -1131,7 +1210,7 @@ class CellCycleView:
         posData.allData_li[posData.frame_i].pop('cca_df_checker', None)
 
         df = posData.allData_li[posData.frame_i]['acdc_df']
-        result = self.view_model.cca_edits.remove_annotations(
+        result = self.cca_edits.remove_annotations(
             df, self.cca_df_colnames
         )
         if result.missing_frame or not result.removed:
@@ -1142,7 +1221,7 @@ class CellCycleView:
 
     def resetFutureCcaColCurrentFrame(self):
         posData = self.data[self.pos_i]
-        posData.cca_df = self.view_model.cca_edits.reset_future_flags(
+        posData.cca_df = self.cca_edits.reset_future_flags(
             posData.cca_df
         )
         self.store_data()
@@ -1154,7 +1233,7 @@ class CellCycleView:
         posData = self.data[self.pos_i]
         i = posData.frame_i if frame_i is None else frame_i
         df = posData.allData_li[i]['acdc_df']
-        result = self.view_model.cca_edits.resolve_annotations(
+        result = self.cca_edits.resolve_annotations(
             df,
             self.cca_df_colnames,
             is_snapshot=self.isSnapshot,
@@ -1172,14 +1251,14 @@ class CellCycleView:
     def unstore_cca_df(self):
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-        result = self.view_model.cca_edits.remove_annotations(
+        result = self.cca_edits.remove_annotations(
             acdc_df, self.cca_df_colnames
         )
         if result.acdc_df is not None:
             posData.allData_li[posData.frame_i]['acdc_df'] = result.acdc_df
 
     def store_cca_df_checker(self, posData, frame_i, cca_df):
-        checker_cca_df = self.view_model.cca_edits.prepare_checker_annotations(
+        checker_cca_df = self.cca_edits.prepare_checker_annotations(
             cca_df,
             checker_running=self.ccaCheckerRunning,
         )
@@ -1215,7 +1294,7 @@ class CellCycleView:
                 posData.frame_i = current_frame_i
                 self.get_data(debug=False)
 
-        store_result = self.view_model.cca_edits.store_frame_annotations(
+        store_result = self.cca_edits.store_frame_annotations(
             acdc_df,
             cca_df,
             self.cca_df_colnames,
@@ -1259,7 +1338,7 @@ class CellCycleView:
             text = f'{header}{df_compare}'
             self.logger.info(text)
 
-        if self.view_model.cca_edits.has_annotations(df):
+        if self.cca_edits.has_annotations(df):
             cca_df = df[self.cca_df_colnames]
             cca_df = cca_df.merge(
                 current_cca_df, how='outer', left_index=True, right_index=True,
@@ -1334,7 +1413,7 @@ class CellCycleView:
         acdcSegment = self.acdcSegment_li[idx]
         if acdcSegment is None:
             acdcSegment = (
-                self.view_model.model_registry.import_segmentation_module(
+                self.model_registry.import_segmentation_module(
                     model_name
                 )
             )
@@ -1342,7 +1421,7 @@ class CellCycleView:
 
         # Read all models parameters
         init_params, segment_params = (
-            self.view_model.model_registry.model_arg_specs(acdcSegment)
+            self.model_registry.model_arg_specs(acdcSegment)
         )
         # Prompt user to enter the model parameters
         try:
@@ -1367,7 +1446,7 @@ class CellCycleView:
             return
 
         use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = self.view_model.model_registry.check_gpu_available(
+        proceed = self.model_registry.check_gpu_available(
             model_name, use_gpu, qparent=self.host
         )
         if not proceed:
@@ -1376,7 +1455,7 @@ class CellCycleView:
             return
 
         self.model_kwargs = win.model_kwargs
-        model = self.view_model.model_registry.init_segmentation_model(
+        model = self.model_registry.init_segmentation_model(
             acdcSegment, posData, win.init_kwargs
         )
         if model is None:
@@ -1440,7 +1519,7 @@ class CellCycleView:
         # frames that already contain anotations
         posData = self.data[self.pos_i]
         next_df = posData.allData_li[posData.frame_i+1]['acdc_df']
-        if self.view_model.cca_edits.has_annotations(next_df):
+        if self.cca_edits.has_annotations(next_df):
             msg = QMessageBox()
             warn_cca = msg.critical(
                 self.host, 'Future visited frames detected!',
@@ -1528,7 +1607,7 @@ class CellCycleView:
 
             self.storeUndoRedoCca(i, cca_df_i, undoId)
 
-            cca_df_i = self.view_model.cca_edits.apply_manual_changes(
+            cca_df_i = self.cca_edits.apply_manual_changes(
                 cca_df_i, changes
             )
             self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
@@ -1576,7 +1655,7 @@ class CellCycleView:
         self.logger.info('Fixing `will_divide` information...')
 
         global_cca_df = self.getConcatCcaDf()
-        global_cca_df = self.view_model.cca_workflows.reset_will_divide_for_generations(
+        global_cca_df = self.cca_workflows.reset_will_divide_for_generations(
             global_cca_df,
             IDs_will_divide_wrong,
         )
@@ -1621,25 +1700,25 @@ class CellCycleView:
         relID = posData.cca_df.at[ID, 'relative_ID']
         relID_cca = None
         if relID in posData.cca_df.index:
-            relID_cca = self.view_model.cca_workflows.previous_relative_status_before_bud_emergence(
+            relID_cca = self.cca_workflows.previous_relative_status_before_bud_emergence(
                 ID,
                 relID,
                 (
                     (i, self.get_cca_df(frame_i=i, return_df=True))
                     for i in range(posData.frame_i-1, -1, -1)
                 ),
-                self.view_model.cca_workflows.base_status(base_cca_dict),
+                self.cca_workflows.base_status(base_cca_dict),
             )
 
         if is_history_known:
             # Save status of ID when emerged to allow undoing
-            statusID_whenEmerged = self.view_model.cca_workflows.known_history_status_for_bud(
+            statusID_whenEmerged = self.cca_workflows.known_history_status_for_bud(
                 ID,
                 (
                     (i, self.get_cca_df(frame_i=i, return_df=True))
                     for i in range(posData.frame_i-1, -1, -1)
                 ),
-                self.view_model.cca_workflows.base_status(base_cca_dict),
+                self.cca_workflows.base_status(base_cca_dict),
             )
             if statusID_whenEmerged is None:
                 return
@@ -1661,7 +1740,7 @@ class CellCycleView:
             (i, self.get_cca_df(frame_i=i, return_df=True))
             for i in range(posData.frame_i-1, -1, -1)
         )
-        propagation_result = self.view_model.cca_workflows.propagate_history_knowledge(
+        propagation_result = self.cca_workflows.propagate_history_knowledge(
             posData.cca_df,
             posData.frame_i,
             ID,
@@ -1710,7 +1789,7 @@ class CellCycleView:
             (i, self.get_cca_df(frame_i=i, return_df=True))
             for i in range(frame_i-1, -1, -1)
         )
-        propagation_result = self.view_model.cca_workflows.propagate_will_divide(
+        propagation_result = self.cca_workflows.propagate_will_divide(
             None,
             frame_i,
             ID,
@@ -1735,16 +1814,16 @@ class CellCycleView:
             frame_i = posData.frame_i
 
         self.annotateWillDivide(ID, relID)
-        return self.view_model.cca_workflows.annotate_division(cca_df, ID, relID, frame_i)
+        return self.cca_workflows.annotate_division(cca_df, ID, relID, frame_i)
 
     def undoDivisionAnnotation(self, cca_df, ID, relID):
         # Correct as follows:
         # If G1 then correct to S and -1 on generation number
-        return self.view_model.cca_workflows.undo_division_annotation(cca_df, ID, relID)
+        return self.cca_workflows.undo_division_annotation(cca_df, ID, relID)
 
     def undoBudMothAssignment(self, ID):
         posData = self.data[self.pos_i]
-        changed = self.view_model.cca_workflows.undo_bud_mother_assignment(posData.cca_df, ID)
+        changed = self.cca_workflows.undo_bud_mother_assignment(posData.cca_df, ID)
         if not changed:
             return
 
@@ -1810,7 +1889,7 @@ class CellCycleView:
             (frame_i, self.get_cca_df(frame_i=frame_i, return_df=True))
             for frame_i in range(posData.frame_i - 1, -1, -1)
         )
-        propagation_result = self.view_model.cca_workflows.propagate_manual_division_annotation(
+        propagation_result = self.cca_workflows.propagate_manual_division_annotation(
             None,
             posData.frame_i,
             ID,
@@ -1943,7 +2022,7 @@ class CellCycleView:
             (past_i, self.get_cca_df(frame_i=past_i, return_df=True))
             for past_i in range(posData.frame_i-1, -1, -1)
         )
-        result = self.view_model.cca_workflows.mother_assignment_eligibility(
+        result = self.cca_workflows.mother_assignment_eligibility(
             budID,
             new_mothID,
             future_cca_frames,
@@ -1979,7 +2058,7 @@ class CellCycleView:
                 & (posData.cca_df.emerg_frame_i == posData.frame_i)
             ]
             mother_ids = buds_df.relative_ID.to_list() if not buds_df.empty else []
-            excluded_mother_ids = self.view_model.check_mothers_exclusion_or_dead(
+            excluded_mother_ids = self.check_mothers_exclusion_or_dead(
                 acdc_df_i, mother_ids
             )
             
@@ -2029,7 +2108,7 @@ class CellCycleView:
             (past_i, self.get_cca_df(frame_i=past_i, return_df=True))
             for past_i in range(posData.frame_i-1, -1, -1)
         )
-        return self.view_model.cca_workflows.division_undo_blocking_frame(
+        return self.cca_workflows.division_undo_blocking_frame(
             ID,
             relID,
             posData.frame_i,
@@ -2154,7 +2233,7 @@ class CellCycleView:
             # Store cca_df for undo action
             undoId = uuid.uuid4()
             self.storeUndoRedoCca(0, posData.cca_df, undoId)
-            propagation_result = self.view_model.cca_workflows.propagate_bud_mother_assignment(
+            propagation_result = self.cca_workflows.propagate_bud_mother_assignment(
                 posData.cca_df,
                 posData.frame_i,
                 budID,
@@ -2168,14 +2247,14 @@ class CellCycleView:
         curr_moth_cca = None
         curr_mothID = posData.cca_df.at[budID, 'relative_ID']
         if curr_mothID in posData.cca_df.index:
-            curr_moth_cca = self.view_model.cca_workflows.previous_relative_status_before_bud_emergence(
+            curr_moth_cca = self.cca_workflows.previous_relative_status_before_bud_emergence(
                 budID,
                 curr_mothID,
                 (
                     (i, self.get_cca_df(frame_i=i, return_df=True))
                     for i in range(posData.frame_i-1, -1, -1)
                 ),
-                self.view_model.cca_workflows.base_status(base_cca_dict),
+                self.cca_workflows.base_status(base_cca_dict),
             )
 
         # Store cca_df for undo action
@@ -2190,7 +2269,7 @@ class CellCycleView:
             (frame_i, self.get_cca_df(frame_i=frame_i, return_df=True))
             for frame_i in range(posData.frame_i - 1, -1, -1)
         )
-        propagation_result = self.view_model.cca_workflows.propagate_bud_mother_assignment(
+        propagation_result = self.cca_workflows.propagate_bud_mother_assignment(
             posData.cca_df,
             posData.frame_i,
             budID,
@@ -2292,7 +2371,7 @@ class CellCycleView:
             (future_i, self.get_cca_df(frame_i=future_i, return_df=True))
             for future_i in range(frame_i, posData.SizeT)
         )
-        result = self.view_model.cca_workflows.bud_mother_change_eligibility(budID, future_cca_frames)
+        result = self.cca_workflows.bud_mother_change_eligibility(budID, future_cca_frames)
         if result.can_change:
             return True
 
@@ -2322,7 +2401,7 @@ class CellCycleView:
             (past_i, self.get_cca_df(frame_i=past_i, return_df=True))
             for past_i in range(posData.frame_i, -1, -1)
         ]
-        result = self.view_model.cca_workflows.swap_mothers_eligibility(
+        result = self.cca_workflows.swap_mothers_eligibility(
             budID,
             otherBudID,
             otherMothID,
@@ -2370,7 +2449,7 @@ class CellCycleView:
             (future_i, self.get_cca_df(frame_i=future_i, return_df=True))
             for future_i in range(posData.frame_i+1, posData.SizeT)
         ]
-        propagation_result = self.view_model.cca_workflows.propagate_swap_mothers_assignment(
+        propagation_result = self.cca_workflows.propagate_swap_mothers_assignment(
             posData.cca_df,
             posData.frame_i,
             budID,
@@ -2379,7 +2458,7 @@ class CellCycleView:
             mothID,
             past_cca_frames=past_cca_frames,
             future_cca_frames=future_cca_frames,
-            base_status=self.view_model.cca_workflows.base_status(base_cca_dict),
+            base_status=self.cca_workflows.base_status(base_cca_dict),
         )
         posData.cca_df = propagation_result.current_cca_df
         self.store_cca_df()

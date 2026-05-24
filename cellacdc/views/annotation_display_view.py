@@ -5,10 +5,9 @@ from __future__ import annotations
 import re
 
 from cellacdc import _palettes, apps, html_utils, widgets
-from cellacdc.viewmodels.annotation_display_viewmodel import (
-    AnnotationDisplayViewModel,
-)
 
+from dataclasses import dataclass
+from typing import Literal, Mapping
 GREEN_HEX = _palettes.green()
 
 
@@ -77,16 +76,14 @@ class AnnotationDisplayView:
         'drawAnnotCombobox_to_options',
     )
 
-    def __init__(self, host, view_model: AnnotationDisplayViewModel):
-        object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-        self._connect_view_model_signals()
+    def __init__(self, host):
+        object.__setattr__(self, 'host', host)        self._connect_view_model_signals()
 
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -96,71 +93,71 @@ class AnnotationDisplayView:
             setattr(self.host, name, getattr(self, name))
 
     def _connect_view_model_signals(self):
-        self.view_model.settingUpdateRequested.connect(
+        self.settingUpdateRequested.connect(
             self._apply_view_model_setting_update
         )
-        self.view_model.textAnnotationFlagsChanged.connect(
+        self.textAnnotationFlagsChanged.connect(
             self._apply_text_annotation_flags
         )
-        self.view_model.imageRefreshRequested.connect(
+        self.imageRefreshRequested.connect(
             self._refresh_images_from_view_model
         )
-        self.view_model.eraserTempResetRequested.connect(
+        self.eraserTempResetRequested.connect(
             self._reset_eraser_temp_from_view_model
         )
-        self.view_model.annotationOptionStatesChanged.connect(
+        self.annotationOptionStatesChanged.connect(
             self._apply_annotation_option_states
         )
-        self.view_model.annotationModeTextUpdateRequested.connect(
+        self.annotationModeTextUpdateRequested.connect(
             self._apply_annotation_mode_text_update
         )
-        self.view_model.textAnnotationPixelModeChanged.connect(
+        self.textAnnotationPixelModeChanged.connect(
             self._apply_text_annotation_pixel_mode
         )
-        self.view_model.logInfoRequested.connect(self.logger.info)
-        self.view_model.pixelModeActionDisabledChanged.connect(
+        self.logInfoRequested.connect(self.logger.info)
+        self.pixelModeActionDisabledChanged.connect(
             self.pxModeAction.setDisabled
         )
-        self.view_model.textResolutionChangeRequested.connect(
+        self.textResolutionChangeRequested.connect(
             self._apply_text_resolution_change
         )
-        self.view_model.treeAnnotationMenuActionRequested.connect(
+        self.treeAnnotationMenuActionRequested.connect(
             self._apply_tree_annotation_menu_action
         )
-        self.view_model.labelTreeAnnotationsEnabledChanged.connect(
+        self.labelTreeAnnotationsEnabledChanged.connect(
             self._apply_label_tree_annotations_enabled
         )
-        self.view_model.genNumTreeAnnotationsEnabledChanged.connect(
+        self.genNumTreeAnnotationsEnabledChanged.connect(
             self._apply_gen_num_tree_annotations_enabled
         )
-        self.view_model.allTextAnnotationsRefreshRequested.connect(
+        self.allTextAnnotationsRefreshRequested.connect(
             self.setAllTextAnnotations
         )
-        self.view_model.annotationOptionDisabledChanged.connect(
+        self.annotationOptionDisabledChanged.connect(
             self._apply_annotation_option_disabled
         )
-        self.view_model.annotationOptionVisibleChanged.connect(
+        self.annotationOptionVisibleChanged.connect(
             self._apply_annotation_option_visible
         )
-        self.view_model.annotationOptionCheckedChanged.connect(
+        self.annotationOptionCheckedChanged.connect(
             self._apply_annotation_option_checked
         )
-        self.view_model.zNeighborHighlightVisibleChanged.connect(
+        self.zNeighborHighlightVisibleChanged.connect(
             self._apply_z_neighbor_highlight_visible
         )
-        self.view_model.zNeighborHighlightCheckedChanged.connect(
+        self.zNeighborHighlightCheckedChanged.connect(
             self._apply_z_neighbor_highlight_checked
         )
-        self.view_model.zNeighborHighlightToggleConnectionRequested.connect(
+        self.zNeighborHighlightToggleConnectionRequested.connect(
             self._connect_z_neighbor_highlight_toggle
         )
-        self.view_model.annotationModeComboboxRestoreRequested.connect(
+        self.annotationModeComboboxRestoreRequested.connect(
             self._apply_annotation_mode_combobox_restore
         )
-        self.view_model.addNewIdsWhitelistToggleChanged.connect(
+        self.addNewIdsWhitelistToggleChanged.connect(
             self._apply_add_new_ids_whitelist_toggle
         )
-        self.view_model.annotationModeRestoreCallbackRequested.connect(
+        self.annotationModeRestoreCallbackRequested.connect(
             self._apply_annotation_mode_restore_callback
         )
 
@@ -321,7 +318,7 @@ class AnnotationDisplayView:
         combo.setCurrentText(text)
 
     def getAnnotateHowRightImage(self):
-        return self.view_model.right_annotation_mode(
+        return self.right_annotation_mode(
             show_right_image=self.labelsGrad.showRightImgAction.isChecked(),
             use_right_specific_mode=self.rightBottomGroupbox.isChecked(),
             right_mode=self.annotateRightHowCombobox.currentText(),
@@ -350,7 +347,7 @@ class AnnotationDisplayView:
         if hasattr(self.annotateRightHowCombobox, 'saveSettings'):
             saveSettings = self.annotateRightHowCombobox.saveSettings
 
-        self.view_model.change_annotation_mode(
+        self.change_annotation_mode(
             side='right',
             how=how,
             save_settings=saveSettings,
@@ -366,7 +363,7 @@ class AnnotationDisplayView:
         if hasattr(self.drawIDsContComboBox, 'saveSettings'):
             saveSettings = self.drawIDsContComboBox.saveSettings
 
-        self.view_model.change_annotation_mode(
+        self.change_annotation_mode(
             side='left',
             how=how,
             save_settings=saveSettings,
@@ -378,7 +375,7 @@ class AnnotationDisplayView:
         )
 
     def areContoursRequested(self, ax):
-        return self.view_model.contours_requested(
+        return self.contours_requested(
             ax=ax,
             left_contours=self.annotContourCheckbox.isChecked(),
             right_image_visible=self.labelsGrad.showRightImgAction.isChecked(),
@@ -387,7 +384,7 @@ class AnnotationDisplayView:
         )
 
     def areMothBudLinesRequested(self, ax):
-        return self.view_model.moth_bud_lines_requested(
+        return self.moth_bud_lines_requested(
             ax=ax,
             left_cca=self.annotCcaInfoCheckbox.isChecked(),
             left_mother_bud_lines=self.drawMothBudLinesCheckbox.isChecked(),
@@ -435,7 +432,7 @@ class AnnotationDisplayView:
 
         ccs_ID = cca_df_ID['cell_cycle_stage']
         relationship = cca_df_ID['relationship']
-        if not self.view_model.should_draw_moth_bud_line(
+        if not self.should_draw_moth_bud_line(
             cca_df_available=posData.cca_df is not None,
             mode=mode,
             object_visible=self.isObjVisible(obj.bbox),
@@ -457,7 +454,7 @@ class AnnotationDisplayView:
         relative_ID_obj = posData.rp[relative_rp_idx]
         y1, x1 = self.getObjCentroid(obj.centroid)
         y2, x2 = self.getObjCentroid(relative_ID_obj.centroid)
-        xx, yy = self.view_model.geometry.line_coords(
+        xx, yy = self.geometry.line_coords(
             y1, x1, y2, x2, dashed=True
         )
         scatterItem.addPoints(xx, yy)
@@ -470,12 +467,422 @@ class AnnotationDisplayView:
 
     def drawAllLineageTreeLines(self):
         """
+
+    """Headless annotation display decisions."""
+
+    def right_annotation_mode(
+        self,
+        *,
+        show_right_image: bool,
+        use_right_specific_mode: bool,
+        right_mode: str,
+        left_mode: str,
+    ) -> str:
+        if not show_right_image:
+            return 'nothing'
+        return right_mode if use_right_specific_mode else left_mode
+
+    def text_annotation_flags(
+        self,
+        *,
+        annot_cca_checked: bool,
+        annot_ids_checked: bool,
+        mode: str,
+    ) -> tuple[bool, bool]:
+        is_lineage_mode = mode == 'Normal division: Lineage tree'
+        is_cca = annot_cca_checked and not is_lineage_mode
+        is_id = annot_ids_checked or (annot_cca_checked and is_lineage_mode)
+        return is_cca, is_id
+
+    def annotation_mode_text(
+        self,
+        *,
+        ids: bool = False,
+        cca: bool = False,
+        contours: bool = False,
+        segm_masks: bool = False,
+        mother_bud_lines: bool = False,
+        nothing: bool = False,
+    ) -> str:
+        if ids:
+            if contours:
+                return 'Draw IDs and contours'
+            if segm_masks:
+                return 'Draw IDs and overlay segm. masks'
+            return 'Draw only IDs'
+        if cca:
+            if contours:
+                return 'Draw cell cycle info and contours'
+            if segm_masks:
+                return 'Draw cell cycle info and overlay segm. masks'
+            return 'Draw only cell cycle info'
+        if segm_masks:
+            return 'Draw only overlay segm. masks'
+        if contours:
+            return 'Draw only contours'
+        if mother_bud_lines:
+            return 'Draw only mother-bud lines'
+        if nothing:
+            return 'Draw nothing'
+        return 'Draw nothing'
+
+    def annotation_flags_from_mode_text(self, text: str) -> dict[str, bool]:
+        return {
+            'ids': 'IDs' in text,
+            'cca': 'cell cycle info' in text,
+            'contours': 'contours' in text,
+            'segm_masks': 'segm. masks' in text,
+            'mother_bud_lines': 'mother-bud lines' in text,
+            'nothing': 'nothing' in text,
+        }
+
+    def annotation_option_state_from_mode_text(
+        self,
+        text: str,
+        *,
+        num_zslices: bool = False,
+    ) -> AnnotationOptionState:
+        flags = self.annotation_flags_from_mode_text(text)
+        return AnnotationOptionState(
+            ids=flags['ids'],
+            cca=flags['cca'],
+            contours=flags['contours'],
+            segm_masks=flags['segm_masks'],
+            mother_bud_lines=flags['mother_bud_lines'],
+            num_zslices=num_zslices,
+            nothing=flags['nothing'],
+        )
+
+    def annotation_options_from_mode_text_plan(
+        self,
+        *,
+        left_text: str,
+        right_text: str,
+        left_num_zslices: bool = False,
+        right_num_zslices: bool = False,
+    ) -> AnnotationOptionsFromModeTextPlan:
+        return AnnotationOptionsFromModeTextPlan(
+            state_updates=(
+                (
+                    'left',
+                    self.annotation_option_state_from_mode_text(
+                        left_text,
+                        num_zslices=left_num_zslices,
+                    ),
+                ),
+                (
+                    'right',
+                    self.annotation_option_state_from_mode_text(
+                        right_text,
+                        num_zslices=right_num_zslices,
+                    ),
+                ),
+            )
+        )
+
+    def restore_saved_settings_plan(
+        self,
+        settings_values: Mapping[str, object],
+    ) -> AnnotationDisplaySettingsRestorePlan:
+        return AnnotationDisplaySettingsRestorePlan(
+            left_mode=str(
+                settings_values.get(
+                    'how_draw_annotations',
+                    'Draw IDs and contours',
+                )
+            ),
+            right_mode=str(
+                settings_values.get(
+                    'how_draw_right_annotations',
+                    'Draw IDs and overlay segm. masks',
+                )
+            ),
+            add_new_ids_whitelist_toggle=(
+                settings_values.get('addNewIDsWhitelistToggle', 'Yes') == 'Yes'
+            ),
+        )
+
+    def contours_requested(
+        self,
+        *,
+        ax: int,
+        left_contours: bool,
+        right_image_visible: bool,
+        right_specific_mode: bool,
+        right_contours: bool,
+    ) -> bool:
+        if ax == 0:
+            return left_contours
+        if not right_image_visible:
+            return False
+        if right_specific_mode:
+            return right_contours
+        return left_contours
+
+    def moth_bud_lines_requested(
+        self,
+        *,
+        ax: int,
+        left_cca: bool,
+        left_mother_bud_lines: bool,
+        right_image_visible: bool,
+        right_specific_mode: bool,
+        right_cca: bool,
+        right_mother_bud_lines: bool,
+    ) -> bool:
+        if ax == 0:
+            return left_cca or left_mother_bud_lines
+        if not right_image_visible:
+            return False
+        if right_specific_mode:
+            return right_cca or right_mother_bud_lines
+        return left_cca or left_mother_bud_lines
+
+    def should_draw_moth_bud_line(
+        self,
+        *,
+        cca_df_available: bool,
+        mode: str,
+        object_visible: bool,
+        cell_cycle_stage: str,
+        relationship: str,
+    ) -> bool:
+        return (
+            cca_df_available
+            and mode != 'Normal division: Lineage Tree'
+            and object_visible
+            and cell_cycle_stage != 'G1'
+            and relationship == 'bud'
+        )
+
+    def should_draw_lineage_tree_lines(
+        self,
+        *,
+        lineage_tree_available: bool,
+        frames_count: int,
+    ) -> bool:
+        return lineage_tree_available and frames_count >= 2
+
+    def annotation_mode_setting_update(
+        self,
+        side: AnnotationSide,
+        how: str,
+    ) -> tuple[str, str]:
+        setting = (
+            'how_draw_right_annotations'
+            if side == 'right'
+            else 'how_draw_annotations'
+        )
+        return setting, how
+
+    def annotation_mode_change_plan(
+        self,
+        *,
+        side: AnnotationSide,
+        how: str,
+        save_settings: bool,
+        annot_cca_checked: bool,
+        annot_ids_checked: bool,
+        mode: str,
+        is_data_loading: bool,
+        eraser_checked: bool = False,
+    ) -> AnnotationModeChangePlan:
+        setting_update = None
+        if save_settings:
+            setting_update = self.annotation_mode_setting_update(side, how)
+
+        is_cca, is_id = self.text_annotation_flags(
+            annot_cca_checked=annot_cca_checked,
+            annot_ids_checked=annot_ids_checked,
+            mode=mode,
+        )
+        return AnnotationModeChangePlan(
+            side=side,
+            setting_update=setting_update,
+            text_annotation_index=1 if side == 'right' else 0,
+            is_cca_annotation=is_cca,
+            is_id_annotation=is_id,
+            should_refresh_images=not is_data_loading,
+            should_reset_eraser_temp=side == 'left' and eraser_checked,
+        )
+
+    def annotation_option_change_plan(
+        self,
+        *,
+        side: AnnotationSide,
+        state: AnnotationOptionState,
+        clicked_option: AnnotationOption | None,
+        save_settings: bool,
+    ) -> AnnotationOptionChangePlan:
+        values = {
+            'ids': state.ids,
+            'cca': state.cca,
+            'contours': state.contours,
+            'segm_masks': state.segm_masks,
+            'mother_bud_lines': state.mother_bud_lines,
+            'num_zslices': state.num_zslices,
+            'nothing': state.nothing,
+        }
+
+        if values['ids'] and clicked_option == 'ids':
+            values['cca'] = False
+            values['mother_bud_lines'] = False
+
+        if values['cca'] and clicked_option == 'cca':
+            values['ids'] = False
+            values['mother_bud_lines'] = False
+
+        if (
+            values['mother_bud_lines']
+            and clicked_option == 'mother_bud_lines'
+        ):
+            values['ids'] = False
+            values['cca'] = False
+
+        if values['contours'] and clicked_option == 'contours':
+            values['segm_masks'] = False
+
+        if values['segm_masks'] and clicked_option == 'segm_masks':
+            values['contours'] = False
+
+        if clicked_option == 'nothing':
+            values['ids'] = False
+            values['cca'] = False
+            values['contours'] = False
+            values['segm_masks'] = False
+            values['mother_bud_lines'] = False
+            values['num_zslices'] = False
+        else:
+            values['nothing'] = False
+
+        if clicked_option == 'num_zslices':
+            values['ids'] = True
+            values['nothing'] = False
+
+        new_state = AnnotationOptionState(**values)
+        return AnnotationOptionChangePlan(
+            side=side,
+            state=new_state,
+            mode_text=self.annotation_mode_text(
+                ids=new_state.ids,
+                cca=new_state.cca,
+                contours=new_state.contours,
+                segm_masks=new_state.segm_masks,
+                mother_bud_lines=new_state.mother_bud_lines,
+                nothing=new_state.nothing,
+            ),
+            save_settings=save_settings,
+        )
+
+    def pixel_mode_setting_value(self, checked: bool) -> int:
+        return int(checked)
+
+    def pixel_mode_change_plan(
+        self,
+        *,
+        checked: bool,
+        is_data_loaded: bool,
+        high_resolution: bool,
+    ) -> PixelModeChangePlan:
+        return PixelModeChangePlan(
+            setting_update=('pxMode', self.pixel_mode_setting_value(checked)),
+            should_update_text_pixel_mode=is_data_loaded and high_resolution,
+            should_refresh_images=is_data_loaded,
+        )
+
+    def text_resolution_change_plan(
+        self,
+        *,
+        high_resolution: bool,
+        is_data_loaded: bool,
+    ) -> TextResolutionChangePlan:
+        mode = 'high' if high_resolution else 'low'
+        return TextResolutionChangePlan(
+            mode=mode,
+            log_message=f'Switching to {mode} for the text annnotations...',
+            pixel_mode_disabled=not high_resolution,
+            should_update_annotations=is_data_loaded,
+            should_refresh_images=is_data_loaded,
+        )
+
+    def tree_annotation_info_mode_plan(
+        self,
+        checked: bool,
+    ) -> TreeAnnotationInfoModePlan:
+        return TreeAnnotationInfoModePlan(
+            enabled=checked,
+            action_text_contains='tree',
+            action_checked=checked,
+            label_tree_annotations_enabled=checked,
+            gen_num_tree_annotations_enabled=checked,
+            should_refresh_annotations=True,
+        )
+
+    def z_depth_annotation_options_plan(
+        self,
+        *,
+        is_3d: bool,
+        state: AnnotationOptionState,
+    ) -> ZDepthAnnotationOptionsPlan:
+        if not is_3d:
+            return ZDepthAnnotationOptionsPlan(should_apply=False)
+
+        return ZDepthAnnotationOptionsPlan(
+            should_apply=True,
+            disabled_updates=(('ids', False), ('contours', False)),
+            state=AnnotationOptionState(
+                ids=True,
+                cca=state.cca,
+                contours=True,
+                segm_masks=state.segm_masks,
+                mother_bud_lines=state.mother_bud_lines,
+                num_zslices=state.num_zslices,
+                nothing=state.nothing,
+            ),
+            clicked_option='ids',
+            save_settings=False,
+        )
+
+    def visible_3d_segmentation_widgets_plan(
+        self,
+        *,
+        is_3d: bool,
+    ) -> Visible3DSegmentationWidgetsPlan:
+        visible_updates = (
+            ('left', 'num_zslices', is_3d),
+            ('right', 'num_zslices', is_3d),
+        )
+        checked_updates = ()
+        if not is_3d:
+            checked_updates = (
+                ('left', 'num_zslices', False),
+                ('right', 'num_zslices', False),
+            )
+        return Visible3DSegmentationWidgetsPlan(
+            visible_updates=visible_updates,
+            checked_updates=checked_updates,
+        )
+
+    def z_neighbor_highlight_checkbox_plan(
+        self,
+        *,
+        is_3d: bool,
+    ) -> ZNeighborHighlightCheckboxPlan:
+        if not is_3d:
+            return ZNeighborHighlightCheckboxPlan(should_apply=False)
+        return ZNeighborHighlightCheckboxPlan(
+            should_apply=True,
+            visible=True,
+            checked=True,
+            should_connect_toggle=True,
+        )
+
         Draw all lineage tree lines on the GUI.
 
         This method retrieves the lineage tree data and draws the lineage tree lines
         connecting cells and their respective mothers when the mother has split.
         """
-        if not self.view_model.should_draw_lineage_tree_lines(
+        if not self.should_draw_lineage_tree_lines(
             lineage_tree_available=self.lineage_tree is not None,
             frames_count=(
                 0 if self.lineage_tree is None
@@ -503,14 +910,14 @@ class AnnotationDisplayView:
                 continue
 
             for ID in new_cells:
-                curr_obj = self.view_model.lineage.object_by_label(rp, ID)
+                curr_obj = self.lineage.object_by_label(rp, ID)
                 lin_tree_df_ID = lin_tree_df.loc[ID]
 
                 # lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
                 if lin_tree_df_ID["parent_ID_tree"] == -1: # make sure that new obj where the parents are not known get skipped
                     continue
 
-                mother_obj = self.view_model.lineage.object_by_label(
+                mother_obj = self.lineage.object_by_label(
                     prev_rp, lin_tree_df_ID["parent_ID_tree"]
                 )
 
@@ -551,7 +958,7 @@ class AnnotationDisplayView:
 
         y1, x1 = self.getObjCentroid(obj.centroid)
         y2, x2 = self.getObjCentroid(mother_obj.centroid)
-        xx, yy = self.view_model.geometry.line_coords(
+        xx, yy = self.geometry.line_coords(
             y1, x1, y2, x2, dashed=True
         )
         scatterItem.addPoints(xx, yy)
@@ -560,7 +967,7 @@ class AnnotationDisplayView:
         depth_axis = (
             self.switchPlaneCombobox.depthAxes() if self.isSegm3D else 'z'
         )
-        return self.view_model.edit_id.project_centroid(
+        return self.edit_id.project_centroid(
             obj_centroid,
             is_3d=self.isSegm3D,
             depth_axis=depth_axis,
@@ -657,14 +1064,14 @@ class AnnotationDisplayView:
             self.labelRoiCircularRadiusSpinbox.setDisabled(True)
 
     def pxModeActionToggled(self, checked):
-        self.view_model.change_pixel_mode(
+        self.change_pixel_mode(
             checked=checked,
             is_data_loaded=self.isDataLoaded,
             high_resolution=self.highLowResAction.isChecked(),
         )
 
     def changeTextResolution(self):
-        self.view_model.change_text_resolution(
+        self.change_text_resolution(
             high_resolution=self.highLowResAction.isChecked(),
             is_data_loaded=self.isDataLoaded,
         )
@@ -673,18 +1080,18 @@ class AnnotationDisplayView:
         self.changeTextResolution()
 
     def annotGenNumTreeToggled(self, checked):
-        self.view_model.change_gen_num_tree_annotations(checked)
+        self.change_gen_num_tree_annotations(checked)
 
     def annotLabelIDtreeToggled(self, checked):
-        self.view_model.change_label_tree_annotations(checked)
+        self.change_label_tree_annotations(checked)
 
     def setAnnotInfoMode(self, checked):
-        self.view_model.change_tree_annotation_info_mode(checked)
+        self.change_tree_annotation_info_mode(checked)
 
     def annotOptionClicked(self, clicked=True, sender=None, saveSettings=True):
         if sender is None:
             sender = self.sender()
-        self.view_model.change_annotation_options(
+        self.change_annotation_options(
             side='left',
             clicked_option=self._annotation_clicked_option('left', sender),
             save_settings=saveSettings,
@@ -701,7 +1108,7 @@ class AnnotationDisplayView:
         self.drawNothingCheckbox.setDisabled(disabled)
 
     def setEnabledAnnotCheckBoxesLeftZdepthAxes(self):
-        self.view_model.enable_z_depth_annotation_options(
+        self.enable_z_depth_annotation_options(
             is_3d=self.isSegm3D,
             **self._annotation_option_state('left'),
         )
@@ -720,7 +1127,7 @@ class AnnotationDisplayView:
         ):
         if sender is None:
             sender = self.sender()
-        self.view_model.change_annotation_options(
+        self.change_annotation_options(
             side='right',
             clicked_option=self._annotation_clicked_option('right', sender),
             save_settings=saveSettings,
@@ -749,7 +1156,7 @@ class AnnotationDisplayView:
     def setDrawAnnotComboboxText(self, saveSettings=True):
         state = self._annotation_option_state('left')
         state.pop('num_zslices')
-        self.view_model.refresh_annotation_mode_text(
+        self.refresh_annotation_mode_text(
             side='left',
             save_settings=saveSettings,
             **state,
@@ -758,7 +1165,7 @@ class AnnotationDisplayView:
     def setDrawAnnotComboboxTextRight(self, saveSettings=True):
         state = self._annotation_option_state('right')
         state.pop('num_zslices')
-        self.view_model.refresh_annotation_mode_text(
+        self.refresh_annotation_mode_text(
             side='right',
             save_settings=saveSettings,
             **state,
@@ -797,10 +1204,10 @@ class AnnotationDisplayView:
         logger('Updating annotated IDs...')
         posData = self.data[self.pos_i]
 
-        posData.ripIDs = self.view_model.label_edits.remap_id_set(
+        posData.ripIDs = self.label_edits.remap_id_set(
             posData.ripIDs, oldIDs, newIDs
         )
-        posData.binnedIDs = self.view_model.label_edits.remap_id_set(
+        posData.binnedIDs = self.label_edits.remap_id_set(
             posData.binnedIDs, oldIDs, newIDs
         )
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
@@ -811,7 +1218,7 @@ class AnnotationDisplayView:
         for button in customAnnotButtons:
             customAnnotValues = self.customAnnotDict[button]
             annotatedIDs = customAnnotValues['annotatedIDs'][self.pos_i]
-            mappedAnnotIDs = self.view_model.custom_annotations.remap_ids(
+            mappedAnnotIDs = self.custom_annotations.remap_ids(
                 annotatedIDs,
                 oldIDs,
                 newIDs,
@@ -822,7 +1229,7 @@ class AnnotationDisplayView:
         if not checked:
             return
 
-        aliases = self.view_model.model_registry.real_time_tracker_aliases(
+        aliases = self.model_registry.real_time_tracker_aliases(
             reverse=True
         )
         if self.sender().text() in aliases:
@@ -1040,12 +1447,12 @@ class AnnotationDisplayView:
             )
 
     def setVisible3DsegmWidgets(self):
-        self.view_model.update_visible_3d_segmentation_widgets(
+        self.update_visible_3d_segmentation_widgets(
             is_3d=self.isSegm3D,
         )
 
     def showHighlightZneighCheckbox(self):
-        self.view_model.update_z_neighbor_highlight_checkbox(
+        self.update_z_neighbor_highlight_checkbox(
             is_3d=self.isSegm3D,
         )
 
@@ -1056,7 +1463,7 @@ class AnnotationDisplayView:
             pass
 
     def restoreSavedSettings(self):
-        self.view_model.restore_saved_settings(
+        self.restore_saved_settings(
             settings_values=self.df_settings['value'].to_dict(),
             left_num_zslices=self.annotNumZslicesCheckbox.isChecked(),
             right_num_zslices=self.annotNumZslicesCheckboxRight.isChecked(),
@@ -1099,7 +1506,7 @@ class AnnotationDisplayView:
         # self.drawNothingCheckboxRight.setDisabled(disabled)
 
     def drawAnnotCombobox_to_options(self):
-        self.view_model.sync_annotation_options_from_mode_text(
+        self.sync_annotation_options_from_mode_text(
             left_text=self.drawIDsContComboBox.currentText(),
             right_text=self.annotateRightHowCombobox.currentText(),
             left_num_zslices=self.annotNumZslicesCheckbox.isChecked(),

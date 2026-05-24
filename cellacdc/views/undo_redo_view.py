@@ -5,9 +5,9 @@ from __future__ import annotations
 import uuid
 
 from cellacdc import apps, html_utils, widgets
-from cellacdc.viewmodels.undo_redo_viewmodel import UndoRedoViewModel
 
 
+from collections import defaultdict
 class UndoRedoView:
     """Qt-facing adapter around undo/redo actions and state restoration."""
 
@@ -27,15 +27,13 @@ class UndoRedoView:
         'redo',
     )
 
-    def __init__(self, host, view_model: UndoRedoViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -49,19 +47,45 @@ class UndoRedoView:
         self.UndoCount = 0
         self.redoAction.setEnabled(False)
         self.undoAction.setEnabled(False)
-        posData.UndoRedoStates = self.view_model.empty_frame_stacks(
+        posData.UndoRedoStates = self.empty_frame_stacks(
             posData.SizeT
         )
-        posData.UndoRedoCcaStates = self.view_model.empty_frame_stacks(
+        posData.UndoRedoCcaStates = self.empty_frame_stacks(
             posData.SizeT
         )
         if hasattr(self, 'undoAddPointQueueMapper'):
             self.undoAddPointQueueMapper = (
-                self.view_model.empty_add_point_queue()
+                self.empty_add_point_queue()
             )
 
     def askPropagateChangePast(self, change_txt):
         txt = html_utils.paragraph(f"""
+
+    """Headless undo/redo stack operations."""
+
+    def empty_frame_stacks(self, size_t: int) -> list[list]:
+        return [[] for _ in range(size_t)]
+
+    def empty_add_point_queue(self):
+        return defaultdict(list)
+
+    def trim_stack(self, states: list, *, max_size: int) -> None:
+        if len(states) > max_size:
+            states.pop(-1)
+
+    def can_undo_labels(self, undo_count: int, states: list) -> bool:
+        return undo_count < len(states) - 1
+
+    def can_redo_labels(self, undo_count: int) -> bool:
+        return undo_count > 0
+
+    def should_disable_undo_after_cca(
+        self,
+        undo_count: int,
+        states: list,
+    ) -> bool:
+        return len(states) > undo_count
+
             Do you want to propagate the change "{change_txt}" to the past frames?
         """)
         msg = widgets.myMessageBox(wrapText=False)
@@ -283,7 +307,7 @@ class UndoRedoView:
             self.reInitLastSegmFrame(updateImages=False)
 
         # Keep only 5 Undo/Redo states
-        self.view_model.trim_label_states(
+        self.trim_label_states(
             posData.UndoRedoStates[posData.frame_i]
         )
 
@@ -315,7 +339,7 @@ class UndoRedoView:
         self.addCcaState(frame_i, cca_df, undoId)
 
         # Keep only 10 Undo/Redo states
-        self.view_model.trim_cca_states(posData.UndoRedoCcaStates[frame_i])
+        self.trim_cca_states(posData.UndoRedoCcaStates[frame_i])
 
     def undoCustomAnnotation(self):
         pass
@@ -339,7 +363,7 @@ class UndoRedoView:
         self.updateAllImages()
 
         # Check if we have undone all states
-        if self.view_model.should_disable_undo_after_cca(
+        if self.should_disable_undo_after_cca(
                 self.UndoCount, currentCcaStates
         ):
             # There are no states left to undo for current frame_i
@@ -386,7 +410,7 @@ class UndoRedoView:
 
         posData = self.data[self.pos_i]
         # Get previously stored state
-        if self.view_model.can_undo_labels(
+        if self.can_undo_labels(
                 self.UndoCount,
                 posData.UndoRedoStates[posData.frame_i],
         ):
@@ -400,7 +424,7 @@ class UndoRedoView:
             self.updateAllImages(image=image_left)
             self.store_data()
 
-        if not self.view_model.can_undo_labels(
+        if not self.can_undo_labels(
                 self.UndoCount,
                 posData.UndoRedoStates[posData.frame_i],
         ):
@@ -413,7 +437,7 @@ class UndoRedoView:
     def redo(self):
         posData = self.data[self.pos_i]
         # Get previously stored state
-        if self.view_model.can_redo_labels(self.UndoCount):
+        if self.can_redo_labels(self.UndoCount):
             self.UndoCount -= 1
             # Since we have redone then it is possible to undo
             self.undoAction.setEnabled(True)
@@ -424,7 +448,7 @@ class UndoRedoView:
             self.updateAllImages(image=image_left)
             self.store_data()
 
-        if not self.view_model.can_redo_labels(self.UndoCount):
+        if not self.can_redo_labels(self.UndoCount):
             # We have redone all available states
             self.redoAction.setEnabled(False)
 

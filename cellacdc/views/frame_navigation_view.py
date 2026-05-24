@@ -6,13 +6,11 @@ from collections import Counter
 from functools import partial
 
 import numpy as np
+from dataclasses import dataclass
 from qtpy.QtCore import QTimer
 from qtpy.QtWidgets import QAbstractSlider, QCheckBox
 
 from cellacdc import QtScoped, apps, exception_handler, html_utils, printl, widgets
-from cellacdc.viewmodels.frame_navigation_viewmodel import (
-    FrameNavigationViewModel,
-)
 
 
 SliderSingleStepAdd = QtScoped.SliderSingleStepAdd()
@@ -80,15 +78,13 @@ class FrameNavigationView:
         'setZprojDisabled',
     )
 
-    def __init__(self, host, view_model: FrameNavigationViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -103,7 +99,7 @@ class FrameNavigationView:
 
         current_z = self.z_lab()
         nearest_nonzero_z = (
-            self.view_model.nearest_nonzero_z_from_centroid(
+            self.nearest_nonzero_z_from_centroid(
                 obj, current_z=current_z
             )
         )
@@ -117,7 +113,7 @@ class FrameNavigationView:
     def isNavigateActionOnNextFrame(self):
         posData = self.data[self.pos_i]
         ax1_coords = self.status_hover_view.mouse_data_coords_right_image()
-        return self.view_model.should_show_next_frame_image(
+        return self.should_show_next_frame_image(
             size_t=posData.SizeT,
             has_right_image_coords=ax1_coords is not None,
             action_enabled=self.labelsGrad.showNextFrameAction.isEnabled(),
@@ -135,7 +131,7 @@ class FrameNavigationView:
         if current_frame_i is None:
             current_frame_i = posData.frame_i
 
-        next_frame_i = self.view_model.next_frame_index(
+        next_frame_i = self.next_frame_index(
             current_frame_i=current_frame_i,
             frames_count=len(posData.img_data),
         )
@@ -225,7 +221,7 @@ class FrameNavigationView:
         self.updateItemsMousePos()
         self.updateFramePosLabel()
         posData = self.data[self.pos_i]
-        navPos = self.view_model.navigation_position(
+        navPos = self.navigation_position(
             is_snapshot=self.isSnapshot,
             position_i=self.pos_i,
             frame_i=posData.frame_i,
@@ -259,7 +255,7 @@ class FrameNavigationView:
         lineage_frames = None
         if self.lineage_tree is not None:
             lineage_frames = self.lineage_tree.frames_for_dfs
-        limit = self.view_model.navigation_limit(
+        limit = self.navigation_limit(
             mode=mode,
             frame_i=posData.frame_i,
             last_tracked_i=posData.last_tracked_i,
@@ -278,6 +274,156 @@ class FrameNavigationView:
 
     def setFrameNavigationDisabled(self, disable: bool, why: str):
         """Disables the frame navigation buttons and scrollbar.
+
+    """Headless decisions for frame/position navigation workflows."""
+
+    viewer_mode = 'Viewer'
+    segmentation_mode = 'Segmentation and Tracking'
+    cell_cycle_mode = 'Cell cycle analysis'
+    lineage_mode = 'Normal division: Lineage tree'
+
+    def should_show_next_frame_image(
+        self,
+        *,
+        size_t: int,
+        has_right_image_coords: bool,
+        action_enabled: bool,
+        action_checked: bool,
+    ) -> bool:
+        return (
+            size_t > 1
+            and has_right_image_coords
+            and action_enabled
+            and action_checked
+        )
+
+    def next_frame_index(self, *, current_frame_i: int, frames_count: int) -> int:
+        next_frame_i = current_frame_i + 1
+        if next_frame_i >= frames_count:
+            return frames_count - 1
+        return next_frame_i
+
+    def navigation_position(
+        self,
+        *,
+        is_snapshot: bool,
+        position_i: int,
+        frame_i: int,
+    ) -> int:
+        return position_i + 1 if is_snapshot else frame_i + 1
+
+    def navigation_limit(
+        self,
+        *,
+        mode: str,
+        frame_i: int,
+        last_tracked_i: int | None,
+        last_cca_frame_i: int,
+        lineage_tree_frames,
+    ) -> NavigationLimit | None:
+        if mode == self.segmentation_mode:
+            if last_tracked_i is None or frame_i > last_tracked_i:
+                maximum = frame_i + 1
+            else:
+                maximum = last_tracked_i + 1
+            return NavigationLimit(
+                maximum=maximum,
+                last_checked_frame_i=maximum - 1,
+            )
+        if mode == self.cell_cycle_mode:
+            maximum = max(frame_i, last_cca_frame_i) + 1
+            return NavigationLimit(
+                maximum=maximum,
+                status_text=f'Last cc annot. frame n. = {maximum}',
+            )
+        if mode == self.lineage_mode:
+            if lineage_tree_frames:
+                maximum = max(lineage_tree_frames) + 1
+            else:
+                maximum = frame_i + 1
+            return NavigationLimit(maximum=maximum)
+        return None
+
+    def should_store_when_slider_moves(self, *, mode: str) -> bool:
+        return mode != self.viewer_mode
+
+    def should_warn_lost_objects(
+        self,
+        *,
+        requested: bool,
+        action_checked: bool,
+        mode: str,
+        lost_ids,
+        already_accepted: bool,
+    ) -> bool:
+        if not requested:
+            return False
+        if not action_checked:
+            return False
+        if mode != self.segmentation_mode:
+            return False
+        if not lost_ids:
+            return False
+        return not already_accepted
+
+    def blocks_future_manual_annotation(
+        self,
+        *,
+        manual_annotation_enabled: bool,
+        current_frame_i: int,
+        frame_to_restore,
+    ) -> bool:
+        if not manual_annotation_enabled:
+            return False
+        if frame_to_restore is None:
+            return False
+        return current_frame_i > frame_to_restore
+
+    def should_apply_new_frame_tools(
+        self,
+        *,
+        mode: str,
+        last_tracked_i: int,
+        frame_i: int,
+        last_frame_ran: int,
+    ) -> bool:
+        return (
+            mode == self.segmentation_mode
+            and last_tracked_i is not None
+            and last_tracked_i <= frame_i
+            and frame_i != last_frame_ran
+        )
+
+    def is_single_z_slice_projection(self, how: str) -> bool:
+        return how == 'single z-slice'
+
+    def should_disable_overlay_z_slice(self, how: str) -> bool:
+        return how.find('max') != -1 or how == 'same as above'
+
+    def projection_frame_indices(
+        self,
+        *,
+        filename,
+        frame_i: int,
+        size_t: int,
+        locked: bool,
+    ) -> list[tuple[object, int]]:
+        if locked:
+            return [(filename, i) for i in range(size_t)]
+        return [(filename, frame_i)]
+
+    def z_slice_frame_indices(
+        self,
+        *,
+        filename,
+        frame_i: int,
+        size_t: int,
+        locked: bool,
+    ) -> list[tuple[object, int]]:
+        if locked:
+            return [(filename, i) for i in range(size_t)]
+        return [(filename, i) for i in range(frame_i, size_t)]
+
         This is used when the user is not allowed to navigate through frames
         Call again to unlock it again. Also sets tooltips to inform the user
 
@@ -393,7 +539,7 @@ class FrameNavigationView:
     def framesScrollBarMoved(self, frame_n):
         if self.navigateScrollBarStartedMoving:
             mode = str(self.modeComboBox.currentText())
-            if self.view_model.should_store_when_slider_moves(mode=mode):
+            if self.should_store_when_slider_moves(mode=mode):
                 self.store_data(debug=False)
 
         posData = self.data[self.pos_i]
@@ -431,7 +577,7 @@ class FrameNavigationView:
 
         mode = str(self.modeComboBox.currentText())
         if (
-            self.view_model.should_store_when_slider_moves(mode=mode)
+            self.should_store_when_slider_moves(mode=mode)
             and do_store_data
         ):
             self.store_data(debug=False)
@@ -518,7 +664,7 @@ class FrameNavigationView:
         except AttributeError as err:
             already_accepted_lost = False
 
-        should_warn = self.view_model.should_warn_lost_objects(
+        should_warn = self.should_warn_lost_objects(
             requested=do_warn,
             action_checked=self.warnLostCellsAction.isChecked(),
             mode=mode,
@@ -599,7 +745,7 @@ class FrameNavigationView:
             return
         numFramesToAdd = stopFrameNum - segmSizeT
         posData.allData_li.extend(
-            self.view_model.empty_frame_records(numFramesToAdd)
+            self.empty_frame_records(numFramesToAdd)
         )
         lab_shape = posData.segm_data[0].shape
         shapeToAdd = (numFramesToAdd, *lab_shape)
@@ -638,7 +784,7 @@ class FrameNavigationView:
 
             posData.segm_data[i] = posData.allData_li[i]['labels']
             posData.allData_li[i] = (
-                self.view_model.empty_frame_record()
+                self.empty_frame_record()
             )
 
             posData.tracked_lost_centroids[i] = set()
@@ -720,7 +866,7 @@ class FrameNavigationView:
     def checkIfFutureFrameManualAnnotPastFrames(self):
         posData = self.data[self.pos_i]
         frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
-        blocked = self.view_model.blocks_future_manual_annotation(
+        blocked = self.blocks_future_manual_annotation(
             manual_annotation_enabled=self.manualAnnotPastButton.isChecked(),
             current_frame_i=posData.frame_i,
             frame_to_restore=frame_to_restore,
@@ -822,7 +968,7 @@ class FrameNavigationView:
     def apply_tools_on_new_frame(self):
         mode = str(self.modeComboBox.currentText())
         posData = self.data[self.pos_i]
-        should_apply = self.view_model.should_apply_new_frame_tools(
+        should_apply = self.should_apply_new_frame_tools(
             mode=mode,
             last_tracked_i=posData.last_tracked_i,
             frame_i=posData.frame_i,
@@ -855,7 +1001,7 @@ class FrameNavigationView:
 
         posData = self.data[self.pos_i]
         for frame_i in range(last_tracked_i_to_restore+1, posData.SizeT):
-            data_frame_i = self.view_model.empty_frame_record()
+            data_frame_i = self.empty_frame_record()
 
             data_frame_i['manually_edited_lab'] = (
                 posData.allData_li[frame_i]['manually_edited_lab']
@@ -1129,7 +1275,7 @@ class FrameNavigationView:
     def update_z_slice(self, z):
         posData = self.data[self.pos_i]
         if self.switchPlaneCombobox.depthAxes() == 'z':
-            idx = self.view_model.z_slice_frame_indices(
+            idx = self.z_slice_frame_indices(
                 filename=posData.filename,
                 frame_i=posData.frame_i,
                 size_t=posData.SizeT,
@@ -1153,7 +1299,7 @@ class FrameNavigationView:
         self.setOverlayImages()
 
     def updateOverlayZproj(self, how):
-        if self.view_model.should_disable_overlay_z_slice(how):
+        if self.should_disable_overlay_z_slice(how):
             self.overlay_z_label.setDisabled(True)
             self.zSliceOverlay_SB.setDisabled(True)
         else:
@@ -1163,7 +1309,7 @@ class FrameNavigationView:
 
     def updateZproj(self, how):
         for p, posData in enumerate(self.data[self.pos_i:]):
-            idx = self.view_model.projection_frame_indices(
+            idx = self.projection_frame_indices(
                 filename=posData.filename,
                 frame_i=posData.frame_i,
                 size_t=posData.SizeT,
@@ -1173,7 +1319,7 @@ class FrameNavigationView:
             posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
         posData = self.data[self.pos_i]
-        if self.view_model.is_single_z_slice_projection(how):
+        if self.is_single_z_slice_projection(how):
             self.zSliceScrollBar.setDisabled(False)
             self.zSliceSpinbox.setDisabled(False)
             self.zSliceCheckbox.setDisabled(False)

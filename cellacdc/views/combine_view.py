@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from typing import List, Dict, Any, Tuple
+from dataclasses import dataclass
+import numpy as np
 from qtpy.QtCore import QThread, QTimer, QMutex, QWaitCondition
 from natsort import natsorted
 import numpy as np
 
 from cellacdc import core, workers, widgets, html_utils, apps, preprocess, myutils, printl
-from cellacdc.viewmodels.combine_viewmodel import CombineViewModel
 
 
 class CombineView:
@@ -43,15 +44,13 @@ class CombineView:
         'saveCombineWorkerFinished',
     )
 
-    def __init__(self, host, view_model: CombineViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -82,6 +81,56 @@ class CombineView:
 
         helpText = (
             """
+
+    """Headless state and helpers for combining channel and image arrays."""
+
+    def initialize_combine_image_data(self, pos_data) -> np.ndarray:
+        """Initializes pos_data.combine_img_data if not already present."""
+        if not hasattr(pos_data, 'combine_img_data'):
+            from cellacdc import preprocess
+            pos_data.combine_img_data = preprocess.PreprocessedData(
+                image_data=np.zeros(pos_data.img_data.shape)
+            )
+        return pos_data.combine_img_data
+
+    def validate_dimensions(self, ndim: int) -> bool:
+        """Asserts that image data dimensions are valid for combining (3D or 4D)."""
+        if ndim not in (3, 4):
+            raise ValueError('Invalid number of dimensions in img_data.')
+        return True
+
+    def group_processed_data_by_pos(
+        self,
+        processed_data: list[np.ndarray],
+        keys: list[tuple[int, int, int]]
+    ) -> dict[int, list[tuple[tuple[int, int, int], np.ndarray]]]:
+        """Groups raw processed preview output arrays by position index."""
+        unique_pos = {key[0] for key in keys}
+        per_pos_data = {pos_i: [] for pos_i in unique_pos}
+        for key, img in zip(keys, processed_data):
+            pos_i, frame_i, z_slice = key
+            per_pos_data[pos_i].append((key, img))
+        return per_pos_data
+
+    def update_combine_image_data(
+        self,
+        pos_data,
+        pos_i_data: list[tuple[tuple[int, int, int], np.ndarray]]
+    ):
+        """Updates preprocessed combined image data container frames and z-slices."""
+        n_dim_img = pos_data.img_data.ndim
+        self.initialize_combine_image_data(pos_data)
+        self.validate_dimensions(n_dim_img)
+
+        if n_dim_img == 4:
+            for key, img in pos_i_data:
+                _, frame_i, z_slice = key
+                pos_data.combine_img_data[frame_i][z_slice] = img
+        elif n_dim_img == 3:
+            for key, img in pos_i_data:
+                _, frame_i, _ = key
+                pos_data.combine_img_data[frame_i] = img
+
             The segm/img file will be saved with a different 
             file name.<br><br>
             Insert a name to append to the end of the new file name. The rest of 
@@ -548,11 +597,11 @@ class CombineView:
             processed_data: List[np.ndarray], 
             keys: List[Tuple[int, int, int]]
         ):
-        per_pos_data = self.view_model.group_processed_data_by_pos(processed_data, keys)
+        per_pos_data = self.group_processed_data_by_pos(processed_data, keys)
 
         for pos_i, pos_i_data in per_pos_data.items():    
             posData = self.data[pos_i]
-            self.view_model.update_combine_image_data(posData, pos_i_data)
+            self.update_combine_image_data(posData, pos_i_data)
             
             if not self.combineDialog.saveAsSegm():
                 for key, _ in pos_i_data:
@@ -600,11 +649,11 @@ class CombineView:
         self.status_hover_view.set_status_bar_label(log=False)
         self.combineDialog.appliedFinished()
 
-        per_pos_data = self.view_model.group_processed_data_by_pos(processed_data, keys)
+        per_pos_data = self.group_processed_data_by_pos(processed_data, keys)
 
         for pos_i, pos_i_data in per_pos_data.items():    
             posData = self.data[pos_i]
-            self.view_model.update_combine_image_data(posData, pos_i_data)
+            self.update_combine_image_data(posData, pos_i_data)
             
             if not self.combineDialog.saveAsSegm():
                 for key, _ in pos_i_data:

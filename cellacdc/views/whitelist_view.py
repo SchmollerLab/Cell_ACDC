@@ -5,6 +5,9 @@ from __future__ import annotations
 import os
 import json
 import numpy as np
+from dataclasses import dataclass
+from typing import Set, List
+import numpy as np
 import skimage.measure
 from typing import Set, List, Tuple, Any
 import time
@@ -14,7 +17,6 @@ from cellacdc import (
 )
 from cellacdc.trackers.CellACDC import CellACDC_tracker
 from cellacdc.whitelist import Whitelist
-from cellacdc.viewmodels.whitelist_viewmodel import WhitelistViewModel
 
 
 class WhitelistView:
@@ -43,15 +45,13 @@ class WhitelistView:
         'whitelistUpdateTempLayer',
     )
 
-    def __init__(self, host, view_model: WhitelistViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -69,8 +69,99 @@ class WhitelistView:
         if frame_i is None:
             frame_i = posData.frame_i
 
-        if not self.view_model.check_original_labels(posData.whitelist, frame_i):
+        if not self.check_original_labels(posData.whitelist, frame_i):
             txt = """
+
+    """Headless decisions and calculations for Whitelist management."""
+
+    def filter_existing_ids(self, current_whitelist: Set[int], possible_ids: Set[int]) -> tuple[Set[int], bool]:
+        """Filters out non-existing IDs from the current whitelist.
+        
+        Returns a tuple: (filtered_whitelist, is_any_id_non_existing)
+        """
+        is_any_id_non_existing = False
+        filtered_whitelist = set(current_whitelist)
+        for ID in current_whitelist:
+            if ID not in possible_ids:
+                is_any_id_non_existing = True
+                filtered_whitelist.discard(ID)
+        return filtered_whitelist, is_any_id_non_existing
+
+    def get_missing_ids(self, current_ids: Set[int], previous_ids: Set[int]) -> Set[int]:
+        """Returns the set of IDs present in current frame but missing from previous frame."""
+        return set(current_ids) - set(previous_ids)
+
+    def check_original_labels(self, whitelist_obj, frame_i: int) -> bool:
+        """Checks if original label data is allocated and valid for the frame."""
+        if whitelist_obj is None:
+            return False
+        if whitelist_obj.originalLabsIDs is None:
+            return False
+        if frame_i >= len(whitelist_obj.originalLabsIDs) or whitelist_obj.originalLabsIDs[frame_i] is None:
+            return False
+        return True
+
+    def get_frames_range(self, frame_i: int) -> list[int]:
+        """Calculates navigation frame ranges for label loading."""
+        if frame_i > 0:
+            return [frame_i - 1, frame_i]
+        return [frame_i]
+
+    def get_diff_ids(self, old_ids: Set[int], prev_ids: Set[int], new_ids: Set[int]) -> Set[int]:
+        """Computes tracking difference intersection (new_ids - old_ids) & prev_ids."""
+        return (new_ids - old_ids) & prev_ids
+
+    def get_whitelist_missing_and_removed_ids(self, whitelist: Set[int], current_ids: Set[int]) -> tuple[list[int], list[int]]:
+        """Finds IDs that are missing from current_ids and IDs to be removed from current_ids."""
+        missing_ids = list(whitelist - current_ids)
+        to_be_removed_ids = list(current_ids - whitelist)
+        return missing_ids, to_be_removed_ids
+
+    def apply_id_mask(
+        self,
+        curr_lab: np.ndarray,
+        og_lab: np.ndarray | None,
+        missing_ids: list[int] | np.ndarray,
+        to_be_removed_ids: list[int] | np.ndarray
+    ) -> np.ndarray:
+        """Applies missing and removed ID masks to the label array."""
+        updated_lab = curr_lab.copy().astype(np.int32)
+        missing_ids = np.array(missing_ids, dtype=np.int32)
+        to_be_removed_ids = np.array(to_be_removed_ids, dtype=np.int32)
+
+        if missing_ids.size > 0 and og_lab is not None:
+            mask = np.isin(og_lab, missing_ids)
+            updated_lab[mask] = og_lab[mask]
+
+        if to_be_removed_ids.size > 0:
+            updated_lab[np.isin(updated_lab, to_be_removed_ids)] = 0
+
+        return updated_lab
+
+    def construct_og_frame(
+        self,
+        pos_lab: np.ndarray,
+        og_frame_base: np.ndarray,
+        whitelist_ids: Set[int],
+        og_ids: Set[int]
+    ) -> np.ndarray:
+        """Constructs original labels overlay using np.isin masking."""
+        og_frame = og_frame_base.copy()
+        
+        ids_to_update = whitelist_ids & og_ids
+        if ids_to_update:
+            mask = np.isin(og_frame, list(ids_to_update))
+            og_frame[mask] = 0
+            mask = np.isin(pos_lab, list(ids_to_update))
+            og_frame[mask] = pos_lab[mask]
+        
+        ids_to_add = whitelist_ids - og_ids
+        if ids_to_add:
+            mask = np.isin(pos_lab, list(ids_to_add))
+            og_frame[mask] = pos_lab[mask]
+            
+        return og_frame
+
             No original labels are present for the current frame,
             this action cannot be performed."""
             self.logger.warning(txt)
@@ -95,7 +186,7 @@ class WhitelistView:
         self.whitelistTrackOGCurr(against_prev=True)
         new_cell_IDs = posData.whitelist.originalLabsIDs[frame_i]
 
-        new_IDs = self.view_model.get_diff_ids(
+        new_IDs = self.get_diff_ids(
             old_cell_IDs, set(prev_cell_IDs), new_cell_IDs
         )
 
@@ -163,7 +254,7 @@ class WhitelistView:
             printl('whitelistViewOGIDs', checked)
      
         frame_i = posData.frame_i
-        frames_range = self.view_model.get_frames_range(frame_i)
+        frames_range = self.get_frames_range(frame_i)
 
         self.store_data(autosave=False)
     
@@ -178,7 +269,7 @@ class WhitelistView:
                 self.get_data()
                 self.whitelistTrackOGCurr(frame_i=i)
 
-                posData.lab = self.view_model.construct_og_frame(
+                posData.lab = self.construct_og_frame(
                     pos_lab=posData.lab,
                     og_frame_base=posData.whitelist.originalLabs[i],
                     whitelist_ids=posData.whitelist.whitelistIDs[i],
@@ -188,7 +279,7 @@ class WhitelistView:
                 self.store_data(autosave=False)
 
             if frame_i > 0:
-                missing_IDs = self.view_model.get_missing_ids(posData.IDs, posData.allData_li[frame_i-1]['IDs'])
+                missing_IDs = self.get_missing_ids(posData.IDs, posData.allData_li[frame_i-1]['IDs'])
                 self.trackManuallyAddedObject(missing_IDs, isNewID=True, wl_update=False)
 
             self.setAllTextAnnotations()
@@ -372,7 +463,7 @@ class WhitelistView:
         if not IDs_to_add_remove_provided:
             self.get_data()
             got_data = True
-            missing_IDs, to_be_removed_IDs = self.view_model.get_whitelist_missing_and_removed_ids(
+            missing_IDs, to_be_removed_IDs = self.get_whitelist_missing_and_removed_ids(
                 whitelist, set(posData.IDs)
             )
         else:
@@ -433,7 +524,7 @@ class WhitelistView:
         if benchmark:
             ts.append(time.perf_counter())
 
-        curr_lab = self.view_model.apply_id_mask(
+        curr_lab = self.apply_id_mask(
             curr_lab, og_lab, missing_IDs, to_be_removed_IDs
         )
 
@@ -784,7 +875,7 @@ class WhitelistView:
                 possible_IDs.update(posData.IDs)
 
         # Delegate validation of existing IDs to viewmodel/model
-        filtered_whitelist, isAnyIDnotExisting = self.view_model.filter_existing_ids(
+        filtered_whitelist, isAnyIDnotExisting = self.filter_existing_ids(
             whitelistIDs, possible_IDs
         )
 

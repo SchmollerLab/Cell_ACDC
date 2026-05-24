@@ -6,18 +6,24 @@ from qtpy.QtCore import Qt
 from qtpy.QtGui import QGuiApplication
 
 from cellacdc import exception_handler
-from cellacdc.viewmodels.canvas_right_image_viewmodel import (
-    CanvasRightImageViewModel,
-)
 
 
 class CanvasRightImageView:
     """Qt-facing adapter for duplicated right-image mouse events."""
 
-    def __init__(self, host, view_model: CanvasRightImageViewModel):
-        self.host = host
-        self.view_model = view_model
+    """Headless duplicated right-image event rules."""
 
+    def should_show_context_menu(
+        self,
+        *,
+        right_click: bool,
+        is_right_click_action_on: bool,
+    ) -> bool:
+        return right_click and not is_right_click_action_on
+
+
+    def __init__(self, host):
+        self.host = host
     @exception_handler
     def mouse_press(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
@@ -27,7 +33,7 @@ class CanvasRightImageView:
             b.isChecked() for b in self.host.checkableQButtonsGroup.buttons()
         ])
         self.host.typingEditID = False
-        show_menu = self.view_model.should_show_context_menu(
+        show_menu = self.should_show_context_menu(
             right_click=right_click,
             is_right_click_action_on=is_right_click_action_on,
         )

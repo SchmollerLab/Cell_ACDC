@@ -4,20 +4,46 @@ from __future__ import annotations
 
 import skimage.measure
 
-from cellacdc.viewmodels.label_transform_tools_viewmodel import (
-    LabelTransformToolsViewModel,
-)
 
 
 class LabelTransformToolsView:
     """Qt-facing adapter around label transform tool contracts."""
 
-    def __init__(self, host, view_model: LabelTransformToolsViewModel):
-        self.host = host
-        self.view_model = view_model
+    """Headless decision rules for label transform tools."""
 
+    def reset_expand_label_id(self) -> int:
+        return -1
+
+    def should_reinitialize_expansion(
+        self,
+        *,
+        expanding_id: int,
+        hover_label_id: int,
+        dilation: bool,
+        is_dilation: bool,
+    ) -> bool:
+        return expanding_id != hover_label_id or dilation != is_dilation
+
+    def should_start_moving_label(self, label_id: int) -> bool:
+        return label_id != 0
+
+    def point_in_shape(self, *, x: int, y: int, shape) -> bool:
+        y_size, x_size = shape
+        return x >= 0 and y >= 0 and x < x_size and y < y_size
+
+    def move_delta(self, *, previous_pos, current_pos) -> tuple[int, int]:
+        x_start, y_start = previous_pos
+        x_current, y_current = current_pos
+        return x_current - x_start, y_current - y_start
+
+    def should_clear_move_state(self, *, checked: bool) -> bool:
+        return not checked
+
+
+    def __init__(self, host):
+        self.host = host
     def reset_expand_label(self):
-        self.host.expandingID = self.view_model.reset_expand_label_id()
+        self.host.expandingID = self.reset_expand_label_id()
 
     def expand_label_callback(self, checked):
         if checked:
@@ -42,7 +68,7 @@ class LabelTransformToolsView:
             return
 
         reinit_expanding_lab = (
-            self.view_model.should_reinitialize_expansion(
+            self.should_reinitialize_expansion(
                 expanding_id=self.host.expandingID,
                 hover_label_id=self.host.hoverLabelID,
                 dilation=dilation,
@@ -88,7 +114,7 @@ class LabelTransformToolsView:
         x_data, y_data = int(x_pos), int(y_pos)
         lab_2d = self.host.get_2Dlab(pos_data.lab)
         label_id = lab_2d[y_data, x_data]
-        if not self.view_model.should_start_moving_label(label_id):
+        if not self.should_start_moving_label(label_id):
             self.host.isMovingLabel = False
             return
 
@@ -107,7 +133,7 @@ class LabelTransformToolsView:
         lab_2d = self.host.get_2Dlab(pos_data.lab)
         y_size, x_size = lab_2d.shape
         x_data, y_data = int(x_pos), int(y_pos)
-        if not self.view_model.point_in_shape(
+        if not self.point_in_shape(
             x=x_data,
             y=y_data,
             shape=(y_size, x_size),
@@ -115,7 +141,7 @@ class LabelTransformToolsView:
             return
 
         self.host.clearObjContour(ID=self.host.movingID, ax=0)
-        delta_x, delta_y = self.view_model.move_delta(
+        delta_x, delta_y = self.move_delta(
             previous_pos=self.host.prevMovePos,
             current_pos=(x_data, y_data),
         )
@@ -136,7 +162,7 @@ class LabelTransformToolsView:
         self.host.prevMovePos = (x_data, y_data)
 
     def move_label_button_toggled(self, checked):
-        if not self.view_model.should_clear_move_state(checked=checked):
+        if not self.should_clear_move_state(checked=checked):
             return
         self.host.hoverLabelID = 0
         self.host.highlightedID = 0

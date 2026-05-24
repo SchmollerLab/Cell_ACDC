@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Sequence
+import numpy as np
+import pandas as pd
 from qtpy.QtCore import Qt
 
 from cellacdc import (
@@ -10,9 +13,6 @@ from cellacdc import (
 )
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
     normal_division_lineage_tree,
-)
-from cellacdc.viewmodels.lineage_interactions_viewmodel import (
-    LineageInteractionsViewModel,
 )
 
 
@@ -34,15 +34,13 @@ class LineageInteractionsView:
         'get_difference_table',
     )
 
-    def __init__(self, host, view_model: LineageInteractionsViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -54,6 +52,128 @@ class LineageInteractionsView:
     @exception_handler
     def initLinTree(self, force=False):
         """
+
+    """Headless decisions for lineage-tree interaction workflows."""
+
+    lineage_mode = 'Normal division: Lineage tree'
+    viewer_mode = 'Viewer'
+
+    def is_lineage_mode(self, mode: str) -> bool:
+        return mode == self.lineage_mode
+
+    def should_initialize(
+        self,
+        *,
+        force: bool,
+        mode: str,
+        lineage_tree_exists: bool,
+    ) -> bool:
+        if not force and lineage_tree_exists:
+            return False
+        return force or self.is_lineage_mode(mode)
+
+    def default_mode_after_failed_init(self) -> str:
+        return self.viewer_mode
+
+    def last_annotated_frame_index(
+        self,
+        frame_records: Iterable[dict],
+        *,
+        acdc_key: str = 'acdc_df',
+        generation_column: str = 'generation_num_tree',
+    ) -> int:
+        last_frame_i = 0
+        for frame_i, record in enumerate(frame_records):
+            acdc_df = record[acdc_key]
+            if (
+                acdc_df is None
+                or generation_column not in acdc_df.columns
+                or acdc_df[generation_column].isin([np.nan, 0]).all()
+            ):
+                break
+            last_frame_i = frame_i
+        return last_frame_i
+
+    def missing_frame_indices(
+        self,
+        current_frame_i: int,
+        present_frames: Iterable[int] | None,
+    ) -> list[int]:
+        present = set(present_frames or [])
+        missing = [
+            frame_i for frame_i in range(current_frame_i + 1)
+            if frame_i not in present
+        ]
+        missing.sort()
+        return missing
+
+    def should_process_auto_frame(
+        self,
+        *,
+        mode: str,
+        frame_i: int,
+        processed_frames: Iterable[int],
+    ) -> bool:
+        if not self.is_lineage_mode(mode):
+            return False
+        return frame_i not in processed_frames
+
+    def should_backup_original(
+        self,
+        original_frame_i: int | None,
+        current_frame_i: int,
+    ) -> bool:
+        return original_frame_i is None or original_frame_i != current_frame_i
+
+    def next_candidate_index(
+        self,
+        click_index: int,
+        candidates_count: int,
+    ) -> int:
+        if candidates_count <= 0:
+            return 0
+        return abs(click_index % candidates_count)
+
+    def should_skip_original_mother(
+        self,
+        current_parent_id,
+        candidate_parent_id,
+        *,
+        original_mother_skipped: bool,
+    ) -> bool:
+        return (
+            current_parent_id == candidate_parent_id
+            and not original_mother_skipped
+        )
+
+    def parent_id_differences(
+        self,
+        original_df: pd.DataFrame,
+        new_df: pd.DataFrame,
+        reset_index_cell_id: Callable[[pd.DataFrame], pd.DataFrame],
+        *,
+        compare_columns: Sequence[str] = ('parent_ID_tree',),
+    ) -> pd.DataFrame | None:
+        if original_df.equals(new_df):
+            return None
+
+        new_df = new_df[original_df.columns]
+        new_df = reset_index_cell_id(new_df)
+        new_df = new_df[list(compare_columns)]
+        new_df = new_df.sort_index()
+
+        original_df = reset_index_cell_id(original_df)
+        original_df = original_df[list(compare_columns)]
+        original_df = original_df.sort_index()
+
+        differences = original_df.compare(new_df)
+        if differences.empty:
+            return None
+
+        differences = reset_index_cell_id(differences)
+        differences = differences[compare_columns[0]]
+        return differences.reset_index()
+
         Initializes the lineage tree analysis.
 
         This method checks if the tracking has been previously checked and saved. If not, it displays a message to the user.
@@ -67,7 +187,7 @@ class LineageInteractionsView:
         """
 
         mode = str(self.modeComboBox.currentText())
-        if not self.view_model.should_initialize(
+        if not self.should_initialize(
             force=force,
             mode=mode,
             lineage_tree_exists=self.lineage_tree is not None,
@@ -76,7 +196,7 @@ class LineageInteractionsView:
 
         posData = self.data[self.pos_i]
         last_tracked_i = self.get_last_tracked_i()
-        defaultMode = self.view_model.default_mode_after_failed_init()
+        defaultMode = self.default_mode_after_failed_init()
         if last_tracked_i == 0:
             # Display message to the user
             txt = html_utils.paragraph(
@@ -95,7 +215,7 @@ class LineageInteractionsView:
             return
 
         proceed = True
-        last_lin_tree_frame_i = self.view_model.last_annotated_frame_index(
+        last_lin_tree_frame_i = self.last_annotated_frame_index(
             posData.allData_li
         )
 
@@ -244,7 +364,7 @@ class LineageInteractionsView:
         mode = str(self.modeComboBox.currentText())
 
         # Skip if not the right mode
-        if not self.view_model.should_process_auto_frame(
+        if not self.should_process_auto_frame(
             mode=mode,
             frame_i=self.data[self.pos_i].frame_i,
             processed_frames=self.lineage_tree.frames_for_dfs,
@@ -304,7 +424,7 @@ class LineageInteractionsView:
 
         present_frames = list(self.lineage_tree.frames_for_dfs) if self.lineage_tree else []
         present_frames = [] if not present_frames else present_frames # deal with None
-        missing_frames = self.view_model.missing_frame_indices(
+        missing_frames = self.missing_frame_indices(
             current_frame_i,
             present_frames,
         )
@@ -322,7 +442,7 @@ class LineageInteractionsView:
 
     def viewLinTreeInfoAction(self):
         mode = str(self.modeComboBox.currentText())
-        if not self.view_model.is_lineage_mode(mode):
+        if not self.is_lineage_mode(mode):
             self.logger.info('This action is only available in the "Normal division: Lineage tree" mode.')
             return
 
@@ -409,7 +529,7 @@ class LineageInteractionsView:
 
         """
         mode = str(self.modeComboBox.currentText())
-        if not self.view_model.is_lineage_mode(mode):
+        if not self.is_lineage_mode(mode):
             return
 
         if not self.lineage_tree:
@@ -511,7 +631,7 @@ class LineageInteractionsView:
             self.original_df_lin_tree is not None
             and self.original_df_lin_tree_i != posData.frame_i
         )
-        if self.view_model.should_backup_original(
+        if self.should_backup_original(
             self.original_df_lin_tree_i,
             posData.frame_i,
         ):
@@ -604,13 +724,13 @@ class LineageInteractionsView:
             self.logger.info('No mother candidates found.')
             return
 
-        i = self.view_model.next_candidate_index(
+        i = self.next_candidate_index(
             self.right_click_i,
             len(filtered_IDs),
         )
         new_mother = filtered_IDs[i]
 
-        if self.view_model.should_skip_original_mother(
+        if self.should_skip_original_mother(
             acdc_df_frame.loc[ID]['parent_ID_tree'],
             new_mother,
             original_mother_skipped=self.original_mother_skipped,
@@ -618,7 +738,7 @@ class LineageInteractionsView:
             self.right_click_i += 1
             self.original_mother_skipped = True
 
-            i = self.view_model.next_candidate_index(
+            i = self.next_candidate_index(
                 self.right_click_i,
                 len(filtered_IDs),
             )
@@ -668,7 +788,7 @@ class LineageInteractionsView:
         if original_df.equals(new_df):
             return
 
-        differences = self.view_model.parent_id_differences(
+        differences = self.parent_id_differences(
             original_df,
             new_df,
             self.host.view_model.tables.checked_reset_index_cell_id,

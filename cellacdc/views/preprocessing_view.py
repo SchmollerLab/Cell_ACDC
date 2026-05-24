@@ -5,31 +5,86 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
+from typing import Any
 from qtpy.QtCore import QMutex, QThread, QWaitCondition
 
 from cellacdc import apps, html_utils, widgets, workers
 from cellacdc.plot import imshow
-from cellacdc.viewmodels.preprocessing_viewmodel import PreprocessingViewModel
 
 
 class PreprocessingView:
     """Qt-facing adapter around preprocessing dialogs and workers."""
 
-    def __init__(self, host, view_model: PreprocessingViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
 
     def askGet2Dor3Dimage(self):
         txt = html_utils.paragraph("""
+
+    """Headless preprocessing operations used by GUI and scripts."""
+
+    def validate_multidimensional_recipe(
+        self,
+        recipe: list[dict[str, Any]],
+        *,
+        apply_to_all_zslices: bool = False,
+        apply_to_all_frames: bool = False,
+    ):
+        return core_validate_multidimensional_recipe(
+            recipe,
+            apply_to_all_zslices=apply_to_all_zslices,
+            apply_to_all_frames=apply_to_all_frames,
+        )
+
+    def preprocess_image_from_recipe(self, image, recipe: list[dict[str, Any]]):
+        return core_preprocess_image_from_recipe(image, recipe)
+
+    def preprocess_zstack_from_recipe(self, image, recipe: list[dict[str, Any]]):
+        return core_preprocess_zstack_from_recipe(image, recipe)
+
+    def preprocess_video_from_recipe(self, image, recipe: list[dict[str, Any]]):
+        return core_preprocess_video_from_recipe(image, recipe)
+
+    def preprocess_multi_pos_from_recipe(
+        self,
+        images,
+        recipe: list[dict[str, Any]],
+    ):
+        return core_preprocess_multi_pos_from_recipe(images, recipe)
+
+    def image_to_float(
+        self,
+        image,
+        *,
+        force_dtype=None,
+        force_missing_dtype=None,
+        warn=True,
+    ):
+        return img_to_float(
+            image,
+            force_dtype=force_dtype,
+            force_missing_dtype=force_missing_dtype,
+            warn=warn,
+        )
+
+    def normalize_display_image(self, image, how: str):
+        return normalize_display_image(
+            image,
+            how,
+            image_to_float=self.image_to_float,
+        )
+
+    def create_preprocessed_data(self, image_data=None):
+        return PreprocessedData(image_data=image_data)
+
             Do you want to test the denoising on the visualized 2D image or
             on the entire 3D z-stack?
         """)
@@ -155,14 +210,14 @@ class PreprocessingView:
 
     def preprocessEnqueueCurrentImage(self, recipe):
         posData = self.data[self.pos_i]
-        func = self.view_model.preprocess_image_from_recipe
+        func = self.preprocess_image_from_recipe
         image_data = self.getImage(raw=True)
         if posData.SizeZ > 1:
             z_slice = self.z_slice_index()
         else:
             z_slice = 0
 
-        recipe = self.view_model.validate_multidimensional_recipe(
+        recipe = self.validate_multidimensional_recipe(
             recipe
         )
 
@@ -236,8 +291,8 @@ class PreprocessingView:
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
 
-        func = self.view_model.preprocess_image_from_recipe
-        recipe = self.view_model.validate_multidimensional_recipe(
+        func = self.preprocess_image_from_recipe
+        recipe = self.validate_multidimensional_recipe(
             recipe
         )
 
@@ -257,8 +312,8 @@ class PreprocessingView:
         self.logger.info(txt)
 
         posData = self.data[self.pos_i]
-        func = self.view_model.preprocess_zstack_from_recipe
-        recipe = self.view_model.validate_multidimensional_recipe(
+        func = self.preprocess_zstack_from_recipe
+        recipe = self.validate_multidimensional_recipe(
             recipe, apply_to_all_frames=False
         )
         image_data = posData.img_data[posData.frame_i]
@@ -277,7 +332,7 @@ class PreprocessingView:
         self.statusBarLabel.setText(txt)
 
         posData = self.data[self.pos_i]
-        func = self.view_model.preprocess_video_from_recipe
+        func = self.preprocess_video_from_recipe
         image_data = posData.img_data
         self.preprocWorker.setupJob(
             func,
@@ -292,8 +347,8 @@ class PreprocessingView:
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
 
-        func = self.view_model.preprocess_multi_pos_from_recipe
-        recipe = self.view_model.validate_multidimensional_recipe(
+        func = self.preprocess_multi_pos_from_recipe
+        recipe = self.validate_multidimensional_recipe(
             recipe, apply_to_all_frames=False
         )
         image_data = [posData.img_data[0] for posData in self.data]
@@ -397,7 +452,7 @@ class PreprocessingView:
         posData = self.data[pos_i]
         if not hasattr(posData, 'preproc_img_data'):
             posData.preproc_img_data = (
-                self.view_model.create_preprocessed_data(
+                self.create_preprocessed_data(
                     image_data=np.zeros(posData.img_data.shape)
                 )
             )
@@ -420,7 +475,7 @@ class PreprocessingView:
         posData = self.data[self.pos_i]
         if not hasattr(posData, 'preproc_img_data'):
             posData.preproc_img_data = (
-                self.view_model.create_preprocessed_data()
+                self.create_preprocessed_data()
             )
 
         if how == 'current_image':
@@ -469,7 +524,7 @@ class PreprocessingView:
                 posData = self.data[pos_i]
                 if not hasattr(posData, 'preproc_img_data'):
                     posData.preproc_img_data = (
-                        self.view_model.create_preprocessed_data()
+                        self.create_preprocessed_data()
                     )
                 for z_slice, processed_img in enumerate(processed_pos_data):
                     posData.preproc_img_data[0][z_slice] = (

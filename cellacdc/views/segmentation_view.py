@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 
 import numpy as np
+from dataclasses import dataclass
+import numpy as np
 from qtpy.QtCore import QMutex, QThread, QTimer, QWaitCondition, Qt
 from qtpy.QtWidgets import QAction
 
@@ -12,7 +14,6 @@ from cellacdc import (
     apps, exception_handler, html_utils, prompts, printl, widgets, workers,
 )
 from cellacdc.plot import imshow
-from cellacdc.viewmodels.segmentation_viewmodel import SegmentationViewModel
 
 
 class SegmentationView:
@@ -45,15 +46,13 @@ class SegmentationView:
         'init_segmInfo_df',
     )
 
-    def __init__(self, host, view_model: SegmentationViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -65,7 +64,7 @@ class SegmentationView:
     def computeSegm(self, force=False):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
-        should_compute = self.view_model.should_compute_segmentation(
+        should_compute = self.should_compute_segmentation(
             mode=mode,
             has_labels=np.any(posData.lab),
             force=force,
@@ -80,7 +79,7 @@ class SegmentationView:
         if checked:
             self.askSegmParam = True
             # Ask which model
-            models = self.view_model.segmentation_models()
+            models = self.segmentation_models()
             win = widgets.QDialogListbox(
                 'Select model',
                 'Select model to use for segmentation: ',
@@ -218,7 +217,7 @@ class SegmentationView:
             self.logger.info('Adding custom model process stopped.')
             return
 
-        self.view_model.store_custom_model_path(modelFilePath)
+        self.store_custom_model_path(modelFilePath)
         modelName = os.path.basename(os.path.dirname(modelFilePath))
         customModelAction = QAction(modelName)
         self.segmSingleFrameMenu.addAction(customModelAction)
@@ -308,7 +307,7 @@ class SegmentationView:
     def repeatSegm(
             self, model_name='', askSegmParams=False, is_label_roi=False
         ):
-        model_name = self.view_model.action_model_name(model_name)
+        model_name = self.action_model_name(model_name)
 
         idx = self.modelNames.index(model_name)
         # Ask segm parameters if not already set
@@ -322,7 +321,7 @@ class SegmentationView:
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
 
-        model_name = self.view_model.backend_model_name(model_name)
+        model_name = self.backend_model_name(model_name)
 
         posData = self.data[self.pos_i]
         # Check if model needs to be imported
@@ -330,7 +329,7 @@ class SegmentationView:
         if acdcSegment is None:
             self.logger.info(f'Importing {model_name}...')
             acdcSegment = (
-                self.view_model.import_segmentation_module(model_name)
+                self.import_segmentation_module(model_name)
             )
             self.acdcSegment_li[idx] = acdcSegment
 
@@ -343,7 +342,7 @@ class SegmentationView:
             self.segmModelName = model_name
             # Read all models parameters
             init_params, segment_params = (
-                self.view_model.model_arg_specs(acdcSegment)
+                self.model_arg_specs(acdcSegment)
             )
             # Prompt user to enter the model parameters
             try:
@@ -364,12 +363,12 @@ class SegmentationView:
                 thresh_method = self.model_kwargs['threshold_method']
                 gauss_sigma = self.model_kwargs['gauss_sigma']
                 segment_params = (
-                    self.view_model.insert_model_arg_spec(
+                    self.insert_model_arg_spec(
                         segment_params, 'threshold_method', thresh_method
                     )
                 )
                 segment_params = (
-                    self.view_model.insert_model_arg_spec(
+                    self.insert_model_arg_spec(
                         segment_params, 'gauss_sigma', gauss_sigma
                     )
                 )
@@ -392,7 +391,7 @@ class SegmentationView:
             self.secondChannelName = win.secondChannelName
             self.preproc_recipe = win.preproc_recipe
 
-            self.view_model.log_segmentation_params(
+            self.log_segmentation_params(
                 model_name, win.init_kwargs, win.model_kwargs,
                 logger_func=self.logger.info,
                 preproc_recipe=win.preproc_recipe,
@@ -402,7 +401,7 @@ class SegmentationView:
             )
 
             use_gpu = win.init_kwargs.get('gpu', False)
-            proceed = self.view_model.check_gpu_available(
+            proceed = self.check_gpu_available(
                 model_name, use_gpu, qparent=self.host
             )
             if not proceed:
@@ -410,7 +409,7 @@ class SegmentationView:
                 self.titleLabel.setText('Segmentation process cancelled.')
                 return
 
-            model = self.view_model.init_segmentation_model(
+            model = self.init_segmentation_model(
                 acdcSegment, posData, win.init_kwargs
             )
             if model is None:
@@ -434,7 +433,7 @@ class SegmentationView:
             '(check progress in terminal/console)', color=self.titleColor
         )
 
-        post_process_params = self.view_model.post_process_params(
+        post_process_params = self.post_process_params(
             apply_postprocessing=self.applyPostProcessing,
             standard_postprocess_kwargs=self.standardPostProcessKwargs,
             custom_postprocess_features=self.customPostProcessFeatures,
@@ -541,14 +540,14 @@ class SegmentationView:
 
     @exception_handler
     def repeatSegmVideo(self, model_name, startFrameNum, stopFrameNum):
-        model_name = self.view_model.action_model_name(model_name)
+        model_name = self.action_model_name(model_name)
 
         idx = self.modelNames.index(model_name)
 
         self.downloadWin = apps.downloadModel(model_name, parent=self.host)
         self.downloadWin.download()
 
-        model_name = self.view_model.backend_model_name(model_name)
+        model_name = self.backend_model_name(model_name)
 
         posData = self.data[self.pos_i]
         # Check if model needs to be imported
@@ -556,13 +555,13 @@ class SegmentationView:
         if acdcSegment is None:
             self.logger.info(f'Importing {model_name}...')
             acdcSegment = (
-                self.view_model.import_segmentation_module(model_name)
+                self.import_segmentation_module(model_name)
             )
             self.acdcSegment_li[idx] = acdcSegment
 
         # Read all models parameters
         init_params, segment_params = (
-            self.view_model.model_arg_specs(acdcSegment)
+            self.model_arg_specs(acdcSegment)
         )
         # Prompt user to enter the model parameters
         try:
@@ -592,7 +591,7 @@ class SegmentationView:
         self.applyPostProcessing = win.applyPostProcessing
         self.preproc_recipe = win.preproc_recipe
 
-        self.view_model.log_segmentation_params(
+        self.log_segmentation_params(
             model_name, win.init_kwargs, win.model_kwargs,
             logger_func=self.logger.info,
             preproc_recipe=win.preproc_recipe,
@@ -606,7 +605,7 @@ class SegmentationView:
             secondChannelData = self.getSecondChannelData()
 
         use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = self.view_model.check_gpu_available(
+        proceed = self.check_gpu_available(
             model_name, use_gpu, qparent=self.host
         )
         if not proceed:
@@ -614,7 +613,7 @@ class SegmentationView:
             self.titleLabel.setText('Segmentation process cancelled.')
             return
 
-        model = self.view_model.init_segmentation_model(
+        model = self.init_segmentation_model(
             acdcSegment, posData, win.init_kwargs
         )
         if model is None:
@@ -728,6 +727,58 @@ class SegmentationView:
 
     def checkIfAutoSegm(self):
         """
+
+    """Headless decisions for segmentation orchestration."""
+
+    thresholding_backend_name = 'thresholding'
+    thresholding_action_name = 'Automatic thresholding'
+
+    def action_model_name(self, model_name: str) -> str:
+        if model_name == self.thresholding_backend_name:
+            return self.thresholding_action_name
+        return model_name
+
+    def backend_model_name(self, model_name: str) -> str:
+        if model_name == self.thresholding_action_name:
+            return self.thresholding_backend_name
+        return model_name
+
+    def should_compute_segmentation(
+        self,
+        *,
+        mode: str,
+        has_labels: bool,
+        force: bool,
+        auto_enabled: bool,
+    ) -> bool:
+        if mode in {'Viewer', 'Cell cycle analysis'}:
+            return False
+        if has_labels and not force:
+            return False
+        return auto_enabled
+
+    def post_process_params(
+        self,
+        *,
+        apply_postprocessing,
+        standard_postprocess_kwargs=None,
+        custom_postprocess_features=None,
+    ) -> dict:
+        params = {'applied_postprocessing': apply_postprocessing}
+        params.update(standard_postprocess_kwargs or {})
+        params.update(custom_postprocess_features or {})
+        return params
+
+    def empty_segmentation_prompt(self, position_data) -> EmptySegmentationPrompt:
+        for pos_data in position_data:
+            if pos_data.SizeT > 1:
+                for lab in pos_data.segm_data:
+                    if not np.any(lab):
+                        return EmptySegmentationPrompt(True, 'frames')
+            elif not np.any(pos_data.segm_data):
+                return EmptySegmentationPrompt(True, 'positions')
+        return EmptySegmentationPrompt(False)
+
         If there are any frame or position with empty segmentation mask
         ask whether automatic segmentation should be turned ON
         """
@@ -736,7 +787,7 @@ class SegmentationView:
         if self.autoSegmDoNotAskAgain:
             return
 
-        prompt = self.view_model.empty_segmentation_prompt(self.data)
+        prompt = self.empty_segmentation_prompt(self.data)
         if not prompt.should_ask:
             return
         txt = prompt.scope_text

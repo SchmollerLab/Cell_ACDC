@@ -18,7 +18,6 @@ from qtpy.QtWidgets import (
 )
 
 from cellacdc import widgets
-from cellacdc.viewmodels.image_controls_viewmodel import ImageControlsViewModel
 
 _font = QFont()
 _font.setPixelSize(11)
@@ -27,15 +26,53 @@ _font.setPixelSize(11)
 class ImageControlsView:
     """Qt-facing adapter around image-control defaults and widgets."""
 
-    def __init__(self, host, view_model: ImageControlsViewModel):
-        object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
+    """Headless defaults for image-control UI construction."""
 
+    draw_ids_cont_combo_items = (
+        'Draw IDs and contours',
+        'Draw IDs and overlay segm. masks',
+        'Draw only cell cycle info',
+        'Draw cell cycle info and contours',
+        'Draw cell cycle info and overlay segm. masks',
+        'Draw only mother-bud lines',
+        'Draw only IDs',
+        'Draw only contours',
+        'Draw only overlay segm. masks',
+        'Draw nothing',
+    )
+    z_projection_options = (
+        'single z-slice',
+        'max z-projection',
+        'mean z-projection',
+        'median z-proj.',
+    )
+    overlay_z_projection_options = (
+        'single z-slice',
+        'max z-projection',
+        'mean z-projection',
+        'median z-proj.',
+        'same as above',
+    )
+    bottom_layout_zoom_values = tuple(range(50, 151, 10))
+
+    def bottom_layout_zoom_percent(self, df_settings) -> int:
+        if 'bottom_sliders_zoom_perc' not in df_settings.index:
+            return 100
+        return int(df_settings.at['bottom_sliders_zoom_perc', 'value'])
+
+    def retain_space_hidden_sliders(self, df_settings) -> bool:
+        if 'retain_space_hidden_sliders' not in df_settings.index:
+            return True
+        return df_settings.at['retain_space_hidden_sliders', 'value'] == 'Yes'
+
+
+    def __init__(self, host):
+        object.__setattr__(self, 'host', host)
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -43,7 +80,7 @@ class ImageControlsView:
     def gui_createImg1Widgets(self):
         # Toggle contours/ID combobox
         self.drawIDsContComboBoxSegmItems = list(
-            self.view_model.draw_ids_cont_combo_items()
+            self.draw_ids_cont_combo_items()
         )
         self.drawIDsContComboBox = widgets.ComboBox()
         self.drawIDsContComboBox.setFont(_font)
@@ -170,7 +207,7 @@ class ImageControlsView:
 
         self.zProjComboBox = widgets.ComboBox()
         self.zProjComboBox.setFont(_font)
-        self.zProjComboBox.addItems(self.view_model.z_projection_options())
+        self.zProjComboBox.addItems(self.z_projection_options())
         self.zProjLockViewButton = widgets.LockPushButton()
         self.zProjLockViewButton.setCheckable(True)
         self.zProjLockViewButton.setToolTip(
@@ -192,7 +229,7 @@ class ImageControlsView:
         self.zProjOverlay_CB = widgets.ComboBox()
         self.zProjOverlay_CB.setFont(_font)
         self.zProjOverlay_CB.addItems(
-            self.view_model.overlay_z_projection_options()
+            self.overlay_z_projection_options()
         )
         self.zProjOverlay_CB.setCurrentIndex(4)
         self.zSliceOverlay_SB.setDisabled(True)
@@ -363,14 +400,14 @@ class ImageControlsView:
         bottomScrollArea.setWidget(bottomWidget)
         self.bottomScrollArea = bottomScrollArea
 
-        zoom_perc = self.view_model.bottom_layout_zoom_percent(
+        zoom_perc = self.bottom_layout_zoom_percent(
             self.df_settings
         )
         self.bottomLayoutContextMenu = QMenu('Bottom layout', self)
         zoomMenu = self.bottomLayoutContextMenu.addMenu('Zoom')
         actions = []
         self.bottomLayoutContextMenu.zoomActionGroup = QActionGroup(zoomMenu)
-        for perc in self.view_model.bottom_layout_zoom_values():
+        for perc in self.bottom_layout_zoom_values():
             action = QAction(f'{perc}%', zoomMenu)
             action.setCheckable(True)
             if perc == zoom_perc:
@@ -387,7 +424,7 @@ class ImageControlsView:
             'Retain space of hidden sliders'
         )
         retainSpaceAction.setCheckable(True)
-        retainSpaceChecked = self.view_model.retain_space_hidden_sliders(
+        retainSpaceChecked = self.retain_space_hidden_sliders(
             self.df_settings
         )
         retainSpaceAction.setChecked(retainSpaceChecked)

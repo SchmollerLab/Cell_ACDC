@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from functools import partial
 
+from dataclasses import dataclass
+from typing import Mapping
 from qtpy.QtCore import QEventLoop, QThread
 
 from cellacdc import (
@@ -17,21 +19,18 @@ from cellacdc import (
     workers,
 )
 from cellacdc import disableWindow
-from cellacdc.viewmodels.magic_prompts_viewmodel import MagicPromptsViewModel
 
 
 class MagicPromptsView:
     """Qt-facing adapter around promptable segmentation dialogs and workers."""
 
-    def __init__(self, host, view_model: MagicPromptsViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -42,12 +41,73 @@ class MagicPromptsView:
             self.logger.info('Adding custom promptable model process stopped.')
             return
 
-        self.view_model.store_custom_promptable_model_path(
+        self.store_custom_promptable_model_path(
             modelFilePath
         )
 
         msg = widgets.myMessageBox(wrapText=False)
         info_txt = html_utils.paragraph(f"""
+
+    """Headless promptable-segmentation geometry and point rules."""
+
+    def zoom_region(self, view_range, image_shape) -> MagicPromptZoom:
+        (xmin, xmax), (ymin, ymax) = view_range
+        height, width = image_shape[-2:]
+
+        xmin = int(max(0, xmin))
+        xmax = int(min(width, xmax))
+        ymin = int(max(0, ymin))
+        ymax = int(min(height, ymax))
+
+        return MagicPromptZoom(
+            bounds=(xmin, xmax, ymin, ymax),
+            image_origin=(0, ymin, xmin),
+            zoom_slice=(slice(ymin, ymax), slice(xmin, xmax)),
+        )
+
+    def points_in_zoom(self, df_points, zoom: MagicPromptZoom, frame_i):
+        xmin, xmax, ymin, ymax = zoom.bounds
+        filtered = df_points[
+            (df_points['y'] >= ymin)
+            & (df_points['x'] >= xmin)
+            & (df_points['y'] < ymax)
+            & (df_points['x'] < xmax)
+            & (df_points['frame_i'] == frame_i)
+        ].copy()
+        filtered['y'] -= ymin
+        filtered['x'] -= xmin
+        return filtered
+
+    def retained_points_outside_zoom(
+        self,
+        frame_points_data: Mapping,
+        zoom: MagicPromptZoom,
+    ):
+        if 'x' in frame_points_data:
+            return self._retained_points_outside_zoom_2d(
+                frame_points_data,
+                zoom,
+            )
+
+        return {
+            z: self._retained_points_outside_zoom_2d(z_points, zoom)
+            for z, z_points in frame_points_data.items()
+        }
+
+    def _retained_points_outside_zoom_2d(self, points_data, zoom):
+        xmin, xmax, ymin, ymax = zoom.bounds
+        retained = {'x': [], 'y': [], 'id': []}
+        for x, y, point_id in zip(
+            points_data['x'],
+            points_data['y'],
+            points_data['id'],
+        ):
+            if x < xmin or x >= xmax or y < ymin or y >= ymax:
+                retained['x'].append(x)
+                retained['y'].append(y)
+                retained['id'].append(point_id)
+        return retained
+
             Done!<br><br>
             The custom promptable model has been added to the list of models.<br><br>
             Use the <b>Magic prompts</b> button (top toolbar) to use it.<br><br>
@@ -67,7 +127,7 @@ class MagicPromptsView:
         ):
         self.logger.info(f'Initializing promptable model {model_name}...')
         init_kwargs = win.init_kwargs
-        model = self.view_model.init_prompt_segmentation_model(
+        model = self.init_prompt_segmentation_model(
             acdcPromptSegment, posData, win.init_kwargs
         )
         toolbar.model = model
@@ -124,12 +184,12 @@ class MagicPromptsView:
         posData = self.data[self.pos_i]
 
         init_argspecs = (
-            self.view_model.set_default_arg_specs_from_kwargs(
+            self.set_default_arg_specs_from_kwargs(
                 init_argspecs, init_kwargs
             )
         )
         segment_argspecs = (
-            self.view_model.set_default_arg_specs_from_kwargs(
+            self.set_default_arg_specs_from_kwargs(
                 segment_argspecs, segment_kwargs
             )
         )
@@ -181,7 +241,7 @@ class MagicPromptsView:
         posData = self.data[self.pos_i]
         image, df_points = inputs
 
-        zoom = self.view_model.zoom_region(self.ax1.viewRange(), image.shape)
+        zoom = self.zoom_region(self.ax1.viewRange(), image.shape)
         xmin, xmax, ymin, ymax = zoom.bounds
 
         self.logger.info(
@@ -191,7 +251,7 @@ class MagicPromptsView:
         zoom_slice = zoom.zoom_slice
         image = image[..., zoom_slice[0], zoom_slice[1]]
         image_origin = zoom.image_origin
-        df_points = self.view_model.points_in_zoom(
+        df_points = self.points_in_zoom(
             df_points,
             zoom,
             posData.frame_i,
@@ -232,11 +292,11 @@ class MagicPromptsView:
             scatterItem.clear()
             return
 
-        zoom = self.view_model.zoom_region(
+        zoom = self.zoom_region(
             self.ax1.viewRange(),
             posData.img_data.shape,
         )
-        newFramePointsData = self.view_model.retained_points_outside_zoom(
+        newFramePointsData = self.retained_points_outside_zoom(
             framePointsData,
             zoom,
         )

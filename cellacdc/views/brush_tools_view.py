@@ -8,7 +8,6 @@ import skimage.measure
 from qtpy.QtWidgets import QCheckBox
 
 from cellacdc import html_utils, settings_csv_path, widgets
-from cellacdc.viewmodels.brush_tools_viewmodel import BrushToolsViewModel
 
 
 class BrushToolsView:
@@ -45,18 +44,127 @@ class BrushToolsView:
         'Eraser_cb',
     )
 
-    def __init__(self, host, view_model: BrushToolsViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
 
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
+
+    def checked_setting_value(self, checked: bool) -> str:
+        return 'Yes' if checked else 'No'
+
+    def default_delete_object_info_value(self) -> str:
+        return 'Yes'
+
+    def should_show_delete_object_info(self, setting_value: Any) -> bool:
+        return setting_value == 'Yes'
+
+    def delete_object_info_value(
+        self,
+        do_not_show_again_checked: bool,
+    ) -> str:
+        return (
+            'No'
+            if do_not_show_again_checked
+            else 'Yes'
+        )
+
+    def should_fill_holes(
+        self,
+        sender: str,
+        *,
+        auto_fill_checked: bool,
+    ) -> bool:
+        return sender == 'brush' and auto_fill_checked
+
+    def brush_toolbar_visible(
+        self,
+        edit_id_visible: bool,
+        *,
+        brush_size_visible: bool,
+        auto_fill_visible: bool,
+        auto_hide_visible: bool,
+    ) -> bool:
+        return any(
+            (
+                edit_id_visible,
+                brush_size_visible,
+                auto_fill_visible,
+                auto_hide_visible,
+            )
+        )
+
+    def disk_mask(self, brush_size: int):
+        import skimage.morphology
+        return skimage.morphology.disk(brush_size, dtype=bool)
+
+    def disk_mask_bounds(
+        self,
+        image_shape: tuple[int, int],
+        brush_size: int,
+        xdata: int,
+        ydata: int,
+        disk_mask,
+    ):
+        y_size, x_size = image_shape
+        y_bottom, x_left = ydata - brush_size, xdata - brush_size
+        y_top, x_right = ydata + brush_size + 1, xdata + brush_size + 1
+
+        if x_left < 0:
+            if y_bottom < 0:
+                disk_mask = disk_mask.copy()
+                disk_mask = disk_mask[-y_bottom:, -x_left:]
+                y_bottom = 0
+            elif y_top > y_size:
+                disk_mask = disk_mask.copy()
+                disk_mask = disk_mask[0:y_size - y_bottom, -x_left:]
+                y_top = y_size
+            else:
+                disk_mask = disk_mask.copy()
+                disk_mask = disk_mask[:, -x_left:]
+            x_left = 0
+
+        elif x_right > x_size:
+            if y_bottom < 0:
+                disk_mask = disk_mask.copy()
+                disk_mask = disk_mask[-y_bottom:, 0:x_size - x_left]
+                y_bottom = 0
+            elif y_top > y_size:
+                disk_mask = disk_mask.copy()
+                disk_mask = disk_mask[0:y_size - y_bottom, 0:x_size - x_left]
+                y_top = y_size
+            else:
+                disk_mask = disk_mask.copy()
+                disk_mask = disk_mask[:, 0:x_size - x_left]
+            x_right = x_size
+
+        elif y_bottom < 0:
+            disk_mask = disk_mask.copy()
+            disk_mask = disk_mask[-y_bottom:]
+            y_bottom = 0
+
+        elif y_top > y_size:
+            disk_mask = disk_mask.copy()
+            disk_mask = disk_mask[0:y_size - y_bottom]
+            y_top = y_size
+
+        return y_bottom, x_left, y_top, x_right, disk_mask
+
+    def magic_wand_flood_tolerance(
+        self,
+        tolerance_percent: float,
+        image_min: float,
+        image_max: float,
+    ):
+        if tolerance_percent == 0:
+            return None
+        return (image_max - image_min) * (tolerance_percent / 100)
 
     def bind_legacy_methods(self):
         for name in self.LEGACY_METHODS:
@@ -65,10 +173,10 @@ class BrushToolsView:
     def instructHowDeleteID(self):
         if 'showInfoDeleteObject' not in self.df_settings.index:
             self.df_settings.at['showInfoDeleteObject', 'value'] = (
-                self.view_model.default_delete_object_info_value()
+                self.default_delete_object_info_value()
             )
 
-        showInfoDeleteObject = self.view_model.should_show_delete_object_info(
+        showInfoDeleteObject = self.should_show_delete_object_info(
             self.df_settings.at['showInfoDeleteObject', 'value']
         )
         if not showInfoDeleteObject:
@@ -90,7 +198,7 @@ class BrushToolsView:
             widgets=doNotShowAgainCheckbox
         )
 
-        showInfoDeleteObjectValue = self.view_model.delete_object_info_value(
+        showInfoDeleteObjectValue = self.delete_object_info_value(
             doNotShowAgainCheckbox.isChecked()
         )
         self.df_settings.at['showInfoDeleteObject', 'value'] = (
@@ -120,12 +228,12 @@ class BrushToolsView:
         return False
 
     def brushAutoFillToggled(self, checked):
-        val = self.view_model.checked_setting_value(checked)
+        val = self.checked_setting_value(checked)
         self.df_settings.at['brushAutoFill', 'value'] = val
         self.df_settings.to_csv(self.settings_csv_path)
 
     def brushAutoHideToggled(self, checked):
-        val = self.view_model.checked_setting_value(checked)
+        val = self.checked_setting_value(checked)
         self.df_settings.at['brushAutoHide', 'value'] = val
         self.df_settings.to_csv(self.settings_csv_path)
 
@@ -133,7 +241,7 @@ class BrushToolsView:
     def fillHolesID(self, ID, sender='brush'):
         posData = self.data[self.pos_i]
         if sender == 'brush':
-            if not self.view_model.should_fill_holes(
+            if not self.should_fill_holes(
                 sender,
                 auto_fill_checked=self.brushAutoFillCheckbox.isChecked(),
             ):
@@ -226,7 +334,7 @@ class BrushToolsView:
         self.editIDspinboxAction.setVisible(visible)
         self.autoIDcheckboxAction.setVisible(visible)
         showToolbar = (
-            self.view_model.brush_toolbar_visible(
+            self.brush_toolbar_visible(
                 visible,
                 brush_size_visible=self.brushSizeAction.isVisible(),
                 auto_fill_visible=self.brushAutoFillAction.isVisible(),
@@ -279,11 +387,11 @@ class BrushToolsView:
 
     def setDiskMask(self):
         brushSize = self.brushSizeSpinbox.value()
-        self.diskMask = self.view_model.disk_mask(brushSize)
+        self.diskMask = self.disk_mask(brushSize)
 
     def getDiskMask(self, xdata, ydata):
         brushSize = self.brushSizeSpinbox.value()
-        return self.view_model.disk_mask_bounds(
+        return self.disk_mask_bounds(
             self.currentLab2D.shape[-2:],
             brushSize,
             xdata,
@@ -430,7 +538,7 @@ class BrushToolsView:
         tol_perc = self.wandControlsToolbar.toleranceSpinbox.value()
         posData = self.data[self.pos_i]
         _min, _max = posData.img_data_min_max
-        return self.view_model.magic_wand_flood_tolerance(tol_perc, _min, _max)
+        return self.magic_wand_flood_tolerance(tol_perc, _min, _max)
 
     def initTempLayerBrush(self, ID, ax=0):
         if ax == 0:

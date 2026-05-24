@@ -4,16 +4,29 @@ from __future__ import annotations
 
 from qtpy.QtWidgets import QAction, QActionGroup, QMenu
 
-from cellacdc.viewmodels.main_menu_viewmodel import MainMenuViewModel
 
 
 class MainMenuView:
     """Qt-facing adapter around the main-menu view-model."""
 
-    def __init__(self, host, view_model: MainMenuViewModel):
-        self.host = host
-        self.view_model = view_model
+    """Headless main-menu decision rules."""
 
+    default_rescale_intensity_options = (
+        'Rescale each 2D image',
+        'Rescale across z-stack',
+        'Rescale across time frames',
+        'Do no rescale, display raw image',
+    )
+
+    def default_rescale_intensity_how(self, settings):
+        try:
+            return settings.at['default_rescale_intens_how', 'value']
+        except Exception:
+            return self.default_rescale_intensity_options[0]
+
+
+    def __init__(self, host):
+        self.host = host
     def create_menu_bar(self):
         menu_bar = self.host.menuBar()
         menu_bar.setNativeMenuBar(False)
@@ -99,11 +112,11 @@ class MainMenuView:
             self.host.defaultRescaleIntensLutMenu
         )
         self.host.defaultRescaleIntensHow = (
-            self.view_model.default_rescale_intensity_how(
+            self.default_rescale_intensity_how(
                 self.host.df_settings
             )
         )
-        for how_text in self.view_model.default_rescale_intensity_options():
+        for how_text in self.default_rescale_intensity_options():
             action = QAction(
                 how_text, self.host.defaultRescaleIntensLutMenu
             )

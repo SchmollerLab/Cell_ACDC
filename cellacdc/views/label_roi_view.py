@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import numpy as np
+import os
+from dataclasses import dataclass
 from qtpy.QtCore import QMutex, Qt, QThread, QWaitCondition
 from qtpy.QtGui import QCursor
 from qtpy.QtWidgets import QAction, QMenu
@@ -17,7 +19,6 @@ from cellacdc import (
     widgets,
     workers,
 )
-from cellacdc.viewmodels.label_roi_viewmodel import LabelRoiViewModel
 
 
 class LabelRoiView:
@@ -44,15 +45,13 @@ class LabelRoiView:
         'labelRoiDone',
     )
 
-    def __init__(self, host, view_model: LabelRoiViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -73,7 +72,7 @@ class LabelRoiView:
         enabled = self.labelRoiTrangeCheckbox.isChecked()
         start_n = self.labelRoiStartFrameNoSpinbox.value()
         stop_n = self.labelRoiStopFrameNoSpinbox.value()
-        if self.view_model.is_frame_range_valid(enabled, start_n, stop_n):
+        if self.is_frame_range_valid(enabled, start_n, stop_n):
             return True
 
         self.blinker = qutils.QControlBlink(
@@ -83,6 +82,127 @@ class LabelRoiView:
         self.blinker.start()
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
+
+    """Headless decisions for Magic Labeller ROI workflows."""
+
+    yes_value = 'Yes'
+    no_value = 'No'
+
+    def checked_setting_value(self, checked: bool) -> str:
+        return self.yes_value if checked else self.no_value
+
+    def checked_from_setting_value(self, value) -> bool:
+        return value == self.yes_value
+
+    def model_params_ini_path(self, settings_folderpath: str) -> str:
+        return os.path.join(settings_folderpath, 'last_params_segm_models.ini')
+
+    def params_settings(
+        self,
+        *,
+        checked_roi_type: str,
+        circ_roi_radius: int,
+        roi_zdepth: int,
+        auto_clear_border: bool,
+        replace_existing_objects: bool,
+    ) -> LabelRoiParamsSettings:
+        return LabelRoiParamsSettings(
+            updates={
+                'labelRoi_checkedRoiType': checked_roi_type,
+                'labelRoi_circRoiRadius': circ_roi_radius,
+                'labelRoi_roiZdepth': roi_zdepth,
+                'labelRoi_autoClearBorder': self.checked_setting_value(
+                    auto_clear_border
+                ),
+                'labelRoi_replaceExistingObjects': (
+                    self.checked_setting_value(replace_existing_objects)
+                ),
+            }
+        )
+
+    def is_frame_range_valid(
+        self,
+        enabled: bool,
+        start_frame_number: int,
+        stop_frame_number: int,
+    ) -> bool:
+        return not enabled or start_frame_number <= stop_frame_number
+
+    def frame_range_length(
+        self,
+        enabled: bool,
+        start_frame_index: int,
+        stop_frame_number: int,
+    ) -> int:
+        if not enabled:
+            return 1
+        return stop_frame_number - start_frame_index
+
+    def time_range(
+        self,
+        enabled: bool,
+        start_frame_index: int,
+        stop_frame_number: int,
+    ):
+        if self.frame_range_length(
+            enabled,
+            start_frame_index,
+            stop_frame_number,
+        ) > 1:
+            return start_frame_index, stop_frame_number
+        return None
+
+    def should_enable_range_controls(self, checked: bool) -> bool:
+        return checked
+
+    def should_show_circular_cursor(
+        self,
+        *,
+        label_roi_checked: bool,
+        circular_roi_checked: bool,
+        label_roi_running: bool,
+        cursor_checked: bool,
+        existing_cursor_empty: bool,
+    ) -> bool:
+        return (
+            label_roi_checked
+            and circular_roi_checked
+            and not label_roi_running
+            and (cursor_checked or not existing_cursor_empty)
+        )
+
+    def cursor_points(self, x, y, checked: bool):
+        if not checked:
+            return [], []
+        return [x], [y]
+
+    def should_uncheck_time_range(
+        self,
+        *,
+        time_range_checked: bool,
+        persistent_action_checked: bool,
+    ) -> bool:
+        return time_range_checked and not persistent_action_checked
+
+    def z_range(
+        self,
+        roi_zdepth: int,
+        size_z: int,
+        current_z_index: int,
+    ) -> tuple[int, int]:
+        if roi_zdepth == size_z:
+            return 0, size_z
+        if roi_zdepth == 1:
+            return current_z_index, current_z_index + 1
+
+        if roi_zdepth % 2 != 0:
+            roi_zdepth += 1
+        half_zdepth = int(roi_zdepth / 2)
+        zc = current_z_index + 1
+        z0 = max(zc - half_zdepth, 0)
+        z1 = min(zc + half_zdepth, size_z)
+        return z0, z1
+
             Stop frame number is less than start frame number!<br><br>
             What do you want to do?
         """)
@@ -114,7 +234,7 @@ class LabelRoiView:
 
         start_frame_i = self.labelRoiStartFrameNoSpinbox.value()-1
         stop_frame_n = self.labelRoiStopFrameNoSpinbox.value()
-        tRangeLen = self.view_model.frame_range_length(
+        tRangeLen = self.frame_range_length(
             self.labelRoiTrangeCheckbox.isChecked(),
             start_frame_i,
             stop_frame_n,
@@ -183,7 +303,7 @@ class LabelRoiView:
         return False
 
     def labelRoiViewCurrentModel(self):
-        ini_path = self.view_model.model_params_ini_path(settings_folderpath)
+        ini_path = self.model_params_ini_path(settings_folderpath)
         configPars = config.ConfigParser()
         configPars.read(ini_path)
         model_name = self.labelRoiModel.model_name
@@ -210,7 +330,7 @@ class LabelRoiView:
         circRoiRadius = self.labelRoiCircularRadiusSpinbox.value()
         roiZdepth = self.labelRoiZdepthSpinbox.value()
         autoClearBorder = self.labelRoiAutoClearBorderCheckbox.isChecked()
-        params = self.view_model.params_settings(
+        params = self.params_settings(
             checked_roi_type=checkedRoiType,
             circ_roi_radius=circRoiRadius,
             roi_zdepth=roiZdepth,
@@ -245,13 +365,13 @@ class LabelRoiView:
         idx = 'labelRoi_autoClearBorder'
         if idx in self.df_settings.index:
             clearBorder = self.df_settings.at[idx, 'value']
-            checked = self.view_model.checked_from_setting_value(clearBorder)
+            checked = self.checked_from_setting_value(clearBorder)
             self.labelRoiAutoClearBorderCheckbox.setChecked(checked)
 
         idx = 'labelRoi_replaceExistingObjects'
         if idx in self.df_settings.index:
             val = self.df_settings.at[idx, 'value']
-            checked = self.view_model.checked_from_setting_value(val)
+            checked = self.checked_from_setting_value(val)
             self.labelRoiReplaceExistingObjectsCheckbox.setChecked(checked)
 
         if self.labelRoiIsCircularRadioButton.isChecked():
@@ -264,7 +384,7 @@ class LabelRoiView:
     def updateLabelRoiCircularCursor(self, x, y, checked):
         size = self.labelRoiCircularRadiusSpinbox.value()
         existing_cursor_empty = len(self.labelRoiCircItemLeft.getData()[0]) == 0
-        if not self.view_model.should_show_circular_cursor(
+        if not self.should_show_circular_cursor(
             label_roi_checked=self.labelRoiButton.isChecked(),
             circular_roi_checked=self.labelRoiIsCircularRadioButton.isChecked(),
             label_roi_running=self.labelRoiRunning,
@@ -272,7 +392,7 @@ class LabelRoiView:
             existing_cursor_empty=existing_cursor_empty,
         ):
             return
-        xx, yy = self.view_model.cursor_points(x, y, checked)
+        xx, yy = self.cursor_points(x, y, checked)
 
         self.labelRoiCircItemLeft.setData(xx, yy, size=size)
         self.labelRoiCircItemRight.setData(xx, yy, size=size)
@@ -283,12 +403,12 @@ class LabelRoiView:
         start_frame_i = self.labelRoiStartFrameNoSpinbox.value()-1
         stop_frame_n = self.labelRoiStopFrameNoSpinbox.value()
         frame_range_enabled = self.labelRoiTrangeCheckbox.isChecked()
-        tRangeLen = self.view_model.frame_range_length(
+        tRangeLen = self.frame_range_length(
             frame_range_enabled,
             start_frame_i,
             stop_frame_n,
         )
-        tRange = self.view_model.time_range(
+        tRange = self.time_range(
             frame_range_enabled,
             start_frame_i,
             stop_frame_n,
@@ -302,7 +422,7 @@ class LabelRoiView:
                 imgData = posData.img_data[posData.frame_i]
 
             roi_zdepth = self.labelRoiZdepthSpinbox.value()
-            z0, z1 = self.view_model.z_range(
+            z0, z1 = self.z_range(
                 roi_zdepth,
                 posData.SizeZ,
                 self.zSliceScrollBar.sliderPosition(),
@@ -360,7 +480,7 @@ class LabelRoiView:
         return roiImg, labelRoiSlice
 
     def labelRoiTrangeCheckboxToggled(self, checked):
-        enabled = self.view_model.should_enable_range_controls(checked)
+        enabled = self.should_enable_range_controls(checked)
         disabled = not enabled
         self.labelRoiStartFrameNoSpinbox.setDisabled(disabled)
         self.labelRoiStopFrameNoSpinbox.setDisabled(disabled)
@@ -528,7 +648,7 @@ class LabelRoiView:
             self.progressWin.close()
             self.progressWin = None
 
-        uncheckLabelRoiTRange = self.view_model.should_uncheck_time_range(
+        uncheckLabelRoiTRange = self.should_uncheck_time_range(
             time_range_checked=self.labelRoiTrangeCheckbox.isChecked(),
             persistent_action_checked=(
                 self.labelRoiTrangeCheckbox.findChild(QAction).isChecked()

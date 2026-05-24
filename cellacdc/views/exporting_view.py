@@ -7,25 +7,28 @@ import shutil
 import traceback
 from functools import partial
 
+import os
+from dataclasses import dataclass
+from datetime import datetime
+import numpy as np
+import skimage.measure
+import skimage.segmentation
 from qtpy.QtCore import QTimer
 
 from cellacdc import _warnings, apps, disableWindow, exception_handler
 from cellacdc import exporters, html_utils, prompts, widgets
-from cellacdc.viewmodels.exporting_viewmodel import ExportingViewModel
 
 
 class ExportingView:
     """Qt-facing adapter around export dialogs, exporters, and progress UI."""
 
-    def __init__(self, host, view_model: ExportingViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -110,7 +113,7 @@ class ExportingView:
 
     @exception_handler
     def exportFrame(self):
-        plan = self.view_model.export_frame_plan(
+        plan = self.export_frame_plan(
             current_index=self.exportToVideoCurrentNavVarIdx,
             num_digits=self.exportToVideoPreferences['num_digits'],
             filename=self.exportToVideoPreferences['filename'],
@@ -200,6 +203,95 @@ class ExportingView:
 
     def askTimelapseOrZslicesVideo(self):
         txt = html_utils.paragraph("""
+
+    """Headless export naming, mask, and zoom selection rules."""
+
+    def timestamped_export_filename(self, kind: str, *, timestamp=None):
+        if timestamp is None:
+            timestamp = datetime.now()
+        return f"{timestamp.strftime('%Y%m%d_%H%M%S')}_acdc_exported_{kind}"
+
+    def export_frame_plan(
+        self,
+        *,
+        current_index: int,
+        num_digits: int,
+        filename: str,
+        pngs_folderpath: str,
+    ) -> ExportFramePlan:
+        frame_index_text = str(current_index).zfill(num_digits)
+        png_filename = f'{frame_index_text}_{filename}.png'
+        return ExportFramePlan(
+            frame_index_text=frame_index_text,
+            png_filename=png_filename,
+            png_filepath=os.path.join(pngs_folderpath, png_filename),
+        )
+
+    def export_mask_image_shape(self, image_shape) -> tuple[int, int, int]:
+        height, width = image_shape[-2:]
+        return height, width, 4
+
+    def build_export_mask_image(
+        self,
+        image_shape,
+        view_range,
+        *,
+        invert_bw=False,
+    ):
+        mask_image = np.zeros(
+            self.export_mask_image_shape(image_shape),
+            dtype=np.uint8,
+        )
+        x_range, y_range = view_range
+        x0, x1 = map(round, x_range)
+        y0, y1 = map(round, y_range)
+
+        if invert_bw:
+            mask_image[:, :, :3] = 255
+
+        if x0 > 0:
+            mask_image[:, :x0, 3] = 255
+        if x1 < mask_image.shape[1]:
+            mask_image[:, x1:, 3] = 255
+        if y0 > 0:
+            mask_image[:y0, :, 3] = 255
+        if y1 < mask_image.shape[0]:
+            mask_image[y1:, :, 3] = 255
+
+        return mask_image
+
+    def zoom_ids(self, labels_2d, view_range):
+        height, width = labels_2d.shape
+        ((xmin, xmax), (ymin, ymax)) = view_range
+        if xmin <= 0 and ymin <= 0 and xmax >= width and ymax >= height:
+            return None
+
+        xmin = max(xmin, 0)
+        ymin = max(ymin, 0)
+        xmax = min(xmax, width)
+        ymax = min(ymax, height)
+
+        zoom_slice = (
+            slice(round(ymin), round(ymax)),
+            slice(round(xmin), round(xmax)),
+        )
+        zoom_labels = skimage.segmentation.clear_border(labels_2d[zoom_slice])
+        zoom_regionprops = skimage.measure.regionprops(zoom_labels)
+        return [obj.label for obj in zoom_regionprops]
+
+    def shifted_view_range(self, previous_range, current_range, window_range):
+        prev_x_range, prev_y_range = previous_range
+        curr_x_range, curr_y_range = current_range
+        win_x_range, win_y_range = window_range
+
+        delta_x = curr_x_range[0] - prev_x_range[0]
+        delta_y = curr_y_range[0] - prev_y_range[0]
+
+        return (
+            (win_x_range[0] + delta_x, win_x_range[1] + delta_x),
+            (win_y_range[0] + delta_y, win_y_range[1] + delta_y),
+        )
+
             Do you want to record a video of scrolling through the z-slices or
             a Timelapse video?
         """)
@@ -226,7 +318,7 @@ class ExportingView:
 
         channels = [self.user_ch_name, *self.checkedOverlayChannels]
         mode = 'timelapse' if doTimelapseVideo else 'z_slices'
-        filename = self.view_model.timestamped_export_filename(
+        filename = self.timestamped_export_filename(
             f'{mode}_video'
         )
         win = apps.ExportToVideoParametersDialog(
@@ -261,7 +353,7 @@ class ExportingView:
         posData = self.data[self.pos_i]
         z_slice = self.z_lab()
         img = posData.img_data[posData.frame_i]
-        self.exportMaskImage = self.view_model.build_export_mask_image(
+        self.exportMaskImage = self.build_export_mask_image(
             img[z_slice].shape,
             self.ax1.viewRange(),
             invert_bw=False,
@@ -271,7 +363,7 @@ class ExportingView:
         if not hasattr(self, 'exportMaskImage'):
             self.initExportMaskImage()
 
-        self.exportMaskImage[:] = self.view_model.build_export_mask_image(
+        self.exportMaskImage[:] = self.build_export_mask_image(
             self.exportMaskImage.shape[:2],
             viewRange,
             invert_bw=self.invertBwAction.isChecked(),
@@ -300,7 +392,7 @@ class ExportingView:
         # prevViewRange = self.exportToImageWindow.viewRange()
         prevViewRange = self._viewRange
         winViewRange = self.exportToImageWindow.viewRange()
-        x_range, y_range = self.view_model.shifted_view_range(
+        x_range, y_range = self.shifted_view_range(
             prevViewRange,
             viewRange,
             winViewRange,
@@ -314,7 +406,7 @@ class ExportingView:
         if viewRange is None:
             viewRange = self.ax1.viewRange()
 
-        return self.view_model.zoom_ids(self.currentLab2D, viewRange)
+        return self.zoom_ids(self.currentLab2D, viewRange)
 
     def onSigUpdateCcaTableWindow(self, *args):
         if not self.isDataLoaded:
@@ -348,7 +440,7 @@ class ExportingView:
 
     def exportToImageTriggered(self):
         posData = self.data[self.pos_i]
-        filename = self.view_model.timestamped_export_filename('image')
+        filename = self.timestamped_export_filename('image')
         win = apps.ExportToImageParametersDialog(
             parent=self.host,
             startFolderpath=posData.pos_path,

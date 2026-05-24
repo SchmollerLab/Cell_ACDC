@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import partial
 
 from natsort import natsorted
+import re
 from qtpy.QtCore import QTimer, Qt
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
@@ -22,13 +23,42 @@ from qtpy.QtWidgets import (
 
 from cellacdc import myutils, widgets
 from cellacdc.ui.modules.annotation.decorators import resetViewRange
-from cellacdc.viewmodels.layout_controls_viewmodel import (
-    LayoutControlsViewModel,
-)
 
 
 class LayoutControlsView:
     """Qt-facing adapter around main layout and control surfaces."""
+
+    """Headless decisions for GUI layout controls."""
+
+    yes_value = 'Yes'
+    no_value = 'No'
+
+    def zoom_percentage_from_text(self, text: str) -> int:
+        return int(re.findall(r'(\d+)%', text)[0])
+
+    def zoom_factors(self, percentage: int) -> tuple[float, float] | None:
+        if percentage == 100:
+            return None
+        factor = percentage / 100
+        return factor, factor
+
+    def checked_setting_value(self, checked: bool) -> str:
+        return self.yes_value if checked else self.no_value
+
+    def checked_from_setting_value(self, value) -> bool:
+        return value == self.yes_value
+
+    def should_retain_z_slider_space(
+        self,
+        *,
+        checked: bool,
+        z_slice_enabled: bool,
+    ) -> bool:
+        return checked and z_slice_enabled
+
+    def tool_name_from_tooltip(self, tooltip: str) -> str:
+        return re.findall(r'Name: (.*)', tooltip)[0]
+
 
     LEGACY_METHODS = (
         'zoomBottomLayoutActionTriggered',
@@ -43,15 +73,13 @@ class LayoutControlsView:
         'gui_terminalButtonClicked',
     )
 
-    def __init__(self, host, view_model: LayoutControlsViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -63,10 +91,10 @@ class LayoutControlsView:
     def zoomBottomLayoutActionTriggered(self, checked):
         if not checked:
             return
-        perc = self.view_model.zoom_percentage_from_text(
+        perc = self.zoom_percentage_from_text(
             self.sender().text()
         )
-        zoom_factors = self.view_model.zoom_factors(perc)
+        zoom_factors = self.zoom_factors(perc)
         if zoom_factors is not None:
             fontSizeFactor, heightFactor = zoom_factors
             self.resizeSlidersArea(
@@ -80,10 +108,10 @@ class LayoutControlsView:
 
     def retainSpaceSlidersToggled(self, checked):
         self.df_settings.at['retain_space_hidden_sliders', 'value'] = (
-            self.view_model.checked_setting_value(checked)
+            self.checked_setting_value(checked)
         )
         self.df_settings.to_csv(self.settings_csv_path)
-        retainSpaceZ = self.view_model.should_retain_z_slider_space(
+        retainSpaceZ = self.should_retain_z_slider_space(
             checked=checked,
             z_slice_enabled=self.zSliceScrollBar.isEnabled(),
         )
@@ -684,7 +712,7 @@ class LayoutControlsView:
                 toolName = "MISSING"
                 continue
             else:
-                toolName = self.view_model.tool_name_from_tooltip(
+                toolName = self.tool_name_from_tooltip(
                     button.toolTip()
                 )
             keepToolActiveNames[toolName] = button

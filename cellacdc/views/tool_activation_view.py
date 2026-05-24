@@ -7,13 +7,53 @@ from qtpy.QtCore import QEventLoop, QThread, QTimer, Qt
 
 from cellacdc import apps, qutils, widgets, workers
 from cellacdc import disableWindow
-from cellacdc.viewmodels.tool_activation_viewmodel import (
-    ToolActivationViewModel,
-)
 
 
 class ToolActivationView:
     """Qt-facing adapter around active-tool workflows."""
+
+    """Headless decisions for active-tool and hover workflows."""
+
+    def manual_annotation_highlight_color(
+        self,
+        *,
+        current_frame_i: int,
+        frame_to_restore: int | None,
+    ) -> str:
+        if current_frame_i == frame_to_restore:
+            return 'green'
+        if frame_to_restore is not None and current_frame_i < frame_to_restore:
+            return 'gold'
+        return 'red'
+
+    def should_highlight_hover_lost_object(
+        self,
+        *,
+        has_no_modifier: bool,
+        copy_lost_object_checked: bool,
+        is_exit_event: bool,
+    ) -> bool:
+        return (
+            has_no_modifier
+            and copy_lost_object_checked
+            and not is_exit_event
+        )
+
+    def point_in_shape(self, x: int, y: int, shape: tuple[int, int]) -> bool:
+        height, width = shape
+        return x >= 0 and x < width and y >= 0 and y < height
+
+    def should_hide_hover_objects(
+        self,
+        *,
+        brush_auto_hide_checked: bool,
+        force: bool,
+    ) -> bool:
+        return brush_auto_hide_checked or force
+
+    def should_disable_non_functional_buttons(self, is_segm_3d: bool) -> bool:
+        return is_segm_3d
+
 
     LEGACY_METHODS = (
         'uncheckQButton',
@@ -55,15 +95,13 @@ class ToolActivationView:
         'disableNonFunctionalButtons',
     )
 
-    def __init__(self, host, view_model: ToolActivationViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -383,7 +421,7 @@ class ToolActivationView:
 
         frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
         posData = self.data[self.pos_i]
-        color = self.view_model.manual_annotation_highlight_color(
+        color = self.manual_annotation_highlight_color(
             current_frame_i=posData.frame_i,
             frame_to_restore=frame_to_restore,
         )
@@ -398,7 +436,7 @@ class ToolActivationView:
         curr_IDs = posData.IDs
         curr_delRoiIDs = self.getStoredDelRoiIDs()
         prev_delRoiIDs = self.getStoredDelRoiIDs(frame_i=posData.frame_i-1)
-        result = self.view_model.tracking.compute_lost_new_ids(
+        result = self.tracking.compute_lost_new_ids(
             prev_IDs,
             curr_IDs,
             current_deleted_roi_ids=curr_delRoiIDs,
@@ -449,7 +487,7 @@ class ToolActivationView:
         self.lostObjImage[obj_slice][obj_image] = lostID
 
     def highlightHoverLostObj(self, modifiers, event):
-        if not self.view_model.should_highlight_hover_lost_object(
+        if not self.should_highlight_hover_lost_object(
             has_no_modifier=modifiers == Qt.NoModifier,
             copy_lost_object_checked=self.copyLostObjButton.isChecked(),
             is_exit_event=event.isExit(),
@@ -504,7 +542,7 @@ class ToolActivationView:
             frame_i=prev_frame_i,
             return_copy=False
         )
-        return self.view_model.label_edits.label_ids_from_labels(prev_lab)
+        return self.label_edits.label_ids_from_labels(prev_lab)
 
     # @exec_time
     def setLostNewOldPrevIDs(self):
@@ -536,7 +574,7 @@ class ToolActivationView:
         if isinstance(IDs, set):
             IDs = list(IDs)
 
-        trim_IDs = self.view_model.label_edits.format_trimmed_ids(IDs)
+        trim_IDs = self.label_edits.format_trimmed_ids(IDs)
         txt = f'{pretxt}: {trim_IDs}'
         txt_full = f'{pretxt}:<br>{IDs}'
 
@@ -799,12 +837,12 @@ class ToolActivationView:
             xdata, ydata = int(x), int(y)
             Y, X = self.currentLab2D.shape
 
-            if not self.view_model.point_in_shape(
+            if not self.point_in_shape(
                 xdata, ydata, self.currentLab2D.shape
             ):
                 return
 
-        if not self.view_model.should_hide_hover_objects(
+        if not self.should_hide_hover_objects(
             brush_auto_hide_checked=self.brushAutoHideCheckbox.isChecked(),
             force=force,
         ):
@@ -849,7 +887,7 @@ class ToolActivationView:
 
         xdata, ydata = int(x), int(y)
         _img = self.currentLab2D
-        if not self.view_model.point_in_shape(xdata, ydata, _img.shape):
+        if not self.point_in_shape(xdata, ydata, _img.shape):
             return
 
         size = self.brushSizeSpinbox.value()*2
@@ -873,7 +911,7 @@ class ToolActivationView:
             action.setDisabled(enabled)
 
     def disableNonFunctionalButtons(self):
-        if not self.view_model.should_disable_non_functional_buttons(
+        if not self.should_disable_non_functional_buttons(
             self.isSegm3D
         ):
             return

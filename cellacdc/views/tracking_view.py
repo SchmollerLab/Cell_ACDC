@@ -15,7 +15,6 @@ from qtpy.QtGui import QFont
 
 from cellacdc import apps, exception_handler, html_utils, widgets
 from cellacdc.trackers.CellACDC import CellACDC_tracker
-from cellacdc.viewmodels.tracking_viewmodel import TrackingViewModel
 
 
 font_13px = QFont()
@@ -82,15 +81,13 @@ class TrackingView:
         'manualBackground_cb',
     )
 
-    def __init__(self, host, view_model: TrackingViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -100,13 +97,13 @@ class TrackingView:
             setattr(self.host, name, getattr(self, name))
 
     def getLastTrackedFrame(self, posData):
-        return self.view_model.last_tracked_frame_index(
+        return self.last_tracked_frame_index(
             (data_dict['labels'] for data_dict in posData.allData_li),
         )
 
     def get_last_tracked_i(self):
         posData = self.data[self.pos_i]
-        return self.view_model.last_tracked_frame_index(
+        return self.last_tracked_frame_index(
             (data_dict['labels'] for data_dict in posData.allData_li),
             total_frames=posData.segmSizeT,
         )
@@ -231,7 +228,7 @@ class TrackingView:
             if rtTrackerAction.isChecked():
                 break
 
-        aliases = self.view_model.model_registry.real_time_tracker_aliases(
+        aliases = self.model_registry.real_time_tracker_aliases(
             reverse=True
         )
 
@@ -253,7 +250,7 @@ class TrackingView:
         self._rtTrackerName = rtTracker
         posData = self.data[self.pos_i]
         realTimeTracker, track_frame_params = (
-            self.view_model.model_registry.init_tracker(
+            self.model_registry.init_tracker(
                 posData, rtTracker, qparent=self.host, realTime=True
             )
         )
@@ -286,6 +283,80 @@ class TrackingView:
             self.UserEnforced_Tracking = False
         else:
             txt = html_utils.paragraph("""
+
+    """Headless tracking state calculations."""
+
+    def compute_lost_new_ids(
+        self,
+        previous_ids,
+        current_ids,
+        *,
+        current_deleted_roi_ids=(),
+        previous_deleted_roi_ids=(),
+        tracked_lost_ids=(),
+    ) -> LostNewIdsResult:
+        return compute_lost_new_ids(
+            previous_ids,
+            current_ids,
+            current_deleted_roi_ids=current_deleted_roi_ids,
+            previous_deleted_roi_ids=previous_deleted_roi_ids,
+            tracked_lost_ids=tracked_lost_ids,
+        )
+
+    def tracked_lost_centroids_from_regionprops(
+        self,
+        regionprops,
+        tracked_lost_ids,
+    ) -> set[tuple[int, ...]]:
+        return tracked_lost_centroids_from_regionprops(
+            regionprops,
+            tracked_lost_ids,
+        )
+
+    def tracked_lost_ids_from_centroids(
+        self,
+        previous_labels,
+        tracked_lost_centroids,
+        ids_in_frame,
+    ) -> TrackedLostIdsResult:
+        return tracked_lost_ids_from_centroids(
+            previous_labels,
+            tracked_lost_centroids,
+            ids_in_frame,
+        )
+
+    def last_tracked_frame_index(
+        self,
+        frame_labels,
+        *,
+        first_frame_fallback: int = 0,
+        total_frames: int | None = None,
+    ) -> int:
+        return last_tracked_frame_index(
+            frame_labels,
+            first_frame_fallback=first_frame_fallback,
+            total_frames=total_frames,
+        )
+
+    def scan_future_id_propagation(
+        self,
+        target_id: int,
+        *,
+        current_frame_i: int,
+        frame_labels,
+        fallback_frame_labels,
+        include_unvisited: bool = False,
+        total_frames: int | None = None,
+    ) -> FutureIdPropagationScan:
+        return scan_future_id_propagation(
+            target_id,
+            current_frame_i=current_frame_i,
+            frame_labels=frame_labels,
+            fallback_frame_labels=fallback_frame_labels,
+            include_unvisited=include_unvisited,
+            total_frames=total_frames,
+        )
+
 
             Do you want to keep <b>tracking always active</b> including on already
             visited frames?<br><br>
@@ -331,7 +402,7 @@ class TrackingView:
 
         self.logger.info(f'Importing {trackerName} tracker...')
         self.tracker, self.track_params, init_params = (
-            self.view_model.model_registry.init_tracker(
+            self.model_registry.init_tracker(
                 posData, trackerName, qparent=self.host, return_init_params=True
             )
         )
@@ -339,7 +410,7 @@ class TrackingView:
             self.logger.info('Tracking aborted.')
             return
 
-        warningText = self.view_model.model_registry.validate_tracker_input(
+        warningText = self.model_registry.validate_tracker_input(
             self.tracker, video_to_track
         )
         if warningText is not None:
@@ -454,7 +525,7 @@ class TrackingView:
         prev_lab = self.get_2Dlab(posData.lab).copy()
         self.tracking(enforce=True, DoManualEdit=False)
         if posData.editID_info:
-            editedIDsInfo = self.view_model.edit_id.manual_edit_conflicts(
+            editedIDsInfo = self.edit_id.manual_edit_conflicts(
                 posData.lab, posData.editID_info
             )
             editedIDsInfoItems = [
@@ -800,7 +871,7 @@ class TrackingView:
         # First separate by labelling
         if separateByLabel:
             maxID = max(posData.IDs, default=1)
-            setRp = self.view_model.label_edits.split_connected_components(
+            setRp = self.label_edits.split_connected_components(
                 posData.lab,
                 regionprops=posData.rp,
                 max_id=maxID,
@@ -928,7 +999,7 @@ class TrackingView:
 
             y1, x1 = self.getObjCentroid(lostObj.centroid)
             y2, x2 = self.getObjCentroid(newObj.centroid)
-            xx, yy = self.view_model.geometry.line_coords(
+            xx, yy = self.geometry.line_coords(
                 y1, x1, y2, x2, dashed=False
             )
             self.ax1_oldMothBudLinesItem.addPoints(xx, yy)
@@ -955,7 +1026,7 @@ class TrackingView:
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
         centroids = (
-                self.view_model.tracked_lost_centroids_from_regionprops(
+                self.tracked_lost_centroids_from_regionprops(
                 prev_rp,
                 tracked_lost_IDs,
             )
@@ -994,7 +1065,7 @@ class TrackingView:
         except KeyError:
             tracked_lost_centroids = set()
 
-        result = self.view_model.tracked_lost_ids_from_centroids(
+        result = self.tracked_lost_ids_from_centroids(
             prev_lab,
             tracked_lost_centroids,
             IDs_in_frames,
@@ -1006,7 +1077,7 @@ class TrackingView:
 
     def manuallyEditTracking(self, tracked_lab, allIDs):
         posData = self.data[self.pos_i]
-        result = self.view_model.edit_id.apply_manual_edit_tracking(
+        result = self.edit_id.apply_manual_edit_tracking(
             tracked_lab,
             posData.editID_info,
             allIDs,
@@ -1203,7 +1274,7 @@ class TrackingView:
         bbox = ((Dy, Dy+h), (Dx, Dx+w))
 
         Y, X = self.currentLab2D.shape
-        slices = self.view_model.geometry.local_to_global_slices(bbox, (Y, X))
+        slices = self.geometry.local_to_global_slices(bbox, (Y, X))
         slice_global_to_local, slice_crop_local = slices
 
         obj_image = self.ghostObject.image[slice_crop_local]

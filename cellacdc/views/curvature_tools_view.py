@@ -4,24 +4,104 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
+import numpy as np
 import skimage.draw
 import skimage.measure
 
-from cellacdc.viewmodels.curvature_viewmodel import CurvatureViewModel
 
 
 class CurvatureToolsView:
     """Qt-facing adapter around curvature tool contracts."""
 
-    def __init__(self, host, view_model: CurvatureViewModel):
-        object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
+    """Headless spline drawing and label-painting operations."""
 
+    def tangent_brush_polygon(
+        self,
+        yx_start,
+        yx_end,
+        radius: int | float,
+        shape: tuple[int, int],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        return tangent_brush_polygon(yx_start, yx_end, radius, shape)
+
+    def directional_coords(
+        self,
+        alfa_dir: int,
+        y: int,
+        x: int,
+        shape: tuple[int, int],
+        *,
+        connectivity: int = 1,
+    ) -> tuple[list[int], list[int]]:
+        return directional_coords(
+            alfa_dir,
+            y,
+            x,
+            shape,
+            connectivity=connectivity,
+        )
+
+    def spline_coords(
+        self,
+        xx,
+        yy,
+        *,
+        resolution_space=None,
+        per: bool = False,
+        append_first: bool = False,
+    ):
+        return spline_coords(
+            xx,
+            yy,
+            resolution_space=resolution_space,
+            per=per,
+            append_first=append_first,
+        )
+
+    def closed_spline_coords(
+        self,
+        xx_spline,
+        yy_spline,
+        *,
+        anchor_xx=None,
+        anchor_yy=None,
+        predictor=None,
+        max_exec_time: int = 150,
+    ):
+        return closed_spline_coords(
+            xx_spline,
+            yy_spline,
+            anchor_xx=anchor_xx,
+            anchor_yy=anchor_yy,
+            predictor=predictor,
+            max_exec_time=max_exec_time,
+        )
+
+    def paint_spline_to_labels(
+        self,
+        labels_2d: np.ndarray,
+        xx_spline,
+        yy_spline,
+        label_id: int,
+        *,
+        empty_only: bool = True,
+    ) -> CurvatureLabelPaintResult:
+        return paint_spline_to_labels(
+            labels_2d,
+            xx_spline,
+            yy_spline,
+            label_id,
+            empty_only=empty_only,
+        )
+
+
+    def __init__(self, host):
+        object.__setattr__(self, 'host', host)
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -31,7 +111,7 @@ class CurvatureToolsView:
         # see https://en.wikipedia.org/wiki/Tangent_lines_to_circles
         y1, x1 = self.yPressAx2, self.xPressAx2
         y2, x2 = yxc2
-        rr_poly, cc_poly = self.view_model.tangent_brush_polygon(
+        rr_poly, cc_poly = self.tangent_brush_polygon(
             (y1, x1),
             (y2, x2),
             self.brushSizeSpinbox.value(),
@@ -42,7 +122,7 @@ class CurvatureToolsView:
         return rr_poly, cc_poly
 
     def get_dir_coords(self, alfa_dir, yd, xd, shape, connectivity=1):
-        return self.view_model.directional_coords(
+        return self.directional_coords(
             alfa_dir,
             yd,
             xd,
@@ -115,7 +195,7 @@ class CurvatureToolsView:
     def getClosedSplineCoords(self):
         xxS, yyS = self.curvPlotItem.getData()
         xx, yy = self.curvAnchors.getData()
-        return self.view_model.closed_spline_coords(
+        return self.closed_spline_coords(
             xxS,
             yyS,
             anchor_xx=xx,
@@ -127,7 +207,7 @@ class CurvatureToolsView:
     def getSpline(self, xx, yy, resolutionSpace=None, per=False, appendFirst=False):
         if resolutionSpace is None:
             resolutionSpace = self.hoverLinSpace
-        return self.view_model.spline_coords(
+        return self.spline_coords(
             xx,
             yy,
             resolution_space=resolutionSpace,
@@ -217,7 +297,7 @@ class CurvatureToolsView:
             curvToolID = posData.brushID
 
         lab2D = self.get_2Dlab(posData.lab).copy()
-        result = self.view_model.paint_spline_to_labels(
+        result = self.paint_spline_to_labels(
             lab2D,
             xxS,
             yyS,

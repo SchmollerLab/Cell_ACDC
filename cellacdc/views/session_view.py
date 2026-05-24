@@ -6,12 +6,12 @@ import os
 from functools import partial
 
 import numpy as np
+import numpy as np
 import skimage.measure
 from qtpy.QtWidgets import QAction
 
 from cellacdc import exception_handler, html_utils, recentPaths_path, settings_csv_path, widgets
 from cellacdc.ui.modules.annotation.decorators import get_data_exception_handler
-from cellacdc.viewmodels.session_viewmodel import SessionViewModel
 
 
 class SessionView:
@@ -43,15 +43,13 @@ class SessionView:
         '_dispatch_tool_event_if_enabled',
     )
 
-    def __init__(self, host, view_model: SessionViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -63,7 +61,7 @@ class SessionView:
     def unstore_data(self):
         posData = self.data[self.pos_i]
         posData.allData_li[posData.frame_i] = (
-            self.view_model.frame_metadata.empty_frame_record()
+            self.frame_metadata.empty_frame_record()
         )
 
     def updateLastVisitedFrame(self, last_visited_frame_i=None):
@@ -72,7 +70,7 @@ class SessionView:
             last_visited_frame_i = posData.frame_i
 
         mode = str(self.modeComboBox.currentText())
-        update = self.view_model.update_last_visited_frame(
+        update = self.update_last_visited_frame(
             mode,
             last_visited_frame_i,
             last_tracked_i=posData.last_tracked_i,
@@ -89,7 +87,7 @@ class SessionView:
         pos_i = self.pos_i if pos_i is None else pos_i
         posData = self.data[pos_i]
         mode = str(self.modeComboBox.currentText())
-        if not self.view_model.should_store_frame_data(
+        if not self.should_store_frame_data(
             frame_i=posData.frame_i,
             mode=mode,
             enforce=enforce,
@@ -120,7 +118,7 @@ class SessionView:
             self.switchPlaneCombobox.depthAxes() if self.isSegm3D else 'z'
         )
         metadata_result = (
-            self.view_model.frame_metadata.build_acdc_frame_metadata(
+            self.frame_metadata.build_acdc_frame_metadata(
                 posData.rp,
                 edit_id_info=posData.editID_info,
                 existing_df=allData_li['acdc_df'],
@@ -198,7 +196,7 @@ class SessionView:
                 ripIDs = set(ripIDs_df.index).union(posData.ripIDs)
                 posData.ripIDs = ripIDs
                 posData.editID_info.extend(self._get_editID_info(df))
-                df = self.view_model.cca_edits.normalize_loaded_frame_annotations(
+                df = self.cca_edits.normalize_loaded_frame_annotations(
                     df,
                     self.cca_df_colnames,
                     self.cca_df_int_cols,
@@ -228,7 +226,7 @@ class SessionView:
             try:
                 binnedIDs_df = df[df['is_cell_excluded']>0]
             except Exception as err:
-                df = self.view_model.tables.fix_acdc_df_dtypes(df)
+                df = self.tables.fix_acdc_df_dtypes(df)
                 binnedIDs_df = df[df['is_cell_excluded']>0]
             posData.binnedIDs = set(binnedIDs_df.index)
             ripIDs_df = df[df['is_cell_dead']>0]
@@ -281,10 +279,10 @@ class SessionView:
 
     def initPosAttr(self):
         exp_path = self.data[self.pos_i].exp_path
-        pos_foldernames = self.view_model.workspace.position_folder_names(
+        pos_foldernames = self.workspace.position_folder_names(
             exp_path
         )
-        if self.view_model.should_disable_load_position(len(pos_foldernames)):
+        if self.should_disable_load_position(len(pos_foldernames)):
             self.loadPosAction.setDisabled(True)
         else:
             self.loadPosAction.setDisabled(False)
@@ -348,7 +346,7 @@ class SessionView:
             for i in range(posData.SizeT):
                 if posData.allData_li[i] is None:
                     posData.allData_li[i] = (
-                        self.view_model.frame_metadata.empty_frame_record()
+                        self.frame_metadata.empty_frame_record()
                     )
 
             posData.lutLevels = {channel: {} for channel in self.ch_names}
@@ -374,7 +372,7 @@ class SessionView:
                     )
 
                 # Ask whether to resume from last frame
-                if self.view_model.should_resume_last_session_prompt(
+                if self.should_resume_last_session_prompt(
                     last_tracked_num
                 ):
                     msg = widgets.myMessageBox()
@@ -451,6 +449,56 @@ class SessionView:
         ):
         """Get the labels array.
 
+    """Headless decisions for session and frame storage workflows."""
+
+    def should_store_frame_data(
+        self,
+        *,
+        frame_i: int,
+        mode: str,
+        enforce: bool,
+    ) -> bool:
+        if frame_i < 0:
+            return False
+        if mode == 'Viewer' and not enforce:
+            return False
+        return True
+
+    def should_disable_load_position(self, position_count: int) -> bool:
+        return position_count <= 1
+
+    def labels_shape(
+        self,
+        *,
+        is_3d: bool,
+        size_z: int,
+        size_y: int,
+        size_x: int,
+    ) -> tuple[int, ...]:
+        if is_3d:
+            return (size_z, size_y, size_x)
+        return (size_y, size_x)
+
+    def empty_labels(
+        self,
+        *,
+        is_3d: bool,
+        size_z: int,
+        size_y: int,
+        size_x: int,
+    ) -> np.ndarray:
+        shape = self.labels_shape(
+            is_3d=is_3d,
+            size_z=size_z,
+            size_y=size_y,
+            size_x=size_x,
+        )
+        return np.zeros(shape, dtype=np.uint32)
+
+    def should_resume_last_session_prompt(self, last_tracked_num: int) -> bool:
+        return last_tracked_num > 1
+
+
         Parameters
         ----------
         from_store : bool, optional
@@ -499,7 +547,7 @@ class SessionView:
             except IndexError:
                 existing = False
                 # Visting a frame that was not segmented --> empty masks
-                labels = self.view_model.empty_labels(
+                labels = self.empty_labels(
                     is_3d=self.isSegm3D,
                     size_z=posData.SizeZ,
                     size_y=posData.SizeY,
@@ -523,7 +571,7 @@ class SessionView:
         if recent_paths_path is None:
             recent_paths_path = recentPaths_path
 
-        recentPaths = self.view_model.recent_paths(recent_paths_path)
+        recentPaths = self.recent_paths(recent_paths_path)
 
         # Step 2. Dynamically create the actions
         actions = []
@@ -553,7 +601,7 @@ class SessionView:
 
     def loadLastSessionSettings(self):
         self.settings_csv_path = settings_csv_path
-        self.df_settings = self.view_model.load_settings(
+        self.df_settings = self.load_settings(
             settings_csv_path
         )
 
@@ -679,7 +727,7 @@ class SessionView:
         while len(self.sessions) <= pos_i:
             self.sessions.append(None)
         pos_data = self.data[pos_i]
-        session = self.view_model.position_session_from_load_data(pos_data)
+        session = self.position_session_from_load_data(pos_data)
         self.sessions[pos_i] = session
         if hasattr(self, '_tool_dispatcher') and self._tool_dispatcher is not None:
             self._tool_dispatcher.set_context(self._make_tool_context(pos_i))

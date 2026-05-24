@@ -3,24 +3,31 @@
 from __future__ import annotations
 
 import numpy as np
+import numpy as np
 from qtpy.QtCore import QThread
 
 from cellacdc import apps, widgets, workers
-from cellacdc.viewmodels.object_cleanup_viewmodel import (
-    ObjectCleanupViewModel,
-)
 
 
 class ObjectCleanupView:
     """Qt-facing adapter around the object-cleanup view-model."""
 
-    def __init__(self, host, view_model: ObjectCleanupViewModel):
-        self.host = host
-        self.view_model = view_model
+    """Headless object-cleanup result shaping."""
 
+    def cleared_segmentation_frames(self, cleared_segm_data, *, size_t: int):
+        if size_t == 1:
+            return cleared_segm_data[np.newaxis]
+        return cleared_segm_data
+
+    def frame_labels(self, cleared_segm_data):
+        return list(enumerate(cleared_segm_data))
+
+
+    def __init__(self, host):
+        self.host = host
     def delete_objects_outside_mask_action_triggered(self):
         pos_data = self.host.data[self.host.pos_i]
-        existing_segm_endnames = self.view_model.segmentation_roi_endnames(
+        existing_segm_endnames = self.segmentation_roi_endnames(
             basename=pos_data.basename,
             images_path=pos_data.images_path,
         )
@@ -76,7 +83,7 @@ class ObjectCleanupView:
     def delete_objects_outside_mask_worker_finished(self, result):
         pos_data = self.host.data[self.host.pos_i]
         worker, cleared_segm_data, del_ids = result
-        cleared_segm_data = self.view_model.cleared_segmentation_frames(
+        cleared_segm_data = self.cleared_segmentation_frames(
             cleared_segm_data,
             size_t=pos_data.SizeT,
         )
@@ -84,7 +91,7 @@ class ObjectCleanupView:
         self.host.update_cca_df_deletedIDs(pos_data, del_ids)
 
         current_frame_i = pos_data.frame_i
-        for frame_i, cleared_lab in self.view_model.frame_labels(
+        for frame_i, cleared_lab in self.frame_labels(
             cleared_segm_data
         ):
             pos_data.allData_li[frame_i]['labels'] = cleared_lab

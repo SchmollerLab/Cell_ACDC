@@ -11,13 +11,13 @@ from functools import partial
 import matplotlib
 import numpy as np
 import pyqtgraph as pg
+from collections.abc import Mapping
 import skimage.draw
 import skimage.measure
 from qtpy.QtCore import QTimer
 from qtpy.QtWidgets import QLabel
 
 from cellacdc import _warnings, apps, colors, exception_handler, html_utils, widgets
-from cellacdc.viewmodels.points_layers_viewmodel import PointsLayersViewModel
 
 
 class PointsLayersView:
@@ -78,15 +78,13 @@ class PointsLayersView:
         'drawPointsLayers',
     )
 
-    def __init__(self, host, view_model: PointsLayersViewModel):
+    def __init__(self, host):
         object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
-
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -137,6 +135,65 @@ class PointsLayersView:
         saveAction = toolButton.saveAction
 
         txt = html_utils.paragraph(f"""
+
+    """Headless decisions for points-layer GUI workflows."""
+
+    recovery_tolerance_seconds = 15
+
+    def click_entry_table_filename(
+        self,
+        basename: str,
+        table_endname: str,
+    ) -> str:
+        table_basename = basename if basename.endswith('_') else f'{basename}_'
+        filename = f'{table_basename}{table_endname}'
+        if not filename.endswith('.csv'):
+            filename = f'{filename}.csv'
+        return filename
+
+    def should_load_recovery_table(
+        self,
+        *,
+        recovery_exists: bool,
+        main_exists: bool,
+        recovery_mtime: float | None,
+        main_mtime: float | None,
+    ) -> bool:
+        if not recovery_exists:
+            return False
+        if not main_exists:
+            return True
+        if recovery_mtime is None or main_mtime is None:
+            return False
+        return (
+            recovery_mtime
+            > main_mtime + self.recovery_tolerance_seconds
+        )
+
+    def should_compute_points_layer(
+        self,
+        *,
+        layer_type_index: int,
+        compute_points_layers: bool,
+    ) -> bool:
+        return layer_type_index < 2 and compute_points_layers
+
+    def should_log_missing_frame_points(self, layer_type_index: int) -> bool:
+        return layer_type_index != 4
+
+    def should_use_z_slice(
+        self,
+        *,
+        z_projection_mode: str,
+        size_z: int,
+        frame_points_data: Mapping,
+    ) -> bool:
+        return (
+            z_projection_mode == 'single z-slice'
+            and size_z > 1
+            and 'x' not in frame_points_data
+        )
+
             Do you want to <b>save</b> the points you added
             (table called <code>{tableEndName}.csv</code>)?
         """
@@ -441,7 +498,7 @@ class PointsLayersView:
     def savePointsAddedByClickingFromEndname(self, tableEndName, recovery=False):
         self.pointsLayerDataToDf(self.data[self.pos_i])
         for posData in self.data:
-            tableFilename = self.view_model.points.click_points_table_filename(
+            tableFilename = self.points.click_points_table_filename(
                 posData.basename, tableEndName
             )
             if recovery:
@@ -453,7 +510,7 @@ class PointsLayersView:
             df = posData.clickEntryPointsDfs.get(tableEndName)
             if df is None:
                 continue
-            self.view_model.points.save_click_points_table(tableFilepath, df)
+            self.points.save_click_points_table(tableFilepath, df)
 
     def markPointsLayerDirty(self, tableEndName=None, action=None):
         if tableEndName is None and action is not None:
@@ -524,9 +581,9 @@ class PointsLayersView:
                 if not os.path.exists(filepath):
                     action.pointsData[self.pos_i] = {}
 
-                df = self.view_model.points.load_points_table(filepath)
+                df = self.points.load_points_table(filepath)
                 action.pointsData[self.pos_i] = (
-                    self.view_model.points.loaded_table_to_points_data(
+                    self.points.loaded_table_to_points_data(
                         df, action.loadedDfInfo['t'], action.loadedDfInfo['z'],
                         action.loadedDfInfo['y'], action.loadedDfInfo['x']
                     )
@@ -576,7 +633,7 @@ class PointsLayersView:
 
             try:
                 action.pointsData[self.pos_i] = (
-                    self.view_model.points.click_points_table_to_data(
+                    self.points.click_points_table_to_data(
                         df, size_z=posData.SizeZ,
                     )
                 )
@@ -703,7 +760,7 @@ class PointsLayersView:
         self.zoomToObj(obj)
 
     def getClickEntryTableFilepaths(self, posData, tableEndName):
-        csv_filename = self.view_model.click_entry_table_filename(
+        csv_filename = self.click_entry_table_filename(
             posData.basename,
             tableEndName,
         )
@@ -722,7 +779,7 @@ class PointsLayersView:
             if not os.path.exists(filepath) or not os.path.exists(recovery_filepath):
                 continue
 
-            if not self.view_model.should_load_recovery_table(
+            if not self.should_load_recovery_table(
                 recovery_exists=True,
                 main_exists=True,
                 recovery_mtime=os.path.getmtime(recovery_filepath),
@@ -930,7 +987,7 @@ class PointsLayersView:
                 recovery_exists = os.path.exists(recovery_filepath)
                 main_exists = os.path.exists(filepath)
                 if (
-                    self.view_model.should_load_recovery_table(
+                    self.should_load_recovery_table(
                         recovery_exists=recovery_exists,
                         main_exists=main_exists,
                         recovery_mtime=(
@@ -951,7 +1008,7 @@ class PointsLayersView:
                 continue
 
             self.logger.info(f'Loading points from "{filepath}"...')
-            df = self.view_model.points.load_click_points_table(filepath)
+            df = self.points.load_click_points_table(filepath)
             posData.clickEntryPointsDfs[tableEndName] = df
 
         try:
@@ -975,7 +1032,7 @@ class PointsLayersView:
         for point in points:
             pos = point.pos()
             points_to_remove.append((pos.x(), pos.y(), point.data()))
-        removed_ids = self.view_model.points.remove_click_points(
+        removed_ids = self.points.remove_click_points(
             framePointsData,
             points_to_remove,
             z_slice=zSlice,
@@ -1016,7 +1073,7 @@ class PointsLayersView:
             return new_id
         else:
             pointsDataPos = action.pointsData.get(self.pos_i)
-            return self.view_model.points.next_click_point_id(
+            return self.points.next_click_point_id(
                 pointsDataPos,
                 posData.frame_i,
                 current_id,
@@ -1036,7 +1093,7 @@ class PointsLayersView:
     def isPointIdAlreadyNew(self, point_id, action):
         posData = self.data[self.pos_i]
         pointsDataPos = action.pointsData.get(self.pos_i)
-        return self.view_model.points.point_id_already_new(
+        return self.points.point_id_already_new(
             pointsDataPos,
             posData.frame_i,
             point_id,
@@ -1056,7 +1113,7 @@ class PointsLayersView:
         zSlice = None
         if posData.SizeZ > 1:
             zSlice = self.zSliceScrollBar.sliderPosition()
-        self.view_model.points.add_click_point(
+        self.points.add_click_point(
             pointsDataPos,
             posData.frame_i,
             x,
@@ -1193,7 +1250,7 @@ class PointsLayersView:
                 if not hasattr(action, 'layerTypeIdx'):
                     continue
 
-                if self.view_model.should_compute_points_layer(
+                if self.should_compute_points_layer(
                     layer_type_index=action.layerTypeIdx,
                     compute_points_layers=computePointsLayers,
                 ):
@@ -1204,7 +1261,7 @@ class PointsLayersView:
 
                 frames = action.pointsData.get(self.pos_i, set())
                 if posData.frame_i not in frames:
-                    if self.view_model.should_log_missing_frame_points(
+                    if self.should_log_missing_frame_points(
                         action.layerTypeIdx
                     ):
                         self.logger.info(
@@ -1217,14 +1274,14 @@ class PointsLayersView:
 
                 zSlice = None
                 zProjHow = self.zProjComboBox.currentText()
-                isZslice = self.view_model.should_use_z_slice(
+                isZslice = self.should_use_z_slice(
                     z_projection_mode=zProjHow,
                     size_z=posData.SizeZ,
                     frame_points_data=framePointsData,
                 )
                 if isZslice:
                     zSlice = self.zSliceScrollBar.sliderPosition()
-                xx, yy, ids, data = self.view_model.points.flatten_frame_points_data(
+                xx, yy, ids, data = self.points.flatten_frame_points_data(
                     framePointsData,
                     z_slice=zSlice,
                     z_radius=action.zRadius,

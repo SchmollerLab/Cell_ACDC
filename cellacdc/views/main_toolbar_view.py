@@ -9,21 +9,32 @@ from qtpy.QtWidgets import QAction, QActionGroup, QButtonGroup, QToolButton
 import pyqtgraph as pg
 
 from cellacdc import widgets
-from cellacdc.viewmodels.main_toolbar_viewmodel import MainToolbarViewModel
 
 
 class MainToolbarView:
     """Qt-facing adapter around top-level toolbar construction."""
 
-    def __init__(self, host, view_model: MainToolbarViewModel):
-        object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
+    """Headless toolbar metadata used by the main toolbar view."""
 
+    mode_items = (
+        'Segmentation and Tracking',
+        'Cell cycle analysis',
+        'Viewer',
+        'Custom annotations',
+        'Normal division: Lineage tree',
+    )
+
+    def default_mode_items(self) -> tuple[str, ...]:
+        return self.mode_items
+
+
+    def __init__(self, host):
+        object.__setattr__(self, 'host', host)
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
@@ -564,7 +575,7 @@ class MainToolbarView:
         self.viewLinTreeInfoButton.clicked.connect(self.viewLinTreeInfoAction)
     
 
-        self.modeItems = list(self.view_model.mode_items())
+        self.modeItems = list(self.mode_items())
 
         self.modeActionGroup = QActionGroup(self.modeMenu)
         for mode in self.modeItems:

@@ -2,34 +2,137 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any
 from qtpy.QtCore import QMutex, QThread, QWaitCondition
 
 from cellacdc import apps, workers
 from cellacdc.plot import imshow
-from cellacdc.viewmodels.seg_for_lost_ids_viewmodel import (
-    SegForLostIdsViewModel,
-)
 
 
 class SegForLostIdsView:
     """Qt-facing adapter around lost-ID segmentation commands."""
 
-    def __init__(self, host, view_model: SegForLostIdsViewModel):
-        object.__setattr__(self, 'host', host)
-        object.__setattr__(self, 'view_model', view_model)
+    """Headless settings and launch rules for lost-ID segmentation."""
 
+    settings_key = 'SegForLostIDsModel'
+    worker_model_name = 'local_seg'
+
+    def previous_model_name(self, df_settings) -> str | None:
+        try:
+            return str(df_settings.at[self.settings_key, 'value'])
+        except KeyError:
+            return None
+
+    def should_persist_model_choice(self, base_model_name: str | None) -> bool:
+        return bool(base_model_name)
+
+    def extra_arg_specs(self) -> list[ArgSpec]:
+        extra_params = (
+            'overlap_threshold',
+            'padding',
+            'size_perc_diff',
+            'distance_filler_growth',
+            'max_iterations',
+            'allow_only_tracked_cells',
+        )
+        extra_types = (float, float, float, float, int, bool)
+        extra_defaults = (0.5, 0.8, 0.3, 1.0, 2, False)
+        extra_desc = (
+            (
+                'Overlap threshold with other already segemented cells over '
+                'which newly segmented cells are discarded'
+            ),
+            (
+                'Padding of the box used for new segmentation around the '
+                'segmentation from the previous frame'
+            ),
+            (
+                'Relative size difference acceptable compared to previous '
+                'frames'
+            ),
+            (
+                'Cells which are already segmented are filled with random '
+                'noise sampled from background to ensure that they do not get '
+                'segmented again. This parameter controls the additional '
+                'padding around the already segmented cells.'
+            ),
+            (
+                'The algorithm will try and segment the maximum amount of '
+                'cells in the image by running the model several times and '
+                'filling new found cells with background noise. How many of '
+                'these iterations should be run?'
+            ),
+            (
+                'If no new cell IDs should be permitted '
+                '(based on real time tracking)'
+            ),
+        )
+
+        return [
+            ArgSpec(
+                name=name,
+                default=default,
+                type=arg_type,
+                desc=desc,
+                docstring='',
+            )
+            for name, default, arg_type, desc in zip(
+                extra_params, extra_defaults, extra_types, extra_desc
+            )
+        ]
+
+    def split_model_kwargs(
+        self,
+        init_kwargs: dict[str, Any],
+        extra_kwargs: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        extra_param_names = {arg.name for arg in self.extra_arg_specs()}
+        init_kwargs_new = {}
+        args_new = {}
+
+        for key, val in init_kwargs.items():
+            if key in extra_param_names:
+                args_new[key] = val
+            else:
+                init_kwargs_new[key] = val
+
+        for key, val in extra_kwargs.items():
+            if key in extra_param_names:
+                args_new[key] = val
+
+        return init_kwargs_new, args_new
+
+    def settings_from_dialog(self, win, base_model_name: str):
+        init_kwargs_new, args_new = self.split_model_kwargs(
+            win.init_kwargs,
+            win.extra_kwargs,
+        )
+        return SegForLostIdsSettings(
+            win=win,
+            init_kwargs_new=init_kwargs_new,
+            args_new=args_new,
+            base_model_name=base_model_name,
+        )
+
+    def can_start_from_frame(self, frame_i: int) -> bool:
+        return frame_i > 0
+
+
+    def __init__(self, host):
+        object.__setattr__(self, 'host', host)
     def __getattr__(self, name):
         return getattr(self.host, name)
 
     def __setattr__(self, name, value):
-        if name in {'host', 'view_model'}:
+        if name in {'host'}:
             object.__setattr__(self, name, value)
         else:
             setattr(self.host, name, value)
 
     def SegForLostIDsSetSettings(self):
 
-        prev_model = self.view_model.previous_model_name(self.df_settings)
+        prev_model = self.previous_model_name(self.df_settings)
         win = apps.QDialogSelectModel(parent=self.host, customFirst=prev_model)
         win.exec_()
         if win.cancel:
@@ -37,13 +140,13 @@ class SegForLostIdsView:
             return
         base_model_name = win.selectedModel
 
-        if self.view_model.should_persist_model_choice(base_model_name):
+        if self.should_persist_model_choice(base_model_name):
             self.df_settings.at[
-                self.view_model.settings_key, 'value'
+                self.settings_key, 'value'
             ] = base_model_name
             self.df_settings.to_csv(self.settings_csv_path)
 
-        model_name = self.view_model.worker_model_name
+        model_name = self.worker_model_name
 
         idx = self.modelNames.index(model_name)
         acdcSegment = self.acdcSegment_li[idx]
@@ -64,7 +167,7 @@ class SegForLostIdsView:
             self.logger.error(f'Error importing {base_model_name}: {e}')
             return
 
-        extra_ArgSpec = self.view_model.extra_arg_specs()
+        extra_ArgSpec = self.extra_arg_specs()
 
         init_params, segment_params = (
             self.host.view_model.model_registry.model_arg_specs(acdcSegment)
@@ -82,7 +185,7 @@ class SegForLostIdsView:
             self.logger.info('Segmentation for lost IDs cancelled.')
             return
 
-        settings = self.view_model.settings_from_dialog(win, base_model_name)
+        settings = self.settings_from_dialog(win, base_model_name)
         self.SegForLostIDsSettings = {
             'win': settings.win,
             'init_kwargs_new': settings.init_kwargs_new,
@@ -95,7 +198,7 @@ class SegForLostIdsView:
         why = 'Segmentation for lost IDs'
         self.setFrameNavigationDisabled(disable=True, why=why)
         posData = self.data[self.pos_i]
-        if not self.view_model.can_start_from_frame(posData.frame_i):
+        if not self.can_start_from_frame(posData.frame_i):
             self.logger.info(
                 'Segmentation for lost IDs not available on first frame.'
             )

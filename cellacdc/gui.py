@@ -139,237 +139,90 @@ class guiWin(QMainWindow):
         self.app = app
         self.closeGUI = False
         self.view_model = MainGuiViewModel()
-        self.window_events_view = WindowEventsView(
-            self,
-            self.view_model.window_events,
-        )
+        self.window_events_view = WindowEventsView(self)
         self.window_events_view.bind_legacy_methods()
-        self.tracking_view = TrackingView(
-            self,
-            self.view_model.tracking,
-        )
+        self.tracking_view = TrackingView(self)
         self.tracking_view.bind_legacy_methods()
-        self.image_display_view = ImageDisplayView(
-            self,
-            self.view_model.image_display,
-        )
+        self.image_display_view = ImageDisplayView(self)
         self.image_display_view.bind_legacy_methods()
-        self.data_loading_view = DataLoadingView(
-            self,
-            self.view_model.data_loading,
-        )
+        self.data_loading_view = DataLoadingView(self)
         self.data_loading_view.bind_legacy_methods()
-        self.cell_cycle_view = CellCycleView(
-            self,
-            self.view_model.cell_cycle,
-        )
+        self.cell_cycle_view = CellCycleView(self)
         self.cell_cycle_view.bind_legacy_methods()
-        self.graphics_view = GraphicsView(
-            self,
-            self.view_model.graphics,
-        )
+        self.graphics_view = GraphicsView(self)
         self.graphics_view.bind_legacy_methods()
-        self.actions_view = ActionsView(
-            self,
-            self.view_model.actions,
-        )
+        self.actions_view = ActionsView(self)
         self.actions_view.bind_legacy_methods()
-        self.app_shell_view = AppShellView(
-            self,
-            self.view_model.app_shell,
-        )
+        self.app_shell_view = AppShellView(self)
         self.app_shell_view.bind_legacy_methods()
-        self.annotation_display_view = AnnotationDisplayView(
-            self,
-            self.view_model.annotation_display,
-        )
+        self.annotation_display_view = AnnotationDisplayView(self)
         self.annotation_display_view.bind_legacy_methods()
-        self.session_view = SessionView(
-            self,
-            self.view_model.session,
-        )
+        self.session_view = SessionView(self)
         self.session_view.bind_legacy_methods()
-        self.frame_navigation_view = FrameNavigationView(
-            self,
-            self.view_model.frame_navigation,
-        )
+        self.frame_navigation_view = FrameNavigationView(self)
         self.frame_navigation_view.bind_legacy_methods()
-        self.canvas_drawing_view = CanvasDrawingView(
-            self,
-            self.view_model.canvas_drawing,
-        )
+        self.canvas_drawing_view = CanvasDrawingView(self)
         self.canvas_drawing_view.bind_legacy_methods()
-        self.canvas_events_view = CanvasEventsView(
-            self,
-            self.view_model.canvas_events,
-        )
+        self.canvas_events_view = CanvasEventsView(self)
         self.canvas_events_view.bind_legacy_methods()
-        self.canvas_selection_view = CanvasSelectionView(
-            self,
-            self.view_model.canvas_selection,
-        )
+        self.canvas_selection_view = CanvasSelectionView(self)
         self.canvas_selection_view.bind_legacy_methods()
-        self.canvas_context_menu_view = CanvasContextMenuView(
-            self,
-            self.view_model.canvas_context_menu,
-        )
-        self.canvas_right_image_view = CanvasRightImageView(
-            self,
-            self.view_model.canvas_right_image,
-        )
-        self.canvas_hover_view = CanvasHoverView(
-            self,
-            self.view_model.canvas_hover,
-        )
+        self.canvas_context_menu_view = CanvasContextMenuView(self)
+        self.canvas_right_image_view = CanvasRightImageView(self)
+        self.canvas_hover_view = CanvasHoverView(self)
         self.canvas_hover_view.bind_legacy_methods()
-        self.label_roi_view = LabelRoiView(
-            self,
-            self.view_model.label_roi,
-        )
+        self.label_roi_view = LabelRoiView(self)
         self.label_roi_view.bind_legacy_methods()
-        self.label_editing_view = LabelEditingView(
-            self,
-            self.view_model.label_editing,
-        )
+        self.label_editing_view = LabelEditingView(self)
         self.label_editing_view.bind_legacy_methods()
-        self.lineage_interactions_view = LineageInteractionsView(
-            self,
-            self.view_model.lineage_interactions,
-        )
+        self.lineage_interactions_view = LineageInteractionsView(self)
         self.lineage_interactions_view.bind_legacy_methods()
-        self.custom_annotations_view = CustomAnnotationsView(
-            self,
-            self.view_model.custom_annotations,
-        )
-        self.undo_redo_view = UndoRedoView(
-            self,
-            self.view_model.undo_redo,
-        )
+        self.custom_annotations_view = CustomAnnotationsView(self)
+        self.undo_redo_view = UndoRedoView(self)
         self.undo_redo_view.bind_legacy_methods()
-        self.worker_view = WorkerView(
-            self,
-            self.view_model.worker,
-        )
+        self.worker_view = WorkerView(self)
         self.worker_view.bind_legacy_methods()
-        self.brush_tools_view = BrushToolsView(
-            self,
-            self.view_model.brush_tools,
-        )
+        self.brush_tools_view = BrushToolsView(self)
         self.brush_tools_view.bind_legacy_methods()
-        self.deleted_rois_view = DeletedRoisView(
-            self,
-            self.view_model.deleted_rois,
-        )
+        self.deleted_rois_view = DeletedRoisView(self)
         self.deleted_rois_view.bind_legacy_methods()
-        self.draw_clear_region_view = DrawClearRegionView(
-            self,
-            self.view_model.draw_clear_region,
-        )
-        self.display_decorations_view = DisplayDecorationsView(
-            self,
-            self.view_model.display_decorations,
-        )
-        self.object_cleanup_view = ObjectCleanupView(
-            self,
-            self.view_model.object_cleanup,
-        )
-        self.object_properties_view = ObjectPropertiesView(
-            self,
-            self.view_model.object_properties,
-        )
+        self.draw_clear_region_view = DrawClearRegionView(self)
+        self.display_decorations_view = DisplayDecorationsView(self)
+        self.object_cleanup_view = ObjectCleanupView(self)
+        self.object_properties_view = ObjectPropertiesView(self)
         self.object_properties_view.bind_legacy_methods()
-        self.object_search_view = ObjectSearchView(
-            self,
-            self.view_model.object_search,
-        )
+        self.object_search_view = ObjectSearchView(self)
         self.curvature_tools_view = CurvatureToolsView(
             self,
             self.view_model.curvature,
         )
-        self.seg_for_lost_ids_view = SegForLostIdsView(
-            self,
-            self.view_model.seg_for_lost_ids,
-        )
-        self.segmentation_view = SegmentationView(
-            self,
-            self.view_model.segmentation,
-        )
+        self.seg_for_lost_ids_view = SegForLostIdsView(self)
+        self.segmentation_view = SegmentationView(self)
         self.segmentation_view.bind_legacy_methods()
-        self.saving_view = SavingView(
-            self,
-            self.view_model.saving,
-        )
+        self.saving_view = SavingView(self)
         self.saving_view.bind_legacy_methods()
-        self.mode_controls_view = ModeControlsView(
-            self,
-            self.view_model.mode_controls,
-        )
-        self.image_controls_view = ImageControlsView(
-            self,
-            self.view_model.image_controls,
-        )
-        self.preprocessing_view = PreprocessingView(
-            self,
-            self.view_model.preprocessing,
-        )
-        self.magic_prompts_view = MagicPromptsView(
-            self,
-            self.view_model.magic_prompts,
-        )
-        self.exporting_view = ExportingView(
-            self,
-            self.view_model.exporting,
-        )
-        self.main_toolbar_view = MainToolbarView(
-            self,
-            self.view_model.main_toolbar,
-        )
-        self.main_menu_view = MainMenuView(
-            self,
-            self.view_model.main_menu,
-        )
-        self.label_transform_tools_view = LabelTransformToolsView(
-            self,
-            self.view_model.label_transform_tools,
-        )
-        self.measurements_view = MeasurementsView(
-            self,
-            self.view_model.measurements,
-        )
-        self.quick_settings_view = QuickSettingsView(
-            self,
-            self.view_model.quick_settings,
-        )
-        self.status_hover_view = StatusHoverView(
-            self,
-            self.view_model.status_hover,
-        )
-        self.points_layers_view = PointsLayersView(
-            self,
-            self.view_model.points_layers,
-        )
+        self.mode_controls_view = ModeControlsView(self)
+        self.image_controls_view = ImageControlsView(self)
+        self.preprocessing_view = PreprocessingView(self)
+        self.magic_prompts_view = MagicPromptsView(self)
+        self.exporting_view = ExportingView(self)
+        self.main_toolbar_view = MainToolbarView(self)
+        self.main_menu_view = MainMenuView(self)
+        self.label_transform_tools_view = LabelTransformToolsView(self)
+        self.measurements_view = MeasurementsView(self)
+        self.quick_settings_view = QuickSettingsView(self)
+        self.status_hover_view = StatusHoverView(self)
+        self.points_layers_view = PointsLayersView(self)
         self.points_layers_view.bind_legacy_methods()
-        self.tool_activation_view = ToolActivationView(
-            self,
-            self.view_model.tool_activation,
-        )
+        self.tool_activation_view = ToolActivationView(self)
         self.tool_activation_view.bind_legacy_methods()
-        self.layout_controls_view = LayoutControlsView(
-            self,
-            self.view_model.layout_controls,
-        )
+        self.layout_controls_view = LayoutControlsView(self)
         self.layout_controls_view.bind_legacy_methods()
-        self.combine_view = CombineView(
-            self,
-            self.view_model.combine,
-        )
+        self.combine_view = CombineView(self)
         self.combine_view.bind_legacy_methods()
-        self.whitelist_view = WhitelistView(
-            self,
-            self.view_model.whitelist,
-        )
+        self.whitelist_view = WhitelistView(self)
         self.whitelist_view.bind_legacy_methods()
-        self.canvas_tool_view = CanvasToolView(self.view_model.canvas_tools)
+        self.canvas_tool_view = CanvasToolView(self)
         self._acdc_version = self.view_model.app_shell.read_version()
 
         self.setAcceptDrops(True)
