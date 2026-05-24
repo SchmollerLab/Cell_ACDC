@@ -288,9 +288,7 @@ class MainToolbar(Actions):
         self.segForLostIDsButton = QToolButton(self)
         self.segForLostIDsButton.setIcon(QIcon(":segForLostIDs.svg"))
         self.segForLostIDsAction = editToolBar.addWidget(self.segForLostIDsButton)
-        self._connect_method_if_present(
-            self.segForLostIDsButton.clicked, "segForLostIDsButtonClicked"
-        )
+        self.segForLostIDsButton.clicked.connect(self.segForLostIDsButtonClicked)
 
         # self.SegForLostIDsButton.setShortcut('U')
         # self.widgetsWithShortcut['Unknown lineage (lineage tree)'] = self.SegForLostIDsButton
@@ -526,9 +524,7 @@ class MainToolbar(Actions):
         self.widgetsWithShortcut["Propagate (lineage tree)"] = (
             self.propagateLinTreeButton
         )
-        self._connect_method_if_present(
-            self.propagateLinTreeButton.clicked, "propagateLinTreeAction"
-        )
+        self.propagateLinTreeButton.clicked.connect(self.propagateLinTreeAction)
 
         self.viewLinTreeInfoButton = QToolButton(self)
         self.viewLinTreeInfoButton.setIcon(QIcon(":addCustomAnnotation.svg"))
@@ -537,9 +533,7 @@ class MainToolbar(Actions):
         self.widgetsWithShortcut["View Changes (lineage tree)"] = (
             self.viewLinTreeInfoButton
         )
-        self._connect_method_if_present(
-            self.viewLinTreeInfoButton.clicked, "viewLinTreeInfoAction"
-        )
+        self.viewLinTreeInfoButton.clicked.connect(self.viewLinTreeInfoAction)
 
         modes_available = [
             "Segmentation and Tracking",

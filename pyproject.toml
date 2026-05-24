@@ -142,9 +142,6 @@ dev = [
 cellacdc = "cellacdc.__main__:run"
 acdc = "cellacdc.__main__:run"
 Cell-ACDC = "cellacdc.__main__:run"
-gui = "cellacdc.gui_visualization:main"
-gui-basic = "cellacdc.gui_basic:main"
-gui-segmentation = "cellacdc.gui_segmentation:main"
 
 [tool.setuptools]
 include-package-data = true

@@ -17,10 +17,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-import pyqtgraph as pg
-import numpy as np
-
-from cellacdc import darkBkgrColor, graphLayoutBkgrColor, widgets
+from cellacdc import widgets
 
 _font = QFont()
 _font.setPixelSize(11)

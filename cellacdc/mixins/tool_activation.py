@@ -502,8 +502,7 @@ class ToolActivation(Session):
         self.clearTempBrushImage()
         self.isMouseDragImg1 = False
         self.typingEditID = False
-        if hasattr(self, "clearHighlightedID"):
-            self.clearHighlightedID()
+        self.clearHighlightedID()
         try:
             self.polyLineRoi.clearPoints()
         except Exception as e:

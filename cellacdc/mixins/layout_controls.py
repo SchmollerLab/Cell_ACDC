@@ -18,7 +18,6 @@ from qtpy.QtWidgets import (
     QLabel,
     QRadioButton,
     QSizePolicy,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -28,13 +27,6 @@ from cellacdc.gui_decorators import resetViewRange
 from .image_controls import ImageControls
 from .window_events import WindowEvents
 from .label_roi import LabelRoi
-
-
-def _connect_method_if_present(host, signal, method_name):
-    method = getattr(host, method_name, None)
-    if method is not None:
-        signal.connect(method)
-
 
 
 class LayoutControls(ImageControls, WindowEvents, LabelRoi):
@@ -61,8 +53,8 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
         self.overlayToolbar = widgets.OverlayToolbar(parent=self)
         self.addToolBar(Qt.TopToolBarArea, self.overlayToolbar)
         self.overlayToolbar.setVisible(False)
-        _connect_method_if_present(self, self.overlayToolbar.sigSetTranspacency, "setOverlayTransparency")
-        _connect_method_if_present(self, self.overlayToolbar.sigSetSingleChannel, "setOverlaySingleChannel")
+        self.overlayToolbar.sigSetTranspacency.connect(self.setOverlayTransparency)
+        self.overlayToolbar.sigSetSingleChannel.connect(self.setOverlaySingleChannel)
 
         self.autoPilotZoomToObjToolbar = widgets.ToolBar("Auto-zoom to objects", self)
         self.autoPilotZoomToObjToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
@@ -80,7 +72,7 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
         self.highlightIDToolbar.keepVisibleWhenActive = True
         self.controlToolBars.append(self.highlightIDToolbar)
 
-        _connect_method_if_present(self, self.highlightIDToolbar.sigIDChanged, "setHighlighedIDfromToolbar")
+        self.highlightIDToolbar.sigIDChanged.connect(self.setHighlighedIDfromToolbar)
 
         # Widgets toolbar
         brushEraserToolBar = widgets.ToolBar("Widgets", self)
@@ -240,18 +232,32 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
 
         self.loadLabelRoiLastParams()
 
-        _connect_method_if_present(self, self.labelRoiTrangeCheckbox.toggled, "labelRoiTrangeCheckboxToggled")
-        _connect_method_if_present(self, self.labelRoiReplaceExistingObjectsCheckbox.toggled, "storeLabelRoiParams")
-        _connect_method_if_present(self, self.labelRoiIsCircularRadioButton.toggled, "labelRoiIsCircularRadioButtonToggled")
-        _connect_method_if_present(self, self.labelRoiCircularRadiusSpinbox.valueChanged, "updateLabelRoiCircularSize")
-        _connect_method_if_present(self, self.labelRoiCircularRadiusSpinbox.valueChanged, "storeLabelRoiParams")
-        _connect_method_if_present(self, self.labelRoiZdepthSpinbox.valueChanged, "storeLabelRoiParams")
-        _connect_method_if_present(self, self.labelRoiAutoClearBorderCheckbox.toggled, "storeLabelRoiParams")
-        _connect_method_if_present(self, group.buttonToggled, "storeLabelRoiParams")
+        self.labelRoiTrangeCheckbox.toggled.connect(self.labelRoiTrangeCheckboxToggled)
+        self.labelRoiReplaceExistingObjectsCheckbox.toggled.connect(
+            self.storeLabelRoiParams
+        )
+        self.labelRoiIsCircularRadioButton.toggled.connect(
+            self.labelRoiIsCircularRadioButtonToggled
+        )
+        self.labelRoiCircularRadiusSpinbox.valueChanged.connect(
+            self.updateLabelRoiCircularSize
+        )
+        self.labelRoiCircularRadiusSpinbox.valueChanged.connect(
+            self.storeLabelRoiParams
+        )
+        self.labelRoiZdepthSpinbox.valueChanged.connect(self.storeLabelRoiParams)
+        self.labelRoiAutoClearBorderCheckbox.toggled.connect(self.storeLabelRoiParams)
+        group.buttonToggled.connect(self.storeLabelRoiParams)
 
-        _connect_method_if_present(self, self.labelRoiToEndFramesAction.triggered, "labelRoiToEndFramesTriggered")
-        _connect_method_if_present(self, self.labelRoiFromCurrentFrameAction.triggered, "labelRoiFromCurrentFrameTriggered")
-        _connect_method_if_present(self, self.labelRoiViewCurrentModelAction.triggered, "labelRoiViewCurrentModel")
+        self.labelRoiToEndFramesAction.triggered.connect(
+            self.labelRoiToEndFramesTriggered
+        )
+        self.labelRoiFromCurrentFrameAction.triggered.connect(
+            self.labelRoiFromCurrentFrameTriggered
+        )
+        self.labelRoiViewCurrentModelAction.triggered.connect(
+            self.labelRoiViewCurrentModel
+        )
 
         self.keepIDsToolbar = widgets.ToolBar("Keep IDs controls", self)
         self.keepIDsConfirmAction = QAction()
@@ -274,14 +280,14 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
         self.keepIDsToolbar.setVisible(False)
         self.controlToolBars.append(self.keepIDsToolbar)
 
-        _connect_method_if_present(self, self.keptIDsLineEdit.sigEnterPressed, "applyKeepObjects")
-        _connect_method_if_present(self, self.keptIDsLineEdit.sigIDsChanged, "updateKeepIDs")
-        _connect_method_if_present(self, self.keepIDsConfirmAction.triggered, "applyKeepObjects")
+        self.keptIDsLineEdit.sigEnterPressed.connect(self.applyKeepObjects)
+        self.keptIDsLineEdit.sigIDsChanged.connect(self.updateKeepIDs)
+        self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
 
         # closeToolbarAction = QAction(
         #     QIcon(":cancelButton.svg"), "Close toolbar...", self
         # )
-        # _connect_method_if_present(self, closeToolbarAction.triggered, "closeToolbars")
+        # closeToolbarAction.triggered.connect(self.closeToolbars)
         # self.autoPilotZoomToObjToolbar.addAction(closeToolbarAction)
 
         self.autoPilotZoomToObjToolbar.addWidget(widgets.QVLine())
@@ -294,13 +300,13 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
         spinBox.label = QLabel("  Zoom to ID: ")
         spinBox.labelAction = self.autoPilotZoomToObjToolbar.addWidget(spinBox.label)
         spinBox.action = self.autoPilotZoomToObjToolbar.addWidget(spinBox)
-        _connect_method_if_present(self, spinBox.editingFinished, "zoomToObj")
-        _connect_method_if_present(self, spinBox.sigUpClicked, "autoZoomNextObj")
-        _connect_method_if_present(self, spinBox.sigDownClicked, "autoZoomPrevObj")
+        spinBox.editingFinished.connect(self.zoomToObj)
+        spinBox.sigUpClicked.connect(self.autoZoomNextObj)
+        spinBox.sigDownClicked.connect(self.autoZoomPrevObj)
         self.autoPilotZoomToObjSpinBox = spinBox
         toggle = widgets.Toggle()
         self.autoPilotZoomToObjToggle = toggle
-        _connect_method_if_present(self, toggle.toggled, "autoPilotZoomToObjToggled")
+        toggle.toggled.connect(self.autoPilotZoomToObjToggled)
         toggle.label = QLabel("  Auto-pilot: ")
         tooltip = (
             "When auto-pilot is active, you can use Up/Down arrows to "
@@ -318,7 +324,7 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
         self.pointsLayersToolbar = widgets.PointsLayersToolbar(parent=self)
         self.pointsLayersToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
 
-        _connect_method_if_present(self, self.pointsLayersToolbar.sigAddPointsLayer, "addPointsLayerTriggered")
+        self.pointsLayersToolbar.sigAddPointsLayer.connect(self.addPointsLayerTriggered)
 
         self.addToolBar(Qt.TopToolBarArea, self.pointsLayersToolbar)
 
@@ -331,11 +337,13 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
         self.manualTrackingToolbar = widgets.ManualTrackingToolBar(
             "Manual tracking controls", self
         )
-        _connect_method_if_present(self, self.manualTrackingToolbar.sigIDchanged, "initGhostObject")
-        _connect_method_if_present(self, self.manualTrackingToolbar.sigDisableGhost, "clearGhost")
-        _connect_method_if_present(self, self.manualTrackingToolbar.sigClearGhostContour, "clearGhostContour")
-        _connect_method_if_present(self, self.manualTrackingToolbar.sigClearGhostMask, "clearGhostMask")
-        _connect_method_if_present(self, self.manualTrackingToolbar.sigGhostOpacityChanged, "updateGhostMaskOpacity")
+        self.manualTrackingToolbar.sigIDchanged.connect(self.initGhostObject)
+        self.manualTrackingToolbar.sigDisableGhost.connect(self.clearGhost)
+        self.manualTrackingToolbar.sigClearGhostContour.connect(self.clearGhostContour)
+        self.manualTrackingToolbar.sigClearGhostMask.connect(self.clearGhostMask)
+        self.manualTrackingToolbar.sigGhostOpacityChanged.connect(
+            self.updateGhostMaskOpacity
+        )
 
         self.addToolBar(Qt.TopToolBarArea, self.manualTrackingToolbar)
         self.manualTrackingToolbar.setVisible(False)
@@ -344,7 +352,9 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
         self.manualBackgroundToolbar = widgets.ManualBackgroundToolBar(
             "Manual background controls", self
         )
-        _connect_method_if_present(self, self.manualBackgroundToolbar.sigIDchanged, "initManualBackgroundObject")
+        self.manualBackgroundToolbar.sigIDchanged.connect(
+            self.initManualBackgroundObject
+        )
         self.addToolBar(Qt.TopToolBarArea, self.manualBackgroundToolbar)
         self.manualBackgroundToolbar.setVisible(False)
         self.controlToolBars.append(self.manualBackgroundToolbar)
@@ -356,7 +366,7 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
         for name, action in self.copyLostObjToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
 
-        _connect_method_if_present(self, self.copyLostObjToolbar.sigCopyAllObjects, "copyAllLostObjects")
+        self.copyLostObjToolbar.sigCopyAllObjects.connect(self.copyAllLostObjects)
 
         self.addToolBar(Qt.TopToolBarArea, self.copyLostObjToolbar)
         self.copyLostObjToolbar.setVisible(False)
@@ -392,18 +402,27 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
         for name, action in self.magicPromptsToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
 
-        _connect_method_if_present(self, self.magicPromptsToolbar.sigComputeOnZoom, "magicPromptsComputeOnZoomTriggered")
-        _connect_method_if_present(self, self.magicPromptsToolbar.sigComputeOnImage, "magicPromptsComputeOnImageTriggered")
-        _connect_method_if_present(self, self.magicPromptsToolbar.sigInitSelectedModel, "magicPromptsInitModel")
-        _connect_method_if_present(self, self.magicPromptsToolbar.sigViewModelParams, "viewSetMagicPromptModelParams")
-        if hasattr(self, "magicPromptsClearPoints"):
-            self.magicPromptsToolbar.sigClearPoints.connect(
-                partial(self.magicPromptsClearPoints, only_zoom=False)
-            )
-            self.magicPromptsToolbar.sigClearPointsOnZmom.connect(
-                partial(self.magicPromptsClearPoints, only_zoom=True)
-            )
-        _connect_method_if_present(self, self.magicPromptsToolbar.sigInterpolateZslice, "magicPromptsInterpolateZsliceToggled")
+        self.magicPromptsToolbar.sigComputeOnZoom.connect(
+            self.magicPromptsComputeOnZoomTriggered
+        )
+        self.magicPromptsToolbar.sigComputeOnImage.connect(
+            self.magicPromptsComputeOnImageTriggered
+        )
+        self.magicPromptsToolbar.sigInitSelectedModel.connect(
+            self.magicPromptsInitModel
+        )
+        self.magicPromptsToolbar.sigViewModelParams.connect(
+            self.viewSetMagicPromptModelParams
+        )
+        self.magicPromptsToolbar.sigClearPoints.connect(
+            partial(self.magicPromptsClearPoints, only_zoom=False)
+        )
+        self.magicPromptsToolbar.sigClearPointsOnZmom.connect(
+            partial(self.magicPromptsClearPoints, only_zoom=True)
+        )
+        self.magicPromptsToolbar.sigInterpolateZslice.connect(
+            self.magicPromptsInterpolateZsliceToggled
+        )
 
         self.addToolBar(Qt.TopToolBarArea, self.magicPromptsToolbar)
         self.magicPromptsToolbar.setVisible(False)
@@ -459,9 +478,11 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
         row += 1
         self.resizeBottomLayoutLine = widgets.VerticalResizeHline()
         mainLayout.addWidget(self.resizeBottomLayoutLine, row, col, 1, 2)
-        _connect_method_if_present(self, self.resizeBottomLayoutLine.dragged, "resizeBottomLayoutLineDragged")
-        _connect_method_if_present(self, self.resizeBottomLayoutLine.clicked, "resizeBottomLayoutLineClicked")
-        _connect_method_if_present(self, self.resizeBottomLayoutLine.released, "resizeBottomLayoutLineReleased")
+        self.resizeBottomLayoutLine.dragged.connect(self.resizeBottomLayoutLineDragged)
+        self.resizeBottomLayoutLine.clicked.connect(self.resizeBottomLayoutLineClicked)
+        self.resizeBottomLayoutLine.released.connect(
+            self.resizeBottomLayoutLineReleased
+        )
 
         # row += 1
         # mainLayout.addItem(QSpacerItem(5,5), row+1, col, 1, 2)
@@ -559,7 +580,9 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
         self.brushHoverCenterModeAction.setChecked(useCenterBrushCursorHoverID)
         self.brushHoverCircleModeAction.setChecked(not useCenterBrushCursorHoverID)
 
-        _connect_method_if_present(self, self.brushHoverCenterModeAction.toggled, "useCenterBrushCursorHoverIDtoggled")
+        self.brushHoverCenterModeAction.toggled.connect(
+            self.useCenterBrushCursorHoverIDtoggled
+        )
 
         self.settingsMenu.addSeparator()
 
@@ -605,7 +628,7 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
                 action.setChecked(True)
             else:
                 all_checked = False
-            _connect_method_if_present(self, action.toggled, "keepToolActiveActionToggled")
+            action.toggled.connect(self.keepToolActiveActionToggled)
             menu.addAction(action)
             self.keepToolActiveActions[toolName] = action
 
@@ -614,7 +637,7 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
             action = QAction(button)
             action.setText("Apply when visitng new frame")
             action.setCheckable(True)
-            _connect_method_if_present(self, action.toggled, "applyToolNewFrameActionToggled")
+            action.toggled.connect(self.applyToolNewFrameActionToggled)
             menu.addAction(action)
             self.applyToolNewFrameActions[toolName] = action
             self.applyToolNewFrameButtons[toolName] = button
@@ -634,7 +657,9 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
         self.keepAllToolsActiveToggle.setText("Keep all tools active after using them")
         self.keepAllToolsActiveToggle.setCheckable(True)
         self.keepAllToolsActiveToggle.setChecked(all_checked)
-        _connect_method_if_present(self, self.keepAllToolsActiveToggle.toggled, "keepAllToolsActiveActionToggled")
+        self.keepAllToolsActiveToggle.toggled.connect(
+            self.keepAllToolsActiveActionToggled
+        )
         self.settingsMenu.addAction(self.keepAllToolsActiveToggle)
         self.settingsMenu.addSeparator()
 

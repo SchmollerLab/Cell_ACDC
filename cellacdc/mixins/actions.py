@@ -9,7 +9,7 @@ from qtpy.QtCore import Qt
 from qtpy.QtGui import QIcon, QKeySequence
 from qtpy.QtWidgets import QAction, QActionGroup, QToolButton
 
-from cellacdc import apps, is_mac, myutils, settings_folderpath, widgets
+from cellacdc import apps, is_mac, settings_folderpath, widgets
 
 shortcut_filepath = os.path.join(settings_folderpath, "shortcuts.ini")
 
@@ -18,11 +18,6 @@ from .image_display import ImageDisplay
 
 class Actions(ImageDisplay):
     """Extracted from guiWin."""
-
-    def _connect_method_if_present(self, signal, method_name):
-        method = getattr(self, method_name, None)
-        if method is not None:
-            signal.connect(method)
 
     def editShortcuts_cb(self):
         if is_mac:
@@ -65,9 +60,7 @@ class Actions(ImageDisplay):
     def gui_connectActions(self):
         # Connect File actions
         if self.debug:
-            self._connect_method_if_present(
-                self.createEmptyDataAction.triggered, "_createEmptyData"
-            )
+            self.createEmptyDataAction.triggered.connect(self._createEmptyData)
         self.segmNdimIndicator.clicked.connect(self.segmNdimIndicatorClicked)
         self.newWindowAction.triggered.connect(self.openNewWindow)
         self.newAction.triggered.connect(self.newFile)
@@ -80,21 +73,16 @@ class Actions(ImageDisplay):
         self.exportToImageAction.triggered.connect(self.exportToImageTriggered)
         self.quickSaveAction.triggered.connect(self.quickSave)
         self.viewPreprocDataToggle.toggled.connect(self.viewPreprocDataToggled)
-        if hasattr(self, "viewCombineChannelDataToggle"):
-            self._connect_method_if_present(
-                self.viewCombineChannelDataToggle.toggled,
-                "viewCombineChannelDataToggled",
-            )
+        self.viewCombineChannelDataToggle.toggled.connect(
+            self.viewCombineChannelDataToggled
+        )
         self.autoSaveToggle.toggled.connect(self.autoSaveToggled)
         self.autoSaveAnnotToggle.toggled.connect(self.autoSaveAnnotToggled)
         self.autoSaveIntervalDialog.sigValueChanged.connect(
             self.autoSaveIntervalValueChanged
         )
         self.autoSaveIntervalEditButton.clicked.connect(self.autoSaveIntervalEdit)
-        if hasattr(self, "ccaIntegrCheckerToggle"):
-            self._connect_method_if_present(
-                self.ccaIntegrCheckerToggle.toggled, "ccaIntegrCheckerToggled"
-            )
+        self.ccaIntegrCheckerToggle.toggled.connect(self.ccaIntegrCheckerToggled)
         self.annotLostObjsToggle.toggled.connect(self.annotLostObjsToggled)
         self.highLowResAction.clicked.connect(self.highLowResToggled)
         self.showInExplorerAction.triggered.connect(self.showInExplorer_cb)
@@ -123,37 +111,25 @@ class Actions(ImageDisplay):
         # self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.checkableQButtonsGroup.buttonClicked.connect(self.uncheckQButton)
 
-        self._connect_method_if_present(
-            self.showPropsDockButton.sigClicked, "showPropsDockWidget"
-        )
+        self.showPropsDockButton.sigClicked.connect(self.showPropsDockWidget)
 
-        self._connect_method_if_present(
-            self.loadCustomAnnotationsAction.triggered, "loadCustomAnnotations"
+        self.loadCustomAnnotationsAction.triggered.connect(self.loadCustomAnnotations)
+        self.addCustomAnnotationAction.triggered.connect(self.addCustomAnnotation)
+        self.viewAllCustomAnnotAction.toggled.connect(self.viewAllCustomAnnot)
+        self.addCustomModelVideoAction.triggered.connect(
+            self.showInstructionsCustomModel
         )
-        self._connect_method_if_present(
-            self.addCustomAnnotationAction.triggered, "addCustomAnnotation"
+        self.addCustomModelFrameAction.triggered.connect(
+            self.showInstructionsCustomModel
         )
-        self._connect_method_if_present(
-            self.viewAllCustomAnnotAction.toggled, "viewAllCustomAnnot"
-        )
-        self._connect_method_if_present(
-            self.addCustomModelVideoAction.triggered, "showInstructionsCustomModel"
-        )
-        self._connect_method_if_present(
-            self.addCustomModelFrameAction.triggered, "showInstructionsCustomModel"
-        )
-        if hasattr(self, "segmFrameCallback"):
-            self.addCustomModelFrameAction.callback = self.segmFrameCallback
-        if hasattr(self, "segmVideoCallback"):
-            self.addCustomModelVideoAction.callback = self.segmVideoCallback
+        self.addCustomModelFrameAction.callback = self.segmFrameCallback
+        self.addCustomModelVideoAction.callback = self.segmVideoCallback
 
-        self._connect_method_if_present(
-            self.addCustomPromptModelAction.triggered,
-            "showInstructionsCustomPromptModel",
+        self.addCustomPromptModelAction.triggered.connect(
+            self.showInstructionsCustomPromptModel
         )
-        self._connect_method_if_present(
-            self.segmWithPromptableModelAction.triggered,
-            "segmWithPromptableModelActionTriggered",
+        self.segmWithPromptableModelAction.triggered.connect(
+            self.segmWithPromptableModelActionTriggered
         )
 
     def gui_connectEditActions(self):
@@ -162,416 +138,245 @@ class Actions(ImageDisplay):
         self.loadFluoAction.setEnabled(True)
         self.isEditActionsConnected = True
 
-        if hasattr(self, "preprocessImageAction") and hasattr(self, "preprocessAction"):
-            self.preprocessImageAction.triggered.connect(self.preprocessAction.trigger)
-        self._connect_method_if_present(
-            self.combineChannelsAction.triggered, "combineChannelsActionTriggered"
+        self.preprocessImageAction.triggered.connect(self.preprocessAction.trigger)
+        self.combineChannelsAction.triggered.connect(
+            self.combineChannelsActionTriggered
         )
 
-        self._connect_method_if_present(self.overlayButton.toggled, "overlay_cb")
-        self._connect_method_if_present(self.countObjsButton.toggled, "countObjectsCb")
-        self._connect_method_if_present(
-            self.togglePointsLayerAction.toggled, "pointsLayerToggled"
+        self.overlayButton.toggled.connect(self.overlay_cb)
+        self.countObjsButton.toggled.connect(self.countObjectsCb)
+        self.togglePointsLayerAction.toggled.connect(self.pointsLayerToggled)
+        self.overlayLabelsButton.toggled.connect(self.overlayLabels_cb)
+        self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
+        self.labelRoiButton.sigRightClick.connect(self.showLabelRoiContextMenu)
+        self.overlayLabelsButton.sigRightClick.connect(
+            self.showOverlayLabelsContextMenu
         )
-        self._connect_method_if_present(
-            self.overlayLabelsButton.toggled, "overlayLabels_cb"
-        )
-        self._connect_method_if_present(
-            self.overlayButton.sigRightClick, "showOverlayContextMenu"
-        )
-        self._connect_method_if_present(
-            self.labelRoiButton.sigRightClick, "showLabelRoiContextMenu"
-        )
-        self._connect_method_if_present(
-            self.overlayLabelsButton.sigRightClick, "showOverlayLabelsContextMenu"
-        )
-        self._connect_method_if_present(self.rulerButton.toggled, "ruler_cb")
-        self._connect_method_if_present(self.loadFluoAction.triggered, "loadFluo_cb")
-        self._connect_method_if_present(self.loadPosAction.triggered, "loadPosTriggered")
-        self._connect_method_if_present(self.findIdAction.triggered, "findID")
-        self._connect_method_if_present(
-            self.zoomRectButton.toggled, "zoomRectActionToggled"
-        )
-        self._connect_method_if_present(
-            self.autoPilotButton.toggled, "autoPilotToggled"
-        )
-        self._connect_method_if_present(
-            self.skipToNewIdAction.triggered, "skipForwardToNewID"
-        )
-        self._connect_method_if_present(
-            self.slideshowButton.toggled, "launchSlideshow"
-        )
+        self.rulerButton.toggled.connect(self.ruler_cb)
+        self.loadFluoAction.triggered.connect(self.loadFluo_cb)
+        self.loadPosAction.triggered.connect(self.loadPosTriggered)
+        # self.reloadAction.triggered.connect(self.reload_cb)
+        self.findIdAction.triggered.connect(self.findID)
+        self.zoomRectButton.toggled.connect(self.zoomRectActionToggled)
+        self.autoPilotButton.toggled.connect(self.autoPilotToggled)
+        self.skipToNewIdAction.triggered.connect(self.skipForwardToNewID)
+        self.slideshowButton.toggled.connect(self.launchSlideshow)
 
-        self._connect_method_if_present(
-            self.copyLostObjButton.toggled, "copyLostObjContour_cb"
-        )
-        self._connect_method_if_present(
-            self.manualAnnotPastButton.toggled, "manualAnnotPast_cb"
-        )
+        self.copyLostObjButton.toggled.connect(self.copyLostObjContour_cb)
+        self.manualAnnotPastButton.toggled.connect(self.manualAnnotPast_cb)
 
-        self._connect_method_if_present(
-            self.segmSingleFrameMenu.triggered, "segmFrameCallback"
-        )
-        self._connect_method_if_present(
-            self.segmVideoMenu.triggered, "segmVideoCallback"
-        )
+        self.segmSingleFrameMenu.triggered.connect(self.segmFrameCallback)
+        self.segmVideoMenu.triggered.connect(self.segmVideoCallback)
 
-        self._connect_method_if_present(
-            self.postProcessSegmAction.toggled, "postProcessSegm"
-        )
-        self._connect_method_if_present(self.autoSegmAction.toggled, "autoSegm_cb")
-        self._connect_method_if_present(
-            self.realTimeTrackingToggle.clicked, "realTimeTrackingClicked"
-        )
-        self._connect_method_if_present(
-            self.repeatTrackingAction.triggered, "repeatTracking"
-        )
-        self._connect_method_if_present(
-            self.manualTrackingButton.toggled, "manualTracking_cb"
-        )
-        self._connect_method_if_present(
-            self.manualBackgroundButton.toggled, "manualBackground_cb"
-        )
-        self._connect_method_if_present(
-            self.repeatTrackingMenuAction.triggered, "repeatTracking"
-        )
-        self._connect_method_if_present(
-            self.repeatTrackingVideoAction.triggered, "repeatTrackingVideo"
-        )
+        self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
+        self.autoSegmAction.toggled.connect(self.autoSegm_cb)
+        self.realTimeTrackingToggle.clicked.connect(self.realTimeTrackingClicked)
+        self.repeatTrackingAction.triggered.connect(self.repeatTracking)
+        self.manualTrackingButton.toggled.connect(self.manualTracking_cb)
+        self.manualBackgroundButton.toggled.connect(self.manualBackground_cb)
+        self.repeatTrackingMenuAction.triggered.connect(self.repeatTracking)
+        self.repeatTrackingVideoAction.triggered.connect(self.repeatTrackingVideo)
         for rtTrackerAction in self.trackingAlgosGroup.actions():
-            self._connect_method_if_present(
-                rtTrackerAction.toggled, "rtTrackerActionToggled"
-            )
-        self._connect_method_if_present(
-            self.editRtTrackerParamsAction.triggered, "initRealTimeTracker"
+            rtTrackerAction.toggled.connect(self.rtTrackerActionToggled)
+        self.editRtTrackerParamsAction.triggered.connect(self.initRealTimeTracker)
+        self.delObjsOutSegmMaskAction.triggered.connect(
+            self.delObjsOutSegmMaskActionTriggered
         )
-        self._connect_method_if_present(
-            self.delObjsOutSegmMaskAction.triggered, "delObjsOutSegmMaskActionTriggered"
+        self.mergeIDsButton.toggled.connect(self.mergeObjs_cb)
+        self.brushButton.toggled.connect(self.Brush_cb)
+        self.eraserButton.toggled.connect(self.Eraser_cb)
+        self.curvToolButton.toggled.connect(self.curvTool_cb)
+        self.wandToolButton.toggled.connect(self.wand_cb)
+        self.labelRoiButton.toggled.connect(self.labelRoi_cb)
+        self.magicPromptsToolButton.toggled.connect(self.magicPrompts_cb)
+        self.drawClearRegionButton.toggled.connect(self.drawClearRegion_cb)
+        self.reInitCcaAction.triggered.connect(self.reInitCca)
+        self.moveLabelToolButton.toggled.connect(self.moveLabelButtonToggled)
+        self.editCcaToolAction.triggered.connect(
+            self.manualEditCcaToolbarActionTriggered
         )
-        self._connect_method_if_present(self.mergeIDsButton.toggled, "mergeObjs_cb")
-        self._connect_method_if_present(self.brushButton.toggled, "Brush_cb")
-        self._connect_method_if_present(self.eraserButton.toggled, "Eraser_cb")
-        self._connect_method_if_present(self.curvToolButton.toggled, "curvTool_cb")
-        self._connect_method_if_present(self.wandToolButton.toggled, "wand_cb")
-        self._connect_method_if_present(self.labelRoiButton.toggled, "labelRoi_cb")
-        self._connect_method_if_present(
-            self.magicPromptsToolButton.toggled, "magicPrompts_cb"
-        )
-        self._connect_method_if_present(
-            self.drawClearRegionButton.toggled, "drawClearRegion_cb"
-        )
-        self._connect_method_if_present(self.reInitCcaAction.triggered, "reInitCca")
-        self._connect_method_if_present(
-            self.moveLabelToolButton.toggled, "moveLabelButtonToggled"
-        )
-        self._connect_method_if_present(
-            self.editCcaToolAction.triggered, "manualEditCcaToolbarActionTriggered"
-        )
-        self._connect_method_if_present(
-            self.assignBudMothAutoAction.triggered, "autoAssignBud_YeastMate"
-        )
-        self._connect_method_if_present(self.keepIDsButton.toggled, "keepIDs_cb")
+        self.assignBudMothAutoAction.triggered.connect(self.autoAssignBud_YeastMate)
+        self.keepIDsButton.toggled.connect(self.keepIDs_cb)
 
-        self._connect_method_if_present(
-            self.whitelistIDsButton.toggled, "whitelistIDs_cb"
-        )
+        self.whitelistIDsButton.toggled.connect(self.whitelistIDs_cb)
 
-        if hasattr(self, "whitelistIDsToolbar"):
-            self._connect_method_if_present(
-                self.whitelistIDsToolbar.sigWhitelistChanged, "whitelistIDsChanged"
-            )
-            self._connect_method_if_present(
-                self.whitelistIDsToolbar.sigWhitelistAccepted, "whitelistIDsAccepted"
-            )
-            self._connect_method_if_present(
-                self.whitelistIDsToolbar.sigViewOGIDs, "whitelistViewOGIDs"
-            )
-            self._connect_method_if_present(
-                self.whitelistIDsToolbar.sigAddNewIDs, "whitelistAddNewIDsToggled"
-            )
-            self._connect_method_if_present(
-                self.whitelistIDsToolbar.sigLoadOGLabs, "whitelistLoadOGLabs_cb"
-            )
-            self._connect_method_if_present(
-                self.whitelistIDsToolbar.sigTrackOGagainstPreviousFrame,
-                "whitelistTrackOGagainstPreviousFrame_cb",
-            )
+        self.whitelistIDsToolbar.sigWhitelistChanged.connect(self.whitelistIDsChanged)
 
-        self._connect_method_if_present(
-            self.expandLabelToolButton.toggled, "expandLabelCallback"
+        self.whitelistIDsToolbar.sigWhitelistAccepted.connect(self.whitelistIDsAccepted)
+
+        self.whitelistIDsToolbar.sigViewOGIDs.connect(self.whitelistViewOGIDs)
+
+        self.whitelistIDsToolbar.sigAddNewIDs.connect(self.whitelistAddNewIDsToggled)
+
+        self.whitelistIDsToolbar.sigLoadOGLabs.connect(self.whitelistLoadOGLabs_cb)
+
+        self.whitelistIDsToolbar.sigTrackOGagainstPreviousFrame.connect(
+            self.whitelistTrackOGagainstPreviousFrame_cb
         )
 
-        self._connect_method_if_present(
-            self.reinitLastSegmFrameAction.triggered, "reInitLastSegmFrame"
+        self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
+
+        self.reinitLastSegmFrameAction.triggered.connect(self.reInitLastSegmFrame)
+
+        self.defaultRescaleIntensActionGroup.triggered.connect(
+            self.defaultRescaleIntensLutActionToggled
         )
 
-        self._connect_method_if_present(
-            self.defaultRescaleIntensActionGroup.triggered,
-            "defaultRescaleIntensLutActionToggled",
+        # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
+        self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
+        self.addScaleBarAction.toggled.connect(self.addScaleBar)
+        self.addTimestampAction.toggled.connect(self.addTimestamp)
+        self.saveLabColormapAction.triggered.connect(self.saveLabelsColormap)
+
+        self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
+        # Brush/Eraser size action
+        self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
+        self.autoIDcheckbox.toggled.connect(self.autoIDtoggled)
+        # Mode
+        self.modeActionGroup.triggered.connect(self.changeModeFromMenu)
+        self.modeComboBox.sigTextChanged.connect(self.changeMode)
+        self.modeComboBox.activated.connect(self.clearComboBoxFocus)
+        self.equalizeHistPushButton.toggled.connect(self.equalizeHist)
+
+        self.editOverlayColorAction.triggered.connect(self.toggleOverlayColorButton)
+        self.editTextIDsColorAction.triggered.connect(self.toggleTextIDsColorButton)
+        self.overlayColorButton.sigColorChanging.connect(self.changeOverlayColor)
+        self.overlayColorButton.sigColorChanged.connect(self.saveOverlayColor)
+        self.textIDsColorButton.sigColorChanging.connect(self.updateTextAnnotColor)
+        self.textIDsColorButton.sigColorChanged.connect(self.saveTextIDsColors)
+
+        self.setMeasurementsAction.triggered.connect(self.showSetMeasurements)
+        self.addCustomMetricAction.triggered.connect(self.addCustomMetric)
+        self.addCombineMetricAction.triggered.connect(self.addCombineMetric)
+
+        self.labelsGrad.colorButton.sigColorChanging.connect(self.updateBkgrColor)
+        self.labelsGrad.colorButton.sigColorChanged.connect(self.saveBkgrColor)
+        self.labelsGrad.sigGradientChangeFinished.connect(self.updateLabelsCmap)
+        self.labelsGrad.sigGradientChanged.connect(self.ticksCmapMoved)
+        self.labelsGrad.textColorButton.sigColorChanging.connect(
+            self.updateTextLabelsColor
+        )
+        self.labelsGrad.textColorButton.sigColorChanged.connect(
+            self.saveTextLabelsColor
+        )
+        # self.addFontSizeActions(
+        #     self.labelsGrad.fontSizeMenu, self.setFontSizeActionChecked
+        # )
+
+        self.labelsGrad.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
+        self.labelsGrad.greedyShuffleCmapAction.triggered.connect(
+            self.greedyShuffleCmap
+        )
+        self.labelsGrad.permanentGreedyCmapAction.toggled.connect(
+            self.permanentGreedyCmapToggled
+        )
+        self.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
+        self.greedyShuffleCmapAction.triggered.connect(self.greedyShuffleCmap)
+        self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
+        self.labelsGrad.sigShowLabelsImgToggled.connect(self.showLabelImageItem)
+        self.labelsGrad.sigShowRightImgToggled.connect(self.showRightImageItem)
+        self.labelsGrad.sigShowNextFrameToggled.connect(self.showNextFrameImageItem)
+
+        self.labelsGrad.defaultSettingsAction.triggered.connect(
+            self.restoreDefaultSettings
         )
 
-        self._connect_method_if_present(
-            self.manuallyEditCcaAction.triggered, "manualEditCca"
-        )
-        self._connect_method_if_present(self.addScaleBarAction.toggled, "addScaleBar")
-        self._connect_method_if_present(
-            self.addTimestampAction.toggled, "addTimestamp"
-        )
-        self._connect_method_if_present(
-            self.saveLabColormapAction.triggered, "saveLabelsColormap"
-        )
-
-        self._connect_method_if_present(
-            self.enableSmartTrackAction.toggled, "enableSmartTrack"
-        )
-        self._connect_method_if_present(
-            self.brushSizeSpinbox.valueChanged, "brushSize_cb"
-        )
-        self._connect_method_if_present(self.autoIDcheckbox.toggled, "autoIDtoggled")
-        self._connect_method_if_present(
-            self.modeActionGroup.triggered, "changeModeFromMenu"
-        )
-        self._connect_method_if_present(
-            self.modeComboBox.sigTextChanged, "changeMode"
-        )
-        self._connect_method_if_present(
-            self.modeComboBox.activated, "clearComboBoxFocus"
-        )
-        self._connect_method_if_present(
-            self.equalizeHistPushButton.toggled, "equalizeHist"
-        )
-
-        self._connect_method_if_present(
-            self.editOverlayColorAction.triggered, "toggleOverlayColorButton"
-        )
-        self._connect_method_if_present(
-            self.editTextIDsColorAction.triggered, "toggleTextIDsColorButton"
-        )
-        self._connect_method_if_present(
-            self.overlayColorButton.sigColorChanging, "changeOverlayColor"
-        )
-        self._connect_method_if_present(
-            self.overlayColorButton.sigColorChanged, "saveOverlayColor"
-        )
-        self._connect_method_if_present(
-            self.textIDsColorButton.sigColorChanging, "updateTextAnnotColor"
-        )
-        self._connect_method_if_present(
-            self.textIDsColorButton.sigColorChanged, "saveTextIDsColors"
-        )
-
-        self._connect_method_if_present(
-            self.setMeasurementsAction.triggered, "showSetMeasurements"
-        )
-        self._connect_method_if_present(
-            self.addCustomMetricAction.triggered, "addCustomMetric"
-        )
-        self._connect_method_if_present(
-            self.addCombineMetricAction.triggered, "addCombineMetric"
-        )
-
-        self._connect_method_if_present(
-            self.labelsGrad.colorButton.sigColorChanging, "updateBkgrColor"
-        )
-        self._connect_method_if_present(
-            self.labelsGrad.colorButton.sigColorChanged, "saveBkgrColor"
-        )
-        self._connect_method_if_present(
-            self.labelsGrad.sigGradientChangeFinished, "updateLabelsCmap"
-        )
-        self._connect_method_if_present(
-            self.labelsGrad.sigGradientChanged, "ticksCmapMoved"
-        )
-        self._connect_method_if_present(
-            self.labelsGrad.textColorButton.sigColorChanging, "updateTextLabelsColor"
-        )
-        self._connect_method_if_present(
-            self.labelsGrad.textColorButton.sigColorChanged, "saveTextLabelsColor"
-        )
-
-        self._connect_method_if_present(
-            self.labelsGrad.shuffleCmapAction.triggered, "shuffle_cmap"
-        )
-        self._connect_method_if_present(
-            self.labelsGrad.greedyShuffleCmapAction.triggered, "greedyShuffleCmap"
-        )
-        self._connect_method_if_present(
-            self.labelsGrad.permanentGreedyCmapAction.toggled,
-            "permanentGreedyCmapToggled",
-        )
-        self._connect_method_if_present(
-            self.shuffleCmapAction.triggered, "shuffle_cmap"
-        )
-        self._connect_method_if_present(
-            self.greedyShuffleCmapAction.triggered, "greedyShuffleCmap"
-        )
-        self._connect_method_if_present(
-            self.labelsGrad.invertBwAction.toggled, "setCheckedInvertBW"
-        )
-        self._connect_method_if_present(
-            self.labelsGrad.sigShowLabelsImgToggled, "showLabelImageItem"
-        )
-        self._connect_method_if_present(
-            self.labelsGrad.sigShowRightImgToggled, "showRightImageItem"
-        )
-        self._connect_method_if_present(
-            self.labelsGrad.sigShowNextFrameToggled, "showNextFrameImageItem"
-        )
-
-        self._connect_method_if_present(
-            self.labelsGrad.defaultSettingsAction.triggered, "restoreDefaultSettings"
-        )
-
-        self._connect_method_if_present(
-            self.imgGrad.invertBwAction.toggled, "setCheckedInvertBW"
-        )
+        # self.addFontSizeActions(
+        #     self.imgGrad.fontSizeMenu, self.setFontSizeActionChecked
+        # )
+        self.imgGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         self.imgGrad.textColorButton.disconnect()
-        if hasattr(self, "editTextIDsColorAction"):
-            self.imgGrad.textColorButton.clicked.connect(
-                self.editTextIDsColorAction.trigger
-            )
-        self._connect_method_if_present(
-            self.imgGrad.labelsAlphaSlider.valueChanged, "updateLabelsAlpha"
+        self.imgGrad.textColorButton.clicked.connect(
+            self.editTextIDsColorAction.trigger
         )
-        self._connect_method_if_present(
-            self.imgGrad.defaultSettingsAction.triggered, "restoreDefaultSettings"
+        self.imgGrad.labelsAlphaSlider.valueChanged.connect(self.updateLabelsAlpha)
+        self.imgGrad.defaultSettingsAction.triggered.connect(
+            self.restoreDefaultSettings
         )
 
-        self._connect_method_if_present(
-            self.drawIDsContComboBox.currentIndexChanged, "drawIDsContComboBox_cb"
+        # Drawing mode
+        self.drawIDsContComboBox.currentIndexChanged.connect(
+            self.drawIDsContComboBox_cb
         )
-        self._connect_method_if_present(
-            self.drawIDsContComboBox.activated, "clearComboBoxFocus"
-        )
+        self.drawIDsContComboBox.activated.connect(self.clearComboBoxFocus)
 
-        self._connect_method_if_present(
-            self.annotateRightHowCombobox.currentIndexChanged,
-            "annotateRightHowCombobox_cb",
+        self.annotateRightHowCombobox.currentIndexChanged.connect(
+            self.annotateRightHowCombobox_cb
         )
-        self._connect_method_if_present(
-            self.annotateRightHowCombobox.activated, "clearComboBoxFocus"
-        )
+        self.annotateRightHowCombobox.activated.connect(self.clearComboBoxFocus)
 
-        self._connect_method_if_present(
-            self.showTreeInfoCheckbox.toggled, "setAnnotInfoMode"
-        )
+        self.showTreeInfoCheckbox.toggled.connect(self.setAnnotInfoMode)
 
-        self._connect_method_if_present(
-            self.annotIDsCheckbox.clicked, "annotOptionClicked"
-        )
-        self._connect_method_if_present(
-            self.annotCcaInfoCheckbox.clicked, "annotOptionClicked"
-        )
-        self._connect_method_if_present(
-            self.annotContourCheckbox.clicked, "annotOptionClicked"
-        )
-        self._connect_method_if_present(
-            self.annotSegmMasksCheckbox.clicked, "annotOptionClicked"
-        )
-        self._connect_method_if_present(
-            self.drawMothBudLinesCheckbox.clicked, "annotOptionClicked"
-        )
-        self._connect_method_if_present(
-            self.drawNothingCheckbox.clicked, "annotOptionClicked"
-        )
-        self._connect_method_if_present(
-            self.annotNumZslicesCheckbox.clicked, "annotOptionClicked"
-        )
+        # Left
+        self.annotIDsCheckbox.clicked.connect(self.annotOptionClicked)
+        self.annotCcaInfoCheckbox.clicked.connect(self.annotOptionClicked)
+        self.annotContourCheckbox.clicked.connect(self.annotOptionClicked)
+        self.annotSegmMasksCheckbox.clicked.connect(self.annotOptionClicked)
+        self.drawMothBudLinesCheckbox.clicked.connect(self.annotOptionClicked)
+        self.drawNothingCheckbox.clicked.connect(self.annotOptionClicked)
+        self.annotNumZslicesCheckbox.clicked.connect(self.annotOptionClicked)
 
-        self._connect_method_if_present(
-            self.annotIDsCheckboxRight.clicked, "annotOptionClickedRight"
-        )
-        self._connect_method_if_present(
-            self.annotCcaInfoCheckboxRight.clicked, "annotOptionClickedRight"
-        )
-        self._connect_method_if_present(
-            self.annotContourCheckboxRight.clicked, "annotOptionClickedRight"
-        )
-        self._connect_method_if_present(
-            self.annotSegmMasksCheckboxRight.clicked, "annotOptionClickedRight"
-        )
-        self._connect_method_if_present(
-            self.drawMothBudLinesCheckboxRight.clicked, "annotOptionClickedRight"
-        )
-        self._connect_method_if_present(
-            self.drawNothingCheckboxRight.clicked, "annotOptionClickedRight"
-        )
-        self._connect_method_if_present(
-            self.annotNumZslicesCheckboxRight.clicked, "annotOptionClickedRight"
-        )
+        # Right
+        self.annotIDsCheckboxRight.clicked.connect(self.annotOptionClickedRight)
+        self.annotCcaInfoCheckboxRight.clicked.connect(self.annotOptionClickedRight)
+        self.annotContourCheckboxRight.clicked.connect(self.annotOptionClickedRight)
+        self.annotSegmMasksCheckboxRight.clicked.connect(self.annotOptionClickedRight)
+        self.drawMothBudLinesCheckboxRight.clicked.connect(self.annotOptionClickedRight)
+        self.drawNothingCheckboxRight.clicked.connect(self.annotOptionClickedRight)
+        self.annotNumZslicesCheckboxRight.clicked.connect(self.annotOptionClickedRight)
 
-        self._connect_method_if_present(
-            self.segmentToolAction.triggered, "segmentToolActionTriggered"
-        )
+        self.segmentToolAction.triggered.connect(self.segmentToolActionTriggered)
 
-        self._connect_method_if_present(self.addDelRoiAction.triggered, "addDelROI")
-        self._connect_method_if_present(
-            self.addDelPolyLineRoiButton.toggled, "addDelPolyLineRoi_cb"
-        )
-        self._connect_method_if_present(
-            self.delBorderObjAction.triggered, "delBorderObj"
-        )
-        self._connect_method_if_present(self.delNewObjAction.triggered, "delNewObj")
+        self.addDelRoiAction.triggered.connect(self.addDelROI)
+        self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
+        self.delBorderObjAction.triggered.connect(self.delBorderObj)
+        self.delNewObjAction.triggered.connect(self.delNewObj)
 
-        self._connect_method_if_present(
-            self.brushAutoFillCheckbox.toggled, "brushAutoFillToggled"
-        )
-        self._connect_method_if_present(
-            self.brushAutoHideCheckbox.toggled, "brushAutoHideToggled"
-        )
+        self.brushAutoFillCheckbox.toggled.connect(self.brushAutoFillToggled)
+        self.brushAutoHideCheckbox.toggled.connect(self.brushAutoHideToggled)
 
         self.imgGrad.sigAddScaleBar.connect(self.addScaleBarAction.setChecked)
         self.imgGrad.sigAddTimestamp.connect(self.addTimestampAction.setChecked)
-        self._connect_method_if_present(
-            self.imgGrad.gradient.sigGradientChangeFinished, "imgGradLUTfinished_cb"
+        self.imgGrad.gradient.sigGradientChangeFinished.connect(
+            self.imgGradLUTfinished_cb
         )
 
-        self._connect_method_if_present(
-            self.imgPropertiesAction.triggered, "editImgProperties"
+        # self.normalizeQActionGroup.triggered.connect(
+        #     self.normaliseIntensitiesActionTriggered
+        # )
+        self.imgPropertiesAction.triggered.connect(self.editImgProperties)
+
+        self.relabelSequentialAction.triggered.connect(self.relabelSequentialCallback)
+
+        self.zoomToObjsAction.triggered.connect(self.zoomToObjsActionCallback)
+        self.zoomOutAction.triggered.connect(self.zoomOut)
+        self.preprocessAction.triggered.connect(self.preprocessActionTriggered)
+        self.combineChannelsAction.triggered.connect(
+            self.combineChannelsActionTriggered
         )
 
-        self._connect_method_if_present(
-            self.relabelSequentialAction.triggered, "relabelSequentialCallback"
-        )
+        self.viewCcaTableAction.triggered.connect(self.viewCcaTable)
 
-        self._connect_method_if_present(
-            self.zoomToObjsAction.triggered, "zoomToObjsActionCallback"
+        self.guiTabControl.propsQGBox.idSB.valueChanged.connect(
+            self.propsWidgetIDvalueChanged
         )
-        self._connect_method_if_present(self.zoomOutAction.triggered, "zoomOut")
-        self._connect_method_if_present(
-            self.preprocessAction.triggered, "preprocessActionTriggered"
+        self.guiTabControl.highlightCheckbox.toggled.connect(
+            self.highlightIDonHoverCheckBoxToggled
         )
-        self._connect_method_if_present(
-            self.combineChannelsAction.triggered, "combineChannelsActionTriggered"
-        )
-
-        self._connect_method_if_present(
-            self.viewCcaTableAction.triggered, "viewCcaTable"
-        )
-
-        self._connect_method_if_present(
-            self.guiTabControl.propsQGBox.idSB.valueChanged, "propsWidgetIDvalueChanged"
-        )
-        self._connect_method_if_present(
-            self.guiTabControl.highlightCheckbox.toggled,
-            "highlightIDonHoverCheckBoxToggled",
-        )
-        self._connect_method_if_present(
-            self.guiTabControl.highlightSearchedCheckbox.toggled,
-            "highlightSearchedIDcheckBoxToggled",
+        self.guiTabControl.highlightSearchedCheckbox.toggled.connect(
+            self.highlightSearchedIDcheckBoxToggled
         )
         intensMeasurQGBox = self.guiTabControl.intensMeasurQGBox
-        self._connect_method_if_present(
-            intensMeasurQGBox.additionalMeasCombobox.currentTextChanged,
-            "updatePropsWidget",
+        intensMeasurQGBox.additionalMeasCombobox.currentTextChanged.connect(
+            self.updatePropsWidget
         )
-        self._connect_method_if_present(
-            intensMeasurQGBox.channelCombobox.currentTextChanged, "updatePropsWidget"
+        intensMeasurQGBox.channelCombobox.currentTextChanged.connect(
+            self.updatePropsWidget
         )
 
         propsQGBox = self.guiTabControl.propsQGBox
-        self._connect_method_if_present(
-            propsQGBox.additionalPropsCombobox.currentTextChanged, "updatePropsWidget"
+        propsQGBox.additionalPropsCombobox.currentTextChanged.connect(
+            self.updatePropsWidget
         )
 
     def gui_createActions(self):
@@ -699,8 +504,8 @@ class Actions(ImageDisplay):
         self.EditSegForLostIDsSetSettings = QAction(
             "Edit settings for Segmenting lost IDs...", self
         )
-        self._connect_method_if_present(
-            self.EditSegForLostIDsSetSettings.triggered, "SegForLostIDsSetSettings"
+        self.EditSegForLostIDsSetSettings.triggered.connect(
+            self.SegForLostIDsSetSettings
         )
 
         self.repeatTrackingAction = QAction(
@@ -959,7 +764,7 @@ class Actions(ImageDisplay):
         self.toggleColorSchemeAction.setText(txt)
 
     def initShortcuts(self):
-        from cellacdc import config
+        from . import config
 
         cp = config.ConfigParser()
         if os.path.exists(shortcut_filepath):
@@ -1030,7 +835,7 @@ class Actions(ImageDisplay):
         if not save:
             return
 
-        from cellacdc import config
+        from . import config
 
         cp = config.ConfigParser()
         if os.path.exists(shortcut_filepath):
