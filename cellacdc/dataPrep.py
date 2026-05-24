@@ -61,9 +61,9 @@ pg.setConfigOption("imageAxisOrder", "row-major")
 
 # Custom modules
 from . import exception_handler
-from . import load, prompts, apps, core, myutils
+from . import load, prompts, apps, core, utils
 from . import widgets
-from . import html_utils, myutils, darkBkgrColor, printl
+from . import html_utils, utils, darkBkgrColor, printl
 from . import autopilot, workers
 from . import recentPaths_path
 from . import urls
@@ -106,7 +106,7 @@ class dataPrepWin(QMainWindow):
 
         self._version = version
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        logger, logs_path, log_path, log_filename = utils.setupLogger(
             module="dataPrep"
         )
         self.logger = logger
@@ -125,7 +125,7 @@ class dataPrepWin(QMainWindow):
         if mainWin is not None:
             self.app = mainWin.app
 
-        self._acdc_version = myutils.read_version()
+        self._acdc_version = utils.read_version()
         self.setWindowTitle(f"Cell-ACDC v{self._acdc_version} - data prep")
         self.setGeometry(100, 50, 850, 800)
         self.setWindowIcon(QIcon(":icon.ico"))
@@ -837,7 +837,7 @@ class dataPrepWin(QMainWindow):
         for chName in posData.chNames:
             alignedFound = False
             tifFound = False
-            for file in myutils.listdir(posData.images_path):
+            for file in utils.listdir(posData.images_path):
                 filePath = os.path.join(posData.images_path, file)
                 filenameNOext, _ = os.path.splitext(file)
                 if file.endswith(f"{chName}_aligned.npz"):
@@ -1010,7 +1010,7 @@ class dataPrepWin(QMainWindow):
         x, y = event.pos().x(), event.pos().y()
         Y, X = posData.img_data.shape[-2:]
         xdata, ydata = int(x), int(y)
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not utils.is_in_bounds(xdata, ydata, X, Y):
             return
 
         if self.isFreeRoiDrag:
@@ -1076,7 +1076,7 @@ class dataPrepWin(QMainWindow):
 
         self.logger.info(f"Saving: {tif_path}")
         temp_tif = self.getTempfilePath(tif_path)
-        myutils.to_tiff(
+        utils.to_tiff(
             temp_tif,
             cropped_data,
             SizeT=getattr(posData, "SizeT", None),
@@ -1133,7 +1133,7 @@ class dataPrepWin(QMainWindow):
         except IndexError:
             pass
 
-        for file in myutils.listdir(posData.images_path):
+        for file in utils.listdir(posData.images_path):
             copy_file = (
                 file.endswith("bkgrRoiData.npz")
                 or file.endswith("dataPrep_bkgrROIs.json")
@@ -1160,7 +1160,7 @@ class dataPrepWin(QMainWindow):
 
     def saveSingleCrop(self, posData, cropROI, dstPath):
         if dstPath != posData.images_path:
-            currentSubPosFolders = myutils.get_pos_foldernames(dstPath)
+            currentSubPosFolders = utils.get_pos_foldernames(dstPath)
             currentSubPosNumbers = [
                 int(pos.split("_")[-1]) for pos in currentSubPosFolders
             ]
@@ -1318,7 +1318,7 @@ class dataPrepWin(QMainWindow):
         basename = posData.basename
         for p, cropROI in enumerate(posData.cropROIs):
             parentSubPosPath = cropDstPaths[p]
-            currentSubPosFolders = myutils.get_pos_foldernames(parentSubPosPath)
+            currentSubPosFolders = utils.get_pos_foldernames(parentSubPosPath)
             currentSubPosNumbers = [
                 int(pos.split("_")[-1]) for pos in currentSubPosFolders
             ]
@@ -2085,7 +2085,7 @@ class dataPrepWin(QMainWindow):
             )
             if NO_segmInfo and posData.SizeZ > 1:
                 filename = posData.filename
-                df = myutils.getDefault_SegmInfo_df(posData, filename)
+                df = utils.getDefault_SegmInfo_df(posData, filename)
                 if posData.segmInfo_df is None:
                     posData.segmInfo_df = df
                 else:
@@ -2820,7 +2820,7 @@ class dataPrepWin(QMainWindow):
         self.gui_connectGraphicsEvents()
 
         exp_path = self.data[self.pos_i].exp_path
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = utils.get_pos_foldernames(exp_path)
         if len(pos_foldernames) == 1:
             # There is only one position --> disable switch pos action
             self.loadPosAction.setDisabled(True)
@@ -2880,7 +2880,7 @@ class dataPrepWin(QMainWindow):
         self.aboutWin.show()
 
     def showHowToDataPrep(self):
-        myutils.browse_url(urls.dataprep_docs)
+        utils.browse_url(urls.dataprep_docs)
 
     def openRecentFile(self, path):
         self.logger.info(f"Opening recent folder: {path}")
@@ -2907,7 +2907,7 @@ class dataPrepWin(QMainWindow):
             )
             return
 
-        folder_type = myutils.determine_folder_type(exp_path)
+        folder_type = utils.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
 
         self.titleLabel.setText("Loading data...", color="w")
@@ -2969,7 +2969,7 @@ class dataPrepWin(QMainWindow):
 
         # Get info from first position selected
         images_path = self.images_paths[0]
-        filenames = myutils.listdir(images_path)
+        filenames = utils.listdir(images_path)
         if ch_name_selector.is_first_call:
             ch_names, warn = ch_name_selector.get_available_channels(
                 filenames, images_path

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from cellacdc import myutils
+from cellacdc import utils
 from tests.utils import (
     ensure_sam2,
     get_test_posdata,
@@ -23,7 +23,7 @@ class TestSAM2AutomaticSegmentation:
     @pytest.fixture(scope="class", autouse=True)
     def download_models(self):
         """Download SAM2 models if not present."""
-        myutils.download_model("sam2")
+        utils.download_model("sam2")
 
     @pytest.fixture
     def posData(self):
@@ -39,7 +39,7 @@ class TestSAM2AutomaticSegmentation:
         """Test SAM2 automatic segmentation on sampled frames."""
         frames, frame_indices = test_frames
 
-        acdcSegment = myutils.import_segment_module("sam2")
+        acdcSegment = utils.import_segment_module("sam2")
 
         model = acdcSegment.Model(
             model_type="Tiny",

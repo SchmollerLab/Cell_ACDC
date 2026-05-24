@@ -6,9 +6,9 @@ import numpy as np
 
 import qtpy.compat
 
-from cellacdc import printl, myutils, apps, load, core, widgets
+from cellacdc import printl, utils, apps, load, core, widgets
 from cellacdc._run import _setup_app
-from cellacdc.utils.base import NewThreadMultipleExpBaseUtil
+from cellacdc.tools.base import NewThreadMultipleExpBaseUtil
 from cellacdc import io
 
 DEBUG = False
@@ -17,13 +17,13 @@ DEBUG = False
 def ask_select_folder():
     selected_path = qtpy.compat.getexistingdirectory(
         caption="Select experiment folder to analyse",
-        basedir=myutils.getMostRecentPath(),
+        basedir=utils.getMostRecentPath(),
     )
     return selected_path
 
 
 def get_exp_path_pos_foldernames(selected_path):
-    folder_type = myutils.determine_folder_type(selected_path)
+    folder_type = utils.determine_folder_type(selected_path)
     is_pos_folder, is_images_folder, exp_path = folder_type
     if is_pos_folder:
         exp_path = os.path.dirname(selected_path)
@@ -34,7 +34,7 @@ def get_exp_path_pos_foldernames(selected_path):
         pos_foldernames = [os.path.basename(pos_path)]
     else:
         exp_path = selected_path
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = utils.get_pos_foldernames(exp_path)
 
     return exp_path, pos_foldernames
 
@@ -78,7 +78,7 @@ def run():
     if not selected_path:
         exit("Execution cancelled")
 
-    myutils.addToRecentPaths(selected_path)
+    utils.addToRecentPaths(selected_path)
     exp_path, pos_foldernames = get_exp_path_pos_foldernames(selected_path)
 
     if len(pos_foldernames) > 1:

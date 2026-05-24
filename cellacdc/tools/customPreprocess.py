@@ -2,7 +2,7 @@ import os
 
 import pandas as pd
 
-from .. import apps, myutils, workers, widgets, html_utils, load, printl
+from .. import apps, utils, workers, widgets, html_utils, load, printl
 
 from .base import NewThreadMultipleExpBaseUtil
 
@@ -17,7 +17,7 @@ class CustomPreprocessUtil(NewThreadMultipleExpBaseUtil):
         progressDialogueTitle: str,
         parent=None,
     ):
-        module = myutils.get_module_name(__file__)
+        module = utils.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, parent=parent
         )
@@ -36,7 +36,7 @@ class CustomPreprocessUtil(NewThreadMultipleExpBaseUtil):
         for p, pos in enumerate(pos_foldernames):
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, "Images")
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            basename, chNames = utils.getBasenameAndChNames(images_path)
             channel_names.update(chNames)
             if df_metadata is not None:
                 continue

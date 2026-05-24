@@ -1,4 +1,4 @@
-from .. import apps, myutils, workers, widgets, html_utils
+from .. import apps, utils, workers, widgets, html_utils
 
 from .base import NewThreadMultipleExpBaseUtil
 
@@ -14,7 +14,7 @@ class Stack2DsegmTo3Dsegm(NewThreadMultipleExpBaseUtil):
         SizeZ: int,
         parent=None,
     ):
-        module = myutils.get_module_name(__file__)
+        module = utils.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, parent=parent
         )

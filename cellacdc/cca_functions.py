@@ -22,7 +22,7 @@ if GUI_INSTALLED:
     from . import _run
 
 from . import load, cca_df_colnames
-from . import myutils, prompts, html_utils, printl
+from . import utils, prompts, html_utils, printl
 
 default_summable_columns = (
     "cell_area_um2",
@@ -43,7 +43,7 @@ def configuration_dialog():
     data_dirs = []
     positions = []
     while continue_selection:
-        MostRecentPath = myutils.getMostRecentPath()
+        MostRecentPath = utils.getMostRecentPath()
         data_dir = QFileDialog.getExistingDirectory(
             None,
             "Select experiment folder containing Position_n folders ",
@@ -53,7 +53,7 @@ def configuration_dialog():
             continue_selection = False
             break
 
-        myutils.addToRecentPaths(data_dir)
+        utils.addToRecentPaths(data_dir)
         foldername = os.path.basename(data_dir)
         if foldername == "Images":
             pos_path = os.path.dirname(data_dir)
@@ -64,7 +64,7 @@ def configuration_dialog():
             data_dir = os.path.dirname(data_dir)
             pos = [os.path.basename(pos_path)]
         else:
-            available_pos = myutils.get_pos_foldernames(data_dir)
+            available_pos = utils.get_pos_foldernames(data_dir)
             if not available_pos:
                 print("******************************")
                 print("Selected folder does not contain any Position folders.")
@@ -235,7 +235,7 @@ def calculate_downstream_data(
                 temp_df["position"] = positions[file_idx][pos_idx]
                 temp_df["directory"] = pos_dir
                 print("Saving calculated data for next time...")
-                files_in_curr_dir = myutils.listdir(pos_dir)
+                files_in_curr_dir = utils.listdir(pos_dir)
                 common_prefix = _determine_common_prefix(files_in_curr_dir)
                 save_path = os.path.join(
                     pos_dir, f"{common_prefix}cca_properties_downstream.csv"

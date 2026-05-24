@@ -4,7 +4,7 @@ import skimage.measure
 
 from typing import Tuple
 
-from cellacdc import printl, myutils, core
+from cellacdc import printl, utils, core
 
 import inspect
 
@@ -109,7 +109,7 @@ class Model:
         self.img_ndim = None
         self.z_axis = None
         self.channel_axis = None
-        self.cp_version = myutils.get_cellpose_major_version()
+        self.cp_version = utils.get_cellpose_major_version()
         self._sizemodelnotfound = True
         self.batch_size = None
         self.printed_model_params = False
@@ -155,7 +155,7 @@ class Model:
                 print(f"Image min: {sample_img.min()}, max: {sample_img.max()}")
             self.printed_model_params = True
 
-        out, removed_kwargs = myutils.try_kwargs(self.model.eval, image, **kwargs)
+        out, removed_kwargs = utils.try_kwargs(self.model.eval, image, **kwargs)
         segm = out[0]
         if removed_kwargs:
             print(
@@ -660,7 +660,7 @@ def _initialize_image(
 
 def check_directml_gpu_gpu(model_name, directml_gpu, gpu, ask_install=True):
     if ask_install:
-        proceed, available_frameworks_list = myutils.check_gpu_available(
+        proceed, available_frameworks_list = utils.check_gpu_available(
             model_name,
             use_gpu=(gpu or directml_gpu),
             cuda=gpu,

@@ -141,7 +141,7 @@ import pyqtgraph as pg
 
 pg.setConfigOption("imageAxisOrder", "row-major")
 
-from .. import myutils, measurements, is_mac, is_win, html_utils, is_linux
+from .. import utils, measurements, is_mac, is_win, html_utils, is_linux
 from .. import printl, settings_folderpath
 from .. import colors, config
 from .. import html_path
@@ -687,7 +687,7 @@ class KeptObjectIDsList(list):
         super().__init__(*args)
 
     def setText(self):
-        text = myutils.format_IDs(self)
+        text = utils.format_IDs(self)
 
         self.lineEdit.setText(text)
 
@@ -789,7 +789,7 @@ class myMessageBox(_base_widgets.QBaseDialog):
             txt = "Reveal in Finder..." if is_mac else "Show in Explorer..."
         self.showInFileManagButton = showInFileManagerButton(txt)
         self.buttonsLayout.addWidget(self.showInFileManagButton)
-        func = partial(myutils.showInExplorer, path)
+        func = partial(utils.showInExplorer, path)
         self.showInFileManagButton.clicked.connect(func)
 
     def addBrowseUrlButton(self, url, button_text=""):
@@ -1140,7 +1140,7 @@ class myMessageBox(_base_widgets.QBaseDialog):
                 self.addImage(image_path)
 
         if layouts is not None:
-            if myutils.is_iterable(layouts):
+            if utils.is_iterable(layouts):
                 for layout in layouts:
                     self.addLayout(layout)
             else:
@@ -1149,7 +1149,7 @@ class myMessageBox(_base_widgets.QBaseDialog):
         if widgets is not None:
             self._layout.addItem(QSpacerItem(20, 20), self.currentRow, 1)
             self.currentRow += 1
-            if myutils.is_iterable(widgets):
+            if utils.is_iterable(widgets):
                 for widget in widgets:
                     self.addWidget(widget)
             else:
@@ -3888,7 +3888,7 @@ class SamInputPointsWidget(QWidget):
 
         self.editButton = editPushButton()
         self.browseButton = browseFileButton(
-            ext={"CSV": ".csv"}, start_dir=myutils.getMostRecentPath()
+            ext={"CSV": ".csv"}, start_dir=utils.getMostRecentPath()
         )
 
         _layout.addWidget(self.lineEntry)
@@ -3957,7 +3957,7 @@ class SamInputPointsWidget(QWidget):
         # Check if basename is present in metadata
         folderpath = os.path.dirname(filepath)
         basename = None
-        for file in myutils.listdir(folderpath):
+        for file in utils.listdir(folderpath):
             if file.endswith("metadata.csv"):
                 metadata_csv_path = os.path.join(folderpath, file)
                 df = pd.read_csv(metadata_csv_path, index_col="Description")
@@ -3972,7 +3972,7 @@ class SamInputPointsWidget(QWidget):
         if is_images_folder:
             images_path = folderpath
             img_filepath = None
-            for file in myutils.listdir(images_path):
+            for file in utils.listdir(images_path):
                 if file.endswith(".tif"):
                     img_filepath = os.path.join(images_path, file)
                     break
@@ -4048,7 +4048,7 @@ class installJavaDialog(myMessageBox):
         self.scrollArea = QScrollArea()
         _container = QWidget()
         _layout = QVBoxLayout()
-        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
+        for t, text in enumerate(utils.install_javabridge_instructions_text()):
             label = QLabel()
             label.setText(text)
             if t == 1 or t == 2:
@@ -4061,10 +4061,10 @@ class installJavaDialog(myMessageBox):
                 copyButton.setIcon(QIcon(":edit-copy.svg"))
                 copyButton.setText("Copy link")
                 if t == 1:
-                    copyButton.textToCopy = myutils.jdk_windows_url()
+                    copyButton.textToCopy = utils.jdk_windows_url()
                     code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
                 else:
-                    copyButton.textToCopy = myutils.cpp_windows_url()
+                    copyButton.textToCopy = utils.cpp_windows_url()
                     screenshotButton = QToolButton()
                     screenshotButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
                     screenshotButton.setIcon(QIcon(":cog.svg"))
@@ -4098,7 +4098,7 @@ class installJavaDialog(myMessageBox):
         self.scrollArea = QScrollArea()
         _container = QWidget()
         _layout = QVBoxLayout()
-        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
+        for t, text in enumerate(utils.install_javabridge_instructions_text()):
             label = QLabel()
             label.setText(text)
             # label.setWordWrap(True)
@@ -4111,9 +4111,9 @@ class installJavaDialog(myMessageBox):
                 copyButton.setIcon(QIcon(":edit-copy.svg"))
                 copyButton.setText("Copy")
                 if t == 1:
-                    copyButton.textToCopy = myutils._install_homebrew_command()
+                    copyButton.textToCopy = utils._install_homebrew_command()
                 else:
-                    copyButton.textToCopy = myutils._brew_install_java_command()
+                    copyButton.textToCopy = utils._brew_install_java_command()
                 copyButton.clicked.connect(self.copyToClipboard)
                 code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
                 # code_layout.addStretch(1)
@@ -4138,7 +4138,7 @@ class installJavaDialog(myMessageBox):
         self.scrollArea = QScrollArea()
         _container = QWidget()
         _layout = QVBoxLayout()
-        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
+        for t, text in enumerate(utils.install_javabridge_instructions_text()):
             label = QLabel()
             label.setText(text)
             # label.setWordWrap(True)
@@ -4151,11 +4151,11 @@ class installJavaDialog(myMessageBox):
                 copyButton.setIcon(QIcon(":edit-copy.svg"))
                 copyButton.setText("Copy")
                 if t == 1:
-                    copyButton.textToCopy = myutils._apt_update_command()
+                    copyButton.textToCopy = utils._apt_update_command()
                 elif t == 2:
-                    copyButton.textToCopy = myutils._apt_install_java_command()
+                    copyButton.textToCopy = utils._apt_install_java_command()
                 elif t == 3:
-                    copyButton.textToCopy = myutils._apt_gcc_command()
+                    copyButton.textToCopy = utils._apt_gcc_command()
                 copyButton.clicked.connect(self.copyToClipboard)
                 code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
                 # code_layout.addStretch(1)
@@ -4203,26 +4203,26 @@ class installJavaDialog(myMessageBox):
                     subprocess.check_call(["brew", "update"])
                 except Exception as e:
                     subprocess.run(
-                        myutils._install_homebrew_command(),
+                        utils._install_homebrew_command(),
                         check=True,
                         text=True,
                         shell=True,
                     )
                 subprocess.run(
-                    myutils._brew_install_java_command(),
+                    utils._brew_install_java_command(),
                     check=True,
                     text=True,
                     shell=True,
                 )
             elif is_linux:
                 subprocess.run(
-                    myutils._apt_gcc_command()(), check=True, text=True, shell=True
+                    utils._apt_gcc_command()(), check=True, text=True, shell=True
                 )
                 subprocess.run(
-                    myutils._apt_update_command()(), check=True, text=True, shell=True
+                    utils._apt_update_command()(), check=True, text=True, shell=True
                 )
                 subprocess.run(
-                    myutils._apt_install_java_command()(),
+                    utils._apt_install_java_command()(),
                     check=True,
                     text=True,
                     shell=True,
@@ -4261,7 +4261,7 @@ class installJavaDialog(myMessageBox):
 
 class selectTrackerGUI(QDialogListbox):
     def __init__(self, SizeT, currentFrameNo=1, parent=None):
-        trackers = myutils.get_list_of_trackers()
+        trackers = utils.get_list_of_trackers()
         super().__init__(
             "Select tracker",
             "Select one of the following trackers",
@@ -4743,7 +4743,7 @@ class PreProcessingSelector(QComboBox):
     def askSetParams(self, df_metadata=None, addApplyButton=False):
         method = self.currentText()
         function = PREPROCESS_MAPPER[method]["function"]
-        params_argspecs = myutils.get_function_argspec(
+        params_argspecs = utils.get_function_argspec(
             function,
             args_to_skip={"logger_func", "apply_to_all_zslices", "apply_to_all_frames"},
         )
@@ -4852,7 +4852,7 @@ class WhitelistLineEdit(KeepIDsLineEdit):
         if not isinstance(IDs, set) and not isinstance(IDs, list):
             raise TypeError("IDs must be a set or list")
 
-        formatted_text = myutils.format_IDs(IDs)
+        formatted_text = utils.format_IDs(IDs)
         super().setText(formatted_text)
 
 
@@ -4995,7 +4995,7 @@ class YeazV2SelectModelNameCombobox(ComboBox):
         if text != self._csi_text:
             return
 
-        start_dir = myutils.getMostRecentPath()
+        start_dir = utils.getMostRecentPath()
         model_filepath = qtpy.compat.getopenfilename(
             parent=self,
             caption="Select YeaZ weights file",

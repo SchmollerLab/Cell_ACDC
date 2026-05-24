@@ -29,7 +29,7 @@ from cellacdc import (
     exception_handler,
     html_utils,
     load,
-    myutils,
+    utils,
     prompts,
     user_manual_url,
     widgets,
@@ -204,7 +204,7 @@ class DataLoading(LayoutControls):
             if not is_imageJ_dtype:
                 data.img_data = skimage.img_as_ubyte(data.img_data)
 
-            myutils.to_tiff(tif_path, data.img_data)
+            utils.to_tiff(tif_path, data.img_data)
             self._openFolder(exp_path=exp_path, imageFilePath=tif_path)
 
     def _openFolder(self, checked=False, exp_path=None, imageFilePath=""):
@@ -257,7 +257,7 @@ class DataLoading(LayoutControls):
         self.addToRecentPaths(exp_path, logger=self.logger)
         self.addPathToOpenRecentMenu(exp_path)
 
-        folder_type = myutils.determine_folder_type(exp_path)
+        folder_type = utils.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
 
         self.titleLabel.setText("Loading data...", color=self.titleColor)
@@ -285,7 +285,7 @@ class DataLoading(LayoutControls):
 
         elif imageFilePath:
             # images_path = exp_path because called by openFile func
-            filenames = myutils.listdir(exp_path)
+            filenames = utils.listdir(exp_path)
             ch_names, basenameNotFound = ch_name_selector.get_available_channels(
                 filenames, exp_path
             )
@@ -302,7 +302,7 @@ class DataLoading(LayoutControls):
 
         # Get info from first position selected
         images_path = self.images_paths[0]
-        filenames = myutils.listdir(images_path)
+        filenames = utils.listdir(images_path)
         if ch_name_selector.is_first_call and user_ch_name is None:
             ch_names, _ = ch_name_selector.get_available_channels(
                 filenames, images_path
@@ -368,7 +368,7 @@ class DataLoading(LayoutControls):
         pass
 
     def addToRecentPaths(self, path, logger=None):
-        myutils.addToRecentPaths(path, logger=self.logger)
+        utils.addToRecentPaths(path, logger=self.logger)
 
     def askMismatchSegmDataShape(self, posData):
         msg = widgets.myMessageBox(wrapText=False)
@@ -529,7 +529,7 @@ class DataLoading(LayoutControls):
 
     def criticalFluoChannelNotFound(self, fluo_ch, posData):
         msg = widgets.myMessageBox(showCentered=False)
-        ls = "\n".join(myutils.listdir(posData.images_path))
+        ls = "\n".join(utils.listdir(posData.images_path))
         msg.setDetailedText(f"Files present in the {posData.relPath} folder:\n{ls}")
         title = "Requested channel data not found!"
         txt = html_utils.paragraph(
@@ -588,7 +588,7 @@ class DataLoading(LayoutControls):
         helpButton = widgets.helpPushButton("Help...")
         msg.addButton(helpButton)
         helpButton.clicked.disconnect()
-        helpButton.clicked.connect(partial(myutils.browse_url, data_structure_docs_url))
+        helpButton.clicked.connect(partial(utils.browse_url, data_structure_docs_url))
         msg.addShowInFileManagerButton(exp_path)
         msg.critical(self, "Incompatible folder", txt)
 
@@ -608,7 +608,7 @@ class DataLoading(LayoutControls):
 
     def getFileExtensions(self, images_path):
         alignedFound = any(
-            [f.find("_aligned.np") != -1 for f in myutils.listdir(images_path)]
+            [f.find("_aligned.np") != -1 for f in utils.listdir(images_path)]
         )
         if alignedFound:
             extensions = (
@@ -619,10 +619,10 @@ class DataLoading(LayoutControls):
         return extensions
 
     def getMostRecentPath(self):
-        return myutils.getMostRecentPath()
+        return utils.getMostRecentPath()
 
     def getPathFromChName(self, chName, posData):
-        ls = myutils.listdir(posData.images_path)
+        ls = utils.listdir(posData.images_path)
         endnames = {f[len(posData.basename) :]: f for f in ls}
         validEnds = ["_aligned.npz", "_aligned.h5", ".h5", ".tif", ".npz"]
         for end in validEnds:
@@ -1398,9 +1398,9 @@ class DataLoading(LayoutControls):
         self.AutoPilot = None
 
     def warnMemoryNotSufficient(self, total_ram, available_ram, required_ram):
-        total_ram = myutils._bytes_to_GB(total_ram)
-        available_ram = myutils._bytes_to_GB(available_ram)
-        required_ram = myutils._bytes_to_GB(required_ram)
+        total_ram = utils._bytes_to_GB(total_ram)
+        available_ram = utils._bytes_to_GB(available_ram)
+        required_ram = utils._bytes_to_GB(required_ram)
         required_perc = round(100 * required_ram / available_ram)
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(f"""
@@ -1515,7 +1515,7 @@ class DataLoading(LayoutControls):
                 if _posData is None:
                     continue
                 _, filename = self.getPathFromChName(user_ch_name, _posData)
-                df = myutils.getDefault_SegmInfo_df(_posData, filename)
+                df = utils.getDefault_SegmInfo_df(_posData, filename)
                 _posData.segmInfo_df = pd.concat([df, _posData.segmInfo_df])
                 unique_idx = ~_posData.segmInfo_df.index.duplicated()
                 _posData.segmInfo_df = _posData.segmInfo_df[unique_idx]
@@ -1532,7 +1532,7 @@ class DataLoading(LayoutControls):
                     self.worker.abort = True
                     self.waitCond.wakeAll()
                     return
-                dst_df = myutils.getDefault_SegmInfo_df(_posData, dstFilename)
+                dst_df = utils.getDefault_SegmInfo_df(_posData, dstFilename)
                 for z_info in cellacdc_df.itertuples():
                     frame_i = z_info.Index
                     zProjHow = z_info.which_z_proj

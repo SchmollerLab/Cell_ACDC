@@ -494,11 +494,11 @@ class CellCycle(UndoRedo):
         # Check if model needs to be imported
         acdcSegment = self.acdcSegment_li[idx]
         if acdcSegment is None:
-            acdcSegment = myutils.import_segment_module(model_name)
+            acdcSegment = utils.import_segment_module(model_name)
             self.acdcSegment_li[idx] = acdcSegment
 
         # Read all models parameters
-        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+        init_params, segment_params = utils.getModelArgSpec(acdcSegment)
         # Prompt user to enter the model parameters
         try:
             url = acdcSegment.url_help()
@@ -522,14 +522,14 @@ class CellCycle(UndoRedo):
             return
 
         use_gpu = win.init_kwargs.get("gpu", False)
-        proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
+        proceed = utils.check_gpu_available(model_name, use_gpu, qparent=self)
         if not proceed:
             self.logger.info("Segmentation process cancelled.")
             self.titleLabel.setText("Segmentation process cancelled.")
             return
 
         self.model_kwargs = win.model_kwargs
-        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+        model = utils.init_segm_model(acdcSegment, posData, win.init_kwargs)
         if model is None:
             self.logger.info("Segmentation process cancelled.")
             self.titleLabel.setText("Segmentation process cancelled.")

@@ -9,7 +9,7 @@ from tqdm import tqdm
 from qtpy.QtCore import Signal, QThread
 from qtpy.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QStyle
 
-from .. import widgets, apps, workers, html_utils, myutils, gui, load, printl
+from .. import widgets, apps, workers, html_utils, utils, gui, load, printl
 
 
 class AcdcToSymDivUtil(QDialog):
@@ -19,7 +19,7 @@ class AcdcToSymDivUtil(QDialog):
 
         self.parent = parent
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        logger, logs_path, log_path, log_filename = utils.setupLogger(
             module="utils.AcdcToSymDiv"
         )
         self.logger = logger
@@ -125,10 +125,10 @@ class AcdcToSymDivUtil(QDialog):
         for p, pos in enumerate(pos_foldernames):
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, "Images")
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            basename, chNames = utils.getBasenameAndChNames(images_path)
             # Use first found channel, it doesn't matter for metrics
             for chName in chNames:
-                filePath = myutils.getChannelFilePath(images_path, chName)
+                filePath = utils.getChannelFilePath(images_path, chName)
                 if filePath:
                     break
             else:

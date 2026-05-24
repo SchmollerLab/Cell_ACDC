@@ -14,7 +14,7 @@ import pandas as pd
 import numpy as np
 import skimage.io
 
-from . import path, load, myutils, printl
+from . import path, load, utils, printl
 from . import moth_bud_tot_selected_columns_filepath
 from . import saved_measurements_selections_folderpath
 from . import config
@@ -171,7 +171,7 @@ def save_image_data(filepath, img_data):
     elif filepath.endswith(".npy"):
         np.save(filepath, img_data)
     else:
-        myutils.to_tiff(filepath, img_data)
+        utils.to_tiff(filepath, img_data)
     return np.squeeze(img_data)
 
 
@@ -215,7 +215,7 @@ def move_separate_channels_tiffs_to_pos_folders(
     extension=".tif",
 ):
     basenames = set()
-    for file in myutils.listdir(tiffs_folderpath):
+    for file in utils.listdir(tiffs_folderpath):
         if not file.endswith(extension):
             continue
 
@@ -237,7 +237,7 @@ def move_separate_channels_tiffs_to_pos_folders(
         images_path = os.path.join(pos_folderpath, "Images")
 
         os.makedirs(images_path, exist_ok=True)
-        for file in myutils.listdir(tiffs_folderpath):
+        for file in utils.listdir(tiffs_folderpath):
             if not file.startswith(basename):
                 continue
 

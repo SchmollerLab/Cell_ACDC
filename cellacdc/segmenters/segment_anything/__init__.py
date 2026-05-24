@@ -1,11 +1,11 @@
-from cellacdc import myutils
+from cellacdc import utils
 
-myutils.check_install_segment_anything()
+utils.check_install_segment_anything()
 
 import os
 from cellacdc import segment_anything_weights_filenames
 
-_, sam_segmenters_path = myutils.get_model_path(
+_, sam_segmenters_path = utils.get_model_path(
     "segment_anything", create_temp_dir=False
 )
 

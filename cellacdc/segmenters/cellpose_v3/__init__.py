@@ -1,6 +1,6 @@
-import cellacdc.myutils as myutils
+import cellacdc.utils as utils
 
-myutils.check_install_cellpose(3)
+utils.check_install_cellpose(3)
 
 
 class AvailableModelsv3:

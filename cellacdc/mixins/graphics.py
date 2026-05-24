@@ -24,7 +24,7 @@ from cellacdc import (
     apps,
     colors,
     html_utils,
-    myutils,
+    utils,
     widgets,
     workers,
 )
@@ -2291,7 +2291,7 @@ class Graphics(PointsLayers):
 
         rgba_imgs_info = {}
         for filename in posData.ol_data:
-            chName = myutils.get_chname_from_basename(
+            chName = utils.get_chname_from_basename(
                 filename, posData.basename, remove_ext=False
             )
             if chName not in self.checkedOverlayChannels:
@@ -2538,7 +2538,7 @@ class Graphics(PointsLayers):
             return
         for channel, items in self.overlayLayersItems.items():
             _, lutItem, alphaSB = items[:3]
-            myutils.setRetainSizePolicy(lutItem, retain=True)
+            utils.setRetainSizePolicy(lutItem, retain=True)
         QTimer.singleShot(300, self.autoRange)
 
     def setTrackedLostObjectContour(self, obj):

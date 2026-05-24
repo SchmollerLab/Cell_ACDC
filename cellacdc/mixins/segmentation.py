@@ -29,7 +29,7 @@ class Segmentation(ToolActivation):
         if checked:
             self.askSegmParam = True
             # Ask which model
-            models = myutils.get_list_of_models()
+            models = utils.get_list_of_models()
             win = widgets.QDialogListbox(
                 "Select model",
                 "Select model to use for segmentation: ",
@@ -323,7 +323,7 @@ class Segmentation(ToolActivation):
         acdcSegment = self.acdcSegment_li[idx]
         if acdcSegment is None:
             self.logger.info(f"Importing {model_name}...")
-            acdcSegment = myutils.import_segment_module(model_name)
+            acdcSegment = utils.import_segment_module(model_name)
             self.acdcSegment_li[idx] = acdcSegment
 
         # Ask parameters if the user clicked on the action
@@ -334,7 +334,7 @@ class Segmentation(ToolActivation):
                 self.app.restoreOverrideCursor()
             self.segmModelName = model_name
             # Read all models parameters
-            init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+            init_params, segment_params = utils.getModelArgSpec(acdcSegment)
             # Prompt user to enter the model parameters
             try:
                 url = acdcSegment.url_help()
@@ -353,10 +353,10 @@ class Segmentation(ToolActivation):
                 self.model_kwargs = win.segment_kwargs
                 thresh_method = self.model_kwargs["threshold_method"]
                 gauss_sigma = self.model_kwargs["gauss_sigma"]
-                segment_params = myutils.insertModelArgSpec(
+                segment_params = utils.insertModelArgSpec(
                     segment_params, "threshold_method", thresh_method
                 )
-                segment_params = myutils.insertModelArgSpec(
+                segment_params = utils.insertModelArgSpec(
                     segment_params, "gauss_sigma", gauss_sigma
                 )
                 initLastParams = False
@@ -379,7 +379,7 @@ class Segmentation(ToolActivation):
             self.secondChannelName = win.secondChannelName
             self.preproc_recipe = win.preproc_recipe
 
-            myutils.log_segm_params(
+            utils.log_segm_params(
                 model_name,
                 win.init_kwargs,
                 win.model_kwargs,
@@ -391,13 +391,13 @@ class Segmentation(ToolActivation):
             )
 
             use_gpu = win.init_kwargs.get("gpu", False)
-            proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
+            proceed = utils.check_gpu_available(model_name, use_gpu, qparent=self)
             if not proceed:
                 self.logger.info("Segmentation process cancelled.")
                 self.titleLabel.setText("Segmentation process cancelled.")
                 return
 
-            model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+            model = utils.init_segm_model(acdcSegment, posData, win.init_kwargs)
             if model is None:
                 self.logger.info("Segmentation process cancelled.")
                 self.titleLabel.setText("Segmentation process cancelled.")
@@ -543,11 +543,11 @@ class Segmentation(ToolActivation):
         acdcSegment = self.acdcSegment_li[idx]
         if acdcSegment is None:
             self.logger.info(f"Importing {model_name}...")
-            acdcSegment = myutils.import_segment_module(model_name)
+            acdcSegment = utils.import_segment_module(model_name)
             self.acdcSegment_li[idx] = acdcSegment
 
         # Read all models parameters
-        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+        init_params, segment_params = utils.getModelArgSpec(acdcSegment)
         # Prompt user to enter the model parameters
         try:
             url = acdcSegment.url_help()
@@ -574,7 +574,7 @@ class Segmentation(ToolActivation):
         self.applyPostProcessing = win.applyPostProcessing
         self.preproc_recipe = win.preproc_recipe
 
-        myutils.log_segm_params(
+        utils.log_segm_params(
             model_name,
             win.init_kwargs,
             win.model_kwargs,
@@ -590,13 +590,13 @@ class Segmentation(ToolActivation):
             secondChannelData = self.getSecondChannelData()
 
         use_gpu = win.init_kwargs.get("gpu", False)
-        proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
+        proceed = utils.check_gpu_available(model_name, use_gpu, qparent=self)
         if not proceed:
             self.logger.info("Segmentation process cancelled.")
             self.titleLabel.setText("Segmentation process cancelled.")
             return
 
-        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+        model = utils.init_segm_model(acdcSegment, posData, win.init_kwargs)
         if model is None:
             self.logger.info("Segmentation process cancelled.")
             self.titleLabel.setText("Segmentation process cancelled.")
@@ -741,7 +741,7 @@ class Segmentation(ToolActivation):
             self.logger.info("Adding custom model process stopped.")
             return
 
-        myutils.store_custom_model_path(modelFilePath)
+        utils.store_custom_model_path(modelFilePath)
         modelName = os.path.basename(os.path.dirname(modelFilePath))
         customModelAction = QAction(modelName)
         self.segmSingleFrameMenu.addAction(customModelAction)

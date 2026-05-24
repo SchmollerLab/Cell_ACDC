@@ -1,6 +1,6 @@
 import os
 
-from cellacdc import myutils, printl
+from cellacdc import utils, printl
 from cellacdc.segmenters._cellpose_base.acdcSegment import Model as CellposeBaseModel
 from cellacdc.segmenters._cellpose_base.acdcSegment import (
     BackboneOptions,
@@ -23,7 +23,7 @@ import numpy as np
 
 class Model(CellposeBaseModel):
     def __new__(cls, *args, **kwargs):
-        myutils.check_install_cellpose(3)
+        utils.check_install_cellpose(3)
         return super().__new__(cls)
 
     def __init__(
@@ -107,7 +107,7 @@ class Model(CellposeBaseModel):
         self.batch_size = batch_size
         self.init_successful = False
 
-        out = myutils.translateStrNone(
+        out = utils.translateStrNone(
             model_type, model_path, device, denoise_model, denoise_model_path
         )
         model_type, model_path, device, denoise_model, denoise_model_path = out

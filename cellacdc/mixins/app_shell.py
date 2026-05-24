@@ -221,7 +221,7 @@ class AppShell(Actions, Session):
 
     def openLogFile(self):
         self.logger.info(f'Opening log file "{self.log_path}"...')
-        myutils.showInExplorer(self.log_path)
+        utils.showInExplorer(self.log_path)
 
     def openNewWindow(self):
         self.logger.info("Opening a new window...")
@@ -301,12 +301,12 @@ class AppShell(Actions, Session):
     def showInExplorer_cb(self):
         posData = self.data[self.pos_i]
         path = posData.images_path
-        myutils.showInExplorer(path)
+        utils.showInExplorer(path)
 
     def showLogFiles(self):
         log_files_path = os.path.dirname(self.log_path)
         self.logger.info(f'Opening log files folder "{log_files_path}"...')
-        myutils.showInExplorer(log_files_path)
+        utils.showInExplorer(log_files_path)
 
     def showTipsAndTricks(self):
         from cellacdc.help import welcome

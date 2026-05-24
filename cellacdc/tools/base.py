@@ -7,7 +7,7 @@ from qtpy.QtCore import Qt, QThread, QSize
 from qtpy.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel
 from qtpy import QtGui
 
-from .. import exception_handler, myutils, html_utils, workers, widgets
+from .. import exception_handler, utils, html_utils, workers, widgets
 from .. import _critical_exception_gui
 
 import os
@@ -34,7 +34,7 @@ from .. import (
     apps,
     workers,
     html_utils,
-    myutils,
+    utils,
     gui,
     load,
     printl,
@@ -68,7 +68,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         self._parent = parent
         self.progressDialogueTitle = progressDialogueTitle
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(module=module)
+        logger, logs_path, log_path, log_filename = utils.setupLogger(module=module)
 
         log_init_util(logger, expPaths, title, module)
 
@@ -192,10 +192,10 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         for p, pos in enumerate(pos_foldernames):
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, "Images")
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            basename, chNames = utils.getBasenameAndChNames(images_path)
             # Use first found channel, it doesn't matter for basename
             for chName in chNames:
-                filePath = myutils.getChannelFilePath(images_path, chName)
+                filePath = utils.getChannelFilePath(images_path, chName)
                 if filePath:
                     break
             else:
@@ -309,10 +309,10 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         for p, pos in enumerate(pos_foldernames):
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, "Images")
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            basename, chNames = utils.getBasenameAndChNames(images_path)
             # Use first found channel, it doesn't matter for metrics
             for chName in chNames:
-                filePath = myutils.getChannelFilePath(images_path, chName)
+                filePath = utils.getChannelFilePath(images_path, chName)
                 if filePath:
                     break
             else:
@@ -383,10 +383,10 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         # for p, pos in enumerate(pos_foldernames):
         #     pos_path = os.path.join(exp_path, pos)
         #     images_path = os.path.join(pos_path, 'Images')
-        #     basename, chNames = myutils.getBasenameAndChNames(images_path)
+        #     basename, chNames = utils.getBasenameAndChNames(images_path)
         #     # Use first found channel, it doesn't matter for metrics
         #     for chName in chNames:
-        #         filePath = myutils.getChannelFilePath(images_path, chName)
+        #         filePath = utils.getChannelFilePath(images_path, chName)
         #         if filePath:
         #             break
         #     else:
@@ -519,7 +519,7 @@ class MainThreadSinglePosUtilBase(QDialog):
 
         self._parent = parent
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(module=module)
+        logger, logs_path, log_path, log_filename = utils.setupLogger(module=module)
         logger.info(f'Utility title: "{title}"')
         logger.info(f'Utility module: "{module}"')
 

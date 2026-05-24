@@ -4,7 +4,7 @@ import sys
 from importlib import import_module
 import traceback
 from tqdm import tqdm
-from . import config, myutils
+from . import config, utils
 
 
 def _install_tables(parent_software="Cell-ACDC"):
@@ -36,8 +36,8 @@ def _install_tables(parent_software="Cell-ACDC"):
             )
             print("-" * 60)
             print(txt)
-            conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
-            conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
+            conda_prefix, pip_prefix = utils.get_pip_conda_prefix()
+            conda_list, pip_list = utils.get_pip_conda_prefix(list_return=True)
 
             conda_txt = f"{conda_prefix} pytables"
             pip_text = f"{pip_prefix} --upgrade tables"
@@ -180,8 +180,8 @@ def _setup_gui_libraries(caller_name="Cell-ACDC", exit_at_end=True):
     try:
         import qtpy
     except ModuleNotFoundError as e:
-        conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
-        conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
+        conda_prefix, pip_prefix = utils.get_pip_conda_prefix()
+        conda_list, pip_list = utils.get_pip_conda_prefix(list_return=True)
 
         command_txt = f"{pip_prefix} --upgrade qtpy"
 
@@ -401,7 +401,7 @@ def download_model_params():
             pass
     if parser_args["YeaZModelsDownload"] or parser_args["AllModelsDownload"]:
         print("[INFO]: Downloading YeaZ models...")
-        from cellacdc.myutils import _download_yeaz_models
+        from cellacdc.utils import _download_yeaz_models
 
         try:
             _download_yeaz_models()
@@ -411,7 +411,7 @@ def download_model_params():
             pass
     if parser_args["DeepSeaModelsDownload"] or parser_args["AllModelsDownload"]:
         print("[INFO]: Downloading DeepSea models...")
-        from cellacdc.myutils import _download_deepsea_models
+        from cellacdc.utils import _download_deepsea_models
 
         try:
             _download_deepsea_models()
@@ -422,7 +422,7 @@ def download_model_params():
 
     if parser_args["TrackastraModelsDownload"] or parser_args["AllModelsDownload"]:
         print("[INFO]: Downloading TrackAstra models...")
-        # from cellacdc.myutils import _download_trackastra_models
+        # from cellacdc.utils import _download_trackastra_models
         from trackastra.model import Trackastra
 
         try:
@@ -620,12 +620,12 @@ def run_measurements_workflow(workflow_params, logger, log_path):
 
 
 def run_cli(ini_filepath):
-    from cellacdc import myutils
+    from cellacdc import utils
     from cellacdc.workflow.pipelines.full_workflow import build_full_workflow_graph
     from cellacdc.workflow.runnable import RunnableConfig
     from cellacdc.workflow.state import FullWorkflowState
 
-    logger, logs_path, log_path, log_filename = myutils.setupLogger(
+    logger, logs_path, log_path, log_filename = utils.setupLogger(
         module="cli", logs_path=None
     )
 
@@ -657,7 +657,7 @@ def run_cli(ini_filepath):
     )
 
     logger.info("**********************************************")
-    logger.info(f"Cell-ACDC command-line closed. {myutils.get_salute_string()}")
+    logger.info(f"Cell-ACDC command-line closed. {utils.get_salute_string()}")
     logger.info("**********************************************")
 
 
@@ -703,15 +703,15 @@ def _setup_numpy(caller_name="Cell-ACDC"):
     import numpy
 
     installed_numpy_version = numpy.__version__
-    is_numpy_version_within_range = myutils.is_pkg_version_within_range(
+    is_numpy_version_within_range = utils.is_pkg_version_within_range(
         installed_numpy_version, min_version=min_version, max_version=max_version
     )
 
     if is_numpy_version_within_range:
         return
 
-    conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
-    conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
+    conda_prefix, pip_prefix = utils.get_pip_conda_prefix()
+    conda_list, pip_list = utils.get_pip_conda_prefix(list_return=True)
 
     command_txt = f'{pip_prefix} --upgrade "{numpy_versions_txt}"'
 

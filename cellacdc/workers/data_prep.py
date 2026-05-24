@@ -30,7 +30,7 @@ from qtpy.QtCore import Signal, QObject, QMutex, QWaitCondition
 
 from cellacdc import html_utils
 
-from .. import load, myutils, core, prompts, printl, config, segm_re_pattern, io
+from .. import load, utils, core, prompts, printl, config, segm_re_pattern, io
 from .. import transformation, measurements, cca_functions
 from ..path import copy_or_move_tree
 from .. import features, plot
@@ -38,7 +38,7 @@ from .. import core
 from .. import cca_df_colnames, lineage_tree_cols, default_annot_df
 from .. import cca_df_colnames_with_tree
 from .. import cli
-from ..utils import resize
+from ..tools import resize
 from .. import segm_utils
 
 DEBUG = False
@@ -116,7 +116,7 @@ class reapplyDataPrepWorker(QObject):
             posPath = os.path.join(self.expPath, pos)
             imagesPath = os.path.join(posPath, "Images")
 
-            ls = myutils.listdir(imagesPath)
+            ls = utils.listdir(imagesPath)
             if p == 0:
                 ch_names, basenameNotFound = ch_name_selector.get_available_channels(
                     ls, imagesPath
@@ -201,7 +201,7 @@ class reapplyDataPrepWorker(QObject):
                     self.progress.emit("Saving prepped data...")
                     io.savez_compressed(posData.align_npz_path, imageData)
                     if hasattr(posData, "tif_path"):
-                        myutils.to_tiff(posData.tif_path, imageData)
+                        utils.to_tiff(posData.tif_path, imageData)
 
             self.updatePbar.emit()
             if self.abort:
@@ -229,7 +229,7 @@ class ImagesToPositionsWorker(QObject):
         self.progress.emit(f'Selected folder: "{self.folderPath}"')
         self.progress.emit(f'Target folder: "{self.targetFolderPath}"')
         self.progress.emit(" ")
-        ls = myutils.listdir(self.folderPath)
+        ls = utils.listdir(self.folderPath)
         numFiles = len(ls)
         self.initPbar.emit(numFiles)
         numPosDigits = len(str(numFiles))
@@ -265,7 +265,7 @@ class ImagesToPositionsWorker(QObject):
                 relPath = os.path.join(posName, "Images", newFilename)
                 tifFilePath = os.path.join(imagesPath, newFilename)
                 self.progress.emit(f"Saving to file: ...{os.sep}{relPath}")
-                myutils.to_tiff(tifFilePath, data)
+                utils.to_tiff(tifFilePath, data)
                 pos += 1
             except Exception as e:
                 self.progress.emit(
@@ -664,7 +664,7 @@ class FucciPreprocessWorker(BaseWorkerUtil):
                     first_ch_data, second_ch_data, self.fucciFilterKwargs
                 )
 
-                basename, chNames = myutils.getBasenameAndChNames(images_path)
+                basename, chNames = utils.getBasenameAndChNames(images_path)
                 _, ext = os.path.splitext(first_ch_filepath)
                 processed_filename = f"{basename}{appendedName}{ext}"
                 processed_filepath = os.path.join(images_path, processed_filename)
@@ -829,7 +829,7 @@ class CustomPreprocessWorkerGUI(QObject):
             return preprocessed_data
 
         try:
-            preprocessed_data = myutils.convert_to_dtype(preprocessed_data, image.dtype)
+            preprocessed_data = utils.convert_to_dtype(preprocessed_data, image.dtype)
         except Exception as err:
             preprocessed_data = preprocessed_data.astype(image.dtype)
         return preprocessed_data
@@ -1097,7 +1097,7 @@ class CustomPreprocessWorkerUtil(BaseWorkerUtil):
 
             keep_input_data_type = recipe[0].get("keep_input_data_type", True)
             if keep_input_data_type:
-                preprocessed_ch_data = myutils.convert_to_dtype(
+                preprocessed_ch_data = utils.convert_to_dtype(
                     preprocessed_ch_data, ch_image_data.dtype
                 )
 
@@ -1199,7 +1199,7 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             out_ext = ".tif"
             basename_ext = ""
         for images_path in image_paths:
-            basename, channels = myutils.getBasenameAndChNames(images_path)
+            basename, channels = utils.getBasenameAndChNames(images_path)
 
             savename = f"{basename}{basename_ext}{appended_text_filename}{out_ext}"
 

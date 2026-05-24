@@ -103,7 +103,7 @@ class Actions(ImageDisplay):
 
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
-        self.UserManualAction.triggered.connect(myutils.browse_docs)
+        self.UserManualAction.triggered.connect(utils.browse_docs)
         self.openLogFileAction.triggered.connect(self.openLogFile)
         self.showLogFilesAction.triggered.connect(self.showLogFiles)
         self.aboutAction.triggered.connect(self.showAbout)
@@ -469,7 +469,7 @@ class Actions(ImageDisplay):
         self.skipToNewIdAction.setDisabled(True)
 
         # Edit actions
-        models = myutils.get_list_of_models()
+        models = utils.get_list_of_models()
         models = [*models, "local_seg"]  # Add local_seg for SegForLostIDsAction
         self.segmActions = []
         self.modelNames = []
@@ -539,14 +539,14 @@ class Actions(ImageDisplay):
         self.trackWithYeazAction.setCheckable(True)
         self.trackingAlgosGroup.addAction(self.trackWithYeazAction)
 
-        rt_trackers = myutils.get_list_of_real_time_trackers()
+        rt_trackers = utils.get_list_of_real_time_trackers()
         for rt_tracker in rt_trackers:
             rtTrackerAction = QAction(rt_tracker, self)
             rtTrackerAction.setCheckable(True)
             self.trackingAlgosGroup.addAction(rtTrackerAction)
 
         self.trackWithAcdcAction.setChecked(True)
-        aliases = myutils.aliases_real_time_trackers()
+        aliases = utils.aliases_real_time_trackers()
 
         if "tracking_algorithm" in self.df_settings.index:
             trackingAlgo = self.df_settings.at["tracking_algorithm", "value"]

@@ -36,7 +36,7 @@ sys.path.append(cellacdc_path)
 
 # Custom modules
 from .. import exception_handler, printl
-from .. import prompts, load, myutils, apps, load, widgets, html_utils
+from .. import prompts, load, utils, apps, load, widgets, html_utils
 from .. import workers
 from .. import cellacdc_path, recentPaths_path, settings_folderpath
 from .. import io
@@ -137,7 +137,7 @@ class convertFileFormatWin(QMainWindow):
             f'Cell-ACDC - Convert .{self.from_} to .{self.to} - "{exp_path}"'
         )
 
-        folder_type = myutils.determine_folder_type(exp_path)
+        folder_type = utils.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
 
         print("Loading data...")
@@ -207,7 +207,7 @@ class convertFileFormatWin(QMainWindow):
                 return
 
             for pos_i, images_path in enumerate(tqdm(images_paths, ncols=100)):
-                ls = myutils.listdir(images_path)
+                ls = utils.listdir(images_path)
                 _basename = self.getBasename(images_path, selectedFilenames)
                 for file in ls:
                     if file.endswith(_endswith):
@@ -239,7 +239,7 @@ class convertFileFormatWin(QMainWindow):
             exit("Done.")
 
     def getBasename(self, images_path, selectedFilenames):
-        commonStartFilenames = myutils.filterCommonStart(images_path)
+        commonStartFilenames = utils.filterCommonStart(images_path)
         selector = prompts.select_channel_name()
         _, noBasename = selector.get_available_channels(
             commonStartFilenames, images_path, useExt=None
@@ -294,7 +294,7 @@ class convertFileFormatWin(QMainWindow):
         if self.to == "npy":
             np.save(newPath, data)
         elif self.to == "tif":
-            myutils.to_tiff(newPath, data)
+            utils.to_tiff(newPath, data)
         elif self.to == "npz":
             io.savez_compressed(newPath, data)
         print("")
@@ -309,7 +309,7 @@ class convertFileFormatWin(QMainWindow):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(f"""
             The following file is already existing:<br><br>
-            <code>{myutils.trim_path(newFilePath, depth=4)}</code><br><br>
+            <code>{utils.trim_path(newFilePath, depth=4)}</code><br><br>
             What do you want to do? 
         """)
         msg.addShowInFileManagerButton(newFilePath)
@@ -392,7 +392,7 @@ class convertFileFormatWin(QMainWindow):
         msg.critical(self, "Name of selected file not compatible", txt)
 
     def selectFiles(self, images_path, filterExt=None):
-        files = myutils.listdir(images_path)
+        files = utils.listdir(images_path)
         if filterExt is not None:
             items = []
             for file in files:
@@ -482,7 +482,7 @@ class ImagesToPositions(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        logger, logs_path, log_path, log_filename = utils.setupLogger(
             module="converter"
         )
 
@@ -571,7 +571,7 @@ class ImagesToPositions(QDialog):
         self.startButton.hide()
         self.stopButton.show()
 
-        MostRecentPath = myutils.getMostRecentPath()
+        MostRecentPath = utils.getMostRecentPath()
         folderPath = QFileDialog.getExistingDirectory(
             self, "Select folder containing images", MostRecentPath
         )
@@ -588,7 +588,7 @@ class ImagesToPositions(QDialog):
             self.stop()
             return
 
-        myutils.addToRecentPaths(tagertFolderPath, logger=self.logger)
+        utils.addToRecentPaths(tagertFolderPath, logger=self.logger)
 
         textToAppendInstructions = html_utils.paragraph(
             "Insert a <b>name to append</b> at the end of each new .tif file."

@@ -21,7 +21,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from cellacdc import myutils, widgets
+from cellacdc import utils, widgets
 from cellacdc.gui_decorators import resetViewRange
 
 from .image_controls import ImageControls
@@ -725,11 +725,11 @@ class LayoutControls(ImageControls, WindowEvents, LabelRoi):
             retainSpaceZ = False
         else:
             retainSpaceZ = checked
-        myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=retainSpaceZ)
-        myutils.setRetainSizePolicy(self.zProjComboBox, retain=retainSpaceZ)
-        myutils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=retainSpaceZ)
-        myutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=retainSpaceZ)
-        myutils.setRetainSizePolicy(self.overlay_z_label, retain=retainSpaceZ)
+        utils.setRetainSizePolicy(self.zSliceScrollBar, retain=retainSpaceZ)
+        utils.setRetainSizePolicy(self.zProjComboBox, retain=retainSpaceZ)
+        utils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=retainSpaceZ)
+        utils.setRetainSizePolicy(self.zProjOverlay_CB, retain=retainSpaceZ)
+        utils.setRetainSizePolicy(self.overlay_z_label, retain=retainSpaceZ)
 
         QTimer.singleShot(200, self.resizeGui)
 

@@ -3,7 +3,7 @@ import os
 from trackastra.model import Trackastra
 from trackastra.tracking import graph_to_ctc
 
-from ... import _types, myutils, core
+from ... import _types, utils, core
 
 from . import get_pretrained_model_names
 
@@ -40,7 +40,7 @@ class tracker:
             If `True`, attempts to try to use the GPU for inference.
             Default is False
         """
-        device = myutils.get_torch_device()
+        device = utils.get_torch_device()
         if model_folder_path:
             self.model = Trackastra.from_folder(model_folder_path, device=str(device))
         else:
@@ -107,7 +107,7 @@ class tracker:
         if linking_mode == "greedy_nodiv":
             return tracked_video
 
-        acdc_df, cca_dfs, asym_segm_tracked = myutils.df_ctc_to_acdc_df(
+        acdc_df, cca_dfs, asym_segm_tracked = utils.df_ctc_to_acdc_df(
             df_ctc,
             tracked_video,
             cell_division_mode=cell_division_mode,

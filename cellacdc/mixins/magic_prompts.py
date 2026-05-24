@@ -30,7 +30,7 @@ class MagicPrompts(Graphics):
     ):
         self.logger.info(f"Initializing promptable model {model_name}...")
         init_kwargs = win.init_kwargs
-        model = myutils.init_prompt_segm_model(
+        model = utils.init_prompt_segm_model(
             acdcPromptSegment, posData, win.init_kwargs
         )
         toolbar.model = model
@@ -312,7 +312,7 @@ class MagicPrompts(Graphics):
             self.logger.info("Adding custom promptable model process stopped.")
             return
 
-        myutils.store_custom_promptable_model_path(modelFilePath)
+        utils.store_custom_promptable_model_path(modelFilePath)
 
         msg = widgets.myMessageBox(wrapText=False)
         info_txt = html_utils.paragraph(f"""
@@ -394,10 +394,10 @@ class MagicPrompts(Graphics):
     ):
         posData = self.data[self.pos_i]
 
-        init_argspecs = myutils.setDefaultValueArgSpecsFromKwargs(
+        init_argspecs = utils.setDefaultValueArgSpecsFromKwargs(
             init_argspecs, init_kwargs
         )
-        segment_argspecs = myutils.setDefaultValueArgSpecsFromKwargs(
+        segment_argspecs = utils.setDefaultValueArgSpecsFromKwargs(
             segment_argspecs, segment_kwargs
         )
 

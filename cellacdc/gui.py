@@ -5,8 +5,8 @@ import numpy as np
 from qtpy.QtCore import Qt, QTimer, Signal
 from qtpy.QtWidgets import QMainWindow, QButtonGroup, QWidget
 
-from . import myutils, autopilot, favourite_func_metrics_csv_path, settings_folderpath
-from .myutils import setupLogger
+from . import utils, autopilot, favourite_func_metrics_csv_path, settings_folderpath
+from .utils import setupLogger
 from .gui_decorators import get_data_exception_handler, resetViewRange
 
 custom_annot_path = os.path.join(settings_folderpath, "custom_annotations.json")
@@ -104,7 +104,7 @@ class guiWin(
         self.mainWin = mainWin
         self.app = app
         self.closeGUI = False
-        self._acdc_version = myutils.read_version()
+        self._acdc_version = utils.read_version()
 
         self.setAcceptDrops(True)
         self._appName = "Cell-ACDC"

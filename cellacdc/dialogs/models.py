@@ -134,7 +134,7 @@ from .. import is_conda_env
 from .. import printl
 from .. import colors
 from .. import issues_url
-from .. import myutils
+from .. import utils
 from .. import qutils
 from .. import _palettes
 from .. import base_cca_dict
@@ -188,7 +188,7 @@ def addCustomModelMessages(QParent=None):
     if msg.cancel:
         return
     if msg.clickedButton == infoButton:
-        txt = myutils.get_add_custom_model_instructions()
+        txt = utils.get_add_custom_model_instructions()
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         msg.information(
             QParent,
@@ -234,7 +234,7 @@ def addCustomPromptModelMessages(QParent=None):
     if msg.cancel:
         return
     if msg.clickedButton == infoButton:
-        txt = myutils.get_add_custom_prompt_model_instructions()
+        txt = utils.get_add_custom_prompt_model_instructions()
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         msg.information(
             QParent,
@@ -271,7 +271,7 @@ class SelectPromptableModelDialog(QBaseDialog):
         mainLayout.addWidget(label, alignment=Qt.AlignCenter)
 
         listBox = widgets.listWidget()
-        models = myutils.get_list_of_promptable_models()
+        models = utils.get_list_of_promptable_models()
         listBox.addItems(models)
         listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         listBox.setCurrentRow(0)
@@ -315,7 +315,7 @@ class QDialogSelectModel(QDialog):
         topLayout.addWidget(label, alignment=Qt.AlignCenter)
 
         listBox = widgets.listWidget()
-        models = myutils.get_list_of_models()
+        models = utils.get_list_of_models()
 
         if customFirst:
             try:
@@ -381,7 +381,7 @@ class QDialogSelectModel(QDialog):
             modelFilePath = addCustomModelMessages(self)
             if modelFilePath is None:
                 return
-            myutils.store_custom_model_path(modelFilePath)
+            utils.store_custom_model_path(modelFilePath)
             modelName = os.path.basename(os.path.dirname(modelFilePath))
             item = QListWidgetItem(modelName)
             self.listBox.addItem(item)
@@ -869,7 +869,7 @@ class QDialogModelParams(QDialog):
             "Select INI file...",
             title="Select INI file to load entire recipe",
             openFolder=False,
-            start_dir=myutils.getMostRecentPath(),
+            start_dir=utils.getMostRecentPath(),
             ext={"INI": ".ini"},
         )
         win = QTreeDialog(
@@ -1861,13 +1861,13 @@ class downloadModel:
         self._parent = parent
 
     def download(self):
-        model_url = myutils._model_url(self.model_name)
+        model_url = utils._model_url(self.model_name)
         if model_url is None:
             return
 
-        _, model_path = myutils.get_model_path(self.model_name, create_temp_dir=False)
+        _, model_path = utils.get_model_path(self.model_name, create_temp_dir=False)
         model_name = self.model_name
-        model_exists = myutils.check_model_exists(model_path, model_name)
+        model_exists = utils.check_model_exists(model_path, model_name)
         if not model_exists:
             self.warnDownloadModel(model_path, self.model_name)
         try:
@@ -1877,7 +1877,7 @@ class downloadModel:
         except Exception as err:
             pass
 
-        success = myutils.download_model(self.model_name)
+        success = utils.download_model(self.model_name)
         if not success:
             self.criticalDowloadFailed()
 
@@ -1898,10 +1898,10 @@ class downloadModel:
         model_name = self.model_name
         m = model_name.lower()
         weights_filenames = getattr(cellacdc, f"{m}_weights_filenames")
-        url, alternative_url = myutils._model_url(model_name, return_alternative=True)
+        url, alternative_url = utils._model_url(model_name, return_alternative=True)
         url_href = f'<a href="{url}">this link</a>'
         alternative_url_href = f'<a href="{alternative_url}">this link</a>'
-        _, model_path = myutils.get_model_path(model_name, create_temp_dir=False)
+        _, model_path = utils.get_model_path(model_name, create_temp_dir=False)
         txt = html_utils.paragraph(f"""
             Automatic download of {model_name} failed.<br><br>
             Please, <b>manually download</b> the model weights from {url_href} or
@@ -1972,7 +1972,7 @@ class SelectAcdcDfVersionToRestore(QBaseDialog):
         recovery_folderpath = posData.recoveryFolderpath()
         unsaved_recovery_folderpath = os.path.join(recovery_folderpath, "never_saved")
         self.neverSavedFolderpath = unsaved_recovery_folderpath
-        files = myutils.listdir(unsaved_recovery_folderpath)
+        files = utils.listdir(unsaved_recovery_folderpath)
         csv_files = [file for file in files if file.endswith(".csv")]
         self.neverSavedListBox = None
         if csv_files:
@@ -2207,7 +2207,7 @@ class InstallPyTorchDialog(QBaseDialog):
         preferencesLayout.addWidget(self.cmptPlatformCombobox, row, 1)
 
         row += 1
-        pip_prefix, conda_prefix = myutils.get_pip_conda_prefix()
+        pip_prefix, conda_prefix = utils.get_pip_conda_prefix()
         self.commandWidget = widgets.CopiableCommandWidget(
             command=f"{pip_prefix} torch"
         )
@@ -2240,7 +2240,7 @@ class InstallPyTorchDialog(QBaseDialog):
         osText = self.osCombobox.currentText()
         pkgManager = self.pkgManagerCombobox.currentText()
         cmptPlatform = self.cmptPlatformCombobox.currentText()
-        command = myutils.get_pytorch_command()[osText][pkgManager][cmptPlatform]
+        command = utils.get_pytorch_command()[osText][pkgManager][cmptPlatform]
         self.commandWidget.setCommand(command)
 
     def ok_cb(self):

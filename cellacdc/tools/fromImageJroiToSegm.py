@@ -1,4 +1,4 @@
-from .. import myutils, workers, widgets, html_utils
+from .. import utils, workers, widgets, html_utils
 from .. import apps
 
 from .base import NewThreadMultipleExpBaseUtil
@@ -14,7 +14,7 @@ class fromImageJRoiToSegmUtil(NewThreadMultipleExpBaseUtil):
         progressDialogueTitle: str,
         parent=None,
     ):
-        module = myutils.get_module_name(__file__)
+        module = utils.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, parent=parent
         )

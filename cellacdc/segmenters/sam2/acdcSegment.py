@@ -14,7 +14,7 @@ from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
-from cellacdc import myutils, widgets, printl
+from cellacdc import utils, widgets, printl
 
 
 class AvailableModels:
@@ -395,7 +395,7 @@ class Model:
 
     def _init_embeddings(self, img_rgb):
         if img_rgb.ndim == 2:
-            img_rgb = myutils.to_uint8(img_rgb)
+            img_rgb = utils.to_uint8(img_rgb)
             img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB)
 
         # Create embeddings only if new image
@@ -422,7 +422,7 @@ class Model:
         automatic_removal_of_background: bool = False,
     ) -> np.ndarray:
 
-        img = myutils.to_uint8(image)
+        img = utils.to_uint8(image)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         labels = np.zeros(image.shape[:2], dtype=np.uint32)
 

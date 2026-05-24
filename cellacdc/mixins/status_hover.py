@@ -19,7 +19,7 @@ class StatusHover(ImageDisplay):
             return txt
 
         for filename in posData.ol_data:
-            chName = myutils.get_chname_from_basename(
+            chName = utils.get_chname_from_basename(
                 filename, posData.basename, remove_ext=False
             )
             if chName not in self.checkedOverlayChannels:
@@ -54,7 +54,7 @@ class StatusHover(ImageDisplay):
     def _channelHoverValues(self, descr, channel, value, ff=None):
         if ff is None:
             n_digits = len(str(int(value)))
-            ff = myutils.get_number_fstring_formatter(
+            ff = utils.get_number_fstring_formatter(
                 type(value), precision=abs(n_digits - 5)
             )
         txt = f"<b>{descr} {channel}</b>: value={value:{ff}}"

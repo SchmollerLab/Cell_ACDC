@@ -324,7 +324,7 @@ class AnnotationDisplay(ModeControls):
                 continue
 
             for ID in new_cells:
-                curr_obj = myutils.get_obj_by_label(rp, ID)
+                curr_obj = utils.get_obj_by_label(rp, ID)
                 lin_tree_df_ID = lin_tree_df.loc[ID]
 
                 # lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
@@ -333,7 +333,7 @@ class AnnotationDisplay(ModeControls):
                 ):  # make sure that new obj where the parents are not known get skipped
                     continue
 
-                mother_obj = myutils.get_obj_by_label(
+                mother_obj = utils.get_obj_by_label(
                     prev_rp, lin_tree_df_ID["parent_ID_tree"]
                 )
 
@@ -713,7 +713,7 @@ class AnnotationDisplay(ModeControls):
         if not checked:
             return
 
-        aliases = myutils.aliases_real_time_trackers(reverse=True)
+        aliases = utils.aliases_real_time_trackers(reverse=True)
         if self.sender().text() in aliases:
             trackingAlgo = aliases[self.sender().text()]
         else:

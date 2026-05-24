@@ -2,7 +2,7 @@ import os
 
 import re
 
-from cellacdc import myutils
+from cellacdc import utils
 
 from . import EXTENSION_PACKAGE_MAPPER
 
@@ -10,7 +10,7 @@ pkg_regex = r"[a-zA-Z0-9_\-]+"
 
 
 def _check_install_bioio_bioformats(qparent=None):
-    myutils.check_install_package(
+    utils.check_install_package(
         "scyjava",
         installer="conda",
         is_cli=qparent is None,
@@ -18,7 +18,7 @@ def _check_install_bioio_bioformats(qparent=None):
         parent=qparent,
     )
 
-    myutils.check_install_package(
+    utils.check_install_package(
         "bioio-bioformats",
         installer="pip",
         is_cli=qparent is None,
@@ -44,7 +44,7 @@ def _check_install_extra_format_dependency(image_filepath: os.PathLike, qparent=
         _check_install_bioio_bioformats(qparent=qparent)
         return
 
-    myutils.check_install_package(
+    utils.check_install_package(
         package_name,
         installer="pip",
         is_cli=qparent is None,

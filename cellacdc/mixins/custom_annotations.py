@@ -208,7 +208,7 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
                 keySequence = widgets.KeySequenceFromText(keySequence)
             else:
                 keySequence = None
-            toolTip = myutils.getCustomAnnotTooltip(annotState)
+            toolTip = utils.getCustomAnnotTooltip(annotState)
             keepActive = annotState.get("keepActive", True)
             isHideChecked = annotState.get("isHideChecked", True)
 

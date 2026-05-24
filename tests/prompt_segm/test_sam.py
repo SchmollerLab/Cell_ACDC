@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from cellacdc import myutils
+from cellacdc import utils
 from tests.utils import (
     ensure_sam,
     get_test_dataset,
@@ -20,7 +20,7 @@ class TestPromptableSAM:
     @pytest.fixture(scope="class", autouse=True)
     def download_models(self):
         """Download SAM models if not present."""
-        myutils.download_model("segment_anything")
+        utils.download_model("segment_anything")
 
     @pytest.fixture
     def test_data(self):
@@ -46,7 +46,7 @@ class TestPromptableSAM:
         centroids = get_ground_truth_centroids(gt_mask)
         assert len(centroids) > 0, "No objects found in ground truth"
 
-        acdcPromptSegment = myutils.import_promptable_segment_module("segment_anything")
+        acdcPromptSegment = utils.import_promptable_segment_module("segment_anything")
         model = acdcPromptSegment.Model(model_type="Large", gpu=True)
 
         # Add prompts for each ground truth centroid

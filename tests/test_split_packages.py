@@ -7,7 +7,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 PACKAGES = {
-    "cellacdc.myutils": [
+    "cellacdc.tools": [
+        "base",
+        "concat",
+        "align",
+    ],
+    "cellacdc.utils": [
         "logging",
         "paths",
         "install",

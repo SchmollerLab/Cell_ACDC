@@ -30,7 +30,7 @@ from qtpy.QtCore import Signal, QObject, QMutex, QWaitCondition
 
 from cellacdc import html_utils
 
-from .. import load, myutils, core, prompts, printl, config, segm_re_pattern, io
+from .. import load, utils, core, prompts, printl, config, segm_re_pattern, io
 from .. import transformation, measurements, cca_functions
 from ..path import copy_or_move_tree
 from .. import features, plot
@@ -38,7 +38,7 @@ from .. import core
 from .. import cca_df_colnames, lineage_tree_cols, default_annot_df
 from .. import cca_df_colnames_with_tree
 from .. import cli
-from ..utils import resize
+from ..tools import resize
 from .. import segm_utils
 
 DEBUG = False
@@ -163,7 +163,7 @@ class AlignDataWorker(QObject):
 
                 self.logger.log(f"Storing temporary file: {tif}")
                 temp_tif = self.dataPrepWin.getTempfilePath(tif)
-                myutils.to_tiff(temp_tif, aligned_frames)
+                utils.to_tiff(temp_tif, aligned_frames)
                 self.dataPrepWin.storeTempFileMove(temp_tif, tif)
                 self.posData.img_data = load.imread(temp_tif)
 
@@ -219,7 +219,7 @@ class AlignDataWorker(QObject):
 
                 self.logger.log(f"Saving: {tif}")
                 temp_tif = self.dataPrepWin.getTempfilePath(tif)
-                myutils.to_tiff(temp_tif, aligned_frames)
+                utils.to_tiff(temp_tif, aligned_frames)
                 self.dataPrepWin.storeTempFileMove(temp_tif, tif)
 
         if not aligned:
@@ -287,11 +287,11 @@ class AlignWorker(BaseWorkerUtil):
             shiftsFound = False
             for pos in pos_foldernames:
                 images_path = os.path.join(exp_path, pos, "Images")
-                ls = myutils.listdir(images_path)
+                ls = utils.listdir(images_path)
                 for file in ls:
                     if file.endswith("align_shift.npy"):
                         shiftsFound = True
-                        basename, chNames = myutils.getBasenameAndChNames(
+                        basename, chNames = utils.getBasenameAndChNames(
                             images_path, useExt=(".tif", ".h5")
                         )
                         break
@@ -322,7 +322,7 @@ class AlignWorker(BaseWorkerUtil):
 
                 pos_path = os.path.join(exp_path, pos)
                 images_path = os.path.join(pos_path, "Images")
-                basename, chNames = myutils.getBasenameAndChNames(
+                basename, chNames = utils.getBasenameAndChNames(
                     images_path, useExt=(".tif", ".h5")
                 )
 
@@ -336,7 +336,7 @@ class AlignWorker(BaseWorkerUtil):
                         return
                     chName = self.chName
 
-                file_path = myutils.getChannelFilePath(images_path, chName)
+                file_path = utils.getChannelFilePath(images_path, chName)
 
                 # Load data
                 posData = load.loadData(file_path, chName)
@@ -388,7 +388,7 @@ class AlignWorker(BaseWorkerUtil):
                         if chName == posData.user_ch_name:
                             data = posData.img_data
                         else:
-                            file_path = myutils.getChannelFilePath(images_path, chName)
+                            file_path = utils.getChannelFilePath(images_path, chName)
                             data = load.load_image_file(file_path)
 
                         self.signals.sigInitInnerPbar.emit(len(data) - 1)
@@ -414,7 +414,7 @@ class AlignWorker(BaseWorkerUtil):
                         if chName == posData.user_ch_name:
                             data = posData.img_data
                         else:
-                            file_path = myutils.getChannelFilePath(images_path, chName)
+                            file_path = utils.getChannelFilePath(images_path, chName)
                             data = load.load_image_file(file_path)
                         self.signals.sigInitInnerPbar.emit(len(data) - 1)
 
@@ -461,7 +461,7 @@ class AlignWorker(BaseWorkerUtil):
             SizeZ = 1
             if data.ndim == 4:
                 SizeZ = data.shape[1]
-            myutils.to_tiff(filePath, data)
+            utils.to_tiff(filePath, data)
         elif ext == ".npz":
             io.savez_compressed(filePath, data)
         elif ext == ".h5":

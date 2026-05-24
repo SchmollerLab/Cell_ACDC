@@ -1,3 +1,3 @@
-from cellacdc import myutils
+from cellacdc import utils
 
-myutils.check_install_package("pombseen", pypi_name="pomBseen")
+utils.check_install_package("pombseen", pypi_name="pomBseen")

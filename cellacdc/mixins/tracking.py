@@ -56,7 +56,7 @@ class Tracking(UndoRedo):
         bbox = ((Dy, Dy + h), (Dx, Dx + w))
 
         Y, X = self.currentLab2D.shape
-        slices = myutils.get_slices_local_into_global_arr(bbox, (Y, X))
+        slices = utils.get_slices_local_into_global_arr(bbox, (Y, X))
         slice_global_to_local, slice_crop_local = slices
 
         obj_image = self.ghostObject.image[slice_crop_local]
@@ -441,7 +441,7 @@ class Tracking(UndoRedo):
             if rtTrackerAction.isChecked():
                 break
 
-        aliases = myutils.aliases_real_time_trackers(reverse=True)
+        aliases = utils.aliases_real_time_trackers(reverse=True)
 
         rtTracker = rtTrackerAction.text()
         rtTracker_txt = rtTracker
@@ -460,7 +460,7 @@ class Tracking(UndoRedo):
         self.logger.info(f"Initializing {rtTracker_txt} tracker...")
         self._rtTrackerName = rtTracker
         posData = self.data[self.pos_i]
-        realTimeTracker, track_frame_params = myutils.init_tracker(
+        realTimeTracker, track_frame_params = utils.init_tracker(
             posData, rtTracker, qparent=self, realTime=True
         )
         if realTimeTracker is None:
@@ -748,14 +748,14 @@ class Tracking(UndoRedo):
         video_to_track = video_to_track[start_n - 1 : stop_n]
 
         self.logger.info(f"Importing {trackerName} tracker...")
-        self.tracker, self.track_params, init_params = myutils.init_tracker(
+        self.tracker, self.track_params, init_params = utils.init_tracker(
             posData, trackerName, qparent=self, return_init_params=True
         )
         if self.track_params is None:
             self.logger.info("Tracking aborted.")
             return
 
-        warningText = myutils.validate_tracker_input(self.tracker, video_to_track)
+        warningText = utils.validate_tracker_input(self.tracker, video_to_track)
         if warningText is not None:
             self.logger.info(warningText)
             self.warnTrackerInputNotValid(trackerName, warningText)

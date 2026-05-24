@@ -26,7 +26,7 @@ from qtpy.QtWidgets import (
     QWidgetAction,
 )
 
-from .. import myutils
+from .. import utils
 
 class PushButton(QPushButton):
     def __init__(
@@ -430,12 +430,12 @@ class showInFileManagerButton(PushButton):
             self.setDefaultText()
 
     def setDefaultText(self):
-        self._text = myutils.get_show_in_file_manager_text()
+        self._text = utils.get_show_in_file_manager_text()
         self.setText(self._text)
 
     def setPathToBrowse(self, path: os.PathLike):
         self._path_to_browse = path
-        self.clicked.connect(partial(myutils.showInExplorer, path))
+        self.clicked.connect(partial(utils.showInExplorer, path))
 
 
 class OpenUrlButton(PushButton):

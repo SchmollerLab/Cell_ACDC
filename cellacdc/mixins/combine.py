@@ -12,7 +12,7 @@ from cellacdc import (
     apps,
     core,
     html_utils,
-    myutils,
+    utils,
     preprocess,
     printl,
     widgets,
@@ -557,7 +557,7 @@ class CombineWorker(CombineGui, Graphics, Preprocessing):
     def combineWorkerAskLoadChannels(self, requ_channels, pos_i):
         # spit channels and segm to load
         segms_to_load, channels_to_load, current_segm = (
-            myutils.separate_fluo_segment_channels(requ_channels)
+            utils.separate_fluo_segment_channels(requ_channels)
         )
         if pos_i is None:
             pos_i = list(range(len(self.data)))

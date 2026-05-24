@@ -2,12 +2,12 @@ import os
 from cellacdc.trackers.CellACDC.CellACDC_tracker import calc_Io_matrix
 from cellacdc.trackers.CellACDC.CellACDC_tracker import track_frame as track_frame_base
 from cellacdc.core import getBaseCca_df, printl
-from cellacdc.myutils import checked_reset_index, checked_reset_index_Cell_ID
+from cellacdc.utils import checked_reset_index, checked_reset_index_Cell_ID
 import numpy as np
 from skimage.measure import regionprops
 from tqdm import tqdm
 import pandas as pd
-from cellacdc.myutils import exec_time
+from cellacdc.utils import exec_time
 from cellacdc._types import NotGUIParam
 import copy
 import cellacdc.debugutils as debugutils

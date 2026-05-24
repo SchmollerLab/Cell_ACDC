@@ -11,7 +11,7 @@ from natsort import natsorted
 from qtpy.QtCore import QThread
 from qtpy.QtWidgets import QFileDialog
 
-from . import apps, html_utils, myutils, printl, widgets, workers
+from . import apps, html_utils, utils, printl, widgets, workers
 
 # Frame number must be at the end with .ext, e.g., _t01.tif
 frame_name_patterns = (r"_(day)?(\d+)\.[A-Za-z0-9]+$", r"_(t)?(\d+)\.[A-Za-z0-9]+$")
@@ -86,11 +86,11 @@ def run(mainWin):
     mainWin.log(
         "[Data Re-Struct] Asking to select the folder that contains the image files..."
     )
-    MostRecentPath = myutils.getMostRecentPath()
+    MostRecentPath = utils.getMostRecentPath()
     rootFolderPath = QFileDialog.getExistingDirectory(
         mainWin.progressWin, "Select folder containing the image files", MostRecentPath
     )
-    myutils.addToRecentPaths(rootFolderPath)
+    utils.addToRecentPaths(rootFolderPath)
     if not rootFolderPath:
         return False
 
@@ -100,7 +100,7 @@ def run(mainWin):
         "Select the folder in which to save the images files",
         rootFolderPath,
     )
-    myutils.addToRecentPaths(dstFolderPath)
+    utils.addToRecentPaths(dstFolderPath)
     if not rootFolderPath:
         return False
 
@@ -139,7 +139,7 @@ def run(mainWin):
 
 
 def checkFileFormat(folderPath, mainWin):
-    ls = natsorted(myutils.listdir(folderPath))
+    ls = natsorted(utils.listdir(folderPath))
     files = [
         filename
         for filename in ls
@@ -192,7 +192,7 @@ def checkFileFormat(folderPath, mainWin):
 
 
 def saveTiff(filePath, data, waitCond):
-    myutils.to_tiff(filePath, data)
+    utils.to_tiff(filePath, data)
     waitCond.wakeAll()
     del data
 

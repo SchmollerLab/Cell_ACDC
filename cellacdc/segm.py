@@ -46,7 +46,7 @@ from qtpy import QtGui
 import qtpy.compat
 
 # Custom modules
-from . import prompts, load, myutils, apps, core, dataPrep, widgets
+from . import prompts, load, utils, apps, core, dataPrep, widgets
 from . import html_utils, printl
 from . import exception_handler
 from . import workers
@@ -176,7 +176,7 @@ class segmWin(QMainWindow):
 
         self._version = version
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(module="segm")
+        logger, logs_path, log_path, log_filename = utils.setupLogger(module="segm")
         self.logger = logger
         self.log_path = log_path
         self.log_filename = log_filename
@@ -407,7 +407,7 @@ class segmWin(QMainWindow):
         for images_path in images_paths:
             print("")
             self.log(f"Processing {images_path}")
-            filenames = myutils.listdir(images_path)
+            filenames = utils.listdir(images_path)
             if not filenames:
                 self.criticalImagesFolderEmpty(images_path)
                 self.close()
@@ -551,11 +551,11 @@ class segmWin(QMainWindow):
 
         self.log(f"Importing {model_name}...")
         self.model_name = model_name
-        acdcSegment = myutils.import_segment_module(model_name)
+        acdcSegment = utils.import_segment_module(model_name)
         self.acdcSegment = acdcSegment
 
         # Read all models parameters
-        init_params, segment_params = myutils.getModelArgSpec(self.acdcSegment)
+        init_params, segment_params = utils.getModelArgSpec(self.acdcSegment)
 
         # Prompt user to enter the model parameters
         try:
@@ -587,7 +587,7 @@ class segmWin(QMainWindow):
         self.applyPostProcessing = win.applyPostProcessing
         self.secondChannelName = win.secondChannelName
 
-        myutils.log_segm_params(
+        utils.log_segm_params(
             model_name,
             win.init_kwargs,
             win.model_kwargs,
@@ -606,7 +606,7 @@ class segmWin(QMainWindow):
         if self.secondChannelName is not None:
             init_kwargs["is_rgb"] = True
 
-        self.model = myutils.init_segm_model(acdcSegment, self.posData, init_kwargs)
+        self.model = utils.init_segm_model(acdcSegment, self.posData, init_kwargs)
         if self.model is None:
             self.logger.info("Segmentation model was not initialized correctly!")
             self.processStopped()
@@ -865,7 +865,7 @@ class segmWin(QMainWindow):
             self.stopFrames = win.stopFrames
 
             # Ask whether to track the frames
-            trackers = myutils.get_list_of_trackers()
+            trackers = utils.get_list_of_trackers()
             txt = html_utils.paragraph("""
                 Do you want to track the objects?<br><br>
                 If yes, <b>select the tracker</b> to use<br><br>
@@ -892,7 +892,7 @@ class segmWin(QMainWindow):
                 self.do_tracking = True
                 trackerName = win.selectedItemsText[0]
                 self.trackerName = trackerName
-                init_tracker_output = myutils.init_tracker(
+                init_tracker_output = utils.init_tracker(
                     self.posData, trackerName, return_init_params=True, qparent=self
                 )
                 self.tracker, self.track_params, self.tracker_init_params = (
@@ -1082,7 +1082,7 @@ class segmWin(QMainWindow):
             return False
 
         config_filename = win.filename
-        mostRecentPath = myutils.getMostRecentPath()
+        mostRecentPath = utils.getMostRecentPath()
         folder_path = apps.get_existing_directory(
             allow_images_path=False,
             parent=self,
@@ -1154,7 +1154,7 @@ class segmWin(QMainWindow):
         ]
         selectedExpPaths = {exp_path: pos_foldernames}
 
-        from .utils import compute as utilsCompute
+        from .tools import compute as utilsCompute
 
         self.calcMeasUtility = utilsCompute.computeMeasurmentsUtilWin(
             selectedExpPaths,
@@ -1377,7 +1377,7 @@ class segmWin(QMainWindow):
             self.exec_time_per_iter = t - self.time_last_pbar_update
             groups_2steps_left = steps_left / 2
             seconds = round(self.exec_time_per_iter * groups_2steps_left)
-            ETA = myutils.seconds_to_ETA(seconds)
+            ETA = utils.seconds_to_ETA(seconds)
             self.ETA_label.setText(f"ETA: {ETA}")
             self.exec_time_per_iter = 0
             self.time_last_pbar_update = t
@@ -1388,7 +1388,7 @@ class segmWin(QMainWindow):
         self.exec_time_per_frame = t - self.time_last_innerPbar_update
         steps_left = self.QPbar.maximum() - self.QPbar.value()
         seconds = round(self.exec_time_per_frame * steps_left)
-        ETA = myutils.seconds_to_ETA(seconds)
+        ETA = utils.seconds_to_ETA(seconds)
         self.innerETA_label.setText(f"ETA: {ETA}")
         self.exec_time_per_frame = 0
         self.time_last_innerPbar_update = t
@@ -1399,7 +1399,7 @@ class segmWin(QMainWindow):
         numPos = self.QPbar.maximum()
         allPos_seconds = tot_seconds * numPos
         tot_seconds_left = allPos_seconds - tot_seconds
-        ETA = myutils.seconds_to_ETA(round(tot_seconds_left))
+        ETA = utils.seconds_to_ETA(round(tot_seconds_left))
         total_ETA = self.ETA_label.setText(f"ETA: {ETA}")
 
     def segmWorkerFinished(self, worker):
@@ -1420,7 +1420,7 @@ class segmWin(QMainWindow):
         steps_left = self.QPbar.maximum() - self.QPbar.value()
         self.QPbar.setValue(self.QPbar.value() + steps_left)
 
-        txt = html_utils.paragraph(f"{txt}<br>{myutils.get_salute_string()}")
+        txt = html_utils.paragraph(f"{txt}<br>{utils.get_salute_string()}")
         self.progressLabel.setText(short_txt)
         msg = widgets.myMessageBox(self, wrapText=False)
         msg.information(

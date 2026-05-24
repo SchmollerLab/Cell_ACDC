@@ -126,7 +126,7 @@ class Session(Worker):
             try:
                 binnedIDs_df = df[df["is_cell_excluded"] > 0]
             except Exception as err:
-                df = myutils.fix_acdc_df_dtypes(df)
+                df = utils.fix_acdc_df_dtypes(df)
                 binnedIDs_df = df[df["is_cell_excluded"] > 0]
             posData.binnedIDs = set(binnedIDs_df.index)
             ripIDs_df = df[df["is_cell_dead"] > 0]
@@ -271,7 +271,7 @@ class Session(Worker):
 
     def initPosAttr(self):
         exp_path = self.data[self.pos_i].exp_path
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = utils.get_pos_foldernames(exp_path)
         if len(pos_foldernames) == 1:
             self.loadPosAction.setDisabled(True)
         else:
@@ -337,7 +337,7 @@ class Session(Worker):
                 posData.allData_li.extend([None] * missing_frames)
             for i in range(posData.SizeT):
                 if posData.allData_li[i] is None:
-                    posData.allData_li[i] = myutils.get_empty_stored_data_dict()
+                    posData.allData_li[i] = utils.get_empty_stored_data_dict()
 
             posData.lutLevels = {channel: {} for channel in self.ch_names}
 
@@ -674,7 +674,7 @@ class Session(Worker):
 
     def unstore_data(self):
         posData = self.data[self.pos_i]
-        posData.allData_li[posData.frame_i] = myutils.get_empty_stored_data_dict()
+        posData.allData_li[posData.frame_i] = utils.get_empty_stored_data_dict()
 
     def updateLastVisitedFrame(self, last_visited_frame_i=None):
         if last_visited_frame_i is None:

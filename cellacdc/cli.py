@@ -15,7 +15,7 @@ from . import printl
 from . import load
 from . import error_up_str
 from . import issues_url
-from . import myutils
+from . import utils
 from . import config
 from . import core
 from . import features
@@ -117,7 +117,7 @@ class _WorkflowKernel:
         else:
             self.logger.info(
                 "Cell-ACDC command-line interface closed. "
-                f"{myutils.get_salute_string()}"
+                f"{utils.get_salute_string()}"
             )
         self.logger.info("=" * 50)
         exit()
@@ -263,18 +263,18 @@ class SegmKernel(_WorkflowKernel):
         self.signals.progress.emit(
             f"\nInitializing {self.model_name} segmentation model..."
         )
-        acdcSegment = myutils.import_segment_module(self.model_name)
-        init_argspecs, segment_argspecs = myutils.getModelArgSpec(acdcSegment)
-        self.init_model_kwargs = myutils.parse_model_params(
+        acdcSegment = utils.import_segment_module(self.model_name)
+        init_argspecs, segment_argspecs = utils.getModelArgSpec(acdcSegment)
+        self.init_model_kwargs = utils.parse_model_params(
             init_argspecs, self.init_model_kwargs
         )
-        self.model_kwargs = myutils.parse_model_params(
+        self.model_kwargs = utils.parse_model_params(
             segment_argspecs, self.model_kwargs
         )
         if self.second_channel_name is not None:
             self.init_model_kwargs["is_rgb"] = True
 
-        self.model = myutils.init_segm_model(
+        self.model = utils.init_segm_model(
             acdcSegment, posData, self.init_model_kwargs
         )
         if self.model is None:
@@ -297,17 +297,17 @@ class SegmKernel(_WorkflowKernel):
 
         if tracker is None:
             self.signals.progress.emit(f"Initializing {tracker_name} tracker...")
-            tracker_module = myutils.import_tracker_module(tracker_name)
-            init_argspecs, track_argspecs = myutils.getTrackerArgSpec(
+            tracker_module = utils.import_tracker_module(tracker_name)
+            init_argspecs, track_argspecs = utils.getTrackerArgSpec(
                 tracker_module, realTime=False
             )
-            self.init_tracker_kwargs = myutils.parse_model_params(
+            self.init_tracker_kwargs = utils.parse_model_params(
                 init_argspecs, self.init_tracker_kwargs
             )
-            self.init_tracker_kwargs = myutils.parse_model_params(
+            self.init_tracker_kwargs = utils.parse_model_params(
                 init_argspecs, self.init_tracker_kwargs
             )
-            track_params = myutils.parse_model_params(track_argspecs, track_params)
+            track_params = utils.parse_model_params(track_argspecs, track_params)
             tracker = tracker_module.tracker(**self.init_tracker_kwargs)
 
         self.track_params = track_params
@@ -621,7 +621,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
     def _load_posData(self, img_path, end_filename_segm):
         images_path = os.path.dirname(img_path)
         exp_foldername = os.path.basename(os.path.dirname(os.path.dirname(images_path)))
-        basename, channel_names = myutils.getBasenameAndChNames(
+        basename, channel_names = utils.getBasenameAndChNames(
             images_path, useExt=(".tif", ".h5")
         )
         posData = load.loadData(img_path, channel_names[0])
@@ -744,12 +744,12 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             posData.rp = rp
 
             if posData.acdc_df is None:
-                acdc_df = myutils.getBaseAcdcDf(rp)
+                acdc_df = utils.getBaseAcdcDf(rp)
             else:
                 try:
                     acdc_df = posData.acdc_df.loc[frame_i].copy()
                 except Exception:
-                    acdc_df = myutils.getBaseAcdcDf(rp)
+                    acdc_df = utils.getBaseAcdcDf(rp)
 
             key = (frame_i, posData.TimeIncrement * frame_i)
             acdc_df = load.pd_bool_and_float_to_int_to_str(
@@ -847,12 +847,12 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
 
             if acdc_df is None:
                 if posData.acdc_df is None:
-                    acdc_df = myutils.getBaseAcdcDf(rp)
+                    acdc_df = utils.getBaseAcdcDf(rp)
                 else:
                     try:
                         acdc_df = posData.acdc_df.loc[frame_i].copy()
                     except Exception:
-                        acdc_df = myutils.getBaseAcdcDf(rp)
+                        acdc_df = utils.getBaseAcdcDf(rp)
 
             key = (frame_i, posData.TimeIncrement * frame_i)
             acdc_df = load.pd_bool_and_float_to_int_to_str(
@@ -1388,10 +1388,10 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
 
         exp_path = posData.exp_path
-        posFoldernames = myutils.get_pos_foldernames(exp_path)
+        posFoldernames = utils.get_pos_foldernames(exp_path)
         for pos in posFoldernames:
             images_path = os.path.join(exp_path, pos, "Images")
-            for file in myutils.listdir(images_path):
+            for file in utils.listdir(images_path):
                 if not file.endswith("custom_combine_metrics.ini"):
                     continue
                 filePath = os.path.join(images_path, file)

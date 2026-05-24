@@ -56,12 +56,12 @@ RUN_MEASUREMENTS = True
 
 
 def collect_position_paths(exp_path: str, user_ch: str) -> list[str]:
-    from cellacdc import myutils
+    from cellacdc import utils
 
     paths: list[str] = []
-    for pos in myutils.get_pos_foldernames(exp_path):
+    for pos in utils.get_pos_foldernames(exp_path):
         images_path = os.path.join(exp_path, pos, "Images")
-        paths.append(myutils.getChannelFilePath(images_path, user_ch))
+        paths.append(utils.getChannelFilePath(images_path, user_ch))
     return paths
 
 
@@ -156,9 +156,9 @@ def main() -> int:
         print("Edit USER CONFIG in examples/run_headless_workflow.py first.", file=sys.stderr)
         return 1
 
-    from cellacdc import myutils
+    from cellacdc import utils
 
-    logger, _, log_path, _ = myutils.setupLogger(module="headless", logs_path=None)
+    logger, _, log_path, _ = utils.setupLogger(module="headless", logs_path=None)
     paths = collect_position_paths(EXPERIMENT_PATH, USER_CH_NAME)
     if not paths:
         logger.error(f"No positions found under {EXPERIMENT_PATH}")

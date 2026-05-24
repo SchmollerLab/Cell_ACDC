@@ -17,11 +17,11 @@ from qtpy.QtGui import QPixmap
 from qtpy.QtCore import Qt
 from qtpy import QtCore
 
-from ..myutils import read_version, get_date_from_version
-from ..myutils import get_pip_install_cellacdc_version_command
-from ..myutils import get_git_pull_checkout_cellacdc_version_commands
-from ..myutils import get_info_version_text
-from .. import widgets, myutils
+from ..utils import read_version, get_date_from_version
+from ..utils import get_pip_install_cellacdc_version_command
+from ..utils import get_git_pull_checkout_cellacdc_version_commands
+from ..utils import get_info_version_text
+from .. import widgets, utils
 from .. import html_utils, printl
 from .. import cellacdc_path
 
@@ -136,9 +136,9 @@ class QDialogAbout(QDialog):
         self.showHowToInstallButton.clicked.connect(self.showHotToInstallInstructions)
 
         button = widgets.showInFileManagerButton(
-            myutils.get_open_filemaneger_os_string()
+            utils.get_open_filemaneger_os_string()
         )
-        func = partial(myutils.showInExplorer, cellacdc_path)
+        func = partial(utils.showInExplorer, cellacdc_path)
         button.clicked.connect(func)
         installedLayout.addWidget(installedLabel)
         installedLayout.addWidget(self.copyCellACDCpathButton)

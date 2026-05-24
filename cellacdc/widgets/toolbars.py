@@ -141,7 +141,7 @@ import pyqtgraph as pg
 
 pg.setConfigOption("imageAxisOrder", "row-major")
 
-from .. import myutils, measurements, is_mac, is_win, html_utils, is_linux
+from .. import utils, measurements, is_mac, is_win, html_utils, is_linux
 from .. import printl, settings_folderpath
 from .. import colors, config
 from .. import html_path
@@ -896,8 +896,8 @@ class MagicPromptsToolbar(ToolBar):
         downloadWin = apps.downloadModel(model_name, parent=self._parent)
         downloadWin.download()
 
-        acdcPromptSegment = myutils.import_promptable_segment_module(model_name)
-        init_argspecs, segment_argspecs = myutils.getModelArgSpec(acdcPromptSegment)
+        acdcPromptSegment = utils.import_promptable_segment_module(model_name)
+        init_argspecs, segment_argspecs = utils.getModelArgSpec(acdcPromptSegment)
 
         try:
             help_url = acdcPromptSegment.url_help()

@@ -15,7 +15,7 @@ from qtpy.QtWidgets import (
 from qtpy import QtGui
 
 from .. import exception_handler
-from .. import myutils, html_utils, workers, widgets, load, apps
+from .. import utils, html_utils, workers, widgets, load, apps
 
 
 class repeatDataPrepWindow(QDialog):
@@ -24,7 +24,7 @@ class repeatDataPrepWindow(QDialog):
 
         name = "repeat data prep"
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(module=name)
+        logger, logs_path, log_path, log_filename = utils.setupLogger(module=name)
 
         self.logger = logger
         self.log_path = log_path
@@ -109,7 +109,7 @@ class repeatDataPrepWindow(QDialog):
         self.startButton.hide()
         self.stopButton.show()
 
-        MostRecentPath = myutils.getMostRecentPath()
+        MostRecentPath = utils.getMostRecentPath()
         exp_path = QFileDialog.getExistingDirectory(
             self, "Select experiment folder or specific Position folder", MostRecentPath
         )
@@ -118,9 +118,9 @@ class repeatDataPrepWindow(QDialog):
             self.stop()
             return
 
-        myutils.addToRecentPaths(exp_path, logger=self.logger)
+        utils.addToRecentPaths(exp_path, logger=self.logger)
 
-        folder_type = myutils.determine_folder_type(exp_path)
+        folder_type = utils.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
 
         if is_pos_folder:

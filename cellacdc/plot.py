@@ -25,7 +25,7 @@ if GUI_INSTALLED:
 
 from . import printl
 from . import _core, error_below, error_close
-from . import _run, core, myutils
+from . import _run, core, utils
 
 
 def matplotlib_cmap_to_lut(
@@ -67,7 +67,7 @@ def imshow(
     print_call_stack: bool = False,
 ):
     if print_call_stack:
-        myutils.print_call_stack()
+        utils.print_call_stack()
 
     if isinstance(images[0], dict):
         images_dict = images[0]

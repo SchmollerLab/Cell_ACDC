@@ -15,7 +15,7 @@ from qtpy.QtWidgets import (
     QTextEdit,
 )
 
-from .. import _palettes, myutils
+from .. import _palettes, utils
 from .palette import PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR, PROGRESSBAR_QCOLOR
 
 
@@ -145,7 +145,7 @@ class ProgressBarWithETA(ProgressBar):
             ) / self.value()
 
         seconds_left = self.mean_value_duration * value_left
-        ETA = myutils.seconds_to_ETA(seconds_left)
+        ETA = utils.seconds_to_ETA(seconds_left)
         self.ETA_label.setText(ETA)
         self.last_time_update = t
         return ETA

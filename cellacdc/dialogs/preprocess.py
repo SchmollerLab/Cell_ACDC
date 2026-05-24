@@ -134,7 +134,7 @@ from .. import is_conda_env
 from .. import printl
 from .. import colors
 from .. import issues_url
-from .. import myutils
+from .. import utils
 from .. import qutils
 from .. import _palettes
 from .. import base_cca_dict
@@ -1886,7 +1886,7 @@ class PreProcessParamsWidget(QWidget):
     def selectRecipeFilepath(self, recipes_path, recipe_prefix, ext_label, ext):
         availableRecipes = []
         if os.path.exists(recipes_path):
-            for file in myutils.listdir(recipes_path):
+            for file in utils.listdir(recipes_path):
                 if not file.startswith(recipe_prefix):
                     continue
                 endname = file.split(f"{recipe_prefix}_")[1]
@@ -1906,7 +1906,7 @@ class PreProcessParamsWidget(QWidget):
             f"Select {ext_label} file...",
             title=f"Select {ext_label} file to load recipe",
             openFolder=False,
-            start_dir=myutils.getMostRecentPath(),
+            start_dir=utils.getMostRecentPath(),
             ext={ext_label: f".{ext}"},
         )
         selectRecipeWin = widgets.QDialogListbox(
@@ -2726,7 +2726,7 @@ class InitFijiMacroDialog(QBaseDialog):
                 self.warnSelectedPathNotAFolder(_path)
                 return False
 
-        files = myutils.listdir(path)
+        files = utils.listdir(path)
         extensions = set([os.path.splitext(file)[1] for file in files])
         if len(extensions) > 1:
             self.warnMultipleExtensionsPresent(path, extensions)
@@ -2927,7 +2927,7 @@ class ResizeUtilProps(QBaseDialog):
             browseFolder=True,
             fileManagerTitle="Select folder where to save resized data",
             elide=True,
-            startFolder=myutils.getMostRecentPath(),
+            startFolder=utils.getMostRecentPath(),
         )
         self.folderPathOutControl.setDisabled(True)
         paramsLayout.addWidget(self.folderPathOutControl, row, 1, 1, 2)
@@ -3045,7 +3045,7 @@ class FucciPreprocessDialog(FunctionParamsDialog):
 
         from cellacdc.preprocess import fucci_filter
 
-        params_argspecs = myutils.get_function_argspec(fucci_filter)
+        params_argspecs = utils.get_function_argspec(fucci_filter)
 
         super().__init__(
             params_argspecs,
@@ -3616,7 +3616,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
 
         filepath_provided = filepath is not None
         if not filepath_provided:
-            folder_content = myutils.listdir(combine_channels_recipes_path)
+            folder_content = utils.listdir(combine_channels_recipes_path)
             num_recipes = len(folder_content)
             default_text = f"{num_recipes + 1}"
             proceed, filepath = self.saveRecipeUI(

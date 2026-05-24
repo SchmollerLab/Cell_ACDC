@@ -54,7 +54,7 @@ from . import (
     dataStruct,
     load,
     help,
-    myutils,
+    utils,
     cite_url,
     html_utils,
     widgets,
@@ -62,30 +62,30 @@ from . import (
     dataReStruct,
 )
 from .help import about
-from .utils import concat as utilsConcat
-from .utils import convert as utilsConvert
-from .utils import rename as utilsRename
-from .utils import align as utilsAlign
-from .utils import compute as utilsCompute
-from .utils import repeat as utilsRepeat
-from .utils import toImageJroi as utilsToImageJroi
-from .utils.resize import util as utilsResizePositionsUtil
-from .utils import fromImageJroiToSegm as utilsFromImageJroi
-from .utils import toObjCoords as utilsToObjCoords
-from .utils import acdcToSymDiv as utilsSymDiv
-from .utils import trackSubCellObjects as utilsTrackSubCell
-from .utils import createConnected3Dsegm as utilsConnected3Dsegm
-from .utils import countObjects as utilsCountObjectsInSegm
-from .utils import fucciPreprocess as utilsFucciPreprocess
-from .utils import customPreprocess as utilsCustomPreprocess
-from .utils import combineChannels as utilsCombineChannels
-from .utils import filterObjFromCoordsTable as utilsFilterObjsFromTable
-from .utils import stack2Dinto3Dsegm as utilsStack2Dto3D
-from .utils import computeMultiChannel as utilsComputeMultiCh
-from .utils import applyTrackFromTable as utilsApplyTrackFromTab
-from .utils import applyTrackFromTrackMateXML as utilsApplyTrackFromTrackMate
-from .utils import fillHolesInSegm
-from .utils import generateMothBudTotalTable as utilsGenerateMothBudTotTable
+from .tools import concat as utilsConcat
+from .tools import convert as utilsConvert
+from .tools import rename as utilsRename
+from .tools import align as utilsAlign
+from .tools import compute as utilsCompute
+from .tools import repeat as utilsRepeat
+from .tools import toImageJroi as utilsToImageJroi
+from .tools.resize import util as utilsResizePositionsUtil
+from .tools import fromImageJroiToSegm as utilsFromImageJroi
+from .tools import toObjCoords as utilsToObjCoords
+from .tools import acdcToSymDiv as utilsSymDiv
+from .tools import trackSubCellObjects as utilsTrackSubCell
+from .tools import createConnected3Dsegm as utilsConnected3Dsegm
+from .tools import countObjects as utilsCountObjectsInSegm
+from .tools import fucciPreprocess as utilsFucciPreprocess
+from .tools import customPreprocess as utilsCustomPreprocess
+from .tools import combineChannels as utilsCombineChannels
+from .tools import filterObjFromCoordsTable as utilsFilterObjsFromTable
+from .tools import stack2Dinto3Dsegm as utilsStack2Dto3D
+from .tools import computeMultiChannel as utilsComputeMultiCh
+from .tools import applyTrackFromTable as utilsApplyTrackFromTab
+from .tools import applyTrackFromTrackMateXML as utilsApplyTrackFromTrackMate
+from .tools import fillHolesInSegm
+from .tools import generateMothBudTotalTable as utilsGenerateMothBudTotTable
 from .info import utilsInfo
 from . import is_win, is_linux, settings_folderpath, issues_url, is_mac
 from . import settings_csv_path
@@ -136,7 +136,7 @@ class mainWin(QMainWindow):
 
         self.checkUserDataFolderPath = True
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(module="main")
+        logger, logs_path, log_path, log_filename = utils.setupLogger(module="main")
         self.logger = logger
         self.log_path = log_path
         self.log_filename = log_filename
@@ -925,7 +925,7 @@ class mainWin(QMainWindow):
         if SPOTMAX_INSTALLED:
             self.aboutSmaxAction.triggered.connect(self.showAboutSmax)
 
-        self.userManualAction.triggered.connect(myutils.browse_docs)
+        self.userManualAction.triggered.connect(utils.browse_docs)
         self.contributeAction.triggered.connect(self.showContribute)
         self.citeAction.triggered.connect(
             partial(QDesktopServices.openUrl, QUrl(cite_url))
@@ -949,19 +949,19 @@ class mainWin(QMainWindow):
     def openSettingsFolder(self):
         from . import settings_folderpath
 
-        myutils.showInExplorer(settings_folderpath)
+        utils.showInExplorer(settings_folderpath)
 
     def openUserProfileFolder(self):
         from . import user_profile_path
 
-        myutils.showInExplorer(user_profile_path)
+        utils.showInExplorer(user_profile_path)
 
     def showLogFiles(self):
-        logs_path = myutils.get_logs_path()
-        myutils.showInExplorer(logs_path)
+        logs_path = utils.get_logs_path()
+        utils.showInExplorer(logs_path)
 
     def launchUpdateSpotmax(self):
-        res = myutils.update_package(
+        res = utils.update_package(
             self,
             "spotmax",
         )
@@ -971,7 +971,7 @@ class mainWin(QMainWindow):
             self.showNoUpdateInfo("spotMAX")
 
     def launchUpdateACDC(self):
-        res = myutils.update_package(self, "cellacdc")
+        res = utils.update_package(self, "cellacdc")
         if res:
             self.showUpdateInfo("Cell-ACDC")
         else:
@@ -1012,7 +1012,7 @@ class mainWin(QMainWindow):
             if not os.path.exists(path):
                 continue
             action = QAction(path, self)
-            action.triggered.connect(partial(myutils.showInExplorer, path))
+            action.triggered.connect(partial(utils.showInExplorer, path))
             actions.append(action)
         # Step 3. Add the actions to the menu
         self.recentPathsMenu.addActions(actions)
@@ -1043,7 +1043,7 @@ class mainWin(QMainWindow):
             print(f"{utilityName} aborted by the user.")
             return
 
-        mostRecentPath = myutils.getMostRecentPath()
+        mostRecentPath = utils.getMostRecentPath()
         exp_path = QFileDialog.getExistingDirectory(
             self, "Select Position_n folder", mostRecentPath
         )
@@ -1051,7 +1051,7 @@ class mainWin(QMainWindow):
             print(f"{utilityName} aborted by the user.")
             return
 
-        myutils.addToRecentPaths(exp_path)
+        utils.addToRecentPaths(exp_path)
         baseFolder = os.path.basename(exp_path)
         isPosFolder = re.search(r"Position_(\d+)$", baseFolder) is not None
         isImagesFolder = baseFolder == "Images"
@@ -1064,7 +1064,7 @@ class mainWin(QMainWindow):
             posFolders = [os.path.basename(posPath)]
             exp_path = os.path.dirname(exp_path)
         else:
-            posFolders = myutils.get_pos_foldernames(exp_path)
+            posFolders = utils.get_pos_foldernames(exp_path)
             if not posFolders:
                 msg = widgets.myMessageBox()
                 msg.addShowInFileManagerButton(exp_path, txt="Show selected folder...")
@@ -1118,7 +1118,7 @@ class mainWin(QMainWindow):
                 return
 
         expPaths = {}
-        mostRecentPath = myutils.getMostRecentPath()
+        mostRecentPath = utils.getMostRecentPath()
         warn_exp_already_selected = True
         while True:
             if exp_folderpath is None:
@@ -1130,12 +1130,12 @@ class mainWin(QMainWindow):
                 )
                 if not exp_path:
                     break
-                myutils.addToRecentPaths(exp_path)
+                utils.addToRecentPaths(exp_path)
             else:
                 exp_path = exp_folderpath
             selected_path = exp_path
             baseFolder = os.path.basename(exp_path)
-            isPosFolder = myutils.is_pos_folderpath(exp_path)
+            isPosFolder = utils.is_pos_folderpath(exp_path)
             isImagesFolder = baseFolder == "Images"
             if isImagesFolder:
                 posPath = os.path.dirname(exp_path)
@@ -1224,8 +1224,8 @@ class mainWin(QMainWindow):
         return msg.cancel
 
     def warnExpPathAlreadySelected(self, selected_path, exp_path):
-        selected_text = myutils.to_relative_path(selected_path)
-        exp_text = myutils.to_relative_path(exp_path)
+        selected_text = utils.to_relative_path(selected_path)
+        exp_text = utils.to_relative_path(exp_path)
         txt = html_utils.paragraph(f""" 
             The experiment folder of the selected path was already previously selected.<br><br>
             Are you adding Position folders one by one? If yes, you do not 
@@ -1347,12 +1347,12 @@ class mainWin(QMainWindow):
         self.applyTrackWin.close()
 
     def launchNapariUtil(self, action):
-        myutils.check_install_package("napari", parent=self)
+        utils.check_install_package("napari", parent=self)
         if action == self.arboretumAction:
             self._launchArboretum()
 
     def _launchArboretum(self):
-        myutils.check_install_package("napari_arboretum", parent=self)
+        utils.check_install_package("napari_arboretum", parent=self)
 
         from cellacdc.napari_utils import arboretum
 
@@ -1393,7 +1393,7 @@ class mainWin(QMainWindow):
 
     def launchFromImageJroiToSegmUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
-        myutils.check_install_package("roifile", parent=self)
+        utils.check_install_package("roifile", parent=self)
 
         import roifile
 
@@ -1436,7 +1436,7 @@ class mainWin(QMainWindow):
 
     def launchToImageJroiUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
-        myutils.check_install_package("roifile", parent=self)
+        utils.check_install_package("roifile", parent=self)
 
         import roifile
 
@@ -1763,7 +1763,7 @@ class mainWin(QMainWindow):
             posFoldersInfo = {}
             for pos in posFoldernames:
                 pos_path = os.path.join(exp_path, pos)
-                status = myutils.get_pos_status(pos_path, caller=caller)
+                status = utils.get_pos_status(pos_path, caller=caller)
                 posFoldersInfo[pos] = status
             infoPaths[exp_path] = posFoldersInfo
         return infoPaths
@@ -2312,5 +2312,5 @@ class mainWin(QMainWindow):
                 print("Failed to restart Cell-ACDC. Please restart manually")
         else:
             self.logger.info("**********************************************")
-            self.logger.info(f"Cell-ACDC closed. {myutils.get_salute_string()}")
+            self.logger.info(f"Cell-ACDC closed. {utils.get_salute_string()}")
             self.logger.info("**********************************************")

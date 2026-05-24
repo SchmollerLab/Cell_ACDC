@@ -3,18 +3,18 @@ from typing import Union
 
 import numpy as np
 
-from cellacdc import myutils
+from cellacdc import utils
 
-myutils.check_install_torch()
-myutils.check_install_package("deepsea")
-myutils.check_install_package("munkres")
+utils.check_install_torch()
+utils.check_install_package("deepsea")
+utils.check_install_package("munkres")
 
 import torch
 import torchvision.transforms as transforms
 
 from PIL import Image
 
-_, deepsea_segmenters_path = myutils.get_model_path("deepsea", create_temp_dir=False)
+_, deepsea_segmenters_path = utils.get_model_path("deepsea", create_temp_dir=False)
 
 image_size = [383, 512]
 image_means = [0.5]

@@ -4,8 +4,8 @@ from functools import partial
 import pandas as pd
 
 from .. import exception_handler
-from .. import myutils, apps, widgets, html_utils, printl, workers
-from ..utils import base
+from .. import utils, apps, widgets, html_utils, printl, workers
+from . import base
 
 from qtpy.QtWidgets import QFileDialog
 
@@ -14,7 +14,7 @@ class GenerateMothBudTotalUtil(base.MainThreadSinglePosUtilBase):
     def __init__(
         self, app, title: str, infoText: str, parent=None, callbackOnFinished=None
     ):
-        module = myutils.get_module_name(__file__)
+        module = utils.get_module_name(__file__)
         super().__init__(app, title, module, infoText, parent)
 
         self.sigClose.connect(self.close)
@@ -37,12 +37,12 @@ class GenerateMothBudTotalUtil(base.MainThreadSinglePosUtilBase):
             parent=self,
             caption="Select CSV file to load",
             filters="CSV (*.csv);;All Files (*)",
-            basedir=myutils.getMostRecentPath(),
+            basedir=utils.getMostRecentPath(),
         )[0]
         if input_csv_filepath is None or not input_csv_filepath:
             return False
 
-        myutils.addToRecentPaths(os.path.dirname(input_csv_filepath))
+        utils.addToRecentPaths(os.path.dirname(input_csv_filepath))
 
         self.logger.info(f'Reading column names in table "{input_csv_filepath}"...')
 

@@ -23,7 +23,7 @@ if GUI_INSTALLED:
     from qtpy.QtGui import QFont
     from . import widgets, apps
 
-from . import myutils, printl, html_utils, load
+from . import utils, printl, html_utils, load
 from . import settings_folderpath
 
 
@@ -109,7 +109,7 @@ class select_channel_name:
     ):
         # First check if metadata.csv already has the channel names
         metadata_csv_path = None
-        for file in myutils.listdir(images_path):
+        for file in utils.listdir(images_path):
             if file.endswith("metadata.csv"):
                 metadata_csv_path = os.path.join(images_path, file)
                 break
@@ -127,7 +127,7 @@ class select_channel_name:
         # Find basename as intersection of filenames
         channel_names = set()
         self.basenameNotFound = False
-        isBasenamePresent = myutils.checkDataIntegrity(filenames, images_path)
+        isBasenamePresent = utils.checkDataIntegrity(filenames, images_path)
         if basename is None:
             basename = filenames[0]
         basename = filenames[0]

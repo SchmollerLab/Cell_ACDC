@@ -30,7 +30,7 @@ from qtpy.QtCore import Signal, QObject, QMutex, QWaitCondition
 
 from cellacdc import html_utils
 
-from .. import load, myutils, core, prompts, printl, config, segm_re_pattern, io
+from .. import load, utils, core, prompts, printl, config, segm_re_pattern, io
 from .. import transformation, measurements, cca_functions
 from ..path import copy_or_move_tree
 from .. import features, plot
@@ -38,7 +38,7 @@ from .. import core
 from .. import cca_df_colnames, lineage_tree_cols, default_annot_df
 from .. import cca_df_colnames_with_tree
 from .. import cli
-from ..utils import resize
+from ..tools import resize
 from .. import segm_utils
 
 DEBUG = False
@@ -256,7 +256,7 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameSegm = self.mainWin.endFilenameSegm
-                ls = myutils.listdir(images_path)
+                ls = utils.listdir(images_path)
                 file_path = [
                     os.path.join(images_path, f)
                     for f in ls
@@ -438,7 +438,7 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
         imagesPath = os.path.join(self.posPath, "Images")
         segmFilename = [
             f
-            for f in myutils.listdir(imagesPath)
+            for f in utils.listdir(imagesPath)
             if f.endswith(f"{self.endFilenameSegm}.npz")
         ][0]
         segmFilePath = os.path.join(imagesPath, segmFilename)
@@ -494,7 +494,7 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
             acdcEndname = self.endFilenameSegm.replace("_segm", "_acdc_output")
             acdcFilename = [
                 f
-                for f in myutils.listdir(imagesPath)
+                for f in utils.listdir(imagesPath)
                 if f.endswith(f"{acdcEndname}.csv")
             ]
             if acdcFilename:
@@ -510,7 +510,7 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
             keys = []
             for frame_i, lab in enumerate(trackedData):
                 rp = skimage.measure.regionprops(lab)
-                acdc_df_frame_i = myutils.getBaseAcdcDf(rp)
+                acdc_df_frame_i = utils.getBaseAcdcDf(rp)
                 acdc_dfs.append(acdc_df_frame_i)
                 keys.append(frame_i)
 
@@ -595,7 +595,7 @@ class ToSymDivWorker(QObject):
 
                 pos_path = os.path.join(exp_path, pos)
                 images_path = os.path.join(pos_path, "Images")
-                basename, chNames = myutils.getBasenameAndChNames(
+                basename, chNames = utils.getBasenameAndChNames(
                     images_path, useExt=(".tif", ".h5")
                 )
 
@@ -603,7 +603,7 @@ class ToSymDivWorker(QObject):
 
                 # Use first found channel, it doesn't matter for metrics
                 for chName in chNames:
-                    file_path = myutils.getChannelFilePath(images_path, chName)
+                    file_path = utils.getChannelFilePath(images_path, chName)
                     if file_path:
                         break
                 else:

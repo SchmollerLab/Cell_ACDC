@@ -1,6 +1,6 @@
 import inspect, os, datetime, sys, traceback
 
-from . import cellacdc_path, myutils
+from . import cellacdc_path, utils
 
 import gc
 import psutil
@@ -23,7 +23,7 @@ def showRefGraph(object_str: str, debug: bool = True):
     try:
         import objgraph
     except ImportError:
-        conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
+        conda_prefix, pip_prefix = utils.get_pip_conda_prefix()
 
         print(
             f"objgraph is not installed. Install it with '{pip_prefix} objgraph' to use reference graph features, as well as https://www.graphviz.org/"

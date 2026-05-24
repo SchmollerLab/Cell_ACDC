@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / "cellacdc"
 
 PACKAGES: dict[str, set[str]] = {
-    "myutils": {
+    "utils": {
         "dataframe",
         "install",
         "io",

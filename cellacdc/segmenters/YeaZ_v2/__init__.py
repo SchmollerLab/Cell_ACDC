@@ -1,14 +1,14 @@
 import os
 
-from cellacdc import myutils, load
+from cellacdc import utils, load
 
-myutils.check_install_yeaz()
+utils.check_install_yeaz()
 
 custom_weights_json_filename = "custom_weights_name_filepath.json"
 
 
 def add_model_filepath(name: str, filepath: os.PathLike):
-    _, model_folderpath = myutils.get_model_path("YeaZ_v2", create_temp_dir=False)
+    _, model_folderpath = utils.get_model_path("YeaZ_v2", create_temp_dir=False)
     custom_weights_json_file = os.path.join(
         model_folderpath, custom_weights_json_filename
     )
@@ -29,7 +29,7 @@ def load_models_filepath():
         "Bright-field": "weights_budding_BF_multilab_0_1",
         "Fission yeast": "weights_fission_multilab_0_2",
     }
-    _, model_folderpath = myutils.get_model_path("YeaZ_v2", create_temp_dir=False)
+    _, model_folderpath = utils.get_model_path("YeaZ_v2", create_temp_dir=False)
     mapper = {
         name: os.path.join(model_folderpath, filename)
         for name, filename in mapper.items()

@@ -1,13 +1,13 @@
 import os
 from cellacdc.segmenters._cellpose_base.acdcSegment import Model as CellposeBaseModel
 import torch
-from cellacdc import myutils
+from cellacdc import utils
 from . import AvailableModelsv2
 
 
 class Model(CellposeBaseModel):
     def __new__(cls, *args, **kwargs):
-        myutils.check_install_cellpose(2)
+        utils.check_install_cellpose(2)
         return super().__new__(cls)
 
     def __init__(
@@ -61,7 +61,7 @@ class Model(CellposeBaseModel):
         """
         self.init_successful = False
         self.initConstants()
-        model_type, model_path, device = myutils.translateStrNone(
+        model_type, model_path, device = utils.translateStrNone(
             model_type, model_path, device
         )
 

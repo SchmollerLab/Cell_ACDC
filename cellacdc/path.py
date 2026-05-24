@@ -9,7 +9,7 @@ from natsort import natsorted
 
 from . import is_mac, is_linux
 from . import printl
-from . import myutils
+from . import utils
 
 
 def listdir(path):
@@ -107,7 +107,7 @@ def get_posfolderpaths_walk(folderpath):
             continue
 
         pos_folderpath = os.path.dirname(root)
-        if not myutils.is_pos_folderpath(pos_folderpath):
+        if not utils.is_pos_folderpath(pos_folderpath):
             continue
 
         exp_path = os.path.dirname(pos_folderpath).replace("\\", "/")
@@ -129,7 +129,7 @@ def get_exp_path_pos_foldernames_mapper(paths):
             filename = os.path.basename(path)
             path = os.path.dirname(path)
 
-        folder_type = myutils.determine_folder_type(path)
+        folder_type = utils.determine_folder_type(path)
         is_pos_folder, is_images_folder, _ = folder_type
 
         if filename is not None and not is_images_folder:

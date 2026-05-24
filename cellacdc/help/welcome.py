@@ -33,7 +33,7 @@ from qtpy.QtWidgets import (
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 
-from .. import gui, dataStruct, myutils, cite_url, html_utils, urls, widgets
+from .. import gui, dataStruct, utils, cite_url, html_utils, urls, widgets
 from .. import _palettes
 
 # NOTE: Enable icons
@@ -59,7 +59,7 @@ class downloadWorker(QObject):
         self.which = which
 
     def run(self):
-        self.exp_path = myutils.download_examples(self.which, progress=self.progress)
+        self.exp_path = utils.download_examples(self.which, progress=self.progress)
         self.finished.emit()
 
 
@@ -743,7 +743,7 @@ class welcomeWin(QWidget):
         openManualButton = widgets.showInFileManagerButton(
             " Download and open user manual... "
         )
-        openManualButton.clicked.connect(myutils.browse_docs)
+        openManualButton.clicked.connect(utils.browse_docs)
 
         buttonLayout = QHBoxLayout()
         buttonLayout.addWidget(openManualButton)
@@ -888,7 +888,7 @@ class welcomeWin(QWidget):
         self.welcomeLayout.addWidget(self.QPbar, 3, 0, 1, 3)
 
     def testTimeLapseExample(self, checked=True):
-        _, example_path, _, _ = myutils.get_examples_path("time_lapse_2D")
+        _, example_path, _, _ = utils.get_examples_path("time_lapse_2D")
         txt = f"""
         <p style="font-size:11px; font-family:ubuntu">
             <br><b>Downloading example</b> to {example_path}...
@@ -955,7 +955,7 @@ class welcomeWin(QWidget):
         self.openGUIfolder(self.worker.exp_path)
 
     def test3DzStacksExample(self, checked=True):
-        _, example_path, _, _ = myutils.get_examples_path("snapshots_3D")
+        _, example_path, _, _ = utils.get_examples_path("snapshots_3D")
         txt = f"""
         <p style="font-size:11px; font-family:ubuntu">
             <br><b>Downloading example</b> to {example_path}...

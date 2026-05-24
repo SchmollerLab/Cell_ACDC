@@ -270,7 +270,7 @@ class LineageInteractions(AnnotationDisplay, Tracking):
                 self.distanceListMissingIDs[ID] = [relevant_rp[0].label]
                 return [relevant_rp[0].label]
             else:
-                sorted_missing_IDs = myutils.sort_IDs_dist(relevant_rp, point=point)
+                sorted_missing_IDs = utils.sort_IDs_dist(relevant_rp, point=point)
                 self.distanceListMissingIDs[ID] = sorted_missing_IDs
                 return sorted_missing_IDs
         else:
@@ -292,10 +292,10 @@ class LineageInteractions(AnnotationDisplay, Tracking):
         compare_columns = ["parent_ID_tree"]
 
         new_df = new_df[original_df.columns]
-        new_df = myutils.checked_reset_index_Cell_ID(new_df)
+        new_df = utils.checked_reset_index_Cell_ID(new_df)
         new_df = new_df[compare_columns]
         new_df = new_df.sort_index()
-        original_df = myutils.checked_reset_index_Cell_ID(original_df)
+        original_df = utils.checked_reset_index_Cell_ID(original_df)
         original_df = original_df[compare_columns]
         original_df = original_df.sort_index()
 
@@ -303,7 +303,7 @@ class LineageInteractions(AnnotationDisplay, Tracking):
         if differences.empty:
             return
 
-        differences = myutils.checked_reset_index_Cell_ID(differences)
+        differences = utils.checked_reset_index_Cell_ID(differences)
 
         differences = differences["parent_ID_tree"]
         differences = differences.reset_index()

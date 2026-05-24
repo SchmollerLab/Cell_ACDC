@@ -30,7 +30,7 @@ from qtpy.QtCore import Signal, QObject, QMutex, QWaitCondition
 
 from cellacdc import html_utils
 
-from .. import load, myutils, core, prompts, printl, config, segm_re_pattern, io
+from .. import load, utils, core, prompts, printl, config, segm_re_pattern, io
 from .. import transformation, measurements, cca_functions
 from ..path import copy_or_move_tree
 from .. import features, plot
@@ -38,7 +38,7 @@ from .. import core
 from .. import cca_df_colnames, lineage_tree_cols, default_annot_df
 from .. import cca_df_colnames_with_tree
 from .. import cli
-from ..utils import resize
+from ..tools import resize
 from .. import segm_utils
 
 DEBUG = False
@@ -91,7 +91,7 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameRoi = self.mainWin.endFilenameWithText
-                ls = myutils.listdir(images_path)
+                ls = utils.listdir(images_path)
                 rois_filepaths = [
                     os.path.join(images_path, f)
                     for f in ls
@@ -132,7 +132,7 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                     }
 
                 self.logger.log("Generating segm mask from ROIs...")
-                segm_data = myutils.from_imagej_rois_to_segm_data(
+                segm_data = utils.from_imagej_rois_to_segm_data(
                     TZYX_shape,
                     self.IDsToRoisMapper,
                     self.rescaleRoisSizes,
@@ -181,7 +181,7 @@ class ToImajeJroiWorker(BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameSegm = self.mainWin.endFilenameSegm
-                ls = myutils.listdir(images_path)
+                ls = utils.listdir(images_path)
 
                 files_path = [
                     os.path.join(images_path, f)
@@ -216,12 +216,12 @@ class ToImajeJroiWorker(BaseWorkerUtil):
                     rois = []
                     max_ID = posData.segm_data.max()
                     for t, lab in enumerate(posData.segm_data):
-                        rois_t = myutils.from_lab_to_imagej_rois(
+                        rois_t = utils.from_lab_to_imagej_rois(
                             lab, ImagejRoi, t=t, SizeT=posData.SizeT, max_ID=max_ID
                         )
                         rois.extend(rois_t)
                 else:
-                    rois = myutils.from_lab_to_imagej_rois(posData.segm_data, ImagejRoi)
+                    rois = utils.from_lab_to_imagej_rois(posData.segm_data, ImagejRoi)
 
                 roi_filepath = posData.segm_npz_path.replace(".npz", ".zip")
                 roi_filepath = roi_filepath.replace("_segm", "_imagej_rois")
@@ -267,7 +267,7 @@ class ToObjCoordsWorker(BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameSegm = self.mainWin.endFilenameSegm
-                ls = myutils.listdir(images_path)
+                ls = utils.listdir(images_path)
                 file_path = [
                     os.path.join(images_path, f)
                     for f in ls
@@ -294,7 +294,7 @@ class ToObjCoordsWorker(BaseWorkerUtil):
                 n_frames = len(posData.segm_data)
                 self.signals.initProgressBar.emit(n_frames)
                 for frame_i, lab in enumerate(posData.segm_data):
-                    df_coords_i = myutils.from_lab_to_obj_coords(lab)
+                    df_coords_i = utils.from_lab_to_obj_coords(lab)
                     dfs.append(df_coords_i)
                     self.signals.progressBar.emit(1)
                 df_filepath = posData.segm_npz_path.replace(".npz", ".csv")
@@ -358,7 +358,7 @@ class Stack2DsegmTo3Dsegm(BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameSegm = self.mainWin.endFilenameSegm
-                ls = myutils.listdir(images_path)
+                ls = utils.listdir(images_path)
                 file_path = [
                     os.path.join(images_path, f)
                     for f in ls
@@ -549,7 +549,7 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
                 )
 
                 images_path = os.path.join(exp_path, pos, "Images")
-                ls = myutils.listdir(images_path)
+                ls = utils.listdir(images_path)
                 file_path = [
                     os.path.join(images_path, f)
                     for f in ls
@@ -661,7 +661,7 @@ class ResizeUtilWorker(BaseWorkerUtil):
         if path is None:
             return
 
-        images_path = myutils.validate_images_path(path, create_dirs_tree=True)
+        images_path = utils.validate_images_path(path, create_dirs_tree=True)
         return images_path
 
     @worker_exception_handler

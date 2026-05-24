@@ -8,7 +8,7 @@ import traceback
 import numpy as np
 import skimage.measure
 
-from cellacdc import load, myutils
+from cellacdc import load, utils
 
 from ..constants import END
 from ..runnable import RunnableConfig

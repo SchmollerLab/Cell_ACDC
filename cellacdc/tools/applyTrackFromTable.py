@@ -4,18 +4,17 @@ from functools import partial
 import pandas as pd
 
 from .. import exception_handler
-from .. import myutils, apps, widgets, html_utils, printl, workers
-from .. import transformation, load
-from ..utils import base
+from .. import utils, apps, widgets, html_utils, printl, workers
+from . import base
 
 from qtpy.QtWidgets import QFileDialog
 
 
-class ApplyTrackingInfoFromTrackMateUtil(base.MainThreadSinglePosUtilBase):
+class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
     def __init__(
         self, app, title: str, infoText: str, parent=None, callbackOnFinished=None
     ):
-        module = myutils.get_module_name(__file__)
+        module = utils.get_module_name(__file__)
         super().__init__(app, title, module, infoText, parent)
 
         self.sigClose.connect(self.close)
@@ -31,52 +30,47 @@ class ApplyTrackingInfoFromTrackMateUtil(base.MainThreadSinglePosUtilBase):
 
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(
-            'After clicking "Ok" you will be asked to <b>select the XML '
+            'After clicking "Ok" you will be asked to <b>select the table '
             "file</b> (.csv) containing the <b>tracking information</b>."
         )
         msg.information(self, "Instructions", txt)
         if msg.cancel:
             return False
 
-        xmlPath = QFileDialog.getOpenFileName(
+        csvPath = QFileDialog.getOpenFileName(
             self,
             "Select table with tracking info",
             posPath,
-            "XML files (*.xml);;All Files (*)",
+            "CSV files (*.csv);;All Files (*)",
         )[0]
-        if not xmlPath:
+        if not csvPath:
             return False
 
-        xmlName = os.path.basename(xmlPath)
-        self.logger.info(f'Parsing XML file "{xmlName}"...')
+        csvName = os.path.basename(csvPath)
+        self.logger.info(f'Reading column names in table "{csvName}"...')
 
-        df = transformation.trackmate_xml_to_df(xmlPath)
-        csvName = xmlName.replace(".xml", ".csv")
-        csvPath = load.save_df_to_csv_temp_path(df, csvName, index=False)
+        df = pd.read_csv(csvPath, nrows=2)
 
-        deleteUntrackedIDs, proceed = self.askDeleteUntrackedIDs()
-        if not proceed:
+        win = apps.ApplyTrackTableSelectColumnsDialog(df, parent=self)
+        win.exec_()
+        if win.cancel:
             return False
-        # win = apps.ApplyTrackTableSelectColumnsDialog(df, parent=self)
-        # win.exec_()
-        # if win.cancel:
-        #     return False
 
         columnsInfo = {
-            "frameIndexCol": "frame_i",
-            "trackIDsCol": "ID",
-            "maskIDsCol": "None",
-            "xCentroidCol": "x",
-            "yCentroidCol": "y",
-            "parentIDcol": "None",
-            "isFirstFrameOne": False,
-            "deleteUntrackedIDs": deleteUntrackedIDs,
+            "frameIndexCol": win.frameIndexCol,
+            "trackIDsCol": win.trackedIDsCol,
+            "maskIDsCol": win.maskIDsCol,
+            "xCentroidCol": win.xCentroidCol,
+            "yCentroidCol": win.yCentroidCol,
+            "parentIDcol": win.parentIDcol,
+            "isFirstFrameOne": win.isFirstFrameOne,
+            "deleteUntrackedIDs": win.deleteUntrackedIDs,
         }
 
         imagesPath = os.path.join(posPath, "Images")
         segmFilename = [
             f
-            for f in myutils.listdir(imagesPath)
+            for f in utils.listdir(imagesPath)
             if f.endswith(f"{endFilenameSegm}.npz")
         ][0]
         basename = os.path.splitext(segmFilename)[0]
@@ -105,15 +99,3 @@ class ApplyTrackingInfoFromTrackMateUtil(base.MainThreadSinglePosUtilBase):
         win.cancel = False
         win.filename = ""
         win.close()
-
-    def askDeleteUntrackedIDs(self):
-        msg = widgets.myMessageBox(wrapText=False)
-        txt = html_utils.paragraph(
-            "Do you want to remove objects that were not tracked?"
-        )
-        _, yesButton, noButton = msg.question(
-            self, "Delete untracked objects?", txt, buttonsTexts=("Cancel", "No", "Yes")
-        )
-        if msg.cancel:
-            return False, False
-        return msg.clickedButton == yesButton, True

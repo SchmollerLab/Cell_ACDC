@@ -851,7 +851,7 @@ def check_install_custom_dependencies(custom_install_requires, *args, **kwargs):
     """Used to install a package with custom dependencies, usefull if they have
     random pinned versions for their dependencies.
 
-    For *args and **kwargs see `myutils.check_install_package`.
+    For *args and **kwargs see `utils.check_install_package`.
 
     Parameters
     ----------

@@ -30,7 +30,7 @@ from qtpy.QtCore import Signal, QObject, QMutex, QWaitCondition
 
 from cellacdc import html_utils
 
-from .. import load, myutils, core, prompts, printl, config, segm_re_pattern, io
+from .. import load, utils, core, prompts, printl, config, segm_re_pattern, io
 from .. import transformation, measurements, cca_functions
 from ..path import copy_or_move_tree
 from .. import features, plot
@@ -38,7 +38,7 @@ from .. import core
 from .. import cca_df_colnames, lineage_tree_cols, default_annot_df
 from .. import cca_df_colnames_with_tree
 from .. import cli
-from ..utils import resize
+from ..tools import resize
 from .. import segm_utils
 
 DEBUG = False
@@ -177,7 +177,7 @@ class SegForLostIDsWorker(QObject):
             try:
                 self.logger.info(f"Importing {base_model_name}...")
                 self.emitSigAskInstallModel(base_model_name)
-                acdcSegment = myutils.import_segment_module(base_model_name)
+                acdcSegment = utils.import_segment_module(base_model_name)
                 self.guiWin.acdcSegment_li[idx] = acdcSegment
                 self.guiWin.local_seg_base_model_name = base_model_name
             except (IndexError, ImportError, KeyError) as e:
@@ -198,7 +198,7 @@ class SegForLostIDsWorker(QObject):
         init_kwargs_new = self.guiWin.SegForLostIDsSettings["init_kwargs_new"]
         args_new = self.guiWin.SegForLostIDsSettings["args_new"]
 
-        model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new)
+        model = utils.init_segm_model(acdcSegment, posData, init_kwargs_new)
         if model is None:
             self.logger.info("Segmentation model was not initialized correctly!")
             self.signals.critical.emit(
@@ -676,7 +676,7 @@ class CreateConnected3Dsegm(BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameSegm = self.mainWin.endFilenameSegm
-                ls = myutils.listdir(images_path)
+                ls = utils.listdir(images_path)
                 file_path = [
                     os.path.join(images_path, f)
                     for f in ls

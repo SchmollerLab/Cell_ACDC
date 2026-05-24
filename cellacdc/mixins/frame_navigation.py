@@ -254,7 +254,7 @@ class FrameNavigation(Graphics, LabelEditing):
             return
         numFramesToAdd = stopFrameNum - segmSizeT
         posData.allData_li.extend(
-            [myutils.get_empty_stored_data_dict() for i in range(numFramesToAdd)]
+            [utils.get_empty_stored_data_dict() for i in range(numFramesToAdd)]
         )
         lab_shape = posData.segm_data[0].shape
         shapeToAdd = (numFramesToAdd, *lab_shape)
@@ -364,7 +364,7 @@ class FrameNavigation(Graphics, LabelEditing):
 
         posData = self.data[self.pos_i]
         for frame_i in range(last_tracked_i_to_restore + 1, posData.SizeT):
-            data_frame_i = myutils.get_empty_stored_data_dict()
+            data_frame_i = utils.get_empty_stored_data_dict()
 
             data_frame_i["manually_edited_lab"] = posData.allData_li[frame_i][
                 "manually_edited_lab"
@@ -623,7 +623,7 @@ class FrameNavigation(Graphics, LabelEditing):
                 break
 
             posData.segm_data[i] = posData.allData_li[i]["labels"]
-            posData.allData_li[i] = myutils.get_empty_stored_data_dict()
+            posData.allData_li[i] = utils.get_empty_stored_data_dict()
 
             posData.tracked_lost_centroids[i] = set()
             posData.acdcTracker2stepsAnnotInfo.pop(i, None)

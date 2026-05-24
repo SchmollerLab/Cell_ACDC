@@ -8,7 +8,7 @@ from cellacdc.segmenters_promptable.utils import build_combined_mask
 import torch
 
 from cellacdc import user_profile_path
-from cellacdc import myutils
+from cellacdc import utils
 from cellacdc import printl
 
 from huggingface_hub import snapshot_download
@@ -60,7 +60,7 @@ class Model:
             device = None
 
         if device is None:
-            device = myutils.get_torch_device(gpu=run_on == "gpu")
+            device = utils.get_torch_device(gpu=run_on == "gpu")
 
         self.model = nnInteractiveInferenceSession(
             device=device,  # Set inference device

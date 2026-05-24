@@ -12,7 +12,7 @@ from yeaz.unet.model_pytorch import UNet
 from yeaz.unet import segment as yeaz_segment
 import yeaz.unet.neural_network as nn
 
-from cellacdc import myutils, printl, load
+from cellacdc import utils, printl, load
 
 from . import load_models_filepath
 
@@ -143,7 +143,7 @@ class Model:
         return lab.astype(np.uint32)
 
     def _preprocess_image(self, image, tqdm_pbar=None, warn=True):
-        image = myutils.img_to_float(image, warn=warn)
+        image = utils.img_to_float(image, warn=warn)
         image = skimage.exposure.equalize_adapthist(image)
         if tqdm_pbar is not None:
             tqdm_pbar.emit(1)

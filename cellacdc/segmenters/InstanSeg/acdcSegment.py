@@ -2,7 +2,7 @@ import numpy as np
 
 from instanseg import InstanSeg
 
-from ... import myutils, printl
+from ... import utils, printl
 from ..._types import SecondChannelImage
 
 from . import INSTANSEG_MODELS
@@ -36,11 +36,11 @@ class Model:
             model_type = custom_model_type
 
         if device == "Auto":
-            device = myutils.get_torch_device(gpu=True)
+            device = utils.get_torch_device(gpu=True)
         elif device == "CPU":
             device = "cpu"
         elif device == "GPU":
-            device = myutils.get_torch_device(gpu=True)
+            device = utils.get_torch_device(gpu=True)
 
         self.model = InstanSeg(model_type, device=device, verbosity=verbosity)
 
@@ -49,7 +49,7 @@ class Model:
             image_min = image - image.min()
             image_float = image_min / image_min.max()
         else:
-            image_float = myutils.img_to_float(image, warn=warn)
+            image_float = utils.img_to_float(image, warn=warn)
 
         return (image_float * 255).astype(np.uint8)
 

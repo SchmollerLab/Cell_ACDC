@@ -68,7 +68,7 @@ class CanvasDrawing(CanvasSelection, LabelEditing):
         posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab).shape
         xdata, ydata = int(x), int(y)
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not utils.is_in_bounds(xdata, ydata, X, Y):
             return
 
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
@@ -235,7 +235,7 @@ class CanvasDrawing(CanvasSelection, LabelEditing):
         Y, X = self.get_2Dlab(posData.lab).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not utils.is_in_bounds(xdata, ydata, X, Y):
             return
 
         # Eraser dragging mouse --> keep erasing
@@ -325,7 +325,7 @@ class CanvasDrawing(CanvasSelection, LabelEditing):
         Y, X = self.get_2Dlab(posData.lab).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not utils.is_in_bounds(xdata, ydata, X, Y):
             self.isMouseDragImg2 = False
             self.updateAllImages()
             return

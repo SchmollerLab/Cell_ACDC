@@ -1,9 +1,9 @@
-from .. import myutils, workers, widgets, html_utils
+from .. import utils, workers, widgets, html_utils
 
 from .base import NewThreadMultipleExpBaseUtil
 
 
-class toObjCoordsUtil(NewThreadMultipleExpBaseUtil):
+class toImageRoiUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
         self,
         expPaths,
@@ -13,14 +13,14 @@ class toObjCoordsUtil(NewThreadMultipleExpBaseUtil):
         progressDialogueTitle: str,
         parent=None,
     ):
-        module = myutils.get_module_name(__file__)
+        module = utils.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, parent=parent
         )
         self.expPaths = expPaths
 
     def runWorker(self):
-        self.worker = workers.ToObjCoordsWorker(self)
+        self.worker = workers.ToImajeJroiWorker(self)
         super().runWorker(self.worker)
 
     def showEvent(self, event):
@@ -28,7 +28,7 @@ class toObjCoordsUtil(NewThreadMultipleExpBaseUtil):
 
     def workerFinished(self, worker):
         super().workerFinished(worker)
-        txt = "Converting to object coordinates completed."
+        txt = "Converting to ImageJ ROIs completed."
         self.logger.info(txt)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         msg.information(self, "Process completed", html_utils.paragraph(txt))

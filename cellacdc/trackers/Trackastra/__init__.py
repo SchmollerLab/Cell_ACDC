@@ -1,9 +1,9 @@
 import os
 import json
 
-from ... import myutils
+from ... import utils
 
-myutils.check_install_trackastra()
+utils.check_install_trackastra()
 
 import trackastra
 

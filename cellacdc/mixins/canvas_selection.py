@@ -705,7 +705,7 @@ class CanvasSelection(CanvasTool, BrushTools):
             return
 
         xdata, ydata = int(x), int(y)
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not utils.is_in_bounds(xdata, ydata, X, Y):
             self.isMouseDragImg2 = False
             self.updateAllImages()
             return

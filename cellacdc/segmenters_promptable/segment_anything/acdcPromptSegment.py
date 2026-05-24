@@ -8,7 +8,7 @@ import cv2
 
 from segment_anything import sam_model_registry, SamPredictor
 
-from cellacdc import myutils
+from cellacdc import utils
 from cellacdc.segmenters.segment_anything import model_types, sam_segmenters_path
 
 
@@ -65,7 +65,7 @@ class Model:
         return int(z), float(y), float(x)
 
     def _to_rgb(self, image):
-        img = myutils.to_uint8(image)
+        img = utils.to_uint8(image)
         if img.ndim == 2:
             try:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)

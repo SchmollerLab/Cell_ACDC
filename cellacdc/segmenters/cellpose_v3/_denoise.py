@@ -5,7 +5,7 @@ from cellacdc import printl
 from cellpose.denoise import DenoiseModel
 from . import AvailableModelsv3Denoise
 import os
-from cellacdc import myutils
+from cellacdc import utils
 
 from cellacdc.segmenters._cellpose_base.acdcSegment import (
     _initialize_image,
@@ -104,7 +104,7 @@ class CellposeDenoiseModel(DenoiseModel):
         ) = check_deal_with_second_channel(deal_with_second_channel, is_rgb)
 
         self.batch_size = batch_size
-        denoise_model, denoise_model_path, device = myutils.translateStrNone(
+        denoise_model, denoise_model_path, device = utils.translateStrNone(
             denoise_model, denoise_model_path, device
         )
         directml_gpu, gpu = cpu_gpu_directml_gpu(

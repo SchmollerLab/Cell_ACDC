@@ -2,9 +2,9 @@ import os
 from functools import partial
 from natsort import natsorted
 
-from .. import myutils, apps, load, printl, core, widgets
+from .. import utils, apps, load, printl, core, widgets
 from .. import exception_handler
-from ..utils import base
+from ..tools import base
 
 from qtpy.QtCore import QTimer, Signal
 
@@ -12,7 +12,7 @@ from qtpy.QtCore import QTimer, Signal
 class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
     def __init__(self, posPath, app, title: str, infoText: str, parent=None):
 
-        module = myutils.get_module_name(__file__)
+        module = utils.get_module_name(__file__)
         super().__init__(app, title, module, infoText, parent)
 
         self.sigClose.connect(self.close)
@@ -23,7 +23,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
     @exception_handler
     def launchNapariArboretum(self, posPath):
         images_path = os.path.join(posPath, "Images")
-        ls = myutils.listdir(images_path)
+        ls = utils.listdir(images_path)
 
         image_files = [
             file

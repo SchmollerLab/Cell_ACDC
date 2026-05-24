@@ -134,7 +134,7 @@ from .. import is_conda_env
 from .. import printl
 from .. import colors
 from .. import issues_url
-from .. import myutils
+from .. import utils
 from .. import qutils
 from .. import _palettes
 from .. import base_cca_dict
@@ -1690,7 +1690,7 @@ class imageViewer(QMainWindow):
         self.frame_i = posData.frame_i
         self.num_frames = posData.SizeT
 
-        version = myutils.read_version()
+        version = utils.read_version()
         self.setWindowTitle(f"Cell-ACDC v{version} - {posData.relPath}")
 
     def gui_createActions(self):
@@ -2311,7 +2311,7 @@ class imageViewer(QMainWindow):
     def setOverlayImages(self, frame_i=None):
         posData = self.posData
         for filename in posData.ol_data:
-            chName = myutils.get_chname_from_basename(
+            chName = utils.get_chname_from_basename(
                 filename, posData.basename, remove_ext=False
             )
             if chName not in self.checkedOverlayChannels:
@@ -2858,7 +2858,7 @@ class QtSelectItems(QDialog):
         okButton = widgets.okPushButton("Ok")
         cancelButton = widgets.cancelPushButton("Cancel")
         if showInFileManagerPath is not None:
-            txt = myutils.get_open_filemaneger_os_string()
+            txt = utils.get_open_filemaneger_os_string()
             showInFileManagerButton = widgets.showInFileManagerButton(txt)
 
         bottomLayout.addStretch(1)
@@ -2919,7 +2919,7 @@ class QtSelectItems(QDialog):
             showPath = path
         else:
             showPath = self.showInFileManagerPath
-        myutils.showInExplorer(showPath)
+        utils.showInExplorer(showPath)
 
     def toggleMultiSelection(self, checked):
         if checked:
@@ -3095,7 +3095,7 @@ class SelectSegmFileDialog(QDialog):
         self.ok_cb()
 
     def showInFileManager(self, checked=True):
-        myutils.showInExplorer(self.parent_path)
+        utils.showInExplorer(self.parent_path)
 
     def newFile_cb(self):
         win = filenameDialog(

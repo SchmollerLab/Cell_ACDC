@@ -571,7 +571,7 @@ def _init_dummy_filter(**kwargs):
 
 
 def _init_basicpy_background_correction(**kwargs):
-    from . import myutils
+    from . import utils
 
     custom_install_requires = [
         "hyperactive>=4.4.0",
@@ -584,7 +584,7 @@ def _init_basicpy_background_correction(**kwargs):
         "scipy",  # this will theoretically have the wrong version of scipy in the end
     ]
 
-    myutils.check_install_custom_dependencies(
+    utils.check_install_custom_dependencies(
         custom_install_requires, "basicpy", parent=kwargs.get("parent")
     )
 

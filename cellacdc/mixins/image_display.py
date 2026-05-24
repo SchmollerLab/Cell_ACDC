@@ -17,7 +17,7 @@ from cellacdc import (
     disableWindow,
     exception_handler,
     graphLayoutBkgrColor,
-    myutils,
+    utils,
     settings_csv_path,
 )
 
@@ -147,11 +147,11 @@ class ImageDisplay(DisplayDecorations):
 
     def enableZstackWidgets(self, enabled):
         if enabled:
-            myutils.setRetainSizePolicy(self.zSliceScrollBar)
-            myutils.setRetainSizePolicy(self.zProjComboBox)
-            myutils.setRetainSizePolicy(self.zSliceOverlay_SB)
-            myutils.setRetainSizePolicy(self.zProjOverlay_CB)
-            myutils.setRetainSizePolicy(self.overlay_z_label)
+            utils.setRetainSizePolicy(self.zSliceScrollBar)
+            utils.setRetainSizePolicy(self.zProjComboBox)
+            utils.setRetainSizePolicy(self.zSliceOverlay_SB)
+            utils.setRetainSizePolicy(self.zProjOverlay_CB)
+            utils.setRetainSizePolicy(self.overlay_z_label)
             self.zSliceScrollBar.setDisabled(False)
             self.zProjComboBox.show()
             if self.data[self.pos_i].SizeT > 1:
@@ -163,11 +163,11 @@ class ImageDisplay(DisplayDecorations):
             self.switchPlaneCombobox.setDisabled(False)
             self.SizeZlabel.show()
         else:
-            myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=False)
-            myutils.setRetainSizePolicy(self.zProjComboBox, retain=False)
-            myutils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=False)
-            myutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=False)
-            myutils.setRetainSizePolicy(self.overlay_z_label, retain=False)
+            utils.setRetainSizePolicy(self.zSliceScrollBar, retain=False)
+            utils.setRetainSizePolicy(self.zProjComboBox, retain=False)
+            utils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=False)
+            utils.setRetainSizePolicy(self.zProjOverlay_CB, retain=False)
+            utils.setRetainSizePolicy(self.overlay_z_label, retain=False)
             self.zSliceScrollBar.setDisabled(True)
             self.zProjComboBox.hide()
             self.zProjComboBox.hide()
@@ -710,7 +710,7 @@ class ImageDisplay(DisplayDecorations):
         if how == "Do not normalize. Display raw image":
             img = img
         elif how == "Convert to floating point format with values [0, 1]":
-            img = myutils.img_to_float(img)
+            img = utils.img_to_float(img)
         # elif how == 'Rescale to 8-bit unsigned integer format with values [0, 255]':
         #     img = skimage.img_as_float(img)
         #     img = (img*255).astype(np.uint8)
@@ -1198,14 +1198,14 @@ class ImageDisplay(DisplayDecorations):
         if self.img1.image is not None:
             dtype = self.img1.image.dtype
             n_digits = len(str(int(self.img1.image.max())))
-            self.imgValueFormatter = myutils.get_number_fstring_formatter(
+            self.imgValueFormatter = utils.get_number_fstring_formatter(
                 dtype, precision=abs(n_digits - 5)
             )
 
         rawImgData = self.data[self.pos_i].img_data
         dtype = rawImgData.dtype
         n_digits = len(str(int(rawImgData.max())))
-        self.rawValueFormatter = myutils.get_number_fstring_formatter(
+        self.rawValueFormatter = utils.get_number_fstring_formatter(
             dtype, precision=abs(n_digits - 5)
         )
 

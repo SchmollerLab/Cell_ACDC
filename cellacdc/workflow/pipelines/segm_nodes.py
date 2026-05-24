@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 from tqdm import tqdm
 
-from cellacdc import core, features, io, load, myutils
+from cellacdc import core, features, io, load, utils
 
 from ..constants import END
 from ..runnable import RunnableConfig
@@ -261,16 +261,16 @@ def ensure_model(
     else:
         config.logger_func(f"\nInitializing {ctx.model_name} segmentation model...")
 
-    acdc_segment = myutils.import_segment_module(ctx.model_name)
-    init_argspecs, segment_argspecs = myutils.getModelArgSpec(acdc_segment)
-    ctx.init_model_kwargs = myutils.parse_model_params(
+    acdc_segment = utils.import_segment_module(ctx.model_name)
+    init_argspecs, segment_argspecs = utils.getModelArgSpec(acdc_segment)
+    ctx.init_model_kwargs = utils.parse_model_params(
         init_argspecs, ctx.init_model_kwargs
     )
-    ctx.model_kwargs = myutils.parse_model_params(segment_argspecs, ctx.model_kwargs)
+    ctx.model_kwargs = utils.parse_model_params(segment_argspecs, ctx.model_kwargs)
     if ctx.second_channel_name is not None:
         ctx.init_model_kwargs["is_rgb"] = True
 
-    ctx.model = myutils.init_segm_model(
+    ctx.model = utils.init_segm_model(
         acdc_segment, state.pos_data, ctx.init_model_kwargs
     )
     if ctx.model is None:

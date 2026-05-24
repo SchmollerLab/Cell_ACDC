@@ -6,7 +6,7 @@ import numpy as np
 import h5py
 
 from cellacdc import bioio_sample_data_folderpath
-from cellacdc import myutils
+from cellacdc import utils
 from cellacdc import acdc_bioio_bioformats as bioformats
 
 import argparse

@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from importlib import import_module
 
 from cellacdc._run import _setup_app
-from cellacdc import apps, myutils, widgets, data, core, load
+from cellacdc import apps, utils, widgets, data, core, load
 from cellacdc import prompts
 
 import skimage.color
@@ -54,13 +54,13 @@ is_timelapse = initialWindow.is_timelapse
 
 if test_data is None:
     tif_filepath, _ = qtpy.compat.getopenfilename(
-        basedir=myutils.getMostRecentPath(), filters=("Images (*.tif)")
+        basedir=utils.getMostRecentPath(), filters=("Images (*.tif)")
     )
     if not tif_filepath:
         exit("Execution cancelled.")
 
     images_path = os.path.dirname(tif_filepath)
-    basename = os.path.commonprefix(myutils.listdir(images_path))
+    basename = os.path.commonprefix(utils.listdir(images_path))
     filename, ext = os.path.splitext(os.path.basename(tif_filepath))
     channel = filename[len(basename) :]
     posData = load.loadData(tif_filepath, channel)
@@ -85,7 +85,7 @@ from cellacdc.plot import imshow
 imshow(img)
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-models = myutils.get_list_of_models()
+models = utils.get_list_of_models()
 win = widgets.QDialogListbox(
     "Select model",
     "Select model to use for segmentation: ",
@@ -105,10 +105,10 @@ downloadWin = apps.downloadModel(model_name, parent=None)
 downloadWin.download()
 
 # Load model as a module
-acdcSegment = myutils.import_segment_module(model_name)
+acdcSegment = utils.import_segment_module(model_name)
 
 # Read all models parameters
-init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+init_params, segment_params = utils.getModelArgSpec(acdcSegment)
 
 # Prompt user to enter the model parameters
 try:
@@ -138,7 +138,7 @@ if segm_endname is not None:
     segm_data = np.load(segm_filepath)["arr_0"]
 
 
-model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+model = utils.init_segm_model(acdcSegment, posData, win.init_kwargs)
 if model is None:
     sys.exit("Segmentation model was not initialized correctly!")
 is_segment3DT_available = any([name == "segment3DT" for name in dir(model)])

@@ -141,7 +141,7 @@ import pyqtgraph as pg
 
 pg.setConfigOption("imageAxisOrder", "row-major")
 
-from .. import myutils, measurements, is_mac, is_win, html_utils, is_linux
+from .. import utils, measurements, is_mac, is_win, html_utils, is_linux
 from .. import printl, settings_folderpath
 from .. import colors, config
 from .. import html_path
@@ -397,7 +397,7 @@ class LabelRoiCircularItem(pg.ScatterPlotItem):
         mask = skimage.morphology.disk(radius, dtype=bool)
         xx, yy = self.getData()
         Yc, Xc = yy[0], xx[0]
-        mask, self._slice = myutils.clipSelemMask(mask, shape, Yc, Xc, copy=False)
+        mask, self._slice = utils.clipSelemMask(mask, shape, Yc, Xc, copy=False)
         return mask
 
 

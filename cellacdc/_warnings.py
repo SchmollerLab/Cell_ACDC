@@ -2,7 +2,7 @@ import os
 from functools import partial
 import re
 
-from cellacdc import html_utils, myutils
+from cellacdc import html_utils, utils
 
 from . import issues_url
 from . import urls
@@ -122,7 +122,7 @@ def warn_cca_integrity(txt, category, qparent, go_to_frame_callback=None):
 def warn_installing_different_cellpose_version(requested_version, installed_version):
     from cellacdc import widgets
 
-    if not myutils.is_gui_running():
+    if not utils.is_gui_running():
         print(
             f"[WARNING]: You requested to install `Cellpose {requested_version}` "
             f"but you already have `Cellpose {installed_version}`.\n\n"

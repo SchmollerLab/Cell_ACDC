@@ -2,6 +2,6 @@ import os
 import sys
 import subprocess
 
-from cellacdc import myutils
+from cellacdc import utils
 
-myutils.check_install_omnipose()
+utils.check_install_omnipose()

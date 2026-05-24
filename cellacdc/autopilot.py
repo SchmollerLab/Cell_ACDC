@@ -2,7 +2,7 @@ import os
 
 from qtpy.QtCore import QTimer, QThread, Signal, QObject
 
-from . import load, printl, myutils
+from . import load, printl, utils
 
 
 class AutoPilotProfile:
@@ -120,7 +120,7 @@ class AutoPilot:
             windowActions = self.loadingProfile[0]["windowActions"]
             windowActionsArgs = self.loadingProfile[0]["windowActionsArgs"]
             for action, args in zip(windowActions, windowActionsArgs):
-                func = myutils.get_chained_attr(window, action)
+                func = utils.get_chained_attr(window, action)
                 func(*args)
 
             self.loadingProfile.pop(0)

@@ -2,7 +2,7 @@ from qtpy.QtWidgets import QFileDialog
 
 from cellacdc import measurements
 
-from .. import apps, myutils, workers, widgets, html_utils
+from .. import apps, utils, workers, widgets, html_utils
 from .. import printl
 
 from .base import NewThreadMultipleExpBaseUtil
@@ -18,7 +18,7 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
         progressDialogueTitle: str,
         parent=None,
     ):
-        module = myutils.get_module_name(__file__)
+        module = utils.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, parent=parent
         )
@@ -41,7 +41,7 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
 
     def askCopyCcaFromAcdcOutput(self, images_path):
         acdc_output_tables = []
-        for file in myutils.listdir(images_path):
+        for file in utils.listdir(images_path):
             if not file.endswith(".csv"):
                 continue
 
@@ -198,7 +198,7 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
             self._ext = ".csv"
         else:
             self._ext = ".xlsx"
-            myutils.check_install_package(
+            utils.check_install_package(
                 "OpenPyXL", import_pkg_name="openpyxl", pypi_name="XlsxWriter"
             )
         self.runWorker(format=selectFormatWin.selectedItemsText[0])
@@ -235,7 +235,7 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
             self.worker.abort = True
             self.worker.waitCond.wakeAll()
 
-        mostRecentPath = myutils.getMostRecentPath()
+        mostRecentPath = utils.getMostRecentPath()
         save_to_dir = QFileDialog.getExistingDirectory(
             self,
             f"Select folder where to save multiple experiments table",

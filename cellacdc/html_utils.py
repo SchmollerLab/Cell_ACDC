@@ -4,7 +4,7 @@ import re
 import sys
 import textwrap
 
-from . import GUI_INSTALLED, myutils
+from . import GUI_INSTALLED, utils
 
 from ._palettes import (
     _get_highligth_header_background_rgba,

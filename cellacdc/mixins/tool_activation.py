@@ -556,7 +556,7 @@ class ToolActivation(Session):
         if isinstance(IDs, set):
             IDs = list(IDs)
 
-        trim_IDs = myutils.get_trimmed_list(IDs)
+        trim_IDs = utils.get_trimmed_list(IDs)
         txt = f"{pretxt}: {trim_IDs}"
         txt_full = f"{pretxt}:<br>{IDs}"
 

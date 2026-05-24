@@ -134,7 +134,7 @@ from .. import is_conda_env
 from .. import printl
 from .. import colors
 from .. import issues_url
-from .. import myutils
+from .. import utils
 from .. import qutils
 from .. import _palettes
 from .. import base_cca_dict
@@ -1081,7 +1081,7 @@ class QDialogMetadataXML(QDialog):
             idx = self.showChannelDataButtons.index(self.sender())
         dimsOrder = "ctz"
         imgData = self.sampleImgData[dimsOrder][idx]
-        posData = myutils.utilClass()
+        posData = utils.utilClass()
         posData.frame_i = 0
         sampleSizeT = 4 if self.SizeT_SB.value() >= 4 else self.SizeT_SB.value()
         posData.SizeT = sampleSizeT
@@ -1465,10 +1465,10 @@ class MultiTimePointFilePattern(QBaseDialog):
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
         showInFileManagerButton = widgets.showInFileManagerButton(
-            myutils.get_open_filemaneger_os_string()
+            utils.get_open_filemaneger_os_string()
         )
         buttonsLayout.insertWidget(3, showInFileManagerButton)
-        func = partial(myutils.showInExplorer, folderPath)
+        func = partial(utils.showInExplorer, folderPath)
         showInFileManagerButton.clicked.connect(func)
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -2240,7 +2240,7 @@ class QDialogMetadata(QDialog):
 
         if self.posData is not None and self.sender() != self.okButton:
             exp_path = self.posData.exp_path
-            pos_foldernames = myutils.get_pos_foldernames(exp_path)
+            pos_foldernames = utils.get_pos_foldernames(exp_path)
             if self.sender() == self.selectButton:
                 select_folder = load.select_exp_folder()
                 select_folder.pos_foldernames = pos_foldernames
@@ -2250,7 +2250,7 @@ class QDialogMetadata(QDialog):
                 pos_foldernames = select_folder.selected_pos
             for pos in pos_foldernames:
                 images_path = os.path.join(exp_path, pos, "Images")
-                ls = myutils.listdir(images_path)
+                ls = utils.listdir(images_path)
                 search = [file for file in ls if file.find("metadata.csv") != -1]
                 metadata_df = None
                 if search:
@@ -3239,7 +3239,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
 
         delButton = widgets.delPushButton("Remove selected path(s)")
         browseButton = widgets.browseFileButton(
-            "Add folder...", openFolder=True, start_dir=myutils.getMostRecentPath()
+            "Add folder...", openFolder=True, start_dir=utils.getMostRecentPath()
         )
 
         buttonsLayout.insertWidget(3, delButton)
@@ -3285,11 +3285,11 @@ class SelectFoldersToAnalyse(QBaseDialog):
     def expFolderToPosFoldernamesMapper(self):
         expPathsPosFoldernamesMapper = defaultdict(set)
         for selectedPath in self.pathsList():
-            pos_foldernames = myutils.get_pos_foldernames(
+            pos_foldernames = utils.get_pos_foldernames(
                 selectedPath, check_if_is_sub_folder=True
             )
             if not pos_foldernames:
-                images_path = myutils.get_images_folderpath(selectedPath)
+                images_path = utils.get_images_folderpath(selectedPath)
                 expPathsPosFoldernamesMapper[selectedPath].add("")
             else:
                 expPath = load.get_exp_path(selectedPath)
@@ -3377,9 +3377,9 @@ class SelectFoldersToAnalyse(QBaseDialog):
         return paths
 
     def addFolderPath(self, selected_path):
-        myutils.addToRecentPaths(selected_path)
+        utils.addToRecentPaths(selected_path)
 
-        folder_type = myutils.determine_folder_type(selected_path)
+        folder_type = utils.determine_folder_type(selected_path)
         is_pos_folder, is_images_folder, folder_path = folder_type
         if is_pos_folder:
             paths = [selected_path]

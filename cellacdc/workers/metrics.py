@@ -30,7 +30,7 @@ from qtpy.QtCore import Signal, QObject, QMutex, QWaitCondition
 
 from cellacdc import html_utils
 
-from .. import load, myutils, core, prompts, printl, config, segm_re_pattern, io
+from .. import load, utils, core, prompts, printl, config, segm_re_pattern, io
 from .. import transformation, measurements, cca_functions
 from ..path import copy_or_move_tree
 from .. import features, plot
@@ -38,7 +38,7 @@ from .. import core
 from .. import cca_df_colnames, lineage_tree_cols, default_annot_df
 from .. import cca_df_colnames_with_tree
 from .. import cli
-from ..utils import resize
+from ..tools import resize
 from .. import segm_utils
 
 DEBUG = False
@@ -105,7 +105,7 @@ class ComputeMetricsWorker(QObject):
 
                 pos_path = os.path.join(exp_path, pos)
                 images_path = os.path.join(pos_path, "Images")
-                basename, chNames = myutils.getBasenameAndChNames(
+                basename, chNames = utils.getBasenameAndChNames(
                     images_path, useExt=(".tif", ".h5")
                 )
 
@@ -113,7 +113,7 @@ class ComputeMetricsWorker(QObject):
 
                 # Use first found channel, it doesn't matter for metrics
                 chName = chNames[0]
-                file_path = myutils.getChannelFilePath(images_path, chName)
+                file_path = utils.getChannelFilePath(images_path, chName)
 
                 # Load data
                 posData = load.loadData(file_path, chName)
@@ -305,7 +305,7 @@ class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
             )
 
             imagesPath = os.path.join(exp_path, pos, "Images")
-            basename, chNames = myutils.getBasenameAndChNames(
+            basename, chNames = utils.getBasenameAndChNames(
                 imagesPath, useExt=(".tif", ".h5")
             )
 
@@ -463,7 +463,7 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, "Images")
 
-                ls = myutils.listdir(images_path)
+                ls = utils.listdir(images_path)
 
                 acdc_output_file = [
                     f for f in ls if f.endswith(f"{selectedAcdcOutputEndname}.csv")
@@ -500,7 +500,7 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
             )
             acdc_df_allpos["experiment_folderpath"] = exp_path
 
-            basename, chNames = myutils.getBasenameAndChNames(
+            basename, chNames = utils.getBasenameAndChNames(
                 images_path, useExt=(".tif", ".h5")
             )
             df_metadata = load.load_metadata_df(images_path)
@@ -661,7 +661,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
         if self.acdcOutputEndname is None:
             return
 
-        for file in myutils.listdir(images_path):
+        for file in utils.listdir(images_path):
             if not file.endswith(self.acdcOutputEndname):
                 continue
 
@@ -749,7 +749,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
             acdc_dfs, keys=keys, names=["Position_n", "frame_i", "Cell_ID"]
         )
         acdc_df_allpos["experiment_folderpath"] = exp_path
-        basename, chNames = myutils.getBasenameAndChNames(
+        basename, chNames = utils.getBasenameAndChNames(
             images_path, useExt=(".tif", ".h5")
         )
         df_metadata = load.load_metadata_df(images_path)
@@ -1473,7 +1473,7 @@ class CountObjectsInSegm(BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameSegm = self.mainWin.endFilenameSegm
-                ls = myutils.listdir(images_path)
+                ls = utils.listdir(images_path)
                 file_path = [
                     os.path.join(images_path, f)
                     for f in ls

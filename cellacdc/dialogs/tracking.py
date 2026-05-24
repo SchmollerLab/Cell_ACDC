@@ -134,7 +134,7 @@ from .. import is_conda_env
 from .. import printl
 from .. import colors
 from .. import issues_url
-from .. import myutils
+from .. import utils
 from .. import qutils
 from .. import _palettes
 from .. import base_cca_dict
@@ -1628,7 +1628,7 @@ class editCcaTableWidget(QDialog):
 
         stop_frame_i = win.value
         changes = self.getChanges()
-        changes_format = myutils.format_cca_manual_changes(changes)
+        changes_format = utils.format_cca_manual_changes(changes)
         detailsText = (
             f"Changes that will be applied from frame n. {self.current_frame_i + 1}"
             f" to frame n. {stop_frame_i + 1}:\n\n{changes_format}"
@@ -1647,7 +1647,7 @@ will be applied (see below).<br><br>
         self.sigApplyChangesFutureFrames.emit(changes, stop_frame_i)
 
     def moreInfo(self, checked=True):
-        desc = myutils.get_cca_colname_desc()
+        desc = utils.get_cca_colname_desc()
         msg = widgets.myMessageBox(parent=self)
         msg.setWindowTitle("Cell cycle annotations info")
         msg.setWidth(400)

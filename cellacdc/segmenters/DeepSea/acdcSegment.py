@@ -10,7 +10,7 @@ from PIL import Image
 import skimage.measure
 
 from deepsea.model import DeepSeaSegmentation
-from cellacdc import myutils, printl
+from cellacdc import utils, printl
 
 from . import _init_model
 from . import _get_segm_transforms

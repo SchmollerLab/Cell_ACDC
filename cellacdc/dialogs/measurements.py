@@ -134,7 +134,7 @@ from .. import is_conda_env
 from .. import printl
 from .. import colors
 from .. import issues_url
-from .. import myutils
+from .. import utils
 from .. import qutils
 from .. import _palettes
 from .. import base_cca_dict
@@ -1385,7 +1385,7 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
         buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(okButton)
 
-        showLogButton.clicked.connect(partial(myutils.showInExplorer, log_path))
+        showLogButton.clicked.connect(partial(utils.showInExplorer, log_path))
         okButton.clicked.connect(self.close)
         layout.setVerticalSpacing(10)
         layout.addLayout(buttonsLayout, 2, 1)
@@ -2280,7 +2280,7 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
         self.log_path = log_path
 
     def loadEquationsButtonClicked(self):
-        MostRecentPath = myutils.getMostRecentPath()
+        MostRecentPath = utils.getMostRecentPath()
         file_path = QFileDialog.getOpenFileName(
             self,
             "Select equations file",

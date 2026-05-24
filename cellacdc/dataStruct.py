@@ -42,7 +42,7 @@ from qtpy import QtGui
 # a separate process that doesn't have a parent package
 from . import issues_url
 from . import exception_handler
-from . import apps, myutils, widgets, html_utils, printl
+from . import apps, utils, widgets, html_utils, printl
 from . import load, settings_csv_path
 from . import _palettes
 from . import recentPaths_path, cellacdc_path, settings_folderpath
@@ -816,7 +816,7 @@ class bioFormatsWorker(QObject):
 
         if not self.to_h5:
             imgData_ch = np.squeeze(np.array(imgData_ch, dtype=imgData.dtype))
-            myutils.to_tiff(
+            utils.to_tiff(
                 filePath,
                 imgData_ch,
                 SizeT=savedSizeT,
@@ -991,7 +991,7 @@ class bioFormatsWorker(QObject):
                 raw_src_path = os.path.dirname(rawFilePath)
                 rawFilePath = [
                     os.path.join(raw_src_path, f)
-                    for f in myutils.listdir(raw_src_path)
+                    for f in utils.listdir(raw_src_path)
                     if f.find(rawFilename) != -1
                 ][0]
 
@@ -1056,7 +1056,7 @@ class bioFormatsWorker(QObject):
                 # contain "otherFilename" in the name
                 otherFilename = f"{basename}{pos_n}"
                 rawFilePath = set()
-                for f in myutils.listdir(raw_src_path):
+                for f in utils.listdir(raw_src_path):
                     notRawFile = all(
                         [f.find(rawName) == -1 for rawName in pos_rawFilenames]
                     )
@@ -1219,7 +1219,7 @@ class createDataStructWin(QMainWindow):
 
         self._version = version
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        logger, logs_path, log_path, log_filename = utils.setupLogger(
             module="dataStruct"
         )
         self.logger = logger
@@ -1240,7 +1240,7 @@ class createDataStructWin(QMainWindow):
         self.metadataDialogIsOpen = False
         self.df_settings = pd.read_csv(settings_csv_path, index_col="setting")
 
-        version = myutils.read_version()
+        version = utils.read_version()
         self.setWindowTitle(f"Cell-ACDC v{version} - Data structure")
         self.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
@@ -1331,7 +1331,7 @@ class createDataStructWin(QMainWindow):
         self.checkInstallPythonBioformats(parent)
 
     def checkInstallBioIO(self, parent):
-        myutils.check_install_package(
+        utils.check_install_package(
             "BioIO",
             import_pkg_name="bioio",
             pypi_name="bioio",
@@ -1351,13 +1351,13 @@ class createDataStructWin(QMainWindow):
             self.close()
             raise OSError("This module is supported ONLY on Windows 10/10 and macOS")
 
-        success, jar_dst_path = myutils.download_bioformats_jar(
+        success, jar_dst_path = utils.download_bioformats_jar(
             qparent=self,
             logger_info=self.logger.info,
             logger_exception=self.logger.exception,
         )
         self.logger.info("Checking if Java is installed...")
-        myutils.check_upgrade_javabridge()
+        utils.check_upgrade_javabridge()
         try:
             import javabridge
         except ModuleNotFoundError as e:
@@ -1365,11 +1365,11 @@ class createDataStructWin(QMainWindow):
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
             print("======================================")
-            cancel = myutils.install_javabridge_help(parent=self)
+            cancel = utils.install_javabridge_help(parent=self)
             if cancel:
                 raise ModuleNotFoundError("User aborted javabridge installation")
 
-            isGitInstalled = myutils.check_git_installed(parent=self)
+            isGitInstalled = utils.check_git_installed(parent=self)
             if not isGitInstalled:
                 raise ModuleNotFoundError(
                     "Git is not installed. Install from "
@@ -1377,15 +1377,15 @@ class createDataStructWin(QMainWindow):
                 )
 
             try:
-                jre_path, jdk_path, url = myutils.download_java()
+                jre_path, jdk_path, url = utils.download_java()
             except Exception as e:
                 print("======================================")
                 traceback_str = traceback.format_exc()
                 self.logger.exception(traceback_str)
                 print("======================================")
-                java_info = myutils.get_java_url()
+                java_info = utils.get_java_url()
                 url, file_size, os_foldername, unzipped_foldername = java_info
-                acdc_java_path, _ = myutils.get_acdc_java_path()
+                acdc_java_path, _ = utils.get_acdc_java_path()
                 java_href = f'<a href="{url}">this</a>'
                 s = (
                     f"1. Download {java_href} .zip file and unzip it.<br>"
@@ -1416,23 +1416,23 @@ class createDataStructWin(QMainWindow):
                 )
 
             if not is_win:
-                cancel = myutils.install_java()
+                cancel = utils.install_java()
                 if cancel:
                     raise ModuleNotFoundError("User aborted Java installation")
                     return
 
-            myutils.install_javabridge()
+            utils.install_javabridge()
 
         except Exception as e:
             print("======================================")
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
             print("======================================")
-            cancel = myutils.install_java()
+            cancel = utils.install_java()
             if cancel:
                 raise ModuleNotFoundError("User aborted Java installation")
                 return
-            myutils.install_javabridge(force_compile=True, attempt_uninstall_first=True)
+            utils.install_javabridge(force_compile=True, attempt_uninstall_first=True)
 
         try:
             import javabridge
@@ -1714,7 +1714,7 @@ class createDataStructWin(QMainWindow):
         return msg.clickedButton == moveButton, msg.cancel
 
     def _installLazyLoadModules(self):
-        myutils.check_install_package(
+        utils.check_install_package(
             "zarr",
             installer="pip",
             is_cli=False,
@@ -1914,7 +1914,7 @@ class createDataStructWin(QMainWindow):
     def checkFileFormat(self, raw_src_path):
         self.moveOtherFiles = False
         self.copyOtherFiles = False
-        ls = natsorted(myutils.listdir(raw_src_path))
+        ls = natsorted(utils.listdir(raw_src_path))
         files = [
             filename
             for filename in ls
@@ -2093,7 +2093,7 @@ class createDataStructWin(QMainWindow):
         stripped_filenames = []
         for file in rawFilenames:
             filename, ext = os.path.splitext(file)
-            m_iter = myutils.findalliter(rf"(\d+)_(.+)", filename)
+            m_iter = utils.findalliter(rf"(\d+)_(.+)", filename)
             if len(m_iter) <= 1:
                 self.criticalNoFilenamePattern()
                 return False
@@ -2112,7 +2112,7 @@ class createDataStructWin(QMainWindow):
                 self.criticalNoFilenamePattern(error=traceback.format_exc())
                 return False
 
-        basename = myutils.getBasename(stripped_filenames)
+        basename = utils.getBasename(stripped_filenames)
         if not basename:
             self.criticalNoFilenamePattern()
             return False
@@ -2222,7 +2222,7 @@ class createDataStructWin(QMainWindow):
         self.waitCond.wakeAll()
 
     def askPosFoldersExisting(self, exp_dst_path):
-        pos_foldernames = myutils.get_pos_foldernames(exp_dst_path)
+        pos_foldernames = utils.get_pos_foldernames(exp_dst_path)
         if not pos_foldernames:
             return False, False, False, 1
 
@@ -2281,7 +2281,7 @@ class InitFijiMacro:
         self.logger = self.acdcLauncher.logger
 
     def askSelectInstalledFiji(self):
-        if os.path.exists(myutils.get_fiji_exec_folderpath()):
+        if os.path.exists(utils.get_fiji_exec_folderpath()):
             return False, False
 
         txt = html_utils.paragraph(f"""    
@@ -2345,7 +2345,7 @@ class InitFijiMacro:
             its creation process and cancel its execution later.
         """
         self.logger.info("Testing Fiji command...")
-        fiji_success = myutils.test_fiji_base_command(self.logger.info)
+        fiji_success = utils.test_fiji_base_command(self.logger.info)
         commands = None
         if not fiji_success:
             if not did_user_selected_fiji:
@@ -2378,7 +2378,7 @@ class InitFijiMacro:
             self.cancel()
             return
 
-        myutils.download_fiji(logger_func=self.logger.info)
+        utils.download_fiji(logger_func=self.logger.info)
 
         win = apps.InitFijiMacroDialog(parent=self.acdcLauncher)
         win.exec_()

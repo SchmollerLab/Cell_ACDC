@@ -30,7 +30,7 @@ from qtpy.QtCore import Signal, QObject, QMutex, QWaitCondition
 
 from cellacdc import html_utils
 
-from .. import load, myutils, core, prompts, printl, config, segm_re_pattern, io
+from .. import load, utils, core, prompts, printl, config, segm_re_pattern, io
 from .. import transformation, measurements, cca_functions
 from ..path import copy_or_move_tree
 from .. import features, plot
@@ -38,7 +38,7 @@ from .. import core
 from .. import cca_df_colnames, lineage_tree_cols, default_annot_df
 from .. import cca_df_colnames_with_tree
 from .. import cli
-from ..utils import resize
+from ..tools import resize
 from .. import segm_utils
 
 DEBUG = False
@@ -343,7 +343,7 @@ class AutoSaveWorker(QObject):
                 self.logger.log(f"[WARNING]: {e}")
                 reference_acdc_df = saved_acdc_df
 
-        if myutils.are_acdc_dfs_equal(recovery_acdc_df, reference_acdc_df):
+        if utils.are_acdc_dfs_equal(recovery_acdc_df, reference_acdc_df):
             return
 
         load.store_unsaved_acdc_df(recovery_folderpath, recovery_acdc_df)

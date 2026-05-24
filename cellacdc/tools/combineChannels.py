@@ -2,7 +2,7 @@ import os
 
 import pandas as pd
 
-from .. import apps, myutils, workers, widgets, html_utils, load
+from .. import apps, utils, workers, widgets, html_utils, load
 from .. import printl
 
 from .base import NewThreadMultipleExpBaseUtil
@@ -18,7 +18,7 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
         progressDialogueTitle: str,
         parent=None,
     ):
-        module = myutils.get_module_name(__file__)
+        module = utils.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, parent=parent
         )
@@ -39,7 +39,7 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
                 pos_path = os.path.join(exp_path, pos)
                 images_path = os.path.join(pos_path, "Images")
                 self.images_paths.append(images_path)
-                basename, chNames_loc = myutils.getBasenameAndChNames(images_path)
+                basename, chNames_loc = utils.getBasenameAndChNames(images_path)
                 segm_files = load.get_segm_files(images_path)
                 segm_endnames = load.get_endnames(basename, segm_files)
                 if i == 0 and j == 0:

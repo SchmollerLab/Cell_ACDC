@@ -4,7 +4,7 @@ import re
 import numpy as np
 
 from .. import printl
-from ..myutils import safe_get_or_call
+from ..utils import safe_get_or_call
 from . import install, EXTENSION_PACKAGE_MAPPER
 from . import EXTENSION_BIOIMAGE_KWARGS_MAPPER
 from . import EXTENSION_METADATA_ATTR_MAPPER

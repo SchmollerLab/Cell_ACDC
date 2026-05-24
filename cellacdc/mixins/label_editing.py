@@ -643,7 +643,7 @@ class LabelEditing(ToolActivation):
 
         posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab).shape
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not utils.is_in_bounds(xdata, ydata, X, Y):
             return
 
         self.isHoverZneighID = False

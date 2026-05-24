@@ -3,7 +3,7 @@ import datetime
 from typing import Iterable
 from uuid import uuid4
 
-from cellacdc import myutils
+from cellacdc import utils
 
 from .. import acdc_fiji_path
 
@@ -58,11 +58,11 @@ def init_macro(
 
 
 def command_run_macro(macro_filepath):
-    exec_path = myutils.get_fiji_exec_folderpath()
+    exec_path = utils.get_fiji_exec_folderpath()
     command = f"{exec_path} -macro {macro_filepath}"
     return command
 
 
 def run_macro(macro_command):
-    success = myutils.run_fiji_command(command=macro_command)
+    success = utils.run_fiji_command(command=macro_command)
     return success

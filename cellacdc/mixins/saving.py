@@ -842,7 +842,7 @@ class Saving(AppShell):
         self.askConcatenate()
 
         if self.closeGUI:
-            salute_string = myutils.get_salute_string()
+            salute_string = utils.get_salute_string()
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(
                 f"Data <b>saved!</b>. The GUI will now close.<br><br>{salute_string}"
@@ -882,7 +882,7 @@ class Saving(AppShell):
             self.saveWin.QPbar.setValue(self.saveWin.QPbar.value() + step)
             steps_left = self.saveWin.QPbar.maximum() - self.saveWin.QPbar.value()
             seconds = round(exec_time * steps_left)
-            ETA = myutils.seconds_to_ETA(seconds)
+            ETA = utils.seconds_to_ETA(seconds)
             self.saveWin.ETA_label.setText(f"ETA: {ETA}")
 
     def saveMetricsCritical(self, traceback_format):

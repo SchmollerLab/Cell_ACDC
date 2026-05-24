@@ -30,7 +30,7 @@ import warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 from . import prompts
-from . import myutils, measurements, config
+from . import utils, measurements, config
 from . import base_cca_dict, base_acdc_df, html_utils, settings_folderpath
 from . import cca_df_colnames, printl
 from . import ignore_exception, cellacdc_path
@@ -158,7 +158,7 @@ def to_csv_through_temp(df, csv_path):
 
 
 def get_all_acdc_folders(user_profile_path):
-    models = myutils.get_list_of_models()
+    models = utils.get_list_of_models()
     acdc_folders = [f"acdc-{model}" for model in models]
     acdc_folders.append("acdc-java")
     acdc_folders.append(".acdc-logs")
@@ -204,7 +204,7 @@ def write_last_selected_set_measurements(last_selected_meas: dict[str, dict]):
 
 
 def migrate_models_paths(dst_path):
-    models = myutils.get_list_of_models()
+    models = utils.get_list_of_models()
     user_profile_path = dst_path.replace("\\", "/")
     for model in models:
         model_path = os.path.join(models_path, model, "model")
@@ -311,10 +311,10 @@ def read_segm_workflow_from_config(filepath) -> dict:
 
 
 def get_images_paths(folder_path):
-    folder_type = myutils.determine_folder_type(folder_path)
+    folder_type = utils.determine_folder_type(folder_path)
     is_pos_folder, is_images_folder, folder_path = folder_type
     if not is_pos_folder and not is_images_folder:
-        pos_foldernames = myutils.get_pos_foldernames(folder_path)
+        pos_foldernames = utils.get_pos_foldernames(folder_path)
         images_paths = [
             os.path.join(folder_path, pos, "Images") for pos in pos_foldernames
         ]
@@ -402,7 +402,7 @@ def load_segm_file(images_path, end_name_segm_file="segm", return_path=False):
 
     found_files = [
         file
-        for file in myutils.listdir(images_path)
+        for file in utils.listdir(images_path)
         if file.endswith(end_name_segm_file)
     ]
     try:
@@ -449,7 +449,7 @@ def get_tzyx_shape(images_path):
 
 
 def load_metadata_df(images_path):
-    for file in myutils.listdir(images_path):
+    for file in utils.listdir(images_path):
         if not file.endswith("metadata.csv"):
             continue
         filepath = os.path.join(images_path, file)
@@ -663,7 +663,7 @@ def load_acdc_df_file(
 
     found_files = [
         file
-        for file in myutils.listdir(images_path)
+        for file in utils.listdir(images_path)
         if file.endswith(end_name_acdc_df_file)
     ]
     if len(found_files) == 0:
@@ -784,7 +784,7 @@ def store_unsaved_acdc_df(recovery_folderpath, df, log_func=printl):
     if not os.path.exists(unsaved_recovery_folderpath):
         os.mkdir(unsaved_recovery_folderpath)
 
-    files = myutils.listdir(unsaved_recovery_folderpath)
+    files = utils.listdir(unsaved_recovery_folderpath)
     csv_files = [file for file in files if file.endswith(".csv")]
     if len(files) > 20:
         csv_files = natsorted(csv_files)
@@ -804,7 +804,7 @@ def get_last_stored_unsaved_acdc_df_filepath(recovery_folderpath):
     if not os.path.exists(unsaved_recovery_folderpath):
         return
 
-    files = myutils.listdir(unsaved_recovery_folderpath)
+    files = utils.listdir(unsaved_recovery_folderpath)
     csv_files = [file for file in files if file.endswith(".csv")]
     if not csv_files:
         return
@@ -823,7 +823,7 @@ def get_last_stored_unsaved_acdc_df(recovery_folderpath):
     if not os.path.exists(unsaved_recovery_folderpath):
         return
 
-    files = myutils.listdir(unsaved_recovery_folderpath)
+    files = utils.listdir(unsaved_recovery_folderpath)
     csv_files = [file for file in files if file.endswith(".csv")]
     if not csv_files:
         return
@@ -857,7 +857,7 @@ def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []
     for images_path in images_paths:
         img_aligned_found = False
-        for filename in myutils.listdir(images_path):
+        for filename in utils.listdir(images_path):
             if filename.find(f"{user_ch_name}_aligned.np") != -1:
                 img_path_aligned = f"{images_path}/{filename}"
                 img_aligned_found = True
@@ -874,7 +874,7 @@ def get_user_ch_paths(images_paths, user_ch_name):
 
 
 def get_acdc_output_files(images_path):
-    ls = myutils.listdir(images_path)
+    ls = utils.listdir(images_path)
 
     acdc_output_files = [
         file for file in ls if file.find("acdc_output") != -1 and file.endswith(".csv")
@@ -883,7 +883,7 @@ def get_acdc_output_files(images_path):
 
 
 def get_segm_files(images_path):
-    ls = myutils.listdir(images_path)
+    ls = utils.listdir(images_path)
 
     segm_files = [
         file
@@ -899,16 +899,16 @@ def get_segm_files(images_path):
 
 def get_segm_endnames_from_exp_path(exp_path, pos_foldernames=None):
     if pos_foldernames is None:
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = utils.get_pos_foldernames(exp_path)
 
     existingEndNames = set()
     for p, pos in enumerate(pos_foldernames):
         pos_path = os.path.join(exp_path, pos)
         images_path = os.path.join(pos_path, "Images")
-        basename, chNames = myutils.getBasenameAndChNames(images_path)
+        basename, chNames = utils.getBasenameAndChNames(images_path)
         # Use first found channel, it doesn't matter for metrics
         for chName in chNames:
-            filePath = myutils.getChannelFilePath(images_path, chName)
+            filePath = utils.getChannelFilePath(images_path, chName)
             if filePath:
                 break
         else:
@@ -926,7 +926,7 @@ def get_segm_endnames_from_exp_path(exp_path, pos_foldernames=None):
 
 
 def get_files_with(images_path: os.PathLike, with_text: str, ext: str = None):
-    ls = myutils.listdir(images_path)
+    ls = utils.listdir(images_path)
     found_files = []
     for file in ls:
         if file.find(with_text) == -1:
@@ -942,7 +942,7 @@ def get_files_with(images_path: os.PathLike, with_text: str, ext: str = None):
 
 def load_segmInfo_df(pos_path):
     images_path = os.path.join(pos_path, "Images")
-    for file in myutils.listdir(images_path):
+    for file in utils.listdir(images_path):
         if file.endswith("segmInfo.csv"):
             csv_path = os.path.join(images_path, file)
             df = pd.read_csv(csv_path)
@@ -971,7 +971,7 @@ def get_filename_from_channel(
     h5_path = ""
     npz_aligned_path = ""
     tif_path = ""
-    for file in myutils.listdir(images_path):
+    for file in utils.listdir(images_path):
         isValidEnd = True
         for not_allowed_end in not_allowed_ends:
             if file.endswith(not_allowed_end):
@@ -1069,11 +1069,11 @@ def get_filepath_from_endname(images_path, endname):
     if channel_filepath:
         return channel_filepath
 
-    for file in myutils.listdir(images_path):
+    for file in utils.listdir(images_path):
         if file.endswith(endname):
             return os.path.join(images_path, file)
 
-    for file in myutils.listdir(images_path):
+    for file in utils.listdir(images_path):
         file_noext, ext = os.path.splitext(file)
         if file_noext.endswith(endname):
             return os.path.join(images_path, file)
@@ -1082,7 +1082,7 @@ def get_filepath_from_endname(images_path, endname):
 
 
 def get_exp_path(path):
-    folder_type = myutils.determine_folder_type(path)
+    folder_type = utils.determine_folder_type(path)
     is_pos_folder, is_images_folder, _ = folder_type
     if is_pos_folder:
         exp_path = os.path.dirname(path)
@@ -1112,7 +1112,7 @@ def get_endname_from_filepath(filepath, allow_empty=False):
 
     filename = os.path.basename(filepath)
     filename_noext, ext = os.path.splitext(filename)
-    images_files = myutils.listdir(parent_folderpath)
+    images_files = utils.listdir(parent_folderpath)
     basename = os.path.commonprefix(images_files)
     endname = filename_noext[len(basename) :]
     if not endname:
@@ -1127,21 +1127,21 @@ def get_endnames_from_basename(basename, filenames):
 
 def get_path_from_endname(end_name, images_path, ext=None):
     if ext is None:
-        end_name, ext = myutils.remove_known_extension(end_name)
+        end_name, ext = utils.remove_known_extension(end_name)
 
     if os.path.exists(os.path.join(images_path, f"{end_name}{ext}")):
         return os.path.join(images_path, f"{end_name}{ext}")
 
-    basename = os.path.commonprefix(myutils.listdir(images_path))
+    basename = os.path.commonprefix(utils.listdir(images_path))
     searched_file = f"{basename}{end_name}{ext}"
-    for file in myutils.listdir(images_path):
+    for file in utils.listdir(images_path):
         filename, ext = os.path.splitext(file)
         if file == searched_file:
             return os.path.join(images_path, file), file
         elif filename == searched_file:
             return os.path.join(images_path, file), file
 
-    for file in myutils.listdir(images_path):
+    for file in utils.listdir(images_path):
         filename, ext = os.path.splitext(file)
         if file.endswith(end_name):
             return os.path.join(images_path, file), file
@@ -1267,7 +1267,7 @@ def parse_metadata_csv_file(csv_filepath):
 
 def get_posData_metadata(images_path, basename):
     # First check if metadata.csv already has the channel names
-    for file in myutils.listdir(images_path):
+    for file in utils.listdir(images_path):
         if file.endswith("metadata.csv"):
             metadata_csv_path = os.path.join(images_path, file)
             parse_metadata_csv_file(metadata_csv_path)
@@ -1285,7 +1285,7 @@ def get_posData_metadata(images_path, basename):
 
 
 def is_pos_prepped(images_path):
-    filenames = myutils.listdir(images_path)
+    filenames = utils.listdir(images_path)
     for filename in filenames:
         if filename.endswith("dataPrepROIs_coords.csv"):
             return True
@@ -1301,7 +1301,7 @@ def is_pos_prepped(images_path):
 
 
 def is_bkgrROIs_present(images_path):
-    filenames = myutils.listdir(images_path)
+    filenames = utils.listdir(images_path)
     for filename in filenames:
         if filename.endswith("dataPrep_bkgrROIs.json"):
             return True
@@ -1346,7 +1346,7 @@ class loadData:
         self.attempFixBasenameBug()
         self.non_aligned_ext = ".tif"
         if filename_ext.endswith("aligned.npz"):
-            for file in myutils.listdir(self.images_path):
+            for file in utils.listdir(self.images_path):
                 if file.endswith(f"{user_ch_name}.h5"):
                     self.non_aligned_ext = ".h5"
                     break
@@ -1363,7 +1363,7 @@ class loadData:
         """
 
         try:
-            ls = myutils.listdir(self.images_path)
+            ls = utils.listdir(self.images_path)
             for file in ls:
                 if file.endswith("metadata.csv"):
                     metadata_csv_path = os.path.join(self.images_path, file)
@@ -1378,7 +1378,7 @@ class loadData:
             except Exception as e:
                 return
 
-            numPos = len(myutils.get_pos_foldernames(self.exp_path))
+            numPos = len(utils.get_pos_foldernames(self.exp_path))
             numPosDigits = len(str(numPos))
             s0p = str(self.pos_num + 1).zfill(numPosDigits)
 
@@ -1506,7 +1506,7 @@ class loadData:
         self.acdc_df.to_csv(self.acdc_output_csv_path)
 
     def getBasenameAndChNames(self, useExt=None, qparent=None):
-        ls = myutils.listdir(self.images_path)
+        ls = utils.listdir(self.images_path)
         selector = prompts.select_channel_name()
         self.chNames, _ = selector.get_available_channels(
             ls, self.images_path, useExt=useExt
@@ -1636,7 +1636,7 @@ class loadData:
         )
         if NO_segmInfo and self.SizeZ > 1:
             filename = self.filename
-            df = myutils.getDefault_SegmInfo_df(self, filename)
+            df = utils.getDefault_SegmInfo_df(self, filename)
             if self.segmInfo_df is None:
                 self.segmInfo_df = df
             else:
@@ -1912,7 +1912,7 @@ class loadData:
         self.dataPrepFreeRoiPoints = []
         self.labelBoolSegm = labelBoolSegm
         self.bkgrDataExists = False
-        ls = myutils.listdir(self.images_path)
+        ls = utils.listdir(self.images_path)
 
         if end_filename_segm:
             end_filename_segm = end_filename_segm.replace(".npz", "")
@@ -2239,7 +2239,7 @@ class loadData:
     def getSpotmaxSingleSpotsfiles(self):
         from spotmax import DFs_FILENAMES
 
-        spotmax_files = myutils.listdir(self.spotmax_out_path)
+        spotmax_files = utils.listdir(self.spotmax_out_path)
         patterns = [
             filename.replace("*rn*", "").replace("*desc*", "")
             for filename in DFs_FILENAMES.values()
@@ -2980,7 +2980,7 @@ class loadData:
         if not os.path.exists(unsaved_recovery_folderpath):
             return
 
-        files = myutils.listdir(unsaved_recovery_folderpath)
+        files = utils.listdir(unsaved_recovery_folderpath)
         csv_files = [file for file in files if file.endswith(".csv")]
         if not csv_files:
             return
@@ -3100,7 +3100,7 @@ class loadData:
         npy_paths = []
         npz_paths = []
         basename = self.basename[0:-1]
-        for filename in myutils.listdir(self.images_path):
+        for filename in utils.listdir(self.images_path):
             file_path = os.path.join(self.images_path, filename)
             f, ext = os.path.splitext(filename)
             m = re.match(rf"{basename}.*\.tif", filename)
@@ -3111,7 +3111,7 @@ class loadData:
                 npz = f"{f}_aligned.npz"
                 npy_found = False
                 npz_found = False
-                for name in myutils.listdir(self.images_path):
+                for name in utils.listdir(self.images_path):
                     _path = os.path.join(self.images_path, name)
                     if name == npy:
                         npy_paths.append(_path)
@@ -3538,14 +3538,14 @@ class select_exp_folder:
 
     def get_values_segmGUI(self, exp_path):
         self.exp_path = exp_path
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = utils.get_pos_foldernames(exp_path)
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:
             last_tracked_i_found = False
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, "Images")
-            filenames = myutils.listdir(images_path)
+            filenames = utils.listdir(images_path)
             for filename in filenames:
                 if filename.find("acdc_output.csv") != -1:
                     last_tracked_i_found = True
@@ -3565,7 +3565,7 @@ class select_exp_folder:
 
     def get_values_dataprep(self, exp_path):
         self.exp_path = exp_path
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = utils.get_pos_foldernames(exp_path)
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:
@@ -3576,7 +3576,7 @@ class select_exp_folder:
             are_zslices_selected = False
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, "Images")
-            filenames = myutils.listdir(images_path)
+            filenames = utils.listdir(images_path)
             for filename in filenames:
                 if filename.endswith("dataPrepROIs_coords.csv"):
                     is_roi_info_present = True
@@ -3619,7 +3619,7 @@ class select_exp_folder:
 
     def get_values_cca(self, exp_path):
         self.exp_path = exp_path
-        pos_foldernames = natsorted(myutils.listdir(exp_path))
+        pos_foldernames = natsorted(utils.listdir(exp_path))
         pos_foldernames = [
             pos for pos in pos_foldernames if re.match(r"^Position_(\d+)", pos)
         ]
@@ -3630,7 +3630,7 @@ class select_exp_folder:
             pos_path = os.path.join(exp_path, pos)
             if os.path.isdir(pos_path):
                 images_path = f"{exp_path}/{pos}/Images"
-                filenames = myutils.listdir(images_path)
+                filenames = utils.listdir(images_path)
                 for filename in filenames:
                     if filename.find("cc_stage.csv") != -1:
                         cc_stage_found = True
@@ -3671,14 +3671,14 @@ def load_shifts(parent_path, basename=None):
     shifts_found = False
     shifts = None
     if basename is None:
-        for filename in myutils.listdir(parent_path):
+        for filename in utils.listdir(parent_path):
             if filename.find("align_shift.npy") > 0:
                 shifts_found = True
                 shifts_path = os.path.join(parent_path, filename)
                 shifts = np.load(shifts_path)
     else:
         align_shift_fn = f"{basename}_align_shift.npy"
-        if align_shift_fn in myutils.listdir(parent_path):
+        if align_shift_fn in utils.listdir(parent_path):
             shifts_found = True
             shifts_path = os.path.join(parent_path, align_shift_fn)
             shifts = np.load(shifts_path)
@@ -4170,7 +4170,7 @@ def search_filepath_in_pos_path_from_endname(
             if endname == sm_file:
                 return os.path.join(spotmax_out_path, sm_file)
 
-    images_files = myutils.listdir(images_path)
+    images_files = utils.listdir(images_path)
     sample_filepath = os.path.join(images_path, images_files[0])
     posData = loadData(sample_filepath, "")
     posData.getBasenameAndChNames()
@@ -4181,7 +4181,7 @@ def search_filepath_in_pos_path_from_endname(
 
 
 def search_filepath_from_endname(exp_path, endname, include_spotmax_out=False):
-    pos_foldernames = myutils.get_pos_foldernames(exp_path)
+    pos_foldernames = utils.get_pos_foldernames(exp_path)
     for pos in pos_foldernames:
         pos_path = os.path.join(exp_path, pos)
         filepath = search_filepath_in_pos_path_from_endname(
@@ -4192,7 +4192,7 @@ def search_filepath_from_endname(exp_path, endname, include_spotmax_out=False):
 
 def askOpenCsvFile(title="Open CSV file", start_dir=None, qparent=None):
     if start_dir is None:
-        start_dir = myutils.getMostRecentPath()
+        start_dir = utils.getMostRecentPath()
 
     file_types = f"CSV files (*.csv);;All Files (*)"
 

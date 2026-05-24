@@ -1,5 +1,5 @@
 import os
-from cellacdc import myutils, printl
+from cellacdc import utils, printl
 import torch
 from cellacdc.segmenters._cellpose_base.acdcSegment import (
     Model as CellposeBaseModel,
@@ -14,7 +14,7 @@ from . import AvailableModelsv4
 
 class Model(CellposeBaseModel):
     def __new__(cls, *args, **kwargs):
-        myutils.check_install_cellpose(4)
+        utils.check_install_cellpose(4)
         return super().__new__(cls)
 
     def __init__(
@@ -55,7 +55,7 @@ class Model(CellposeBaseModel):
         self.init_successful = False
         self.initConstants()
         self.batch_size = batch_size
-        model_type, model_path, device = myutils.translateStrNone(
+        model_type, model_path, device = utils.translateStrNone(
             model_type, model_path, device
         )
 
@@ -77,7 +77,7 @@ class Model(CellposeBaseModel):
 
         model_path = model_path or model_type
 
-        major_version = myutils.get_cellpose_major_version()
+        major_version = utils.get_cellpose_major_version()
         print(f"Initializing Cellpose v{major_version}...")
 
         from cellpose import models

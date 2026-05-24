@@ -1,7 +1,7 @@
 import os
 
-from cellacdc import myutils
+from cellacdc import utils
 
-myutils.check_install_tapir()
-_, model_path = myutils.get_model_path("TAPIR", create_temp_dir=False)
+utils.check_install_tapir()
+_, model_path = utils.get_model_path("TAPIR", create_temp_dir=False)
 TAPIR_CHECKPOINT_PATH = os.path.join(model_path, "tapir_checkpoint.npy")

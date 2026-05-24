@@ -31,7 +31,7 @@ cellacdc_path = os.path.join(os.path.dirname(script_path))
 sys.path.append(cellacdc_path)
 
 # Custom modules
-from .. import prompts, load, myutils, apps, html_utils, widgets
+from .. import prompts, load, utils, apps, html_utils, widgets
 from .. import recentPaths_path, cellacdc_path, settings_folderpath
 
 if os.name == "nt":
@@ -111,7 +111,7 @@ class renameFilesWin(QMainWindow):
 
         self.setWindowTitle(f'Cell-ACDC - Renaming files - "{exp_path}"')
 
-        folder_type = myutils.determine_folder_type(exp_path)
+        folder_type = utils.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
 
         print("Loading data...")
@@ -168,7 +168,7 @@ class renameFilesWin(QMainWindow):
         print(f'Renaming files by appending "_{appendedTxt}"...')
         if len(selectedFilenames) > 1 or len(images_paths) > 1:
             ch_name_selector = prompts.select_channel_name()
-            ls = myutils.listdir(images_paths[0])
+            ls = utils.listdir(images_paths[0])
             all_channelNames, abort = ch_name_selector.get_available_channels(
                 ls, images_paths[0], useExt=None
             )
@@ -180,7 +180,7 @@ class renameFilesWin(QMainWindow):
                 f[len(ch_name_selector.basename) :] for f in selectedFilenames
             ]
             for images_path in tqdm(images_paths, ncols=100):
-                ls = myutils.listdir(images_path)
+                ls = utils.listdir(images_path)
                 _, skip = ch_name_selector.get_available_channels(
                     ls, images_path, useExt=None
                 )
@@ -224,10 +224,10 @@ class renameFilesWin(QMainWindow):
         return self.win.cancel, self.win.LE.text()
 
     def criticalNoCommonBasename(self, filenames, parent_path):
-        myutils.checkDataIntegrity(filenames, parent_path, parentQWidget=self)
+        utils.checkDataIntegrity(filenames, parent_path, parentQWidget=self)
 
     def selectFiles(self, images_path, filterExt=None):
-        files = myutils.listdir(images_path)
+        files = utils.listdir(images_path)
         if filterExt is not None:
             items = []
             for file in files:

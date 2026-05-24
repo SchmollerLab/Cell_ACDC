@@ -1,3 +1,3 @@
-from cellacdc import myutils
+from cellacdc import utils
 
-myutils.check_install_package("tensorflow", max_version="2.17")
+utils.check_install_package("tensorflow", max_version="2.17")

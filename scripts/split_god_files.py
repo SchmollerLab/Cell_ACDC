@@ -56,7 +56,7 @@ def write_module(
     path.write_text(content)
 
 
-def assign_myutils(name: str) -> str:
+def assign_utils(name: str) -> str:
     rules: list[tuple[str, str]] = [
         ("logging", r"log|Logger"),
         ("paths", r"path|folder|dir|recent|trim_path|explorer|filemaneger|gdrive|acdc_data|pos_folder|images_folder|PosStatus|pos_status"),
@@ -455,13 +455,7 @@ def split_widgets(src_file: Path, pkg_dir: Path) -> None:
 
 
 def main() -> None:
-    split_package(
-        CELLACDC / "myutils.py",
-        CELLACDC / "myutils",
-        assign_myutils,
-        "Cell-ACDC utility helpers",
-        delete_src=True,
-    )
+    # utils/ is already split from the former myutils.py monolith.
     split_package(
         CELLACDC / "workers.py",
         CELLACDC / "workers",

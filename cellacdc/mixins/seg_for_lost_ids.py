@@ -41,7 +41,7 @@ class SegForLostIds(Segmentation, FrameNavigation):
         try:
             if acdcSegment is None or base_model_name != self.local_seg_base_model_name:
                 self.logger.info(f"Importing {base_model_name}...")
-                acdcSegment = myutils.import_segment_module(base_model_name)
+                acdcSegment = utils.import_segment_module(base_model_name)
                 self.acdcSegment_li[idx] = acdcSegment
                 self.local_seg_base_model_name = base_model_name
         except (IndexError, ImportError, KeyError) as e:
@@ -87,7 +87,7 @@ class SegForLostIds(Segmentation, FrameNavigation):
 
             extra_ArgSpec.append(param)
 
-        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+        init_params, segment_params = utils.getModelArgSpec(acdcSegment)
         segment_params = [arg for arg in segment_params if arg[0] != "diameter"]
 
         extraParamsTitle = "Settings for local segmentation"
@@ -126,16 +126,16 @@ class SegForLostIds(Segmentation, FrameNavigation):
         }
 
     def SegForLostIDsWorkerAskInstallGPU(self, model_name, use_gpu):
-        result = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
+        result = utils.check_gpu_available(model_name, use_gpu, qparent=self)
         self.SegForLostIDsWorker.gpu_go = result
-        dont_force_cpu = myutils.check_gpu_available(
+        dont_force_cpu = utils.check_gpu_available(
             model_name, use_gpu, do_not_warn=True
         )
         self.SegForLostIDsWorker.dont_force_cpu = dont_force_cpu
         self.SegForLostIDsWaitCond.wakeAll()
 
     def SegForLostIDsWorkerAskInstallModel(self, model_name):
-        myutils.check_install_package(model_name)
+        utils.check_install_package(model_name)
         self.SegForLostIDsWaitCond.wakeAll()
 
     def SegForLostIDsWorkerFinished(self):

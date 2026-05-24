@@ -18,7 +18,7 @@ from .. import (
     apps,
     workers,
     html_utils,
-    myutils,
+    utils,
     gui,
     cca_functions,
     load,
@@ -39,7 +39,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         title = "Compute measurements utility"
         infoText = "Computing measurements routine running..."
         progressDialogueTitle = "Computing measurements"
-        module = myutils.get_module_name(__file__)
+        module = utils.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, parent=parent
         )
@@ -145,7 +145,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             return
 
         config_filename = win.filename
-        mostRecentPath = myutils.getMostRecentPath()
+        mostRecentPath = utils.getMostRecentPath()
         folder_path = apps.get_existing_directory(
             allow_images_path=False,
             parent=self.progressWin,
@@ -268,10 +268,10 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         for p, pos in enumerate(pos_foldernames):
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, "Images")
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            basename, chNames = utils.getBasenameAndChNames(images_path)
             # Use first found channel, it doesn't matter for metrics
             for chName in chNames:
-                filePath = myutils.getChannelFilePath(images_path, chName)
+                filePath = utils.getChannelFilePath(images_path, chName)
                 if filePath:
                     break
             else:
