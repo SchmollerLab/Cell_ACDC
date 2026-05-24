@@ -16,6 +16,7 @@ if GUI_INSTALLED:
     import matplotlib.pyplot as plt
     from matplotlib.colors import LinearSegmentedColormap
     import seaborn as sns
+    import pyqtgraph as pg
 
 try:
     import networkx as nx
@@ -43,6 +44,8 @@ FLUO_CHANNELS_COLORS = {
     'EGFP': (0, 255, 0),
     'mCitrine': (255, 255, 0)
 }
+
+RgbaColor = tuple[int]
 
 _mapCache = {}
 def getFromMatplotlib(name):
@@ -95,7 +98,10 @@ def getFromMatplotlib(name):
 
 def get_pg_gradient(colors):
     ticks_pos = np.linspace(0,1,len(colors))
-    ticks = [(tick_pos, color) for tick_pos, color in zip(ticks_pos, colors)]
+    ticks = [
+        (tick_pos, color) 
+        for tick_pos, color in zip(ticks_pos, colors)
+    ]
     gradient = {'ticks': ticks, 'mode': 'rgb'}
     return gradient
 
