@@ -757,6 +757,49 @@ class DataLoading(LayoutControls):
         self.gui_createGraphicsItems()
         return True
 
+    def loadFromArrays(self, image, labels=None, **kwargs):
+        """Load in-memory arrays into the GUI without filesystem dialogs."""
+        from cellacdc.data_source import ExperimentData
+
+        data = ExperimentData.from_arrays(image, labels, **kwargs)
+        self.loadFromExperimentData(data)
+
+    def loadFromExperimentData(self, data):
+        """Load a materialized :class:`ExperimentData` instance into the GUI."""
+        if not data.is_materialized:
+            raise ValueError("ExperimentData must be materialized before loading.")
+
+        posData = data.positions[0]
+        self.user_ch_name = posData.user_ch_name
+        self.ch_names = posData.chNames
+        self.user_ch_file_paths = [posData.imgPath]
+        self.num_pos = len(data.positions)
+        self.exp_path = posData.exp_path
+        self.isNewFile = not posData.segmFound
+        self.newSegmEndName = ""
+        self.selectedSegmEndName = ""
+        self.labelBoolSegm = posData.labelBoolSegm
+        self.isSegm3D = posData.isSegm3D
+        self.SizeT = posData.SizeT
+        self.SizeZ = posData.SizeZ
+        self.TimeIncrement = posData.TimeIncrement
+        self.PhysicalSizeZ = posData.PhysicalSizeZ
+        self.PhysicalSizeY = posData.PhysicalSizeY
+        self.PhysicalSizeX = posData.PhysicalSizeX
+        self.loadSizeS = posData.loadSizeS
+        self.loadSizeT = posData.loadSizeT
+        self.loadSizeZ = posData.loadSizeZ
+        self.isSnapshot = posData.SizeT == 1
+        self.isH5chunk = False
+        self.existingSegmEndNames = set()
+        self.createOverlayLabelsContextMenu(self.existingSegmEndNames)
+        self.createOverlayLabelsItems(self.existingSegmEndNames)
+        self.overlayLabelsButtonAction.setVisible(True)
+        self.disableNonFunctionalButtons()
+        self.overlayLabelsItems = {}
+        self.drawModeOverlayLabelsChannels = {}
+        self.loadDataWorkerFinished(data.positions)
+
     def loadFluo_cb(self, checked=True, fluo_channels=None):
         if fluo_channels is None:
             posData = self.data[self.pos_i]

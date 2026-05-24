@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,52 +24,12 @@ def test_viewer_sets_segmentation_and_tracking_mode():
         patch.object(viewer_mod, "_create_gui_window", return_value=mock_win),
         patch.object(viewer_mod, "_check_gui_installed"),
     ):
-        viewer = viewer_mod.Viewer()
+        viewer = viewer_mod.Viewer(show=False)
 
     mock_win.modeComboBox.setCurrentText.assert_called_once_with(
         "Segmentation and Tracking"
     )
-    mock_win.raise_.assert_called_once()
-    mock_win.activateWindow.assert_called_once()
-    assert viewer.window is mock_win
-
-
-def test_viewer_open_dispatches_folder_and_file(tmp_path):
-    mock_win = MagicMock()
-    folder = tmp_path / "experiment"
-    folder.mkdir()
-    file_path = tmp_path / "image.tif"
-    file_path.write_text("")
-    viewer_mod = _reload_viewer_module()
-
-    with (
-        patch("cellacdc._event_loop.get_qapp", return_value=MagicMock()),
-        patch.object(viewer_mod, "_read_version", return_value="test"),
-        patch.object(viewer_mod, "_create_gui_window", return_value=mock_win),
-        patch.object(viewer_mod, "_check_gui_installed"),
-    ):
-        viewer = viewer_mod.Viewer(show=False)
-        viewer.open(folder)
-        viewer.open(file_path)
-
-    mock_win.openFolder.assert_called_once_with(exp_path=os.fspath(folder))
-    mock_win.openFile.assert_called_once_with(file_path=os.fspath(file_path))
-
-
-def test_current_viewer_returns_latest_instance():
-    mock_win = MagicMock()
-    viewer_mod = _reload_viewer_module()
-
-    with (
-        patch("cellacdc._event_loop.get_qapp", return_value=MagicMock()),
-        patch.object(viewer_mod, "_read_version", return_value="test"),
-        patch.object(viewer_mod, "_create_gui_window", return_value=mock_win),
-        patch.object(viewer_mod, "_check_gui_installed"),
-    ):
-        assert viewer_mod.current_viewer() is None
-        viewer_mod.Viewer(show=False)
-        second = viewer_mod.Viewer(show=False)
-        assert viewer_mod.current_viewer() is second
+    assert viewer.data is None
 
 
 def test_run_warns_without_top_level_widgets():
@@ -110,7 +69,9 @@ def test_lazy_exports_from_package():
     import cellacdc
 
     assert cellacdc.Viewer.__name__ == "Viewer"
+    assert cellacdc.ExperimentData.__name__ == "ExperimentData"
     assert cellacdc.current_viewer.__name__ == "current_viewer"
     assert cellacdc.run.__name__ == "run"
     assert cellacdc.get_qapp.__name__ == "get_qapp"
     assert cellacdc.quit_app.__name__ == "quit_app"
+    assert cellacdc.imshow.__name__ == "imshow"

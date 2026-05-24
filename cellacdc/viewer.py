@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 from weakref import WeakSet
+
+from cellacdc.data_source import ExperimentData
 
 if TYPE_CHECKING:
     from cellacdc.gui import guiWin
@@ -41,7 +42,13 @@ class Viewer:
 
     _instances: WeakSet[Viewer] = WeakSet()
 
-    def __init__(self, *, show: bool = True, mode: str = _DEFAULT_MODE):
+    def __init__(
+        self,
+        data: ExperimentData | None = None,
+        *,
+        show: bool = True,
+        mode: str = _DEFAULT_MODE,
+    ):
         _check_gui_installed()
 
         from cellacdc._event_loop import get_qapp
@@ -50,6 +57,11 @@ class Viewer:
         version = _read_version()
         win = _create_gui_window(app, version)
         win.modeComboBox.setCurrentText(mode)
+
+        self._data = data
+        if data is not None:
+            data.load_into(win)
+
         if show:
             win.raise_()
             win.activateWindow()
@@ -57,12 +69,9 @@ class Viewer:
         self._window = win
         self._instances.add(self)
 
-    def open(self, path: str | os.PathLike) -> None:
-        path = os.fspath(path)
-        if os.path.isdir(path):
-            self._window.openFolder(exp_path=path)
-        else:
-            self._window.openFile(file_path=path)
+    @property
+    def data(self) -> ExperimentData | None:
+        return self._data
 
     @property
     def window(self) -> guiWin:
@@ -78,3 +87,14 @@ def current_viewer() -> Viewer | None:
     if not instances:
         return None
     return instances[-1]
+
+
+def imshow(
+    data: ExperimentData,
+    *,
+    show: bool = True,
+    mode: str = _DEFAULT_MODE,
+) -> tuple[Viewer, ExperimentData]:
+    """Open the GUI with an :class:`ExperimentData` instance."""
+    viewer = Viewer(data, show=show, mode=mode)
+    return viewer, data

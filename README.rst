@@ -202,15 +202,39 @@ API. Install the GUI dependencies first:
 
    pip install "cellacdc[gui]"
 
-Then open the annotation GUI directly in **Segmentation and Tracking** mode:
+Build a unified :class:`ExperimentData` object from arrays or from a path, then
+pass it to the viewer:
 
 .. code-block:: python
 
    import cellacdc
+   import numpy as np
 
-   viewer = cellacdc.Viewer()
-   viewer.open("/path/to/experiment")
+   image = np.zeros((100, 128, 128), dtype=np.uint16)  # T, Y, X
+   data = cellacdc.ExperimentData.from_arrays(image, axes="tyx")
+   viewer = cellacdc.Viewer(data)
    cellacdc.run()
+
+The convenience helper mirrors ``napari.imshow`` and returns both the viewer
+and the data object:
+
+.. code-block:: python
+
+   data = cellacdc.ExperimentData.from_arrays(image, axes="tyx")
+   viewer, data = cellacdc.imshow(data)
+   cellacdc.run()
+
+Path-based loading:
+
+.. code-block:: python
+
+   data = cellacdc.ExperimentData.from_path("/path/to/experiment")
+   viewer, data = cellacdc.imshow(data)
+   cellacdc.run()
+
+Optional ``labels`` can be supplied when creating data from arrays. When no
+``workspace`` path is given, Cell-ACDC uses a temporary folder so segmentation
+outputs can still be saved from the GUI.
 
 In a Jupyter notebook with ``%gui qt``, ``cellacdc.run()`` is a no-op because
 IPython already runs the Qt event loop.

@@ -819,7 +819,9 @@ single_pos_index_cols = ("experiment_folderpath", "Position_n")
 
 _SCRIPT_API_EXPORTS = {
     "Viewer": ("cellacdc.viewer", "Viewer"),
+    "ExperimentData": ("cellacdc.data_source", "ExperimentData"),
     "current_viewer": ("cellacdc.viewer", "current_viewer"),
+    "imshow": ("cellacdc.viewer", "imshow"),
     "run": ("cellacdc._event_loop", "run"),
     "get_qapp": ("cellacdc._event_loop", "get_qapp"),
     "quit_app": ("cellacdc._event_loop", "quit_app"),
