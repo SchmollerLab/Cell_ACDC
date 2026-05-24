@@ -25,9 +25,11 @@ PACKAGES = {
         "io",
     ],
     "cellacdc.widgets": [
-        "controls",
-        "canvas",
-        "toolbars",
+        "canvas.histogram",
+        "canvas.imshow",
+        "controls.dialogs",
+        "controls.inputs",
+        "toolbars._base",
     ],
     "cellacdc.dialogs": [
         "_base",
@@ -43,18 +45,33 @@ SHIMS = [
 
 
 class TestSplitPackages(unittest.TestCase):
+    def _module_path(self, module_name: str, leaf: str) -> Path:
+        base = ROOT / module_name.replace(".", "/")
+        return base / f"{leaf.replace('.', '/')}.py"
+
     def test_leaf_modules_compile(self):
         for module_name in PACKAGES:
             for leaf in PACKAGES[module_name]:
-                path = ROOT / module_name.replace(".", "/") / f"{leaf}.py"
+                path = self._module_path(module_name, leaf)
                 with self.subTest(path=str(path)):
                     py_compile.compile(path, doraise=True)
 
     def test_package_init_modules_compile(self):
+        checked = set()
         for module_name in PACKAGES:
-            path = ROOT / module_name.replace(".", "/") / "__init__.py"
-            with self.subTest(path=str(path)):
-                py_compile.compile(path, doraise=True)
+            base = ROOT / module_name.replace(".", "/")
+            paths = [base / "__init__.py"]
+            for leaf in PACKAGES[module_name]:
+                if "." in leaf:
+                    subpkg = leaf.split(".", 1)[0]
+                    paths.append(base / subpkg / "__init__.py")
+            for path in paths:
+                key = str(path)
+                if key in checked:
+                    continue
+                checked.add(key)
+                with self.subTest(path=key):
+                    py_compile.compile(path, doraise=True)
 
     def test_shim_modules_compile(self):
         for rel_path in SHIMS:
