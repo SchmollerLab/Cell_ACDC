@@ -19,8 +19,9 @@ from cellacdc import (
 )
 from cellacdc import disableWindow
 
+from .graphics import Graphics
 
-class MagicPrompts:
+class MagicPrompts(Graphics):
     """Extracted from guiWin."""
 
     def _importInitMagicPromptModel(

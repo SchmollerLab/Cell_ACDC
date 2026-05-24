@@ -19,8 +19,10 @@ from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker
     normal_division_lineage_tree,
 )
 
+from .annotation_display import AnnotationDisplay
+from .tracking import Tracking
 
-class LineageInteractions:
+class LineageInteractions(AnnotationDisplay, Tracking):
     """Extracted from guiWin."""
 
     def annotate_unknown_lineage_action(self, posData, event, ydata, xdata):

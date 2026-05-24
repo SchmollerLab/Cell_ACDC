@@ -7,8 +7,9 @@ from qtpy.QtCore import QEventLoop, QThread
 
 from cellacdc import apps, html_utils, widgets, workers
 
+from .frame_navigation import FrameNavigation
 
-class ObjectSearch:
+class ObjectSearch(FrameNavigation):
     """Extracted from guiWin."""
 
     def askGoToFrameFoundID(self, searchedID, frame_i_found):

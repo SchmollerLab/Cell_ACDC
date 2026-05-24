@@ -9,8 +9,10 @@ from qtpy.QtWidgets import QCheckBox
 
 from cellacdc import html_utils, settings_csv_path, widgets
 
+from .geometry import Geometry
+from .tool_activation import ToolActivation
 
-class BrushTools:
+class BrushTools(Geometry, ToolActivation):
     """Extracted from guiWin."""
 
     def Brush_cb(self, checked):

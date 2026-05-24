@@ -8,8 +8,9 @@ from qtpy.QtCore import QEventLoop, QThread, QTimer, Qt
 from cellacdc import apps, qutils, widgets, workers
 from cellacdc import disableWindow
 
+from .session import Session
 
-class ToolActivation:
+class ToolActivation(Session):
     """Extracted from guiWin."""
 
     def _copyAllLostObjects_navigateToFrame(self, frame_i):

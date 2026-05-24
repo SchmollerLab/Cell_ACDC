@@ -10,8 +10,9 @@ from qtpy.QtCore import QMutex, QThread, QWaitCondition
 from cellacdc import apps, html_utils, widgets, workers
 from cellacdc.plot import imshow
 
+from .session import Session
 
-class Preprocessing:
+class Preprocessing(Session):
     """Extracted from guiWin."""
 
     def askGet2Dor3Dimage(self):

@@ -11,8 +11,9 @@ from qtpy.QtCore import QObject, QMutex, QThread, QTimer, QWaitCondition
 
 from cellacdc import apps, exception_handler, html_utils, issues_url, widgets, workers
 
+from .status_hover import StatusHover
 
-class Worker:
+class Worker(StatusHover):
     """Extracted from guiWin."""
 
     def autoSaveWorkerClosed(self, worker):

@@ -9,8 +9,10 @@ from qtpy.QtCore import QMutex, QThread, QWaitCondition
 from cellacdc import apps, workers
 from cellacdc.plot import imshow
 
+from .segmentation import Segmentation
+from .frame_navigation import FrameNavigation
 
-class SegForLostIds:
+class SegForLostIds(Segmentation, FrameNavigation):
     """Extracted from guiWin."""
 
     def SegForLostIDsSetSettings(self):

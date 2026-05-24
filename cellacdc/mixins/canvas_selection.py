@@ -14,8 +14,10 @@ from qtpy.QtWidgets import QAction, QGraphicsSceneMouseEvent
 
 from cellacdc import apps, exception_handler
 
+from .canvas_tool import CanvasTool
+from .brush_tools import BrushTools
 
-class CanvasSelection:
+class CanvasSelection(CanvasTool, BrushTools):
     """Extracted from guiWin."""
 
     def gui_mousePressEventImg2(self, event: QGraphicsSceneMouseEvent):

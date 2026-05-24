@@ -6,8 +6,9 @@ import pyqtgraph as pg
 from qtpy.QtCore import QPoint
 from qtpy.QtWidgets import QAction, QMenu
 
+from .image_display import ImageDisplay
 
-class CanvasContextMenu:
+class CanvasContextMenu(ImageDisplay):
     """Extracted from guiWin."""
 
     def gui_clickedDelRoi(self, event, left_click, right_click):

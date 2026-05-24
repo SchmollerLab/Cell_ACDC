@@ -20,8 +20,9 @@ from cellacdc.trackers.CellACDC import CellACDC_tracker
 font_13px = QFont()
 font_13px.setPixelSize(13)
 
+from .undo_redo import UndoRedo
 
-class Tracking:
+class Tracking(UndoRedo):
     """Extracted from guiWin."""
 
     def _drawGhostContour(self, x, y):

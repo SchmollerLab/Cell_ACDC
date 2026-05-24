@@ -32,8 +32,9 @@ from cellacdc import (
 _font = QFont()
 _font.setPixelSize(11)
 
+from .points_layers import PointsLayers
 
-class Graphics:
+class Graphics(PointsLayers):
     """Extracted from guiWin."""
 
     def _computeAllContours2D(

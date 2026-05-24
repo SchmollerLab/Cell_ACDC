@@ -9,8 +9,9 @@ from qtpy.QtGui import QGuiApplication
 
 from cellacdc import html_utils, widgets
 
+from .canvas_events import CanvasEvents
 
-class CanvasHover:
+class CanvasHover(CanvasEvents):
     """Extracted from guiWin."""
 
     def drawTempMergeObjsLine(self, event, posData, modifiers):

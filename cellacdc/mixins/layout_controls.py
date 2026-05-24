@@ -24,8 +24,11 @@ from qtpy.QtWidgets import (
 from cellacdc import myutils, widgets
 from cellacdc.gui_decorators import resetViewRange
 
+from .image_controls import ImageControls
+from .window_events import WindowEvents
+from .label_roi import LabelRoi
 
-class LayoutControls:
+class LayoutControls(ImageControls, WindowEvents, LabelRoi):
     """Extracted from guiWin."""
 
     def gui_createControlsToolbar(self):

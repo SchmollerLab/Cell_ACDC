@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from .undo_redo import UndoRedo
 
-class DrawClearRegion:
+class DrawClearRegion(UndoRedo):
     """Extracted from guiWin."""
 
     def drawClearRegion_cb(self, checked):

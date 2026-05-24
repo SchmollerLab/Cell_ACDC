@@ -17,8 +17,10 @@ from cellacdc import apps, html_utils, settings_folderpath, widgets
 
 custom_annot_path = os.path.join(settings_folderpath, "custom_annotations.json")
 
+from .annotation_display import AnnotationDisplay
+from .object_properties import ObjectProperties
 
-class CustomAnnotations:
+class CustomAnnotations(AnnotationDisplay, ObjectProperties):
     """Extracted from guiWin."""
 
     def addCustomAnnnotScatterPlot(

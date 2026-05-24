@@ -23,8 +23,9 @@ from cellacdc import workers
 _font = QFont()
 _font.setPixelSize(11)
 
+from .app_shell import AppShell
 
-class Saving:
+class Saving(AppShell):
     """Extracted from guiWin."""
 
     def _enqueueAutoSave(self):

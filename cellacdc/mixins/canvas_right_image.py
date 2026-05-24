@@ -7,8 +7,10 @@ from qtpy.QtGui import QGuiApplication
 
 from cellacdc import exception_handler
 
+from .canvas_drawing import CanvasDrawing
+from .canvas_events import CanvasEvents
 
-class CanvasRightImage:
+class CanvasRightImage(CanvasDrawing, CanvasEvents):
     """Extracted from guiWin."""
 
     def getMouseDataCoordsRightImage(self):

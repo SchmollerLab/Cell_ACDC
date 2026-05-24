@@ -10,8 +10,9 @@ import pyqtgraph as pg
 
 from cellacdc import widgets
 
+from .actions import Actions
 
-class MainToolbar:
+class MainToolbar(Actions):
     """Extracted from guiWin."""
 
     def closeToolbars(self):

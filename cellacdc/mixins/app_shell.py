@@ -17,10 +17,11 @@ from cellacdc import (
     settings_csv_path,
     widgets,
 )
-from cellacdc.help import about, welcome
 
+from .actions import Actions
+from .session import Session
 
-class AppShell:
+class AppShell(Actions, Session):
     """Extracted from guiWin."""
 
     def about(self):
@@ -290,6 +291,8 @@ class AppShell:
         super().setWindowTitle(title)
 
     def showAbout(self):
+        from cellacdc.help import about
+
         self.aboutWin = about.QDialogAbout(parent=self)
         self.aboutWin.show()
 
@@ -304,6 +307,8 @@ class AppShell:
         myutils.showInExplorer(log_files_path)
 
     def showTipsAndTricks(self):
+        from cellacdc.help import welcome
+
         self.welcomeWin = welcome.welcomeWin()
         self.welcomeWin.showAndSetSize()
         self.welcomeWin.showPage(self.welcomeWin.quickStartItem)

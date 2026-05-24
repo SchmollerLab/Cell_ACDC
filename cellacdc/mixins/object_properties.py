@@ -8,8 +8,10 @@ from tqdm import tqdm
 
 from cellacdc import apps, exception_handler, html_utils, widgets
 
+from .cell_cycle import CellCycle
+from .tracking import Tracking
 
-class ObjectProperties:
+class ObjectProperties(CellCycle, Tracking):
     """Extracted from guiWin."""
 
     def _keepObjects(self, keepIDs=None, lab=None, rp=None):

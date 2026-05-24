@@ -7,8 +7,10 @@ import pyqtgraph as pg
 import skimage.draw
 import skimage.measure
 
+from .brush_tools import BrushTools
+from .undo_redo import UndoRedo
 
-class CurvatureTools:
+class CurvatureTools(BrushTools, UndoRedo):
     """Extracted from guiWin."""
 
     def clearCurvItems(self, removeItems=True):

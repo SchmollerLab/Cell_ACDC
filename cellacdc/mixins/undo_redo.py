@@ -9,8 +9,9 @@ from cellacdc import apps, html_utils, widgets
 
 from collections import defaultdict
 
+from .label_editing import LabelEditing
 
-class UndoRedo:
+class UndoRedo(LabelEditing):
     """Extracted from guiWin."""
 
     def UndoCca(self):

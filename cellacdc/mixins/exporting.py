@@ -16,8 +16,10 @@ from qtpy.QtCore import QTimer
 from cellacdc import _warnings, apps, disableWindow, exception_handler
 from cellacdc import exporters, html_utils, prompts, widgets
 
+from .app_shell import AppShell
+from .frame_navigation import FrameNavigation
 
-class Exporting:
+class Exporting(AppShell, FrameNavigation):
     """Extracted from guiWin."""
 
     def askTimelapseOrZslicesVideo(self):

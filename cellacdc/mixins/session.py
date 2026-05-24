@@ -18,8 +18,9 @@ from cellacdc import (
 )
 from cellacdc.gui_decorators import get_data_exception_handler
 
+from .worker import Worker
 
-class Session:
+class Session(Worker):
     """Extracted from guiWin."""
 
     def _get_data_unvisited(self, posData, debug=False, lin_tree_init=True,):

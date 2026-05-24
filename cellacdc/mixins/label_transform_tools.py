@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import skimage.measure
 
+from .brush_tools import BrushTools
+from .label_editing import LabelEditing
 
-class LabelTransformTools:
+class LabelTransformTools(BrushTools, LabelEditing):
     """Extracted from guiWin."""
 
     def expandLabel(self, dilation=True):

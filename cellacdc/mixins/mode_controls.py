@@ -6,8 +6,9 @@ from qtpy.QtCore import QTimer
 
 from cellacdc import disableWindow
 
+from .tool_activation import ToolActivation
 
-class ModeControls:
+class ModeControls(ToolActivation):
     """Extracted from guiWin."""
 
     def blinkModeComboBox(self):

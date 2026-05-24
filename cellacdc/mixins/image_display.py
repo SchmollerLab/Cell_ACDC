@@ -21,8 +21,9 @@ from cellacdc import (
     settings_csv_path,
 )
 
+from .display_decorations import DisplayDecorations
 
-class ImageDisplay:
+class ImageDisplay(DisplayDecorations):
     """Extracted from guiWin."""
 
     def RGBtoGray(self, R, G, B):

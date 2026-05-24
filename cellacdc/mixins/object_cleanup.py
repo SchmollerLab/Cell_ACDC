@@ -7,8 +7,9 @@ from qtpy.QtCore import QThread
 
 from cellacdc import apps, widgets, workers
 
+from .cell_cycle import CellCycle
 
-class ObjectCleanup:
+class ObjectCleanup(CellCycle):
     """Extracted from guiWin."""
 
     def delObjsOutSegmMaskActionTriggered(self):

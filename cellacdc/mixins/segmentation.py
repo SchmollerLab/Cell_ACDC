@@ -19,8 +19,9 @@ from cellacdc import (
 )
 from cellacdc.plot import imshow
 
+from .tool_activation import ToolActivation
 
-class Segmentation:
+class Segmentation(ToolActivation):
     """Extracted from guiWin."""
 
     def autoSegm_cb(self, checked):

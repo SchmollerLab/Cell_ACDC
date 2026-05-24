@@ -19,8 +19,9 @@ from qtpy.QtWidgets import QLabel
 
 from cellacdc import _warnings, apps, colors, exception_handler, html_utils, widgets
 
+from .brush_tools import BrushTools
 
-class PointsLayers:
+class PointsLayers(BrushTools):
     """Extracted from guiWin."""
 
     def addClickedPoint(self, action, x, y, id):

@@ -18,8 +18,9 @@ from cellacdc import (
     workers,
 )
 
+from .brush_tools import BrushTools
 
-class LabelRoi:
+class LabelRoi(BrushTools):
     """Extracted from guiWin."""
 
     def getLabelRoiImage(self):

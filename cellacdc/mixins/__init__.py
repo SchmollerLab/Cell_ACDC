@@ -2,55 +2,22 @@
 
 from __future__ import annotations
 
-from .actions import Actions
-from .annotation_display import AnnotationDisplay
-from .app_shell import AppShell
-from .brush_tools import BrushTools
-from .canvas_context_menu import CanvasContextMenu
-from .canvas_drawing import CanvasDrawing
-from .canvas_events import CanvasEvents
-from .canvas_hover import CanvasHover
-from .canvas_right_image import CanvasRightImage
-from .canvas_selection import CanvasSelection
-from .canvas_tool import CanvasTool
-from .cell_cycle import CellCycle
-from .combine import CombineGui, CombineWorker
-from .curvature_tools import CurvatureTools
-from .custom_annotations import CustomAnnotations
-from .data_loading import DataLoading
-from .deleted_rois import DeletedRois
-from .display_decorations import DisplayDecorations
-from .draw_clear_region import DrawClearRegion
-from .exporting import Exporting
-from .frame_navigation import FrameNavigation
-from .geometry import Geometry
-from .graphics import Graphics
-from .image_controls import ImageControls
-from .image_display import ImageDisplay
-from .label_editing import LabelEditing
-from .label_roi import LabelRoi
-from .label_transform_tools import LabelTransformTools
-from .layout_controls import LayoutControls
-from .lineage_interactions import LineageInteractions
-from .magic_prompts import MagicPrompts
-from .main_menu import MainMenu
-from .main_toolbar import MainToolbar
-from .measurements import Measurements
-from .mode_controls import ModeControls
-from .object_cleanup import ObjectCleanup
-from .object_properties import ObjectProperties
-from .object_search import ObjectSearch
-from .points_layers import PointsLayers
-from .preprocessing import Preprocessing
-from .quick_settings import QuickSettings
-from .saving import Saving
-from .seg_for_lost_ids import SegForLostIds
-from .segmentation import Segmentation
-from .session import Session
-from .status_hover import StatusHover
-from .tool_activation import ToolActivation
-from .tracking import Tracking
-from .undo_redo import UndoRedo
-from .whitelist import WhitelistGui
-from .window_events import WindowEvents
-from .worker import Worker
+import importlib
+
+_GRAPH = None
+
+
+def _load_graph():
+    global _GRAPH
+    if _GRAPH is None:
+        _GRAPH = importlib.import_module("cellacdc.mixins._graph")
+    return _GRAPH
+
+
+def __getattr__(name: str):
+    graph = _load_graph()
+    if name not in graph.MODULE_TO_CLASS.values():
+        raise AttributeError(name)
+    module = next(k for k, v in graph.MODULE_TO_CLASS.items() if v == name)
+    mod = importlib.import_module(f"cellacdc.mixins.{graph.file_module(module)}")
+    return getattr(mod, name)

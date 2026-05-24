@@ -11,8 +11,10 @@ from qtpy.QtWidgets import QAction, QMessageBox
 
 from cellacdc import apps, exception_handler, html_utils, widgets
 
+from .canvas_selection import CanvasSelection
+from .label_editing import LabelEditing
 
-class CanvasDrawing:
+class CanvasDrawing(CanvasSelection, LabelEditing):
     """Extracted from guiWin."""
 
     def gui_addCreatedAxesItems(self):

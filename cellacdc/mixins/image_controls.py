@@ -22,8 +22,9 @@ from cellacdc import widgets
 _font = QFont()
 _font.setPixelSize(11)
 
+from .frame_navigation import FrameNavigation
 
-class ImageControls:
+class ImageControls(FrameNavigation):
     """Extracted from guiWin."""
 
     def gui_createBottomWidgetsToBottomLayout(self):

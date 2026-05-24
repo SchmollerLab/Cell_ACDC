@@ -10,8 +10,9 @@ from typing import Mapping
 
 GREEN_HEX = _palettes.green()
 
+from .mode_controls import ModeControls
 
-class AnnotationDisplay:
+class AnnotationDisplay(ModeControls):
     """Extracted from guiWin."""
 
     def activateAnnotations(self):

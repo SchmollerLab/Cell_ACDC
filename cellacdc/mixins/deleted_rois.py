@@ -13,8 +13,9 @@ from qtpy.QtCore import QRect, QRectF, QTimer
 
 from cellacdc import widgets
 
+from .cell_cycle import CellCycle
 
-class DeletedRois:
+class DeletedRois(CellCycle):
     """Extracted from guiWin."""
 
     def addDelPolyLineRoi_cb(self, checked):

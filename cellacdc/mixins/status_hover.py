@@ -7,8 +7,9 @@ import math
 import os
 import re
 
+from .image_display import ImageDisplay
 
-class StatusHover:
+class StatusHover(ImageDisplay):
     """Extracted from guiWin."""
 
     def _addOverlayHoverValuesFormatted(self, txt, xdata, ydata):

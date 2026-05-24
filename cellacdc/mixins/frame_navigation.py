@@ -18,8 +18,10 @@ SliderPageStepAdd = QtScoped.SliderPageStepAdd()
 SliderPageStepSub = QtScoped.SliderPageStepSub()
 SliderMove = QtScoped.SliderMove()
 
+from .graphics import Graphics
+from .label_editing import LabelEditing
 
-class FrameNavigation:
+class FrameNavigation(Graphics, LabelEditing):
     """Extracted from guiWin."""
 
     def PosScrollBarAction(self, action):

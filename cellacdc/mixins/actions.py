@@ -13,8 +13,9 @@ from cellacdc import apps, is_mac, settings_folderpath, widgets
 
 shortcut_filepath = os.path.join(settings_folderpath, "shortcuts.ini")
 
+from .image_display import ImageDisplay
 
-class Actions:
+class Actions(ImageDisplay):
     """Extracted from guiWin."""
 
     def editShortcuts_cb(self):

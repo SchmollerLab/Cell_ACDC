@@ -20,8 +20,9 @@ from cellacdc import (
 )
 from cellacdc import widgets, workers
 
+from .undo_redo import UndoRedo
 
-class CellCycle:
+class CellCycle(UndoRedo):
     """Extracted from guiWin."""
 
     def _getCcaCostMatrix(

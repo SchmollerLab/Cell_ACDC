@@ -12,8 +12,9 @@ from qtpy.QtWidgets import QAction
 
 from cellacdc import apps, disableWindow, exception_handler
 
+from .tool_activation import ToolActivation
 
-class LabelEditing:
+class LabelEditing(ToolActivation):
     """Extracted from guiWin."""
 
     def _get_editID_info(self, df):

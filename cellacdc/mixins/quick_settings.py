@@ -7,8 +7,9 @@ from qtpy.QtWidgets import QFormLayout, QLabel, QVBoxLayout
 
 from cellacdc import apps, settings_csv_path, widgets
 
+from .actions import Actions
 
-class QuickSettings:
+class QuickSettings(Actions):
     """Extracted from guiWin."""
 
     def gui_createQuickSettingsWidgets(self):

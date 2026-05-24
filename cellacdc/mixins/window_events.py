@@ -26,8 +26,10 @@ from cellacdc.plot import imshow
 _font = QFont()
 _font.setPixelSize(11)
 
+from .app_shell import AppShell
+from .frame_navigation import FrameNavigation
 
-class WindowEvents:
+class WindowEvents(AppShell, FrameNavigation):
     """Extracted from guiWin."""
 
     def _resizeLeaveSpaceTerminalBelow(self):

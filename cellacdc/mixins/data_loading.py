@@ -38,8 +38,9 @@ from cellacdc import (
 
 GREEN_HEX = _palettes.green()
 
+from .layout_controls import LayoutControls
 
-class DataLoading:
+class DataLoading(LayoutControls):
     """Extracted from guiWin."""
 
     def _createEmptyData(self):

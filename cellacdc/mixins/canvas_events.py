@@ -12,8 +12,11 @@ from qtpy.QtWidgets import QAction, QMessageBox
 
 from cellacdc import apps, exception_handler
 
+from .canvas_context_menu import CanvasContextMenu
+from .canvas_selection import CanvasSelection
+from .label_editing import LabelEditing
 
-class CanvasEvents:
+class CanvasEvents(CanvasContextMenu, CanvasSelection, LabelEditing):
     """Extracted from guiWin."""
 
     def gui_mousePressEventImg1(self, event: QMouseEvent):
