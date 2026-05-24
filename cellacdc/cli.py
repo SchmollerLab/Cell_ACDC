@@ -252,6 +252,11 @@ class SegmKernel(_WorkflowKernel):
         self.init_tracker(
             self.do_tracking, track_params, tracker_name=tracker_name, tracker=tracker
         )
+        from cellacdc.workflow.adapters import workflow_context_from_segm_kernel
+        from cellacdc.workflow.pipelines.segm import build_position_segm_graph
+
+        self._workflow_ctx = workflow_context_from_segm_kernel(self)
+        self._position_segm_graph = build_position_segm_graph(self._workflow_ctx).compile()
 
     @exception_handler_cli
     def init_segm_model(self, posData):
@@ -278,6 +283,11 @@ class SegmKernel(_WorkflowKernel):
         self.is_segment3DT_available = any(
             [name == "segment3DT" for name in dir(self.model)]
         )
+        if hasattr(self, "_workflow_ctx"):
+            self._workflow_ctx.model = self.model
+            self._workflow_ctx.is_segment3dt_available = self.is_segment3DT_available
+            self._workflow_ctx.init_model_kwargs = dict(self.init_model_kwargs or {})
+            self._workflow_ctx.model_kwargs = dict(self.model_kwargs or {})
 
     @exception_handler_cli
     def init_tracker(self, do_tracking, track_params, tracker_name="", tracker=None):
@@ -315,373 +325,20 @@ class SegmKernel(_WorkflowKernel):
 
     @exception_handler_cli
     def run(self, img_path, stop_frame_n):
-        posData = load.loadData(img_path, self.user_ch_name)
-
-        self.logger_func(f"Loading {posData.relPath}...")
-
-        posData.getBasenameAndChNames()
-        posData.buildPaths()
-        posData.loadImgData()
-        posData.loadOtherFiles(
-            load_segm_data=False,
-            load_acdc_df=False,
-            load_shifts=True,
-            loadSegmInfo=True,
-            load_delROIsInfo=False,
-            load_dataPrep_ROIcoords=True,
-            load_bkgr_data=True,
-            load_last_tracked_i=False,
-            load_metadata=True,
-            load_dataprep_free_roi=True,
-            end_filename_segm=self.segm_endname,
+        from cellacdc.workflow.adapters import (
+            runnable_config_from_segm_kernel,
+            sync_segm_kernel_from_context,
+            update_workflow_context_from_segm_kernel,
         )
-        # Get only name from the string 'segm_<name>.npz'
-        endName = (
-            self.segm_endname.replace("segm", "", 1).replace("_", "", 1).split(".")[0]
+        from cellacdc.workflow.state import PositionState
+
+        update_workflow_context_from_segm_kernel(self._workflow_ctx, self)
+        state = self._position_segm_graph.invoke(
+            PositionState(img_path=img_path, stop_frame_n=stop_frame_n),
+            runnable_config_from_segm_kernel(self),
         )
-        if endName:
-            # Create a new file that is not the default 'segm.npz'
-            posData.setFilePaths(endName)
-
-        segmFilename = os.path.basename(posData.segm_npz_path)
-        if self.do_save:
-            self.logger_func(f"\nSegmentation file {segmFilename}...")
-
-        posData.SizeT = self.SizeT
-        if self.SizeZ > 1:
-            SizeZ = posData.img_data.shape[-3]
-            posData.SizeZ = SizeZ
-        else:
-            posData.SizeZ = 1
-
-        posData.isSegm3D = self.isSegm3D
-        posData.saveMetadata()
-
-        isROIactive = False
-        if posData.dataPrep_ROIcoords is not None and self.use_ROI:
-            df_roi = posData.dataPrep_ROIcoords.loc[0]
-            isROIactive = df_roi.at["cropped", "value"] == 0
-            x0, x1, y0, y1 = df_roi["value"].astype(int)[:4]
-            Y, X = posData.img_data.shape[-2:]
-            x0 = x0 if x0 > 0 else 0
-            y0 = y0 if y0 > 0 else 0
-            x1 = x1 if x1 < X else X
-            y1 = y1 if y1 < Y else Y
-
-        # Note that stop_i is not used when SizeT == 1 so it does not matter
-        # which value it has in that case
-        stop_i = stop_frame_n
-
-        if self.second_channel_name is not None:
-            self.logger_func(f'Loading second channel "{self.second_channel_name}"...')
-            secondChFilePath = load.get_filename_from_channel(
-                posData.images_path, self.second_channel_name
-            )
-            secondChImgData = load.load_image_file(secondChFilePath)
-
-        if posData.SizeT > 1:
-            self.t0 = 0
-            if posData.SizeZ > 1 and not self.isSegm3D and not self.use3DdataFor2Dsegm:
-                # 2D segmentation on 3D data over time
-                img_data = posData.img_data
-
-                if self.second_channel_name is not None:
-                    second_ch_data_slice = secondChImgData[self.t0 : stop_i]
-                if isROIactive:
-                    Y, X = img_data.shape[-2:]
-                    img_data = img_data[:, :, y0:y1, x0:x1]
-                    if self.second_channel_name is not None:
-                        second_ch_data_slice = second_ch_data_slice[:, :, y0:y1, x0:x1]
-                    pad_info = ((0, 0), (y0, Y - y1), (x0, X - x1))
-
-                img_data_slice = img_data[self.t0 : stop_i]
-                postprocess_img = img_data
-
-                Y, X = img_data.shape[-2:]
-                newShape = (stop_i, Y, X)
-                img_data = np.zeros(newShape, img_data.dtype)
-
-                if self.second_channel_name is not None:
-                    second_ch_data = np.zeros(newShape, secondChImgData.dtype)
-                df = posData.segmInfo_df.loc[posData.filename]
-                for z_info in df[:stop_i].itertuples():
-                    i = z_info.Index
-                    z = z_info.z_slice_used_dataPrep
-                    zProjHow = z_info.which_z_proj
-                    img = img_data_slice[i]
-                    if self.second_channel_name is not None:
-                        second_ch_img = second_ch_data_slice[i]
-                    if zProjHow == "single z-slice":
-                        img_data[i] = img[z]
-                        if self.second_channel_name is not None:
-                            second_ch_data[i] = second_ch_img[z]
-                    elif zProjHow == "max z-projection":
-                        img_data[i] = img.max(axis=0)
-                        if self.second_channel_name is not None:
-                            second_ch_data[i] = second_ch_img.max(axis=0)
-                    elif zProjHow == "mean z-projection":
-                        img_data[i] = img.mean(axis=0)
-                        if self.second_channel_name is not None:
-                            second_ch_data[i] = second_ch_img.mean(axis=0)
-                    elif zProjHow == "median z-proj.":
-                        img_data[i] = np.median(img, axis=0)
-                        if self.second_channel_name is not None:
-                            second_ch_data[i] = np.median(second_ch_img, axis=0)
-            elif posData.SizeZ > 1 and (self.isSegm3D or self.use3DdataFor2Dsegm):
-                # 3D segmentation on 3D data over time
-                img_data = posData.img_data[self.t0 : stop_i]
-                postprocess_img = img_data
-                if self.second_channel_name is not None:
-                    second_ch_data = secondChImgData[self.t0 : stop_i]
-                if isROIactive:
-                    Y, X = img_data.shape[-2:]
-                    img_data = img_data[:, :, y0:y1, x0:x1]
-                    if self.second_channel_name is not None:
-                        second_ch_data = second_ch_data[:, :, y0:y1, x0:x1]
-                    pad_info = ((0, 0), (0, 0), (y0, Y - y1), (x0, X - x1))
-            else:
-                # 2D data over time
-                img_data = posData.img_data[self.t0 : stop_i]
-                postprocess_img = img_data
-                if self.second_channel_name is not None:
-                    second_ch_data = secondChImgData[self.t0 : stop_i]
-                if isROIactive:
-                    Y, X = img_data.shape[-2:]
-                    img_data = img_data[:, y0:y1, x0:x1]
-                    if self.second_channel_name is not None:
-                        second_ch_data = second_ch_data[:, :, y0:y1, x0:x1]
-                    pad_info = ((0, 0), (y0, Y - y1), (x0, X - x1))
-        else:
-            if posData.SizeZ > 1 and not self.isSegm3D and not self.use3DdataFor2Dsegm:
-                img_data = posData.img_data
-                if self.second_channel_name is not None:
-                    second_ch_data = secondChImgData
-                if isROIactive:
-                    Y, X = img_data.shape[-2:]
-                    pad_info = ((y0, Y - y1), (x0, X - x1))
-                    img_data = img_data[:, y0:y1, x0:x1]
-                    if self.second_channel_name is not None:
-                        second_ch_data = second_ch_data[:, :, y0:y1, x0:x1]
-
-                postprocess_img = img_data
-                # 2D segmentation on single 3D image
-                z_info = posData.segmInfo_df.loc[posData.filename].iloc[0]
-                z = z_info.z_slice_used_dataPrep
-                zProjHow = z_info.which_z_proj
-                if zProjHow == "single z-slice":
-                    img_data = img_data[z]
-                    if self.second_channel_name is not None:
-                        second_ch_data = second_ch_data[z]
-                elif zProjHow == "max z-projection":
-                    img_data = img_data.max(axis=0)
-                    if self.second_channel_name is not None:
-                        second_ch_data = second_ch_data.max(axis=0)
-                elif zProjHow == "mean z-projection":
-                    img_data = img_data.mean(axis=0)
-                    if self.second_channel_name is not None:
-                        second_ch_data = second_ch_data.mean(axis=0)
-                elif zProjHow == "median z-proj.":
-                    img_data = np.median(img_data, axis=0)
-                    if self.second_channel_name is not None:
-                        second_ch_data[i] = np.median(second_ch_data, axis=0)
-            elif posData.SizeZ > 1 and (self.isSegm3D or self.use3DdataFor2Dsegm):
-                # 3D segmentation on 3D z-stack
-                img_data = posData.img_data
-                if self.second_channel_name is not None:
-                    second_ch_data = secondChImgData
-                if isROIactive:
-                    Y, X = img_data.shape[-2:]
-                    pad_info = ((0, 0), (y0, Y - y1), (x0, X - x1))
-                    img_data = img_data[:, y0:y1, x0:x1]
-                    if self.second_channel_name is not None:
-                        second_ch_data = second_ch_data[:, y0:y1, x0:x1]
-                postprocess_img = img_data
-            else:
-                # Single 2D image
-                img_data = posData.img_data
-                if self.second_channel_name is not None:
-                    second_ch_data = secondChImgData
-                if isROIactive:
-                    Y, X = img_data.shape[-2:]
-                    pad_info = ((y0, Y - y1), (x0, X - x1))
-                    img_data = img_data[y0:y1, x0:x1]
-                    if self.second_channel_name is not None:
-                        second_ch_data = second_ch_data[y0:y1, x0:x1]
-                postprocess_img = img_data
-
-        self.logger_func(f"\nImage shape = {img_data.shape}")
-
-        if self.model is None:
-            self.init_segm_model(posData)
-
-        if self.model is None:
-            self.logger_func(
-                f"\nSegmentation model {self.model_name} was not initialized!"
-            )
-            return
-
-        """Segmentation routine"""
-        self.logger_func(f"\nSegmenting with {self.model_name}...")
-        t0 = time.perf_counter()
-        if posData.SizeT > 1:
-            if self.innerPbar_available and self.signals is not None:
-                self.signals.resetInnerPbar.emit(len(img_data))
-
-            if self.is_segment3DT_available and img_data.ndim == 3:
-                self.model_kwargs["signals"] = (self.signals, self.innerPbar_available)
-                if self.second_channel_name is not None:
-                    img_data = self.model.second_ch_img_to_stack(
-                        img_data, second_ch_data
-                    )
-                lab_stack = core.segm_model_segment(
-                    self.model,
-                    img_data,
-                    self.model_kwargs,
-                    is_timelapse_model_and_data=True,
-                    preproc_recipe=self.preproc_recipe,
-                    posData=posData,
-                )
-                if self.innerPbar_available:
-                    # emit one pos done
-                    self.signals.progressBar.emit(1)
-            else:
-                lab_stack = []
-                pbar = tqdm(total=len(img_data), ncols=100)
-                for t, img in enumerate(img_data):
-                    if self.second_channel_name is not None:
-                        img = self.model.second_ch_img_to_stack(img, second_ch_data[t])
-
-                    lab = core.segm_model_segment(
-                        self.model,
-                        img,
-                        self.model_kwargs,
-                        frame_i=t,
-                        preproc_recipe=self.preproc_recipe,
-                        posData=posData,
-                    )
-                    lab_stack.append(lab)
-                    if self.innerPbar_available:
-                        self.signals.innerProgressBar.emit(1)
-                    else:
-                        self.signals.progressBar.emit(1)
-                    pbar.update()
-                pbar.close()
-                lab_stack = np.array(lab_stack, dtype=np.uint32)
-                if self.innerPbar_available:
-                    # emit one pos done
-                    self.signals.progressBar.emit(1)
-        else:
-            if self.second_channel_name is not None:
-                img_data = self.model.second_ch_img_to_stack(img_data, second_ch_data)
-
-            lab_stack = core.segm_model_segment(
-                self.model,
-                img_data,
-                self.model_kwargs,
-                frame_i=0,
-                preproc_recipe=self.preproc_recipe,
-                posData=posData,
-            )
-            self.signals.progressBar.emit(1)
-            # lab_stack = smooth_contours(lab_stack, radius=2)
-
-        posData.saveSamEmbeddings(logger_func=self.logger_func)
-
-        if len(posData.dataPrepFreeRoiPoints) > 0 and self.use_freehand_ROI:
-            self.logger_func("Removing objects outside the dataprep free-hand ROI...")
-            lab_stack = posData.clearSegmObjsDataPrepFreeRoi(
-                lab_stack, is_timelapse=posData.SizeT > 1
-            )
-
-        if self.do_postprocess:
-            if posData.SizeT > 1:
-                pbar = tqdm(total=len(lab_stack), ncols=100)
-                for t, lab in enumerate(lab_stack):
-                    lab_cleaned = core.post_process_segm(
-                        lab, **self.standard_postrocess_kwargs
-                    )
-                    lab_stack[t] = lab_cleaned
-                    if self.custom_postproc_features:
-                        lab_filtered = features.custom_post_process_segm(
-                            posData,
-                            self.custom_postproc_grouped_features,
-                            lab_cleaned,
-                            postprocess_img,
-                            t,
-                            posData.filename,
-                            posData.user_ch_name,
-                            self.custom_postproc_features,
-                        )
-                        lab_stack[t] = lab_filtered
-                    pbar.update()
-                pbar.close()
-            else:
-                lab_stack = core.post_process_segm(
-                    lab_stack, **self.standard_postrocess_kwargs
-                )
-                if self.custom_postproc_features:
-                    lab_stack = features.custom_post_process_segm(
-                        posData,
-                        self.custom_postproc_grouped_features,
-                        lab_stack,
-                        postprocess_img,
-                        0,
-                        posData.filename,
-                        posData.user_ch_name,
-                        self.custom_postproc_features,
-                    )
-
-        if posData.SizeT > 1 and self.do_tracking:
-            self.logger_func(f"\nTracking with {self.tracker_name} tracker...")
-            if self.do_save:
-                # Since tracker could raise errors we save the not-tracked
-                # version which will eventually be overwritten
-                self.logger_func(f"Saving NON-tracked masks of {posData.relPath}...")
-                io.savez_compressed(posData.segm_npz_path, lab_stack)
-
-            self.signals.innerPbar_available = self.innerPbar_available
-            self.track_params["signals"] = self.signals
-            if self.image_channel_tracker is not None:
-                # Check if loading the image for the tracker is required
-                if "image" in self.track_params:
-                    trackerInputImage = self.track_params.pop("image")
-                else:
-                    self.logger_func(
-                        f'Loading image data of channel "{self.image_channel_tracker}"'
-                    )
-                    trackerInputImage = posData.loadChannelData(
-                        self.image_channel_tracker
-                    )
-                tracked_stack = self._tracker_track(
-                    lab_stack, tracker_input_img=trackerInputImage
-                )
-            else:
-                tracked_stack = self._tracker_track(lab_stack)
-            posData.fromTrackerToAcdcDf(self.tracker, tracked_stack, save=True)
-        else:
-            tracked_stack = lab_stack
-            try:
-                if self.innerPbar_available:
-                    self.signals.innerProgressBar.emit(stop_frame_n)
-                else:
-                    self.signals.progressBar.emit(stop_frame_n)
-            except AttributeError:
-                if self.innerPbar_available:
-                    self.signals.innerProgressBar.emit(1)
-                else:
-                    self.signals.progressBar.emit(1)
-
-        if isROIactive:
-            self.logger_func(f"Padding with zeros {pad_info}...")
-            tracked_stack = np.pad(tracked_stack, pad_info, mode="constant")
-
-        if self.do_save:
-            self.logger_func(f"Saving {posData.relPath}...")
-            io.savez_compressed(posData.segm_npz_path, tracked_stack)
-
-        t_end = time.perf_counter()
-
-        self.logger_func(f"\n{posData.relPath} done.")
+        sync_segm_kernel_from_context(self, self._workflow_ctx)
+        return state
 
 
 class ComputeMeasurementsKernel(_WorkflowKernel):
@@ -1042,50 +699,18 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             self.customMetricsCritical = saveDataWorker.customMetricsCritical
             self.regionPropsCritical = saveDataWorker.regionPropsCritical
 
-    @exception_handler_cli
-    def run(
+    def _run_metrics_cli(
         self,
-        img_path: os.PathLike = "",
-        stop_frame_n: int = 1,
-        end_filename_segm: str = "",
-        computeMetricsWorker=None,
-        saveDataWorker=None,
-        posData=None,
-        save_metrics=True,
-        do_init_metrics=True,
+        posData,
+        stop_frame_n: int,
+        save_metrics: bool = True,
         last_cca_frame_i=None,
     ):
-        if posData is None:
-            posData = self._load_posData(img_path, end_filename_segm)
-
         channel_names = posData.chNames
-        images_path = posData.images_path
         exp_foldername = os.path.basename(posData.exp_path)
 
         self._set_metrics_func_from_posData(posData)
-
-        if computeMetricsWorker is not None and do_init_metrics:
-            computeMetricsWorker.emitSigInitMetricsDialog(posData)
-            if computeMetricsWorker.abort:
-                computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
-                return
-
-            if self.setup_done:
-                computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
-                return
-
-            computeMetricsWorker.emitSigAskRunNow()
-            if computeMetricsWorker.abort or computeMetricsWorker.savedToWorkflow:
-                computeMetricsWorker.signals.finished.emit(computeMetricsWorker)
-                return
-
-        if not posData.segmFound:
-            rel_path = f"...{os.sep}{exp_foldername}{os.sep}{posData.pos_foldername}"
-            self.log(f'Skipping "{rel_path}" because segm. file was not found.')
-            return
-
-        self.init_signals(computeMetricsWorker, saveDataWorker)
-
+        self.init_signals(None, None)
         self.log(
             "Loading the following files:\n"
             f"Segmentation file name: {os.path.basename(posData.segm_npz_path)}\n"
@@ -1093,25 +718,104 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
 
         posData.init_segmInfo_df()
-
-        if computeMetricsWorker is not None:
-            computeMetricsWorker.emitSigComputeVolume(posData, stop_frame_n)
-
         self._init_metrics_to_save(posData)
-
-        if computeMetricsWorker is not None:
-            computeMetricsWorker.signals.initProgressBar.emit(stop_frame_n)
 
         channels_to_load = [
             ch
             for ch in channel_names
-            if not ch in self.chNamesToSkip and ch in self.chNamesToProcess
+            if ch not in self.chNamesToSkip and ch in self.chNamesToProcess
         ]
-
         self.log(f"Loading channels {channels_to_load}...")
-
         self._load_image_data(posData, channels_to_load)
 
+        acdc_df_li = []
+        keys = []
+        for frame_i in range(stop_frame_n):
+            lab = posData.segm_data[frame_i]
+            if not np.any(lab):
+                continue
+
+            if frame_i == 0:
+                self.log("\nComputing cell volume...")
+            rp = skimage.measure.regionprops(lab)
+            rp = self._calc_volume_metrics(rp, posData)
+
+            posData.lab = lab
+            posData.rp = rp
+
+            if posData.acdc_df is None:
+                acdc_df = myutils.getBaseAcdcDf(rp)
+            else:
+                try:
+                    acdc_df = posData.acdc_df.loc[frame_i].copy()
+                except Exception:
+                    acdc_df = myutils.getBaseAcdcDf(rp)
+
+            key = (frame_i, posData.TimeIncrement * frame_i)
+            acdc_df = load.pd_bool_and_float_to_int_to_str(
+                acdc_df, inplace=False, colsToCastInt=[]
+            )
+
+            if not save_metrics:
+                acdc_df_li.append(acdc_df)
+                keys.append(key)
+                continue
+
+            try:
+                acdc_df = self._add_volume_metrics(acdc_df, rp, posData)
+                acdc_df, calc_metrics_addtional_args = self._init_calc_metrics(
+                    acdc_df, rp, frame_i, lab, posData, saveDataWorker=None
+                )
+                acdc_df = self._calc_metrics_iter_channels(
+                    acdc_df, rp, frame_i, lab, posData, *calc_metrics_addtional_args
+                )
+            except Exception as error:
+                self.log(f"\n{traceback.format_exc()}")
+
+            if frame_i == 0:
+                acdc_df_li.append(acdc_df)
+                keys.append(key)
+                continue
+
+            try:
+                prev_lab = posData.segm_data[frame_i - 1]
+                acdc_df = self._add_velocity_measurement(
+                    acdc_df, prev_lab, lab, posData
+                )
+            except Exception as error:
+                self.log(f"\n{traceback.format_exc()}")
+
+            acdc_df_li.append(acdc_df)
+            keys.append(key)
+
+        if not acdc_df_li:
+            print("-" * 30)
+            self.log(
+                "All selected positions in the experiment folder "
+                f"{exp_foldername} have EMPTY segmentation mask. "
+                "Metrics will not be saved."
+            )
+            print("-" * 30)
+            return
+
+        self._concat_and_save_acdc_df(
+            acdc_df_li,
+            keys,
+            posData,
+            save_metrics,
+            computeMetricsWorker=None,
+            saveDataWorker=None,
+            last_cca_frame_i=last_cca_frame_i,
+        )
+
+    def _compute_metrics_gui_frames(
+        self,
+        posData,
+        stop_frame_n,
+        save_metrics=True,
+        computeMetricsWorker=None,
+        saveDataWorker=None,
+    ):
         acdc_df_li = []
         keys = []
         for frame_i in range(stop_frame_n):
@@ -1122,7 +826,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
 
             lab = posData.segm_data[frame_i]
             if not np.any(lab):
-                # Empty segmentation mask --> skip
                 continue
 
             acdc_df = None
@@ -1148,7 +851,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 else:
                     try:
                         acdc_df = posData.acdc_df.loc[frame_i].copy()
-                    except:
+                    except Exception:
                         acdc_df = myutils.getBaseAcdcDf(rp)
 
             key = (frame_i, posData.TimeIncrement * frame_i)
@@ -1197,8 +900,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 traceback_format = traceback.format_exc()
                 self.log(f"\n{traceback_format}")
                 if computeMetricsWorker is not None:
-                    e = str(error)
-                    computeMetricsWorker.standardMetricsErrors[e] = traceback_format
+                    computeMetricsWorker.standardMetricsErrors[str(error)] = (
+                        traceback_format
+                    )
 
             acdc_df_li.append(acdc_df)
             keys.append(key)
@@ -1209,23 +913,109 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             if saveDataWorker is not None:
                 saveDataWorker.emitUpdateProgressBar()
 
-        if not acdc_df_li:
-            print("-" * 30)
-            self.log(
-                "All selected positions in the experiment folder "
-                f"{exp_foldername} have EMPTY segmentation mask. "
-                "Metrics will not be saved."
-            )
-            print("-" * 30)
-            return
+        return acdc_df_li, keys
 
-        self._concat_and_save_acdc_df(
-            acdc_df_li,
-            keys,
-            posData,
-            save_metrics,
+    def _run_metrics_gui_via_graph(
+        self,
+        img_path="",
+        stop_frame_n=1,
+        end_filename_segm="",
+        computeMetricsWorker=None,
+        saveDataWorker=None,
+        posData=None,
+        save_metrics=True,
+        do_init_metrics=True,
+        last_cca_frame_i=None,
+    ):
+        from cellacdc.workflow.pipelines.measurements_gui import (
+            build_gui_measurements_graph,
+        )
+        from cellacdc.workflow.runnable import RunnableConfig
+        from cellacdc.workflow.state import MeasurementsGuiContext, MeasurementsGuiState
+
+        ctx = MeasurementsGuiContext(
+            kernel=self,
+            compute_metrics_worker=computeMetricsWorker,
+            save_data_worker=saveDataWorker,
+            save_metrics=save_metrics,
+            do_init_metrics=do_init_metrics,
+            last_cca_frame_i=last_cca_frame_i,
+            end_filename_segm=end_filename_segm or self.end_filename_segm,
+        )
+        graph = build_gui_measurements_graph(
+            ctx,
+            pos_data_loaded=posData is not None,
+        ).compile()
+        return graph.invoke(
+            MeasurementsGuiState(
+                img_path=img_path,
+                stop_frame_n=stop_frame_n,
+                pos_data=posData,
+            ),
+            RunnableConfig(logger_func=self.log),
+        )
+
+    def _run_metrics_via_graph(
+        self,
+        img_path,
+        stop_frame_n,
+        end_filename_segm,
+        save_metrics=True,
+        last_cca_frame_i=None,
+    ):
+        from cellacdc.workflow.pipelines.measurements import (
+            build_measurements_position_graph,
+        )
+        from cellacdc.workflow.runnable import RunnableConfig
+        from cellacdc.workflow.state import MeasurementsContext, MeasurementsState
+
+        ctx = MeasurementsContext(
+            end_filename_segm=end_filename_segm or self.end_filename_segm,
+            kernel=self,
+            save_metrics=save_metrics,
+        )
+        ctx.last_cca_frame_i = last_cca_frame_i
+        graph = build_measurements_position_graph(ctx).compile()
+        return graph.invoke(
+            MeasurementsState(img_path=img_path, stop_frame_n=stop_frame_n),
+            RunnableConfig(logger_func=self.log),
+        )
+
+    @exception_handler_cli
+    def run(
+        self,
+        img_path: os.PathLike = "",
+        stop_frame_n: int = 1,
+        end_filename_segm: str = "",
+        computeMetricsWorker=None,
+        saveDataWorker=None,
+        posData=None,
+        save_metrics=True,
+        do_init_metrics=True,
+        last_cca_frame_i=None,
+    ):
+        if (
+            computeMetricsWorker is None
+            and saveDataWorker is None
+            and posData is None
+        ):
+            return self._run_metrics_via_graph(
+                img_path,
+                stop_frame_n,
+                end_filename_segm or self.end_filename_segm,
+                save_metrics=save_metrics,
+                last_cca_frame_i=last_cca_frame_i,
+            )
+
+        return self._run_metrics_gui_via_graph(
+            img_path=img_path,
+            stop_frame_n=stop_frame_n,
+            end_filename_segm=end_filename_segm or self.end_filename_segm,
             computeMetricsWorker=computeMetricsWorker,
             saveDataWorker=saveDataWorker,
+            posData=posData,
+            save_metrics=save_metrics,
+            do_init_metrics=do_init_metrics,
             last_cca_frame_i=last_cca_frame_i,
         )
 

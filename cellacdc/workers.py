@@ -760,18 +760,18 @@ class LabelRoiWorker(QObject):
             posData=self.posData,
         )
         if self.Gui.applyPostProcessing:
-            lab = core.post_process_segm(lab, **self.Gui.standardPostProcessKwargs)
-            if self.Gui.customPostProcessFeatures:
-                lab = features.custom_post_process_segm(
-                    self.posData,
-                    self.Gui.customPostProcessGroupedFeatures,
-                    lab,
-                    img,
-                    self.posData.frame_i,
-                    self.posData.filename,
-                    self.posData.user_ch_name,
-                    self.Gui.customPostProcessFeatures,
-                )
+            from cellacdc.workflow.pipelines.postprocess_nodes import apply_postprocess
+
+            lab = apply_postprocess(
+                lab,
+                img,
+                self.posData,
+                self.posData.frame_i,
+                apply_postprocessing=True,
+                standard_postprocess_kwargs=self.Gui.standardPostProcessKwargs,
+                custom_postprocess_features=self.Gui.customPostProcessFeatures,
+                custom_postprocess_grouped_features=self.Gui.customPostProcessGroupedFeatures,
+            )
         return lab
 
     @worker_exception_handler
@@ -1139,72 +1139,28 @@ class segmWorker(QObject):
 
     @worker_exception_handler
     def run(self):
-        t0 = time.perf_counter()
-        if self.mainWin.segment3D:
-            img = self.mainWin.getDisplayedZstack()
-            if self.z_range is not None:
-                startZ, stopZ = self.z_range
-                img = img[startZ : stopZ + 1]
-        else:
-            img = self.mainWin.getDisplayedImg1()
-
-        posData = self.mainWin.data[self.mainWin.pos_i]
-        lab = np.zeros_like(posData.segm_data[0])
-
-        # self.emitDebug((img, self.secondChannelData))
-
-        if self.secondChannelData is not None:
-            img = self.mainWin.model.second_ch_img_to_stack(img, self.secondChannelData)
-
-        start_z_slice = 0
-        if self.z_range is not None:
-            start_z_slice, _ = self.z_range
-        elif not self.mainWin.segment3D and posData.isSegm3D:
-            idx = (posData.filename, posData.frame_i)
-            start_z_slice = posData.segmInfo_df.at[idx, "z_slice_used_gui"]
-
-        _lab = core.segm_model_segment(
-            self.mainWin.model,
-            img,
-            self.mainWin.model_kwargs,
-            frame_i=posData.frame_i,
-            posData=posData,
-            start_z_slice=start_z_slice,
+        from cellacdc.workflow.adapters import (
+            interactive_segm_context_from_main_win,
+            runnable_config_from_main_win,
         )
-        posData.saveSamEmbeddings(logger_func=self.logger.info)
+        from cellacdc.workflow.pipelines.interactive_segm import (
+            build_interactive_segm_graph,
+        )
+        from cellacdc.workflow.state import InteractiveSegmState
 
-        if self.mainWin.applyPostProcessing:
-            _lab = core.post_process_segm(
-                _lab, **self.mainWin.standardPostProcessKwargs
-            )
-            if self.mainWin.customPostProcessFeatures:
-                _lab = features.custom_post_process_segm(
-                    posData,
-                    self.mainWin.customPostProcessGroupedFeatures,
-                    _lab,
-                    img,
-                    posData.frame_i,
-                    posData.filename,
-                    posData.user_ch_name,
-                    self.mainWin.customPostProcessFeatures,
-                )
-
-        if self.z_range is not None:
-            # 3D segmentation of a z-slices subset
-            startZ, stopZ = self.z_range
-            lab[startZ : stopZ + 1] = _lab
-        elif not self.mainWin.segment3D and posData.isSegm3D:
-            # 3D segmentation but segmented current z-slice
-            idx = (posData.filename, posData.frame_i)
-            z = posData.segmInfo_df.at[idx, "z_slice_used_gui"]
-            lab[z] = _lab
-        else:
-            # Either whole z-stack or 2D segmentation
-            lab = _lab
-
+        t0 = time.perf_counter()
+        ctx = interactive_segm_context_from_main_win(
+            self.mainWin,
+            second_channel_data=self.secondChannelData,
+            z_range=self.z_range,
+        )
+        graph = build_interactive_segm_graph(ctx).compile()
+        state = graph.invoke(
+            InteractiveSegmState(main_win=self.mainWin),
+            runnable_config_from_main_win(self.mainWin),
+        )
         t1 = time.perf_counter()
-        exec_time = t1 - t0
-        self.finished.emit(lab, exec_time)
+        self.finished.emit(state.lab, t1 - t0)
 
 
 class segmVideoWorker(QObject):
@@ -1231,82 +1187,22 @@ class segmVideoWorker(QObject):
         self.stopFrameNum = stopFrameNum
         self.logger = workerLogger(self.progress)
 
-    def _check_extend_segm_data(self, segm_data, stop_frame_num):
-        if stop_frame_num <= len(segm_data):
-            return segm_data
-        extended_shape = (stop_frame_num, *segm_data.shape[1:])
-        extended_segm_data = np.zeros(extended_shape, dtype=segm_data.dtype)
-        extended_segm_data[: len(segm_data)] = segm_data
-        if len(extended_shape) == 4:
-            return extended_segm_data
-        if self.posData.SizeZ == 1:
-            return extended_segm_data
-        else:
-            num_added_frames = len(extended_segm_data) - len(segm_data)
-            half_z = int(self.posData.SizeZ / 2)
-            # 2D segm on 3D over time data --> fix segmInfo
-            segmInfo_extended = pd.DataFrame(
-                {
-                    "filename": [self.posData.filename] * num_added_frames,
-                    "frame_i": list(range(len(segm_data), len(extended_segm_data))),
-                    "z_slice_used_gui": [half_z] * num_added_frames,
-                    "which_z_proj_gui": ["single z-slice"] * num_added_frames,
-                }
-            ).set_index(["filename", "frame_i"])
-            segmInfo_df = pd.concat([self.posData.segmInfo_df, segmInfo_extended])
-            self.posData.segmInfo_df = segmInfo_df
-            self.posData.segmInfo_df.to_csv(self.posData.segmInfo_df_csv_path)
-        return extended_segm_data
-
     @worker_exception_handler
     def run(self):
-        t0 = time.perf_counter()
-        self.posData.segm_data = self._check_extend_segm_data(
-            self.posData.segm_data, self.stopFrameNum
+        from cellacdc.workflow.adapters import interactive_video_segm_context_from_worker
+        from cellacdc.workflow.pipelines.interactive_video_segm import (
+            build_interactive_video_segm_graph,
         )
-        img_data = self.posData.img_data[self.startFrameNum - 1 : self.stopFrameNum]
-        is4D = img_data.ndim == 4
-        is2D_segm = self.posData.segm_data.ndim == 3
-        if is4D and is2D_segm:
-            filename = self.posData.filename
-            zz = self.posData.segmInfo_df.loc[filename, "z_slice_used_gui"]
-        else:
-            zz = None
-        for i, img in enumerate(img_data):
-            frame_i = i + self.startFrameNum - 1
-            if self.secondChannelData is not None:
-                img = self.model.second_ch_img_to_stack(img, self.secondChannelData)
-            if zz is not None:
-                z_slice = zz.loc[frame_i]
-                img = img[z_slice]
+        from cellacdc.workflow.state import InteractiveVideoSegmState
 
-            lab = core.segm_model_segment(
-                self.model,
-                img,
-                self.model_kwargs,
-                frame_i=frame_i,
-                preproc_recipe=self.preproc_recipe,
-                posData=self.posData,
-            )
-            self.posData.saveSamEmbeddings(logger_func=self.logger.log)
-            if self.applyPostProcessing:
-                lab = core.post_process_segm(lab, **self.standardPostProcessKwargs)
-                if self.customPostProcessFeatures:
-                    lab = features.custom_post_process_segm(
-                        self.posData,
-                        self.customPostProcessGroupedFeatures,
-                        lab,
-                        img,
-                        self.posData.frame_i,
-                        self.posData.filename,
-                        self.posData.user_ch_name,
-                        self.customPostProcessFeatures,
-                    )
-            self.posData.segm_data[frame_i] = lab
-            self.progressBar.emit(1)
+        t0 = time.perf_counter()
+        ctx = interactive_video_segm_context_from_worker(self)
+        graph = build_interactive_video_segm_graph(ctx).compile()
+        graph.invoke(
+            InteractiveVideoSegmState(pos_data=self.posData),
+        )
         t1 = time.perf_counter()
-        exec_time = t1 - t0
-        self.finished.emit(exec_time)
+        self.finished.emit(t1 - t0)
 
 
 class ComputeMetricsWorker(QObject):
@@ -1421,28 +1317,22 @@ class ComputeMetricsWorker(QObject):
                 False,
             )
 
-            # Iterate pos and calculate metrics
-            numPos = len(self.allPosDataInputs)
-            for p, posDataInputs in enumerate(self.allPosDataInputs):
-                self.logger.log("=" * 40)
-                file_path = posDataInputs["file_path"]
-                chName = posDataInputs["chName"]
-                stopFrameNum = posDataInputs["stopFrameNum"]
+            from cellacdc.workflow.pipelines.batch import run_gui_measurements_batch
+            from cellacdc.workflow.runnable import RunnableConfig
 
-                self.kernel.run(
-                    img_path=file_path,
-                    stop_frame_n=stopFrameNum,
-                    end_filename_segm=self.mainWin.endFilenameSegm,
-                    computeMetricsWorker=self,
-                    do_init_metrics=p == 0,
-                )
+            run_gui_measurements_batch(
+                kernel=self.kernel,
+                paths=[inp["file_path"] for inp in self.allPosDataInputs],
+                stop_frame_numbers=[
+                    inp["stopFrameNum"] for inp in self.allPosDataInputs
+                ],
+                end_filename_segm=self.mainWin.endFilenameSegm,
+                compute_metrics_worker=self,
+                config=RunnableConfig(logger_func=self.logger.log),
+            )
 
-                if self.kernel.setup_done:
-                    return
-
-                if self.abort:
-                    self.signals.finished.emit(self)
-                    return
+            if self.kernel.setup_done or self.abort:
+                return
 
             self.logger.log("*" * 30)
 

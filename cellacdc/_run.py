@@ -574,22 +574,33 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
 def run_segm_workflow(workflow_params, logger, log_path):
     logger.info("Initializing segmentation and tracking kernel...")
     from cellacdc import cli
+    from cellacdc.workflow.adapters import (
+        runnable_config_from_segm_kernel,
+        sync_segm_kernel_from_context,
+    )
+    from cellacdc.workflow.pipelines.batch import run_segm_batch
 
     kernel = cli.SegmKernel(logger, log_path, is_cli=True)
     kernel.init_args_from_params(workflow_params, logger.info)
     ch_filepaths = kernel.parse_paths(workflow_params)
     stop_frame_nums = kernel.parse_stop_frame_numbers(workflow_params)
     pbar = tqdm(total=len(ch_filepaths), ncols=100)
-    for ch_filepath, stop_frame_n in zip(ch_filepaths, stop_frame_nums):
-        logger.info(f'\nProcessing "{ch_filepath}"...')
-        kernel.run(ch_filepath, stop_frame_n)
-        pbar.update()
+    run_segm_batch(
+        kernel._workflow_ctx,
+        ch_filepaths,
+        stop_frame_nums,
+        runnable_config_from_segm_kernel(kernel),
+        progress=pbar,
+    )
+    sync_segm_kernel_from_context(kernel, kernel._workflow_ctx)
     pbar.close()
 
 
 def run_measurements_workflow(workflow_params, logger, log_path):
     logger.info("Initializing measurements kernel...")
     from cellacdc import cli
+    from cellacdc.workflow.pipelines.batch import run_measurements_batch
+    from cellacdc.workflow.runnable import RunnableConfig
 
     kernel = cli.ComputeMeasurementsKernel(logger, log_path, is_cli=True)
     ch_filepaths = kernel.parse_paths(workflow_params)
@@ -597,19 +608,22 @@ def run_measurements_workflow(workflow_params, logger, log_path):
     end_filename_segm = workflow_params["measurements"]["end_filename_segm"]
     kernel.set_metrics_from_workflow_config_params(workflow_params["measurements"])
     pbar = tqdm(total=len(ch_filepaths), ncols=100)
-    for ch_filepath, stop_frame_n in zip(ch_filepaths, stop_frame_nums):
-        logger.info(f'\nProcessing "{ch_filepath}"...')
-        kernel.run(
-            img_path=ch_filepath,
-            stop_frame_n=stop_frame_n,
-            end_filename_segm=end_filename_segm,
-        )
-        pbar.update()
+    run_measurements_batch(
+        kernel,
+        ch_filepaths,
+        stop_frame_nums,
+        end_filename_segm,
+        RunnableConfig(logger_func=logger.info),
+        progress=pbar,
+    )
     pbar.close()
 
 
 def run_cli(ini_filepath):
     from cellacdc import myutils
+    from cellacdc.workflow.pipelines.full_workflow import build_full_workflow_graph
+    from cellacdc.workflow.runnable import RunnableConfig
+    from cellacdc.workflow.state import FullWorkflowState
 
     logger, logs_path, log_path, log_filename = myutils.setupLogger(
         module="cli", logs_path=None
@@ -622,14 +636,25 @@ def run_cli(ini_filepath):
 
     workflow_params = load.read_segm_workflow_from_config(ini_filepath)
     workflow_type = workflow_params["workflow"]["type"]
+    run_segm = workflow_type == "segmentation and/or tracking"
+    run_measurements = "measurements" in workflow_params
 
-    if workflow_type == "segmentation and/or tracking":
-        run_segm_workflow(workflow_params, logger, log_path)
-
-    if "measurements" in workflow_params.keys():
+    meas_params = None
+    if run_measurements:
         logger.info("Loading measurements workflow...")
-        meas_workflow_params = load.read_measurements_workflow_from_config(ini_filepath)
-        run_measurements_workflow(meas_workflow_params, logger, log_path)
+        meas_params = load.read_measurements_workflow_from_config(ini_filepath)
+
+    workflow_ctx = type("WorkflowCliContext", (), {"logger": logger, "log_path": log_path})()
+    graph = build_full_workflow_graph(workflow_ctx).compile()
+    graph.invoke(
+        FullWorkflowState(
+            segm_params=workflow_params,
+            measurements_params=meas_params,
+            run_segm=run_segm,
+            run_measurements=run_measurements,
+        ),
+        RunnableConfig(logger_func=logger.info),
+    )
 
     logger.info("**********************************************")
     logger.info(f"Cell-ACDC command-line closed. {myutils.get_salute_string()}")
