@@ -5,21 +5,17 @@ import skimage.measure
 
 import cv2
 
-def _find_contours_2D(
-        image, bbox_lower_coords=(0, 0), all=False, closed=True
-    ):
+
+def _find_contours_2D(image, bbox_lower_coords=(0, 0), all=False, closed=True):
     mode = cv2.RETR_CCOMP if all else cv2.RETR_EXTERNAL
     contours, _ = cv2.findContours(image, mode, cv2.CHAIN_APPROX_NONE)
-    
+
     if all:
         all_contours = [
-            np.squeeze(contour, axis=1)+bbox_lower_coords 
-            for contour in contours
+            np.squeeze(contour, axis=1) + bbox_lower_coords for contour in contours
         ]
         if closed:
-            all_contours = [
-                np.vstack((contour, contour[0])) for contour in contours
-            ]
+            all_contours = [np.vstack((contour, contour[0])) for contour in contours]
         return all_contours
     else:
         contour = np.squeeze(contours[0], axis=1)
@@ -28,17 +24,21 @@ def _find_contours_2D(
         contour = contour + bbox_lower_coords
         return contour
 
+
 def find_obj_contour(
-        obj: skimage.measure._regionprops.RegionProperties, all=False, 
-        local=False, do_z_max_proj=False, closed=True
-    ):
+    obj: skimage.measure._regionprops.RegionProperties,
+    all=False,
+    local=False,
+    do_z_max_proj=False,
+    closed=True,
+):
     is3D = obj.image.ndim == 3
     bbox_y_idx = 1 if is3D else 0
 
     if local:
-        bbox_lower_coords=(0, 0)
+        bbox_lower_coords = (0, 0)
     else:
-        min_y, min_x = obj.bbox[bbox_y_idx:bbox_y_idx+2]
+        min_y, min_x = obj.bbox[bbox_y_idx : bbox_y_idx + 2]
         bbox_lower_coords = (min_x, min_y)
 
     if is3D and do_z_max_proj:
@@ -47,23 +47,18 @@ def find_obj_contour(
     else:
         obj_image = obj.image.astype(np.uint8)
 
-    kwargs = {
-        'bbox_lower_coords': bbox_lower_coords, 
-        'all':all, 'closed': closed
-    }
+    kwargs = {"bbox_lower_coords": bbox_lower_coords, "all": all, "closed": closed}
     if is3D:
-        contours = [
-            _find_contours_2D(image_z, **kwargs) for image_z in obj_image
-        ]
+        contours = [_find_contours_2D(image_z, **kwargs) for image_z in obj_image]
     else:
         contours = _find_contours_2D(obj_image, **kwargs)
     return contours
 
+
 def find_contours(
-        label_img, connectivity=1, mode='thick', background=0, 
-        return_coords=False, **kwargs
-    ):
-    """Return bool array where boundaries between labeled regions are True. 
+    label_img, connectivity=1, mode="thick", background=0, return_coords=False, **kwargs
+):
+    """Return bool array where boundaries between labeled regions are True.
     If `return_coords` is True then return also a list of objects' contours
     coordinates.
 
@@ -92,7 +87,7 @@ def find_contours(
           marked.
         - subpixel: return a doubled image, with pixels *between* the
           original pixels marked as boundary where appropriate.,
-        
+
         By default 'thick'
     background : int, optional
         For modes 'inner' and 'outer', a definition of a background
@@ -102,8 +97,8 @@ def find_contours(
         If ``True``, also return a list of objects' contours coordinates,
         by default False
     kwargs : dict, optional
-        Additional arguments passed `acdctools.segmentation.find_obj_contour` 
-        function. This function uses the opencv find contours function 
+        Additional arguments passed `acdctools.segmentation.find_obj_contour`
+        function. This function uses the opencv find contours function
         `cv2.findContours`. Used only if `mode='inner'`.
 
     Returns
@@ -115,25 +110,25 @@ def find_contours(
         inserted in between all other pairs of pixels).
     contours_coords: list of ndarray
         A list of ndarrays with shape (N, n) where `n` is the number of
-        dimensions of `label_img` and `N` is the number of points in each 
-        object's contour. The list contains one ndarray per object in 
-        `label_img`. 
-        The ordering of columns follows the numpy's order of dimensions 
-        convention, e.g., for 2-D, the first and second column are the 
-        y and x coordinates, respectively. 
+        dimensions of `label_img` and `N` is the number of points in each
+        object's contour. The list contains one ndarray per object in
+        `label_img`.
+        The ordering of columns follows the numpy's order of dimensions
+        convention, e.g., for 2-D, the first and second column are the
+        y and x coordinates, respectively.
         Only provided if `return_coords` is True.
-    """    
+    """
     boundaries = skimage.segmentation.find_boundaries(
         label_img, connectivity=connectivity, mode=mode, background=background
     )
     if not return_coords:
         return boundaries
-    
+
     is2D = label_img.ndim == 2
     rp = skimage.measure.regionprops(label_img)
     contours_coords = []
     for obj in rp:
-        if mode == 'inner' and is2D:
+        if mode == "inner" and is2D:
             pass
         else:
             pass

@@ -16,35 +16,41 @@ from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
 from cellacdc import myutils, widgets, printl
 
+
 class AvailableModels:
     values = list(model_types.keys())
+
 
 class DataFrame:
     not_a_param = True
 
+
 class NotParam:
     not_a_param = True
+
 
 class Boolean:
     not_a_param = True
 
+
 class Integer:
     not_a_param = True
 
+
 class Model:
     def __init__(
-            self,
-            model_type: AvailableModels='Large',
-            input_points_path: widgets.CsvFilePathControl='',
-            input_points_df: DataFrame='None',
-            points_per_side=32,
-            pred_iou_thresh=0.8,
-            stability_score_thresh=0.95,
-            crop_n_layers=0,
-            crop_n_points_downscale_factor=1,
-            min_mask_region_area=0,
-            gpu=True
-        ):
+        self,
+        model_type: AvailableModels = "Large",
+        input_points_path: widgets.CsvFilePathControl = "",
+        input_points_df: DataFrame = "None",
+        points_per_side=32,
+        pred_iou_thresh=0.8,
+        stability_score_thresh=0.95,
+        crop_n_layers=0,
+        crop_n_points_downscale_factor=1,
+        min_mask_region_area=0,
+        gpu=True,
+    ):
         """Initialization of Segment Anything Model 2 within Cell-ACDC
 
         Parameters
@@ -130,34 +136,34 @@ class Model:
         """
         if gpu:
             from cellacdc import is_mac_arm64
-            if is_mac_arm64:
-                device = 'cpu'
-            else:
-                device = 'cuda'
-        else:
-            device = 'cpu'
 
-        if isinstance(input_points_df, str) and input_points_df=='None':
+            if is_mac_arm64:
+                device = "cpu"
+            else:
+                device = "cuda"
+        else:
+            device = "cpu"
+
+        if isinstance(input_points_df, str) and input_points_df == "None":
             input_points_df = None
 
-        load_points_df = (
-            input_points_path
-            and input_points_df is None
-        )
+        load_points_df = input_points_path and input_points_df is None
         if load_points_df:
             input_points_df = pd.read_csv(input_points_path)
 
         if input_points_df is not None:
-            if 'z' in input_points_df.columns:
-                input_points_df = input_points_df.sort_values(['z', 'id'])
+            if "z" in input_points_df.columns:
+                input_points_df = input_points_df.sort_values(["z", "id"])
             else:
-                input_points_df = input_points_df.sort_values('id')
+                input_points_df = input_points_df.sort_values("id")
 
         self._input_points_df = input_points_df
 
         config_file, sam_checkpoint = model_types[model_type]
         sam_checkpoint = os.path.join(sam_segmenters_path, sam_checkpoint)
-        sam = build_sam2(config_file=config_file, ckpt_path=sam_checkpoint, device=device)
+        sam = build_sam2(
+            config_file=config_file, ckpt_path=sam_checkpoint, device=device
+        )
 
         if input_points_df is None:
             self.model = SAM2AutomaticMaskGenerator(
@@ -175,18 +181,17 @@ class Model:
         self._embedded_img = None
 
     def segment(
-            self,
-            image: np.ndarray,
-            frame_i: int,
-            automatic_removal_of_background: bool=True,
-            input_points_df: DataFrame='None',
-            posData: NotParam=None,
-            save_embeddings: Boolean=False,
-            only_embeddings: Boolean=False,
-            use_loaded_embeddings: Boolean=False,
-            start_z_slice: Integer=0
-        ) -> np.ndarray:
-
+        self,
+        image: np.ndarray,
+        frame_i: int,
+        automatic_removal_of_background: bool = True,
+        input_points_df: DataFrame = "None",
+        posData: NotParam = None,
+        save_embeddings: Boolean = False,
+        only_embeddings: Boolean = False,
+        use_loaded_embeddings: Boolean = False,
+        start_z_slice: Integer = 0,
+    ) -> np.ndarray:
         """Segment image using SAM2
 
         image : ([Z], Y, X, [C]) numpy.ndarray
@@ -260,7 +265,7 @@ class Model:
             self._input_points_df = input_points_df
 
         is_rgb_image = image.shape[-1] == 3 or image.shape[-1] == 4
-        is_z_stack = (image.ndim==3 and not is_rgb_image) or (image.ndim==4)
+        is_z_stack = (image.ndim == 3 and not is_rgb_image) or (image.ndim == 4)
         if is_rgb_image:
             labels = np.zeros(image.shape[:-1], dtype=np.uint32)
         else:
@@ -268,15 +273,13 @@ class Model:
 
         if self._input_points_df is None:
             df_points = None
-        elif 'frame_i' in self._input_points_df.columns:
-            mask = self._input_points_df['frame_i'] == frame_i
+        elif "frame_i" in self._input_points_df.columns:
+            mask = self._input_points_df["frame_i"] == frame_i
             df_points = self._input_points_df[mask]
         else:
             df_points = self._input_points_df
 
-        input_points, input_labels = self._get_input_points(
-            is_z_stack, df_points
-        )
+        input_points, input_labels = self._get_input_points(is_z_stack, df_points)
         if is_z_stack:
             for z, img in enumerate(image):
                 input_points_z = None
@@ -287,40 +290,42 @@ class Model:
                 embeddings_init = False
                 if use_loaded_embeddings:
                     embeddings_init = self._get_img_embeddings(
-                        posData, frame_i=frame_i, z=z+start_z_slice
+                        posData, frame_i=frame_i, z=z + start_z_slice
                     )
 
                 if only_embeddings:
                     self._init_embeddings(img)
                 else:
                     lab_2D = self._segment_2D_image(
-                        img, input_points_z, input_labels_z,
-                        embeddings_already_init=embeddings_init
+                        img,
+                        input_points_z,
+                        input_labels_z,
+                        embeddings_already_init=embeddings_init,
                     )
                     labels[z] = lab_2D
                 if save_embeddings or only_embeddings:
                     posData.storeSamEmbeddings(
-                        self, frame_i=frame_i, z=z+start_z_slice
+                        self, frame_i=frame_i, z=z + start_z_slice
                     )
 
             if automatic_removal_of_background and input_points is None:
                 # For z-stacks, remove background after 3D relabeling
                 labels = self._remove_background_from_labels(labels)
-                
-            labels = skimage.measure.label(labels>0).astype(np.uint32) 
+
+            labels = skimage.measure.label(labels > 0).astype(np.uint32)
         else:
             embeddings_init = False
             if use_loaded_embeddings:
-                embeddings_init = self._get_img_embeddings(
-                    posData, frame_i=frame_i
-                )
+                embeddings_init = self._get_img_embeddings(posData, frame_i=frame_i)
             if only_embeddings:
                 self._init_embeddings(image)
             else:
                 labels = self._segment_2D_image(
-                    image, input_points, input_labels,
+                    image,
+                    input_points,
+                    input_labels,
                     embeddings_already_init=embeddings_init,
-                    automatic_removal_of_background=automatic_removal_of_background
+                    automatic_removal_of_background=automatic_removal_of_background,
                 )
 
             if save_embeddings or only_embeddings:
@@ -345,25 +350,21 @@ class Model:
         if is_z_stack:
             input_points = defaultdict(dict)
             input_labels = defaultdict(dict)
-            neg_input_points_df = (
-                df_points[df_points['id'] == 0]
-                .set_index('z')
-            )
-            for (z, id), sub_df in df_points.groupby(['z', 'id']):
+            neg_input_points_df = df_points[df_points["id"] == 0].set_index("z")
+            for (z, id), sub_df in df_points.groupby(["z", "id"]):
                 if id == 0:
                     continue
 
                 # Concatenate negative points
-                points_data_z = sub_df[['x', 'y']].to_numpy()
+                points_data_z = sub_df[["x", "y"]].to_numpy()
                 points_labels_z = np.ones(len(sub_df), dtype=int)  # 1 = positive
                 try:
-                    neg_points_data_z = (
-                        neg_input_points_df.loc[z][['x', 'y']].to_numpy())
-                    points_data_z = np.row_stack((
-                        neg_points_data_z, points_data_z
-                    ))
+                    neg_points_data_z = neg_input_points_df.loc[z][
+                        ["x", "y"]
+                    ].to_numpy()
+                    points_data_z = np.row_stack((neg_points_data_z, points_data_z))
                     points_labels_z = np.concatenate(
-                        ([0]*len(neg_points_data_z), points_labels_z)
+                        ([0] * len(neg_points_data_z), points_labels_z)
                     )
                 except IndexError:
                     pass
@@ -373,23 +374,19 @@ class Model:
         else:
             input_points = {}
             input_labels = {}
-            neg_input_points_df = (
-                df_points[df_points['id'] == 0]
-            )
-            neg_input_points_data = neg_input_points_df[['x', 'y']].to_numpy()
-            for id, df_id in df_points.groupby('id'):
+            neg_input_points_df = df_points[df_points["id"] == 0]
+            neg_input_points_data = neg_input_points_df[["x", "y"]].to_numpy()
+            for id, df_id in df_points.groupby("id"):
                 if id == 0:
                     continue
 
-                points_data_id = df_id[['x', 'y']].to_numpy()
-                points_data_id = np.row_stack((
-                    neg_input_points_data, points_data_id
-                ))
+                points_data_id = df_id[["x", "y"]].to_numpy()
+                points_data_id = np.row_stack((neg_input_points_data, points_data_id))
 
                 # Use 1 for positive labels (not actual IDs) - SAM expects binary 0/1
                 points_labels_id = np.ones(len(df_id), dtype=int)
                 points_labels_id = np.concatenate(
-                    ([0]*len(neg_input_points_data), points_labels_id)
+                    ([0] * len(neg_input_points_data), points_labels_id)
                 )
                 input_points[id] = points_data_id
                 input_labels[id] = points_labels_id
@@ -407,7 +404,7 @@ class Model:
         except Exception as err:
             init_embeddings = True
 
-        if hasattr(self.model, 'predictor'):
+        if hasattr(self.model, "predictor"):
             predictor = self.model.predictor
         else:
             predictor = self.model
@@ -417,12 +414,13 @@ class Model:
             self._embedded_img = img_rgb
 
     def _segment_2D_image(
-            self, image: np.ndarray,
-            input_points: np.ndarray,
-            input_labels: np.ndarray,
-            embeddings_already_init: bool=False,
-            automatic_removal_of_background: bool=False
-        ) -> np.ndarray:
+        self,
+        image: np.ndarray,
+        input_points: np.ndarray,
+        input_labels: np.ndarray,
+        embeddings_already_init: bool = False,
+        automatic_removal_of_background: bool = False,
+    ) -> np.ndarray:
 
         img = myutils.to_uint8(image)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -439,10 +437,10 @@ class Model:
                     masks = [m for i, m in enumerate(masks) if i != bg_idx]
 
             # Sort by area descending so smaller masks overwrite larger ones
-            masks = sorted(masks, key=lambda m: m['area'], reverse=True)
+            masks = sorted(masks, key=lambda m: m["area"], reverse=True)
             for id, mask in enumerate(masks):
-                obj_image = mask['segmentation']
-                labels[obj_image] = id+1
+                obj_image = mask["segmentation"]
+                labels[obj_image] = id + 1
 
             return labels
 
@@ -456,7 +454,7 @@ class Model:
 
         for id, point_coords in input_points.items():
             point_labels = input_labels[id]
-            multimask_output = len(point_coords)==1
+            multimask_output = len(point_coords) == 1
             masks, scores, logits = self.model.predict(
                 point_coords=point_coords,
                 point_labels=point_labels,
@@ -470,9 +468,7 @@ class Model:
             labels[mask] = id
         return labels
 
-    def _find_background_mask_index(
-            self, masks: list, shape: tuple
-        ) -> int | None:
+    def _find_background_mask_index(self, masks: list, shape: tuple) -> int | None:
         """Find the mask with the most pixels touching the image border."""
         if not masks:
             return None
@@ -484,7 +480,7 @@ class Model:
         max_border_pixels = 0
         bg_idx = None
         for i, mask in enumerate(masks):
-            segmentation = mask['segmentation']
+            segmentation = mask["segmentation"]
             border_pixels = np.sum(segmentation & border_mask)
             if border_pixels > max_border_pixels:
                 max_border_pixels = border_pixels
@@ -505,4 +501,4 @@ class Model:
 
 
 def url_help():
-    return 'https://github.com/facebookresearch/segment-anything-2'
+    return "https://github.com/facebookresearch/segment-anything-2"

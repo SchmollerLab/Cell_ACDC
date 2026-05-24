@@ -24,13 +24,14 @@ import cellacdc.debugutils as debugutils
 #     Returns:
 #     - pandas.DataFrame: The filtered DataFrame containing only the specified columns.
 #     """
-#     lin_tree_cols = {'generation_num_tree', 'root_ID_tree', 
-#                      'sister_ID_tree', 'parent_ID_tree', 
-#                      'parent_ID_tree', 'emerg_frame_i', 
+#     lin_tree_cols = {'generation_num_tree', 'root_ID_tree',
+#                      'sister_ID_tree', 'parent_ID_tree',
+#                      'parent_ID_tree', 'emerg_frame_i',
 #                      'division_frame_i', 'is_history_known'}
 #     sis_cols = {col for col in df.columns if col.startswith('sister_ID_tree')}
 #     lin_tree_cols = lin_tree_cols | sis_cols
 #     return df[list(lin_tree_cols)]
+
 
 def reorg_sister_cells_for_export(lineage_tree_frame):
     """
@@ -46,19 +47,22 @@ def reorg_sister_cells_for_export(lineage_tree_frame):
     """
     if lineage_tree_frame.empty:
         return lineage_tree_frame
-    
-    old_sister_columns = {col for col in lineage_tree_frame.columns if col.startswith('sister_ID_tree')}
 
-    sister_columns = lineage_tree_frame['sister_ID_tree'].apply(pd.Series)
+    old_sister_columns = {
+        col for col in lineage_tree_frame.columns if col.startswith("sister_ID_tree")
+    }
+
+    sister_columns = lineage_tree_frame["sister_ID_tree"].apply(pd.Series)
 
     max_daughter = sister_columns.shape[1]
-    new_columns = [f'sister_ID_tree_{i}' for i in range(max_daughter)]
+    new_columns = [f"sister_ID_tree_{i}" for i in range(max_daughter)]
 
     lineage_tree_frame = lineage_tree_frame.drop(columns=old_sister_columns)
     lineage_tree_frame[new_columns] = sister_columns
-    lineage_tree_frame['sister_ID_tree'] = sister_columns[0]
+    lineage_tree_frame["sister_ID_tree"] = sister_columns[0]
 
     return lineage_tree_frame
+
 
 # def reorg_sister_cells_inner_func(row):
 #     """
@@ -71,7 +75,7 @@ def reorg_sister_cells_for_export(lineage_tree_frame):
 #     """
 
 #     values = [int(i) for i in row if i not in {0, -1} and not np.isnan(i)] or [-1]
-#     values = list(set(values))  
+#     values = list(set(values))
 #     return values
 
 
@@ -99,7 +103,10 @@ def reorg_sister_cells_for_export(lineage_tree_frame):
 #     df = checked_reset_index_Cell_ID(df)
 #     return df
 
-def mother_daughter_assign(IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh_instant=None):
+
+def mother_daughter_assign(
+    IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh_instant=None
+):
     """
     Identifies cells that have not undergone division based on the input IoA matrix.
 
@@ -116,7 +123,7 @@ def mother_daughter_assign(IoA_matrix, IoA_thresh_daughter, min_daughter, max_da
     """
     mother_daughters = []
     aggr_track = []
-    daughter_range = range(min_daughter, max_daughter+1, 1)
+    daughter_range = range(min_daughter, max_daughter + 1, 1)
     instant_accept = []
 
     IoA_thresholded = IoA_matrix >= IoA_thresh_daughter
@@ -131,7 +138,7 @@ def mother_daughter_assign(IoA_matrix, IoA_thresh_daughter, min_daughter, max_da
         if IoA_instant_accept[:, j].any():
             instant_accept.append(j)
             continue
-        
+
         high_IoA_indices = np.where(IoA_thresholded[:, j])[0]
 
         if not high_IoA_indices.size:
@@ -146,19 +153,22 @@ def mother_daughter_assign(IoA_matrix, IoA_thresh_daughter, min_daughter, max_da
         for daughter in daughters:
             high_IoA_greater_1 = np.count_nonzero(IoA_thresholded[daughter]) > 1
             if high_IoA_greater_1:
-                should_remove_idx.append(True) 
+                should_remove_idx.append(True)
                 break
         else:
             should_remove_idx.append(False)
-    
+
     # printl(f'length of mother_daughters: {len(mother_daughters), len(should_remove_idx)}')
-    mother_daughters = [mother_daughters[i] for i, remove in enumerate(should_remove_idx) if not remove]
+    mother_daughters = [
+        mother_daughters[i] for i, remove in enumerate(should_remove_idx) if not remove
+    ]
 
     # daughters_li = []
     # for _, daughters in mother_daughters:
     #     daughters_li.extend(daughters)
 
     return aggr_track, mother_daughters
+
 
 def added_lineage_tree_to_cca_df(added_lineage_tree):
     """
@@ -187,19 +197,24 @@ def added_lineage_tree_to_cca_df(added_lineage_tree):
         return pd.DataFrame()
 
     # Use zip to unpack columns efficiently
-    emerg_frame_i, cell_id, parent_id, gen_num, root_id, sister_ids = zip(*added_lineage_tree)
-    cca_df = pd.DataFrame({
-        'Cell_ID': cell_id,
-        'emerg_frame_i': emerg_frame_i,
-        'division_frame_i': emerg_frame_i,
-        'generation_num_tree': gen_num,
-        'parent_ID_tree': parent_id,
-        'root_ID_tree': root_id,
-        'sister_ID_tree': sister_ids,
-    })
-    cca_df['is_history_known'] = (cca_df['parent_ID_tree'] != -1).astype(int)
-    cca_df = cca_df.set_index('Cell_ID')
+    emerg_frame_i, cell_id, parent_id, gen_num, root_id, sister_ids = zip(
+        *added_lineage_tree
+    )
+    cca_df = pd.DataFrame(
+        {
+            "Cell_ID": cell_id,
+            "emerg_frame_i": emerg_frame_i,
+            "division_frame_i": emerg_frame_i,
+            "generation_num_tree": gen_num,
+            "parent_ID_tree": parent_id,
+            "root_ID_tree": root_id,
+            "sister_ID_tree": sister_ids,
+        }
+    )
+    cca_df["is_history_known"] = (cca_df["parent_ID_tree"] != -1).astype(int)
+    cca_df = cca_df.set_index("Cell_ID")
     return cca_df
+
 
 def filter_current_IDs(df, current_IDs):
     """
@@ -214,6 +229,7 @@ def filter_current_IDs(df, current_IDs):
     """
     df = checked_reset_index_Cell_ID(df)
     return df[df.index.isin(current_IDs)]
+
 
 def IoA_index_daughter_to_ID(daughters, assignments, IDs_curr_untracked):
     """
@@ -231,7 +247,7 @@ def IoA_index_daughter_to_ID(daughters, assignments, IDs_curr_untracked):
 
     if daughters is None:
         return
-    
+
     daughter_IDs = []
     for daughter in daughters:
         if assignments:
@@ -241,13 +257,14 @@ def IoA_index_daughter_to_ID(daughters, assignments, IDs_curr_untracked):
 
     return daughter_IDs
 
+
 # def update_fam_dynamically(families, fixed_df, Cell_IDs_fixed=None):
 #     if Cell_IDs_fixed is None:
 #         Cell_IDs_fixed = fixed_df.index
 #     for idx, family in enumerate(families):
 #         # Keep only cellinfos where cell_id is in Cell_IDs_fixed
 #         families[idx] = [cellinfo for cellinfo in family if cellinfo[0] not in Cell_IDs_fixed]
-    
+
 #     families = [family for family in families if family]  # Remove empty families
 #     handled_cells = set()
 #     for family in families:
@@ -260,13 +277,14 @@ def IoA_index_daughter_to_ID(daughters, assignments, IDs_curr_untracked):
 #             # Update the family with the generation number and root ID
 #             family.append((relevant_cell, relevant_cells.loc[relevant_cell, 'generation_num_tree']))
 #         handled_cells.update(relevant_cells.index)
-    
+
 #     for cell_id in Cell_IDs_fixed:
 #         if cell_id not in handled_cells:
 #             # If the cell is not handled, create a new family for it
 #             families.append([(cell_id, fixed_df.loc[cell_id, 'generation_num_tree'])])
-    
+
 #     return families
+
 
 class normal_division_tracker:
     """
@@ -293,13 +311,15 @@ class normal_division_tracker:
     - track_frame(self, frame_i, lab=None, prev_lab=None, rp=None, prev_rp=None): Tracks a single frame in the video sequence.
     """
 
-    def __init__(self,
-                 segm_video,
-                 IoA_thresh_daughter,
-                 min_daughter,
-                 max_daughter,
-                 IoA_thresh,
-                 IoA_thresh_aggressive):
+    def __init__(
+        self,
+        segm_video,
+        IoA_thresh_daughter,
+        min_daughter,
+        max_daughter,
+        IoA_thresh,
+        IoA_thresh_aggressive,
+    ):
         """
         Initializes the normal_division_tracker object.
 
@@ -322,8 +342,16 @@ class normal_division_tracker:
         self.tracked_video = np.zeros_like(segm_video)
         self.tracked_video[0] = segm_video[0]
 
-    def track_frame(self, frame_i, lab=None, prev_lab=None, rp=None, prev_rp=None,
-                    IDs=None, unique_ID=None):
+    def track_frame(
+        self,
+        frame_i,
+        lab=None,
+        prev_lab=None,
+        rp=None,
+        prev_rp=None,
+        IDs=None,
+        unique_ID=None,
+    ):
         """
         Tracks a single frame in the video sequence.
 
@@ -339,7 +367,7 @@ class normal_division_tracker:
             lab = self.segm_video[frame_i]
 
         if prev_lab is None:
-            prev_lab = self.tracked_video[frame_i-1]
+            prev_lab = self.tracked_video[frame_i - 1]
 
         if rp is None:
             self.rp = regionprops(lab.copy())
@@ -349,35 +377,38 @@ class normal_division_tracker:
         if prev_rp is None:
             prev_rp = regionprops(prev_lab.copy())
 
-        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_Io_matrix(lab,
-                                                                             prev_lab,
-                                                                             self.rp,
-                                                                             prev_rp,
-                                                                             IDs=IDs,
-                                                                             )
-        self.aggr_track, self.mother_daughters = mother_daughter_assign(IoA_matrix,
-                                                                        IoA_thresh_daughter=self.IoA_thresh_daughter,
-                                                                        min_daughter=self.min_daughter,
-                                                                        max_daughter=self.max_daughter,
-                                                                        IoA_thresh_instant=self.IoA_thresh
-                                                                        )
-        self.tracked_lab, IoA_matrix, self.assignments, _ = track_frame_base(prev_lab,
-                                                                             prev_rp,
-                                                                             lab,
-                                                                             self.rp,
-                                                                             IoA_thresh=self.IoA_thresh,
-                                                                             IoA_matrix=IoA_matrix,
-                                                                             aggr_track=self.aggr_track,
-                                                                             IoA_thresh_aggr=self.IoA_thresh_aggressive,
-                                                                             IDs_curr_untracked=self.IDs_curr_untracked, 
-                                                                             IDs_prev=self.IDs_prev, 
-                                                                             return_all=True,
-                                                                             mother_daughters=self.mother_daughters,
-                                                                             unique_ID=unique_ID
-                                                                             )
-        
+        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_Io_matrix(
+            lab,
+            prev_lab,
+            self.rp,
+            prev_rp,
+            IDs=IDs,
+        )
+        self.aggr_track, self.mother_daughters = mother_daughter_assign(
+            IoA_matrix,
+            IoA_thresh_daughter=self.IoA_thresh_daughter,
+            min_daughter=self.min_daughter,
+            max_daughter=self.max_daughter,
+            IoA_thresh_instant=self.IoA_thresh,
+        )
+        self.tracked_lab, IoA_matrix, self.assignments, _ = track_frame_base(
+            prev_lab,
+            prev_rp,
+            lab,
+            self.rp,
+            IoA_thresh=self.IoA_thresh,
+            IoA_matrix=IoA_matrix,
+            aggr_track=self.aggr_track,
+            IoA_thresh_aggr=self.IoA_thresh_aggressive,
+            IDs_curr_untracked=self.IDs_curr_untracked,
+            IDs_prev=self.IDs_prev,
+            return_all=True,
+            mother_daughters=self.mother_daughters,
+            unique_ID=unique_ID,
+        )
 
         self.tracked_video[frame_i] = self.tracked_lab
+
 
 class normal_division_lineage_tree:
     """
@@ -423,10 +454,18 @@ class normal_division_lineage_tree:
 
         export_lin_tree_info(frame_i)
             Return information about new, orphan, and lost cells between two consecutive frames.
-    """ 
+    """
 
-    def __init__(self, lab=None, first_df=None, frame_i=0, max_daughter=2, min_daughter=2, IoA_thresh_daughter=0.25,
-                 gui=None):
+    def __init__(
+        self,
+        lab=None,
+        first_df=None,
+        frame_i=0,
+        max_daughter=2,
+        min_daughter=2,
+        IoA_thresh_daughter=0.25,
+        gui=None,
+    ):
         """
         Initialize the lineage tree for normal cell divisions.
 
@@ -449,30 +488,35 @@ class normal_division_lineage_tree:
         self.gui = gui
         self.max_daughters_added = 0
         self.gui_mode = True if gui is not None else False
-        self.mother_daughters = [] # just for the dict_curr_frame stuff...
+        self.mother_daughters = []  # just for the dict_curr_frame stuff...
         self.frames_for_dfs = set([frame_i])
-        self.need_update_gen_df = False # this is only when using the quick option in update_gen_df_from_df
+        self.need_update_gen_df = (
+            False  # this is only when using the quick option in update_gen_df_from_df
+        )
         self.first_frame_i_for_ID = dict()
 
         self.ID_frame_i_lookup = {}
-        
-        if self.gui_mode: # part of loading for gui
+
+        if self.gui_mode:  # part of loading for gui
             posData = self.gui.data[self.gui.pos_i]
             for i, data in enumerate(posData.allData_li):
-                if 'generation_num_tree' in data['acdc_df'].columns and data['acdc_df']['generation_num_tree'].notna().all():
+                if (
+                    "generation_num_tree" in data["acdc_df"].columns
+                    and data["acdc_df"]["generation_num_tree"].notna().all()
+                ):
                     self.frames_for_dfs.add(i)
-        
+
         self.init_lineage_tree(lab, first_df, frame_i)
-    
+
     def _get_first_frame_i_for_ID(self, ID):
         if self.gui_mode:
             posData = self.gui.data[self.gui.pos_i]
             if ID in self.first_frame_i_for_ID:
                 frame_i = self.first_frame_i_for_ID[ID]
-                if ID in posData.allData_li[frame_i]['acdc_df'].index:
+                if ID in posData.allData_li[frame_i]["acdc_df"].index:
                     return frame_i
             for i, data in enumerate(posData.allData_li):
-                if ID in data['acdc_df'].index:
+                if ID in data["acdc_df"].index:
                     self.first_frame_i_for_ID[ID] = i
                     return i
         else:
@@ -484,40 +528,44 @@ class normal_division_lineage_tree:
                 if ID in df.index:
                     self.first_frame_i_for_ID[ID] = i
                     return i
-        
-    def _get_extra_daughter_cols(self,num_daughters=None):
+
+    def _get_extra_daughter_cols(self, num_daughters=None):
         if num_daughters is not None and self.max_daughters_added < num_daughters:
             missing_i = range(self.max_daughters_added, num_daughters)
-            missing_cols = [f'sister_ID_tree_{i}' for i in missing_i]
+            missing_cols = [f"sister_ID_tree_{i}" for i in missing_i]
             self.max_daughters_added = num_daughters
             if self.gui_mode:
                 posData = self.gui.data[self.gui.pos_i]
                 for frame_i in self.frames_for_dfs:
-                    df = posData.allData_li[frame_i]['acdc_df']
-                    missing_cols_loc = [col for col in missing_cols if col not in df.columns]
+                    df = posData.allData_li[frame_i]["acdc_df"]
+                    missing_cols_loc = [
+                        col for col in missing_cols if col not in df.columns
+                    ]
                     df[missing_cols_loc] = -1
 
             else:
                 for df in self.lineage_list:
-                    missing_cols_loc = [col for col in missing_cols if col not in df.columns]
+                    missing_cols_loc = [
+                        col for col in missing_cols if col not in df.columns
+                    ]
                     df[missing_cols_loc] = -1
-                
-        return [f'sister_ID_tree_{i}' for i in range(self.max_daughters_added)]
-    
+
+        return [f"sister_ID_tree_{i}" for i in range(self.max_daughters_added)]
+
     def _get_df_from_frame_i(self, frame_i):
         if self.gui_mode:
             posData = self.gui.data[self.gui.pos_i]
-            return posData.allData_li[frame_i]['acdc_df']
+            return posData.allData_li[frame_i]["acdc_df"]
         else:
             return self.lineage_list[frame_i]
-    
+
     def _get_row_from_ID(self, ID, start_search_frame_i=None):
         if ID in self.ID_frame_i_lookup:
             frame_i = self.ID_frame_i_lookup[ID]
             if self.gui_mode:
                 posData = self.gui.data[self.gui.pos_i]
                 try:
-                    df = posData.allData_li[frame_i]['acdc_df']
+                    df = posData.allData_li[frame_i]["acdc_df"]
                     row = df.loc[ID]
                     return row
                 except:
@@ -532,15 +580,15 @@ class normal_division_lineage_tree:
         if self.gui_mode:
             posData = self.gui.data[self.gui.pos_i]
             if start_search_frame_i is not None:
-                df = posData.allData_li[start_search_frame_i]['acdc_df']
+                df = posData.allData_li[start_search_frame_i]["acdc_df"]
                 if ID in df.index:
                     row = df.loc[ID]
                     self.ID_frame_i_lookup[ID] = start_search_frame_i
                     return row
-                
+
             for i, data in enumerate(posData.allData_li):
-                if ID in data['acdc_df'].index:
-                    df = data['acdc_df']
+                if ID in data["acdc_df"].index:
+                    df = data["acdc_df"]
                     row = df.loc[ID]
                     self.ID_frame_i_lookup[ID] = i
                     return row
@@ -551,14 +599,14 @@ class normal_division_lineage_tree:
                     row = df.loc[ID]
                     self.ID_frame_i_lookup[ID] = start_search_frame_i
                     return row
-                
+
             for i, df in enumerate(self.lineage_list):
                 if ID in df.index:
                     row = df.loc[ID]
                     self.ID_frame_i_lookup[ID] = i
                     return row
 
-        raise ValueError(f'ID {ID} not found in any frame.')
+        raise ValueError(f"ID {ID} not found in any frame.")
 
     def init_lineage_tree(self, lab=None, first_df=None, frame_i=None):
         """
@@ -571,57 +619,69 @@ class normal_division_lineage_tree:
         Raises:
             ValueError: If both lab and first_df are provided.
         """
-        print('Initializing lineage tree...')
+        print("Initializing lineage tree...")
         if lab is not None and lab.any() and first_df:
-            raise ValueError('Only one of lab and first_df can be provided.')
-        
+            raise ValueError("Only one of lab and first_df can be provided.")
+
         if frame_i is None:
             frame_i = 0
-            
+
         if self.gui_mode:
             cca_df = self._get_df_from_frame_i(frame_i)
-            if 'parent_ID_tree' in cca_df.columns:
+            if "parent_ID_tree" in cca_df.columns:
                 return
-            cca_df['emerg_frame_i'] = cca_df['division_frame_i'] = frame_i
-            cca_df['generation_num_tree'] = 1
-            cca_df['parent_ID_tree'] = -1
-            cca_df['is_history_known'] = (cca_df['parent_ID_tree'] != -1).astype(int)
-            cca_df['root_ID_tree'] = cca_df.index
-            cca_df['sister_ID_tree'] = -1
+            cca_df["emerg_frame_i"] = cca_df["division_frame_i"] = frame_i
+            cca_df["generation_num_tree"] = 1
+            cca_df["parent_ID_tree"] = -1
+            cca_df["is_history_known"] = (cca_df["parent_ID_tree"] != -1).astype(int)
+            cca_df["root_ID_tree"] = cca_df.index
+            cca_df["sister_ID_tree"] = -1
             cca_df[self._get_extra_daughter_cols()] = -1
-            
-            return
-        
-        if lab is not None:
 
+            return
+
+        if lab is not None:
             rp = regionprops(lab)
             labels = [obj.label for obj in rp]
-            cca_df = pd.DataFrame({
-                'Cell_ID': labels,
-            })
-            cca_df = cca_df.set_index('Cell_ID')
+            cca_df = pd.DataFrame(
+                {
+                    "Cell_ID": labels,
+                }
+            )
+            cca_df = cca_df.set_index("Cell_ID")
 
             # check if the cca_df already has the lineage columns
-            cca_df['emerg_frame_i'] = cca_df['division_frame_i'] = frame_i
-            cca_df['generation_num_tree'] = 1
-            cca_df['parent_ID_tree'] = -1
-            cca_df['is_history_known'] = (cca_df['parent_ID_tree'] != -1).astype(int)
-            cca_df['root_ID_tree'] = cca_df.index
-        
-            cca_df['sister_ID_tree'] = [[-1] * (self.max_daughter-1) for _ in range(len(cca_df))]
+            cca_df["emerg_frame_i"] = cca_df["division_frame_i"] = frame_i
+            cca_df["generation_num_tree"] = 1
+            cca_df["parent_ID_tree"] = -1
+            cca_df["is_history_known"] = (cca_df["parent_ID_tree"] != -1).astype(int)
+            cca_df["root_ID_tree"] = cca_df.index
+
+            cca_df["sister_ID_tree"] = [
+                [-1] * (self.max_daughter - 1) for _ in range(len(cca_df))
+            ]
             cca_df = checked_reset_index_Cell_ID(cca_df)
             self.lineage_list = [cca_df]
 
-                
         elif first_df is not None and not first_df.empty:
             if self.gui_mode:
                 # not yet implemented
-                raise NotImplementedError('Initializing lineage tree with a DataFrame is not yet implemented in GUI mode.')
+                raise NotImplementedError(
+                    "Initializing lineage tree with a DataFrame is not yet implemented in GUI mode."
+                )
             first_df = checked_reset_index_Cell_ID(first_df)
             self.lineage_list = [first_df]
-        
-    def add_new_frame(self, frame_i, mother_daughters, IDs_prev, 
-                             IDs_curr_untracked, assignments, curr_IDs, new_IDs):
+
+    def add_new_frame(
+        self,
+        frame_i,
+        mother_daughters,
+        IDs_prev,
+        IDs_curr_untracked,
+        assignments,
+        curr_IDs,
+        new_IDs,
+    ):
         """
         Add a new frame to the lineage tree, updating families and tracking new and divided cells.
 
@@ -641,12 +701,14 @@ class normal_division_lineage_tree:
             added_lineage_tree = []
         else:
             posData = self.gui.data[self.gui.pos_i]
-            cca_df = posData.allData_li[frame_i]['acdc_df']
+            cca_df = posData.allData_li[frame_i]["acdc_df"]
 
         daughter_dict = {}
         daughter_set = set()
         for mother, daughters in mother_daughters:
-            daughter_IDs = IoA_index_daughter_to_ID(daughters, assignments, IDs_curr_untracked)
+            daughter_IDs = IoA_index_daughter_to_ID(
+                daughters, assignments, IDs_curr_untracked
+            )
             daughter_dict[mother] = daughter_IDs
             daughter_set.update(set(daughter_IDs))
 
@@ -654,19 +716,21 @@ class normal_division_lineage_tree:
 
         if not self.gui_mode:
             for ID in new_unknown_IDs:
-                added_lineage_tree.append((frame_i, ID, -1, 1, ID, [-1] * (self.max_daughter-1)))
+                added_lineage_tree.append(
+                    (frame_i, ID, -1, 1, ID, [-1] * (self.max_daughter - 1))
+                )
 
         else:
             relevant_rows = cca_df.index.isin(new_unknown_IDs)
-            cca_df.loc[relevant_rows, 'generation_num_tree'] = 1
-            cca_df.loc[relevant_rows, 'parent_ID_tree'] = -1
-            cca_df.loc[relevant_rows, 'emerg_frame_i'] = frame_i
-            cca_df.loc[relevant_rows, 'division_frame_i'] = frame_i
-            cca_df.loc[relevant_rows, 'sister_ID_tree'] = -1
-            cca_df.loc[relevant_rows, 'root_ID_tree'] = cca_df.index[relevant_rows]
+            cca_df.loc[relevant_rows, "generation_num_tree"] = 1
+            cca_df.loc[relevant_rows, "parent_ID_tree"] = -1
+            cca_df.loc[relevant_rows, "emerg_frame_i"] = frame_i
+            cca_df.loc[relevant_rows, "division_frame_i"] = frame_i
+            cca_df.loc[relevant_rows, "sister_ID_tree"] = -1
+            cca_df.loc[relevant_rows, "root_ID_tree"] = cca_df.index[relevant_rows]
             cca_df.loc[relevant_rows, self._get_extra_daughter_cols()] = -1
-            cca_df.loc[relevant_rows, 'is_history_known'] = False
-            
+            cca_df.loc[relevant_rows, "is_history_known"] = False
+
         for mother, _ in mother_daughters:
             mother_ID = IDs_prev[mother]
             daughter_IDs = daughter_dict[mother]
@@ -675,19 +739,37 @@ class normal_division_lineage_tree:
             for daughter_ID in daughter_IDs:
                 daughter_IDs_copy = daughter_IDs.copy()
                 daughter_IDs_copy.remove(daughter_ID)
-                daughter_IDs_copy = daughter_IDs_copy + [-1] * (self.max_daughters_added - len(daughter_IDs_copy))
+                daughter_IDs_copy = daughter_IDs_copy + [-1] * (
+                    self.max_daughters_added - len(daughter_IDs_copy)
+                )
                 if not self.gui_mode:
-                    added_lineage_tree.append((frame_i, daughter_ID, mother_ID, mother_row['generation_num_tree'] + 1, 
-                                           mother_ID, daughter_IDs_copy))
+                    added_lineage_tree.append(
+                        (
+                            frame_i,
+                            daughter_ID,
+                            mother_ID,
+                            mother_row["generation_num_tree"] + 1,
+                            mother_ID,
+                            daughter_IDs_copy,
+                        )
+                    )
                 else:
-                    cca_df.loc[daughter_ID, 'generation_num_tree'] = mother_row['generation_num_tree'] + 1
-                    cca_df.loc[daughter_ID, 'parent_ID_tree'] = mother_ID
-                    cca_df.loc[daughter_ID, 'emerg_frame_i'] = frame_i
-                    cca_df.loc[daughter_ID, 'division_frame_i'] = frame_i
-                    cca_df.loc[daughter_ID, 'sister_ID_tree'] = daughter_IDs_copy[0] # here we dont need to consider the possibility that the sister is already gone, as its the first frame where the daughters appeared
-                    cca_df.loc[daughter_ID, 'root_ID_tree'] = mother_row['root_ID_tree']
-                    cca_df.loc[daughter_ID, 'is_history_known'] = True
-                    for i, extra_col in enumerate(self._get_extra_daughter_cols(num_daughters=len(daughter_IDs_copy))):
+                    cca_df.loc[daughter_ID, "generation_num_tree"] = (
+                        mother_row["generation_num_tree"] + 1
+                    )
+                    cca_df.loc[daughter_ID, "parent_ID_tree"] = mother_ID
+                    cca_df.loc[daughter_ID, "emerg_frame_i"] = frame_i
+                    cca_df.loc[daughter_ID, "division_frame_i"] = frame_i
+                    cca_df.loc[daughter_ID, "sister_ID_tree"] = daughter_IDs_copy[
+                        0
+                    ]  # here we dont need to consider the possibility that the sister is already gone, as its the first frame where the daughters appeared
+                    cca_df.loc[daughter_ID, "root_ID_tree"] = mother_row["root_ID_tree"]
+                    cca_df.loc[daughter_ID, "is_history_known"] = True
+                    for i, extra_col in enumerate(
+                        self._get_extra_daughter_cols(
+                            num_daughters=len(daughter_IDs_copy)
+                        )
+                    ):
                         cca_df.loc[daughter_ID, extra_col] = daughter_IDs_copy[i]
 
         # copy over old lineage info
@@ -701,18 +783,27 @@ class normal_division_lineage_tree:
             except IndexError:
                 len_lineage_list = len(self.lineage_list)
                 if frame_i >= len_lineage_list:
-                    self.lineage_list.extend([pd.DataFrame()] * (frame_i + 1 - len_lineage_list))
+                    self.lineage_list.extend(
+                        [pd.DataFrame()] * (frame_i + 1 - len_lineage_list)
+                    )
                 self.lineage_list[frame_i] = cca_df
         else:
-            prev_df = self._get_df_from_frame_i(frame_i-1)
+            prev_df = self._get_df_from_frame_i(frame_i - 1)
             same_IDs = prev_df.index.intersection(cca_df.index)
 
-            columns = ['generation_num_tree', 'parent_ID_tree', 
-                       'emerg_frame_i', 'division_frame_i', 
-                       'root_ID_tree', 'sister_ID_tree', 'is_history_known']
-            cca_df.loc[same_IDs, columns] = prev_df.loc[same_IDs, 
-                                columns].values
-            cca_df.loc[same_IDs, self._get_extra_daughter_cols()] = prev_df.loc[same_IDs, self._get_extra_daughter_cols()].values
+            columns = [
+                "generation_num_tree",
+                "parent_ID_tree",
+                "emerg_frame_i",
+                "division_frame_i",
+                "root_ID_tree",
+                "sister_ID_tree",
+                "is_history_known",
+            ]
+            cca_df.loc[same_IDs, columns] = prev_df.loc[same_IDs, columns].values
+            cca_df.loc[same_IDs, self._get_extra_daughter_cols()] = prev_df.loc[
+                same_IDs, self._get_extra_daughter_cols()
+            ].values
         self.frames_for_dfs.add(frame_i)
 
     def real_time(self, frame_i, lab, prev_lab, rp=None, prev_rp=None):
@@ -735,13 +826,16 @@ class normal_division_lineage_tree:
         if prev_rp is None:
             prev_rp = regionprops(prev_lab)
 
-        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_Io_matrix(lab, prev_lab, rp, prev_rp)
-        
-        _, self.mother_daughters = mother_daughter_assign(IoA_matrix, 
-                                                                   IoA_thresh_daughter=self.IoA_thresh_daughter, 
-                                                                   min_daughter=self.min_daughter, 
-                                                                   max_daughter=self.max_daughter
-                                                                   )
+        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_Io_matrix(
+            lab, prev_lab, rp, prev_rp
+        )
+
+        _, self.mother_daughters = mother_daughter_assign(
+            IoA_matrix,
+            IoA_thresh_daughter=self.IoA_thresh_daughter,
+            min_daughter=self.min_daughter,
+            max_daughter=self.max_daughter,
+        )
         # filter mothers which are actually tracked/present (could be after user correction in the GUI)
         filtered_mother_daughters = []
         for mother, daughters in self.mother_daughters:
@@ -749,12 +843,20 @@ class normal_division_lineage_tree:
             if mother_ID not in self._get_df_from_frame_i(frame_i).index:
                 filtered_mother_daughters.append((mother, daughters))
         self.mother_daughters = filtered_mother_daughters
-        
+
         curr_IDs = set(self.IDs_curr_untracked)
         prev_IDs = {obj.label for obj in prev_rp}
         new_IDs = curr_IDs - prev_IDs
         self.frames_for_dfs.add(frame_i)
-        self.add_new_frame(frame_i, self.mother_daughters, self.IDs_prev, self.IDs_curr_untracked, None, curr_IDs, new_IDs)
+        self.add_new_frame(
+            frame_i,
+            self.mother_daughters,
+            self.IDs_prev,
+            self.IDs_curr_untracked,
+            None,
+            curr_IDs,
+            new_IDs,
+        )
 
     def update_df_li_locally(self, df, frame_i):
         """
@@ -772,79 +874,98 @@ class normal_division_lineage_tree:
 
         # we first need to correct generation_num_tree, root_ID_tree, sister_ID_tree
         if not self.gui_mode:
-            df = checked_reset_index(df)       
+            df = checked_reset_index(df)
             corrected_rows = []
 
             for _, Cell_info in df.iterrows():
-                if Cell_info['parent_ID_tree'] == -1:
-                    Cell_info['generation_num_tree'] = 1
-                    Cell_info['root_ID_tree'] = Cell_info['Cell_ID']
-                    Cell_info['sister_ID_tree'] = [-1]
-                    Cell_info['is_history_known'] = False
+                if Cell_info["parent_ID_tree"] == -1:
+                    Cell_info["generation_num_tree"] = 1
+                    Cell_info["root_ID_tree"] = Cell_info["Cell_ID"]
+                    Cell_info["sister_ID_tree"] = [-1]
+                    Cell_info["is_history_known"] = False
                     corrected_rows.append(Cell_info)
                     continue
 
-                Cell_info['is_history_known'] = True
+                Cell_info["is_history_known"] = True
 
-                parent_ID = Cell_info['parent_ID_tree']
+                parent_ID = Cell_info["parent_ID_tree"]
                 parent_line = self._get_row_from_ID(parent_ID)
 
-                Cell_info['generation_num_tree'] = int(parent_line['generation_num_tree']) + 1
-                Cell_info['root_ID_tree'] = parent_line['root_ID_tree']
+                Cell_info["generation_num_tree"] = (
+                    int(parent_line["generation_num_tree"]) + 1
+                )
+                Cell_info["root_ID_tree"] = parent_line["root_ID_tree"]
 
-                first_frame_i = self._get_first_frame_i_for_ID(Cell_info['Cell_ID'])
+                first_frame_i = self._get_first_frame_i_for_ID(Cell_info["Cell_ID"])
                 df_sisters = self._get_df_from_frame_i(first_frame_i)
-                sisters = set(df_sisters.loc[df_sisters['parent_ID_tree'] == parent_ID, 'Cell_ID'])
-                sisters.discard(Cell_info['Cell_ID'])
-                Cell_info['sister_ID_tree'] = list(sisters) if sisters else [-1]
+                sisters = set(
+                    df_sisters.loc[df_sisters["parent_ID_tree"] == parent_ID, "Cell_ID"]
+                )
+                sisters.discard(Cell_info["Cell_ID"])
+                Cell_info["sister_ID_tree"] = list(sisters) if sisters else [-1]
 
                 corrected_rows.append(Cell_info)
 
-            corrected_df = pd.DataFrame(corrected_rows).set_index('Cell_ID')
+            corrected_df = pd.DataFrame(corrected_rows).set_index("Cell_ID")
             self.lineage_list[frame_i] = corrected_df
         else:
             posData = self.gui.data[self.gui.pos_i]
-            df_data = posData.allData_li[frame_i]['acdc_df']
+            df_data = posData.allData_li[frame_i]["acdc_df"]
             df = checked_reset_index_Cell_ID(df)
             if set(df.index) != set(df_data.index):
-                raise ValueError('In GUI mode, the DataFrame index must be Cell_ID for lineage updates to work.')
-            
+                raise ValueError(
+                    "In GUI mode, the DataFrame index must be Cell_ID for lineage updates to work."
+                )
+
             for ID, Cell_info in df.iterrows():
                 cell_row = df_data.loc[ID]
-                if Cell_info['parent_ID_tree'] == -1:
-                    df.loc[ID, ['generation_num_tree', 'root_ID_tree', 
-                                'sister_ID_tree', 'is_history_known', 
-                                'parent_ID_tree']] = [1, ID, -1, False, -1]
+                if Cell_info["parent_ID_tree"] == -1:
+                    df.loc[
+                        ID,
+                        [
+                            "generation_num_tree",
+                            "root_ID_tree",
+                            "sister_ID_tree",
+                            "is_history_known",
+                            "parent_ID_tree",
+                        ],
+                    ] = [1, ID, -1, False, -1]
                     df.loc[ID, self._get_extra_daughter_cols()] = -1
                     continue
 
-                cell_row['is_history_known'] = True
+                cell_row["is_history_known"] = True
 
-                parent_ID = Cell_info['parent_ID_tree']
+                parent_ID = Cell_info["parent_ID_tree"]
                 parent_line = self._get_row_from_ID(parent_ID)
 
-                cell_row['generation_num_tree'] = int(parent_line['generation_num_tree']) + 1
-                cell_row['root_ID_tree'] = parent_line['root_ID_tree']
+                cell_row["generation_num_tree"] = (
+                    int(parent_line["generation_num_tree"]) + 1
+                )
+                cell_row["root_ID_tree"] = parent_line["root_ID_tree"]
 
                 first_frame_i = self._get_first_frame_i_for_ID(ID)
                 df_sisters = self._get_df_from_frame_i(first_frame_i)
-                
-                sisters = set(df_sisters.loc[df_sisters['parent_ID_tree'] == parent_ID].index)
+
+                sisters = set(
+                    df_sisters.loc[df_sisters["parent_ID_tree"] == parent_ID].index
+                )
                 sisters.discard(ID)
                 sisters = list(sisters)
-                cell_row['sister_ID_tree'] = sisters[0] if sisters else -1
+                cell_row["sister_ID_tree"] = sisters[0] if sisters else -1
                 sisters = sisters + [-1] * (self.max_daughters_added - len(sisters))
                 cols = self._get_extra_daughter_cols(num_daughters=len(sisters))
                 for col in cols:
                     if col not in cell_row.index:
                         cell_row[col] = -1
-                cell_row[self._get_extra_daughter_cols(num_daughters=len(sisters))] = sisters
-                
+                cell_row[self._get_extra_daughter_cols(num_daughters=len(sisters))] = (
+                    sisters
+                )
 
                 df_data.loc[ID] = cell_row
+
     # This will probably be made obsolete by the gui_mode version
-    # def insert_lineage_df(self, lineage_df, frame_i, update_fams=True, 
-    #   consider_children=True, raw_input=False, propagate=True, 
+    # def insert_lineage_df(self, lineage_df, frame_i, update_fams=True,
+    #   consider_children=True, raw_input=False, propagate=True,
     #   relevant_cells=None):
     #     """
     #     Insert or replace a lineage DataFrame at a given frame index, optionally updating families and propagating changes.
@@ -893,7 +1014,6 @@ class normal_division_lineage_tree:
     #                 else:
     #                     self.lineage_list = out
 
-
     #         elif frame_i > len_lineage_list:
     #             printl(f'WARNING: Frame_i {frame_i} was inserted. The lineage list was only {len(self.lineage_list)} frames long, so the last known lineage tree was copy pasted up to frame_i {frame_i}')
 
@@ -916,9 +1036,14 @@ class normal_division_lineage_tree:
     #                     self.lineage_list, self.families = out
     #                 else:
     #                     self.lineage_list = out
-    
-    def _update_consistency(self, fixed_frame_i=None, fixed_df=None, 
-                           Cell_IDs_fixed=None, consider_children=True):
+
+    def _update_consistency(
+        self,
+        fixed_frame_i=None,
+        fixed_df=None,
+        Cell_IDs_fixed=None,
+        consider_children=True,
+    ):
         """
         Updates the consistency of lineage information across a list of DataFrames representing cell tracking over time.
 
@@ -946,66 +1071,115 @@ class normal_division_lineage_tree:
         - The function maintains a lookup dictionary and a list of fixed DataFrames to efficiently propagate updates.
         - Sister IDs are stored as sets, excluding the cell's own ID; if a cell has no sisters, the value is set to {-1}.
         """
-        columns_to_replace = ['generation_num_tree', 
-                            'root_ID_tree', 
-                            'sister_ID_tree', 
-                            'parent_ID_tree']
-            
+        columns_to_replace = [
+            "generation_num_tree",
+            "root_ID_tree",
+            "sister_ID_tree",
+            "parent_ID_tree",
+        ]
+
         if fixed_df is not None:
             fixed_df = checked_reset_index_Cell_ID(fixed_df)
 
         elif fixed_frame_i is not None:
             if self.gui_mode:
                 posData = self.gui.data[self.gui.pos_i]
-                fixed_df = checked_reset_index_Cell_ID(posData.allData_li[fixed_frame_i]['acdc_df'])
+                fixed_df = checked_reset_index_Cell_ID(
+                    posData.allData_li[fixed_frame_i]["acdc_df"]
+                )
             else:
                 fixed_df = checked_reset_index_Cell_ID(self.lineage_list[fixed_frame_i])
         else:
-            raise ValueError('Either fixed_frame_i or fixed_df must be provided.')
+            raise ValueError("Either fixed_frame_i or fixed_df must be provided.")
 
-        if Cell_IDs_fixed is not None: # if we have a list of Cell_IDs to consider
+        if Cell_IDs_fixed is not None:  # if we have a list of Cell_IDs to consider
             fixed_df = fixed_df[fixed_df.index.isin(Cell_IDs_fixed)]
-        else: 
+        else:
             Cell_IDs_fixed = fixed_df.index
 
         fixed_dfs = [fixed_df]
         fixed_dfs_lookup = {fixed_df.index[i]: 0 for i in range(len(fixed_df))}
-        Cell_IDs_fixed = set(Cell_IDs_fixed) # we convert to a set for faster lookups
+        Cell_IDs_fixed = set(Cell_IDs_fixed)  # we convert to a set for faster lookups
 
-        df_li = self.lineage_list if not self.gui_mode else [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
+        df_li = (
+            self.lineage_list
+            if not self.gui_mode
+            else [
+                posData.allData_li[i]["acdc_df"] for i in range(len(posData.allData_li))
+            ]
+        )
         for frame_df in df_li:
-            if 'generation_num_tree' not in frame_df.columns or (not frame_df['generation_num_tree'].notna().any()):
+            if "generation_num_tree" not in frame_df.columns or (
+                not frame_df["generation_num_tree"].notna().any()
+            ):
                 continue
             frame_df = checked_reset_index_Cell_ID(frame_df)
 
             if consider_children:
-                children = frame_df[frame_df['parent_ID_tree'].isin(Cell_IDs_fixed)]
+                children = frame_df[frame_df["parent_ID_tree"].isin(Cell_IDs_fixed)]
                 if not children.empty:
-                    for parent_ID, children in children.groupby('parent_ID_tree'):
-                        parent_cell_loc = fixed_dfs_lookup[parent_ID] # we get the parent cell from the lookup dictionary
+                    for parent_ID, children in children.groupby("parent_ID_tree"):
+                        parent_cell_loc = fixed_dfs_lookup[
+                            parent_ID
+                        ]  # we get the parent cell from the lookup dictionary
                         parent_line = fixed_dfs[parent_cell_loc].loc[parent_ID]
-                        children['root_ID_tree'] = parent_line['root_ID_tree']
-                        children['generation_num_tree'] = parent_line['generation_num_tree'] + 1
-                        first_frame_i = self._get_first_frame_i_for_ID(children.index[0])
+                        children["root_ID_tree"] = parent_line["root_ID_tree"]
+                        children["generation_num_tree"] = (
+                            parent_line["generation_num_tree"] + 1
+                        )
+                        first_frame_i = self._get_first_frame_i_for_ID(
+                            children.index[0]
+                        )
                         df_sisters = self._get_df_from_frame_i(first_frame_i)
                         if self.gui_mode:
-                            sisters = set(df_sisters.loc[df_sisters['parent_ID_tree'] == parent_ID].index)
+                            sisters = set(
+                                df_sisters.loc[
+                                    df_sisters["parent_ID_tree"] == parent_ID
+                                ].index
+                            )
                             for child in children.index:
-                                child_sisters = [s for s in sisters if s != child] if len(sisters) > 1 else [-1]
-                                child_sisters = child_sisters + [-1] * (self.max_daughters_added - len(child_sisters))
-                                children.loc[child, 'sister_ID_tree'] = child_sisters[0] if child_sisters else -1
-                                children.loc[child, self._get_extra_daughter_cols(num_daughters=len(child_sisters))] = child_sisters
+                                child_sisters = (
+                                    [s for s in sisters if s != child]
+                                    if len(sisters) > 1
+                                    else [-1]
+                                )
+                                child_sisters = child_sisters + [-1] * (
+                                    self.max_daughters_added - len(child_sisters)
+                                )
+                                children.loc[child, "sister_ID_tree"] = (
+                                    child_sisters[0] if child_sisters else -1
+                                )
+                                children.loc[
+                                    child,
+                                    self._get_extra_daughter_cols(
+                                        num_daughters=len(child_sisters)
+                                    ),
+                                ] = child_sisters
                         else:
-                            sisters = set(df_sisters.loc[df_sisters['parent_ID_tree'] == parent_ID, 'Cell_ID'])
-                            children['sister_ID_tree'] = [
-                                [s for s in sisters if s != cell_id] if len(sisters) > 1 else [-1]
+                            sisters = set(
+                                df_sisters.loc[
+                                    df_sisters["parent_ID_tree"] == parent_ID, "Cell_ID"
+                                ]
+                            )
+                            children["sister_ID_tree"] = [
+                                [s for s in sisters if s != cell_id]
+                                if len(sisters) > 1
+                                else [-1]
                                 for cell_id in children.index
                             ]
 
-                    Cell_IDs_fixed = Cell_IDs_fixed.union(children.index) # we add the children IDs to the set of Cell_IDs_fixed
-                    fixed_dfs.append(children) # we append the children to the fixed_dfs list
-                    indx = len(fixed_dfs) - 1 # we get the index of the children in the fixed_dfs list
-                    fixed_dfs_lookup.update({children.index[i]: indx for i in range(len(children))}) # we update the lookup dictionary with the children
+                    Cell_IDs_fixed = Cell_IDs_fixed.union(
+                        children.index
+                    )  # we add the children IDs to the set of Cell_IDs_fixed
+                    fixed_dfs.append(
+                        children
+                    )  # we append the children to the fixed_dfs list
+                    indx = (
+                        len(fixed_dfs) - 1
+                    )  # we get the index of the children in the fixed_dfs list
+                    fixed_dfs_lookup.update(
+                        {children.index[i]: indx for i in range(len(children))}
+                    )  # we update the lookup dictionary with the children
 
             relevant_cells_mask = frame_df.index.isin(Cell_IDs_fixed)
             if not relevant_cells_mask.any():
@@ -1021,7 +1195,9 @@ class normal_division_lineage_tree:
                 # Find the intersection of indices
                 common_idx = frame_df.index.intersection(fixed_df.index)
                 if not common_idx.empty:
-                    frame_df.loc[common_idx, columns_to_replace] = fixed_df.loc[common_idx, columns_to_replace]
+                    frame_df.loc[common_idx, columns_to_replace] = fixed_df.loc[
+                        common_idx, columns_to_replace
+                    ]
 
     def propagate(self, frame_i, relevant_cells=None):
         """
@@ -1036,12 +1212,13 @@ class normal_division_lineage_tree:
         """
         if self.gui_mode:
             posData = self.gui.data[self.gui.pos_i]
-            lineage_df = posData.allData_li[frame_i]['acdc_df']
+            lineage_df = posData.allData_li[frame_i]["acdc_df"]
         else:
             lineage_df = self.lineage_list[frame_i]
         self.update_df_li_locally(lineage_df, frame_i)
-        self._update_consistency(fixed_frame_i=frame_i,
-                                                consider_children=True, Cell_IDs_fixed=relevant_cells)
+        self._update_consistency(
+            fixed_frame_i=frame_i, consider_children=True, Cell_IDs_fixed=relevant_cells
+        )
 
     # This will probably be made obsolete by the gui_mode version
     # def load_lineage_df_list(self, df_li):
@@ -1066,11 +1243,11 @@ class normal_division_lineage_tree:
     #     for i, df in enumerate(df_li):
     #         if df is None:
     #             continue
-            
+
     #         if 'generation_num_tree' not in df.columns:
     #             continue
 
-    #         mask = (df['generation_num_tree'].isnull() | 
+    #         mask = (df['generation_num_tree'].isnull() |
     #                 df["generation_num_tree"].isna())
 
     #         if mask.any() or df["generation_num_tree"].empty:
@@ -1083,7 +1260,7 @@ class normal_division_lineage_tree:
     #         self.frames_for_dfs.add(i)
     #         df_li_new.append(df)
 
-    #         df_filter = df.index.isin(added_IDs)  
+    #         df_filter = df.index.isin(added_IDs)
     #         for root_ID, group in df[df_filter].groupby('root_ID_tree'):
     #             if root_ID not in families_root_IDs:
     #                 family = list(zip(group.index, group['generation_num_tree']))
@@ -1093,9 +1270,9 @@ class normal_division_lineage_tree:
     #                 # If the root_ID is already in families, we just update the family with the new cells
     #                 family_index = families_root_IDs.index(root_ID)
     #                 families[family_index].extend(zip(group.index, group['generation_num_tree']))
-                    
+
     #             added_IDs.update(group.index)
-                    
+
     #     if df_li_new:
     #         self.lineage_list = df_li_new
 
@@ -1113,7 +1290,7 @@ class normal_division_lineage_tree:
         df = self.lineage_list[frame_i].copy()
 
         if df.empty:
-            print(f'Warning: No dataframe for frame {frame_i} found.')
+            print(f"Warning: No dataframe for frame {frame_i} found.")
 
         df = reorg_sister_cells_for_export(df)
 
@@ -1128,7 +1305,7 @@ class normal_division_lineage_tree:
             df = df.drop(columns="frame_i")
 
         return df
-    
+
     def export_lin_tree_info(self, frame_i):
         """
         Return information about new, orphan, and lost cells between two consecutive frames.
@@ -1144,17 +1321,17 @@ class normal_division_lineage_tree:
         """
         if frame_i == 0:
             return [], [], []
-        
+
         if not self.gui_mode:
             df_curr = self.lineage_list[frame_i]
             df_curr = checked_reset_index_Cell_ID(df_curr)
-            df_prev = self.lineage_list[frame_i-1]
+            df_prev = self.lineage_list[frame_i - 1]
             df_prev = checked_reset_index_Cell_ID(df_prev)
-        
+
         else:
             posData = self.gui.data[self.gui.pos_i]
-            df_curr = posData.allData_li[frame_i]['acdc_df']
-            df_prev = posData.allData_li[frame_i-1]['acdc_df']
+            df_curr = posData.allData_li[frame_i]["acdc_df"]
+            df_prev = posData.allData_li[frame_i - 1]["acdc_df"]
 
         new_cells = set(df_curr.index) - set(df_prev.index)
         lost_cells = set(df_prev.index) - set(df_curr.index)
@@ -1166,9 +1343,9 @@ class normal_division_lineage_tree:
         for cell in new_cells:
             cell_row = df_curr.loc[cell]
             try:
-                mother = cell_row['parent_ID_tree']
+                mother = cell_row["parent_ID_tree"]
             except KeyError:
-                mother = -1            # check for nan mother
+                mother = -1  # check for nan mother
             if mother == -1 or pd.isna(mother):
                 orphan_cells.append(cell)
             else:
@@ -1179,11 +1356,13 @@ class normal_division_lineage_tree:
 
         lost_cells = [int(cell) for cell in lost_cells]
         cells_with_parent.sort(key=lambda x: x[1])  # Sort by mother ID
-        cells_with_parent = [(int(cell), int(mother)) for cell, mother in cells_with_parent]
+        cells_with_parent = [
+            (int(cell), int(mother)) for cell, mother in cells_with_parent
+        ]
         orphan_cells = [int(cell) for cell in orphan_cells]
 
         return cells_with_parent, orphan_cells, lost_cells
-        
+
 
 class tracker:
     """
@@ -1199,23 +1378,25 @@ class tracker:
     - updateGuiProgressBar(): Updates the GUI progress bar. (Used for GUI communication)
     - save_output(): Signals to the rest of the programme that the lineage tree should be saved. (Used for module 2)
     """
+
     def __init__(self):
         """
         Initializes the CellACDC_normal_division_tracker object.
         """
         pass
 
-    def track(self,
-              segm_video,
-              IoA_thresh:float = 0.8,
-              IoA_thresh_daughter:float = 0.25,
-              IoA_thresh_aggressive:float = 0.5,
-              min_daughter:int = 2,
-              max_daughter:int = 2,
-              record_lineage:bool = True,
-              return_tracked_lost_centroids:bool = True,
-              signals = None,
-        ):
+    def track(
+        self,
+        segm_video,
+        IoA_thresh: float = 0.8,
+        IoA_thresh_daughter: float = 0.25,
+        IoA_thresh_aggressive: float = 0.5,
+        min_daughter: int = 2,
+        max_daughter: int = 2,
+        record_lineage: bool = True,
+        return_tracked_lost_centroids: bool = True,
+        signals=None,
+    ):
         """
         Tracks the segmented video frames and returns the tracked video. (Used for module 2)
 
@@ -1228,15 +1409,17 @@ class tracker:
         - min_daughter (int, optional): Minimum number of daughter cells. Used for determining if a cell has divided. Defaults to 2.
         - max_daughter (int, optional): Maximum number of daughter cells. Used for determining if a cell has divided. Defaults to 2.
         - record_lineage (bool, optional): Flag to record and save lineage. Defaults to True.
-        
+
         Returns:
         - list: Tracked video frames.
         """
         if not record_lineage and return_tracked_lost_centroids:
-            print('return_tracked_lost_centroids is set to True if record_lineage is True.')
+            print(
+                "return_tracked_lost_centroids is set to True if record_lineage is True."
+            )
             record_lineage = True
-        
-        pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
+
+        pbar = tqdm(total=len(segm_video), desc="Tracking", ncols=100)
 
         if return_tracked_lost_centroids:
             self.tracked_lost_centroids = {
@@ -1246,14 +1429,19 @@ class tracker:
         for frame_i, lab in enumerate(segm_video):
             if frame_i == 0:
                 tracker = normal_division_tracker(
-                    segm_video, IoA_thresh_daughter, min_daughter, 
-                    max_daughter, IoA_thresh, IoA_thresh_aggressive
+                    segm_video,
+                    IoA_thresh_daughter,
+                    min_daughter,
+                    max_daughter,
+                    IoA_thresh,
+                    IoA_thresh_aggressive,
                 )
                 if record_lineage or return_tracked_lost_centroids:
                     tree = normal_division_lineage_tree(
-                        lab=lab, max_daughter=max_daughter,
-                        min_daughter=min_daughter, 
-                        IoA_thresh_daughter=IoA_thresh_daughter
+                        lab=lab,
+                        max_daughter=max_daughter,
+                        min_daughter=min_daughter,
+                        IoA_thresh_daughter=IoA_thresh_daughter,
                     )
                 pbar.update()
                 rp = regionprops(segm_video[0])
@@ -1275,13 +1463,18 @@ class tracker:
             new_IDs = curr_IDs - prev_IDs
             if record_lineage or return_tracked_lost_centroids:
                 tree.add_new_frame(
-                    frame_i, mother_daughters, IDs_prev, IDs_curr_untracked,
-                    assignments, curr_IDs, new_IDs
+                    frame_i,
+                    mother_daughters,
+                    IDs_prev,
+                    IDs_curr_untracked,
+                    assignments,
+                    curr_IDs,
+                    new_IDs,
                 )
             tracked_lost_centroids_loc = []
             for mother, _ in mother_daughters:
                 mother_ID = IDs_prev[mother]
-                
+
                 found = False
                 for obj in prev_rp:
                     if obj.label == mother_ID:
@@ -1291,12 +1484,15 @@ class tracker:
                 if not found:
                     labels = [obj.label for obj in rp]
                     printl(mother, mother_ID, IDs_curr_untracked, labels)
-                    raise ValueError('Something went wrong with the tracked lost centroids.')
-
+                    raise ValueError(
+                        "Something went wrong with the tracked lost centroids."
+                    )
 
             if len(mother_daughters) != len(tracked_lost_centroids_loc):
-                raise ValueError('Something went wrong with the tracked lost centroids.')
-            
+                raise ValueError(
+                    "Something went wrong with the tracked lost centroids."
+                )
+
             self.tracked_lost_centroids[frame_i] = tracked_lost_centroids_loc
 
             prev_IDs = curr_IDs.copy()
@@ -1313,22 +1509,22 @@ class tracker:
             self.cca_dfs_auto = cca_li
             # here we would also save make sure to save self.tracked_lost_centroids, but since we already assigned it correctly from the get go we dont need to do that
 
-
         tracked_video = tracker.tracked_video
         pbar.close()
         return tracked_video
 
-    def track_frame(self,
-                    previous_frame_labels,
-                    current_frame_labels,
-                    IDs : NotGUIParam =None,
-                    IoA_thresh: float = 0.8,
-                    IoA_thresh_daughter:float = 0.25,
-                    IoA_thresh_aggressive:float  = 0.5,
-                    min_daughter:int = 2,
-                    max_daughter:int = 2,
-                    unique_ID: NotGUIParam =None,
-                    ):
+    def track_frame(
+        self,
+        previous_frame_labels,
+        current_frame_labels,
+        IDs: NotGUIParam = None,
+        IoA_thresh: float = 0.8,
+        IoA_thresh_daughter: float = 0.25,
+        IoA_thresh_aggressive: float = 0.5,
+        min_daughter: int = 2,
+        max_daughter: int = 2,
+        unique_ID: NotGUIParam = None,
+    ):
         """
         Tracks cell division in a single frame. (This is used for real time tracking in the GUI)
 
@@ -1351,7 +1547,14 @@ class tracker:
             return current_frame_labels
 
         segm_video = [previous_frame_labels, current_frame_labels]
-        tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive)
+        tracker = normal_division_tracker(
+            segm_video,
+            IoA_thresh_daughter,
+            min_daughter,
+            max_daughter,
+            IoA_thresh,
+            IoA_thresh_aggressive,
+        )
         tracker.track_frame(1, IDs=IDs, unique_ID=unique_ID)
         tracked_video = tracker.tracked_video
 
@@ -1374,7 +1577,7 @@ class tracker:
         if signals is None:
             return
 
-        if hasattr(signals, 'innerPbar_available'):
+        if hasattr(signals, "innerPbar_available"):
             if signals.innerPbar_available:
                 # Use inner pbar of the GUI widget (top pbar is for positions)
                 signals.innerProgressBar.emit(1)

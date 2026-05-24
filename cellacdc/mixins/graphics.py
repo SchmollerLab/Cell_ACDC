@@ -34,38 +34,37 @@ _font.setPixelSize(11)
 
 from .points_layers import PointsLayers
 
+
 class Graphics(PointsLayers):
     """Extracted from guiWin."""
 
-    def _computeAllContours2D(
-            self, dataDict, obj, z, obj_bbox, include_internal=False
-        ):
+    def _computeAllContours2D(self, dataDict, obj, z, obj_bbox, include_internal=False):
         obj_image = self.getObjImage(obj.image, obj.bbox, z_slice=z)
         if obj_image is None:
             return
-            
+
         all_external = False
         local = False
         contours = core.get_obj_contours(
-            obj_image=obj_image, 
-            obj_bbox=obj_bbox, 
+            obj_image=obj_image,
+            obj_bbox=obj_bbox,
             local=local,
-            all_external=all_external
+            all_external=all_external,
         )
         key = (obj.label, str(z), all_external, local)
-        dataDict['contours'][key] = contours
-        
+        dataDict["contours"][key] = contours
+
         all_external = True
         local = False
         contours = core.get_obj_contours(
-            obj_image=obj_image, 
-            obj_bbox=obj_bbox, 
+            obj_image=obj_image,
+            obj_bbox=obj_bbox,
             local=local,
             all_external=all_external,
-            all=include_internal
+            all=include_internal,
         )
         key = (obj.label, str(z), all_external, local)
-        dataDict['contours'][key] = contours
+        dataDict["contours"][key] = contours
 
         return dataDict
 
@@ -76,29 +75,27 @@ class Graphics(PointsLayers):
         for frame_i, dataDict in enumerate(posData.allData_li):
             if frame_i == 0:
                 continue
-            
-            rp = dataDict['regionprops']
+
+            rp = dataDict["regionprops"]
             if rp is None:
                 break
-            
-            prev_rp = posData.allData_li[frame_i-1]['regionprops']
+
+            prev_rp = posData.allData_li[frame_i - 1]["regionprops"]
             dist_matrix = core._compute_all_obj_to_obj_contour_dist_pairs(
-                dataDict['contours'], rp, 
-                prev_rp=prev_rp, 
-                restrict_search=True
+                dataDict["contours"], rp, prev_rp=prev_rp, restrict_search=True
             )
-            dataDict['obj_to_obj_dist_cost_matrix_df'] = dist_matrix
+            dataDict["obj_to_obj_dist_cost_matrix_df"] = dist_matrix
             self.computeAllObjCostPairsWorker.signals.progressBar.emit(1)
         self.computeAllObjCostPairsWorker.signals.initProgressBar.emit(0)
 
     def _gui_createGraphicsItems(self):
         for _posData in self.data:
-            _posData.allData_li = [None]*_posData.SizeT
-            
+            _posData.allData_li = [None] * _posData.SizeT
+
         posData = self.data[self.pos_i]
 
         allIDs, posData = core.count_objects(posData, self.logger.info)
-        
+
         self.highLowResAction.setChecked(True)
         numItems = len(allIDs)
         if numItems > 1500:
@@ -117,23 +114,29 @@ class Graphics(PointsLayers):
                 # Many items requires pxMode active to be fast enough
                 self.pxModeAction.setChecked(True)
 
-        self.logger.info(f'Creating graphical items...')
+        self.logger.info(f"Creating graphical items...")
 
         self.ax1_contoursImageItem = pg.ImageItem()
-        
+
         self.ax1_lostObjImageItem = pg.ImageItem()
         self.ax2_lostObjImageItem = pg.ImageItem()
-        
+
         self.ax1_lostTrackedObjImageItem = pg.ImageItem()
         self.ax2_lostTrackedObjImageItem = pg.ImageItem()
-        
+
         self.ax1_oldMothBudLinesItem = pg.ScatterPlotItem(
-            symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
-            size=self.mothBudLineWeight, pen=None
+            symbol="s",
+            pxMode=False,
+            brush=self.oldMothBudLineBrush,
+            size=self.mothBudLineWeight,
+            pen=None,
         )
         self.ax1_newMothBudLinesItem = pg.ScatterPlotItem(
-            symbol='s', pxMode=False, brush=self.newMothBudLineBrush,
-            size=self.mothBudLineWeight, pen=None
+            symbol="s",
+            pxMode=False,
+            brush=self.newMothBudLineBrush,
+            size=self.mothBudLineWeight,
+            pen=None,
         )
         self.ax1_lostObjScatterItem = self.gui_getLostObjScatterItem()
         self.yellowContourScatterItem = self.gui_getLostObjScatterItem()
@@ -141,27 +144,32 @@ class Graphics(PointsLayers):
         self.ax1_lostTrackedScatterItem = self.gui_getTrackedLostObjScatterItem()
         self.greenContourScatterItem = self.gui_getTrackedLostObjScatterItem()
 
-        brush = pg.mkBrush((0,255,0,200))
-        pen = pg.mkPen('g', width=1)
+        brush = pg.mkBrush((0, 255, 0, 200))
+        pen = pg.mkPen("g", width=1)
         self.ccaFailedScatterItem = pg.ScatterPlotItem(
-            size=self.contLineWeight+1, pen=pen, 
-            brush=brush, pxMode=False, symbol='s'
+            size=self.contLineWeight + 1, pen=pen, brush=brush, pxMode=False, symbol="s"
         )
 
         self.ax2_contoursImageItem = pg.ImageItem()
         self.ax2_oldMothBudLinesItem = pg.ScatterPlotItem(
-            symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
-            size=self.mothBudLineWeight, pen=None
+            symbol="s",
+            pxMode=False,
+            brush=self.oldMothBudLineBrush,
+            size=self.mothBudLineWeight,
+            pen=None,
         )
         self.ax2_newMothBudLinesItem = pg.ScatterPlotItem(
-            symbol='s', pxMode=False, brush=self.newMothBudLineBrush,
-            size=self.mothBudLineWeight, pen=None
+            symbol="s",
+            pxMode=False,
+            brush=self.newMothBudLineBrush,
+            size=self.mothBudLineWeight,
+            pen=None,
         )
         self.ax2_lostObjScatterItem = self.gui_getLostObjScatterItem()
         self.ax2_lostTrackedScatterItem = self.gui_getTrackedLostObjScatterItem()
-        
-        self.gui_createTextAnnotItems(allIDs) # here
-        self.gui_setTextAnnotColors()# here
+
+        self.gui_createTextAnnotItems(allIDs)  # here
+        self.gui_setTextAnnotColors()  # here
 
         self.setDisabledAnnotOptions(False)
 
@@ -202,27 +210,27 @@ class Graphics(PointsLayers):
 
     def _updateMothBudLineSize(self, size):
         self.gui_createMothBudLinePens()
-        
+
         for act in self.imgGrad.mothBudLineWightActionGroup.actions():
             if act == self.sender():
                 act.setChecked(True)
             act.toggled.connect(self.mothBudLineWeightToggled)
-        
+
         self.ax1_oldMothBudLinesItem.setSize(size)
         self.ax1_newMothBudLinesItem.setSize(size)
         self.ax2_oldMothBudLinesItem.setSize(size)
         self.ax2_newMothBudLinesItem.setSize(size)
 
-    def addActionsLutItemContextMenu(self, lutItem):      
-        lutItem.gradient.menu.addSection('Visible channels: ')
+    def addActionsLutItemContextMenu(self, lutItem):
+        lutItem.gradient.menu.addSection("Visible channels: ")
         for action in self.overlayContextMenu.actions():
             if action.isSeparator():
                 continue
             lutItem.gradient.menu.addAction(action)
         lutItem.gradient.menu.addSeparator()
 
-        annotationMenu = lutItem.gradient.menu.addMenu('Annotations settings')
-        ID_menu = annotationMenu.addMenu('IDs')
+        annotationMenu = lutItem.gradient.menu.addMenu("Annotations settings")
+        ID_menu = annotationMenu.addMenu("IDs")
         self.annotSettingsIDmenu = QActionGroup(annotationMenu)
         labID_action = QAction("Show label's ID")
         labID_action.setCheckable(True)
@@ -236,7 +244,7 @@ class Graphics(PointsLayers):
         ID_menu.addAction(labID_action)
         ID_menu.addAction(treeID_action)
 
-        ID_menu = annotationMenu.addMenu('Generation number')
+        ID_menu = annotationMenu.addMenu("Generation number")
         self.annotSettingsGenNumMenu = QActionGroup(annotationMenu)
         gen_num_action = QAction("Show default generation number")
         gen_num_action.setCheckable(True)
@@ -254,8 +262,8 @@ class Graphics(PointsLayers):
         alphaScrollBar = widgets.ScrollBar(Qt.Horizontal)
         imageItem.alphaScrollBar = alphaScrollBar
         alphaScrollBar.channelName = channelName
-        
-        label = QLabel(f'Alpha {channelName}')
+
+        label = QLabel(f"Alpha {channelName}")
         label.setFont(_font)
         label.hide()
         alphaScrollBar.imageItem = imageItem
@@ -266,17 +274,14 @@ class Graphics(PointsLayers):
         alphaScrollBar.setMaximum(40)
         alphaScrollBar.setValue(20)
         alphaScrollBar.setToolTip(
-            f'Control the alpha value of the overlaid channel {channelName}.\n'
-            'alpha=0 results in NO overlay,\n'
-            'alpha=1 results in only fluorescence data visible'
+            f"Control the alpha value of the overlaid channel {channelName}.\n"
+            "alpha=0 results in NO overlay,\n"
+            "alpha=1 results in only fluorescence data visible"
         )
         self.bottomLeftLayout.addWidget(
-            alphaScrollBar.label, self.alphaScrollbarRow, 0, 
-            alignment=Qt.AlignRight
+            alphaScrollBar.label, self.alphaScrollbarRow, 0, alignment=Qt.AlignRight
         )
-        self.bottomLeftLayout.addWidget(
-            alphaScrollBar, self.alphaScrollbarRow, 1, 1, 2
-        )
+        self.bottomLeftLayout.addWidget(alphaScrollBar, self.alphaScrollbarRow, 1, 1, 2)
 
         alphaScrollBar.valueChanged.connect(
             partial(self.setOpacityOverlayLayersItems, scrollbar=alphaScrollBar)
@@ -287,9 +292,7 @@ class Graphics(PointsLayers):
 
     def addFluoChNameContextMenuAction(self, ch_name):
         posData = self.data[self.pos_i]
-        allTexts = [
-            action.text() for action in self.chNamesQActionGroup.actions()
-        ]
+        allTexts = [action.text() for action in self.chNamesQActionGroup.actions()]
         if ch_name not in allTexts:
             action = QAction(self)
             action.setText(ch_name)
@@ -299,13 +302,12 @@ class Graphics(PointsLayers):
             self.fluoDataChNameActions.append(action)
 
     def addObjContourToContoursImage(
-            self, ID=0, obj=None, ax=0, thickness=None, color=None,
-            force=False
-        ):        
+        self, ID=0, obj=None, ax=0, thickness=None, color=None, force=False
+    ):
         imageItem = self.getContoursImageItem(ax, force=force)
         if imageItem is None:
             return
-        
+
         if obj is None:
             obj = self.getObjFromID(ID)
             if obj is None:
@@ -316,7 +318,7 @@ class Graphics(PointsLayers):
             thickness = self.contLineWeight
         if color is None:
             color = self.contLineColor
-        
+
         self.setContoursImage(imageItem, contours, thickness, color)
 
     def addOverlayLabelsToggled(self, checked, name=None):
@@ -333,11 +335,11 @@ class Graphics(PointsLayers):
 
     def askLabelsToOverlay(self):
         selectOverlayLabels = widgets.QDialogListbox(
-            'Select segmentation to overlay',
-            'Select segmentation file to overlay:\n',
-            natsorted(self.existingSegmEndNames), 
-            multiSelection=True, 
-            parent=self
+            "Select segmentation to overlay",
+            "Select segmentation file to overlay:\n",
+            natsorted(self.existingSegmEndNames),
+            multiSelection=True,
+            parent=self,
         )
         selectOverlayLabels.exec_()
         if selectOverlayLabels.cancel:
@@ -348,9 +350,11 @@ class Graphics(PointsLayers):
     def askSelectOverlayChannel(self):
         ch_names = [ch for ch in self.ch_names if ch != self.user_ch_name]
         selectFluo = widgets.QDialogListbox(
-            'Select channel',
-            'Select channel names to overlay:\n',
-            ch_names, multiSelection=True, parent=self
+            "Select channel",
+            "Select channel names to overlay:\n",
+            ch_names,
+            multiSelection=True,
+            parent=self,
         )
         selectFluo.exec_()
         if selectFluo.cancel:
@@ -389,7 +393,7 @@ class Graphics(PointsLayers):
         self.ax1_lostTrackedScatterItem.setData([], [])
         self.ccaFailedScatterItem.setData([], [])
         self.yellowContourScatterItem.setData([], [])
-        
+
         self.clearPointsLayers()
 
         self.clearOverlayLabelsItems()
@@ -410,32 +414,30 @@ class Graphics(PointsLayers):
     def clearComputedContours(self):
         for posData in self.data:
             for frame_i, dataDict in enumerate(posData.allData_li):
-                dataDict['contours'] = {}
+                dataDict["contours"] = {}
 
-    def clearObjContour(
-            self, ID=0, obj=None, ax=0, debug=False, updateImage=True
-        ):
+    def clearObjContour(self, ID=0, obj=None, ax=0, debug=False, updateImage=True):
         imageItem = self.getContoursImageItem(ax)
         if imageItem is None:
             return
 
         if ID > 0:
-            self.contoursImage[self.currentLab2D==ID] = [0,0,0,0]
+            self.contoursImage[self.currentLab2D == ID] = [0, 0, 0, 0]
         else:
             obj_slice = self.getObjSlice(obj.slice)
             obj_image = self.getObjImage(obj.image, obj.bbox)
-            self.contoursImage[obj_slice][obj_image] = [0,0,0,0]
-        
+            self.contoursImage[obj_slice][obj_image] = [0, 0, 0, 0]
+
         if not updateImage:
             return
-        
-        imageItem.setImage(self.contoursImage)        
+
+        imageItem.setImage(self.contoursImage)
 
     def clearOverlayImageItems(self):
         for items in self.overlayLayersItems.values():
             imageItem = items[0]
             imageItem.clear()
-        
+
         self.rgbaImg1.clear()
 
     def clearOverlayLabelsItems(self):
@@ -446,33 +448,36 @@ class Graphics(PointsLayers):
             contoursItem.clear()
 
     def computeAllContours(self):
-        self.logger.info('Computing all contours...')
+        self.logger.info("Computing all contours...")
         posData = self.data[self.pos_i]
         zz = [None]
         if self.isSegm3D:
             zz.extend(range(posData.SizeZ))
-        
+
         include_internal = self.showAllContoursToggle.isChecked()
         for frame_i, dataDict in enumerate(posData.allData_li):
-            lab = dataDict['labels']
+            lab = dataDict["labels"]
             if lab is None:
                 break
-            
-            rp = dataDict['regionprops']
+
+            rp = dataDict["regionprops"]
             if rp is None:
                 rp = skimage.measure.regionprops(lab)
-                
-            dataDict['contours'] = {}
+
+            dataDict["contours"] = {}
             for obj in rp:
                 obj_bbox = self.getObjBbox(obj.bbox)
                 for z in zz:
                     if not self.isObjVisible(obj.bbox, z_slice=z):
                         continue
-                    
+
                     try:
                         self._computeAllContours2D(
-                            dataDict, obj, z, obj_bbox,
-                            include_internal=include_internal
+                            dataDict,
+                            obj,
+                            z,
+                            obj_bbox,
+                            include_internal=include_internal,
                         )
                     except Exception as err:
                         # Contours computation fails on weird objects
@@ -490,28 +495,25 @@ class Graphics(PointsLayers):
         self.computeAllObjCostPairsWorkerLoop.exit()
 
     def computeAllObjToObjCostPairs(self):
-        desc = (
-            'Computing all object-to-object cost matrices...'
-        )
+        desc = "Computing all object-to-object cost matrices..."
         self.logger.info(desc)
         posData = self.data[self.pos_i]
-        
-        
+
         self.progressWin = apps.QDialogWorkerProgress(
             title=desc, parent=self, pbarDesc=desc
         )
         self.progressWin.mainPbar.setMaximum(0)
         self.progressWin.show(self.app)
-        
+
         self.computeAllObjCostPairsThread = QThread()
         self.computeAllObjCostPairsWorker = workers.SimpleWorker(
             posData, self._computeAllObjToObjCostPairs
         )
-        
+
         self.computeAllObjCostPairsWorker.moveToThread(
             self.computeAllObjCostPairsThread
         )
-        
+
         self.computeAllObjCostPairsWorker.signals.finished.connect(
             self.computeAllObjCostPairsThread.quit
         )
@@ -521,7 +523,7 @@ class Graphics(PointsLayers):
         self.computeAllObjCostPairsThread.finished.connect(
             self.computeAllObjCostPairsThread.deleteLater
         )
-        
+
         self.computeAllObjCostPairsWorker.signals.critical.connect(
             self.computeAllObjCostPairsWorkerCritical
         )
@@ -531,18 +533,16 @@ class Graphics(PointsLayers):
         self.computeAllObjCostPairsWorker.signals.progressBar.connect(
             self.workerUpdateProgressbar
         )
-        self.computeAllObjCostPairsWorker.signals.progress.connect(
-            self.workerProgress
-        )
+        self.computeAllObjCostPairsWorker.signals.progress.connect(self.workerProgress)
         self.computeAllObjCostPairsWorker.signals.finished.connect(
             self.computeAllObjCostPairsWorkerFinished
         )
-        
+
         self.computeAllObjCostPairsThread.started.connect(
             self.computeAllObjCostPairsWorker.run
         )
         self.computeAllObjCostPairsThread.start()
-        
+
         self.computeAllObjCostPairsWorkerLoop = QEventLoop()
         self.computeAllObjCostPairsWorkerLoop.exec_()
 
@@ -551,20 +551,20 @@ class Graphics(PointsLayers):
             return
         self.imgGrad.uncheckContLineWeightActions()
         w = self.sender().lineWeight
-        self.df_settings.at['contLineWeight', 'value'] = w
+        self.df_settings.at["contLineWeight", "value"] = w
         self.df_settings.to_csv(self.settings_csv_path)
         self._updateContLineThickness()
         self.updateAllImages()
 
     def createChannelNamesActions(self):
         # LUT histogram channel name context menu actions
-        self.chNamesQActionGroup = QActionGroup(self) 
+        self.chNamesQActionGroup = QActionGroup(self)
         self.chNamesQActionGroup.addAction(self.userChNameAction)
         posData = self.data[self.pos_i]
         for action in self.fluoDataChNameActions:
-            self.chNamesQActionGroup.addAction(action)       
+            self.chNamesQActionGroup.addAction(action)
             action.setChecked(False)
-        
+
         self.userChNameAction.setChecked(True)
 
         for action in self.overlayContextMenu.actions():
@@ -586,29 +586,29 @@ class Graphics(PointsLayers):
         self.overlayLabelsContextMenu.addSeparator()
         self.drawModeOverlayLabelsChannels = {}
         segmEndnames_extended = list(segmEndnames.copy())
-        segmEndnames_extended = ['combined segm.'] + segmEndnames_extended
+        segmEndnames_extended = ["combined segm."] + segmEndnames_extended
         for segmEndname in segmEndnames_extended:
             action = QAction(segmEndname, self.overlayLabelsContextMenu)
-            if segmEndname == 'combined segm.':
+            if segmEndname == "combined segm.":
                 action.setCheckable(False)
                 self.combineSegmViewToggle = action
             else:
                 action.setCheckable(True)
             action.toggled.connect(self.addOverlayLabelsToggled)
             self.overlayLabelsContextMenu.addAction(action)
-        
+
         self.overlayLabelsContextMenu.addSeparator()
-        action = QAction('Edit appearance...', self.overlayLabelsContextMenu)
+        action = QAction("Edit appearance...", self.overlayLabelsContextMenu)
         action.triggered.connect(self.editOverlayLabelsAppearance)
         self.overlayLabelsContextMenu.addAction(action)
 
     def createOverlayLabelsItems(self, segmEndnames):
         selectActionGroup = QActionGroup(self)
         segmEndnames_extended = list(segmEndnames.copy())
-        segmEndnames_extended = ['combined segm.'] + segmEndnames_extended
+        segmEndnames_extended = ["combined segm."] + segmEndnames_extended
         for segmEndname in segmEndnames_extended:
             action = QAction(segmEndname)
-            if segmEndname == 'combined segm.':
+            if segmEndname == "combined segm.":
                 action.setCheckable(False)
             else:
                 action.setCheckable(True)
@@ -634,9 +634,14 @@ class Graphics(PointsLayers):
             r, g, b, a = colors.rgba_str_to_values(color)
             qcolor = QColor(r, g, b, a)
             contoursItem.setData(
-                [], [], symbol='s', pxMode=False, size=self.contLineWeight*2,
+                [],
+                [],
+                symbol="s",
+                pxMode=False,
+                size=self.contLineWeight * 2,
                 brush=pg.mkBrush(color=qcolor),
-                pen=pg.mkPen(width=3, color=qcolor), tip=None
+                pen=pg.mkPen(width=3, color=qcolor),
+                tip=None,
             )
 
             items = (imageItem, contoursItem, gradItem)
@@ -654,7 +659,7 @@ class Graphics(PointsLayers):
                 rescaleIntensAction.setChecked(True)
                 rescaleIntensAction.trigger()
                 break
-        
+
         for channel, items in self.overlayLayersItems.items():
             lutItem = items[1]
             for rescaleIntensAction in lutItem.rescaleActionGroup.actions():
@@ -662,22 +667,24 @@ class Graphics(PointsLayers):
                     rescaleIntensAction.setChecked(True)
                     rescaleIntensAction.trigger()
                     break
-        
-        self.df_settings.at['default_rescale_intens_how', 'value'] = how
+
+        self.df_settings.at["default_rescale_intens_how", "value"] = how
         self.df_settings.to_csv(self.settings_csv_path)
 
     def drawLostObjContoursImage(
-            self, imageItem, contours, 
-            thickness=1, 
-            color=(255, 165, 0, 255) # orange
-        ):
+        self,
+        imageItem,
+        contours,
+        thickness=1,
+        color=(255, 165, 0, 255),  # orange
+    ):
         img = self.lostObjContoursImage
         cv2.drawContours(img, contours, -1, color, thickness)
         imageItem.setImage(img)
 
     def drawLostTrackedObjContoursImage(self, imageItem, contours):
         thickness = 1
-        color = (0, 255, 0, 255) # green
+        color = (0, 255, 0, 255)  # green
         img = self.lostTrackedObjContoursImage
         cv2.drawContours(img, contours, -1, color, thickness)
         imageItem.setImage(img)
@@ -691,16 +698,16 @@ class Graphics(PointsLayers):
         win.exec_()
         if win.cancel:
             return
-        
-        brush = win.properties['brush']
-        pen = win.properties['pen']
+
+        brush = win.properties["brush"]
+        pen = win.properties["pen"]
         for items in self.overlayLabelsItems.values():
             imageItem, contoursItem, gradItem = items
             contoursItem.setBrush(brush, update=False)
             contoursItem.setPen(pen)
 
     def enableOverlayWidgets(self, enabled):
-        posData = self.data[self.pos_i]   
+        posData = self.data[self.pos_i]
         if enabled:
             self.overlayColorButton.setDisabled(False)
             self.editOverlayColorAction.setDisabled(False)
@@ -708,13 +715,15 @@ class Graphics(PointsLayers):
             if posData.SizeZ == 1:
                 return
 
-            self.zSliceOverlay_SB.setMaximum(posData.SizeZ-1)
-            if self.zProjOverlay_CB.currentText().find('max') != -1:
+            self.zSliceOverlay_SB.setMaximum(posData.SizeZ - 1)
+            if self.zProjOverlay_CB.currentText().find("max") != -1:
                 self.overlay_z_label.setDisabled(True)
                 self.zSliceOverlay_SB.setDisabled(True)
             else:
                 z = self.zSliceOverlay_SB.sliderPosition()
-                self.overlay_z_label.setText(f'Overlay z-slice  {z+1:02}/{posData.SizeZ}')
+                self.overlay_z_label.setText(
+                    f"Overlay z-slice  {z + 1:02}/{posData.SizeZ}"
+                )
                 self.zSliceOverlay_SB.setDisabled(False)
                 self.overlay_z_label.setDisabled(False)
             self.zSliceOverlay_SB.show()
@@ -742,15 +751,15 @@ class Graphics(PointsLayers):
         posData = self.data[self.pos_i]
         # Build a new lut to include IDs > than original len of lut
         if lenNewLut > len(self.lut):
-            numNewColors = lenNewLut-len(self.lut)
+            numNewColors = lenNewLut - len(self.lut)
             # Index original lut
             _lut = np.zeros((lenNewLut, 3), np.uint8)
-            _lut[:len(self.lut)] = self.lut
+            _lut[: len(self.lut)] = self.lut
             # Pick random colors and append them at the end to recycle them
-            randomIdx = np.random.randint(0,len(self.lut),size=numNewColors)
+            randomIdx = np.random.randint(0, len(self.lut), size=numNewColors)
             for i, idx in enumerate(randomIdx):
                 rgb = self.lut[idx]
-                _lut[len(self.lut)+i] = rgb
+                _lut[len(self.lut) + i] = rgb
             self.lut = _lut
             self.initLabelsImageItems()
             return True
@@ -758,23 +767,23 @@ class Graphics(PointsLayers):
 
     def getLabelsImageLut(self):
         lut = np.zeros((len(self.lut), 4), dtype=np.uint8)
-        lut[:,-1] = 255
-        lut[:,:-1] = self.lut
-        lut[0] = [0,0,0,0]
+        lut[:, -1] = 255
+        lut[:, :-1] = self.lut
+        lut[0] = [0, 0, 0, 0]
         return lut
 
     def getNearestLostObjID(self, y, x):
         if not self.annotLostObjsToggle.isChecked():
             return
-        
+
         posData = self.data[self.pos_i]
         if not posData.lost_IDs:
             return
-        
-        prev_lab = posData.allData_li[posData.frame_i-1]['labels']
+
+        prev_lab = posData.allData_li[posData.frame_i - 1]["labels"]
         if prev_lab is None:
             return
-        
+
         # if not hasattr(self, 'lostObjContoursImage'):
         #     self.store_data()
         #     posData.frame_i -= 1
@@ -786,50 +795,54 @@ class Graphics(PointsLayers):
         #     self.updateLostContoursImage(ax=0)
         #     self.updateLostContoursImage(ax=1)
         #     self.updateLostNewCurrentIDs()
-            
+
         yy, xx, _ = np.nonzero(self.lostObjContoursImage)
         lostObjsContourMask = np.zeros(self.currentLab2D.shape, dtype=bool)
         lostObjsContourMask[yy.astype(int), xx.astype(int)] = True
-        
+
         # Add accepted lost IDs
         try:
             yy, xx, _ = np.nonzero(self.lostTrackedObjContoursImage)
             lostObjsContourMask[yy.astype(int), xx.astype(int)] = True
         except Exception as err:
             pass
-            
+
         _, y_nearest, x_nearest = core.nearest_nonzero_2D(
             lostObjsContourMask, y, x, return_coords=True
         )
         nearest_ID = self.get_2Dlab(prev_lab)[y_nearest, x_nearest]
-        
+
         if nearest_ID == 0:
             return
-        
+
         return nearest_ID
 
     def getObjContours(
-            self, obj, all_external=False, local=False, force_calc=True,
-            include_internal=False
-        ):
+        self,
+        obj,
+        all_external=False,
+        local=False,
+        force_calc=True,
+        include_internal=False,
+    ):
         posData = self.data[self.pos_i]
         dataDict = posData.allData_li[posData.frame_i]
-        allContours = dataDict.get('contours')    
+        allContours = dataDict.get("contours")
         if allContours is not None and not force_calc:
             z = self.z_lab()
             key = (obj.label, str(z), all_external, local)
             contours = allContours.get(key)
             if contours is not None:
                 return contours
-        
+
         obj_image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
         obj_bbox = self.getObjBbox(obj.bbox)
         try:
             contours = core.get_obj_contours(
-                obj_image=obj_image, 
-                obj_bbox=obj_bbox, 
+                obj_image=obj_image,
+                obj_bbox=obj_bbox,
                 local=local,
-                all_external=all_external
+                all_external=all_external,
             )
         except Exception as e:
             if all_external:
@@ -837,8 +850,8 @@ class Graphics(PointsLayers):
             else:
                 contours = None
             self.logger.warning(
-                f'Object ID {obj.label} contours drawing failed. '
-                f'(bounding box = {obj.bbox})'
+                f"Object ID {obj.label} contours drawing failed. "
+                f"(bounding box = {obj.bbox})"
             )
         return contours
 
@@ -849,7 +862,7 @@ class Graphics(PointsLayers):
         except KeyError as e:
             # Object already cleared
             return
-        
+
         obj = posData.rp[idx]
         return obj
 
@@ -862,7 +875,7 @@ class Graphics(PointsLayers):
         if posData.SizeZ > 1:
             zProjHow = self.zProjOverlay_CB.currentText()
             z = self.zSliceOverlay_SB.sliderPosition()
-            if zProjHow == 'same as above':
+            if zProjHow == "same as above":
                 zProjHow = self.zProjComboBox.currentText()
                 z = self.zSliceScrollBar.sliderPosition()
                 reconnect = False
@@ -873,17 +886,17 @@ class Graphics(PointsLayers):
                     pass
                 self.zSliceOverlay_SB.setSliderPosition(z)
                 if reconnect:
-                    self.zSliceOverlay_SB.valueChanged.connect(
-                        self.updateOverlayZslice
-                    )
-            if zProjHow == 'single z-slice':
-                self.overlay_z_label.setText(f'Overlay z-slice  {z+1:02}/{posData.SizeZ}')
+                    self.zSliceOverlay_SB.valueChanged.connect(self.updateOverlayZslice)
+            if zProjHow == "single z-slice":
+                self.overlay_z_label.setText(
+                    f"Overlay z-slice  {z + 1:02}/{posData.SizeZ}"
+                )
                 ol_img = img[z].copy()
-            elif zProjHow == 'max z-projection':
+            elif zProjHow == "max z-projection":
                 ol_img = img.max(axis=0)
-            elif zProjHow == 'mean z-projection':
+            elif zProjHow == "mean z-projection":
                 ol_img = img.mean(axis=0)
-            elif zProjHow == 'median z-proj.':
+            elif zProjHow == "median z-proj.":
                 ol_img = np.median(img, axis=0)
         else:
             ol_img = img.copy()
@@ -899,16 +912,16 @@ class Graphics(PointsLayers):
             if not _toolbutton.isChecked() or not _toolbutton.isVisible():
                 continue
 
-            alpha_values.append(alphaSB.value()/alphaSB.maximum())
+            alpha_values.append(alphaSB.value() / alphaSB.maximum())
             activeOverlayImageItems.append(imgItem)
-        
+
         opacities = colors.hierarchical_weights(alpha_values)[::-1]
         channel_opacity_mapper = {}
         for i, imgItem in enumerate(activeOverlayImageItems):
-            channel_opacity_mapper[imgItem.channelName] = opacities[i+1]
-        
+            channel_opacity_mapper[imgItem.channelName] = opacities[i + 1]
+
         channel_opacity_mapper[self.user_ch_name] = opacities[0]
-        
+
         return channel_opacity_mapper
 
     def getOverlayItems(self, channelName, index):
@@ -917,14 +930,14 @@ class Graphics(PointsLayers):
         imageItem.channelName = channelName
 
         lutItem = widgets.myHistogramLUTitem(
-            parent=self, name='image', axisLabel=channelName
+            parent=self, name="image", axisLabel=channelName
         )
         imageItem.lutItem = lutItem
         for action in lutItem.rescaleActionGroup.actions():
             if action.text() == self.defaultRescaleIntensHow:
                 action.setChecked(True)
             break
-        
+
         lutItem.removeAddScaleBarAction()
         lutItem.removeAddTimestampAction()
         lutItem.restoreState(self.df_settings)
@@ -936,23 +949,19 @@ class Graphics(PointsLayers):
         lutItem.initColor = initColor
         lutItem.hide()
 
-        lutItem.overlayColorButton.sigColorChanging.connect(
-            self.changeOverlayColor
-        )
-        lutItem.overlayColorButton.sigColorChanged.connect(
-            self.saveOverlayColor
-        )
+        lutItem.overlayColorButton.sigColorChanging.connect(self.changeOverlayColor)
+        lutItem.overlayColorButton.sigColorChanged.connect(self.saveOverlayColor)
 
         lutItem.invertBwAction.toggled.connect(self.setCheckedInvertBW)
 
-        lutItem.contoursColorButton.disconnect() 
+        lutItem.contoursColorButton.disconnect()
         lutItem.contoursColorButton.clicked.connect(
             self.imgGrad.contoursColorButton.click
         )
         for act in lutItem.contLineWightActionGroup.actions():
             act.toggled.connect(self.contLineWeightToggled)
-        
-        lutItem.mothBudLineColorButton.disconnect() 
+
+        lutItem.mothBudLineColorButton.disconnect()
         lutItem.mothBudLineColorButton.clicked.connect(
             self.imgGrad.mothBudLineColorButton.click
         )
@@ -960,55 +969,45 @@ class Graphics(PointsLayers):
             act.toggled.connect(self.mothBudLineWeightToggled)
 
         lutItem.textColorButton.disconnect()
-        lutItem.textColorButton.clicked.connect(
-            self.editTextIDsColorAction.trigger
-        )
+        lutItem.textColorButton.clicked.connect(self.editTextIDsColorAction.trigger)
 
-        lutItem.defaultSettingsAction.triggered.connect(
-            self.restoreDefaultSettings
-        )
-        lutItem.labelsAlphaSlider.valueChanged.connect(
-            self.setValueLabelsAlphaSlider
-        )
+        lutItem.defaultSettingsAction.triggered.connect(self.restoreDefaultSettings)
+        lutItem.labelsAlphaSlider.valueChanged.connect(self.setValueLabelsAlphaSlider)
         lutItem.sigRescaleIntes.connect(
             partial(self.rescaleIntensitiesLut, imageItem=imageItem)
         )
-        if f'how_rescale_intensities_{channelName}' in self.df_settings.index:
-            how = self.df_settings.at[
-                f'how_rescale_intensities_{channelName}', 'value'
-            ]
+        if f"how_rescale_intensities_{channelName}" in self.df_settings.index:
+            how = self.df_settings.at[f"how_rescale_intensities_{channelName}", "value"]
             lutItem.setRescaleIntensitiesHow(how)
-        
-        self.rescaleIntensChannelHowMapper[channelName] = (
-            'Rescale each 2D image'
-        )
+
+        self.rescaleIntensChannelHowMapper[channelName] = "Rescale each 2D image"
 
         self.addActionsLutItemContextMenu(lutItem)
 
         alphaScrollBar = self.addAlphaScrollbar(channelName, imageItem)
-        
+
         toolbutton = widgets.OverlayChannelToolButton(
             channelName, lutItem, shortcut=str(index)
         )
         toolbutton.action = self.overlayToolbar.addWidget(toolbutton)
         toolbutton.setVisible(False)
-        
+
         toolbutton.clicked.connect(self.overlayChannelToolbuttonClicked)
-        
+
         alphaScrollBar.toolbutton = toolbutton
-        
+
         return imageItem, lutItem, alphaScrollBar, toolbutton
 
     def getOverlayLabelsData(self, segmEndname):
         posData = self.data[self.pos_i]
-        
+
         if posData.ol_labels_data is None:
-            self.loadOverlayLabelsData(segmEndname)            
+            self.loadOverlayLabelsData(segmEndname)
         elif segmEndname not in posData.ol_labels_data:
             self.loadOverlayLabelsData(segmEndname)
-        
+
         comb_seg = False
-        if 'combined segm.' == segmEndname:
+        if "combined segm." == segmEndname:
             comb_seg = True
             if not self.isSegm3D:
                 zStackImg = self.data[0].SizeZ > 1
@@ -1016,12 +1015,14 @@ class Graphics(PointsLayers):
                     selected_z_stack = self.zSliceScrollBar.sliderPosition()
                 else:
                     selected_z_stack = 0
-                out = posData.ol_labels_data['combined segm.'][posData.frame_i][selected_z_stack]
+                out = posData.ol_labels_data["combined segm."][posData.frame_i][
+                    selected_z_stack
+                ]
                 return out.astype(np.uint32)
-        
+
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
-            isZslice = zProjHow == 'single z-slice'
+            isZslice = zProjHow == "single z-slice"
             if isZslice:
                 z = self.zSliceScrollBar.sliderPosition()
                 ol_lab = posData.ol_labels_data[segmEndname][posData.frame_i][z]
@@ -1029,7 +1030,9 @@ class Graphics(PointsLayers):
                     ol_lab = ol_lab.astype(np.uint32)
                 return ol_lab
             else:
-                ol_lab = posData.ol_labels_data[segmEndname][posData.frame_i].max(axis=0)
+                ol_lab = posData.ol_labels_data[segmEndname][posData.frame_i].max(
+                    axis=0
+                )
                 if comb_seg:
                     ol_lab = ol_lab.astype(np.uint32)
                 return ol_lab
@@ -1037,7 +1040,7 @@ class Graphics(PointsLayers):
             return posData.ol_labels_data[segmEndname][posData.frame_i]
 
     def greedyShuffleCmap(self, updateImages=True):
-        lut = self.labelsGrad.item.colorMap().getLookupTable(0,1,255)
+        lut = self.labelsGrad.item.colorMap().getLookupTable(0, 1, 255)
         greedy_lut = colors.get_greedy_lut(self.currentLab2D, lut)
         self.lut = greedy_lut
         self.initLabelsImageItems()
@@ -1053,7 +1056,7 @@ class Graphics(PointsLayers):
         equalizeHistPushButton.setCheckable(True)
         if not self.invertBwAction.isChecked():
             equalizeHistPushButton.setStyleSheet(
-                'QPushButton {background-color: #282828; color: #F0F0F0;}'
+                "QPushButton {background-color: #282828; color: #F0F0F0;}"
             )
         self.equalizeHistPushButton = equalizeHistPushButton
         proxy.setWidget(equalizeHistPushButton)
@@ -1061,67 +1064,55 @@ class Graphics(PointsLayers):
         self.equalizeHistPushButton = equalizeHistPushButton
 
         # Left image histogram
-        self.imgGrad = widgets.myHistogramLUTitem(parent=self, name='image')
+        self.imgGrad = widgets.myHistogramLUTitem(parent=self, name="image")
         self.imgGrad.restoreState(self.df_settings)
         self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)
         for action in self.imgGrad.rescaleActionGroup.actions():
             if action.text() == self.defaultRescaleIntensHow:
                 action.setChecked(True)
             self.rescaleIntensMenu.addAction(action)
-        
+
         # Colormap gradient widget
         self.labelsGrad = widgets.labelsGradientWidget(parent=self)
         try:
             stateFound = self.labelsGrad.restoreState(self.df_settings)
         except Exception as e:
             self.logger.exception(traceback.format_exc())
-            print('======================================')
+            print("======================================")
             self.logger.info(
-                'Failed to restore previously used colormap. '
+                "Failed to restore previously used colormap. "
                 'Using default colormap "viridis"'
             )
-            self.labelsGrad.item.loadPreset('viridis')
-        
+            self.labelsGrad.item.loadPreset("viridis")
+
         # Add actions to imgGrad gradient item
-        self.imgGrad.gradient.menu.addAction(
-            self.labelsGrad.showLabelsImgAction
-        )
-        self.imgGrad.gradient.menu.addAction(
-            self.labelsGrad.showRightImgAction
-        )
-        self.imgGrad.gradient.menu.addAction(
-            self.labelsGrad.showNextFrameAction
-        )
-        
+        self.imgGrad.gradient.menu.addAction(self.labelsGrad.showLabelsImgAction)
+        self.imgGrad.gradient.menu.addAction(self.labelsGrad.showRightImgAction)
+        self.imgGrad.gradient.menu.addAction(self.labelsGrad.showNextFrameAction)
+
         self.imgGrad.gradient.menu.addSeparator()
-        
-        self.imgGrad.gradient.menu.addMenu(self.exportMenu)            
-        
+
+        self.imgGrad.gradient.menu.addMenu(self.exportMenu)
+
         # Add actions to view menu
         self.viewMenu.addAction(self.labelsGrad.showLabelsImgAction)
         self.viewMenu.addAction(self.labelsGrad.showRightImgAction)
-        
+
         # Right image histogram
         self.imgGradRight = widgets.baseHistogramLUTitem(
-            name='image', parent=self, gradientPosition='left'
+            name="image", parent=self, gradientPosition="left"
         )
-        self.imgGradRight.gradient.menu.addAction(
-            self.labelsGrad.showLabelsImgAction
-        )
-        self.imgGradRight.gradient.menu.addAction(
-            self.labelsGrad.showRightImgAction
-        )
-        self.imgGradRight.gradient.menu.addAction(
-            self.labelsGrad.showNextFrameAction
-        )
-        
+        self.imgGradRight.gradient.menu.addAction(self.labelsGrad.showLabelsImgAction)
+        self.imgGradRight.gradient.menu.addAction(self.labelsGrad.showRightImgAction)
+        self.imgGradRight.gradient.menu.addAction(self.labelsGrad.showNextFrameAction)
+
         self.imgGrad.setChildLutItem(self.imgGradRight)
 
         # Title
         self.titleLabel = pg.LabelItem(
-            justify='center', color=self.titleColor, size='14pt'
+            justify="center", color=self.titleColor, size="14pt"
         )
-        self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)        
+        self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
 
     def gui_addOverlayLayerItems(self):
         for items in self.overlayLabelsItems.values():
@@ -1132,7 +1123,7 @@ class Graphics(PointsLayers):
     def gui_addTopLayerItems(self):
         for item in self.topLayerItems:
             self.ax1.addItem(item)
-        
+
         for item in self.topLayerItemsRight:
             self.ax2.addItem(item)
 
@@ -1155,16 +1146,16 @@ class Graphics(PointsLayers):
         self.ax1.sigRangeChanged.connect(self.viewRangeChanged)
 
     def gui_createContourPens(self):
-        if 'contLineWeight' in self.df_settings.index:
-            val = self.df_settings.at['contLineWeight', 'value']
+        if "contLineWeight" in self.df_settings.index:
+            val = self.df_settings.at["contLineWeight", "value"]
             self.contLineWeight = int(val)
         else:
             self.contLineWeight = 1
-        if 'contLineColor' in self.df_settings.index:
-            val = self.df_settings.at['contLineColor', 'value']
+        if "contLineColor" in self.df_settings.index:
+            val = self.df_settings.at["contLineColor", "value"]
             rgba = colors.rgba_str_to_values(val)
             self.contLineColor = rgba
-            self.newIDlineColor = [min(255, v+50) for v in self.contLineColor]
+            self.newIDlineColor = [min(255, v + 50) for v in self.contLineColor]
         else:
             self.contLineColor = (255, 0, 0, 200)
             self.newIDlineColor = (255, 0, 0, 255)
@@ -1184,31 +1175,24 @@ class Graphics(PointsLayers):
                 act.setChecked(True)
         self.imgGrad.contoursColorButton.setColor(self.contLineColor[:3])
 
-        self.imgGrad.contoursColorButton.sigColorChanging.connect(
-            self.updateContColour
-        )
-        self.imgGrad.contoursColorButton.sigColorChanged.connect(
-            self.saveContColour
-        )
+        self.imgGrad.contoursColorButton.sigColorChanging.connect(self.updateContColour)
+        self.imgGrad.contoursColorButton.sigColorChanged.connect(self.saveContColour)
         for act in self.imgGrad.contLineWightActionGroup.actions():
             act.toggled.connect(self.contLineWeightToggled)
 
         # Contours pens
-        self.oldIDs_cpen = pg.mkPen(
-            color=self.contLineColor, width=self.contLineWeight
-        )
+        self.oldIDs_cpen = pg.mkPen(color=self.contLineColor, width=self.contLineWeight)
         self.newIDs_cpen = pg.mkPen(
-            color=self.newIDlineColor, width=self.contLineWeight+1
+            color=self.newIDlineColor, width=self.contLineWeight + 1
         )
-        self.tempNewIDs_cpen = pg.mkPen(
-            color='g', width=self.contLineWeight+1
-        )
+        self.tempNewIDs_cpen = pg.mkPen(color="g", width=self.contLineWeight + 1)
 
     def gui_createGraphicsItems(self):
         # Create enough PlotDataItems and LabelItems to draw contours and IDs.
         self.progressWin = apps.QDialogWorkerProgress(
-            title='Creating axes items', parent=self,
-            pbarDesc='Creating axes items (see progress in the terminal)...'
+            title="Creating axes items",
+            parent=self,
+            pbarDesc="Creating axes items (see progress in the terminal)...",
         )
         self.progressWin.show(self.app)
         self.progressWin.mainPbar.setMaximum(0)
@@ -1218,34 +1202,36 @@ class Graphics(PointsLayers):
     def gui_createLabelRoiItem(self):
         Y, X = self.currentLab2D.shape
         # Label ROI rectangle
-        pen = pg.mkPen('r', width=3)
+        pen = pg.mkPen("r", width=3)
         self.labelRoiItem = widgets.ROI(
-            (0,0), (0,0),
-            maxBounds=QRectF(QRect(0,0,X,Y)),
+            (0, 0),
+            (0, 0),
+            maxBounds=QRectF(QRect(0, 0, X, Y)),
             scaleSnap=True,
             translateSnap=True,
-            pen=pen, hoverPen=pen
+            pen=pen,
+            hoverPen=pen,
         )
 
         posData = self.data[self.pos_i]
         if self.labelRoiZdepthSpinbox.value() == 0:
             self.labelRoiZdepthSpinbox.setValue(posData.SizeZ)
-        self.labelRoiZdepthSpinbox.setMaximum(posData.SizeZ+1)
+        self.labelRoiZdepthSpinbox.setMaximum(posData.SizeZ + 1)
 
     def gui_createMothBudLinePens(self):
-        if 'mothBudLineSize' in self.df_settings.index:
-            val = self.df_settings.at['mothBudLineSize', 'value']
+        if "mothBudLineSize" in self.df_settings.index:
+            val = self.df_settings.at["mothBudLineSize", "value"]
             self.mothBudLineWeight = int(val)
         else:
             self.mothBudLineWeight = 2
 
-        self.newMothBudlineColor = (255, 0, 0)            
-        if 'mothBudLineColor' in self.df_settings.index:
-            val = self.df_settings.at['mothBudLineColor', 'value']
+        self.newMothBudlineColor = (255, 0, 0)
+        if "mothBudLineColor" in self.df_settings.index:
+            val = self.df_settings.at["mothBudLineColor", "value"]
             rgba = colors.rgba_str_to_values(val)
             self.mothBudLineColor = rgba[0:3]
         else:
-            self.mothBudLineColor = (255,165,0)
+            self.mothBudLineColor = (255, 165, 0)
 
         try:
             self.imgGrad.mothBudLineColorButton.sigColorChanging.disconnect()
@@ -1275,38 +1261,34 @@ class Graphics(PointsLayers):
 
         # MOther-bud lines brushes
         self.NewBudMoth_Pen = pg.mkPen(
-            color=self.newMothBudlineColor, width=self.mothBudLineWeight+1, 
-            style=Qt.DashLine
+            color=self.newMothBudlineColor,
+            width=self.mothBudLineWeight + 1,
+            style=Qt.DashLine,
         )
         self.OldBudMoth_Pen = pg.mkPen(
-            color=self.mothBudLineColor, width=self.mothBudLineWeight, 
-            style=Qt.DashLine
+            color=self.mothBudLineColor, width=self.mothBudLineWeight, style=Qt.DashLine
         )
-        
-        self.redDashLinePen = pg.mkPen(
-            color='r', width=2, style=Qt.DashLine
-        )
+
+        self.redDashLinePen = pg.mkPen(color="r", width=2, style=Qt.DashLine)
 
         self.oldMothBudLineBrush = pg.mkBrush(self.mothBudLineColor)
         self.newMothBudLineBrush = pg.mkBrush(self.newMothBudlineColor)
 
     def gui_createOverlayColors(self):
         fluoChannels = [ch for ch in self.ch_names if ch != self.user_ch_name]
-        self.logger.info(
-            f'Number of TIFF files detected: {len(fluoChannels)}'
-        )
+        self.logger.info(f"Number of TIFF files detected: {len(fluoChannels)}")
         self.overlayColors = {}
         for c, ch in enumerate(fluoChannels):
-            if f'{ch}_rgb' in self.df_settings.index:
-                rgb_text = self.df_settings.at[f'{ch}_rgb', 'value']
-                rgb = tuple([int(val) for val in rgb_text.split('_')])
+            if f"{ch}_rgb" in self.df_settings.index:
+                rgb_text = self.df_settings.at[f"{ch}_rgb", "value"]
+                rgb = tuple([int(val) for val in rgb_text.split("_")])
                 self.overlayColors[ch] = rgb
             else:
-                if c >= len(self.overlayRGBs) -1:
-                    i = c/len(fluoChannels)
+                if c >= len(self.overlayRGBs) - 1:
+                    i = c / len(fluoChannels)
                     additional_color_num = c - len(self.overlayRGBs) + 1
                     rgbs = [
-                        tuple([round(c*255) for c in self.overlayCmap(i)][:3]) 
+                        tuple([round(c * 255) for c in self.overlayCmap(i)][:3])
                         for _ in range(additional_color_num)
                     ]
                     self.overlayRGBs.extend(rgbs)
@@ -1319,77 +1301,71 @@ class Graphics(PointsLayers):
             self.user_ch_name, self.imgGrad
         )
         self.baseLayerToolbutton.setChecked(True)
-        self.baseLayerToolbutton.clicked.connect(
-            self.overlayChannelToolbuttonClicked
-        )
-        self.allOverlayToolbuttons = {
-            self.user_ch_name: self.baseLayerToolbutton
-        }
-        self.allOverlayToolbuttonsByIdx = {
-            0: self.baseLayerToolbutton
-        }
-        self.baseLayerToolbutton.action = (
-            self.overlayToolbar.addWidget(self.baseLayerToolbutton)
+        self.baseLayerToolbutton.clicked.connect(self.overlayChannelToolbuttonClicked)
+        self.allOverlayToolbuttons = {self.user_ch_name: self.baseLayerToolbutton}
+        self.allOverlayToolbuttonsByIdx = {0: self.baseLayerToolbutton}
+        self.baseLayerToolbutton.action = self.overlayToolbar.addWidget(
+            self.baseLayerToolbutton
         )
         self.overlayLayersItems = {}
         self.overlayToolbarAreChannelsChecked = {}
         fluoChannels = [ch for ch in self.ch_names if ch != self.user_ch_name]
         for c, ch in enumerate(fluoChannels):
-            overlayItems = self.getOverlayItems(ch, c+1)                
+            overlayItems = self.getOverlayItems(ch, c + 1)
             self.overlayLayersItems[ch] = overlayItems
             imageItem, lutItem = overlayItems[:2]
             self.ax1.addItem(imageItem)
-            self.lutItemsLayout.addItem(lutItem, row=0, col=c+1)
+            self.lutItemsLayout.addItem(lutItem, row=0, col=c + 1)
             toolbutton = overlayItems[3]
             self.allOverlayToolbuttons[ch] = toolbutton
-            self.allOverlayToolbuttonsByIdx[c+1] = toolbutton
+            self.allOverlayToolbuttonsByIdx[c + 1] = toolbutton
 
         self.overlayToolbuttonsSep = self.overlayToolbar.addSeparator()
         self.plotsCol = len(self.ch_names)
-        
+
         self.ax1.addImageItem(self.rgbaImg1)
 
     def gui_createPlotItems(self):
-        if 'textIDsColor' in self.df_settings.index:
-            rgbString = self.df_settings.at['textIDsColor', 'value']
+        if "textIDsColor" in self.df_settings.index:
+            rgbString = self.df_settings.at["textIDsColor", "value"]
             r, g, b = colors.rgb_str_to_values(rgbString)
             self.gui_createTextAnnotColors(r, g, b, custom=True)
             self.textIDsColorButton.setColor((r, g, b))
         else:
-            self.gui_createTextAnnotColors(0,0,0, custom=False)
+            self.gui_createTextAnnotColors(0, 0, 0, custom=False)
 
-        if 'labels_text_color' in self.df_settings.index:
-            rgbString = self.df_settings.at['labels_text_color', 'value']
+        if "labels_text_color" in self.df_settings.index:
+            rgbString = self.df_settings.at["labels_text_color", "value"]
             r, g, b = colors.rgb_str_to_values(rgbString)
             self.ax2_textColor = (r, g, b)
         else:
             self.ax2_textColor = (255, 0, 0)
-        
-        self.emptyLab = np.zeros((2,2), dtype=np.uint8)
+
+        self.emptyLab = np.zeros((2, 2), dtype=np.uint8)
 
         # Right image item linked to left
         self.rightImageItem = widgets.ChildImageItem(
             linkedScrollbar=self.rightImageFramesScrollbar
         )
-        self.imgGradRight.setImageItem(self.rightImageItem)   
+        self.imgGradRight.setImageItem(self.rightImageItem)
         self.ax2.addItem(self.rightImageItem)
-        
+
         # Left image
         self.img1 = widgets.ParentImageItem(
             linkedImageItem=self.rightImageItem,
             activatingActions=(
                 self.labelsGrad.showRightImgAction,
-                self.labelsGrad.showNextFrameAction
-            )
+                self.labelsGrad.showNextFrameAction,
+            ),
         )
         self.imgGrad.setImageItem(self.img1)
         self.img1.lutItem = self.imgGrad
         self.imgGrad.sigRescaleIntes.connect(self.rescaleIntensitiesLut)
         self.ax1.addBaseImageItem(self.img1)
-        
+
         # RGBA image for true transparency mode
         self.rgbaImg1 = pg.ImageItem()
-        
+
         # self.rgbaImg1.setImage(self.emptyLab)
 
         # Right image
@@ -1402,12 +1378,12 @@ class Graphics(PointsLayers):
         self.gui_createContourPens()
         self.gui_createMothBudLinePens()
 
-        self.eraserCirclePen = pg.mkPen(width=1.5, color='r')
-        
+        self.eraserCirclePen = pg.mkPen(width=1.5, color="r")
+
         # Temporary line item connecting bud to new mother
         self.BudMothTempLine = pg.PlotDataItem(pen=self.NewBudMoth_Pen)
         self.topLayerItems.append(self.BudMothTempLine)
-        
+
         # Temporary line item connecting objects to merge
         self.mergeObjsTempLine = widgets.PlotCurveItem(pen=self.redDashLinePen)
         self.topLayerItems.append(self.mergeObjsTempLine)
@@ -1420,25 +1396,25 @@ class Graphics(PointsLayers):
         self.ax2.addItem(self.labelsLayerRightImg)
 
         # Red/green border rect item
-        self.GreenLinePen = pg.mkPen(color='g', width=2)
-        self.RedLinePen = pg.mkPen(color='r', width=2)
+        self.GreenLinePen = pg.mkPen(color="g", width=2)
+        self.RedLinePen = pg.mkPen(color="r", width=2)
         self.ax1BorderLine = pg.PlotDataItem()
         self.topLayerItems.append(self.ax1BorderLine)
-        self.ax2BorderLine = pg.PlotDataItem(pen=pg.mkPen(color='r', width=2))
+        self.ax2BorderLine = pg.PlotDataItem(pen=pg.mkPen(color="r", width=2))
         self.topLayerItems.append(self.ax2BorderLine)
 
         # Brush/Eraser/Wand.. layer item
         self.tempLayerRightImage = pg.ImageItem()
         self.tempLayerImg1 = widgets.ParentImageItem(
             linkedImageItem=self.tempLayerRightImage,
-            activatingAction=(self.labelsGrad.showRightImgAction, )
+            activatingAction=(self.labelsGrad.showRightImgAction,),
         )
         self.topLayerItems.append(self.tempLayerImg1)
         self.topLayerItemsRight.append(self.tempLayerRightImage)
 
         # Highlighted ID layer items
         self.highLightIDLayerImg1 = pg.ImageItem()
-        self.topLayerItems.append(self.highLightIDLayerImg1)  
+        self.topLayerItems.append(self.highLightIDLayerImg1)
 
         # Highlighted ID layer items
         self.highLightIDLayerRightImage = pg.ImageItem()
@@ -1448,7 +1424,7 @@ class Graphics(PointsLayers):
         self.keepIDsTempLayerRight = pg.ImageItem()
         self.keepIDsTempLayerLeft = widgets.ParentImageItem(
             linkedImageItem=self.keepIDsTempLayerRight,
-            activatingAction=self.labelsGrad.showRightImgAction
+            activatingAction=self.labelsGrad.showRightImgAction,
         )
         self.topLayerItems.append(self.keepIDsTempLayerLeft)
         self.topLayerItemsRight.append(self.keepIDsTempLayerRight)
@@ -1456,42 +1432,65 @@ class Graphics(PointsLayers):
         # Searched ID contour
         self.searchedIDitemRight = pg.ScatterPlotItem()
         self.searchedIDitemRight.setData(
-            [], [], symbol='s', pxMode=False, size=1,
-            brush=pg.mkBrush(color=(255,0,0,150)),
-            pen=pg.mkPen(width=2, color='r'), tip=None
+            [],
+            [],
+            symbol="s",
+            pxMode=False,
+            size=1,
+            brush=pg.mkBrush(color=(255, 0, 0, 150)),
+            pen=pg.mkPen(width=2, color="r"),
+            tip=None,
         )
         self.searchedIDitemLeft = pg.ScatterPlotItem()
         self.searchedIDitemLeft.setData(
-            [], [], symbol='s', pxMode=False, size=1,
-            brush=pg.mkBrush(color=(255,0,0,150)),
-            pen=pg.mkPen(width=2, color='r'), tip=None
+            [],
+            [],
+            symbol="s",
+            pxMode=False,
+            size=1,
+            brush=pg.mkBrush(color=(255, 0, 0, 150)),
+            pen=pg.mkPen(width=2, color="r"),
+            tip=None,
         )
         self.topLayerItems.append(self.searchedIDitemLeft)
         self.topLayerItemsRight.append(self.searchedIDitemRight)
 
-        
         # Brush circle img1
         self.ax1_BrushCircle = pg.ScatterPlotItem()
         self.ax1_BrushCircle.setData(
-            [], [], symbol='o', pxMode=False,
-            brush=pg.mkBrush((255,255,255,50)),
-            pen=pg.mkPen(width=2), tip=None
+            [],
+            [],
+            symbol="o",
+            pxMode=False,
+            brush=pg.mkBrush((255, 255, 255, 50)),
+            pen=pg.mkPen(width=2),
+            tip=None,
         )
         self.topLayerItems.append(self.ax1_BrushCircle)
 
         # Eraser circle img1
         self.ax1_EraserCircle = pg.ScatterPlotItem()
         self.ax1_EraserCircle.setData(
-            [], [], symbol='o', pxMode=False,
-            brush=None, pen=self.eraserCirclePen, tip=None
+            [],
+            [],
+            symbol="o",
+            pxMode=False,
+            brush=None,
+            pen=self.eraserCirclePen,
+            tip=None,
         )
         self.topLayerItems.append(self.ax1_EraserCircle)
 
         self.ax1_EraserX = pg.ScatterPlotItem()
         self.ax1_EraserX.setData(
-            [], [], symbol='x', pxMode=False, size=3,
-            brush=pg.mkBrush(color=(255,0,0,50)),
-            pen=pg.mkPen(width=1, color='r'), tip=None
+            [],
+            [],
+            symbol="x",
+            pxMode=False,
+            size=3,
+            brush=pg.mkBrush(color=(255, 0, 0, 50)),
+            pen=pg.mkPen(width=1, color="r"),
+            tip=None,
         )
         self.topLayerItems.append(self.ax1_EraserX)
 
@@ -1499,43 +1498,63 @@ class Graphics(PointsLayers):
         self.labelRoiCircItemLeft = widgets.LabelRoiCircularItem()
         self.labelRoiCircItemLeft.cleared = False
         self.labelRoiCircItemLeft.setData(
-            [], [], symbol='o', pxMode=False,
-            brush=pg.mkBrush(color=(255,0,0,0)),
-            pen=pg.mkPen(color='r', width=2), tip=None
+            [],
+            [],
+            symbol="o",
+            pxMode=False,
+            brush=pg.mkBrush(color=(255, 0, 0, 0)),
+            pen=pg.mkPen(color="r", width=2),
+            tip=None,
         )
         self.labelRoiCircItemRight = widgets.LabelRoiCircularItem()
         self.labelRoiCircItemRight.cleared = False
         self.labelRoiCircItemRight.setData(
-            [], [], symbol='o', pxMode=False,
-            brush=pg.mkBrush(color=(255,0,0,0)),
-            pen=pg.mkPen(color='r', width=2), tip=None
+            [],
+            [],
+            symbol="o",
+            pxMode=False,
+            brush=pg.mkBrush(color=(255, 0, 0, 0)),
+            pen=pg.mkPen(color="r", width=2),
+            tip=None,
         )
         self.topLayerItems.append(self.labelRoiCircItemLeft)
         self.topLayerItemsRight.append(self.labelRoiCircItemRight)
-        
+
         self.ax1_binnedIDs_ScatterPlot = widgets.BaseScatterPlotItem()
         self.ax1_binnedIDs_ScatterPlot.setData(
-            [], [], symbol='t', pxMode=False,
-            brush=pg.mkBrush((255,0,0,50)), size=15,
-            pen=pg.mkPen(width=3, color='r'), tip=None
+            [],
+            [],
+            symbol="t",
+            pxMode=False,
+            brush=pg.mkBrush((255, 0, 0, 50)),
+            size=15,
+            pen=pg.mkPen(width=3, color="r"),
+            tip=None,
         )
         self.topLayerItems.append(self.ax1_binnedIDs_ScatterPlot)
-        
+
         self.ax1_ripIDs_ScatterPlot = widgets.BaseScatterPlotItem()
         self.ax1_ripIDs_ScatterPlot.setData(
-            [], [], symbol='x', pxMode=False,
-            brush=pg.mkBrush((255,0,0,50)), size=15,
-            pen=pg.mkPen(width=2, color='r'), tip=None
+            [],
+            [],
+            symbol="x",
+            pxMode=False,
+            brush=pg.mkBrush((255, 0, 0, 50)),
+            size=15,
+            pen=pg.mkPen(width=2, color="r"),
+            tip=None,
         )
         self.topLayerItems.append(self.ax1_ripIDs_ScatterPlot)
 
         # Ruler plotItem and scatterItem
-        rulerPen = pg.mkPen(color='r', style=Qt.DashLine, width=2)
+        rulerPen = pg.mkPen(color="r", style=Qt.DashLine, width=2)
         self.ax1_rulerPlotItem = widgets.RulerPlotItem(pen=rulerPen)
         self.ax1_rulerAnchorsItem = pg.ScatterPlotItem(
-            symbol='o', size=9,
-            brush=pg.mkBrush((255,0,0,50)),
-            pen=pg.mkPen((255,0,0), width=2), tip=None
+            symbol="o",
+            size=9,
+            brush=pg.mkBrush((255, 0, 0, 50)),
+            pen=pg.mkPen((255, 0, 0), width=2),
+            tip=None,
         )
         self.topLayerItems.append(self.ax1_rulerPlotItem)
         self.topLayerItems.append(self.ax1_rulerPlotItem.labelItem)
@@ -1544,76 +1563,106 @@ class Graphics(PointsLayers):
         # Start point of polyline roi
         self.ax1_point_ScatterPlot = pg.ScatterPlotItem()
         self.ax1_point_ScatterPlot.setData(
-            [], [], symbol='o', pxMode=False, size=3,
-            pen=pg.mkPen(width=2, color='r'),
-            brush=pg.mkBrush((255,0,0,50)), tip=None
+            [],
+            [],
+            symbol="o",
+            pxMode=False,
+            size=3,
+            pen=pg.mkPen(width=2, color="r"),
+            brush=pg.mkBrush((255, 0, 0, 50)),
+            tip=None,
         )
         self.topLayerItems.append(self.ax1_point_ScatterPlot)
 
         # Experimental: scatter plot to add a point marker
         self.startPointPolyLineItem = pg.ScatterPlotItem()
         self.startPointPolyLineItem.setData(
-            [], [], symbol='o', size=9,
-            pen=pg.mkPen(width=2, color='r'),
-            brush=pg.mkBrush((255,0,0,50)),
-            hoverable=True, hoverBrush=pg.mkBrush((255,0,0,255)), tip=None
+            [],
+            [],
+            symbol="o",
+            size=9,
+            pen=pg.mkPen(width=2, color="r"),
+            brush=pg.mkBrush((255, 0, 0, 50)),
+            hoverable=True,
+            hoverBrush=pg.mkBrush((255, 0, 0, 255)),
+            tip=None,
         )
         self.topLayerItems.append(self.startPointPolyLineItem)
 
         # Eraser circle img2
         self.ax2_EraserCircle = pg.ScatterPlotItem()
         self.ax2_EraserCircle.setData(
-            [], [], symbol='o', pxMode=False, brush=None,
-            pen=self.eraserCirclePen, tip=None
+            [],
+            [],
+            symbol="o",
+            pxMode=False,
+            brush=None,
+            pen=self.eraserCirclePen,
+            tip=None,
         )
         self.ax2.addItem(self.ax2_EraserCircle)
         self.ax2_EraserX = pg.ScatterPlotItem()
         self.ax2_EraserX.setData(
-            [], [], symbol='x', pxMode=False, size=3,
-            brush=pg.mkBrush(color=(255,0,0,50)),
-            pen=pg.mkPen(width=1.5, color='r')
+            [],
+            [],
+            symbol="x",
+            pxMode=False,
+            size=3,
+            brush=pg.mkBrush(color=(255, 0, 0, 50)),
+            pen=pg.mkPen(width=1.5, color="r"),
         )
         self.ax2.addItem(self.ax2_EraserX)
 
         # Brush circle img2
         self.ax2_BrushCirclePen = pg.mkPen(width=2)
-        self.ax2_BrushCircleBrush = pg.mkBrush((255,255,255,50))
+        self.ax2_BrushCircleBrush = pg.mkBrush((255, 255, 255, 50))
         self.ax2_BrushCircle = pg.ScatterPlotItem()
         self.ax2_BrushCircle.setData(
-            [], [], symbol='o', pxMode=False,
+            [],
+            [],
+            symbol="o",
+            pxMode=False,
             brush=self.ax2_BrushCircleBrush,
-            pen=self.ax2_BrushCirclePen, tip=None
+            pen=self.ax2_BrushCirclePen,
+            tip=None,
         )
         self.ax2.addItem(self.ax2_BrushCircle)
 
         # Annotated metadata markers (ScatterPlotItem)
         self.ax2_binnedIDs_ScatterPlot = widgets.BaseScatterPlotItem()
         self.ax2_binnedIDs_ScatterPlot.setData(
-            [], [], symbol='t', pxMode=False,
-            brush=pg.mkBrush((255,0,0,50)), size=15,
-            pen=pg.mkPen(width=3, color='r'), tip=None
+            [],
+            [],
+            symbol="t",
+            pxMode=False,
+            brush=pg.mkBrush((255, 0, 0, 50)),
+            size=15,
+            pen=pg.mkPen(width=3, color="r"),
+            tip=None,
         )
         self.ax2.addItem(self.ax2_binnedIDs_ScatterPlot)
-        
+
         self.ax2_ripIDs_ScatterPlot = widgets.BaseScatterPlotItem()
         self.ax2_ripIDs_ScatterPlot.setData(
-            [], [], symbol='x', pxMode=False,
-            brush=pg.mkBrush((255,0,0,50)), size=15,
-            pen=pg.mkPen(width=2, color='r'), tip=None
+            [],
+            [],
+            symbol="x",
+            pxMode=False,
+            brush=pg.mkBrush((255, 0, 0, 50)),
+            size=15,
+            pen=pg.mkPen(width=2, color="r"),
+            tip=None,
         )
         self.ax2.addItem(self.ax2_ripIDs_ScatterPlot)
 
-        self.freeRoiItem = widgets.PlotCurveItem(
-            pen=pg.mkPen(color='r', width=2)
-        )
+        self.freeRoiItem = widgets.PlotCurveItem(pen=pg.mkPen(color="r", width=2))
         self.topLayerItems.append(self.freeRoiItem)
-        
+
         self.warnPairingItem = widgets.PlotCurveItem(
-            pen=pg.mkPen(color='r', width=5, style=Qt.DashLine),
-            pxMode=False
+            pen=pg.mkPen(color="r", width=5, style=Qt.DashLine), pxMode=False
         )
         self.topLayerItems.append(self.warnPairingItem)
-        
+
         self.exportMaskImageItem = pg.ImageItem()
 
         self.ghostContourItemLeft = widgets.GhostContourItem(self.ax1)
@@ -1621,25 +1670,25 @@ class Graphics(PointsLayers):
 
         self.ghostMaskItemLeft = widgets.GhostMaskItem(self.ax1)
         self.ghostMaskItemRight = widgets.GhostMaskItem(self.ax2)
-        
+
         self.manualBackgroundObjItem = widgets.GhostContourItem(
-            self.ax1, penColor='r', textColor='r'
+            self.ax1, penColor="r", textColor="r"
         )
         self.manualBackgroundImageItem = pg.ImageItem()
 
     def gui_createTextAnnotColors(self, r, g, b, custom=False):
         if custom:
             self.objLabelAnnotRgb = (int(r), int(g), int(b))
-            self.SphaseAnnotRgb = (int(r*0.9), int(r*0.9), int(b*0.9))
-            self.G1phaseAnnotRgba = (int(r*0.8), int(g*0.8), int(b*0.8), 220)
+            self.SphaseAnnotRgb = (int(r * 0.9), int(r * 0.9), int(b * 0.9))
+            self.G1phaseAnnotRgba = (int(r * 0.8), int(g * 0.8), int(b * 0.8), 220)
         else:
-            self.objLabelAnnotRgb = (255, 255, 255) # white
+            self.objLabelAnnotRgb = (255, 255, 255)  # white
             self.SphaseAnnotRgb = (229, 229, 229)
             self.G1phaseAnnotRgba = (204, 204, 204, 220)
-        self.dividedAnnotRgb = (245, 188, 1) # orange
+        self.dividedAnnotRgb = (245, 188, 1)  # orange
 
-        self.emptyBrush = pg.mkBrush((0,0,0,0))
-        self.emptyPen = pg.mkPen((0,0,0,0))
+        self.emptyBrush = pg.mkBrush((0, 0, 0, 0))
+        self.emptyPen = pg.mkPen((0, 0, 0, 0))
 
     def gui_createTextAnnotItems(self, allIDs):
         self.textAnnot = {}
@@ -1648,21 +1697,21 @@ class Graphics(PointsLayers):
         for ax in range(2):
             ax_textAnnot = annotate.TextAnnotations()
             ax_textAnnot.initFonts(self.fontSize)
-            ax_textAnnot.createItems(
-                isHighResolution, allIDs, pxMode=pxMode
-            )
+            ax_textAnnot.createItems(isHighResolution, allIDs, pxMode=pxMode)
             self.textAnnot[ax] = ax_textAnnot
 
     def gui_createZoomRectItem(self):
         Y, X = self.currentLab2D.shape
         # Label ROI rectangle
-        pen = pg.mkPen('r', width=3, style=Qt.DashLine)
+        pen = pg.mkPen("r", width=3, style=Qt.DashLine)
         self.zoomRectItem = widgets.ZoomROI(
-            (0,0), (0,0),
-            maxBounds=QRectF(QRect(0,0,X,Y)),
+            (0, 0),
+            (0, 0),
+            maxBounds=QRectF(QRect(0, 0, X, Y)),
             scaleSnap=True,
             translateSnap=True,
-            pen=pen, hoverPen=pen
+            pen=pen,
+            hoverPen=pen,
         )
 
     def gui_getLostObjScatterItem(self):
@@ -1670,8 +1719,7 @@ class Graphics(PointsLayers):
         brush = pg.mkBrush((*self.objLostAnnotRgb, 150))
         pen = pg.mkPen(self.objLostAnnotRgb, width=1)
         lostObjScatterItem = pg.ScatterPlotItem(
-            size=self.contLineWeight+1, pen=pen, 
-            brush=brush, pxMode=False, symbol='s'
+            size=self.contLineWeight + 1, pen=pen, brush=brush, pxMode=False, symbol="s"
         )
         return lostObjScatterItem
 
@@ -1680,8 +1728,7 @@ class Graphics(PointsLayers):
         brush = pg.mkBrush((*self.objLostTrackedAnnotRgb, 150))
         pen = pg.mkPen(self.objLostTrackedAnnotRgb, width=1)
         lostObjScatterItem = pg.ScatterPlotItem(
-            size=self.contLineWeight+1, pen=pen, 
-            brush=brush, pxMode=False, symbol='s'
+            size=self.contLineWeight + 1, pen=pen, brush=brush, pxMode=False, symbol="s"
         )
         return lostObjScatterItem
 
@@ -1698,13 +1745,21 @@ class Graphics(PointsLayers):
 
     def gui_setTextAnnotColors(self):
         self.textAnnot[0].setColors(
-            self.objLabelAnnotRgb, self.dividedAnnotRgb, self.SphaseAnnotRgb,
-            self.G1phaseAnnotRgba, self.objLostAnnotRgb, self.objLostTrackedAnnotRgb
+            self.objLabelAnnotRgb,
+            self.dividedAnnotRgb,
+            self.SphaseAnnotRgb,
+            self.G1phaseAnnotRgba,
+            self.objLostAnnotRgb,
+            self.objLostTrackedAnnotRgb,
         )
 
         self.textAnnot[1].setColors(
-            self.objLabelAnnotRgb, self.dividedAnnotRgb, self.SphaseAnnotRgb,
-            self.G1phaseAnnotRgba, self.objLostAnnotRgb, self.objLostTrackedAnnotRgb
+            self.objLabelAnnotRgb,
+            self.dividedAnnotRgb,
+            self.SphaseAnnotRgb,
+            self.G1phaseAnnotRgba,
+            self.objLostAnnotRgb,
+            self.objLostTrackedAnnotRgb,
         )
 
     def hideOverlayLabelsItems(self, specific=None):
@@ -1721,18 +1776,18 @@ class Graphics(PointsLayers):
         ticks = self.imgGrad.gradient.listTicks()
 
         self.img1ChannelGradients[self.user_ch_name] = {
-            'ticks': [(x, t.color.getRgb()) for t,x in ticks],
-            'mode': 'rgb'
+            "ticks": [(x, t.color.getRgb()) for t, x in ticks],
+            "mode": "rgb",
         }
-        
+
         self.df_settings = self.imgGrad.saveState(self.df_settings)
         self.df_settings.to_csv(self.settings_csv_path)
 
     def initColormapOverlayLayerItem(self, foregrColor, lutItem):
         if self.invertBwAction.isChecked():
-            bkgrColor = (255,255,255,255)
+            bkgrColor = (255, 255, 255, 255)
         else:
-            bkgrColor = (0,0,0,255)
+            bkgrColor = (0, 0, 0, 255)
         gradient = colors.get_pg_gradient((bkgrColor, foregrColor))
         lutItem.setGradient(gradient)
 
@@ -1773,9 +1828,7 @@ class Graphics(PointsLayers):
                 ol_data = {}
             for i, ol_ch in enumerate(ol_channels):
                 _, filename = self.getPathFromChName(ol_ch, posData)
-                ol_data[filename] = (
-                    posData.ol_data_dict[filename].copy()
-                )                        
+                ol_data[filename] = posData.ol_data_dict[filename].copy()
                 self.addFluoChNameContextMenuAction(ol_ch)
             posData.ol_data = ol_data
 
@@ -1788,22 +1841,21 @@ class Graphics(PointsLayers):
 
         if posData.ol_labels_data is None:
             posData.ol_labels_data = {}
-        if segmEndname == 'combined segm.':
-             posData.ol_labels_data['combined segm.'] = posData.combine_img_data
-             return
+        if segmEndname == "combined segm.":
+            posData.ol_labels_data["combined segm."] = posData.combine_img_data
+            return
         filePath, filename = load.get_path_from_endname(
             segmEndname, posData.images_path
         )
         self.logger.info(f'Loading "{segmEndname}.npz"...')
-        labelsData = np.load(filePath)['arr_0']
+        labelsData = np.load(filePath)["arr_0"]
         if posData.SizeT == 1:
             labelsData = labelsData[np.newaxis]
         if self.isSegm3D and labelsData.ndim == 3:
             # 2D segm --> stack to 3D
             T, Y, X = labelsData.shape
-            repeat = [labelsData]*posData.SizeZ
+            repeat = [labelsData] * posData.SizeZ
             labelsData = np.stack(repeat, axis=1)
-        
 
         posData.ol_labels_data[segmEndname] = labelsData
 
@@ -1812,7 +1864,7 @@ class Graphics(PointsLayers):
             return
         self.imgGrad.uncheckContLineWeightActions()
         w = self.sender().lineWeight
-        self.df_settings.at['mothBudLineSize', 'value'] = w
+        self.df_settings.at["mothBudLineSize", "value"] = w
         self.df_settings.to_csv(self.settings_csv_path)
         self._updateMothBudLineSize(w)
         self.updateAllImages()
@@ -1820,11 +1872,13 @@ class Graphics(PointsLayers):
     def mousePressColorButton(self, event):
         posData = self.data[self.pos_i]
         items = list(self.checkedOverlayChannels)
-        if len(items)>1:
+        if len(items) > 1:
             selectFluo = widgets.QDialogListbox(
-                'Select image',
-                'Select which fluorescence image you want to update the color of\n',
-                items, multiSelection=False, parent=self
+                "Select image",
+                "Select which fluorescence image you want to update the color of\n",
+                items,
+                multiSelection=False,
+                parent=self,
             )
             selectFluo.exec_()
             keys = selectFluo.selectedItemsText
@@ -1845,16 +1899,14 @@ class Graphics(PointsLayers):
                 self.loadOverlayData([channelName], addToExisting=True)
             else:
                 _, filename = self.getPathFromChName(channelName, posData)
-                posData.ol_data[filename] = (
-                    posData.ol_data_dict[filename].copy()
-                )
-            
-            self.checkedOverlayChannels.add(channelName)    
+                posData.ol_data[filename] = posData.ol_data_dict[filename].copy()
+
+            self.checkedOverlayChannels.add(channelName)
         else:
             self.checkedOverlayChannels.remove(channelName)
             imageItem = self.overlayLayersItems[channelName][0]
             imageItem.clear()
-        
+
         self.setOverlayChannelsToolbuttonsChecked()
         self.setOverlayItemsVisible()
         self.setRetainSizePolicyLutItems()
@@ -1863,29 +1915,29 @@ class Graphics(PointsLayers):
     def overlayChannelToolbuttonClicked(self, checked=False, toolbutton=None):
         if toolbutton is None:
             toolbutton = self.sender()
-        
-        n_checked_buttons = (
-            sum([b.isChecked() for b in self.allOverlayToolbuttons.values()])
+
+        n_checked_buttons = sum(
+            [b.isChecked() for b in self.allOverlayToolbuttons.values()]
         )
-        
+
         channelName = toolbutton.channelName()
-        
+
         if n_checked_buttons == 0 or self.overlayToolbar.isSingleChannel():
             # At least one button must be checked
             toolbutton.setChecked(True)
-        
+
         if self.overlayToolbar.isSingleChannel():
-            # Exclusive buttons 
+            # Exclusive buttons
             for channel, otherToolbutton in self.allOverlayToolbuttons.items():
                 if channel == channelName:
                     continue
 
                 otherToolbutton.setChecked(False)
-        
-        if self.overlayToolbar.isTransparent():            
+
+        if self.overlayToolbar.isTransparent():
             self.setOverlayImages()
             return
-        
+
         self.setOverlayItemsOpacities()
 
     def overlayLabelsDrawModeToggled(self, action):
@@ -1901,7 +1953,7 @@ class Graphics(PointsLayers):
                 if selectedLabelsEndnames is None:
                     selectedLabelsEndnames = self.askLabelsToOverlay()
                 if selectedLabelsEndnames is None:
-                    self.logger.info('Overlay labels cancelled.')
+                    self.logger.info("Overlay labels cancelled.")
                     self.overlayLabelsButton.setChecked(False)
                     return
                 for selectedEndname in selectedLabelsEndnames:
@@ -1919,7 +1971,7 @@ class Graphics(PointsLayers):
 
     def overlay_cb(self, checked):
         self.overlayToolbar.setVisible(checked)
-        
+
         self.UserNormAction, _, _ = self.getCheckNormAction()
         posData = self.data[self.pos_i]
         if checked:
@@ -1930,8 +1982,8 @@ class Graphics(PointsLayers):
                     self.overlayButton.setChecked(False)
                     self.overlayButton.toggled.connect(self.overlay_cb)
                     return
-                
-                success = self.loadOverlayData(selectedChannels)         
+
+                success = self.loadOverlayData(selectedChannels)
                 if not success:
                     return False
                 lastChannel = selectedChannels[-1]
@@ -1952,27 +2004,26 @@ class Graphics(PointsLayers):
             self.updateImageValueFormatter()
             self.enableOverlayWidgets(False)
             self.clearOverlayImageItems()
-            
-        
+
         self.setOverlayItemsVisible()
 
     def permanentGreedyCmapToggled(self, checked):
         if checked:
-            settings_value = 'yes'
+            settings_value = "yes"
         else:
             self.setLut()
             self.updateLookuptable()
             self.initLabelsImageItems()
-            settings_value = 'no'
-        
+            settings_value = "no"
+
         self.updateAllImages()
-        
+
         if self.isSnapshot:
-            option_name = 'permanent_greedy_lut_snapshots'
+            option_name = "permanent_greedy_lut_snapshots"
         else:
-            option_name = 'permanent_greedy_lut_timelapse'
-            
-        self.df_settings.at[option_name, 'value'] = settings_value
+            option_name = "permanent_greedy_lut_timelapse"
+
+        self.df_settings.at[option_name, "value"] = settings_value
         self.df_settings.to_csv(self.settings_csv_path)
 
     def removeAllItems(self):
@@ -1993,16 +2044,16 @@ class Graphics(PointsLayers):
         except Exception as e:
             pass
 
-        if hasattr(self, 'contoursImage'):
+        if hasattr(self, "contoursImage"):
             self.initContoursImage()
 
     def removeOverlayItems(self):
         self.lutItemsLayout.clear()
-        
+
         try:
             for toolbutton in self.allOverlayToolbuttonsByIdx.values():
                 self.overlayToolbar.removeAction(toolbutton.action)
-            
+
             self.overlayToolbuttonsSep.removeFromToolbar()
         except Exception as err:
             pass
@@ -2010,34 +2061,34 @@ class Graphics(PointsLayers):
     def restoreDefaultColors(self):
         try:
             color = self.defaultToolBarButtonColor
-            self.overlayButton.setStyleSheet(f'background-color: {color}')
+            self.overlayButton.setStyleSheet(f"background-color: {color}")
         except AttributeError:
             # traceback.print_exc()
             pass
 
     def restoreDefaultSettings(self):
         df = self.df_settings
-        df.at['contLineWeight', 'value'] = 1
-        df.at['mothBudLineSize', 'value'] = 1
-        df.at['mothBudLineColor', 'value'] = (255, 165, 0, 255)
-        df.at['contLineColor', 'value'] = (205, 0, 0, 220)
+        df.at["contLineWeight", "value"] = 1
+        df.at["mothBudLineSize", "value"] = 1
+        df.at["mothBudLineColor", "value"] = (255, 165, 0, 255)
+        df.at["contLineColor", "value"] = (205, 0, 0, 220)
 
         self._updateContColour((205, 0, 0, 220))
         self._updateMothBudLineColour((255, 165, 0, 255))
         self._updateMothBudLineSize(1)
         self._updateContLineThickness()
 
-        df.at['overlaySegmMasksAlpha', 'value'] = 0.3
-        df.at['img_cmap', 'value'] = 'grey'
-        self.imgCmap = self.imgGrad.cmaps['grey']
-        self.imgCmapName = 'grey'
-        self.labelsGrad.item.loadPreset('viridis')
-        df.at['labels_bkgrColor', 'value'] = (25, 25, 25)
-        
-        if df.at['is_bw_inverted', 'value'] == 'Yes':
+        df.at["overlaySegmMasksAlpha", "value"] = 0.3
+        df.at["img_cmap", "value"] = "grey"
+        self.imgCmap = self.imgGrad.cmaps["grey"]
+        self.imgCmapName = "grey"
+        self.labelsGrad.item.loadPreset("viridis")
+        df.at["labels_bkgrColor", "value"] = (25, 25, 25)
+
+        if df.at["is_bw_inverted", "value"] == "Yes":
             self.invertBw(update=False)
-        
-        df = df[~df.index.str.contains('lab_cmap')]
+
+        df = df[~df.index.str.contains("lab_cmap")]
         df.to_csv(self.settings_csv_path)
         self.imgGrad.restoreState(df)
         for items in self.overlayLayersItems.values():
@@ -2052,7 +2103,7 @@ class Graphics(PointsLayers):
 
     def saveBkgrColor(self, button):
         color = button.color().getRgb()[:3]
-        self.df_settings.at['labels_bkgrColor', 'value'] = color
+        self.df_settings.at["labels_bkgrColor", "value"] = color
         self.df_settings.to_csv(self.settings_csv_path)
         self.updateAllImages()
 
@@ -2064,32 +2115,32 @@ class Graphics(PointsLayers):
 
     def saveOverlayColor(self, button):
         rgb = button.color().getRgb()[:3]
-        rgb_text = '_'.join([str(val) for val in rgb])
-        self.df_settings.at[f'{button.channel}_rgb', 'value'] = rgb_text
+        rgb_text = "_".join([str(val) for val in rgb])
+        self.df_settings.at[f"{button.channel}_rgb", "value"] = rgb_text
         self.df_settings.to_csv(self.settings_csv_path)
 
     def saveTextIDsColors(self, button):
-        self.df_settings.at['textIDsColor', 'value'] = self.objLabelAnnotRgb
+        self.df_settings.at["textIDsColor", "value"] = self.objLabelAnnotRgb
         self.df_settings.to_csv(self.settings_csv_path)
 
     def saveTextLabelsColor(self, button):
         color = button.color().getRgb()[:3]
-        self.df_settings.at['labels_text_color', 'value'] = color
+        self.df_settings.at["labels_text_color", "value"] = color
         self.df_settings.to_csv(self.settings_csv_path)
 
     def segmNdimIndicatorClicked(self):
         ndimText = self.segmNdimIndicator.text()
-        if ndimText == '2D':
-            alternativeNdimText = '3D'
-            toggleText = 'activate'
+        if ndimText == "2D":
+            alternativeNdimText = "3D"
+            toggleText = "activate"
         else:
-            alternativeNdimText = '2D'
-            toggleText = 'de-activate'
+            alternativeNdimText = "2D"
+            toggleText = "de-activate"
         msg = widgets.myMessageBox(wrapText=False)
-        important_txt = ("""
+        important_txt = """
             The toggle to activate 3D segmentation is visible only when 
             the <code>Number of z-slices</code> is greater than 1.
-        """)
+        """
         txt = html_utils.paragraph(f"""
             This indicator shows that you are working with {ndimText} 
             segmentation masks.<br><br>
@@ -2104,12 +2155,14 @@ class Graphics(PointsLayers):
             <b>{toggleText}</b> the parameter called <code>Work with 3D 
             segmentation masks (z-stack)</code><br> 
             as indicated in the screenshot below<br>.
-            {html_utils.to_admonition(important_txt, admonition_type='note')}
+            {html_utils.to_admonition(important_txt, admonition_type="note")}
             <br>
         """)
         msg.information(
-            self, 'Segmentation nmber of dimensions info', txt,
-            image_paths=':toggle_3D_screenshot.png'
+            self,
+            "Segmentation nmber of dimensions info",
+            txt,
+            image_paths=":toggle_3D_screenshot.png",
         )
         self.segmNdimIndicator.setChecked(True)
 
@@ -2138,29 +2191,29 @@ class Graphics(PointsLayers):
         imageItem.setImage(self.contoursImage)
 
     def setLostObjectContour(self, obj):
-        allContours = self.getObjContours(obj, all_external=True)  
+        allContours = self.getObjContours(obj, all_external=True)
         for objContours in allContours:
-            xx = objContours[:,0] + 0.5
-            yy = objContours[:,1] + 0.5
-            data = [obj.label]*len(xx)
+            xx = objContours[:, 0] + 0.5
+            yy = objContours[:, 1] + 0.5
+            data = [obj.label] * len(xx)
             self.ax1_lostObjScatterItem.addPoints(xx, yy, data=data)
             self.ax2_lostObjScatterItem.addPoints(xx, yy)
 
     def setLut(self, shuffle=True):
-        self.lut = self.labelsGrad.item.colorMap().getLookupTable(0,1,255)     
+        self.lut = self.labelsGrad.item.colorMap().getLookupTable(0, 1, 255)
         if shuffle:
             np.random.shuffle(self.lut)
-        
+
         # Insert background color
-        if 'labels_bkgrColor' in self.df_settings.index:
-            rgbString = self.df_settings.at['labels_bkgrColor', 'value']
+        if "labels_bkgrColor" in self.df_settings.index:
+            rgbString = self.df_settings.at["labels_bkgrColor", "value"]
             try:
                 r, g, b = rgbString
             except Exception as e:
                 r, g, b = colors.rgb_str_to_values(rgbString)
         else:
             r, g, b = 25, 25, 25
-            self.df_settings.at['labels_bkgrColor', 'value'] = (r, g, b)
+            self.df_settings.at["labels_bkgrColor", "value"] = (r, g, b)
 
         self.lut = np.insert(self.lut, 0, [r, g, b], axis=0)
 
@@ -2172,18 +2225,18 @@ class Graphics(PointsLayers):
         toolbutton = self.allOverlayToolbuttons[channel]
         if not toolbutton.isChecked() or not toolbutton.isVisible():
             return
-        
+
         if value is None:
             value = scrollbar.value()
-            
+
         if imageItem is None:
             imageItem = scrollbar.imageItem
-            alpha = value/scrollbar.maximum()
+            alpha = value / scrollbar.maximum()
         elif value > 1:
-            alpha = value/scrollbar.maximum()
+            alpha = value / scrollbar.maximum()
         else:
             alpha = value
-        
+
         alpha_values = []
         activeOverlayImageItems = []
         for items in self.overlayLayersItems.values():
@@ -2194,15 +2247,15 @@ class Graphics(PointsLayers):
             elif not _toolbutton.isChecked() or not _toolbutton.isVisible():
                 continue
             else:
-                alpha_values.append(alphaSB.value()/alphaSB.maximum())
-            
+                alpha_values.append(alphaSB.value() / alphaSB.maximum())
+
             activeOverlayImageItems.append(imgItem)
-        
+
         opacities = colors.hierarchical_weights(alpha_values)[::-1]
-        
+
         for i, imgItem in enumerate(activeOverlayImageItems):
-            imgItem.setOpacity(opacities[i+1])
-            
+            imgItem.setOpacity(opacities[i + 1])
+
         self.img1.setOpacity(opacities[0], applyToLinked=False)
 
     def setOverlayChannelsToolbuttonsChecked(self):
@@ -2218,22 +2271,24 @@ class Graphics(PointsLayers):
             (255, 255, 0),
             (252, 72, 254),
             (49, 222, 134),
-            (22, 108, 27)
+            (22, 108, 27),
         ]
-        self.overlayCmap = matplotlib.colormaps['hsv']
+        self.overlayCmap = matplotlib.colormaps["hsv"]
         self.overlayRGBs.extend(
-            [tuple([round(c*255) for c in self.overlayCmap(i)][:3]) 
-            for i in np.linspace(0,1,8)]
+            [
+                tuple([round(c * 255) for c in self.overlayCmap(i)][:3])
+                for i in np.linspace(0, 1, 8)
+            ]
         )
 
     def setOverlayImages(self, frame_i=None):
         if not self.overlayButton.isChecked():
             return
-        
+
         posData = self.data[self.pos_i]
         if posData.ol_data is None:
             return
-        
+
         rgba_imgs_info = {}
         for filename in posData.ol_data:
             chName = myutils.get_chname_from_basename(
@@ -2241,7 +2296,7 @@ class Graphics(PointsLayers):
             )
             if chName not in self.checkedOverlayChannels:
                 continue
-            
+
             items = self.overlayLayersItems[chName]
             imageItem, lutItem, alphaSB = items[:3]
 
@@ -2251,19 +2306,19 @@ class Graphics(PointsLayers):
                 toolbutton = items[3]
                 if not toolbutton.isChecked():
                     continue
-                alpha_val = alphaSB.value()/alphaSB.maximum()
+                alpha_val = alphaSB.value() / alphaSB.maximum()
                 ol_img = skimage.exposure.rescale_intensity(
                     ol_img, out_range=(0.0, 1.0)
                 )
-                out_range_min, out_range_max = lutItem.getLevels()                
+                out_range_min, out_range_max = lutItem.getLevels()
                 rgba_imgs_info[chName] = (ol_img, alpha_val, lutItem)
             else:
                 self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
                 imageItem.setImage(ol_img)
-        
+
         if not self.overlayToolbar.isTransparent():
-            return            
-        
+            return
+
         alpha_values = []
         images = []
         luts = []
@@ -2271,43 +2326,38 @@ class Graphics(PointsLayers):
             ol_img, alpha_val, lutItem = info
             alpha_values.append(alpha_val)
             images.append(ol_img)
-            luts.append(lutItem.gradient.getLookupTable(256, alpha=255)/255)
-        
+            luts.append(lutItem.gradient.getLookupTable(256, alpha=255) / 255)
+
         weights = colors.hierarchical_weights(alpha_values)
-        
+
         if self.baseLayerToolbutton.isChecked():
             image1 = self._getImageupdateAllImages()
-            image1 = skimage.exposure.rescale_intensity(
-                image1, out_range=(0.0, 1.0)
-            )        
+            image1 = skimage.exposure.rescale_intensity(image1, out_range=(0.0, 1.0))
             images.append(image1)
-            baseLut = (
-                self.imgGrad.gradient.getLookupTable(256, alpha=255)/255
-            )
+            baseLut = self.imgGrad.gradient.getLookupTable(256, alpha=255) / 255
             luts.append(baseLut)
-        
+
         images_rgba = []
         for img, lut in zip(images, luts):
-            rgba = colors.grayscale_apply_lut(img, lut)            
+            rgba = colors.grayscale_apply_lut(img, lut)
             images_rgba.append(rgba)
-        
-        rgba_merge = colors.hierarchical_blend(images_rgba, weights)        
+
+        rgba_merge = colors.hierarchical_blend(images_rgba, weights)
         self.rgbaImg1.setImage(rgba_merge)
 
     def setOverlayItemsOpacities(self):
-        n_checked_buttons = (
-            sum([b.isChecked() for b in self.allOverlayToolbuttons.values()])
+        n_checked_buttons = sum(
+            [b.isChecked() for b in self.allOverlayToolbuttons.values()]
         )
-        
+
         isSingleChannel = (
-            self.overlayToolbar.isSingleChannel()
-            or n_checked_buttons == 1
+            self.overlayToolbar.isSingleChannel() or n_checked_buttons == 1
         )
-        
+
         channel_opacity_mapper = self.getOpacitiesFromAlphaScrollbarValues()
-        
+
         # Set opacity of every layer accordingly
-        for channel, otherToolbutton in self.allOverlayToolbuttons.items():          
+        for channel, otherToolbutton in self.allOverlayToolbuttons.items():
             if channel == self.user_ch_name:
                 otherImageItem = self.img1
                 alphaScrollbar = None
@@ -2317,24 +2367,24 @@ class Graphics(PointsLayers):
                 otherImageItem = otherItems[0]
                 alphaScrollbar = otherItems[2]
                 # alpha_value = alphaScrollbar.value()/alphaScrollbar.maximum()
-            
+
             if otherToolbutton.isChecked() and isSingleChannel:
                 op_val = 1.0
             elif otherToolbutton.isChecked():
                 op_val = channel_opacity_mapper[channel]
             else:
                 op_val = 0.0
-            
+
             if op_val == 0:
                 op_val = 0.01
 
             op_val = op_val if op_val < 1.0 else 0.999
-            
+
             otherImageItem.setOpacity(op_val, applyToLinked=False)
-            
+
             if alphaScrollbar is None:
                 continue
-            
+
             alphaScrollbar.setDisabled(bool(op_val == 0))
 
     def setOverlayItemsVisible(self):
@@ -2343,11 +2393,11 @@ class Graphics(PointsLayers):
             lutItem.hide()
             alphaSB.hide()
             alphaSB.label.hide()
-            toolbutton.setVisible(False)    
-        
+            toolbutton.setVisible(False)
+
         if not self.overlayButton.isChecked():
             return
-        
+
         for channel, items in self.overlayLayersItems.items():
             _, lutItem, alphaSB, toolbutton = items[:4]
             if channel in self.checkedOverlayChannels:
@@ -2360,7 +2410,7 @@ class Graphics(PointsLayers):
         if not self.overlayLabelsButton.isChecked():
             self.hideOverlayLabelsItems(specific=specific)
             return
-        
+
         if specific is None:
             specific = self.drawModeOverlayLabelsChannels.keys()
 
@@ -2370,47 +2420,44 @@ class Graphics(PointsLayers):
             items = self.overlayLabelsItems[segmEndname]
             imageItem, contoursItem, gradItem = items
             contoursItem.clear()
-            if drawMode == 'Draw contours':
+            if drawMode == "Draw contours":
                 for obj in skimage.measure.regionprops(ol_lab):
-                    contours = self.getObjContours(
-                        obj, all_external=True
-                    )
+                    contours = self.getObjContours(obj, all_external=True)
                     for cont in contours:
-                        contoursItem.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
-            elif drawMode == 'Overlay labels':
+                        contoursItem.addPoints(cont[:, 0] + 0.5, cont[:, 1] + 0.5)
+            elif drawMode == "Overlay labels":
                 imageItem.setImage(ol_lab, autoLevels=False)
         self.showOverlayLabelsItems(specific=specific)
 
-    def setOverlayLabelsItemsVisible(self, checked):  
+    def setOverlayLabelsItemsVisible(self, checked):
         for _segmEndname, drawMode in self.drawModeOverlayLabelsChannels.items():
             items = self.overlayLabelsItems[_segmEndname]
             gradItem = items[-1]
             gradItem.hide()
-        
+
         if checked:
             segmEndname = self.sender().text()
             gradItem = self.overlayLabelsItems[segmEndname][-1]
             gradItem.show()
 
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
-        if not hasattr(self, 'currentLab2D'):
+        if not hasattr(self, "currentLab2D"):
             return
 
         how = self.drawIDsContComboBox.currentText()
-        isOverlaySegmLeftActive = how.find('overlay segm. masks') != -1
+        isOverlaySegmLeftActive = how.find("overlay segm. masks") != -1
 
         how_ax2 = self.getAnnotateHowRightImage()
         isOverlaySegmRightActive = (
-            how_ax2.find('overlay segm. masks') != -1
+            how_ax2.find("overlay segm. masks") != -1
             and self.labelsGrad.showRightImgAction.isChecked()
         )
 
         isOverlaySegmActive = (
-            isOverlaySegmLeftActive or isOverlaySegmRightActive
-            or force
+            isOverlaySegmLeftActive or isOverlaySegmRightActive or force
         )
         if not isOverlaySegmActive and not forceIfNotActive:
-            return 
+            return
 
         alpha = self.imgGrad.labelsAlphaSlider.value()
         if alpha == 0:
@@ -2420,23 +2467,24 @@ class Graphics(PointsLayers):
         maxID = max(posData.IDs, default=0)
 
         if maxID >= len(self.lut):
-            self.extendLabelsLUT(maxID+10)
+            self.extendLabelsLUT(maxID + 10)
 
         currentLab2D = self.currentLab2D
         if isOverlaySegmLeftActive:
             self.labelsLayerImg1.setImage(currentLab2D, autoLevels=False)
 
-        if isOverlaySegmRightActive: 
+        if isOverlaySegmRightActive:
             self.labelsLayerRightImg.setImage(currentLab2D, autoLevels=False)
 
     def setOverlaySingleChannel(self, *args, **kwargs):
         if self.overlayToolbar.isSingleChannel():
             self.overlayToolbarAreChannelsChecked = {
-                channel:toolbutton.isChecked() 
+                channel: toolbutton.isChecked()
                 for channel, toolbutton in self.allOverlayToolbuttons.items()
             }
             firstActiveToolbutton = [
-                toolbutton for toolbutton in self.allOverlayToolbuttons.values()
+                toolbutton
+                for toolbutton in self.allOverlayToolbuttons.values()
                 if toolbutton.isChecked()
             ][0]
             firstActiveToolbutton.click()
@@ -2444,53 +2492,45 @@ class Graphics(PointsLayers):
             for ch, checked in self.overlayToolbarAreChannelsChecked.items():
                 toolbutton = self.allOverlayToolbuttons[ch]
                 toolbutton.setChecked(checked)
-            
+
             self.setOverlayItemsOpacities()
 
     def setOverlayTransparency(self, transparent: bool):
         opacity = float(transparent)
         opacity = opacity if opacity < 1.0 else 0.999
         self.rgbaImg1.setOpacity(opacity)
-        
+
         if transparent:
             self.img1.setOpacity(0.001, applyToLinked=False)
             self.imgGrad.sigLookupTableChanged.connect(
                 self.updateTransparentOverlayRgba
             )
-            self.imgGrad.sigLevelsChanged.connect(
-                self.updateTransparentOverlayRgba
-            )
-        
+            self.imgGrad.sigLevelsChanged.connect(self.updateTransparentOverlayRgba)
+
         for channel, items in self.overlayLayersItems.items():
             imageItem, lutItem, alphaSB = items[:3]
             if transparent:
                 alphaSB.valueChanged.disconnect()
-                alphaSB.valueChanged.connect(
-                    self.updateTransparentOverlayRgba
-                )
-                lutItem.sigLookupTableChanged.connect(
-                    self.updateTransparentOverlayRgba
-                )
-                lutItem.sigLevelsChanged.connect(
-                    self.updateTransparentOverlayRgba
-                )
+                alphaSB.valueChanged.connect(self.updateTransparentOverlayRgba)
+                lutItem.sigLookupTableChanged.connect(self.updateTransparentOverlayRgba)
+                lutItem.sigLevelsChanged.connect(self.updateTransparentOverlayRgba)
                 imageItem.setOpacity(0)
 
         if not transparent:
             self.setOverlayItemsOpacities()
-        
+
         self.setOverlayImages()
 
     def setPermanentGreedyCmapPreferences(self):
         if self.isSnapshot:
-            option_name = 'permanent_greedy_lut_snapshots'
+            option_name = "permanent_greedy_lut_snapshots"
         else:
-            option_name = 'permanent_greedy_lut_timelapse'
+            option_name = "permanent_greedy_lut_timelapse"
 
         if option_name not in self.df_settings.index:
             return
-        
-        checked = self.df_settings.at[option_name, 'value'] == 'yes'
+
+        checked = self.df_settings.at[option_name, "value"] == "yes"
         self.labelsGrad.permanentGreedyCmapAction.setChecked(checked)
 
     def setRetainSizePolicyLutItems(self):
@@ -2504,12 +2544,12 @@ class Graphics(PointsLayers):
     def setTrackedLostObjectContour(self, obj):
         if self.isExportingVideo:
             return
-        
-        allContours = self.getObjContours(obj, all_external=True)  
+
+        allContours = self.getObjContours(obj, all_external=True)
         for objContours in allContours:
-            xx = objContours[:,0] + 0.5
-            yy = objContours[:,1] + 0.5
-            data = [obj.label]*len(xx)
+            xx = objContours[:, 0] + 0.5
+            yy = objContours[:, 1] + 0.5
+            data = [obj.label] * len(xx)
             self.ax1_lostTrackedScatterItem.addPoints(xx, yy, data=data)
             self.ax2_lostTrackedScatterItem.addPoints(xx, yy)
 
@@ -2535,9 +2575,9 @@ class Graphics(PointsLayers):
         for segmEndname in specific:
             imageItem, contoursItem, gradItem = self.overlayLabelsItems[segmEndname]
             drawMode = self.drawModeOverlayLabelsChannels[segmEndname]
-            if drawMode == 'Draw contours':
+            if drawMode == "Draw contours":
                 contoursItem.setVisible(True)
-            elif drawMode == 'Overlay labels':
+            elif drawMode == "Overlay labels":
                 imageItem.setVisible(True)
                 gradItem.setVisible(True)
 
@@ -2562,7 +2602,7 @@ class Graphics(PointsLayers):
 
     def updateContColour(self, colorButton):
         color = colorButton.color().getRgb()
-        self.df_settings.at['contLineColor', 'value'] = str(color)
+        self.df_settings.at["contLineColor", "value"] = str(color)
         self._updateContColour(color)
         self.updateAllImages()
 
@@ -2570,20 +2610,20 @@ class Graphics(PointsLayers):
         imageItem = self.getContoursImageItem(ax)
         if imageItem is None:
             return
-        
-        if not hasattr(self, 'contoursImage'):
+
+        if not hasattr(self, "contoursImage"):
             self.initContoursImage()
         else:
             self.contoursImage[:] = 0
-        
+
         contours = []
-        for obj in skimage.measure.regionprops(self.currentLab2D):    
+        for obj in skimage.measure.regionprops(self.currentLab2D):
             obj_contours = self.getObjContours(
-                obj, 
-                all_external=True, 
+                obj,
+                all_external=True,
                 force_calc=compute,
-                include_internal=self.showAllContoursToggle.isChecked()
-            )  
+                include_internal=self.showAllContoursToggle.isChecked(),
+            )
             contours.extend(obj_contours)
 
         thickness = self.contLineWeight
@@ -2620,22 +2660,22 @@ class Graphics(PointsLayers):
         try:
             # lut = self.lut[:lenNewLut].copy()
             for ID in posData.binnedIDs:
-                lut[ID] = lut[ID]*0.2
+                lut[ID] = lut[ID] * 0.2
 
             for ID in posData.ripIDs:
-                lut[ID] = lut[ID]*0.2
+                lut[ID] = lut[ID] * 0.2
         except Exception as e:
             err_str = traceback.format_exc()
-            print('='*30)
+            print("=" * 30)
             self.logger.info(err_str)
-            print('='*30)
+            print("=" * 30)
 
         if updateLevels:
             self.img2.setLevels([0, len(lut)])
-        
+
         if self.keepIDsButton.isChecked():
-            lut = np.round(lut*0.3).astype(np.uint8)
-            keptLut = np.round(lut[self.keptObjectsIDs]/0.3).astype(np.uint8)
+            lut = np.round(lut * 0.3).astype(np.uint8)
+            keptLut = np.round(lut[self.keptObjectsIDs] / 0.3).astype(np.uint8)
             lut[self.keptObjectsIDs] = keptLut
 
         self.img2.setLookupTable(lut)
@@ -2645,37 +2685,39 @@ class Graphics(PointsLayers):
             imageItem = self.getLostObjImageItem(ax)
             if imageItem is None:
                 return
-        
-        if not hasattr(self, 'lostObjContoursImage'):
+
+        if not hasattr(self, "lostObjContoursImage"):
             self.initLostObjContoursImage()
         else:
             self.lostObjContoursImage[:] = 0
 
         if delROIsIDs is None:
             delROIsIDs = set()
-        
+
         posData = self.data[self.pos_i]
-        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
+        prev_rp = posData.allData_li[posData.frame_i - 1]["regionprops"]
+        prev_IDs_idxs = posData.allData_li[posData.frame_i - 1]["IDs_idxs"]
         if posData.whitelist is not None and posData.whitelist.whitelistIDs is not None:
-            whitelist = posData.whitelist.whitelistIDs[posData.frame_i-1]
+            whitelist = posData.whitelist.whitelistIDs[posData.frame_i - 1]
         else:
             whitelist = None
 
         contours = []
         for lostID in posData.lost_IDs:
-            if lostID in delROIsIDs or (whitelist is not None and lostID not in whitelist):
+            if lostID in delROIsIDs or (
+                whitelist is not None and lostID not in whitelist
+            ):
                 continue
-            
+
             obj = prev_rp[prev_IDs_idxs[lostID]]
             if not self.isObjVisible(obj.bbox):
                 continue
-        
+
             obj_contours = self.getObjContours(obj, all_external=True)
-            
+
             if ax == 0:
                 self.addLostObjsToLostObjImage(obj, lostID)
-                
+
             contours.extend(obj_contours)
 
         if not draw:
@@ -2684,35 +2726,35 @@ class Graphics(PointsLayers):
         self.drawLostObjContoursImage(imageItem, contours)
 
     def updateLostTrackedContoursImage(
-            self, ax, delROIsIDs=None, tracked_lost_IDs=None
-        ):
+        self, ax, delROIsIDs=None, tracked_lost_IDs=None
+    ):
         imageItem = self.getLostTrackedObjImageItem(ax)
         if imageItem is None:
             return
-        
-        if not hasattr(self, 'lostTrackedObjContoursImage'):
+
+        if not hasattr(self, "lostTrackedObjContoursImage"):
             self.initLostTrackedObjContoursImage()
         else:
             self.lostTrackedObjContoursImage[:] = 0
-        
+
         if delROIsIDs is None:
             delROIsIDs = set()
-        
+
         posData = self.data[self.pos_i]
         if tracked_lost_IDs is None:
             tracked_lost_IDs = self.getTrackedLostIDs()
-            
-        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
+
+        prev_rp = posData.allData_li[posData.frame_i - 1]["regionprops"]
+        prev_IDs_idxs = posData.allData_li[posData.frame_i - 1]["IDs_idxs"]
         contours = []
         for tracked_lost_ID in tracked_lost_IDs:
             if tracked_lost_ID in delROIsIDs:
                 continue
-            
+
             obj = prev_rp[prev_IDs_idxs[tracked_lost_ID]]
             if not self.isObjVisible(obj.bbox):
                 continue
-        
+
             obj_contours = self.getObjContours(obj, all_external=True)
             contours.extend(obj_contours)
 
@@ -2720,7 +2762,7 @@ class Graphics(PointsLayers):
 
     def updateMothBudLineColour(self, colorButton):
         color = colorButton.color().getRgb()
-        self.df_settings.at['mothBudLineColor', 'value'] = str(color)
+        self.df_settings.at["mothBudLineColor", "value"] = str(color)
         self._updateMothBudLineColour(color)
         self.updateAllImages()
 
@@ -2730,7 +2772,7 @@ class Graphics(PointsLayers):
         for items in self.overlayLayersItems.values():
             lutItem = items[1]
             lutItem.textColorButton.setColor((r, g, b))
-        self.gui_createTextAnnotColors(r,g,b, custom=True)
+        self.gui_createTextAnnotColors(r, g, b, custom=True)
         self.gui_setTextAnnotColors()
         self.updateAllImages()
 

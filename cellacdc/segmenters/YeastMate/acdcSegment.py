@@ -15,32 +15,31 @@ from yeastmatedetector.inference import YeastMatePredictor
 from cellacdc.core import getBaseCca_df
 from cellacdc import user_profile_path
 
+
 class Model:
     def __init__(self):
-        model_path = os.path.join(str(user_profile_path), f'acdc-YeastMate')
-        yaml_path = os.path.join(model_path, 'yeastmate.yaml')
-        weights_path = os.path.join(model_path, 'yeastmate_weights.pth')
+        model_path = os.path.join(str(user_profile_path), f"acdc-YeastMate")
+        yaml_path = os.path.join(model_path, "yeastmate.yaml")
+        weights_path = os.path.join(model_path, "yeastmate_weights.pth")
 
-        self.model = YeastMatePredictor(
-            yaml_path,
-            weights_path
-        )
+        self.model = YeastMatePredictor(yaml_path, weights_path)
 
     def segment(
-            self, image,
-            score_threshold_0=0.9,
-            score_thresholds_1=0.75,
-            score_thresholds_2=0.75,
-            pixel_size=110,
-            reference_pixel_size=110,
-            lower_quantile=1.5,
-            upper_quantile=98.5
-        ):
+        self,
+        image,
+        score_threshold_0=0.9,
+        score_thresholds_1=0.75,
+        score_thresholds_2=0.75,
+        pixel_size=110,
+        reference_pixel_size=110,
+        lower_quantile=1.5,
+        upper_quantile=98.5,
+    ):
 
         score_thresholds = {
-            0: score_threshold_0, 
+            0: score_threshold_0,
             1: score_thresholds_1,
-            2: score_thresholds_2
+            2: score_thresholds_2,
         }
 
         detections, lab = self.model.inference(
@@ -49,7 +48,7 @@ class Model:
             pixel_size=pixel_size,
             reference_pixel_size=reference_pixel_size,
             lower_quantile=lower_quantile,
-            upper_quantile=upper_quantile
+            upper_quantile=upper_quantile,
         )
         return lab
 
@@ -68,15 +67,15 @@ class Model:
             if info is None:
                 continue
 
-            obj_class = info.get('class')
+            obj_class = info.get("class")
             if len(obj_class) < 2:
                 continue
 
-            is_budding = float(obj_class[1])>2
+            is_budding = float(obj_class[1]) > 2
             if not is_budding:
                 continue
 
-            links = info.get('links')
+            links = info.get("links")
             if not links:
                 continue
 
@@ -85,7 +84,7 @@ class Model:
             if mother_bud_info is None:
                 continue
 
-            mother_bud_ids = mother_bud_info.get('links')
+            mother_bud_ids = mother_bud_info.get("links")
             if mother_bud_ids is None:
                 continue
 
@@ -110,14 +109,15 @@ class Model:
             if budID not in cca_df.index:
                 continue
 
-            cca_df.at[mothID, 'relative_ID'] = budID
-            cca_df.at[mothID, 'cell_cycle_stage'] = 'S'
+            cca_df.at[mothID, "relative_ID"] = budID
+            cca_df.at[mothID, "cell_cycle_stage"] = "S"
 
-            cca_df.at[budID, 'relative_ID'] = mothID
-            cca_df.at[budID, 'cell_cycle_stage'] = 'S'
-            cca_df.at[budID, 'relationship'] = 'bud'
-            cca_df.at[budID, 'generation_num'] = 0
+            cca_df.at[budID, "relative_ID"] = mothID
+            cca_df.at[budID, "cell_cycle_stage"] = "S"
+            cca_df.at[budID, "relationship"] = "bud"
+            cca_df.at[budID, "generation_num"] = 0
         return cca_df
 
+
 def url_help():
-    return 'https://github.com/hoerlteam/YeastMate/blob/main/examples/python_detection.ipynb'
+    return "https://github.com/hoerlteam/YeastMate/blob/main/examples/python_detection.ipynb"

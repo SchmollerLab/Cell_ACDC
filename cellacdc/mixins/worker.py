@@ -13,12 +13,13 @@ from cellacdc import apps, exception_handler, html_utils, issues_url, widgets, w
 
 from .status_hover import StatusHover
 
+
 class Worker(StatusHover):
     """Extracted from guiWin."""
 
     def autoSaveWorkerClosed(self, worker):
         if self.autoSaveActiveWorkers:
-            self.logger.info('Autosaving worker closed.')
+            self.logger.info("Autosaving worker closed.")
             try:
                 self.autoSaveActiveWorkers.remove(worker)
             except Exception as e:
@@ -44,7 +45,7 @@ class Worker(StatusHover):
             raise error
         except Exception as err:
             self.logger.exception(traceback.format_exc())
-        
+
         href = f'<a href="{issues_url}">GitHub page</a>'
         txt = html_utils.paragraph(f"""
             Unfortunately the experimental feature 
@@ -59,19 +60,21 @@ class Worker(StatusHover):
         """)
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(
-            self, 'Experimental feature error', txt,
+            self,
+            "Experimental feature error",
+            txt,
             commands=(self.log_path,),
-            path_to_browse=self.logs_path
+            path_to_browse=self.logs_path,
         )
         self.disableCcaIntegrityChecker()
 
-    def gui_createAutoSaveWorker(self):        
-        if not hasattr(self, 'data'):
+    def gui_createAutoSaveWorker(self):
+        if not hasattr(self, "data"):
             return
-        
+
         if not self.isDataLoaded:
-            return 
-        
+            return
+
         if self.autoSaveActiveWorkers:
             garbage = self.autoSaveActiveWorkers[-1]
             self.autoSaveGarbageWorkers.append(garbage)
@@ -97,16 +100,14 @@ class Worker(StatusHover):
         autoSaveWorker.sigDone.connect(self.autoSaveWorkerDone)
         autoSaveWorker.progress.connect(self.workerProgress)
         autoSaveWorker.finished.connect(self.autoSaveWorkerClosed)
-        autoSaveWorker.sigAutoSaveCannotProceed.connect(
-            self.turnOffAutoSaveWorker
-        )
-        
+        autoSaveWorker.sigAutoSaveCannotProceed.connect(self.turnOffAutoSaveWorker)
+
         autoSaveThread.started.connect(autoSaveWorker.run)
         autoSaveThread.start()
 
         self.autoSaveActiveWorkers.append((autoSaveWorker, autoSaveThread))
 
-        self.logger.info('Autosaving worker started.')
+        self.logger.info("Autosaving worker started.")
 
     def gui_createLazyLoader(self):
         if not self.lazyLoader is None:
@@ -118,8 +119,10 @@ class Worker(StatusHover):
         self.waitReadH5cond = QWaitCondition()
         self.readH5mutex = QMutex()
         self.lazyLoader = workers.LazyLoader(
-            self.lazyLoaderMutex, self.lazyLoaderWaitCond, 
-            self.waitReadH5cond, self.readH5mutex
+            self.lazyLoaderMutex,
+            self.lazyLoaderWaitCond,
+            self.waitReadH5cond,
+            self.readH5mutex,
         )
         self.lazyLoader.moveToThread(self.lazyLoaderThread)
         self.lazyLoader.wait = True
@@ -156,11 +159,11 @@ class Worker(StatusHover):
         self.storeStateWorker.sigDone.connect(self.storeStateWorkerDone)
         self.storeStateWorker.progress.connect(self.workerProgress)
         self.storeStateWorker.finished.connect(self.storeStateWorkerClosed)
-        
+
         self.storeStateThread.started.connect(self.storeStateWorker.run)
         self.storeStateThread.start()
 
-        self.logger.info('Store state worker started.')
+        self.logger.info("Store state worker started.")
 
     def lazyLoaderCritical(self, error):
         if self.progressWin is not None:
@@ -171,7 +174,7 @@ class Worker(StatusHover):
         raise error
 
     def lazyLoaderFinished(self):
-        self.logger.info('Load chunk data worker done.')
+        self.logger.info("Load chunk data worker done.")
         if self.lazyLoader.updateImgOnFinished:
             self.updateAllImages()
 
@@ -182,18 +185,16 @@ class Worker(StatusHover):
 
     def lazyLoaderWorkerClosed(self):
         if self.lazyLoader.salute:
-            self.logger.info('Cell-ACDC GUI closed.')     
+            self.logger.info("Cell-ACDC GUI closed.")
             self.sigClosed.emit(self)
-        
+
         self.lazyLoader = None
 
     def loadingNewChunk(self, chunk_range):
         coord0_chunk, coord1_chunk = chunk_range
-        desc = (
-            f'Loading new window, range = ({coord0_chunk}, {coord1_chunk})...'
-        )
+        desc = f"Loading new window, range = ({coord0_chunk}, {coord1_chunk})..."
         self.progressWin = apps.QDialogWorkerProgress(
-            title='Loading data...', parent=self, pbarDesc=desc
+            title="Loading data...", parent=self, pbarDesc=desc
         )
         self.progressWin.mainPbar.setMaximum(0)
         self.progressWin.show(self.app)
@@ -202,9 +203,7 @@ class Worker(StatusHover):
         self.updateAllImages()
 
     def saveDataWorkerCritical(self, error):
-        self.logger.warning(
-            'Saving process stopped because of critical error.'
-        )
+        self.logger.warning("Saving process stopped because of critical error.")
         self.saveWin.aborted = True
         self.worker.finished.emit()
         self.workerCritical(error)
@@ -214,21 +213,25 @@ class Worker(StatusHover):
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
-        
+
         self.setStatusBarLabel()
-        self.logger.info('Pre-processed data saved!')
-        self.titleLabel.setText('Pre-processed data saved!', color='w')
+        self.logger.info("Pre-processed data saved!")
+        self.titleLabel.setText("Pre-processed data saved!", color="w")
 
     def startPostProcessSegmWorker(
-            self, postProcessKwargs, customPostProcessGroupedFeatures, 
-            customPostProcessFeatures
-        ):
+        self,
+        postProcessKwargs,
+        customPostProcessGroupedFeatures,
+        customPostProcessFeatures,
+    ):
         self.thread = QThread()
         self.postProcessWorker = workers.PostProcessSegmWorker(
-            postProcessKwargs, customPostProcessGroupedFeatures, 
-            customPostProcessFeatures, self
+            postProcessKwargs,
+            customPostProcessGroupedFeatures,
+            customPostProcessFeatures,
+            self,
         )
-        
+
         self.postProcessWorker.moveToThread(self.thread)
         self.postProcessWorker.signals.finished.connect(self.thread.quit)
         self.postProcessWorker.signals.finished.connect(
@@ -243,12 +246,8 @@ class Worker(StatusHover):
         self.postProcessWorker.signals.initProgressBar.connect(
             self.workerInitProgressbar
         )
-        self.postProcessWorker.signals.progressBar.connect(
-            self.workerUpdateProgressbar
-        )
-        self.postProcessWorker.signals.critical.connect(
-            self.workerCritical
-        )
+        self.postProcessWorker.signals.progressBar.connect(self.workerUpdateProgressbar)
+        self.postProcessWorker.signals.critical.connect(self.workerCritical)
 
         self.thread.started.connect(self.postProcessWorker.run)
         self.thread.start()
@@ -273,9 +272,7 @@ class Worker(StatusHover):
 
     def startTrackingWorker(self, posData, video_to_track):
         self.thread = QThread()
-        self.trackingWorker = workers.trackingWorker(
-            posData, self, video_to_track
-        )
+        self.trackingWorker = workers.trackingWorker(posData, self, video_to_track)
         self.trackingWorker.moveToThread(self.thread)
         self.trackingWorker.finished.connect(self.thread.quit)
         self.trackingWorker.finished.connect(self.trackingWorker.deleteLater)
@@ -283,15 +280,9 @@ class Worker(StatusHover):
 
         # Custom signals
         self.trackingWorker.signals.progress = self.trackingWorker.progress
-        self.trackingWorker.signals.progressBar.connect(
-            self.workerUpdateProgressbar
-        )
-        self.trackingWorker.signals.initProgressBar.connect(
-            self.workerInitProgressbar
-        )
-        self.trackingWorker.signals.sigInitInnerPbar.connect(
-            self.workerInitInnerPbar
-        )
+        self.trackingWorker.signals.progressBar.connect(self.workerUpdateProgressbar)
+        self.trackingWorker.signals.initProgressBar.connect(self.workerInitProgressbar)
+        self.trackingWorker.signals.sigInitInnerPbar.connect(self.workerInitInnerPbar)
         self.trackingWorker.progress.connect(self.workerProgress)
         self.trackingWorker.critical.connect(self.workerCritical)
         self.trackingWorker.finished.connect(self.trackingWorkerFinished)
@@ -302,7 +293,7 @@ class Worker(StatusHover):
         self.thread.start()
 
     def storeStateWorkerClosed(self):
-        self.logger.info('Store state worker started.')
+        self.logger.info("Store state worker started.")
 
     def storeStateWorkerDone(self):
         if self.storeStateWorker.callbackOnDone is not None:
@@ -314,34 +305,36 @@ class Worker(StatusHover):
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
-        self.logger.info('Worker process ended.')
+        self.logger.info("Worker process ended.")
         askDisableRealTimeTracking = (
             self.trackingWorker.trackingOnNeverVisitedFrames
             and self.realTimeTrackingToggle.isChecked()
         )
         if askDisableRealTimeTracking:
             msg = widgets.myMessageBox()
-            title = 'Disable real-time tracking?'
+            title = "Disable real-time tracking?"
             txt = (
-                'You perfomed tracking on frames that you have '
-                '<b>never visited.</b><br><br>'
-                'Cell-ACDC default behaviour is to <b>track them again</b> when you '
-                'will visit them.<br><br>'
-                'However, you can <b>overwrite this behaviour</b> and explicitly '
-                'disable tracking for all of the frames you already tracked.<br><br>'
-                'NOTE: you can reactivate real-time tracking by clicking on the '
+                "You perfomed tracking on frames that you have "
+                "<b>never visited.</b><br><br>"
+                "Cell-ACDC default behaviour is to <b>track them again</b> when you "
+                "will visit them.<br><br>"
+                "However, you can <b>overwrite this behaviour</b> and explicitly "
+                "disable tracking for all of the frames you already tracked.<br><br>"
+                "NOTE: you can reactivate real-time tracking by clicking on the "
                 '"Reset last segmented frame" button on the top toolbar.<br><br>'
-                'What do you want me to do?'
+                "What do you want me to do?"
             )
             _, disableTrackingButton = msg.information(
-                self, title, html_utils.paragraph(txt),
+                self,
+                title,
+                html_utils.paragraph(txt),
                 buttonsTexts=(
-                    'Keep real-time tracking active (recommended)',
-                    'Disable real-time tracking'
-                )
+                    "Keep real-time tracking active (recommended)",
+                    "Disable real-time tracking",
+                ),
             )
             if msg.clickedButton == disableTrackingButton:
-                self.logger.info('Disabling real time tracking...')
+                self.logger.info("Disabling real time tracking...")
                 self.realTimeTrackingToggle.setChecked(False)
                 # posData = self.data[self.pos_i]
                 # current_frame_i = posData.frame_i
@@ -357,7 +350,7 @@ class Worker(StatusHover):
                 # self.get_data()
         posData = self.data[self.pos_i]
         self.updateAllImages()
-        self.titleLabel.setText('Done', color='w')
+        self.titleLabel.setText("Done", color="w")
 
     def workerCritical(self, out: Tuple[QObject, Exception]):
         self.setDisabled(False)
@@ -382,6 +375,7 @@ class Worker(StatusHover):
     def workerDebug(self, item):
         tracked_video, worker = item
         from cellacdc.plot import imshow
+
         imshow(tracked_video)
         worker.waitCond.wakeAll()
 
@@ -390,9 +384,9 @@ class Worker(StatusHover):
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
-        self.logger.info('Worker process ended.')
+        self.logger.info("Worker process ended.")
         self.updateAllImages()
-        self.titleLabel.setText('Done', color='w')
+        self.titleLabel.setText("Done", color="w")
 
     def workerInitInnerPbar(self, totalIter):
         self.progressWin.innerPbar.setValue(0)
@@ -409,7 +403,7 @@ class Worker(StatusHover):
     def workerLog(self, text):
         self.logger.info(text)
 
-    def workerProgress(self, text, loggerLevel='INFO'): # used in cca and lin tree
+    def workerProgress(self, text, loggerLevel="INFO"):  # used in cca and lin tree
         if self.progressWin is not None:
             self.progressWin.logConsole.append(text)
         self.logger.log(getattr(logging, loggerLevel), text)

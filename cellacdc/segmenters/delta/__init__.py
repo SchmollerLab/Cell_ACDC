@@ -6,4 +6,4 @@ Installs delta2 into acdc.
 
 from cellacdc import myutils
 
-myutils.check_install_package('delta', pypi_name='delta2')
+myutils.check_install_package("delta", pypi_name="delta2")

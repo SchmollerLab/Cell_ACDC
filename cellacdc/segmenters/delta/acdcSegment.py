@@ -19,9 +19,7 @@ from delta.assets import download_assets
 
 
 class Model:
-
-    def __init__(self,
-                 model_type='2D or mothermachine'):
+    def __init__(self, model_type="2D or mothermachine"):
         """
         Configures data, initializes model, loads weights for model.
 
@@ -50,18 +48,21 @@ class Model:
 
             except ValueError:
                 # Downloads model weights and configuration files for 2D and mothermachine
-                download_assets(load_models=True,
-                                load_sets=False,
-                                load_evals=False,
-                                config_level='local')
+                download_assets(
+                    load_models=True,
+                    load_sets=False,
+                    load_evals=False,
+                    config_level="local",
+                )
 
-    def delta_preprocess(self,
-                         image,
-                         target_size: Tuple[int, int] = (256, 32),
-                         order: int = 1,
-                         rangescale: bool = True,
-                         crop: bool = False,
-                         ):
+    def delta_preprocess(
+        self,
+        image,
+        target_size: Tuple[int, int] = (256, 32),
+        order: int = 1,
+        rangescale: bool = True,
+        crop: bool = False,
+    ):
         """
         Takes image and reformat it
 
@@ -104,7 +105,7 @@ class Model:
                 for j in range(2)
             ]
             img = np.zeros((fill_shape[0], fill_shape[1]))
-            img[0: i.shape[0], 0: i.shape[1]] = i
+            img[0 : i.shape[0], 0 : i.shape[1]] = i
 
         if rangescale:
             if np.ptp(img) != 0:
@@ -136,26 +137,23 @@ class Model:
         original_shape = image.shape
 
         if image.ndim != 2:
-            raise ValueError(
-                f"""Delta only works with 2 dimensional images."""
-            )
+            raise ValueError(f"""Delta only works with 2 dimensional images.""")
 
         # 2D: Cut into overlapping windows
-        img = self.delta_preprocess(image=image,
-                                    target_size=self.target_size,
-                                    crop=True)
+        img = self.delta_preprocess(
+            image=image, target_size=self.target_size, crop=True
+        )
 
         # Process image to use for delta
-        image = self.delta_preprocess(image=image,
-                                      target_size=self.target_size,
-                                      crop=cfg.crop_windows)
+        image = self.delta_preprocess(
+            image=image, target_size=self.target_size, crop=cfg.crop_windows
+        )
 
         # Change Dimensions to 4D numpy array
         image = np.reshape(image, (1,) + image.shape + (1,))
 
         # mother machine: Don't crop images into windows
         if not cfg.crop_windows:
-
             # Predictions:
             results = self.model.predict(image, verbose=1)[0, :, :, 0]
 
@@ -190,5 +188,6 @@ class Model:
 
         return lab.astype(np.uint32)
 
+
 def url_help():
-    return 'https://gitlab.com/dunloplab/delta'
+    return "https://gitlab.com/dunloplab/delta"

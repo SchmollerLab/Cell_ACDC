@@ -95,18 +95,14 @@ def validate_labels(labels: np.ndarray, expected_shape: tuple):
         If validation fails.
     """
     assert labels is not None, "Segmentation returned None"
-    assert isinstance(labels, np.ndarray), (
-        f"Expected numpy array, got {type(labels)}"
-    )
+    assert isinstance(labels, np.ndarray), f"Expected numpy array, got {type(labels)}"
     assert labels.shape == expected_shape, (
         f"Shape mismatch: {labels.shape} != {expected_shape}"
     )
     assert np.issubdtype(labels.dtype, np.integer), (
         f"Expected integer dtype, got {labels.dtype}"
     )
-    assert labels.min() >= 0, (
-        f"Labels should be non-negative, got min={labels.min()}"
-    )
+    assert labels.min() >= 0, f"Labels should be non-negative, got min={labels.min()}"
 
 
 def print_segmentation_results(labels: np.ndarray, frame: np.ndarray, frame_i: int):
@@ -178,20 +174,27 @@ def save_segmentation_overlay(
         closest_idx = np.argmin(distances)
         y, x = coords[closest_idx]
         ax.text(
-            x, y, str(region.label),
-            color="white", fontsize=8, fontweight="bold",
-            ha="center", va="center",
-            path_effects=[
-                patheffects.withStroke(linewidth=2, foreground="black")
-            ],
+            x,
+            y,
+            str(region.label),
+            color="white",
+            fontsize=8,
+            fontweight="bold",
+            ha="center",
+            va="center",
+            path_effects=[patheffects.withStroke(linewidth=2, foreground="black")],
         )
 
     # Plot prompt points if provided
     if prompt_points:
         for label_id, y, x in prompt_points:
             ax.plot(
-                x, y, 'x',
-                color='red', markersize=8, markeredgewidth=2,
+                x,
+                y,
+                "x",
+                color="red",
+                markersize=8,
+                markeredgewidth=2,
             )
 
     ax.set_title(f"Frame {frame_i} ({num_objects} objects)")
@@ -235,6 +238,7 @@ def ensure_sam():
             sys.path.insert(0, str(candidate))
 
     import pytest
+
     pytest.importorskip("segment_anything")
 
 
@@ -253,18 +257,21 @@ def ensure_sam2():
             sys.path.insert(0, str(candidate))
 
     import pytest
+
     pytest.importorskip("sam2")
 
 
 def ensure_cellsam():
     """Ensure cellSAM is importable."""
     import pytest
+
     pytest.importorskip("cellSAM")
 
 
 def get_test_posdata():
     """Get posData for the standard test dataset."""
     from cellacdc import data
+
     return data.MIA_KC_htb1_mCitrine().posData()
 
 
@@ -277,6 +284,7 @@ def get_test_dataset():
         Dataset object with access to images, segmentation, and metadata.
     """
     from cellacdc import data
+
     return data.MIA_KC_htb1_mCitrine()
 
 

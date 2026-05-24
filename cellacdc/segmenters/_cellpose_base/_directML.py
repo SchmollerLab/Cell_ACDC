@@ -2,19 +2,21 @@ from cellacdc import printl
 from cellacdc.myutils import check_install_package
 import sys
 
-def init_directML():    
+
+def init_directML():
     success = True
     try:
         import torch_directml
     except ImportError:
         py_ver = sys.version_info
-        #check windows
+        # check windows
         from cellacdc import is_win
+
         if is_win and py_ver.major == 3 and py_ver.minor < 13:
             success = check_install_package(
-                pkg_name = 'torch-directml',
-                import_pkg_name = 'torch_directml',
-                pypi_name = 'torch-directml',
+                pkg_name="torch-directml",
+                import_pkg_name="torch_directml",
+                pypi_name="torch-directml",
                 return_outcome=True,
             )
         else:
@@ -28,10 +30,11 @@ def init_directML():
             success = False
     return success
 
+
 def setup_custom_device(model, device):
     """
     Forces the model to use a custom device (e.g., DirectML) for inference.
-    This is a workaround, and could be handled better in the future. 
+    This is a workaround, and could be handled better in the future.
     (Ideally when all parameters are set initially)
 
     Args:
@@ -41,25 +44,25 @@ def setup_custom_device(model, device):
     Returns:
         model (cellpose.CellposeModel): Cellpose model with custom device set.
     """
-    if hasattr(model, 'model'):
+    if hasattr(model, "model"):
         model = model.model
-        
+
     model.gpu = True
     model.device = device
     model.mkldnn = False
-    if hasattr(model, 'net'):
+    if hasattr(model, "net"):
         model.net.to(device)
         model.net.mkldnn = False
-    if hasattr(model, 'cp'):
+    if hasattr(model, "cp"):
         model.cp.gpu = True
         model.cp.device = device
         model.cp.mkldnn = False
-        if hasattr(model.cp, 'net'):
+        if hasattr(model.cp, "net"):
             model.cp.net.to(device)
             model.cp.net.mkldnn = False
-    if hasattr(model, 'sz'):
+    if hasattr(model, "sz"):
         model.sz.device = device
-    
+
     return model
 
 
@@ -69,14 +72,13 @@ def setup_directML(acdc_cp_model):
 
     Args:
         model (cellpose.CellposeModel|cellpse.Cellpos): Cellpose model. Should work for v2, v3 and custom.
-    
+
     Returns:
         model (cellpose.CellposeModel|cellpse.Cellpos): Cellpose model with DirectML set as the device.
     """
-    print(
-        'Using DirectML GPU for Cellpose model inference'
-    )
+    print("Using DirectML GPU for Cellpose model inference")
     import torch_directml
+
     directml_device = torch_directml.device()
     acdc_cp_model = setup_custom_device(acdc_cp_model, directml_device)
     return acdc_cp_model

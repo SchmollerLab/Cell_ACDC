@@ -17,6 +17,7 @@ from tqdm import tqdm
 from cellacdc import myutils
 from cellacdc import user_profile_path
 
+
 class progressCallback(keras.callbacks.Callback):
     def __init__(self, signals):
         self.signals = signals
@@ -34,27 +35,25 @@ class progressCallback(keras.callbacks.Callback):
         else:
             self.signals[0].progressBar.emit(1)
 
+
 class Model:
     def __init__(self, is_phase_contrast=True):
         # Initialize model
-        self.model = model.unet(
-            pretrained_weights=None,
-            input_size=(None,None,1)
-        )
+        self.model = model.unet(pretrained_weights=None, input_size=(None, None, 1))
 
         # Get the path where the weights are saved.
         # We suggest saving the weights files into a 'model' subfolder
-        model_path = os.path.join(str(user_profile_path), f'acdc-YeaZ')
+        model_path = os.path.join(str(user_profile_path), f"acdc-YeaZ")
 
         if is_phase_contrast:
-            weights_fn = 'unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5'
+            weights_fn = "unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5"
         else:
-            weights_fn = 'weights_budding_BF_multilab_0_1.hdf5'
+            weights_fn = "weights_budding_BF_multilab_0_1.hdf5"
 
         weights_path = os.path.join(model_path, weights_fn)
 
         if not os.path.exists(model_path):
-            raise FileNotFoundError(f'Weights file not found in {model_path}')
+            raise FileNotFoundError(f"Weights file not found in {model_path}")
 
         self.model.load_weights(weights_path)
 
@@ -71,16 +70,15 @@ class Model:
     def predict3DT(self, timelapse3D):
         # pad with zeros such that is divisible by 16
         (nrow, ncol) = timelapse3D[0].shape
-        row_add = 16-nrow%16
-        col_add = 16-ncol%16
+        row_add = 16 - nrow % 16
+        col_add = 16 - ncol % 16
         pad_info = ((0, 0), (0, row_add), (0, col_add))
-        padded = np.pad(timelapse3D, pad_info, 'constant')
+        padded = np.pad(timelapse3D, pad_info, "constant")
 
         x = padded[:, :, :, np.newaxis]
         prediction = self.model.predict(x, batch_size=1, verbose=1)
         prediction = prediction[:, 0:-row_add, 0:-col_add, 0]
         return prediction
-
 
     def segment2D(self, image, thresh_val=0.0, min_distance=10):
         # Preprocess image
@@ -91,13 +89,13 @@ class Model:
 
         # pad with zeros such that is divisible by 16
         (nrow, ncol) = image.shape
-        row_add = 16-nrow%16
-        col_add = 16-ncol%16
+        row_add = 16 - nrow % 16
+        col_add = 16 - ncol % 16
         pad_info = ((0, row_add), (0, col_add))
-        padded = np.pad(image, pad_info, 'constant')
-        x = padded[np.newaxis,:,:,np.newaxis]
+        padded = np.pad(image, pad_info, "constant")
+        x = padded[np.newaxis, :, :, np.newaxis]
 
-        prediction = self.model.predict(x, batch_size=1, verbose=1)[0,:,:,0]
+        prediction = self.model.predict(x, batch_size=1, verbose=1)[0, :, :, 0]
 
         # remove padding with 0s
         prediction = prediction[0:-row_add, 0:-col_add]
@@ -115,26 +113,26 @@ class Model:
                     img, thresh_val=thresh_val, min_distance=min_distance
                 )
                 labels[z] = lab
-            labels = skimage.measure.label(labels>0)
+            labels = skimage.measure.label(labels > 0)
         else:
             labels = self.segment2D(
                 image, thresh_val=thresh_val, min_distance=min_distance
             )
         return labels
 
-    def segment3DT(
-            self, timelapse3D, thresh_val=0.0, min_distance=10, signals=None
-        ):
+    def segment3DT(self, timelapse3D, thresh_val=0.0, min_distance=10, signals=None):
         sig_progress_tqdm = None
         if signals is not None:
-            signals[0].progress.emit(f'Preprocessing images...')
+            signals[0].progress.emit(f"Preprocessing images...")
             signals[0].create_tqdm.emit(len(timelapse3D))
             sig_progress_tqdm = signals[0].progress_tqdm
 
-        timelapse3D = np.array([
-            self.yeaz_preprocess(image, tqdm_pbar=sig_progress_tqdm, warn=i==0)
-            for i, image in enumerate(timelapse3D)
-        ])
+        timelapse3D = np.array(
+            [
+                self.yeaz_preprocess(image, tqdm_pbar=sig_progress_tqdm, warn=i == 0)
+                for i, image in enumerate(timelapse3D)
+            ]
+        )
 
         if signals is not None:
             signals[0].signal_close_tqdm.emit()
@@ -144,15 +142,15 @@ class Model:
 
         # pad with zeros such that is divisible by 16
         (nrow, ncol) = timelapse3D[0].shape
-        row_add = 16-nrow%16
-        col_add = 16-ncol%16
+        row_add = 16 - nrow % 16
+        col_add = 16 - ncol % 16
         pad_info = ((0, 0), (0, row_add), (0, col_add))
-        padded = np.pad(timelapse3D, pad_info, 'constant')
+        padded = np.pad(timelapse3D, pad_info, "constant")
 
         x = padded[:, :, :, np.newaxis]
 
         if signals is not None:
-            signals[0].progress.emit(f'Predicting (the future) with YeaZ...')
+            signals[0].progress.emit(f"Predicting (the future) with YeaZ...")
 
         callbacks = None
         if signals is not None:
@@ -160,10 +158,10 @@ class Model:
 
         prediction = self.model.predict(
             x, batch_size=1, verbose=1, callbacks=callbacks
-        )[:,:,:,0]
+        )[:, :, :, 0]
 
         if signals is not None:
-            signals[0].progress.emit(f'Labelling objects with YeaZ...')
+            signals[0].progress.emit(f"Labelling objects with YeaZ...")
 
         # remove padding with 0s
         prediction = prediction[:, 0:-row_add, 0:-col_add]
@@ -180,5 +178,6 @@ class Model:
             signals[0].signal_close_tqdm.emit()
         return lab_timelapse
 
+
 def url_help():
-    return 'https://github.com/rahi-lab/YeaZ-GUI'
+    return "https://github.com/rahi-lab/YeaZ-GUI"

@@ -8,6 +8,7 @@ from qtpy.QtWidgets import QAction, QMenu
 
 from .image_display import ImageDisplay
 
+
 class CanvasContextMenu(ImageDisplay):
     """Extracted from guiWin."""
 
@@ -16,9 +17,7 @@ class CanvasContextMenu(ImageDisplay):
         x, y = event.pos().x(), event.pos().y()
 
         # Check if right click on ROI
-        delROIs = (
-            posData.allData_li[posData.frame_i]['delROIs_info']['rois'].copy()
-        )
+        delROIs = posData.allData_li[posData.frame_i]["delROIs_info"]["rois"].copy()
         for r, roi in enumerate(delROIs):
             ROImask = self.getDelRoiMask(roi)
             if self.isSegm3D:
@@ -33,7 +32,7 @@ class CanvasContextMenu(ImageDisplay):
                 separator = QAction(self)
                 separator.setSeparator(True)
                 self.roiContextMenu.addAction(separator)
-                action = QAction('Remove ROI')
+                action = QAction("Remove ROI")
                 action.triggered.connect(self.removeDelROI)
                 self.roiContextMenu.addAction(action)
                 try:
@@ -48,28 +47,28 @@ class CanvasContextMenu(ImageDisplay):
         return False
 
     def checkHighlightScaleBar(self, x, y, activeToolButton):
-        if not hasattr(self, 'scaleBar'):
+        if not hasattr(self, "scaleBar"):
             return
-        
+
         if not self.addScaleBarAction.isChecked():
             return
-        
+
         if activeToolButton is not None:
             return
-        
+
         ymin, xmin, ymax, xmax = self.scaleBar.bbox()
         if x < xmin:
             self.scaleBar.setHighlighted(False)
             return
-        
+
         if x > xmax:
             self.scaleBar.setHighlighted(False)
             return
-        
+
         if y < ymin:
             self.scaleBar.setHighlighted(False)
             return
-        
+
         if y > ymax:
             self.scaleBar.setHighlighted(False)
             return
@@ -77,32 +76,32 @@ class CanvasContextMenu(ImageDisplay):
         self.scaleBar.setHighlighted(True)
 
     def checkHighlightTimestamp(self, x, y, activeToolButton):
-        if not hasattr(self, 'timestamp'):
+        if not hasattr(self, "timestamp"):
             return
-        
+
         if not self.addTimestampAction.isChecked():
             return
-        
+
         if activeToolButton is not None:
             return
-        
-        if hasattr(self, 'scaleBar'):
+
+        if hasattr(self, "scaleBar"):
             if self.scaleBar.isHighlighted():
                 return
-        
+
         ymin, xmin, ymax, xmax = self.timestamp.bbox()
         if x < xmin:
             self.timestamp.setHighlighted(False)
             return
-        
+
         if x > xmax:
             self.timestamp.setHighlighted(False)
             return
-        
+
         if y < ymin:
             self.timestamp.setHighlighted(False)
             return
-        
+
         if y > ymax:
             self.timestamp.setHighlighted(False)
             return
@@ -110,16 +109,16 @@ class CanvasContextMenu(ImageDisplay):
         self.timestamp.setHighlighted(True)
 
     def gui_imgGradShowContextMenu(self, x, y):
-        if hasattr(self, 'scaleBar'):
+        if hasattr(self, "scaleBar"):
             if self.scaleBar.isHighlighted():
                 self.scaleBar.showContextMenu(x, y)
                 return
-        
-        if hasattr(self, 'timestamp'):
+
+        if hasattr(self, "timestamp"):
             if self.timestamp.isHighlighted():
                 self.timestamp.showContextMenu(x, y)
                 return
-            
+
         self.imgGrad.gradient.menu.popup(QPoint(int(x), int(y)))
 
     def gui_rightImageShowContextMenu(self, event):

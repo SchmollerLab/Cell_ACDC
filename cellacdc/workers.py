@@ -24,16 +24,11 @@ import queue
 
 from tqdm import tqdm
 
-from qtpy.QtCore import (
-    Signal, QObject, QMutex, QWaitCondition
-)
+from qtpy.QtCore import Signal, QObject, QMutex, QWaitCondition
 
 from cellacdc import html_utils
 
-from . import (
-    load, myutils, core, prompts, printl, config,
-    segm_re_pattern, io
-)
+from . import load, myutils, core, prompts, printl, config, segm_re_pattern, io
 from . import transformation, measurements, cca_functions
 from .path import copy_or_move_tree
 from . import features, plot
@@ -46,6 +41,7 @@ from . import segm_utils
 
 DEBUG = False
 
+
 def worker_exception_handler(func):
     @wraps(func)
     def run(self):
@@ -57,31 +53,33 @@ def worker_exception_handler(func):
                 self.dataQ.clear()
             except Exception as err:
                 pass
-            
-            # Some workers have both self.critical and self.signals.critical 
-            # errors but only one of them is connected --> emit both just 
+
+            # Some workers have both self.critical and self.signals.critical
+            # errors but only one of them is connected --> emit both just
             # in case
             try:
                 self.critical.emit((self, error))
             except Exception as err:
                 self.signals.critical.emit((self, error))
-                
+
             try:
                 self.signals.critical.emit((self, error))
             except Exception as err:
                 self.critical.emit((self, error))
-            
+
             try:
                 self.mutex.unlock()
             except Exception as err:
                 pass
+
     return run
+
 
 class workerLogger:
     def __init__(self, sigProcess):
         self.sigProcess = sigProcess
-    
-    def log(self, message, level='INFO'):
+
+    def log(self, message, level="INFO"):
         try:
             self.sigProcess.emit(str(message), level)
         except Exception as err:
@@ -94,15 +92,16 @@ class workerLogger:
             printl(err)
         finally:
             pass
-    
+
     def info(self, message):
-        self.log(message, level='INFO')
+        self.log(message, level="INFO")
 
     def warning(self, message):
-        self.log(message, level='WARNING')
-    
+        self.log(message, level="WARNING")
+
     def exception(self, message):
-        self.log(message, level='EXCEPTION')
+        self.log(message, level="EXCEPTION")
+
 
 class signals(QObject):
     progress = Signal(str, object)
@@ -139,6 +138,7 @@ class signals(QObject):
     sigSelectFilesWithText = Signal(str, object, str, object)
     sigAskRunNow = Signal(object)
 
+
 class AutoPilotWorker(QObject):
     finished = Signal()
     critical = Signal(object)
@@ -152,16 +152,17 @@ class AutoPilotWorker(QObject):
         self.guiWin = guiWin
         self.app = guiWin.app
         # self.timer = timer
-    
+
     def timerCallback(self):
         pass
-    
+
     def stop(self):
         self.sigStopTimer.emit()
-        self.finished.emit()        
-    
+        self.finished.emit()
+
     def run(self):
         self.sigStarted.emit()
+
 
 class FindNextNewIdWorker(QObject):
     def __init__(self, posData, guiWin):
@@ -170,31 +171,32 @@ class FindNextNewIdWorker(QObject):
         self.logger = workerLogger(self.signals.progress)
         self.posData = posData
         self.guiWin = guiWin
-    
+
     @worker_exception_handler
     def run(self):
         prev_IDs = None
         next_frame_i = -1
         for frame_i, data_dict in enumerate(self.posData.allData_li):
-            lab = data_dict['labels']
-            rp = data_dict['regionprops']
-            IDs = data_dict['IDs']
+            lab = data_dict["labels"]
+            rp = data_dict["regionprops"]
+            IDs = data_dict["IDs"]
             if lab is None:
                 lab = self.posData.segm_data[frame_i]
                 rp = skimage.measure.regionprops(lab)
                 IDs = [obj.label for obj in rp]
-            
+
             if prev_IDs is None:
                 prev_IDs = IDs
                 continue
-            
+
             newIDs = [ID for ID in IDs if ID not in prev_IDs]
             if newIDs:
                 next_frame_i = frame_i
-                break            
+                break
             prev_IDs = IDs
-            
+
         self.signals.finished.emit(next_frame_i)
+
 
 class SegForLostIDsWorker(QObject):
     sigAskInit = Signal()
@@ -223,19 +225,19 @@ class SegForLostIDsWorker(QObject):
         self.sigAskInit.emit()
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-    
+
     def emitSigShowImageDebug(self, img):
         # self.mutex.lock()
         self.sigshowImageDebug.emit(img)
         # self.waitCond.wait(self.mutex)
         # self.mutex.unlock()
-    
+
     def emitSigStoreData(self, autosave):
         self.mutex.lock()
         self.sigStoreData.emit(autosave)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-    
+
     def emitSigUpdateRP(self, wl_track_og_curr, wl_update):
         self.mutex.lock()
         self.sigUpdateRP.emit(wl_track_og_curr, wl_update)
@@ -253,32 +255,31 @@ class SegForLostIDsWorker(QObject):
         self.sigAskInstallModel.emit(model_name)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-        
+
     def emitSigAskInstallGPU(self, base_model_name, use_gpu):
         self.mutex.lock()
-        self.sigSegForLostIDsWorkerAskInstallGPU.emit(base_model_name,
-                                                     use_gpu)
+        self.sigSegForLostIDsWorkerAskInstallGPU.emit(base_model_name, use_gpu)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-    
+
     # def emitGet2Dlab(self):
     #     self.mutex.lock()
     #     self.sigGet2Dlab.emit()
     #     self.waitCond.wait(self.mutex)
     #     self.mutex.unlock()
-    
+
     # def emitGetTrackedLostIDs(self):
     #     self.mutex.lock()
     #     self.sigGetTrackedLostIDs.emit()
     #     self.waitCond.wait(self.mutex)
     #     self.mutex.unlock()
-    
+
     # def emitGetBrushID(self):
     #     self.mutex.lock()
     #     self.sigGetBrushID.emit()
     #     self.waitCond.wait(self.mutex)
     #     self.mutex.unlock()
-    
+
     def emitTrackManuallyAddedObject(self, IDs, isLost, wl_update, wl_track_og_curr):
         self.mutex.lock()
         self.sigTrackManuallyAddedObject.emit(IDs, isLost, wl_update, wl_track_og_curr)
@@ -292,62 +293,67 @@ class SegForLostIDsWorker(QObject):
 
         if not self.guiWin.SegForLostIDsSettings:
             self.emitSigAskInit()
-        
+
         if not self.guiWin.SegForLostIDsSettings:
             self.signals.finished.emit(self)
             return
 
-        self.logger.info('Segmentation for lost IDs started.')
-        model_name = 'local_seg'
-        base_model_name = self.guiWin.SegForLostIDsSettings['base_model_name']
+        self.logger.info("Segmentation for lost IDs started.")
+        model_name = "local_seg"
+        base_model_name = self.guiWin.SegForLostIDsSettings["base_model_name"]
         idx = self.guiWin.modelNames.index(model_name)
         acdcSegment = self.guiWin.acdcSegment_li[idx]
-        
-        init_kwargs = self.guiWin.SegForLostIDsSettings['win'].init_kwargs
-        
-        use_gpu = init_kwargs.get('device_type', 'cpu') != 'cpu'
-        use_gpu = use_gpu or init_kwargs.get('use_gpu', False)
-        
+
+        init_kwargs = self.guiWin.SegForLostIDsSettings["win"].init_kwargs
+
+        use_gpu = init_kwargs.get("device_type", "cpu") != "cpu"
+        use_gpu = use_gpu or init_kwargs.get("use_gpu", False)
+
         self.emitSigAskInstallGPU(base_model_name, use_gpu)
-        
+
         if not self.gpu_go:
             self.signals.finished.emit(self)
             return
-        
-        if not self.dont_force_cpu:
-            if 'device' in init_kwargs:
-                init_kwargs['device'] = 'cpu'
-            if 'use_gpu' in init_kwargs:
-                init_kwargs['use_gpu'] = False
 
-        if acdcSegment is None or base_model_name != self.guiWin.local_seg_base_model_name:
+        if not self.dont_force_cpu:
+            if "device" in init_kwargs:
+                init_kwargs["device"] = "cpu"
+            if "use_gpu" in init_kwargs:
+                init_kwargs["use_gpu"] = False
+
+        if (
+            acdcSegment is None
+            or base_model_name != self.guiWin.local_seg_base_model_name
+        ):
             try:
-                self.logger.info(f'Importing {base_model_name}...')
+                self.logger.info(f"Importing {base_model_name}...")
                 self.emitSigAskInstallModel(base_model_name)
                 acdcSegment = myutils.import_segment_module(base_model_name)
                 self.guiWin.acdcSegment_li[idx] = acdcSegment
                 self.guiWin.local_seg_base_model_name = base_model_name
             except (IndexError, ImportError, KeyError) as e:
                 self.logger.warning(
-                    f'Cannot import {base_model_name} model. '
-                    'Please install it first.'
+                    f"Cannot import {base_model_name} model. Please install it first."
                 )
                 self.signals.critical.emit(
-                    (self, f'Cannot import {base_model_name} model. '
-                    'Please install it first.')
+                    (
+                        self,
+                        f"Cannot import {base_model_name} model. "
+                        "Please install it first.",
+                    )
                 )
                 self.signals.finished.emit(self)
                 return
 
-        win = self.guiWin.SegForLostIDsSettings['win']
-        init_kwargs_new = self.guiWin.SegForLostIDsSettings['init_kwargs_new']
-        args_new = self.guiWin.SegForLostIDsSettings['args_new']
+        win = self.guiWin.SegForLostIDsSettings["win"]
+        init_kwargs_new = self.guiWin.SegForLostIDsSettings["init_kwargs_new"]
+        args_new = self.guiWin.SegForLostIDsSettings["args_new"]
 
         model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new)
         if model is None:
-            self.logger.info('Segmentation model was not initialized correctly!')
+            self.logger.info("Segmentation model was not initialized correctly!")
             self.signals.critical.emit(
-                (self, 'Segmentation model was not initialized correctly!')
+                (self, "Segmentation model was not initialized correctly!")
             )
             self.signals.finished.emit(self)
             return
@@ -364,13 +370,15 @@ class SegForLostIDsWorker(QObject):
         bboxs_list = []
 
         curr_img = self.guiWin.getDisplayedImg1()
-        prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
-        prev_IDs = set(posData.allData_li[frame_i-1]['IDs'])
+        prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i - 1]["labels"])
+        prev_IDs = set(posData.allData_li[frame_i - 1]["IDs"])
 
         # should probably not paly so much with posData.lab, instead handle stuff myself
-        self.signals.initProgressBar.emit(2 * args_new['max_iterations'])
-        new_labs = np.zeros([args_new['max_iterations'], *posData.lab.shape], dtype=np.uint32)
-        for i in range(args_new['max_iterations']):            
+        self.signals.initProgressBar.emit(2 * args_new["max_iterations"])
+        new_labs = np.zeros(
+            [args_new["max_iterations"], *posData.lab.shape], dtype=np.uint32
+        )
+        for i in range(args_new["max_iterations"]):
             curr_lab = self.guiWin.get_2Dlab(posData.lab)
             tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
             new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
@@ -380,15 +388,20 @@ class SegForLostIDsWorker(QObject):
 
             assigned_IDs_prev = assigned_IDs.copy()
             out = segm_utils.single_cell_seg(
-                model, prev_lab, curr_lab, curr_img, 
-                missing_IDs, new_unique_ID,
-                win, posData,
-                distance_filler_growth=args_new['distance_filler_growth'],
-                overlap_threshold=args_new['overlap_threshold'],
-                padding=args_new['padding'],
+                model,
+                prev_lab,
+                curr_lab,
+                curr_img,
+                missing_IDs,
+                new_unique_ID,
+                win,
+                posData,
+                distance_filler_growth=args_new["distance_filler_growth"],
+                overlap_threshold=args_new["overlap_threshold"],
+                padding=args_new["padding"],
             )
             new_lab, assigned_IDs, IDs_bboxs, bboxs = out
-                    
+
             IDs_bboxs_list.append(IDs_bboxs)
             bboxs_list.append(bboxs)
             posData.lab = new_lab
@@ -397,7 +410,7 @@ class SegForLostIDsWorker(QObject):
             self.emitTrackManuallyAddedObject(newly_assigned_IDs, True, False, False)
             new_labs[i] = posData.lab.copy()
             self.signals.progressBar.emit(1)
-            
+
         if self._debug:
             originals = []
             models = []
@@ -412,19 +425,26 @@ class SegForLostIDsWorker(QObject):
                 models.append(posData.lab.copy())
 
             for IDs, bbox in zip(IDs_bboxs, bboxs):
-
-                box_x_min, box_x_max, box_y_min, box_y_max = bbox          
-                original_bbox_lab = original_lab[box_x_min:box_x_max, box_y_min:box_y_max]
-                original_bbox_lab_cleared_borders = skimage.segmentation.clear_border(original_bbox_lab)
+                box_x_min, box_x_max, box_y_min, box_y_max = bbox
+                original_bbox_lab = original_lab[
+                    box_x_min:box_x_max, box_y_min:box_y_max
+                ]
+                original_bbox_lab_cleared_borders = skimage.segmentation.clear_border(
+                    original_bbox_lab
+                )
                 box_model_lab = model_lab[box_x_min:box_x_max, box_y_min:box_y_max]
 
                 # original_bbox_lab[np.isin(original_bbox_lab, IDs)] = 0 should be a given. If not seg for lost IDs this recommended
 
-                box_model_lab = skimage.segmentation.clear_border(box_model_lab, buffer_size=1)
+                box_model_lab = skimage.segmentation.clear_border(
+                    box_model_lab, buffer_size=1
+                )
 
                 rp_model_lab = skimage.measure.regionprops(box_model_lab)
                 rp_original_lab = skimage.measure.regionprops(original_bbox_lab)
-                rp_original_lab_cleared = skimage.measure.regionprops(original_bbox_lab_cleared_borders)
+                rp_original_lab_cleared = skimage.measure.regionprops(
+                    original_bbox_lab_cleared_borders
+                )
 
                 original_IDs = [obj.label for obj in rp_original_lab]
                 areas = [obj.area for obj in rp_original_lab_cleared]
@@ -432,28 +452,40 @@ class SegForLostIDsWorker(QObject):
                     area_mean = np.mean(areas)
                 else:
                     area_mean = global_area_mean
-                if args_new['allow_only_tracked_cells']:
-                    filtered_IDs = [obj.label for obj in rp_model_lab 
-                            if obj.area > (1 - args_new['size_perc_diff']) * area_mean
-                            and obj.area < (1 + args_new['size_perc_diff']) * area_mean
-                            and obj.label not in original_IDs
-                            and obj.label in missing_IDs_global]
+                if args_new["allow_only_tracked_cells"]:
+                    filtered_IDs = [
+                        obj.label
+                        for obj in rp_model_lab
+                        if obj.area > (1 - args_new["size_perc_diff"]) * area_mean
+                        and obj.area < (1 + args_new["size_perc_diff"]) * area_mean
+                        and obj.label not in original_IDs
+                        and obj.label in missing_IDs_global
+                    ]
                 else:
-                    filtered_IDs = [obj.label for obj in rp_model_lab 
-                            if obj.area > (1 - args_new['size_perc_diff']) * area_mean
-                            and obj.area < (1 + args_new['size_perc_diff']) * area_mean
-                            and obj.label not in original_IDs]
-        
+                    filtered_IDs = [
+                        obj.label
+                        for obj in rp_model_lab
+                        if obj.area > (1 - args_new["size_perc_diff"]) * area_mean
+                        and obj.area < (1 + args_new["size_perc_diff"]) * area_mean
+                        and obj.label not in original_IDs
+                    ]
+
                 if self._debug or DEBUG:
-                    filtered_sizes = [(obj.label, obj.area) for obj in rp_model_lab if obj.label in filtered_IDs]
+                    filtered_sizes = [
+                        (obj.label, obj.area)
+                        for obj in rp_model_lab
+                        if obj.label in filtered_IDs
+                    ]
                     self.logger.info(f"Filtered sizes: {filtered_sizes}")
                 for label in filtered_IDs:
-                    original_bbox_lab[box_model_lab == label] = label # here the stuff should be tracked, so we keep the ID!
-                
+                    original_bbox_lab[box_model_lab == label] = (
+                        label  # here the stuff should be tracked, so we keep the ID!
+                    )
+
                 # original_lab[box_x_min:box_x_max, box_y_min:box_y_max] = original_bbox_lab
-            
+
             self.signals.progressBar.emit(1)
-    
+
         posData.lab = original_lab
 
         # if self._debug:
@@ -465,14 +497,15 @@ class SegForLostIDsWorker(QObject):
         self.emitSigUpdateRP(wl_track_og_curr=True, wl_update=True)
         self.emitSigStoreData(autosave=True)
 
-        self.logger.info('Segmentation for lost IDs done.')
-                
+        self.logger.info("Segmentation for lost IDs done.")
+
         self.signals.finished.emit(self)
+
 
 class AlignDataWorker(QObject):
     sigWarnTifAligned = Signal(object, object, object)
     sigAskAlignSegmData = Signal()
-        
+
     def __init__(self, posData, dataPrepWin, mutex, waitCond):
         QObject.__init__(self)
         self.signals = signals()
@@ -483,75 +516,75 @@ class AlignDataWorker(QObject):
         self.waitCond = waitCond
         self.doNotAlignSegmData = False
         self.doAbort = False
-    
+
     def set_attr(self, align, user_ch_name):
         self.align = align
         self.user_ch_name = user_ch_name
-    
+
     def pause(self):
         self.mutex.lock()
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-    
+
     def restart(self):
         self.waitCond.wakeAll()
-    
+
     def emitWarnTifAligned(self, numFramesWith0s, tif, posData):
         self.sigWarnTifAligned.emit(numFramesWith0s, tif, posData)
         self.pause()
-    
+
     def emitSigAskAlignSegmData(self):
         self.sigAskAlignSegmData.emit()
         self.pause()
-    
+
     def _align_data(self):
         _zip = zip(self.posData.tif_paths, self.posData.npz_paths)
         aligned = False
         self.posData.all_npz_paths = [
-            tif.replace('.tif', '_aligned.npz') for tif in self.posData.tif_paths
+            tif.replace(".tif", "_aligned.npz") for tif in self.posData.tif_paths
         ]
         for i, (tif, npz) in enumerate(_zip):
             doAlign = npz is None or self.posData.loaded_shifts is None
 
             filename_tif = os.path.basename(tif)
-            user_ch_filename = f'{self.posData.basename}{self.user_ch_name}.tif'
+            user_ch_filename = f"{self.posData.basename}{self.user_ch_name}.tif"
 
             if not doAlign:
-                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+                _npz = f"{os.path.splitext(tif)[0]}_aligned.npz"
                 if os.path.exists(_npz):
                     self.posData.all_npz_paths[i] = _npz
                 continue
-            
+
             if filename_tif != user_ch_filename:
                 continue
-            
+
             if not self.align:
                 continue
 
             # Align based on user_ch_name
             aligned = True
-            self.logger.log(f'Aligning: {tif}')
+            self.logger.log(f"Aligning: {tif}")
 
             tif_data = load.imread(tif)
             numFramesWith0s = self.dataPrepWin.detectTifAlignment(
                 tif_data, self.posData
             )
             if self.align:
-                self.emitWarnTifAligned(
-                    numFramesWith0s, tif, self.posData
-                )
+                self.emitWarnTifAligned(numFramesWith0s, tif, self.posData)
                 if self.doAbort:
                     return
 
             # Alignment routine
-            if self.posData.SizeZ>1:
+            if self.posData.SizeZ > 1:
                 align_func = core.align_frames_3D
                 df = self.posData.segmInfo_df.loc[self.posData.filename]
-                zz = df['z_slice_used_dataPrep'].to_list()
-                if not self.posData.filename.endswith('aligned') and self.align:
+                zz = df["z_slice_used_dataPrep"].to_list()
+                if not self.posData.filename.endswith("aligned") and self.align:
                     # Add aligned channel to segmInfo
                     df_aligned = self.posData.segmInfo_df.rename(
-                        index={self.posData.filename: f'{self.posData.filename}_aligned'}
+                        index={
+                            self.posData.filename: f"{self.posData.filename}_aligned"
+                        }
                     )
                     self.posData.segmInfo_df = pd.concat(
                         [self.posData.segmInfo_df, df_aligned]
@@ -560,30 +593,30 @@ class AlignDataWorker(QObject):
             else:
                 align_func = core.align_frames_2D
                 zz = None
-            
+
             if self.align:
                 self.signals.initProgressBar.emit(len(tif_data))
                 aligned_frames, shifts = align_func(
-                    tif_data, slices=zz, user_shifts=self.posData.loaded_shifts,
-                    sigPyqt=self.signals.progressBar
+                    tif_data,
+                    slices=zz,
+                    user_shifts=self.posData.loaded_shifts,
+                    sigPyqt=self.signals.progressBar,
                 )
                 self.posData.loaded_shifts = shifts
             else:
                 aligned_frames = tif_data
-                
+
             if self.align:
                 self.signals.initProgressBar.emit(0)
-                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
-                self.logger.log(f'Storing temporary file: {_npz}')
+                _npz = f"{os.path.splitext(tif)[0]}_aligned.npz"
+                self.logger.log(f"Storing temporary file: {_npz}")
                 temp_npz = self.dataPrepWin.getTempfilePath(_npz)
                 io.savez_compressed(temp_npz, aligned_frames)
                 self.dataPrepWin.storeTempFileMove(temp_npz, _npz)
-                np.save(
-                    self.posData.align_shifts_path, self.posData.loaded_shifts
-                )
+                np.save(self.posData.align_shifts_path, self.posData.loaded_shifts)
                 self.posData.all_npz_paths[i] = _npz
 
-                self.logger.log(f'Storing temporary file: {tif}')
+                self.logger.log(f"Storing temporary file: {tif}")
                 temp_tif = self.dataPrepWin.getTempfilePath(tif)
                 myutils.to_tiff(temp_tif, aligned_frames)
                 self.dataPrepWin.storeTempFileMove(temp_tif, tif)
@@ -595,10 +628,10 @@ class AlignDataWorker(QObject):
 
             if not doAlign:
                 continue
-            
-            if tif.endswith(f'{self.user_ch_name}.tif'):
+
+            if tif.endswith(f"{self.user_ch_name}.tif"):
                 continue
-            
+
             if not self.align:
                 continue
 
@@ -607,71 +640,73 @@ class AlignDataWorker(QObject):
                 break
 
             if self.align:
-                self.logger.log(f'Aligning: {tif}')
+                self.logger.log(f"Aligning: {tif}")
                 tif_data = load.imread(tif)
 
             # Alignment routine
-            if self.posData.SizeZ>1:
+            if self.posData.SizeZ > 1:
                 align_func = core.align_frames_3D
                 df = self.posData.segmInfo_df.loc[self.posData.filename]
-                zz = df['z_slice_used_dataPrep'].to_list()
+                zz = df["z_slice_used_dataPrep"].to_list()
             else:
                 align_func = core.align_frames_2D
                 zz = None
             if self.align:
                 self.signals.initProgressBar.emit(len(tif_data))
                 aligned_frames, shifts = align_func(
-                    tif_data, slices=zz, user_shifts=self.posData.loaded_shifts,
-                    sigPyqt=self.signals.progressBar
+                    tif_data,
+                    slices=zz,
+                    user_shifts=self.posData.loaded_shifts,
+                    sigPyqt=self.signals.progressBar,
                 )
             else:
                 aligned_frames = tif_data
-            
-            _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
-            
+
+            _npz = f"{os.path.splitext(tif)[0]}_aligned.npz"
+
             if self.align:
                 self.signals.initProgressBar.emit(0)
-                self.logger.log(f'Saving: {_npz}')
+                self.logger.log(f"Saving: {_npz}")
                 temp_npz = self.dataPrepWin.getTempfilePath(_npz)
                 io.savez_compressed(temp_npz, aligned_frames)
                 self.dataPrepWin.storeTempFileMove(temp_npz, _npz)
                 self.posData.all_npz_paths[i] = _npz
 
-                self.logger.log(f'Saving: {tif}')
+                self.logger.log(f"Saving: {tif}")
                 temp_tif = self.dataPrepWin.getTempfilePath(tif)
                 myutils.to_tiff(temp_tif, aligned_frames)
                 self.dataPrepWin.storeTempFileMove(temp_tif, tif)
 
         if not aligned:
             return
-        
+
         if not self.posData.segmFound:
             return
-        
+
         # Align segmentation data accordingly
         self.segmAligned = False
         if self.posData.loaded_shifts is None or not self.align:
             return
-        
+
         self.emitSigAskAlignSegmData()
         if self.doNotAlignSegmData:
             return
-        
+
         self.dataPrepWin.segmAligned = True
-        self.logger.log(f'Aligning: {self.posData.segm_npz_path}')
+        self.logger.log(f"Aligning: {self.posData.segm_npz_path}")
         self.posData.segm_data, shifts = core.align_frames_2D(
-            self.posData.segm_data, slices=None,
-            user_shifts=self.posData.loaded_shifts
+            self.posData.segm_data, slices=None, user_shifts=self.posData.loaded_shifts
         )
-        self.logger.log(f'Saving: {self.posData.segm_npz_path}')
+        self.logger.log(f"Saving: {self.posData.segm_npz_path}")
         temp_npz = self.dataPrepWin.getTempfilePath(self.posData.segm_npz_path)
         io.savez_compressed(temp_npz, self.posData.segm_data)
         self.dataPrepWin.storeTempFileMove(temp_npz, self.posData.segm_npz_path)
 
     @worker_exception_handler
-    def run(self):     
-        self._align_data()     
+    def run(self):
+        self._align_data()
         self.signals.finished.emit(self)
+
 
 class LabelRoiWorker(QObject):
     finished = Signal()
@@ -688,62 +723,64 @@ class LabelRoiWorker(QObject):
         self.waitCond = Gui.labelRoiWaitCond
         self.exit = False
         self.started = False
-    
+
     def pause(self):
-        self.logger.log('Draw box around object to start magic labeller.')
+        self.logger.log("Draw box around object to start magic labeller.")
         self.mutex.lock()
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-    
+
     def start(self, roiImg, posData, roiSecondChannel=None, isTimelapse=False):
         self.posData = posData
         self.isTimelapse = isTimelapse
         self.imageData = roiImg
         self.roiSecondChannel = roiSecondChannel
         self.restart()
-    
+
     def restart(self, log=True):
         if log:
-            self.logger.log('Magic labeller started...')
+            self.logger.log("Magic labeller started...")
         self.started = True
         self.waitCond.wakeAll()
-    
+
     def _stop(self):
-        self.logger.log('Magic labeller backend process done. Closing it...')
+        self.logger.log("Magic labeller backend process done. Closing it...")
         self.exit = True
         self.waitCond.wakeAll()
-    
+
     def _segment_image(self, img, secondChannelImg):
         if secondChannelImg is not None:
-            img = self.Gui.labelRoiModel.second_ch_img_to_stack(
-                img, secondChannelImg
-            )
-        
+            img = self.Gui.labelRoiModel.second_ch_img_to_stack(img, secondChannelImg)
+
         lab = core.segm_model_segment(
-            self.Gui.labelRoiModel, img, self.Gui.model_kwargs, 
-            preproc_recipe=self.Gui.preproc_recipe, 
-            posData=self.posData
+            self.Gui.labelRoiModel,
+            img,
+            self.Gui.model_kwargs,
+            preproc_recipe=self.Gui.preproc_recipe,
+            posData=self.posData,
         )
         if self.Gui.applyPostProcessing:
-            lab = core.post_process_segm(
-                lab, **self.Gui.standardPostProcessKwargs
-            )
+            lab = core.post_process_segm(lab, **self.Gui.standardPostProcessKwargs)
             if self.Gui.customPostProcessFeatures:
                 lab = features.custom_post_process_segm(
-                    self.posData, self.Gui.customPostProcessGroupedFeatures, 
-                    lab, img, self.posData.frame_i, self.posData.filename, 
-                    self.posData.user_ch_name, 
-                    self.Gui.customPostProcessFeatures
+                    self.posData,
+                    self.Gui.customPostProcessGroupedFeatures,
+                    lab,
+                    img,
+                    self.posData.frame_i,
+                    self.posData.filename,
+                    self.posData.user_ch_name,
+                    self.Gui.customPostProcessFeatures,
                 )
         return lab
-    
+
     @worker_exception_handler
     def run(self):
         while not self.exit:
             if self.exit:
                 break
             elif self.started:
-                self.logger.log('Magic labeller is doing its magic...')
+                self.logger.log("Magic labeller is doing its magic...")
                 if self.isTimelapse:
                     segmData = np.zeros(self.imageData.shape, dtype=np.uint32)
                     for frame_i, img in enumerate(self.imageData):
@@ -758,11 +795,12 @@ class LabelRoiWorker(QObject):
                     img = self.imageData
                     secondChannelImg = self.roiSecondChannel
                     segmData = self._segment_image(img, secondChannelImg)
-                
+
                 self.sigLabellingDone.emit(segmData, self.isTimelapse)
                 self.started = False
             self.pause()
         self.finished.emit()
+
 
 class StoreGuiStateWorker(QObject):
     finished = Signal(object)
@@ -777,24 +815,24 @@ class StoreGuiStateWorker(QObject):
         self.isFinished = False
         self.q = queue.Queue()
         self.logger = workerLogger(self.progress)
-    
+
     def pause(self):
         self.mutex.lock()
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-    
+
     def enqueue(self, posData, img1):
         self.q.put((posData, img1))
         self.waitCond.wakeAll()
-    
+
     def _stop(self):
         self.exit = True
         self.waitCond.wakeAll()
-    
+
     def run(self):
         while True:
             if self.exit:
-                self.logger.log('Closing store state worker...')
+                self.logger.log("Closing store state worker...")
                 break
             elif not self.q.empty():
                 posData, img1 = self.q.get()
@@ -805,12 +843,12 @@ class StoreGuiStateWorker(QObject):
                     cca_df = None
 
                 state = {
-                    'image': img1.copy(),
-                    'labels': posData.storedLab.copy(),
-                    'editID_info': posData.editID_info.copy(),
-                    'binnedIDs': posData.binnedIDs.copy(),
-                    'ripIDs': posData.ripIDs.copy(),
-                    'cca_df': cca_df
+                    "image": img1.copy(),
+                    "labels": posData.storedLab.copy(),
+                    "editID_info": posData.editID_info.copy(),
+                    "binnedIDs": posData.binnedIDs.copy(),
+                    "ripIDs": posData.ripIDs.copy(),
+                    "cca_df": cca_df,
                 }
                 posData.UndoRedoStates[posData.frame_i].insert(0, state)
                 if self.q.empty():
@@ -818,9 +856,10 @@ class StoreGuiStateWorker(QObject):
                     self.sigDone.emit()
             else:
                 self.pause()
-            
+
         self.isFinished = True
         self.finished.emit(self)
+
 
 class AutoSaveWorker(QObject):
     finished = Signal(object)
@@ -846,65 +885,64 @@ class AutoSaveWorker(QObject):
         self.isAutoSaveON = False
         self.isAutoSaveAnnotON = True
         self.debug = False
-    
+
     def pause(self):
         if self.debug:
-            self.logger.log('Autosaving is idle.')
+            self.logger.log("Autosaving is idle.")
         self.mutex.lock()
         self.isPaused = True
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         self.isPaused = False
-    
+
     def enqueue(self, posData):
         # First stop previously saving data
         if self.isSaving:
             self.stopSaving = True
         self._enqueue(posData)
-    
+
     def _enqueue(self, posData):
         if self.debug:
-            self.logger.log('Enqueing posData autosave...')
+            self.logger.log("Enqueing posData autosave...")
         self.dataQ.append(posData)
         if len(self.dataQ) == 1:
             # Wake up worker upon inserting first element
             self.stopSaving = False
             self.waitCond.wakeAll()
-    
+
     def _stop(self):
         self.exit = True
         self.waitCond.wakeAll()
-    
+
     def stop(self):
         self.stopSaving = True
         while not len(self.dataQ) == 0:
             data = self.dataQ.pop()
             del data
         self._stop()
-    
-    def cancelSaving(self):
-        ...
-    
+
+    def cancelSaving(self): ...
+
     @worker_exception_handler
     def run(self):
         while True:
             if self.exit:
-                self.logger.log('Closing autosaving worker...')
+                self.logger.log("Closing autosaving worker...")
                 break
             elif not len(self.dataQ) == 0:
                 if self.debug:
-                    self.logger.log('Autosaving...')
+                    self.logger.log("Autosaving...")
                 data = self.dataQ.pop()
                 self.isSaving = True
                 try:
                     self.saveData(data)
                 except Exception as e:
                     error = traceback.format_exc()
-                    print('*'*40)
+                    print("*" * 40)
                     self.logger.log(error)
-                    print('='*40)
+                    print("=" * 40)
                 self.isSaving = False
-                
+
                 if len(self.dataQ) == 0:
                     self.sigDone.emit()
             else:
@@ -912,12 +950,12 @@ class AutoSaveWorker(QObject):
         self.isFinished = True
         self.finished.emit(self)
         if self.debug:
-            self.logger.log('Autosave finished signal emitted')
-    
+            self.logger.log("Autosave finished signal emitted")
+
     def getLastTrackedFrame(self, posData):
         last_tracked_i = 0
         for frame_i, data_dict in enumerate(posData.allData_li):
-            lab = data_dict['labels']
+            lab = data_dict["labels"]
             if lab is None:
                 frame_i -= 1
                 break
@@ -925,48 +963,48 @@ class AutoSaveWorker(QObject):
             return frame_i
         else:
             return last_tracked_i
-    
+
     def saveData(self, posData):
         if self.debug:
-            self.logger.log('Started autosaving...')
-        
+            self.logger.log("Started autosaving...")
+
         if not self.isAutoSaveON and not self.isAutoSaveAnnotON:
             return
-        
+
         try:
             posData.setTempPaths()
         except Exception as e:
             self.logger.log(
-                '[WARNING]: Cell-ACDC cannot create the recovery folder for '
-                'the autosaving process. Autosaving will be turned off.'
+                "[WARNING]: Cell-ACDC cannot create the recovery folder for "
+                "the autosaving process. Autosaving will be turned off."
             )
             self.sigAutoSaveCannotProceed.emit()
             return
         segm_npz_path = posData.segm_npz_temp_path
 
         end_i = self.getLastTrackedFrame(posData)
-        
+
         saved_segm_data = None
         if self.isAutoSaveON:
             if end_i < len(posData.segm_data):
                 saved_segm_data = posData.segm_data
             else:
                 frame_shape = posData.segm_data.shape[1:]
-                segm_shape = (end_i+1, *frame_shape)
+                segm_shape = (end_i + 1, *frame_shape)
                 saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
-        
+
         keys = []
         acdc_df_li = []
-        
-        for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
+
+        for frame_i, data_dict in enumerate(posData.allData_li[: end_i + 1]):
             if self.stopSaving:
                 break
-            
+
             # Build saved_segm_data
-            lab = data_dict['labels']
+            lab = data_dict["labels"]
             if lab is None:
                 break
-            
+
             if self.isAutoSaveON and saved_segm_data is not None:
                 if posData.SizeT > 1:
                     saved_segm_data[frame_i] = lab
@@ -974,55 +1012,54 @@ class AutoSaveWorker(QObject):
                     saved_segm_data = lab
 
             if self.isAutoSaveAnnotON:
-                acdc_df = data_dict['acdc_df']
-                
+                acdc_df = data_dict["acdc_df"]
+
                 if acdc_df is None:
                     continue
 
             if not np.any(lab):
                 continue
-            
+
             if self.isAutoSaveAnnotON:
                 acdc_df = load.pd_bool_and_float_to_int_to_str(
                     acdc_df, inplace=False, colsToCastInt=[]
                 )
-                
+
                 acdc_df_li.append(acdc_df)
-                key = (frame_i, posData.TimeIncrement*frame_i)
+                key = (frame_i, posData.TimeIncrement * frame_i)
                 keys.append(key)
 
             if self.stopSaving:
                 break
-        
-        if not self.stopSaving:            
+
+        if not self.stopSaving:
             if self.isAutoSaveON:
                 segm_data = np.squeeze(saved_segm_data)
                 self._saveSegm(segm_npz_path, segm_data)
-            
+
             if acdc_df_li:
                 all_frames_acdc_df = pd.concat(
-                    acdc_df_li, keys=keys,
-                    names=['frame_i', 'time_seconds', 'Cell_ID']
+                    acdc_df_li, keys=keys, names=["frame_i", "time_seconds", "Cell_ID"]
                 )
                 self._save_acdc_df(all_frames_acdc_df, posData)
 
         if self.debug:
-            self.logger.log(f'Autosaving done.')
-            self.logger.log(f'Stopped autosaving {self.stopSaving}.')
+            self.logger.log(f"Autosaving done.")
+            self.logger.log(f"Stopped autosaving {self.stopSaving}.")
 
         self.stopSaving = False
-    
+
     def _saveSegm(self, recovery_path, data):
         try:
             equalToSavedSegm = np.all(self.savedSegmData == data)
         except Exception as err:
             return
-        
+
         if equalToSavedSegm:
             return
         else:
             io.savez_compressed(recovery_path, np.squeeze(data))
-    
+
     def _save_acdc_df(self, recovery_acdc_df: pd.DataFrame, posData):
         recovery_folderpath = posData.recoveryFolderpath()
         if not os.path.exists(posData.acdc_output_csv_path):
@@ -1030,15 +1067,13 @@ class AutoSaveWorker(QObject):
             return
 
         saved_acdc_df_path = posData.acdc_output_csv_path
-        saved_acdc_df = (
-            pd.read_csv(saved_acdc_df_path, dtype=load.acdc_df_str_cols)
-            .set_index(['frame_i', 'Cell_ID'])
-        )
-        
-        recovery_acdc_df = (
-            recovery_acdc_df.reset_index(allow_duplicates=True)
-            .set_index(['frame_i', 'Cell_ID'])
-        )
+        saved_acdc_df = pd.read_csv(
+            saved_acdc_df_path, dtype=load.acdc_df_str_cols
+        ).set_index(["frame_i", "Cell_ID"])
+
+        recovery_acdc_df = recovery_acdc_df.reset_index(
+            allow_duplicates=True
+        ).set_index(["frame_i", "Cell_ID"])
         recovery_acdc_df = recovery_acdc_df.loc[
             :, ~recovery_acdc_df.columns.duplicated()
         ]
@@ -1048,10 +1083,10 @@ class AutoSaveWorker(QObject):
             df_left = recovery_acdc_df
             existing_cols = df_left.columns.intersection(saved_acdc_df.columns)
             df_right = saved_acdc_df.drop(columns=existing_cols)
-            recovery_acdc_df = df_left.join(df_right, how='left')
+            recovery_acdc_df = df_left.join(df_right, how="left")
         except Exception as error:
-            self.logger.log(f'[WARNING]: {error}')
-        
+            self.logger.log(f"[WARNING]: {error}")
+
         # Check if last saved acdc_df is equal
         last_unsaved_csv_path = load.get_last_stored_unsaved_acdc_df_filepath(
             recovery_folderpath
@@ -1060,18 +1095,18 @@ class AutoSaveWorker(QObject):
             reference_acdc_df = saved_acdc_df
         else:
             try:
-                reference_acdc_df = (
-                    pd.read_csv(last_unsaved_csv_path, dtype=load.acdc_df_str_cols)
-                    .set_index(['frame_i', 'Cell_ID'])
-                )
+                reference_acdc_df = pd.read_csv(
+                    last_unsaved_csv_path, dtype=load.acdc_df_str_cols
+                ).set_index(["frame_i", "Cell_ID"])
             except Exception as e:
-                self.logger.log(f'[WARNING]: {e}')
+                self.logger.log(f"[WARNING]: {e}")
                 reference_acdc_df = saved_acdc_df
-        
+
         if myutils.are_acdc_dfs_equal(recovery_acdc_df, reference_acdc_df):
             return
-        
+
         load.store_unsaved_acdc_df(recovery_folderpath, recovery_acdc_df)
+
 
 class segmWorker(QObject):
     finished = Signal(np.ndarray, float)
@@ -1079,11 +1114,12 @@ class segmWorker(QObject):
     critical = Signal(object)
 
     def __init__(
-            self, mainWin, 
-            secondChannelData=None, 
-            mutex: QWaitCondition=None, 
-            waitCond: QMutex=None
-        ):
+        self,
+        mainWin,
+        secondChannelData=None,
+        mutex: QWaitCondition = None,
+        waitCond: QMutex = None,
+    ):
         QObject.__init__(self)
         self.mainWin = mainWin
         self.logger = self.mainWin.logger
@@ -1095,12 +1131,12 @@ class segmWorker(QObject):
     def emitDebug(self, to_debug):
         if self.mutex is None:
             return
-        
+
         self.mutex.lock()
         self.debug.emit(to_debug)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-    
+
     @worker_exception_handler
     def run(self):
         t0 = time.perf_counter()
@@ -1108,33 +1144,32 @@ class segmWorker(QObject):
             img = self.mainWin.getDisplayedZstack()
             if self.z_range is not None:
                 startZ, stopZ = self.z_range
-                img = img[startZ:stopZ+1]
+                img = img[startZ : stopZ + 1]
         else:
             img = self.mainWin.getDisplayedImg1()
-        
+
         posData = self.mainWin.data[self.mainWin.pos_i]
         lab = np.zeros_like(posData.segm_data[0])
-        
+
         # self.emitDebug((img, self.secondChannelData))
-        
+
         if self.secondChannelData is not None:
-            img = self.mainWin.model.second_ch_img_to_stack(
-                img, self.secondChannelData
-            )
+            img = self.mainWin.model.second_ch_img_to_stack(img, self.secondChannelData)
 
         start_z_slice = 0
         if self.z_range is not None:
             start_z_slice, _ = self.z_range
         elif not self.mainWin.segment3D and posData.isSegm3D:
             idx = (posData.filename, posData.frame_i)
-            start_z_slice = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
-        
+            start_z_slice = posData.segmInfo_df.at[idx, "z_slice_used_gui"]
+
         _lab = core.segm_model_segment(
-            self.mainWin.model, img, 
-            self.mainWin.model_kwargs, 
-            frame_i=posData.frame_i, 
-            posData=posData, 
-            start_z_slice=start_z_slice
+            self.mainWin.model,
+            img,
+            self.mainWin.model_kwargs,
+            frame_i=posData.frame_i,
+            posData=posData,
+            start_z_slice=start_z_slice,
         )
         posData.saveSamEmbeddings(logger_func=self.logger.info)
 
@@ -1144,27 +1179,33 @@ class segmWorker(QObject):
             )
             if self.mainWin.customPostProcessFeatures:
                 _lab = features.custom_post_process_segm(
-                    posData, self.mainWin.customPostProcessGroupedFeatures, 
-                    _lab, img, posData.frame_i, posData.filename, 
-                    posData.user_ch_name, self.mainWin.customPostProcessFeatures
+                    posData,
+                    self.mainWin.customPostProcessGroupedFeatures,
+                    _lab,
+                    img,
+                    posData.frame_i,
+                    posData.filename,
+                    posData.user_ch_name,
+                    self.mainWin.customPostProcessFeatures,
                 )
-        
+
         if self.z_range is not None:
             # 3D segmentation of a z-slices subset
             startZ, stopZ = self.z_range
-            lab[startZ:stopZ+1] = _lab
+            lab[startZ : stopZ + 1] = _lab
         elif not self.mainWin.segment3D and posData.isSegm3D:
             # 3D segmentation but segmented current z-slice
             idx = (posData.filename, posData.frame_i)
-            z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            z = posData.segmInfo_df.at[idx, "z_slice_used_gui"]
             lab[z] = _lab
         else:
             # Either whole z-stack or 2D segmentation
             lab = _lab
-        
+
         t1 = time.perf_counter()
-        exec_time = t1-t0
+        exec_time = t1 - t0
         self.finished.emit(lab, exec_time)
+
 
 class segmVideoWorker(QObject):
     finished = Signal(float)
@@ -1195,21 +1236,23 @@ class segmVideoWorker(QObject):
             return segm_data
         extended_shape = (stop_frame_num, *segm_data.shape[1:])
         extended_segm_data = np.zeros(extended_shape, dtype=segm_data.dtype)
-        extended_segm_data[:len(segm_data)] = segm_data
+        extended_segm_data[: len(segm_data)] = segm_data
         if len(extended_shape) == 4:
             return extended_segm_data
         if self.posData.SizeZ == 1:
             return extended_segm_data
         else:
             num_added_frames = len(extended_segm_data) - len(segm_data)
-            half_z = int(self.posData.SizeZ/2)
+            half_z = int(self.posData.SizeZ / 2)
             # 2D segm on 3D over time data --> fix segmInfo
-            segmInfo_extended = pd.DataFrame({
-                'filename': [self.posData.filename]*num_added_frames,
-                'frame_i': list(range(len(segm_data), len(extended_segm_data))),
-                'z_slice_used_gui': [half_z]*num_added_frames,
-                'which_z_proj_gui': ['single z-slice']*num_added_frames
-            }).set_index(['filename', 'frame_i'])
+            segmInfo_extended = pd.DataFrame(
+                {
+                    "filename": [self.posData.filename] * num_added_frames,
+                    "frame_i": list(range(len(segm_data), len(extended_segm_data))),
+                    "z_slice_used_gui": [half_z] * num_added_frames,
+                    "which_z_proj_gui": ["single z-slice"] * num_added_frames,
+                }
+            ).set_index(["filename", "frame_i"])
             segmInfo_df = pd.concat([self.posData.segmInfo_df, segmInfo_extended])
             self.posData.segmInfo_df = segmInfo_df
             self.posData.segmInfo_df.to_csv(self.posData.segmInfo_df_csv_path)
@@ -1221,48 +1264,50 @@ class segmVideoWorker(QObject):
         self.posData.segm_data = self._check_extend_segm_data(
             self.posData.segm_data, self.stopFrameNum
         )
-        img_data = self.posData.img_data[self.startFrameNum-1:self.stopFrameNum]
+        img_data = self.posData.img_data[self.startFrameNum - 1 : self.stopFrameNum]
         is4D = img_data.ndim == 4
         is2D_segm = self.posData.segm_data.ndim == 3
         if is4D and is2D_segm:
             filename = self.posData.filename
-            zz = self.posData.segmInfo_df.loc[filename, 'z_slice_used_gui']
+            zz = self.posData.segmInfo_df.loc[filename, "z_slice_used_gui"]
         else:
             zz = None
         for i, img in enumerate(img_data):
-            frame_i = i+self.startFrameNum-1
+            frame_i = i + self.startFrameNum - 1
             if self.secondChannelData is not None:
-                img = self.model.second_ch_img_to_stack(
-                    img, self.secondChannelData
-                )
+                img = self.model.second_ch_img_to_stack(img, self.secondChannelData)
             if zz is not None:
                 z_slice = zz.loc[frame_i]
                 img = img[z_slice]
-                
+
             lab = core.segm_model_segment(
-                self.model, img, self.model_kwargs, frame_i=frame_i, 
-                preproc_recipe=self.preproc_recipe, 
-                posData=self.posData
+                self.model,
+                img,
+                self.model_kwargs,
+                frame_i=frame_i,
+                preproc_recipe=self.preproc_recipe,
+                posData=self.posData,
             )
             self.posData.saveSamEmbeddings(logger_func=self.logger.log)
             if self.applyPostProcessing:
-                lab = core.post_process_segm(
-                    lab, **self.standardPostProcessKwargs
-                )
+                lab = core.post_process_segm(lab, **self.standardPostProcessKwargs)
                 if self.customPostProcessFeatures:
                     lab = features.custom_post_process_segm(
-                        self.posData, 
-                        self.customPostProcessGroupedFeatures, 
-                        lab, img, self.posData.frame_i, 
-                        self.posData.filename, 
-                        self.posData.user_ch_name, 
-                        self.customPostProcessFeatures
+                        self.posData,
+                        self.customPostProcessGroupedFeatures,
+                        lab,
+                        img,
+                        self.posData.frame_i,
+                        self.posData.filename,
+                        self.posData.user_ch_name,
+                        self.customPostProcessFeatures,
                     )
             self.posData.segm_data[frame_i] = lab
             self.progressBar.emit(1)
         t1 = time.perf_counter()
-        exec_time = t1-t0
+        exec_time = t1 - t0
         self.finished.emit(exec_time)
+
 
 class ComputeMetricsWorker(QObject):
     progressBar = Signal(int, int, float)
@@ -1289,7 +1334,7 @@ class ComputeMetricsWorker(QObject):
 
     @worker_exception_handler
     def run(self):
-        np.seterr(invalid='ignore')
+        np.seterr(invalid="ignore")
         debugging = False
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
@@ -1301,7 +1346,7 @@ class ComputeMetricsWorker(QObject):
             tot_pos = len(pos_foldernames)
             self.allPosDataInputs = []
             posDatas = []
-            self.logger.log('-'*30)
+            self.logger.log("-" * 30)
             expFoldername = os.path.basename(exp_path)
 
             if i == 0:
@@ -1316,17 +1361,17 @@ class ComputeMetricsWorker(QObject):
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
                 pos_path = os.path.join(exp_path, pos)
-                images_path = os.path.join(pos_path, 'Images')
+                images_path = os.path.join(pos_path, "Images")
                 basename, chNames = myutils.getBasenameAndChNames(
-                    images_path, useExt=('.tif', '.h5')
+                    images_path, useExt=(".tif", ".h5")
                 )
 
-                self.signals.sigUpdatePbarDesc.emit(f'Loading {pos_path}...')
+                self.signals.sigUpdatePbarDesc.emit(f"Loading {pos_path}...")
 
                 # Use first found channel, it doesn't matter for metrics
                 chName = chNames[0]
@@ -1334,7 +1379,7 @@ class ComputeMetricsWorker(QObject):
 
                 # Load data
                 posData = load.loadData(file_path, chName)
-                posData.getBasenameAndChNames(useExt=('.tif', '.h5'))
+                posData.getBasenameAndChNames(useExt=(".tif", ".h5"))
                 posData.buildPaths()
 
                 posData.loadOtherFiles(
@@ -1342,17 +1387,19 @@ class ComputeMetricsWorker(QObject):
                     load_acdc_df=True,
                     load_metadata=True,
                     loadSegmInfo=True,
-                    load_customCombineMetrics=True
+                    load_customCombineMetrics=True,
                 )
 
                 posDatas.append(posData)
 
-                self.allPosDataInputs.append({
-                    'file_path': file_path,
-                    'chName': chName,
-                    'combineMetricsConfig': posData.combineMetricsConfig,
-                    'combineMetricsPath': posData.custom_combine_metrics_path
-                })
+                self.allPosDataInputs.append(
+                    {
+                        "file_path": file_path,
+                        "chName": chName,
+                        "combineMetricsConfig": posData.combineMetricsConfig,
+                        "combineMetricsPath": posData.custom_combine_metrics_path,
+                    }
+                )
 
             if any([posData.SizeT > 1 for posData in posDatas]):
                 self.mutex.lock()
@@ -1363,30 +1410,28 @@ class ComputeMetricsWorker(QObject):
                     self.signals.finished.emit(self)
                     return
                 for p, posData in enumerate(posDatas):
-                    self.allPosDataInputs[p]['stopFrameNum'] = (
-                        posData.stopFrameNum
-                    )
+                    self.allPosDataInputs[p]["stopFrameNum"] = posData.stopFrameNum
             else:
                 for p, posData in enumerate(posDatas):
-                    self.allPosDataInputs[p]['stopFrameNum'] = 1
-            
+                    self.allPosDataInputs[p]["stopFrameNum"] = 1
+
             self.kernel = cli.ComputeMeasurementsKernel(
-                self.logger, 
-                self.mainWin.log_path, 
+                self.logger,
+                self.mainWin.log_path,
                 False,
             )
-            
+
             # Iterate pos and calculate metrics
             numPos = len(self.allPosDataInputs)
             for p, posDataInputs in enumerate(self.allPosDataInputs):
-                self.logger.log('='*40)
-                file_path = posDataInputs['file_path']
-                chName = posDataInputs['chName']
-                stopFrameNum = posDataInputs['stopFrameNum']
-                
+                self.logger.log("=" * 40)
+                file_path = posDataInputs["file_path"]
+                chName = posDataInputs["chName"]
+                stopFrameNum = posDataInputs["stopFrameNum"]
+
                 self.kernel.run(
-                    img_path=file_path, 
-                    stop_frame_n=stopFrameNum, 
+                    img_path=file_path,
+                    stop_frame_n=stopFrameNum,
                     end_filename_segm=self.mainWin.endFilenameSegm,
                     computeMetricsWorker=self,
                     do_init_metrics=p == 0,
@@ -1394,44 +1439,38 @@ class ComputeMetricsWorker(QObject):
 
                 if self.kernel.setup_done:
                     return
-                
+
                 if self.abort:
                     self.signals.finished.emit(self)
                     return
 
-            self.logger.log('*'*30)
+            self.logger.log("*" * 30)
 
             self.mutex.lock()
             self.signals.sigErrorsReport.emit(
-                self.standardMetricsErrors, 
+                self.standardMetricsErrors,
                 self.customMetricsErrors,
-                self.regionPropsErrors
+                self.regionPropsErrors,
             )
             self.waitCond.wait(self.mutex)
             self.mutex.unlock()
 
         self.signals.finished.emit(self)
-    
+
     def emitSigComputeVolume(self, posData, stop_frame_n):
         # Recreate allData_li attribute of the gui
         posData.allData_li = []
         for frame_i, lab in enumerate(posData.segm_data[:stop_frame_n]):
-            data_dict = {
-                'labels': lab,
-                'regionprops': skimage.measure.regionprops(lab)
-            }
+            data_dict = {"labels": lab, "regionprops": skimage.measure.regionprops(lab)}
             posData.allData_li.append(data_dict)
         self.mutex.lock()
-        self.signals.sigComputeVolume.emit(
-            stop_frame_n, posData
-        )
+        self.signals.sigComputeVolume.emit(stop_frame_n, posData)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
 
     def emitSigPermissionErrorAndSave(
-            self, posData, traceback_str, all_frames_acdc_df, 
-            custom_annot_columns
-        ):
+        self, posData, traceback_str, all_frames_acdc_df, custom_annot_columns
+    ):
         self.mutex.lock()
         self.signals.sigPermissionError.emit(
             traceback_str, posData.acdc_output_csv_path
@@ -1439,28 +1478,27 @@ class ComputeMetricsWorker(QObject):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         load.save_acdc_df_file(
-            all_frames_acdc_df, posData.acdc_output_csv_path, 
-            custom_annot_columns=custom_annot_columns
+            all_frames_acdc_df,
+            posData.acdc_output_csv_path,
+            custom_annot_columns=custom_annot_columns,
         )
-    
+
     def emitSigInitMetricsDialog(self, posData):
         self.mainWin.gui.data = [posData]
         self.mainWin.gui.pos_i = 0
         self.mainWin.gui.isSegm3D = posData.getIsSegm3D()
         self.mutex.lock()
-        self.signals.sigInitAddMetrics.emit(
-            posData, self.allPosDataInputs
-        )
+        self.signals.sigInitAddMetrics.emit(posData, self.allPosDataInputs)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-    
+
     def emitSigAskRunNow(self):
         self.mutex.lock()
         self.signals.sigAskRunNow.emit(self)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-        
-    
+
+
 class loadDataWorker(QObject):
     def __init__(self, mainWin, user_ch_file_paths, user_ch_name, firstPosData):
         QObject.__init__(self)
@@ -1486,15 +1524,14 @@ class loadDataWorker(QObject):
         skipPos = False
         abort = False
         emitWarning = (
-            not posData.segmFound and posData.SizeT > 1
-            and not self.mainWin.isNewFile
+            not posData.segmFound and posData.SizeT > 1 and not self.mainWin.isNewFile
         )
         if emitWarning:
             self.signals.dataIntegrityWarning.emit(posData.pos_foldername)
             self.pause()
             abort = self.abort
         return skipPos, abort
-    
+
     def warnMismatchSegmDataShape(self, posData):
         self.skipPos = False
         self.mutex.lock()
@@ -1519,7 +1556,7 @@ class loadDataWorker(QObject):
                 posData = load.loadData(file_path, user_ch_name)
                 loadSegm = True
 
-            self.logger.log(f'Loading {posData.relPath}...')
+            self.logger.log(f"Loading {posData.relPath}...")
 
             posData.loadSizeS = self.mainWin.loadSizeS
             posData.loadSizeT = self.mainWin.loadSizeT
@@ -1563,10 +1600,10 @@ class loadDataWorker(QObject):
                 posData.segmFound = segmFound
 
             posData.addYXcentroidColsIfMissing(show_progress=True)
-            
+
             isPosSegm3D = posData.getIsSegm3D()
             isMismatch = (
-                isPosSegm3D != self.mainWin.isSegm3D 
+                isPosSegm3D != self.mainWin.isSegm3D
                 and isPosSegm3D is not None
                 and not self.mainWin.isNewFile
             )
@@ -1575,17 +1612,17 @@ class loadDataWorker(QObject):
                 if skipPos:
                     self.logger.log(
                         f'Skipping "{posData.relPath}" because segmentation '
-                        'data shape different from first Position loaded.'
+                        "data shape different from first Position loaded."
                     )
                     continue
                 else:
-                    data = 'abort'
+                    data = "abort"
                     break
 
             self.logger.log(
-                'Loaded paths:\n'
-                f'Segmentation file name: {os.path.basename(posData.segm_npz_path)}\n'
-                f'ACDC output file name {os.path.basename(posData.acdc_output_csv_path)}'
+                "Loaded paths:\n"
+                f"Segmentation file name: {os.path.basename(posData.segm_npz_path)}\n"
+                f"ACDC output file name {os.path.basename(posData.acdc_output_csv_path)}"
             )
 
             posData.SizeT = self.mainWin.SizeT
@@ -1600,10 +1637,12 @@ class loadDataWorker(QObject):
             posData.PhysicalSizeX = self.mainWin.PhysicalSizeX
             posData.isSegm3D = self.mainWin.isSegm3D
             posData.saveMetadata(
-                signals=self.signals, mutex=self.mutex, waitCond=self.waitCond,
-                additionalMetadata=self.firstPosData._additionalMetadataValues
+                signals=self.signals,
+                mutex=self.mutex,
+                waitCond=self.waitCond,
+                additionalMetadata=self.firstPosData._additionalMetadataValues,
             )
-            if hasattr(posData, 'img_data_shape'):
+            if hasattr(posData, "img_data_shape"):
                 SizeY, SizeX = posData.img_data_shape[-2:]
 
             if posData.SizeZ > 1 and posData.img_data.ndim < 3:
@@ -1614,9 +1653,7 @@ class loadDataWorker(QObject):
                 except FileNotFoundError:
                     pass
 
-            posData.setBlankSegmData(
-                posData.SizeT, posData.SizeZ, SizeY, SizeX
-            )
+            posData.setBlankSegmData(posData.SizeT, posData.SizeZ, SizeY, SizeX)
             if not self.firstPosData.onlyEditMetadata:
                 skipPos, abort = self.checkSelectedDataShape(posData, numPos)
             else:
@@ -1625,9 +1662,9 @@ class loadDataWorker(QObject):
             if skipPos:
                 continue
             elif abort:
-                data = 'abort'
+                data = "abort"
                 break
-            
+
             posData.setTempPaths(createFolder=False)
             isRecoveredDataPresent = (
                 os.path.exists(posData.segm_npz_temp_path)
@@ -1642,43 +1679,43 @@ class loadDataWorker(QObject):
                     self.mutex.unlock()
                     self.recoveryAsked = True
                     if self.abort:
-                        data = 'abort'
+                        data = "abort"
                         break
                 if self.loadUnsaved:
-                    self.logger.log('Loading unsaved data...')
+                    self.logger.log("Loading unsaved data...")
                     if os.path.exists(posData.segm_npz_temp_path):
                         segm_npz_path = posData.segm_npz_temp_path
-                        posData.segm_data = np.load(segm_npz_path)['arr_0']
+                        posData.segm_data = np.load(segm_npz_path)["arr_0"]
                         segm_filename = os.path.basename(segm_npz_path)
                         posData.segm_npz_path = os.path.join(
                             posData.images_path, segm_filename
                         )
-                    
+
                     posData.loadMostRecentUnsavedAcdcDf()
                 elif self.loadSafeOverwriteNpz:
-                    self.logger.log('Loading safe npz overwrite...')
+                    self.logger.log("Loading safe npz overwrite...")
                     segm_safe_npz_path = posData.getSafeNpzOverwritePath()
-                    posData.segm_data = np.load(segm_safe_npz_path)['arr_0']
+                    posData.segm_data = np.load(segm_safe_npz_path)["arr_0"]
 
             # Allow single 2D/3D image
             if posData.SizeT == 1:
                 posData.img_data = posData.img_data[np.newaxis]
                 posData.segm_data = posData.segm_data[np.newaxis]
-            if hasattr(posData, 'img_data_shape'):
+            if hasattr(posData, "img_data_shape"):
                 img_shape = posData.img_data_shape
-            img_shape = 'Not Loaded'
-            if hasattr(posData, 'img_data_shape'):
+            img_shape = "Not Loaded"
+            if hasattr(posData, "img_data_shape"):
                 datasetShape = posData.img_data.shape
             else:
-                datasetShape = 'Not Loaded'
+                datasetShape = "Not Loaded"
             if posData.segm_data is not None:
                 posData.segmSizeT = len(posData.segm_data)
             SizeT = posData.SizeT
             SizeZ = posData.SizeZ
-            self.logger.log(f'Full dataset shape = {img_shape}')
-            self.logger.log(f'Loaded dataset shape = {datasetShape}')
-            self.logger.log(f'Number of frames = {SizeT}')
-            self.logger.log(f'Number of z-slices per frame = {SizeZ}')
+            self.logger.log(f"Full dataset shape = {img_shape}")
+            self.logger.log(f"Loaded dataset shape = {datasetShape}")
+            self.logger.log(f"Number of frames = {SizeT}")
+            self.logger.log(f"Number of z-slices per frame = {SizeZ}")
             data.append(posData)
             self.signals.progressBar.emit(1)
 
@@ -1687,6 +1724,7 @@ class loadDataWorker(QObject):
             self.signals.dataIntegrityCritical.emit()
 
         self.signals.finished.emit(data)
+
 
 class trackingWorker(QObject):
     finished = Signal()
@@ -1704,11 +1742,11 @@ class trackingWorker(QObject):
         self.tracker = self.mainWin.tracker
         self.track_params = self.mainWin.track_params
         self.video_to_track = video_to_track
-    
+
     def _get_first_untracked_lab(self):
         start_frame_i = self.mainWin.start_n - 1
         frameData = self.posData.allData_li[start_frame_i]
-        lab = frameData['labels']
+        lab = frameData["labels"]
         if lab is not None:
             return lab
         else:
@@ -1721,15 +1759,15 @@ class trackingWorker(QObject):
         max_tracked_video = tracked_video.max()
         overall_max = max(max_allIDs, max_tracked_video)
         uniqueID = overall_max + 1
-        
+
         tracked_video = transformation.retrack_based_on_untracked_first_frame(
-            tracked_video, first_untracked_lab, uniqueID=uniqueID        
+            tracked_video, first_untracked_lab, uniqueID=uniqueID
         )
         return tracked_video
 
     def _setProgressBarIndefiniteWait(self):
         try:
-            if hasattr(self.signals, 'innerPbar_available'):
+            if hasattr(self.signals, "innerPbar_available"):
                 if self.signals.innerPbar_available:
                     # Use inner pbar of the GUI widget (top pbar is for positions)
                     self.signals.sigInitInnerPbar.emit(1)
@@ -1738,75 +1776,73 @@ class trackingWorker(QObject):
                 self.signals.initProgressBar.emit(1)
         except Exception as err:
             pass
-    
+
     @worker_exception_handler
     def run(self):
-        self.mutex.lock()        
-        self.progress.emit(
-            'Tracking process started (more details in the terminal)...')
-        
+        self.mutex.lock()
+        self.progress.emit("Tracking process started (more details in the terminal)...")
+
         trackerInputImage = None
-        self.track_params['signals'] = self.signals
-        if 'image' in self.track_params:
-            trackerInputImage = self.track_params.pop('image')
-            start_frame_i = self.mainWin.start_n-1
+        self.track_params["signals"] = self.signals
+        if "image" in self.track_params:
+            trackerInputImage = self.track_params.pop("image")
+            start_frame_i = self.mainWin.start_n - 1
             stop_frame_n = self.mainWin.stop_n
 
             trackerInputImage = trackerInputImage[start_frame_i:stop_frame_n]
-        
+
         tracked_video = core.tracker_track(
-            self.video_to_track, self.tracker, self.track_params, 
+            self.video_to_track,
+            self.tracker,
+            self.track_params,
             intensity_img=trackerInputImage,
-            logger_func=self.progress.emit
+            logger_func=self.progress.emit,
         )
-        
+
         self._setProgressBarIndefiniteWait()
-        
+
         # self.debug.emit((tracked_video, self))
         # self.waitCond.wait(self.mutex)
-        
-        self.progress.emit('Re-tracking first frame to ensure continuity...')
+
+        self.progress.emit("Re-tracking first frame to ensure continuity...")
         # Relabel first frame objects back to IDs they had before tracking
         # (to ensure continuity with past untracked frames)
         tracked_video = self._relabel_first_frame_labels(tracked_video)
-        
-        print('')
-        self.progress.emit('Generating annotations...')
+
+        print("")
+        self.progress.emit("Generating annotations...")
         acdc_df = self.posData.fromTrackerToAcdcDf(
-            self.tracker, tracked_video, start_frame_i=self.mainWin.start_n-1
+            self.tracker, tracked_video, start_frame_i=self.mainWin.start_n - 1
         )
         # Store new tracked video
         current_frame_i = self.posData.frame_i
         self.trackingOnNeverVisitedFrames = False
-        print('')
-        self.progress.emit('Storing tracked video...')
+        print("")
+        self.progress.emit("Storing tracked video...")
         pbar = tqdm(total=len(tracked_video), ncols=100)
         for rel_frame_i, lab in enumerate(tracked_video):
             frame_i = rel_frame_i + self.mainWin.start_n - 1
 
             if acdc_df is not None:
-                cca_cols = acdc_df.columns.intersection(
-                    cca_df_colnames_with_tree
-                )
+                cca_cols = acdc_df.columns.intersection(cca_df_colnames_with_tree)
                 # Store cca_df if it is an output of the tracker
                 cca_df = acdc_df.loc[frame_i][cca_cols]
                 self.mainWin.store_cca_df(
-                    frame_i=frame_i, cca_df=cca_df, mainThread=False,
-                    autosave=False
+                    frame_i=frame_i, cca_df=cca_df, mainThread=False, autosave=False
                 )
 
-            if self.posData.allData_li[frame_i]['labels'] is None:
+            if self.posData.allData_li[frame_i]["labels"] is None:
                 # repeating tracking on a never visited frame
                 # --> modify only raw data and ask later what to do
                 self.posData.segm_data[frame_i] = lab
                 self.trackingOnNeverVisitedFrames = True
             else:
                 # Get the rest of the stored metadata based on the new lab
-                self.posData.allData_li[frame_i]['labels'] = lab
+                self.posData.allData_li[frame_i]["labels"] = lab
                 self.posData.frame_i = frame_i
                 self.mainWin.get_data()
                 self.mainWin.store_data(autosave=False)
-            
+
             pbar.update()
         pbar.close()
 
@@ -1816,6 +1852,7 @@ class trackingWorker(QObject):
         self.mainWin.store_data(autosave=True)
         self.mutex.unlock()
         self.finished.emit()
+
 
 class reapplyDataPrepWorker(QObject):
     finished = Signal()
@@ -1834,19 +1871,19 @@ class reapplyDataPrepWorker(QObject):
         self.abort = False
         self.mutex = QMutex()
         self.waitCond = QWaitCondition()
-    
+
     def raiseSegmInfoNotFound(self, path):
         raise FileNotFoundError(
-            'The following file is required for the alignment of 4D data '
+            "The following file is required for the alignment of 4D data "
             f'but it was not found: "{path}"'
         )
-    
+
     def saveBkgrData(self, imageData, posData, isAligned=False):
         bkgrROI_data = {}
         for r, roi in enumerate(posData.bkgrROIs):
             xl, yt = [int(round(c)) for c in roi.pos()]
             w, h = [int(round(c)) for c in roi.size()]
-            if not yt+h>yt or not xl+w>xl:
+            if not yt + h > yt or not xl + w > xl:
                 # Prevent 0 height or 0 width roi
                 continue
             is4D = posData.SizeT > 1 and posData.SizeZ > 1
@@ -1854,42 +1891,42 @@ class reapplyDataPrepWorker(QObject):
             is3Dt = posData.SizeT > 1 and posData.SizeZ == 1
             is2D = posData.SizeT == 1 and posData.SizeZ == 1
             if is4D:
-                bkgr_data = imageData[:, :, yt:yt+h, xl:xl+w]
+                bkgr_data = imageData[:, :, yt : yt + h, xl : xl + w]
             elif is3Dz or is3Dt:
-                bkgr_data = imageData[:, yt:yt+h, xl:xl+w]
+                bkgr_data = imageData[:, yt : yt + h, xl : xl + w]
             elif is2D:
-                bkgr_data = imageData[yt:yt+h, xl:xl+w]
-            bkgrROI_data[f'roi{r}_data'] = bkgr_data
+                bkgr_data = imageData[yt : yt + h, xl : xl + w]
+            bkgrROI_data[f"roi{r}_data"] = bkgr_data
 
         if not bkgrROI_data:
             return
 
         if isAligned:
-            bkgr_data_fn = f'{posData.filename}_aligned_bkgrRoiData.npz'
+            bkgr_data_fn = f"{posData.filename}_aligned_bkgrRoiData.npz"
         else:
-            bkgr_data_fn = f'{posData.filename}_bkgrRoiData.npz'
+            bkgr_data_fn = f"{posData.filename}_bkgrRoiData.npz"
         bkgr_data_path = os.path.join(posData.images_path, bkgr_data_fn)
-        self.progress.emit('Saving background data to:')
+        self.progress.emit("Saving background data to:")
         self.progress.emit(bkgr_data_path)
         io.savez_compressed(bkgr_data_path, **bkgrROI_data)
 
     def run(self):
         ch_name_selector = prompts.select_channel_name(
-            which_channel='segm', allow_abort=False
+            which_channel="segm", allow_abort=False
         )
         for p, pos in enumerate(self.posFoldernames):
             if self.abort:
                 break
-            
-            self.progress.emit(f'Processing {pos}...')
-                
+
+            self.progress.emit(f"Processing {pos}...")
+
             posPath = os.path.join(self.expPath, pos)
-            imagesPath = os.path.join(posPath, 'Images')
+            imagesPath = os.path.join(posPath, "Images")
 
             ls = myutils.listdir(imagesPath)
             if p == 0:
-                ch_names, basenameNotFound = (
-                    ch_name_selector.get_available_channels(ls, imagesPath)
+                ch_names, basenameNotFound = ch_name_selector.get_available_channels(
+                    ls, imagesPath
                 )
                 if not ch_names:
                     self.sigCriticalNoChannels.emit(imagesPath)
@@ -1908,11 +1945,9 @@ class reapplyDataPrepWorker(QObject):
                 self.mutex.unlock()
                 if self.abort:
                     break
-            
-                self.progress.emit(
-                    f'Selected channels: {self.selectedChannels}'
-                )
-            
+
+                self.progress.emit(f"Selected channels: {self.selectedChannels}")
+
             for chName in self.selectedChannels:
                 filePath = load.get_filename_from_channel(imagesPath, chName)
                 posData = load.loadData(filePath, chName)
@@ -1920,12 +1955,12 @@ class reapplyDataPrepWorker(QObject):
                 posData.buildPaths()
                 posData.loadImgData()
                 posData.loadOtherFiles(
-                    load_segm_data=False, 
+                    load_segm_data=False,
                     getTifPath=True,
                     load_metadata=True,
                     load_shifts=True,
                     load_dataPrep_ROIcoords=True,
-                    loadBkgrROIs=True
+                    loadBkgrROIs=True,
                 )
 
                 imageData = posData.img_data
@@ -1934,27 +1969,27 @@ class reapplyDataPrepWorker(QObject):
                 isAligned = False
                 # Align
                 if posData.loaded_shifts is not None:
-                    self.progress.emit('Aligning frames...')
+                    self.progress.emit("Aligning frames...")
                     shifts = posData.loaded_shifts
                     if imageData.ndim == 4:
                         align_func = core.align_frames_3D
                     else:
-                        align_func = core.align_frames_2D 
+                        align_func = core.align_frames_2D
                     imageData, _ = align_func(imageData, user_shifts=shifts)
                     prepped = True
                     isAligned = True
-                
+
                 # Crop and save background
                 if posData.dataPrep_ROIcoords is not None:
                     df = posData.dataPrep_ROIcoords
-                    isCropped = int(df.at['cropped', 'value']) == 1
+                    isCropped = int(df.at["cropped", "value"]) == 1
                     if isCropped:
                         self.saveBkgrData(imageData, posData, isAligned)
-                        self.progress.emit('Cropping...')
-                        x0 = int(df.at['x_left', 'value']) 
-                        y0 = int(df.at['y_top', 'value']) 
-                        x1 = int(df.at['x_right', 'value']) 
-                        y1 = int(df.at['y_bottom', 'value']) 
+                        self.progress.emit("Cropping...")
+                        x0 = int(df.at["x_left", "value"])
+                        y0 = int(df.at["y_top", "value"])
+                        x1 = int(df.at["x_right", "value"])
+                        y1 = int(df.at["y_bottom", "value"])
                         if imageData.ndim == 4:
                             imageData = imageData[:, :, y0:y1, x0:x1]
                         elif imageData.ndim == 3:
@@ -1966,21 +2001,20 @@ class reapplyDataPrepWorker(QObject):
                         filename = os.path.basename(posData.dataPrepBkgrROis_path)
                         self.progress.emit(
                             f'WARNING: the file "{filename}" was not found. '
-                            'I cannot crop the data.'
+                            "I cannot crop the data."
                         )
-                    
-                if prepped:              
-                    self.progress.emit('Saving prepped data...')
+
+                if prepped:
+                    self.progress.emit("Saving prepped data...")
                     io.savez_compressed(posData.align_npz_path, imageData)
-                    if hasattr(posData, 'tif_path'):
-                        myutils.to_tiff(
-                            posData.tif_path, imageData
-                        )
+                    if hasattr(posData, "tif_path"):
+                        myutils.to_tiff(posData.tif_path, imageData)
 
             self.updatePbar.emit()
             if self.abort:
                 break
         self.finished.emit()
+
 
 class LazyLoader(QObject):
     sigLoadingFinished = Signal()
@@ -2018,19 +2052,13 @@ class LazyLoader(QObject):
     def run(self):
         while True:
             if self.exit:
-                self.signals.progress.emit(
-                    'Closing lazy loader...', 'INFO'
-                )
+                self.signals.progress.emit("Closing lazy loader...", "INFO")
                 break
             elif self.wait:
-                self.signals.progress.emit(
-                    'Lazy loader paused.', 'INFO'
-                )
+                self.signals.progress.emit("Lazy loader paused.", "INFO")
                 self.pause()
             else:
-                self.signals.progress.emit(
-                    'Lazy loader resumed.', 'INFO'
-                )
+                self.signals.progress.emit("Lazy loader resumed.", "INFO")
                 self.posData.loadChannelDataChunk(
                     self.current_idx, axis=self.axis, worker=self
                 )
@@ -2054,12 +2082,12 @@ class ImagesToPositionsWorker(QObject):
         self.folderPath = folderPath
         self.targetFolderPath = targetFolderPath
         self.appendText = appendText
-    
+
     @worker_exception_handler
     def run(self):
         self.progress.emit(f'Selected folder: "{self.folderPath}"')
         self.progress.emit(f'Target folder: "{self.targetFolderPath}"')
-        self.progress.emit(' ')
+        self.progress.emit(" ")
         ls = myutils.listdir(self.folderPath)
         numFiles = len(ls)
         self.initPbar.emit(numFiles)
@@ -2070,47 +2098,46 @@ class ImagesToPositionsWorker(QObject):
         for file in ls:
             if self.abort:
                 break
-            
+
             filePath = os.path.join(self.folderPath, file)
             if os.path.isdir(filePath):
                 # Skip directories
                 self.updatePbar.emit()
                 continue
-            
-            self.progress.emit(f'Loading file: {file}')
+
+            self.progress.emit(f"Loading file: {file}")
             filename, ext = os.path.splitext(file)
             s0p = str(pos).zfill(numPosDigits)
             try:
                 data = load.imread(filePath)
                 if data.ndim == 3 and (data.shape[-1] == 3 or data.shape[-1] == 4):
-                    self.progress.emit('Converting RGB image to grayscale...')
+                    self.progress.emit("Converting RGB image to grayscale...")
                     data = skimage.color.rgb2gray(data)
                     data = skimage.img_as_ubyte(data)
-                
-                posName = f'Position_{pos}'
+
+                posName = f"Position_{pos}"
                 posPath = os.path.join(self.targetFolderPath, posName)
-                imagesPath = os.path.join(posPath, 'Images')
+                imagesPath = os.path.join(posPath, "Images")
                 if not os.path.exists(imagesPath):
                     os.makedirs(imagesPath, exist_ok=True)
-                newFilename = f's{s0p}_{filename}_{self.appendText}.tif'
-                relPath = os.path.join(posName, 'Images', newFilename)
+                newFilename = f"s{s0p}_{filename}_{self.appendText}.tif"
+                relPath = os.path.join(posName, "Images", newFilename)
                 tifFilePath = os.path.join(imagesPath, newFilename)
-                self.progress.emit(f'Saving to file: ...{os.sep}{relPath}')
-                myutils.to_tiff(
-                    tifFilePath, data
-                )
+                self.progress.emit(f"Saving to file: ...{os.sep}{relPath}")
+                myutils.to_tiff(tifFilePath, data)
                 pos += 1
             except Exception as e:
                 self.progress.emit(
-                    f'WARNING: {file} is not a valid image file. Skipping it.'
+                    f"WARNING: {file} is not a valid image file. Skipping it."
                 )
-            
-            self.progress.emit(' ')
+
+            self.progress.emit(" ")
             self.updatePbar.emit()
 
             if self.abort:
                 break
         self.finished.emit()
+
 
 class BaseWorkerUtil(QObject):
     progressBar = Signal(int, int, float)
@@ -2131,10 +2158,8 @@ class BaseWorkerUtil(QObject):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
-    
-    def emitSelectFilesWithText(
-            self, exp_path, pos_foldernames, with_text, ext=None
-        ):
+
+    def emitSelectFilesWithText(self, exp_path, pos_foldernames, with_text, ext=None):
         self.mutex.lock()
         self.signals.sigSelectFilesWithText.emit(
             exp_path, pos_foldernames, with_text, ext
@@ -2142,39 +2167,52 @@ class BaseWorkerUtil(QObject):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
-    
-    def emitSelectFile(self, start_dir, caption='', filters='All files (*.)'):
+
+    def emitSelectFile(self, start_dir, caption="", filters="All files (*.)"):
         self.mutex.lock()
         self.signals.sigSelectFile.emit(start_dir, caption, filters)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
-        
+
     def emitSelectAcdcOutputFiles(
-            self, exp_path, pos_foldernames, infoText='', 
-            allowSingleSelection=False, multiSelection=True
-        ):
+        self,
+        exp_path,
+        pos_foldernames,
+        infoText="",
+        allowSingleSelection=False,
+        multiSelection=True,
+    ):
         self.mutex.lock()
         self.signals.sigSelectAcdcOutputFiles.emit(
-            exp_path, pos_foldernames, infoText, allowSingleSelection,
-            multiSelection
+            exp_path, pos_foldernames, infoText, allowSingleSelection, multiSelection
         )
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
 
     def emitSelectSpotmaxRun(
-            self, exp_path, pos_foldernames, all_runs, infoText='', 
-            allowSingleSelection=True, multiSelection=True
-        ):
+        self,
+        exp_path,
+        pos_foldernames,
+        all_runs,
+        infoText="",
+        allowSingleSelection=True,
+        multiSelection=True,
+    ):
         self.mutex.lock()
         self.signals.sigSelectSpotmaxRun.emit(
-            exp_path, pos_foldernames, all_runs, infoText, allowSingleSelection,
-            multiSelection
+            exp_path,
+            pos_foldernames,
+            all_runs,
+            infoText,
+            allowSingleSelection,
+            multiSelection,
         )
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
+
 
 class DataPrepSaveBkgrDataWorker(QObject):
     def __init__(self, posData, dataPrepWin):
@@ -2183,11 +2221,12 @@ class DataPrepSaveBkgrDataWorker(QObject):
         self.logger = workerLogger(self.signals.progress)
         self.posData = posData
         self.dataPrepWin = dataPrepWin
-    
+
     @worker_exception_handler
     def run(self):
         self.dataPrepWin.saveBkgrData(self.posData)
         self.signals.finished.emit(self)
+
 
 class DataPrepCropWorker(QObject):
     def __init__(self, posData, dataPrepWin, dstPath):
@@ -2197,13 +2236,14 @@ class DataPrepCropWorker(QObject):
         self.posData = posData
         self.dataPrepWin = dataPrepWin
         self.dstPath = dstPath
-    
+
     @worker_exception_handler
     def run(self):
         self.dataPrepWin.saveSingleCrop(
             self.posData, self.posData.cropROIs[0], self.dstPath
         )
         self.signals.finished.emit(self)
+
 
 class TrackSubCellObjectsWorker(BaseWorkerUtil):
     sigAskAppendName = Signal(str, list)
@@ -2212,15 +2252,15 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
-        if mainWin.trackingMode.find('Delete both') != -1:
-            self.trackingMode = 'delete_both'
-        elif mainWin.trackingMode.find('Delete sub-cellular') != -1:
-            self.trackingMode = 'delete_sub'
-        elif mainWin.trackingMode.find('Delete cells') != -1:
-            self.trackingMode = 'delete_cells'
-        elif mainWin.trackingMode.find('Only track') != -1:
-            self.trackingMode = 'only_track'
-        
+        if mainWin.trackingMode.find("Delete both") != -1:
+            self.trackingMode = "delete_both"
+        elif mainWin.trackingMode.find("Delete sub-cellular") != -1:
+            self.trackingMode = "delete_sub"
+        elif mainWin.trackingMode.find("Delete cells") != -1:
+            self.trackingMode = "delete_cells"
+        elif mainWin.trackingMode.find("Only track") != -1:
+            self.trackingMode = "only_track"
+
         self.relabelSubObjLab = mainWin.relabelSubObjLab
         self.IoAthresh = mainWin.IoAthresh
         self.createThirdSegm = mainWin.createThirdSegm
@@ -2236,13 +2276,13 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
 
-            red_text = html_utils.span('OF THE CELLs')
-            self.mainWin.infoText = f'Select <b>segmentation file {red_text}</b>'
+            red_text = html_utils.span("OF THE CELLs")
+            self.mainWin.infoText = f"Select <b>segmentation file {red_text}</b>"
             abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
             if abort:
                 self.sigAborted.emit()
                 return
-            
+
             # Critical --> there are not enough segm files
             if len(self.mainWin.existingSegmEndNames) < 2:
                 self.mutex.lock()
@@ -2253,16 +2293,14 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                 return
 
             self.cellsSegmEndFilename = self.mainWin.endFilenameSegm
-            
-            red_text = html_utils.span('OF THE SUB-CELLULAR OBJECTS')
-            self.mainWin.infoText = (
-                f'Select <b>segmentation file {red_text}</b>'
-            )
+
+            red_text = html_utils.span("OF THE SUB-CELLULAR OBJECTS")
+            self.mainWin.infoText = f"Select <b>segmentation file {red_text}</b>"
             abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
             if abort:
                 self.sigAborted.emit()
                 return
-            
+
             # Ask appendend name
             self.mutex.lock()
             self.sigAskAppendName.emit(
@@ -2282,21 +2320,22 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
-                images_path = os.path.join(exp_path, pos, 'Images')
+                images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameSegm = self.mainWin.endFilenameSegm
                 ls = myutils.listdir(images_path)
                 file_path = [
-                    os.path.join(images_path, f) for f in ls 
-                    if f.endswith(f'{endFilenameSegm}.npz')
+                    os.path.join(images_path, f)
+                    for f in ls
+                    if f.endswith(f"{endFilenameSegm}.npz")
                 ][0]
-                
-                posData = load.loadData(file_path, '')
 
-                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+                posData = load.loadData(file_path, "")
+
+                self.signals.sigUpdatePbarDesc.emit(f"Processing {posData.pos_path}")
 
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
@@ -2305,20 +2344,22 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                     load_segm_data=True,
                     load_acdc_df=True,
                     load_metadata=True,
-                    end_filename_segm=endFilenameSegm
+                    end_filename_segm=endFilenameSegm,
                 )
 
                 # Load cells segmentation file
                 segmDataCells, segmCellsPath = load.load_segm_file(
-                    images_path, end_name_segm_file=self.cellsSegmEndFilename,
-                    return_path=True
+                    images_path,
+                    end_name_segm_file=self.cellsSegmEndFilename,
+                    return_path=True,
                 )
                 acdc_df_cells_endname = self.cellsSegmEndFilename.replace(
-                    '_segm', '_acdc_output'
+                    "_segm", "_acdc_output"
                 )
                 acdc_df_cell, acdc_df_cells_path = load.load_acdc_df_file(
-                    images_path, end_name_acdc_df_file=acdc_df_cells_endname,
-                    return_path=True
+                    images_path,
+                    end_name_acdc_df_file=acdc_df_cells_endname,
+                    return_path=True,
                 )
 
                 if posData.SizeT > 1:
@@ -2327,35 +2368,42 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                     posData.segm_data = posData.segm_data[:numFrames]
                 else:
                     numFrames = 1
-                
-                self.signals.sigInitInnerPbar.emit(numFrames*2)
-                
-                self.logger.log('Tracking sub-cellular objects...')
+
+                self.signals.sigInitInnerPbar.emit(numFrames * 2)
+
+                self.logger.log("Tracking sub-cellular objects...")
                 tracked = core.track_sub_cell_objects(
-                    segmDataCells, posData.segm_data, self.IoAthresh, 
-                    how=self.trackingMode, SizeT=numFrames, 
+                    segmDataCells,
+                    posData.segm_data,
+                    self.IoAthresh,
+                    how=self.trackingMode,
+                    SizeT=numFrames,
                     sigProgress=self.signals.sigUpdateInnerPbar,
-                    relabel_sub_obj_lab=self.relabelSubObjLab
+                    relabel_sub_obj_lab=self.relabelSubObjLab,
                 )
-                (trackedSubSegmData, trackedCellsSegmData, numSubObjPerCell, 
-                replacedSubIds) = tracked
-       
-                self.logger.log('Saving tracked segmentation files...')
+                (
+                    trackedSubSegmData,
+                    trackedCellsSegmData,
+                    numSubObjPerCell,
+                    replacedSubIds,
+                ) = tracked
+
+                self.logger.log("Saving tracked segmentation files...")
                 subSegmFilename, ext = os.path.splitext(posData.segm_npz_path)
-                trackedSubPath = f'{subSegmFilename}_{appendedName}.npz'
+                trackedSubPath = f"{subSegmFilename}_{appendedName}.npz"
                 io.savez_compressed(trackedSubPath, trackedSubSegmData)
                 posData.saveIsSegm3Dmetadata(trackedSubPath)
 
                 if trackedCellsSegmData is not None:
                     cellsSegmFilename, ext = os.path.splitext(segmCellsPath)
-                    trackedCellsPath = f'{cellsSegmFilename}_{appendedName}.npz'
+                    trackedCellsPath = f"{cellsSegmFilename}_{appendedName}.npz"
                     io.savez_compressed(trackedCellsPath, trackedCellsSegmData)
-                
+
                 if self.createThirdSegm:
                     self.logger.log(
-                        f'Generating segmentation from '
+                        f"Generating segmentation from "
                         f'"{self.cellsSegmEndFilename} - {appendedName}" '
-                        'difference...'
+                        "difference..."
                     )
                     if trackedCellsSegmData is not None:
                         parentSegmData = trackedCellsSegmData
@@ -2364,63 +2412,65 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                     diffSegmData = parentSegmData.copy()
                     diffSegmData[trackedSubSegmData != 0] = 0
 
-                    self.logger.log('Saving difference segmentation file...')
+                    self.logger.log("Saving difference segmentation file...")
                     diffSegmPath = (
-                        f'{subSegmFilename}_{appendedName}'
-                        f'_{self.thirdSegmAppendedText}.npz'
+                        f"{subSegmFilename}_{appendedName}"
+                        f"_{self.thirdSegmAppendedText}.npz"
                     )
                     io.savez_compressed(diffSegmPath, diffSegmData)
                     posData.saveIsSegm3Dmetadata(diffSegmPath)
                     del diffSegmData
-                
+
                 if self.relabelSubObjLab:
                     # When we relabel the sub-cell objs acdc_df is not valid anymore
                     # because IDs could be different
                     posData.acdc_df = None
-                
-                self.logger.log('Generating acdc_output tables...')  
-                # Update or create acdc_df for sub-cellular objects                
+
+                self.logger.log("Generating acdc_output tables...")
+                # Update or create acdc_df for sub-cellular objects
                 acdc_dfs_tracked = core.track_sub_cell_objects_acdc_df(
-                    trackedSubSegmData, posData.acdc_df, 
-                    replacedSubIds, numSubObjPerCell,
+                    trackedSubSegmData,
+                    posData.acdc_df,
+                    replacedSubIds,
+                    numSubObjPerCell,
                     tracked_cells_segm_data=trackedCellsSegmData,
-                    cells_acdc_df=acdc_df_cell, SizeT=posData.SizeT, 
-                    sigProgress=self.signals.sigUpdateInnerPbar
+                    cells_acdc_df=acdc_df_cell,
+                    SizeT=posData.SizeT,
+                    sigProgress=self.signals.sigUpdateInnerPbar,
                 )
                 subTrackedAcdcDf, trackedAcdcDf = acdc_dfs_tracked
 
-                self.logger.log('Saving acdc_output tables...')  
-                subAcdcDfFilename, _ = os.path.splitext(
-                    posData.acdc_output_csv_path
-                )
-                subTrackedAcdcDfPath = f'{subAcdcDfFilename}_{appendedName}.csv'
+                self.logger.log("Saving acdc_output tables...")
+                subAcdcDfFilename, _ = os.path.splitext(posData.acdc_output_csv_path)
+                subTrackedAcdcDfPath = f"{subAcdcDfFilename}_{appendedName}.csv"
                 subTrackedAcdcDf.to_csv(subTrackedAcdcDfPath)
 
                 if trackedAcdcDf is not None:
                     basen = posData.basename
                     cellsSegmFilename = os.path.basename(segmCellsPath)
                     cellsSegmFilename, ext = os.path.splitext(cellsSegmFilename)
-                    cellsSegmEndname = cellsSegmFilename[len(basen):]
+                    cellsSegmEndname = cellsSegmFilename[len(basen) :]
                     trackedAcdcDfEndname = cellsSegmEndname.replace(
-                        'segm', 'acdc_output'
+                        "segm", "acdc_output"
                     )
-                    trackedAcdcDfFilename = f'{basen}{trackedAcdcDfEndname}'
-                    trackedAcdcDfFilename = f'{trackedAcdcDfFilename}_{appendedName}.csv'
+                    trackedAcdcDfFilename = f"{basen}{trackedAcdcDfEndname}"
+                    trackedAcdcDfFilename = (
+                        f"{trackedAcdcDfFilename}_{appendedName}.csv"
+                    )
                     trackedAcdcDfPath = os.path.join(
                         posData.images_path, trackedAcdcDfFilename
                     )
                     trackedAcdcDf.to_csv(trackedAcdcDfPath)
-                    
+
                     if self.createThirdSegm:
                         if posData.SizeT == 1:
                             parentSegmData = parentSegmData[np.newaxis]
-                        subAcdcDfFilename = (
-                            subSegmFilename.replace('.npz', '.csv')
-                            .replace('segm', 'acdc_output')
-                        )
+                        subAcdcDfFilename = subSegmFilename.replace(
+                            ".npz", ".csv"
+                        ).replace("segm", "acdc_output")
                         diffAcdcDfPath = (
-                            f'{subAcdcDfFilename}_{appendedName}'
-                            f'_{self.thirdSegmAppendedText}.csv'
+                            f"{subAcdcDfFilename}_{appendedName}"
+                            f"_{self.thirdSegmAppendedText}.csv"
                         )
                         third_segm_acdc_df = (
                             core.track_sub_cell_objects_third_segm_acdc_df(
@@ -2433,14 +2483,15 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
 
         self.signals.finished.emit(self)
 
+
 class PostProcessSegmWorker(QObject):
     def __init__(
-            self, 
-            postProcessKwargs, 
-            customPostProcessGroupedFeatures, 
-            customPostProcessFeatures,
-            mainWin
-        ):
+        self,
+        postProcessKwargs,
+        customPostProcessGroupedFeatures,
+        customPostProcessFeatures,
+        mainWin,
+    ):
         super().__init__()
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
@@ -2448,7 +2499,7 @@ class PostProcessSegmWorker(QObject):
         self.customPostProcessGroupedFeatures = customPostProcessGroupedFeatures
         self.customPostProcessFeatures = customPostProcessFeatures
         self.mainWin = mainWin
-    
+
     @worker_exception_handler
     def run(self):
         mainWin = self.mainWin
@@ -2459,11 +2510,11 @@ class PostProcessSegmWorker(QObject):
         else:
             current_frame_i = posData.frame_i
             self.signals.initProgressBar.emit(posData.SizeT - current_frame_i)
-        
-        self.logger.log('Post-process segmentation process started.')
+
+        self.logger.log("Post-process segmentation process started.")
         self._run()
         self.signals.finished.emit(None)
-    
+
     def _run(self):
         kwargs = self.kwargs
         mainWin = self.mainWin
@@ -2475,7 +2526,7 @@ class PostProcessSegmWorker(QObject):
             for i, data_dict in enumerate(data_li):
                 frame_i = current_frame_i + i
                 visited = True
-                lab = data_dict['labels']
+                lab = data_dict["labels"]
                 if lab is None:
                     visited = False
                     try:
@@ -2484,23 +2535,23 @@ class PostProcessSegmWorker(QObject):
                         return
 
                 image = posData.img_data[frame_i]
-                
+
                 processed_lab = core.post_process_segm(
                     lab, return_delIDs=False, **kwargs
                 )
                 if self.customPostProcessFeatures:
                     processed_lab = features.custom_post_process_segm(
-                        posData, 
-                        self.customPostProcessGroupedFeatures, 
-                        processed_lab, 
-                        image, 
-                        posData.frame_i, 
-                        posData.filename, 
-                        posData.user_ch_name, 
-                        self.customPostProcessFeatures
+                        posData,
+                        self.customPostProcessGroupedFeatures,
+                        processed_lab,
+                        image,
+                        posData.frame_i,
+                        posData.filename,
+                        posData.user_ch_name,
+                        self.customPostProcessFeatures,
                     )
                 if visited:
-                    posData.allData_li[frame_i]['labels'] = processed_lab
+                    posData.allData_li[frame_i]["labels"] = processed_lab
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = frame_i
                     mainWin.get_data()
@@ -2509,8 +2560,9 @@ class PostProcessSegmWorker(QObject):
                     posData.segm_data[frame_i] = lab
 
                 self.signals.progressBar.emit(1)
-            
+
             posData.frame_i = current_frame_i
+
 
 class CreateConnected3Dsegm(BaseWorkerUtil):
     sigAskAppendName = Signal(str, list)
@@ -2521,10 +2573,10 @@ class CreateConnected3Dsegm(BaseWorkerUtil):
 
     def criticalSegmIsNot3D(self):
         raise TypeError(
-            'Input segmentation masks are not 3D. You can use this utility '
-            'only on 3D z-stack data or 4D z-stack over time data.'
+            "Input segmentation masks are not 3D. You can use this utility "
+            "only on 3D z-stack data or 4D z-stack over time data."
         )
-    
+
     @worker_exception_handler
     def run(self):
         debugging = False
@@ -2535,12 +2587,12 @@ class CreateConnected3Dsegm(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
 
-            self.mainWin.infoText = f'Select <b>3D segmentation file to connect</b>'
+            self.mainWin.infoText = f"Select <b>3D segmentation file to connect</b>"
             abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
             if abort:
                 self.sigAborted.emit()
                 return
-            
+
             # Ask appendend name
             self.mutex.lock()
             self.sigAskAppendName.emit(
@@ -2560,22 +2612,22 @@ class CreateConnected3Dsegm(BaseWorkerUtil):
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
-                images_path = os.path.join(exp_path, pos, 'Images')
+                images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameSegm = self.mainWin.endFilenameSegm
                 ls = myutils.listdir(images_path)
                 file_path = [
-                    os.path.join(images_path, f) for f in ls 
-                    if f.endswith(f'{endFilenameSegm}.npz')
+                    os.path.join(images_path, f)
+                    for f in ls
+                    if f.endswith(f"{endFilenameSegm}.npz")
                 ][0]
-                
-                posData = load.loadData(file_path, '')
 
-                self.signals.sigUpdatePbarDesc.emit(
-                    f'Processing {posData.pos_path}')
+                posData = load.loadData(file_path, "")
+
+                self.signals.sigUpdatePbarDesc.emit(f"Processing {posData.pos_path}")
 
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
@@ -2584,115 +2636,122 @@ class CreateConnected3Dsegm(BaseWorkerUtil):
                     load_segm_data=True,
                     load_acdc_df=True,
                     load_metadata=True,
-                    end_filename_segm=endFilenameSegm
+                    end_filename_segm=endFilenameSegm,
                 )
                 if posData.segm_data.ndim == 3:
                     posData.segm_data = posData.segm_data[np.newaxis]
-                
-                self.logger.log('Connecting 3D objects...')
-                
+
+                self.logger.log("Connecting 3D objects...")
+
                 numFrames = len(posData.segm_data)
                 self.signals.sigInitInnerPbar.emit(numFrames)
                 connectedSegmData = np.zeros_like(posData.segm_data)
                 for frame_i, lab in enumerate(posData.segm_data):
                     if lab.ndim != 3:
                         self.criticalSegmIsNot3D()
-                        
+
                     connected_lab = core.connect_3Dlab_zboundaries(lab)
                     connectedSegmData[frame_i] = connected_lab
 
                     self.signals.sigUpdateInnerPbar.emit(1)
 
-                self.logger.log('Saving connected 3D segmentation file...')
+                self.logger.log("Saving connected 3D segmentation file...")
                 segmFilename, ext = os.path.splitext(posData.segm_npz_path)
-                newSegmFilepath = f'{segmFilename}_{appendedName}.npz'
+                newSegmFilepath = f"{segmFilename}_{appendedName}.npz"
                 connectedSegmData = np.squeeze(connectedSegmData)
                 io.savez_compressed(newSegmFilepath, connectedSegmData)
-                
+
                 self.signals.progressBar.emit(1)
 
         self.signals.finished.emit(self)
 
+
 class ApplyTrackInfoWorker(BaseWorkerUtil):
     def __init__(
-            self, parentWin, endFilenameSegm, trackInfoCsvPath, 
-            trackedSegmFilename, trackColsInfo, posPath
-        ):
+        self,
+        parentWin,
+        endFilenameSegm,
+        trackInfoCsvPath,
+        trackedSegmFilename,
+        trackColsInfo,
+        posPath,
+    ):
         super().__init__(parentWin)
         self.endFilenameSegm = endFilenameSegm
         self.trackInfoCsvPath = trackInfoCsvPath
         self.trackedSegmFilename = trackedSegmFilename
         self.trackColsInfo = trackColsInfo
         self.posPath = posPath
-    
+
     @worker_exception_handler
     def run(self):
-        self.logger.log('Loading segmentation file...')  
+        self.logger.log("Loading segmentation file...")
         self.signals.initProgressBar.emit(0)
-        imagesPath = os.path.join(self.posPath, 'Images')
+        imagesPath = os.path.join(self.posPath, "Images")
         segmFilename = [
-            f for f in myutils.listdir(imagesPath) 
-            if f.endswith(f'{self.endFilenameSegm}.npz')
+            f
+            for f in myutils.listdir(imagesPath)
+            if f.endswith(f"{self.endFilenameSegm}.npz")
         ][0]
         segmFilePath = os.path.join(imagesPath, segmFilename)
-        segmData = np.load(segmFilePath)['arr_0']
+        segmData = np.load(segmFilePath)["arr_0"]
 
-        self.logger.log('Loading table containing tracking info...') 
+        self.logger.log("Loading table containing tracking info...")
         df = pd.read_csv(self.trackInfoCsvPath)
 
-        frameIndexCol = self.trackColsInfo['frameIndexCol']
+        frameIndexCol = self.trackColsInfo["frameIndexCol"]
 
-        parentIDcol = self.trackColsInfo['parentIDcol']
+        parentIDcol = self.trackColsInfo["parentIDcol"]
         pbarMax = len(df[frameIndexCol].unique())
         self.signals.initProgressBar.emit(pbarMax)
 
         # Apply tracking info
         result = core.apply_tracking_from_table(
-            segmData, self.trackColsInfo, df, signal=self.signals.progressBar,
-            logger=self.logger.log, pbarMax=pbarMax
+            segmData,
+            self.trackColsInfo,
+            df,
+            signal=self.signals.progressBar,
+            logger=self.logger.log,
+            pbarMax=pbarMax,
         )
         trackedData, trackedIDsMapper, deleteIDsMapper = result
 
         if self.trackedSegmFilename:
-            trackedSegmFilepath = os.path.join(
-                imagesPath, self.trackedSegmFilename
-            )
+            trackedSegmFilepath = os.path.join(imagesPath, self.trackedSegmFilename)
         else:
             trackedSegmFilepath = os.path.join(segmFilePath)
-        
+
         self.signals.initProgressBar.emit(0)
-        self.logger.log('Saving tracked segmentation file...') 
+        self.logger.log("Saving tracked segmentation file...")
         io.savez_compressed(trackedSegmFilepath, trackedData)
 
-        
         mapperPath = os.path.splitext(trackedSegmFilepath)[0]
-        mapperJsonPath = f'{mapperPath}_deletedIDs_mapper.json'
+        mapperJsonPath = f"{mapperPath}_deletedIDs_mapper.json"
         mapperJsonName = os.path.basename(mapperJsonPath)
-        self.logger.log(f'Saving deleted IDs to {mapperJsonName}...')
-        with open(mapperJsonPath, 'w') as file:
+        self.logger.log(f"Saving deleted IDs to {mapperJsonName}...")
+        with open(mapperJsonPath, "w") as file:
             file.write(json.dumps(deleteIDsMapper))
 
         mapperPath = os.path.splitext(trackedSegmFilepath)[0]
-        mapperJsonPath = f'{mapperPath}_replacedIDs_mapper.json'
+        mapperJsonPath = f"{mapperPath}_replacedIDs_mapper.json"
         mapperJsonName = os.path.basename(mapperJsonPath)
-        self.logger.log(f'Saving IDs replacements to {mapperJsonName}...')
-        with open(mapperJsonPath, 'w') as file:
+        self.logger.log(f"Saving IDs replacements to {mapperJsonName}...")
+        with open(mapperJsonPath, "w") as file:
             file.write(json.dumps(trackedIDsMapper))
 
-        self.logger.log('Generating acdc_output table...')
+        self.logger.log("Generating acdc_output table...")
         acdc_df = None
         if not self.trackedSegmFilename:
             # Fix existing acdc_df
-            acdcEndname = self.endFilenameSegm.replace('_segm', '_acdc_output')
+            acdcEndname = self.endFilenameSegm.replace("_segm", "_acdc_output")
             acdcFilename = [
-                f for f in myutils.listdir(imagesPath) 
-                if f.endswith(f'{acdcEndname}.csv')
+                f
+                for f in myutils.listdir(imagesPath)
+                if f.endswith(f"{acdcEndname}.csv")
             ]
             if acdcFilename:
                 acdcFilePath = os.path.join(imagesPath, acdcFilename[0])
-                acdc_df = pd.read_csv(
-                    acdcFilePath, index_col=['frame_i', 'Cell_ID']
-                )
+                acdc_df = pd.read_csv(acdcFilePath, index_col=["frame_i", "Cell_ID"])
 
         if acdc_df is not None:
             acdc_df = core.apply_trackedIDs_mapper_to_acdc_df(
@@ -2701,39 +2760,45 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
         else:
             acdc_dfs = []
             keys = []
-            for frame_i, lab in enumerate(trackedData):            
+            for frame_i, lab in enumerate(trackedData):
                 rp = skimage.measure.regionprops(lab)
                 acdc_df_frame_i = myutils.getBaseAcdcDf(rp)
                 acdc_dfs.append(acdc_df_frame_i)
                 keys.append(frame_i)
-            
-            acdc_df = pd.concat(acdc_dfs, keys=keys, names=['frame_i', 'Cell_ID'])
+
+            acdc_df = pd.concat(acdc_dfs, keys=keys, names=["frame_i", "Cell_ID"])
             segmFilename = os.path.basename(trackedSegmFilepath)
-            acdcFilename = re.sub(segm_re_pattern, '_acdc_output', segmFilename)
+            acdcFilename = re.sub(segm_re_pattern, "_acdc_output", segmFilename)
             acdcFilePath = os.path.join(imagesPath, acdcFilename)
-        
+
         self.signals.initProgressBar.emit(pbarMax)
-        parentIDcol = self.trackColsInfo['parentIDcol']
-        trackIDsCol = self.trackColsInfo['trackIDsCol']
-        if parentIDcol != 'None':
+        parentIDcol = self.trackColsInfo["parentIDcol"]
+        trackIDsCol = self.trackColsInfo["trackIDsCol"]
+        if parentIDcol != "None":
             self.logger.log(f'Adding lineage info from "{parentIDcol}" column...')
             acdc_df = core.add_cca_info_from_parentID_col(
-                df, acdc_df, frameIndexCol, trackIDsCol, parentIDcol, 
-                len(segmData), signal=self.signals.progressBar,
-                maskID_colname=self.trackColsInfo['maskIDsCol'], 
-                x_colname=self.trackColsInfo['xCentroidCol'], 
-                y_colname=self.trackColsInfo['yCentroidCol']
-            )     
-        
-        self.logger.log('Saving acdc_output table...')
+                df,
+                acdc_df,
+                frameIndexCol,
+                trackIDsCol,
+                parentIDcol,
+                len(segmData),
+                signal=self.signals.progressBar,
+                maskID_colname=self.trackColsInfo["maskIDsCol"],
+                x_colname=self.trackColsInfo["xCentroidCol"],
+                y_colname=self.trackColsInfo["yCentroidCol"],
+            )
+
+        self.logger.log("Saving acdc_output table...")
         acdc_df.to_csv(acdcFilePath)
 
         self.signals.finished.emit(self)
 
+
 class RestructMultiPosWorker(BaseWorkerUtil):
     sigSaveTiff = Signal(str, object, object)
 
-    def __init__(self, rootFolderPath, dstFolderPath, action='copy'):
+    def __init__(self, rootFolderPath, dstFolderPath, action="copy"):
         super().__init__(None)
         self.rootFolderPath = rootFolderPath
         self.dstFolderPath = dstFolderPath
@@ -2744,8 +2809,11 @@ class RestructMultiPosWorker(BaseWorkerUtil):
     @worker_exception_handler
     def run(self):
         load._restructure_multi_files_multi_pos(
-            self.rootFolderPath, self.dstFolderPath, signals=self.signals, 
-            logger=self.logger.log, action=self.action
+            self.rootFolderPath,
+            self.dstFolderPath,
+            signals=self.signals,
+            logger=self.logger.log,
+            action=self.action,
         )
         self.signals.finished.emit(self)
 
@@ -2754,9 +2822,15 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
     sigSaveTiff = Signal(str, object, object)
 
     def __init__(
-            self, allChannels, frame_name_pattern, basename, validFilenames,
-            rootFolderPath, dstFolderPath, segmFolderPath=''
-        ):
+        self,
+        allChannels,
+        frame_name_pattern,
+        basename,
+        validFilenames,
+        rootFolderPath,
+        dstFolderPath,
+        segmFolderPath="",
+    ):
         super().__init__(None)
         self.allChannels = allChannels
         self.frame_name_pattern = frame_name_pattern
@@ -2776,12 +2850,12 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
         dstFolderPath = self.dstFolderPath
         segmFolderPath = self.segmFolderPath
         filesInfo = {}
-        self.signals.initProgressBar.emit(len(self.validFilenames)+1)
+        self.signals.initProgressBar.emit(len(self.validFilenames) + 1)
         for file in self.validFilenames:
             try:
                 # Determine which channel is this file
                 for ch in allChannels:
-                    m = re.findall(rf'(.*)_{ch}{frame_name_pattern}', file)
+                    m = re.findall(rf"(.*)_{ch}{frame_name_pattern}", file)
                     if m:
                         break
                 else:
@@ -2800,17 +2874,17 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                 self.logger.log(traceback.format_exc())
                 self.logger.log(
                     f'WARNING: File "{file}" does not contain valid pattern. '
-                    'Skipping it.'
+                    "Skipping it."
                 )
                 continue
-        
+
         self.signals.progressBar.emit(1)
 
         df_metadata = None
         partial_basename = self.basename
         allPosDataInfo = []
         for p, (posName, channelInfo) in enumerate(filesInfo.items()):
-            self.logger.log(f'='*40)
+            self.logger.log(f"=" * 40)
             self.logger.log(f'Processing position "{posName}"...')
 
             for _, filesList in channelInfo.items():
@@ -2824,42 +2898,39 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                     continue
             else:
                 self.logger.log(
-                    f'WARNING: No valid image files found for position {posName}'
+                    f"WARNING: No valid image files found for position {posName}"
                 )
                 continue
 
             # Get basename
             if partial_basename:
-                basename = f'{partial_basename}_{posName}_'
+                basename = f"{partial_basename}_{posName}_"
             else:
-                basename = f'{posName}_'
+                basename = f"{posName}_"
 
             # Get SizeT from first file
             SizeT = len(filesList)
-            
-            # Save metadata.csv      
-            df_metadata = pd.DataFrame({
-                'SizeT': SizeT,
-                'basename': basename
-            }, index=['values'])
+
+            # Save metadata.csv
+            df_metadata = pd.DataFrame(
+                {"SizeT": SizeT, "basename": basename}, index=["values"]
+            )
 
             # Iterate channels
             for c, (channelName, filesList) in enumerate(channelInfo.items()):
-                self.logger.log(
-                    f'  Processing channel "{channelName}"...'
-                )
+                self.logger.log(f'  Processing channel "{channelName}"...')
                 # Sort by frame number
-                sortedFilesList = sorted(filesList, key=lambda t:t[1])
+                sortedFilesList = sorted(filesList, key=lambda t: t[1])
 
-                df_metadata[f'channel_{c}_name'] = [channelName]
+                df_metadata[f"channel_{c}_name"] = [channelName]
 
-                imagesPath = os.path.join(dstFolderPath, f'Position_{p+1}', 'Images')
+                imagesPath = os.path.join(dstFolderPath, f"Position_{p + 1}", "Images")
                 if not os.path.exists(imagesPath):
                     os.makedirs(imagesPath, exist_ok=True)
 
                 # Iterate frames
                 videoData = None
-                srcSegmPaths = ['']*SizeT
+                srcSegmPaths = [""] * SizeT
                 frameNumbers = []
                 for frame_i, fileInfo in enumerate(sortedFilesList):
                     file, _ = fileInfo
@@ -2879,64 +2950,65 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                         self.logger.log(traceback.format_exc())
                         continue
 
-                    if segmFolderPath and c==0:
+                    if segmFolderPath and c == 0:
                         srcSegmFilePath = os.path.join(segmFolderPath, file)
                         srcSegmPaths[frame_i] = srcSegmFilePath
 
                     SizeZ = 1
                     if img.ndim == 3:
                         SizeZ = len(img)
-                    
-                    df_metadata['SizeZ'] = [SizeZ]                 
+
+                    df_metadata["SizeZ"] = [SizeZ]
 
                     self.signals.progressBar.emit(1)
-                
+
                 if videoData is None:
                     self.logger.log(
-                        f'WARNING: No valid image files found for position '
+                        f"WARNING: No valid image files found for position "
                         f'"{posName}", channel "{channelName}"'
                     )
                     continue
                 else:
-                    imgFileName = f'{basename}{channelName}.tif'
+                    imgFileName = f"{basename}{channelName}.tif"
                     dstImgFilePath = os.path.join(imagesPath, imgFileName)
-                    dstSegmFileName = f'{basename}segm_{channelName}.npz'
+                    dstSegmFileName = f"{basename}segm_{channelName}.npz"
                     dstSegmPath = os.path.join(imagesPath, dstSegmFileName)
                     imgDataInfo = {
-                        'path': dstImgFilePath, 'SizeT': SizeT, 'SizeZ': SizeZ,
-                        'data': videoData, 'frameNumbers': frameNumbers,
-                        'dst_segm_path': dstSegmPath, 
-                        'src_segm_paths': srcSegmPaths
+                        "path": dstImgFilePath,
+                        "SizeT": SizeT,
+                        "SizeZ": SizeZ,
+                        "data": videoData,
+                        "frameNumbers": frameNumbers,
+                        "dst_segm_path": dstSegmPath,
+                        "src_segm_paths": srcSegmPaths,
                     }
                     allPosDataInfo.append(imgDataInfo)
 
             if df_metadata is not None:
-                metadata_csv_path = os.path.join(
-                    imagesPath, f'{basename}metadata.csv'
-                )
+                metadata_csv_path = os.path.join(imagesPath, f"{basename}metadata.csv")
                 df_metadata = df_metadata.T
-                df_metadata.index.name = 'Description'
+                df_metadata.index.name = "Description"
                 df_metadata.to_csv(metadata_csv_path)
 
-            self.logger.log(f'*'*40)
-        
+            self.logger.log(f"*" * 40)
+
         if not allPosDataInfo:
             self.signals.finished.emit(self)
             return
-        
+
         self.signals.initProgressBar.emit(len(allPosDataInfo))
-        self.logger.log('Saving image files...')
-        maxSizeT = max([d['SizeT'] for d in allPosDataInfo])
-        minFrameNumber = min([d['frameNumbers'][0] for d in allPosDataInfo])
+        self.logger.log("Saving image files...")
+        maxSizeT = max([d["SizeT"] for d in allPosDataInfo])
+        minFrameNumber = min([d["frameNumbers"][0] for d in allPosDataInfo])
         # Pad missing frames in video files according to frame number
         for p, imgDataInfo in enumerate(allPosDataInfo):
-            SizeT = imgDataInfo['SizeT']
-            SizeZ = imgDataInfo['SizeZ']
-            dstImgFilePath = imgDataInfo['path']
-            videoData = imgDataInfo['data']
-            frameNumbers = imgDataInfo['frameNumbers']
+            SizeT = imgDataInfo["SizeT"]
+            SizeZ = imgDataInfo["SizeZ"]
+            dstImgFilePath = imgDataInfo["path"]
+            videoData = imgDataInfo["data"]
+            frameNumbers = imgDataInfo["frameNumbers"]
             paddedShape = (maxSizeT, *videoData.shape[1:])
-            imgDataInfo['paddedShape'] = paddedShape
+            imgDataInfo["paddedShape"] = paddedShape
             dtype = videoData.dtype
             paddedVideoData = np.zeros(paddedShape, dtype=dtype)
             for n, img in zip(frameNumbers, videoData):
@@ -2944,30 +3016,30 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                 paddedVideoData[frame_i] = img
 
             del videoData
-            imgDataInfo['data'] = None
+            imgDataInfo["data"] = None
 
-            self.mutex.lock()        
+            self.mutex.lock()
             self.sigSaveTiff.emit(dstImgFilePath, paddedVideoData, self.waitCond)
             self.waitCond.wait(self.mutex)
-            self.mutex.unlock()        
+            self.mutex.unlock()
 
-            self.signals.progressBar.emit(1)      
+            self.signals.progressBar.emit(1)
 
         if not segmFolderPath:
             self.signals.finished.emit(self)
             return
 
         self.signals.initProgressBar.emit(len(allPosDataInfo))
-        self.logger.log('Saving segmentation files...')
+        self.logger.log("Saving segmentation files...")
         for p, imgDataInfo in enumerate(allPosDataInfo):
-            SizeT = imgDataInfo['SizeT']
-            frameNumbers = imgDataInfo['frameNumbers']
-            SizeT = imgDataInfo['SizeT']
-            SizeZ = imgDataInfo['SizeZ']
-            frameNumbers = imgDataInfo['frameNumbers']
-            paddedShape = imgDataInfo['paddedShape']
+            SizeT = imgDataInfo["SizeT"]
+            frameNumbers = imgDataInfo["frameNumbers"]
+            SizeT = imgDataInfo["SizeT"]
+            SizeZ = imgDataInfo["SizeZ"]
+            frameNumbers = imgDataInfo["frameNumbers"]
+            paddedShape = imgDataInfo["paddedShape"]
             segmData = np.zeros(paddedShape, dtype=np.uint32)
-            for n, segmFilePath in zip(frameNumbers, imgDataInfo['src_segm_paths']):
+            for n, segmFilePath in zip(frameNumbers, imgDataInfo["src_segm_paths"]):
                 frame_i = n - minFrameNumber
                 try:
                     lab = load.imread(segmFilePath).astype(np.uint32)
@@ -2975,14 +3047,15 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                 except Exception as e:
                     self.logger.log(traceback.format_exc())
                     self.logger.log(
-                        'WARNING: The following segmentation file does not '
+                        "WARNING: The following segmentation file does not "
                         f'exist, saving empty masks: "{srcSegmFilePath}"'
-                    ) 
+                    )
 
-            io.savez_compressed(imgDataInfo['dst_segm_path'], segmData)
-            del segmData 
+            io.savez_compressed(imgDataInfo["dst_segm_path"], segmData)
+            del segmData
 
         self.signals.finished.emit(self)
+
 
 class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
     sigAskAppendName = Signal(str, list, list)
@@ -2992,43 +3065,50 @@ class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
-    
+
     def emitHowCombineMetrics(
-            self, imagesPath, selectedAcdcOutputEndnames, 
-            existingAcdcOutputEndnames, allChNames
-        ):
+        self,
+        imagesPath,
+        selectedAcdcOutputEndnames,
+        existingAcdcOutputEndnames,
+        allChNames,
+    ):
         self.mutex.lock()
         self.sigHowCombineMetrics.emit(
-            imagesPath, selectedAcdcOutputEndnames, 
-            existingAcdcOutputEndnames, allChNames
+            imagesPath,
+            selectedAcdcOutputEndnames,
+            existingAcdcOutputEndnames,
+            allChNames,
         )
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
-    
+
     def loadAcdcDfs(self, imagesPath, selectedAcdcOutputEndnames):
         for end in selectedAcdcOutputEndnames:
             filePath, _ = load.get_path_from_endname(end, imagesPath)
             acdc_df = pd.read_csv(filePath)
             yield acdc_df
-    
+
     def run_iter_exp(self, exp_path, pos_foldernames, i, tot_exp):
         tot_pos = len(pos_foldernames)
-        
+
         abort = self.emitSelectAcdcOutputFiles(
-            exp_path, pos_foldernames, infoText=' to combine',
-            allowSingleSelection=False
+            exp_path,
+            pos_foldernames,
+            infoText=" to combine",
+            allowSingleSelection=False,
         )
         if abort:
             self.sigAborted.emit()
             return
-        
+
         # Ask appendend name
         self.mutex.lock()
         self.sigAskAppendName.emit(
-            f'{self.mainWin.basename_pos1}acdc_output', 
+            f"{self.mainWin.basename_pos1}acdc_output",
             self.mainWin.existingAcdcOutputEndnames,
-            self.mainWin.selectedAcdcOutputEndnames
+            self.mainWin.selectedAcdcOutputEndnames,
         )
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
@@ -3047,49 +3127,48 @@ class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
                 return
 
             self.logger.log(
-                f'Processing experiment n. {i+1}/{tot_exp}, '
-                f'{pos} ({p+1}/{tot_pos})'
+                f"Processing experiment n. {i + 1}/{tot_exp}, {pos} ({p + 1}/{tot_pos})"
             )
 
-            imagesPath = os.path.join(exp_path, pos, 'Images')
+            imagesPath = os.path.join(exp_path, pos, "Images")
             basename, chNames = myutils.getBasenameAndChNames(
-                imagesPath, useExt=('.tif', '.h5')
+                imagesPath, useExt=(".tif", ".h5")
             )
 
             if p == 0:
                 abort = self.emitHowCombineMetrics(
-                    imagesPath, selectedAcdcOutputEndnames, 
-                    existingAcdcOutputEndnames, chNames
+                    imagesPath,
+                    selectedAcdcOutputEndnames,
+                    existingAcdcOutputEndnames,
+                    chNames,
                 )
                 if abort:
                     self.sigAborted.emit()
                     return
                 acdcDfs = self.acdcDfs.values()
-                # Update selected acdc_dfs since the user could have 
+                # Update selected acdc_dfs since the user could have
                 # loaded additional ones inside the emitHowCombineMetrics
                 # dialog
                 selectedAcdcOutputEndnames = self.acdcDfs.keys()
             else:
-                acdcDfs = self.loadAcdcDfs(
-                    imagesPath, selectedAcdcOutputEndnames
-                )
+                acdcDfs = self.loadAcdcDfs(imagesPath, selectedAcdcOutputEndnames)
 
             dfs = []
             for i, acdc_df in enumerate(acdcDfs):
-                dfs.append(acdc_df.add_suffix(f'_table{i+1}'))
+                dfs.append(acdc_df.add_suffix(f"_table{i + 1}"))
             combined_df = pd.concat(dfs, axis=1)
 
             newAcdcDf = pd.DataFrame(index=combined_df.index)
             for newColname, equation in self.equations.items():
                 newAcdcDf[newColname] = combined_df.eval(equation)
-            
+
             newAcdcDfPath = os.path.join(
-                imagesPath, f'{basename}acdc_output_{appendedName}.csv'
+                imagesPath, f"{basename}acdc_output_{appendedName}.csv"
             )
             newAcdcDf.to_csv(newAcdcDfPath)
 
             equationsIniPath = os.path.join(
-                imagesPath, f'{basename}equations_{appendedName}.ini'
+                imagesPath, f"{basename}equations_{appendedName}.ini"
             )
             equationsConfig = config.ConfigParser()
             if os.path.exists(equationsIniPath):
@@ -3097,26 +3176,26 @@ class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
             equationsConfig = self.addEquationsToConfigPars(
                 equationsConfig, selectedAcdcOutputEndnames, self.equations
             )
-            with open(equationsIniPath, 'w') as configfile:
+            with open(equationsIniPath, "w") as configfile:
                 equationsConfig.write(configfile)
 
             self.signals.progressBar.emit(1)
-        
+
         return True
-    
+
     def addEquationsToConfigPars(self, cp, selectedAcdcOutputEndnames, equations):
         section = [
-            f'df{i+1}:{end}' for i, end in enumerate(selectedAcdcOutputEndnames)
+            f"df{i + 1}:{end}" for i, end in enumerate(selectedAcdcOutputEndnames)
         ]
-        section = ';'.join(section)
+        section = ";".join(section)
         if section not in cp:
             cp[section] = {}
-        
+
         for metricName, expression in equations.items():
             cp[section][metricName] = expression
-        
+
         return cp
-         
+
     @worker_exception_handler
     def run(self):
         debugging = False
@@ -3136,25 +3215,26 @@ class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
 
         self.signals.finished.emit(self)
 
+
 class ConcatAcdcDfsWorker(BaseWorkerUtil):
     sigAborted = Signal()
     sigAskFolder = Signal(str)
     sigSetMeasurements = Signal(object)
     sigAskAppendName = Signal(str, list)
 
-    def __init__(self, mainWin, format='CSV'):
+    def __init__(self, mainWin, format="CSV"):
         super().__init__(mainWin)
-        if format.startswith('CSV'):
-            self._to_format = 'to_csv'
-        elif format.startswith('XLS'):
-            self._to_format = 'to_excel'
-    
+        if format.startswith("CSV"):
+            self._to_format = "to_csv"
+        elif format.startswith("XLS"):
+            self._to_format = "to_excel"
+
     def emitSetMeasurements(self, kwargs):
         self.mutex.lock()
         self.sigSetMeasurements.emit(kwargs)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-    
+
     def emitAskAppendName(self, allPos_acdc_df_basename):
         # Ask appendend name
         self.mutex.lock()
@@ -3167,7 +3247,7 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
         debugging = False
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
-        
+
         self.signals.initProgressBar.emit(0)
         acdc_dfs_allexp = []
         acdc_objs_count_dfs_allexp = {}
@@ -3175,11 +3255,14 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             self.errors = {}
             tot_pos = len(pos_foldernames)
-            
+
             if i == 0:
                 abort = self.emitSelectAcdcOutputFiles(
-                    exp_path, pos_foldernames, infoText=' to combine',
-                    allowSingleSelection=True, multiSelection=False
+                    exp_path,
+                    pos_foldernames,
+                    infoText=" to combine",
+                    allowSingleSelection=True,
+                    multiSelection=False,
                 )
                 if abort:
                     self.sigAborted.emit()
@@ -3187,7 +3270,7 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
 
             selectedAcdcOutputEndname = self.mainWin.selectedAcdcOutputEndnames[0]
             selectedAcdcObjsCountEndname = selectedAcdcOutputEndname.replace(
-                'acdc_output', 'acdc_objects_count'
+                "acdc_output", "acdc_objects_count"
             )
 
             self.signals.initProgressBar.emit(len(pos_foldernames))
@@ -3200,30 +3283,28 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
-                images_path = os.path.join(exp_path, pos, 'Images')
+                images_path = os.path.join(exp_path, pos, "Images")
 
                 ls = myutils.listdir(images_path)
 
                 acdc_output_file = [
-                    f for f in ls 
-                    if f.endswith(f'{selectedAcdcOutputEndname}.csv')
+                    f for f in ls if f.endswith(f"{selectedAcdcOutputEndname}.csv")
                 ]
                 if not acdc_output_file:
                     self.logger.log(
-                        f'{pos} does not contain any '
-                        f'{selectedAcdcOutputEndname}.csv file. '
-                        'Skipping it.'
+                        f"{pos} does not contain any "
+                        f"{selectedAcdcOutputEndname}.csv file. "
+                        "Skipping it."
                     )
                     self.signals.progressBar.emit(1)
                     continue
-                
+
                 acdc_objs_count_file = [
-                    f for f in ls 
-                    if f.endswith(f'{selectedAcdcObjsCountEndname}.csv')
+                    f for f in ls if f.endswith(f"{selectedAcdcObjsCountEndname}.csv")
                 ]
                 if acdc_objs_count_file:
                     df_count_filepath = os.path.join(
@@ -3231,9 +3312,9 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                     )
                     df_count = pd.read_csv(df_count_filepath)
                     acdc_objs_count_dfs[pos] = df_count
-                
+
                 acdc_df_filepath = os.path.join(images_path, acdc_output_file[0])
-                acdc_df = pd.read_csv(acdc_df_filepath).set_index('Cell_ID')
+                acdc_df = pd.read_csv(acdc_df_filepath).set_index("Cell_ID")
                 acdc_dfs.append(acdc_df)
                 keys.append(pos)
 
@@ -3241,98 +3322,91 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
 
             self.signals.initProgressBar.emit(0)
             acdc_df_allpos = pd.concat(
-                acdc_dfs, keys=keys, names=['Position_n', 'Cell_ID']
+                acdc_dfs, keys=keys, names=["Position_n", "Cell_ID"]
             )
-            acdc_df_allpos['experiment_folderpath'] = exp_path
-            
+            acdc_df_allpos["experiment_folderpath"] = exp_path
+
             basename, chNames = myutils.getBasenameAndChNames(
-                images_path, useExt=('.tif', '.h5')
+                images_path, useExt=(".tif", ".h5")
             )
             df_metadata = load.load_metadata_df(images_path)
-            SizeZ = df_metadata.at['SizeZ', 'values']
+            SizeZ = df_metadata.at["SizeZ", "values"]
             SizeZ = int(float(SizeZ))
             existing_colnames = acdc_df_allpos.columns
-            isSegm3D = any([col.endswith('3D') for col in existing_colnames])
-            
+            isSegm3D = any([col.endswith("3D") for col in existing_colnames])
+
             if i == 0:
                 kwargs = {
-                    'loadedChNames': chNames, 
-                    'notLoadedChNames': [],
-                    'isZstack': SizeZ > 1,
-                    'isSegm3D': isSegm3D,
-                    'existing_colnames': existing_colnames
+                    "loadedChNames": chNames,
+                    "notLoadedChNames": [],
+                    "isZstack": SizeZ > 1,
+                    "isSegm3D": isSegm3D,
+                    "existing_colnames": existing_colnames,
                 }
                 self.emitSetMeasurements(kwargs)
                 if self.abort:
                     self.sigAborted.emit()
                     return
-            
+
             selected_cols = [
-                col for col in self.selectedColumns 
-                if col in acdc_df_allpos.columns
+                col for col in self.selectedColumns if col in acdc_df_allpos.columns
             ]
             acdc_df_allpos = acdc_df_allpos[selected_cols]
             acdc_dfs_allexp.append(acdc_df_allpos)
             exp_name = os.path.basename(exp_path)
             keys_exp.append((exp_path, exp_name))
 
-            allpos_dir = os.path.join(exp_path, 'AllPos_acdc_output')
+            allpos_dir = os.path.join(exp_path, "AllPos_acdc_output")
             if not os.path.exists(allpos_dir):
                 os.mkdir(allpos_dir)
-            
-            allPos_acdc_df_basename = f'AllPos_{selectedAcdcOutputEndname}'
+
+            allPos_acdc_df_basename = f"AllPos_{selectedAcdcOutputEndname}"
             if i == 0:
                 self.emitAskAppendName(allPos_acdc_df_basename)
                 if self.abort:
                     self.sigAborted.emit()
                     return
-            
-            acdc_objs_count_df_allpos_filename = (
-                self.concat_df_filename.replace(
-                    'acdc_output', 'acdc_objects_count'
-                )
-            )
-            
-            acdc_dfs_allpos_filepath = os.path.join(
-                allpos_dir, self.concat_df_filename
+
+            acdc_objs_count_df_allpos_filename = self.concat_df_filename.replace(
+                "acdc_output", "acdc_objects_count"
             )
 
+            acdc_dfs_allpos_filepath = os.path.join(allpos_dir, self.concat_df_filename)
+
             self.logger.log(
-                'Saving all positions concatenated file to '
+                "Saving all positions concatenated file to "
                 f'"{acdc_dfs_allpos_filepath}"'
             )
             to_format_func = getattr(acdc_df_allpos, self._to_format)
             to_format_func(acdc_dfs_allpos_filepath)
             self.acdc_dfs_allpos_filepath = acdc_dfs_allpos_filepath
-            
+
             if not acdc_objs_count_dfs:
                 continue
-            
+
             acdc_objs_count_df_allpos = pd.concat(
-                acdc_objs_count_dfs, names=['Position_n']
+                acdc_objs_count_dfs, names=["Position_n"]
             )
-            acdc_objs_count_df_allpos['experiment_folderpath'] = exp_path
-            
+            acdc_objs_count_df_allpos["experiment_folderpath"] = exp_path
+
             acdc_objs_count_df_allpos_filepath = os.path.join(
                 allpos_dir, acdc_objs_count_df_allpos_filename
             )
-            
+
             self.logger.log(
-                'Saving all positions objects count file to '
+                "Saving all positions objects count file to "
                 f'"{acdc_objs_count_df_allpos_filepath}"'
             )
             to_format_func = getattr(acdc_objs_count_df_allpos, self._to_format)
             to_format_func(acdc_objs_count_df_allpos_filepath)
-            
-            acdc_objs_count_dfs_allexp[(exp_path, exp_name)] = (
-                acdc_objs_count_df_allpos
-            )
-        
+
+            acdc_objs_count_dfs_allexp[(exp_path, exp_name)] = acdc_objs_count_df_allpos
+
         if len(keys_exp) <= 1:
             self.signals.finished.emit(self)
             return
-        
-        allExp_filename = f'multiExp_{self.concat_df_filename}'
+
+        allExp_filename = f"multiExp_{self.concat_df_filename}"
         self.mutex.lock()
         self.sigAskFolder.emit(allExp_filename)
         self.waitCond.wait(self.mutex)
@@ -3340,34 +3414,31 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
         if self.abort:
             self.sigAborted.emit()
             return
-        
+
         acdc_df_allexp = pd.concat(
-            acdc_dfs_allexp, keys=keys_exp, 
-            names=['experiment_folderpath', 'experiment_foldername']
+            acdc_dfs_allexp,
+            keys=keys_exp,
+            names=["experiment_folderpath", "experiment_foldername"],
         )
-        acdc_dfs_allexp_filepath = os.path.join(
-            self.allExpSaveFolder, allExp_filename
-        )
+        acdc_dfs_allexp_filepath = os.path.join(self.allExpSaveFolder, allExp_filename)
         self.logger.log(
-            'Saving multiple experiments concatenated file to '
+            "Saving multiple experiments concatenated file to "
             f'"{acdc_dfs_allexp_filepath}"'
         )
         to_format_func = getattr(acdc_df_allexp, self._to_format)
         to_format_func(acdc_dfs_allexp_filepath)
-        
+
         if acdc_objs_count_dfs_allexp:
-            allexp_count_df_filename = (
-                f'multiExp_{acdc_objs_count_df_allpos_filename}'
-            )
+            allexp_count_df_filename = f"multiExp_{acdc_objs_count_df_allpos_filename}"
             acdc_objs_count_df_allexp = pd.concat(
                 acdc_objs_count_dfs_allexp,
-                names=['experiment_folderpath', 'experiment_foldername']
+                names=["experiment_folderpath", "experiment_foldername"],
             )
             acdc_objs_count_df_allexp_filepath = os.path.join(
                 self.allExpSaveFolder, allexp_count_df_filename
             )
             self.logger.log(
-                'Saving multiple experiments concatenated file to '
+                "Saving multiple experiments concatenated file to "
                 f'"{acdc_objs_count_df_allexp_filepath}"'
             )
             to_format_func = getattr(acdc_objs_count_df_allexp, self._to_format)
@@ -3375,22 +3446,24 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
 
         self.signals.finished.emit(self)
 
+
 class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
     sigSelectRoisProps = Signal(str, object, bool)
-    
+
     def __init__(self, mainWin):
         super().__init__(mainWin)
-    
+
     def emitSelectRoisProps(self, roi_filepath, TZYX_shape, is_multi_pos):
         self.mutex.lock()
         self.sigSelectRoisProps.emit(roi_filepath, TZYX_shape, is_multi_pos)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
-    
+
     @worker_exception_handler
     def run(self):
         import roifile
+
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
         self.signals.initProgressBar.emit(0)
@@ -3399,12 +3472,12 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
             tot_pos = len(pos_foldernames)
 
             abort = self.emitSelectFilesWithText(
-                exp_path, pos_foldernames, 'imagej_rois', ext='.zip'
+                exp_path, pos_foldernames, "imagej_rois", ext=".zip"
             )
             if abort:
                 self.signals.finished.emit(self)
                 return
-            
+
             self.askRoiPreferences = True
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
@@ -3412,31 +3485,32 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
-                images_path = os.path.join(exp_path, pos, 'Images')
+                images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameRoi = self.mainWin.endFilenameWithText
                 ls = myutils.listdir(images_path)
                 rois_filepaths = [
-                    os.path.join(images_path, f) for f in ls 
-                    if f.endswith(f'{endFilenameRoi}.zip')
+                    os.path.join(images_path, f)
+                    for f in ls
+                    if f.endswith(f"{endFilenameRoi}.zip")
                 ]
-                
+
                 if not rois_filepaths:
                     self.logger.log(
-                        '[WARNING]: The following Position folder does not '
-                        f'contain any file ending with {endFilenameRoi}. '
+                        "[WARNING]: The following Position folder does not "
+                        f"contain any file ending with {endFilenameRoi}. "
                         f'Skipping it. "{os.path.join(exp_path, pos)}")'
                     )
                     continue
-                    
+
                 rois_filepath = rois_filepaths[0]
-                
+
                 if self.askRoiPreferences:
                     is_multi_pos = len(pos_foldernames) > 1
-                    self.logger.log('Loading image data to get image shape...')
+                    self.logger.log("Loading image data to get image shape...")
                     TZYX_shape = load.get_tzyx_shape(images_path)
                     abort = self.emitSelectRoisProps(
                         rois_filepath, TZYX_shape, is_multi_pos
@@ -3444,41 +3518,40 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                     if abort:
                         self.signals.finished.emit(self)
                         return
-                    
+
                     self.askRoiPreferences = not self.useSamePropsForNextPos
                 elif self.areAllRoisSelected:
                     rois = roifile.roiread(rois_filepath)
-                    self.IDsToRoisMapper = {i+i: roi for roi in enumerate(rois)}
+                    self.IDsToRoisMapper = {i + i: roi for roi in enumerate(rois)}
                 else:
                     # Use same ID of previous position
                     rois = roifile.roiread(rois_filepath)
-                    IDsToRoisMapper = {i+i: roi for i, roi in enumerate(rois)}
+                    IDsToRoisMapper = {i + i: roi for i, roi in enumerate(rois)}
                     self.IDsToRoisMapper = {
-                        ID: IDsToRoisMapper[ID] 
-                        for ID in self.IDsToRoisMapper.keys()
+                        ID: IDsToRoisMapper[ID] for ID in self.IDsToRoisMapper.keys()
                     }
-                
-                self.logger.log('Generating segm mask from ROIs...')
+
+                self.logger.log("Generating segm mask from ROIs...")
                 segm_data = myutils.from_imagej_rois_to_segm_data(
-                    TZYX_shape, self.IDsToRoisMapper, self.rescaleRoisSizes, 
-                    self.repeatRoisZslicesRange
+                    TZYX_shape,
+                    self.IDsToRoisMapper,
+                    self.rescaleRoisSizes,
+                    self.repeatRoisZslicesRange,
                 )
-                
-                
-                segm_filepath = (rois_filepath
-                    .replace('imagej_rois', 'segm')
-                    .replace('.zip', '.npz')
+
+                segm_filepath = rois_filepath.replace("imagej_rois", "segm").replace(
+                    ".zip", ".npz"
                 )
                 self.logger.log(f'Saving segm mask to "{segm_filepath}"...')
                 io.savez_compressed(segm_filepath, segm_data)
-        
+
         self.signals.finished.emit(self)
-                
-        
+
+
 class ToImajeJroiWorker(BaseWorkerUtil):
     def __init__(self, mainWin):
         super().__init__(mainWin)
-        
+
     @worker_exception_handler
     def run(self):
         from roifile import ImagejRoi, roiwrite
@@ -3495,39 +3568,40 @@ class ToImajeJroiWorker(BaseWorkerUtil):
             if abort:
                 self.signals.finished.emit(self)
                 return
-            
+
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
                     self.signals.finished.emit(self)
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
-                images_path = os.path.join(exp_path, pos, 'Images')
+                images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameSegm = self.mainWin.endFilenameSegm
                 ls = myutils.listdir(images_path)
-                
+
                 files_path = [
-                    os.path.join(images_path, f) for f in ls 
-                    if f.endswith(f'{endFilenameSegm}.npz')
+                    os.path.join(images_path, f)
+                    for f in ls
+                    if f.endswith(f"{endFilenameSegm}.npz")
                 ]
-                
+
                 if not files_path:
                     self.logger.log(
-                        '[WARNING]: The following Position folder does not '
-                        f'contain any file ending with {endFilenameSegm}. '
+                        "[WARNING]: The following Position folder does not "
+                        f"contain any file ending with {endFilenameSegm}. "
                         f'Skipping it. "{os.path.join(exp_path, pos)}")'
                     )
                     continue
-                
-                file_path = files_path[0]
-                
-                posData = load.loadData(file_path, '')
 
-                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+                file_path = files_path[0]
+
+                posData = load.loadData(file_path, "")
+
+                self.signals.sigUpdatePbarDesc.emit(f"Processing {posData.pos_path}")
 
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
@@ -3535,25 +3609,22 @@ class ToImajeJroiWorker(BaseWorkerUtil):
                 posData.loadOtherFiles(
                     load_segm_data=True,
                     load_metadata=True,
-                    end_filename_segm=endFilenameSegm
+                    end_filename_segm=endFilenameSegm,
                 )
-    
+
                 if posData.SizeT > 1:
                     rois = []
                     max_ID = posData.segm_data.max()
                     for t, lab in enumerate(posData.segm_data):
                         rois_t = myutils.from_lab_to_imagej_rois(
-                            lab, ImagejRoi, t=t, SizeT=posData.SizeT, 
-                            max_ID=max_ID
+                            lab, ImagejRoi, t=t, SizeT=posData.SizeT, max_ID=max_ID
                         )
                         rois.extend(rois_t)
                 else:
-                    rois = myutils.from_lab_to_imagej_rois(
-                        posData.segm_data, ImagejRoi
-                    )
+                    rois = myutils.from_lab_to_imagej_rois(posData.segm_data, ImagejRoi)
 
-                roi_filepath = posData.segm_npz_path.replace('.npz', '.zip')
-                roi_filepath = roi_filepath.replace('_segm', '_imagej_rois')
+                roi_filepath = posData.segm_npz_path.replace(".npz", ".zip")
+                roi_filepath = roi_filepath.replace("_segm", "_imagej_rois")
 
                 try:
                     os.remove(roi_filepath)
@@ -3561,7 +3632,7 @@ class ToImajeJroiWorker(BaseWorkerUtil):
                     pass
 
                 roiwrite(roi_filepath, rois)
-                        
+
         self.signals.finished.emit(self)
 
 
@@ -3596,7 +3667,7 @@ class ToSymDivWorker(QObject):
             tot_pos = len(pos_foldernames)
             self.allPosDataInputs = []
             posDatas = []
-            self.logger.log('-'*30)
+            self.logger.log("-" * 30)
             expFoldername = os.path.basename(exp_path)
 
             abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
@@ -3611,17 +3682,17 @@ class ToSymDivWorker(QObject):
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
                 pos_path = os.path.join(exp_path, pos)
-                images_path = os.path.join(pos_path, 'Images')
+                images_path = os.path.join(pos_path, "Images")
                 basename, chNames = myutils.getBasenameAndChNames(
-                    images_path, useExt=('.tif', '.h5')
+                    images_path, useExt=(".tif", ".h5")
                 )
 
-                self.signals.sigUpdatePbarDesc.emit(f'Loading {pos_path}...')
+                self.signals.sigUpdatePbarDesc.emit(f"Loading {pos_path}...")
 
                 # Use first found channel, it doesn't matter for metrics
                 for chName in chNames:
@@ -3636,71 +3707,67 @@ class ToSymDivWorker(QObject):
 
                 # Load data
                 posData = load.loadData(file_path, chName)
-                posData.getBasenameAndChNames(useExt=('.tif', '.h5'))
+                posData.getBasenameAndChNames(useExt=(".tif", ".h5"))
 
                 posData.loadOtherFiles(
                     load_segm_data=False,
                     load_acdc_df=True,
                     load_metadata=True,
-                    loadSegmInfo=True
+                    loadSegmInfo=True,
                 )
 
                 posDatas.append(posData)
 
-                self.allPosDataInputs.append({
-                    'file_path': file_path,
-                    'chName': chName
-                })
-            
+                self.allPosDataInputs.append({"file_path": file_path, "chName": chName})
+
             # Iterate pos and calculate metrics
             numPos = len(self.allPosDataInputs)
             for p, posDataInputs in enumerate(self.allPosDataInputs):
-                file_path = posDataInputs['file_path']
-                chName = posDataInputs['chName']
+                file_path = posDataInputs["file_path"]
+                chName = posDataInputs["chName"]
 
                 posData = load.loadData(file_path, chName)
 
-                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+                self.signals.sigUpdatePbarDesc.emit(f"Processing {posData.pos_path}")
 
-                posData.getBasenameAndChNames(useExt=('.tif', '.h5'))
+                posData.getBasenameAndChNames(useExt=(".tif", ".h5"))
                 posData.buildPaths()
                 posData.loadImgData()
 
                 posData.loadOtherFiles(
                     load_segm_data=False,
                     load_acdc_df=True,
-                    end_filename_segm=self.mainWin.endFilenameSegm
+                    end_filename_segm=self.mainWin.endFilenameSegm,
                 )
                 if not posData.acdc_df_found:
                     relPath = (
-                        f'...{os.sep}{expFoldername}'
-                        f'{os.sep}{posData.pos_foldername}'
+                        f"...{os.sep}{expFoldername}{os.sep}{posData.pos_foldername}"
                     )
                     self.logger.log(
                         f'WARNING: Skipping "{relPath}" '
-                        f'because acdc_output.csv file was not found.'
+                        f"because acdc_output.csv file was not found."
                     )
                     self.missingAnnotErrors[relPath] = (
                         f'<br>FileNotFoundError: the Positon "{relPath}" '
-                        'does not have the <code>acdc_output.csv</code> file.<br>')
-                    
+                        "does not have the <code>acdc_output.csv</code> file.<br>"
+                    )
+
                     continue
-                
+
                 acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
                 self.logger.log(
-                    'Loaded path:\n'
-                    f'ACDC output file name: "{acdc_df_filename}"'
+                    f'Loaded path:\nACDC output file name: "{acdc_df_filename}"'
                 )
 
-                self.logger.log('Building tree...')
+                self.logger.log("Building tree...")
                 try:
                     tree = core.LineageTree(posData.acdc_df)
                     error = tree.build()
                     if isinstance(error, KeyError):
                         self.logger.log(str(error))
-                        
+
                         self.logger.log(
-                            'WARNING: Annotations missing in '
+                            "WARNING: Annotations missing in "
                             f'"{posData.acdc_output_csv_path}"'
                         )
                         self.missingAnnotErrors[acdc_df_filename] = str(error)
@@ -3712,7 +3779,7 @@ class ToSymDivWorker(QObject):
                     traceback_format = traceback.format_exc()
                     self.logger.log(traceback_format)
                     self.errors[error] = traceback_format
-                
+
                 try:
                     posData.acdc_df.to_csv(posData.acdc_output_csv_path)
                 except PermissionError:
@@ -3724,10 +3791,11 @@ class ToSymDivWorker(QObject):
                     self.waitCond.wait(self.mutex)
                     self.mutex.unlock()
                     posData.acdc_df.to_csv(posData.acdc_output_csv_path)
-                
+
                 self.signals.progressBar.emit(1)
-                
+
         self.signals.finished.emit(self)
+
 
 class AlignWorker(BaseWorkerUtil):
     sigAborted = Signal()
@@ -3736,14 +3804,14 @@ class AlignWorker(BaseWorkerUtil):
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
-    
+
     def emitAskUseSavedShifts(self, expPath, basename):
         self.mutex.lock()
         self.sigAskUseSavedShifts.emit(expPath, basename)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
-    
+
     def emitAskSelectChannel(self, channels):
         self.mutex.lock()
         self.sigAskSelectChannel.emit(channels)
@@ -3762,21 +3830,21 @@ class AlignWorker(BaseWorkerUtil):
 
             shiftsFound = False
             for pos in pos_foldernames:
-                images_path = os.path.join(exp_path, pos, 'Images')
+                images_path = os.path.join(exp_path, pos, "Images")
                 ls = myutils.listdir(images_path)
                 for file in ls:
-                    if file.endswith('align_shift.npy'):
+                    if file.endswith("align_shift.npy"):
                         shiftsFound = True
                         basename, chNames = myutils.getBasenameAndChNames(
-                            images_path, useExt=('.tif', '.h5')
+                            images_path, useExt=(".tif", ".h5")
                         )
                         break
                 if shiftsFound:
                     break
-            
+
             savedShiftsHow = None
             if shiftsFound:
-                basename_ch0 = f'{basename}{chNames[0]}_'
+                basename_ch0 = f"{basename}{chNames[0]}_"
                 abort = self.emitAskUseSavedShifts(exp_path, basename_ch0)
                 if abort:
                     self.sigAborted.emit()
@@ -3790,163 +3858,164 @@ class AlignWorker(BaseWorkerUtil):
                     self.sigAborted.emit()
                     return
 
-                self.logger.log('*'*40)
+                self.logger.log("*" * 40)
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
                 pos_path = os.path.join(exp_path, pos)
-                images_path = os.path.join(pos_path, 'Images')
+                images_path = os.path.join(pos_path, "Images")
                 basename, chNames = myutils.getBasenameAndChNames(
-                    images_path, useExt=('.tif', '.h5')
+                    images_path, useExt=(".tif", ".h5")
                 )
 
-                self.signals.sigUpdatePbarDesc.emit(f'Loading {pos_path}...')
+                self.signals.sigUpdatePbarDesc.emit(f"Loading {pos_path}...")
 
                 if p == 0:
-                    self.logger.log(f'Asking to select reference channel...')
+                    self.logger.log(f"Asking to select reference channel...")
                     abort = self.emitAskSelectChannel(chNames)
                     if abort:
                         self.sigAborted.emit()
                         return
                     chName = self.chName
-                
+
                 file_path = myutils.getChannelFilePath(images_path, chName)
 
                 # Load data
                 posData = load.loadData(file_path, chName)
-                posData.getBasenameAndChNames(useExt=('.tif', '.h5'))
+                posData.getBasenameAndChNames(useExt=(".tif", ".h5"))
                 posData.buildPaths()
                 posData.loadImgData()
 
                 posData.loadOtherFiles(
-                    load_segm_data=False, 
-                    load_shifts=True,
-                    loadSegmInfo=True
+                    load_segm_data=False, load_shifts=True, loadSegmInfo=True
                 )
 
                 if posData.img_data.ndim == 4:
                     align_func = core.align_frames_3D
                     if posData.segmInfo_df is None:
                         raise FileNotFoundError(
-                            'To align 4D data you need to select which z-slice '
-                            'you want to use for alignment. Please run the module '
-                            '`1. Launch data prep module...` before aligning the '
-                            'frames. (z-slice info MISSING from position '
+                            "To align 4D data you need to select which z-slice "
+                            "you want to use for alignment. Please run the module "
+                            "`1. Launch data prep module...` before aligning the "
+                            "frames. (z-slice info MISSING from position "
                             f'"{posData.relPath}")'
                         )
                     df = posData.segmInfo_df.loc[posData.filename]
-                    zz = df['z_slice_used_dataPrep'].to_list()
+                    zz = df["z_slice_used_dataPrep"].to_list()
                 elif posData.img_data.ndim == 3:
                     align_func = core.align_frames_2D
                     zz = None
-                
+
                 useSavedShifts = (
-                    savedShiftsHow == 'use_saved_shifts'
+                    savedShiftsHow == "use_saved_shifts"
                     and posData.loaded_shifts is not None
                 )
                 if useSavedShifts:
                     user_shifts = posData.loaded_shifts
                 else:
                     user_shifts = None
-                
-                if savedShiftsHow == 'rever_alignment':
+
+                if savedShiftsHow == "rever_alignment":
                     if posData.loaded_shifts is None:
                         self.logger.log(
                             f'WARNING: Cannot revert alignment in "{posData.relPath}" '
-                            'since it is missing previously computed shifts. '
-                            'Skipping this positon.'
+                            "since it is missing previously computed shifts. "
+                            "Skipping this positon."
                         )
                         continue
-                    
+
                     # Revert alignment and save selected channel
                     for chName in chNames:
-                        self.logger.log(
-                            f'Reverting alignment on "{chName}"...'
-                        )
+                        self.logger.log(f'Reverting alignment on "{chName}"...')
                         if chName == posData.user_ch_name:
                             data = posData.img_data
                         else:
-                            file_path = myutils.getChannelFilePath(
-                                images_path, chName
-                            )
+                            file_path = myutils.getChannelFilePath(images_path, chName)
                             data = load.load_image_file(file_path)
-                        
-                        self.signals.sigInitInnerPbar.emit(len(data)-1)
+
+                        self.signals.sigInitInnerPbar.emit(len(data) - 1)
                         revertedData = core.revert_alignment(
-                            posData.loaded_shifts, data, 
-                            sigPyqt=self.signals.sigUpdateInnerPbar
+                            posData.loaded_shifts,
+                            data,
+                            sigPyqt=self.signals.sigUpdateInnerPbar,
                         )
-                        self.logger.log(
-                            f'Saving "{chName}"...'
-                        )
+                        self.logger.log(f'Saving "{chName}"...')
                         self.signals.sigInitInnerPbar.emit(0)
                         self.saveAlignedData(
-                            revertedData, images_path, posData.basename, 
-                            chName, self.revertedAlignEndname,
-                            ext=posData.ext
+                            revertedData,
+                            images_path,
+                            posData.basename,
+                            chName,
+                            self.revertedAlignEndname,
+                            ext=posData.ext,
                         )
                         del revertedData, data
                 else:
                     for chName in chNames:
-                        self.logger.log(
-                            f'Aligning "{chName}"...'
-                        )
+                        self.logger.log(f'Aligning "{chName}"...')
                         if chName == posData.user_ch_name:
                             data = posData.img_data
                         else:
-                            file_path = myutils.getChannelFilePath(
-                                images_path, chName
-                            )
+                            file_path = myutils.getChannelFilePath(images_path, chName)
                             data = load.load_image_file(file_path)
-                        self.signals.sigInitInnerPbar.emit(len(data)-1)
-                        
+                        self.signals.sigInitInnerPbar.emit(len(data) - 1)
+
                         alignedImgData, shifts = align_func(
-                            data, slices=zz, user_shifts=user_shifts,
-                            sigPyqt=self.signals.sigUpdateInnerPbar
+                            data,
+                            slices=zz,
+                            user_shifts=user_shifts,
+                            sigPyqt=self.signals.sigUpdateInnerPbar,
                         )
                         self.logger.log(f'Saving "{chName}"...')
                         np.save(posData.align_shifts_path, shifts)
-                        
+
                         self.signals.sigInitInnerPbar.emit(0)
                         self.saveAlignedData(
-                            alignedImgData, images_path, posData.basename, 
-                            chName, '', ext=posData.non_aligned_ext
+                            alignedImgData,
+                            images_path,
+                            posData.basename,
+                            chName,
+                            "",
+                            ext=posData.non_aligned_ext,
                         )
                         self.saveAlignedData(
-                            alignedImgData, images_path, posData.basename, 
-                            chName, 'aligned', ext='.npz'
+                            alignedImgData,
+                            images_path,
+                            posData.basename,
+                            chName,
+                            "aligned",
+                            ext=".npz",
                         )
                         del alignedImgData, data
-                
+
         self.signals.finished.emit(self)
-    
-    def saveAlignedData(
-            self, data, imagesPath, basename, chName, endname, ext='.tif'
-        ):
+
+    def saveAlignedData(self, data, imagesPath, basename, chName, endname, ext=".tif"):
         if endname:
-            newFilename = f'{basename}{chName}_{endname}{ext}'
+            newFilename = f"{basename}{chName}_{endname}{ext}"
         else:
-            newFilename = f'{basename}{chName}{ext}'
-        
+            newFilename = f"{basename}{chName}{ext}"
+
         filePath = os.path.join(imagesPath, newFilename)
 
-        if ext == '.tif':
+        if ext == ".tif":
             SizeT = data.shape[0]
             SizeZ = 1
             if data.ndim == 4:
                 SizeZ = data.shape[1]
             myutils.to_tiff(filePath, data)
-        elif ext == '.npz':
+        elif ext == ".npz":
             io.savez_compressed(filePath, data)
-        elif ext == '.h5':
+        elif ext == ".h5":
             load.save_to_h5(filePath, data)
+
 
 class ToObjCoordsWorker(BaseWorkerUtil):
     def __init__(self, mainWin):
         super().__init__(mainWin)
-        
+
     @worker_exception_handler
     def run(self):
         debugging = False
@@ -3961,28 +4030,29 @@ class ToObjCoordsWorker(BaseWorkerUtil):
             if abort:
                 self.signals.finished.emit(self)
                 return
-            
+
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
                     self.signals.finished.emit(self)
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
-                images_path = os.path.join(exp_path, pos, 'Images')
+                images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameSegm = self.mainWin.endFilenameSegm
                 ls = myutils.listdir(images_path)
                 file_path = [
-                    os.path.join(images_path, f) for f in ls 
-                    if f.endswith(f'{endFilenameSegm}.npz')
+                    os.path.join(images_path, f)
+                    for f in ls
+                    if f.endswith(f"{endFilenameSegm}.npz")
                 ][0]
-                
-                posData = load.loadData(file_path, '')
 
-                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+                posData = load.loadData(file_path, "")
+
+                self.signals.sigUpdatePbarDesc.emit(f"Processing {posData.pos_path}")
 
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
@@ -3990,12 +4060,12 @@ class ToObjCoordsWorker(BaseWorkerUtil):
                 posData.loadOtherFiles(
                     load_segm_data=True,
                     load_metadata=True,
-                    end_filename_segm=endFilenameSegm
+                    end_filename_segm=endFilenameSegm,
                 )
 
                 if posData.SizeT == 1:
                     posData.segm_data = posData.segm_data[np.newaxis]
-                
+
                 dfs = []
                 n_frames = len(posData.segm_data)
                 self.signals.initProgressBar.emit(n_frames)
@@ -4003,16 +4073,17 @@ class ToObjCoordsWorker(BaseWorkerUtil):
                     df_coords_i = myutils.from_lab_to_obj_coords(lab)
                     dfs.append(df_coords_i)
                     self.signals.progressBar.emit(1)
-                df_filepath = posData.segm_npz_path.replace('.npz', '.csv')
-                df_filepath = df_filepath.replace('_segm', '_objects_coordinates')
+                df_filepath = posData.segm_npz_path.replace(".npz", ".csv")
+                df_filepath = df_filepath.replace("_segm", "_objects_coordinates")
 
                 keys = list(range(len(posData.segm_data)))
-                df = pd.concat(dfs, keys=keys, names=['frame_i'])
-                
+                df = pd.concat(dfs, keys=keys, names=["frame_i"])
+
                 self.signals.initProgressBar.emit(0)
                 df.to_csv(df_filepath)
-                        
+
         self.signals.finished.emit(self)
+
 
 class Stack2DsegmTo3Dsegm(BaseWorkerUtil):
     sigAskAppendName = Signal(str, list)
@@ -4032,12 +4103,12 @@ class Stack2DsegmTo3Dsegm(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
 
-            self.mainWin.infoText = f'Select <b>2D segmentation file to stack</b>'
+            self.mainWin.infoText = f"Select <b>2D segmentation file to stack</b>"
             abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
             if abort:
                 self.sigAborted.emit()
                 return
-            
+
             # Ask appendend name
             self.mutex.lock()
             self.sigAskAppendName.emit(
@@ -4057,21 +4128,22 @@ class Stack2DsegmTo3Dsegm(BaseWorkerUtil):
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
-                images_path = os.path.join(exp_path, pos, 'Images')
+                images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameSegm = self.mainWin.endFilenameSegm
                 ls = myutils.listdir(images_path)
                 file_path = [
-                    os.path.join(images_path, f) for f in ls 
-                    if f.endswith(f'{endFilenameSegm}.npz')
+                    os.path.join(images_path, f)
+                    for f in ls
+                    if f.endswith(f"{endFilenameSegm}.npz")
                 ][0]
-                
-                posData = load.loadData(file_path, '')
 
-                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+                posData = load.loadData(file_path, "")
+
+                self.signals.sigUpdatePbarDesc.emit(f"Processing {posData.pos_path}")
 
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
@@ -4080,13 +4152,13 @@ class Stack2DsegmTo3Dsegm(BaseWorkerUtil):
                     load_segm_data=True,
                     load_acdc_df=True,
                     load_metadata=True,
-                    end_filename_segm=endFilenameSegm
+                    end_filename_segm=endFilenameSegm,
                 )
                 if posData.segm_data.ndim == 2:
                     posData.segm_data = posData.segm_data[np.newaxis]
-                
-                self.logger.log('Stacking 2D into 3D objects...')
-                
+
+                self.logger.log("Stacking 2D into 3D objects...")
+
                 numFrames = len(posData.segm_data)
                 self.signals.sigInitInnerPbar.emit(numFrames)
                 T, Y, X = posData.segm_data.shape
@@ -4098,15 +4170,16 @@ class Stack2DsegmTo3Dsegm(BaseWorkerUtil):
 
                     self.signals.sigUpdateInnerPbar.emit(1)
 
-                self.logger.log('Saving stacked 3D segmentation file...')
+                self.logger.log("Saving stacked 3D segmentation file...")
                 segmFilename, ext = os.path.splitext(posData.segm_npz_path)
-                newSegmFilepath = f'{segmFilename}_{appendedName}.npz'
+                newSegmFilepath = f"{segmFilename}_{appendedName}.npz"
                 segmData2D = np.squeeze(segmData2D)
                 io.savez_compressed(newSegmFilepath, segmData2D)
-                
+
                 self.signals.progressBar.emit(1)
 
         self.signals.finished.emit(self)
+
 
 class MigrateUserProfileWorker(QObject):
     finished = Signal(object)
@@ -4120,61 +4193,65 @@ class MigrateUserProfileWorker(QObject):
         self.src_path = src_path
         self.dst_path = dst_path
         self.acdc_folders = acdc_folders
-    
+
     @worker_exception_handler
     def run(self):
         import shutil
         from . import models_path
 
         self.progress.emit(
-            'Migrating user profile data from '
+            "Migrating user profile data from "
             f'"{self.src_path}" to "{self.dst_path}"...'
         )
         acdc_folders = self.acdc_folders
-        self.signals.initProgressBar.emit(2*len(acdc_folders))
+        self.signals.initProgressBar.emit(2 * len(acdc_folders))
         dst_folder = os.path.basename(self.dst_path)
         folders_to_remove = []
         for acdc_folder in acdc_folders:
             if acdc_folder == dst_folder:
-                # Skip the destination folder that would be picked up if the 
+                # Skip the destination folder that would be picked up if the
                 # user called it with acdc at the start of the name
                 self.signals.progressBar.emit(2)
                 continue
             src = os.path.join(self.src_path, acdc_folder)
             dst = os.path.join(self.dst_path, acdc_folder)
-            self.progress.emit(f'Copying {src} to {dst}...')
+            self.progress.emit(f"Copying {src} to {dst}...")
             files_failed_move = copy_or_move_tree(
-                src, dst, copy=False,
-                sigInitPbar=self.signals.sigInitInnerPbar, 
-                sigUpdatePbar=self.signals.sigUpdateInnerPbar
+                src,
+                dst,
+                copy=False,
+                sigInitPbar=self.signals.sigInitInnerPbar,
+                sigUpdatePbar=self.signals.sigUpdateInnerPbar,
             )
             folders_to_remove.append(src)
             self.signals.progressBar.emit(1)
-        
+
         for to_remove in folders_to_remove:
             try:
                 self.progress.emit(f'Removing "{to_remove}"...')
                 shutil.rmtree(to_remove)
             except Exception as err:
                 self.progress.emit(
-                    '--------------------------------------------------------\n'
+                    "--------------------------------------------------------\n"
                     f'[WARNING]: Removal of the folder "{to_remove}" failed. '
-                    'Please remove manually.\n'
-                    '--------------------------------------------------------'
+                    "Please remove manually.\n"
+                    "--------------------------------------------------------"
                 )
             finally:
                 self.signals.progressBar.emit(1)
-        
+
         # Update model's paths
-        load.migrate_models_paths(self.dst_path)        
-        
+        load.migrate_models_paths(self.dst_path)
+
         # Store user profile data folder path
         from . import user_profile_path_txt
+
         os.makedirs(os.path.dirname(user_profile_path_txt), exist_ok=True)
-        with open(user_profile_path_txt, 'w') as txt:
+        with open(user_profile_path_txt, "w") as txt:
             txt.write(self.dst_path)
-        
+
         self.finished.emit(self)
+
 
 class DelObjectsOutsideSegmROIWorker(QObject):
     finished = Signal(object)
@@ -4183,17 +4260,17 @@ class DelObjectsOutsideSegmROIWorker(QObject):
     debug = Signal(object)
 
     def __init__(
-            self, 
-            segm_roi_endname: os.PathLike, 
-            segm_data: np.ndarray,
-            images_path: os.PathLike
-        ):
+        self,
+        segm_roi_endname: os.PathLike,
+        segm_data: np.ndarray,
+        images_path: os.PathLike,
+    ):
         QObject.__init__(self)
         self.signals = signals()
         self.segm_roi_endname = segm_roi_endname
         self.segm_data = segm_data
         self.images_path = images_path
-        
+
     @worker_exception_handler
     def run(self):
         segm_roi_endname = self.segm_roi_endname
@@ -4202,13 +4279,14 @@ class DelObjectsOutsideSegmROIWorker(QObject):
         )
         self.progress.emit(f'Loading segmentation file "{segm_roi_filepath}"...')
         segm_roi_data = load.load_image_file(segm_roi_filepath)
-        
-        self.progress.emit(f'Deleting objects outside of selected ROIs...')
+
+        self.progress.emit(f"Deleting objects outside of selected ROIs...")
         cleared_segm_data, delIDs = transformation.del_objs_outside_segm_roi(
             segm_roi_data, self.segm_data
         )
-        
+
         self.finished.emit((self, cleared_segm_data, delIDs))
+
 
 class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
     sigAborted = Signal()
@@ -4216,20 +4294,20 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
     sigSetMeasurements = Signal(object)
     sigAskAppendName = Signal(str, list)
 
-    def __init__(self, mainWin, format='CSV'):
+    def __init__(self, mainWin, format="CSV"):
         super().__init__(mainWin)
-        if format.startswith('CSV'):
-            self._final_ext = '.csv'
-        elif format.startswith('XLS'):
-            self._final_ext = '.xlsx'
+        if format.startswith("CSV"):
+            self._final_ext = ".csv"
+        elif format.startswith("XLS"):
+            self._final_ext = ".xlsx"
         self.acdcOutputEndname = None
-    
+
     def emitSetMeasurements(self, kwargs):
         self.mutex.lock()
         self.sigSetMeasurements.emit(kwargs)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-    
+
     def emitAskAppendName(self, allPos_spotmax_df_basename):
         # Ask appendend name
         self.mutex.lock()
@@ -4242,71 +4320,71 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
         self.signals.sigAskCopyCca.emit(images_path)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-    
+
     def setAcdcOutputEndname(self, acdcOutputEndname):
         self.acdcOutputEndname = acdcOutputEndname
-    
+
     def getAcdcDf(self, images_path):
         if self.acdcOutputEndname is None:
             return
-        
+
         for file in myutils.listdir(images_path):
             if not file.endswith(self.acdcOutputEndname):
                 continue
-            
+
             filepath = os.path.join(images_path, file)
-            acdc_df = pd.read_csv(filepath, index_col=['frame_i', 'Cell_ID'])
+            acdc_df = pd.read_csv(filepath, index_col=["frame_i", "Cell_ID"])
             return acdc_df
-    
+
     def copyCcaColsFromAcdcDf(self, df, acdc_df, debug=False):
         if acdc_df is None:
             return df
-        
+
         if debug:
             printl(acdc_df.columns.to_list(), pretty=True)
-        
+
         idx = df.index.intersection(acdc_df.index)
         for col in cca_df_colnames:
             if col not in acdc_df.columns:
                 continue
-        
+
             if col not in self.selectedColumns:
                 continue
-            
+
             df.loc[idx, col] = acdc_df.loc[idx, col]
-        
+
         for col in lineage_tree_cols:
             if col not in acdc_df.columns:
                 continue
-            
+
             if col not in self.selectedColumns:
                 continue
-            
+
             df.loc[idx, col] = acdc_df.loc[idx, col]
-        
+
         for col in default_annot_df.keys():
             if col not in acdc_df.columns:
                 continue
-            
+
             if col not in self.selectedColumns:
                 continue
-            
+
             df.loc[idx, col] = acdc_df.loc[idx, col]
-        
+
         for col in self.selectedColumns:
             if col not in acdc_df.columns:
                 continue
-            
+
             df.loc[idx, col] = acdc_df.loc[idx, col]
-            
-            if debug and col == 'cell_vol_fl':
+
+            if debug and col == "cell_vol_fl":
                 printl(df[[col]])
-        
+
         return df
-    
+
     def emitAskFolderWhereToSaveMultiExp(self):
         self.mutex.lock()
-        self.sigAskFolder.emit('')
+        self.sigAskFolder.emit("")
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         if self.abort:
@@ -4314,7 +4392,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
             return
 
         return self.allExpSaveFolder
-    
+
     def askSelectMeasurements(self, exp_path, posFoldernames):
         acdc_dfs = []
         keys = []
@@ -4323,50 +4401,50 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 self.sigAborted.emit()
                 return False
 
-            images_path = os.path.join(exp_path, pos, 'Images')
+            images_path = os.path.join(exp_path, pos, "Images")
             acdc_df = self.getAcdcDf(images_path)
             if acdc_df is None:
                 continue
-            
+
             acdc_dfs.append(acdc_df)
             keys.append(pos)
-        
+
         if not acdc_dfs:
             return True
-        
+
         acdc_df_allpos = pd.concat(
-            acdc_dfs, keys=keys, names=['Position_n', 'frame_i', 'Cell_ID']
+            acdc_dfs, keys=keys, names=["Position_n", "frame_i", "Cell_ID"]
         )
-        acdc_df_allpos['experiment_folderpath'] = exp_path
+        acdc_df_allpos["experiment_folderpath"] = exp_path
         basename, chNames = myutils.getBasenameAndChNames(
-            images_path, useExt=('.tif', '.h5')
+            images_path, useExt=(".tif", ".h5")
         )
         df_metadata = load.load_metadata_df(images_path)
-        SizeZ = df_metadata.at['SizeZ', 'values']
+        SizeZ = df_metadata.at["SizeZ", "values"]
         SizeZ = int(float(SizeZ))
         existing_colnames = acdc_df_allpos.columns
-        isSegm3D = any([col.endswith('3D') for col in existing_colnames])
-        
+        isSegm3D = any([col.endswith("3D") for col in existing_colnames])
+
         kwargs = {
-            'loadedChNames': chNames, 
-            'notLoadedChNames': [],
-            'isZstack': SizeZ > 1,
-            'isSegm3D': isSegm3D,
-            'existing_colnames': existing_colnames
+            "loadedChNames": chNames,
+            "notLoadedChNames": [],
+            "isZstack": SizeZ > 1,
+            "isSegm3D": isSegm3D,
+            "existing_colnames": existing_colnames,
         }
         self.emitSetMeasurements(kwargs)
         if self.abort:
             self.sigAborted.emit()
             return False
-        
+
         return True
-    
+
     @worker_exception_handler
     def run(self):
         from spotmax import DFs_FILENAMES, DF_REF_CH_FILENAME
         from spotmax.utils import get_runs_num_and_desc
         import spotmax.io
-        
+
         self.selectedColumns = None
         debugging = False
         expPaths = self.mainWin.expPaths
@@ -4380,29 +4458,29 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             self.errors = {}
             tot_pos = len(pos_foldernames)
-            
-            all_runs = get_runs_num_and_desc(
-                exp_path, pos_foldernames=pos_foldernames
-            )
+
+            all_runs = get_runs_num_and_desc(exp_path, pos_foldernames=pos_foldernames)
             if not all_runs:
                 self.logger.log(
-                    '[WARNING] The following experiment does not contain '
+                    "[WARNING] The following experiment does not contain "
                     f'valid spotMAX output files. Skipping it. "{exp_path}"'
                 )
                 continue
-            
+
             if not runNumberAlreadyAsked:
                 abort = self.emitSelectSpotmaxRun(
-                    exp_path, pos_foldernames, all_runs, 
-                    infoText=' to combine',
-                    allowSingleSelection=True, 
-                    multiSelection=False
+                    exp_path,
+                    pos_foldernames,
+                    all_runs,
+                    infoText=" to combine",
+                    allowSingleSelection=True,
+                    multiSelection=False,
                 )
                 if abort:
                     self.sigAborted.emit()
                     return
                 runNumberAlreadyAsked = True
-            
+
             selectedSpotmaxRuns = self.mainWin.selectedSpotmaxRuns
 
             self.signals.initProgressBar.emit(len(pos_foldernames))
@@ -4416,272 +4494,273 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 if self.abort:
                     self.sigAborted.emit()
                     return
-                
+
                 pos_path = os.path.join(exp_path, pos)
-                spotmax_output_path = os.path.join(pos_path, 'spotMAX_output')
-                
+                spotmax_output_path = os.path.join(pos_path, "spotMAX_output")
+
                 if not os.path.exists(spotmax_output_path):
                     self.logger.log(
-                        '[WARNING] The following Position folder does not contain '
+                        "[WARNING] The following Position folder does not contain "
                         f'valid spotMAX output files. Skipping it. "{pos_path}"'
                     )
                     continue
-                
-                images_path = os.path.join(exp_path, pos, 'Images')
-                
+
+                images_path = os.path.join(exp_path, pos, "Images")
+
                 if not copyFromCcaAlreadyAsked:
                     self.emitAskCopyCca(images_path)
                     if self.abort:
                         self.sigAborted.emit()
                         return
-                    
+
                     self.askSelectMeasurements(exp_path, pos_foldernames)
                     if self.abort:
-                        return  
-                    copyFromCcaAlreadyAsked = True            
-                    
+                        return
+                    copyFromCcaAlreadyAsked = True
+
                 acdc_df = self.getAcdcDf(images_path)
-                
+
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
-                
                 for run_desc in selectedSpotmaxRuns:
-                    run, desc = run_desc.split('_...')
-                    ini_filename = f'{run}_analysis_parameters{desc}.ini'
-                    ini_filepath = os.path.join(
-                        spotmax_output_path, ini_filename
-                    )
+                    run, desc = run_desc.split("_...")
+                    ini_filename = f"{run}_analysis_parameters{desc}.ini"
+                    ini_filepath = os.path.join(spotmax_output_path, ini_filename)
                     if not os.path.exists(ini_filepath):
                         self.logger.log(
-                            '[WARNING] The following Position folder does not contain '
-                            f'the spotMAX output file for run number {run}. '
+                            "[WARNING] The following Position folder does not contain "
+                            f"the spotMAX output file for run number {run}. "
                             f'Skipping it. "{pos_path}"'
                         )
                         continue
-                        
+
                     pos_ini_filepaths[(run, desc)] = ini_filepath
                     for _, pattern_filename in DFs_FILENAMES.items():
-                        run_filename = pattern_filename.replace('*rn*', run)
-                        run_filename = run_filename.replace('*desc*', desc)
-                        aggr_filename = f'{run_filename}_aggregated.csv'
-                        aggr_filepath = os.path.join(
-                            spotmax_output_path, aggr_filename
-                        )
+                        run_filename = pattern_filename.replace("*rn*", run)
+                        run_filename = run_filename.replace("*desc*", desc)
+                        aggr_filename = f"{run_filename}_aggregated.csv"
+                        aggr_filepath = os.path.join(spotmax_output_path, aggr_filename)
                         if not os.path.exists(aggr_filepath):
-                            continue                        
-                        
-                        df_spots_filename = f'{run_filename}.h5'
+                            continue
+
+                        df_spots_filename = f"{run_filename}.h5"
                         spots_filepath = os.path.join(
                             spotmax_output_path, df_spots_filename
                         )
-                        ext_spots = '.h5'
+                        ext_spots = ".h5"
                         if not os.path.exists(spots_filepath):
-                            df_spots_filename = f'{run_filename}.csv'
+                            df_spots_filename = f"{run_filename}.csv"
                             spots_filepath = os.path.join(
                                 spotmax_output_path, df_spots_filename
                             )
-                            ext_spots = '.csv'
-                        
+                            ext_spots = ".csv"
+
                         if not os.path.exists(spots_filepath):
                             continue
-                        
+
                         analysis_step = re.findall(
-                            r'\*rn\*(.*)\*desc\*', pattern_filename
+                            r"\*rn\*(.*)\*desc\*", pattern_filename
                         )[0]
                         key = (run, analysis_step, desc, ext_spots)
                         try:
-                            df_spots = spotmax.io.load_spots_table(
-                                spotmax_output_path, df_spots_filename
-                            ).reset_index().set_index(['frame_i', 'Cell_ID'])
+                            df_spots = (
+                                spotmax.io.load_spots_table(
+                                    spotmax_output_path, df_spots_filename
+                                )
+                                .reset_index()
+                                .set_index(["frame_i", "Cell_ID"])
+                            )
                             df_spots = self.copyCcaColsFromAcdcDf(
                                 df_spots, acdc_df, debug=False
                             )
-                            df_spots = (
-                                df_spots.reset_index()
-                                .set_index(['frame_i', 'Cell_ID', 'spot_id'])
+                            df_spots = df_spots.reset_index().set_index(
+                                ["frame_i", "Cell_ID", "spot_id"]
                             )
                             dfs_spots[key].append(df_spots)
                         except Exception as err:
-                            self.logger.log(str(err), level='ERROR')
+                            self.logger.log(str(err), level="ERROR")
                             self.logger.log(
-                                'WARNING: Error when reading single-spots '
-                                'tables (possibly because there are no spots). '
-                                'Skipping this Position.', 
-                                level='WARNING'
+                                "WARNING: Error when reading single-spots "
+                                "tables (possibly because there are no spots). "
+                                "Skipping this Position.",
+                                level="WARNING",
                             )
                             pass
-                        
+
                         df_aggregated = pd.read_csv(
-                            aggr_filepath, index_col=['frame_i', 'Cell_ID']
+                            aggr_filepath, index_col=["frame_i", "Cell_ID"]
                         )
                         df_aggregated = self.copyCcaColsFromAcdcDf(
                             df_aggregated, acdc_df
                         )
                         dfs_aggr[key].append(df_aggregated)
                         pos_runs[key].append(pos)
-                    
+
                     ref_ch_id_text = re.findall(
-                        r'\*rn\*(.*)\*desc\*', DF_REF_CH_FILENAME
+                        r"\*rn\*(.*)\*desc\*", DF_REF_CH_FILENAME
                     )[0]
-                    ref_ch_filename = (
-                        DF_REF_CH_FILENAME.replace('*rn*', run)
-                    )
-                    ref_ch_filename = (
-                        ref_ch_filename.replace('*desc*', desc)
-                    )
-                    ref_ch_filepath = os.path.join(
-                        spotmax_output_path, ref_ch_filename
-                    )
+                    ref_ch_filename = DF_REF_CH_FILENAME.replace("*rn*", run)
+                    ref_ch_filename = ref_ch_filename.replace("*desc*", desc)
+                    ref_ch_filepath = os.path.join(spotmax_output_path, ref_ch_filename)
                     if not os.path.exists(ref_ch_filepath):
                         continue
-                    
+
                     df_ref_ch = pd.read_csv(
-                        ref_ch_filepath, index_col=['frame_i', 'Cell_ID']
+                        ref_ch_filepath, index_col=["frame_i", "Cell_ID"]
                     )
                     df_ref_ch = self.copyCcaColsFromAcdcDf(df_ref_ch, acdc_df)
                     ref_ch_key = (run, ref_ch_id_text, desc)
                     dfs_ref_ch[ref_ch_key].append(df_ref_ch)
                     pos_runs_ref_ch[ref_ch_key].append(pos)
 
-                self.signals.progressBar.emit(1)        
-            
+                self.signals.progressBar.emit(1)
+
             self.signals.initProgressBar.emit(0)
-            
-            self.logger.log('Saving concantenated files...')
-            
-            allpos_folderpath = os.path.join(exp_path, 'spotMAX_multipos_output')
+
+            self.logger.log("Saving concantenated files...")
+
+            allpos_folderpath = os.path.join(exp_path, "spotMAX_multipos_output")
             os.makedirs(allpos_folderpath, exist_ok=True)
-            
+
             exp_name = os.path.basename(exp_path)
             for key, dfs in dfs_spots.items():
                 pos_keys = pos_runs[key]
                 run, analysis_step, desc, ext_spots = key
-                
-                if ext_spots == '.csv':
+
+                if ext_spots == ".csv":
                     ext_spots = self._final_ext
-                filename = f'multipos_{run}{analysis_step}{desc}{ext_spots}'
+                filename = f"multipos_{run}{analysis_step}{desc}{ext_spots}"
                 all_exp_key = filename
                 df_spots_concat = spotmax.io.save_concat_dfs(
-                    dfs, pos_keys, allpos_folderpath, filename, ext_spots, 
-                    names=['Position_n'], return_concat_df=True
+                    dfs,
+                    pos_keys,
+                    allpos_folderpath,
+                    filename,
+                    ext_spots,
+                    names=["Position_n"],
+                    return_concat_df=True,
                 )
-                df_spots_concat['experiment_foldername'] = exp_name
-                df_spots_concat['experiment_folderpath'] = exp_path
-                spotmax_dfs_spots_allexp[all_exp_key]['dfs'].append(
-                    df_spots_concat
-                )
-                spotmax_dfs_spots_allexp[all_exp_key]['keys'].append(
-                    exp_path
-                )
+                df_spots_concat["experiment_foldername"] = exp_name
+                df_spots_concat["experiment_folderpath"] = exp_path
+                spotmax_dfs_spots_allexp[all_exp_key]["dfs"].append(df_spots_concat)
+                spotmax_dfs_spots_allexp[all_exp_key]["keys"].append(exp_path)
                 ini_filepath = pos_ini_filepaths[(run, desc)]
                 ini_filename = os.path.basename(ini_filepath)
                 dst_ini_filepath = os.path.join(allpos_folderpath, ini_filename)
                 if not os.path.exists(dst_ini_filepath):
                     shutil.copy2(ini_filepath, dst_ini_filepath)
-                    
-                spotmax_dfs_spots_allexp[all_exp_key]['ini_filepath'].append(
+
+                spotmax_dfs_spots_allexp[all_exp_key]["ini_filepath"].append(
                     dst_ini_filepath
                 )
-            
+
             for key, dfs in dfs_aggr.items():
                 pos_keys = pos_runs[key]
                 run, analysis_step, desc, _ = key
                 filename = (
-                    f'multipos_{run}{analysis_step}{desc}'
-                    f'_aggregated{self._final_ext}'
+                    f"multipos_{run}{analysis_step}{desc}_aggregated{self._final_ext}"
                 )
                 all_exp_aggr_key = filename
                 df_aggr_concat = spotmax.io.save_concat_dfs(
-                    dfs, pos_keys, allpos_folderpath, filename, self._final_ext, 
-                    names=['Position_n'], return_concat_df=True
+                    dfs,
+                    pos_keys,
+                    allpos_folderpath,
+                    filename,
+                    self._final_ext,
+                    names=["Position_n"],
+                    return_concat_df=True,
                 )
-                spotmax_dfs_aggr_allexp[all_exp_aggr_key]['dfs'].append(
-                    df_aggr_concat
-                )
-                spotmax_dfs_aggr_allexp[all_exp_aggr_key]['keys'].append(
+                spotmax_dfs_aggr_allexp[all_exp_aggr_key]["dfs"].append(df_aggr_concat)
+                spotmax_dfs_aggr_allexp[all_exp_aggr_key]["keys"].append(
                     (exp_path, exp_name)
                 )
-            
+
             for key, dfs in dfs_ref_ch.items():
                 run, ref_ch_id_text, desc = key
                 pos_keys = pos_runs_ref_ch[key]
-                filename = (
-                    f'multipos_{run}{ref_ch_id_text}{desc}{self._final_ext}'
-                )
+                filename = f"multipos_{run}{ref_ch_id_text}{desc}{self._final_ext}"
                 all_exp_ref_ch_key = filename
                 df_ref_ch_concat = spotmax.io.save_concat_dfs(
-                    dfs, pos_keys, allpos_folderpath, filename, self._final_ext,
-                    names=['Position_n'], return_concat_df=True
+                    dfs,
+                    pos_keys,
+                    allpos_folderpath,
+                    filename,
+                    self._final_ext,
+                    names=["Position_n"],
+                    return_concat_df=True,
                 )
-                ref_ch_dfs_allexp[all_exp_ref_ch_key]['dfs'].append(
-                    df_ref_ch_concat
-                )
-                ref_ch_dfs_allexp[all_exp_ref_ch_key]['keys'].append(
+                ref_ch_dfs_allexp[all_exp_ref_ch_key]["dfs"].append(df_ref_ch_concat)
+                ref_ch_dfs_allexp[all_exp_ref_ch_key]["keys"].append(
                     (exp_path, exp_name)
                 )
-        
-        multiexp_dst_folderpath = ''
+
+        multiexp_dst_folderpath = ""
         if len(expPaths) == 1:
             self.signals.finished.emit(self)
             return
-        
+
         multiexp_dst_folderpath = self.emitAskFolderWhereToSaveMultiExp()
         printl(multiexp_dst_folderpath)
         if multiexp_dst_folderpath is None:
             return
-        
+
         self.logger.log(
             f'Saving multi-experiment files to "{multiexp_dst_folderpath}"...'
         )
-        names = ['experiment_folderpath', 'experiment_foldername']
+        names = ["experiment_folderpath", "experiment_foldername"]
         for filename, items in spotmax_dfs_spots_allexp.items():
-            keys = items['keys']
-            dfs = items['dfs']
-            multiexp_filename = f'multiexp_{filename}'
+            keys = items["keys"]
+            dfs = items["dfs"]
+            multiexp_filename = f"multiexp_{filename}"
             extension = os.path.splitext(filename)[-1]
             spotmax.io.save_concat_dfs(
-                dfs, keys, multiexp_dst_folderpath, 
-                multiexp_filename, 
+                dfs,
+                keys,
+                multiexp_dst_folderpath,
+                multiexp_filename,
                 extension,
-                names=['experiment_folderpath']
+                names=["experiment_folderpath"],
             )
-            ini_filepath = items['ini_filepath'][0]
+            ini_filepath = items["ini_filepath"][0]
             ini_filename = os.path.basename(ini_filepath)
-            dst_ini_filepath = os.path.join(
-                multiexp_dst_folderpath, ini_filename
-            )
+            dst_ini_filepath = os.path.join(multiexp_dst_folderpath, ini_filename)
             if not os.path.exists(dst_ini_filepath):
                 shutil.copy2(ini_filepath, dst_ini_filepath)
-            
+
         for filename, items in spotmax_dfs_aggr_allexp.items():
-            keys = items['keys']
-            dfs = items['dfs']
+            keys = items["keys"]
+            dfs = items["dfs"]
             printl(keys, pretty=True)
-            multiexp_filename = f'multiexp_{filename}'
+            multiexp_filename = f"multiexp_{filename}"
             extension = os.path.splitext(filename)[-1]
             spotmax.io.save_concat_dfs(
-                dfs, keys, multiexp_dst_folderpath, 
-                multiexp_filename, 
+                dfs,
+                keys,
+                multiexp_dst_folderpath,
+                multiexp_filename,
                 extension,
-                names=names
+                names=names,
             )
-        
+
         for filename, items in ref_ch_dfs_allexp.items():
-            keys = items['keys']
-            dfs = items['dfs']
-            multiexp_filename = f'multiexp_{filename}'
+            keys = items["keys"]
+            dfs = items["dfs"]
+            multiexp_filename = f"multiexp_{filename}"
             extension = os.path.splitext(filename)[-1]
             spotmax.io.save_concat_dfs(
-                dfs, keys, multiexp_dst_folderpath, 
-                multiexp_filename, 
+                dfs,
+                keys,
+                multiexp_dst_folderpath,
+                multiexp_filename,
                 extension,
-                names=names
+                names=names,
             )
-        
+
         self.signals.finished.emit(self)
+
 
 class FilterObjsFromCoordsTable(BaseWorkerUtil):
     sigAskAppendName = Signal(str, list)
@@ -4696,77 +4775,71 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
         self.sigSetColumnsNames.emit(columns, categories, optionalCategories)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-        return self.abort 
-    
+        return self.abort
+
     def getColumnsCategories(
-            self, df_coords, exp_path, pos_foldernames, endFilenameSegm
-        ):
+        self, df_coords, exp_path, pos_foldernames, endFilenameSegm
+    ):
         columns = df_coords.columns.to_list()
-        categories = ['X coord. column', 'Y coord. column']
+        categories = ["X coord. column", "Y coord. column"]
         optionalCategories = []
-        
-        images_path = os.path.join(exp_path, pos_foldernames[0], 'Images')
+
+        images_path = os.path.join(exp_path, pos_foldernames[0], "Images")
         metadata_df = load.load_metadata_df(images_path)
-        SizeT = float(metadata_df.at['SizeT', 'values'])
-        SizeZ = float(metadata_df.at['SizeZ', 'values'])
-        
-        segmData = load.load_segm_file(
-            images_path, end_name_segm_file=endFilenameSegm
-        )
-        
+        SizeT = float(metadata_df.at["SizeT", "values"])
+        SizeZ = float(metadata_df.at["SizeZ", "values"])
+
+        segmData = load.load_segm_file(images_path, end_name_segm_file=endFilenameSegm)
+
         if segmData.ndim == 4:
-            categories.append('Z coord. column')
-            categories.append('Frame index column')
+            categories.append("Z coord. column")
+            categories.append("Frame index column")
         elif segmData.ndim == 3:
             if SizeZ > 1 and SizeT == 1:
                 # 3D z-stack data
-                categories.append('Z coord. column')
+                categories.append("Z coord. column")
             else:
-                optionalCategories.append('Z coord. column')
-                
+                optionalCategories.append("Z coord. column")
+
             if SizeT > 1:
                 # 3D time-lapse
-                categories.append('Frame index column')
+                categories.append("Frame index column")
             else:
-                optionalCategories.append('Frame index column')
+                optionalCategories.append("Frame index column")
         else:
-            optionalCategories.append('Z coord. column')
-            optionalCategories.append('Frame index column')
-        
+            optionalCategories.append("Z coord. column")
+            optionalCategories.append("Frame index column")
+
         if len(pos_foldernames) > 1:
-            categories.append('Position_n')
+            categories.append("Position_n")
         else:
-            optionalCategories.append('Position_n')
-        
+            optionalCategories.append("Position_n")
+
         return columns, categories, optionalCategories
-        
+
     def getDfCoords(
-            self, df_coords, selectedColumnsPerCategory, pos_foldername, frame_i
-        ):
-        pos_col = selectedColumnsPerCategory.get('Position_n', 'None')
-        frame_i_col = selectedColumnsPerCategory.get(
-            'Frame index column', 'None'
-        )
-        x_col = selectedColumnsPerCategory['X coord. column']
-        y_col = selectedColumnsPerCategory['Y coord. column']
-        if pos_col != 'None':
+        self, df_coords, selectedColumnsPerCategory, pos_foldername, frame_i
+    ):
+        pos_col = selectedColumnsPerCategory.get("Position_n", "None")
+        frame_i_col = selectedColumnsPerCategory.get("Frame index column", "None")
+        x_col = selectedColumnsPerCategory["X coord. column"]
+        y_col = selectedColumnsPerCategory["Y coord. column"]
+        if pos_col != "None":
             df_coords = df_coords[df_coords[pos_col] == pos_foldername]
-        if frame_i_col != 'None':
+        if frame_i_col != "None":
             df_coords = df_coords[df_coords[frame_i_col] == frame_i]
-        
+
         xy_cols = [x_col, y_col]
-        
+
         df_out = pd.DataFrame(
-            index=df_coords.index, 
-            data=df_coords[xy_cols].values,
-            columns=['x', 'y']
+            index=df_coords.index, data=df_coords[xy_cols].values, columns=["x", "y"]
         )
-        z_col = selectedColumnsPerCategory.get('Z coord. column', 'None')
-        if z_col != 'None':
-            df_out['z'] =  df_coords[z_col]
-        
+        z_col = selectedColumnsPerCategory.get("Z coord. column", "None")
+        if z_col != "None":
+            df_out["z"] = df_coords[z_col]
+
         return df_out
-    
+
     @worker_exception_handler
     def run(self):
         debugging = False
@@ -4777,46 +4850,42 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
 
-            self.mainWin.infoText = f'Select <b>segmentation file to filter</b>'
+            self.mainWin.infoText = f"Select <b>segmentation file to filter</b>"
             abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
             if abort:
                 self.sigAborted.emit()
                 return
             endFilenameSegm = self.mainWin.endFilenameSegm
-            
-            self.logger.log('Asking to select the CSV table file...')
-            
+
+            self.logger.log("Asking to select the CSV table file...")
+
             abort = self.emitSelectFile(
-                exp_path, 'Select CSV table file with coordinates to filter',
-                'CSV (*.csv)'
+                exp_path,
+                "Select CSV table file with coordinates to filter",
+                "CSV (*.csv)",
             )
             if abort:
                 self.sigAborted.emit()
                 return
-            
-            self.logger.log(
-                f'Loading table file `{self.mainWin.selectedFilepath}`..'
-            )
+
+            self.logger.log(f"Loading table file `{self.mainWin.selectedFilepath}`..")
             df_coords = pd.read_csv(self.mainWin.selectedFilepath)
-            
+
             columns, categories, optionalCategories = self.getColumnsCategories(
                 df_coords, exp_path, pos_foldernames, endFilenameSegm
-            )            
-            
-            abort = self.emitSetColumnsNames(
-                columns, categories, optionalCategories
             )
+
+            abort = self.emitSetColumnsNames(columns, categories, optionalCategories)
             if abort:
                 self.sigAborted.emit()
                 return
-            
+
             selectedColumnsPerCategory = self.mainWin.selectedColumnsPerCategory
-            
+
             # Ask appendend name
             self.mutex.lock()
             self.sigAskAppendName.emit(
-                self.mainWin.endFilenameSegm, 
-                self.mainWin.existingSegmEndNames
+                self.mainWin.endFilenameSegm, self.mainWin.existingSegmEndNames
             )
             self.waitCond.wait(self.mutex)
             self.mutex.unlock()
@@ -4832,20 +4901,21 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
-                images_path = os.path.join(exp_path, pos, 'Images')
+                images_path = os.path.join(exp_path, pos, "Images")
                 ls = myutils.listdir(images_path)
                 file_path = [
-                    os.path.join(images_path, f) for f in ls 
-                    if f.endswith(f'{endFilenameSegm}.npz')
+                    os.path.join(images_path, f)
+                    for f in ls
+                    if f.endswith(f"{endFilenameSegm}.npz")
                 ][0]
-                
-                posData = load.loadData(file_path, '')
 
-                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+                posData = load.loadData(file_path, "")
+
+                self.signals.sigUpdatePbarDesc.emit(f"Processing {posData.pos_path}")
 
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
@@ -4854,13 +4924,13 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
                     load_segm_data=True,
                     load_acdc_df=True,
                     load_metadata=True,
-                    end_filename_segm=endFilenameSegm
+                    end_filename_segm=endFilenameSegm,
                 )
                 if posData.SizeT == 1:
                     posData.segm_data = posData.segm_data[np.newaxis]
-                
-                self.logger.log('Filtering objects...')
-                
+
+                self.logger.log("Filtering objects...")
+
                 numFrames = len(posData.segm_data)
                 self.signals.sigInitInnerPbar.emit(numFrames)
                 filteredSegmData = np.zeros_like(posData.segm_data)
@@ -4873,7 +4943,7 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
                         self.signals.sigUpdateInnerPbar.emit(num_frames_missing)
                         filteredSegmData = filteredSegmData[:frame_i]
                         break
-                    
+
                     filtered_lab = core.filter_segm_objs_from_table_coords(
                         lab, df_coords_frame_i
                     )
@@ -4881,15 +4951,16 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
 
                     self.signals.sigUpdateInnerPbar.emit(1)
 
-                self.logger.log('Saving filtered segmentation file...')
+                self.logger.log("Saving filtered segmentation file...")
                 segmFilename, ext = os.path.splitext(posData.segm_npz_path)
-                newSegmFilepath = f'{segmFilename}_{appendedName}.npz'
+                newSegmFilepath = f"{segmFilename}_{appendedName}.npz"
                 filteredSegmData = np.squeeze(filteredSegmData)
                 io.savez_compressed(newSegmFilepath, filteredSegmData)
-                
+
                 self.signals.progressBar.emit(1)
 
         self.signals.finished.emit(self)
+
 
 class ScreenRecorderWorker(QObject):
     sigGrabScreen = Signal()
@@ -4899,18 +4970,19 @@ class ScreenRecorderWorker(QObject):
         QObject.__init__(self)
         self.screenRecorderWin = screenRecorderWin
         self.folder_path = folder_path
-    
+
     def run(self):
         for i in range(4):
-            fn = f'shot_{i:03}.jpg'
+            fn = f"shot_{i:03}.jpg"
             grab_path = os.path.join(self.folder_path, fn)
             screen = self.screenRecorderWin.screen()
             screenshot = screen.grabWindow(self.screenRecorderWin.winId())
-            screenshot.save(grab_path, 'jpg')
+            screenshot.save(grab_path, "jpg")
             print(grab_path)
             time.sleep(0.2)
 
         self.finished.emit()
+
 
 class CcaIntegrityCheckerWorker(QObject):
     finished = Signal(object)
@@ -4919,7 +4991,7 @@ class CcaIntegrityCheckerWorker(QObject):
     sigDone = Signal()
     sigWarning = Signal(str, str)
     sigFixWillDivide = Signal(str, list)
-    
+
     def __init__(self, mutex, waitCond):
         QObject.__init__(self)
         self.logger = workerLogger(self.progress)
@@ -4932,136 +5004,128 @@ class CcaIntegrityCheckerWorker(QObject):
         self.isPaused = False
         self.debug = False
         self.dataQ = deque(maxlen=10)
-    
+
     def pause(self):
         if self.debug:
-            self.logger.log('Cell cycle annotations checker is idle.')
+            self.logger.log("Cell cycle annotations checker is idle.")
         self.mutex.lock()
         self.isPaused = True
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         self.isPaused = False
-    
+
     def enqueue(self, posData):
         # First stop previous checking
         if self.isChecking:
             self.abortChecking = True
         self._enqueue(posData)
-    
+
     def _enqueue(self, posData):
         if self.debug:
-            self.logger.log('Enqueing posData...')
+            self.logger.log("Enqueing posData...")
         self.dataQ.append(posData)
         if len(self.dataQ) == 1:
             # Wake worker upon inserting first element
             self.abortChecking = False
             self.waitCond.wakeAll()
-    
+
     def clearQueue(self):
         self.dataQ.clear()
-    
+
     def _stop(self):
         self.exit = True
         self.waitCond.wakeAll()
-    
+
     def abort(self):
         self.abortChecking = True
         while not len(self.dataQ) == 0:
             data = self.dataQ.pop()
             del data
         self._stop()
-    
+
     def _check_equality_num_mothers_buds_in_S(self, checker, frame_i):
         num_moth_S, num_buds = checker.get_num_mothers_and_buds_in_S()
-        
+
         if num_moth_S == num_buds:
             return True
-        
-        category = 'number of buds different from number of mothers in S phase'
+
+        category = "number of buds different from number of mothers in S phase"
         ul_items = [
-            f'Number of buds = {num_buds}', 
-            f'Number of mothers in S phase = {num_moth_S}'
+            f"Number of buds = {num_buds}",
+            f"Number of mothers in S phase = {num_moth_S}",
         ]
         txt = html_utils.paragraph(
-            f'At frame n. {frame_i+1} the number of buds and number of '
-            'mother cells in S phase are different!'
-            f'{html_utils.to_list(ul_items)}'
+            f"At frame n. {frame_i + 1} the number of buds and number of "
+            "mother cells in S phase are different!"
+            f"{html_utils.to_list(ul_items)}"
         )
         self.sigWarning.emit(txt, category)
         return False
-    
+
     def _check_mothers_multiple_buds(self, checker, frame_i):
-        mother_IDs_with_multiple_buds = (
-            checker.get_mother_IDs_with_multiple_buds()
-        )
+        mother_IDs_with_multiple_buds = checker.get_mother_IDs_with_multiple_buds()
         if len(mother_IDs_with_multiple_buds) == 0:
             return True
 
-        category = 'mother cells with multiple buds'
+        category = "mother cells with multiple buds"
         txt = html_utils.paragraph(
-            f'At frame n. {frame_i+1} '
-            'the following mother cells have <b>multiple buds</b> assigned to it'
-            f'<br><br>{mother_IDs_with_multiple_buds}'
+            f"At frame n. {frame_i + 1} "
+            "the following mother cells have <b>multiple buds</b> assigned to it"
+            f"<br><br>{mother_IDs_with_multiple_buds}"
         )
         self.sigWarning.emit(txt, category)
         return False
-    
+
     def _check_cells_without_G1(self, checker, global_cca_df):
-        IDs_cycles_without_G1 = (
-            checker.get_IDs_cycles_without_G1(global_cca_df)
-        )
+        IDs_cycles_without_G1 = checker.get_IDs_cycles_without_G1(global_cca_df)
         if len(IDs_cycles_without_G1) == 0:
             return True
 
-        category = 'cell cycles without G1'
+        category = "cell cycles without G1"
         txt = html_utils.paragraph(
-            'Cell-ACDC requires that every cell cycle has at least '
-            'one frame in G1.<br>'
-            'The following pairs of <code>(ID, generation number)</code> '
-            'do not satisfy this condition:<br><br>'
-            f'{IDs_cycles_without_G1}'
+            "Cell-ACDC requires that every cell cycle has at least "
+            "one frame in G1.<br>"
+            "The following pairs of <code>(ID, generation number)</code> "
+            "do not satisfy this condition:<br><br>"
+            f"{IDs_cycles_without_G1}"
         )
         self.sigWarning.emit(txt, category)
         return False
-    
+
     def _check_will_divide_is_true(self, checker, global_cca_df):
-        # NOTE: unfortunately this function performs pandas manipulations 
-        # that are either not thread-safe or in any case are freezing the 
+        # NOTE: unfortunately this function performs pandas manipulations
+        # that are either not thread-safe or in any case are freezing the
         # GUI. For now we don't run this until we find a solution
         return True
-    
-        IDs_will_divide_wrong = (
-            checker.get_IDs_gen_num_will_divide_wrong(global_cca_df)
-        )
+
+        IDs_will_divide_wrong = checker.get_IDs_gen_num_will_divide_wrong(global_cca_df)
         if len(IDs_will_divide_wrong) == 0:
             return True
 
         txt = html_utils.paragraph(
-            'Cell-ACDC found that `will_divide` is annotated as True on the '
-            'following <code>(ID, generation number)</code> cell<br>'
-            'despite the fact that division is still not annotated on '
-            'these cells <br><br>:'
-            f'{IDs_will_divide_wrong}'
+            "Cell-ACDC found that `will_divide` is annotated as True on the "
+            "following <code>(ID, generation number)</code> cell<br>"
+            "despite the fact that division is still not annotated on "
+            "these cells <br><br>:"
+            f"{IDs_will_divide_wrong}"
         )
         self.sigFixWillDivide.emit(txt, IDs_will_divide_wrong)
         return False
-    
+
     def _check_buds_gen_num_zero(self, checker, frame_i):
-        bud_IDs_gen_num_nonzero = (
-            checker.get_bud_IDs_gen_num_nonzero()
-        )
+        bud_IDs_gen_num_nonzero = checker.get_bud_IDs_gen_num_nonzero()
         if len(bud_IDs_gen_num_nonzero) == 0:
             return True
 
-        category = 'buds whose generation number is not zero'
+        category = "buds whose generation number is not zero"
         txt = html_utils.paragraph(
-            f'At frame n. {frame_i+1} '
-            'the following bud IDs have generation number different from 0:'
-            f'<br><br>{bud_IDs_gen_num_nonzero}'
+            f"At frame n. {frame_i + 1} "
+            "the following bud IDs have generation number different from 0:"
+            f"<br><br>{bud_IDs_gen_num_nonzero}"
         )
         self.sigWarning.emit(txt, category)
         return False
-    
+
     def _check_mothers_gen_num_greater_one(self, checker, frame_i):
         moth_IDs_gen_num_non_greater_one = (
             checker.get_moth_IDs_gen_num_non_greater_one()
@@ -5069,104 +5133,100 @@ class CcaIntegrityCheckerWorker(QObject):
         if len(moth_IDs_gen_num_non_greater_one) == 0:
             return True
 
-        category = 'mothers whose generation number is < 1'
+        category = "mothers whose generation number is < 1"
         txt = html_utils.paragraph(
-            f'At frame n. {frame_i+1} '
-            'the following mother cells have generation number &lt; 1:'
-            f'<br><br>{moth_IDs_gen_num_non_greater_one}'
+            f"At frame n. {frame_i + 1} "
+            "the following mother cells have generation number &lt; 1:"
+            f"<br><br>{moth_IDs_gen_num_non_greater_one}"
         )
         self.sigWarning.emit(txt, category)
         return False
-    
+
     def _check_buds_G1(self, checker, frame_i):
-        buds_G1 = (
-            checker.get_buds_G1()
-        )
+        buds_G1 = checker.get_buds_G1()
         if len(buds_G1) == 0:
             return True
 
-        category = 'buds in G1'
+        category = "buds in G1"
         txt = html_utils.paragraph(
-            f'At frame n. {frame_i+1} '
-            'the following bud IDs are in G1 (buds must be in S):'
-            f'<br><br>{buds_G1}'
+            f"At frame n. {frame_i + 1} "
+            "the following bud IDs are in G1 (buds must be in S):"
+            f"<br><br>{buds_G1}"
         )
         self.sigWarning.emit(txt, category)
         return False
-    
+
     def _check_cell_S_rel_ID_zero(self, checker, frame_i):
-        cell_S_rel_ID_zero = (
-            checker.get_cell_S_rel_ID_zero()
-        )
+        cell_S_rel_ID_zero = checker.get_cell_S_rel_ID_zero()
         if len(cell_S_rel_ID_zero) == 0:
             return True
 
-        category = 'buds in G1'
+        category = "buds in G1"
         txt = html_utils.paragraph(
-            f'At frame n. {frame_i+1} '
-            'the following cell IDs in S phase do not have '
-            '<code>relative_ID > 0</code>:'
-            f'<br><br>{cell_S_rel_ID_zero}'
+            f"At frame n. {frame_i + 1} "
+            "the following cell IDs in S phase do not have "
+            "<code>relative_ID > 0</code>:"
+            f"<br><br>{cell_S_rel_ID_zero}"
         )
         self.sigWarning.emit(txt, category)
         return False
-    
+
     def _check_ID_rel_ID_mismatches(self, checker, frame_i):
         ID_rel_ID_mismatches = checker.get_ID_rel_ID_mismatches()
         if len(ID_rel_ID_mismatches) == 0:
             return True
 
         items = [
-            f'Cell ID {ID} has relative ID = {relID}, '
-            f'while cell ID {relID} has relative ID = {relID_of_relID}'
+            f"Cell ID {ID} has relative ID = {relID}, "
+            f"while cell ID {relID} has relative ID = {relID_of_relID}"
             for ID, relID, relID_of_relID in ID_rel_ID_mismatches
         ]
-        category = '`ID-relative_ID` mismatches'
+        category = "`ID-relative_ID` mismatches"
         txt = html_utils.paragraph(
-            f'At frame n. {frame_i+1} '
-            'there are the following `ID-relative_ID` mismatches:'
-            f'{html_utils.to_list(items)}'
+            f"At frame n. {frame_i + 1} "
+            "there are the following `ID-relative_ID` mismatches:"
+            f"{html_utils.to_list(items)}"
         )
         self.sigWarning.emit(txt, category)
         return False
-    
+
     def _check_lonely_cells_in_S(self, checker, frame_i):
         lonely_cells_in_S = checker.get_lonely_cells_in_S()
         if len(lonely_cells_in_S) == 0:
             return True
 
-        category = 'Lovely cells in S phase'
+        category = "Lovely cells in S phase"
         txt = html_utils.paragraph(
-            f'At frame n. {frame_i+1} '
-            'the following cell IDs are in `S` phase but their `relative_ID` '
-            f'does not exist:<br><br>'
-            f'{lonely_cells_in_S}'
+            f"At frame n. {frame_i + 1} "
+            "the following cell IDs are in `S` phase but their `relative_ID` "
+            f"does not exist:<br><br>"
+            f"{lonely_cells_in_S}"
         )
         self.sigWarning.emit(txt, category)
         return False
-    
+
     def _get_cca_df_copy(self, acdc_df):
         try:
             cca_df = pd.DataFrame(
                 data=acdc_df[cca_df_colnames].values,
                 columns=cca_df_colnames,
-                index=acdc_df.index
+                index=acdc_df.index,
             )
             return cca_df
         except KeyError as error:
-            return 
-        
-    def check(self, posData):    
+            return
+
+    def check(self, posData):
         self.isChecking = True
         checkpoints = (
-            '_check_lonely_cells_in_S',
-            '_check_equality_num_mothers_buds_in_S',
-            '_check_mothers_multiple_buds',
-            '_check_buds_gen_num_zero',
-            '_check_mothers_gen_num_greater_one',
-            '_check_buds_G1',
-            '_check_cell_S_rel_ID_zero',
-            '_check_ID_rel_ID_mismatches'
+            "_check_lonely_cells_in_S",
+            "_check_equality_num_mothers_buds_in_S",
+            "_check_mothers_multiple_buds",
+            "_check_buds_gen_num_zero",
+            "_check_mothers_gen_num_greater_one",
+            "_check_buds_G1",
+            "_check_cell_S_rel_ID_zero",
+            "_check_ID_rel_ID_mismatches",
         )
         cca_dfs = []
         keys = []
@@ -5175,58 +5235,58 @@ class CcaIntegrityCheckerWorker(QObject):
             if self.abortChecking:
                 check_integrity_globally = False
                 break
-            
-            lab = data_dict['labels']
+
+            lab = data_dict["labels"]
             if lab is None:
                 break
-            
-            cca_df = data_dict.get('cca_df_checker')
+
+            cca_df = data_dict.get("cca_df_checker")
             if cca_df is None:
                 # There are no annotations at frame_i --> stop
                 break
-            
-            IDs = data_dict['IDs']
+
+            IDs = data_dict["IDs"]
             checker = core.CcaIntegrityChecker(cca_df, lab, IDs)
-            
+
             for checkpoint in checkpoints:
                 proceed = getattr(self, checkpoint)(checker, frame_i)
                 if not proceed:
                     break
-            
+
             if not proceed:
                 check_integrity_globally = False
                 break
-            
+
             cca_dfs.append(cca_df)
             keys.append(frame_i)
-        
-        if check_integrity_globally and len(cca_dfs)>1:
+
+        if check_integrity_globally and len(cca_dfs) > 1:
             global_checkpoints = [
-                '_check_cells_without_G1',
+                "_check_cells_without_G1",
                 # '_check_will_divide_is_true'
             ]
             # Check integrity globally
-            global_cca_df = pd.concat(cca_dfs, keys=keys, names=['frame_i'])
+            global_cca_df = pd.concat(cca_dfs, keys=keys, names=["frame_i"])
             for checkpoint in global_checkpoints:
                 proceed = getattr(self, checkpoint)(checker, global_cca_df)
                 if not proceed:
                     break
-        
+
         self.abortChecking = False
         self.isChecking = False
         time.sleep(1)
-    
+
     @worker_exception_handler
     def run(self):
         while True:
             if self.exit:
-                self.logger.log('Closing cell cycle integrity checker worker...')
+                self.logger.log("Closing cell cycle integrity checker worker...")
                 break
             elif not len(self.dataQ) == 0:
                 if self.debug:
                     self.logger.log(
-                        'Checking integrity of cell cycle annotations '
-                        f'({len(self.dataQ)})...'
+                        "Checking integrity of cell cycle annotations "
+                        f"({len(self.dataQ)})..."
                     )
                 data = self.dataQ.pop()
                 self.check(data)
@@ -5236,22 +5296,24 @@ class CcaIntegrityCheckerWorker(QObject):
                 self.pause()
         self.isFinished = True
         self.finished.emit(self)
-    
+
+
 class ApplyImageFilterWorker(QObject):
     finished = Signal(object)
     critical = Signal(object)
     progress = Signal(str)
-    
+
     def __init__(self, filter_func, input_data):
         QObject.__init__(self)
         self.filter_func = filter_func
         self.input_data = input_data
-    
+
     @worker_exception_handler
     def run(self):
-        self.progress.emit('Filtering image...')
+        self.progress.emit("Filtering image...")
         filtered_data = self.filter_func(self.input_data)
         self.finished.emit(filtered_data)
+
 
 class MoveTempFilesWorker(QObject):
     def __init__(self, temp_files_to_move: Dict[os.PathLike, os.PathLike]):
@@ -5259,49 +5321,50 @@ class MoveTempFilesWorker(QObject):
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
         self.temp_files_to_move = temp_files_to_move
-    
+
     @worker_exception_handler
     def run(self):
         for src, dst in self.temp_files_to_move.items():
-            self.logger.log(f'Saving channel data to: {dst}...')
+            self.logger.log(f"Saving channel data to: {dst}...")
             shutil.move(src, dst)
             tempDir = os.path.dirname(src)
             shutil.rmtree(tempDir)
             self.signals.progressBar.emit(1)
         self.signals.finished.emit(self)
 
+
 class ResizeUtilWorker(BaseWorkerUtil):
     sigSetResizeProps = Signal(str)
-    
+
     def emitSetResizeProps(self, input_path):
         self.mutex.lock()
         self.sigSetResizeProps.emit(input_path)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
-    
+
     def __init__(self, mainWin):
         super().__init__(mainWin)
-    
+
     def validateOutputPath(self, path):
         if path is None:
             return
-        
+
         images_path = myutils.validate_images_path(path, create_dirs_tree=True)
         return images_path
-    
+
     @worker_exception_handler
     def run(self):
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
-        
+
         self.signals.initProgressBar.emit(0)
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             abort = self.emitSetResizeProps(exp_path)
             if abort:
                 self.signals.finished.emit(self)
                 return
-            
+
             tot_pos = len(pos_foldernames)
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
@@ -5309,24 +5372,25 @@ class ResizeUtilWorker(BaseWorkerUtil):
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
-                images_path = os.path.join(exp_path, pos, 'Images')
-                
-                
+                images_path = os.path.join(exp_path, pos, "Images")
+
                 rf = self.resizeFactor
                 text_to_append = self.textToAppend
                 images_path_out = self.validateOutputPath(self.expFolderpathOut)
                 if images_path_out is None:
                     images_path_out = images_path
                 resize.run(
-                    images_path, rf, 
-                    text_to_append=text_to_append, 
-                    images_path_out=images_path_out
-                )                
-                
+                    images_path,
+                    rf,
+                    text_to_append=text_to_append,
+                    images_path_out=images_path_out,
+                )
+
         self.signals.finished.emit(self)
+
 
 class FucciPreprocessWorker(BaseWorkerUtil):
     sigAskAppendName = Signal(str)
@@ -5335,32 +5399,32 @@ class FucciPreprocessWorker(BaseWorkerUtil):
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
-    
+
     def emitAskParams(self, exp_path, pos_foldernames):
         self.mutex.lock()
         self.sigAskParams.emit(exp_path, pos_foldernames)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
-    
+
     def applyPipeline(self, first_ch_data, second_ch_data, filter_kwargs):
         processed_data = np.zeros(first_ch_data.shape, dtype=np.uint8)
         pbar = tqdm(total=len(processed_data), ncols=100)
         with concurrent.futures.ThreadPoolExecutor() as executor:
             iterable = enumerate(zip(first_ch_data, second_ch_data))
-            func = partial(
-                core.fucci_pipeline_executor_map, **filter_kwargs
-            )
+            func = partial(core.fucci_pipeline_executor_map, **filter_kwargs)
             result = executor.map(func, iterable)
             for frame_i, processed_img in result:
-                processed_img = skimage.exposure.rescale_intensity(processed_img, out_range=(0, 255))
+                processed_img = skimage.exposure.rescale_intensity(
+                    processed_img, out_range=(0, 255)
+                )
                 processed_img = processed_img.astype(np.uint8)
                 processed_data[frame_i] = processed_img
                 pbar.update()
         pbar.close()
-        
+
         return processed_data
-    
+
     @worker_exception_handler
     def run(self):
         debugging = False
@@ -5371,14 +5435,14 @@ class FucciPreprocessWorker(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
 
-            self.mainWin.infoText = f'Setup parameters'
-            
+            self.mainWin.infoText = f"Setup parameters"
+
             if i == 0:
                 abort = self.emitAskParams(exp_path, pos_foldernames)
                 if abort:
                     self.sigAborted.emit()
                     return
-            
+
             # Ask appendend name
             self.mutex.lock()
             self.sigAskAppendName.emit(self.basename)
@@ -5396,49 +5460,42 @@ class FucciPreprocessWorker(BaseWorkerUtil):
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
-                images_path = os.path.join(exp_path, pos, 'Images')
-                
-                self.logger.log(
-                    f'Loading {self.firstChannelName} channel data...'
-                )
+                images_path = os.path.join(exp_path, pos, "Images")
+
+                self.logger.log(f"Loading {self.firstChannelName} channel data...")
                 first_ch_filepath = load.get_filename_from_channel(
                     images_path, self.firstChannelName
                 )
                 first_ch_data = load.load_image_file(first_ch_filepath)
-                
-                self.logger.log(
-                    f'Loading {self.secondChannelName} channel data...'
-                )
+
+                self.logger.log(f"Loading {self.secondChannelName} channel data...")
                 second_ch_filepath = load.get_filename_from_channel(
                     images_path, self.secondChannelName
                 )
                 second_ch_data = load.load_image_file(second_ch_filepath)
-                
-                self.logger.log(
-                    'Applying FUCCI pre-processing pipeline...\n'
-                )
+
+                self.logger.log("Applying FUCCI pre-processing pipeline...\n")
                 processed_data = self.applyPipeline(
                     first_ch_data, second_ch_data, self.fucciFilterKwargs
                 )
-                
+
                 basename, chNames = myutils.getBasenameAndChNames(images_path)
                 _, ext = os.path.splitext(first_ch_filepath)
-                processed_filename = f'{basename}{appendedName}{ext}'
-                processed_filepath = os.path.join(
-                    images_path, processed_filename
-                )
+                processed_filename = f"{basename}{appendedName}{ext}"
+                processed_filepath = os.path.join(images_path, processed_filename)
                 self.logger.log(
                     f'Saving pre-processed images to "{processed_filepath}"...'
                 )
                 io.save_image_data(processed_filepath, processed_data)
-                                
+
                 self.signals.progressBar.emit(1)
 
         self.signals.finished.emit(self)
+
 
 class SimpleWorker(QObject):
     def __init__(self, posData, func, func_args=None, func_kwargs=None):
@@ -5446,24 +5503,23 @@ class SimpleWorker(QObject):
         self.posData = posData
         self.signals = signals()
         self.output = {}
-        
+
         if func_args is None:
             func_args = []
-        
+
         if func_kwargs is None:
             func_kwargs = {}
-        
+
         self.func = func
         self.func_args = func_args
         self.func_kwargs = func_kwargs
         self.posData = posData
-    
+
     @worker_exception_handler
     def run(self):
-        self.result = self.func(
-            self.posData, *self.func_args, **self.func_kwargs
-        )
+        self.result = self.func(self.posData, *self.func_args, **self.func_kwargs)
         self.signals.finished.emit(self.output)
+
 
 class CopyAllLostObjectsWorker(QObject):
     navigateToFrame = Signal(int)
@@ -5516,7 +5572,7 @@ class CopyAllLostObjectsWorker(QObject):
             self.progressBar.emit(1)
 
         if self.for_future_frame_n == 0:
-            output['overlap_warning'] = overlap_warning
+            output["overlap_warning"] = overlap_warning
             self.finished.emit(output)
             return
 
@@ -5524,19 +5580,20 @@ class CopyAllLostObjectsWorker(QObject):
         self.returnToFrame.emit(current_frame_i)
 
         if last_visited_frame_i < last_copied_frame_i:
-            output['doReinitLastSegmFrame'] = True
-            output['last_visited_frame_i'] = last_visited_frame_i
+            output["doReinitLastSegmFrame"] = True
+            output["last_visited_frame_i"] = last_visited_frame_i
 
-        output['overlap_warning'] = overlap_warning
+        output["overlap_warning"] = overlap_warning
         self.finished.emit(output)
+
 
 class SaveProcessedDataWorker(QObject):
     def __init__(
-            self, 
-            allPosData: Iterable['load.loadData'], 
-            appended_text_filename: str,
-            ext: str = None
-        ):
+        self,
+        allPosData: Iterable["load.loadData"],
+        appended_text_filename: str,
+        ext: str = None,
+    ):
         QObject.__init__(self)
         self.allPosData = allPosData
         self.signals = signals()
@@ -5550,53 +5607,48 @@ class SaveProcessedDataWorker(QObject):
         for posData in self.allPosData:
             ext_loc = self.ext if self.ext is not None else posData.ext
             processed_filename = (
-                f'{posData.basename}{posData.user_ch_name}_'
-                f'{self.appended_text_filename}{ext_loc}'
+                f"{posData.basename}{posData.user_ch_name}_"
+                f"{self.appended_text_filename}{ext_loc}"
             )
-            processed_filepath = os.path.join(
-                posData.images_path, processed_filename
-            )
-            self.logger.log(f'Saving {processed_filepath}...')
+            processed_filepath = os.path.join(posData.images_path, processed_filename)
+            self.logger.log(f"Saving {processed_filepath}...")
             processed_data = posData.preprocessedDataArray()
             if processed_data is None:
                 self.logger.log(
-                    f'[WARNING]: {posData.pos_foldername} does not have '
-                    'preprocessed data. Skipping it.'
+                    f"[WARNING]: {posData.pos_foldername} does not have "
+                    "preprocessed data. Skipping it."
                 )
                 continue
-                
+
             io.save_image_data(processed_filepath, processed_data)
-        
+
         self.signals.finished.emit(self)
+
 
 class SaveCombinedChannelsWorker(QObject):
     sigDebugShowImg = Signal(object)
+
     def __init__(
-            self, 
-            allPosData: Iterable['load.loadData'], 
-            filename: str,
-            debug: bool = False
-        ):
+        self, allPosData: Iterable["load.loadData"], filename: str, debug: bool = False
+    ):
         QObject.__init__(self)
         self.allPosData = allPosData
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
         self.filename = filename
         self.debug = debug
-    
+
     @worker_exception_handler
     def run(self):
         self.signals.initProgressBar.emit(0)
         for posData in self.allPosData:
-            processed_filepath = os.path.join(
-                posData.images_path, self.filename
-            )
-            self.logger.log(f'Saving {processed_filepath}...')
+            processed_filepath = os.path.join(posData.images_path, self.filename)
+            self.logger.log(f"Saving {processed_filepath}...")
             processed_data = posData.combinedChannelsDataArray()
             if processed_data is None:
                 self.logger.log(
-                    f'[WARNING]: {posData.pos_foldername} does not have '
-                    'combined channels data. Skipping it.'
+                    f"[WARNING]: {posData.pos_foldername} does not have "
+                    "combined channels data. Skipping it."
                 )
                 continue
             if self.debug:
@@ -5606,16 +5658,17 @@ class SaveCombinedChannelsWorker(QObject):
                 printl(processed_data.max())
                 printl(processed_filepath)
                 self.sigDebugShowImg.emit(processed_data)
-            # cellacdc.plot.imshow(processed_data) 
+            # cellacdc.plot.imshow(processed_data)
             io.save_image_data(processed_filepath, processed_data)
-        
+
         self.signals.finished.emit(self)
+
 
 class CustomPreprocessWorkerGUI(QObject):
     sigDone = Signal(object, str)
     sigPreviewDone = Signal(object, tuple)
     sigIsQueueEmpty = Signal(bool)
-    
+
     def __init__(self, mutex, waitCond):
         QObject.__init__(self)
         self.signals = signals()
@@ -5626,87 +5679,78 @@ class CustomPreprocessWorkerGUI(QObject):
         self.exit = False
         self.wait = True
         self._abort = False
-    
+
     def enqueue(
-            self, 
-            func: Callable,
-            image: np.ndarray, 
-            recipe: Dict[str, Any],
-            key: Tuple[int, int, Union[int, str]]
-        ):
+        self,
+        func: Callable,
+        image: np.ndarray,
+        recipe: Dict[str, Any],
+        key: Tuple[int, int, Union[int, str]],
+    ):
         self.dataQ.append((func, image, recipe, key))
         if len(self.dataQ) == 1:
             self.sigIsQueueEmpty.emit(False)
             # Wake up worker upon inserting first element
             self.wakeUp()
-    
+
     def wakeUp(self):
         self.wait = False
         self.waitCond.wakeAll()
-    
+
     def pause(self):
         self.wait = True
         self.mutex.lock()
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-    
+
     def abort(self):
         self._abort = True
-    
+
     def stop(self):
         self.abort()
         self.exit = True
         self.waitCond.wakeAll()
         self.signals.finished.emit(self)
-    
+
     def setupJob(
-            self, 
-            func: Callable, 
-            image_data: np.ndarray, 
-            recipe: Dict[str, Any],
-            how: str
-        ):
+        self, func: Callable, image_data: np.ndarray, recipe: Dict[str, Any], how: str
+    ):
         self._func = func
         self._image_data = image_data
         self._recipe = recipe
         self._how = how
-    
+
     def runJob(self, image=None, recipe=None):
         if image is None:
             image = self._image_data.copy()
         if recipe is None:
             recipe = self._recipe
-        
+
         return self.applyRecipe(self._func, image, recipe)
-        
+
     def applyRecipe(
-            self, 
-            func: Callable, 
-            image: np.ndarray, 
-            recipe: List[Dict[str, Any]]
-        ):
+        self, func: Callable, image: np.ndarray, recipe: List[Dict[str, Any]]
+    ):
         preprocessed_data = func(image, recipe)
 
-        keep_input_data_type = recipe[0].get('keep_input_data_type', True)
+        keep_input_data_type = recipe[0].get("keep_input_data_type", True)
         if not keep_input_data_type:
             return preprocessed_data
 
         try:
-            preprocessed_data = myutils.convert_to_dtype(
-                preprocessed_data, image.dtype
-            )
+            preprocessed_data = myutils.convert_to_dtype(preprocessed_data, image.dtype)
         except Exception as err:
             preprocessed_data = preprocessed_data.astype(image.dtype)
         return preprocessed_data
-        
+
     @worker_exception_handler
     def run(self):
         while True:
             if self.exit:
-                self.logger.log('Closing pre-processing worker...')
+                self.logger.log("Closing pre-processing worker...")
                 break
             elif self.wait:
-                self.logger.log('Pre-processing worker paused.')
+                self.logger.log("Pre-processing worker paused.")
                 self.pause()
             elif len(self.dataQ) > 0:
                 func, image, recipe, key = self.dataQ.pop()
@@ -5716,20 +5760,26 @@ class CustomPreprocessWorkerGUI(QObject):
                     self.wait = True
                     self.sigIsQueueEmpty.emit(True)
             else:
-                self.logger.log('Pre-processing worker resumed.')
+                self.logger.log("Pre-processing worker resumed.")
                 processed_data = self.runJob()
                 self.sigDone.emit(processed_data, self._how)
                 self.wait = True
 
         self.signals.finished.emit(self)
 
+
 class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
     sigDone = Signal(object, list)
     sigPreviewDone = Signal(object, list)
     sigAskLoadChannels = Signal(set, object)
 
-    def __init__(self, mutex, waitCond, logger_func: Callable,):
-#                 signals_parent=None):
+    def __init__(
+        self,
+        mutex,
+        waitCond,
+        logger_func: Callable,
+    ):
+        #                 signals_parent=None):
         super().__init__(mutex, waitCond)
 
         self.waitCondLoadFluoChannels = QWaitCondition()
@@ -5741,29 +5791,31 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
         # self.signals = signals_parent
 
     def enqueue(
-            self,
-            data,
-            steps: Dict[str, Any],
-            key: Tuple[int, int, Union[int, str]],
-            keep_input_data_type: bool,
-            output_as_segm: bool,
-            formula: str,
-        ):
-        self.dataQ.append((data, steps, key, keep_input_data_type,output_as_segm, formula))
+        self,
+        data,
+        steps: Dict[str, Any],
+        key: Tuple[int, int, Union[int, str]],
+        keep_input_data_type: bool,
+        output_as_segm: bool,
+        formula: str,
+    ):
+        self.dataQ.append(
+            (data, steps, key, keep_input_data_type, output_as_segm, formula)
+        )
         if len(self.dataQ) == 1:
             self.sigIsQueueEmpty.emit(False)
             # Wake up worker upon inserting first element
             self.wakeUp()
 
     def setupJob(
-            self, 
-            data: Dict[str, np.ndarray], 
-            steps: Dict[str, Any],
-            keep_input_data_type: bool,
-            key: Tuple[Union[int, None], Union[int, None], Union[int, None]],
-            output_as_segm: bool,
-            formula: str,
-        ):
+        self,
+        data: Dict[str, np.ndarray],
+        steps: Dict[str, Any],
+        keep_input_data_type: bool,
+        key: Tuple[Union[int, None], Union[int, None], Union[int, None]],
+        output_as_segm: bool,
+        formula: str,
+    ):
         self._key = key
         self._steps = steps
         self._data = data
@@ -5771,8 +5823,15 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
         self._output_as_segm = output_as_segm
         self._formula = formula
 
-    def runJob(self, data=None, steps=None, keep_input_data_type=None, key=None,
-               output_as_segm=None, formula=None):
+    def runJob(
+        self,
+        data=None,
+        steps=None,
+        keep_input_data_type=None,
+        key=None,
+        output_as_segm=None,
+        formula=None,
+    ):
         if data is None:
             data = self._data
         if steps is None:
@@ -5789,17 +5848,19 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
         if not steps and formula is None:
             return
 
-        return self.applySteps(data, steps, keep_input_data_type, key, output_as_segm, formula=formula)
-    
+        return self.applySteps(
+            data, steps, keep_input_data_type, key, output_as_segm, formula=formula
+        )
+
     def applySteps(
-            self, 
-            data: Dict[str, np.ndarray], 
-            steps: List[Dict[str, Any]],
-            keep_input_data_type: bool,
-            key: Tuple[Union[int, None], Union[int, None], Union[int, None]],
-            output_as_segm: bool,
-            formula: str,
-        ):
+        self,
+        data: Dict[str, np.ndarray],
+        steps: List[Dict[str, Any]],
+        keep_input_data_type: bool,
+        key: Tuple[Union[int, None], Union[int, None], Union[int, None]],
+        output_as_segm: bool,
+        formula: str,
+    ):
 
         new_keys = []
         key = list(key)
@@ -5816,7 +5877,7 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
                 new_keys_per_pos.append(list(range(frames)))
             else:
                 new_keys_per_pos.append([key[1]])
-            
+
             if key[2] is None:
                 z_slices = data[pos_i].SizeZ
                 if not z_slices:
@@ -5827,7 +5888,7 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
 
             new_keys_per_pos = list(itertools.product(*new_keys_per_pos))
             new_keys.extend(new_keys_per_pos)
-        
+
         output_imgs, out_keys = core.combine_channels_multithread_return_imgs(
             steps=steps,
             data=data,
@@ -5837,14 +5898,13 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
             signals=self.signals,
             output_as_segm=output_as_segm,
             formula=formula,
-
         )
         return output_imgs, out_keys
 
     def requiredChannels(self, steps=None, pos_i=None):
         if steps is None:
             steps = self._steps
-        
+
         required_channels = core.get_selected_channels(steps)
         if pos_i is None:
             pos_i = self._key[0]
@@ -5855,25 +5915,31 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
     def run(self):
         while True:
             if self.exit:
-                self.logger.log('Closing combining channels worker...')
+                self.logger.log("Closing combining channels worker...")
                 break
             elif self.wait:
-                self.logger.log('Combining channels worker paused.')
+                self.logger.log("Combining channels worker paused.")
                 self.pause()
             elif len(self.dataQ) > 0:
-                data, steps, key, keep_input_data_type, output_as_segm, formula = self.dataQ.pop()
+                data, steps, key, keep_input_data_type, output_as_segm, formula = (
+                    self.dataQ.pop()
+                )
                 requ_steps, pos_i = self.requiredChannels(steps, key[0])
                 self.emitsigAskLoadChannels(requ_steps, pos_i)
                 output_imgs, out_keys = self.applySteps(
-                    data, steps, keep_input_data_type, key,
-                    output_as_segm=output_as_segm, formula=formula
+                    data,
+                    steps,
+                    keep_input_data_type,
+                    key,
+                    output_as_segm=output_as_segm,
+                    formula=formula,
                 )
                 self.sigPreviewDone.emit(output_imgs, out_keys)
                 if len(self.dataQ) == 0:
                     self.wait = True
                     self.sigIsQueueEmpty.emit(True)
             else:
-                self.logger.log('Combining channels worker resumed.')
+                self.logger.log("Combining channels worker resumed.")
                 requ_steps, pos_i = self.requiredChannels()
                 self.emitsigAskLoadChannels(requ_steps, pos_i)
                 output_imgs, out_keys = self.runJob()
@@ -5881,7 +5947,7 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
                 self.wait = True
 
         self.signals.finished.emit(self)
-    
+
     def emitsigAskLoadChannels(self, requChannels, pos_i):
         self.mutex.lock()
         self.sigAskLoadChannels.emit(requChannels, pos_i)
@@ -5893,7 +5959,8 @@ class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
         self.mutex.lock()
         self.waitCondLoadFluoChannels.wakeAll()
         self.mutex.unlock()
-        
+
+
 class CustomPreprocessWorkerUtil(BaseWorkerUtil):
     sigAskAppendName = Signal(str)
     sigAskSetupRecipe = Signal(object, object)
@@ -5901,25 +5968,25 @@ class CustomPreprocessWorkerUtil(BaseWorkerUtil):
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
-    
+
     def emitAskSetupRecipe(self, exp_path, pos_foldernames):
         self.mutex.lock()
         self.sigAskSetupRecipe.emit(exp_path, pos_foldernames)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
-    
+
     def applyPipeline(
-            self, 
-            images_path: os.PathLike,
-            channel_names: Iterable[str],
-            recipe: List[Dict[str, Any]],
-            appended_text_filename: str
-        ):
-        posData = None        
+        self,
+        images_path: os.PathLike,
+        channel_names: Iterable[str],
+        recipe: List[Dict[str, Any]],
+        appended_text_filename: str,
+    ):
+        posData = None
         preprocessed_data = {}
         for channel in channel_names:
-            self.logger.log(f'Loading {channel} channel data...')
+            self.logger.log(f"Loading {channel} channel data...")
             ch_filepath = load.get_filename_from_channel(images_path, channel)
             ch_image_data = load.load_image_file(ch_filepath)
             if posData is None:
@@ -5936,8 +6003,8 @@ class CustomPreprocessWorkerUtil(BaseWorkerUtil):
             preprocessed_ch_data = core.preprocess_image_from_recipe_multithread(
                 ch_image_data, recipe
             )
-            
-            keep_input_data_type = recipe[0].get('keep_input_data_type', True)
+
+            keep_input_data_type = recipe[0].get("keep_input_data_type", True)
             if keep_input_data_type:
                 preprocessed_ch_data = myutils.convert_to_dtype(
                     preprocessed_ch_data, ch_image_data.dtype
@@ -5945,13 +6012,11 @@ class CustomPreprocessWorkerUtil(BaseWorkerUtil):
 
             _, ext = os.path.splitext(ch_filepath)
             basename = posData.basename
-            processed_filename = (
-                f'{basename}{channel}_{appended_text_filename}{ext}'
-            )
+            processed_filename = f"{basename}{channel}_{appended_text_filename}{ext}"
             preprocessed_data[processed_filename] = preprocessed_ch_data
-            
+
         return preprocessed_data
-    
+
     @worker_exception_handler
     def run(self):
         debugging = False
@@ -5962,24 +6027,24 @@ class CustomPreprocessWorkerUtil(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
 
-            self.mainWin.infoText = 'Setup recipe'
-            
+            self.mainWin.infoText = "Setup recipe"
+
             if i == 0:
                 abort = self.emitAskSetupRecipe(exp_path, pos_foldernames)
                 if abort:
                     self.sigAborted.emit()
                     return
-            
+
                 # Ask append name
                 self.mutex.lock()
-                basename = f'{self.basename}{self.selectedChannels[0]}_'
+                basename = f"{self.basename}{self.selectedChannels[0]}_"
                 self.sigAskAppendName.emit(basename)
                 self.waitCond.wait(self.mutex)
                 self.mutex.unlock()
                 if self.abort:
                     self.sigAborted.emit()
                     return
-            
+
             appendedName = self.appendedName
             self.signals.initProgressBar.emit(len(pos_foldernames))
             for p, pos in enumerate(pos_foldernames):
@@ -5988,32 +6053,27 @@ class CustomPreprocessWorkerUtil(BaseWorkerUtil):
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
-                images_path = os.path.join(exp_path, pos, 'Images')                
-                self.logger.log(
-                    'Applying custom pre-processing recipe...\n'
-                )
+                images_path = os.path.join(exp_path, pos, "Images")
+                self.logger.log("Applying custom pre-processing recipe...\n")
                 processed_data = self.applyPipeline(
-                    images_path, self.selectedChannels, 
-                    self.recipe, appendedName
+                    images_path, self.selectedChannels, self.recipe, appendedName
                 )
-                
+
                 for filename, preprocessed_ch_data in processed_data.items():
                     preprocessed_filepath = os.path.join(images_path, filename)
                     self.logger.log(
-                        f'Saving pre-processed images to '
-                        f'"{preprocessed_filepath}"...'
+                        f'Saving pre-processed images to "{preprocessed_filepath}"...'
                     )
-                    
-                    io.save_image_data(
-                        preprocessed_filepath, preprocessed_ch_data
-                    )                                
+
+                    io.save_image_data(preprocessed_filepath, preprocessed_ch_data)
                 self.signals.progressBar.emit(1)
 
         self.signals.finished.emit(self)
+
 
 class CombineChannelsWorkerUtil(BaseWorkerUtil):
     sigAskAppendName = Signal(str)
@@ -6022,41 +6082,39 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
 
     def __init__(self, mainWin, mutex=None, waitCond=None):
         super().__init__(mainWin)
-    
+
     def emitAskSetup(self, expPaths):
         self.mutex.lock()
         self.sigAskSetup.emit(expPaths)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
-    
+
     def applyPipeline(
-            self, 
-            image_paths: os.PathLike,
-            steps:  Dict[str, Dict[str, Any]],
-            appended_text_filename: str,
-            keep_input_data_type: bool,
-            n_threads: int = None,
-            formula: str = None,
-        ):
+        self,
+        image_paths: os.PathLike,
+        steps: Dict[str, Dict[str, Any]],
+        appended_text_filename: str,
+        keep_input_data_type: bool,
+        n_threads: int = None,
+        formula: str = None,
+    ):
         save_filepaths = []
         images_path_to_process = []
         if self.saveAsSegm:
-            out_ext = '.npz'
-            basename_ext = 'segm_'
+            out_ext = ".npz"
+            basename_ext = "segm_"
         else:
-            out_ext = '.tif'
-            basename_ext = ''
+            out_ext = ".tif"
+            basename_ext = ""
         for images_path in image_paths:
             basename, channels = myutils.getBasenameAndChNames(images_path)
-            
-            savename = (
-                f'{basename}{basename_ext}{appended_text_filename}{out_ext}'
-            )
+
+            savename = f"{basename}{basename_ext}{appended_text_filename}{out_ext}"
 
             images_path_to_process.append(images_path)
             save_filepaths.append(os.path.join(images_path, savename))
-        
+
         core.combine_channels_multithread(
             steps=steps,
             images_paths=images_path_to_process,
@@ -6068,7 +6126,7 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             output_as_segm=self.saveAsSegm,
             formula=formula,
         )
-    
+
     @worker_exception_handler
     def run(self):
 
@@ -6079,10 +6137,10 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
         if abort:
             self.sigAborted.emit()
             return
-    
+
         # Ask append name
         self.mutex.lock()
-        basename = f'{self.basename}'
+        basename = f"{self.basename}"
         self.sigAskAppendName.emit(basename)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
@@ -6094,14 +6152,16 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
 
         selectedSteps = self.selectedSteps
 
-        self.logger.log('Applying pipeline...')
-        self.logger.log('Selected steps:')
+        self.logger.log("Applying pipeline...")
+        self.logger.log("Selected steps:")
         for step in selectedSteps.values():
             self.logger.log(step)
-            
+
         image_paths = []
         for exp_path, pos_foldernames in expPaths.items():
-            image_paths += [os.path.join(exp_path, pos, 'Images') for pos in pos_foldernames]
+            image_paths += [
+                os.path.join(exp_path, pos, "Images") for pos in pos_foldernames
+            ]
 
         self.signals.initProgressBar.emit(len(pos_foldernames))
         formula = self.formula
@@ -6115,6 +6175,7 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
         )
 
         self.signals.finished.emit(self)
+
 
 class saveDataWorker(QObject):
     finished = Signal()
@@ -6141,29 +6202,28 @@ class saveDataWorker(QObject):
         self.addMetricsErrors = {}
         self.regionPropsErrors = {}
         self.abort = False
-    
+
     def checkAbort(self):
         if self.saveWin.aborted:
             self.finished.emit()
             return True
         return False
-    
+
     def saveManualBackgroundData(self, posData, frame_i):
         data_dict = posData.allData_li[frame_i]
-        if 'manualBackgroundLab' not in data_dict:
+        if "manualBackgroundLab" not in data_dict:
             return
-        
-        manualBackgrData = data_dict['manualBackgroundLab']
+
+        manualBackgrData = data_dict["manualBackgroundLab"]
         posData.saveManualBackgroundData(manualBackgrData)
-    
+
     def emitSigPermissionErrorAndSave(
-            self, all_frames_acdc_df, acdc_output_csv_path,
-            custom_annot_columns
-        ):
+        self, all_frames_acdc_df, acdc_output_csv_path, custom_annot_columns
+    ):
         err_msg = (
-            'The below file is open in another app '
-            '(Excel maybe?).\n\n'
-            f'{acdc_output_csv_path}\n\n'
+            "The below file is open in another app "
+            "(Excel maybe?).\n\n"
+            f"{acdc_output_csv_path}\n\n"
             'Close file and then press "Ok".'
         )
         self.mutex.lock()
@@ -6173,11 +6233,12 @@ class saveDataWorker(QObject):
 
         # Save segmentation metadata
         load.save_acdc_df_file(
-            all_frames_acdc_df, acdc_output_csv_path, 
-            custom_annot_columns=custom_annot_columns, 
-            last_cca_frame_i=self.mainWin.save_cca_until_frame_i
+            all_frames_acdc_df,
+            acdc_output_csv_path,
+            custom_annot_columns=custom_annot_columns,
+            last_cca_frame_i=self.mainWin.save_cca_until_frame_i,
         )
-        
+
     def _emitSigDebug(self, stuff_to_debug):
         self.mutex.lock()
         self.sigDebug.emit(stuff_to_debug)
@@ -6189,41 +6250,43 @@ class saveDataWorker(QObject):
         exec_time = t - self.time_last_pbar_update
         self.progressBar.emit(1, -1, exec_time)
         self.time_last_pbar_update = t
-    
+
     def saveAcdcDf(self, posData: load.loadData, end_i):
         acdc_dfs_li = []
         keys = []
-        self.progress.emit(f'Saving annotations for {posData.relPath}...')
-        for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
+        self.progress.emit(f"Saving annotations for {posData.relPath}...")
+        for frame_i, data_dict in enumerate(posData.allData_li[: end_i + 1]):
             if self.saveWin.aborted:
                 self.finished.emit()
                 return
 
             # Build saved_segm_data
-            lab = data_dict['labels']
+            lab = data_dict["labels"]
             if lab is None:
                 break
-            
-            acdc_df = posData.allData_li[frame_i]['acdc_df']
+
+            acdc_df = posData.allData_li[frame_i]["acdc_df"]
             if acdc_df is None:
                 continue
-            
+
             acdc_dfs_li.append(acdc_df)
-            keys.append((frame_i, posData.TimeIncrement*frame_i))
-        
+            keys.append((frame_i, posData.TimeIncrement * frame_i))
+
         if not acdc_dfs_li:
             return
-        
+
         self.mainWin._measurements_kernel._concat_and_save_acdc_df(
-            acdc_dfs_li, keys, posData, self.mainWin.save_metrics,
-            saveDataWorker=self, 
-            last_cca_frame_i=self.mainWin.save_cca_until_frame_i
+            acdc_dfs_li,
+            keys,
+            posData,
+            self.mainWin.save_metrics,
+            saveDataWorker=self,
+            last_cca_frame_i=self.mainWin.save_cca_until_frame_i,
         )
-    
+
     def saveSegmData(self, posData, end_i, saved_segm_data):
-        self.progress.emit(f'Saving segmentation data for {posData.relPath}...')
-        
-        
+        self.progress.emit(f"Saving segmentation data for {posData.relPath}...")
+
         # extend saved_segm_data if needed
         if posData.SizeT > 1:
             missing_frames_number = end_i + 1 - len(saved_segm_data)
@@ -6233,41 +6296,38 @@ class saveDataWorker(QObject):
                         saved_segm_data,
                         np.zeros(
                             (missing_frames_number, *saved_segm_data.shape[1:]),
-                            dtype=saved_segm_data.dtype
-                        )
+                            dtype=saved_segm_data.dtype,
+                        ),
                     ),
                 )
 
-        
-        for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
+        for frame_i, data_dict in enumerate(posData.allData_li[: end_i + 1]):
             if self.saveWin.aborted:
                 self.finished.emit()
                 return
 
             # Build saved_segm_data
-            lab = data_dict['labels']
+            lab = data_dict["labels"]
             if lab is None:
                 break
-            
+
             posData.lab = lab
 
             if posData.SizeT > 1:
                 saved_segm_data[frame_i] = lab
             else:
                 saved_segm_data = lab
-                if 'manualBackgroundLab' in data_dict:
-                    manualBackgrData = data_dict['manualBackgroundLab']
-                    posData.saveManualBackgroundData(manualBackgrData)  
-            
+                if "manualBackgroundLab" in data_dict:
+                    manualBackgrData = data_dict["manualBackgroundLab"]
+                    posData.saveManualBackgroundData(manualBackgrData)
+
         # Save segmentation file
-        io.savez_compressed(
-            posData.segm_npz_path, np.squeeze(saved_segm_data)
-        )
+        io.savez_compressed(posData.segm_npz_path, np.squeeze(saved_segm_data))
         posData.segm_data = saved_segm_data
         # Allow single 2D/3D image
         if posData.SizeT == 1:
             posData.segm_data = posData.segm_data[np.newaxis]
-        
+
         try:
             os.remove(posData.segm_npz_temp_path)
         except Exception as e:
@@ -6289,16 +6349,16 @@ class saveDataWorker(QObject):
             if self.saveWin.aborted:
                 self.finished.emit()
                 return
-            
+
             if posToSave is not None:
                 if posData.pos_foldername not in posToSave:
-                    self.progress.emit(f'Skipping {posData.relPath}')
+                    self.progress.emit(f"Skipping {posData.relPath}")
                     continue
-            
+
             last_tracked_i_path = posData.last_tracked_i_path
-            end_i = self.mainWin.save_until_frame_i                
+            end_i = self.mainWin.save_until_frame_i
             self.saveSegmData(posData, end_i, posData.segm_data)
-            
+
             posData.saveCustomAnnotationParams()
             current_frame_i = posData.frame_i
 
@@ -6314,7 +6374,7 @@ class saveDataWorker(QObject):
                 last_tracked_i = 0
 
             if p == 0:
-                self.progressBar.emit(0, numPosToSave*(last_tracked_i+1), 0)
+                self.progressBar.emit(0, numPosToSave * (last_tracked_i + 1), 0)
 
             acdc_output_csv_path = posData.acdc_output_csv_path
             delROIs_info_path = posData.delROIs_info_path
@@ -6322,47 +6382,46 @@ class saveDataWorker(QObject):
             # Add segmented channel data for calc metrics if requested
             add_user_channel_data = True
             for chName in self.mainWin._measurements_kernel.chNamesToSkip:
-                skipUserChannel = (
-                    posData.filename.endswith(chName)
-                    or posData.filename.endswith(f'{chName}_aligned')
-                )
+                skipUserChannel = posData.filename.endswith(
+                    chName
+                ) or posData.filename.endswith(f"{chName}_aligned")
                 if skipUserChannel:
                     add_user_channel_data = False
 
             if add_user_channel_data and not self.isQuickSave:
                 posData.fluo_data_dict[posData.filename] = posData.img_data
-            
+
             if not self.isQuickSave:
                 posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
-            
+
             posData.setLoadedChannelNames()
-            
+
             if not self.isQuickSave:
                 self.mainWin.initMetricsToSave(posData)
                 self.mainWin._measurements_kernel.run(
-                    posData=posData, 
-                    stop_frame_n=end_i+1,
+                    posData=posData,
+                    stop_frame_n=end_i + 1,
                     saveDataWorker=self,
                     save_metrics=self.mainWin.save_metrics,
-                    last_cca_frame_i=self.mainWin.save_cca_until_frame_i
+                    last_cca_frame_i=self.mainWin.save_cca_until_frame_i,
                 )
             else:
                 self.saveAcdcDf(posData, end_i)
-                
-            self.progress.emit(f'Saving {posData.relPath}')
+
+            self.progress.emit(f"Saving {posData.relPath}")
 
             if not self.do_not_save_og_whitelist:
                 og_save_path = os.path.join(
-                    posData.images_path,  self.append_name_og_whitelist
+                    posData.images_path, self.append_name_og_whitelist
                 )
                 posData.whitelist.saveOGLabs(og_save_path)
-            
+
             if posData.whitelist:
                 whitelistIDs_path = posData.segm_npz_path.replace(
-                    '.npz', '_whitelistIDs.json'
+                    ".npz", "_whitelistIDs.json"
                 )
                 new_centroids_path = posData.segm_npz_path.replace(
-                    '.npz', '_new_centroids.json'
+                    ".npz", "_new_centroids.json"
                 )
                 posData.whitelist.save(
                     whitelistIDs_path, new_centroids_path=new_centroids_path
@@ -6373,9 +6432,9 @@ class saveDataWorker(QObject):
                     posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
                 except PermissionError:
                     err_msg = (
-                        'The below file is open in another app '
-                        '(Excel maybe?).\n\n'
-                        f'{posData.segmInfo_df_csv_path}\n\n'
+                        "The below file is open in another app "
+                        "(Excel maybe?).\n\n"
+                        f"{posData.segmInfo_df_csv_path}\n\n"
                         'Close file and then press "Ok".'
                     )
                     self.mutex.lock()
@@ -6390,7 +6449,7 @@ class saveDataWorker(QObject):
                 posData.fluo_bkgrData_dict.pop(posData.filename)
 
             if posData.SizeT > 1:
-                self.progress.emit('Almost done...')
+                self.progress.emit("Almost done...")
                 self.progressBar.emit(0, 0, 0)
 
             if self.isQuickSave:
@@ -6398,8 +6457,8 @@ class saveDataWorker(QObject):
                 posData.frame_i = current_frame_i
                 self.mainWin.get_data()
                 continue
-            
-            with open(last_tracked_i_path, 'w+') as txt:
+
+            with open(last_tracked_i_path, "w+") as txt:
                 txt.write(str(end_i))
 
             # Save combined metrics equations
@@ -6413,21 +6472,20 @@ class saveDataWorker(QObject):
             posData.frame_i = current_frame_i
             self.mainWin.get_data()
 
-            if mode == 'Segmentation and Tracking' or mode == 'Viewer':
+            if mode == "Segmentation and Tracking" or mode == "Viewer":
+                self.progress.emit(f"Saved data until frame number {end_i + 1}")
+            elif mode == "Cell cycle analysis":
                 self.progress.emit(
-                    f'Saved data until frame number {end_i+1}'
-                )
-            elif mode == 'Cell cycle analysis':
-                self.progress.emit(
-                    'Saved cell cycle annotations until frame '
-                    f'number {self.mainWin.last_cca_frame_i+1}'
+                    "Saved cell cycle annotations until frame "
+                    f"number {self.mainWin.last_cca_frame_i + 1}"
                 )
             # self.progressBar.emit(1)
         if self.mainWin.isSnapshot:
-            self.progress.emit(f'Saved all {p+1} Positions!')
-        
+            self.progress.emit(f"Saved all {p + 1} Positions!")
+
         self.finished.emit()
- 
+
+
 class relabelSequentialWorker(QObject):
     finished = Signal()
     critical = Signal(object)
@@ -6445,29 +6503,29 @@ class relabelSequentialWorker(QObject):
 
     def progressNewIDs(self, oldIDs, newIDs):
         li = list(zip(oldIDs, newIDs))
-        s = '\n'.join([str(pair).replace(',', ' -->') for pair in li])
-        s = f'IDs relabelled as follows:\n{s}'
+        s = "\n".join([str(pair).replace(",", " -->") for pair in li])
+        s = f"IDs relabelled as follows:\n{s}"
         self.progress.emit(s)
 
     @worker_exception_handler
     def run(self):
         self.mutex.lock()
 
-        self.progress.emit('Relabelling process started...')
+        self.progress.emit("Relabelling process started...")
         mainWin = self.mainWin
 
         current_pos_i = mainWin.pos_i
-        
+
         for p, posData in enumerate(self.data):
             if posData.pos_foldername not in self.posFoldernames:
                 continue
-            
+
             mainWin.pos_i = p
             current_lab = mainWin.get_2Dlab(posData.lab).copy()
             current_frame_i = posData.frame_i
             segm_data = []
             for frame_i, data_dict in enumerate(posData.allData_li):
-                lab = data_dict['labels']
+                lab = data_dict["labels"]
                 if lab is None:
                     break
                 segm_data.append(lab)
@@ -6479,14 +6537,13 @@ class relabelSequentialWorker(QObject):
 
             segm_data = np.array(segm_data)
             segm_data, oldIDs, newIDs = core.relabel_sequential(
-                segm_data, is_timelapse=posData.SizeT>1
+                segm_data, is_timelapse=posData.SizeT > 1
             )
             self.progressNewIDs(oldIDs, newIDs)
             self.sigRemoveItemsGUI.emit(np.max(segm_data))
 
             self.progress.emit(
-                'Updating stored data and cell cycle annotations '
-                '(if present)...'
+                "Updating stored data and cell cycle annotations (if present)..."
             )
 
             mainWin.updateAnnotatedIDs(oldIDs, newIDs, logger=self.progress.emit)
@@ -6497,9 +6554,7 @@ class relabelSequentialWorker(QObject):
                 posData.lab = lab
                 mainWin.get_cca_df()
                 if posData.cca_df is not None:
-                    mainWin.update_cca_df_relabelling(
-                        posData, oldIDs, newIDs
-                    )
+                    mainWin.update_cca_df_relabelling(posData, oldIDs, newIDs)
                 mainWin.update_rp(draw=False)
                 mainWin.store_data(mainThread=False)
 
@@ -6510,15 +6565,22 @@ class relabelSequentialWorker(QObject):
         mainWin.get_data()
 
         self.mutex.unlock()
-        self.finished.emit()       
+        self.finished.emit()
+
 
 class MagicPromptsWorker(QObject):
     def __init__(
-            self, posData, image, df_points, model, model_segment_kwargs,
-            image_origin=(0, 0, 0), global_image=None
-        ):
+        self,
+        posData,
+        image,
+        df_points,
+        model,
+        model_segment_kwargs,
+        image_origin=(0, 0, 0),
+        global_image=None,
+    ):
         QObject.__init__(self)
-        
+
         self.signals = signals()
         self.posData = posData
         self.image = image
@@ -6530,51 +6592,45 @@ class MagicPromptsWorker(QObject):
         self.image_origin = image_origin
         self.model = model
         self.model_segment_kwargs = model_segment_kwargs
-    
+
     @worker_exception_handler
     def run(self):
         from cellacdc.segmenters_promptable import utils
-        
+
         for row in self.df_points.itertuples():
             prompt_id = row.id
             point = (row.z, row.y, row.x)
-            print(f'Adding point prompt {point} with id = {prompt_id}...')
+            print(f"Adding point prompt {point} with id = {prompt_id}...")
             parent_obj_id = row.Cell_ID if row.Cell_ID == prompt_id else 0
             self.model.add_prompt(
-                prompt=point, 
-                prompt_id=prompt_id, 
+                prompt=point,
+                prompt_id=prompt_id,
                 parent_obj_id=parent_obj_id,
-                image=self.image, 
-                image_origin=self.image_origin, 
-                prompt_type='point'
+                image=self.image,
+                image_origin=self.image_origin,
+                prompt_type="point",
             )
-        
-        lab_out = self.model.segment(
-            self.global_image, 
-            lab=self.posData.lab,
-            **self.model_segment_kwargs
-        )
-        edited_IDs = self.df_points['Cell_ID'].unique()
 
-        lab_new, lab_union, lab_interesection = (
-            utils.insert_model_output_into_labels(
-                self.posData.lab, 
-                lab_out, 
-                edited_IDs=edited_IDs
-            )
+        lab_out = self.model.segment(
+            self.global_image, lab=self.posData.lab, **self.model_segment_kwargs
         )
-        
+        edited_IDs = self.df_points["Cell_ID"].unique()
+
+        lab_new, lab_union, lab_interesection = utils.insert_model_output_into_labels(
+            self.posData.lab, lab_out, edited_IDs=edited_IDs
+        )
+
         self.signals.finished.emit((lab_new, lab_union, lab_interesection))
+
 
 class FillHolesInSegWorker(BaseWorkerUtil):
     sigAskAppendName = Signal(str)
     sigAborted = Signal()
     sigSelectSegmFiles = Signal(str, list)
 
-
     def __init__(self, mainWin):
         super().__init__(mainWin)
-        
+
     def emitSelectSegmFiles(self, exp_path, pos_foldernames):
         self.mutex.lock()
         self.sigSelectSegmFiles.emit(exp_path, pos_foldernames)
@@ -6601,14 +6657,12 @@ class FillHolesInSegWorker(BaseWorkerUtil):
                 self.sigAborted.emit()
                 return
             for pos_folder in pos_foldernames:
-                imgs_path = os.path.join(exp_path, 
-                                         pos_folder, 
-                                         "Images")
+                imgs_path = os.path.join(exp_path, pos_folder, "Images")
                 lab_paths_dict[imgs_path] = self.endFilenameSegmTemp
                 tot_segm_files += len(self.endFilenameSegmTemp)
                 unique_segm_files.update(self.endFilenameSegmTemp)
 
-        self.logger.info('Filling holes in segmentation masks...')
+        self.logger.info("Filling holes in segmentation masks...")
         abort = self.emitAskAppendName("/".join(unique_segm_files))
         if abort:
             self.sigAborted.emit()
@@ -6628,55 +6682,54 @@ class FillHolesInSegWorker(BaseWorkerUtil):
                 elif segm_data_ndim == 4:
                     segm_data = segm_data
                 else:
-                    raise NotImplementedError(
-                        "This ndim is not supported!"
-                    )
+                    raise NotImplementedError("This ndim is not supported!")
                 for i, stack in enumerate(segm_data):
                     for j, lab in enumerate(stack):
                         segm_data[i, j] = core.fill_holes_in_segmentation(lab)
-                
-                segm_data_save_path = (segm_data_path
-                                       .replace(segm_file_name,
-                                                f"{segm_file_name}{self.appendedName}"))
+
+                segm_data_save_path = segm_data_path.replace(
+                    segm_file_name, f"{segm_file_name}{self.appendedName}"
+                )
                 io.savez_compressed(segm_data_save_path, segm_data)
                 self.signals.progressBar.emit(1)
         self.signals.finished.emit(self)
 
+
 class GenerateMotherBudTotalTableWorker(BaseWorkerUtil):
     def __init__(
-            self, parentWin, input_csv_filepath, selected_options, 
-            out_csv_filepath
-        ):
+        self, parentWin, input_csv_filepath, selected_options, out_csv_filepath
+    ):
         super().__init__(parentWin)
         self.input_csv_filepath = input_csv_filepath
         self.selected_options = selected_options
         self.out_csv_filepath = out_csv_filepath
-    
+
     @worker_exception_handler
     def run(self):
-        self.logger.log(f'Loading table "{self.input_csv_filepath}"...')  
+        self.logger.log(f'Loading table "{self.input_csv_filepath}"...')
         self.signals.initProgressBar.emit(0)
-        
+
         input_df = pd.read_csv(self.input_csv_filepath)
-        
-        self.logger.log('Generating output table...')
+
+        self.logger.log("Generating output table...")
         out_df = cca_functions.generate_mother_bud_total_df(
             input_df, **self.selected_options
         )
-        
-        self.logger.log(f'Saving output table to "{self.out_csv_filepath}"...')  
-        
+
+        self.logger.log(f'Saving output table to "{self.out_csv_filepath}"...')
+
         out_df.to_csv(self.out_csv_filepath)
-        
+
         self.signals.finished.emit(self)
-    
+
+
 class CountObjectsInSegm(BaseWorkerUtil):
     sigAskAppendName = Signal(str, list)
     sigAborted = Signal()
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
-    
+
     @worker_exception_handler
     def run(self):
         debugging = False
@@ -6687,7 +6740,7 @@ class CountObjectsInSegm(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
 
-            self.mainWin.infoText = f'Select <b>segmentation file to count</b>'
+            self.mainWin.infoText = f"Select <b>segmentation file to count</b>"
             abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
             if abort:
                 self.sigAborted.emit()
@@ -6700,22 +6753,22 @@ class CountObjectsInSegm(BaseWorkerUtil):
                     return
 
                 self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
+                    f"Processing experiment n. {i + 1}/{tot_exp}, "
+                    f"{pos} ({p + 1}/{tot_pos})"
                 )
 
-                images_path = os.path.join(exp_path, pos, 'Images')
+                images_path = os.path.join(exp_path, pos, "Images")
                 endFilenameSegm = self.mainWin.endFilenameSegm
                 ls = myutils.listdir(images_path)
                 file_path = [
-                    os.path.join(images_path, f) for f in ls 
-                    if f.endswith(f'{endFilenameSegm}.npz')
+                    os.path.join(images_path, f)
+                    for f in ls
+                    if f.endswith(f"{endFilenameSegm}.npz")
                 ][0]
-                
-                posData = load.loadData(file_path, '')
 
-                self.signals.sigUpdatePbarDesc.emit(
-                    f'Processing {posData.pos_path}')
+                posData = load.loadData(file_path, "")
+
+                self.signals.sigUpdatePbarDesc.emit(f"Processing {posData.pos_path}")
 
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
@@ -6724,22 +6777,22 @@ class CountObjectsInSegm(BaseWorkerUtil):
                     load_segm_data=True,
                     load_acdc_df=False,
                     load_metadata=True,
-                    end_filename_segm=endFilenameSegm
+                    end_filename_segm=endFilenameSegm,
                 )
                 if posData.segm_data.ndim == 3:
                     posData.segm_data = posData.segm_data[np.newaxis]
-                
-                self.logger.log('Counting objects...')
-                
+
+                self.logger.log("Counting objects...")
+
                 countMapper = posData.countObjectsInSegm()
-                countMapper.pop('In current frame', None)
+                countMapper.pop("In current frame", None)
                 df_count_endname = posData.saveObjCounts(countMapper)
-                
+
                 self.logger.log(
-                    'Saved object counts table to file ending with: '
+                    "Saved object counts table to file ending with: "
                     f'"{df_count_endname}"'
                 )
-                
+
                 self.signals.progressBar.emit(1)
 
         self.signals.finished.emit(self)

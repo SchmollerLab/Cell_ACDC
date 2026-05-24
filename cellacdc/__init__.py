@@ -3,43 +3,44 @@ import sys
 
 import subprocess
 
+
 def is_conda_env():
     python_exec_path = sys.exec_prefix
     is_conda_python = (
-        python_exec_path.find('conda') != -1
-        or python_exec_path.find('mambaforge') != -1
-        or python_exec_path.find('miniforge') != -1
+        python_exec_path.find("conda") != -1
+        or python_exec_path.find("mambaforge") != -1
+        or python_exec_path.find("miniforge") != -1
     )
     if not is_conda_python:
         return False
-    
+
     stdout = subprocess.DEVNULL
     try:
-        args = ['conda', '-V']
-        is_conda_present = subprocess.check_call(
-            args, shell=True, stdout=stdout) == 0
+        args = ["conda", "-V"]
+        is_conda_present = subprocess.check_call(args, shell=True, stdout=stdout) == 0
         return True
     except Exception as err:
         pass
-    
+
     try:
-        args = ['conda -V']
-        is_conda_present = subprocess.check_call(
-            args, shell=True, stdout=stdout) == 0
+        args = ["conda -V"]
+        is_conda_present = subprocess.check_call(args, shell=True, stdout=stdout) == 0
         return True
     except Exception as err:
         return False
-    
+
     return True
+
 
 def import_torch():
     if is_conda_env():
-       return
-    
+        return
+
     try:
         import torch
     except ModuleNotFoundError:
         return
+
 
 import_torch()
 
@@ -60,80 +61,90 @@ import numpy as np
 
 from typing import Iterable
 
-KNOWN_EXTENSIONS = (
-    '.tif', '.npz', '.npy', '.h5', '.json', '.csv', '.txt'
-)
+KNOWN_EXTENSIONS = (".tif", ".npz", ".npy", ".h5", ".json", ".csv", ".txt")
 IMAGE_EXTENSIONS = (
-    '.tif', '.tiff', '.png', '.jpg', '.jpeg', '.bmp', '.gif',
+    ".tif",
+    ".tiff",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".bmp",
+    ".gif",
 )
 VIDEO_EXTENSIONS = (
-    '.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv',
+    ".mp4",
+    ".avi",
+    ".mov",
+    ".mkv",
+    ".webm",
+    ".flv",
 )
 
-def _warn_ask_install_package(
-        commands: Iterable[str], note_txt='', caller='SpotMAX'
-    ):
-    open_str = '='*100
-    sep_str = '-'*100
-    commands_txt = '\n'.join([f'  {command}' for command in commands])
+
+def _warn_ask_install_package(commands: Iterable[str], note_txt="", caller="SpotMAX"):
+    open_str = "=" * 100
+    sep_str = "-" * 100
+    commands_txt = "\n".join([f"  {command}" for command in commands])
     text = (
-        f'{caller} needs to run the following commands{note_txt}:\n\n'
-        f'{commands_txt}\n\n'
+        f"{caller} needs to run the following commands{note_txt}:\n\n{commands_txt}\n\n"
     )
     question = (
-        'How do you want to proceed?: '
-        '1) Run the commands now. '
-        'q) Quit, I will run the commands myself (1/q): '
+        "How do you want to proceed?: "
+        "1) Run the commands now. "
+        "q) Quit, I will run the commands myself (1/q): "
     )
     print(open_str)
     print(text)
-    
+
     message_on_exit = (
-        '[WARNING]: Execution aborted. Run the following commands before '
-        f'running spotMAX again:\n\n{commands_txt}\n'
+        "[WARNING]: Execution aborted. Run the following commands before "
+        f"running spotMAX again:\n\n{commands_txt}\n"
     )
     msg_on_invalid = (
-        '$answer is not a valid answer. '
+        "$answer is not a valid answer. "
         'Type "1" to run the commands now or "q" to quit.'
     )
     try:
         while True:
             answer = input(question)
-            if answer == 'q':
+            if answer == "q":
                 print(open_str)
                 exit(message_on_exit)
-            elif answer == '1':
+            elif answer == "1":
                 break
             else:
                 print(sep_str)
-                print(msg_on_invalid.replace('$answer', answer))
+                print(msg_on_invalid.replace("$answer", answer))
                 print(sep_str)
     except Exception as err:
         traceback.print_exc()
         print(open_str)
         print(message_on_exit)
 
+
 def _run_pip_commands(commands: Iterable[str]):
     import subprocess
+
     for command in commands:
         try:
-            subprocess.check_call([sys.executable, '-m', *command.split()])
+            subprocess.check_call([sys.executable, "-m", *command.split()])
         except Exception as err:
             pass
-    
+
+
 try:
     import requests
 except Exception as err:
     import traceback
+
     traceback.print_exc()
-    print('We detected a corrupted library, fixing it now...')
+    print("We detected a corrupted library, fixing it now...")
     commands = (
-        'pip uninstall -y charset-normalizer', 
-        'pip install --upgrade charset-normalizer'
+        "pip uninstall -y charset-normalizer",
+        "pip install --upgrade charset-normalizer",
     )
     _warn_ask_install_package(
-        commands, note_txt=' (fixing charset-normalizer package)',
-        caller='Cell-ACDC'
+        commands, note_txt=" (fixing charset-normalizer package)", caller="Cell-ACDC"
     )
     _run_pip_commands(commands)
 
@@ -141,17 +152,15 @@ try:
     import sympy
 except Exception as err:
     import traceback
+
     traceback.print_exc()
-    print('Since Cell-ACDC v1.7.2, the sympy library is required.')
-    commands = (
-        'pip install --upgrade sympy',
-    )
+    print("Since Cell-ACDC v1.7.2, the sympy library is required.")
+    commands = ("pip install --upgrade sympy",)
     _warn_ask_install_package(
-        commands, 
-        note_txt=' (installing sympy)',
-        caller='Cell-ACDC'
+        commands, note_txt=" (installing sympy)", caller="Cell-ACDC"
     )
     _run_pip_commands(commands)
+
 
 def user_data_dir():
     r"""
@@ -174,32 +183,31 @@ def user_data_dir():
         os_path = os.getenv("XDG_DATA_HOME", "~/.local/share")
 
     os_path = os.path.expanduser(os_path)
-    return os.path.join(os_path, 'Cell_ACDC')
+    return os.path.join(os_path, "Cell_ACDC")
+
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-debug_true_filepath = os.path.join(cellacdc_path, '.debug_true')
-qrc_resources_path = os.path.join(cellacdc_path, 'qrc_resources.py')
-qrc_resources_light_path = os.path.join(cellacdc_path, 'qrc_resources_light.py')
-qrc_resources_dark_path = os.path.join(cellacdc_path, 'qrc_resources_dark.py')
-old_temp_path = os.path.join(cellacdc_path, 'temp')
-tooltips_rst_filepath = os.path.join(
-    cellacdc_path, "docs", "source", "tooltips.rst"
-)
+debug_true_filepath = os.path.join(cellacdc_path, ".debug_true")
+qrc_resources_path = os.path.join(cellacdc_path, "qrc_resources.py")
+qrc_resources_light_path = os.path.join(cellacdc_path, "qrc_resources_light.py")
+qrc_resources_dark_path = os.path.join(cellacdc_path, "qrc_resources_dark.py")
+old_temp_path = os.path.join(cellacdc_path, "temp")
+tooltips_rst_filepath = os.path.join(cellacdc_path, "docs", "source", "tooltips.rst")
 
 user_data_folderpath = user_data_dir()
 user_profile_path_txt = os.path.join(
-    user_data_folderpath, 'acdc_user_profile_location.txt'
+    user_data_folderpath, "acdc_user_profile_location.txt"
 )
 user_home_path = str(pathlib.Path.home())
-user_profile_path = os.path.join(user_home_path, 'acdc-appdata')
+user_profile_path = os.path.join(user_home_path, "acdc-appdata")
 if os.path.exists(user_profile_path_txt):
     try:
-        with open(user_profile_path_txt, 'r') as txt:
-            user_profile_path = fr'{txt.read()}'
+        with open(user_profile_path_txt, "r") as txt:
+            user_profile_path = rf"{txt.read()}"
     except Exception as e:
         pass
 
-qrc_resources_user_path = os.path.join(user_profile_path, 'qrc_resources.py')
+qrc_resources_user_path = os.path.join(user_profile_path, "qrc_resources.py")
 
 try:
     os.makedirs(user_profile_path, exist_ok=True)
@@ -213,23 +221,23 @@ except Exception as e:
 # print(f'User profile path: "{user_profile_path}"')
 
 import site
+
 sitepackages = site.getsitepackages()
-site_packages = [p for p in sitepackages if p.endswith('-packages')][0]
+site_packages = [p for p in sitepackages if p.endswith("-packages")][0]
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 cellacdc_installation_path = os.path.dirname(cellacdc_path)
 
 if cellacdc_installation_path != site_packages:
     IS_CLONED = True
-    settings_folderpath = os.path.join(cellacdc_installation_path, '.acdc-settings')
+    settings_folderpath = os.path.join(cellacdc_installation_path, ".acdc-settings")
 else:
     IS_CLONED = False
-    settings_folderpath = os.path.join(user_profile_path, '.acdc-settings')
+    settings_folderpath = os.path.join(user_profile_path, ".acdc-settings")
 
-fiji_location_filepath = os.path.join(settings_folderpath, 'fiji_location.txt')
-bioio_sample_data_folderpath = os.path.join(
-    user_profile_path, 'acdc_dataStruct_temp'
-)
+fiji_location_filepath = os.path.join(settings_folderpath, "fiji_location.txt")
+bioio_sample_data_folderpath = os.path.join(user_profile_path, "acdc_dataStruct_temp")
+
 
 def copytree(src, dst):
     os.makedirs(dst, exist_ok=True)
@@ -241,6 +249,7 @@ def copytree(src, dst):
         elif os.path.isfile(src_filepath):
             shutil.copy2(src_filepath, dst_filepath)
 
+
 if not os.path.exists(settings_folderpath):
     os.makedirs(settings_folderpath, exist_ok=True)
 if os.path.exists(old_temp_path):
@@ -248,66 +257,65 @@ if os.path.exists(old_temp_path):
         copytree(old_temp_path, settings_folderpath)
         shutil.rmtree(old_temp_path)
     except Exception as e:
-        print('*'*60)
+        print("*" * 60)
         print(
-            '[WARNING]: could not copy settings from previous location. '
-            f'Please manually copy the folder "{old_temp_path}" to "{settings_folderpath}"')
-        print('^'*60)
+            "[WARNING]: could not copy settings from previous location. "
+            f'Please manually copy the folder "{old_temp_path}" to "{settings_folderpath}"'
+        )
+        print("^" * 60)
 
 import pandas as pd
+
 # Disable pandas 3.0 strict string dtype to maintain backward compatibility
 # with code that assigns non-string values to DataFrames
-if hasattr(pd.options, 'future') and hasattr(pd.options.future, 'infer_string'):
+if hasattr(pd.options, "future") and hasattr(pd.options.future, "infer_string"):
     pd.options.future.infer_string = False
 
-settings_csv_path = os.path.join(settings_folderpath, 'settings.csv')
+settings_csv_path = os.path.join(settings_folderpath, "settings.csv")
 if not os.path.exists(settings_csv_path):
-    df_settings = pd.DataFrame(
-        {'setting': [], 'value': []}).set_index('setting')
+    df_settings = pd.DataFrame({"setting": [], "value": []}).set_index("setting")
     df_settings.to_csv(settings_csv_path)
 
 # Get color scheme
 if not os.path.exists(settings_csv_path):
-    scheme = 'light'
+    scheme = "light"
 
 try:
-    df_settings = pd.read_csv(settings_csv_path, index_col='setting')
+    df_settings = pd.read_csv(settings_csv_path, index_col="setting")
 except Exception as err:
     # Overwrite corrupted setttings file
-    df_settings = pd.DataFrame(
-        {'setting': [], 'value': []}).set_index('setting')
+    df_settings = pd.DataFrame({"setting": [], "value": []}).set_index("setting")
     df_settings.to_csv(settings_csv_path)
-    
-if 'colorScheme' not in df_settings.index:
-    scheme = 'light'
-else:
-    scheme = df_settings.at['colorScheme', 'value']
 
-does_qrc_resources_exists = (
-    os.path.exists(qrc_resources_path)
-    or os.path.exists(qrc_resources_user_path)
+if "colorScheme" not in df_settings.index:
+    scheme = "light"
+else:
+    scheme = df_settings.at["colorScheme", "value"]
+
+does_qrc_resources_exists = os.path.exists(qrc_resources_path) or os.path.exists(
+    qrc_resources_user_path
 )
 
+
 def _copy_qrc_resources_file(
-        src_qrc_resources_scheme_path: os.PathLike,
-        dst_qrc_resources_path: os.PathLike, 
-        user_dst_qrc_resources_path: os.PathLike = qrc_resources_user_path
-    ):
+    src_qrc_resources_scheme_path: os.PathLike,
+    dst_qrc_resources_path: os.PathLike,
+    user_dst_qrc_resources_path: os.PathLike = qrc_resources_user_path,
+):
     try:
         shutil.copyfile(src_qrc_resources_scheme_path, dst_qrc_resources_path)
         return True
     except Exception as err:
-        # Copy to user folder because copying to cell-acdc location failed 
-        # possibly PermissionError --> return False to stop application 
+        # Copy to user folder because copying to cell-acdc location failed
+        # possibly PermissionError --> return False to stop application
         # and prompt the user to restart Cell-ACDC
-        shutil.copyfile(
-            src_qrc_resources_scheme_path, user_dst_qrc_resources_path
-        )
+        shutil.copyfile(src_qrc_resources_scheme_path, user_dst_qrc_resources_path)
         return False
+
 
 # Set default qrc resources
 if not does_qrc_resources_exists:
-    if scheme == 'light':
+    if scheme == "light":
         qrc_resources_scheme_path = qrc_resources_light_path
     else:
         qrc_resources_scheme_path = qrc_resources_dark_path
@@ -323,23 +331,23 @@ elif os.path.exists(qrc_resources_user_path):
 # Replace 'from PyQt5' with 'from qtpy' in qrc_resources.py file
 try:
     save_qrc = False
-    with open(qrc_resources_path, 'r') as qrc_py:
+    with open(qrc_resources_path, "r") as qrc_py:
         text = qrc_py.read()
-        if text.find('from PyQt5') != -1:
-            text = text.replace('from PyQt5', 'from qtpy')
+        if text.find("from PyQt5") != -1:
+            text = text.replace("from PyQt5", "from qtpy")
             save_qrc = True
     if save_qrc:
-        with open(qrc_resources_path, 'w') as qrc_py:
+        with open(qrc_resources_path, "w") as qrc_py:
             qrc_py.write(text)
 except Exception as err:
     raise err
 
 try:
-    # Import qrc_resources explicitly so that "from . import acdc_qrc_resources" imports 
-    # the variable defined here. Use importlib in case qrc_resouces.py is in 
+    # Import qrc_resources explicitly so that "from . import acdc_qrc_resources" imports
+    # the variable defined here. Use importlib in case qrc_resouces.py is in
     # user folder
     qrc_resouces_spec = importlib.util.spec_from_file_location(
-        'qrc_resources', qrc_resources_path
+        "qrc_resources", qrc_resources_path
     )
     acdc_qrc_resources = importlib.util.module_from_spec(qrc_resouces_spec)
     qrc_resouces_spec.loader.exec_module(acdc_qrc_resources)
@@ -347,31 +355,35 @@ except ModuleNotFoundError as err:
     # Cellacdc in the cli might not have qtpy --> ignore error
     pass
 
+
 def try_input_install_package(pkg_name, install_command, question=None):
     if question is None:
-        question = 'Do you want to install it now ([y]/n)? '
+        question = "Do you want to install it now ([y]/n)? "
     try:
-        answer = input(f'\n{question}')
+        answer = input(f"\n{question}")
         return answer
     except Exception as err:
         raise ModuleNotFoundError(
             f'The module "{pkg_name}" is not installed. '
-            f'Install it with the command `{install_command}`.'
+            f"Install it with the command `{install_command}`."
         )
+
 
 try:
     # Force PyQt6 if available
     try:
         from PyQt6 import QtCore
+
         os.environ["QT_API"] = "pyqt6"
     except Exception as e:
         pass
     from qtpy import QtCore
     import pyqtgraph
     import matplotlib
+
     GUI_INSTALLED = True
 except Exception as e:
-    GUI_INSTALLED = False        
+    GUI_INSTALLED = False
 
 import pandas as pd
 
@@ -379,115 +391,116 @@ np.random.seed(3548784512)
 
 pd.set_option("display.max_columns", 20)
 pd.set_option("display.max_rows", 200)
-pd.set_option('display.expand_frame_repr', False)
+pd.set_option("display.expand_frame_repr", False)
 
-open_printl_str = '*'*100
-close_printl_str = '='*100
+open_printl_str = "*" * 100
+close_printl_str = "=" * 100
+
 
 def printl(*objects, pretty=False, is_decorator=False, idx=1, **kwargs):
-    timestap = datetime.now().strftime('%H:%M:%S')
+    timestap = datetime.now().strftime("%H:%M:%S")
     currentframe = inspect.currentframe()
     outerframes = inspect.getouterframes(currentframe)
-    idx = idx+1 if is_decorator else idx
+    idx = idx + 1 if is_decorator else idx
     callingframe = outerframes[idx].frame
     callingframe_info = inspect.getframeinfo(callingframe)
     filepath = callingframe_info.filename
-    fileinfo_str = (
-        f'File "{filepath}", line {callingframe_info.lineno} - {timestap}:'
-    )
+    fileinfo_str = f'File "{filepath}", line {callingframe_info.lineno} - {timestap}:'
     if pretty:
         print(open_printl_str)
         print(fileinfo_str)
         for o, object in enumerate(objects):
-            text = str(object)                
+            text = str(object)
             pprint(text, **kwargs)
         print(close_printl_str)
     else:
-        sep = kwargs.get('sep', ', ')
+        sep = kwargs.get("sep", ", ")
         text = sep.join([str(object) for object in objects])
-        text = f'{open_printl_str}\n{fileinfo_str}\n{text}\n{close_printl_str}'
+        text = f"{open_printl_str}\n{fileinfo_str}\n{text}\n{close_printl_str}"
         print(text)
 
+
 parent_path = os.path.dirname(cellacdc_path)
-html_path = os.path.join(cellacdc_path, '_html')
-segmenters_path = os.path.join(cellacdc_path, 'segmenters')
-segmenters_promptable_path = os.path.join(cellacdc_path, 'segmenters_promptable')
-data_path = os.path.join(parent_path, 'data')
-resources_folderpath = os.path.join(cellacdc_path, 'resources')
-resources_filepath = os.path.join(cellacdc_path, 'resources_light.qrc')
-logs_path = os.path.join(user_profile_path, '.acdc-logs')
-acdc_fiji_path = os.path.join(user_profile_path, 'acdc-fiji')
-acdc_ffmpeg_path = os.path.join(user_profile_path, 'acdc-ffmpeg')
-resources_path = os.path.join(cellacdc_path, 'resources_light.qrc')
-segmenters_list_file_path = os.path.join(
-    settings_folderpath, 'custom_models_paths.ini'
-)
+html_path = os.path.join(cellacdc_path, "_html")
+segmenters_path = os.path.join(cellacdc_path, "segmenters")
+segmenters_promptable_path = os.path.join(cellacdc_path, "segmenters_promptable")
+data_path = os.path.join(parent_path, "data")
+resources_folderpath = os.path.join(cellacdc_path, "resources")
+resources_filepath = os.path.join(cellacdc_path, "resources_light.qrc")
+logs_path = os.path.join(user_profile_path, ".acdc-logs")
+acdc_fiji_path = os.path.join(user_profile_path, "acdc-fiji")
+acdc_ffmpeg_path = os.path.join(user_profile_path, "acdc-ffmpeg")
+resources_path = os.path.join(cellacdc_path, "resources_light.qrc")
+segmenters_list_file_path = os.path.join(settings_folderpath, "custom_models_paths.ini")
 segmenters_promptable_list_file_path = os.path.join(
-    settings_folderpath, 'custom_promptable_models_paths.ini'
+    settings_folderpath, "custom_promptable_models_paths.ini"
 )
 models_path = segmenters_path
 promptable_models_path = segmenters_promptable_path
 models_list_file_path = segmenters_list_file_path
 promptable_models_list_file_path = segmenters_promptable_list_file_path
 favourite_func_metrics_csv_path = os.path.join(
-    settings_folderpath, 'favourite_func_metrics.csv'
+    settings_folderpath, "favourite_func_metrics.csv"
 )
-recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
-preproc_recipes_path = os.path.join(settings_folderpath, 'preprocessing_recipes')
-combine_channels_recipes_path = os.path.join(settings_folderpath, 'combine_channels')
-segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')
-user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
-github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
-data_structure_docs_url = 'https://cell-acdc.readthedocs.io/en/latest/data-structure.html'
+recentPaths_path = os.path.join(settings_folderpath, "recentPaths.csv")
+preproc_recipes_path = os.path.join(settings_folderpath, "preprocessing_recipes")
+combine_channels_recipes_path = os.path.join(settings_folderpath, "combine_channels")
+segm_recipes_path = os.path.join(settings_folderpath, "segmentation_recipes")
+user_manual_url = "https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf"
+github_home_url = "https://github.com/SchmollerLab/Cell_ACDC"
+data_structure_docs_url = (
+    "https://cell-acdc.readthedocs.io/en/latest/data-structure.html"
+)
 moth_bud_tot_selected_columns_filepath = os.path.join(
-    settings_folderpath, 'mother_bud_total_columns_selection.json'
+    settings_folderpath, "mother_bud_total_columns_selection.json"
 )
 saved_measurements_selections_folderpath = os.path.join(
-    settings_folderpath, 'saved_measurements_selections'
+    settings_folderpath, "saved_measurements_selections"
 )
 
-# Use to get the acdc_output file name from `segm_filename` as 
+# Use to get the acdc_output file name from `segm_filename` as
 # `m = re.sub(segm_re_pattern, '_acdc_output', segm_filename)`
-segm_re_pattern = r'_segm(?!.*_segm)'
+segm_re_pattern = r"_segm(?!.*_segm)"
 
 try:
     from setuptools_scm import get_version
-    __version__ = get_version(root='..', relative_to=__file__)
+
+    __version__ = get_version(root="..", relative_to=__file__)
 except Exception as e:
     try:
         from ._version import version as __version__
     except ImportError:
         __version__ = "not-installed"
 
-__author__ = 'Francesco Padovani and Benedikt Mairhoermann'
+__author__ = "Francesco Padovani and Benedikt Mairhoermann"
 
-cite_url = 'https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6'
-issues_url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
+cite_url = "https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6"
+issues_url = "https://github.com/SchmollerLab/Cell_ACDC/issues"
 
 # Initialize variables that need to be globally accessible
 
 
 base_cca_dict = {
-    'cell_cycle_stage': 'G1',
-    'generation_num': 2,
-    'relative_ID': -1,
-    'relationship': 'mother',
-    'emerg_frame_i': -1,
-    'division_frame_i': -1,
-    'is_history_known': False,
-    'corrected_on_frame_i': -1,
-    'will_divide': 0,
-    'daughter_disappears_before_division': 0,
-    'disappears_before_division': 0
+    "cell_cycle_stage": "G1",
+    "generation_num": 2,
+    "relative_ID": -1,
+    "relationship": "mother",
+    "emerg_frame_i": -1,
+    "division_frame_i": -1,
+    "is_history_known": False,
+    "corrected_on_frame_i": -1,
+    "will_divide": 0,
+    "daughter_disappears_before_division": 0,
+    "disappears_before_division": 0,
 }
 cca_df_colnames = list(base_cca_dict.keys())
 
 base_cca_tree_dict = {
-    'Cell_ID_tree': -1,
-    'generation_num_tree': 1,
-    'parent_ID_tree': -1,
-    'root_ID_tree': -1,
-    'sister_ID_tree': -1
+    "Cell_ID_tree": -1,
+    "generation_num_tree": 1,
+    "parent_ID_tree": -1,
+    "root_ID_tree": -1,
+    "sister_ID_tree": -1,
 }
 
 lineage_tree_cols = list(base_cca_tree_dict.keys())
@@ -500,47 +513,36 @@ lineage_tree_cols = list(base_cca_tree_dict.keys())
 #     'sister_ID_tree'
 # ]
 
-lineage_tree_cols_std_val = [
-    -1,
-    -1,
-    -1,
-    -1,
-    -1
-]
+lineage_tree_cols_std_val = [-1, -1, -1, -1, -1]
 
 default_annot_df = {
-    'is_cell_dead': False,
-    'is_cell_excluded': False,
+    "is_cell_dead": False,
+    "is_cell_excluded": False,
 }
 
-base_acdc_df = {
-    **default_annot_df,
-    'was_manually_edited': 0
-}
+base_acdc_df = {**default_annot_df, "was_manually_edited": 0}
 
 base_acdc_df_cols = list(base_acdc_df.keys())
 
-sorted_cols = ['time_seconds', 'time_minutes', 'time_hours']
-sorted_cols = [
-    *sorted_cols, *cca_df_colnames, *lineage_tree_cols, *base_acdc_df_cols
-]
+sorted_cols = ["time_seconds", "time_minutes", "time_hours"]
+sorted_cols = [*sorted_cols, *cca_df_colnames, *lineage_tree_cols, *base_acdc_df_cols]
 
 cca_df_colnames_with_tree = [*cca_df_colnames, *lineage_tree_cols]
 
 all_non_metrics_cols = [*base_acdc_df_cols, *cca_df_colnames, *lineage_tree_cols]
 
-is_linux = sys.platform.startswith('linux')
-is_mac = sys.platform == 'darwin'
+is_linux = sys.platform.startswith("linux")
+is_mac = sys.platform == "darwin"
 is_win = sys.platform.startswith("win")
-is_win64 = (is_win and (os.environ["PROCESSOR_ARCHITECTURE"] == "AMD64"))
-is_mac_arm64 = is_mac and platform.machine() == 'arm64'
+is_win64 = is_win and (os.environ["PROCESSOR_ARCHITECTURE"] == "AMD64")
+is_mac_arm64 = is_mac and platform.machine() == "arm64"
 
 if is_linux and GUI_INSTALLED:
     from pathlib import Path
 
     acdc_exec_path = shutil.which("acdc")
 
-    logo_path = os.path.join(resources_folderpath, 'logo_square_v2.png')
+    logo_path = os.path.join(resources_folderpath, "logo_square_v2.png")
     txt = f"""
 [Desktop Entry]
 Name=Cell-ACDC
@@ -568,10 +570,9 @@ StartupWMClass=Cell-ACDC
 
         # Make the .desktop file executable (equivalent to chmod +x)
         import stat
+
         mode = os.stat(desktop_file).st_mode
-        os.chmod(
-            desktop_file, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
-        )
+        os.chmod(desktop_file, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
         # 🔄 Refresh the desktop database
         try:
@@ -582,85 +583,82 @@ StartupWMClass=Cell-ACDC
                 stderr=subprocess.PIPE,
             )
             exit(
-                'Cell-ACDC had to update the desktop database. '
-                'Please re-start the software, thanks!'
+                "Cell-ACDC had to update the desktop database. "
+                "Please re-start the software, thanks!"
             )
         except FileNotFoundError:
-            print("⚠️ 'update-desktop-database' not found. It’s part of the 'desktop-file-utils' package.")
+            print(
+                "⚠️ 'update-desktop-database' not found. It’s part of the 'desktop-file-utils' package."
+            )
         except subprocess.CalledProcessError as e:
             print(f"⚠️ Error updating desktop database:\n{e.stderr.decode()}")
 
 yeaz_weights_filenames = [
-    'unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5',
-    'weights_budding_BF_multilab_0_1.hdf5'
+    "unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5",
+    "weights_budding_BF_multilab_0_1.hdf5",
 ]
 
 yeaz_v2_weights_filenames = [
-    'weights_budding_BF_multilab_0_1',
-    'weights_budding_PhC_multilab_0_1',
-    'weights_fission_multilab_0_2'
+    "weights_budding_BF_multilab_0_1",
+    "weights_budding_PhC_multilab_0_1",
+    "weights_fission_multilab_0_2",
 ]
 
 segment_anything_weights_filenames = [
-    'sam_vit_h_4b8939.pth',
-    'sam_vit_l_0b3195.pth',
-    'sam_vit_b_01ec64.pth'
+    "sam_vit_h_4b8939.pth",
+    "sam_vit_l_0b3195.pth",
+    "sam_vit_b_01ec64.pth",
 ]
 
 sam2_weights_filenames = [
-    'sam2.1_hiera_large.pt',
-    'sam2.1_hiera_base_plus.pt',
-    'sam2.1_hiera_small.pt',
-    'sam2.1_hiera_tiny.pt'
+    "sam2.1_hiera_large.pt",
+    "sam2.1_hiera_base_plus.pt",
+    "sam2.1_hiera_small.pt",
+    "sam2.1_hiera_tiny.pt",
 ]
 
-deepsea_weights_filenames = [
-    'segmentation.pth', 
-    'tracker.pth'
-]
+deepsea_weights_filenames = ["segmentation.pth", "tracker.pth"]
 
 yeastmate_weights_filenames = [
-    'yeastmate_advanced.yaml',
-    'yeastmate_weights.pth',
-    'yeastmate.yaml'
+    "yeastmate_advanced.yaml",
+    "yeastmate_weights.pth",
+    "yeastmate.yaml",
 ]
 
-tapir_weights_filenames = [
-    'tapir_checkpoint.npy'
-]
+tapir_weights_filenames = ["tapir_checkpoint.npy"]
 
 graphLayoutBkgrColor = (235, 235, 235)
-darkBkgrColor = [255-v for v in graphLayoutBkgrColor]
+darkBkgrColor = [255 - v for v in graphLayoutBkgrColor]
+
 
 def _critical_exception_gui(self, func_name):
     from . import widgets, html_utils
+
     result = None
     traceback_str = traceback.format_exc()
-    
-    if hasattr(self, 'is_error_state') and self.is_error_state:
+
+    if hasattr(self, "is_error_state") and self.is_error_state:
         printl(traceback_str)
         return
-    
-    if hasattr(self, 'logger'):
+
+    if hasattr(self, "logger"):
         self.logger.error(traceback_str)
     else:
         printl(traceback_str)
-    
+
     try:
         self.cleanUpOnError()
     except Exception as e:
         pass
-    
+
     msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-    if hasattr(self, 'logs_path'):
-        msg.addShowInFileManagerButton(
-            self.logs_path, txt='Show log file...'
-        )
-    if not hasattr(self, 'log_path'):
-        log_path = 'NULL'
+    if hasattr(self, "logs_path"):
+        msg.addShowInFileManagerButton(self.logs_path, txt="Show log file...")
+    if not hasattr(self, "log_path"):
+        log_path = "NULL"
     else:
         log_path = self.log_path
-    
+
     self.is_error_state = True
     msg.setDetailedText(traceback_str, visible=True)
     href = f'<a href="{issues_url}">GitHub page</a>'
@@ -675,15 +673,16 @@ def _critical_exception_gui(self, func_name):
         here:
     """)
 
-    msg.critical(self, 'Critical error', err_msg, commands=(log_path,))
-    
+    msg.critical(self, "Critical error", err_msg, commands=(log_path,))
+
+
 def exception_handler_cli(func):
     @wraps(func)
     def inner_function(self, *args, **kwargs):
         try:
-            if func.__code__.co_argcount==1 and func.__defaults__ is None:
+            if func.__code__.co_argcount == 1 and func.__defaults__ is None:
                 result = func(self)
-            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+            elif func.__code__.co_argcount > 1 and func.__defaults__ is None:
                 result = func(self, *args)
             else:
                 result = func(self, *args, **kwargs)
@@ -694,23 +693,27 @@ def exception_handler_cli(func):
             else:
                 raise err
         return result
+
     return inner_function
+
 
 def exec_time(func):
     @wraps(func)
     def inner_function(self, *args, **kwargs):
         t0 = time.perf_counter()
-        if func.__code__.co_argcount==1 and func.__defaults__ is None:
+        if func.__code__.co_argcount == 1 and func.__defaults__ is None:
             result = func(self)
-        elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+        elif func.__code__.co_argcount > 1 and func.__defaults__ is None:
             result = func(self, *args)
         else:
             result = func(self, *args, **kwargs)
         t1 = time.perf_counter()
-        s = f'{func.__name__} execution time = {(t1-t0)*1000:.3f} ms'
+        s = f"{func.__name__} execution time = {(t1 - t0) * 1000:.3f} ms"
         printl(s, is_decorator=True)
         return result
+
     return inner_function
+
 
 def _exception_handler_clean_progress(self):
     try:
@@ -720,8 +723,10 @@ def _exception_handler_clean_progress(self):
     except AttributeError:
         pass
 
+
 def exception_handler(func):
     """Decorator to handle class methods exceptions and show a critical error message."""
+
     @wraps(func)
     def inner_function(self, *args, **kwargs):
         try:
@@ -729,10 +734,7 @@ def exception_handler(func):
         except TypeError as e:
             # Only handle the specific Qt slot error
             msg = str(e)
-            if (
-                "takes 1 positional argument but 2 were given" in msg
-                and len(args) > 0
-            ):
+            if "takes 1 positional argument but 2 were given" in msg and len(args) > 0:
                 try:
                     # Remove only the last argument (assumed to be from Qt)
                     filtered_args = args[:-1]
@@ -747,7 +749,9 @@ def exception_handler(func):
             _exception_handler_clean_progress(self)
             result = _critical_exception_gui(self, func.__name__)
         return result
+
     return inner_function
+
 
 def disableWindow(func):
     @wraps(func)
@@ -772,44 +776,43 @@ def disableWindow(func):
         finally:
             self.setDisabled(False)
             self.activateWindow()
+
     return inner_function
+
 
 def ignore_exception(func):
     @wraps(func)
     def inner_function(self, *args, **kwargs):
         try:
-            if func.__code__.co_argcount==1 and func.__defaults__ is None:
+            if func.__code__.co_argcount == 1 and func.__defaults__ is None:
                 result = func(self)
-            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+            elif func.__code__.co_argcount > 1 and func.__defaults__ is None:
                 result = func(self, *args)
             else:
                 result = func(self, *args, **kwargs)
         except Exception as e:
             pass
         return result
+
     return inner_function
 
-error_below = f"\n{'*'*50} ERROR {'*'*50}\n"
-error_close = f"\n{'^'*(len(error_below)-1)}"
 
-error_up_str = '^'*100
-error_up_str = f'\n{error_up_str}'
-error_down_str = '^'*100
-error_down_str = f'\n{error_down_str}'
+error_below = f"\n{'*' * 50} ERROR {'*' * 50}\n"
+error_close = f"\n{'^' * (len(error_below) - 1)}"
 
-binary_file_extensions = (
-    ".png", ".pdf"
-)
+error_up_str = "^" * 100
+error_up_str = f"\n{error_up_str}"
+error_down_str = "^" * 100
+error_down_str = f"\n{error_down_str}"
+
+binary_file_extensions = (".png", ".pdf")
 
 default_index_cols = (
-    'experiment_folderpath', 
-    'experiment_foldername', 
-    'Position_n', 
-    'frame_i', 
-    'Cell_ID'
+    "experiment_folderpath",
+    "experiment_foldername",
+    "Position_n",
+    "frame_i",
+    "Cell_ID",
 )
 
-single_pos_index_cols = (
-    'experiment_folderpath', 
-    'Position_n'
-)
+single_pos_index_cols = ("experiment_folderpath", "Position_n")

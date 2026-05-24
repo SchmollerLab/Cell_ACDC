@@ -11,9 +11,9 @@ print(bioformats.__file__)
 jars = bioformats.JARS
 print(jars)
 jv.start_vm(class_path=jars)
-paths = jv.JClassWrapper('java.lang.System').getProperty('java.class.path').split(";")
+paths = jv.JClassWrapper("java.lang.System").getProperty("java.class.path").split(";")
 
 for path in paths:
-    print("%s: %s" %("exists" if os.path.isfile(path) else "missing", path))
+    print("%s: %s" % ("exists" if os.path.isfile(path) else "missing", path))
 
 jv.kill_vm()

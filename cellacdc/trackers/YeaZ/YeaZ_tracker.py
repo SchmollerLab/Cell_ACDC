@@ -3,6 +3,7 @@ import numpy as np
 
 from . import tracking
 
+
 class tracker:
     def __init__(self):
         pass

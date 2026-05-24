@@ -17,22 +17,24 @@ log = logging.getLogger(__name__)
 
 
 class Log4JPlugin(Plugin):
-    '''
+    """
     Plugin that initializes Log4J in order to avoid Bioformats error
     messages.
 
-    '''
+    """
+
     enabled = False
     name = "log4j"
-    score = 90 # Less than the score of javabridge.nosetests.JavaBridgePlugin
+    score = 90  # Less than the score of javabridge.nosetests.JavaBridgePlugin
 
     def begin(self):
-        javabridge.static_call("org/apache/log4j/BasicConfigurator",
-                               "configure", "()V")
-        log4j_logger = javabridge.static_call("org/apache/log4j/Logger",
-                                              "getRootLogger",
-                                              "()Lorg/apache/log4j/Logger;")
-        warn_level = javabridge.get_static_field("org/apache/log4j/Level","ERROR",
-                                                 "Lorg/apache/log4j/Level;")
-        javabridge.call(log4j_logger, "setLevel", "(Lorg/apache/log4j/Level;)V",
-                        warn_level)
+        javabridge.static_call("org/apache/log4j/BasicConfigurator", "configure", "()V")
+        log4j_logger = javabridge.static_call(
+            "org/apache/log4j/Logger", "getRootLogger", "()Lorg/apache/log4j/Logger;"
+        )
+        warn_level = javabridge.get_static_field(
+            "org/apache/log4j/Level", "ERROR", "Lorg/apache/log4j/Level;"
+        )
+        javabridge.call(
+            log4j_logger, "setLevel", "(Lorg/apache/log4j/Level;)V", warn_level
+        )

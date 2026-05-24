@@ -13,9 +13,15 @@ from tifffile.tifffile import TiffWriter, TiffFile
 from tqdm import tqdm
 
 from qtpy.QtWidgets import (
-    QApplication, QMainWindow, QFileDialog,
-    QVBoxLayout, QPushButton, QLabel, QStyleFactory,
-    QWidget, QMessageBox
+    QApplication,
+    QMainWindow,
+    QFileDialog,
+    QVBoxLayout,
+    QPushButton,
+    QLabel,
+    QStyleFactory,
+    QWidget,
+    QMessageBox,
 )
 from qtpy.QtCore import Qt, QEventLoop
 from qtpy import QtGui
@@ -28,20 +34,19 @@ sys.path.append(cellacdc_path)
 from .. import prompts, load, myutils, apps, html_utils, widgets
 from .. import recentPaths_path, cellacdc_path, settings_folderpath
 
-if os.name == 'nt':
+if os.name == "nt":
     try:
         # Set taskbar icon in windows
         import ctypes
-        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
+
+        myappid = "schmollerlab.cellacdc.pyqt.v1"  # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception as e:
         pass
 
+
 class renameFilesWin(QMainWindow):
-    def __init__(
-            self, parent=None, allowExit=False,
-            actionToEnable=None, mainWin=None
-        ):
+    def __init__(self, parent=None, allowExit=False, actionToEnable=None, mainWin=None):
         self.allowExit = allowExit
         self.processFinished = False
         self.actionToEnable = actionToEnable
@@ -56,21 +61,21 @@ class renameFilesWin(QMainWindow):
         mainLayout = QVBoxLayout()
 
         titleText = html_utils.paragraph(
-            '<br><b>Renaming files utility</b>', font_size='14px'
+            "<br><b>Renaming files utility</b>", font_size="14px"
         )
         titleLabel = QLabel(titleText)
         mainLayout.addWidget(titleLabel)
 
         infoTxt = (
-            'Follow the instructions in the pop-up windows.<br>'
-            'Note that pop-ups might be minimized or behind other open windows.<br><br>'
-            'Progess is displayed in the terminal/console.'
+            "Follow the instructions in the pop-up windows.<br>"
+            "Note that pop-ups might be minimized or behind other open windows.<br><br>"
+            "Progess is displayed in the terminal/console."
         )
 
         informativeLabel = QLabel(html_utils.paragraph(infoTxt))
         mainLayout.addWidget(informativeLabel)
 
-        abortButton = QPushButton('Stop processs')
+        abortButton = QPushButton("Stop processs")
         abortButton.clicked.connect(self.close)
         mainLayout.addWidget(abortButton)
 
@@ -79,54 +84,52 @@ class renameFilesWin(QMainWindow):
 
     def getMostRecentPath(self):
         if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            self.MostRecentPath = df.iloc[0]['path']
+            df = pd.read_csv(recentPaths_path, index_col="index")
+            if "opened_last_on" in df.columns:
+                df = df.sort_values("opened_last_on", ascending=False)
+            self.MostRecentPath = df.iloc[0]["path"]
             if not isinstance(self.MostRecentPath, str):
-                self.MostRecentPath = ''
+                self.MostRecentPath = ""
         else:
-            self.MostRecentPath = ''
+            self.MostRecentPath = ""
 
     def main(self):
         self.getMostRecentPath()
         exp_path = QFileDialog.getExistingDirectory(
-            self, 'Select experiment folder containing Position_n folders '
-                  'or specific Position_n folder', self.MostRecentPath)
+            self,
+            "Select experiment folder containing Position_n folders "
+            "or specific Position_n folder",
+            self.MostRecentPath,
+        )
         self.addToRecentPaths(exp_path)
 
-        if exp_path == '':
+        if exp_path == "":
             abort = self.doAbort()
             if abort:
                 self.close()
                 return
 
-        self.setWindowTitle(
-            f'Cell-ACDC - Renaming files - "{exp_path}"'
-        )
+        self.setWindowTitle(f'Cell-ACDC - Renaming files - "{exp_path}"')
 
         folder_type = myutils.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
 
-        print('Loading data...')
+        print("Loading data...")
 
         if not is_pos_folder and not is_images_folder:
             select_folder = load.select_exp_folder()
             values = select_folder.get_values_segmGUI(exp_path)
             if not values:
                 txt = (
-                    'The selected folder:\n\n '
-                    f'{exp_path}\n\n'
-                    'is not a valid folder. '
-                    'Select a folder that contains the Position_n folders'
+                    "The selected folder:\n\n "
+                    f"{exp_path}\n\n"
+                    "is not a valid folder. "
+                    "Select a folder that contains the Position_n folders"
                 )
                 msg = QMessageBox()
-                msg.critical(
-                    self, 'Incompatible folder', txt, msg.Ok
-                )
+                msg.critical(self, "Incompatible folder", txt, msg.Ok)
                 self.close()
                 return
-
 
             select_folder.QtPrompt(self, values, allow_cancel=False, show=True)
             if select_folder.cancel:
@@ -135,15 +138,15 @@ class renameFilesWin(QMainWindow):
                     self.close()
                     return
 
-
             pos_foldernames = select_folder.selected_pos
-            images_paths = [os.path.join(exp_path, pos, 'Images')
-                            for pos in pos_foldernames]
+            images_paths = [
+                os.path.join(exp_path, pos, "Images") for pos in pos_foldernames
+            ]
 
         elif is_pos_folder:
             pos_foldername = os.path.basename(exp_path)
             exp_path = os.path.dirname(exp_path)
-            images_paths = [f'{exp_path}/{pos_foldername}/Images']
+            images_paths = [f"{exp_path}/{pos_foldername}/Images"]
 
         elif is_images_folder:
             images_paths = [exp_path]
@@ -154,7 +157,6 @@ class renameFilesWin(QMainWindow):
             if abort:
                 self.close()
                 return
-
 
         abort, appendedTxt = self.askTxtAppend(selectedFilenames[0])
         if abort:
@@ -168,16 +170,14 @@ class renameFilesWin(QMainWindow):
             ch_name_selector = prompts.select_channel_name()
             ls = myutils.listdir(images_paths[0])
             all_channelNames, abort = ch_name_selector.get_available_channels(
-                    ls, images_paths[0], useExt=None
+                ls, images_paths[0], useExt=None
             )
             if abort:
-                self.criticalNoCommonBasename(
-                    selectedFilenames, images_paths[0]
-                )
+                self.criticalNoCommonBasename(selectedFilenames, images_paths[0])
                 self.close()
                 return
             _endswith_li = [
-                f[len(ch_name_selector.basename):] for f in selectedFilenames
+                f[len(ch_name_selector.basename) :] for f in selectedFilenames
             ]
             for images_path in tqdm(images_paths, ncols=100):
                 ls = myutils.listdir(images_path)
@@ -185,35 +185,28 @@ class renameFilesWin(QMainWindow):
                     ls, images_path, useExt=None
                 )
                 if skip:
-                    print('')
-                    print('-------------------------------------')
-                    print(
-                        f'{images_path} data structure compromised!'
-                        'Skipping it.'
-                    )
-                    print('-------------------------------------')
+                    print("")
+                    print("-------------------------------------")
+                    print(f"{images_path} data structure compromised!Skipping it.")
+                    print("-------------------------------------")
                 for _endswith in _endswith_li:
                     for file in ls:
                         if file.endswith(_endswith):
-                            self._rename(
-                                file, images_path, appendedTxt
-                            )
+                            self._rename(file, images_path, appendedTxt)
         else:
             self._rename(selectedFilenames[0], images_paths[0], appendedTxt)
 
         msg = widgets.myMessageBox()
-        txt = html_utils.paragraph(
-            'Renaming process <b>completed</b>.<br><br>'
-        )
-        msg.information(self, 'Renaming process completed', txt)
+        txt = html_utils.paragraph("Renaming process <b>completed</b>.<br><br>")
+        msg.information(self, "Renaming process completed", txt)
 
         self.close()
         if self.allowExit:
-            exit('Done.')
+            exit("Done.")
 
     def _rename(self, file, parent_path, appendedTxt):
         filename, ext = os.path.splitext(file)
-        new_file = f'{filename}_{appendedTxt}{ext}'
+        new_file = f"{filename}_{appendedTxt}{ext}"
         src_filepath = os.path.join(parent_path, file)
         new_filepath = os.path.join(parent_path, new_file)
         os.rename(src_filepath, new_filepath)
@@ -221,20 +214,17 @@ class renameFilesWin(QMainWindow):
     def save(self, alignedData, filePath, appendedTxt, first_call=True):
         dir = os.path.dirname(filePath)
         filename, ext = os.path.splitext(os.path.basename(filePath))
-        path = os.path.join(dir, f'{filename}_{appendedTxt}{ext}')
+        path = os.path.join(dir, f"{filename}_{appendedTxt}{ext}")
 
     def askTxtAppend(self, filename):
         font = QtGui.QFont()
         font.setPixelSize(13)
-        self.win = apps.QDialogAppendTextFilename(
-            filename, '', parent=self, font=font
-        )
+        self.win = apps.QDialogAppendTextFilename(filename, "", parent=self, font=font)
         self.win.exec_()
         return self.win.cancel, self.win.LE.text()
 
     def criticalNoCommonBasename(self, filenames, parent_path):
         myutils.checkDataIntegrity(filenames, parent_path, parentQWidget=self)
-
 
     def selectFiles(self, images_path, filterExt=None):
         files = myutils.listdir(images_path)
@@ -249,9 +239,11 @@ class renameFilesWin(QMainWindow):
             items = files
 
         selectFilesWidget = widgets.QDialogListbox(
-            'Select files',
-            'Select the files you want to rename',
-            items, multiSelection=True, parent=self
+            "Select files",
+            "Select the files you want to rename",
+            items,
+            multiSelection=True,
+            parent=self,
         )
         selectFilesWidget.exec_()
 
@@ -268,12 +260,12 @@ class renameFilesWin(QMainWindow):
         if not os.path.exists(exp_path):
             return
         if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            recentPaths = df['path'].to_list()
-            if 'opened_last_on' in df.columns:
-                openedOn = df['opened_last_on'].to_list()
+            df = pd.read_csv(recentPaths_path, index_col="index")
+            recentPaths = df["path"].to_list()
+            if "opened_last_on" in df.columns:
+                openedOn = df["opened_last_on"].to_list()
             else:
-                openedOn = [np.nan]*len(recentPaths)
+                openedOn = [np.nan] * len(recentPaths)
             if exp_path in recentPaths:
                 pop_idx = recentPaths.index(exp_path)
                 recentPaths.pop(pop_idx)
@@ -287,17 +279,20 @@ class renameFilesWin(QMainWindow):
         else:
             recentPaths = [exp_path]
             openedOn = [datetime.datetime.now()]
-        df = pd.DataFrame({'path': recentPaths,
-                           'opened_last_on': pd.Series(openedOn,
-                                                       dtype='datetime64[ns]')})
-        df.index.name = 'index'
+        df = pd.DataFrame(
+            {
+                "path": recentPaths,
+                "opened_last_on": pd.Series(openedOn, dtype="datetime64[ns]"),
+            }
+        )
+        df.index.name = "index"
         df.to_csv(recentPaths_path)
 
     def doAbort(self):
         if self.allowExit:
-            exit('Execution aborted by the user')
+            exit("Execution aborted by the user")
         else:
-            print('Conversion task aborted by the user.')
+            print("Conversion task aborted by the user.")
             return True
 
     def closeEvent(self, event):

@@ -18,6 +18,7 @@ try:
 except ModuleNotFoundError as e:
     pass
 
+
 def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
     """
     source: YeaZ modified by Cell-ACDC developers
@@ -37,18 +38,15 @@ def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
     IDs_curr_untracked = [obj.label for obj in regionprops(curr)]
     IDs_prev = [obj.label for obj in regionprops(prev)]
     if IDs_prev or IDs_curr_untracked:
-        uniqueID = max(
-            max(IDs_prev, default=0), 
-            max(IDs_curr_untracked, default=0)
-        ) + 1
+        uniqueID = max(max(IDs_prev, default=0), max(IDs_curr_untracked, default=0)) + 1
     else:
         uniqueID = 1
 
     tracked_lab = CellACDC_tracker.indexAssignment(
-        old_IDs, tracked_IDs, IDs_curr_untracked,
-        curr.copy(), rp, uniqueID
+        old_IDs, tracked_IDs, IDs_curr_untracked, curr.copy(), rp, uniqueID
     )
     return tracked_lab
+
 
 def scipy_align(m1, m2, acdc_yeaz=True):
     """
@@ -72,17 +70,19 @@ def scipy_align(m1, m2, acdc_yeaz=True):
     d.pop(-1, None)
     return d
 
+
 def updateGuiProgressBar(signals):
     if signals is None:
         return
-    
-    if hasattr(signals, 'innerPbar_available'):
+
+    if hasattr(signals, "innerPbar_available"):
         if signals.innerPbar_available:
             # Use inner pbar of the GUI widget (top pbar is for positions)
             signals.innerProgressBar.emit(1)
             return
 
     signals.progressBar.emit(1)
+
 
 def correspondence_stack(stack, signals=None):
     """
@@ -94,14 +94,15 @@ def correspondence_stack(stack, signals=None):
     tracked_stack[0] = stack[0]
     for idx in tqdm(range(len(stack)), ncols=100):
         try:
-            curr = stack[idx+1]
+            curr = stack[idx + 1]
             prev = tracked_stack[idx]
         except IndexError:
             continue
-        tracked_stack[idx+1] = correspondence(prev, curr)
+        tracked_stack[idx + 1] = correspondence(prev, curr)
         updateGuiProgressBar(signals)
     # tracked_stack = relabel_sequential(tracked_stack)[0]
     return tracked_stack
+
 
 def hungarian_align(m1, m2, acdc_yeaz=True):
     """
@@ -126,50 +127,54 @@ def hungarian_align(m1, m2, acdc_yeaz=True):
     d.pop(-1, None)
     return d
 
+
 def cell_to_features(im, c, nsamples=None, time=None):
     """
     source: YeaZ
     Embeds cell c in image im into feature space
     """
-    coord = np.argwhere(im==c)
+    coord = np.argwhere(im == c)
     area = coord.shape[0]
 
     if nsamples is not None:
         samples = np.random.choice(area, min(nsamples, area), replace=False)
-        sampled = coord[samples,:]
+        sampled = coord[samples, :]
     else:
         sampled = coord
 
     com = sampled.mean(axis=0)
 
-    return {'cell': c,
-            'time': time,
-            'sqrtarea': np.sqrt(area),
-            'area': area,
-            'com_x': com[0],
-            'com_y': com[1]}
+    return {
+        "cell": c,
+        "time": time,
+        "sqrtarea": np.sqrt(area),
+        "area": area,
+        "com_x": com[0],
+        "com_y": com[1],
+    }
+
 
 def get_features_acdc(m, t):
     rp = regionprops(m)
     features = {
-        'cell': [],
-        'time': [],
-        'sqrtarea': [],
-        'area': [],
-        'com_x': [],
-        'com_y': []
+        "cell": [],
+        "time": [],
+        "sqrtarea": [],
+        "area": [],
+        "com_x": [],
+        "com_y": [],
     }
     for obj in rp:
         area = obj.area
         y, x = obj.centroid
-        features['cell'].append(obj.label)
-        features['time'].append(t)
-        features['sqrtarea'].append(sqrt(area))
-        features['area'].append(area)
-        features['com_x'].append(y)
-        features['com_y'].append(x)
+        features["cell"].append(obj.label)
+        features["time"].append(t)
+        features["sqrtarea"].append(sqrt(area))
+        features["area"].append(area)
+        features["com_x"].append(y)
+        features["com_y"].append(x)
     df = pd.DataFrame(features)
-    return df, dict(enumerate(features['cell']))
+    return df, dict(enumerate(features["cell"]))
 
 
 def get_features(m, t):
@@ -178,6 +183,7 @@ def get_features(m, t):
         cells.remove(0)
     features = [cell_to_features(m, c, time=t) for c in cells]
     return pd.DataFrame(features), dict(enumerate(cells))
+
 
 def cell_distance(m1, m2, weight_com=3, acdc_yeaz=True):
     """
@@ -188,8 +194,8 @@ def cell_distance(m1, m2, weight_com=3, acdc_yeaz=True):
     make it more important).
     """
     # Modify to compute use more computed features
-    #cols = ['com_x', 'com_y', 'roundness', 'sqrtarea']
-    cols = ['com_x', 'com_y', 'area']
+    # cols = ['com_x', 'com_y', 'roundness', 'sqrtarea']
+    cols = ["com_x", "com_y", "area"]
 
     get_features_func = get_features_acdc if acdc_yeaz else get_features
 
@@ -200,19 +206,18 @@ def cell_distance(m1, m2, weight_com=3, acdc_yeaz=True):
     # feat1_acdc, ix_to_cell1_acdc = get_features_acdc(m1, 1)
 
     # Check if one of matrices doesn't contain cells
-    if len(feat1)==0 or len(feat2)==0:
+    if len(feat1) == 0 or len(feat2) == 0:
         return None, None, None
 
     df = pd.concat((feat1, feat2))
     df[cols] = scale(df[cols])
 
     # give more importance to center of mass
-    df[['com_x', 'com_y']] = df[['com_x', 'com_y']] * weight_com
+    df[["com_x", "com_y"]] = df[["com_x", "com_y"]] * weight_com
 
     # pairwise euclidean dist
     dist = euclidean_distances(
-        df.loc[df['time']==1][cols],
-        df.loc[df['time']==2][cols]
+        df.loc[df["time"] == 1][cols], df.loc[df["time"] == 2][cols]
     )
     return dist, ix_to_cell1, ix_to_cell2
 
@@ -233,10 +238,10 @@ def make_square(m):
     source: YeaZ
     Turns matrix into square matrix, as required by Munkres algorithm
     """
-    r,c = m.shape
-    if r==c:
+    r, c = m.shape
+    if r == c:
         return m
-    elif r>c:
-        return zero_pad(m, (r,r))
+    elif r > c:
+        return zero_pad(m, (r, r))
     else:
-        return zero_pad(m, (c,c))
+        return zero_pad(m, (c, c))

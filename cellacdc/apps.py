@@ -13,6 +13,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 import numpy as np
 import scipy.interpolate
+
 try:
     import tkinter as tk
 except Exception as err:
@@ -23,6 +24,7 @@ import traceback
 from itertools import combinations, permutations
 from collections import namedtuple
 from natsort import natsorted
+
 # from MyWidgets import Slider, Button, MyRadioButtons
 from skimage.measure import label, regionprops
 from functools import partial
@@ -34,9 +36,7 @@ import skimage.draw
 import skimage.registration
 import skimage.color
 import skimage.segmentation
-from matplotlib.backends.backend_tkagg import (
-    FigureCanvasTkAgg, NavigationToolbar2Tk
-)
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -47,26 +47,80 @@ import json
 import html
 
 import pyqtgraph as pg
-pg.setConfigOption('imageAxisOrder', 'row-major')
+
+pg.setConfigOption("imageAxisOrder", "row-major")
 
 from qtpy import QtCore
 from qtpy.QtGui import (
-    QIcon, QFontMetrics, QKeySequence, QFont, QRegularExpressionValidator, 
-    QCursor, QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor
+    QIcon,
+    QFontMetrics,
+    QKeySequence,
+    QFont,
+    QRegularExpressionValidator,
+    QCursor,
+    QKeyEvent,
+    QPixmap,
+    QFont,
+    QPalette,
+    QMouseEvent,
+    QColor,
 )
 from qtpy.QtCore import (
-    Qt, QSize, QEvent, Signal, QEventLoop, QTimer, QRegularExpression
+    Qt,
+    QSize,
+    QEvent,
+    Signal,
+    QEventLoop,
+    QTimer,
+    QRegularExpression,
 )
 from qtpy.QtWidgets import (
-    QFileDialog, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
-    QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
-    QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
-    QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
-    QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox,
-    QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
-    QDockWidget, QMessageBox, QStyle, QPlainTextEdit, QSpacerItem,
-    QTreeWidget, QTreeWidgetItem, QTextEdit, QSplashScreen, QAction,
-    QListWidgetItem, QActionGroup, QHeaderView, QStyledItemDelegate
+    QFileDialog,
+    QApplication,
+    QMainWindow,
+    QMenu,
+    QLabel,
+    QToolBar,
+    QScrollBar,
+    QWidget,
+    QVBoxLayout,
+    QLineEdit,
+    QPushButton,
+    QHBoxLayout,
+    QDialog,
+    QFormLayout,
+    QListWidget,
+    QAbstractItemView,
+    QButtonGroup,
+    QCheckBox,
+    QSizePolicy,
+    QComboBox,
+    QSlider,
+    QGridLayout,
+    QSpinBox,
+    QToolButton,
+    QTableView,
+    QTextBrowser,
+    QDoubleSpinBox,
+    QScrollArea,
+    QFrame,
+    QProgressBar,
+    QGroupBox,
+    QRadioButton,
+    QDockWidget,
+    QMessageBox,
+    QStyle,
+    QPlainTextEdit,
+    QSpacerItem,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QTextEdit,
+    QSplashScreen,
+    QAction,
+    QListWidgetItem,
+    QActionGroup,
+    QHeaderView,
+    QStyledItemDelegate,
 )
 import qtpy.compat
 
@@ -98,7 +152,7 @@ from . import path
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
-BACKGROUND_RGBA = _palettes.get_disabled_colors()['Button']
+BACKGROUND_RGBA = _palettes.get_disabled_colors()["Button"]
 
 font = QFont()
 font.setPixelSize(12)
@@ -106,8 +160,11 @@ italicFont = QFont()
 italicFont.setPixelSize(12)
 italicFont.setItalic(True)
 
+
 class ArgWidget:
-    def __init__(self, name, type, widget, defaultVal, valueSetter, valueGetter, changeSig=None):
+    def __init__(
+        self, name, type, widget, defaultVal, valueSetter, valueGetter, changeSig=None
+    ):
         self.name = name
         self.type = type
         self.widget = widget
@@ -125,36 +182,44 @@ def addCustomModelMessages(QParent=None):
     Do you <b>already have</b> the <code>acdcSegment.py</code> file for your code 
     or do you <b>need instructions</b> on how to set-up your custom model?<br>
     """)
-    infoButton = widgets.infoPushButton(' I need instructions')
-    browseButton = widgets.browseFileButton(' I have the model, let me select it')
+    infoButton = widgets.infoPushButton(" I need instructions")
+    browseButton = widgets.browseFileButton(" I have the model, let me select it")
     msg.information(
-        QParent, 'Add custom model', txt, 
-        buttonsTexts=('Cancel', infoButton, browseButton),
-        showDialog=False
+        QParent,
+        "Add custom model",
+        txt,
+        buttonsTexts=("Cancel", infoButton, browseButton),
+        showDialog=False,
     )
     browseButton.clicked.disconnect()
     browseButton.clicked.connect(msg.buttonCallBack)
     msg.exec_()
     if msg.cancel:
         return
-    if msg.clickedButton == infoButton:           
+    if msg.clickedButton == infoButton:
         txt = myutils.get_add_custom_model_instructions()
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         msg.information(
-            QParent, 'Custom model instructions', txt, buttonsTexts=('Ok',),
+            QParent,
+            "Custom model instructions",
+            txt,
+            buttonsTexts=("Ok",),
             path_to_browse=models_path,
-            browse_button_text='Open models folder...'
+            browse_button_text="Open models folder...",
         )
     else:
         homePath = pathlib.Path.home()
         modelFilePath = QFileDialog.getOpenFileName(
-            QParent, 'Select the acdcSegment.py file of your model',
-            str(homePath), 'acdcSegment.py file (*.py);;All files (*)'
+            QParent,
+            "Select the acdcSegment.py file of your model",
+            str(homePath),
+            "acdcSegment.py file (*.py);;All files (*)",
         )[0]
         if not modelFilePath:
             return
-    
+
     return modelFilePath
+
 
 def addCustomPromptModelMessages(QParent=None):
     modelFilePath = None
@@ -163,43 +228,50 @@ def addCustomPromptModelMessages(QParent=None):
     Do you <b>already have</b> the <code>acdcPromptSegment.py</code> file for your code 
     or do you <b>need instructions</b> on how to set-up your custom model?<br>
     """)
-    infoButton = widgets.infoPushButton(' I need instructions')
-    browseButton = widgets.browseFileButton(' I have the model, let me select it')
+    infoButton = widgets.infoPushButton(" I need instructions")
+    browseButton = widgets.browseFileButton(" I have the model, let me select it")
     msg.information(
-        QParent, 'Add custom promptable model', txt, 
-        buttonsTexts=('Cancel', infoButton, browseButton),
-        showDialog=False
+        QParent,
+        "Add custom promptable model",
+        txt,
+        buttonsTexts=("Cancel", infoButton, browseButton),
+        showDialog=False,
     )
     browseButton.clicked.disconnect()
     browseButton.clicked.connect(msg.buttonCallBack)
     msg.exec_()
     if msg.cancel:
         return
-    if msg.clickedButton == infoButton:           
+    if msg.clickedButton == infoButton:
         txt = myutils.get_add_custom_prompt_model_instructions()
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         msg.information(
-            QParent, 'Custom promptable model instructions', 
-            txt, buttonsTexts=('Ok',),
+            QParent,
+            "Custom promptable model instructions",
+            txt,
+            buttonsTexts=("Ok",),
             path_to_browse=promptable_models_path,
-            browse_button_text='Open promptable models folder...'
+            browse_button_text="Open promptable models folder...",
         )
     else:
         homePath = pathlib.Path.home()
         modelFilePath = QFileDialog.getOpenFileName(
-            QParent, 'Select the acdcPromptSegment.py file of your model',
-            str(homePath), 'acdcPromptSegment.py file (*.py);;All files (*)'
+            QParent,
+            "Select the acdcPromptSegment.py file of your model",
+            str(homePath),
+            "acdcPromptSegment.py file (*.py);;All files (*)",
         )[0]
         if not modelFilePath:
             return
-    
+
     return modelFilePath
+
 
 class QBaseDialog(_base_widgets.QBaseDialog):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        
+
+
 class customAnnotationDialog(QDialog):
     sigDeleteSelecAnnot = Signal(object)
 
@@ -209,28 +281,24 @@ class customAnnotationDialog(QDialog):
         self.clickedButton = None
         self.savedCustomAnnot = savedCustomAnnot
 
-        self.internalNames = measurements.get_all_acdc_df_colnames(
-            include_custom=False
-        )
+        self.internalNames = measurements.get_all_acdc_df_colnames(include_custom=False)
 
         super().__init__(parent)
 
-        self.setWindowTitle('Custom annotation')
+        self.setWindowTitle("Custom annotation")
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         layout = widgets.FormLayout()
 
         row = 0
         typeCombobox = QComboBox()
-        typeCombobox.addItems([
-            'Single time-point',
-            'Multiple time-points',
-            'Multiple values class'
-        ])
+        typeCombobox.addItems(
+            ["Single time-point", "Multiple time-points", "Multiple values class"]
+        )
         if state is not None:
-            typeCombobox.setCurrentText(state['type'])
+            typeCombobox.setCurrentText(state["type"])
         self.typeCombobox = typeCombobox
-        body_txt = ("""
+        body_txt = """
         <b>Single time-point</b> annotation: use this to annotate
         an event that happens on a <b>single frame in time</b>
         (e.g. cell division).
@@ -242,17 +310,20 @@ class customAnnotationDialog(QDialog):
         that has <b>multiple values</b>. An example could be a cell cycle stage
         that can have different values, such as 2-cells division
         or 4-cells division.
-        """)
-        typeInfoTxt = (f'{html_utils.paragraph(body_txt)}')
+        """
+        typeInfoTxt = f"{html_utils.paragraph(body_txt)}"
         self.typeWidget = widgets.formWidget(
-            typeCombobox, addInfoButton=True, labelTextLeft='Type: ',
-            parent=self, infoTxt=typeInfoTxt
+            typeCombobox,
+            addInfoButton=True,
+            labelTextLeft="Type: ",
+            parent=self,
+            infoTxt=typeInfoTxt,
         )
         layout.addFormWidget(self.typeWidget, row=row)
         typeCombobox.currentTextChanged.connect(self.warnType)
 
         row += 1
-        nameInfoTxt = ("""
+        nameInfoTxt = """
         <b>Name of the column</b> that will be saved in the <code>acdc_output.csv</code>
         file.<br><br>
         Valid charachters are letters and numbers separate by underscore
@@ -260,85 +331,93 @@ class customAnnotationDialog(QDialog):
         Additionally, some names are <b>reserved</b> because they are used
         by Cell-ACDC for standard measurements.<br><br>
         Internally reserved names:
-        """)
-        self.nameInfoTxt = (f'{html_utils.paragraph(nameInfoTxt)}')
+        """
+        self.nameInfoTxt = f"{html_utils.paragraph(nameInfoTxt)}"
         self.nameWidget = widgets.formWidget(
-            widgets.alphaNumericLineEdit(), addInfoButton=True,
-            labelTextLeft='Name: ', parent=self, infoTxt=self.nameInfoTxt
+            widgets.alphaNumericLineEdit(),
+            addInfoButton=True,
+            labelTextLeft="Name: ",
+            parent=self,
+            infoTxt=self.nameInfoTxt,
         )
         self.nameWidget.infoButton.disconnect()
         self.nameWidget.infoButton.clicked.connect(self.showNameInfo)
         if state is not None:
-            self.nameWidget.widget.setText(state['name'])
+            self.nameWidget.widget.setText(state["name"])
         self.nameWidget.widget.textChanged.connect(self.checkName)
         layout.addFormWidget(self.nameWidget, row=row)
 
         row += 1
         self.nameInfoLabel = QLabel()
-        layout.addWidget(
-            self.nameInfoLabel, row, 0, 1, 2, alignment=Qt.AlignCenter
-        )
+        layout.addWidget(self.nameInfoLabel, row, 0, 1, 2, alignment=Qt.AlignCenter)
 
         row += 1
         spacing = QSpacerItem(10, 10)
         layout.addItem(spacing, row, 0)
 
         row += 1
-        symbolInfoTxt = ("""
+        symbolInfoTxt = """
         <b>Symbol</b> that will be drawn on the annotated cell at
         the requested time frame.
-        """)
-        symbolInfoTxt = (f'{html_utils.paragraph(symbolInfoTxt)}')
+        """
+        symbolInfoTxt = f"{html_utils.paragraph(symbolInfoTxt)}"
         self.symbolWidget = widgets.formWidget(
-            widgets.pgScatterSymbolsCombobox(), addInfoButton=True,
-            labelTextLeft='Symbol: ', parent=self, infoTxt=symbolInfoTxt
+            widgets.pgScatterSymbolsCombobox(),
+            addInfoButton=True,
+            labelTextLeft="Symbol: ",
+            parent=self,
+            infoTxt=symbolInfoTxt,
         )
         if state is not None:
-            self.symbolWidget.widget.setCurrentText(state['symbol'])
+            self.symbolWidget.widget.setCurrentText(state["symbol"])
         layout.addFormWidget(self.symbolWidget, row=row)
 
         row += 1
-        shortcutInfoTxt = ("""
+        shortcutInfoTxt = """
         <b>Shortcut</b> that you can use to <b>activate/deactivate</b> annotation
         of this event.<br><br> Leave empty if you don't need a shortcut.
-        """)
-        shortcutInfoTxt = (f'{html_utils.paragraph(shortcutInfoTxt)}')
+        """
+        shortcutInfoTxt = f"{html_utils.paragraph(shortcutInfoTxt)}"
         self.shortcutWidget = widgets.formWidget(
-            widgets.ShortcutLineEdit(), addInfoButton=True,
-            labelTextLeft='Shortcut: ', parent=self, infoTxt=shortcutInfoTxt
+            widgets.ShortcutLineEdit(),
+            addInfoButton=True,
+            labelTextLeft="Shortcut: ",
+            parent=self,
+            infoTxt=shortcutInfoTxt,
         )
         if state is not None:
-            self.shortcutWidget.widget.setText(state['shortcut'])
+            self.shortcutWidget.widget.setText(state["shortcut"])
         layout.addFormWidget(self.shortcutWidget, row=row)
 
         row += 1
-        descInfoTxt = ("""
+        descInfoTxt = """
         <b>Description</b> will be used as the <b>tool tip</b> that will be
         displayed when you hover with th mouse cursor on the toolbar button
         specific for this annotation
-        """)
-        descInfoTxt = (f'{html_utils.paragraph(descInfoTxt)}')
+        """
+        descInfoTxt = f"{html_utils.paragraph(descInfoTxt)}"
         self.descWidget = widgets.formWidget(
-            QPlainTextEdit(), addInfoButton=True,
-            labelTextLeft='Description: ', parent=self, infoTxt=descInfoTxt
+            QPlainTextEdit(),
+            addInfoButton=True,
+            labelTextLeft="Description: ",
+            parent=self,
+            infoTxt=descInfoTxt,
         )
         if state is not None:
-            self.descWidget.widget.setPlainText(state['description'])
+            self.descWidget.widget.setPlainText(state["description"])
         layout.addFormWidget(self.descWidget, row=row)
 
         row += 1
-        optionsGroupBox = QGroupBox('Additional options')
+        optionsGroupBox = QGroupBox("Additional options")
         optionsLayout = QGridLayout()
         toggle = widgets.Toggle()
         toggle.setChecked(True)
         self.keepActiveToggle = toggle
-        toggleLabel = QLabel('Keep tool active after using it: ')
-        colorButtonLabel = QLabel('Symbol color: ')
+        toggleLabel = QLabel("Keep tool active after using it: ")
+        colorButtonLabel = QLabel("Symbol color: ")
         self.hideAnnotTooggle = widgets.Toggle()
         self.hideAnnotTooggle.setChecked(True)
-        hideAnnotTooggleLabel = QLabel(
-            'Hide annotation when button is not active: '
-        )
+        hideAnnotTooggleLabel = QLabel("Hide annotation when button is not active: ")
         self.colorButton = widgets.myColorButton(color=(255, 0, 0))
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
@@ -368,21 +447,19 @@ class customAnnotationDialog(QDialog):
 
         row += 1
         noteText = (
-            '<i>NOTE: you can change these options later with<br>'
-            '<b>RIGHT-click</b> on the associated left-side <b>toolbar button<b>.</i>'
+            "<i>NOTE: you can change these options later with<br>"
+            "<b>RIGHT-click</b> on the associated left-side <b>toolbar button<b>.</i>"
         )
-        noteLabel = QLabel(html_utils.paragraph(noteText, font_size='11px'))
+        noteLabel = QLabel(html_utils.paragraph(noteText, font_size="11px"))
         layout.addWidget(noteLabel, row, 1, 1, 3)
 
         buttonsLayout = QHBoxLayout()
 
-        self.loadSavedAnnotButton = widgets.OpenFilePushButton(
-            '  Load annotation...  '
-        )
+        self.loadSavedAnnotButton = widgets.OpenFilePushButton("  Load annotation...  ")
         if not savedCustomAnnot:
             self.loadSavedAnnotButton.setDisabled(True)
-        self.okButton = widgets.okPushButton('  Ok  ')
-        cancelButton = widgets.cancelPushButton('Cancel')
+        self.okButton = widgets.okPushButton("  Ok  ")
+        cancelButton = widgets.cancelPushButton("Cancel")
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -398,11 +475,11 @@ class customAnnotationDialog(QDialog):
 
         mainLayout = QVBoxLayout()
 
-        noteTxt = ("""
+        noteTxt = """
         Custom annotations will be <b>saved in the <code>acdc_output.csv</code></b><br>
         file as a column with the name you write in the field <b>Name</b><br>
-        """)
-        noteTxt = (f'{html_utils.paragraph(noteTxt, font_size="15px")}')
+        """
+        noteTxt = f"{html_utils.paragraph(noteTxt, font_size='15px')}"
         noteLabel = QLabel(noteTxt)
         noteLabel.setAlignment(Qt.AlignCenter)
         mainLayout.addWidget(noteLabel)
@@ -416,35 +493,30 @@ class customAnnotationDialog(QDialog):
 
     def checkName(self, text):
         if not text:
-            txt = 'Name cannot be empty'
+            txt = "Name cannot be empty"
             self.nameInfoLabel.setText(
-                html_utils.paragraph(
-                    txt, font_size='11px', font_color='red'
-                )
+                html_utils.paragraph(txt, font_size="11px", font_color="red")
             )
             return
         for name in self.internalNames:
             if name.find(text) != -1:
-                txt = (
-                    f'"{text}" cannot be part of the name, '
-                    'because <b>reserved<b>.'
-                )
+                txt = f'"{text}" cannot be part of the name, because <b>reserved<b>.'
                 self.nameInfoLabel.setText(
-                    html_utils.paragraph(
-                        txt, font_size='11px', font_color='red'
-                    )
+                    html_utils.paragraph(txt, font_size="11px", font_color="red")
                 )
                 break
         else:
-            self.nameInfoLabel.setText('')
+            self.nameInfoLabel.setText("")
 
     def loadSavedAnnot(self):
         items = list(self.savedCustomAnnot.keys())
         self.selectAnnotWin = widgets.QDialogListbox(
-            'Load annotation parameters',
-            'Select annotation to load:', items,
-            additionalButtons=('Delete selected annnotations', ),
-            parent=self, multiSelection=False
+            "Load annotation parameters",
+            "Select annotation to load:",
+            items,
+            additionalButtons=("Delete selected annnotations",),
+            parent=self,
+            multiSelection=False,
         )
         for button in self.selectAnnotWin._additionalButtons:
             button.disconnect()
@@ -459,31 +531,33 @@ class customAnnotationDialog(QDialog):
             return
         selectedName = self.selectAnnotWin.selectedItemsText[-1]
         selectedAnnot = self.savedCustomAnnot[selectedName]
-        self.typeCombobox.setCurrentText(selectedAnnot['type'])
-        self.nameWidget.widget.setText(selectedAnnot['name'])
-        self.symbolWidget.widget.setCurrentText(selectedAnnot['symbol'])
-        self.shortcutWidget.widget.setText(selectedAnnot['shortcut'])
-        self.descWidget.widget.setPlainText(selectedAnnot['description'])
-        self.colorButton.setColor(selectedAnnot['symbolColor'])
-        keySequence = widgets.macShortcutToWindows(selectedAnnot['shortcut'])
+        self.typeCombobox.setCurrentText(selectedAnnot["type"])
+        self.nameWidget.widget.setText(selectedAnnot["name"])
+        self.symbolWidget.widget.setCurrentText(selectedAnnot["symbol"])
+        self.shortcutWidget.widget.setText(selectedAnnot["shortcut"])
+        self.descWidget.widget.setPlainText(selectedAnnot["description"])
+        self.colorButton.setColor(selectedAnnot["symbolColor"])
+        keySequence = widgets.macShortcutToWindows(selectedAnnot["shortcut"])
         if keySequence:
-            self.shortcutWidget.widget.keySequence = widgets.KeySequenceFromText(keySequence)
+            self.shortcutWidget.widget.keySequence = widgets.KeySequenceFromText(
+                keySequence
+            )
 
     def warnNoItemsSelected(self):
         msg = widgets.myMessageBox(parent=self)
-        msg.setIcon(iconName='SP_MessageBoxWarning')
-        msg.setWindowTitle('Delete annotation?')
-        msg.addText('You didn\'t select any annotation!')
-        msg.addButton('  Ok  ')
+        msg.setIcon(iconName="SP_MessageBoxWarning")
+        msg.setWindowTitle("Delete annotation?")
+        msg.addText("You didn't select any annotation!")
+        msg.addButton("  Ok  ")
         msg.exec_()
 
     def deleteSelectedAnnot(self):
         msg = widgets.myMessageBox(parent=self)
-        msg.setIcon(iconName='SP_MessageBoxWarning')
-        msg.setWindowTitle('Delete annotation?')
-        msg.addText('Are you sure you want to delete the selected annotations?')
-        msg.addButton('Yes')
-        cancelButton = msg.addButton(' Cancel ')
+        msg.setIcon(iconName="SP_MessageBoxWarning")
+        msg.setWindowTitle("Delete annotation?")
+        msg.addText("Are you sure you want to delete the selected annotations?")
+        msg.addButton("Yes")
+        cancelButton = msg.addButton(" Cancel ")
         msg.exec_()
         if msg.clickedButton == cancelButton:
             return
@@ -499,37 +573,35 @@ class customAnnotationDialog(QDialog):
         color = self.colorButton.color()
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
-        self.colorButton.colorDialog.setWindowFlags(
-            Qt.Window | Qt.WindowStaysOnTopHint
-        )
+        self.colorButton.colorDialog.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         self.colorButton.colorDialog.open()
         w = self.width()
         left = self.pos().x()
         colorDialogTop = self.colorButton.colorDialog.pos().y()
-        self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
+        self.colorButton.colorDialog.move(w + left + 10, colorDialogTop)
 
     def warnType(self, currentText):
-        if currentText == 'Single time-point':
+        if currentText == "Single time-point":
             return
 
         self.typeCombobox.setCurrentIndex(0)
 
-        txt = ("""
+        txt = """
         Unfortunately, the only annotation type that is available so far is
         <b>Single time-point</b>.<br><br>
         We are working on implementing the other types too, so stay tuned!<br><br>
         Thank you for your patience!
-        """)
-        txt = (f'{html_utils.paragraph(txt)}')
+        """
+        txt = f"{html_utils.paragraph(txt)}"
         msg = widgets.myMessageBox()
-        msg.setIcon(iconName='SP_MessageBoxWarning')
-        msg.setWindowTitle(f'Feature not implemented yet')
+        msg.setIcon(iconName="SP_MessageBoxWarning")
+        msg.setWindowTitle(f"Feature not implemented yet")
         msg.addText(txt)
-        msg.addButton('   Ok   ')
+        msg.addButton("   Ok   ")
         msg.exec_()
 
     def showOptionsInfo(self):
-        info = ("""
+        info = """
         <b>Keep tool active after using it</b>: Choose whether the tool
         should stay active or not after annotating.<br><br>
         <b>Hide annotation when button is not active</b>: Choose whether
@@ -539,13 +611,13 @@ class customAnnotationDialog(QDialog):
         they are visible or not.</i><br><br>
         <b>Symbol color</b>: Choose color of the symbol that will be used
         to label annotated cell/object.
-        """)
-        info = (f'{html_utils.paragraph(info)}')
+        """
+        info = f"{html_utils.paragraph(info)}"
         msg = widgets.myMessageBox()
         msg.setIcon()
-        msg.setWindowTitle(f'Additional options info')
+        msg.setWindowTitle(f"Additional options info")
         msg.addText(info)
-        msg.addButton('   Ok   ')
+        msg.addButton("   Ok   ")
         msg.exec_()
 
     def ok_cb(self, checked=True):
@@ -564,26 +636,23 @@ class customAnnotationDialog(QDialog):
         listView.addItems(self.internalNames)
         # listView.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         msg.information(
-            self, 'Annotation Name info', self.nameInfoTxt,
-            widgets=listView
+            self, "Annotation Name info", self.nameInfoTxt, widgets=listView
         )
 
     def closeEvent(self, event):
-        if self.clickedButton is None or self.clickedButton==self.cancelButton:
+        if self.clickedButton is None or self.clickedButton == self.cancelButton:
             # cancel button or closed with 'x' button
             self.cancel = True
             return
 
-        if self.clickedButton==self.okButton and not self.nameWidget.widget.text():
+        if self.clickedButton == self.okButton and not self.nameWidget.widget.text():
             msg = QMessageBox()
-            msg.critical(
-                self, 'Empty name', 'The name cannot be empty!', msg.Ok
-            )
+            msg.critical(self, "Empty name", "The name cannot be empty!", msg.Ok)
             event.ignore()
             self.cancel = True
             return
 
-        if self.clickedButton==self.okButton and self.nameInfoLabel.text():
+        if self.clickedButton == self.okButton and self.nameInfoLabel.text():
             msg = widgets.myMessageBox()
             listView = widgets.listWidget(msg)
             listView.addItems(self.internalNames)
@@ -591,23 +660,22 @@ class customAnnotationDialog(QDialog):
             name = self.nameWidget.widget.text()
             txt = (
                 f'"{name}" cannot be part of the name, '
-                'because it is <b>reserved</b> for standard measurements '
-                'saved by Cell-ACDC.<br><br>'
-                'Internally reserved names:'
+                "because it is <b>reserved</b> for standard measurements "
+                "saved by Cell-ACDC.<br><br>"
+                "Internally reserved names:"
             )
             msg.critical(
-                self, 'Not a valid name', html_utils.paragraph(txt),
-                widgets=listView
+                self, "Not a valid name", html_utils.paragraph(txt), widgets=listView
             )
             event.ignore()
             self.cancel = True
             return
 
         self.toolTip = (
-            f'Name: {self.nameWidget.widget.text()}\n\n'
-            f'Type: {self.typeWidget.widget.currentText()}\n\n'
-            f'Usage: activate the button and RIGHT-CLICK on cell to annotate\n\n'
-            f'Description: {self.descWidget.widget.toPlainText()}\n\n'
+            f"Name: {self.nameWidget.widget.text()}\n\n"
+            f"Type: {self.typeWidget.widget.currentText()}\n\n"
+            f"Usage: activate the button and RIGHT-CLICK on cell to annotate\n\n"
+            f"Description: {self.descWidget.widget.toPlainText()}\n\n"
             f'SHORTCUT: "{self.shortcutWidget.widget.text()}"'
         )
 
@@ -615,14 +683,14 @@ class customAnnotationDialog(QDialog):
         self.symbol = re.findall(r"\'(.+)\'", symbol)[0]
 
         self.state = {
-            'type': self.typeWidget.widget.currentText(),
-            'name': self.nameWidget.widget.text(),
-            'symbol':  self.symbolWidget.widget.currentText(),
-            'shortcut': self.shortcutWidget.widget.text(),
-            'description': self.descWidget.widget.toPlainText(),
-            'keepActive': self.keepActiveToggle.isChecked(),
-            'isHideChecked': self.hideAnnotTooggle.isChecked(),
-            'symbolColor': self.colorButton.color()
+            "type": self.typeWidget.widget.currentText(),
+            "name": self.nameWidget.widget.text(),
+            "symbol": self.symbolWidget.widget.currentText(),
+            "shortcut": self.shortcutWidget.widget.text(),
+            "description": self.descWidget.widget.toPlainText(),
+            "keepActive": self.keepActiveToggle.isChecked(),
+            "isHideChecked": self.hideAnnotTooggle.isChecked(),
+            "symbolColor": self.colorButton.color(),
         }
 
         if self.loop is not None:
@@ -637,114 +705,120 @@ class customAnnotationDialog(QDialog):
             self.loop = QEventLoop()
             self.loop.exec_()
 
+
 class _PointsLayerAppearanceGroupbox(QGroupBox):
     def __init__(self, *args):
         super().__init__(*args)
 
-        self.setTitle('Points appearance')
+        self.setTitle("Points appearance")
 
         layout = widgets.FormLayout()
 
-        '----------------------------------------------------------------------' 
+        "----------------------------------------------------------------------"
         row = 0
-        symbolInfoTxt = ("""
+        symbolInfoTxt = """
             <b>Symbol</b> used to draw the points.
-        """)
-        symbolInfoTxt = (f'{html_utils.paragraph(symbolInfoTxt)}')
+        """
+        symbolInfoTxt = f"{html_utils.paragraph(symbolInfoTxt)}"
         self.symbolWidget = widgets.formWidget(
-            widgets.pgScatterSymbolsCombobox(), addInfoButton=True,
-            labelTextLeft='Symbol: ', parent=self, infoTxt=symbolInfoTxt,
-            stretchWidget=False
+            widgets.pgScatterSymbolsCombobox(),
+            addInfoButton=True,
+            labelTextLeft="Symbol: ",
+            parent=self,
+            infoTxt=symbolInfoTxt,
+            stretchWidget=False,
         )
         layout.addFormWidget(self.symbolWidget, row=row)
-        '----------------------------------------------------------------------' 
+        "----------------------------------------------------------------------"
 
-        '----------------------------------------------------------------------' 
+        "----------------------------------------------------------------------"
         row += 1
         self.colorButton = widgets.myColorButton(color=(255, 0, 0))
         self.colorWidget = widgets.formWidget(
-            self.colorButton, stretchWidget=True,
-            labelTextLeft='Colour: ', parent=self
+            self.colorButton, stretchWidget=True, labelTextLeft="Colour: ", parent=self
         )
         layout.addFormWidget(self.colorWidget, align=Qt.AlignLeft, row=row)
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
-        '----------------------------------------------------------------------' 
+        "----------------------------------------------------------------------"
 
-        '----------------------------------------------------------------------' 
+        "----------------------------------------------------------------------"
         row += 1
         self.sizeSpinBox = widgets.SpinBox()
         self.sizeSpinBox.setValue(5)
         self.sizeWidget = widgets.formWidget(
-            self.sizeSpinBox, stretchWidget=True,
-            labelTextLeft='Size: ', parent=self
+            self.sizeSpinBox, stretchWidget=True, labelTextLeft="Size: ", parent=self
         )
         layout.addFormWidget(self.sizeWidget, row=row)
-        '----------------------------------------------------------------------' 
-        
-        '----------------------------------------------------------------------' 
+        "----------------------------------------------------------------------"
+
+        "----------------------------------------------------------------------"
         row += 1
         zHeightTooltip = (
             'If "Z-depth" is greater than 1, the points will be annotated '
-            'in all the z-slices in the range `z - (Z-depth/2) < z < z + (Z-depth/2)`\n'
-            'where `z` is the center z-slice of the added point.'
+            "in all the z-slices in the range `z - (Z-depth/2) < z < z + (Z-depth/2)`\n"
+            "where `z` is the center z-slice of the added point."
         )
         self.zHeightSpinBox = widgets.OddSpinBox()
         self.zHeightSpinBox.setValue(1)
         self.zHeightSpinBox.setMinimum(1)
         self.zHeightWidget = widgets.formWidget(
-            self.zHeightSpinBox, stretchWidget=True,
-            labelTextLeft='Z-depth: ', parent=self,
-            toolTip=zHeightTooltip
+            self.zHeightSpinBox,
+            stretchWidget=True,
+            labelTextLeft="Z-depth: ",
+            parent=self,
+            toolTip=zHeightTooltip,
         )
         layout.addFormWidget(self.zHeightWidget, row=row)
-        '----------------------------------------------------------------------'
+        "----------------------------------------------------------------------"
 
-        '----------------------------------------------------------------------' 
+        "----------------------------------------------------------------------"
         row += 1
-        shortcutInfoTxt = ("""
+        shortcutInfoTxt = """
         <b>Shortcut</b> that you can use to <b>hide/show</b> points.
-        """)
-        shortcutInfoTxt = (f'{html_utils.paragraph(shortcutInfoTxt)}')
+        """
+        shortcutInfoTxt = f"{html_utils.paragraph(shortcutInfoTxt)}"
         self.shortcutWidget = widgets.formWidget(
-            widgets.ShortcutLineEdit(), addInfoButton=True,
-            labelTextLeft='Shortcut: ', parent=self, infoTxt=shortcutInfoTxt
+            widgets.ShortcutLineEdit(),
+            addInfoButton=True,
+            labelTextLeft="Shortcut: ",
+            parent=self,
+            infoTxt=shortcutInfoTxt,
         )
         layout.addFormWidget(self.shortcutWidget, row=row)
-        '----------------------------------------------------------------------'
+        "----------------------------------------------------------------------"
 
         self.setLayout(layout)
-    
+
     def restoreState(self, state):
-        self.shortcutWidget.widget.setText(state['shortcut'])
-        self.colorButton.setColor(state['color'])
-        self.symbolWidget.widget.setCurrentText(state['symbol'])
-        self.sizeSpinBox.setValue(state['pointSize'])
-        self.zHeightSpinBox.setValue(state['zHeight'])
-    
+        self.shortcutWidget.widget.setText(state["shortcut"])
+        self.colorButton.setColor(state["color"])
+        self.symbolWidget.widget.setCurrentText(state["symbol"])
+        self.sizeSpinBox.setValue(state["pointSize"])
+        self.zHeightSpinBox.setValue(state["zHeight"])
+
     def selectColor(self):
         color = self.colorButton.color()
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
-        self.colorButton.colorDialog.setWindowFlags(
-            Qt.Window | Qt.WindowStaysOnTopHint
-        )
-        self.colorButton.colorDialog.open()    
+        self.colorButton.colorDialog.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        self.colorButton.colorDialog.open()
         w = self.width()
         left = self.pos().x()
         colorDialogTop = self.colorButton.colorDialog.pos().y()
-        self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
-    
+        self.colorButton.colorDialog.move(w + left + 10, colorDialogTop)
+
     def state(self):
-        r,g,b,a = self.colorButton.color().getRgb()
+        r, g, b, a = self.colorButton.color().getRgb()
         _state = {
-            'symbol': self.symbolWidget.widget.currentText(), 
-            'color': (r,g,b),
-            'pointSize': self.sizeSpinBox.value(),
-            'zHeight': self.zHeightSpinBox.value(),
-            'shortcut': self.shortcutWidget.widget.text()
+            "symbol": self.symbolWidget.widget.currentText(),
+            "color": (r, g, b),
+            "pointSize": self.sizeSpinBox.value(),
+            "zHeight": self.zHeightSpinBox.value(),
+            "shortcut": self.shortcutWidget.widget.text(),
         }
         return _state
+
 
 class AddPointsLayerDialog(QBaseDialog):
     sigClosed = Signal()
@@ -753,17 +827,17 @@ class AddPointsLayerDialog(QBaseDialog):
     sigCheckClickEntryTableEndnameExists = Signal(str, bool)
 
     def __init__(
-            self, 
-            channelNames=None, 
-            imagesPath='', 
-            SizeT=1, 
-            hideCentroidsSection=False,
-            hideWeightedCentroidsSection=False,
-            hideFromTableSection=False,
-            hideManualEntrySection=False,
-            hideWithMouseClicksSection=False,
-            parent=None,
-        ):
+        self,
+        channelNames=None,
+        imagesPath="",
+        SizeT=1,
+        hideCentroidsSection=False,
+        hideWeightedCentroidsSection=False,
+        hideFromTableSection=False,
+        hideManualEntrySection=False,
+        hideWithMouseClicksSection=False,
+        parent=None,
+    ):
         self.cancel = True
         super().__init__(parent)
 
@@ -771,37 +845,38 @@ class AddPointsLayerDialog(QBaseDialog):
 
         self.imagesPath = imagesPath
 
-        self.setWindowTitle('Add points layer')
+        self.setWindowTitle("Add points layer")
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         mainLayout = QVBoxLayout()
 
         scrollArea = widgets.ScrollArea()
-        typeGroupbox = QGroupBox('Points to draw')
+        typeGroupbox = QGroupBox("Points to draw")
         typeLayout = QGridLayout()
         typeGroupbox.setLayout(typeLayout)
-        typeLayout.addItem(QSpacerItem(10,1), 0, 0)
+        typeLayout.addItem(QSpacerItem(10, 1), 0, 0)
         typeLayout.setColumnStretch(0, 0)
         typeLayout.setColumnStretch(2, 1)
         vSpacing = 15
-        
+
         row = 0
-        
+
         sections = (
-            ('addCentroidsSection', hideCentroidsSection),
-            ('addWeightedCentroidsSection', hideWeightedCentroidsSection),
-            ('addFromTableSection', hideFromTableSection),
-            ('addManualEntrySection', hideManualEntrySection),
-            ('addWithMouseClicksSection', hideWithMouseClicksSection)
+            ("addCentroidsSection", hideCentroidsSection),
+            ("addWeightedCentroidsSection", hideWeightedCentroidsSection),
+            ("addFromTableSection", hideFromTableSection),
+            ("addManualEntrySection", hideManualEntrySection),
+            ("addWithMouseClicksSection", hideWithMouseClicksSection),
         )
         radioButtonChecked = False
         for section, hideSection in sections:
             addFunc = getattr(self, section)
             row, sectionWidgets = addFunc(
-                row, typeLayout, 
-                imagesPath=imagesPath, 
+                row,
+                typeLayout,
+                imagesPath=imagesPath,
                 SizeT=SizeT,
-                channelNames=channelNames
+                channelNames=channelNames,
             )
             if not hideSection:
                 spacer = QSpacerItem(1, vSpacing)
@@ -811,7 +886,7 @@ class AddPointsLayerDialog(QBaseDialog):
                     sectionWidgets[0].setChecked(True)
                     radioButtonChecked = True
                 continue
-            
+
             for widget in sectionWidgets:
                 widget.setVisible(False)
 
@@ -839,34 +914,32 @@ class AddPointsLayerDialog(QBaseDialog):
         self.setLayout(mainLayout)
 
         self.setFont(font)
-    
+
     def addCentroidsSection(self, row, layout, **kwargs):
         sectionWidgets = []
-        self.centroidsRadiobutton = QRadioButton('Centroids')
+        self.centroidsRadiobutton = QRadioButton("Centroids")
         layout.addWidget(self.centroidsRadiobutton, row, 0, 1, 2)
         sectionWidgets.append(self.centroidsRadiobutton)
-        
+
         self.centroidsRadiobutton.setChecked(True)
         return row + 1, sectionWidgets
-    
-    def addWeightedCentroidsSection(
-            self, row, layout, channelNames=None, **kwargs
-        ):
+
+    def addWeightedCentroidsSection(self, row, layout, channelNames=None, **kwargs):
         if channelNames is None:
             channelNames = []
-            
+
         sectionWidgets = []
-        
-        self.weightedCentroidsRadiobutton = QRadioButton('Weighted centroids')
+
+        self.weightedCentroidsRadiobutton = QRadioButton("Weighted centroids")
         layout.addWidget(self.weightedCentroidsRadiobutton, row, 0, 1, 2)
         sectionWidgets.append(self.weightedCentroidsRadiobutton)
 
         row += 1
-        label = QLabel('Weighing channel: ')
+        label = QLabel("Weighing channel: ")
         label.setEnabled(False)
         layout.addWidget(label, row, 1)
         sectionWidgets.append(label)
-        
+
         self.channelNameForWeightedCentr = widgets.QCenteredComboBox()
         if channelNames:
             self.channelNameForWeightedCentr.addItems(channelNames)
@@ -878,22 +951,20 @@ class AddPointsLayerDialog(QBaseDialog):
         self.weightedCentroidsRadiobutton.toggled.connect(
             self.channelNameForWeightedCentr.setEnabled
         )
-        
+
         return row + 1, sectionWidgets
-    
-    def addFromTableSection(
-            self, row, layout, imagesPath='', SizeT=1, **kwargs
-        ):
+
+    def addFromTableSection(self, row, layout, imagesPath="", SizeT=1, **kwargs):
         sectionWidgets = []
-        
-        self.fromTableRadiobutton = QRadioButton('From table')
+
+        self.fromTableRadiobutton = QRadioButton("From table")
         layout.addWidget(self.fromTableRadiobutton, row, 0, 1, 2)
         sectionWidgets.append(self.fromTableRadiobutton)
         self.fromTableRadiobutton.widgets = []
-        
+
         row += 1
         self.tablePath = widgets.ElidingLineEdit()
-        self.tablePath.label = QLabel('Table file path: ')
+        self.tablePath.label = QLabel("Table file path: ")
         layout.addWidget(self.tablePath.label, row, 1)
         layout.addWidget(self.tablePath, row, 2)
         self.fromTableRadiobutton.widgets.append(self.tablePath)
@@ -901,7 +972,7 @@ class AddPointsLayerDialog(QBaseDialog):
         sectionWidgets.append(self.tablePath)
 
         browseButton = widgets.browseFileButton(
-            start_dir=imagesPath, ext={'Table': ['.csv', '.h5']}
+            start_dir=imagesPath, ext={"Table": [".csv", ".h5"]}
         )
         layout.addWidget(browseButton, row, 3)
         browseButton.sigPathSelected.connect(self.tablePathSelected)
@@ -911,8 +982,8 @@ class AddPointsLayerDialog(QBaseDialog):
 
         row += 1
         self.xColName = widgets.QCenteredComboBox()
-        self.xColName.addItem('None')
-        self.xColName.label = QLabel('X coord. column: ')
+        self.xColName.addItem("None")
+        self.xColName.label = QLabel("X coord. column: ")
         layout.addWidget(self.xColName.label, row, 1)
         layout.addWidget(self.xColName, row, 2)
         self.xColName.currentTextChanged.connect(self.checkColNameX)
@@ -922,8 +993,8 @@ class AddPointsLayerDialog(QBaseDialog):
 
         row += 1
         self.yColName = widgets.QCenteredComboBox()
-        self.yColName.addItem('None')
-        self.yColName.label = QLabel('Y coord. column: ')
+        self.yColName.addItem("None")
+        self.yColName.label = QLabel("Y coord. column: ")
         layout.addWidget(self.yColName.label, row, 1)
         layout.addWidget(self.yColName, row, 2)
         self.yColName.currentTextChanged.connect(self.checkColNameY)
@@ -933,8 +1004,8 @@ class AddPointsLayerDialog(QBaseDialog):
 
         row += 1
         self.zColName = widgets.QCenteredComboBox()
-        self.zColName.addItem('None')
-        self.zColName.label = QLabel('Z coord. column: ')
+        self.zColName.addItem("None")
+        self.zColName.label = QLabel("Z coord. column: ")
         layout.addWidget(self.zColName.label, row, 1)
         layout.addWidget(self.zColName, row, 2)
         self.zColName.currentTextChanged.connect(self.checkColNameZ)
@@ -944,8 +1015,8 @@ class AddPointsLayerDialog(QBaseDialog):
 
         row += 1
         self.tColName = widgets.QCenteredComboBox()
-        self.tColName.addItem('None')
-        self.tColName.label = QLabel('Frame index column: ')
+        self.tColName.addItem("None")
+        self.tColName.label = QLabel("Frame index column: ")
         layout.addWidget(self.tColName.label, row, 1)
         layout.addWidget(self.tColName, row, 2)
         self.fromTableRadiobutton.widgets.append(self.tColName)
@@ -954,26 +1025,26 @@ class AddPointsLayerDialog(QBaseDialog):
 
         if SizeT == 1:
             self.tColName.clear()
-            self.tColName.addItem('None')
+            self.tColName.addItem("None")
             self.tColName.label.setVisible(False)
             self.tColName.setVisible(False)
-        
+
         self.fromTableRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
         self.enableRadioButtonWidgets(False, sender=self.fromTableRadiobutton)
-        
+
         return row + 1, sectionWidgets
-    
+
     def addManualEntrySection(self, row, layout, SizeT=1, **kwargs):
         sectionWidgets = []
-        
-        self.manualEntryRadiobutton = QRadioButton('Manual entry')
+
+        self.manualEntryRadiobutton = QRadioButton("Manual entry")
         layout.addWidget(self.manualEntryRadiobutton, row, 0, 1, 2)
         self.manualEntryRadiobutton.widgets = []
         sectionWidgets.append(self.manualEntryRadiobutton)
-        
+
         row += 1
         self.manualXspinbox = widgets.NumericCommaLineEdit()
-        self.manualXspinbox.label = QLabel('X coords: ')
+        self.manualXspinbox.label = QLabel("X coords: ")
         layout.addWidget(self.manualXspinbox.label, row, 1)
         layout.addWidget(self.manualXspinbox, row, 2)
         self.manualEntryRadiobutton.widgets.append(self.manualXspinbox)
@@ -982,7 +1053,7 @@ class AddPointsLayerDialog(QBaseDialog):
 
         row += 1
         self.manualYspinbox = widgets.NumericCommaLineEdit()
-        self.manualYspinbox.label = QLabel('Y coords: ')
+        self.manualYspinbox.label = QLabel("Y coords: ")
         layout.addWidget(self.manualYspinbox.label, row, 1)
         layout.addWidget(self.manualYspinbox, row, 2)
         self.manualEntryRadiobutton.widgets.append(self.manualYspinbox)
@@ -991,7 +1062,7 @@ class AddPointsLayerDialog(QBaseDialog):
 
         row += 1
         self.manualZspinbox = widgets.NumericCommaLineEdit()
-        self.manualZspinbox.label = QLabel('Z coords: ')
+        self.manualZspinbox.label = QLabel("Z coords: ")
         layout.addWidget(self.manualZspinbox.label, row, 1)
         layout.addWidget(self.manualZspinbox, row, 2)
         self.manualEntryRadiobutton.widgets.append(self.manualZspinbox)
@@ -1000,7 +1071,7 @@ class AddPointsLayerDialog(QBaseDialog):
 
         row += 1
         self.manualTspinbox = widgets.NumericCommaLineEdit()
-        self.manualTspinbox.label = QLabel('Frame numbers: ')
+        self.manualTspinbox.label = QLabel("Frame numbers: ")
         layout.addWidget(self.manualTspinbox.label, row, 1)
         layout.addWidget(self.manualTspinbox, row, 2)
         self.manualEntryRadiobutton.widgets.append(self.manualTspinbox)
@@ -1010,68 +1081,62 @@ class AddPointsLayerDialog(QBaseDialog):
         if SizeT == 1:
             self.manualTspinbox.setVisible(False)
             self.manualTspinbox.label.setVisible(False)
-        
+
         self.manualEntryRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
         self.enableRadioButtonWidgets(False, sender=self.manualEntryRadiobutton)
-        
+
         return row + 1, sectionWidgets
-    
-    def addWithMouseClicksSection(self, row, layout, imagesPath='', **kwargs):
+
+    def addWithMouseClicksSection(self, row, layout, imagesPath="", **kwargs):
         sectionWidgets = []
-        
+
         self.clickEntryIsLoadedDf = None
-        
-        self.clickEntryRadiobutton = QRadioButton('Add points with mouse clicks')
-        layout.addWidget(self.clickEntryRadiobutton, row, 0, 1, 2) 
-        self.clickEntryRadiobutton.widgets = [] 
+
+        self.clickEntryRadiobutton = QRadioButton("Add points with mouse clicks")
+        layout.addWidget(self.clickEntryRadiobutton, row, 0, 1, 2)
+        self.clickEntryRadiobutton.widgets = []
         sectionWidgets.append(self.clickEntryRadiobutton)
-        
+
         row += 1
         self.snapToMaxToggle = widgets.Toggle()
-        self.snapToMaxToggle.label = QLabel('Snap to closest maximum: ')
+        self.snapToMaxToggle.label = QLabel("Snap to closest maximum: ")
         layout.addWidget(self.snapToMaxToggle.label, row, 1)
-        layout.addWidget(
-            self.snapToMaxToggle, row, 2, alignment=Qt.AlignCenter
-        )
+        layout.addWidget(self.snapToMaxToggle, row, 2, alignment=Qt.AlignCenter)
         sectionWidgets.append(self.snapToMaxToggle.label)
         sectionWidgets.append(self.snapToMaxToggle)
-        
+
         self.snapToMaxInfoButton = widgets.infoPushButton()
         layout.addWidget(self.snapToMaxInfoButton, row, 3)
         sectionWidgets.append(self.snapToMaxInfoButton)
-        
+
         self.snapToMaxInfoButton.clicked.connect(self.showSnapToMaxButton)
         self.clickEntryRadiobutton.widgets.append(self.snapToMaxToggle)
         self.clickEntryRadiobutton.widgets.append(self.snapToMaxInfoButton)
-        
+
         row += 1
         self.autoPilotToggle = widgets.Toggle()
-        self.autoPilotToggle.label = QLabel('Use auto-pilot: ')
+        self.autoPilotToggle.label = QLabel("Use auto-pilot: ")
         layout.addWidget(self.autoPilotToggle.label, row, 1)
-        layout.addWidget(
-            self.autoPilotToggle, row, 2, alignment=Qt.AlignCenter
-        )
+        layout.addWidget(self.autoPilotToggle, row, 2, alignment=Qt.AlignCenter)
         sectionWidgets.append(self.autoPilotToggle.label)
         sectionWidgets.append(self.autoPilotToggle)
         self.autoPilotInfoButton = widgets.infoPushButton()
         layout.addWidget(self.autoPilotInfoButton, row, 3)
         sectionWidgets.append(self.autoPilotInfoButton)
-        
+
         self.autoPilotInfoButton.clicked.connect(self.showAutoPilotInfo)
         self.clickEntryRadiobutton.widgets.append(self.autoPilotToggle)
         self.clickEntryRadiobutton.widgets.append(self.autoPilotInfoButton)
-        
+
         row += 1
         self.clickEntryTableEndname = widgets.alphaNumericLineEdit()
-        self.clickEntryTableEndname.setText('points_added_by_clicking')
+        self.clickEntryTableEndname.setText("points_added_by_clicking")
         self.clickEntryTableEndname.setAlignment(Qt.AlignCenter)
-        self.clickEntryTableEndname.label = QLabel('Table endname: ')
-        loadButton = widgets.browseFileButton(
-            start_dir=imagesPath, ext={'CSV': '.csv'}
-        )
+        self.clickEntryTableEndname.label = QLabel("Table endname: ")
+        loadButton = widgets.browseFileButton(start_dir=imagesPath, ext={"CSV": ".csv"})
         layout.addWidget(loadButton, row, 3)
         sectionWidgets.append(loadButton)
-        
+
         loadButton.sigPathSelected.connect(self.loadClickEntryTable)
         self.loadButton = loadButton
         self.clickEntryLoadTableButton = loadButton
@@ -1083,57 +1148,53 @@ class AddPointsLayerDialog(QBaseDialog):
         )
         sectionWidgets.append(self.clickEntryTableEndname)
         sectionWidgets.append(self.clickEntryTableEndname.label)
-        
+
         row += 1
         instructionsText = html_utils.paragraph(
-            '<br><i>Left-click</i> to annotate a new point with a new id.<br><br>'
-            '<i>Right-click</i> to annotate a point with the same id<br><br>'
-            '<i>Same click used to delete objects</i> to annotate<br>'
-            'a point with id = 0 (negative prompt)<br><br>'
-            '<i>Click</i> on point to delete it',
-            font_size='11px'
+            "<br><i>Left-click</i> to annotate a new point with a new id.<br><br>"
+            "<i>Right-click</i> to annotate a point with the same id<br><br>"
+            "<i>Same click used to delete objects</i> to annotate<br>"
+            "a point with id = 0 (negative prompt)<br><br>"
+            "<i>Click</i> on point to delete it",
+            font_size="11px",
         )
         self.instructionsLabel = QLabel(instructionsText)
-        self.instructionsLabel.label = QLabel('Instructions')
+        self.instructionsLabel.label = QLabel("Instructions")
         layout.addWidget(self.instructionsLabel.label, row, 1)
         layout.addWidget(self.instructionsLabel, row, 2)
         self.clickEntryRadiobutton.widgets.append(self.instructionsLabel)
         sectionWidgets.append(self.instructionsLabel)
         sectionWidgets.append(self.instructionsLabel.label)
-        
+
         self.clickEntryRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
         self.clickEntryRadiobutton.toggled.connect(
             self.emitCheckClickEntryTableEndnameExists
         )
         self.enableRadioButtonWidgets(False, sender=self.clickEntryRadiobutton)
-        
+
         return row + 1, sectionWidgets
-    
+
     def emitCheckClickEntryTableEndnameExists(self, *args, **kwargs):
         if not self.clickEntryRadiobutton.isChecked():
             return
         self.clickEntryIsLoadedDf = None
         tableEndName = self.clickEntryTableEndname.text()
-        self.sigCheckClickEntryTableEndnameExists.emit(
-            tableEndName, False
-        )
-    
+        self.sigCheckClickEntryTableEndnameExists.emit(tableEndName, False)
+
     def loadClickEntryTable(self, csv_path):
         self.clickEntryIsLoadedDf = None
-        posData = load.loadData(csv_path, 'points')
+        posData = load.loadData(csv_path, "points")
         posData.getBasenameAndChNames(qparent=self)
         basename = posData.basename
         filename = os.path.basename(csv_path)
         filename, ext = os.path.splitext(filename)
-        if not basename.endswith('_'):
-            basename = f'{basename}_'
-            
-        endname = filename[len(basename):]
+        if not basename.endswith("_"):
+            basename = f"{basename}_"
+
+        endname = filename[len(basename) :]
         self.clickEntryTableEndname.setText(endname)
-        self.sigCheckClickEntryTableEndnameExists.emit(
-            endname, True
-        )
-        
+        self.sigCheckClickEntryTableEndnameExists.emit(endname, True)
+
     def showAutoPilotInfo(self):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
@@ -1144,8 +1205,8 @@ class AddPointsLayerDialog(QBaseDialog):
             <code>Enter</code> key or go back to the<br>
             <b>previous object</b> by pressing <code>Backspace</code>.
         """)
-        msg.information(self, 'Auto-pilot info', txt)
-    
+        msg.information(self, "Auto-pilot info", txt)
+
     def showSnapToMaxButton(self):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
@@ -1154,11 +1215,11 @@ class AddPointsLayerDialog(QBaseDialog):
             to the closest maximum within the point footprint (defined in 
             the appearance settings).
         """)
-        msg.information(self, 'Snap to closest maximum info', txt)
-    
+        msg.information(self, "Snap to closest maximum info", txt)
+
     def closeEvent(self, event):
         self.sigClosed.emit()
-    
+
     def enableRadioButtonWidgets(self, enabled, sender=None):
         if sender is None:
             sender = self.sender()
@@ -1168,23 +1229,23 @@ class AddPointsLayerDialog(QBaseDialog):
                 widget.label.setDisabled(not enabled)
             except:
                 pass
-    
+
     def _readTable(self, path):
         return load.load_df_points_layer(path)
-    
+
     def tryAutoFillColNames(self, df):
-        if 'x' in df.columns:
-            self.xColName.setCurrentText('x')
-        
-        if 'y' in df.columns:
-            self.yColName.setCurrentText('y')
-        
-        if 'z' in df.columns:
-            self.zColName.setCurrentText('z')
-        
-        if 'frame_i' in df.columns:
-            self.tColName.setCurrentText('frame_i')
-    
+        if "x" in df.columns:
+            self.xColName.setCurrentText("x")
+
+        if "y" in df.columns:
+            self.yColName.setCurrentText("y")
+
+        if "z" in df.columns:
+            self.zColName.setCurrentText("z")
+
+        if "frame_i" in df.columns:
+            self.tColName.setCurrentText("frame_i")
+
     def tablePathSelected(self, path):
         self.tablePath.setText(path)
         try:
@@ -1200,23 +1261,22 @@ class AddPointsLayerDialog(QBaseDialog):
             traceback_format = traceback.format_exc()
             self.sigCriticalReadTable.emit(traceback_format)
             self.criticalReadTable(path, traceback_format)
-            self.tablePath.setText('')
-        
-    
+            self.tablePath.setText("")
+
     def criticalLenMismatchManualEntry(self):
         txt = html_utils.paragraph(f"""
             X coords and Y coords must have the <b>same length</b>.
         """)
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        msg.critical(self, f'X and Y have different length', txt)
-        
-    def criticalColNameIsNone(self, axis):        
+        msg.critical(self, f"X and Y have different length", txt)
+
+    def criticalColNameIsNone(self, axis):
         txt = html_utils.paragraph(f"""
             The "{axis.upper()} coord. column" <b>cannot be "None"</b>
         """)
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        msg.critical(self, f'{axis.upper()} coord. is None', txt)
-    
+        msg.critical(self, f"{axis.upper()} coord. is None", txt)
+
     def criticalReadTable(self, path, traceback_format):
         txt = html_utils.paragraph(f"""
             Something went <b>wrong when reading the table</b> from the 
@@ -1226,22 +1286,21 @@ class AddPointsLayerDialog(QBaseDialog):
         """)
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         detailsText = traceback_format
-        msg.critical(
-            self, 'Error when reading table', txt, detailsText=detailsText)
+        msg.critical(self, "Error when reading table", txt, detailsText=detailsText)
 
     def criticalEmptyTablePath(self):
         txt = html_utils.paragraph(f"""
             The table file path <b>cannot be empty</b>.
         """)
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        msg.critical(self, 'Table file path is empty', txt)   
+        msg.critical(self, "Table file path is empty", txt)
 
     def state(self):
-        _state = self.appearanceGroupbox.state() 
+        _state = self.appearanceGroupbox.state()
         return _state
 
     def _checkSelectedColName(self, colName, label):
-        labelsToCheck = ['z', 'y', 'x']
+        labelsToCheck = ["z", "y", "x"]
         labelsToCheck.remove(label)
         for labelToCheck in labelsToCheck:
             if colName.find(labelToCheck) != -1:
@@ -1253,86 +1312,86 @@ class AddPointsLayerDialog(QBaseDialog):
             Are you sure that the {label.upper()} coord. column should contain 
             the letter <code>{labelToCheck}<code>?
         """)
-        
+
         msg = widgets.myMessageBox(wrapText=False)
         _, noButton, yesButton = msg.warning(
-            self, 'Check column name', txt, 
-            buttonsTexts=('Cancel', 'No, let me correct it', 'Yes, I am')
+            self,
+            "Check column name",
+            txt,
+            buttonsTexts=("Cancel", "No, let me correct it", "Yes, I am"),
         )
         if msg.cancel or msg.clickedButton == noButton:
             return False
         return True
-    
+
     def checkColNameX(self, text):
-        accepted = self._checkSelectedColName(text, 'x')
-        if accepted: 
+        accepted = self._checkSelectedColName(text, "x")
+        if accepted:
             return
-        self.xColName.setCurrentText('None')
-    
+        self.xColName.setCurrentText("None")
+
     def checkColNameY(self, text):
-        accepted = self._checkSelectedColName(text, 'y')
-        if accepted: 
+        accepted = self._checkSelectedColName(text, "y")
+        if accepted:
             return
-        self.yColName.setCurrentText('None')
-    
+        self.yColName.setCurrentText("None")
+
     def checkColNameZ(self, text):
-        accepted = self._checkSelectedColName(text, 'z')
-        if accepted: 
+        accepted = self._checkSelectedColName(text, "z")
+        if accepted:
             return
-        self.zColName.setCurrentText('None')
+        self.zColName.setCurrentText("None")
 
     def ok_cb(self):
         self.pointsData = {}
         self.loadedDfInfo = None
         self.loadedDf = None
-        self.weighingChannel = ''
+        self.weighingChannel = ""
         if self.fromTableRadiobutton.isChecked():
             tablePath = self.tablePath.text()
             if not tablePath:
                 self.criticalEmptyTablePath()
                 return
-            
+
             try:
                 df = self._readTable(tablePath)
                 tColName = self.tColName.currentText()
                 xColName = self.xColName.currentText()
                 yColName = self.yColName.currentText()
                 zColName = self.zColName.currentText()
-                
+
                 self.loadedDfInfo = {
-                    'filepath': tablePath,
-                    't': tColName, 
-                    'z': zColName, 
-                    'y': yColName, 
-                    'x': xColName
+                    "filepath": tablePath,
+                    "t": tColName,
+                    "z": zColName,
+                    "y": yColName,
+                    "x": xColName,
                 }
-                
-                self._df_to_pointsData(
-                    df, tColName, zColName, yColName, xColName
-                )
-                    
+
+                self._df_to_pointsData(df, tColName, zColName, yColName, xColName)
+
             except Exception as e:
                 traceback_format = traceback.format_exc()
                 self.sigCriticalReadTable.emit(traceback_format)
                 self.criticalReadTable(tablePath, traceback_format)
                 return
-            
-            if self.xColName.currentText() == 'None':
-                self.criticalColNameIsNone('x')
+
+            if self.xColName.currentText() == "None":
+                self.criticalColNameIsNone("x")
                 return
-            if self.yColName.currentText() == 'None':
-                self.criticalColNameIsNone('y')
+            if self.yColName.currentText() == "None":
+                self.criticalColNameIsNone("y")
                 return
-            
+
             self.layerType = os.path.basename(self.tablePath.text())
             self.layerTypeIdx = 2
         elif self.centroidsRadiobutton.isChecked():
-            self.layerType = 'Centroids'
+            self.layerType = "Centroids"
             self.layerTypeIdx = 0
         elif self.weightedCentroidsRadiobutton.isChecked():
             channel = self.channelNameForWeightedCentr.currentText()
             self.weighingChannel = channel
-            self.layerType = f'Centroids weighted by channel {channel}'
+            self.layerType = f"Centroids weighted by channel {channel}"
             self.layerTypeIdx = 1
         elif self.manualEntryRadiobutton.isChecked():
             xx = self.manualXspinbox.values()
@@ -1341,32 +1400,32 @@ class AddPointsLayerDialog(QBaseDialog):
                 self.criticalLenMismatchManualEntry()
                 return
             zz = self.manualZspinbox.values()
-            tt = [t+1 for t in self.manualTspinbox.values()]
-            df = pd.DataFrame({'x': xx, 'y': yy, 'id': np.arange(1, len(xx)+1)})
+            tt = [t + 1 for t in self.manualTspinbox.values()]
+            df = pd.DataFrame({"x": xx, "y": yy, "id": np.arange(1, len(xx) + 1)})
             if tt:
-                df['t'] = tt
-                tCol = 't'
+                df["t"] = tt
+                tCol = "t"
             else:
-                tCol = 'None'
+                tCol = "None"
             if zz:
-                df['z'] = zz
-                zCol = 'z'
+                df["z"] = zz
+                zCol = "z"
             else:
-                zCol = 'None'
-            
-            self._df_to_pointsData(df, tCol, zCol, 'y', 'x')
-            
-            self.layerType = 'Manual entry'
+                zCol = "None"
+
+            self._df_to_pointsData(df, tCol, zCol, "y", "x")
+
+            self.layerType = "Manual entry"
             self.layerTypeIdx = 3
         elif self.clickEntryRadiobutton.isChecked():
-            self.layerType = ('Click to annotate point')
+            self.layerType = "Click to annotate point"
             self.description = (
-                'Left-click to add a point, click on point to delete it.\n'
-                'With auto-pilot you can navigate through object with Up/Down arrows.'
+                "Left-click to add a point, click on point to delete it.\n"
+                "With auto-pilot you can navigate through object with Up/Down arrows."
             )
             self.clickEntryTableEndnameText = self.clickEntryTableEndname.text()
             self.layerTypeIdx = 4
-        
+
         self.cancel = False
         symbol = self.appearanceGroupbox.symbolWidget.widget.currentText()
         self.symbol = re.findall(r"\'(.+)\'", symbol)[0]
@@ -1378,12 +1437,12 @@ class AddPointsLayerDialog(QBaseDialog):
         self.shortcut = shortcutWidget.widget.text()
         self.keySequence = shortcutWidget.widget.keySequence
         self.close()
-    
+
     def _df_to_pointsData(self, df, tColName, zColName, yColName, xColName):
         self.pointsData = load.loaded_df_to_points_data(
             df, tColName, zColName, yColName, xColName
         )
-    
+
     def showEvent(self, event) -> None:
         if self._parent is None:
             screen = self.screen()
@@ -1391,28 +1450,30 @@ class AddPointsLayerDialog(QBaseDialog):
             screen = self._parent.screen()
         screenWidth = screen.size().width()
         screenHeight = screen.size().height()
-        
+
         maxHeight = screenHeight - 100
-        
+
         buttonHeight = self.buttonsLayout.okButton.minimumSizeHint().height()
         height = (
             self.scrollArea.minimumHeightNoScrollbar()
             + self.appearanceGroupbox.sizeHint().height()
-            + buttonHeight + 70
+            + buttonHeight
+            + 70
         )
         width = self.scrollArea.minimumWidthNoScrollbar() + 50
-        
+
         height = min(height, maxHeight)
-        
+
         self.resize(width, height)
-        
+
         screenLeft = screen.geometry().x()
         screenTop = screen.geometry().y()
         w, h = self.width(), self.height()
-        left = int(screenLeft + screenWidth/2 - w/2)
-        top = int(screenTop + screenHeight/2 - h/2 - 20)
+        left = int(screenLeft + screenWidth / 2 - w / 2)
+        top = int(screenTop + screenHeight / 2 - h / 2 - 20)
 
         self.move(left, top)
+
 
 class EditPointsLayerAppearanceDialog(QBaseDialog):
     sigClosed = Signal()
@@ -1423,7 +1484,7 @@ class EditPointsLayerAppearanceDialog(QBaseDialog):
 
         self._parent = parent
 
-        self.setWindowTitle('Custom annotation')
+        self.setWindowTitle("Custom annotation")
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         mainLayout = QVBoxLayout()
@@ -1442,18 +1503,18 @@ class EditPointsLayerAppearanceDialog(QBaseDialog):
         self.setLayout(mainLayout)
 
         self.setFont(font)
-    
+
     def restoreState(self, state):
         self.appearanceGroupbox.restoreState(state)
-    
+
     def closeEvent(self, event):
         super().closeEvent(event)
         self.sigClosed.emit()
-    
+
     def state(self):
         _state = self.appearanceGroupbox.state()
         return _state
-    
+
     def ok_cb(self):
         self.cancel = False
         symbol = self.appearanceGroupbox.symbolWidget.widget.currentText()
@@ -1466,22 +1527,32 @@ class EditPointsLayerAppearanceDialog(QBaseDialog):
         self.keySequence = shortcutWidget.widget.keySequence
         self.close()
 
+
 class filenameDialog(QDialog):
     def __init__(
-            self, ext='.npz', basename='', title='Insert file name',
-            hintText='', existingNames='', parent=None, allowEmpty=True,
-            helpText='', defaultEntry='', resizeOnShow=True,
-            additionalButtons=None, addDoNotSaveButton=False
-        ):
+        self,
+        ext=".npz",
+        basename="",
+        title="Insert file name",
+        hintText="",
+        existingNames="",
+        parent=None,
+        allowEmpty=True,
+        helpText="",
+        defaultEntry="",
+        resizeOnShow=True,
+        additionalButtons=None,
+        addDoNotSaveButton=False,
+    ):
         self.cancel = True
         super().__init__(parent)
 
         self.resizeOnShow = resizeOnShow
 
-        if hintText.find('segmentation') != -1:
+        if hintText.find("segmentation") != -1:
             if helpText:
-                helpText = (f'{helpText}')
-            helpText_loc = ("""
+                helpText = f"{helpText}"
+            helpText_loc = """
                 With Cell-ACDC you can create as many segmentation files 
                 <b>as you want</b>.<br><br>
                 If you plan to create <b>only one file</b> then you can leave the 
@@ -1500,14 +1571,14 @@ class filenameDialog(QDialog):
                 Note that the <b>numerical features and annotations</b> will be saved 
                 in a CSV file ending with the same text as the segmentation file,<br> 
                 e.g., ending with <code>_acdc_output_phase_contr.csv</code>.
-            """)
-            helpText = (f'{helpText}{html_utils.paragraph(helpText_loc)}')
+            """
+            helpText = f"{helpText}{html_utils.paragraph(helpText_loc)}"
 
-        self.isSegmFile = basename.endswith('_segm')
+        self.isSegmFile = basename.endswith("_segm")
         self.allowEmpty = allowEmpty
         self.basename = basename
-        if ext and not ext.startswith('.'):
-            ext = f'.{ext}'
+        if ext and not ext.startswith("."):
+            ext = f".{ext}"
         self.ext = ext
 
         self.setWindowTitle(title)
@@ -1524,41 +1595,39 @@ class filenameDialog(QDialog):
         self.lineEdit = widgets.alphaNumericLineEdit(onlyWarn=True)
         self.lineEdit.setAlignment(Qt.AlignCenter)
         defaultEntry = to_alphanumeric(defaultEntry)
-        defaultEntry = defaultEntry.replace('.', '_')
+        defaultEntry = defaultEntry.replace(".", "_")
         self.lineEdit.setText(defaultEntry)
 
         extLabel = QLabel(ext)
 
         self.filenameLabel = QLabel()
-        self.filenameLabel.setText(f'{basename}{ext}')
+        self.filenameLabel.setText(f"{basename}{ext}")
 
         entryLayout.addWidget(basenameLabel, 0, 1)
         entryLayout.addWidget(self.lineEdit, 0, 2)
         entryLayout.addWidget(extLabel, 0, 3)
-        entryLayout.addWidget(
-            self.filenameLabel, 1, 1, 1, 3, alignment=Qt.AlignCenter
-        )
+        entryLayout.addWidget(self.filenameLabel, 1, 1, 1, 3, alignment=Qt.AlignCenter)
         # entryLayout.setColumnStretch(0, 1)
         entryLayout.setColumnStretch(2, 1)
-        
+
         self.warningInvalidCharLabel = QLabel()
 
-        okButton = widgets.okPushButton('Ok')
-        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton("Ok")
+        cancelButton = widgets.cancelPushButton("Cancel")
         self.okButton = okButton
 
         buttonsLayout.addStretch()
         buttonsLayout.addWidget(cancelButton)
 
         if addDoNotSaveButton:
-            doNotSaveButton = widgets.noPushButton('Do not save')
+            doNotSaveButton = widgets.noPushButton("Do not save")
             doNotSaveButton.clicked.connect(self.doNotSave_cb)
             buttonsLayout.addWidget(doNotSaveButton)
             self.doNotSave = False
 
         buttonsLayout.addSpacing(20)
         if helpText:
-            helpButton = widgets.helpPushButton('Help...')
+            helpButton = widgets.helpPushButton("Help...")
             helpButton.clicked.connect(partial(self.showHelp, helpText))
             buttonsLayout.addWidget(helpButton)
         if additionalButtons is not None:
@@ -1572,7 +1641,7 @@ class filenameDialog(QDialog):
         self.lineEdit.sigInvalidCharactersEntered.connect(
             self.warnInvalidCharactersEntered
         )
-        
+
         self.existingNames = []
         if existingNames:
             self.existingNames = existingNames
@@ -1592,43 +1661,43 @@ class filenameDialog(QDialog):
 
         if defaultEntry:
             self.updateFilename(defaultEntry)
-    
+
     def doNotSave_cb(self):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
-            'Are you sure you do <b>not</b> want to save the file?'
+            "Are you sure you do <b>not</b> want to save the file?"
         )
         noButton, yesButton = msg.warning(
-            self, 'Do not save?', txt, buttonsTexts=('No', 'Yes')
+            self, "Do not save?", txt, buttonsTexts=("No", "Yes")
         )
         if msg.clickedButton == noButton:
             return
-        
+
         self.doNotSave = True
         self.cancel = False
         self.close()
-        
+
     def showHelp(self, text):
         text = html_utils.paragraph(text)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(self, 'Filename help', text)
+        msg.information(self, "Filename help", text)
 
     def _text(self):
         return self.lineEdit.text()
-    
+
     def warnInvalidCharactersEntered(self, characters: set[str]):
-        statement = 'is <b>not a valid</b> character'
+        statement = "is <b>not a valid</b> character"
         if len(characters) > 1:
-            statement = 'are <b>not valid</b> characters'
-            
-        characters_str = ''.join(characters)
+            statement = "are <b>not valid</b> characters"
+
+        characters_str = "".join(characters)
         characters_str = html.escape(characters_str)
         warning_text = html_utils.span(f"""
             WARNING: "<code>{characters_str}</code>" {statement}.<br> 
         """)
         warning_text = (
-            f'{warning_text}'
-            '<i>Valid characters are letters, numbers, underscore, and dash.</i>'
+            f"{warning_text}"
+            "<i>Valid characters are letters, numbers, underscore, and dash.</i>"
         )
         self.warningInvalidCharLabel.setText(warning_text)
 
@@ -1643,89 +1712,88 @@ class filenameDialog(QDialog):
         filename = self.filenameLabel.text()
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
-            'The following file<br><br>'
-            f'<code>{filename}</code><br><br>'
-            'is <b>already existing</b>.<br><br>'
-            'Do you want to <b>overwrite</b> the existing file?'
+            "The following file<br><br>"
+            f"<code>{filename}</code><br><br>"
+            "is <b>already existing</b>.<br><br>"
+            "Do you want to <b>overwrite</b> the existing file?"
         )
         noButton, yesButton = msg.warning(
-            self, 'File name existing', txt, buttonsTexts=('No', 'Yes')
+            self, "File name existing", txt, buttonsTexts=("No", "Yes")
         )
         return msg.clickedButton == yesButton
 
     def updateFilename(self, text):
         if self.lineEdit.invalidCharacters():
             return
-        
+
         if not text:
-            self.filenameLabel.setText(f'{self.basename}{self.ext}')
+            self.filenameLabel.setText(f"{self.basename}{self.ext}")
         else:
-            text = text.replace(' ', '_')
+            text = text.replace(" ", "_")
             if self.basename:
-                if self.basename.endswith('_'):
-                    self.filenameLabel.setText(f'{self.basename}{text}{self.ext}')
+                if self.basename.endswith("_"):
+                    self.filenameLabel.setText(f"{self.basename}{text}{self.ext}")
                 else:
-                    self.filenameLabel.setText(f'{self.basename}_{text}{self.ext}')
+                    self.filenameLabel.setText(f"{self.basename}_{text}{self.ext}")
             else:
-                self.filenameLabel.setText(f'{text}{self.ext}')
-        
-        self.warningInvalidCharLabel.setText('')
+                self.filenameLabel.setText(f"{text}{self.ext}")
+
+        self.warningInvalidCharLabel.setText("")
 
     def checkEmptyText(self):
         if self.allowEmpty:
             return True
-        
+
         if self._text():
             return True
-       
+
         msg = widgets.myMessageBox()
         msg.critical(
-            self, 'Empty text', 
-            html_utils.paragraph('Text entry field <b>cannot be empty</b>')
+            self,
+            "Empty text",
+            html_utils.paragraph("Text entry field <b>cannot be empty</b>"),
         )
         return False
-    
+
     def checkSegmFilename(self):
         if not self.isSegmFile:
             return True
-        
-        if 'segm' not in self._text():
+
+        if "segm" not in self._text():
             return True
-       
+
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
-            'The text appended to the filename cannot contain the text '
+            "The text appended to the filename cannot contain the text "
             '"segm".<br><br>'
-            'Sorry, that would confuse me. Thank you for your patience!'
+            "Sorry, that would confuse me. Thank you for your patience!"
         )
-        msg.critical(
-            self, 'Cannot use "segm" in filename', txt
-        )
+        msg.critical(self, 'Cannot use "segm" in filename', txt)
         return False
-    
+
     def ok_cb(self, checked=True):
         if self.warningInvalidCharLabel.text():
             return
-        
+
         valid = self.checkExistingNames()
         if not valid:
             return
-        
+
         valid = self.checkEmptyText()
         if not valid:
             return
-        
+
         valid = self.checkSegmFilename()
         if not valid:
             return
-        
+
         self.filename = self.filenameLabel.text()
         self.entryText = self._text()
         self.cancel = False
         self.close()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
 
     def exec_(self):
@@ -1734,29 +1802,30 @@ class filenameDialog(QDialog):
     def show(self, block=False):
         super().show()
         if self.resizeOnShow:
-            self.lineEdit.setMinimumWidth(self.lineEdit.width()*2)
+            self.lineEdit.setMinimumWidth(self.lineEdit.width() * 2)
         self.okButton.setDefault(True)
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
-        
+
 
 class wandToleranceWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.slider = widgets.sliderWithSpinBox(title='Tolerance')
+        self.slider = widgets.sliderWithSpinBox(title="Tolerance")
         self.slider.setMaximum(255)
         self.slider._layout.setColumnStretch(2, 21)
 
         self.setLayout(self.slider.layout)
 
+
 class TrackSubCellObjectsDialog(QBaseDialog):
-    def __init__(self, basename='', parent=None):
+    def __init__(self, basename="", parent=None):
         self.cancel = True
         super().__init__(parent=parent)
-    
-        self.setWindowTitle('Track sub-cellular objects parameters')
+
+        self.setWindowTitle("Track sub-cellular objects parameters")
 
         mainLayout = QVBoxLayout()
         entriesLayout = widgets.FormLayout()
@@ -1768,19 +1837,21 @@ class TrackSubCellObjectsDialog(QBaseDialog):
             Original segmentation masks <br>are not modified</b>.
         """)
         options = (
-            'Delete sub-cellular objects that do not belong to any cell',
-            'Delete cells that do not have any sub-cellular object',
-            'Delete both cells and sub-cellular objects without an assignment',
-            'Only track the objects and keep all the non-tracked objects'
+            "Delete sub-cellular objects that do not belong to any cell",
+            "Delete cells that do not have any sub-cellular object",
+            "Delete both cells and sub-cellular objects without an assignment",
+            "Only track the objects and keep all the non-tracked objects",
         )
         combobox = widgets.QCenteredComboBox()
         combobox.addItems(options)
         self.optionsWidget = widgets.formWidget(
-            combobox, addInfoButton=True, labelTextLeft='Tracking mode: ',
-            infoTxt=infoTxt
+            combobox,
+            addInfoButton=True,
+            labelTextLeft="Tracking mode: ",
+            infoTxt=infoTxt,
         )
         entriesLayout.addFormWidget(self.optionsWidget, row=row)
-        
+
         row += 1
         infoTxt = html_utils.paragraph("""
             Re-label sub-cellular objects before assigning them to the cell.<br><br> 
@@ -1789,9 +1860,11 @@ class TrackSubCellObjectsDialog(QBaseDialog):
             (i.e., semantic segmentation).
         """)
         self.relabelSubObjLab = widgets.formWidget(
-            widgets.Toggle(), addInfoButton=True, stretchWidget=False,
-            labelTextLeft='Re-label sub-cellular objects before tracking: ', 
-            infoTxt=infoTxt
+            widgets.Toggle(),
+            addInfoButton=True,
+            stretchWidget=False,
+            labelTextLeft="Re-label sub-cellular objects before tracking: ",
+            infoTxt=infoTxt,
         )
         entriesLayout.addFormWidget(self.relabelSubObjLab, row=row)
 
@@ -1805,8 +1878,10 @@ class TrackSubCellObjectsDialog(QBaseDialog):
         spinbox.setValue(0.5)
         spinbox.setSingleStep(0.1)
         self.IoAwidget = widgets.formWidget(
-            spinbox, addInfoButton=True, labelTextLeft='IoA threshold: ',
-            infoTxt=IoAtext
+            spinbox,
+            addInfoButton=True,
+            labelTextLeft="IoA threshold: ",
+            infoTxt=IoAtext,
         )
         entriesLayout.addFormWidget(self.IoAwidget, row=row)
 
@@ -1818,8 +1893,11 @@ class TrackSubCellObjectsDialog(QBaseDialog):
             only from the cytoplasm (i.e., the sub-cellular object is the nucleus).
         """)
         self.createThirdSegmWidget = widgets.formWidget(
-            widgets.Toggle(), addInfoButton=True, stretchWidget=False,
-            labelTextLeft='Create third segmentation: ', infoTxt=infoTxt
+            widgets.Toggle(),
+            addInfoButton=True,
+            stretchWidget=False,
+            labelTextLeft="Create third segmentation: ",
+            infoTxt=infoTxt,
         )
         entriesLayout.addFormWidget(self.createThirdSegmWidget, row=row)
 
@@ -1832,19 +1910,18 @@ class TrackSubCellObjectsDialog(QBaseDialog):
             only from the cytoplasm (i.e., the sub-cellular object is the nucleus).
         """)
         lineEdit = widgets.alphaNumericLineEdit()
-        lineEdit.setText('difference')
+        lineEdit.setText("difference")
         lineEdit.setAlignment(Qt.AlignCenter)
         self.appendTextWidget = widgets.formWidget(
-            lineEdit, addInfoButton=True, labelTextLeft='Text to append: ', 
-            infoTxt=infoTxt
+            lineEdit,
+            addInfoButton=True,
+            labelTextLeft="Text to append: ",
+            infoTxt=infoTxt,
         )
         entriesLayout.addFormWidget(self.appendTextWidget, row=row)
         self.appendTextWidget.setDisabled(True)
-        
 
-        self.createThirdSegmWidget.widget.toggled.connect(
-            self.createThirdSegmToggled
-        )
+        self.createThirdSegmWidget.widget.toggled.connect(self.createThirdSegmToggled)
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
@@ -1857,30 +1934,31 @@ class TrackSubCellObjectsDialog(QBaseDialog):
 
         self.setLayout(mainLayout)
         self.setFont(font)
-    
+
     def createThirdSegmToggled(self, checked):
         self.appendTextWidget.setDisabled(not checked)
-    
+
     def ok_cb(self):
         self.cancel = False
         if self.createThirdSegmWidget.widget.isChecked():
             if not self.appendTextWidget.widget.text():
                 msg = widgets.myMessageBox(showCentered=False, wrapText=False)
                 txt = html_utils.paragraph(
-                    'When creating the third segmentation file, '
-                    '<b>the name to append cannot be empty!</b>'
+                    "When creating the third segmentation file, "
+                    "<b>the name to append cannot be empty!</b>"
                 )
-                msg.critical(self, 'Empty name', txt)
+                msg.critical(self, "Empty name", txt)
                 return
-                
+
         self.trackSubCellObjParams = {
-            'how': self.optionsWidget.widget.currentText(),
-            'IoA': self.IoAwidget.widget.value(),
-            'createThirdSegm': self.createThirdSegmWidget.widget.isChecked(),
-            'relabelSubObjLab': self.relabelSubObjLab.widget.isChecked(),
-            'thirdSegmAppendedText': self.appendTextWidget.widget.text()
+            "how": self.optionsWidget.widget.currentText(),
+            "IoA": self.IoAwidget.widget.value(),
+            "createThirdSegm": self.createThirdSegmWidget.widget.isChecked(),
+            "relabelSubObjLab": self.relabelSubObjLab.widget.isChecked(),
+            "thirdSegmAppendedText": self.appendTextWidget.widget.text(),
         }
         self.close()
+
 
 class SetMeasurementsDialog(QBaseDialog):
     sigClosed = Signal()
@@ -1888,14 +1966,24 @@ class SetMeasurementsDialog(QBaseDialog):
     sigRestart = Signal()
 
     def __init__(
-            self, loadedChNames, notLoadedChNames, isZstack, isSegm3D,
-            favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
-            acdc_df_path=None, posData=None, addCombineMetricCallback=None,
-            allPosData=None, is_concat=False, isSingleSelection=False,
-            state=None
-        ):
+        self,
+        loadedChNames,
+        notLoadedChNames,
+        isZstack,
+        isSegm3D,
+        favourite_funcs=None,
+        parent=None,
+        allPos_acdc_df_cols=None,
+        acdc_df_path=None,
+        posData=None,
+        addCombineMetricCallback=None,
+        allPosData=None,
+        is_concat=False,
+        isSingleSelection=False,
+        state=None,
+    ):
         super().__init__(parent=parent)
-        
+
         self.checkBoxedGroup = QButtonGroup()
         self.checkBoxedGroup.setExclusive(isSingleSelection)
 
@@ -1911,27 +1999,27 @@ class SetMeasurementsDialog(QBaseDialog):
         self.allPosData = allPosData
         self.doNotWarn = False
 
-        self.setWindowTitle('Set measurements')
+        self.setWindowTitle("Set measurements")
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         layout = QVBoxLayout()
-        
+
         searchLayout = QHBoxLayout()
-        
+
         searchLineEdit = widgets.SearchLineEdit()
         searchLayout.addStretch(5)
         searchLayout.addWidget(searchLineEdit)
         searchLayout.setStretch(1, 3)
-        
+
         mainScrollArea = widgets.ScrollArea()
         mainScrollAreaWidget = QWidget()
         mainScrollArea.setWidget(mainScrollAreaWidget)
-        
+
         groupsLayout = QGridLayout()
         self.groupsLayout = groupsLayout
-        
+
         mainScrollAreaWidget.setLayout(groupsLayout)
-        
+
         buttonsLayout = QHBoxLayout()
 
         self.chNameGroupboxes = []
@@ -1940,8 +2028,12 @@ class SetMeasurementsDialog(QBaseDialog):
         col = 0
         for col, chName in enumerate(loadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
-                isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
-                posData=posData, is_concat=is_concat
+                isZstack,
+                chName,
+                isSegm3D,
+                favourite_funcs=favourite_funcs,
+                posData=posData,
+                is_concat=is_concat,
             )
             channelGBox.chName = chName
             groupsLayout.addWidget(channelGBox, 0, col, 3, 1)
@@ -1951,11 +2043,15 @@ class SetMeasurementsDialog(QBaseDialog):
             groupsLayout.setColumnStretch(col, 5)
             self.all_metrics.extend([c.text() for c in channelGBox.checkBoxes])
 
-        current_col = col+1
+        current_col = col + 1
         for col, chName in enumerate(notLoadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
-                isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
-                posData=posData, is_concat=is_concat
+                isZstack,
+                chName,
+                isSegm3D,
+                favourite_funcs=favourite_funcs,
+                posData=posData,
+                is_concat=is_concat,
             )
             channelGBox.setChecked(False)
             channelGBox.chName = chName
@@ -1972,21 +2068,22 @@ class SetMeasurementsDialog(QBaseDialog):
         if posData is None:
             isTimelapse = False
         else:
-            isTimelapse = posData.SizeT>1
-        size_metrics_desc = measurements.get_size_metrics_desc(
-            isSegm3D, isTimelapse
-        )
+            isTimelapse = posData.SizeT > 1
+        size_metrics_desc = measurements.get_size_metrics_desc(isSegm3D, isTimelapse)
         if not isSegm3D:
             size_metrics_desc = {
-                key:val for key,val in size_metrics_desc.items()
-                if not key.endswith('_3D')
+                key: val
+                for key, val in size_metrics_desc.items()
+                if not key.endswith("_3D")
             }
-        
+
         row = 0
         sizeMetricsQGBox = widgets._metricsQGBox(
-            size_metrics_desc, 'Physical measurements',
-            favourite_funcs=favourite_funcs, isZstack=isZstack,
-            addCalcForEachZsliceToggle=isSegm3D
+            size_metrics_desc,
+            "Physical measurements",
+            favourite_funcs=favourite_funcs,
+            isZstack=isZstack,
+            addCalcForEachZsliceToggle=isSegm3D,
         )
         self.all_metrics.extend([c.text() for c in sizeMetricsQGBox.checkBoxes])
         self.sizeMetricsQGBox = sizeMetricsQGBox
@@ -2002,8 +2099,10 @@ class SetMeasurementsDialog(QBaseDialog):
         )
         rp_desc = props_info_txt_mapper
         regionPropsQGBox = widgets._metricsQGBox(
-            rp_desc, 'Morphological properties',
-            favourite_funcs=favourite_funcs, isZstack=isZstack
+            rp_desc,
+            "Morphological properties",
+            favourite_funcs=favourite_funcs,
+            isZstack=isZstack,
         )
         self.regionPropsQGBox = regionPropsQGBox
         for rpCheckbox in regionPropsQGBox.checkBoxes:
@@ -2012,23 +2111,23 @@ class SetMeasurementsDialog(QBaseDialog):
         groupsLayout.setRowStretch(1, 2)
         self.all_metrics.extend([c.text() for c in regionPropsQGBox.checkBoxes])
         row += 1
-        
+
         # Custom metrics that are channel indipendent
         self.chIndipendCustomeMetricsQGBox = None
         out = measurements.ch_indipend_custom_metrics_desc(
-            isZstack, isSegm3D=isSegm3D,
+            isZstack,
+            isSegm3D=isSegm3D,
         )
         ch_indipend_custom_metrics_desc = out
         if ch_indipend_custom_metrics_desc:
             self.chIndipendCustomeMetricsQGBox = widgets._metricsQGBox(
-                ch_indipend_custom_metrics_desc, 
-                'Channel indipendent custom measurements',
-                favourite_funcs=favourite_funcs, isZstack=isZstack,
-                parent=self
+                ch_indipend_custom_metrics_desc,
+                "Channel indipendent custom measurements",
+                favourite_funcs=favourite_funcs,
+                isZstack=isZstack,
+                parent=self,
             )
-            groupsLayout.addWidget(
-                self.chIndipendCustomeMetricsQGBox, row, current_col
-            )
+            groupsLayout.addWidget(self.chIndipendCustomeMetricsQGBox, row, current_col)
             groupsLayout.setRowStretch(1, 1)
             row += 1
 
@@ -2038,9 +2137,12 @@ class SetMeasurementsDialog(QBaseDialog):
         self.mixedChannelsCombineMetricsQGBox = None
         if desc:
             self.mixedChannelsCombineMetricsQGBox = widgets._metricsQGBox(
-                desc, 'Mixed channels combined measurements',
-                favourite_funcs=favourite_funcs, isZstack=isZstack,
-                equations=equations, addDelButton=True
+                desc,
+                "Mixed channels combined measurements",
+                favourite_funcs=favourite_funcs,
+                isZstack=isZstack,
+                equations=equations,
+                addDelButton=True,
             )
             self.mixedChannelsCombineMetricsQGBox.sigDelClicked.connect(
                 self.delMixedChannelCombineMetric
@@ -2060,54 +2162,46 @@ class SetMeasurementsDialog(QBaseDialog):
                     )
             else:
                 for combCheckbox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
-                    combCheckbox.toggled.connect(
-                        self.mixedChannelsMetricToggled
-                    )
+                    combCheckbox.toggled.connect(self.mixedChannelsMetricToggled)
             row += 1
 
         self.last_row = row
         self.last_col = current_col
 
-        okButton = widgets.okPushButton('   Ok   ')
-        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton("   Ok   ")
+        cancelButton = widgets.cancelPushButton("Cancel")
         if addCombineMetricCallback is not None:
             addCombineMetricButton = widgets.addPushButton(
-                'Add combined measurement...'
+                "Add combined measurement..."
             )
             addCombineMetricButton.clicked.connect(addCombineMetricCallback)
         self.okButton = okButton
 
-        loadLastSelButton = widgets.reloadPushButton('Load last selection...')
-        self.deselectAllButton = QPushButton('Deselect all')
-        self.deselectAllButton.setIcon(QIcon(':deselect_all.svg'))
+        loadLastSelButton = widgets.reloadPushButton("Load last selection...")
+        self.deselectAllButton = QPushButton("Deselect all")
+        self.deselectAllButton.setIcon(QIcon(":deselect_all.svg"))
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(self.deselectAllButton)
         buttonsLayout.addSpacing(20)
-        
+
         if addCombineMetricCallback is not None:
             buttonsLayout.addWidget(addCombineMetricButton)
             buttonsLayout.addSpacing(20)
-        
-        saveCurrentSelectionButton = widgets.savePushButton(
-            'Save current selection...'
-        )
-        saveCurrentSelectionButton.clicked.connect(
-            self.saveCurrentSelectionClicked
-        )
-        
+
+        saveCurrentSelectionButton = widgets.savePushButton("Save current selection...")
+        saveCurrentSelectionButton.clicked.connect(self.saveCurrentSelectionClicked)
+
         buttonsLayout.addWidget(saveCurrentSelectionButton)
-        
-        loadSavedSelectionButton = widgets.OpenFilePushButton(
-            'Load saved selection...'
-        )
+
+        loadSavedSelectionButton = widgets.OpenFilePushButton("Load saved selection...")
         loadSavedSelectionButton.clicked.connect(self.loadSavedSelectionClicked)
         buttonsLayout.addWidget(loadSavedSelectionButton)
-        
+
         buttonsLayout.addWidget(loadLastSelButton)
-        
+
         buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(okButton)
 
@@ -2120,7 +2214,7 @@ class SetMeasurementsDialog(QBaseDialog):
         layout.addLayout(buttonsLayout)
 
         self.setLayout(layout)
-        
+
         if state is not None:
             self.setState(state)
 
@@ -2129,197 +2223,193 @@ class SetMeasurementsDialog(QBaseDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         loadLastSelButton.clicked.connect(self.loadLastSelection)
-        
+
         self.addCheckboxesToGroup()
 
         for channelGBox in self.chNameGroupboxes:
             for checkbox in channelGBox.checkBoxes:
                 self.channelCheckboxToggled(checkbox)
-    
+
     def allMetricsDict(self):
         all_metrics = {
-            'standard': {}, 
-            'regionprop': [],
-            'size': [],
-            'mixed_channels': []
+            "standard": {},
+            "regionprop": [],
+            "size": [],
+            "mixed_channels": [],
         }
         for chNameGroupbox in self.chNameGroupboxes:
             channel_name = chNameGroupbox.chName
             for checkBox in chNameGroupbox.checkBoxes:
-                if channel_name not in all_metrics['standard']:
-                    all_metrics['standard'][channel_name] = []
-                all_metrics['standard'][channel_name].append(checkBox.text())
-        
+                if channel_name not in all_metrics["standard"]:
+                    all_metrics["standard"][channel_name] = []
+                all_metrics["standard"][channel_name].append(checkBox.text())
+
         for checkBox in self.regionPropsQGBox.checkBoxes:
-            all_metrics['regionprop'].append(checkBox.text())
-        
+            all_metrics["regionprop"].append(checkBox.text())
+
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
-            all_metrics['size'].append(checkBox.text())
-        
+            all_metrics["size"].append(checkBox.text())
+
         if self.chIndipendCustomeMetricsQGBox is not None:
             checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
             for checkBox in checkBoxes:
-                all_metrics['ch_indipend_custom_metric'].append(checkBox.text())
-        
+                all_metrics["ch_indipend_custom_metric"].append(checkBox.text())
+
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
-        
+
         checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
         for checkBox in checkBoxes:
-            all_metrics['mixed_channels'].append(checkBox.text())
-        
+            all_metrics["mixed_channels"].append(checkBox.text())
+
         return all_metrics
-    
+
     def searchAndHighlight(self, text):
         for chNameGroupbox in self.chNameGroupboxes:
             for groupbox in chNameGroupbox.groupboxes:
                 groupbox.highlightCheckboxesFromSearchText(text)
-        
+
         self.regionPropsQGBox.highlightCheckboxesFromSearchText(text)
         self.sizeMetricsQGBox.highlightCheckboxesFromSearchText(text)
-        
+
         if self.chIndipendCustomeMetricsQGBox is not None:
-            self.chIndipendCustomeMetricsQGBox.highlightCheckboxesFromSearchText(
-                text
-            )
-        
+            self.chIndipendCustomeMetricsQGBox.highlightCheckboxesFromSearchText(text)
+
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
-        
-        self.mixedChannelsCombineMetricsQGBox.highlightCheckboxesFromSearchText(
-            text
-        )
-    
+
+        self.mixedChannelsCombineMetricsQGBox.highlightCheckboxesFromSearchText(text)
+
     def selectedMetricNameAndGroup(self):
         for chNameGroupbox in self.chNameGroupboxes:
             for checkBox in chNameGroupbox.checkBoxes:
                 if checkBox.isChecked():
-                    return checkBox.text(), {'standard': chNameGroupbox.chName}
-        
+                    return checkBox.text(), {"standard": chNameGroupbox.chName}
+
         for checkBox in self.regionPropsQGBox.checkBoxes:
             if checkBox.isChecked():
-                return checkBox.text(), 'regionprop'
-        
+                return checkBox.text(), "regionprop"
+
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             if checkBox.isChecked():
-                return checkBox.text(), 'size'
-        
+                return checkBox.text(), "size"
+
         if self.chIndipendCustomeMetricsQGBox is not None:
             checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
             for checkBox in checkBoxes:
                 if checkBox.isChecked():
-                    return checkBox.text(), 'ch_indipend_custom_metric'
-        
+                    return checkBox.text(), "ch_indipend_custom_metric"
+
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
-        
+
         checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
         for checkBox in checkBoxes:
             if checkBox.isChecked():
-                return checkBox.text(), 'mixed_channels'
-    
+                return checkBox.text(), "mixed_channels"
+
     def selectedMetricGroup(self):
         for chNameGroupbox in self.chNameGroupboxes:
-             for checkBox in chNameGroupbox.checkBoxes:
+            for checkBox in chNameGroupbox.checkBoxes:
                 if checkBox.isChecked():
                     return checkBox.text()
-        
+
         for checkBox in self.regionPropsQGBox.checkBoxes:
             if checkBox.isChecked():
                 return checkBox.text()
-        
+
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             if checkBox.isChecked():
                 return checkBox.text()
-        
+
         if self.chIndipendCustomeMetricsQGBox is not None:
             checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
             for checkBox in checkBoxes:
                 if checkBox.isChecked():
                     return checkBox.text()
-        
+
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
-        
+
         checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
         for checkBox in checkBoxes:
             if checkBox.isChecked():
                 return checkBox.text()
-    
+
     def addCheckboxesToGroup(self):
         for chNameGroupbox in self.chNameGroupboxes:
             for checkBox in chNameGroupbox.checkBoxes:
                 self.checkBoxedGroup.addButton(checkBox)
-        
+
         for checkBox in self.regionPropsQGBox.checkBoxes:
             self.checkBoxedGroup.addButton(checkBox)
-        
+
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             self.checkBoxedGroup.addButton(checkBox)
-        
+
         if self.chIndipendCustomeMetricsQGBox is not None:
             checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
             for checkBox in checkBoxes:
                 self.checkBoxedGroup.addButton(checkBox)
-        
+
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
-        
+
         checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
         for checkBox in checkBoxes:
             self.checkBoxedGroup.addButton(checkBox)
-            
+
     def channelCheckboxToggled(self, checkbox):
-        # Make sure to automatically check the requested cell_vol metric for 
-        # concentration metrics        
-        if checkbox.text().find('concentration_') == -1:
+        # Make sure to automatically check the requested cell_vol metric for
+        # concentration metrics
+        if checkbox.text().find("concentration_") == -1:
             return
-        
+
         if self.is_concat:
-            # When this dialogue is used in concatenate pos utility we do not 
+            # When this dialogue is used in concatenate pos utility we do not
             # need to check that certain metrics are present
             return
-        
-        pattern = r'.+_from_vol_([a-z]+)(_3D)?(_?[A-Za-z0-9]*)'
-        repl = r'cell_vol_\1\2'
+
+        pattern = r".+_from_vol_([a-z]+)(_3D)?(_?[A-Za-z0-9]*)"
+        repl = r"cell_vol_\1\2"
         cell_vol_metric_name = re.sub(pattern, repl, checkbox.text())
         for sizeCheckbox in self.sizeMetricsQGBox.checkBoxes:
             if sizeCheckbox.text() == cell_vol_metric_name:
                 break
         else:
             # Make sure to not check for similarly named custom metrics
-            return 
-        
+            return
+
         if checkbox.isChecked():
             sizeCheckbox.setChecked(True)
             sizeCheckbox.isRequired = True
         else:
-            # Do not enable cell vol checkbox is any of the other 
+            # Do not enable cell vol checkbox is any of the other
             # concentration metrics requiring it is checked
             unit = cell_vol_metric_name[9:]
-            is3D = unit.endswith('3D')
+            is3D = unit.endswith("3D")
             for channelGBox in self.chNameGroupboxes:
                 if not channelGBox.isChecked():
                     continue
-                for _checkbox in channelGBox.checkBoxes: 
-                    if _checkbox.text().find(f'_from_vol_{unit}') == -1: 
+                for _checkbox in channelGBox.checkBoxes:
+                    if _checkbox.text().find(f"_from_vol_{unit}") == -1:
                         continue
-                    if not is3D and _checkbox.text().find(f'{unit}_3D') != -1:
-                        # Metric is 3D but the cell_vol is not 
+                    if not is3D and _checkbox.text().find(f"{unit}_3D") != -1:
+                        # Metric is 3D but the cell_vol is not
                         continue
                     if _checkbox.isChecked():
                         return
             sizeCheckbox.isRequired = False
-    
+
     def rpMetricToggled(self, checked):
         pass
-    
+
     def mixedChannelsMetricToggled(self, checked):
         pass
-    
+
     def sizeMetricToggled(self, checked):
         """Method called when a checkbox of a size metric is toggled.
-        Check if the size value is required and explain why it cannot be 
+        Check if the size value is required and explain why it cannot be
         unchecked.
 
         Parameters
@@ -2328,29 +2418,29 @@ class SetMeasurementsDialog(QBaseDialog):
             State of the checkbox toggled
         """
         checkbox = self.sender()
-        
+
         if self.is_concat:
-            # When this dialogue is used in concatenate pos utility we do not 
+            # When this dialogue is used in concatenate pos utility we do not
             # need to check that certain metrics are present
             return
 
-        if not hasattr(checkbox, 'isRequired'):
+        if not hasattr(checkbox, "isRequired"):
             return
-        
+
         if not checkbox.isRequired:
             return
-        
+
         if checkbox.isChecked():
             return
-        
+
         checkbox.setChecked(True)
 
         if self.doNotWarn:
             return
 
-        linked_autoBkgr_metric = checkbox.text().replace('cell', '_autoBkgr_from')
+        linked_autoBkgr_metric = checkbox.text().replace("cell", "_autoBkgr_from")
         linked_dataPrepBkgr_metric = checkbox.text().replace(
-            'cell', '_dataPrepBkgr_from'
+            "cell", "_dataPrepBkgr_from"
         )
         txt = html_utils.paragraph(f"""
             <b>This physical measurement cannot be unchecked</b> 
@@ -2362,26 +2452,26 @@ class SetMeasurementsDialog(QBaseDialog):
             Thank you for you patience!
         """)
         msg = widgets.myMessageBox(showCentered=False)
-        msg.warning(self, 'Physical measurement required', txt)
+        msg.warning(self, "Physical measurement required", txt)
 
     def deselectAll(self):
         self.doNotWarn = True
         for chNameGroupbox in self.chNameGroupboxes:
             for gb in chNameGroupbox.groupboxes:
                 gb.checkAll(None, False)
-            cgb = getattr(chNameGroupbox, 'customMetricsQGBox', None)
+            cgb = getattr(chNameGroupbox, "customMetricsQGBox", None)
             if cgb is not None:
                 cgb.checkAll(None, False)
-        
+
         self.sizeMetricsQGBox.checkAll(None, False)
         self.regionPropsQGBox.checkAll(None, False)
         if self.chIndipendCustomeMetricsQGBox is not None:
             self.chIndipendCustomeMetricsQGBox.checkAll(None, False)
-            
+
         if self.mixedChannelsCombineMetricsQGBox is not None:
             self.mixedChannelsCombineMetricsQGBox.checkAll(None, False)
         self.doNotWarn = False
-    
+
     def delMixedChannelCombineMetric(self, colname_to_del, hlayout):
         cp = measurements.read_saved_user_combine_config()
         for section in cp.sections():
@@ -2394,14 +2484,14 @@ class SetMeasurementsDialog(QBaseDialog):
             if w is None:
                 continue
             w.hide()
-               
+
         if self.allPosData is not None:
             for posData in self.allPosData:
                 _config = posData.combineMetricsConfig
                 for section in _config.sections():
                     _config.remove_option(section, colname_to_del)
                 posData.saveCombineMetrics()
-    
+
     def setState(self, state):
         self.doNotWarn = True
         for chNameGroupbox in self.chNameGroupboxes:
@@ -2433,9 +2523,7 @@ class SetMeasurementsDialog(QBaseDialog):
                 checkBox.setChecked(measurementsInfo[colname])
 
         if self.chIndipendCustomeMetricsQGBox is not None:
-            measurementsInfo = state.get(
-                self.chIndipendCustomeMetricsQGBox.title()
-            )
+            measurementsInfo = state.get(self.chIndipendCustomeMetricsQGBox.title())
             if not measurementsInfo:
                 self.chIndipendCustomeMetricsQGBox.setChecked(False)
             else:
@@ -2445,11 +2533,9 @@ class SetMeasurementsDialog(QBaseDialog):
                     colname = checkBox.text()
                     key = self.chIndipendCustomeMetricsQGBox.title()
                     checkBox.setChecked(measurementsInfo[colname])
-        
+
         if self.mixedChannelsCombineMetricsQGBox is not None:
-            measurementsInfo = state.get(
-                self.mixedChannelsCombineMetricsQGBox.title()
-            )
+            measurementsInfo = state.get(self.mixedChannelsCombineMetricsQGBox.title())
             if not measurementsInfo:
                 self.mixedChannelsCombineMetricsQGBox.setChecked(False)
             else:
@@ -2459,14 +2545,11 @@ class SetMeasurementsDialog(QBaseDialog):
                     colname = checkBox.text()
                     key = self.mixedChannelsCombineMetricsQGBox.title()
                     checkBox.setChecked(measurementsInfo[colname])
-        
+
         self.doNotWarn = False
-            
+
     def state(self):
-        state = {
-            self.sizeMetricsQGBox.title(): {},
-            self.regionPropsQGBox.title(): {}
-        }
+        state = {self.sizeMetricsQGBox.title(): {}, self.regionPropsQGBox.title(): {}}
         for chNameGroupbox in self.chNameGroupboxes:
             state[chNameGroupbox.title()] = {}
             if not chNameGroupbox.isChecked():
@@ -2503,7 +2586,7 @@ class SetMeasurementsDialog(QBaseDialog):
                     key = self.chIndipendCustomeMetricsQGBox.title()
                     colname = checkBox.text()
                     state[key][colname] = checked
-        
+
         if self.mixedChannelsCombineMetricsQGBox is not None:
             state[self.mixedChannelsCombineMetricsQGBox.title()] = {}
             if self.mixedChannelsCombineMetricsQGBox.isChecked():
@@ -2513,9 +2596,9 @@ class SetMeasurementsDialog(QBaseDialog):
                     key = self.mixedChannelsCombineMetricsQGBox.title()
                     colname = checkBox.text()
                     state[key][colname] = checked
-        
+
         return state
-    
+
     def restoreState(self, state):
         for chNameGroupbox in self.chNameGroupboxes:
             _state = state.get(chNameGroupbox.title())
@@ -2526,7 +2609,7 @@ class SetMeasurementsDialog(QBaseDialog):
                 if isChecked is None:
                     continue
                 checkBox.setChecked(isChecked)
-        
+
         _state = state.get(self.sizeMetricsQGBox.title())
         if _state is None or not _state:
             pass
@@ -2536,7 +2619,7 @@ class SetMeasurementsDialog(QBaseDialog):
                 if isChecked is None:
                     continue
                 checkBox.setChecked(isChecked)
-        
+
         _state = state.get(self.regionPropsQGBox.title())
         if _state is None or not _state:
             pass
@@ -2546,7 +2629,7 @@ class SetMeasurementsDialog(QBaseDialog):
                 if isChecked is None:
                     continue
                 checkBox.setChecked(isChecked)
-        
+
         if self.chIndipendCustomeMetricsQGBox is not None:
             _state = state.get(self.chIndipendCustomeMetricsQGBox.title())
             if _state is None or not _state:
@@ -2557,7 +2640,7 @@ class SetMeasurementsDialog(QBaseDialog):
                     if isChecked is None:
                         continue
                     checkBox.setChecked(isChecked)
-        
+
         if self.mixedChannelsCombineMetricsQGBox is not None:
             _state = state.get(self.mixedChannelsCombineMetricsQGBox.title())
             if _state is None or not _state:
@@ -2568,84 +2651,81 @@ class SetMeasurementsDialog(QBaseDialog):
                     if isChecked is None:
                         continue
                     checkBox.setChecked(isChecked)
-    
+
     def currentSelectionMapper(self):
         current_selected_meas = defaultdict(dict)
-        
+
         for chNameGroupbox in self.chNameGroupboxes:
             if not chNameGroupbox.isChecked():
                 continue
-            
+
             chName = chNameGroupbox.chName
             for checkBox in chNameGroupbox.checkBoxes:
                 if not checkBox.isChecked():
                     continue
-                
-                current_selected_meas[chName][checkBox.text()] = 'Yes'
-        
-        size_selected_meas = current_selected_meas.get(
-            self.sizeMetricsQGBox.title()
-        )
+
+                current_selected_meas[chName][checkBox.text()] = "Yes"
+
+        size_selected_meas = current_selected_meas.get(self.sizeMetricsQGBox.title())
         if self.sizeMetricsQGBox.isChecked():
-            for checkBox in self.sizeMetricsQGBox.checkBoxes: 
+            for checkBox in self.sizeMetricsQGBox.checkBoxes:
                 if not checkBox.isChecked():
                     continue
-                
+
                 section = self.sizeMetricsQGBox.title()
-                current_selected_meas[section][checkBox.text()] = 'Yes'
-        
-        size_selected_meas = current_selected_meas.get(
-            self.regionPropsQGBox.title()
-        )
+                current_selected_meas[section][checkBox.text()] = "Yes"
+
+        size_selected_meas = current_selected_meas.get(self.regionPropsQGBox.title())
         if self.regionPropsQGBox.isChecked():
-            for checkBox in self.regionPropsQGBox.checkBoxes: 
+            for checkBox in self.regionPropsQGBox.checkBoxes:
                 if not checkBox.isChecked():
                     continue
-                
+
                 section = self.regionPropsQGBox.title()
-                current_selected_meas[section][checkBox.text()] = 'Yes'
-        
+                current_selected_meas[section][checkBox.text()] = "Yes"
+
         if self.chIndipendCustomeMetricsQGBox is not None:
             if self.chIndipendCustomeMetricsQGBox.isChecked():
-                for checkBox in self.chIndipendCustomeMetricsQGBox.checkBoxes: 
+                for checkBox in self.chIndipendCustomeMetricsQGBox.checkBoxes:
                     if not checkBox.isChecked():
                         continue
-                    
+
                     section = self.chIndipendCustomeMetricsQGBox.title()
-                    current_selected_meas[section][checkBox.text()] = 'Yes'
-        
+                    current_selected_meas[section][checkBox.text()] = "Yes"
+
         if self.mixedChannelsCombineMetricsQGBox is not None:
             if self.mixedChannelsCombineMetricsQGBox.isChecked():
-                for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes: 
+                for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
                     if not checkBox.isChecked():
                         continue
-                    
+
                     section = self.mixedChannelsCombineMetricsQGBox.title()
-                    current_selected_meas[section][checkBox.text()] = 'Yes'
-        
+                    current_selected_meas[section][checkBox.text()] = "Yes"
+
         return current_selected_meas
-    
+
     def saveCurrentSelectionClicked(self):
         current_selection_mapper = self.currentSelectionMapper()
-        defaultEntry = '_and_'.join(current_selection_mapper.keys())
-        defaultEntry = defaultEntry.replace(' ', '_').lower()
+        defaultEntry = "_and_".join(current_selection_mapper.keys())
+        defaultEntry = defaultEntry.replace(" ", "_").lower()
         saved_selections = io.get_saved_measurements_selections()
         win = filenameDialog(
-            basename='',
-            ext='',
-            hintText='Insert a <b>name</b> for the current selection:',
+            basename="",
+            ext="",
+            hintText="Insert a <b>name</b> for the current selection:",
             existingNames=saved_selections,
             allowEmpty=False,
-            defaultEntry=defaultEntry
+            defaultEntry=defaultEntry,
         )
         win.exec_()
         if win.cancel:
             return
-        
+
         filename = win.filename
         ini_filepath = io.save_measurements_selections(
-            filename, current_selection_mapper)
-        
+            filename, current_selection_mapper
+        )
+
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         txt = html_utils.paragraph(f"""
             Done!<br><br>
@@ -2653,39 +2733,41 @@ class SetMeasurementsDialog(QBaseDialog):
             the following path:
         """)
         msg.information(
-            self, 'Selection saved', txt, 
+            self,
+            "Selection saved",
+            txt,
             commands=(ini_filepath,),
             path_to_browse=os.path.dirname(ini_filepath),
         )
-    
+
     def loadSavedSelectionClicked(self):
         self.doNotWarn = True
-        
+
         saved_selections = io.get_saved_measurements_selections()
-        
+
         selectNameWin = widgets.QDialogListbox(
-            'Choose selection to load',
-            'Choose selection to load:\n',
-            saved_selections, 
-            multiSelection=False, 
-            parent=self
+            "Choose selection to load",
+            "Choose selection to load:\n",
+            saved_selections,
+            multiSelection=False,
+            parent=self,
         )
         selectNameWin.exec_()
         if selectNameWin.cancel:
             return
-        
-        selection_mapper = (
-            io.read_measurements_selections(selectNameWin.selectedItemsText[0])
+
+        selection_mapper = io.read_measurements_selections(
+            selectNameWin.selectedItemsText[0]
         )
-        
+
         self.setCurrentSelectionFromMapper(selection_mapper)
-        
+
         self.doNotWarn = False
-    
+
     def saveLastSelection(self):
-        last_selected_meas = self.currentSelectionMapper()        
+        last_selected_meas = self.currentSelectionMapper()
         load.write_last_selected_set_measurements(last_selected_meas)
-    
+
     def setCurrentSelectionFromMapper(self, selection_mapper):
         for chNameGroupbox in self.chNameGroupboxes:
             chName = chNameGroupbox.chName
@@ -2693,7 +2775,7 @@ class SetMeasurementsDialog(QBaseDialog):
             if chSelectedMeas is None:
                 chNameGroupbox.setChecked(False)
                 continue
-            
+
             chNameGroupbox.setChecked(True)
             for checkBox in chNameGroupbox.checkBoxes:
                 checked = chSelectedMeas.get(checkBox.text())
@@ -2701,35 +2783,31 @@ class SetMeasurementsDialog(QBaseDialog):
                     checkBox.setChecked(True)
                 else:
                     checkBox.setChecked(False)
-        
-        size_selected_meas = selection_mapper.get(
-            self.sizeMetricsQGBox.title()
-        )
+
+        size_selected_meas = selection_mapper.get(self.sizeMetricsQGBox.title())
         if size_selected_meas is None:
             self.sizeMetricsQGBox.setChecked(False)
         else:
             self.sizeMetricsQGBox.setChecked(True)
-            for checkBox in self.sizeMetricsQGBox.checkBoxes: 
+            for checkBox in self.sizeMetricsQGBox.checkBoxes:
                 checked = size_selected_meas.get(checkBox.text())
                 if checked is not None:
                     checkBox.setChecked(True)
                 else:
                     checkBox.setChecked(False)
-        
-        size_selected_meas = selection_mapper.get(
-            self.regionPropsQGBox.title()
-        )
+
+        size_selected_meas = selection_mapper.get(self.regionPropsQGBox.title())
         if size_selected_meas is None:
             self.regionPropsQGBox.setChecked(False)
         else:
             self.regionPropsQGBox.setChecked(True)
-            for checkBox in self.regionPropsQGBox.checkBoxes: 
+            for checkBox in self.regionPropsQGBox.checkBoxes:
                 checked = size_selected_meas.get(checkBox.text())
                 if checked is not None:
                     checkBox.setChecked(True)
                 else:
                     checkBox.setChecked(False)
-        
+
         if self.chIndipendCustomeMetricsQGBox is not None:
             ch_indip_custom_metrics = selection_mapper.get(
                 self.chIndipendCustomeMetricsQGBox.title()
@@ -2738,13 +2816,13 @@ class SetMeasurementsDialog(QBaseDialog):
                 self.chIndipendCustomeMetricsQGBox.setChecked(False)
             else:
                 self.chIndipendCustomeMetricsQGBox.setChecked(True)
-                for checkBox in self.chIndipendCustomeMetricsQGBox.checkBoxes: 
+                for checkBox in self.chIndipendCustomeMetricsQGBox.checkBoxes:
                     checked = size_selected_meas.get(checkBox.text())
                     if checked is not None:
                         checkBox.setChecked(True)
                     else:
                         checkBox.setChecked(False)
-        
+
         if self.mixedChannelsCombineMetricsQGBox is not None:
             ch_indip_custom_metrics = selection_mapper.get(
                 self.mixedChannelsCombineMetricsQGBox.title()
@@ -2753,31 +2831,31 @@ class SetMeasurementsDialog(QBaseDialog):
                 self.mixedChannelsCombineMetricsQGBox.setChecked(False)
             else:
                 self.mixedChannelsCombineMetricsQGBox.setChecked(True)
-                for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes: 
+                for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
                     checked = size_selected_meas.get(checkBox.text())
                     if checked is not None:
                         checkBox.setChecked(True)
                     else:
                         checkBox.setChecked(False)
-    
+
     def loadLastSelection(self):
         self.doNotWarn = True
         last_selected_meas = load.read_last_selected_set_measurements()
         last_selected_meas = dict(last_selected_meas)
-        
+
         self.setCurrentSelectionFromMapper(last_selected_meas)
-        
+
         self.doNotWarn = False
-    
+
     def setDisabledMetricsRequestedForCombined(self, checked):
         checkbox = self.sender()
-        
+
         if self.is_concat:
-            # When this dialogue is used in concatenate pos utility we do not 
+            # When this dialogue is used in concatenate pos utility we do not
             # need to check that certain metrics are present
             return
-        
-        # Set checked and disable those metrics that are requested for 
+
+        # Set checked and disable those metrics that are requested for
         # combined measurements
         allCheckboxes = []
 
@@ -2785,18 +2863,18 @@ class SetMeasurementsDialog(QBaseDialog):
             for chCheckBox in chNameGroupbox.checkBoxes:
                 chCheckBox.setDisabled(False)
                 allCheckboxes.append(chCheckBox)
-        
+
         for sizeCheckBox in self.sizeMetricsQGBox.checkBoxes:
             sizeCheckBox.setDisabled(False)
             allCheckboxes.append(chCheckBox)
-        
+
         for rpCheckBox in self.regionPropsQGBox.checkBoxes:
             rpCheckBox.setDisabled(False)
             allCheckboxes.append(chCheckBox)
-        
+
         if not self.mixedChannelsCombineMetricsQGBox.isChecked():
             return
-        
+
         for cb in allCheckboxes:
             metricName = cb.text()
             for combCheckbox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
@@ -2807,24 +2885,24 @@ class SetMeasurementsDialog(QBaseDialog):
                     cb.setChecked(True)
                     cb.setDisabled(True)
                     cb.setToolTip(
-                        'This metric cannot be removed because it is required '
+                        "This metric cannot be removed because it is required "
                         f'by the combined measurement "{combCheckbox.text()}"'
                     )
 
     def keyPressEvent(self, a0: QKeyEvent) -> None:
         state = self.state()
         return super().keyPressEvent(a0)
-    
+
     def closeEvent(self, event):
         if self.cancel:
             self.sigCancel.emit()
         super().closeEvent(event)
-    
+
     def restart(self):
         self.cancel = False
         self.close()
         self.sigRestart.emit()
-    
+
     def setDisabledNotExistingMeasurements(self, existing_colnames):
         self.existing_colnames = existing_colnames
         for chNameGroupbox in self.chNameGroupboxes:
@@ -2833,11 +2911,11 @@ class SetMeasurementsDialog(QBaseDialog):
                 if colname in existing_colnames:
                     checkBox.setChecked(True)
                     continue
-                
+
                 checkBox.setChecked(False)
                 checkBox.setDisabled(True)
                 self.setNotExistingMeasurementTooltip(checkBox)
-        
+
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             colname = checkBox.text()
             if colname in existing_colnames:
@@ -2846,14 +2924,14 @@ class SetMeasurementsDialog(QBaseDialog):
             checkBox.setChecked(False)
             checkBox.setDisabled(True)
             self.setNotExistingMeasurementTooltip(checkBox)
-        
+
         for checkBox in self.regionPropsQGBox.checkBoxes:
             prop_name = checkBox.text()
             for existing_col in existing_colnames:
                 if prop_name == existing_col:
                     checkBox.setChecked(True)
                     break
-                m = re.match(fr'{prop_name}-\d', existing_col)
+                m = re.match(rf"{prop_name}-\d", existing_col)
                 if m is not None:
                     checkBox.setChecked(True)
                     break
@@ -2861,10 +2939,10 @@ class SetMeasurementsDialog(QBaseDialog):
                 checkBox.setChecked(False)
                 checkBox.setDisabled(True)
                 self.setNotExistingMeasurementTooltip(checkBox)
-        
+
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
-        
+
         for combCheckbox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
             colname = combCheckbox.text()
             if colname in existing_colnames:
@@ -2873,7 +2951,7 @@ class SetMeasurementsDialog(QBaseDialog):
             combCheckbox.setChecked(False)
             combCheckbox.setDisabled(True)
             self.setNotExistingMeasurementTooltip(combCheckbox)
-        
+
     def addNonMeasurementColumns(self, colnames):
         additionalCols = measurements.get_non_measurements_cols(
             colnames, self.all_metrics
@@ -2881,30 +2959,29 @@ class SetMeasurementsDialog(QBaseDialog):
         if not additionalCols:
             return
         self.nonMeasurementsGroupbox = widgets.CheckboxesGroupBox(
-            additionalCols, title='Additional columns', checkable=True
+            additionalCols, title="Additional columns", checkable=True
         )
         self.groupsLayout.addWidget(
-            self.nonMeasurementsGroupbox, 0, self.last_col+1, self.last_row+1, 1
-        )
-            
-    
-    def setNotExistingMeasurementTooltip(self, checkBox):
-        checkBox.setToolTip(
-            'Measurement is disabled because it is not present in selected '
-            'acdc_output tables, hence it cannot be addded to concatenated '
-            'table. '
+            self.nonMeasurementsGroupbox, 0, self.last_col + 1, self.last_row + 1, 1
         )
 
-    def ok_cb(self):       
+    def setNotExistingMeasurementTooltip(self, checkBox):
+        checkBox.setToolTip(
+            "Measurement is disabled because it is not present in selected "
+            "acdc_output tables, hence it cannot be addded to concatenated "
+            "table. "
+        )
+
+    def ok_cb(self):
         for chNameGroupbox in self.chNameGroupboxes:
             chNameGroupbox.calcForEachZsliceRequested = (
                 chNameGroupbox.isCalcForEachZsliceRequested()
             )
-        
+
         self.sizeMetricsQGBox.calcForEachZsliceRequested = (
             self.sizeMetricsQGBox.isCalcForEachZsliceRequested()
         )
-        
+
         if self.allPos_acdc_df_cols is None:
             self.saveLastSelection()
             self.cancel = False
@@ -2925,7 +3002,7 @@ class SetMeasurementsDialog(QBaseDialog):
                     continue
                 if not checkBox.isChecked() and is_existing:
                     unchecked_existing_colnames.append(colname)
-    
+
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             colname = checkBox.text()
             is_existing = colname in existing_colnames
@@ -2955,31 +3032,34 @@ class SetMeasurementsDialog(QBaseDialog):
                 return
 
         self.saveLastSelection()
-        self.cancel = False  
+        self.cancel = False
         self.close()
         self.sigClosed.emit()
-        
+
     def warnUncheckedExistingMeasurements(
-            self, unchecked_existing_colnames, unchecked_existing_rps
-        ):
+        self, unchecked_existing_colnames, unchecked_existing_rps
+    ):
         msg = widgets.myMessageBox()
         msg.setWidth(500)
         msg.addShowInFileManagerButton(self.acdc_df_path)
         txt = html_utils.paragraph(
-            'You chose to <b>not save</b> some measurements that are '
-            '<b>already present</b> in the saved <code>acdc_output.csv</code> '
-            'file.<br><br>'
-            'Do you want to <b>delete</b> these measurements or '
-            '<b>keep</b> them?<br><br>'
-            'Existing measurements not selected:'
+            "You chose to <b>not save</b> some measurements that are "
+            "<b>already present</b> in the saved <code>acdc_output.csv</code> "
+            "file.<br><br>"
+            "Do you want to <b>delete</b> these measurements or "
+            "<b>keep</b> them?<br><br>"
+            "Existing measurements not selected:"
         )
         listView = widgets.readOnlyQList(msg)
         items = unchecked_existing_colnames.copy()
         items.extend(unchecked_existing_rps)
         listView.addItems(items)
         _, delButton, keepButton = msg.warning(
-            self, 'Unchecked existing measurements', txt,
-            widgets=listView, buttonsTexts=('Cancel', 'Delete', 'Keep')
+            self,
+            "Unchecked existing measurements",
+            txt,
+            widgets=listView,
+            buttonsTexts=("Cancel", "Delete", "Keep"),
         )
         return msg.cancel, msg.clickedButton == delButton
 
@@ -2990,28 +3070,43 @@ class SetMeasurementsDialog(QBaseDialog):
         screenHeight = self.screen().size().height()
         screenLeft = self.screen().geometry().x()
         screenTop = self.screen().geometry().y()
-        h = screenHeight-200
-        minColWith = screenWidth/5
-        w = minColWith*(self.last_col+1)
-        xLeft = int((screenWidth-w)/2)
+        h = screenHeight - 200
+        minColWith = screenWidth / 5
+        w = minColWith * (self.last_col + 1)
+        xLeft = int((screenWidth - w) / 2)
         if w > screenWidth:
-            self.move(screenLeft+10, screenTop+50)
-            self.resize(screenWidth-20, h)
+            self.move(screenLeft + 10, screenTop + 50)
+            self.resize(screenWidth - 20, h)
         else:
-            self.move(screenLeft+xLeft, screenTop+50)
+            self.move(screenLeft + xLeft, screenTop + 50)
             self.resize(int(w), h)
         super().show(block=block)
 
+
 class QDialogMetadataXML(QDialog):
     def __init__(
-            self, title='Metadata',
-            LensNA=1.0, rawFilename='test', SizeT=1, SizeZ=1, SizeC=1, SizeS=1,
-            TimeIncrement=1.0, TimeIncrementUnit='s',
-            PhysicalSizeX=1.0, PhysicalSizeY=1.0, PhysicalSizeZ=1.0,
-            PhysicalSizeUnit='μm', ImageName='', chNames=None, emWavelens=None,
-            parent=None, rawDataStruct=None, sampleImgData=None,
-            rawFilePath=None
-        ):
+        self,
+        title="Metadata",
+        LensNA=1.0,
+        rawFilename="test",
+        SizeT=1,
+        SizeZ=1,
+        SizeC=1,
+        SizeS=1,
+        TimeIncrement=1.0,
+        TimeIncrementUnit="s",
+        PhysicalSizeX=1.0,
+        PhysicalSizeY=1.0,
+        PhysicalSizeZ=1.0,
+        PhysicalSizeUnit="μm",
+        ImageName="",
+        chNames=None,
+        emWavelens=None,
+        parent=None,
+        rawDataStruct=None,
+        sampleImgData=None,
+        rawFilePath=None,
+    ):
         self.cancel = True
         self.trust = False
         self.overWrite = False
@@ -3033,17 +3128,21 @@ class QDialogMetadataXML(QDialog):
         mainLayout = QVBoxLayout()
         entriesLayout = QGridLayout()
         self.channelNameLayouts = (
-            QVBoxLayout(), QVBoxLayout(), QVBoxLayout(), QVBoxLayout()
+            QVBoxLayout(),
+            QVBoxLayout(),
+            QVBoxLayout(),
+            QVBoxLayout(),
         )
         self.channelEmWLayouts = (
-            QVBoxLayout(), QVBoxLayout(), QVBoxLayout(), QVBoxLayout()
+            QVBoxLayout(),
+            QVBoxLayout(),
+            QVBoxLayout(),
+            QVBoxLayout(),
         )
         buttonsLayout = QGridLayout()
 
         infoLabel = QLabel()
-        infoTxt = (
-            '<b>Confirm/Edit</b> the <b>metadata</b> below.'
-        )
+        infoTxt = "<b>Confirm/Edit</b> the <b>metadata</b> below."
         infoLabel.setText(infoTxt)
         # padding: top, left, bottom, right
         infoLabel.setStyleSheet("font-size:12pt; padding:0px 0px 5px 0px;")
@@ -3051,10 +3150,10 @@ class QDialogMetadataXML(QDialog):
 
         noteLabel = QLabel()
         noteLabel.setText(
-            f'NOTE: If you are not sure about some of the entries '
+            f"NOTE: If you are not sure about some of the entries "
             'you can try to click "Ok".\n'
-            'If they are wrong you will get '
-            'an error message later when trying to read the data.'
+            "If they are wrong you will get "
+            "an error message later when trying to read the data."
         )
         noteLabel.setAlignment(Qt.AlignCenter)
         mainLayout.addWidget(noteLabel, alignment=Qt.AlignCenter)
@@ -3064,12 +3163,12 @@ class QDialogMetadataXML(QDialog):
         to_tif_radiobutton.setChecked(True)
         to_h5_radiobutton = QRadioButton(".h5")
         to_h5_radiobutton.setToolTip(
-            '.h5 is highly recommended for big datasets to avoid memory issues.\n'
-            'As a rule of thumb, if the single position, single channel file\n'
-            'is larger than 1/5 of the available RAM we recommend using .h5 format'
+            ".h5 is highly recommended for big datasets to avoid memory issues.\n"
+            "As a rule of thumb, if the single position, single channel file\n"
+            "is larger than 1/5 of the available RAM we recommend using .h5 format"
         )
         self.to_h5_radiobutton = to_h5_radiobutton
-        txt = 'File format:  '
+        txt = "File format:  "
         label = QLabel(txt)
         fileFormatLayout = QHBoxLayout()
         fileFormatLayout.addStretch(1)
@@ -3087,20 +3186,20 @@ class QDialogMetadataXML(QDialog):
         self.SizeS_SB.setMinimum(1)
         self.SizeS_SB.setMaximum(2147483647)
         self.SizeS_SB.setValue(SizeS)
-        txt = 'Number of positions (SizeS):  '
+        txt = "Number of positions (SizeS):  "
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.SizeS_SB, row, 1)
-    
+
         if rawDataStruct == 0:
             row += 1
             self.SizeS_SB.setValue(1)
             self.SizeS_SB.setDisabled(True)
             self.posSelector = widgets.ExpandableListBox()
-            positions = ['All positions']
-            positions.extend([f'Position_{i+1}' for i in range(SizeS)])
+            positions = ["All positions"]
+            positions.extend([f"Position_{i + 1}" for i in range(SizeS)])
             self.posSelector.addItems(positions)
-            txt = 'Positions to save:  '
+            txt = "Positions to save:  "
             label = QLabel(txt)
             entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
             entriesLayout.addWidget(self.posSelector, row, 1)
@@ -3111,27 +3210,27 @@ class QDialogMetadataXML(QDialog):
         self.LensNA_DSB.setAlignment(Qt.AlignCenter)
         self.LensNA_DSB.setSingleStep(0.1)
         self.LensNA_DSB.setValue(LensNA)
-        txt = 'Numerical Aperture Objective Lens:  '
+        txt = "Numerical Aperture Objective Lens:  "
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.LensNA_DSB, row, 1)
-        
+
         row += 1
         self.SizeT_SB = QSpinBox()
         self.SizeT_SB.setAlignment(Qt.AlignCenter)
         self.SizeT_SB.setMinimum(1)
         self.SizeT_SB.setMaximum(2147483647)
         self.SizeT_SB.setValue(SizeT)
-        txt = 'Number of frames (SizeT):  '
+        txt = "Number of frames (SizeT):  "
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.SizeT_SB, row, 1)
         self.SizeT_SB.valueChanged.connect(self.hideShowTimeIncrement)
-        
+
         row += 1
         self.timeRangeToSaveWidget = widgets.RangeSelector(integers=True)
         self.timeRangeToSaveWidget.setRange(1, SizeT)
-        txt = 'Time range to save:  '
+        txt = "Time range to save:  "
         label = QLabel(txt)
         self.timeRangeToSaveWidget.label = label
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
@@ -3143,7 +3242,7 @@ class QDialogMetadataXML(QDialog):
         self.SizeZ_SB.setMinimum(1)
         self.SizeZ_SB.setMaximum(2147483647)
         self.SizeZ_SB.setValue(SizeZ)
-        txt = 'Number of z-slices in the z-stack (SizeZ):  '
+        txt = "Number of z-slices in the z-stack (SizeZ):  "
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.SizeZ_SB, row, 1)
@@ -3155,18 +3254,15 @@ class QDialogMetadataXML(QDialog):
         )
         self.TimeIncrement_DSB.setValue(TimeIncrement)
         self.TimeIncrement_DSB.setMinimum(0.0)
-        txt = 'Frame interval:  '
+        txt = "Frame interval:  "
         label = QLabel(txt)
         self.TimeIncrement_Label = label
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.TimeIncrement_DSB, row, 1)
 
         self.TimeIncrementUnit_CB = QComboBox()
-        unitItems = [
-            'ms', 'seconds', 'minutes', 'hours'
-        ]
-        currentTxt = [unit for unit in unitItems
-                      if unit.startswith(TimeIncrementUnit)]
+        unitItems = ["ms", "seconds", "minutes", "hours"]
+        currentTxt = [unit for unit in unitItems if unit.startswith(TimeIncrementUnit)]
         self.TimeIncrementUnit_CB.addItems(unitItems)
         if currentTxt:
             self.TimeIncrementUnit_CB.setCurrentText(currentTxt[0])
@@ -3181,17 +3277,14 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeX_DSB.setSingleStep(0.001)
         self.PhysicalSizeX_DSB.setDecimals(7)
         self.PhysicalSizeX_DSB.setValue(PhysicalSizeX)
-        txt = 'Pixel width (X):  '
+        txt = "Pixel width (X):  "
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.PhysicalSizeX_DSB, row, 1)
 
         self.PhysicalSizeUnit_CB = QComboBox()
-        unitItems = [
-            'nm', 'μm', 'mm', 'cm'
-        ]
-        currentTxt = [unit for unit in unitItems
-                      if unit.startswith(PhysicalSizeUnit)]
+        unitItems = ["nm", "μm", "mm", "cm"]
+        currentTxt = [unit for unit in unitItems if unit.startswith(PhysicalSizeUnit)]
         self.PhysicalSizeUnit_CB.addItems(unitItems)
         if currentTxt:
             self.PhysicalSizeUnit_CB.setCurrentText(currentTxt[0])
@@ -3209,14 +3302,14 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeY_DSB.setSingleStep(0.001)
         self.PhysicalSizeY_DSB.setDecimals(7)
         self.PhysicalSizeY_DSB.setValue(PhysicalSizeY)
-        txt = 'Pixel height (Y):  '
+        txt = "Pixel height (Y):  "
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.PhysicalSizeY_DSB, row, 1)
 
         self.PhysicalSizeYUnit_Label = QLabel()
         self.PhysicalSizeYUnit_Label.setStyleSheet(
-            'font-size:13px; padding:5px 0px 2px 0px;'
+            "font-size:13px; padding:5px 0px 2px 0px;"
         )
         unit = self.PhysicalSizeUnit_CB.currentText()
         self.PhysicalSizeYUnit_Label.setText(unit)
@@ -3229,7 +3322,7 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeZ_DSB.setSingleStep(0.001)
         self.PhysicalSizeZ_DSB.setDecimals(7)
         self.PhysicalSizeZ_DSB.setValue(PhysicalSizeZ)
-        txt = 'Voxel depth (Z):  '
+        txt = "Voxel depth (Z):  "
         self.PSZlabel = QLabel(txt)
         entriesLayout.addWidget(self.PSZlabel, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.PhysicalSizeZ_DSB, row, 1)
@@ -3237,7 +3330,7 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeZUnit_Label = QLabel()
         # padding: top, left, bottom, right
         self.PhysicalSizeZUnit_Label.setStyleSheet(
-            'font-size:13px; padding:5px 0px 2px 0px;'
+            "font-size:13px; padding:5px 0px 2px 0px;"
         )
         unit = self.PhysicalSizeUnit_CB.currentText()
         self.PhysicalSizeZUnit_Label.setText(unit)
@@ -3254,7 +3347,7 @@ class QDialogMetadataXML(QDialog):
         self.SizeC_SB.setMinimum(1)
         self.SizeC_SB.setMaximum(2147483647)
         self.SizeC_SB.setValue(SizeC)
-        txt = 'Number of channels (SizeC):  '
+        txt = "Number of channels (SizeC):  "
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.SizeC_SB, row, 1)
@@ -3269,22 +3362,22 @@ class QDialogMetadataXML(QDialog):
         self.filename_QLabels = []
         self.showChannelDataButtons = []
 
-        ext = 'h5' if self.to_h5_radiobutton.isChecked() else 'tif'
+        ext = "h5" if self.to_h5_radiobutton.isChecked() else "tif"
         for c in range(SizeC):
             chName_QLE = QLineEdit()
-            chName_QLE.setStyleSheet('')
+            chName_QLE.setStyleSheet("")
             chName_QLE.setAlignment(Qt.AlignCenter)
             chName_QLE.textChanged.connect(self.checkChNames)
             if chNames is not None:
                 chName_QLE.setText(chNames[c])
             else:
-                chName_QLE.setText(f'channel_{c}')
-                filename = f''
+                chName_QLE.setText(f"channel_{c}")
+                filename = f""
 
-            txt = f'Channel {c} name:  '
+            txt = f"Channel {c} name:  "
             label = QLabel(txt)
 
-            filenameDescLabel = QLabel(f'<i>e.g., filename for channel {c}:  </i>')
+            filenameDescLabel = QLabel(f"<i>e.g., filename for channel {c}:  </i>")
 
             chName = chName_QLE.text()
             chName = self.removeInvalidCharacters(chName)
@@ -3292,9 +3385,9 @@ class QDialogMetadataXML(QDialog):
             filenameLabel = QLabel(f"""
                 <p style=font-size:10px>{rawFilename}_{chName}.{ext}</p>
             """)
-            filenameLabel.setToolTip(f'{self.rawFilename}_{chName}.{ext}')
+            filenameLabel.setToolTip(f"{self.rawFilename}_{chName}.{ext}")
 
-            checkBox = QCheckBox('Save this channel')
+            checkBox = QCheckBox("Save this channel")
             checkBox.setChecked(True)
             checkBox.stateChanged.connect(self.saveCh_checkBox_cb)
 
@@ -3309,12 +3402,12 @@ class QDialogMetadataXML(QDialog):
 
             self.channelNameLayouts[2].addWidget(checkBox)
             if c == 0 and ImageName:
-                addImageName_QCB = QCheckBox('Include image name')
+                addImageName_QCB = QCheckBox("Include image name")
                 addImageName_QCB.stateChanged.connect(self.addImageName_cb)
                 self.addImageName_QCB = addImageName_QCB
                 self.channelNameLayouts[2].addWidget(addImageName_QCB)
             else:
-                self.addImageName_QCB = QCheckBox('dummy')
+                self.addImageName_QCB = QCheckBox("dummy")
                 self.addImageName_QCB.hide()
                 self.channelNameLayouts[2].addWidget(QLabel())
 
@@ -3349,29 +3442,30 @@ class QDialogMetadataXML(QDialog):
             else:
                 emWavelen_DSB.setValue(500.0)
 
-            txt = f'Channel {c} emission wavelength:  '
+            txt = f"Channel {c} emission wavelength:  "
             label = QLabel(txt)
             self.channelEmWLayouts[0].addWidget(label, alignment=Qt.AlignRight)
             self.channelEmWLayouts[1].addWidget(emWavelen_DSB)
             self.emWavelens_DSBs.append(emWavelen_DSB)
 
-            unit = QLabel('nm')
-            unit.setStyleSheet('font-size:13px; padding:5px 0px 2px 0px;')
+            unit = QLabel("nm")
+            unit.setStyleSheet("font-size:13px; padding:5px 0px 2px 0px;")
             self.channelEmWLayouts[2].addWidget(unit)
 
         entriesLayout.setContentsMargins(0, 15, 0, 0)
 
-        if rawDataStruct is None or rawDataStruct!=-1:
-            okButton = widgets.okPushButton(' Ok ')
-        elif rawDataStruct==1:
-            okButton = QPushButton(' Load next position ')
+        if rawDataStruct is None or rawDataStruct != -1:
+            okButton = widgets.okPushButton(" Ok ")
+        elif rawDataStruct == 1:
+            okButton = QPushButton(" Load next position ")
         buttonsLayout.addWidget(okButton, 0, 1)
 
         self.trustButton = None
         self.overWriteButton = None
-        if rawDataStruct==1:
+        if rawDataStruct == 1:
             trustButton = QPushButton(
-                ' Trust metadata reader\n for all next positions ')
+                " Trust metadata reader\n for all next positions "
+            )
             trustButton.setToolTip(
                 "If you didn't have to manually modify metadata entries\n"
                 "it is very likely that metadata from the metadata reader\n"
@@ -3384,7 +3478,8 @@ class QDialogMetadataXML(QDialog):
             self.trustButton = trustButton
 
             overWriteButton = QPushButton(
-                ' Use the above metadata\n for all the next positions ')
+                " Use the above metadata\n for all the next positions "
+            )
             overWriteButton.setToolTip(
                 "If you had to manually modify metadata entries\n"
                 "AND you know they will be the same for all next positions\n"
@@ -3397,7 +3492,7 @@ class QDialogMetadataXML(QDialog):
             trustButton.clicked.connect(self.ok_cb)
             overWriteButton.clicked.connect(self.ok_cb)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton("Cancel")
         buttonsLayout.addWidget(cancelButton, 0, 2)
         buttonsLayout.setColumnStretch(0, 1)
         buttonsLayout.setColumnStretch(3, 1)
@@ -3409,7 +3504,7 @@ class QDialogMetadataXML(QDialog):
 
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
-        
+
         self.hideShowTimeIncrement(SizeT)
         self.readSampleImgDataAgain = False
 
@@ -3421,24 +3516,24 @@ class QDialogMetadataXML(QDialog):
         idx = self.saveChannels_QCBs.index(self.sender())
         LE = self.chNames_QLEs[idx]
         idx *= 2
-        LE.setDisabled(state==0)
+        LE.setDisabled(state == 0)
         label = self.channelNameLayouts[0].itemAt(idx).widget()
         if state == 0:
-            label.setStyleSheet('color: gray; font-size: 10pt')
+            label.setStyleSheet("color: gray; font-size: 10pt")
         else:
-            label.setStyleSheet('color: black; font-size: 10pt')
+            label.setStyleSheet("color: black; font-size: 10pt")
 
-        label = self.channelNameLayouts[0].itemAt(idx+1).widget()
+        label = self.channelNameLayouts[0].itemAt(idx + 1).widget()
         if state == 0:
-            label.setStyleSheet('color: gray; font-size: 10pt')
+            label.setStyleSheet("color: gray; font-size: 10pt")
         else:
-            label.setStyleSheet('color: black; font-size: 10pt')
+            label.setStyleSheet("color: black; font-size: 10pt")
 
-        label = self.channelNameLayouts[1].itemAt(idx+1).widget()
+        label = self.channelNameLayouts[1].itemAt(idx + 1).widget()
         if state == 0:
-            label.setStyleSheet('color: gray; font-size: 10pt')
+            label.setStyleSheet("color: gray; font-size: 10pt")
         else:
-            label.setStyleSheet('color: black; font-size: 10pt')
+            label.setStyleSheet("color: black; font-size: 10pt")
 
     def addImageName_cb(self, state):
         for idx in range(self.SizeC_SB.value()):
@@ -3446,36 +3541,34 @@ class QDialogMetadataXML(QDialog):
 
     def setInvalidChName_StyleSheet(self, LE):
         LE.setStyleSheet(
-            'border-radius: 4px;'
-            'border: 1.5px solid red;'
-            'padding: 1px 0px 1px 0px'
+            "border-radius: 4px;border: 1.5px solid red;padding: 1px 0px 1px 0px"
         )
 
     def removeInvalidCharacters(self, chName):
         # Remove invalid charachters
         chName = "".join(
-            c if c.isalnum() or c=='_' or c=='' else '_' for c in chName
+            c if c.isalnum() or c == "_" or c == "" else "_" for c in chName
         )
-        trim_ = chName.endswith('_')
+        trim_ = chName.endswith("_")
         while trim_:
             chName = chName[:-1]
-            trim_ = chName.endswith('_')
+            trim_ = chName.endswith("_")
         return chName
 
     def updateFileFormat(self, is_h5):
         for idx in range(len(self.chNames_QLEs)):
             self.updateFilename(idx)
-    
+
     def SizeSvalueChanged(self, SizeS):
-        positions = ['All positions']
-        positions.extend([f'Position_{i+1}' for i in range(SizeS)])
+        positions = ["All positions"]
+        positions.extend([f"Position_{i + 1}" for i in range(SizeS)])
         self.posSelector.setItems(positions)
-    
+
     def elidedRawFilename(self):
         n = 31
-        idx = int((n-3)/2)
+        idx = int((n - 3) / 2)
         if len(self.rawFilename) > 21:
-            elidedText = f'{self.rawFilename[:idx]}...{self.rawFilename[-idx:]}'
+            elidedText = f"{self.rawFilename[:idx]}...{self.rawFilename[-idx:]}"
         else:
             elidedText = self.rawFilename
         return elidedText
@@ -3484,34 +3577,34 @@ class QDialogMetadataXML(QDialog):
         chName = self.chNames_QLEs[idx].text()
         chName = self.removeInvalidCharacters(chName)
         if self.rawDataStruct == 2:
-            rawFilename = f'{self.rawFilename}_s{idx+1}'
+            rawFilename = f"{self.rawFilename}_s{idx + 1}"
         else:
             rawFilename = self.rawFilename
 
-        ext = 'h5' if self.to_h5_radiobutton.isChecked() else 'tif'
+        ext = "h5" if self.to_h5_radiobutton.isChecked() else "tif"
 
         rawFilename = self.elidedRawFilename()
 
         filenameLabel = self.filename_QLabels[idx]
         if self.addImageName_QCB.isChecked():
             self.ImageName = self.removeInvalidCharacters(self.ImageName)
-            filename = (f"""
+            filename = f"""
                 <p style=font-size:10px>
                     {rawFilename}_{self.ImageName}_{chName}.{ext}
                 </p>
-            """)
-            fullFilename = f'{self.rawFilename}_{self.ImageName}_{chName}.{ext}'
+            """
+            fullFilename = f"{self.rawFilename}_{self.ImageName}_{chName}.{ext}"
         else:
-            filename = (f"""
+            filename = f"""
                 <p style=font-size:10px>
                     {rawFilename}_{chName}.{ext}
                 </p>
-            """)
-            fullFilename = f'{self.rawFilename}_{chName}.{ext}'
+            """
+            fullFilename = f"{self.rawFilename}_{chName}.{ext}"
         filenameLabel.setToolTip(fullFilename)
         filenameLabel.setText(filename)
 
-    def checkChNames(self, text=''):
+    def checkChNames(self, text=""):
         if self.sender() in self.chNames_QLEs:
             idx = self.chNames_QLEs.index(self.sender())
             self.updateFilename(idx)
@@ -3519,13 +3612,12 @@ class QDialogMetadataXML(QDialog):
             idx = self.saveChannels_QCBs.index(self.sender())
             self.updateFilename(idx)
 
-
         areChNamesValid = True
         if len(self.chNames_QLEs) == 1:
             LE1 = self.chNames_QLEs[0]
             saveCh = self.saveChannels_QCBs[0].isChecked()
             if not saveCh:
-                LE1.setStyleSheet('')
+                LE1.setStyleSheet("")
                 return areChNamesValid
 
             s1 = LE1.text()
@@ -3533,7 +3625,7 @@ class QDialogMetadataXML(QDialog):
                 self.setInvalidChName_StyleSheet(LE1)
                 areChNamesValid = False
             else:
-                LE1.setStyleSheet('')
+                LE1.setStyleSheet("")
             return areChNamesValid
 
         for LE1, LE2 in combinations(self.chNames_QLEs, 2):
@@ -3543,33 +3635,33 @@ class QDialogMetadataXML(QDialog):
             LE2_idx = self.chNames_QLEs.index(LE2)
             saveCh1 = self.saveChannels_QCBs[LE1_idx].isChecked()
             saveCh2 = self.saveChannels_QCBs[LE2_idx].isChecked()
-            if not s1 or not s2 or s1==s2:
+            if not s1 or not s2 or s1 == s2:
                 if not s1 and saveCh1:
                     self.setInvalidChName_StyleSheet(LE1)
                     areChNamesValid = False
                 else:
-                    LE1.setStyleSheet('')
+                    LE1.setStyleSheet("")
                 if not s2 and saveCh2:
                     self.setInvalidChName_StyleSheet(LE2)
                     areChNamesValid = False
                 else:
-                    LE2.setStyleSheet('')
+                    LE2.setStyleSheet("")
                 if s1 == s2 and saveCh1 and saveCh2:
                     self.setInvalidChName_StyleSheet(LE1)
                     self.setInvalidChName_StyleSheet(LE2)
                     areChNamesValid = False
             else:
-                LE1.setStyleSheet('')
-                LE2.setStyleSheet('')
+                LE1.setStyleSheet("")
+                LE2.setStyleSheet("")
         return areChNamesValid
 
     def hideShowTimeIncrement(self, value):
         if self.TimeIncrement_DSB.isVisible() and value == 1:
             self.readSampleImgDataAgain = True
-        
+
         if not self.TimeIncrement_DSB.isVisible() and value > 1:
             self.readSampleImgDataAgain = True
-            
+
         if value > 1:
             self.TimeIncrement_DSB.show()
             self.TimeIncrementUnit_CB.show()
@@ -3598,7 +3690,7 @@ class QDialogMetadataXML(QDialog):
     def updatePSUnit(self, unit):
         self.PhysicalSizeYUnit_Label.setText(unit)
         self.PhysicalSizeZUnit_Label.setText(unit)
-    
+
     def warnRestart(self):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph("""
@@ -3606,11 +3698,11 @@ class QDialogMetadataXML(QDialog):
             because it <b>needs to read the image data again</b>.<br><br>
             Thank you for your patience.
         """)
-        msg.warning(self, 'Restart required', txt)
+        msg.warning(self, "Restart required", txt)
 
     def showChannelData(self, checked=False, idx=None):
         if self.readSampleImgDataAgain:
-            # User changed SizeZ, SizeT, or SizeC --> we need to read sample 
+            # User changed SizeZ, SizeT, or SizeC --> we need to read sample
             # image again
             del self.sampleImgData
             self.requestedReadingSampleImageDataAgain = True
@@ -3620,35 +3712,37 @@ class QDialogMetadataXML(QDialog):
             self.cancel = False
             self.close()
             return
-        
+
         if idx is None:
             idx = self.showChannelDataButtons.index(self.sender())
-        dimsOrder = 'ctz'
+        dimsOrder = "ctz"
         imgData = self.sampleImgData[dimsOrder][idx]
         posData = myutils.utilClass()
         posData.frame_i = 0
         sampleSizeT = 4 if self.SizeT_SB.value() >= 4 else self.SizeT_SB.value()
         posData.SizeT = sampleSizeT
         SizeZ = self.SizeZ_SB.value()
-        posData.SizeZ = 20 if SizeZ>20 else SizeZ
-        posData.filename = f'{self.rawFilename}_C={idx}'
-        posData.segmInfo_df = pd.DataFrame({
-            'filename': [posData.filename]*sampleSizeT,
-            'frame_i': range(sampleSizeT),
-            'which_z_proj_gui': ['single z-slice']*sampleSizeT,
-            'z_slice_used_gui': [int(posData.SizeZ/2)]*sampleSizeT
-        }).set_index(['filename', 'frame_i'])
+        posData.SizeZ = 20 if SizeZ > 20 else SizeZ
+        posData.filename = f"{self.rawFilename}_C={idx}"
+        posData.segmInfo_df = pd.DataFrame(
+            {
+                "filename": [posData.filename] * sampleSizeT,
+                "frame_i": range(sampleSizeT),
+                "which_z_proj_gui": ["single z-slice"] * sampleSizeT,
+                "z_slice_used_gui": [int(posData.SizeZ / 2)] * sampleSizeT,
+            }
+        ).set_index(["filename", "frame_i"])
         path_li = os.path.normpath(self.rawFilePath).split(os.sep)
-        posData.relPath = f'{f"{os.sep}".join(path_li[-3:1])}'
-        posData.relPath = f'{posData.relPath}{os.sep}{posData.filename}'
+        posData.relPath = f"{f'{os.sep}'.join(path_li[-3:1])}"
+        posData.relPath = f"{posData.relPath}{os.sep}{posData.filename}"
         if sampleSizeT == 1:
-            posData.img_data = [imgData] # single frame data
+            posData.img_data = [imgData]  # single frame data
         else:
             posData.img_data = imgData
 
         if self.imageViewer is not None:
             self.imageViewer.close()
-        
+
         self.imageViewer = imageViewer(
             posData=posData, isSigleFrame=False, enableOverlay=False
         )
@@ -3656,38 +3750,36 @@ class QDialogMetadataXML(QDialog):
         self.imageViewer.update_img()
         self.imageViewer.sigClosed.connect(self.imageViewerClosed)
         self.imageViewer.show()
-    
+
     def imageViewerClosed(self):
         self.imageViewer = None
 
     def addRemoveChannels(self, value):
         self.readSampleImgDataAgain = True
         currentSizeC = len(self.chNames_QLEs)
-        DeltaChannels = abs(value-currentSizeC)
-        ext = 'h5' if self.to_h5_radiobutton.isChecked() else 'tif'
+        DeltaChannels = abs(value - currentSizeC)
+        ext = "h5" if self.to_h5_radiobutton.isChecked() else "tif"
         if value > currentSizeC:
-            for c in range(currentSizeC, currentSizeC+DeltaChannels):
+            for c in range(currentSizeC, currentSizeC + DeltaChannels):
                 chName_QLE = QLineEdit()
-                chName_QLE.setStyleSheet('')
+                chName_QLE.setStyleSheet("")
                 chName_QLE.setAlignment(Qt.AlignCenter)
-                chName_QLE.setText(f'channel_{c}')
+                chName_QLE.setText(f"channel_{c}")
                 chName_QLE.textChanged.connect(self.checkChNames)
 
-                txt = f'Channel {c} name:  '
+                txt = f"Channel {c} name:  "
                 label = QLabel(txt)
 
-                filenameDescLabel = QLabel(
-                    f'<i>e.g., filename for channel {c}:  </i>'
-                )
+                filenameDescLabel = QLabel(f"<i>e.g., filename for channel {c}:  </i>")
 
                 chName = chName_QLE.text()
                 rawFilename = self.elidedRawFilename()
                 filenameLabel = QLabel(f"""
                     <p style=font-size:10px>{rawFilename}_{chName}.{ext}</p>
                 """)
-                filenameLabel.setToolTip(f'{self.rawFilename}_{chName}.{ext}')
+                filenameLabel.setToolTip(f"{self.rawFilename}_{chName}.{ext}")
 
-                checkBox = QCheckBox('Save this channel')
+                checkBox = QCheckBox("Save this channel")
                 checkBox.setChecked(True)
                 checkBox.stateChanged.connect(self.saveCh_checkBox_cb)
 
@@ -3721,24 +3813,24 @@ class QDialogMetadataXML(QDialog):
                 emWavelen_DSB.setSingleStep(0.001)
                 emWavelen_DSB.setDecimals(2)
                 emWavelen_DSB.setValue(500.0)
-                unit = QLabel('nm')
-                unit.setStyleSheet('font-size:13px; padding:5px 0px 2px 0px;')
+                unit = QLabel("nm")
+                unit.setStyleSheet("font-size:13px; padding:5px 0px 2px 0px;")
 
-                txt = f'Channel {c} emission wavelength:  '
+                txt = f"Channel {c} emission wavelength:  "
                 label = QLabel(txt)
                 self.channelEmWLayouts[0].addWidget(label, alignment=Qt.AlignRight)
                 self.channelEmWLayouts[1].addWidget(emWavelen_DSB)
                 self.channelEmWLayouts[2].addWidget(unit)
                 self.emWavelens_DSBs.append(emWavelen_DSB)
         else:
-            for c in range(currentSizeC, currentSizeC+DeltaChannels):
-                idx = (c-1)*2
+            for c in range(currentSizeC, currentSizeC + DeltaChannels):
+                idx = (c - 1) * 2
                 label1 = self.channelNameLayouts[0].itemAt(idx).widget()
-                label2 = self.channelNameLayouts[0].itemAt(idx+1).widget()
+                label2 = self.channelNameLayouts[0].itemAt(idx + 1).widget()
                 chName_QLE = self.channelNameLayouts[1].itemAt(idx).widget()
-                filename_L = self.channelNameLayouts[1].itemAt(idx+1).widget()
+                filename_L = self.channelNameLayouts[1].itemAt(idx + 1).widget()
                 checkBox = self.channelNameLayouts[2].itemAt(idx).widget()
-                dummyLabel = self.channelNameLayouts[2].itemAt(idx+1).widget()
+                dummyLabel = self.channelNameLayouts[2].itemAt(idx + 1).widget()
                 showButton = self.showChannelDataButtons[-1]
                 showButton.clicked.disconnect()
 
@@ -3755,30 +3847,28 @@ class QDialogMetadataXML(QDialog):
                 self.filename_QLabels.pop(-1)
                 self.showChannelDataButtons.pop(-1)
 
-                label = self.channelEmWLayouts[0].itemAt(c-1).widget()
-                emWavelen_DSB = self.channelEmWLayouts[1].itemAt(c-1).widget()
-                unit = self.channelEmWLayouts[2].itemAt(c-1).widget()
+                label = self.channelEmWLayouts[0].itemAt(c - 1).widget()
+                emWavelen_DSB = self.channelEmWLayouts[1].itemAt(c - 1).widget()
+                unit = self.channelEmWLayouts[2].itemAt(c - 1).widget()
                 self.channelEmWLayouts[0].removeWidget(label)
                 self.channelEmWLayouts[1].removeWidget(emWavelen_DSB)
                 self.channelEmWLayouts[2].removeWidget(unit)
                 self.emWavelens_DSBs.pop(-1)
 
                 self.adjustSize()
-    
+
     def ok_cb(self, event):
         areChNamesValid = self.checkChNames()
         if not areChNamesValid:
             err_msg = html_utils.paragraph(
-                'Channel names <b>cannot be empty</b> or equal to each other.'
-                '<br><br>'
-                'Insert a unique text for each channel name.'
+                "Channel names <b>cannot be empty</b> or equal to each other."
+                "<br><br>"
+                "Insert a unique text for each channel name."
             )
             msg = widgets.myMessageBox()
-            msg.critical(
-               self, 'Invalid channel names', err_msg
-            )
+            msg.critical(self, "Invalid channel names", err_msg)
             return
-        
+
         self.getValues()
         self.convertUnits()
 
@@ -3802,46 +3892,46 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeY = self.PhysicalSizeY_DSB.value()
         self.PhysicalSizeZ = self.PhysicalSizeZ_DSB.value()
         self.to_h5 = self.to_h5_radiobutton.isChecked()
-        if hasattr(self, 'posSelector'):
+        if hasattr(self, "posSelector"):
             self.selectedPos = self.posSelector.selectedItemsText()
         else:
-            self.selectedPos = ['All Positions']
+            self.selectedPos = ["All Positions"]
         self.chNames = []
-        if hasattr(self, 'addImageName_QCB'):
+        if hasattr(self, "addImageName_QCB"):
             self.addImageName = self.addImageName_QCB.isChecked()
         else:
             self.addImageName = False
         self.saveChannels = []
         for LE, QCB in zip(self.chNames_QLEs, self.saveChannels_QCBs):
             s = LE.text()
-            s = "".join(c if c.isalnum() or c=='_' or c=='' else '_' for c in s)
-            trim_ = s.endswith('_')
+            s = "".join(c if c.isalnum() or c == "_" or c == "" else "_" for c in s)
+            trim_ = s.endswith("_")
             while trim_:
                 s = s[:-1]
-                trim_ = s.endswith('_')
+                trim_ = s.endswith("_")
             self.chNames.append(s)
             self.saveChannels.append(QCB.isChecked())
         self.emWavelens = [DSB.value() for DSB in self.emWavelens_DSBs]
 
     def convertUnits(self):
         timeUnit = self.TimeIncrementUnit_CB.currentText()
-        if timeUnit == 'ms':
+        if timeUnit == "ms":
             self.TimeIncrement /= 1000
-        elif timeUnit == 'minutes':
+        elif timeUnit == "minutes":
             self.TimeIncrement *= 60
-        elif timeUnit == 'hours':
+        elif timeUnit == "hours":
             self.TimeIncrement *= 3600
 
         PhysicalSizeUnit = self.PhysicalSizeUnit_CB.currentText()
-        if timeUnit == 'nm':
+        if timeUnit == "nm":
             self.PhysicalSizeX /= 1000
             self.PhysicalSizeY /= 1000
             self.PhysicalSizeZ /= 1000
-        elif timeUnit == 'mm':
+        elif timeUnit == "mm":
             self.PhysicalSizeX *= 1000
             self.PhysicalSizeY *= 1000
             self.PhysicalSizeZ *= 1000
-        elif timeUnit == 'cm':
+        elif timeUnit == "cm":
             self.PhysicalSizeX *= 1e4
             self.PhysicalSizeY *= 1e4
             self.PhysicalSizeZ *= 1e4
@@ -3852,7 +3942,7 @@ class QDialogMetadataXML(QDialog):
 
     def exec_(self):
         self.show(block=True)
-    
+
     def setSize(self):
         h = self.SizeS_SB.height()
         self.TimeIncrement_DSB.setMinimumHeight(h)
@@ -3866,8 +3956,9 @@ class QDialogMetadataXML(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
+
 
 class CellACDCTrackerParamsWin(QDialog):
     def __init__(self, parent=None):
@@ -3875,15 +3966,13 @@ class CellACDCTrackerParamsWin(QDialog):
         super().__init__(parent)
 
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-        self.setWindowTitle('Cell-ACDC tracker parameters')
+        self.setWindowTitle("Cell-ACDC tracker parameters")
 
         paramsLayout = QGridLayout()
         paramsBox = QGroupBox()
 
         row = 0
-        label = QLabel(html_utils.paragraph(
-            'Minimum overlap between objects'
-        ))
+        label = QLabel(html_utils.paragraph("Minimum overlap between objects"))
         paramsLayout.addWidget(label, row, 0)
         maxOverlapSpinbox = QDoubleSpinBox()
         maxOverlapSpinbox.setAlignment(Qt.AlignCenter)
@@ -3900,8 +3989,8 @@ class CellACDCTrackerParamsWin(QDialog):
         paramsLayout.setColumnStretch(1, 1)
         paramsLayout.setColumnStretch(2, 0)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets.cancelPushButton("Cancel")
+        okButton = widgets.okPushButton(" Ok ")
         cancelButton.clicked.connect(self.cancel_cb)
         okButton.clicked.connect(self.ok_cb)
 
@@ -3912,7 +4001,7 @@ class CellACDCTrackerParamsWin(QDialog):
         buttonsLayout.addWidget(okButton)
 
         layout = QVBoxLayout()
-        infoText = html_utils.paragraph('<b>Cell-ACDC tracker parameters</b>')
+        infoText = html_utils.paragraph("<b>Cell-ACDC tracker parameters</b>")
         infoLabel = QLabel(infoText)
         layout.addWidget(infoLabel, alignment=Qt.AlignCenter)
         layout.addSpacing(10)
@@ -3927,21 +4016,21 @@ class CellACDCTrackerParamsWin(QDialog):
     def showInfo(self):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
-            'Cell-ACDC tracker computes the percentage of overlap between '
-            'all the objects<br> at frame <code>n</code> and all the '
-            'objects in previous frame <code>n-1</code>.<br><br>'
-            'All objects with <b>overlap less than</b> '
-            '<code>Minimum overlap between objects</code><br>are considered '
-            '<b>new objects</b>.<br><br>'
-            'Set this value to 0 if you want to force tracking of ALL the '
-            'objects<br> in the previous frame (e.g., if cells move a lot '
-            'between frames)'
+            "Cell-ACDC tracker computes the percentage of overlap between "
+            "all the objects<br> at frame <code>n</code> and all the "
+            "objects in previous frame <code>n-1</code>.<br><br>"
+            "All objects with <b>overlap less than</b> "
+            "<code>Minimum overlap between objects</code><br>are considered "
+            "<b>new objects</b>.<br><br>"
+            "Set this value to 0 if you want to force tracking of ALL the "
+            "objects<br> in the previous frame (e.g., if cells move a lot "
+            "between frames)"
         )
-        msg.information(self, 'Cell-ACDC tracker info', txt)
+        msg.information(self, "Cell-ACDC tracker info", txt)
 
     def ok_cb(self, checked=False):
         self.cancel = False
-        self.params = {'IoA_thresh': self.maxOverlapSpinbox.value()}
+        self.params = {"IoA_thresh": self.maxOverlapSpinbox.value()}
         self.close()
 
     def cancel_cb(self, event):
@@ -3953,20 +4042,18 @@ class CellACDCTrackerParamsWin(QDialog):
 
     def show(self, block=False):
         super().show()
-        self.resize(int(self.width()*1.3), self.height())
+        self.resize(int(self.width() * 1.3), self.height())
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
 
+
 class BayesianTrackerParamsWin(QDialog):
-    def __init__(
-            self, segmShape, parent=None, channels=None, 
-            currentChannelName=None
-        ):
+    def __init__(self, segmShape, parent=None, channels=None, currentChannelName=None):
         self.cancel = True
         super().__init__(parent)
 
@@ -3974,7 +4061,7 @@ class BayesianTrackerParamsWin(QDialog):
         self.currentChannelName = currentChannelName
 
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-        self.setWindowTitle('Bayesian tracker parameters')
+        self.setWindowTitle("Bayesian tracker parameters")
 
         paramsLayout = QGridLayout()
         paramsBox = QGroupBox()
@@ -3982,31 +4069,30 @@ class BayesianTrackerParamsWin(QDialog):
         row = 0
         this_path = os.path.dirname(os.path.abspath(__file__))
         default_model_path = os.path.join(
-            this_path, 'trackers', 'BayesianTracker',
-            'model', 'cell_config.json'
+            this_path, "trackers", "BayesianTracker", "model", "cell_config.json"
         )
-        label = QLabel(html_utils.paragraph('Model path'))
+        label = QLabel(html_utils.paragraph("Model path"))
         paramsLayout.addWidget(label, row, 0)
         modelPathLineEdit = QLineEdit()
-        start_dir = ''
+        start_dir = ""
         if os.path.exists(default_model_path):
             start_dir = os.path.dirname(default_model_path)
             modelPathLineEdit.setText(default_model_path)
         self.modelPathLineEdit = modelPathLineEdit
         paramsLayout.addWidget(modelPathLineEdit, row, 1)
         browseButton = widgets.browseFileButton(
-            title='Select Bayesian Tracker model file',
-            ext={'JSON Config': ('.json',)},
-            start_dir=start_dir
+            title="Select Bayesian Tracker model file",
+            ext={"JSON Config": (".json",)},
+            start_dir=start_dir,
         )
         browseButton.sigPathSelected.connect(self.onPathSelected)
         paramsLayout.addWidget(browseButton, row, 2, alignment=Qt.AlignLeft)
 
         if self.channels is not None:
             row += 1
-            label = QLabel(html_utils.paragraph('Intensity image channel:  '))
+            label = QLabel(html_utils.paragraph("Intensity image channel:  "))
             paramsLayout.addWidget(label, row, 0)
-            items = ['None', *self.channels]
+            items = ["None", *self.channels]
             self.channelCombobox = widgets.QCenteredComboBox()
             self.channelCombobox.addItems(items)
             paramsLayout.addWidget(self.channelCombobox, row, 1)
@@ -4014,15 +4100,15 @@ class BayesianTrackerParamsWin(QDialog):
                 self.channelCombobox.setCurrentText(self.currentChannelName)
 
         row += 1
-        label = QLabel(html_utils.paragraph('Features'))
+        label = QLabel(html_utils.paragraph("Features"))
         paramsLayout.addWidget(label, row, 0)
-        selectFeaturesButton = widgets.setPushButton('Select features')
+        selectFeaturesButton = widgets.setPushButton("Select features")
         paramsLayout.addWidget(selectFeaturesButton, row, 1)
         self.features = []
         selectFeaturesButton.clicked.connect(self.selectFeatures)
 
         row += 1
-        label = QLabel(html_utils.paragraph('Verbose'))
+        label = QLabel(html_utils.paragraph("Verbose"))
         paramsLayout.addWidget(label, row, 0)
         verboseToggle = widgets.Toggle()
         verboseToggle.setChecked(True)
@@ -4030,7 +4116,7 @@ class BayesianTrackerParamsWin(QDialog):
         paramsLayout.addWidget(verboseToggle, row, 1, alignment=Qt.AlignCenter)
 
         row += 1
-        label = QLabel(html_utils.paragraph('Run optimizer'))
+        label = QLabel(html_utils.paragraph("Run optimizer"))
         paramsLayout.addWidget(label, row, 0)
         optimizeToggle = widgets.Toggle()
         optimizeToggle.setChecked(True)
@@ -4038,7 +4124,7 @@ class BayesianTrackerParamsWin(QDialog):
         paramsLayout.addWidget(optimizeToggle, row, 1, alignment=Qt.AlignCenter)
 
         row += 1
-        label = QLabel(html_utils.paragraph('Max search radius'))
+        label = QLabel(html_utils.paragraph("Max search radius"))
         paramsLayout.addWidget(label, row, 0)
         maxSearchRadiusSpinbox = QSpinBox()
         maxSearchRadiusSpinbox.setAlignment(Qt.AlignCenter)
@@ -4051,19 +4137,19 @@ class BayesianTrackerParamsWin(QDialog):
 
         row += 1
         Z, Y, X = segmShape
-        label = QLabel(html_utils.paragraph('Tracking volume'))
+        label = QLabel(html_utils.paragraph("Tracking volume"))
         paramsLayout.addWidget(label, row, 0)
         volumeLineEdit = QLineEdit()
-        defaultVol = f'  (0, {X}), (0, {Y})  '
+        defaultVol = f"  (0, {X}), (0, {Y})  "
         if Z > 1:
-            defaultVol = f'{defaultVol}, (0, {Z})  '
+            defaultVol = f"{defaultVol}, (0, {Z})  "
         volumeLineEdit.setText(defaultVol)
         volumeLineEdit.setAlignment(Qt.AlignCenter)
         self.volumeLineEdit = volumeLineEdit
         paramsLayout.addWidget(volumeLineEdit, row, 1)
 
         row += 1
-        label = QLabel(html_utils.paragraph('Interactive mode step size'))
+        label = QLabel(html_utils.paragraph("Interactive mode step size"))
         paramsLayout.addWidget(label, row, 0)
         stepSizeSpinbox = QSpinBox()
         stepSizeSpinbox.setAlignment(Qt.AlignCenter)
@@ -4074,16 +4160,16 @@ class BayesianTrackerParamsWin(QDialog):
         paramsLayout.addWidget(stepSizeSpinbox, row, 1)
 
         row += 1
-        label = QLabel(html_utils.paragraph('Update method'))
+        label = QLabel(html_utils.paragraph("Update method"))
         paramsLayout.addWidget(label, row, 0)
         updateMethodCombobox = QComboBox()
-        updateMethodCombobox.addItems(['EXACT', 'APPROXIMATE'])
+        updateMethodCombobox.addItems(["EXACT", "APPROXIMATE"])
         self.updateMethodCombobox = updateMethodCombobox
         self.updateMethodCombobox.currentTextChanged.connect(self.methodChanged)
         paramsLayout.addWidget(updateMethodCombobox, row, 1)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets.cancelPushButton("Cancel")
+        okButton = widgets.okPushButton(" Ok ")
         cancelButton.clicked.connect(self.cancel_cb)
         okButton.clicked.connect(self.ok_cb)
 
@@ -4094,16 +4180,16 @@ class BayesianTrackerParamsWin(QDialog):
         buttonsLayout.addWidget(okButton)
 
         layout = QVBoxLayout()
-        infoText = html_utils.paragraph('<b>Bayesian Tracker parameters</b>')
+        infoText = html_utils.paragraph("<b>Bayesian Tracker parameters</b>")
         infoLabel = QLabel(infoText)
         layout.addWidget(infoLabel, alignment=Qt.AlignCenter)
         layout.addSpacing(10)
         paramsBox.setLayout(paramsLayout)
         layout.addWidget(paramsBox)
 
-        url = 'https://btrack.readthedocs.io/en/latest/index.html'
+        url = "https://btrack.readthedocs.io/en/latest/index.html"
         moreInfoText = html_utils.paragraph(
-            '<i>Find more info on the Bayesian Tracker\'s '
+            "<i>Find more info on the Bayesian Tracker's "
             f'<a href="{url}">home page</a></i>'
         )
         moreInfoLabel = QLabel(moreInfoText)
@@ -4115,14 +4201,16 @@ class BayesianTrackerParamsWin(QDialog):
         layout.addStretch(1)
         self.setLayout(layout)
         self.setFont(font)
-    
+
     def selectFeatures(self):
         features = measurements.get_btrack_features()
         selectWin = widgets.QDialogListbox(
-            'Select features',
-            'Select features to use for tracking:\n',
-            features, multiSelection=True, parent=self, 
-            includeSelectionHelp=True
+            "Select features",
+            "Select features to use for tracking:\n",
+            features,
+            multiSelection=True,
+            parent=self,
+            includeSelectionHelp=True,
         )
         for i in range(selectWin.listBox.count()):
             item = selectWin.listBox.item(i)
@@ -4134,7 +4222,7 @@ class BayesianTrackerParamsWin(QDialog):
         self.features = selectWin.selectedItemsText
 
     def methodChanged(self, method):
-        if method == 'APPROXIMATE':
+        if method == "APPROXIMATE":
             self.maxSearchRadiusSpinbox.setDisabled(False)
         else:
             self.maxSearchRadiusSpinbox.setDisabled(True)
@@ -4145,7 +4233,7 @@ class BayesianTrackerParamsWin(QDialog):
     def ok_cb(self, checked=False):
         self.cancel = False
         try:
-            m = re.findall(r'\((\d+), *(\d+)\)', self.volumeLineEdit.text())
+            m = re.findall(r"\((\d+), *(\d+)\)", self.volumeLineEdit.text())
             if len(m) < 2:
                 raise
             self.volume = tuple([(int(start), int(end)) for start, end in m])
@@ -4165,45 +4253,41 @@ class BayesianTrackerParamsWin(QDialog):
         self.update_method = self.updateMethodCombobox.currentText()
         self.model_path = os.path.normpath(self.modelPathLineEdit.text())
         self.params = {
-            'model_path': self.model_path,
-            'verbose': self.verbose,
-            'volume': self.volume,
-            'max_search_radius': self.max_search_radius,
-            'update_method': self.update_method,
-            'step_size': self.stepSizeSpinbox.value(),
-            'optimize': self.optimizeToggle.isChecked(),
-            'features': self.features
+            "model_path": self.model_path,
+            "verbose": self.verbose,
+            "volume": self.volume,
+            "max_search_radius": self.max_search_radius,
+            "update_method": self.update_method,
+            "step_size": self.stepSizeSpinbox.value(),
+            "optimize": self.optimizeToggle.isChecked(),
+            "features": self.features,
         }
         if self.channels is not None:
-            if self.channelCombobox.currentText() != 'None':
+            if self.channelCombobox.currentText() != "None":
                 self.intensityImageChannel = self.channelCombobox.currentText()
         self.close()
 
     def warnNotVaidPath(self):
-        url = 'https://github.com/lowe-lab-ucl/segment-classify-track/tree/main/models'
+        url = "https://github.com/lowe-lab-ucl/segment-classify-track/tree/main/models"
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
-            'The model configuration file path<br><br>'
-            f'{self.modelPathLineEdit.text()}<br><br> '
-            'does <b>not exist.</b><br><br>'
-            'You can find some <b>pre-configured models</b> '
+            "The model configuration file path<br><br>"
+            f"{self.modelPathLineEdit.text()}<br><br> "
+            "does <b>not exist.</b><br><br>"
+            "You can find some <b>pre-configured models</b> "
             f'<a href="{url}">here</a>.'
         )
-        msg.critical(
-            self, 'Invalid volume', txt
-        )
+        msg.critical(self, "Invalid volume", txt)
 
     def warnNotAcceptedVolume(self):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
-            f'{self.volumeLineEdit.text()} is <b>not a valid volume!</b><br><br>'
-            'Valid volume is for example (0, 2048), (0, 2048)<br>'
-            'for 2D segmentation or (0, 2048), (0, 2048), (0, 2048)<br>'
-            'for 3D segmentation.'
+            f"{self.volumeLineEdit.text()} is <b>not a valid volume!</b><br><br>"
+            "Valid volume is for example (0, 2048), (0, 2048)<br>"
+            "for 2D segmentation or (0, 2048), (0, 2048), (0, 2048)<br>"
+            "for 3D segmentation."
         )
-        msg.critical(
-            self, 'Invalid volume', txt
-        )
+        msg.critical(self, "Invalid volume", txt)
 
     def cancel_cb(self, event):
         self.cancel = True
@@ -4214,23 +4298,23 @@ class BayesianTrackerParamsWin(QDialog):
 
     def show(self, block=False):
         super().show()
-        self.resize(int(self.width()*1.3), self.height())
+        self.resize(int(self.width() * 1.3), self.height())
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
 
-class DeltaTrackerParamsWin(QDialog):
 
+class DeltaTrackerParamsWin(QDialog):
     def __init__(self, posData=None, parent=None):
         self.cancel = True
         super().__init__(parent)
 
         self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
-        self.setWindowTitle('Delta tracker parameters')
+        self.setWindowTitle("Delta tracker parameters")
 
         paramsLayout = QGridLayout()
         paramsBox = QGroupBox()
@@ -4239,19 +4323,17 @@ class DeltaTrackerParamsWin(QDialog):
         this_path = os.path.dirname(os.path.abspath(__file__))
         default_model_path = this_path
 
-        label = QLabel(html_utils.paragraph('Original Images path'))
+        label = QLabel(html_utils.paragraph("Original Images path"))
         paramsLayout.addWidget(label, row, 0)
         modelPathLineEdit = QLineEdit()
-        start_dir = ''
+        start_dir = ""
         if os.path.exists(default_model_path):
             start_dir = os.path.dirname(default_model_path)
             modelPathLineEdit.setText(default_model_path)
         self.modelPathLineEdit = modelPathLineEdit
         paramsLayout.addWidget(modelPathLineEdit, row, 1)
         browseButton = widgets.browseFileButton(
-            title='Select Original Images',
-            ext={'TIFF': ('.tif',)},
-            start_dir=start_dir
+            title="Select Original Images", ext={"TIFF": (".tif",)}, start_dir=start_dir
         )
         if posData is not None:
             modelPathLineEdit.setText(posData.imgPath)
@@ -4259,17 +4341,17 @@ class DeltaTrackerParamsWin(QDialog):
         paramsLayout.addWidget(browseButton, row, 2, alignment=Qt.AlignLeft)
 
         row += 1
-        label = QLabel(html_utils.paragraph('Model Type'))
+        label = QLabel(html_utils.paragraph("Model Type"))
         paramsLayout.addWidget(label, row, 0)
         updateMethodCombobox = QComboBox()
-        updateMethodCombobox.addItems(['2D', 'mothermachine'])
-        self.model_type = '2D'
+        updateMethodCombobox.addItems(["2D", "mothermachine"])
+        self.model_type = "2D"
         self.updateMethodCombobox = updateMethodCombobox
         self.updateMethodCombobox.currentTextChanged.connect(self.methodChanged)
         paramsLayout.addWidget(updateMethodCombobox, row, 1)
 
         row += 1
-        label = QLabel(html_utils.paragraph('Single Mother Machine Chamber?'))
+        label = QLabel(html_utils.paragraph("Single Mother Machine Chamber?"))
         paramsLayout.addWidget(label, row, 0)
         chamberToggle = widgets.Toggle()
         chamberToggle.setChecked(True)
@@ -4277,7 +4359,7 @@ class DeltaTrackerParamsWin(QDialog):
         paramsLayout.addWidget(chamberToggle, row, 1, alignment=Qt.AlignCenter)
 
         row += 1
-        label = QLabel(html_utils.paragraph('Verbose'))
+        label = QLabel(html_utils.paragraph("Verbose"))
         paramsLayout.addWidget(label, row, 0)
         verboseToggle = widgets.Toggle()
         verboseToggle.setChecked(True)
@@ -4285,7 +4367,7 @@ class DeltaTrackerParamsWin(QDialog):
         paramsLayout.addWidget(verboseToggle, row, 1, alignment=Qt.AlignCenter)
 
         row += 1
-        label = QLabel(html_utils.paragraph('Legacy Save (.mat)'))
+        label = QLabel(html_utils.paragraph("Legacy Save (.mat)"))
         paramsLayout.addWidget(label, row, 0)
         legacyToggle = widgets.Toggle()
         legacyToggle.setChecked(False)
@@ -4293,7 +4375,7 @@ class DeltaTrackerParamsWin(QDialog):
         paramsLayout.addWidget(legacyToggle, row, 1, alignment=Qt.AlignCenter)
 
         row += 1
-        label = QLabel(html_utils.paragraph('Pickle (.pkl)'))
+        label = QLabel(html_utils.paragraph("Pickle (.pkl)"))
         paramsLayout.addWidget(label, row, 0)
         pickleToggle = widgets.Toggle()
         pickleToggle.setChecked(False)
@@ -4301,15 +4383,15 @@ class DeltaTrackerParamsWin(QDialog):
         paramsLayout.addWidget(pickleToggle, row, 1, alignment=Qt.AlignCenter)
 
         row += 1
-        label = QLabel(html_utils.paragraph('Movie (.mp4) *only for 2D images'))
+        label = QLabel(html_utils.paragraph("Movie (.mp4) *only for 2D images"))
         paramsLayout.addWidget(label, row, 0)
         movieToggle = widgets.Toggle()
         movieToggle.setChecked(False)
         self.movieToggle = movieToggle
         paramsLayout.addWidget(movieToggle, row, 1, alignment=Qt.AlignCenter)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets.cancelPushButton("Cancel")
+        okButton = widgets.okPushButton(" Ok ")
         cancelButton.clicked.connect(self.cancel_cb)
         okButton.clicked.connect(self.ok_cb)
 
@@ -4320,17 +4402,16 @@ class DeltaTrackerParamsWin(QDialog):
         buttonsLayout.addWidget(okButton)
 
         layout = QVBoxLayout()
-        infoText = html_utils.paragraph('<b>Delta Tracker parameters</b>')
+        infoText = html_utils.paragraph("<b>Delta Tracker parameters</b>")
         infoLabel = QLabel(infoText)
         layout.addWidget(infoLabel, alignment=Qt.AlignCenter)
         layout.addSpacing(10)
         paramsBox.setLayout(paramsLayout)
         layout.addWidget(paramsBox)
 
-        url = 'https://delta.readthedocs.io/en/latest/'
+        url = "https://delta.readthedocs.io/en/latest/"
         moreInfoText = html_utils.paragraph(
-            '<i>Find more info on Delta Tracker\'s '
-            f'<a href="{url}">home page</a></i>'
+            f'<i>Find more info on Delta Tracker\'s <a href="{url}">home page</a></i>'
         )
         moreInfoLabel = QLabel(moreInfoText)
         moreInfoLabel.setOpenExternalLinks(True)
@@ -4343,8 +4424,8 @@ class DeltaTrackerParamsWin(QDialog):
         self.setFont(font)
 
     def methodChanged(self, method):
-        if method == 'mothermachine':
-            self.model_type = 'mothermachine'
+        if method == "mothermachine":
+            self.model_type = "mothermachine"
 
     def onPathSelected(self, path):
         self.modelPathLineEdit.setText(path)
@@ -4363,13 +4444,13 @@ class DeltaTrackerParamsWin(QDialog):
         self.chamber = self.chamberToggle.isChecked()
         self.model_path = os.path.normpath(self.modelPathLineEdit.text())
         self.params = {
-            'original_images_path': self.model_path,
-            'verbose': self.verbose,
-            'legacy': self.legacy,
-            'pickle': self.pickle,
-            'movie': self.movie,
-            'model_type': self.model_type,
-            'single mothermachine chamber': self.chamber
+            "original_images_path": self.model_path,
+            "verbose": self.verbose,
+            "legacy": self.legacy,
+            "pickle": self.pickle,
+            "movie": self.movie,
+            "model_type": self.model_type,
+            "single mothermachine chamber": self.chamber,
         }
         self.close()
 
@@ -4382,32 +4463,36 @@ class DeltaTrackerParamsWin(QDialog):
 
     def show(self, block=False):
         super().show()
-        self.resize(int(self.width()*1.3), self.height())
+        self.resize(int(self.width() * 1.3), self.height())
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
+
 
 class QDialogWorkerProgress(QDialog):
     sigClosed = Signal(bool)
 
     def __init__(
-            self, title='Progress', infoTxt='',
-            showInnerPbar=False, pbarDesc='',
-            parent=None
-        ):
+        self,
+        title="Progress",
+        infoTxt="",
+        showInnerPbar=False,
+        pbarDesc="",
+        parent=None,
+    ):
         self.workerFinished = False
         self.aborted = False
         self.clickCount = 0
         super().__init__(parent)
 
-        abort_text = 'Option+Command+C' if is_mac else 'Ctrl+Alt+C'
+        abort_text = "Option+Command+C" if is_mac else "Ctrl+Alt+C"
         self.abort_text = abort_text
 
-        self.setWindowTitle(f'{title} ({abort_text} to abort)')
+        self.setWindowTitle(f"{title} ({abort_text} to abort)")
         self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
@@ -4461,8 +4546,7 @@ class QDialogWorkerProgress(QDialog):
             Are you sure you want to abort?
         """)
         yesButton, noButton = msg.critical(
-            self, 'Are you sure you want to abort?', txt,
-            buttonsTexts=('Yes', 'No')
+            self, "Are you sure you want to abort?", txt, buttonsTexts=("Yes", "No")
         )
         return msg.clickedButton == yesButton
 
@@ -4472,7 +4556,7 @@ class QDialogWorkerProgress(QDialog):
             return
 
         self.sigClosed.emit(self.aborted)
-    
+
     def log(self, text):
         self.logConsole.append(text)
 
@@ -4485,26 +4569,33 @@ class QDialogWorkerProgress(QDialog):
         parentGeometry = self.parent().geometry()
         mainWinLeft, mainWinWidth = parentGeometry.left(), parentGeometry.width()
         mainWinTop, mainWinHeight = parentGeometry.top(), parentGeometry.height()
-        mainWinCenterX = int(mainWinLeft+mainWinWidth/2)
-        mainWinCenterY = int(mainWinTop+mainWinHeight/2)
+        mainWinCenterX = int(mainWinLeft + mainWinWidth / 2)
+        mainWinCenterY = int(mainWinTop + mainWinHeight / 2)
 
-        width = int(screenWidth/3)
+        width = int(screenWidth / 3)
         width = width if self.width() < width else self.width()
-        height = int(screenHeight/3)
-        left = int(mainWinCenterX - width/2)
+        height = int(screenHeight / 3)
+        left = int(mainWinCenterX - width / 2)
         left = left if left >= 0 else 0
-        top = int(mainWinCenterY - height/2)
+        top = int(mainWinCenterY - height / 2)
 
         self.setGeometry(left, top, width, height)
 
+
 class QDialogCombobox(QDialog):
     def __init__(
-            self, title, ComboBoxItems, informativeText,
-            CbLabel='Select value:  ', parent=None,
-            defaultChannelName=None, iconPixmap=None, centeredCombobox=False
-        ):
+        self,
+        title,
+        ComboBoxItems,
+        informativeText,
+        CbLabel="Select value:  ",
+        parent=None,
+        defaultChannelName=None,
+        iconPixmap=None,
+        centeredCombobox=False,
+    ):
         self.cancel = True
-        self.selectedItemText = ''
+        self.selectedItemText = ""
         self.selectedItemIdx = None
         super().__init__(parent=parent)
         self.setWindowTitle(title)
@@ -4542,9 +4633,9 @@ class QDialogCombobox(QDialog):
         topLayout.addWidget(combobox)
         topLayout.setContentsMargins(0, 10, 0, 0)
 
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets.okPushButton("Ok")
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton("Cancel")
 
         bottomLayout.addStretch(1)
         bottomLayout.addWidget(cancelButton)
@@ -4584,14 +4675,15 @@ class QDialogCombobox(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
+
 
 class MultiTimePointFilePattern(QBaseDialog):
     def __init__(self, fileName, folderPath, readPatternFunc=None, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle('File name pattern')
+        self.setWindowTitle("File name pattern")
         self.cancel = True
         self.additionalChannelWidgets = {}
 
@@ -4613,7 +4705,7 @@ class MultiTimePointFilePattern(QBaseDialog):
             These files <b>MUST be named exactly as the raw files</b>.
             <br>
         """)
-        
+
         noteLayout = QHBoxLayout()
         noteText = html_utils.paragraph("""
             Channels <em>do not need to have the same number of frames</em>, 
@@ -4623,23 +4715,23 @@ class MultiTimePointFilePattern(QBaseDialog):
             of the filename) and it will fill missing frames with zeros.
         """)
         noteLayout.addWidget(
-            QLabel(html_utils.to_admonition(noteText)), 
+            QLabel(html_utils.to_admonition(noteText)),
             # alignment=(Qt.AlignTop | Qt.AlignRight)
         )
 
         mainLayout.addWidget(QLabel(infoText))
         mainLayout.addLayout(noteLayout)
-        noteLayout.setStretch(0,0)
-        noteLayout.setStretch(1,1)
+        noteLayout.setStretch(0, 0)
+        noteLayout.setStretch(1, 1)
 
-        label = QLabel(html_utils.paragraph(
-            f'Sample file name: <code>{fileName}</code>'
-        ))
+        label = QLabel(
+            html_utils.paragraph(f"Sample file name: <code>{fileName}</code>")
+        )
         mainLayout.addWidget(label, alignment=Qt.AlignCenter)
         mainLayout.addSpacing(5)
 
-        channelName = ''
-        posName = ''
+        channelName = ""
+        posName = ""
         frameNumber = None
         if readPatternFunc is not None:
             posName, frameNumber, channelName = readPatternFunc(fileName)
@@ -4652,28 +4744,27 @@ class MultiTimePointFilePattern(QBaseDialog):
             formLayout.addLayout(l, 0, j)
 
         row = 0
-        items = QLabel('Position name: '), widgets.ReadOnlyLineEdit(), QLabel()
+        items = QLabel("Position name: "), widgets.ReadOnlyLineEdit(), QLabel()
         label, self.posNameEntry, button = items
         self.posNameEntry.setAlignment(Qt.AlignCenter)
         self.posNameEntry.setText(str(posName))
         for j, w in enumerate(items):
             self.vLayouts[j].addWidget(w)
-        
+
         row += 1
-        items = (
-            QLabel('Frame number name: '), widgets.ReadOnlyLineEdit(), QLabel()
-        )
+        items = (QLabel("Frame number name: "), widgets.ReadOnlyLineEdit(), QLabel())
         self.frameNumberEntry = items[1]
         self.frameNumberEntry.setText(str(frameNumber))
         self.frameNumberEntry.setAlignment(Qt.AlignCenter)
         for j, w in enumerate(items):
             self.vLayouts[j].addWidget(w)
-        
+
         row += 1
         self.channelNameLE = widgets.alphaNumericLineEdit()
         items = (
-            QLabel('Channel_1 name: '), self.channelNameLE, 
-            widgets.addPushButton(' Add channel')
+            QLabel("Channel_1 name: "),
+            self.channelNameLE,
+            widgets.addPushButton(" Add channel"),
         )
         self.addChannelButton = items[2]
         self.addChannelButton._row = row
@@ -4684,30 +4775,32 @@ class MultiTimePointFilePattern(QBaseDialog):
 
         row += 1
         items = (
-            QLabel('Basename (optional): '), widgets.alphaNumericLineEdit(), 
-            QLabel()
+            QLabel("Basename (optional): "),
+            widgets.alphaNumericLineEdit(),
+            QLabel(),
         )
         label, self.baseNameLE, button = items
         self.baseNameLE.setAlignment(Qt.AlignCenter)
         for j, w in enumerate(items):
             self.vLayouts[j].addWidget(w)
-        
+
         row += 1
-        items = QLabel('File will be saved as: '), QLineEdit(), QLabel()
+        items = QLabel("File will be saved as: "), QLineEdit(), QLabel()
         label, self.relPathEntry, button = items
         self.relPathEntry.setAlignment(Qt.AlignCenter)
         for j, w in enumerate(items):
             self.vLayouts[j].addWidget(w)
-        
+
         row += 1
         items = (
-            QLabel('Segmentation masks folder path: '), 
-            widgets.ElidingLineEdit(), 
+            QLabel("Segmentation masks folder path: "),
+            widgets.ElidingLineEdit(),
             widgets.browseFileButton(
-                'Browse...',
-                title='Select folder containing segmentation masks',
-                start_dir=folderPath, openFolder=True
-            )
+                "Browse...",
+                title="Select folder containing segmentation masks",
+                start_dir=folderPath,
+                openFolder=True,
+            ),
         )
         label, self.segmFolderPathEntry, button = items
         button.sigPathSelected.connect(self.segmFolderpathSelected)
@@ -4722,7 +4815,7 @@ class MultiTimePointFilePattern(QBaseDialog):
         self.channelNameLE.textChanged.connect(self.updateRelativePath)
         self.baseNameLE.textChanged.connect(self.updateRelativePath)
         self.addChannelButton.clicked.connect(self.addChannel)
-        
+
         mainLayout.addLayout(formLayout)
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
@@ -4742,19 +4835,19 @@ class MultiTimePointFilePattern(QBaseDialog):
         self.setLayout(mainLayout)
 
         self.setFont(font)
-    
+
     def segmFolderpathSelected(self, path):
         self.segmFolderPathEntry.setText(path)
-    
+
     def addChannel(self):
-        self.addChannelButton._row += 1 
+        self.addChannelButton._row += 1
         row = self.addChannelButton._row
 
         channel_idx = len(self.additionalChannelWidgets)
         items = (
-            QLabel(f'Channel_{channel_idx+1} name: '), 
-            widgets.alphaNumericLineEdit(), 
-            widgets.subtractPushButton('Remove channel')
+            QLabel(f"Channel_{channel_idx + 1} name: "),
+            widgets.alphaNumericLineEdit(),
+            widgets.subtractPushButton("Remove channel"),
         )
         label, lineEdit, button = items
         lineEdit.setAlignment(Qt.AlignCenter)
@@ -4770,10 +4863,10 @@ class MultiTimePointFilePattern(QBaseDialog):
         row = self.sender()._row
         for j, w in enumerate(self.additionalChannelWidgets[row]):
             self.vLayouts[j].removeWidget(w)
-        
+
         self.additionalChannelWidgets.pop(row)
-        self.addChannelButton._row -= 1 
-    
+        self.addChannelButton._row -= 1
+
     def checkChannelNames(self):
         allChannels = [self.channelNameLE.text()]
         allChannels.extend(
@@ -4787,24 +4880,24 @@ class MultiTimePointFilePattern(QBaseDialog):
         else:
             # Channel names are fine
             return allChannels
-        
+
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         txt = html_utils.paragraph("""
             Some channel names are empty or not different from each other.
         """)
-        msg.critical(self, 'Select two or more items', txt)
+        msg.critical(self, "Select two or more items", txt)
         return None
-    
-    def updateRelativePath(self, text=''):
+
+    def updateRelativePath(self, text=""):
         posName = self.posNameEntry.text()
         frameNumber = self.frameNumberEntry.text()
         channelName = self.channelNameLE.text()
         basename = self.baseNameLE.text()
         if basename:
-            filename = f'{basename}_{posName}_{channelName}.tif'
+            filename = f"{basename}_{posName}_{channelName}.tif"
         else:
-            filename = f'{posName}_{channelName}.tif'
-        relPath = f'...{os.sep}Position_1{os.sep}Images{os.sep}{filename}'
+            filename = f"{posName}_{channelName}.tif"
+        relPath = f"...{os.sep}Position_1{os.sep}Images{os.sep}{filename}"
         self.relPathEntry.setText(relPath)
 
     def ok_cb(self):
@@ -4816,15 +4909,15 @@ class MultiTimePointFilePattern(QBaseDialog):
         self.segmFolderPath = self.segmFolderPathEntry.text()
         self.cancel = False
         self.close()
-    
+
     def showEvent(self, event) -> None:
         self.channelNameLE.setFocus()
 
+
 class OrderableListWidgetDialog(QBaseDialog):
     def __init__(
-            self, items, title='Select items', infoTxt='', helpText='', 
-            parent=None
-        ):
+        self, items, title="Select items", infoTxt="", helpText="", parent=None
+    ):
         super().__init__(parent)
 
         self.selectedItemsText = []
@@ -4843,7 +4936,7 @@ class OrderableListWidgetDialog(QBaseDialog):
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
         if helpText:
-            helpButton = widgets.helpPushButton('Help...')
+            helpButton = widgets.helpPushButton("Help...")
             buttonsLayout.insertWidget(3, helpButton)
             helpButton.clicked.connect(self.showHelp)
 
@@ -4855,15 +4948,15 @@ class OrderableListWidgetDialog(QBaseDialog):
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
-    
+
     def showHelp(self):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(self.helpText)
-        msg.information(self, 'Select tables help', txt)
-    
+        msg.information(self, "Select tables help", txt)
+
     def ok_cb(self):
         self.cancel = False
-        self.selectedItemsText = [None]*len(self.listWidget.selectedItems())
+        self.selectedItemsText = [None] * len(self.listWidget.selectedItems())
         for itemW in self.listWidget.selectedItems():
             idx = int(itemW._nrWidget.currentText()) - 1
             if idx >= len(self.selectedItemsText):
@@ -4878,7 +4971,7 @@ class QDialogAutomaticThresholding(QBaseDialog):
 
         self.cancel = True
 
-        self.setWindowTitle('Automatic thresholding parameters')
+        self.setWindowTitle("Automatic thresholding parameters")
 
         layout = QVBoxLayout()
         formLayout = QGridLayout()
@@ -4890,19 +4983,20 @@ class QDialogAutomaticThresholding(QBaseDialog):
         self.sigmaGaussSpinbox.setMaximum(2**31)
         self.sigmaGaussSpinbox.setAlignment(Qt.AlignCenter)
         formLayout.addWidget(
-            QLabel('Gaussian filter sigma (0 to ignore): '), row, 0,
-            alignment=Qt.AlignRight
+            QLabel("Gaussian filter sigma (0 to ignore): "),
+            row,
+            0,
+            alignment=Qt.AlignRight,
         )
         formLayout.addWidget(self.sigmaGaussSpinbox, row, 1, 1, 2)
 
         row += 1
         self.threshMethodCombobox = QComboBox()
-        self.threshMethodCombobox.addItems([
-            'Isodata', 'Li', 'Mean', 'Minimum', 'Otsu', 'Triangle', 'Yen'
-        ])
+        self.threshMethodCombobox.addItems(
+            ["Isodata", "Li", "Mean", "Minimum", "Otsu", "Triangle", "Yen"]
+        )
         formLayout.addWidget(
-            QLabel('Thresholding algorithm: '), row, 0,
-            alignment=Qt.AlignRight
+            QLabel("Thresholding algorithm: "), row, 0, alignment=Qt.AlignRight
         )
         formLayout.addWidget(self.threshMethodCombobox, row, 1, 1, 2)
 
@@ -4910,21 +5004,21 @@ class QDialogAutomaticThresholding(QBaseDialog):
         if isSegm3D:
             row += 1
             formLayout.addWidget(
-                QLabel('Segment 3D volume: '), row, 0, alignment=Qt.AlignRight
+                QLabel("Segment 3D volume: "), row, 0, alignment=Qt.AlignRight
             )
             group = QButtonGroup()
             group.setExclusive(True)
-            self.segment3Dcheckbox = QRadioButton('Yes')
-            segmentSliceBySliceCheckbox = QRadioButton('No, segment slice-by-slice')
+            self.segment3Dcheckbox = QRadioButton("Yes")
+            segmentSliceBySliceCheckbox = QRadioButton("No, segment slice-by-slice")
             group.addButton(self.segment3Dcheckbox)
             group.addButton(segmentSliceBySliceCheckbox)
             formLayout.addWidget(self.segment3Dcheckbox, row, 1)
             formLayout.addWidget(segmentSliceBySliceCheckbox, row, 2)
             self.segment3Dcheckbox.setChecked(True)
 
-        okButton = widgets.okPushButton('Ok')
-        cancelButton = widgets.cancelPushButton('Cancel')
-        helpButton = widgets.helpPushButton('Help...')
+        okButton = widgets.okPushButton("Ok")
+        cancelButton = widgets.cancelPushButton("Cancel")
+        helpButton = widgets.helpPushButton("Help...")
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -4945,211 +5039,200 @@ class QDialogAutomaticThresholding(QBaseDialog):
 
         self.configPars = self.loadLastSelection()
 
-    
     def help_cb(self):
         import webbrowser
-        url = 'https://scikit-image.org/docs/stable/auto_examples/applications/plot_thresholding.html'
+
+        url = "https://scikit-image.org/docs/stable/auto_examples/applications/plot_thresholding.html"
         webbrowser.open(url)
 
     def ok_cb(self):
         self.cancel = False
         self.gaussSigma = self.sigmaGaussSpinbox.value()
         threshMethod = self.threshMethodCombobox.currentText().lower()
-        self.threshMethod = f'threshold_{threshMethod}'
+        self.threshMethod = f"threshold_{threshMethod}"
         self.segment_kwargs = {
-            'gauss_sigma': self.gaussSigma,
-            'threshold_method': self.threshMethod,
-            'segment_3D_volume': False
+            "gauss_sigma": self.gaussSigma,
+            "threshold_method": self.threshMethod,
+            "segment_3D_volume": False,
         }
         self.reduceMemoryUsage = False
         if self.segment3Dcheckbox is not None:
             doSegm3D = self.segment3Dcheckbox.isChecked()
-            self.segment_kwargs['segment_3D_volume'] = doSegm3D
+            self.segment_kwargs["segment_3D_volume"] = doSegm3D
         self.close()
-    
+
     def loadLastSelection(self):
-        self.ini_path = os.path.join(
-            settings_folderpath, 'last_params_segm_models.ini'
-        )
+        self.ini_path = os.path.join(settings_folderpath, "last_params_segm_models.ini")
         if not os.path.exists(self.ini_path):
             return
 
         configPars = config.ConfigParser()
         configPars.read(self.ini_path)
 
-        if 'thresholding.segment' not in configPars.sections():
+        if "thresholding.segment" not in configPars.sections():
             return
 
-        section = configPars['thresholding.segment']
-        self.sigmaGaussSpinbox.setValue(float(section['gauss_sigma']))
+        section = configPars["thresholding.segment"]
+        self.sigmaGaussSpinbox.setValue(float(section["gauss_sigma"]))
 
-        threshold_method = section['threshold_method']
+        threshold_method = section["threshold_method"]
         Method = threshold_method[10:].capitalize()
         self.threshMethodCombobox.setCurrentText(Method)
         if self.segment3Dcheckbox is None:
             return
-        self.segment3Dcheckbox.setChecked(section.getboolean('segment_3D_volume'))
+        self.segment3Dcheckbox.setChecked(section.getboolean("segment_3D_volume"))
+
 
 class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
     def __init__(self, df: pd.DataFrame, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle('Select columns to combine into the output table')
-        
+        self.setWindowTitle("Select columns to combine into the output table")
+
         self.cancel = True
-        
+
         self.columns = core.natsort_acdc_columns(df.columns)
         self.operations = (
-            'Sum mother and bud', 
-            'Copy column from mother',
+            "Sum mother and bud",
+            "Copy column from mother",
         )
-        
+
         self.mainLayout = QVBoxLayout()
-        
+
         instructionsText = html_utils.paragraph("""
             <b>Select which columns</b> and <b>how</b> you want to combine them 
             into the output table.<br>
         """)
         self.mainLayout.addWidget(QLabel(instructionsText))
-        
-        settingsLayout = QGridLayout()    
-        
+
+        settingsLayout = QGridLayout()
+
         row = 0
-        settingsLayout.addWidget(widgets.QHLine(), row, 0, 1, 2)  
-        
+        settingsLayout.addWidget(widgets.QHLine(), row, 0, 1, 2)
+
         row += 1
         settingsLayout.addWidget(
-            QLabel('Copy all non-selected columns from mother cell'), row, 0
+            QLabel("Copy all non-selected columns from mother cell"), row, 0
         )
         self.copyAllColsToggle = widgets.Toggle()
-        settingsLayout.addWidget(
-            self.copyAllColsToggle, row, 1, alignment=Qt.AlignLeft
-        )
-        
+        settingsLayout.addWidget(self.copyAllColsToggle, row, 1, alignment=Qt.AlignLeft)
+
         row += 1
-        settingsLayout.addWidget(widgets.QHLine(), row, 0, 1, 2) 
-        
+        settingsLayout.addWidget(widgets.QHLine(), row, 0, 1, 2)
+
         self.mainLayout.addLayout(settingsLayout)
-        
+
         scrollArea = widgets.ScrollArea()
         scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         scrollWidget = QWidget()
         scrollArea.setWidget(scrollWidget)
         self.centralLayout = QGridLayout()
         scrollWidget.setLayout(self.centralLayout)
-        
-        self.centralLayout.addWidget(QLabel('Grouping columns'), 0, 0)
-        self.centralLayout.addWidget(QLabel('Column'), 0, 1)
-        self.centralLayout.addWidget(QLabel('Operation'), 0, 2)
+
+        self.centralLayout.addWidget(QLabel("Grouping columns"), 0, 0)
+        self.centralLayout.addWidget(QLabel("Column"), 0, 1)
+        self.centralLayout.addWidget(QLabel("Operation"), 0, 2)
         self.centralLayout.setRowStretch(0, 0)
-        
+
         self.groupingColsListWidget = widgets.listWidget(
-            isMultipleSelection=True, 
+            isMultipleSelection=True,
         )
         self.groupingColsListWidget.addItems(self.columns)
         self.centralLayout.addWidget(self.groupingColsListWidget, 1, 0, 2, 1)
-        
+
         selector = widgets.ComboBox(self)
         selector.addItems(self.columns)
         operationCombobox = widgets.ComboBox(self)
         operationCombobox.addItems(self.operations)
         self.addSelectorButton = widgets.addPushButton()
-        
+
         dummyButton = widgets.delPushButton()
         dummyButton.setRetainSizeWhenHidden(True)
         dummyButton.hide()
         self.centralLayout.addWidget(dummyButton, 1, 4)
-        
+
         self.centralLayout.addWidget(selector, 1, 1)
         self.centralLayout.addWidget(operationCombobox, 1, 2)
         self.centralLayout.addWidget(self.addSelectorButton, 1, 3)
-        
+
         self.centralLayout.setRowStretch(1, 1)
         self.centralLayout.setRowStretch(2, 1)
-        
+
         self.selectors = {1: (selector, operationCombobox)}
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
-        saveSelectionButton = widgets.savePushButton(
-            'Save current selection'
-        )
+        saveSelectionButton = widgets.savePushButton("Save current selection")
         buttonsLayout.insertWidget(3, saveSelectionButton)
-        
+
         loadDefaultColsButton = widgets.reloadPushButton(
-            'Load default summable columns'
+            "Load default summable columns"
         )
         buttonsLayout.insertWidget(4, loadDefaultColsButton)
-        
-        loadPreviousSelButton = widgets.OpenFilePushButton(
-            'Load previous selection'
-        )
+
+        loadPreviousSelButton = widgets.OpenFilePushButton("Load previous selection")
         buttonsLayout.insertWidget(5, loadPreviousSelButton)
-        
+
         saveSelectionButton.clicked.connect(self.saveSelection)
         loadDefaultColsButton.clicked.connect(self.loadDefaultCols)
         loadPreviousSelButton.clicked.connect(self.loadPreviousSelection)
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         self.mainLayout.addWidget(scrollArea)
         self.mainLayout.addSpacing(20)
         self.mainLayout.addLayout(buttonsLayout)
-        
+
         self.addSelectorButton.clicked.connect(self.addSelector)
-        selector.currentTextChanged.connect(
-            self.selectorTextChanged
-        )
+        selector.currentTextChanged.connect(self.selectorTextChanged)
 
         self.setLayout(self.mainLayout)
         self.setFont(font)
-    
+
     def saveSelection(self):
         saved_selections = io.get_saved_moth_bud_tot_selections()
         existing_names = set(saved_selections.keys())
         win = filenameDialog(
-            basename='',
-            ext='',
-            hintText='Insert a <b>name</b> for the current selection:',
+            basename="",
+            ext="",
+            hintText="Insert a <b>name</b> for the current selection:",
             existingNames=existing_names,
             allowEmpty=False,
-            defaultEntry='mother_bud_total_columns_selection'
+            defaultEntry="mother_bud_total_columns_selection",
         )
         win.exec_()
         if win.cancel:
             return
-        
+
         name = win.filename
         saved_selections[name] = self.selectedOptions()
         io.save_moth_bud_tot_selected_options(saved_selections)
-        
+
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         txt = html_utils.paragraph(f"""
             Current selection saved with name <code>{name}</code>.
         """)
-        msg.information(self, 'Selection saved', txt)
+        msg.information(self, "Selection saved", txt)
 
     def loadDefaultCols(self):
         from . import single_pos_index_cols
-        
-        grouping_cols = [
-            col for col in single_pos_index_cols if col in self.columns
-        ]
+
+        grouping_cols = [col for col in single_pos_index_cols if col in self.columns]
         self.groupingColsListWidget.setSelectedItems(grouping_cols)
-        
+
         column_operation_mapper = {
-            col: 'Sum mother and bud' 
-            for col in cca_functions.default_summable_columns
+            col: "Sum mother and bud" for col in cca_functions.default_summable_columns
         }
         column_operation_mapper = {
-            col: op for col, op in column_operation_mapper.items()
+            col: op
+            for col, op in column_operation_mapper.items()
             if col in self.columns and op in self.operations
         }
         self.addSelectors(
-            len(column_operation_mapper), 
+            len(column_operation_mapper),
             callback_on_finished=partial(
                 self.setSelectorValues, column_operation_mapper
-            )
+            ),
         )
 
     def loadPreviousSelection(self):
@@ -5159,43 +5242,43 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
             txt = html_utils.paragraph("""
                 There are no saved selections.
             """)
-            msg.warning(self, 'No saved selections', txt)
+            msg.warning(self, "No saved selections", txt)
             return
-        
+
         existing_names = natsorted(saved_selections.keys(), key=str.casefold)
-        
+
         selectNameWin = widgets.QDialogListbox(
-            'Choose selection to load',
-            'Choose selection to load:\n',
-            existing_names, 
-            multiSelection=False, 
-            parent=self
+            "Choose selection to load",
+            "Choose selection to load:\n",
+            existing_names,
+            multiSelection=False,
+            parent=self,
         )
         selectNameWin.exec_()
         if selectNameWin.cancel:
             return
-        
+
         self.loadOptions(saved_selections[selectNameWin.selectedItemsText[0]])
-    
+
     def resetSelectors(self, callback_on_finished=None):
         self.callback_on_finished = callback_on_finished
         QTimer.singleShot(1, self._removeLastSelector)
-    
+
     def _removeLastSelector(self):
         if len(self.selectors) == 1:
             if self.callback_on_finished is not None:
                 self.callback_on_finished()
             return
-        
+
         lastRow = max(self.selectors.keys())
         lastSelector, _ = self.selectors[lastRow]
         self.removeSelector(sender=lastSelector.delButton)
         QTimer.singleShot(1, self._removeLastSelector)
-    
+
     def addSelectors(self, number, callback_on_finished=None):
         self.callback_on_finished = callback_on_finished
         QTimer.singleShot(1, partial(self._addSelectorRecursive, number))
-    
+
     def _addSelectorRecursive(self, number):
         if len(self.selectors) == number:
             if self.callback_on_finished is not None:
@@ -5204,62 +5287,61 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
 
         self.addSelector()
         QTimer.singleShot(1, partial(self._addSelectorRecursive, number))
-    
+
     def loadOptions(self, options: dict):
         if len(self.selectors) > 1:
-            self.resetSelectors(
-                callback_on_finished=partial(self.loadOptions, options)
-            )
+            self.resetSelectors(callback_on_finished=partial(self.loadOptions, options))
             return
-        
+
         self.copyAllColsToggle.setChecked(
-            options.get('do_copy_all_nonselected_columns', False)
+            options.get("do_copy_all_nonselected_columns", False)
         )
         self.groupingColsListWidget.setSelectedItems(
-            options.get('grouping_columns', [])
+            options.get("grouping_columns", [])
         )
-        column_operation_mapper = options.get('column_operation_mapper', {})
+        column_operation_mapper = options.get("column_operation_mapper", {})
         column_operation_mapper = {
-            col: op for col, op in column_operation_mapper.items()
+            col: op
+            for col, op in column_operation_mapper.items()
             if col in self.columns and op in self.operations
         }
         if len(column_operation_mapper) > 1:
             self.addSelectors(
-                len(column_operation_mapper), 
+                len(column_operation_mapper),
                 callback_on_finished=partial(
                     self.setSelectorValues, column_operation_mapper
-                )
+                ),
             )
             return
-        
+
         self.setSelectorValues(column_operation_mapper)
-    
+
     def setSelectorValues(self, column_operation_mapper):
         for i, (col, op) in enumerate(column_operation_mapper.items()):
-            selector, operationCombobox = self.selectors[i+1]
+            selector, operationCombobox = self.selectors[i + 1]
             selector.setCurrentText(col)
-            operationCombobox.setCurrentText(op)                
-    
+            operationCombobox.setCurrentText(op)
+
     def resetSelectorsStyles(self):
         for selector, _ in self.selectors.values():
-            selector.setStyleSheet('')
-    
+            selector.setStyleSheet("")
+
     def selectorTextChanged(self, text):
         self.resetSelectorsStyles()
         selector = self.sender()
         for other_selector, _ in self.selectors.values():
             if other_selector == selector:
                 continue
-            
+
             if selector.currentText() != other_selector.currentText():
                 continue
-            
+
             self.setWarningStyleSelector(selector)
             self.setWarningStyleSelector(other_selector)
-            
+
     def addSelector(self):
         row = len(self.selectors) + 1
-        
+
         selector = widgets.ComboBox(self)
         selector.addItems(self.columns)
         selector.setCurrentIndex(len(self.selectors))
@@ -5268,65 +5350,61 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
         delButton = widgets.delPushButton()
         selector.delButton = delButton
         delButton._row = row
-        
+
         self.selectors[row] = (selector, operationCombobox)
-        
+
         self.centralLayout.addWidget(selector, row, 1)
         self.centralLayout.addWidget(operationCombobox, row, 2)
         self.centralLayout.addWidget(delButton, row, 3)
-        
+
         self.centralLayout.removeWidget(self.addSelectorButton)
         self.centralLayout.addWidget(self.addSelectorButton, row, 4)
-        
+
         delButton.clicked.connect(self.removeSelector)
-        
+
         self.centralLayout.removeWidget(self.groupingColsListWidget)
         rowSpan = self.centralLayout.rowCount()
-        self.centralLayout.addWidget(
-            self.groupingColsListWidget, 1, 0, rowSpan, 1
-        )
+        self.centralLayout.addWidget(self.groupingColsListWidget, 1, 0, rowSpan, 1)
         self.centralLayout.setRowStretch(rowSpan, 1)
-        
-        selector.currentTextChanged.connect(
-            self.selectorTextChanged
-        )
-    
+
+        selector.currentTextChanged.connect(self.selectorTextChanged)
+
     def removeSelector(self, checked=False, sender=None):
         if sender is None:
             delButton = self.sender()
         else:
             delButton = sender
-            
+
         selector, operationCombobox = self.selectors.pop(delButton._row)
-        
+
         self.centralLayout.removeWidget(selector)
         self.centralLayout.removeWidget(operationCombobox)
         self.centralLayout.removeWidget(delButton)
-        
+
         resorted_selectors = {}
         for i, (row, (sel, op)) in enumerate(self.selectors.items()):
             if i == 0:
-                resorted_selectors[i+1] = (sel, op)
+                resorted_selectors[i + 1] = (sel, op)
                 continue
-            
+
             delButton = sel.delButton
-            delButton._row = i+1
+            delButton._row = i + 1
             self.centralLayout.removeWidget(sel)
             self.centralLayout.removeWidget(op)
             self.centralLayout.removeWidget(delButton)
-            self.centralLayout.addWidget(sel, i+1, 1)
-            self.centralLayout.addWidget(op, i+1, 2)
-            self.centralLayout.addWidget(delButton, i+1, 3)
-            
-            resorted_selectors[i+1] = (sel, op)
-        
-        last_row = i+1
+            self.centralLayout.addWidget(sel, i + 1, 1)
+            self.centralLayout.addWidget(op, i + 1, 2)
+            self.centralLayout.addWidget(delButton, i + 1, 3)
+
+            resorted_selectors[i + 1] = (sel, op)
+
+        last_row = i + 1
         col = 4 if last_row > 1 else 3
         self.centralLayout.removeWidget(self.addSelectorButton)
-        self.centralLayout.addWidget(self.addSelectorButton, i+1, col)
-        
+        self.centralLayout.addWidget(self.addSelectorButton, i + 1, col)
+
         self.selectors = resorted_selectors
-    
+
     def sizeHint(self):
         width = super().sizeHint().width()
         height = super().sizeHint().height()
@@ -5335,27 +5413,27 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
         )
         width += groupingColsWidth
         return QSize(width, height)
-    
+
     def checkDuplicatedSelectedColumns(self):
         for selector, _ in self.selectors.values():
-            selector.setStyleSheet('background-color: none')
+            selector.setStyleSheet("background-color: none")
             for other_selector, _ in self.selectors.values():
                 if other_selector == selector:
                     continue
-                
+
                 if other_selector.currentText() != selector.currentText():
                     continue
-                
+
                 self.warnDuplicatedSelectedColumns(selector, other_selector)
                 return False
-        
+
         return True
-    
+
     def setWarningStyleSelector(self, selector):
         popup = selector.view()
         palette = popup.palette()
         text_color = palette.color(palette.ColorRole.Text)
-        warningStyleSheet = (f"""
+        warningStyleSheet = f"""
             QComboBox {{
                 color: black;
                 background-color: orange;  /* main area */
@@ -5363,13 +5441,13 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
             QComboBox QAbstractItemView {{
                 background-color: {text_color.name()};
             }}
-        """)
+        """
         selector.setStyleSheet(warningStyleSheet)
-    
+
     def warnDuplicatedSelectedColumns(self, selector1, selector2):
         self.setWarningStyleSelector(selector1)
         self.setWarningStyleSelector(selector2)
-        
+
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         txt = html_utils.paragraph(f"""
             The following column has been selected more than once 
@@ -5378,15 +5456,14 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
             Please, select each column only once.<br><br>
             Thank you for your patience!
         """)
-        msg.warning(self, 'Duplicated selection', txt)
-    
-    
+        msg.warning(self, "Duplicated selection", txt)
+
     def checkGroupingColumnsNotSelected(self):
         if self.groupingColsListWidget.selectedItems():
             return True
-        
+
         return self.warnGroupingColumnsNotSelected()
-    
+
     def warnGroupingColumnsNotSelected(self):
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         txt = html_utils.paragraph(f"""
@@ -5395,52 +5472,55 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
             Position folder.
         """)
         _, noButton, yesButton = msg.question(
-            self, 'No grouping columns selected?', txt,
+            self,
+            "No grouping columns selected?",
+            txt,
             buttonsTexts=(
-                'Cancel', 
-                'No, let me select grouping columns', 
-                'Yes, I do not need grouping columns'
-            )
+                "Cancel",
+                "No, let me select grouping columns",
+                "Yes, I do not need grouping columns",
+            ),
         )
         return msg.clickedButton == yesButton
-    
+
     def selectedOptions(self):
         selected_options = {
-            'grouping_columns': self.groupingColsListWidget.selectedItemsText(),
-            'column_operation_mapper': {
+            "grouping_columns": self.groupingColsListWidget.selectedItemsText(),
+            "column_operation_mapper": {
                 selector.currentText(): operationCombobox.currentText()
                 for selector, operationCombobox in self.selectors.values()
             },
-            'do_copy_all_nonselected_columns': self.copyAllColsToggle.isChecked()
+            "do_copy_all_nonselected_columns": self.copyAllColsToggle.isChecked(),
         }
         return selected_options
-    
+
     def ok_cb(self):
         proceed = self.checkDuplicatedSelectedColumns()
         if not proceed:
             return
-        
+
         proceed = self.checkGroupingColumnsNotSelected()
         if not proceed:
             return
-        
+
         self.selected_options = self.selectedOptions()
-        
+
         self.cancel = False
         self.close()
+
 
 class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
     def __init__(self, df, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle('Select columns containing tracking info')
-        
+        self.setWindowTitle("Select columns containing tracking info")
+
         self.cancel = True
         self.mainLayout = QVBoxLayout()
 
         options = (
             '"Frame index", "Tracked IDs" and "Segmentation mask IDs"<br>',
-            '"Frame index", "Tracked IDs", "X coord. centroid", and "Y coord. centroid"'
+            '"Frame index", "Tracked IDs", "X coord. centroid", and "Y coord. centroid"',
         )
         self.instructionsText = html_utils.paragraph(
             f"""
@@ -5457,45 +5537,43 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
 
         self.frameIndexCombobox = widgets.QCenteredComboBox()
         self.frameIndexCombobox.addItems(df.columns)
-        self.frameIndexCheckbox = QCheckBox('1st frame is index 1')
+        self.frameIndexCheckbox = QCheckBox("1st frame is index 1")
         frameIndexLayout = QHBoxLayout()
         frameIndexLayout.addWidget(self.frameIndexCombobox)
         frameIndexLayout.addWidget(self.frameIndexCheckbox)
         frameIndexLayout.setStretch(0, 2)
         frameIndexLayout.setStretch(1, 0)
-        formLayout.addRow(
-            'Frame index: ', frameIndexLayout
-        )
+        formLayout.addRow("Frame index: ", frameIndexLayout)
 
         self.trackedIDsCombobox = widgets.QCenteredComboBox()
         self.trackedIDsCombobox.addItems(df.columns)
-        formLayout.addRow('Tracked IDs: ', self.trackedIDsCombobox)
+        formLayout.addRow("Tracked IDs: ", self.trackedIDsCombobox)
 
         items = df.columns.to_list()
-        items.insert(0, 'None')
+        items.insert(0, "None")
         self.maskIDsCombobox = widgets.QCenteredComboBox()
         self.maskIDsCombobox.addItems(items)
-        formLayout.addRow('Segmentation mask IDs: ', self.maskIDsCombobox)
+        formLayout.addRow("Segmentation mask IDs: ", self.maskIDsCombobox)
 
         self.xCentroidCombobox = widgets.QCenteredComboBox()
         self.xCentroidCombobox.addItems(items)
-        formLayout.addRow('X coord. centroid: ', self.xCentroidCombobox)
+        formLayout.addRow("X coord. centroid: ", self.xCentroidCombobox)
 
         self.yCentroidCombobox = widgets.QCenteredComboBox()
         self.yCentroidCombobox.addItems(items)
-        formLayout.addRow('Y coord. centroid: ', self.yCentroidCombobox)
+        formLayout.addRow("Y coord. centroid: ", self.yCentroidCombobox)
 
         self.parentIDcombobox = widgets.QCenteredComboBox()
         self.parentIDcombobox.addItems(items)
-        formLayout.addRow('Parent ID (optional): ', self.parentIDcombobox)
+        formLayout.addRow("Parent ID (optional): ", self.parentIDcombobox)
 
         deleteUntrackedLayout = QHBoxLayout()
         self.deleteUntrackedIDsToggle = widgets.Toggle()
         deleteUntrackedLayout.addStretch(1)
         deleteUntrackedLayout.addWidget(self.deleteUntrackedIDsToggle)
         deleteUntrackedLayout.addStretch(1)
-        formLayout.addRow('Delete untracked IDs: ', deleteUntrackedLayout)
-        
+        formLayout.addRow("Delete untracked IDs: ", deleteUntrackedLayout)
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
@@ -5508,7 +5586,7 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
 
         self.setLayout(self.mainLayout)
         self.setFont(font)
-    
+
     def ok_cb(self):
         self.cancel = False
         self.frameIndexCol = self.frameIndexCombobox.currentText()
@@ -5517,23 +5595,25 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         self.xCentroidCol = self.xCentroidCombobox.currentText()
         self.yCentroidCol = self.yCentroidCombobox.currentText()
         self.deleteUntrackedIDs = self.deleteUntrackedIDsToggle.isChecked()
-        if self.maskIDsCol == 'None':
-            if self.xCentroidCol == 'None' or self.yCentroidCol == 'None':
+        if self.maskIDsCol == "None":
+            if self.xCentroidCol == "None" or self.yCentroidCol == "None":
                 self.warnInvalidSelection()
                 return
         else:
-            self.xCentroidCol = 'None'
-            self.yCentroidCol = 'None'
+            self.xCentroidCol = "None"
+            self.yCentroidCol = "None"
         self.parentIDcol = self.parentIDcombobox.currentText()
         self.isFirstFrameOne = self.frameIndexCheckbox.isChecked()
         self.close()
-    
+
     def warnInvalidSelection(self):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         msg.warning(
-            self, 'Invalid selection', html_utils.paragraph(
-                f'<b>Invalid selection</b><br> {self.instructionsText}'
-            )
+            self,
+            "Invalid selection",
+            html_utils.paragraph(
+                f"<b>Invalid selection</b><br> {self.instructionsText}"
+            ),
         )
 
 
@@ -5541,37 +5621,35 @@ class SelectPromptableModelDialog(QBaseDialog):
     def __init__(self, parent=None):
         self.cancel = True
         super().__init__(parent)
-        
-        self.setWindowTitle('Select model for segmentation')
-        
+
+        self.setWindowTitle("Select model for segmentation")
+
         mainLayout = QVBoxLayout()
-        
-        label = QLabel(html_utils.paragraph(
-            'Select model to use for segmentation: '
-        ))
+
+        label = QLabel(html_utils.paragraph("Select model to use for segmentation: "))
         mainLayout.addWidget(label, alignment=Qt.AlignCenter)
-        
+
         listBox = widgets.listWidget()
         models = myutils.get_list_of_promptable_models()
         listBox.addItems(models)
         listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         listBox.setCurrentRow(0)
         listBox.itemDoubleClicked.connect(self.ok_cb)
-        
+
         self.listBox = listBox
-        
+
         mainLayout.addWidget(listBox)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
-    
+
     def ok_cb(self):
         self.cancel = False
         self.model_name = self.listBox.currentItem().text()
@@ -5579,12 +5657,10 @@ class SelectPromptableModelDialog(QBaseDialog):
 
 
 class QDialogSelectModel(QDialog):
-    def __init__(
-            self, parent=None, addSkipSegmButton=False, customFirst=''
-        ):
+    def __init__(self, parent=None, addSkipSegmButton=False, customFirst=""):
         self.cancel = True
         super().__init__(parent)
-        self.setWindowTitle('Select model')
+        self.setWindowTitle("Select model")
 
         mainLayout = QVBoxLayout()
         topLayout = QVBoxLayout()
@@ -5592,9 +5668,7 @@ class QDialogSelectModel(QDialog):
 
         self.mainLayout = mainLayout
 
-        label = QLabel(html_utils.paragraph(
-            'Select model to use for segmentation: '
-        ))
+        label = QLabel(html_utils.paragraph("Select model to use for segmentation: "))
         # padding: top, left, bottom, right
         label.setStyleSheet("padding:0px 0px 3px 0px;")
         topLayout.addWidget(label, alignment=Qt.AlignCenter)
@@ -5607,12 +5681,12 @@ class QDialogSelectModel(QDialog):
                 idx = models.index(customFirst)
                 models.insert(0, models.pop(idx))
             except ValueError:
-                print(f'Warning: {customFirst} not found in models list.')
+                print(f"Warning: {customFirst} not found in models list.")
                 pass
 
         listBox.setFont(font)
         listBox.addItems(models)
-        addCustomModelItem = QListWidgetItem('Add custom model...')
+        addCustomModelItem = QListWidgetItem("Add custom model...")
         addCustomModelItem.setFont(italicFont)
         listBox.addItem(addCustomModelItem)
         listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -5621,15 +5695,15 @@ class QDialogSelectModel(QDialog):
         listBox.itemDoubleClicked.connect(self.ok_cb)
         topLayout.addWidget(listBox)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets.cancelPushButton("Cancel")
+        okButton = widgets.okPushButton(" Ok ")
         okButton.setShortcut(Qt.Key_Enter)
 
         bottomLayout.addStretch(1)
         bottomLayout.addWidget(cancelButton)
         bottomLayout.addSpacing(20)
         if addSkipSegmButton:
-            skipSegmButton = widgets.SkipPushButton('Skip segmentation')
+            skipSegmButton = widgets.SkipPushButton("Skip segmentation")
             bottomLayout.addWidget(skipSegmButton)
             skipSegmButton.clicked.connect(self.skipSegm)
         bottomLayout.addWidget(okButton)
@@ -5644,17 +5718,17 @@ class QDialogSelectModel(QDialog):
         cancelButton.clicked.connect(self.cancel_cb)
 
         self.setStyleSheet(LISTWIDGET_STYLESHEET)
-    
+
     def skipSegm(self):
         self.cancel = False
-        self.selectedModel = 'skip_segmentation'
+        self.selectedModel = "skip_segmentation"
         self.close()
-    
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key_Escape:
             event.ignore()
             return
-            
+
         super().keyPressEvent(event)
 
     def ok_cb(self, event):
@@ -5662,7 +5736,7 @@ class QDialogSelectModel(QDialog):
         self.cancel = False
         item = self.listBox.currentItem()
         model = item.text()
-        if model == 'Add custom model...':
+        if model == "Add custom model...":
             modelFilePath = addCustomModelMessages(self)
             if modelFilePath is None:
                 return
@@ -5671,8 +5745,8 @@ class QDialogSelectModel(QDialog):
             item = QListWidgetItem(modelName)
             self.listBox.addItem(item)
             self.listBox.setCurrentItem(item)
-        elif model == 'Automatic thresholding':
-            self.selectedModel = 'thresholding'
+        elif model == "Automatic thresholding":
+            self.selectedModel = "thresholding"
             self.close()
         else:
             self.selectedModel = model
@@ -5699,8 +5773,9 @@ class QDialogSelectModel(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
+
 
 class ViewTextDialog(QBaseDialog):
     def __init__(self, text, parent=None):
@@ -5714,7 +5789,7 @@ class ViewTextDialog(QBaseDialog):
         textViewWidget.setText(text)
 
         buttonsLayout = QHBoxLayout()
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets.okPushButton("Ok")
 
         okButton.clicked.connect(self.close)
         buttonsLayout.addStretch(1)
@@ -5727,11 +5802,15 @@ class ViewTextDialog(QBaseDialog):
         self.setLayout(mainLayout)
         self.setFont(font)
 
+
 class startStopFramesDialog(QBaseDialog):
     def __init__(
-            self, SizeT, currentFrameNum=0, parent=None,
-            windowTitle='Select frame range to segment'
-        ):
+        self,
+        SizeT,
+        currentFrameNum=0,
+        parent=None,
+        windowTitle="Select frame range to segment",
+    ):
         super().__init__(parent=parent)
 
         self.setWindowTitle(windowTitle)
@@ -5745,8 +5824,8 @@ class startStopFramesDialog(QBaseDialog):
             SizeT, currentFrameNum=currentFrameNum, parent=parent
         )
 
-        okButton = widgets.okPushButton('Ok')
-        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton("Ok")
+        cancelButton = widgets.cancelPushButton("Cancel")
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -5770,14 +5849,15 @@ class startStopFramesDialog(QBaseDialog):
             self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
             self.cancel = False
             self.close()
-    
+
     def show(self, block=False):
         super().show(block=False)
 
-        self.resize(int(self.width()*1.5), self.height())
+        self.resize(int(self.width() * 1.5), self.height())
 
         if block:
             super().show(block=True)
+
 
 class QDialogAppendTextFilename(QDialog):
     def __init__(self, filename, ext, parent=None, font=None):
@@ -5785,11 +5865,11 @@ class QDialogAppendTextFilename(QDialog):
         self.cancel = True
         filenameNOext, _ = os.path.splitext(filename)
         self.filenameNOext = filenameNOext
-        if ext.find('.') == -1:
-            ext = f'.{ext}'
+        if ext.find(".") == -1:
+            ext = f".{ext}"
         self.ext = ext
 
-        self.setWindowTitle('Append text to file name')
+        self.setWindowTitle("Append text to file name")
 
         mainLayout = QVBoxLayout()
         formLayout = QFormLayout()
@@ -5800,21 +5880,17 @@ class QDialogAppendTextFilename(QDialog):
 
         self.LE = QLineEdit()
         self.LE.setAlignment(Qt.AlignCenter)
-        formLayout.addRow('Appended text', self.LE)
+        formLayout.addRow("Appended text", self.LE)
         self.LE.textChanged.connect(self.updateFinalFilename)
 
-        self.finalName_label = QLabel(
-            f'Final file name: "{filenameNOext}_{ext}"'
-        )
+        self.finalName_label = QLabel(f'Final file name: "{filenameNOext}_{ext}"')
         # padding: top, left, bottom, right
-        self.finalName_label.setStyleSheet(
-            'font-size:13px; padding:5px 0px 0px 0px;'
-        )
+        self.finalName_label.setStyleSheet("font-size:13px; padding:5px 0px 0px 0px;")
 
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets.okPushButton("Ok")
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton("Cancel")
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -5836,18 +5912,14 @@ class QDialogAppendTextFilename(QDialog):
         # self.setModal(True)
 
     def updateFinalFilename(self, text):
-        finalFilename = f'{self.filenameNOext}_{text}{self.ext}'
+        finalFilename = f"{self.filenameNOext}_{text}{self.ext}"
         self.finalName_label.setText(f'Final file name: "{finalFilename}"')
 
     def ok_cb(self, event):
         if not self.LE.text():
-            err_msg = (
-                'Appended name cannot be empty!'
-            )
+            err_msg = "Appended name cannot be empty!"
             msg = QMessageBox()
-            msg.critical(
-               self, 'Empty name', err_msg, msg.Ok
-            )
+            msg.critical(self, "Empty name", err_msg, msg.Ok)
             return
         self.cancel = False
         self.close()
@@ -5863,12 +5935,14 @@ class QDialogAppendTextFilename(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
 
+
 class QDialogEntriesWidget(QDialog):
-    def __init__(self, entriesLabels, defaultTxts, winTitle='Input',
-                 parent=None, font=None):
+    def __init__(
+        self, entriesLabels, defaultTxts, winTitle="Input", parent=None, font=None
+    ):
         self.cancel = True
         self.entriesTxt = []
         self.entriesLabels = entriesLabels
@@ -5890,10 +5964,10 @@ class QDialogEntriesWidget(QDialog):
             formLayout.addRow(label, LE)
             self.QLEs.append(LE)
 
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets.okPushButton("Ok")
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton("Cancel")
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -5915,8 +5989,10 @@ class QDialogEntriesWidget(QDialog):
 
     def ok_cb(self, event):
         self.cancel = False
-        self.entriesTxt = [self.formLayout.itemAt(i, 1).widget().text()
-                           for i in range(len(self.entriesLabels))]
+        self.entriesTxt = [
+            self.formLayout.itemAt(i, 1).widget().text()
+            for i in range(len(self.entriesLabels))
+        ]
         self.close()
 
     def exec_(self):
@@ -5930,19 +6006,34 @@ class QDialogEntriesWidget(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
+
 
 class QDialogMetadata(QDialog):
     def __init__(
-            self, SizeT, SizeZ, TimeIncrement,
-            PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX,
-            ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
-            parent=None, font=None, imgDataShape=None, posData=None,
-            singlePos=False, askSegm3D=True, additionalValues=None,
-            forceEnableAskSegm3D=False, SizeT_metadata=None, 
-            SizeZ_metadata=None, basename=''
-        ):
+        self,
+        SizeT,
+        SizeZ,
+        TimeIncrement,
+        PhysicalSizeZ,
+        PhysicalSizeY,
+        PhysicalSizeX,
+        ask_SizeT,
+        ask_TimeIncrement,
+        ask_PhysicalSizes,
+        parent=None,
+        font=None,
+        imgDataShape=None,
+        posData=None,
+        singlePos=False,
+        askSegm3D=True,
+        additionalValues=None,
+        forceEnableAskSegm3D=False,
+        SizeT_metadata=None,
+        SizeZ_metadata=None,
+        basename="",
+    ):
         self.cancel = True
         self.ask_TimeIncrement = ask_TimeIncrement
         self.ask_PhysicalSizes = ask_PhysicalSizes
@@ -5953,7 +6044,7 @@ class QDialogMetadata(QDialog):
         self.SizeT_metadata = SizeT_metadata
         self.SizeZ_metadata = SizeZ_metadata
         super().__init__(parent)
-        self.setWindowTitle('Image properties')
+        self.setWindowTitle("Image properties")
 
         mainLayout = QVBoxLayout()
         gridLayout = QGridLayout()
@@ -5963,7 +6054,7 @@ class QDialogMetadata(QDialog):
         if imgDataShape is not None:
             label = QLabel(
                 html_utils.paragraph(
-                    f'<i>Image data shape</i> = <b>{imgDataShape}</b><br>'
+                    f"<i>Image data shape</i> = <b>{imgDataShape}</b><br>"
                 )
             )
             mainLayout.addWidget(label, alignment=Qt.AlignCenter)
@@ -5972,28 +6063,27 @@ class QDialogMetadata(QDialog):
         self.basenameLineEdit = None
         if basename:
             gridLayout.addWidget(
-                QLabel('Basename (read-only)'), row, 0, alignment=Qt.AlignRight
+                QLabel("Basename (read-only)"), row, 0, alignment=Qt.AlignRight
             )
             self.basenameLineEdit = QLineEdit()
             self.basenameLineEdit.setReadOnly(True)
             self.basenameLineEdit.setText(basename)
             minWidth = (
-                self.basenameLineEdit.fontMetrics()
-                .boundingRect(basename).width() + 10
+                self.basenameLineEdit.fontMetrics().boundingRect(basename).width() + 10
             )
             self.basenameLineEdit.setMinimumWidth(minWidth)
             self.basenameLineEdit.setAlignment(Qt.AlignCenter)
             gridLayout.addWidget(self.basenameLineEdit, row, 1)
             row += 1
-        
+
         gridLayout.addWidget(
-            QLabel('Number of frames (SizeT)'), row, 0, alignment=Qt.AlignRight
+            QLabel("Number of frames (SizeT)"), row, 0, alignment=Qt.AlignRight
         )
         self.SizeT_SpinBox = QSpinBox()
         self.SizeT_SpinBox.setMinimum(1)
         self.SizeT_SpinBox.setMaximum(2147483647)
         SizeTinfoButton = widgets.infoPushButton()
-        self.allowEditSizeTcheckbox = QCheckBox('Let me edit it')
+        self.allowEditSizeTcheckbox = QCheckBox("Let me edit it")
         if ask_SizeT:
             self.SizeT_SpinBox.setValue(SizeT)
             SizeTinfoButton.hide()
@@ -6009,13 +6099,13 @@ class QDialogMetadata(QDialog):
         self.SizeT_SpinBox.valueChanged.connect(self.TimeIncrementShowHide)
         gridLayout.addWidget(self.SizeT_SpinBox, row, 1)
         gridLayout.addWidget(SizeTinfoButton, row, 2)
-        gridLayout.setColumnStretch(2,0)
+        gridLayout.setColumnStretch(2, 0)
         gridLayout.addWidget(self.allowEditSizeTcheckbox, row, 3)
-        gridLayout.setColumnStretch(3,0)
+        gridLayout.setColumnStretch(3, 0)
 
         row += 1
         gridLayout.addWidget(
-            QLabel('Number of z-slices (SizeZ)'), row, 0, alignment=Qt.AlignRight
+            QLabel("Number of z-slices (SizeZ)"), row, 0, alignment=Qt.AlignRight
         )
         self.SizeZ_SpinBox = QSpinBox()
         self.SizeZ_SpinBox.setMinimum(1)
@@ -6026,10 +6116,8 @@ class QDialogMetadata(QDialog):
         gridLayout.addWidget(self.SizeZ_SpinBox, row, 1)
 
         row += 1
-        self.TimeIncrementLabel = QLabel('Time interval (s)')
-        gridLayout.addWidget(
-            self.TimeIncrementLabel, row, 0, alignment=Qt.AlignRight
-        )
+        self.TimeIncrementLabel = QLabel("Time interval (s)")
+        gridLayout.addWidget(self.TimeIncrementLabel, row, 0, alignment=Qt.AlignRight)
         self.TimeIncrementSpinBox = widgets.FloatLineEdit()
         self.TimeIncrementSpinBox.setValue(TimeIncrement)
         gridLayout.addWidget(self.TimeIncrementSpinBox, row, 1)
@@ -6039,23 +6127,19 @@ class QDialogMetadata(QDialog):
             self.TimeIncrementLabel.hide()
 
         row += 1
-        self.PhysicalSizeZLabel = QLabel('Physical Size Z (um/pixel)')
-        gridLayout.addWidget(
-            self.PhysicalSizeZLabel, row, 0, alignment=Qt.AlignRight
-        )
+        self.PhysicalSizeZLabel = QLabel("Physical Size Z (um/pixel)")
+        gridLayout.addWidget(self.PhysicalSizeZLabel, row, 0, alignment=Qt.AlignRight)
         self.PhysicalSizeZSpinBox = widgets.FloatLineEdit()
         self.PhysicalSizeZSpinBox.setValue(PhysicalSizeZ)
         gridLayout.addWidget(self.PhysicalSizeZSpinBox, row, 1)
 
-        if SizeZ==1 or not ask_PhysicalSizes:
+        if SizeZ == 1 or not ask_PhysicalSizes:
             self.PhysicalSizeZSpinBox.hide()
             self.PhysicalSizeZLabel.hide()
 
         row += 1
-        self.PhysicalSizeYLabel = QLabel('Physical Size Y (um/pixel)')
-        gridLayout.addWidget(
-            self.PhysicalSizeYLabel, row, 0, alignment=Qt.AlignRight
-        )
+        self.PhysicalSizeYLabel = QLabel("Physical Size Y (um/pixel)")
+        gridLayout.addWidget(self.PhysicalSizeYLabel, row, 0, alignment=Qt.AlignRight)
         self.PhysicalSizeYSpinBox = widgets.FloatLineEdit()
         self.PhysicalSizeYSpinBox.setValue(PhysicalSizeY)
         gridLayout.addWidget(self.PhysicalSizeYSpinBox, row, 1)
@@ -6065,10 +6149,8 @@ class QDialogMetadata(QDialog):
             self.PhysicalSizeYLabel.hide()
 
         row += 1
-        self.PhysicalSizeXLabel = QLabel('Physical Size X (um/pixel)')
-        gridLayout.addWidget(
-            self.PhysicalSizeXLabel, row, 0, alignment=Qt.AlignRight
-        )
+        self.PhysicalSizeXLabel = QLabel("Physical Size X (um/pixel)")
+        gridLayout.addWidget(self.PhysicalSizeXLabel, row, 0, alignment=Qt.AlignRight)
         self.PhysicalSizeXSpinBox = widgets.FloatLineEdit()
         self.PhysicalSizeXSpinBox.setValue(PhysicalSizeX)
         gridLayout.addWidget(self.PhysicalSizeXSpinBox, row, 1)
@@ -6091,19 +6173,13 @@ class QDialogMetadata(QDialog):
             )
             if disableToggle:
                 self.isSegm3Dtoggle.setDisabled(True)
-        self.isSegm3DLabel = QLabel('Work with 3D segmentation masks (z-stack)')
-        gridLayout.addWidget(
-            self.isSegm3DLabel, row, 0, alignment=Qt.AlignRight
-        )
-        gridLayout.addWidget(
-            self.isSegm3Dtoggle, row, 1, alignment=Qt.AlignCenter
-        )
+        self.isSegm3DLabel = QLabel("Work with 3D segmentation masks (z-stack)")
+        gridLayout.addWidget(self.isSegm3DLabel, row, 0, alignment=Qt.AlignRight)
+        gridLayout.addWidget(self.isSegm3Dtoggle, row, 1, alignment=Qt.AlignCenter)
         self.infoButtonSegm3D = QPushButton(self)
         self.infoButtonSegm3D.setCursor(Qt.WhatsThisCursor)
         self.infoButtonSegm3D.setIcon(QIcon(":info.svg"))
-        gridLayout.addWidget(
-            self.infoButtonSegm3D, row, 2, alignment=Qt.AlignLeft
-        )
+        gridLayout.addWidget(self.infoButtonSegm3D, row, 2, alignment=Qt.AlignLeft)
         self.infoButtonSegm3D.clicked.connect(self.infoSegm3D)
         if SizeZ == 1 or not askSegm3D:
             self.isSegm3DLabel.hide()
@@ -6113,7 +6189,7 @@ class QDialogMetadata(QDialog):
         self.SizeZvalueChanged(SizeZ)
 
         self.additionalFieldsWidgets = []
-        addFieldButton = widgets.addPushButton('Add custom field')
+        addFieldButton = widgets.addPushButton("Add custom field")
         addFieldInfoButton = widgets.infoPushButton()
         addFieldInfoButton.clicked.connect(self.showAddFieldInfo)
         addFieldButton.clicked.connect(self.addField)
@@ -6124,38 +6200,36 @@ class QDialogMetadata(QDialog):
         addFieldLayout.addStretch(1)
 
         if singlePos:
-            okTxt = 'Apply only to this Position'
+            okTxt = "Apply only to this Position"
         else:
-            okTxt = 'Ok for loaded Positions'
+            okTxt = "Ok for loaded Positions"
         okButton = widgets.okPushButton(okTxt)
-        okButton.setToolTip(
-            'Save metadata only for current positionh'
-        )
+        okButton.setToolTip("Save metadata only for current positionh")
         okButton.setShortcut(Qt.Key_Enter)
         self.okButton = okButton
 
         if ask_TimeIncrement or ask_PhysicalSizes:
-            okAllButton = QPushButton('Apply to ALL Positions')
+            okAllButton = QPushButton("Apply to ALL Positions")
             okAllButton.setToolTip(
-                'Update existing Physical Sizes, Time interval, cell volume (fl), '
-                'cell area (um^2), and time (s) for all the positions '
-                'in the experiment folder.'
+                "Update existing Physical Sizes, Time interval, cell volume (fl), "
+                "cell area (um^2), and time (s) for all the positions "
+                "in the experiment folder."
             )
             self.okAllButton = okAllButton
 
-            selectButton = QPushButton('Select the Positions to be updated')
+            selectButton = QPushButton("Select the Positions to be updated")
             selectButton.setToolTip(
-                'Ask to select positions then update existing Physical Sizes, '
-                'Time interval, cell volume (fl), cell area (um^2), and time (s)'
-                'for selected positions.'
+                "Ask to select positions then update existing Physical Sizes, "
+                "Time interval, cell volume (fl), cell area (um^2), and time (s)"
+                "for selected positions."
             )
             self.selectButton = selectButton
         else:
             self.okAllButton = None
             self.selectButton = None
-            okButton.setText('Ok')
+            okButton.setText("Ok")
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton("Cancel")
 
         buttonsLayout.setColumnStretch(0, 1)
         buttonsLayout.addWidget(okButton, 0, 1)
@@ -6188,7 +6262,7 @@ class QDialogMetadata(QDialog):
         self.setLayout(mainLayout)
         self.setFont(font)
         # self.setModal(True)
-    
+
     def showWhySizeTisGrayed(self):
         txt = html_utils.paragraph(f"""
             The "Number of frames" field is grayed-out because you loaded multiple Positions.<br><br>
@@ -6199,9 +6273,7 @@ class QDialogMetadata(QDialog):
             However, <b>you can only edit the metadata</b>, then the loading process will be stopped.
         """)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-        msg.information(
-            self, 'Why is the number of frames grayed out?', txt
-        )
+        msg.information(self, "Why is the number of frames grayed out?", txt)
 
     def addAdditionalValues(self, values):
         if values is None:
@@ -6209,9 +6281,9 @@ class QDialogMetadata(QDialog):
 
         for i, (name, value) in enumerate(values.items()):
             self.addField()
-            nameWidget = self.additionalFieldsWidgets[i]['nameWidget']
-            valueWidget = self.additionalFieldsWidgets[i]['valueWidget']
-            nameWidget.setText(str(name).strip('__'))
+            nameWidget = self.additionalFieldsWidgets[i]["nameWidget"]
+            valueWidget = self.additionalFieldsWidgets[i]["valueWidget"]
+            nameWidget.setText(str(name).strip("__"))
             valueWidget.setText(str(value))
 
     def addField(self):
@@ -6222,29 +6294,31 @@ class QDialogMetadata(QDialog):
         removeButton = widgets.delPushButton()
 
         fieldLayout = QGridLayout()
-        fieldLayout.addWidget(QLabel('Name'), 0, 0)
+        fieldLayout.addWidget(QLabel("Name"), 0, 0)
         fieldLayout.addWidget(nameWidget, 1, 0)
-        fieldLayout.addWidget(QLabel('Value'), 0, 1)
+        fieldLayout.addWidget(QLabel("Value"), 0, 1)
         fieldLayout.addWidget(valueWidget, 1, 1)
         fieldLayout.addWidget(removeButton, 1, 2)
 
-        self.additionalFieldsWidgets.append({
-            'nameWidget': nameWidget,
-            'valueWidget': valueWidget,
-            'removeButton': removeButton,
-            'layout': fieldLayout
-        })
+        self.additionalFieldsWidgets.append(
+            {
+                "nameWidget": nameWidget,
+                "valueWidget": valueWidget,
+                "removeButton": removeButton,
+                "layout": fieldLayout,
+            }
+        )
 
-        idx = len(self.additionalFieldsWidgets)-1
+        idx = len(self.additionalFieldsWidgets) - 1
         removeButton.clicked.connect(partial(self.removeField, idx))
 
-        row = self.mainLayout.count()-3
+        row = self.mainLayout.count() - 3
         self.mainLayout.insertLayout(row, fieldLayout)
 
     def removeField(self, idx):
         widgets = self.additionalFieldsWidgets[idx]
 
-        layoutToRemove = widgets['layout']
+        layoutToRemove = widgets["layout"]
         for row in range(layoutToRemove.rowCount()):
             for col in range(layoutToRemove.columnCount()):
                 item = layoutToRemove.itemAtPosition(row, col)
@@ -6264,38 +6338,38 @@ class QDialogMetadata(QDialog):
             <code>acdc_output.csv</code> table.<br><br>
             Example: a strain name or the replicate number.
         """)
-        msg.information(self, 'Add field info', txt)
+        msg.information(self, "Add field info", txt)
 
     def infoSegm3D(self):
         txt = (
-            'Cell-ACDC supports both <b>2D and 3D segmentation</b>. If your data '
-            'also have a time dimension, then you can choose to segment '
-            'a specific z-slice (2D segmentation mask per frame) or all of them '
-            '(3D segmentation mask per frame)<br><br>'
-            'In any case, if you choose to activate <b>3D segmentation</b> then the '
-            'segmentation mask will have the <b>same number of z-slices '
-            'of the image data</b>.<br><br>'
-            'Additionally, in the model parameters window, you will be able '
-            'to choose if you want to segment the <b>entire 3D volume at once</b> '
-            'or use the <b>2D model on each z-slice</b>, one by one.<br><br>'
-            '<i>NOTE: if the toggle is disabled it means you already '
-            'loaded segmentation data and the shape cannot be changed now.<br>'
-            'if you need to start with a blank segmentation, '
+            "Cell-ACDC supports both <b>2D and 3D segmentation</b>. If your data "
+            "also have a time dimension, then you can choose to segment "
+            "a specific z-slice (2D segmentation mask per frame) or all of them "
+            "(3D segmentation mask per frame)<br><br>"
+            "In any case, if you choose to activate <b>3D segmentation</b> then the "
+            "segmentation mask will have the <b>same number of z-slices "
+            "of the image data</b>.<br><br>"
+            "Additionally, in the model parameters window, you will be able "
+            "to choose if you want to segment the <b>entire 3D volume at once</b> "
+            "or use the <b>2D model on each z-slice</b>, one by one.<br><br>"
+            "<i>NOTE: if the toggle is disabled it means you already "
+            "loaded segmentation data and the shape cannot be changed now.<br>"
+            "if you need to start with a blank segmentation, "
             'use the "Create a new segmentation file" button instead of the '
             '"Load folder" button.'
-            '</i>'
+            "</i>"
         )
         msg = widgets.myMessageBox()
         msg.setIcon()
-        msg.setWindowTitle(f'3D segmentation info')
+        msg.setWindowTitle(f"3D segmentation info")
         msg.addText(html_utils.paragraph(txt))
-        msg.addButton('   Ok   ')
+        msg.addButton("   Ok   ")
         msg.exec_()
 
     def SizeZvalueChanged(self, val):
         if len(self.imgDataShape) < 3:
             return
-        
+
         if val > 1 and self.imgDataShape is not None:
             maxSizeZ = self.imgDataShape[-3]
             self.SizeZ_SpinBox.setMaximum(maxSizeZ)
@@ -6316,16 +6390,16 @@ class QDialogMetadata(QDialog):
             self.isSegm3DLabel.hide()
             self.isSegm3Dtoggle.hide()
             self.infoButtonSegm3D.hide()
-        
+
         self.checkSegmDataShape()
-    
+
     def checkSegmDataShape(self):
         if self.posData is None:
             return
-        
+
         if self.isSegm3Dtoggle.isEnabled():
             return
-        
+
         SizeT = self.SizeT_SpinBox.value()
         SizeZ = self.SizeZ_SpinBox.value()
         segm_data_ndim = self.posData.segm_data.ndim
@@ -6334,10 +6408,10 @@ class QDialogMetadata(QDialog):
             # Segm data is 4D so it must be 3D over time
             isSegm3D = True
         elif segm_data_ndim == 3 and SizeZ > 1 and SizeT == 1:
-            # Segm data is 3D while SizeT == 1 and SizeZ > 1 
+            # Segm data is 3D while SizeT == 1 and SizeZ > 1
             # --> also segm is 3D z-stack
             isSegm3D = True
-        
+
         self.isSegm3Dtoggle.setDisabled(False)
         self.isSegm3Dtoggle.setChecked(isSegm3D)
         self.isSegm3Dtoggle.setDisabled(True)
@@ -6346,14 +6420,14 @@ class QDialogMetadata(QDialog):
         self.checkSegmDataShape()
         if not self.ask_TimeIncrement:
             return
-        
+
         if val > 1:
             self.TimeIncrementSpinBox.show()
             self.TimeIncrementLabel.show()
         else:
             self.TimeIncrementSpinBox.hide()
             self.TimeIncrementLabel.hide()
-    
+
     def allowEditSizeT(self, checked):
         if checked:
             self.SizeT_SpinBox.setDisabled(False)
@@ -6362,7 +6436,7 @@ class QDialogMetadata(QDialog):
         else:
             self.SizeT_SpinBox.setDisabled(True)
             self.SizeT_SpinBox.setValue(1)
-    
+
     def warnEditingMetadata(self, Size, Size_metadata, which_dim):
         txt = html_utils.paragraph(f"""
             The <b>number of {which_dim} in the saved metadata is {Size_metadata}</b>,  
@@ -6371,8 +6445,10 @@ class QDialogMetadata(QDialog):
         """)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         _, noButton, yesButton = msg.warning(
-            self, 'WARNING: Edinting saved metadata', txt, 
-            buttonsTexts=('Cancel', 'No', 'Yes, edit the metadata')
+            self,
+            "WARNING: Edinting saved metadata",
+            txt,
+            buttonsTexts=("Cancel", "No", "Yes, edit the metadata"),
         )
         return msg.clickedButton == yesButton
 
@@ -6384,19 +6460,18 @@ class QDialogMetadata(QDialog):
         if self.SizeT_metadata is not None:
             if self.SizeT != self.SizeT_metadata:
                 proceed = self.warnEditingMetadata(
-                    self.SizeT, self.SizeT_metadata, 'frames'
-                )
-                if not proceed:
-                    return
-        
-        if self.SizeZ_metadata is not None:
-            if self.SizeZ != self.SizeZ_metadata:
-                proceed = self.warnEditingMetadata(
-                    self.SizeZ, self.SizeZ_metadata, 'z-slices'
+                    self.SizeT, self.SizeT_metadata, "frames"
                 )
                 if not proceed:
                     return
 
+        if self.SizeZ_metadata is not None:
+            if self.SizeZ != self.SizeZ_metadata:
+                proceed = self.warnEditingMetadata(
+                    self.SizeZ, self.SizeZ_metadata, "z-slices"
+                )
+                if not proceed:
+                    return
 
         self.isSegm3D = self.isSegm3Dtoggle.isChecked()
 
@@ -6405,12 +6480,12 @@ class QDialogMetadata(QDialog):
         self.PhysicalSizeY = self.PhysicalSizeYSpinBox.value()
         self.PhysicalSizeZ = self.PhysicalSizeZSpinBox.value()
         self._additionalValues = {
-            f"__{field['nameWidget'].text()}":field['valueWidget'].text()
+            f"__{field['nameWidget'].text()}": field["valueWidget"].text()
             for field in self.additionalFieldsWidgets
         }
         proceed = self.checkShapeMismatchMetadata()
         if not proceed:
-            return 
+            return
 
         if self.posData is not None and self.sender() != self.okButton:
             exp_path = self.posData.exp_path
@@ -6423,47 +6498,47 @@ class QDialogMetadata(QDialog):
                 )
                 pos_foldernames = select_folder.selected_pos
             for pos in pos_foldernames:
-                images_path = os.path.join(exp_path, pos, 'Images')
+                images_path = os.path.join(exp_path, pos, "Images")
                 ls = myutils.listdir(images_path)
-                search = [file for file in ls if file.find('metadata.csv')!=-1]
+                search = [file for file in ls if file.find("metadata.csv") != -1]
                 metadata_df = None
                 if search:
                     fileName = search[0]
                     metadata_csv_path = os.path.join(images_path, fileName)
-                    metadata_df = pd.read_csv(
-                        metadata_csv_path
-                        ).set_index('Description')
+                    metadata_df = pd.read_csv(metadata_csv_path).set_index(
+                        "Description"
+                    )
                 if metadata_df is not None:
-                    metadata_df.at['TimeIncrement', 'values'] = self.TimeIncrement
-                    metadata_df.at['PhysicalSizeZ', 'values'] = self.PhysicalSizeZ
-                    metadata_df.at['PhysicalSizeY', 'values'] = self.PhysicalSizeY
-                    metadata_df.at['PhysicalSizeX', 'values'] = self.PhysicalSizeX
+                    metadata_df.at["TimeIncrement", "values"] = self.TimeIncrement
+                    metadata_df.at["PhysicalSizeZ", "values"] = self.PhysicalSizeZ
+                    metadata_df.at["PhysicalSizeY", "values"] = self.PhysicalSizeY
+                    metadata_df.at["PhysicalSizeX", "values"] = self.PhysicalSizeX
                     metadata_df.to_csv(metadata_csv_path)
 
-                search = [file for file in ls if file.find('acdc_output.csv')!=-1]
+                search = [file for file in ls if file.find("acdc_output.csv") != -1]
                 acdc_df = None
                 if search:
                     fileName = search[0]
                     acdc_df_path = os.path.join(images_path, fileName)
                     acdc_df = pd.read_csv(acdc_df_path)
-                    yx_pxl_to_um2 = self.PhysicalSizeY*self.PhysicalSizeX
-                    vox_to_fl = self.PhysicalSizeY*(self.PhysicalSizeX**2)
-                    if 'cell_vol_fl' not in acdc_df.columns:
+                    yx_pxl_to_um2 = self.PhysicalSizeY * self.PhysicalSizeX
+                    vox_to_fl = self.PhysicalSizeY * (self.PhysicalSizeX**2)
+                    if "cell_vol_fl" not in acdc_df.columns:
                         continue
-                    acdc_df['cell_vol_fl'] = acdc_df['cell_vol_vox']*vox_to_fl
-                    acdc_df['cell_area_um2'] = acdc_df['cell_area_pxl']*yx_pxl_to_um2
-                    acdc_df['time_seconds'] = acdc_df['frame_i']*self.TimeIncrement
+                    acdc_df["cell_vol_fl"] = acdc_df["cell_vol_vox"] * vox_to_fl
+                    acdc_df["cell_area_um2"] = acdc_df["cell_area_pxl"] * yx_pxl_to_um2
+                    acdc_df["time_seconds"] = acdc_df["frame_i"] * self.TimeIncrement
                     try:
                         acdc_df.to_csv(acdc_df_path, index=False)
                     except PermissionError:
                         err_msg = html_utils.paragraph(
-                            'The below file is open in another app '
-                            '(Excel maybe?).<br><br>'
-                            f'<code>{acdc_df_path}</code><br><br>'
+                            "The below file is open in another app "
+                            "(Excel maybe?).<br><br>"
+                            f"<code>{acdc_df_path}</code><br><br>"
                             'Close file and then press "Ok".'
                         )
                         msg = widgets.myMessageBox()
-                        msg.critical(self, 'Permission denied', err_msg)
+                        msg.critical(self, "Permission denied", err_msg)
                         acdc_df.to_csv(acdc_df_path, index=False)
 
         elif self.sender() == self.selectButton:
@@ -6485,48 +6560,50 @@ class QDialogMetadata(QDialog):
             valid3D = self.SizeT == TorZ or self.SizeZ == TorZ
         elif len(self.imgDataShape) == 2:
             valid2D = self.SizeT == 1 and self.SizeZ == 1
-            
+
         valid = all([valid4D, valid3D, valid2D])
         if valid:
             return True
-        
+
         if not valid4D:
-            txt = (f"""
+            txt = f"""
                 You loaded <b>4D data</b>, hence the number of frames MUST be
                 <b>{T}</b><br> and the number of z-slices MUST be <b>{Z}</b>.<br><br>
                 What do you want to do?
-            """)
+            """
         if not valid3D:
-            txt = (f"""
+            txt = f"""
                 You loaded <b>3D data</b>, hence either the number of frames or 
                 the number of z-slices is <b>{TorZ}</b>.<br><br>
                 However, if the number of frames is greater than 1 then the<br>
                 number of z-slices MUST be 1, and vice-versa.<br><br>
                 What do you want to do?
-            """)
+            """
 
         if not valid2D:
-            txt = (f"""
+            txt = f"""
                 You loaded <b>2D data</b>, hence the number of frames MUST be <b>1</b>
                 and the number of z-slices MUST be <b>1</b>.<br><br>
                 What do you want to do?
-            """)
-        
+            """
+
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(txt)
-        
-        continueButton = widgets.okPushButton('Continue anyway')
-        correctButton = widgets.editPushButton('Let me correct')
-        
+
+        continueButton = widgets.okPushButton("Continue anyway")
+        correctButton = widgets.editPushButton("Let me correct")
+
         msg.warning(
-            self, 'Shape-metadata mismatch', txt,
-            buttonsTexts=(continueButton, correctButton)
+            self,
+            "Shape-metadata mismatch",
+            txt,
+            buttonsTexts=(continueButton, correctButton),
         )
         if msg.cancel or msg.clickedButton == correctButton:
             return False
-        
+
         return True
-    
+
     def cancel_cb(self, event):
         self.cancel = True
         self.close()
@@ -6542,8 +6619,9 @@ class QDialogMetadata(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
+
 
 class QCropZtool(QBaseDialog):
     sigClose = Signal()
@@ -6552,9 +6630,13 @@ class QCropZtool(QBaseDialog):
     sigCrop = Signal(int, int)
 
     def __init__(
-            self, SizeZ, cropButtonText='Apply crop', parent=None, 
-            addDoNotShowAgain=False, title='Select z-slices'
-        ):
+        self,
+        SizeZ,
+        cropButtonText="Apply crop",
+        parent=None,
+        addDoNotShowAgain=False,
+        title="Select z-slices",
+    ):
         super().__init__(parent)
 
         self.cancel = True
@@ -6578,29 +6660,25 @@ class QCropZtool(QBaseDialog):
         self.upperZscrollbar.setMaximum(SizeZ)
         self.upperZscrollbar.setValue(SizeZ)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton("Cancel")
         cropButton = widgets.okPushButton(cropButtonText)
         buttonsLayout.addWidget(cropButton)
         buttonsLayout.addWidget(cancelButton)
 
         row = 0
-        layout.addWidget(
-            QLabel('Lower z-slice '), row, 0, alignment=Qt.AlignRight
-        )
+        layout.addWidget(QLabel("Lower z-slice "), row, 0, alignment=Qt.AlignRight)
         layout.addWidget(self.lowerZscrollbar, row, 1)
 
         row += 1
         layout.setRowStretch(row, 5)
 
         row += 1
-        layout.addWidget(
-            QLabel('Upper z-slice '), row, 0, alignment=Qt.AlignRight
-        )
+        layout.addWidget(QLabel("Upper z-slice "), row, 0, alignment=Qt.AlignRight)
         layout.addWidget(self.upperZscrollbar, row, 1)
 
         row += 1
         if addDoNotShowAgain:
-            self.doNotShowAgainCheckbox = QCheckBox('Do not ask again')
+            self.doNotShowAgainCheckbox = QCheckBox("Do not ask again")
             layout.addWidget(
                 self.doNotShowAgainCheckbox, row, 1, alignment=Qt.AlignLeft
             )
@@ -6630,27 +6708,28 @@ class QCropZtool(QBaseDialog):
         self.close()
 
     def updateScrollbars(self, lower_z, upper_z):
-        self.lowerZscrollbar.setValue(lower_z+1)
-        self.upperZscrollbar.setValue(upper_z+1)
+        self.lowerZscrollbar.setValue(lower_z + 1)
+        self.upperZscrollbar.setValue(upper_z + 1)
 
     def ZvalueChanged(self, value):
-        which = 'lower' if self.sender() == self.lowerZscrollbar else 'upper'
-        if which == 'lower' and value > self.upperZscrollbar.value()-1:
-            self.lowerZscrollbar.setValue(self.upperZscrollbar.value()-1)
+        which = "lower" if self.sender() == self.lowerZscrollbar else "upper"
+        if which == "lower" and value > self.upperZscrollbar.value() - 1:
+            self.lowerZscrollbar.setValue(self.upperZscrollbar.value() - 1)
             return
-        if which == 'upper' and value < self.lowerZscrollbar.value()+1:
-            self.upperZscrollbar.setValue(self.lowerZscrollbar.value()+1)
+        if which == "upper" and value < self.lowerZscrollbar.value() + 1:
+            self.upperZscrollbar.setValue(self.lowerZscrollbar.value() + 1)
             return
 
         z_slice_n = value - 1
         self.sigZvalueChanged.emit(which, z_slice_n)
 
     def showEvent(self, event):
-        self.resize(int(self.width()*1.5), self.height())
+        self.resize(int(self.width() * 1.5), self.height())
 
     def closeEvent(self, event):
         super().closeEvent(event)
         self.sigClose.emit()
+
 
 class randomWalkerDialog(QDialog):
     def __init__(self, mainWindow):
@@ -6662,7 +6741,7 @@ class randomWalkerDialog(QDialog):
             posData = self.mainWindow.data[self.mainWindow.pos_i]
             items = [posData.filename]
         else:
-            items = ['test']
+            items = ["test"]
         try:
             posData = self.mainWindow.data[self.mainWindow.pos_i]
             items.extend(list(posData.ol_data_dict.keys()))
@@ -6671,10 +6750,9 @@ class randomWalkerDialog(QDialog):
 
         self.keys = items
 
-        self.setWindowTitle('Random walker segmentation')
+        self.setWindowTitle("Random walker segmentation")
 
-        self.colors = [self.mainWindow.RWbkgrColor,
-                       self.mainWindow.RWforegrColor]
+        self.colors = [self.mainWindow.RWbkgrColor, self.mainWindow.RWforegrColor]
 
         mainLayout = QVBoxLayout()
         paramsLayout = QGridLayout()
@@ -6683,9 +6761,9 @@ class randomWalkerDialog(QDialog):
         self.mainWindow.clearAllItems()
 
         row = 0
-        paramsLayout.addWidget(QLabel('Background threshold:'), row, 0)
+        paramsLayout.addWidget(QLabel("Background threshold:"), row, 0)
         row += 1
-        self.bkgrThreshValLabel = QLabel('0.05')
+        self.bkgrThreshValLabel = QLabel("0.05")
         paramsLayout.addWidget(self.bkgrThreshValLabel, row, 1)
         self.bkgrThreshSlider = QSlider(Qt.Horizontal)
         self.bkgrThreshSlider.setMinimum(1)
@@ -6696,12 +6774,12 @@ class randomWalkerDialog(QDialog):
         paramsLayout.addWidget(self.bkgrThreshSlider, row, 0)
 
         row += 1
-        foregrQSLabel = QLabel('Foreground threshold:')
+        foregrQSLabel = QLabel("Foreground threshold:")
         # padding: top, left, bottom, right
         foregrQSLabel.setStyleSheet("font-size:13px; padding:5px 0px 0px 0px;")
         paramsLayout.addWidget(foregrQSLabel, row, 0)
         row += 1
-        self.foregrThreshValLabel = QLabel('0.95')
+        self.foregrThreshValLabel = QLabel("0.95")
         paramsLayout.addWidget(self.foregrThreshValLabel, row, 1)
         self.foregrThreshSlider = QSlider(Qt.Horizontal)
         self.foregrThreshSlider.setMinimum(1)
@@ -6713,13 +6791,15 @@ class randomWalkerDialog(QDialog):
 
         # Parameters link label
         row += 1
-        url1 = 'https://scikit-image.org/docs/dev/auto_examples/segmentation/plot_random_walker_segmentation.html'
-        url2 = 'https://scikit-image.org/docs/dev/api/skimage.segmentation.html#skimage.segmentation.random_walker'
-        htmlTxt1 = f'<a href=\"{url1}">here</a>'
-        htmlTxt2 = f'<a href=\"{url2}">here</a>'
+        url1 = "https://scikit-image.org/docs/dev/auto_examples/segmentation/plot_random_walker_segmentation.html"
+        url2 = "https://scikit-image.org/docs/dev/api/skimage.segmentation.html#skimage.segmentation.random_walker"
+        htmlTxt1 = f'<a href="{url1}">here</a>'
+        htmlTxt2 = f'<a href="{url2}">here</a>'
         seeHereLabel = QLabel()
-        seeHereLabel.setText(f'See {htmlTxt1} and {htmlTxt2} for details '
-                              'about Random walker segmentation.')
+        seeHereLabel.setText(
+            f"See {htmlTxt1} and {htmlTxt2} for details "
+            "about Random walker segmentation."
+        )
         seeHereLabel.setTextFormat(Qt.RichText)
         seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
         seeHereLabel.setOpenExternalLinks(True)
@@ -6729,8 +6809,8 @@ class randomWalkerDialog(QDialog):
         seeHereLabel.setStyleSheet("padding:12px 0px 0px 0px;")
         paramsLayout.addWidget(seeHereLabel, row, 0, 1, 2)
 
-        computeButton = QPushButton('Compute segmentation')
-        closeButton = QPushButton('Close')
+        computeButton = QPushButton("Compute segmentation")
+        closeButton = QPushButton("Close")
 
         buttonsLayout.addWidget(computeButton, alignment=Qt.AlignRight)
         buttonsLayout.addWidget(closeButton, alignment=Qt.AlignLeft)
@@ -6753,8 +6833,8 @@ class randomWalkerDialog(QDialog):
 
     def getImage(self):
         img = self.mainWindow.getDisplayedImg1()
-        self.img = img/img.max()
-        self.imgRGB = (skimage.color.gray2rgb(self.img)*255).astype(np.uint8)
+        self.img = img / img.max()
+        self.imgRGB = (skimage.color.gray2rgb(self.img) * 255).astype(np.uint8)
 
     def setSize(self):
         x = self.pos().x()
@@ -6783,32 +6863,31 @@ class randomWalkerDialog(QDialog):
         self.mainWindow.img1.setImage(imgRGB)
 
     def computeMarkers(self):
-        bkgrThresh = self.bkgrThreshSlider.sliderPosition()/100
-        foregrThresh = self.foregrThreshSlider.sliderPosition()/100
+        bkgrThresh = self.bkgrThreshSlider.sliderPosition() / 100
+        foregrThresh = self.foregrThreshSlider.sliderPosition() / 100
         img = self.img
         self.markers = np.zeros(img.shape, np.uint8)
         imgRange = img.max() - img.min()
-        imgMin = img.min() + imgRange*bkgrThresh
-        imgMax = img.min() + imgRange*foregrThresh
+        imgMin = img.min() + imgRange * bkgrThresh
+        imgMax = img.min() + imgRange * foregrThresh
         self.markers[img < imgMin] = 1
         self.markers[img > imgMax] = 2
         return imgMin, imgMax
 
     def computeSegm(self, checked=True):
         self.mainWindow.storeUndoRedoStates(False)
-        self.mainWindow.titleLabel.setText(
-            'Randomly walking around... ', color='w')
+        self.mainWindow.titleLabel.setText("Randomly walking around... ", color="w")
         img = self.img
         img = skimage.exposure.rescale_intensity(img)
         t0 = time.time()
-        lab = skimage.segmentation.random_walker(img, self.markers, mode='bf')
-        lab = skimage.measure.label(lab>1)
+        lab = skimage.segmentation.random_walker(img, self.markers, mode="bf")
+        lab = skimage.measure.label(lab > 1)
         t1 = time.time()
         if len(np.unique(lab)) > 2:
             lab = skimage.morphology.remove_small_objects(lab, min_size=5)
         posData = self.mainWindow.data[self.mainWindow.pos_i]
         posData.lab = lab
-        return t1-t0
+        return t1 - t0
 
     def computeSegmAndPlot(self):
         deltaT = self.computeSegm()
@@ -6818,35 +6897,40 @@ class randomWalkerDialog(QDialog):
         self.mainWindow.update_rp()
         self.mainWindow.tracking(enforce=True)
         self.mainWindow.updateAllImages()
-        self.mainWindow.warnEditingWithCca_df('Random Walker segmentation')
-        txt = f'Random Walker segmentation computed in {deltaT:.3f} s'
-        print('-----------------')
+        self.mainWindow.warnEditingWithCca_df("Random Walker segmentation")
+        txt = f"Random Walker segmentation computed in {deltaT:.3f} s"
+        print("-----------------")
         print(txt)
-        print('=================')
+        print("=================")
         # self.mainWindow.titleLabel.setText(txt, color='g')
 
     def bkgrSliderMoved(self, intVal):
-        self.bkgrThreshValLabel.setText(f'{intVal/100:.2f}')
+        self.bkgrThreshValLabel.setText(f"{intVal / 100:.2f}")
         self.plotMarkers()
 
     def foregrSliderMoved(self, intVal):
-        self.foregrThreshValLabel.setText(f'{intVal/100:.2f}')
+        self.foregrThreshValLabel.setText(f"{intVal / 100:.2f}")
         self.plotMarkers()
 
     def closeEvent(self, event):
-        self.mainWindow.segmModel = ''
+        self.mainWindow.segmModel = ""
         self.mainWindow.updateAllImages()
+
 
 class FutureFramesAction_QDialog(QDialog):
     def __init__(
-            self, frame_i, last_tracked_i, change_txt,
-            applyTrackingB=False, parent=None, 
-            addApplyAllButton=False
-        ):
+        self,
+        frame_i,
+        last_tracked_i,
+        change_txt,
+        applyTrackingB=False,
+        parent=None,
+        addApplyAllButton=False,
+    ):
         self.decision = None
         self.last_tracked_i = last_tracked_i
         super().__init__(parent)
-        self.setWindowTitle('Future frames action?')
+        self.setWindowTitle("Future frames action?")
 
         mainLayout = QVBoxLayout()
         txtLayout = QVBoxLayout()
@@ -6854,10 +6938,10 @@ class FutureFramesAction_QDialog(QDialog):
         buttonsLayout = QVBoxLayout()
 
         txt = html_utils.paragraph(
-            'You already visited/checked future frames '
-            f'{frame_i+1}-{last_tracked_i+1}.<br><br>'
+            "You already visited/checked future frames "
+            f"{frame_i + 1}-{last_tracked_i + 1}.<br><br>"
             f'The requested <b>"{change_txt}"</b> change might result in<br>'
-            '<b>NON-correct segmentation/tracking</b> for those frames.<br>'
+            "<b>NON-correct segmentation/tracking</b> for those frames.<br>"
         )
 
         txtLabel = QLabel(txt)
@@ -6866,19 +6950,21 @@ class FutureFramesAction_QDialog(QDialog):
 
         options = [
             f'Apply the "{change_txt}" <b>only to current frame and re-initialize</b><br>'
-            'the future frames to the segmentation file present<br>'
-            'on the hard drive.',
-            'Apply <b>only to this frame and keep the future frames</b> as they are.',
-            'Apply the change to <b>ALL visited/checked future frames</b>.'
+            "the future frames to the segmentation file present<br>"
+            "on the hard drive.",
+            "Apply <b>only to this frame and keep the future frames</b> as they are.",
+            "Apply the change to <b>ALL visited/checked future frames</b>.",
         ]
         if addApplyAllButton:
-            options.append('Apply to <b>ALL future frames including unvisited ones</b>.')
+            options.append(
+                "Apply to <b>ALL future frames including unvisited ones</b>."
+            )
         if applyTrackingB:
-            options.append('Repeat ONLY tracking for all future frames (RECOMMENDED)')
+            options.append("Repeat ONLY tracking for all future frames (RECOMMENDED)")
 
         infoTxt = html_utils.paragraph(
-           f'Choose <b>one of the following options:</b>'
-           f'{html_utils.to_list(options, ordered=True)}'
+            f"Choose <b>one of the following options:</b>"
+            f"{html_utils.to_list(options, ordered=True)}"
         )
 
         infotxtLabel = QLabel(infoTxt)
@@ -6886,11 +6972,11 @@ class FutureFramesAction_QDialog(QDialog):
 
         noteLayout = QHBoxLayout()
         noteTxt = html_utils.paragraph(
-            'Only changes applied to current frame can be undone.<br>'
-            'Changes applied to <b>future frames CANNOT be UNDONE</b><br>'
+            "Only changes applied to current frame can be undone.<br>"
+            "Changes applied to <b>future frames CANNOT be UNDONE</b><br>"
         )
         noteLayout.addWidget(
-            QLabel(html_utils.paragraph('NOTE:')), alignment=Qt.AlignTop
+            QLabel(html_utils.paragraph("NOTE:")), alignment=Qt.AlignTop
         )
         noteTxtLabel = QLabel(noteTxt)
         noteLayout.addWidget(noteTxtLabel)
@@ -6900,46 +6986,46 @@ class FutureFramesAction_QDialog(QDialog):
 
         # Do not show this message again checkbox
         doNotShowCheckbox = QCheckBox(
-            'Remember my choice and do not show this message again')
+            "Remember my choice and do not show this message again"
+        )
         doNotShowLayout.addWidget(doNotShowCheckbox)
         doNotShowLayout.setContentsMargins(50, 0, 0, 10)
         self.doNotShowCheckbox = doNotShowCheckbox
 
         apply_and_reinit_b = widgets.reloadPushButton(
-            ' 1. Apply only to this frame and re-initialize future frames'
+            " 1. Apply only to this frame and re-initialize future frames"
         )
 
         self.apply_and_reinit_b = apply_and_reinit_b
         buttonsLayout.addWidget(apply_and_reinit_b)
 
         apply_and_NOTreinit_b = widgets.currentPushButton(
-            ' 2. Apply only to this frame and keep future frames as they are'
+            " 2. Apply only to this frame and keep future frames as they are"
         )
         self.apply_and_NOTreinit_b = apply_and_NOTreinit_b
         buttonsLayout.addWidget(apply_and_NOTreinit_b)
 
         apply_to_all_visited_b = widgets.futurePushButton(
-            ' 3. Apply to all future VISITED frames'
+            " 3. Apply to all future VISITED frames"
         )
         self.apply_to_all_visited_b = apply_to_all_visited_b
         buttonsLayout.addWidget(apply_to_all_visited_b)
 
-        
         if addApplyAllButton:
             apply_to_all_b = QPushButton(
-                ' 4. Apply to ALL future frames (including unvisted)'
+                " 4. Apply to ALL future frames (including unvisted)"
             )
-            apply_to_all_b.setIcon(QIcon(':arrow_future_all.svg'))
+            apply_to_all_b.setIcon(QIcon(":arrow_future_all.svg"))
             self.apply_to_all_b = apply_to_all_b
             buttonsLayout.addWidget(apply_to_all_b)
 
         self.applyTrackingButton = None
         if applyTrackingB:
-            n = '5' if addApplyAllButton else '4'
+            n = "5" if addApplyAllButton else "4"
             applyTrackingButton = QPushButton(
-                f' {n}. Repeat ONLY tracking for all future frames'
+                f" {n}. Repeat ONLY tracking for all future frames"
             )
-            applyTrackingButton.setIcon(QIcon(':repeat-tracking.svg'))
+            applyTrackingButton.setIcon(QIcon(":repeat-tracking.svg"))
             self.applyTrackingButton = applyTrackingButton
             buttonsLayout.addWidget(applyTrackingButton)
 
@@ -6955,7 +7041,7 @@ class FutureFramesAction_QDialog(QDialog):
             ButtonsGroup.addButton(apply_to_all_b)
         if applyTrackingB:
             ButtonsGroup.addButton(applyTrackingButton)
-        
+
         mainLayout.addLayout(txtLayout)
         mainLayout.addLayout(doNotShowLayout)
         mainLayout.addLayout(buttonsLayout)
@@ -6972,19 +7058,19 @@ class FutureFramesAction_QDialog(QDialog):
 
     def buttonClicked(self, button):
         if button == self.apply_and_reinit_b:
-            self.decision = 'apply_and_reinit'
+            self.decision = "apply_and_reinit"
             self.endFrame_i = None
         elif button == self.apply_and_NOTreinit_b:
-            self.decision = 'apply_and_NOTreinit'
+            self.decision = "apply_and_NOTreinit"
             self.endFrame_i = None
         elif button == self.apply_to_all_visited_b:
-            self.decision = 'apply_to_all_visited'
+            self.decision = "apply_to_all_visited"
             self.endFrame_i = self.last_tracked_i
         elif button == self.applyTrackingButton:
-            self.decision = 'only_tracking'
+            self.decision = "only_tracking"
             self.endFrame_i = self.last_tracked_i
         elif button == self.apply_to_all_b:
-            self.decision = 'apply_to_all'
+            self.decision = "apply_to_all"
             self.endFrame_i = self.last_tracked_i
         self.close()
 
@@ -6995,85 +7081,83 @@ class FutureFramesAction_QDialog(QDialog):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         for button in self.ButtonsGroup.buttons():
-            button.setMinimumHeight(int(button.height()*1.2))
-        if hasattr(self, 'apply_to_all_b'):
+            button.setMinimumHeight(int(button.height() * 1.2))
+        if hasattr(self, "apply_to_all_b"):
             iconHeight = self.apply_to_all_b.iconSize().height()
-            self.apply_to_all_b.setIconSize(QSize(iconHeight*2, iconHeight))
+            self.apply_to_all_b.setIconSize(QSize(iconHeight * 2, iconHeight))
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
 
+
 class ComputeMetricsErrorsDialog(QBaseDialog):
-    def __init__(
-            self, errorsDict, log_path='', parent=None, 
-            log_type='custom_metrics'
-        ):
+    def __init__(self, errorsDict, log_path="", parent=None, log_type="custom_metrics"):
         super().__init__(parent)
 
         self.errorsDict = errorsDict
 
         layout = QGridLayout()
 
-        self.setWindowTitle('Errors summary')
-        
+        self.setWindowTitle("Errors summary")
+
         label = QLabel(self)
-        standardIcon = getattr(QStyle, 'SP_MessageBoxWarning')
+        standardIcon = getattr(QStyle, "SP_MessageBoxWarning")
         icon = self.style().standardIcon(standardIcon)
         pixmap = icon.pixmap(60, 60)
         label.setPixmap(pixmap)
         layout.addWidget(label, 0, 0, alignment=Qt.AlignTop)
 
-        if log_type == 'custom_metrics':
-            infoText = ("""
+        if log_type == "custom_metrics":
+            infoText = """
                 When computing <b>custom metrics</b> the following metrics 
                 were <b>ignored</b> because they raised an <b>error</b>.<br><br>
-            """)
-        elif log_type == 'standard_metrics':
-            infoText = ("""
+            """
+        elif log_type == "standard_metrics":
+            infoText = """
                 Some or all of the <b>standard metrics</b> were <b>NOT saved</b> 
                 because Cell-ACDC encoutered the following errors.<br><br>
-            """)
-        elif log_type == 'region_props':
-            rp_url = 'https://scikit-image.org/docs/0.18.x/api/skimage.measure.html#skimage.measure.regionprops'
+            """
+        elif log_type == "region_props":
+            rp_url = "https://scikit-image.org/docs/0.18.x/api/skimage.measure.html#skimage.measure.regionprops"
             rp_href = f'<a href="{rp_url}">skimage.measure.regionprops</a>'
-            infoText = (f"""
+            infoText = f"""
                 <b>Region properties</b> were <b>NOT saved</b> because Cell-ACDC 
                 encoutered the following errors.<br>
                 Region properties are calculated using the <code>scikit-image</code> 
                 function called <code>{rp_href}</code>.<br><br>
-            """)
-        elif log_type == 'missing_annot':
-            infoText = ("""
+            """
+        elif log_type == "missing_annot":
+            infoText = """
                 The following Positions were <b>SKIPPED</b> because they did 
                 <b>not have cell cycle annotations</b>.<br><br>
                 To add lineage tree information you first need to <b>do the 
                 cell cycle analysis</b> in module 3 "Main GUI".<br><br>
-            """)
+            """
         else:
-            infoText = ("""
+            infoText = """
                 Process raised the errors listed below.<br><br>
-            """)
+            """
 
-        github_issues_href = f'<a href={issues_url}>here</a>'   
-        noteText = (f"""
+        github_issues_href = f"<a href={issues_url}>here</a>"
+        noteText = f"""
             NOTE: If you <b>need help</b> understanding these errors you can 
             <b>open an issue</b> on our github page {github_issues_href}.
-        """)
-   
-        infoLabel = QLabel(html_utils.paragraph(f'{infoText}{noteText}'))
+        """
+
+        infoLabel = QLabel(html_utils.paragraph(f"{infoText}{noteText}"))
         infoLabel.setOpenExternalLinks(True)
         layout.addWidget(infoLabel, 0, 1)
 
         scrollArea = QScrollArea()
-        scrollAreaWidget = QWidget()  
+        scrollAreaWidget = QWidget()
         textLayout = QVBoxLayout()
         for func_name, traceback_format in errorsDict.items():
-            nameLabel = QLabel(f'<b>{func_name}</b>: ')
-            errorMessage = f'\n{traceback_format}'
+            nameLabel = QLabel(f"<b>{func_name}</b>: ")
+            errorMessage = f"\n{traceback_format}"
             errorLabel = QLabel(errorMessage)
             errorLabel.setTextInteractionFlags(
                 Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
@@ -7084,25 +7168,25 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
             textLayout.addWidget(nameLabel)
             textLayout.addWidget(errorLabel)
             textLayout.addStretch(1)
-        
+
         scrollAreaWidget.setLayout(textLayout)
         scrollArea.setWidget(scrollAreaWidget)
-        
+
         layout.addWidget(scrollArea, 1, 1)
 
         buttonsLayout = QHBoxLayout()
-        showLogButton = widgets.showInFileManagerButton('Show log file...')
+        showLogButton = widgets.showInFileManagerButton("Show log file...")
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(showLogButton)
 
-        copyButton = widgets.copyPushButton('Copy error message')
+        copyButton = widgets.copyPushButton("Copy error message")
         copyButton.clicked.connect(self.copyErrorMessage)
         buttonsLayout.addWidget(copyButton)
         self.copyButton = copyButton
-        self.copyButton.text = 'Copy error message'
+        self.copyButton.text = "Copy error message"
         self.copyButton.icon = self.copyButton.icon()
-        
-        okButton = widgets.okPushButton(' Ok ')
+
+        okButton = widgets.okPushButton(" Ok ")
         buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(okButton)
 
@@ -7113,39 +7197,42 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
 
         self.setLayout(layout)
         self.setFont(font)
-    
+
     def copyErrorMessage(self):
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
-        copiedText = ''
+        copiedText = ""
         for _, traceback_format in self.errorsDict.items():
-            errorBlock = f'{"="*30}\n{traceback_format}{"*"*30}'
-            copiedText = f'{copiedText}{errorBlock}'
+            errorBlock = f"{'=' * 30}\n{traceback_format}{'*' * 30}"
+            copiedText = f"{copiedText}{errorBlock}"
         cb.setText(copiedText, mode=cb.Clipboard)
-        print('Error message copied.')
-        self.copyButton.setIcon(QIcon(':okButton.svg'))
-        self.copyButton.setText(' Copied to clipboard!')
+        print("Error message copied.")
+        self.copyButton.setIcon(QIcon(":okButton.svg"))
+        self.copyButton.setText(" Copied to clipboard!")
         QTimer.singleShot(2000, self.restoreCopyButton)
-    
+
     def restoreCopyButton(self):
         self.copyButton.setText(self.copyButton.text)
         self.copyButton.setIcon(self.copyButton.icon)
-    
+
     def showEvent(self, a0) -> None:
         self.copyButton.setFixedWidth(self.copyButton.width())
         return super().showEvent(a0)
+
 
 class PostProcessSegmParams(QGroupBox):
     valueChanged = Signal(object)
     editingFinished = Signal()
 
     def __init__(
-            self, title, posData, 
-            useSliders=False, 
-            parent=None, 
-            maxSize=None, 
-            force_postprocess_2D=False
-        ):
+        self,
+        title,
+        posData,
+        useSliders=False,
+        parent=None,
+        maxSize=None,
+        force_postprocess_2D=False,
+    ):
         QGroupBox.__init__(self, title, parent)
         SizeZ = posData.SizeZ
         self.isSegm3D = posData.isSegm3D
@@ -7153,7 +7240,7 @@ class PostProcessSegmParams(QGroupBox):
         self.useSliders = useSliders
         self.force_postprocess_2D = force_postprocess_2D
         if maxSize is None:
-            maxSize=2147483647
+            maxSize = 2147483647
 
         layout = QGridLayout()
 
@@ -7163,19 +7250,15 @@ class PostProcessSegmParams(QGroupBox):
         label = QLabel("Minimum area (pixels) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
 
-        minSize_SB = widgets.PostProcessSegmWidget(
-            1, 1000, 10, useSliders, label=label
-        )
-        
-        txt = (
-            '<b>Area</b> is the total number of pixels in the segmented object.'
-        )
+        minSize_SB = widgets.PostProcessSegmWidget(1, 1000, 10, useSliders, label=label)
+
+        txt = "<b>Area</b> is the total number of pixels in the segmented object."
 
         layout.addWidget(minSize_SB, row, 1)
         infoButton = widgets.infoPushButton()
         infoButton.clicked.connect(self.showInfo)
         infoButton.tooltip = txt
-        infoButton.name = 'area'
+        infoButton.name = "area"
         infoButton.desc = f'less than "{label.text()}"'
         layout.addWidget(infoButton, row, 2)
         self.minSize_SB = minSize_SB
@@ -7188,25 +7271,24 @@ class PostProcessSegmParams(QGroupBox):
         label = QLabel("Minimum solidity (0-1) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         minSolidity_DSB = widgets.PostProcessSegmWidget(
-            0, 1.0, 0.5, useSliders, isFloat=True, normalize=True,
-            label=label
+            0, 1.0, 0.5, useSliders, isFloat=True, normalize=True, label=label
         )
         minSolidity_DSB.setValue(0.5)
         minSolidity_DSB.setSingleStep(0.1)
         self.controlWidgets.append(minSolidity_DSB)
 
         txt = (
-            '<b>Solidity</b> is a measure of convexity. A solidity of 1 means '
-            'that the shape is fully convex (i.e., equal to the convex hull). '
-            'As solidity approaches 0 the object is more concave.<br>'
-            'Write 0 for ignoring this parameter.'
+            "<b>Solidity</b> is a measure of convexity. A solidity of 1 means "
+            "that the shape is fully convex (i.e., equal to the convex hull). "
+            "As solidity approaches 0 the object is more concave.<br>"
+            "Write 0 for ignoring this parameter."
         )
 
         layout.addWidget(minSolidity_DSB, row, 1)
         infoButton = widgets.infoPushButton()
         infoButton.clicked.connect(self.showInfo)
         infoButton.tooltip = txt
-        infoButton.name = 'solidity'
+        infoButton.name = "solidity"
         infoButton.desc = f'less than "{label.text()}"'
         layout.addWidget(infoButton, row, 2)
         self.minSolidity_DSB = minSolidity_DSB
@@ -7215,23 +7297,22 @@ class PostProcessSegmParams(QGroupBox):
         label = QLabel("Max elongation (1=circle) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         maxElongation_DSB = widgets.PostProcessSegmWidget(
-            0, 100, 3, useSliders, isFloat=True, normalize=False,
-            label=label
+            0, 100, 3, useSliders, isFloat=True, normalize=False, label=label
         )
         maxElongation_DSB.setDecimals(1)
         maxElongation_DSB.setSingleStep(1.0)
 
         txt = (
-            '<b>Elongation</b> is the ratio between major and minor axis lengths. '
-            'An elongation of 1 is like a circle.<br>'
-            'Write 0 for ignoring this parameter.'
+            "<b>Elongation</b> is the ratio between major and minor axis lengths. "
+            "An elongation of 1 is like a circle.<br>"
+            "Write 0 for ignoring this parameter."
         )
 
         layout.addWidget(maxElongation_DSB, row, 1)
         infoButton = widgets.infoPushButton()
         infoButton.clicked.connect(self.showInfo)
         infoButton.tooltip = txt
-        infoButton.name = 'elongation'
+        infoButton.name = "elongation"
         infoButton.desc = f'greater than "{label.text()}"'
         layout.addWidget(infoButton, row, 2)
         self.maxElongation_DSB = maxElongation_DSB
@@ -7242,19 +7323,16 @@ class PostProcessSegmParams(QGroupBox):
             label = QLabel("Minimum number of z-slices ")
             layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
             minObjSizeZ_SB = widgets.PostProcessSegmWidget(
-                0, SizeZ, 3, useSliders, isFloat=False, normalize=False,
-                label=label
+                0, SizeZ, 3, useSliders, isFloat=False, normalize=False, label=label
             )
 
-            txt = (
-                '<b>Minimum number of z-slices</b> per object.'
-            )
+            txt = "<b>Minimum number of z-slices</b> per object."
 
             layout.addWidget(minObjSizeZ_SB, row, 1)
             infoButton = widgets.infoPushButton()
             infoButton.clicked.connect(self.showInfo)
             infoButton.tooltip = txt
-            infoButton.name = 'number of z-slices'
+            infoButton.name = "number of z-slices"
             infoButton.desc = f'less than "{label.text()}"'
             layout.addWidget(infoButton, row, 2)
             self.minObjSizeZ_SB = minObjSizeZ_SB
@@ -7265,22 +7343,19 @@ class PostProcessSegmParams(QGroupBox):
         row += 1
         addCustomFeatureLayout = QHBoxLayout()
         self.addCustomFeaturesButton = widgets.setPushButton(
-            'Select custom features for post-processing...',
+            "Select custom features for post-processing...",
         )
         addCustomFeatureLayout.addWidget(self.addCustomFeaturesButton)
         addCustomFeatureLayout.addStretch(1)
         self.selectedFeaturesDialog = SelectFeaturesRangeDialog(
-            posData=posData, parent=self, 
-            force_postprocess_2D=force_postprocess_2D
+            posData=posData, parent=self, force_postprocess_2D=force_postprocess_2D
         )
         self.selectedFeaturesDialog.hide()
-        self.addCustomFeaturesButton.clicked.connect(
-            self.selectedFeaturesDialog.show
-        )
+        self.addCustomFeaturesButton.clicked.connect(self.selectedFeaturesDialog.show)
         self.selectedFeaturesDialog.sigValueChanged.connect(self.onValueChanged)
-        
+
         layout.addLayout(addCustomFeatureLayout, row, 0, 1, 2)
-        
+
         layout.setColumnStretch(1, 2)
         # layout.setRowStretch(row+1, 1)
 
@@ -7289,66 +7364,67 @@ class PostProcessSegmParams(QGroupBox):
         for widget in self.controlWidgets:
             widget.valueChanged.connect(self.onValueChanged)
             widget.editingFinished.connect(self.onEditingFinished)
-    
+
     def selectedFeaturesRange(self):
         return self.selectedFeaturesDialog.groupbox.selectedFeaturesRange()
 
     def groupedFeatures(self):
         return self.selectedFeaturesDialog.groupbox.groupedFeatures()
-    
+
     def restoreDefault(self):
         self.minSolidity_DSB.setValue(0.5)
         self.minSize_SB.setValue(10)
         self.maxElongation_DSB.setValue(3)
         self.minObjSizeZ_SB.setValue(3)
         self.selectedFeaturesDialog.groupbox.resetFields()
-    
+
     def restoreFromKwargs(self, kwargs):
         for name, value in kwargs.items():
-            if name == 'min_solidity':
+            if name == "min_solidity":
                 self.minSolidity_DSB.setValue(value)
-            elif name == 'min_area':
+            elif name == "min_area":
                 self.minSize_SB.setValue(value)
-            elif name == 'max_elongation':
+            elif name == "max_elongation":
                 self.maxElongation_DSB.setValue(value)
-            elif name == 'min_obj_no_zslices':
+            elif name == "min_obj_no_zslices":
                 self.minObjSizeZ_SB.setValue(value)
-    
+
     def kwargs(self):
         kwargs = {
-            'min_solidity': self.minSolidity_DSB.value(),
-            'min_area': self.minSize_SB.value(),
-            'max_elongation': self.maxElongation_DSB.value(),
-            'min_obj_no_zslices': self.minObjSizeZ_SB.value()
+            "min_solidity": self.minSolidity_DSB.value(),
+            "min_area": self.minSize_SB.value(),
+            "max_elongation": self.maxElongation_DSB.value(),
+            "min_obj_no_zslices": self.minObjSizeZ_SB.value(),
         }
         return kwargs
-    
+
     def onValueChanged(self, value):
         self.valueChanged.emit(value)
-    
+
     def onEditingFinished(self):
         self.editingFinished.emit()
-    
+
     def showInfo(self):
-        title = f'{self.sender().text()} info'
+        title = f"{self.sender().text()} info"
         tooltip = self.sender().tooltip
         name = self.sender().name
         desc = self.sender().desc
-        txt = (f"""
+        txt = f"""
             The post-processing step is applied to the output of the 
             segmentation model.<br><br>
             During this step, Cell-ACDC will remove all the objects with {name}
             <b>{desc}</b>.<br><br>
             {tooltip}    
-        """)
+        """
         if self.isCheckable():
             note = f""""
                 You can deactivate this step by un-checking the checkbox 
                 called "Post-processing parameters".
             """
-            txt = f'{txt}{note}'
+            txt = f"{txt}{note}"
         msg = widgets.myMessageBox(showCentered=False)
         msg.information(self, title, html_utils.paragraph(txt))
+
 
 class PostProcessSegmDialog(QBaseDialog):
     sigClosed = Signal()
@@ -7356,12 +7432,7 @@ class PostProcessSegmDialog(QBaseDialog):
     sigEditingFinished = Signal()
     sigApplyToAllFutureFrames = Signal(object, object, object)
 
-    def __init__(
-            self, posData, 
-            mainWin=None, 
-            useSliders=True, 
-            maxSize=None
-        ):
+    def __init__(self, posData, mainWin=None, useSliders=True, maxSize=None):
         super().__init__(mainWin)
         self.cancel = True
         self.mainWin = mainWin
@@ -7371,44 +7442,39 @@ class PostProcessSegmDialog(QBaseDialog):
             self.isMultiPos = len(self.mainWin.data) > 1
             self.isTimelapse = self.mainWin.data[self.mainWin.pos_i].SizeT > 1
 
-        self.setWindowTitle('Post-processing segmentation parameters')
+        self.setWindowTitle("Post-processing segmentation parameters")
         self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
 
         mainLayout = QVBoxLayout()
         buttonsLayout = QHBoxLayout()
 
         self.postProcessGroupbox = PostProcessSegmParams(
-            'Post-processing parameters', posData,
-            useSliders=useSliders, 
+            "Post-processing parameters",
+            posData,
+            useSliders=useSliders,
             maxSize=maxSize,
-            parent=mainWin
+            parent=mainWin,
         )
 
         self.postProcessGroupbox.valueChanged.connect(self.valueChanged)
         self.postProcessGroupbox.editingFinished.connect(self.onEditingFinished)
 
         if self.isTimelapse:
-            applyAllButton = widgets.futurePushButton(
-                'Apply to all frames...'
-            )
+            applyAllButton = widgets.futurePushButton("Apply to all frames...")
             applyAllButton.clicked.connect(self.applyAll_cb)
-            applyButton = widgets.okPushButton(
-                'Apply', isDefault=False
-            )
+            applyButton = widgets.okPushButton("Apply", isDefault=False)
             applyButton.clicked.connect(self.apply_cb)
         elif self.isMultiPos:
-            applyAllButton = widgets.futurePushButton(
-                'Apply to all Positions...'
-            )
+            applyAllButton = widgets.futurePushButton("Apply to all Positions...")
             applyAllButton.clicked.connect(self.applyAll_cb)
-            applyButton = widgets.okPushButton('Apply', isDefault=False)
+            applyButton = widgets.okPushButton("Apply", isDefault=False)
             applyButton.clicked.connect(self.apply_cb)
         else:
-            applyAllButton = widgets.okPushButton('Apply', isDefault=False)
+            applyAllButton = widgets.okPushButton("Apply", isDefault=False)
             applyAllButton.clicked.connect(self.ok_cb)
             applyButton = None
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton("Cancel")
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -7416,11 +7482,11 @@ class PostProcessSegmDialog(QBaseDialog):
         if applyButton is not None:
             buttonsLayout.addWidget(applyButton)
         buttonsLayout.addWidget(applyAllButton)
-        
+
         emitEditingFinishedButton = widgets.okPushButton()
         buttonsLayout.addWidget(emitEditingFinishedButton)
         emitEditingFinishedButton.hide()
-        buttonsLayout.setContentsMargins(0,10,0,0)
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
 
         mainLayout.addWidget(self.postProcessGroupbox)
         mainLayout.addLayout(buttonsLayout)
@@ -7431,7 +7497,7 @@ class PostProcessSegmDialog(QBaseDialog):
 
         if mainWin is not None:
             self.setPosData()
-    
+
     def keyPressEvent(self, event) -> None:
         return super().keyPressEvent(event)
 
@@ -7445,20 +7511,19 @@ class PostProcessSegmDialog(QBaseDialog):
         # self.img.minMaxValuesMapper = self.mainWin.img1.minMaxValuesMapper
         self.origLab = self.posData.lab.copy()
         self.origRp = skimage.measure.regionprops(self.origLab)
-        self.origObjs = {obj.label:obj for obj in self.origRp}
+        self.origObjs = {obj.label: obj for obj in self.origRp}
 
     def valueChanged(self, value):
         lab, delObjs = self.apply()
         self.sigValueChanged.emit(lab, delObjs)
-        
+
     def apply(self, origLab=None):
         self.mainWin.warnEditingWithCca_df(
-            'post-processing segmentation mask', update_images=False
+            "post-processing segmentation mask", update_images=False
         )
         ccaAnnotRemoved = self.mainWin.removeCcaAnnotationsCurrentFrame()
         if ccaAnnotRemoved:
             self.mainWin.updateAllImages()
-
 
         if origLab is None:
             origLab = self.origLab.copy()
@@ -7466,22 +7531,22 @@ class PostProcessSegmDialog(QBaseDialog):
         lab, delIDs = core.post_process_segm(
             origLab, return_delIDs=True, **self.postProcessGroupbox.kwargs()
         )
-        
+
         if self.postProcessGroupbox.selectedFeaturesRange():
             lab, custom_delIDs = features.custom_post_process_segm(
-                self.posData, 
-                self.postProcessGroupbox.groupedFeatures(), 
-                lab, 
-                self.posData.img_data[self.posData.frame_i], 
-                self.posData.frame_i, 
-                self.posData.filename, 
+                self.posData,
+                self.postProcessGroupbox.groupedFeatures(),
+                lab,
+                self.posData.img_data[self.posData.frame_i],
+                self.posData.frame_i,
+                self.posData.filename,
                 self.posData.user_ch_name,
-                self.postProcessGroupbox.selectedFeaturesRange(), 
-                return_delIDs=True
+                self.postProcessGroupbox.selectedFeaturesRange(),
+                return_delIDs=True,
             )
             delIDs.extend(custom_delIDs)
-        
-        delObjs = {delID:self.origObjs[delID] for delID in delIDs}
+
+        delObjs = {delID: self.origObjs[delID] for delID in delIDs}
         return lab, delObjs
 
     def onEditingFinished(self):
@@ -7503,14 +7568,14 @@ class PostProcessSegmDialog(QBaseDialog):
         self.sigApplyToAllFutureFrames.emit(
             self.postProcessGroupbox.kwargs(),
             self.postProcessGroupbox.groupedFeatures(),
-            self.postProcessGroupbox.selectedFeaturesRange()
+            self.postProcessGroupbox.selectedFeaturesRange(),
         )
         self.close()
 
     def cancel_cb(self):
         self.cancel = True
         self.close()
-    
+
     def undoChanges(self):
         if self.mainWin is not None:
             self.posData.lab = self.origLab
@@ -7518,18 +7583,18 @@ class PostProcessSegmDialog(QBaseDialog):
             self.mainWin.updateAllImages()
 
         # Undo if changes were applied to all future frames
-        if hasattr(self, 'origSegmData'):
+        if hasattr(self, "origSegmData"):
             if self.isTimelapse:
                 current_frame_i = self.posData.frame_i
                 for frame_i in range(self.posData.segmSizeT):
                     self.posData.frame_i = frame_i
                     origLab = self.origSegmData[frame_i]
-                    lab = self.posData.allData_li[frame_i]['labels']
+                    lab = self.posData.allData_li[frame_i]["labels"]
                     if lab is None:
                         # Non-visited frame modify segm_data
                         self.posData.segm_data[frame_i] = origLab
                     else:
-                        self.posData.allData_li[frame_i]['labels'] = origLab.copy()
+                        self.posData.allData_li[frame_i]["labels"] = origLab.copy()
                         self.posData.lab = origLab.copy()
                         self.mainWin.update_rp()
                         # Get the rest of the stored metadata based on the new lab
@@ -7545,7 +7610,7 @@ class PostProcessSegmDialog(QBaseDialog):
                 for pos_i, posData in enumerate(self.mainWin.data):
                     self.mainWin.pos_i = pos_i
                     origLab = self.origSegmData[pos_i]
-                    self.posData.allData_li[0]['labels'] = lab.copy()
+                    self.posData.allData_li[0]["labels"] = lab.copy()
                     # Get the rest of the stored metadata based on the new lab
                     self.mainWin.get_data()
                     self.mainWin.store_data()
@@ -7557,7 +7622,7 @@ class PostProcessSegmDialog(QBaseDialog):
     def show(self, block=False):
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show(block=False)
-        self.resize(int(self.width()*1.5), self.height())
+        self.resize(int(self.width() * 1.5), self.height())
         super().show(block=block)
 
     def closeEvent(self, event):
@@ -7566,16 +7631,24 @@ class PostProcessSegmDialog(QBaseDialog):
             self.undoChanges()
         super().closeEvent(event)
 
+
 class imageViewer(QMainWindow):
     """Main Window."""
+
     sigClosed = Signal()
     sigHoveringImage = Signal(object, object)
 
     def __init__(
-            self, parent=None, posData=None, button_toUncheck=None,
-            spinBox=None, linkWindow=None, enableOverlay=False,
-            isSigleFrame=False, enableMirroredCursor=False
-        ):
+        self,
+        parent=None,
+        posData=None,
+        button_toUncheck=None,
+        spinBox=None,
+        linkWindow=None,
+        enableOverlay=False,
+        isSigleFrame=False,
+        enableMirroredCursor=False,
+    ):
         self.button_toUncheck = button_toUncheck
         self.parent = parent
         self.posData = posData
@@ -7606,7 +7679,7 @@ class imageViewer(QMainWindow):
         self.gui_connectActions()
 
         self.gui_setSingleFrameMode(self.isSigleFrame)
-        
+
         self.setupMirroredCursor()
 
         mainContainer = QWidget()
@@ -7620,7 +7693,7 @@ class imageViewer(QMainWindow):
 
         self.frame_i = posData.frame_i
         self.num_frames = posData.SizeT
-        
+
         version = myutils.read_version()
         self.setWindowTitle(f"Cell-ACDC v{version} - {posData.relPath}")
 
@@ -7668,25 +7741,29 @@ class imageViewer(QMainWindow):
 
         if self.linkWindow:
             # Insert a spacing
-            editToolBar.addWidget(QLabel('  '))
+            editToolBar.addWidget(QLabel("  "))
             self.linkWindowCheckbox = QCheckBox("Link to main GUI")
             self.linkWindowCheckbox.setChecked(True)
             editToolBar.addWidget(self.linkWindowCheckbox)
-        
+
         if self.enableMirroredCursor:
             self.showMirroredCursorCheckbox = QCheckBox(
-                'Show mirrored cursor from main window'
+                "Show mirrored cursor from main window"
             )
             self.showMirroredCursorCheckbox.setChecked(True)
             editToolBar.addWidget(self.showMirroredCursorCheckbox)
 
     def setupMirroredCursor(self):
         self.cursor = pg.ScatterPlotItem(
-            symbol='+', pxMode=True, pen=pg.mkPen('k', width=1),
-            brush=pg.mkBrush('w'), size=16, tip=None
+            symbol="+",
+            pxMode=True,
+            pen=pg.mkPen("k", width=1),
+            brush=pg.mkBrush("w"),
+            size=16,
+            tip=None,
         )
         self.Plot.addItem(self.cursor)
-    
+
     def gui_connectActions(self):
         self.exitAction.triggered.connect(self.close)
         self.prevAction.triggered.connect(self.prev_frame)
@@ -7696,7 +7773,7 @@ class imageViewer(QMainWindow):
         if self.enableOverlay:
             self.overlayButton.toggled.connect(self.overlay_cb)
             self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
-    
+
     def gui_setSingleFrameMode(self, isSingleFrame: bool):
         if not isSingleFrame:
             return
@@ -7733,8 +7810,8 @@ class imageViewer(QMainWindow):
         self.Plot = pg.PlotItem()
         self.Plot.invertY(True)
         self.Plot.setAspectLocked(True)
-        self.Plot.hideAxis('bottom')
-        self.Plot.hideAxis('left')
+        self.Plot.hideAxis("bottom")
+        self.Plot.hideAxis("left")
         self.graphLayout.addItem(self.Plot, row=1, col=1)
 
         # Image Item
@@ -7742,49 +7819,45 @@ class imageViewer(QMainWindow):
         self.img.setEnableAutoLevels(True)
         self.Plot.addItem(self.img)
 
-        #Image histogram
+        # Image histogram
         self.imgGrad = widgets.myHistogramLUTitem(isViewer=True)
-        self.imgGrad.gradient.showMenu = self.showLutItemOverlayContextMenu 
+        self.imgGrad.gradient.showMenu = self.showLutItemOverlayContextMenu
         self.imgGrad.vb.raiseContextMenu = lambda x: None
         self.imgGrad.setImageItem(self.img)
         self.graphLayout.addItem(self.imgGrad, row=1, col=0)
 
         # Current frame text
-        self.frameLabel = pg.LabelItem(justify='center', color='w', size='14pt')
-        self.frameLabel.setText(' ')
+        self.frameLabel = pg.LabelItem(justify="center", color="w", size="14pt")
+        self.frameLabel.setText(" ")
         self.graphLayout.addItem(self.frameLabel, row=2, col=0, colspan=2)
 
         if not self.enableOverlay:
             return
-    
+
     def gui_createOverlayItems(self):
         self.createOverlayChannelsActions()
         self.overlayLayersItems = {}
         for ch in self.posData.chNames:
             if ch == self.parent.user_ch_name:
                 continue
-            overlayItems = self.getOverlayItems(ch) 
+            overlayItems = self.getOverlayItems(ch)
             imageItem, lutItem, alphaScrollbar = overlayItems
             lutItem.vb.raiseContextMenu = lambda x: None
-            lutItem.gradient.showMenu = self.showLutItemOverlayContextMenu    
-            lutItem.overlayColorButton.sigColorChanging.connect(
-                self.updateOlColors
-            )
+            lutItem.gradient.showMenu = self.showLutItemOverlayContextMenu
+            lutItem.overlayColorButton.sigColorChanging.connect(self.updateOlColors)
             self.addAlphaScrollbar(ch, imageItem, alphaScrollbar)
             self.overlayLayersItems[ch] = overlayItems
             self.Plot.addItem(imageItem)
-    
+
     def createOverlayChannelsActions(self):
         self.overlayLutItemAdditionalActions = []
         separator = QAction(self)
         separator.setSeparator(True)
         self.overlayLutItemAdditionalActions.append(separator)
-        section = self.imgGrad.gradient.menu.addSection(
-            'Select channel to adjust: '
-        )
+        section = self.imgGrad.gradient.menu.addSection("Select channel to adjust: ")
         self.overlayLutItemAdditionalActions.append(section)
         self.imgGrad.gradient.menu.removeAction(section)
-        
+
         self.overlayChNamesActionGroup = QActionGroup(self)
         self.overlayChNamesActionGroup.setExclusive(True)
         for chName in self.posData.chNames:
@@ -7796,18 +7869,18 @@ class imageViewer(QMainWindow):
         self.overlayChNamesActionGroup.triggered.connect(
             self.chNameGradientActionClicked
         )
-    
+
     def chNameGradientActionClicked(self, action):
         # Action triggered from lutItem
         self.checkedOverlayChName = action.text()
         if action.text() == self.posData.user_ch_name:
-            self.setOverlayItemsVisible('', False)
+            self.setOverlayItemsVisible("", False)
         else:
             self.setOverlayItemsVisible(action.text(), True)
 
     def showLutItemOverlayContextMenu(self, event):
         lutItem = self.currentLutItem
-        
+
         for action in self.overlayLutItemAdditionalActions:
             try:
                 lutItem.gradient.menu.removeAction(action)
@@ -7819,11 +7892,11 @@ class imageViewer(QMainWindow):
                 lutItem.gradient.menu.removeAction(action)
             except Exception as e:
                 pass
-        
-        if self.overlayButton.isChecked():        
+
+        if self.overlayButton.isChecked():
             for action in self.overlayLutItemAdditionalActions:
                 lutItem.gradient.menu.addAction(action)
-            
+
             for action in self.overlayChNamesActionGroup.actions():
                 if action.text() == self.posData.user_ch_name:
                     lutItem.gradient.menu.addAction(action)
@@ -7832,7 +7905,7 @@ class imageViewer(QMainWindow):
                     if filename.endswith(action.text()):
                         lutItem.gradient.menu.addAction(action)
                         break
-                    if filename.endswith(f'{action.text()}_aligned'):
+                    if filename.endswith(f"{action.text()}_aligned"):
                         lutItem.gradient.menu.addAction(action)
                         break
 
@@ -7841,7 +7914,6 @@ class imageViewer(QMainWindow):
             lutItem.gradient.menu.popup(event.screenPos().toPoint())
         except AttributeError:
             lutItem.gradient.menu.popup(event.screenPos())
-        
 
     def gui_connectImgActions(self):
         self.img.hoverEvent = self.gui_hoverEventImg
@@ -7858,22 +7930,20 @@ class imageViewer(QMainWindow):
         # self.framesScrollBar.setFixedHeight(20)
         self.framesScrollBar.setMinimum(1)
         self.framesScrollBar.setMaximum(posData.SizeT)
-        t_label = QLabel('frame  ')
+        t_label = QLabel("frame  ")
         _font = QFont()
         _font.setPixelSize(12)
         t_label.setFont(_font)
-        self.img_Widglayout.addWidget(
-                t_label, 0, 0, alignment=Qt.AlignRight)
-        self.img_Widglayout.addWidget(
-                self.framesScrollBar, 0, 1, 1, 20)
+        self.img_Widglayout.addWidget(t_label, 0, 0, alignment=Qt.AlignRight)
+        self.img_Widglayout.addWidget(self.framesScrollBar, 0, 1, 1, 20)
         self.t_label = t_label
         self.framesScrollBar.valueChanged.connect(self.framesScrollBarMoved)
 
         # z-slice scrollbar
         self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
         # self.zSliceScrollBar.setFixedHeight(20)
-        self.zSliceScrollBar.setMaximum(self.posData.SizeZ-1)
-        _z_label = QLabel('z-slice  ')
+        self.zSliceScrollBar.setMaximum(self.posData.SizeZ - 1)
+        _z_label = QLabel("z-slice  ")
         _font = QFont()
         _font.setPixelSize(12)
         _z_label.setFont(_font)
@@ -7885,7 +7955,7 @@ class imageViewer(QMainWindow):
             self.zSliceScrollBar.setDisabled(True)
             self.zSliceScrollBar.setVisible(False)
             _z_label.setVisible(False)
-        
+
         self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
         self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
 
@@ -7897,13 +7967,13 @@ class imageViewer(QMainWindow):
             self.img.alphaScrollbar = self.addAlphaScrollbar(
                 self.parent.user_ch_name, self.img
             )
-    
+
     def getOverlayItems(self, channelName):
         imageItem = pg.ImageItem()
         imageItem.setOpacity(0.5)
 
         lutItem = widgets.myHistogramLUTitem(isViewer=True)
-        
+
         lutItem.setImageItem(imageItem)
         lutItem.vb.raiseContextMenu = lambda x: None
         initColor = self.overlayRGBs.pop(0)
@@ -7914,37 +7984,36 @@ class imageViewer(QMainWindow):
 
         alphaScrollBar = self.addAlphaScrollbar(channelName, imageItem)
         return imageItem, lutItem, alphaScrollBar
-    
+
     def setMirroredCursorPos(self, x, y):
         if not self.enableMirroredCursor:
             return
-        
+
         if not self.showMirroredCursorCheckbox.isChecked():
             return
 
         self.cursor.setData([x], [y])
-        
+
     def setOverlayColors(self):
         self.overlayRGBs = [
             (255, 255, 0),
             (252, 72, 254),
             (49, 222, 134),
-            (22, 108, 27)
+            (22, 108, 27),
         ]
-        cmap = matplotlib.colormaps['gist_rainbow']
+        cmap = matplotlib.colormaps["gist_rainbow"]
         self.overlayRGBs.extend(
-            [tuple([round(c*255) for c in cmap(i)][:3]) 
-            for i in np.linspace(0,1,8)]
+            [tuple([round(c * 255) for c in cmap(i)][:3]) for i in np.linspace(0, 1, 8)]
         )
 
     def setOpacityOverlayLayersItems(self, value, imageItem=None):
         if imageItem is None:
             imageItem = self.sender().imageItem
-            alpha = value/self.sender().maximum()
+            alpha = value / self.sender().maximum()
         else:
             alpha = value
         imageItem.setOpacity(alpha)
-    
+
     def overlay_cb(self, checked):
         if checked:
             if self.posData.ol_data is None:
@@ -7954,7 +8023,7 @@ class imageViewer(QMainWindow):
                     self.overlayButton.setChecked(False)
                     self.overlayButton.toggled.connect(self.overlay_cb)
                     return
-                success = self.parent.loadOverlayData(selectedChannels)         
+                success = self.parent.loadOverlayData(selectedChannels)
                 if not success:
                     return False
                 lastChannel = selectedChannels[-1]
@@ -7964,24 +8033,21 @@ class imageViewer(QMainWindow):
                 self.img.setOpacity(0.5)
                 self.setCheckedOverlayContextMenusActions(selectedChannels)
             else:
-                self.checkedOverlayChName = (
-                    self.parent.imgGrad.checkedChannelname
-                )
+                self.checkedOverlayChName = self.parent.imgGrad.checkedChannelname
                 selectedChannels = self.parent.checkedOverlayChannels
                 self.setCheckedOverlayContextMenusActions(selectedChannels)
             self.setOverlayItemsVisible(self.checkedOverlayChName, True)
         else:
             self.img.setOpacity(1.0)
-            self.setOverlayItemsVisible('', False)
+            self.setOverlayItemsVisible("", False)
             for items in self.overlayLayersItems.values():
                 imageItem = items[0]
                 imageItem.clear()
         self.update_img()
-    
+
     def createOverlayContextMenu(self):
         ch_names = [
-            ch for ch in self.posData.chNames 
-            if ch != self.posData.user_ch_name
+            ch for ch in self.posData.chNames if ch != self.posData.user_ch_name
         ]
         self.overlayContextMenu = QMenu()
         self.overlayContextMenu.addSeparator()
@@ -7991,7 +8057,7 @@ class imageViewer(QMainWindow):
             action.setCheckable(True)
             action.toggled.connect(self.overlayChannelToggled)
             self.overlayContextMenu.addAction(action)
-    
+
     def setCheckedOverlayContextMenusActions(self, channelNames):
         for action in self.overlayContextMenu.actions():
             if action.text() not in channelNames:
@@ -8007,7 +8073,7 @@ class imageViewer(QMainWindow):
             if channelName not in posData.loadedFluoChannels:
                 self.parent.loadOverlayData([channelName], addToExisting=True)
             self.setOverlayItemsVisible(channelName, True)
-            self.checkedOverlayChannels.add(channelName)    
+            self.checkedOverlayChannels.add(channelName)
             self.updateOlColors(None)
         else:
             self.checkedOverlayChannels.remove(channelName)
@@ -8017,19 +8083,19 @@ class imageViewer(QMainWindow):
                 channelToShow = next(iter(self.checkedOverlayChannels))
                 self.setOverlayItemsVisible(channelToShow, True)
             except StopIteration:
-                self.setOverlayItemsVisible('', False)
+                self.setOverlayItemsVisible("", False)
         self.update_img()
-    
+
     def updateOlColors(self, button):
         lutItem = self.overlayLayersItems[self.checkedOverlayChName][1]
         rgb = lutItem.overlayColorButton.color().getRgb()[:3]
         self.parent.initColormapOverlayLayerItem(rgb, lutItem)
         lutItem.overlayColorButton.setColor(rgb)
-    
+
     def addAlphaScrollbar(self, channelName, imageItem, alphaScrollBar=None):
         if alphaScrollBar is None:
             alphaScrollBar = QScrollBar(Qt.Horizontal)
-        label = QLabel(f'Alpha {channelName}')
+        label = QLabel(f"Alpha {channelName}")
         label.setFont(font)
         label.hide()
         alphaScrollBar.imageItem = imageItem
@@ -8040,9 +8106,9 @@ class imageViewer(QMainWindow):
         alphaScrollBar.setMaximum(40)
         alphaScrollBar.setValue(20)
         alphaScrollBar.setToolTip(
-            f'Control the alpha value of the overlaid channel {channelName}.\n'
-            'alpha=0 results in NO overlay,\n'
-            'alpha=1 results in only fluorescence data visible'
+            f"Control the alpha value of the overlaid channel {channelName}.\n"
+            "alpha=0 results in NO overlay,\n"
+            "alpha=1 results in only fluorescence data visible"
         )
         self.img_Widglayout.addWidget(
             alphaScrollBar.label, 2, 0, alignment=Qt.AlignRight
@@ -8051,14 +8117,14 @@ class imageViewer(QMainWindow):
         sp = alphaScrollBar.label.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         alphaScrollBar.label.setSizePolicy(sp)
-        
+
         sp = alphaScrollBar.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         alphaScrollBar.setSizePolicy(sp)
 
         alphaScrollBar.valueChanged.connect(self.setOpacityOverlayLayersItems)
         return alphaScrollBar
-    
+
     def setOverlayItemsVisible(self, channelName, visible):
         if visible:
             self.imgGrad.hide()
@@ -8081,7 +8147,7 @@ class imageViewer(QMainWindow):
                         self.graphLayout.removeItem(lutItem)
                     except Exception as e:
                         pass
-            
+
             if itemsToShow is None:
                 self.graphLayout.addItem(self.imgGrad, row=1, col=0)
                 self.imgGrad.show()
@@ -8116,10 +8182,8 @@ class imageViewer(QMainWindow):
             self.currentLutItem = self.imgGrad
 
     def framesScrollBarMoved(self, frame_n):
-        self.frame_i = frame_n-1
-        self.t_label.setText(
-            f'frame n. {self.frame_i+1}/{self.num_frames}'
-        )
+        self.frame_i = frame_n - 1
+        self.t_label.setText(f"frame n. {self.frame_i + 1}/{self.num_frames}")
         if self.spinBox is not None:
             self.spinBox.setValue(frame_n)
         self.update_img()
@@ -8133,15 +8197,14 @@ class imageViewer(QMainWindow):
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
-                self.wcLabel.setText(f'(x={x:.2f}, y={y:.2f}, value={val:.2f})')
+                self.wcLabel.setText(f"(x={x:.2f}, y={y:.2f}, value={val:.2f})")
             else:
-                self.wcLabel.setText(f'')
+                self.wcLabel.setText(f"")
         except Exception as e:
-            self.wcLabel.setText(f'')
-        
+            self.wcLabel.setText(f"")
+
         emitHovering = (
-            self.enableMirroredCursor and 
-            self.showMirroredCursorCheckbox.isChecked()
+            self.enableMirroredCursor and self.showMirroredCursorCheckbox.isChecked()
         )
         if emitHovering:
             if event.isExit():
@@ -8152,7 +8215,7 @@ class imageViewer(QMainWindow):
             self.cursor.setData([], [])
 
     def next_frame(self):
-        if self.frame_i < self.num_frames-1:
+        if self.frame_i < self.num_frames - 1:
             self.frame_i += 1
         else:
             self.frame_i = 0
@@ -8162,11 +8225,11 @@ class imageViewer(QMainWindow):
         if self.frame_i > 0:
             self.frame_i -= 1
         else:
-            self.frame_i = self.num_frames-1
+            self.frame_i = self.num_frames - 1
         self.update_img()
 
     def skip10ahead_frames(self):
-        if self.frame_i < self.num_frames-10:
+        if self.frame_i < self.num_frames - 10:
             self.frame_i += 10
         else:
             self.frame_i = 0
@@ -8176,7 +8239,7 @@ class imageViewer(QMainWindow):
         if self.frame_i > 9:
             self.frame_i -= 10
         else:
-            self.frame_i = self.num_frames-1
+            self.frame_i = self.num_frames - 1
         self.update_img()
 
     def update_z_slice(self, z):
@@ -8185,9 +8248,9 @@ class imageViewer(QMainWindow):
         else:
             posData = self.posData
             idx = (posData.filename, posData.frame_i)
-            posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
-        
-        self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
+            posData.segmInfo_df.at[idx, "z_slice_used_gui"] = z
+
+        self.z_label.setText(f"z-slice  {z + 1:02}/{posData.SizeZ}")
         self.img.setCurrentZsliceIndex(z)
         self.update_img()
 
@@ -8196,60 +8259,59 @@ class imageViewer(QMainWindow):
         frame_i = self.frame_i
         if posData.SizeZ > 1:
             idx = (posData.filename, frame_i)
-            z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
-            zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+            z = posData.segmInfo_df.at[idx, "z_slice_used_gui"]
+            zProjHow = posData.segmInfo_df.at[idx, "which_z_proj_gui"]
             img = posData.img_data[frame_i]
-            if zProjHow == 'single z-slice':
+            if zProjHow == "single z-slice":
                 self.zSliceScrollBar.setSliderPosition(z)
-                self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
+                self.z_label.setText(f"z-slice  {z + 1:02}/{posData.SizeZ}")
                 img = img[z].copy()
-            elif zProjHow == 'max z-projection':
+            elif zProjHow == "max z-projection":
                 img = img.max(axis=0).copy()
-            elif zProjHow == 'mean z-projection':
+            elif zProjHow == "mean z-projection":
                 img = img.mean(axis=0).copy()
-            elif zProjHow == 'median z-proj.':
+            elif zProjHow == "median z-proj.":
                 img = np.median(img, axis=0).copy()
         else:
             img = posData.img_data[frame_i].copy()
         return img
 
     def update_img(self):
-        self.frameLabel.setText(
-            f'Current frame = {self.frame_i+1}/{self.num_frames}'
-        )
+        self.frameLabel.setText(f"Current frame = {self.frame_i + 1}/{self.num_frames}")
         if self.parent is None:
             img = self.getImage()
         else:
             img = self.parent.getImage(frame_i=self.frame_i, raw=True)
-        
+
         self.img.setCurrentFrameIndex(self.frame_i)
         self.img.setImage(img)
-        self.framesScrollBar.setSliderPosition(self.frame_i+1)
-        
+        self.framesScrollBar.setSliderPosition(self.frame_i + 1)
+
         if not self.enableOverlay:
             return
 
         if not self.overlayButton.isChecked():
             return
-        
+
         self.setOverlayImages(frame_i=self.frame_i)
-    
+
     def askSelectOverlayChannel(self):
         ch_names = [
-            ch for ch in self.posData.chNames 
-            if ch != self.posData.user_ch_name
+            ch for ch in self.posData.chNames if ch != self.posData.user_ch_name
         ]
         selectFluo = widgets.QDialogListbox(
-            'Select channel',
-            'Select channel names to overlay:\n',
-            ch_names, multiSelection=True, parent=self
+            "Select channel",
+            "Select channel names to overlay:\n",
+            ch_names,
+            multiSelection=True,
+            parent=self,
         )
         selectFluo.exec_()
         if selectFluo.cancel:
             return
 
         return selectFluo.selectedItemsText
-    
+
     def setOverlayImages(self, frame_i=None):
         posData = self.posData
         for filename in posData.ol_data:
@@ -8258,7 +8320,7 @@ class imageViewer(QMainWindow):
             )
             if chName not in self.checkedOverlayChannels:
                 continue
-            
+
             imageItem = self.overlayLayersItems[chName][0]
             ol_img = self.parent.getOlImg(filename, frame_i=frame_i)
             imageItem.setImage(ol_img)
@@ -8279,7 +8341,7 @@ class imageViewer(QMainWindow):
             self.zSliceScrollBar.setFixedHeight(self.parent.h)
         except Exception as e:
             pass
-        
+
         try:
             self.img.alphaScrollbar.setFixedHeight(self.parent.h)
         except Exception as e:
@@ -8287,19 +8349,27 @@ class imageViewer(QMainWindow):
         if left is not None and top is not None:
             self.setGeometry(left, top, 850, 800)
 
+
 class TreeSelectorDialog(QBaseDialog):
     sigItemDoubleClicked = Signal(object)
 
     def __init__(
-            self, title='Tree selector', infoTxt='', parent=None,
-            multiSelection=True, widthFactor=None, heightFactor=None,
-            expandOnDoubleClick=False, isTopLevelSelectable=True,
-            allItemsExpanded=True, allowNoSelection=True
-        ):
+        self,
+        title="Tree selector",
+        infoTxt="",
+        parent=None,
+        multiSelection=True,
+        widthFactor=None,
+        heightFactor=None,
+        expandOnDoubleClick=False,
+        isTopLevelSelectable=True,
+        allItemsExpanded=True,
+        allowNoSelection=True,
+    ):
         super().__init__(parent)
 
         self.setWindowTitle(title)
-        
+
         self.cancel = True
         self.widthFactor = widthFactor
         self.heightFactor = heightFactor
@@ -8310,7 +8380,7 @@ class TreeSelectorDialog(QBaseDialog):
 
         if infoTxt:
             self.mainLayout.addWidget(QLabel(html_utils.paragraph(infoTxt)))
-        
+
         self.treeWidget = widgets.TreeWidget(multiSelection=multiSelection)
         self.treeWidget.setExpandsOnDoubleClick(expandOnDoubleClick)
         self.treeWidget.setHeaderHidden(True)
@@ -8330,16 +8400,16 @@ class TreeSelectorDialog(QBaseDialog):
 
         self.treeWidget.itemClicked.connect(self.onItemClicked)
         self.treeWidget.itemDoubleClicked.connect(self.onItemDoubleClicked)
-    
+
     def onItemDoubleClicked(self, item):
         self.sigItemDoubleClicked.emit(item)
-    
+
     def onItemClicked(self, item):
         if self._isTopLevelSelectable:
             return
         if item.parent() is None:
             item.setSelected(False)
-        
+
     def addTree(self, tree: dict):
         for topLevel, children in tree.items():
             topLevelItem = widgets.TreeWidgetItem(self.treeWidget)
@@ -8350,7 +8420,7 @@ class TreeSelectorDialog(QBaseDialog):
             if not self.allItemsExpanded:
                 continue
             topLevelItem.setExpanded(True)
-    
+
     def resizeVertical(self):
         if not self.isVisible():
             self.show()
@@ -8365,11 +8435,11 @@ class TreeSelectorDialog(QBaseDialog):
                 childItem = topLevelItem.child(j)
                 rect = self.treeWidget.visualItemRect(childItem)
                 treeWidgetHeight += rect.height()
-        
+
         deltaHeight = treeWidgetHeight - currentTreeWidgetHeight + 10
         self.resize(self.width(), self.height() + deltaHeight)
         self.move(self.x(), 20)
-    
+
     def setCurrentItem(self, itemText: dict):
         if not itemText:
             return
@@ -8387,7 +8457,7 @@ class TreeSelectorDialog(QBaseDialog):
                     topLevelItem.setExpanded(True)
                     self.treeWidget.scrollToItem(topLevelItem)
                     break
-    
+
     def selectedItems(self):
         self._selectedItems = {}
         for i in range(self.treeWidget.topLevelItemCount()):
@@ -8410,31 +8480,31 @@ class TreeSelectorDialog(QBaseDialog):
             Thanks! 
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Selection is empty', txt)
-    
+        msg.warning(self, "Selection is empty", txt)
+
     def ok_cb(self):
         if not self.allowNoSelection and not self.selectedItems():
             self.warnSelectionIsEmpty()
             return
         self.cancel = False
         self.close()
-    
+
     def showEvent(self, event) -> None:
         super().showEvent(event)
         if self.widthFactor is not None:
-            self.resize(int(self.width()*self.widthFactor), self.height())
+            self.resize(int(self.width() * self.widthFactor), self.height())
         if self.heightFactor is not None:
-            self.resize(self.width(), int(self.height()*self.heightFactor))
+            self.resize(self.width(), int(self.height() * self.heightFactor))
+
 
 class TreesSelectorDialog(QBaseDialog):
     def __init__(
-            self, trees, groupsDescr=None, title='Trees selector', 
-            infoTxt='', parent=None
-        ):
+        self, trees, groupsDescr=None, title="Trees selector", infoTxt="", parent=None
+    ):
         super().__init__(parent)
 
         self.setWindowTitle(title)
-        
+
         self.cancel = True
         self.mainLayout = QVBoxLayout()
 
@@ -8443,13 +8513,13 @@ class TreesSelectorDialog(QBaseDialog):
 
         self.treeWidgets = {}
         self.setLayout(self.mainLayout)
-    
+
         createdGroupLayouts = {}
         for treeName, tree in trees.items():
             if groupsDescr is None:
-                groupName = ''
+                groupName = ""
             else:
-                groupName = groupsDescr.get(treeName, 'Group info missing')
+                groupName = groupsDescr.get(treeName, "Group info missing")
             groupLayout = createdGroupLayouts.get(groupName, None)
             if groupLayout is None:
                 self.mainLayout.addWidget(QLabel(html_utils.paragraph(groupName)))
@@ -8473,7 +8543,7 @@ class TreesSelectorDialog(QBaseDialog):
             self.treeWidgets[treeName] = treeWidget
             groupLayout.addWidget(treeWidget)
             self.mainLayout.addSpacing(20)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
@@ -8481,7 +8551,7 @@ class TreesSelectorDialog(QBaseDialog):
 
         self.mainLayout.addSpacing(10)
         self.mainLayout.addLayout(buttonsLayout)
-    
+
     def ok_cb(self):
         self.cancel = False
         self.selectedItems = {}
@@ -8501,13 +8571,17 @@ class TreesSelectorDialog(QBaseDialog):
 
 class MultiListSelector(QBaseDialog):
     def __init__(
-            self, lists: dict, groupsDescr: dict=None, 
-            title='Lists selector', infoTxt='', parent=None
-        ):
+        self,
+        lists: dict,
+        groupsDescr: dict = None,
+        title="Lists selector",
+        infoTxt="",
+        parent=None,
+    ):
         super().__init__(parent)
 
         self.setWindowTitle(title)
-        
+
         self.cancel = True
         mainLayout = QVBoxLayout()
 
@@ -8518,9 +8592,9 @@ class MultiListSelector(QBaseDialog):
         createdGroupLayouts = {}
         for listName, listItems in lists.items():
             if groupsDescr is None:
-                groupName = ''
+                groupName = ""
             else:
-                groupName = groupsDescr.get(listName, 'Group info missing')
+                groupName = groupsDescr.get(listName, "Group info missing")
             groupLayout = createdGroupLayouts.get(listName, None)
             if groupLayout is None:
                 mainLayout.addWidget(QLabel(html_utils.paragraph(groupName)))
@@ -8533,12 +8607,14 @@ class MultiListSelector(QBaseDialog):
                 groupLayout.addSpacing(10)
             groupLayout.addWidget(QLabel(html_utils.paragraph(listName)))
             listWidget = widgets.listWidget()
-            listWidget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+            listWidget.setSelectionMode(
+                QAbstractItemView.SelectionMode.ExtendedSelection
+            )
             listWidget.addItems(listItems)
             groupLayout.addWidget(listWidget)
             mainLayout.addSpacing(20)
             self.listWidgets[listName] = listWidget
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
@@ -8548,7 +8624,7 @@ class MultiListSelector(QBaseDialog):
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
-    
+
     def ok_cb(self):
         self.cancel = False
         self.selectedItems = {}
@@ -8560,8 +8636,9 @@ class MultiListSelector(QBaseDialog):
             ]
         self.close()
 
+
 class selectPositionsMultiExp(QBaseDialog):
-    def __init__(self, expPaths: dict, infoPaths: dict=None, parent=None):
+    def __init__(self, expPaths: dict, infoPaths: dict = None, parent=None):
         super().__init__(parent=parent)
 
         self.expPaths = expPaths
@@ -8569,14 +8646,14 @@ class selectPositionsMultiExp(QBaseDialog):
 
         mainLayout = QVBoxLayout()
 
-        self.setWindowTitle('Select Positions to process')
+        self.setWindowTitle("Select Positions to process")
 
         infoTxt = html_utils.paragraph(
-            'Select one or more Positions to process<br><br>'
-            '<code>Click</code> on experiment path <i>to select all positions</i><br>'
-            '<code>Ctrl+Click</code> <i>to select multiple items</i><br>'
-            '<code>Shift+Click</code> <i>to select a range of items</i><br>',
-            center=True
+            "Select one or more Positions to process<br><br>"
+            "<code>Click</code> on experiment path <i>to select all positions</i><br>"
+            "<code>Ctrl+Click</code> <i>to select multiple items</i><br>"
+            "<code>Shift+Click</code> <i>to select a range of items</i><br>",
+            center=True,
         )
         infoLabel = QLabel(infoTxt)
 
@@ -8593,7 +8670,7 @@ class selectPositionsMultiExp(QBaseDialog):
                 posFoldersInfo = infoPaths.get(exp_path)
             if len(pathLevels) > 4:
                 itemText = os.path.join(*pathLevels[-4:])
-                itemText = f'...{itemText}'
+                itemText = f"...{itemText}"
             else:
                 itemText = exp_path
             exp_path_item = QTreeWidgetItem([itemText])
@@ -8603,10 +8680,10 @@ class selectPositionsMultiExp(QBaseDialog):
             postions_items = []
             for pos in positions:
                 if posFoldersInfo is not None:
-                    status = posFoldersInfo.get(pos, '')
+                    status = posFoldersInfo.get(pos, "")
                 else:
-                    status = ''
-                pos_item_text = f'{pos}{status}'
+                    status = ""
+                pos_item_text = f"{pos}{status}"
                 pos_item = QTreeWidgetItem(exp_path_item, [pos_item_text])
                 pos_item.posFoldername = pos
                 postions_items.append(pos_item)
@@ -8616,8 +8693,8 @@ class selectPositionsMultiExp(QBaseDialog):
         self.treeWidget.itemClicked.connect(self.selectAllChildren)
 
         buttonsLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets.cancelPushButton("Cancel")
+        okButton = widgets.okPushButton(" Ok ")
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -8646,8 +8723,8 @@ class selectPositionsMultiExp(QBaseDialog):
     def ok_cb(self):
         if not self.treeWidget.selectedItems():
             msg = widgets.myMessageBox(wrapText=False)
-            txt = 'You did not select any experiment/Position folder!'
-            msg.warning(self, 'Empty selection!', html_utils.paragraph(txt))
+            txt = "You did not select any experiment/Position folder!"
+            msg.warning(self, "Empty selection!", html_utils.paragraph(txt))
             return
 
         self.cancel = False
@@ -8665,16 +8742,20 @@ class selectPositionsMultiExp(QBaseDialog):
         self.close()
 
     def showEvent(self, event):
-        self.resize(int(self.width()*2), self.height())
+        self.resize(int(self.width() * 2), self.height())
 
 
 class editCcaTableWidget(QDialog):
     sigApplyChangesFutureFrames = Signal(object, int)
-    
+
     def __init__(
-            self, cca_df, SizeT, title='Edit cell cycle annotations', 
-            parent=None, current_frame_i=0
-        ):
+        self,
+        cca_df,
+        SizeT,
+        title="Edit cell cycle annotations",
+        parent=None,
+        current_frame_i=0,
+    ):
         self.inputCca_df = cca_df
         self.cancel = True
         self.SizeT = SizeT
@@ -8697,60 +8778,60 @@ class editCcaTableWidget(QDialog):
         # Header labels
         col = 0
         row = 0
-        IDsLabel = QLabel('Cell ID')
+        IDsLabel = QLabel("Cell ID")
         AC = Qt.AlignCenter
         IDsLabel.setAlignment(AC)
         headerLayout.addWidget(IDsLabel, 0, col, alignment=AC)
 
         col += 1
-        ccsLabel = QLabel('Cell cycle stage')
+        ccsLabel = QLabel("Cell cycle stage")
         ccsLabel.setAlignment(Qt.AlignCenter)
         headerLayout.addWidget(ccsLabel, 0, col, alignment=AC)
 
         col += 1
-        relIDLabel = QLabel('Relative ID')
+        relIDLabel = QLabel("Relative ID")
         relIDLabel.setAlignment(Qt.AlignCenter)
         headerLayout.addWidget(relIDLabel, 0, col, alignment=AC)
 
         col += 1
-        genNumLabel = QLabel('Generation number')
+        genNumLabel = QLabel("Generation number")
         genNumLabel.setAlignment(Qt.AlignCenter)
         headerLayout.addWidget(genNumLabel, 0, col, alignment=AC)
         genNumColWidth = genNumLabel.sizeHint().width()
 
         col += 1
-        relationshipLabel = QLabel('Relationship')
+        relationshipLabel = QLabel("Relationship")
         relationshipLabel.setAlignment(Qt.AlignCenter)
         headerLayout.addWidget(relationshipLabel, 0, col, alignment=AC)
 
         col += 1
-        emergFrameLabel = QLabel('Emerging frame num.')
+        emergFrameLabel = QLabel("Emerging frame num.")
         emergFrameLabel.setAlignment(Qt.AlignCenter)
         headerLayout.addWidget(emergFrameLabel, 0, col, alignment=AC)
 
         col += 1
-        divitionFrameLabel = QLabel('Division frame num.')
+        divitionFrameLabel = QLabel("Division frame num.")
         divitionFrameLabel.setAlignment(Qt.AlignCenter)
         headerLayout.addWidget(divitionFrameLabel, 0, col, alignment=AC)
 
         col += 1
-        historyKnownLabel = QLabel('Is history known?')
+        historyKnownLabel = QLabel("Is history known?")
         historyKnownLabel.setAlignment(Qt.AlignCenter)
         headerLayout.addWidget(historyKnownLabel, 0, col, alignment=AC)
-        
+
         self.headerLayout = headerLayout
 
         tableLayout.setHorizontalSpacing(20)
         self.tableLayout = tableLayout
 
         # Add buttons
-        cancelButton = widgets.cancelPushButton('Cancel')
-        moreInfoButton = widgets.helpPushButton('More info...')
-        moreInfoButton.setIcon(QIcon(':info.svg'))
+        cancelButton = widgets.cancelPushButton("Cancel")
+        moreInfoButton = widgets.helpPushButton("More info...")
+        moreInfoButton.setIcon(QIcon(":info.svg"))
         applyToFutureFramesbutton = widgets.futurePushButton(
-            'Apply changes to future frames...'
+            "Apply changes to future frames..."
         )
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets.okPushButton("Ok")
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -8777,7 +8858,7 @@ class editCcaTableWidget(QDialog):
         IDs = cca_df.index
         self.IDs = IDs.to_list()
         relIDsOptions = [str(ID) for ID in IDs]
-        relIDsOptions.insert(0, '-1')
+        relIDsOptions.insert(0, "-1")
         self.IDlabels = []
         self.ccsComboBoxes = []
         self.genNumSpinBoxes = []
@@ -8790,27 +8871,27 @@ class editCcaTableWidget(QDialog):
         self.historyKnownCheckBoxes = []
         for row, ID in enumerate(IDs):
             col = 0
-            IDlabel = QLabel(f'{ID}')
+            IDlabel = QLabel(f"{ID}")
             IDlabel.setAlignment(Qt.AlignCenter)
-            tableLayout.addWidget(IDlabel, row+1, col, alignment=AC)
+            tableLayout.addWidget(IDlabel, row + 1, col, alignment=AC)
             self.IDlabels.append(IDlabel)
 
             col += 1
             ccsComboBox = QComboBox()
             ccsComboBox.setFocusPolicy(Qt.StrongFocus)
             ccsComboBox.installEventFilter(self)
-            ccsComboBox.addItems(['G1', 'S/G2/M'])
-            ccsValue = cca_df.at[ID, 'cell_cycle_stage']
-            if ccsValue == 'S':
-                ccsValue = 'S/G2/M'
-            
+            ccsComboBox.addItems(["G1", "S/G2/M"])
+            ccsValue = cca_df.at[ID, "cell_cycle_stage"]
+            if ccsValue == "S":
+                ccsValue = "S/G2/M"
+
             try:
                 ccsComboBox.setCurrentText(ccsValue)
             except Exception as err:
                 printl(ccsValue)
                 printl(cca_df)
                 raise err
-            tableLayout.addWidget(ccsComboBox, row+1, col, alignment=AC)
+            tableLayout.addWidget(ccsComboBox, row + 1, col, alignment=AC)
             self.ccsComboBoxes.append(ccsComboBox)
             ccsComboBox.activated.connect(self.clearComboboxFocus)
 
@@ -8819,8 +8900,8 @@ class editCcaTableWidget(QDialog):
             relIDComboBox.setFocusPolicy(Qt.StrongFocus)
             relIDComboBox.installEventFilter(self)
             relIDComboBox.addItems(relIDsOptions)
-            relIDComboBox.setCurrentText(str(cca_df.at[ID, 'relative_ID']))
-            tableLayout.addWidget(relIDComboBox, row+1, col)
+            relIDComboBox.setCurrentText(str(cca_df.at[ID, "relative_ID"]))
+            tableLayout.addWidget(relIDComboBox, row + 1, col)
             self.relIDComboBoxes.append(relIDComboBox)
             relIDComboBox.currentIndexChanged.connect(self.setRelID)
             relIDComboBox.activated.connect(self.clearComboboxFocus)
@@ -8832,23 +8913,22 @@ class editCcaTableWidget(QDialog):
             genNumSpinBox.setValue(2)
             genNumSpinBox.setMaximum(2147483647)
             genNumSpinBox.setAlignment(Qt.AlignCenter)
-            genNumSpinBox.setFixedWidth(int(genNumColWidth*2/3))
-            genNumSpinBox.setValue(int(cca_df.at[ID, 'generation_num']))
-            tableLayout.addWidget(genNumSpinBox, row+1, col, alignment=AC)
+            genNumSpinBox.setFixedWidth(int(genNumColWidth * 2 / 3))
+            genNumSpinBox.setValue(int(cca_df.at[ID, "generation_num"]))
+            tableLayout.addWidget(genNumSpinBox, row + 1, col, alignment=AC)
             self.genNumSpinBoxes.append(genNumSpinBox)
 
             col += 1
             relationshipComboBox = QComboBox()
             relationshipComboBox.setFocusPolicy(Qt.StrongFocus)
             relationshipComboBox.installEventFilter(self)
-            relationshipComboBox.addItems(['mother', 'bud'])
-            relationshipComboBox.setCurrentText(
-                str(cca_df.at[ID, 'relationship'])
-            )
-            tableLayout.addWidget(relationshipComboBox, row+1, col)
+            relationshipComboBox.addItems(["mother", "bud"])
+            relationshipComboBox.setCurrentText(str(cca_df.at[ID, "relationship"]))
+            tableLayout.addWidget(relationshipComboBox, row + 1, col)
             self.relationshipComboBoxes.append(relationshipComboBox)
             relationshipComboBox.currentIndexChanged.connect(
-                                                self.relationshipChanged_cb)
+                self.relationshipChanged_cb
+            )
             relationshipComboBox.activated.connect(self.clearComboboxFocus)
 
             col += 1
@@ -8859,15 +8939,14 @@ class editCcaTableWidget(QDialog):
             emergFrameSpinBox.setMinimum(-1)
             emergFrameSpinBox.setValue(-1)
             emergFrameSpinBox.setAlignment(Qt.AlignCenter)
-            emergFrameSpinBox.setFixedWidth(int(genNumColWidth*2/3))
-            emergFrame_i = cca_df.at[ID, 'emerg_frame_i']
-            val = emergFrame_i+1 if emergFrame_i>=0 else -1
+            emergFrameSpinBox.setFixedWidth(int(genNumColWidth * 2 / 3))
+            emergFrame_i = cca_df.at[ID, "emerg_frame_i"]
+            val = emergFrame_i + 1 if emergFrame_i >= 0 else -1
             emergFrameSpinBox.setValue(val)
-            tableLayout.addWidget(emergFrameSpinBox, row+1, col, alignment=AC)
+            tableLayout.addWidget(emergFrameSpinBox, row + 1, col, alignment=AC)
             self.emergFrameSpinBoxes.append(emergFrameSpinBox)
             self.emergFrameSpinPrevValues.append(emergFrameSpinBox.value())
             emergFrameSpinBox.valueChanged.connect(self.skip0emergFrame)
-
 
             col += 1
             divisFrameSpinBox = widgets.SpinBox()
@@ -8877,19 +8956,19 @@ class editCcaTableWidget(QDialog):
             divisFrameSpinBox.setMaximum(SizeT)
             divisFrameSpinBox.setValue(-1)
             divisFrameSpinBox.setAlignment(Qt.AlignCenter)
-            divisFrameSpinBox.setFixedWidth(int(genNumColWidth*2/3))
-            divisFrame_i = int(cca_df.at[ID, 'division_frame_i'])
-            val = divisFrame_i+1 if divisFrame_i>=0 else -1
+            divisFrameSpinBox.setFixedWidth(int(genNumColWidth * 2 / 3))
+            divisFrame_i = int(cca_df.at[ID, "division_frame_i"])
+            val = divisFrame_i + 1 if divisFrame_i >= 0 else -1
             divisFrameSpinBox.setValue(val)
-            tableLayout.addWidget(divisFrameSpinBox, row+1, col, alignment=AC)
+            tableLayout.addWidget(divisFrameSpinBox, row + 1, col, alignment=AC)
             self.divisFrameSpinBoxes.append(divisFrameSpinBox)
             self.divisFrameSpinPrevValues.append(divisFrameSpinBox.value())
             divisFrameSpinBox.valueChanged.connect(self.skip0divisFrame)
 
             col += 1
             HistoryCheckBox = QCheckBox()
-            HistoryCheckBox.setChecked(bool(cca_df.at[ID, 'is_history_known']))
-            tableLayout.addWidget(HistoryCheckBox, row+1, col, alignment=AC)
+            HistoryCheckBox.setChecked(bool(cca_df.at[ID, "is_history_known"]))
+            tableLayout.addWidget(HistoryCheckBox, row + 1, col, alignment=AC)
             self.historyKnownCheckBoxes.append(HistoryCheckBox)
 
         self.setLayout(mainLayout)
@@ -8901,7 +8980,7 @@ class editCcaTableWidget(QDialog):
         applyToFutureFramesbutton.clicked.connect(self.applyToFutureFrames)
 
         # self.setModal(True)
-    
+
     def getChanges(self):
         newCcaDf = self.getCca_df()
         changes = {}
@@ -8912,29 +8991,33 @@ class editCcaTableWidget(QDialog):
                 newValue = getattr(row, col)
                 if newValue == inputValue:
                     continue
-                
+
                 if ID not in changes:
                     changes[ID] = {col: (inputValue, newValue)}
                 else:
                     changes[ID][col] = (inputValue, newValue)
         return changes
 
-    def applyToFutureFrames(self):        
-        txt = 'Enter <b>up to which frame</b> you want to apply the changes<br>'
+    def applyToFutureFrames(self):
+        txt = "Enter <b>up to which frame</b> you want to apply the changes<br>"
         win = NumericEntryDialog(
-            title='Stop frame', instructions=txt, parent=self, minValue=1, 
-            maxValue=self.SizeT, currentValue=self.current_frame_i
+            title="Stop frame",
+            instructions=txt,
+            parent=self,
+            minValue=1,
+            maxValue=self.SizeT,
+            currentValue=self.current_frame_i,
         )
         win.exec_()
         if win.cancel:
             return
-        
+
         stop_frame_i = win.value
         changes = self.getChanges()
         changes_format = myutils.format_cca_manual_changes(changes)
         detailsText = (
-            f'Changes that will be applied from frame n. {self.current_frame_i+1}'
-            f' to frame n. {stop_frame_i+1}:\n\n{changes_format}'
+            f"Changes that will be applied from frame n. {self.current_frame_i + 1}"
+            f" to frame n. {stop_frame_i + 1}:\n\n{changes_format}"
         )
         txt = html_utils.paragraph("""
 Use this feature with <b>caution</b>!<br><br>
@@ -8943,23 +9026,21 @@ will be applied (see below).<br><br>
 """)
         msg = widgets.myMessageBox(wrapText=False)
         msg.setDetailedText(detailsText, visible=True)
-        msg.warning(
-            self, 'Caution!', txt, buttonsTexts=('Yes, I am sure', 'Cancel')
-        )
+        msg.warning(self, "Caution!", txt, buttonsTexts=("Yes, I am sure", "Cancel"))
         if msg.cancel:
             return
-        
-        self.sigApplyChangesFutureFrames.emit(changes, stop_frame_i)     
-    
+
+        self.sigApplyChangesFutureFrames.emit(changes, stop_frame_i)
+
     def moreInfo(self, checked=True):
         desc = myutils.get_cca_colname_desc()
         msg = widgets.myMessageBox(parent=self)
-        msg.setWindowTitle('Cell cycle annotations info')
+        msg.setWindowTitle("Cell cycle annotations info")
         msg.setWidth(400)
         msg.setIcon()
         for col, txt in desc.items():
-            msg.addText(html_utils.paragraph(f'<b>{col}</b>: {txt}'))
-        msg.addButton('  Ok  ')
+            msg.addText(html_utils.paragraph(f"<b>{col}</b>: {txt}"))
+        msg.addButton("  Ok  ")
         msg.exec_()
 
     def setRelID(self, itemIndex):
@@ -8993,82 +9074,87 @@ will be applied (see below).<br><br>
     def relationshipChanged_cb(self, itemIndex):
         idx = self.relationshipComboBoxes.index(self.sender())
         ccs = self.sender().currentText()
-        if ccs == 'bud':
-            self.ccsComboBoxes[idx].setCurrentText('S/G2/M')
+        if ccs == "bud":
+            self.ccsComboBoxes[idx].setCurrentText("S/G2/M")
             self.genNumSpinBoxes[idx].setValue(0)
 
     def getCca_df(self):
         ccsValues = [var.currentText() for var in self.ccsComboBoxes]
-        ccsValues = [val if val=='G1' else 'S' for val in ccsValues]
+        ccsValues = [val if val == "G1" else "S" for val in ccsValues]
         genNumValues = [var.value() for var in self.genNumSpinBoxes]
         relIDValues = [int(var.currentText()) for var in self.relIDComboBoxes]
         relatValues = [var.currentText() for var in self.relationshipComboBoxes]
         emergFrameValues = [
-            var.value()-1 if var.value()>0 else -1
+            var.value() - 1 if var.value() > 0 else -1
             for var in self.emergFrameSpinBoxes
         ]
         divisFrameValues = [
-            var.value()-1 if var.value()>0 else -1
+            var.value() - 1 if var.value() > 0 else -1
             for var in self.divisFrameSpinBoxes
         ]
-        historyValues = [
-            var.isChecked() for var in self.historyKnownCheckBoxes
-        ]
+        historyValues = [var.isChecked() for var in self.historyKnownCheckBoxes]
         check_rel = [ID == relID for ID, relID in zip(self.IDs, relIDValues)]
-        
+
         # Buds in S phase must have 0 as number of cycles
         check_buds_S = [
-            ccs=='S' and rel_ship=='bud' and not numc==0
-            for ccs, rel_ship, numc
-            in zip(ccsValues, relatValues, genNumValues)
+            ccs == "S" and rel_ship == "bud" and not numc == 0
+            for ccs, rel_ship, numc in zip(ccsValues, relatValues, genNumValues)
         ]
-        
+
         # Mother cells must have at least 1 as number of cycles if history known
         check_mothers = [
-            rel_ship=='mother' and not numc>=1
-            if is_history_known else False
-            for rel_ship, numc, is_history_known
-            in zip(relatValues, genNumValues, historyValues)
+            rel_ship == "mother" and not numc >= 1 if is_history_known else False
+            for rel_ship, numc, is_history_known in zip(
+                relatValues, genNumValues, historyValues
+            )
         ]
-        
+
         # Buds cannot be in G1
         check_buds_G1 = [
-            ccs=='G1' and rel_ship=='bud' for ccs, rel_ship
-            in zip(ccsValues, relatValues)
+            ccs == "G1" and rel_ship == "bud"
+            for ccs, rel_ship in zip(ccsValues, relatValues)
         ]
-        
+
         # The number of cells in S phase must be half mothers and half buds
-        num_moth_S = len([
-            0 for ccs, rel_ship in zip(ccsValues, relatValues)
-            if ccs=='S' and rel_ship=='mother'
-        ])
-        num_bud_S = len([
-            0 for ccs, rel_ship in zip(ccsValues, relatValues)
-            if ccs=='S' and rel_ship=='bud'
-        ])
-        
+        num_moth_S = len(
+            [
+                0
+                for ccs, rel_ship in zip(ccsValues, relatValues)
+                if ccs == "S" and rel_ship == "mother"
+            ]
+        )
+        num_bud_S = len(
+            [
+                0
+                for ccs, rel_ship in zip(ccsValues, relatValues)
+                if ccs == "S" and rel_ship == "bud"
+            ]
+        )
+
         # Cells in S phase cannot have -1 as relative's ID
         check_relID_S = [
-            ccs=='S' and relID==-1
-            for ccs, relID in zip(ccsValues, relIDValues)
+            ccs == "S" and relID == -1 for ccs, relID in zip(ccsValues, relIDValues)
         ]
-        
+
         # Mother cells with unknown history at emergence is recommended to have
         # generation number = 2 (easier downstream analysis)
         check_unknown_mothers = [
-            rel_ship=='mother' and not is_history_known and gen_num!=2
-            and (emerg_frame_i == self.current_frame_i or self.current_frame_i==0)
-            for rel_ship, is_history_known, gen_num, emerg_frame_i
-            in zip(relatValues, historyValues, genNumValues, emergFrameValues)
+            rel_ship == "mother"
+            and not is_history_known
+            and gen_num != 2
+            and (emerg_frame_i == self.current_frame_i or self.current_frame_i == 0)
+            for rel_ship, is_history_known, gen_num, emerg_frame_i in zip(
+                relatValues, historyValues, genNumValues, emergFrameValues
+            )
         ]
-        
+
         if any(check_rel):
             msg = widgets.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(""" 
                 Some cells are mother or bud of itself!<br><br>
                 Make sure that the relative ID is different from the Cell ID.
             """)
-            msg.critical(self, 'Some IDs are equal to relative ID', txt)
+            msg.critical(self, "Some IDs are equal to relative ID", txt)
             return None
         elif any(check_unknown_mothers):
             txt = html_utils.paragraph("""
@@ -9080,30 +9166,26 @@ will be applied (see below).<br><br>
                 <b>makes downstream analysis easier</b>.<br><br>
                 What do you want to do?
             """)
-            correctButtonText = ' Fine, let me correct. '
-            keepButtonText = ' Keep the generation number that I chose. '
+            correctButtonText = " Fine, let me correct. "
+            keepButtonText = " Keep the generation number that I chose. "
             buttonsTexts = (correctButtonText, keepButtonText)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-            msg.warning(self, 'Recommendation', txt, buttonsTexts=buttonsTexts)
+            msg.warning(self, "Recommendation", txt, buttonsTexts=buttonsTexts)
             if msg.cancel or msg.clickedButton == correctButtonText:
                 return None
         elif any(check_buds_S):
             msg = widgets.myMessageBox(wrapText=False)
-            title = (
-                'Bud in S/G2/M not in 0 Generation number'
-            )
+            title = "Bud in S/G2/M not in 0 Generation number"
             txt = html_utils.paragraph(
-                'Some buds '
-                'in S phase do not have 0 as Generation number!<br>'
+                "Some buds "
+                "in S phase do not have 0 as Generation number!<br>"
                 'Buds in S phase must have 0 as "Generation number"'
             )
             msg.critical(self, title, txt)
             return None
         elif any(check_mothers):
             msg = widgets.myMessageBox(wrapText=False)
-            title = (
-                'Mother not in >=1 Generation number'
-            )
+            title = "Mother not in >=1 Generation number"
             txt = html_utils.paragraph(
                 'Some mother cells do not have >=1 as "Generation number"!<br>'
                 'Mothers MUST have >1 "Generation number"'
@@ -9112,69 +9194,64 @@ will be applied (see below).<br><br>
             return None
         elif any(check_buds_G1):
             msg = widgets.myMessageBox(wrapText=False)
-            title = (
-                'Buds in G1!'
-            )
+            title = "Buds in G1!"
             txt = html_utils.paragraph(
-                'Some buds are in G1 phase!<br><br>'
-                'Buds MUST be in S/G2/M phase'
+                "Some buds are in G1 phase!<br><br>Buds MUST be in S/G2/M phase"
             )
             msg.critical(self, title, txt)
             return None
         elif num_moth_S != num_bud_S:
             msg = widgets.myMessageBox(wrapText=False)
-            title = (
-                'Number of mothers-buds mismatch!'
-            )
+            title = "Number of mothers-buds mismatch!"
             txt = html_utils.paragraph(
                 f'There are {num_moth_S} mother cells in "S/G2/M" phase,'
-                f'but there are {num_bud_S} bud cells.<br><br>'
+                f"but there are {num_bud_S} bud cells.<br><br>"
                 'The number of mothers and buds in "S/G2/M" '
-                'phase must be equal!'
+                "phase must be equal!"
             )
             msg.critical(self, title, txt)
             return None
         elif any(check_relID_S):
             msg = widgets.myMessageBox(wrapText=False)
-            title = (
-                'Relative\'s ID of cells in S/G2/M = -1'
-            )
+            title = "Relative's ID of cells in S/G2/M = -1"
             txt = html_utils.paragraph(
                 'Some cells are in "S/G2/M" phase but have -1 as Relative\'s ID!<br>'
                 'Cells in "S/G2/M" phase must have an existing '
-                'ID as Relative\'s ID!'
+                "ID as Relative's ID!"
             )
             msg.critical(self, title, txt)
             return None
-        
-        corrected_on_frame_i = self.inputCca_df['corrected_on_frame_i']
-        cca_df = pd.DataFrame({
-            'cell_cycle_stage': ccsValues,
-            'generation_num': genNumValues,
-            'relative_ID': relIDValues,
-            'relationship': relatValues,
-            'emerg_frame_i': emergFrameValues,
-            'division_frame_i': divisFrameValues,
-            'is_history_known': historyValues,
-            'corrected_on_frame_i': corrected_on_frame_i,
-            'will_divide': self.inputCca_df['will_divide'],
-            }, index=self.IDs
+
+        corrected_on_frame_i = self.inputCca_df["corrected_on_frame_i"]
+        cca_df = pd.DataFrame(
+            {
+                "cell_cycle_stage": ccsValues,
+                "generation_num": genNumValues,
+                "relative_ID": relIDValues,
+                "relationship": relatValues,
+                "emerg_frame_i": emergFrameValues,
+                "division_frame_i": divisFrameValues,
+                "is_history_known": historyValues,
+                "corrected_on_frame_i": corrected_on_frame_i,
+                "will_divide": self.inputCca_df["will_divide"],
+            },
+            index=self.IDs,
         )
-        cca_df.index.name = 'Cell_ID'
-        
+        cca_df.index.name = "Cell_ID"
+
         # Add missing columns
         for column, default in base_cca_dict.items():
             if column in cca_df.columns:
                 continue
-            
+
             value = self.inputCca_df.get(column, default=default)
             cca_df[column] = value
-            
+
         # Check that every pair of cells in S are relative of each other
         proceed = self.check_ID_rel_ID_mismatches(cca_df)
         if not proceed:
             return None
-            
+
         d = dict.fromkeys(cca_df.select_dtypes(np.int64).columns, np.int32)
         cca_df = cca_df.astype(d)
         return cca_df
@@ -9182,33 +9259,32 @@ will be applied (see below).<br><br>
     def check_ID_rel_ID_mismatches(self, cca_df):
         ID_rel_ID_mismatches = []
         for row in cca_df.itertuples():
-            if row.cell_cycle_stage == 'G1':
+            if row.cell_cycle_stage == "G1":
                 continue
-            
+
             ID = row.Index
             relID = row.relative_ID
-            relID_of_relID = cca_df.at[relID, 'relative_ID']
-            
+            relID_of_relID = cca_df.at[relID, "relative_ID"]
+
             if relID_of_relID != ID:
                 ID_rel_ID_mismatches.append((ID, relID, relID_of_relID))
-        
+
         if not ID_rel_ID_mismatches:
             return True
-        
+
         items = [
-            f'Cell ID {ID} has relative ID = {relID}, '
-            f'while cell ID {relID} has relative ID = {relID_of_relID}'
+            f"Cell ID {ID} has relative ID = {relID}, "
+            f"while cell ID {relID} has relative ID = {relID_of_relID}"
             for ID, relID, relID_of_relID in ID_rel_ID_mismatches
         ]
-        title = '`ID-relative_ID` mismatches'
+        title = "`ID-relative_ID` mismatches"
         txt = html_utils.paragraph(
-            f'`ID-relative_ID` mismatches:'
-            f'{html_utils.to_list(items)}'
+            f"`ID-relative_ID` mismatches:{html_utils.to_list(items)}"
         )
         msg = widgets.myMessageBox(wrapText=False)
         msg.critical(self, title, txt)
         return False
-    
+
     def ok_cb(self, checked):
         cca_df = self.getCca_df()
         if cca_df is None:
@@ -9228,11 +9304,13 @@ will be applied (see below).<br><br>
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         ncols = self.tableLayout.columnCount()
-        maxLabelWidth = max([
-            self.headerLayout.itemAt(j).widget().sizeHint().width()
-            for j in range(ncols)
-        ])
-        minWidth = (maxLabelWidth+5)*ncols
+        maxLabelWidth = max(
+            [
+                self.headerLayout.itemAt(j).widget().sizeHint().width()
+                for j in range(ncols)
+            ]
+        )
+        minWidth = (maxLabelWidth + 5) * ncols
         self.setMinimumWidth(minWidth)
         if block:
             self.loop = QEventLoop()
@@ -9249,18 +9327,17 @@ will be applied (see below).<br><br>
         self.sender().clearFocus()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
-       
+
+
 class askStopFrameSegm(QDialog):
-    def __init__(
-            self, user_ch_file_paths, user_ch_name, parent=None
-        ):
+    def __init__(self, user_ch_file_paths, user_ch_name, parent=None):
         self.parent = parent
         self.cancel = True
 
         super().__init__(parent)
-        self.setWindowTitle('Enter stop frame')
+        self.setWindowTitle("Enter stop frame")
 
         self.visualizeWindows = []
 
@@ -9295,7 +9372,7 @@ class askStopFrameSegm(QDialog):
         self.tab_idx = 0
         iter_items = exp_path_pos_mapper.items()
         self.groupboxScrollAreas = []
-        
+
         for col, (exp_path, pos_folders_files) in enumerate(iter_items):
             groupboxScrollArea = widgets.ScrollArea()
             self.groupboxScrollAreas.append(groupboxScrollArea)
@@ -9306,11 +9383,11 @@ class askStopFrameSegm(QDialog):
             groupbox.setLayout(groupboxLayout)
             groupboxScrollArea.setWidget(groupbox)
             columnsLayout.addWidget(groupboxScrollArea)
-            pos_folders = pos_folders_files['pos_foldernames']
-            filenames = pos_folders_files['filenames']
+            pos_folders = pos_folders_files["pos_foldernames"]
+            filenames = pos_folders_files["filenames"]
             for i, pos_foldername in enumerate(pos_folders):
                 img_filename = filenames[i]
-                images_path = os.path.join(exp_path, pos_foldername, 'Images')
+                images_path = os.path.join(exp_path, pos_foldername, "Images")
                 img_path = os.path.join(images_path, img_filename)
                 spinBox = widgets.mySpinBox()
                 spinBox.sigTabEvent.connect(self.keyTabEventSpinbox)
@@ -9329,9 +9406,9 @@ class askStopFrameSegm(QDialog):
                 else:
                     spinBox.setValue(stopFrameNum)
                 spinBox.setAlignment(Qt.AlignCenter)
-                visualizeButton = widgets.viewPushButton('Visualize')
+                visualizeButton = widgets.viewPushButton("Visualize")
                 visualizeButton.clicked.connect(self.visualize_cb)
-                formLabel = QLabel(html_utils.paragraph(f'{pos_foldername}  '))
+                formLabel = QLabel(html_utils.paragraph(f"{pos_foldername}  "))
                 layout = QHBoxLayout()
                 layout.addWidget(formLabel, alignment=Qt.AlignRight)
                 layout.addWidget(spinBox)
@@ -9340,7 +9417,7 @@ class askStopFrameSegm(QDialog):
                 groupboxLayout.addRow(layout)
                 spinBox.idx = i
                 self.spinBoxes.append(spinBox)
-            
+
             fm = QFontMetrics(self.font())
             elidedTitle = fm.elidedText(
                 exp_path, Qt.ElideLeft, groupbox.sizeHint().width()
@@ -9350,12 +9427,12 @@ class askStopFrameSegm(QDialog):
         mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
         mainLayout.addWidget(mainScrollArea)
 
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets.okPushButton("Ok")
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton("Cancel")
 
-        buttonsLayout.addStretch(1)    
+        buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(okButton)
@@ -9371,7 +9448,7 @@ class askStopFrameSegm(QDialog):
         # # self.setModal(True)
 
     def keyTabEventSpinbox(self, event, sender):
-        self.tab_idx += 1      
+        self.tab_idx += 1
         if self.tab_idx >= len(self.spinBoxes):
             self.tab_idx = 0
         focusSpinbox = self.spinBoxes[self.tab_idx]
@@ -9379,7 +9456,7 @@ class askStopFrameSegm(QDialog):
 
     def saveStopFrameNumbers(self):
         for spinBox, posData in self.dataDict.values():
-            posData.metadata_df.at['stop_frame_num', 'values'] = spinBox.value()
+            posData.metadata_df.at["stop_frame_num", "values"] = spinBox.value()
             posData.metadataToCsv()
 
     def ok_cb(self, event):
@@ -9392,7 +9469,7 @@ class askStopFrameSegm(QDialog):
             spinBox.value() for spinBox, posData in self.dataDict.values()
         ]
         self.close()
-    
+
     def closeEvent(self, event):
         for window in self.visualizeWindows:
             window.close()
@@ -9400,14 +9477,11 @@ class askStopFrameSegm(QDialog):
     def visualize_cb(self, checked=True):
         self.setDisabled(True)
         spinBox, posData = self.dataDict[self.sender()]
-        print('Loading image data...')
+        print("Loading image data...")
         posData.loadImgData()
-        posData.frame_i = spinBox.value()-1
+        posData.frame_i = spinBox.value() - 1
         win = plot.imshow(
-            posData.img_data, 
-            lut='gray',
-            figure_title=posData.relPath,
-            block=False
+            posData.img_data, lut="gray", figure_title=posData.relPath, block=False
         )
         self.visualizeWindows.append(win)
         self.setDisabled(False)
@@ -9425,16 +9499,13 @@ class askStopFrameSegm(QDialog):
             scrollAreaHeight = scrollArea.minimumHeightNoScrollbar()
             if scrollAreaHeight > height:
                 height = scrollAreaHeight
-        
+
         width += 70
-        height += (
-            self.sizeHint().height() 
-            - self.mainScrollArea.sizeHint().height()
-        )
+        height += self.sizeHint().height() - self.mainScrollArea.sizeHint().height()
 
         if width > maxWidth:
             width = maxWidth
-        
+
         if height > maxHeight:
             height = maxHeight
 
@@ -9447,17 +9518,28 @@ class askStopFrameSegm(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
+
 
 class QLineEditDialog(QDialog):
     def __init__(
-            self, title='Entry messagebox', msg='Entry value',
-            defaultTxt='', parent=None, allowedValues=None,
-            warnLastFrame=False, isInteger=False, isFloat=False,
-            stretchEntry=True, allowEmpty=True, allowedTextEntries=None, 
-            allowText=False, lastVisitedFrame=None, allowList=False
-        ):
+        self,
+        title="Entry messagebox",
+        msg="Entry value",
+        defaultTxt="",
+        parent=None,
+        allowedValues=None,
+        warnLastFrame=False,
+        isInteger=False,
+        isFloat=False,
+        stretchEntry=True,
+        allowEmpty=True,
+        allowedTextEntries=None,
+        allowText=False,
+        lastVisitedFrame=None,
+        allowList=False,
+    ):
         QDialog.__init__(self, parent)
 
         self.loop = None
@@ -9482,18 +9564,18 @@ class QLineEditDialog(QDialog):
         buttonsLayout = QHBoxLayout()
 
         # Widgets
-        if not msg.startswith('<p'):
+        if not msg.startswith("<p"):
             msg = html_utils.paragraph(msg, center=True)
         msg = QLabel(msg)
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
-        
+
         if isFloat:
             self._type = float
         elif isInteger:
             self._type = int
         else:
             self._type = str
-        
+
         self.allowList = allowList
 
         if isFloat and not allowList:
@@ -9529,22 +9611,22 @@ class QLineEditDialog(QDialog):
 
         if allowedValues is not None:
             notValidLabel = QLabel()
-            notValidLabel.setStyleSheet('color: red')
+            notValidLabel.setStyleSheet("color: red")
             notValidLabel.setFont(font)
             notValidLabel.setAlignment(Qt.AlignCenter)
             self.notValidLabel = notValidLabel
 
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets.okPushButton("Ok")
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton("Cancel")
 
         # Events
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
 
         # Contents margins
-        buttonsLayout.setContentsMargins(0,10,0,0)
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
 
         # Add widgets to layouts
         LineEditLayout.addWidget(msg, alignment=Qt.AlignCenter)
@@ -9555,7 +9637,7 @@ class QLineEditDialog(QDialog):
             entryLayout.addStretch(1)
             entryLayout.addWidget(entryWidget)
             entryLayout.addStretch(1)
-            entryLayout.setStretch(1,1)
+            entryLayout.setStretch(1, 1)
             LineEditLayout.addLayout(entryLayout)
         if allowedValues is not None:
             LineEditLayout.addWidget(notValidLabel, alignment=Qt.AlignCenter)
@@ -9563,7 +9645,7 @@ class QLineEditDialog(QDialog):
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(okButton)
-        
+
         self.okButton = okButton
         self.buttonsLayout = buttonsLayout
 
@@ -9574,11 +9656,11 @@ class QLineEditDialog(QDialog):
         self.setLayout(mainLayout)
 
         # self.setModal(True)
-    
+
     def value(self):
         if self._type == str:
             return self.entryWidget.text()
-        
+
         if (self.isFloat or self.isInteger) and not self.allowList:
             val = self.entryWidget.value()
         elif not self.allowList:
@@ -9596,32 +9678,32 @@ class QLineEditDialog(QDialog):
         if idx == 0:
             return
 
-        newChar = text[idx-1]
-        if self.allowList and (newChar==',' or newChar == ' '):
+        newChar = text[idx - 1]
+        if self.allowList and (newChar == "," or newChar == " "):
             return
 
         if self._type == str:
             self.entryWidget.setText(text)
             return
-        
+
         # Allow only integers
         try:
             val = int(newChar)
             if val > np.iinfo(np.uint32).max:
                 self.entryWidget.setText(str(np.iinfo(np.uint32).max))
         except Exception as e:
-            text = text.replace(newChar, '')
+            text = text.replace(newChar, "")
             self.entryWidget.setText(text)
             return
-        
+
         if self.allowedValues is not None:
             currentVal = self.value()
             if self.allowList:
                 currentVal = currentVal[-1]
             if currentVal not in self.allowedValues:
-                self.notValidLabel.setText(f'{currentVal} not existing!')
+                self.notValidLabel.setText(f"{currentVal} not existing!")
             else:
-                self.notValidLabel.setText('')
+                self.notValidLabel.setText("")
 
     def warnValLessLastFrame(self, val):
         msg = widgets.myMessageBox()
@@ -9629,12 +9711,14 @@ class QLineEditDialog(QDialog):
             WARNING: saving until a frame number below the last visited
             frame ({self.lastVisitedFrame}) will result in <b>LOSS of information</b>
             about any <b>edit or annotation</b> you did <b>on frames
-            {val+1}-{self.lastVisitedFrame}.</b><br><br>
+            {val + 1}-{self.lastVisitedFrame}.</b><br><br>
             Are you sure you want to proceed?
         """)
         msg.warning(
-           self, 'WARNING: Potential loss of information', warn_txt, 
-           buttonsTexts=('Cancel', 'Yes, I am sure.')
+            self,
+            "WARNING: Potential loss of information",
+            warn_txt,
+            buttonsTexts=("Cancel", "Yes, I am sure."),
         )
         return msg.cancel
 
@@ -9646,17 +9730,20 @@ class QLineEditDialog(QDialog):
             Are you sure you want to save until frame n. {val}?<br>
         """)
         msg.warning(
-           self, 'Saving past last visited frame', warn_txt, 
-           buttonsTexts=('Cancel', 'Yes, I am sure.')
+            self,
+            "Saving past last visited frame",
+            warn_txt,
+            buttonsTexts=("Cancel", "Yes, I am sure."),
         )
         return msg.cancel
-    
+
     def ok_cb(self, event):
         if not self.allowEmpty and not self.entryWidget.text():
             msg = widgets.myMessageBox(showCentered=False, wrapText=False)
             msg.critical(
-                self, 'Empty text', 
-                html_utils.paragraph('Text entry field <b>cannot be empty</b>')
+                self,
+                "Empty text",
+                html_utils.paragraph("Text entry field <b>cannot be empty</b>"),
             )
             return
         if self.allowedTextEntries is not None:
@@ -9664,18 +9751,18 @@ class QLineEditDialog(QDialog):
                 msg = widgets.myMessageBox(showCentered=False, wrapText=False)
                 txt = html_utils.paragraph(
                     f'"{self.entryWidget.text()}" is not a valid entry.<br><br>'
-                    'Valid entries are:<br>'
-                    f'{html_utils.to_list(self.allowedTextEntries)}'
+                    "Valid entries are:<br>"
+                    f"{html_utils.to_list(self.allowedTextEntries)}"
                 )
-                msg.critical(self, 'Not a valid entry', txt)
+                msg.critical(self, "Not a valid entry", txt)
                 return
-        
+
         if self.allowedValues:
             if self.notValidLabel.text():
                 return
 
         val = self.value()
-        
+
         if self.warnLastFrame and self.lastVisitedFrame is not None:
             if val < self.lastVisitedFrame:
                 cancel = self.warnValLessLastFrame(val)
@@ -9693,7 +9780,7 @@ class QLineEditDialog(QDialog):
             self.EntryID = int(val)
         except Exception as err:
             self.EntryID = val
-            
+
         self.enteredValue = val
         self.close()
 
@@ -9712,22 +9799,29 @@ class QLineEditDialog(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
+
 
 class FindIDDialog(QLineEditDialog):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        
-        self.okButton.setIcon(QIcon(':magnGlass.svg'))
-        self.okButton.setText(' Find ')
+
+        self.okButton.setIcon(QIcon(":magnGlass.svg"))
+        self.okButton.setText(" Find ")
+
 
 class NumericEntryDialog(QBaseDialog):
     def __init__(
-            self, title='Entry a value', currentValue=0,
-            instructions='Entry value', parent=None, 
-            maxValue=None, minValue=None, stretch=False
-        ):
+        self,
+        title="Entry a value",
+        currentValue=0,
+        instructions="Entry value",
+        parent=None,
+        maxValue=None,
+        minValue=None,
+        stretch=False,
+    ):
         super().__init__(parent=parent)
         self.setWindowTitle(title)
         self.cancel = False
@@ -9736,47 +9830,50 @@ class NumericEntryDialog(QBaseDialog):
         cancelOkLayout = widgets.CancelOkButtonsLayout()
         cancelOkLayout.okButton.clicked.connect(self.ok_cb)
         cancelOkLayout.cancelButton.clicked.connect(self.close)
-        
+
         instructionsLabel = QLabel(html_utils.paragraph(instructions))
         mainLayout.addWidget(instructionsLabel)
-        
+
         if type(currentValue) == int:
             self.entryWidget = widgets.SpinBox()
             self.entryWidget.setValue(currentValue)
-            self.valueGetter = 'value'
+            self.valueGetter = "value"
             if maxValue is not None:
                 self.entryWidget.setMaximum(maxValue)
             if minValue is not None:
                 self.entryWidget.setMinimum(minValue)
-        
+
         if stretch:
             entryLayout.addWidget(self.entryWidget)
         else:
             entryLayout.addStretch(1)
             entryLayout.addWidget(self.entryWidget)
             entryLayout.addStretch(1)
-        
+
         mainLayout.addLayout(entryLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(cancelOkLayout)
-        
+
         self.setLayout(mainLayout)
-    
+
     def ok_cb(self):
         self.cancel = False
         self.value = getattr(self.entryWidget, self.valueGetter)()
         self.close()
 
+
 class EditIDDialog(QDialog):
     def __init__(
-            self, clickedID, IDs, 
-            entryID=None, 
-            doNotShowAgain=False, 
-            parent=None, 
-            nextUniqueID=1, 
-            allIDs=None,
-            addPropagateCheckbox=False
-        ):
+        self,
+        clickedID,
+        IDs,
+        entryID=None,
+        doNotShowAgain=False,
+        parent=None,
+        nextUniqueID=1,
+        allIDs=None,
+        addPropagateCheckbox=False,
+    ):
         self.assignNewID = False
         self.IDs = IDs
         self.clickedID = clickedID
@@ -9794,7 +9891,7 @@ class EditIDDialog(QDialog):
         mainLayout = QVBoxLayout()
 
         VBoxLayout = QVBoxLayout()
-        msg = QLabel(f'Replace ID {clickedID} with:')
+        msg = QLabel(f"Replace ID {clickedID} with:")
         _font = QFont()
         _font.setPixelSize(12)
         msg.setFont(_font)
@@ -9812,19 +9909,17 @@ class EditIDDialog(QDialog):
             entryWidget.selectAll()
 
         VBoxLayout.addWidget(
-            QLabel(f'Next unique ID = {nextUniqueID}'), alignment=Qt.AlignCenter
+            QLabel(f"Next unique ID = {nextUniqueID}"), alignment=Qt.AlignCenter
         )
-        
+
         VBoxLayout.addWidget(widgets.QHLine())
-        
+
         self.warnExistingIDLabel = QLabel()
-        self.warnExistingIDLabel.setStyleSheet('color: red')
-        VBoxLayout.addWidget(
-            self.warnExistingIDLabel, alignment=Qt.AlignCenter
-        )
-        
+        self.warnExistingIDLabel.setStyleSheet("color: red")
+        VBoxLayout.addWidget(self.warnExistingIDLabel, alignment=Qt.AlignCenter)
+
         note = QLabel(
-            'NOTE: To replace multiple IDs at once\n'
+            "NOTE: To replace multiple IDs at once\n"
             'write "(old ID, new ID), (old ID, new ID)" etc.'
         )
         note.setFont(_font)
@@ -9833,17 +9928,17 @@ class EditIDDialog(QDialog):
         note.setStyleSheet("padding:12px 0px 0px 0px;")
         VBoxLayout.addWidget(note, alignment=Qt.AlignCenter)
         mainLayout.addLayout(VBoxLayout)
-        
+
         self.propagateCheckbox = None
         if addPropagateCheckbox:
             mainLayout.addSpacing(10)
-            self.propagateCheckbox = QCheckBox('Apply to future frames')
+            self.propagateCheckbox = QCheckBox("Apply to future frames")
             mainLayout.addWidget(self.propagateCheckbox)
 
         buttonsLayout = QHBoxLayout()
-        okButton = widgets.okPushButton('Ok')
-        cancelButton = widgets.cancelPushButton('Cancel')
-        applyNewIDButton = widgets.AssignNewIDButton('Assign new, unique ID')
+        okButton = widgets.okPushButton("Ok")
+        cancelButton = widgets.cancelPushButton("Cancel")
+        applyNewIDButton = widgets.AssignNewIDButton("Assign new, unique ID")
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -9857,79 +9952,79 @@ class EditIDDialog(QDialog):
         self.setLayout(mainLayout)
 
         # Connect events
-        self.prevText = ''
+        self.prevText = ""
         entryWidget.textChanged[str].connect(self.onTextChanged)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
         applyNewIDButton.clicked.connect(self.assignNewIDclicked)
-        
+
         # self.setModal(True)
 
     def onTextChanged(self, text):
-        self.warnExistingIDLabel.setText('')
+        self.warnExistingIDLabel.setText("")
         try:
             ID = int(text)
             if ID in self.allIDs:
-                self.warnExistingIDLabel.setText(
-                    f'WARNING: ID {ID} was already used'
-                )
+                self.warnExistingIDLabel.setText(f"WARNING: ID {ID} was already used")
         except Exception as err:
             pass
-        
+
         # Get inserted char
         idx = self.entryWidget.cursorPosition()
         if idx == 0:
             return
 
-        newChar = text[idx-1]
+        newChar = text[idx - 1]
 
         # Do nothing if user is deleting text
-        if idx == 0 or len(text)<len(self.prevText):
+        if idx == 0 or len(text) < len(self.prevText):
             self.prevText = text
             return
 
         # Do not allow chars except for "(", ")", "int", ","
-        m = re.search(r'\(|\)|\d|,', newChar)
+        m = re.search(r"\(|\)|\d|,", newChar)
         if m is None:
             self.prevText = text
-            text = text.replace(newChar, '')
+            text = text.replace(newChar, "")
             self.entryWidget.setText(text)
             return
 
         # Cast integers greater than uint32 machine limit
-        m_iter = re.finditer(r'\d+', self.entryWidget.text())
+        m_iter = re.finditer(r"\d+", self.entryWidget.text())
         for m in m_iter:
             val = int(m.group())
             uint32_max = np.iinfo(np.uint32).max
             if val > uint32_max:
                 text = self.entryWidget.text()
-                text = f'{text[:m.start()]}{uint32_max}{text[m.end():]}'
+                text = f"{text[: m.start()]}{uint32_max}{text[m.end() :]}"
                 self.entryWidget.setText(text)
 
         # Automatically close ( bracket
-        if newChar == '(':
-            text += ')'
+        if newChar == "(":
+            text += ")"
             self.entryWidget.setText(text)
         self.prevText = text
-    
+
     def _warnExistingID(self, existingID, newID):
         warn_msg = html_utils.paragraph(f"""
             ID {existingID} is <b>already existing</b>.<br><br>
             How do you want to proceed?<br>
         """)
         msg = widgets.myMessageBox()
-        doNotAskAgainCheckbox = QCheckBox('Remember my choice and do not ask again')
-        swapButton = widgets.reloadPushButton(f'Swap {newID} with {existingID}')
-        mergeButton = widgets.mergePushButton(f'Merge {newID} with {existingID}')
+        doNotAskAgainCheckbox = QCheckBox("Remember my choice and do not ask again")
+        swapButton = widgets.reloadPushButton(f"Swap {newID} with {existingID}")
+        mergeButton = widgets.mergePushButton(f"Merge {newID} with {existingID}")
         msg.warning(
-            self, 'Existing ID', warn_msg, 
-            buttonsTexts=('Cancel', mergeButton, swapButton),
-            widgets=doNotAskAgainCheckbox
+            self,
+            "Existing ID",
+            warn_msg,
+            buttonsTexts=("Cancel", mergeButton, swapButton),
+            widgets=doNotAskAgainCheckbox,
         )
         if msg.cancel:
             return False
         self.doNotAskAgainExistingID = doNotAskAgainCheckbox.isChecked()
-        self.mergeWithExistingID = msg.clickedButton ==  mergeButton
+        self.mergeWithExistingID = msg.clickedButton == mergeButton
         return True
 
     def assignNewIDclicked(self):
@@ -9937,7 +10032,7 @@ class EditIDDialog(QDialog):
         self.how = None
         self.assignNewID = True
         self.close()
-    
+
     def ok_cb(self, event):
         txt = self.entryWidget.text()
         valid = False
@@ -9954,7 +10049,7 @@ class EditIDDialog(QDialog):
             else:
                 valid = True
         except ValueError:
-            pattern = r'\((\d+),\s*(\d+)\)'
+            pattern = r"\((\d+),\s*(\d+)\)"
             fa = re.findall(pattern, txt)
             if fa:
                 how = [(int(g[0]), int(g[1])) for g in fa]
@@ -9964,24 +10059,21 @@ class EditIDDialog(QDialog):
 
         if not valid:
             err_msg = html_utils.paragraph(
-                'You entered invalid text. Valid text is either a single integer'
-                f' ID that will be used to replace ID {self.clickedID} '
-                'or a list of elements enclosed in parenthesis separated by a comma<br>'
-                'such as (5, 10), (8, 27) to replace ID 5 with ID 10 and ID 8 with ID 27'
+                "You entered invalid text. Valid text is either a single integer"
+                f" ID that will be used to replace ID {self.clickedID} "
+                "or a list of elements enclosed in parenthesis separated by a comma<br>"
+                "such as (5, 10), (8, 27) to replace ID 5 with ID 10 and ID 8 with ID 27"
             )
             msg = widgets.myMessageBox()
-            msg.warning(
-                self, 'Invalid entry', err_msg
-            )
+            msg.warning(self, "Invalid entry", err_msg)
             return
-        
+
         self.cancel = False
         self.how = how
         self.doPropagateFutureFrames = False
         if self.propagateCheckbox is not None:
             self.doPropagateFutureFrames = self.propagateCheckbox.isChecked()
         self.close()
-        
 
     def cancel_cb(self, event):
         self.cancel = True
@@ -9998,17 +10090,22 @@ class EditIDDialog(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
+
 
 class QtSelectItems(QDialog):
     def __init__(
-            self, title, items, informativeText,
-            CbLabel='Select value:  ', parent=None,
-            showInFileManagerPath=None
-        ):
+        self,
+        title,
+        items,
+        informativeText,
+        CbLabel="Select value:  ",
+        parent=None,
+        showInFileManagerPath=None,
+    ):
         self.cancel = True
-        self.selectedItemsText = ''
+        self.selectedItemsText = ""
         self.selectedItemsIdx = None
         self.showInFileManagerPath = showInFileManagerPath
         self.items = items
@@ -10034,8 +10131,8 @@ class QtSelectItems(QDialog):
         self.ComboBox = combobox
         topLayout.addWidget(combobox)
 
-        okButton = widgets.okPushButton('Ok')
-        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton("Ok")
+        cancelButton = widgets.cancelPushButton("Cancel")
         if showInFileManagerPath is not None:
             txt = myutils.get_open_filemaneger_os_string()
             showInFileManagerButton = widgets.showInFileManagerButton(txt)
@@ -10047,7 +10144,7 @@ class QtSelectItems(QDialog):
             bottomLayout.addWidget(showInFileManagerButton)
         bottomLayout.addWidget(okButton)
 
-        multiPosButton = QPushButton('Multiple selection')
+        multiPosButton = QPushButton("Multiple selection")
         multiPosButton.setCheckable(True)
         self.multiPosButton = multiPosButton
         bottomLayout.addWidget(multiPosButton, alignment=Qt.AlignLeft)
@@ -10061,7 +10158,7 @@ class QtSelectItems(QDialog):
         listBox.hide()
         self.ListBox = listBox
 
-        mainLayout.addLayout(topLayout)  
+        mainLayout.addLayout(topLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(bottomLayout)
 
@@ -10089,10 +10186,10 @@ class QtSelectItems(QDialog):
         else:
             idx = self.items.index(selectedItemsText[0])
             self.ComboBox.setCurrentIndex(idx)
-    
+
     def showInFileManager(self):
         selectedTexts, _ = self.getSelectedItems()
-        folder = selectedTexts[0].split('(')[0].strip()
+        folder = selectedTexts[0].split("(")[0].strip()
         path = os.path.join(self.showInFileManagerPath, folder)
         if os.path.exists(path) and os.path.isdir(path):
             showPath = path
@@ -10102,7 +10199,7 @@ class QtSelectItems(QDialog):
 
     def toggleMultiSelection(self, checked):
         if checked:
-            self.multiPosButton.setText('Single selection')
+            self.multiPosButton.setText("Single selection")
             self.ComboBox.hide()
             self.ListBox.show()
             # Show 10 items
@@ -10111,13 +10208,13 @@ class QtSelectItems(QDialog):
                 h = sum([self.ListBox.sizeHintForRow(i) for i in range(10)])
             else:
                 h = sum([self.ListBox.sizeHintForRow(i) for i in range(n)])
-            self.ListBox.setMinimumHeight(h+5)
+            self.ListBox.setMinimumHeight(h + 5)
             self.ListBox.setFocusPolicy(Qt.StrongFocus)
             self.ListBox.setFocus()
             self.ListBox.setCurrentRow(0)
             self.mainLayout.setStretchFactor(self.topLayout, 2)
         else:
-            self.multiPosButton.setText('Multiple selection')
+            self.multiPosButton.setText("Multiple selection")
             self.ListBox.hide()
             self.ComboBox.show()
             self.resize(self.width(), self.singleSelectionHeight)
@@ -10127,9 +10224,7 @@ class QtSelectItems(QDialog):
             selectedItems = self.ListBox.selectedItems()
             selectedItemsText = [item.text() for item in selectedItems]
             selectedItemsText = natsorted(selectedItemsText)
-            selectedItemsIdx = [
-                self.items.index(txt) for txt in selectedItemsText
-            ]
+            selectedItemsIdx = [self.items.index(txt) for txt in selectedItemsText]
         else:
             selectedItemsText = [self.ComboBox.currentText()]
             selectedItemsIdx = [self.ComboBox.currentIndex()]
@@ -10152,24 +10247,31 @@ class QtSelectItems(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
 
 
 class manualSeparateGui(QMainWindow):
     def __init__(
-            self, lab, ID, img, fontSize='12pt', IDcolor=[255, 255, 0],
-            parent=None, loop=None, drawMode='threepoints_arc'
-        ):
+        self,
+        lab,
+        ID,
+        img,
+        fontSize="12pt",
+        IDcolor=[255, 255, 0],
+        parent=None,
+        loop=None,
+        drawMode="threepoints_arc",
+    ):
         super().__init__(parent)
         self.loop = loop
         self.cancel = True
         self.drawMode = drawMode
         self._parent = parent
         self.lab = lab.copy()
-        self.lab[lab!=ID] = 0
+        self.lab[lab != ID] = 0
         self.ID = ID
-        self.img = skimage.exposure.equalize_adapthist(img/img.max())
+        self.img = skimage.exposure.equalize_adapthist(img / img.max())
         self.IDcolor = IDcolor
         self.countClicks = 0
         self.prevLabs = []
@@ -10216,19 +10318,19 @@ class manualSeparateGui(QMainWindow):
             mainWinTop = mainWinGeometry.top()
             mainWinWidth = mainWinGeometry.width()
             mainWinHeight = mainWinGeometry.height()
-            mainWinCenterX = int(mainWinLeft + mainWinWidth/2)
-            mainWinCenterY = int(mainWinTop + mainWinHeight/2)
+            mainWinCenterX = int(mainWinLeft + mainWinWidth / 2)
+            mainWinCenterY = int(mainWinTop + mainWinHeight / 2)
             winGeometry = self.geometry()
             winWidth = winGeometry.width()
             winHeight = winGeometry.height()
-            winLeft = int(mainWinCenterX - winWidth/2)
-            winRight = int(mainWinCenterY - winHeight/2)
+            winLeft = int(mainWinCenterX - winWidth / 2)
+            winRight = int(mainWinCenterY - winHeight / 2)
             self.move(winLeft, winRight)
 
     def gui_createActions(self):
         # File actions
         self.exitAction = QAction("&Exit", self)
-        self.helpAction = QAction('Help', self)
+        self.helpAction = QAction("Help", self)
         self.undoAction = QAction(QIcon(":undo.svg"), "Undo (Ctrl+Z)", self)
         self.undoAction.setEnabled(False)
         self.undoAction.setShortcut("Ctrl+Z")
@@ -10239,60 +10341,52 @@ class manualSeparateGui(QMainWindow):
         self.drawModesActionGroup = QActionGroup(self)
 
         self.threePointsArcAction = QAction(
-            QIcon(":threepoints_arc.svg"), 'Separate with three-points arc', 
-            self
+            QIcon(":threepoints_arc.svg"), "Separate with three-points arc", self
         )
         self.threePointsArcAction.setCheckable(True)
-        self.threePointsArcAction.drawMode = 'threepoints_arc'
+        self.threePointsArcAction.drawMode = "threepoints_arc"
         self.drawModesActionGroup.addAction(self.threePointsArcAction)
 
         self.freeHandAction = QAction(
-            QIcon(":freehand.svg"), 'Separate with freehand line', self
+            QIcon(":freehand.svg"), "Separate with freehand line", self
         )
         self.freeHandAction.setCheckable(True)
-        self.freeHandAction.drawMode = 'freehand'
+        self.freeHandAction.drawMode = "freehand"
         self.drawModesActionGroup.addAction(self.freeHandAction)
 
-        if self.drawMode == 'threepoints_arc':
+        if self.drawMode == "threepoints_arc":
             self.threePointsArcAction.setChecked(True)
-        elif self.drawMode == 'freehand':
+        elif self.drawMode == "freehand":
             self.freeHandAction.setChecked(True)
-            
-        self.swapIDsAction = QAction(
-            QIcon(":reload.svg"), "Swap IDs", self
-        )
-        self.swapIDsAction.setToolTip(
-            'Swap the two displayed IDs\n\n'
-            'Shortcut: "S"'
-        )
-        self.swapIDsAction.setShortcut('S')
-    
+
+        self.swapIDsAction = QAction(QIcon(":reload.svg"), "Swap IDs", self)
+        self.swapIDsAction.setToolTip('Swap the two displayed IDs\n\nShortcut: "S"')
+        self.swapIDsAction.setShortcut("S")
+
     def state(self):
         return {
-            'is_overlay_active': self.overlayButton.isChecked(),
-            'is_three_points_active': self.threePointsArcAction.isChecked(),
-            'is_free_hand_active': self.freeHandAction.isChecked()
+            "is_overlay_active": self.overlayButton.isChecked(),
+            "is_three_points_active": self.threePointsArcAction.isChecked(),
+            "is_free_hand_active": self.freeHandAction.isChecked(),
         }
-    
+
     def show(self, block=False):
         super().show()
         if not block:
             return
         self.loop = QEventLoop(self)
         self.loop.exec_()
-    
+
     def setState(self, state):
         if state is None:
             return
-        self.overlayButton.setChecked(state.get('is_overlay_active', False))
-        self.threePointsArcAction.setChecked(
-            state.get('is_three_points_active', True)
-        )
-        self.freeHandAction.setChecked(state.get('is_free_hand_active', False))
-        
+        self.overlayButton.setChecked(state.get("is_overlay_active", False))
+        self.threePointsArcAction.setChecked(state.get("is_three_points_active", True))
+        self.freeHandAction.setChecked(state.get("is_free_hand_active", False))
+
     def gui_storeDrawMode(self):
         self.drawMode = self.sender().drawMode
-        
+
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
         # style = "QMenuBar::item:selected { background: white; }"
@@ -10319,19 +10413,16 @@ class manualSeparateGui(QMainWindow):
         self.overlayButton = QToolButton(self)
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
         self.overlayButton.setCheckable(True)
-        self.overlayButton.setToolTip(
-            'Overlay channel\'s image'
-        )
+        self.overlayButton.setToolTip("Overlay channel's image")
         editToolBar.addWidget(self.overlayButton)
 
         editToolBar.addAction(self.threePointsArcAction)
         editToolBar.addAction(self.freeHandAction)
-        
+
         editToolBar.addAction(self.swapIDsAction)
-        
+
         self.warnLabel = QLabel()
         editToolBar.addWidget(self.warnLabel)
-        
 
     def gui_connectActions(self):
         self.exitAction.triggered.connect(self.close)
@@ -10358,54 +10449,55 @@ class manualSeparateGui(QMainWindow):
         self.ax = pg.PlotItem()
         self.ax.invertY(True)
         self.ax.setAspectLocked(True)
-        self.ax.hideAxis('bottom')
-        self.ax.hideAxis('left')
+        self.ax.hideAxis("bottom")
+        self.ax.hideAxis("left")
         self.graphLayout.addItem(self.ax, row=1, col=1)
 
         # Image Item
-        self.imgItem = pg.ImageItem(np.zeros((512,512)))
+        self.imgItem = pg.ImageItem(np.zeros((512, 512)))
         self.ax.addItem(self.imgItem)
 
-        #Image histogram
+        # Image histogram
         self.imgGrad = widgets.myHistogramLUTitem()
 
         # Curvature items
         self.hoverLinSpace = np.linspace(0, 1, 1000)
-        self.hoverLinePen = pg.mkPen(color=(200, 0, 0, 255*0.5),
-                                     width=2, style=Qt.DashLine)
-        self.hoverCurvePen = pg.mkPen(color=(200, 0, 0, 255*0.5), width=3)
+        self.hoverLinePen = pg.mkPen(
+            color=(200, 0, 0, 255 * 0.5), width=2, style=Qt.DashLine
+        )
+        self.hoverCurvePen = pg.mkPen(color=(200, 0, 0, 255 * 0.5), width=3)
         self.lineHoverPlotItem = pg.PlotDataItem(pen=self.hoverLinePen)
         self.curvHoverPlotItem = pg.PlotDataItem(pen=self.hoverCurvePen)
         self.curvAnchors = pg.ScatterPlotItem(
-            symbol='o', size=9,
-            brush=pg.mkBrush((255,0,0,50)),
-            pen=pg.mkPen((255,0,0), width=2),
-            hoverable=True, hoverPen=pg.mkPen((255,0,0), width=3),
-            hoverBrush=pg.mkBrush((255,0,0))
+            symbol="o",
+            size=9,
+            brush=pg.mkBrush((255, 0, 0, 50)),
+            pen=pg.mkPen((255, 0, 0), width=2),
+            hoverable=True,
+            hoverPen=pg.mkPen((255, 0, 0), width=3),
+            hoverBrush=pg.mkBrush((255, 0, 0)),
         )
         self.ax.addItem(self.curvAnchors)
         self.ax.addItem(self.curvHoverPlotItem)
         self.ax.addItem(self.lineHoverPlotItem)
 
-        self.freeHandItem = widgets.PlotCurveItem(
-            pen=pg.mkPen(color='r', width=2)
-        )
+        self.freeHandItem = widgets.PlotCurveItem(pen=pg.mkPen(color="r", width=2))
         self.ax.addItem(self.freeHandItem)
 
     def gui_createImgWidgets(self):
         self.img_Widglayout = QGridLayout()
         self.img_Widglayout.setContentsMargins(50, 0, 50, 0)
 
-        alphaScrollBar_label = QLabel('Overlay alpha  ')
+        alphaScrollBar_label = QLabel("Overlay alpha  ")
         alphaScrollBar = QScrollBar(Qt.Horizontal)
         alphaScrollBar.setFixedHeight(20)
         alphaScrollBar.setMinimum(0)
         alphaScrollBar.setMaximum(40)
         alphaScrollBar.setValue(12)
         alphaScrollBar.setToolTip(
-            'Control the alpha value of the overlay.\n'
-            'alpha=0 results in NO overlay,\n'
-            'alpha=1 results in only labels visible'
+            "Control the alpha value of the overlay.\n"
+            "alpha=0 results in NO overlay,\n"
+            "alpha=1 results in only labels visible"
         )
         alphaScrollBar.sliderMoved.connect(self.alphaScrollBarMoved)
         self.alphaScrollBar = alphaScrollBar
@@ -10432,11 +10524,11 @@ class manualSeparateGui(QMainWindow):
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
-                self.wcLabel.setText(f'(x={x:.2f}, y={y:.2f}, ID={val:.0f})')
+                self.wcLabel.setText(f"(x={x:.2f}, y={y:.2f}, ID={val:.0f})")
             else:
-                self.wcLabel.setText(f'')
+                self.wcLabel.setText(f"")
         except Exception as e:
-            self.wcLabel.setText(f'')
+            self.wcLabel.setText(f"")
 
         if event.isExit():
             return
@@ -10447,16 +10539,16 @@ class manualSeparateGui(QMainWindow):
         right_click = event.button() == Qt.MouseButton.RightButton
         left_click = event.button() == Qt.MouseButton.LeftButton
 
-        dragImg = (left_click)
+        dragImg = left_click
 
         if dragImg:
             pg.ImageItem.mousePressEvent(self.imgItem, event)
-        
+
         if not right_click:
             return
 
         self.drawPressEvent(event)
-    
+
     def gui_mouseDragEventImg(self, event):
         pass
 
@@ -10470,7 +10562,7 @@ class manualSeparateGui(QMainWindow):
             self.splitObjectAlongCurve()
             self.freeHandItem.setData([], [])
             self.curvAnchors.setData([], [])
-    
+
     def getSpline(self, xx, yy):
         tck, u = scipy.interpolate.splprep([xx, yy], s=0, k=2)
         xi, yi = scipy.interpolate.splev(self.hoverLinSpace, tck)
@@ -10483,13 +10575,13 @@ class manualSeparateGui(QMainWindow):
             self.curvAnchors.addPoints([x], [y])
         elif self.threePointsArcAction.isChecked():
             self.threePointsArcPressEvent(event)
-    
+
     def drawHoverEvent(self, x, y):
         if self.freeHandAction.isChecked():
             self.freeHandHoverEvent(x, y)
         elif self.threePointsArcAction.isChecked():
             self.threePointsArcHoverEvent(x, y)
-        
+
     def freeHandHoverEvent(self, x, y):
         if self.countClicks == 0:
             return
@@ -10511,7 +10603,7 @@ class manualSeparateGui(QMainWindow):
             self.curvHoverPlotItem.setData([], [])
             self.lineHoverPlotItem.setData([], [])
             self.curvAnchors.setData([], [])
-    
+
     def threePointsArcPressEvent(self, event):
         if self.countClicks == 0:
             x, y = event.pos().x(), event.pos().y()
@@ -10535,18 +10627,18 @@ class manualSeparateGui(QMainWindow):
             yy, xx = np.round(yi).astype(int), np.round(xi).astype(int)
             self.setSplitCurveCoords(xx, yy)
             self.splitObjectAlongCurve()
-    
+
     def setSplitCurveCoords(self, xx, yy):
         self.storeUndoState()
         xxCurve, yyCurve = [], []
         for i, (r0, c0) in enumerate(zip(yy, xx)):
-            if i == len(yy)-1:
+            if i == len(yy) - 1:
                 break
-            r1 = yy[i+1]
-            c1 = xx[i+1]
+            r1 = yy[i + 1]
+            c1 = xx[i + 1]
             rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
             # rr, cc = skimage.draw.line(r0, c0, r1, c1)
-            nonzeroMask = self.lab[rr, cc]>0
+            nonzeroMask = self.lab[rr, cc] > 0
             xxCurve.extend(cc[nonzeroMask])
             yyCurve.extend(rr[nonzeroMask])
         self.AllCutsCoords.append((yyCurve, xxCurve))
@@ -10563,22 +10655,21 @@ class manualSeparateGui(QMainWindow):
         if len(self.rp) == 1:
             self.warnLabel.setText(
                 html_utils.paragraph(
-                    'WARNING: Split the object before swapping IDs',
-                    font_color='red'
+                    "WARNING: Split the object before swapping IDs", font_color="red"
                 )
             )
             return
-        
-        self.warnLabel.setText('')
-        
+
+        self.warnLabel.setText("")
+
         obj1 = self.rp[0]
         obj2 = self.rp[1]
-        
+
         self.lab[obj1.slice][obj1.image] = obj2.label
         self.lab[obj2.slice][obj2.image] = obj1.label
-        
+
         self.updateImg()
-    
+
     def updateImg(self):
         self.updateLookuptable()
         rp = skimage.measure.regionprops(self.lab)
@@ -10596,23 +10687,21 @@ class manualSeparateGui(QMainWindow):
         self.labelItemsIDs = []
         for obj in rp:
             labelItemID = widgets.myLabelItem()
-            labelItemID.setText(
-                f'{obj.label}', color='r', size=f'{self.fontSize}px'
-            )
+            labelItemID.setText(f"{obj.label}", color="r", size=f"{self.fontSize}px")
             y, x = obj.centroid
             w, h = labelItemID.rect().right(), labelItemID.rect().bottom()
-            labelItemID.setPos(x-w/2, y-h/2)
+            labelItemID.setPos(x - w / 2, y - h / 2)
             self.labelItemsIDs.append(labelItemID)
             self.ax.addItem(labelItemID)
 
     def zoomToObj(self):
         # Zoom to object
-        lab_mask = (self.lab>0).astype(np.uint8)
+        lab_mask = (self.lab > 0).astype(np.uint8)
         rp = skimage.measure.regionprops(lab_mask)
         obj = rp[0]
         min_row, min_col, max_row, max_col = obj.bbox
-        xRange = min_col-10, max_col+10
-        yRange = max_row+10, min_row-10
+        xRange = min_col - 10, max_col + 10
+        yRange = max_row + 10, min_row - 10
         self.ax.setRange(xRange=xRange, yRange=yRange)
 
     def storeUndoState(self):
@@ -10639,14 +10728,14 @@ class manualSeparateGui(QMainWindow):
         areas = [obj.area for obj in rp]
         IDs = [obj.label for obj in rp]
         maxAreaIdx = areas.index(max(areas))
-        maxAreaID = IDs[maxAreaIdx]  
+        maxAreaID = IDs[maxAreaIdx]
         if self.ID not in self.lab:
-            self.lab[self.lab==maxAreaID] = self.ID
+            self.lab[self.lab == maxAreaID] = self.ID
         else:
             tempID = self.lab.max() + 1
-            self.lab[self.lab==maxAreaID] = tempID
-            self.lab[self.lab==self.ID] = maxAreaID
-            self.lab[self.lab==tempID] = self.ID
+            self.lab[self.lab == maxAreaID] = tempID
+            self.lab[self.lab == self.ID] = maxAreaID
+            self.lab[self.lab == tempID] = self.ID
 
         # Keep only the two largest objects
         larger_areas = nlargest(2, areas)
@@ -10673,25 +10762,25 @@ class manualSeparateGui(QMainWindow):
         self.cutLab = self.lab.copy()
         for rr, cc in self.AllCutsCoords:
             for y, x in zip(rr, cc):
-                top_row = self.cutLab[y+1, x-1:x+2]
-                bot_row = self.cutLab[y-1, x-1:x+1]
-                left_col = self.cutLab[y-1, x-1]
-                right_col = self.cutLab[y:y+2, x+1]
+                top_row = self.cutLab[y + 1, x - 1 : x + 2]
+                bot_row = self.cutLab[y - 1, x - 1 : x + 1]
+                left_col = self.cutLab[y - 1, x - 1]
+                right_col = self.cutLab[y : y + 2, x + 1]
                 allNeigh = list(top_row)
                 allNeigh.extend(bot_row)
                 allNeigh.append(left_col)
                 allNeigh.extend(right_col)
                 newID = max(allNeigh)
-                self.lab[y,x] = newID
+                self.lab[y, x] = newID
 
         self.rp = skimage.measure.regionprops(self.lab)
         self.updateImg()
 
     def updateLookuptable(self):
         # Lookup table
-        self.cmap = colors.getFromMatplotlib('viridis')
-        self.lut = self.cmap.getLookupTable(0,1,self.lab.max()+1)
-        self.lut[0] = [25,25,25]
+        self.cmap = colors.getFromMatplotlib("viridis")
+        self.lut = self.cmap.getLookupTable(0, 1, self.lab.max() + 1)
+        self.lut[0] = [25, 25, 25]
         self.lut[self.ID] = self.IDcolor
         if self.overlayButton.isChecked():
             self.imgItem.setLookupTable(None)
@@ -10713,22 +10802,22 @@ class manualSeparateGui(QMainWindow):
         min = self.imgGrad.gradient.listTicks()[0][1]
         max = self.imgGrad.gradient.listTicks()[1][1]
         img = skimage.exposure.rescale_intensity(self.img, in_range=(min, max))
-        alpha = self.alphaScrollBar.value()/self.alphaScrollBar.maximum()
+        alpha = self.alphaScrollBar.value() / self.alphaScrollBar.maximum()
 
         # Convert img and lab to RGBs
         rgb_shape = (self.lab.shape[0], self.lab.shape[1], 3)
         labRGB = np.zeros(rgb_shape)
-        labRGB[self.lab>0] = [1, 1, 1]
+        labRGB[self.lab > 0] = [1, 1, 1]
         imgRGB = skimage.color.gray2rgb(img)
-        overlay = imgRGB*(1.0-alpha) + labRGB*alpha
+        overlay = imgRGB * (1.0 - alpha) + labRGB * alpha
 
         # Color eaach label
         for obj in self.rp:
-            rgb = self.lut[obj.label]/255
+            rgb = self.lut[obj.label] / 255
             overlay[obj.slice][obj.image] *= rgb
 
         # Convert (0,1) to (0,255)
-        overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
+        overlay = (np.clip(overlay, 0, 1) * 255).astype(np.uint8)
         return overlay
 
     def alphaScrollBarMoved(self, alpha_int):
@@ -10748,17 +10837,20 @@ class manualSeparateGui(QMainWindow):
 
     def help(self):
         msg = QMessageBox()
-        msg.information(self, 'Help',
-            'Separate object along a curved line.\n\n'
-            'To draw a curved line you will need 3 right-clicks:\n\n'
-            '1. Right-click outside of the object --> a line appears.\n'
-            '2. Right-click to end the line and a curve going through the '
-            'mouse cursor will appear.\n'
-            '3. Once you are happy with the cutting curve right-click again '
-            'and the object will be separated along the curve.\n\n'
-            'Note that you can separate as many times as you want.\n\n'
-            'Once happy click on the green tick on top-right or '
-            'cancel the process with the "X" button')
+        msg.information(
+            self,
+            "Help",
+            "Separate object along a curved line.\n\n"
+            "To draw a curved line you will need 3 right-clicks:\n\n"
+            "1. Right-click outside of the object --> a line appears.\n"
+            "2. Right-click to end the line and a curve going through the "
+            "mouse cursor will appear.\n"
+            "3. Once you are happy with the cutting curve right-click again "
+            "and the object will be separated along the curve.\n\n"
+            "Note that you can separate as many times as you want.\n\n"
+            "Once happy click on the green tick on top-right or "
+            'cancel the process with the "X" button',
+        )
 
     def ok_cb(self, checked):
         self.cancel = False
@@ -10767,6 +10859,7 @@ class manualSeparateGui(QMainWindow):
     def closeEvent(self, event):
         if self.loop is not None:
             self.loop.exit()
+
 
 class DataFrameModel(QtCore.QAbstractTableModel):
     # https://stackoverflow.com/questions/44603119/how-to-display-a-pandas-data-frame-with-pyqt5-pyside2
@@ -10785,13 +10878,15 @@ class DataFrameModel(QtCore.QAbstractTableModel):
     def dataFrame(self):
         return self._dataframe
 
-    dataFrame = QtCore.Property(pd.DataFrame, fget=dataFrame,
-                                    fset=setDataFrame)
+    dataFrame = QtCore.Property(pd.DataFrame, fget=dataFrame, fset=setDataFrame)
 
     @QtCore.Slot(int, QtCore.Qt.Orientation, result=str)
-    def headerData(self, section: int,
-                   orientation: QtCore.Qt.Orientation,
-                   role: int = QtCore.Qt.DisplayRole):
+    def headerData(
+        self,
+        section: int,
+        orientation: QtCore.Qt.Orientation,
+        role: int = QtCore.Qt.DisplayRole,
+    ):
         if role == QtCore.Qt.DisplayRole:
             if orientation == QtCore.Qt.Horizontal:
                 return self._dataframe.columns[section]
@@ -10810,8 +10905,10 @@ class DataFrameModel(QtCore.QAbstractTableModel):
         return self._dataframe.columns.size
 
     def data(self, index, role=QtCore.Qt.DisplayRole):
-        if not index.isValid() or not (0 <= index.row() < self.rowCount() \
-            and 0 <= index.column() < self.columnCount()):
+        if not index.isValid() or not (
+            0 <= index.row() < self.rowCount()
+            and 0 <= index.column() < self.columnCount()
+        ):
             return QtCore.QVariant()
         row = self._dataframe.index[index.row()]
         col = self._dataframe.columns[index.column()]
@@ -10831,17 +10928,18 @@ class DataFrameModel(QtCore.QAbstractTableModel):
 
     def roleNames(self):
         roles = {
-            QtCore.Qt.DisplayRole: b'display',
-            DataFrameModel.DtypeRole: b'dtype',
-            DataFrameModel.ValueRole: b'value'
+            QtCore.Qt.DisplayRole: b"display",
+            DataFrameModel.DtypeRole: b"dtype",
+            DataFrameModel.ValueRole: b"value",
         }
         return roles
+
 
 class pdDataFrameWidget(QMainWindow):
     def __init__(self, df, parent=None):
         super().__init__(parent)
         self.parent = parent
-        self.setWindowTitle('Cell cycle annotations')
+        self.setWindowTitle("Cell cycle annotations")
 
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
@@ -10863,10 +10961,10 @@ class pdDataFrameWidget(QMainWindow):
     def updateTable(self, df, IDs=None):
         if df is None:
             df = self.parent.getBaseCca_df()
-        
+
         if IDs is not None:
             df = df.loc[IDs]
-            
+
         df = df.reset_index()
         model = DataFrameModel(df)
         self.tableView.setModel(model)
@@ -10878,8 +10976,8 @@ class pdDataFrameWidget(QMainWindow):
         for j in range(self.tableView.model().columnCount()):
             width += self.tableView.columnWidth(j) + 4
         height = self.tableView.horizontalHeader().height() + 4
-        h = height + (self.tableView.rowHeight(0) + 4)*10
-        w = width if width<maxWidth else maxWidth
+        h = height + (self.tableView.rowHeight(0) + 4) * 10
+        w = width if width < maxWidth else maxWidth
         self.setGeometry(100, 100, w, h)
 
         # Center window
@@ -10891,17 +10989,18 @@ class pdDataFrameWidget(QMainWindow):
             mainWinTop = mainWinGeometry.top()
             mainWinWidth = mainWinGeometry.width()
             mainWinHeight = mainWinGeometry.height()
-            mainWinCenterX = int(mainWinLeft + mainWinWidth/2)
-            mainWinCenterY = int(mainWinTop + mainWinHeight/2)
+            mainWinCenterX = int(mainWinLeft + mainWinWidth / 2)
+            mainWinCenterY = int(mainWinTop + mainWinHeight / 2)
             winGeometry = self.geometry()
             winWidth = winGeometry.width()
             winHeight = winGeometry.height()
-            winLeft = int(mainWinCenterX - winWidth/2)
-            winRight = int(mainWinCenterY - winHeight/2)
+            winLeft = int(mainWinCenterX - winWidth / 2)
+            winRight = int(mainWinCenterY - winHeight / 2)
             self.move(winLeft, winRight)
 
     def closeEvent(self, event):
         self.parent.ccaTableWin = None
+
 
 class QDialogZsliceAbsent(QDialog):
     def __init__(self, filename, SizeZ, filenamesWithInfo, parent=None):
@@ -10912,36 +11011,36 @@ class QDialogZsliceAbsent(QDialog):
         self.cancel = True
 
         super().__init__(parent)
-        self.setWindowTitle('Reference z-slice info absent')
+        self.setWindowTitle("Reference z-slice info absent")
 
         mainLayout = QVBoxLayout()
         buttonsLayout = QGridLayout()
 
-        txt = html_utils.paragraph(f"""
+        txt = html_utils.paragraph(
+            f"""
             You loaded the fluorescent file called<br><br>{filename}<br><br>
             however you <b>never selected which z-slice</b><br> you want to use
             when calculating metrics<br> (e.g., mean, median, amount...etc.)<br><br>
             Choose one of following options:
-        """, center=True
+        """,
+            center=True,
         )
         infoLabel = QLabel(txt)
         mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
 
         runDataPrepButton = QPushButton(
-            '   Visualize the data now and select a z-slice    '
+            "   Visualize the data now and select a z-slice    "
         )
         buttonsLayout.addWidget(runDataPrepButton, 0, 1, 1, 2)
         runDataPrepButton.clicked.connect(self.runDataPrep_cb)
 
         useMiddleSliceButton = QPushButton(
-            f'  Use the middle z-slice ({int(SizeZ/2)+1})  '
+            f"  Use the middle z-slice ({int(SizeZ / 2) + 1})  "
         )
         buttonsLayout.addWidget(useMiddleSliceButton, 1, 1, 1, 2)
         useMiddleSliceButton.clicked.connect(self.useMiddleSlice_cb)
 
-        useSameAsChButton = QPushButton(
-            '  Use the same z-slice used for the channel: '
-        )
+        useSameAsChButton = QPushButton("  Use the same z-slice used for the channel: ")
         useSameAsChButton.clicked.connect(self.useSameAsCh_cb)
 
         chNameComboBox = QComboBox()
@@ -10953,20 +11052,16 @@ class QDialogZsliceAbsent(QDialog):
         buttonsLayout.addWidget(useSameAsChButton, 2, 1)
         buttonsLayout.addWidget(chNameComboBox, 2, 2)
 
-        
-
         buttonsLayout.setColumnStretch(0, 1)
         buttonsLayout.setColumnStretch(3, 1)
         buttonsLayout.setContentsMargins(10, 0, 10, 0)
 
-        
-
         cancelButtonLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton("Cancel")
         cancelButtonLayout.addStretch(1)
         cancelButtonLayout.addWidget(cancelButton)
         cancelButtonLayout.addStretch(1)
-        cancelButtonLayout.setStretch(1,1)
+        cancelButtonLayout.setStretch(1, 1)
         cancelButton.clicked.connect(self.close)
 
         mainLayout.addLayout(buttonsLayout)
@@ -10981,7 +11076,7 @@ class QDialogZsliceAbsent(QDialog):
         self.setFont(font)
 
         # self.setModal(True)
-    
+
     def ok_cb(self, checked=True):
         self.cancel = False
         self.close()
@@ -11010,18 +11105,25 @@ class QDialogZsliceAbsent(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
+
 
 class SelectSegmFileDialog(QDialog):
     def __init__(
-            self, images_ls, parent_path, parent=None, 
-            addNewFileButton=False, basename='', infoText=None, 
-            fileType='segmentation', allowMultipleSelection=False,
-            custom_first=None
-        ):
+        self,
+        images_ls,
+        parent_path,
+        parent=None,
+        addNewFileButton=False,
+        basename="",
+        infoText=None,
+        fileType="segmentation",
+        allowMultipleSelection=False,
+        custom_first=None,
+    ):
         self.cancel = True
-        self.selectedItemText = ''
+        self.selectedItemText = ""
         self.selectedItemIdx = None
         self.removeOthers = False
         self.okAllPos = False
@@ -11037,7 +11139,7 @@ class SelectSegmFileDialog(QDialog):
         # a new file is existing (since we only ask for the part after
         # 'segm_')
         self.existingEndNames = [
-            n.replace('segm', '', 1).replace('_', '', 1) for n in images_ls
+            n.replace("segm", "", 1).replace("_", "", 1) for n in images_ls
         ]
 
         self.images_ls = images_ls
@@ -11049,7 +11151,7 @@ class SelectSegmFileDialog(QDialog):
             <b>{len(self.existingEndNames)} {fileType} masks</b><br>
         """)
 
-        self.setWindowTitle(f'{fileType.capitalize()} files detected')
+        self.setWindowTitle(f"{fileType.capitalize()} files detected")
         is_win = sys.platform.startswith("win")
 
         mainLayout = QVBoxLayout()
@@ -11059,7 +11161,7 @@ class SelectSegmFileDialog(QDialog):
 
         # Standard Qt Question icon
         label = QLabel()
-        standardIcon = getattr(QStyle, 'SP_MessageBoxQuestion')
+        standardIcon = getattr(QStyle, "SP_MessageBoxQuestion")
         icon = self.style().standardIcon(standardIcon)
         pixmap = icon.pixmap(60, 60)
         label.setPixmap(pixmap)
@@ -11071,7 +11173,7 @@ class SelectSegmFileDialog(QDialog):
         mainLayout.addLayout(infoLayout)
 
         if infoText is None:
-            infoText = f'Select which {fileType} file to load:'
+            infoText = f"Select which {fileType} file to load:"
 
         questionText = html_utils.paragraph(infoText)
         label = QLabel(questionText)
@@ -11086,13 +11188,13 @@ class SelectSegmFileDialog(QDialog):
         self.items = list(images_ls)
         self.listWidget = listWidget
 
-        okButton = widgets.okPushButton(' Load selected ')
-        txt = 'Reveal in Finder...' if is_mac else 'Show in Explorer...'
+        okButton = widgets.okPushButton(" Load selected ")
+        txt = "Reveal in Finder..." if is_mac else "Show in Explorer..."
         showInFileManagerButton = widgets.showInFileManagerButton(txt)
-        cancelButton = widgets.cancelPushButton(' Cancel ')
+        cancelButton = widgets.cancelPushButton(" Cancel ")
 
         if addNewFileButton:
-            newFileButton = widgets.newFilePushButton('New file...')
+            newFileButton = widgets.newFilePushButton("New file...")
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -11122,18 +11224,18 @@ class SelectSegmFileDialog(QDialog):
             newFileButton.clicked.connect(self.newFile_cb)
         cancelButton.clicked.connect(self.close)
         showInFileManagerButton.clicked.connect(self.showInFileManager)
-    
+
     def listDoubleClicked(self, item):
         self.ok_cb()
 
     def showInFileManager(self, checked=True):
         myutils.showInExplorer(self.parent_path)
-    
+
     def newFile_cb(self):
         win = filenameDialog(
-            basename=f'{self.basename}segm',
-            hintText='Insert a <b>filename</b> for the segmentation file:',
-            existingNames=self.existingEndNames
+            basename=f"{self.basename}segm",
+            hintText="Insert a <b>filename</b> for the segmentation file:",
+            existingNames=self.existingEndNames,
         )
         win.exec_()
         if win.cancel:
@@ -11141,7 +11243,7 @@ class SelectSegmFileDialog(QDialog):
         self.cancel = False
         self.newSegmEndName = win.entryText
         self.close()
-    
+
     def setSelectedItemFromText(self, itemText):
         for i in range(self.listWidget.count()):
             if self.listWidget.item(i).text() == itemText:
@@ -11158,8 +11260,7 @@ class SelectSegmFileDialog(QDialog):
             return
         self.selectedItemIdx = self.items.index(self.selectedItemText)
         self.selectedItemTexts = [
-            selectedItem.text() 
-            for selectedItem in self.listWidget.selectedItems()
+            selectedItem.text() for selectedItem in self.listWidget.selectedItems()
         ]
         self.close()
 
@@ -11174,20 +11275,21 @@ class SelectSegmFileDialog(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
 
+
 class QDialogPbar(QDialog):
-    def __init__(self, title='Progress', infoTxt='', parent=None):
+    def __init__(self, title="Progress", infoTxt="", parent=None):
         self.workerFinished = False
         self.aborted = False
         self.clickCount = 0
         super().__init__(parent)
 
-        abort_text = 'Option+Command+C' if is_mac else 'Ctrl+Alt+C'
+        abort_text = "Option+Command+C" if is_mac else "Ctrl+Alt+C"
         self.abort_text = abort_text
 
-        self.setWindowTitle(f'{title} ({abort_text} to abort)')
+        self.setWindowTitle(f"{title} ({abort_text} to abort)")
         self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
@@ -11201,14 +11303,14 @@ class QDialogPbar(QDialog):
 
         self.QPbar = widgets.ProgressBar(self)
         pBarLayout.addWidget(self.QPbar, 0, 0)
-        self.ETA_label = QLabel('NDh:NDm:NDs')
+        self.ETA_label = QLabel("NDh:NDm:NDs")
         pBarLayout.addWidget(self.ETA_label, 0, 1)
 
         self.metricsQPbar = widgets.ProgressBar(self)
         self.metricsQPbar.setValue(0)
         pBarLayout.addWidget(self.metricsQPbar, 1, 0)
 
-        #pBarLayout.setColumnStretch(2, 1)
+        # pBarLayout.setColumnStretch(2, 1)
 
         mainLayout.addWidget(self.progressLabel)
         mainLayout.addLayout(pBarLayout)
@@ -11235,11 +11337,9 @@ class QDialogPbar(QDialog):
             Are you sure you want to abort?
         """)
         yesButton, noButton = msg.critical(
-            self, 'Are you sure you want to abort?', txt,
-            buttonsTexts=('Yes', 'No')
+            self, "Are you sure you want to abort?", txt, buttonsTexts=("Yes", "No")
         )
         return msg.clickedButton == yesButton
-
 
     def abort(self):
         self.clickCount += 1
@@ -11252,89 +11352,91 @@ class QDialogPbar(QDialog):
         if not self.workerFinished:
             event.ignore()
 
+
 class FunctionParamsDialog(QBaseDialog):
     sigValuesChanged = Signal(dict)
-    
+
     def __init__(
-            self, params_argspecs, 
-            function_name='Function', 
-            df_metadata=None,
-            parent=None,
-            addApplyButton=False
-        ):
+        self,
+        params_argspecs,
+        function_name="Function",
+        df_metadata=None,
+        parent=None,
+        addApplyButton=False,
+    ):
         self.cancel = True
         self.df_metadata = df_metadata
-        
+
         super().__init__(parent)
-        
-        self.setWindowTitle(f'{function_name} parameters')
-        
+
+        self.setWindowTitle(f"{function_name} parameters")
+
         self.mainLayout = QVBoxLayout()
-        
+
         widgetsLayout, self.argsWidgets = self.getWidgetsLayout(params_argspecs)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
         self.buttonsLayout = buttonsLayout
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         if addApplyButton:
-            applyButton = widgets.viewPushButton('Apply')
+            applyButton = widgets.viewPushButton("Apply")
             applyButton.clicked.connect(self.emitValuesChanged)
             buttonsLayout.insertWidget(3, applyButton)
             self.applyButton = applyButton
-        
+
         self.mainLayout.addLayout(widgetsLayout)
         self.mainLayout.addSpacing(20)
         self.mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(self.mainLayout)
-    
+
     def emitValuesChanged(self, *args, **kwargs):
         self.sigValuesChanged.emit(self.functionKwargs())
-    
-    def functionKwargs(self):        
+
+    def functionKwargs(self):
         function_kwargs = {
-            argWidget.name:argWidget.valueGetter(argWidget.widget)
+            argWidget.name: argWidget.valueGetter(argWidget.widget)
             for argWidget in self.argsWidgets
         }
         return function_kwargs
-    
+
     def kwargWidgetMapper(self) -> Dict[str, tuple]:
         kwarg_widget_mapper = {
-            argWidget.name:(argWidget.widget, argWidget.valueSetter)
+            argWidget.name: (argWidget.widget, argWidget.valueSetter)
             for argWidget in self.argsWidgets
         }
         return kwarg_widget_mapper
-    
+
     def ok_cb(self):
         self.cancel = False
-        
+
         self.function_kwargs = self.functionKwargs()
-        
+
         self.close()
-    
+
     def getValueFromMetadata(self, name):
         try:
-            value = self.df_metadata.at[name, 'values']
+            value = self.df_metadata.at[name, "values"]
         except Exception as e:
             # traceback.print_exc()
             value = None
         return value
-    
+
     def getWidgetsLayout(self, params_argspecs):
         widgetsLayout = QGridLayout()
         ArgsWidgets_list = []
-        
+
         for row, ArgSpec in enumerate(params_argspecs):
             if _types.is_widget_not_required(ArgSpec):
                 continue
-            
-            arg_name = ArgSpec.name         
-            var_name = arg_name.replace('_', ' ')
-            var_name = f'{var_name[0].upper()}{var_name[1:]}'
-            label = QLabel(f'{var_name}:  ')
+
+            arg_name = ArgSpec.name
+            var_name = arg_name.replace("_", " ")
+            var_name = f"{var_name[0].upper()}{var_name[1:]}"
+            label = QLabel(f"{var_name}:  ")
             metadata_val = self.getValueFromMetadata(ArgSpec.name)
             widgetsLayout.addWidget(label, row, 0, alignment=Qt.AlignLeft)
             try:
@@ -11342,23 +11444,23 @@ class FunctionParamsDialog(QBaseDialog):
                 isCustomListType = True
             except Exception as err:
                 isCustomListType = False
-            
+
             isVectorEntry = False
             try:
                 if isinstance(ArgSpec.type(), _types.Vector):
                     isVectorEntry = True
             except Exception as err:
                 pass
-            
+
             isFolderPath = False
             try:
                 if isinstance(ArgSpec.type(), _types.FolderPath):
                     isFolderPath = True
             except Exception as err:
                 pass
-            
-            isCustomWidget = hasattr(ArgSpec.type, 'isWidget')
-            
+
+            isCustomWidget = hasattr(ArgSpec.type, "isWidget")
+
             if isCustomWidget:
                 widget = ArgSpec.type().widget
                 self.checkIfTypeCLassHasCastDtype(widget)
@@ -11460,21 +11562,21 @@ class FunctionParamsDialog(QBaseDialog):
                 valueGetter = QLineEdit.text
                 widgetsLayout.addWidget(lineEdit, row, 1, 1, 2)
                 widget.editingFinished.connect(self.emitValuesChanged)
-            
+
             if ArgSpec.desc:
                 infoButton = self.getInfoButton(ArgSpec.name, ArgSpec.desc)
                 widgetsLayout.addWidget(infoButton, row, 3)
-            
+
             argsInfo = ArgWidget(
                 name=ArgSpec.name,
                 type=ArgSpec.type,
                 widget=widget,
                 defaultVal=defaultVal,
                 valueSetter=valueSetter,
-                valueGetter=valueGetter
+                valueGetter=valueGetter,
             )
             ArgsWidgets_list.append(argsInfo)
-        
+
         widgetsLayout.setColumnStretch(0, 0)
         widgetsLayout.setColumnStretch(1, 1)
         widgetsLayout.setColumnStretch(3, 0)
@@ -11482,26 +11584,26 @@ class FunctionParamsDialog(QBaseDialog):
         return widgetsLayout, ArgsWidgets_list
 
     def checkIfTypeCLassHasCastDtype(self, cls):
-        cast_dtype = getattr(cls, 'cast_dtype', None)
+        cast_dtype = getattr(cls, "cast_dtype", None)
         if callable(cast_dtype):
             return
-        
+
         raise AttributeError(
-            'The custom type or widget does not have the `cast_dtype` method. '
-            'Please, implement it. The method should cast the value to the '
-            'correct type.'
+            "The custom type or widget does not have the `cast_dtype` method. "
+            "Please, implement it. The method should cast the value to the "
+            "correct type."
         )
-    
+
     def getInfoButton(self, param_name, infoText):
         infoButton = widgets.infoPushButton()
         infoButton.param_name = param_name
         infoButton.setToolTip(
-            f'Click to get more info about `{param_name}` parameter...'
+            f"Click to get more info about `{param_name}` parameter..."
         )
         infoButton.infoText = infoText
         infoButton.clicked.connect(self.showInfoParam)
         return infoButton
-    
+
     def showInfoParam(self):
         text = self.sender().infoText
         text = html_utils.rst_urls_to_html(text)
@@ -11509,33 +11611,34 @@ class FunctionParamsDialog(QBaseDialog):
         text = html_utils.paragraph(text)
         param_name = self.sender().param_name
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(self, f'Info about `{param_name}` parameter', text)
-        
+        msg.information(self, f"Info about `{param_name}` parameter", text)
+
+
 class QDialogModelParams(QDialog):
     def __init__(
-            self, 
-            init_params, 
-            segment_params, 
-            model_name, 
-            is_tracker=False,
-            url=None, 
-            parent=None, 
-            initLastParams=True, 
-            posData=None, 
-            channels=None, 
-            currentChannelName=None, 
-            segmFileEndnames=None,
-            df_metadata=None, 
-            force_postprocess_2D=False, 
-            model_module=None,
-            action_type='', 
-            addPreProcessParams=True, 
-            addPostProcessParams=True,
-            extraParams=None, 
-            extraParamsTitle=None, 
-            ini_filename=None,
-            add_additional_segm_params=False
-        ):
+        self,
+        init_params,
+        segment_params,
+        model_name,
+        is_tracker=False,
+        url=None,
+        parent=None,
+        initLastParams=True,
+        posData=None,
+        channels=None,
+        currentChannelName=None,
+        segmFileEndnames=None,
+        df_metadata=None,
+        force_postprocess_2D=False,
+        model_module=None,
+        action_type="",
+        addPreProcessParams=True,
+        addPostProcessParams=True,
+        extraParams=None,
+        extraParamsTitle=None,
+        ini_filename=None,
+        add_additional_segm_params=False,
+    ):
         self.cancel = True
         super().__init__(parent)
         self.channels = channels
@@ -11548,7 +11651,7 @@ class QDialogModelParams(QDialog):
 
         self.skipSegmentation = False
         if len(segment_params) > 0:
-            if segment_params[0].name.lower().find('skip_segmentation') != -1:
+            if segment_params[0].name.lower().find("skip_segmentation") != -1:
                 self.skipSegmentation = True
                 addPreProcessParams = False
             else:
@@ -11556,28 +11659,28 @@ class QDialogModelParams(QDialog):
         if ini_filename is not None:
             self.ini_filename = ini_filename
         elif is_tracker:
-            self.ini_filename = 'last_params_trackers.ini'
+            self.ini_filename = "last_params_trackers.ini"
             addPreProcessParams = False
             addPostProcessParams = False
         else:
-            self.ini_filename = 'last_params_segm_models.ini'
+            self.ini_filename = "last_params_segm_models.ini"
 
         self.addPreProcessParams = addPreProcessParams
-        
+
         self.model_name = model_name
 
-        self.setWindowTitle(f'{model_name} parameters')
+        self.setWindowTitle(f"{model_name} parameters")
 
         # Create main vertical layout and horizontal layout for two columns
         mainLayout = QVBoxLayout()
-        
+
         gridLayout = QGridLayout()
         self.gridLayout = gridLayout
-        
+
         loadFunc = self.loadLastSelection
-        
+
         self.paramsGroupPosMapper = {}
-        
+
         # LEFT COLUMN: Preprocessing params
         row, col = 0, 0
         preProcessLayout = None
@@ -11589,45 +11692,41 @@ class QDialogModelParams(QDialog):
             )
             self.preProcessParamsWidget.setChecked(False)
             preProcessLayout.addWidget(self.preProcessParamsWidget)
-            self.preProcessParamsWidget.sigLoadRecipe.connect(
-                self.loadPreprocRecipe
-            )
+            self.preProcessParamsWidget.sigLoadRecipe.connect(self.loadPreprocRecipe)
             gridLayout.addLayout(preProcessLayout, row, col, 1, 2)
             self.paramsGroupPosMapper[self.preProcessParamsWidget] = (row, col)
-            gridLayout.addItem(QSpacerItem(10, 5), 0, col+1)
+            gridLayout.addItem(QSpacerItem(10, 5), 0, col + 1)
             # gridLayout.setColumnMinimumWidth(col+1, 15)
-            col += 2 
-        
+            col += 2
+
         # Center COLUMN: Init, Segmentation/Eval
         row = 0
         self.secondColLayout = QVBoxLayout()
         self.initParamsScrollArea = widgets.ScrollArea()
         initParamsScrollAreaLayout = QVBoxLayout()
         self.initParamsScrollArea.setVerticalLayout(initParamsScrollAreaLayout)
-        
+
         initGroupBox, self.init_argsWidgets = self.createGroupParams(
-            init_params, 'Parameters for model initialization'
+            init_params, "Parameters for model initialization"
         )
         self.init_params = init_params
-        initDefaultButton = widgets.reloadPushButton('Restore default')
-        initLoadLastSelButton = widgets.OpenFilePushButton(
-            'Load last parameters'
-        )
-        initLoadLastSelButton.setIcon(QIcon(':folder-open.svg'))
+        initDefaultButton = widgets.reloadPushButton("Restore default")
+        initLoadLastSelButton = widgets.OpenFilePushButton("Load last parameters")
+        initLoadLastSelButton.setIcon(QIcon(":folder-open.svg"))
         initButtonsLayout = QHBoxLayout()
         initButtonsLayout.addStretch(1)
         initButtonsLayout.addWidget(initDefaultButton)
         initButtonsLayout.addWidget(initLoadLastSelButton)
         initDefaultButton.clicked.connect(self.restoreDefaultInit)
         initLoadLastSelButton.clicked.connect(
-            partial(loadFunc, f'{self.model_name}.init', self.init_argsWidgets)
+            partial(loadFunc, f"{self.model_name}.init", self.init_argsWidgets)
         )
-        
+
         initParamsScrollAreaLayout.addWidget(initGroupBox)
-        
+
         initParamsLayout = QVBoxLayout()
-        initParamsLayout.addWidget(QLabel(f'<b>{initGroupBox.title()}</b>'))
-        initGroupBox.setTitle('')
+        initParamsLayout.addWidget(QLabel(f"<b>{initGroupBox.title()}</b>"))
+        initGroupBox.setTitle("")
         initParamsLayout.addWidget(self.initParamsScrollArea)
         initParamsLayout.addLayout(initButtonsLayout)
         self.secondColLayout.addLayout(initParamsLayout)
@@ -11641,72 +11740,67 @@ class QDialogModelParams(QDialog):
                 segmentParamsScrollAreaLayout
             )
             if action_type:
-                runGroupboxTitle = f'Parameters for {action_type}'
+                runGroupboxTitle = f"Parameters for {action_type}"
             elif is_tracker:
-                runGroupboxTitle = 'Parameters for tracking'
+                runGroupboxTitle = "Parameters for tracking"
             else:
-                runGroupboxTitle = 'Parameters for segmentation'
-            
+                runGroupboxTitle = "Parameters for segmentation"
+
             segmentGroupBox, self.argsWidgets = self.createGroupParams(
-                segment_params, runGroupboxTitle, 
-                addChannelSelector=True
-            ) 
+                segment_params, runGroupboxTitle, addChannelSelector=True
+            )
             self.segment_params = segment_params
             self.segmentGroupBox = segmentGroupBox
-            segmentDefaultButton = widgets.reloadPushButton('Restore default')
+            segmentDefaultButton = widgets.reloadPushButton("Restore default")
             segmentLoadLastSelButton = widgets.OpenFilePushButton(
-                'Load last parameters'
+                "Load last parameters"
             )
             segmentButtonsLayout = QHBoxLayout()
             segmentButtonsLayout.addStretch(1)
             segmentButtonsLayout.addWidget(segmentDefaultButton)
             segmentButtonsLayout.addWidget(segmentLoadLastSelButton)
             segmentDefaultButton.clicked.connect(self.restoreDefaultSegment)
-            section = f'{self.model_name}.segment'
+            section = f"{self.model_name}.segment"
             segmentLoadLastSelButton.clicked.connect(
                 partial(loadFunc, section, self.argsWidgets)
             )
             segmentParamsScrollAreaLayout.addWidget(segmentGroupBox)
-            
+
             segmentParamsLayout = QVBoxLayout()
-            segmentParamsLayout.addWidget(
-                QLabel(f'<b>{segmentGroupBox.title()}</b>')
-            )
-            segmentGroupBox.setTitle('')
+            segmentParamsLayout.addWidget(QLabel(f"<b>{segmentGroupBox.title()}</b>"))
+            segmentGroupBox.setTitle("")
             segmentParamsLayout.addWidget(self.segmentParamsScrollArea)
             segmentParamsLayout.addLayout(segmentButtonsLayout)
             self.secondColLayout.addLayout(segmentParamsLayout)
             self.paramsGroupPosMapper[self.segmentParamsScrollArea] = (1, col)
 
         gridLayout.addLayout(self.secondColLayout, row, col)
-        
-        gridLayout.addItem(QSpacerItem(10, 5), 0, col+1)
-        col += 2 
-        
+
+        gridLayout.addItem(QSpacerItem(10, 5), 0, col + 1)
+        col += 2
+
         # Buttons layout (spans both columns)
         buttonsLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton(' Cancel ')
-        okButton = widgets.okPushButton(' Ok ')
-        
-        enableLoadingSavingRecipe = (
-            not is_tracker and (addPreProcessParams or addPostProcessParams)
+        cancelButton = widgets.cancelPushButton(" Cancel ")
+        okButton = widgets.okPushButton(" Ok ")
+
+        enableLoadingSavingRecipe = not is_tracker and (
+            addPreProcessParams or addPostProcessParams
         )
-        
+
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
         if enableLoadingSavingRecipe:
-            loadEntireRecipeButton = widgets.OpenFilePushButton(
-                'Load saved recipe...'
-            )
+            loadEntireRecipeButton = widgets.OpenFilePushButton("Load saved recipe...")
             saveEntireRecipeButton = widgets.savePushButton(
-                'Save all parameters to recipe file...'
+                "Save all parameters to recipe file..."
             )
             buttonsLayout.addWidget(loadEntireRecipeButton)
             buttonsLayout.addWidget(saveEntireRecipeButton)
             loadEntireRecipeButton.clicked.connect(self.loadEntireRecipe)
             saveEntireRecipeButton.clicked.connect(self.saveEntireRecipe)
-            
+
         buttonsLayout.addWidget(okButton)
 
         buttonsLayout.setContentsMargins(0, 10, 0, 10)
@@ -11714,8 +11808,8 @@ class QDialogModelParams(QDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
 
-        self.okButton = okButton            
-        
+        self.okButton = okButton
+
         # Extra params in right column
         row = 0
         self.extraArgsWidgets = None
@@ -11723,35 +11817,31 @@ class QDialogModelParams(QDialog):
         if extraParams is not None:
             self.extraParamsScrollArea = widgets.ScrollArea()
             extraParamsScrollAreaLayout = QVBoxLayout()
-            self.extraParamsScrollArea.setVerticalLayout(
-                extraParamsScrollAreaLayout
-            )
+            self.extraParamsScrollArea.setVerticalLayout(extraParamsScrollAreaLayout)
             if extraParamsTitle is None:
-                extraParamsTitle = 'Additional parameters'
+                extraParamsTitle = "Additional parameters"
 
             self.extraGroupBox, self.extraArgsWidgets = self.createGroupParams(
                 extraParams, extraParamsTitle
             )
 
-            extraDefaultButton = widgets.reloadPushButton('Restore default')
-            extraLoadLastSelButton = widgets.OpenFilePushButton(
-                'Load last parameters'
-            )
+            extraDefaultButton = widgets.reloadPushButton("Restore default")
+            extraLoadLastSelButton = widgets.OpenFilePushButton("Load last parameters")
             extraButtonsLayout = QHBoxLayout()
             extraButtonsLayout.addStretch(1)
             extraButtonsLayout.addWidget(extraDefaultButton)
             extraButtonsLayout.addWidget(extraLoadLastSelButton)
             extraDefaultButton.clicked.connect(self.restoreDefaultExtra)
-            section = f'{self.model_name}.extra'
+            section = f"{self.model_name}.extra"
             extraLoadLastSelButton.clicked.connect(
                 partial(loadFunc, section, self.extraArgsWidgets)
             )
 
             extraParamsScrollAreaLayout.addWidget(self.extraGroupBox)
-            
+
             extraParamsLayout = QVBoxLayout()
-            extraParamsLayout.addWidget(QLabel(f'<b>{self.extraGroupBox.title()}</b>'))
-            self.extraGroupBox.setTitle('')
+            extraParamsLayout.addWidget(QLabel(f"<b>{self.extraGroupBox.title()}</b>"))
+            self.extraGroupBox.setTitle("")
             extraParamsLayout.addWidget(self.extraParamsScrollArea)
             extraParamsLayout.addLayout(extraButtonsLayout)
             self.paramsGroupPosMapper[self.extraParamsScrollArea] = (row, col)
@@ -11762,11 +11852,12 @@ class QDialogModelParams(QDialog):
         self.postProcessGroupbox = None
         self.seeHereLabel = None
         thirdColumnLayout = QVBoxLayout()
-        if addPostProcessParams:            
+        if addPostProcessParams:
             # Add minimum size spinbox which is valid for all models
             postProcessGroupbox = PostProcessSegmParams(
-                'Post-processing segmentation parameters', posData,
-                force_postprocess_2D=force_postprocess_2D
+                "Post-processing segmentation parameters",
+                posData,
+                force_postprocess_2D=force_postprocess_2D,
             )
             postProcessGroupbox.setCheckable(True)
             postProcessGroupbox.setChecked(False)
@@ -11774,27 +11865,23 @@ class QDialogModelParams(QDialog):
 
             thirdColumnLayout.addWidget(postProcessGroupbox)
 
-            postProcDefaultButton = widgets.reloadPushButton('Restore default')
+            postProcDefaultButton = widgets.reloadPushButton("Restore default")
             postProcLoadLastSelButton = widgets.OpenFilePushButton(
-                'Load last parameters'
+                "Load last parameters"
             )
             postProcButtonsLayout = QHBoxLayout()
             postProcButtonsLayout.addStretch(1)
             postProcButtonsLayout.addWidget(postProcDefaultButton)
             postProcButtonsLayout.addWidget(postProcLoadLastSelButton)
             postProcDefaultButton.clicked.connect(self.restoreDefaultPostprocess)
-            postProcLoadLastSelButton.clicked.connect(
-                self.loadLastSelectionPostProcess
-            )
+            postProcLoadLastSelButton.clicked.connect(self.loadLastSelectionPostProcess)
             thirdColumnLayout.addLayout(postProcButtonsLayout)
             thirdColumnLayout.addSpacing(15)
 
             if url is not None:
                 self.seeHereLabel = self.createSeeHereLabel(url)
-                thirdColumnLayout.addWidget(
-                    self.seeHereLabel, alignment=Qt.AlignCenter
-                )
-            
+                thirdColumnLayout.addWidget(self.seeHereLabel, alignment=Qt.AlignCenter)
+
             self.paramsGroupPosMapper[self.preProcessParamsWidget] = (row, col)
 
         # Additional segmentation params in right column
@@ -11805,11 +11892,11 @@ class QDialogModelParams(QDialog):
             thirdColumnLayout.addWidget(additionalSegmGroupbox)
             self.additionalSegmGroupbox = additionalSegmGroupbox
             self.paramsGroupPosMapper[self.additionalSegmGroupbox] = (row, col)
-        
+
         thirdColumnLayout.addStretch(1)
         gridLayout.addLayout(thirdColumnLayout, row, col)
         row += 1
-        
+
         # Add everything to main layout
         mainLayout.addLayout(gridLayout)
         mainLayout.addSpacing(20)
@@ -11826,10 +11913,10 @@ class QDialogModelParams(QDialog):
             initLoadLastSelButton.click()
             if not self.skipSegmentation:
                 segmentLoadLastSelButton.click()
-            
+
             if self.extraArgsWidgets is not None:
                 extraLoadLastSelButton.click()
-        
+
             if self.postProcessGroupbox is not None:
                 postProcLoadLastSelButton.click()
 
@@ -11837,125 +11924,120 @@ class QDialogModelParams(QDialog):
             self.connectCustomSignals(model_module)
         except Exception as e:
             printl(traceback.format_exc())
-        
+
         self.setLayout(mainLayout)
         self.setFont(font)
         # self.setModal(True)
-    
+
     def warningNoSegmRecipes(self):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
-            'No segmentation recipes found!<br><br>'
-            'To create a segmentation recipe you need click on '
-            '<code>Save all parameters to recipe file...</code> '
-            'button.'
+            "No segmentation recipes found!<br><br>"
+            "To create a segmentation recipe you need click on "
+            "<code>Save all parameters to recipe file...</code> "
+            "button."
         )
-        msg.warning(self, 'No segmentation recipes found!', txt)
-    
+        msg.warning(self, "No segmentation recipes found!", txt)
+
     def selectIniFileToLoadEntireRecipe(self):
         import qtpy.compat
+
         recipe_filepath = qtpy.compat.getopenfilename(
-            parent=self, 
-            caption='Select INI file to load entire recipe', 
-            filters='INI (*.ini);;All Files (*)'
+            parent=self,
+            caption="Select INI file to load entire recipe",
+            filters="INI (*.ini);;All Files (*)",
         )[0]
         if not recipe_filepath:
             return
-        
+
         self.loadRecipeFromFilepath(recipe_filepath)
-        
-        txt = html_utils.paragraph(
-            'Done!<br><br>'
-            'Segmentation recipe loaded from:'
-        )
+
+        txt = html_utils.paragraph("Done!<br><br>Segmentation recipe loaded from:")
         msg = widgets.myMessageBox()
         msg.information(
-            self, 'Segmentation recipe loaded!', txt, 
+            self,
+            "Segmentation recipe loaded!",
+            txt,
             commands=(recipe_filepath,),
-            path_to_browse=os.path.dirname(recipe_filepath)
+            path_to_browse=os.path.dirname(recipe_filepath),
         )
-        
-        print('Done. Segmentation recipe loaded from:', recipe_filepath)
+
+        print("Done. Segmentation recipe loaded from:", recipe_filepath)
 
     def loadEntireRecipe(self):
-        segm_recipes_path_model = os.path.join(
-            segm_recipes_path, self.model_name
-        )
+        segm_recipes_path_model = os.path.join(segm_recipes_path, self.model_name)
 
         if not os.path.exists(segm_recipes_path_model):
             # self.warningNoSegmRecipes()
             self.selectIniFileToLoadEntireRecipe()
             return
-    
+
         recipe_files = os.listdir(segm_recipes_path_model)
 
         if not recipe_files:
             # self.warningNoSegmRecipes()
             self.selectIniFileToLoadEntireRecipe()
             return
-        
-        headerLabels = ['Name', 'Date Created']
+
+        headerLabels = ["Name", "Date Created"]
         items = []
         for recipe_file in recipe_files:
             cp = config.ConfigParser()
             cp.read(os.path.join(segm_recipes_path_model, recipe_file))
-            date_created = cp['info']['created_on']
+            date_created = cp["info"]["created_on"]
             items.append((recipe_file, date_created))
 
         browseButton = widgets.browseFileButton(
-            'Select INI file...',
-            title='Select INI file to load entire recipe',
+            "Select INI file...",
+            title="Select INI file to load entire recipe",
             openFolder=False,
             start_dir=myutils.getMostRecentPath(),
-            ext={'INI': '.ini'}
+            ext={"INI": ".ini"},
         )
         win = QTreeDialog(
             items,
             headerLabels=headerLabels,
-            title='Select a segmentation recipe to load',
-            infoText='Select a segmentation recipe to load:<br>',
+            title="Select a segmentation recipe to load",
+            infoText="Select a segmentation recipe to load:<br>",
             path_to_browse=segm_recipes_path_model,
-            additional_buttons=(browseButton, )
+            additional_buttons=(browseButton,),
         )
         browseButton.sigPathSelected.connect(
             partial(
-                self.entireRecipeIniFileSelected, 
-                selectRecipeWin=win, 
-                sender=browseButton
+                self.entireRecipeIniFileSelected,
+                selectRecipeWin=win,
+                sender=browseButton,
             )
         )
         win.exec_()
-        if win.cancel or not hasattr(win, 'selectedText'):
-            print('Loading segmentation recipe cancelled.')
+        if win.cancel or not hasattr(win, "selectedText"):
+            print("Loading segmentation recipe cancelled.")
             return
-        
+
         if win.clickedButton == browseButton:
             recipe_filepath = win.selectedIniFilepath
         else:
             recipe_filename = win.selectedText
-            recipe_filepath = os.path.join(
-                segm_recipes_path_model, recipe_filename
-            )
-        
+            recipe_filepath = os.path.join(segm_recipes_path_model, recipe_filename)
+
         self.loadRecipeFromFilepath(recipe_filepath)
-        
-        txt = html_utils.paragraph(
-            'Done!<br><br>'
-            'Segmentation recipe loaded from:'
-        )
+
+        txt = html_utils.paragraph("Done!<br><br>Segmentation recipe loaded from:")
         msg = widgets.myMessageBox()
         msg.information(
-            self, 'Segmentation recipe laoded!', txt, 
+            self,
+            "Segmentation recipe laoded!",
+            txt,
             commands=(recipe_filepath,),
-            path_to_browse=os.path.dirname(recipe_filepath)
+            path_to_browse=os.path.dirname(recipe_filepath),
         )
-        
-        print('Done. Segmentation recipe loaded from:', recipe_filepath)
-    
+
+        print("Done. Segmentation recipe loaded from:", recipe_filepath)
+
     def entireRecipeIniFileSelected(
-            self, recipe_filepath, selectRecipeWin=None, sender=None
-        ):
-        selectRecipeWin.selectedText = 'None'
+        self, recipe_filepath, selectRecipeWin=None, sender=None
+    ):
+        selectRecipeWin.selectedText = "None"
         selectRecipeWin.clickedButton = sender
         selectRecipeWin.selectedIniFilepath = recipe_filepath
         selectRecipeWin.cancel = False
@@ -11964,104 +12046,97 @@ class QDialogModelParams(QDialog):
     def loadRecipeFromFilepath(self, recipe_filepath):
         cp = config.ConfigParser()
         cp.read(recipe_filepath)
-        
+
         self.loadPreprocRecipe(configPars=cp)
         self.loadLastSelection(
-            f'{self.model_name}.init', self.init_argsWidgets, configPars=cp
+            f"{self.model_name}.init", self.init_argsWidgets, configPars=cp
         )
         self.loadLastSelection(
-            f'{self.model_name}.segment', self.argsWidgets, configPars=cp
+            f"{self.model_name}.segment", self.argsWidgets, configPars=cp
         )
         if self.extraArgsWidgets:
             self.loadLastSelection(
-                f'{self.model_name}.extra', self.extraArgsWidgets, configPars=cp
+                f"{self.model_name}.extra", self.extraArgsWidgets, configPars=cp
             )
         self.loadLastSelectionPostProcess(configPars=cp)
-    
+
     def saveEntireRecipe(self):
-        segm_recipes_path_model = os.path.join(
-            segm_recipes_path, self.model_name
-        )
+        segm_recipes_path_model = os.path.join(segm_recipes_path, self.model_name)
         try:
-            existingNames=os.listdir(segm_recipes_path_model)
+            existingNames = os.listdir(segm_recipes_path_model)
         except FileNotFoundError:
             existingNames = []
 
         win = filenameDialog(
-            title='Filename for segmentation recipe',
-            basename='segmentation_recipe',
-            ext='.ini',
-            hintText='Insert a <b>filename</b> for the segmentation recipe:',
+            title="Filename for segmentation recipe",
+            basename="segmentation_recipe",
+            ext=".ini",
+            hintText="Insert a <b>filename</b> for the segmentation recipe:",
             allowEmpty=False,
             parent=self,
-            existingNames=existingNames
+            existingNames=existingNames,
         )
         win.exec_()
         if win.cancel:
             return
-        
+
         ini_filename = win.filename
         os.makedirs(segm_recipes_path, exist_ok=True)
         os.makedirs(segm_recipes_path_model, exist_ok=True)
         ini_filepath = os.path.join(segm_recipes_path_model, ini_filename)
-        
+
         configPars = self.getConfigPars(create_new=True)
 
-        if hasattr(self, 'reduceMemUsageToggle'):
-            configPars[f'{self.model_name}.additional_segm_params'] = {}
+        if hasattr(self, "reduceMemUsageToggle"):
+            configPars[f"{self.model_name}.additional_segm_params"] = {}
             reduceMemoryUsage = self.reduceMemUsageToggle.isChecked()
             option = self.reduceMemUsageToggle.label
-            configPars[f'{self.model_name}.additional_segm_params'][option] = (
-                str(reduceMemoryUsage)
+            configPars[f"{self.model_name}.additional_segm_params"][option] = str(
+                reduceMemoryUsage
             )
-        
-        configPars['info'] = {}
-        configPars['info']['created_on'] = datetime.datetime.now().strftime(
-            r'%Y/%m/%d %H:%M'
+
+        configPars["info"] = {}
+        configPars["info"]["created_on"] = datetime.datetime.now().strftime(
+            r"%Y/%m/%d %H:%M"
         )
-        
-        with open(ini_filepath, 'w') as configfile:
+
+        with open(ini_filepath, "w") as configfile:
             configPars.write(configfile)
-        
-        txt = html_utils.paragraph(
-            'Done!<br><br>'
-            'Segmentation recipe saved to:'
-        )
+
+        txt = html_utils.paragraph("Done!<br><br>Segmentation recipe saved to:")
         msg = widgets.myMessageBox()
         msg.information(
-            self, 'Segmnentation recipe saved!', txt, 
+            self,
+            "Segmnentation recipe saved!",
+            txt,
             commands=(ini_filepath,),
-            path_to_browse=os.path.dirname(ini_filepath)
+            path_to_browse=os.path.dirname(ini_filepath),
         )
-        
-        print('Done. Segmentation recipe saved to:', ini_filepath)
-    
+
+        print("Done. Segmentation recipe saved to:", ini_filepath)
+
     def getAdditionalSegmParams(self):
-        additionalSegmGroupbox = QGroupBox('Additional segmentation parameters')
+        additionalSegmGroupbox = QGroupBox("Additional segmentation parameters")
         local_row = 0
         additionalSegmLayout = QGridLayout()
-        option = 'Reduce memory usage'
+        option = "Reduce memory usage"
         additionalSegmLayout.addWidget(
-            QLabel(f'{option}:  '), local_row, 0, 
-            alignment=Qt.AlignRight
+            QLabel(f"{option}:  "), local_row, 0, alignment=Qt.AlignRight
         )
         self.reduceMemUsageToggle = widgets.Toggle()
         additionalSegmLayout.addWidget(
-            self.reduceMemUsageToggle, local_row, 1, 1, 2, 
-            alignment=Qt.AlignCenter
+            self.reduceMemUsageToggle, local_row, 1, 1, 2, alignment=Qt.AlignCenter
         )
         self.reduceMemUsageToggle.label = option
         reduceMemUsageInfoButton = widgets.infoPushButton()
         additionalSegmLayout.addWidget(reduceMemUsageInfoButton, local_row, 3)
-        reduceMemUsageInfoButton.clicked.connect(
-            self.showInfoReduceMemUsage
-        )
+        reduceMemUsageInfoButton.clicked.connect(self.showInfoReduceMemUsage)
         additionalSegmLayout.setColumnStretch(0, 0)
         additionalSegmLayout.setColumnStretch(1, 1)
         additionalSegmLayout.setColumnStretch(3, 0)
         additionalSegmGroupbox.setLayout(additionalSegmLayout)
         return additionalSegmGroupbox
-    
+
     def showInfoReduceMemUsage(self):
         infoText = html_utils.paragraph(f"""
             If you are experiencing memory issues, you can try reducing the 
@@ -12070,50 +12145,48 @@ class QDialogModelParams(QDialog):
             frame-by-frame instead of all frames at once.
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(
-            self, 'Reduce memory usage', infoText
-        )
-        
+        msg.information(self, "Reduce memory usage", infoText)
+
     def loadPreprocRecipe(self, configPars=None):
         if self.configPars is None and configPars is None:
             return
-        
+
         if configPars is None:
             configPars = self.configPars
-        
+
         preprocConfigPars = {}
         for section in configPars.sections():
-            if not section.startswith(f'{self.model_name}.preprocess'):
-                continue      
-            
+            if not section.startswith(f"{self.model_name}.preprocess"):
+                continue
+
             preprocConfigPars[section] = configPars[section]
-        
+
         if not preprocConfigPars:
             return
-        
+
         self.preProcessParamsWidget.loadRecipe(preprocConfigPars)
-    
+
     def connectCustomSignals(self, model_module):
         if model_module is None:
             return
 
-        if not hasattr(model_module, 'CustomSignals'):
+        if not hasattr(model_module, "CustomSignals"):
             return
-        
+
         customSignals = model_module.CustomSignals()
         for slot_info in customSignals.slots_info:
-            group = slot_info['group']
-            widget_name = slot_info['widget_name']
-            if group == 'init':
+            group = slot_info["group"]
+            widget_name = slot_info["widget_name"]
+            if group == "init":
                 ArgsWidgets_list = self.init_argsWidgets
             else:
                 ArgsWidgets_list = self.argsWidgets
             for argwidget in ArgsWidgets_list:
                 if argwidget.name == widget_name:
-                    signal = getattr(argwidget.widget, slot_info['signal'])
-                    signal.connect(partial(slot_info['slot'], self))
+                    signal = getattr(argwidget.widget, slot_info["signal"])
+                    signal.connect(partial(slot_info["slot"], self))
                     break
-    
+
     def selectedFeaturesRange(self):
         if self.postProcessGroupbox is None:
             return {}
@@ -12123,34 +12196,33 @@ class QDialogModelParams(QDialog):
         if self.postProcessGroupbox is None:
             return {}
         return self.postProcessGroupbox.groupedFeatures()
-    
+
     def setChannelNames(self, chNames):
-        if not hasattr(self, 'channelsCombobox'):
+        if not hasattr(self, "channelsCombobox"):
             return
-        
-        items = ['None']
+
+        items = ["None"]
         items.extend(chNames)
         self.channelsCombobox.addItems(items)
-    
+
     def getValueFromMetadata(self, name):
         try:
-            value = self.df_metadata.at[name, 'values']
+            value = self.df_metadata.at[name, "values"]
         except Exception as e:
             # traceback.print_exc()
             value = None
         return value
 
     def criticalSegmFileRequiredButNoneAvailable(self):
-        model_name = f'{self.model_name} model'
+        model_name = f"{self.model_name} model"
         action_txt = (
-            'Please, segment the correct channel before using '
-            f'{self.model_name}.'
+            f"Please, segment the correct channel before using {self.model_name}."
         )
-        if self.model_name == 'skip_segmentation':
-            model_name = 'Skipping the segmentation'
+        if self.model_name == "skip_segmentation":
+            model_name = "Skipping the segmentation"
             action_txt = (
-                'To be able to skip the segmentation step, you need '
-                'create at least one segmentation file.'
+                "To be able to skip the segmentation step, you need "
+                "create at least one segmentation file."
             )
         txt = html_utils.paragraph(f"""
             <b>{model_name}</b> 
@@ -12160,30 +12232,26 @@ class QDialogModelParams(QDialog):
             <br><br>Thank you for you patience!
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Segmentation file required', txt)
+        msg.warning(self, "Segmentation file required", txt)
         raise FileNotFoundError(
-            'Model requires segmentation file but none are available.'
+            "Model requires segmentation file but none are available."
         )
-    
-    
+
     def checkAddSegmEndnameCombobox(self, ArgSpec, groupBoxLayout, row):
-        if ArgSpec.name != 'Auxiliary segmentation file':
+        if ArgSpec.name != "Auxiliary segmentation file":
             return False
-        
+
         if self.segmFileEndnames is None or not self.segmFileEndnames:
             self.criticalSegmFileRequiredButNoneAvailable()
-        
-        label = QLabel(f'{ArgSpec.name}:  ')
-        groupBoxLayout.addWidget(
-            label, row, 0, alignment=Qt.AlignRight
-        )
+
+        label = QLabel(f"{ArgSpec.name}:  ")
+        groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         items = self.segmFileEndnames
         self.segmEndnameCombobox = widgets.QCenteredComboBox()
         self.segmEndnameCombobox.addItems(items)
         groupBoxLayout.addWidget(self.segmEndnameCombobox, row, 1, 1, 2)
         return True
-        
-    
+
     def createGroupParams(self, ArgSpecs_list, groupName, addChannelSelector=False):
         ArgsWidgets_list = []
         groupBox = QGroupBox(groupName)
@@ -12191,78 +12259,70 @@ class QDialogModelParams(QDialog):
 
         start_row = 0
         if self.is_tracker and self.channels is not None and addChannelSelector:
-            label = QLabel(f'Input image:  ')
-            groupBoxLayout.addWidget(
-                label, start_row, 0, alignment=Qt.AlignRight
-            )
-            items = ['None', *self.channels]
+            label = QLabel(f"Input image:  ")
+            groupBoxLayout.addWidget(label, start_row, 0, alignment=Qt.AlignRight)
+            items = ["None", *self.channels]
             self.channelCombobox = widgets.QCenteredComboBox()
             self.channelCombobox.addItems(items)
             groupBoxLayout.addWidget(self.channelCombobox, start_row, 1, 1, 2)
             if self.currentChannelName is not None:
                 self.channelCombobox.setCurrentText(self.currentChannelName)
             infoText = (
-                'Some trackers require the intensity image as input.<br><br>'
-                'If this one does not require it, leave the selected value '
-                'to `None`.'
+                "Some trackers require the intensity image as input.<br><br>"
+                "If this one does not require it, leave the selected value "
+                "to `None`."
             )
-            infoButton = self.getInfoButton('Input image', infoText)
+            infoButton = self.getInfoButton("Input image", infoText)
             groupBoxLayout.addWidget(infoButton, start_row, 3)
             start_row += 1
-        
+
         addSecondChannelSelector = addChannelSelector
         if len(ArgSpecs_list) > 0:
             if addSecondChannelSelector and ArgSpecs_list[0].docstring is not None:
-                isSingleChannel = ArgSpecs_list[0].docstring.lower().find(
-                    'single channel only'
-                ) != -1
+                isSingleChannel = (
+                    ArgSpecs_list[0].docstring.lower().find("single channel only") != -1
+                )
                 if isSingleChannel:
                     addSecondChannelSelector = False
-        
-        isDualChannelModel = (
-            self.model_name.find('cellpose') != -1 
-            or any([
-                _types.is_second_channel_type(ArgSpec.type) 
-                for ArgSpec in ArgSpecs_list
-            ])
+
+        isDualChannelModel = self.model_name.find("cellpose") != -1 or any(
+            [_types.is_second_channel_type(ArgSpec.type) for ArgSpec in ArgSpecs_list]
         )
         askSecondChannel = isDualChannelModel and addSecondChannelSelector
-        
+
         if askSecondChannel:
-            label = QLabel('Second channel (optional):  ')
+            label = QLabel("Second channel (optional):  ")
             groupBoxLayout.addWidget(label, start_row, 0, alignment=Qt.AlignRight)
             self.channelsCombobox = widgets.QCenteredComboBox()
             groupBoxLayout.addWidget(self.channelsCombobox, start_row, 1, 1, 2)
             infoText = (
-                'Some models can merge two channels (e.g., cyto + '
-                'nucleus) to obtain better perfomance.\n\n'
-                'Select a channel as additional input to the model.'
+                "Some models can merge two channels (e.g., cyto + "
+                "nucleus) to obtain better perfomance.\n\n"
+                "Select a channel as additional input to the model."
             )
-            infoButton = self.getInfoButton('Second channel', infoText)
+            infoButton = self.getInfoButton("Second channel", infoText)
             groupBoxLayout.addWidget(infoButton, start_row, 3)
             start_row += 1
-        
+
         exclusive_withs = dict()
         default_exclusives = dict()
         row_mapper = dict()
         for row, ArgSpec in enumerate(ArgSpecs_list):
             if _types.is_second_channel_type(ArgSpec.type):
                 continue
-            
+
             if _types.is_widget_not_required(ArgSpec):
                 continue
-            
+
             row = row + start_row
-            skip = self.checkAddSegmEndnameCombobox(
-                ArgSpec, groupBoxLayout, row
-            )
+            skip = self.checkAddSegmEndnameCombobox(ArgSpec, groupBoxLayout, row)
             if skip:
                 continue
-            
-            arg_name = ArgSpec.name         
-            var_name = arg_name.replace('_', ' ')
-            var_name = f'{var_name[0].upper()}{var_name[1:]}'
-            label = QLabel(f'{var_name}:  ')
+
+            arg_name = ArgSpec.name
+            var_name = arg_name.replace("_", " ")
+            var_name = f"{var_name[0].upper()}{var_name[1:]}"
+            label = QLabel(f"{var_name}:  ")
             metadata_val = self.getValueFromMetadata(ArgSpec.name)
             groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
             try:
@@ -12270,14 +12330,14 @@ class QDialogModelParams(QDialog):
                 isCustomListType = True
             except Exception as err:
                 isCustomListType = False
-            
+
             isVectorEntry = False
             try:
                 if isinstance(ArgSpec.type(), _types.Vector):
                     isVectorEntry = True
             except Exception as err:
                 pass
-            
+
             isFolderPath = False
             try:
                 if isinstance(ArgSpec.type(), _types.FolderPath):
@@ -12289,18 +12349,18 @@ class QDialogModelParams(QDialog):
                 exclusive_with = ArgSpec.type().is_exclusive_with
             except Exception as err:
                 exclusive_with = []
-            
+
             try:
                 default_exclusive = ArgSpec.type().default_exclusive
             except Exception as err:
-                default_exclusive = ''
+                default_exclusive = ""
 
             exclusive_withs[arg_name] = exclusive_with
             default_exclusives[arg_name] = default_exclusive
             row_mapper[arg_name] = row
-            
-            isCustomWidget = hasattr(ArgSpec.type, 'isWidget')
-            
+
+            isCustomWidget = hasattr(ArgSpec.type, "isWidget")
+
             if isCustomWidget:
                 widget = ArgSpec.type().widget
                 defaultVal = ArgSpec.default
@@ -12395,11 +12455,11 @@ class QDialogModelParams(QDialog):
                 valueGetter = QLineEdit.text
                 changeSig = lineEdit.editingFinished
                 groupBoxLayout.addWidget(lineEdit, row, 1, 1, 2)
-            
+
             if ArgSpec.desc:
                 infoButton = self.getInfoButton(ArgSpec.name, ArgSpec.desc)
                 groupBoxLayout.addWidget(infoButton, row, 3)
-            
+
             argsInfo = ArgWidget(
                 name=ArgSpec.name,
                 type=ArgSpec.type,
@@ -12407,13 +12467,11 @@ class QDialogModelParams(QDialog):
                 defaultVal=defaultVal,
                 valueSetter=valueSetter,
                 valueGetter=valueGetter,
-                changeSig=changeSig
+                changeSig=changeSig,
             )
             ArgsWidgets_list.append(argsInfo)
-        
-        exclusive_group = core.connected_components_in_undirected_graph(
-            exclusive_withs
-        )
+
+        exclusive_group = core.connected_components_in_undirected_graph(exclusive_withs)
 
         for group in exclusive_group:
             if len(group) == 1:
@@ -12438,8 +12496,12 @@ class QDialogModelParams(QDialog):
                     argsInfo_other = ArgsWidgets_list[row_other]
                     changeSig_other = argsInfo_other.changeSig
                     changeSig_other.connect(
-                        partial(qutils.set_exclusive_valueSetter, widget, 
-                                valueSetter, default_exclusive)
+                        partial(
+                            qutils.set_exclusive_valueSetter,
+                            widget,
+                            valueSetter,
+                            default_exclusive,
+                        )
                     )
 
         groupBoxLayout.setColumnStretch(0, 0)
@@ -12447,7 +12509,7 @@ class QDialogModelParams(QDialog):
         groupBoxLayout.setColumnStretch(3, 0)
         nrows = groupBoxLayout.rowCount()
         groupBoxLayout.setRowStretch(nrows, 1)
-        
+
         groupBox.setLayout(groupBoxLayout)
         return groupBox, ArgsWidgets_list
 
@@ -12455,73 +12517,65 @@ class QDialogModelParams(QDialog):
         infoButton = widgets.infoPushButton()
         infoButton.param_name = param_name
         infoButton.setToolTip(
-            f'Click to get more info about `{param_name}` parameter...'
+            f"Click to get more info about `{param_name}` parameter..."
         )
         infoButton.infoText = infoText
         infoButton.clicked.connect(self.showInfoParam)
         return infoButton
-    
+
     def showInfoParam(self):
         text = self.sender().infoText
-        text = text.replace('\n', '<br>')
+        text = text.replace("\n", "<br>")
         text = html_utils.rst_urls_to_html(text)
         text = html_utils.rst_to_html(text)
         text = html_utils.paragraph(text)
         param_name = self.sender().param_name
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(self, f'Info about `{param_name}` parameter', text)
-    
+        msg.information(self, f"Info about `{param_name}` parameter", text)
+
     def restoreDefaultInit(self):
         for argWidget in self.init_argsWidgets:
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
             valueSetter = argWidget.valueSetter
-            qutils.set_exclusive_valueSetter(
-                widget, valueSetter, defaultVal
-            )
+            qutils.set_exclusive_valueSetter(widget, valueSetter, defaultVal)
 
     def restoreDefaultSegment(self):
         for argWidget in self.argsWidgets:
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
             valueSetter = argWidget.valueSetter
-            qutils.set_exclusive_valueSetter(
-                widget, valueSetter, defaultVal
-            )
+            qutils.set_exclusive_valueSetter(widget, valueSetter, defaultVal)
 
     def restoreDefaultExtra(self):
         for argWidget in self.extraArgsWidgets:
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
             valueSetter = argWidget.valueSetter
-            qutils.set_exclusive_valueSetter(
-                widget, valueSetter, defaultVal
-            )
+            qutils.set_exclusive_valueSetter(widget, valueSetter, defaultVal)
 
     def restoreDefaultPostprocess(self):
         self.postProcessGroupbox.restoreDefault()
 
     def readLastSelection(self):
         self.ini_path = os.path.join(settings_folderpath, self.ini_filename)
-        
+
         if not os.path.exists(self.ini_path):
             return None
 
-        print(f'Reading last selected parameters from: {self.ini_path}')
+        print(f"Reading last selected parameters from: {self.ini_path}")
         configPars = config.ConfigParser()
         configPars.read(self.ini_path)
         return configPars
 
     def setValuesFromParams(self, init_params, segment_params, extra_params=None):
         sections = {
-            f'{self.model_name}.init': (init_params, self.init_argsWidgets),
-            f'{self.model_name}.segment': (segment_params, self.argsWidgets),
+            f"{self.model_name}.init": (init_params, self.init_argsWidgets),
+            f"{self.model_name}.segment": (segment_params, self.argsWidgets),
         }
         if extra_params is not None:
-            sections[f'{self.model_name}.extra'] = (
-                extra_params, self.extraArgsWidgets
-            )
-            
+            sections[f"{self.model_name}.extra"] = (extra_params, self.extraArgsWidgets)
+
         for section, values in sections.items():
             params, argWidgetList = values
             for argWidget in argWidgetList:
@@ -12536,22 +12590,20 @@ class QDialogModelParams(QDialog):
                         break
                     except Exception as e:
                         continue
-    
-    def loadLastSelection(
-            self, section, argWidgetList, checked=False, configPars=None
-        ):        
+
+    def loadLastSelection(self, section, argWidgetList, checked=False, configPars=None):
         if self.configPars is None and configPars is None:
             return
 
         if configPars is None:
             configPars = self.configPars
-        
-        getters = ['getboolean', 'getint', 'getfloat', 'get']
+
+        getters = ["getboolean", "getint", "getfloat", "get"]
         try:
             options = configPars.options(section)
         except Exception:
             return
-        
+
         for argWidget in argWidgetList:
             option = argWidget.name
             val = None
@@ -12562,20 +12614,18 @@ class QDialogModelParams(QDialog):
                 except Exception as err:
                     pass
             widget = argWidget.widget
-            
-            if hasattr(widget, 'isMetadataValue'):
+
+            if hasattr(widget, "isMetadataValue"):
                 continue
             if val is None:
                 continue
-            
+
             casters = [lambda x: x, int, float, str, bool]
             for caster in casters:
                 try:
                     val = caster(val)
                     valueSetter = argWidget.valueSetter
-                    qutils.set_exclusive_valueSetter(
-                        widget, valueSetter, val
-                    )
+                    qutils.set_exclusive_valueSetter(widget, valueSetter, val)
                     break
                 except Exception as e:
                     printl(traceback.format_exc())
@@ -12584,8 +12634,8 @@ class QDialogModelParams(QDialog):
     def loadLastSelectionPostProcess(self, checked=False, configPars=None):
         if self.postProcessGroupbox is None:
             return
-        
-        postProcessSection = f'{self.model_name}.postprocess'
+
+        postProcessSection = f"{self.model_name}.postprocess"
 
         if isinstance(configPars, bool):
             configPars = None
@@ -12595,57 +12645,53 @@ class QDialogModelParams(QDialog):
 
         if postProcessSection in configPars.sections():
             try:
-                minSize = configPars.getint(
-                    postProcessSection, 'minSize', fallback=10
-                )
+                minSize = configPars.getint(postProcessSection, "minSize", fallback=10)
             except ValueError:
                 minSize = 10
 
             try:
                 minSolidity = configPars.getfloat(
-                    postProcessSection, 'minSolidity', fallback=0.5
+                    postProcessSection, "minSolidity", fallback=0.5
                 )
             except ValueError:
                 minSolidity = 0.5
 
-            try: 
+            try:
                 maxElongation = configPars.getfloat(
-                    postProcessSection, 'maxElongation', fallback=3
+                    postProcessSection, "maxElongation", fallback=3
                 )
             except ValueError:
                 maxElongation = 3
-            
+
             try:
                 minObjSizeZ = configPars.getint(
-                    postProcessSection, 'min_obj_no_zslices', fallback=3
+                    postProcessSection, "min_obj_no_zslices", fallback=3
                 )
             except ValueError:
                 minObjSizeZ = 3
-            
+
             kwargs = {
-                'min_solidity': minSolidity,
-                'min_area': minSize,
-                'max_elongation': maxElongation,
-                'min_obj_no_zslices': minObjSizeZ
+                "min_solidity": minSolidity,
+                "min_area": minSize,
+                "max_elongation": maxElongation,
+                "min_obj_no_zslices": minObjSizeZ,
             }
             self.postProcessGroupbox.restoreFromKwargs(kwargs)
 
             applyPostProcessing = configPars.getboolean(
-                postProcessSection, 'applyPostProcessing'
+                postProcessSection, "applyPostProcessing"
             )
             self.postProcessGroupbox.setChecked(applyPostProcessing)
 
-        customPostProcessSection = f'{self.model_name}.custom_postprocess'
+        customPostProcessSection = f"{self.model_name}.custom_postprocess"
         if postProcessSection not in configPars.sections():
             return
-        
-        selectFeaturesWidget = (
-            self.postProcessGroupbox.selectedFeaturesDialog.groupbox
-        )
+
+        selectFeaturesWidget = self.postProcessGroupbox.selectedFeaturesDialog.groupbox
         selectFeaturesWidget.resetFields()
         f = 0
         for col_name, value in configPars[customPostProcessSection].items():
-            low, high = value.split(',')
+            low, high = value.split(",")
             low = low.strip()
             high = high.strip()
             if f > 0:
@@ -12658,7 +12704,7 @@ class QDialogModelParams(QDialog):
             feature_group = measurements.get_metric_group_name(col_name)
             selector.featureGroup = feature_group
 
-            if low != 'None':
+            if low != "None":
                 try:
                     low_val = int(low)
                 except ValueError:
@@ -12667,7 +12713,7 @@ class QDialogModelParams(QDialog):
                 selector.lowRangeWidgets.checkbox.setChecked(True)
                 selector.lowRangeWidgets.spinbox.setValue(low_val)
 
-            if high != 'None':
+            if high != "None":
                 try:
                     high_val = int(high)
                 except ValueError:
@@ -12679,7 +12725,7 @@ class QDialogModelParams(QDialog):
             f += 1
 
     def createSeeHereLabel(self, url):
-        htmlTxt = f'<a href=\"{url}">here</a>'
+        htmlTxt = f'<a href="{url}">here</a>'
         seeHereLabel = QLabel()
         seeHereLabel.setText(f"""
             <p style="font-size:13px">
@@ -12694,32 +12740,30 @@ class QDialogModelParams(QDialog):
 
     def argsWidgets_to_kwargs(self, argsWidgets):
         kwargs_dict = {
-            argWidget.name:argWidget.valueGetter(argWidget.widget)
+            argWidget.name: argWidget.valueGetter(argWidget.widget)
             for argWidget in argsWidgets
         }
         return kwargs_dict
 
     def getInitKwargs(self):
         init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
-        if hasattr(self, 'segmEndnameCombobox'):
-            init_kwargs['segm_endname'] = (
-                self.segmEndnameCombobox.currentText()
-            )
-        
+        if hasattr(self, "segmEndnameCombobox"):
+            init_kwargs["segm_endname"] = self.segmEndnameCombobox.currentText()
+
         return init_kwargs
-    
+
     def getModelKwargs(self):
         if self.skipSegmentation:
             return {}
-        
+
         return self.argsWidgets_to_kwargs(self.argsWidgets)
-    
+
     def getExtraKwargs(self):
         if self.extraArgsWidgets is None:
             return {}
-        
+
         return self.argsWidgets_to_kwargs(self.extraArgsWidgets)
-    
+
     def ok_cb(self, checked):
         self.cancel = False
         self.preproc_recipe = None
@@ -12727,7 +12771,7 @@ class QDialogModelParams(QDialog):
             self.preproc_recipe = self.preProcessParamsWidget.recipe()
             if self.preproc_recipe is None:
                 return
-            
+
         self.init_kwargs = self.getInitKwargs()
 
         if self.extraArgsWidgets:
@@ -12740,16 +12784,16 @@ class QDialogModelParams(QDialog):
             self.applyPostProcessing = self.postProcessGroupbox.isChecked()
             self.standardPostProcessKwargs = self.postProcessGroupbox.kwargs()
         self.secondChannelName = None
-        if hasattr(self, 'channelsCombobox'):
+        if hasattr(self, "channelsCombobox"):
             self.secondChannelName = self.channelsCombobox.currentText()
-        if self.secondChannelName == 'None':
+        if self.secondChannelName == "None":
             self.secondChannelName = None
-        self.inputChannelName = 'None'
+        self.inputChannelName = "None"
         if self.channelCombobox is not None:
             self.inputChannelName = self.channelCombobox.currentText()
-        
+
         self.reduceMemoryUsage = False
-        if hasattr(self, 'reduceMemUsageToggle'):
+        if hasattr(self, "reduceMemUsageToggle"):
             self.reduceMemoryUsage = self.reduceMemUsageToggle.isChecked()
         self.customPostProcessFeatures = self.selectedFeaturesRange()
         self.customPostProcessGroupedFeatures = self.groupedFeatures()
@@ -12758,14 +12802,18 @@ class QDialogModelParams(QDialog):
         self.close()
 
     def freePosData(self):
-        if hasattr(self, 'postProcessGroupbox'):
+        if hasattr(self, "postProcessGroupbox"):
             try:
-                for selector in self.postProcessGroupbox.selectedFeaturesDialog.groupbox.selectors:
+                for (
+                    selector
+                ) in self.postProcessGroupbox.selectedFeaturesDialog.groupbox.selectors:
                     qutils.hardDelete(selector)
             except AttributeError:
                 pass
             try:
-                qutils.hardDelete(self.postProcessGroupbox.selectedFeaturesDialog.groupbox)
+                qutils.hardDelete(
+                    self.postProcessGroupbox.selectedFeaturesDialog.groupbox
+                )
             except AttributeError:
                 pass
             try:
@@ -12782,47 +12830,43 @@ class QDialogModelParams(QDialog):
             configPars = config.ConfigParser()
         else:
             configPars = self.configPars
-        
+
         if self.preProcessParamsWidget is not None:
-            preprocCp = self.preProcessParamsWidget.recipeConfigPars(
-                self.model_name
-            )
+            preprocCp = self.preProcessParamsWidget.recipeConfigPars(self.model_name)
             for section in preprocCp.sections():
                 configPars[section] = preprocCp[section]
-        
-        configPars[f'{self.model_name}.init'] = {}
-        configPars[f'{self.model_name}.segment'] = {}
-        configPars[f'{self.model_name}.extra'] = {}
+
+        configPars[f"{self.model_name}.init"] = {}
+        configPars[f"{self.model_name}.segment"] = {}
+        configPars[f"{self.model_name}.extra"] = {}
 
         init_kwargs = self.getInitKwargs()
         model_kwargs = self.getModelKwargs()
-        
+
         for key, val in init_kwargs.items():
-            configPars[f'{self.model_name}.init'][key] = str(val)
+            configPars[f"{self.model_name}.init"][key] = str(val)
         for key, val in model_kwargs.items():
-            configPars[f'{self.model_name}.segment'][key] = str(val)
+            configPars[f"{self.model_name}.segment"][key] = str(val)
         if self.extraArgsWidgets:
             extra_kwargs = self.getExtraKwargs()
             for key, val in extra_kwargs.items():
-                configPars[f'{self.model_name}.extra'][key] = str(val)
+                configPars[f"{self.model_name}.extra"][key] = str(val)
 
-        configPars[f'{self.model_name}.postprocess'] = {}
+        configPars[f"{self.model_name}.postprocess"] = {}
         if self.postProcessGroupbox is not None:
             postProcKwargs = self.postProcessGroupbox.kwargs()
-            postProcessConfig = configPars[f'{self.model_name}.postprocess']
-            postProcessConfig['minSize'] = str(postProcKwargs['min_area'])
-            postProcessConfig['minSolidity'] = str(postProcKwargs['min_solidity'])
-            postProcessConfig['maxElongation'] = str(
-                postProcKwargs['max_elongation']
+            postProcessConfig = configPars[f"{self.model_name}.postprocess"]
+            postProcessConfig["minSize"] = str(postProcKwargs["min_area"])
+            postProcessConfig["minSolidity"] = str(postProcKwargs["min_solidity"])
+            postProcessConfig["maxElongation"] = str(postProcKwargs["max_elongation"])
+            postProcessConfig["min_obj_no_zslices"] = str(
+                postProcKwargs["min_obj_no_zslices"]
             )
-            postProcessConfig['min_obj_no_zslices'] = str(
-                postProcKwargs['min_obj_no_zslices']
-            )
-            postProcessConfig['applyPostProcessing'] = str(
+            postProcessConfig["applyPostProcessing"] = str(
                 self.postProcessGroupbox.isChecked()
             )
-        
-        custom_postproc_section = f'{self.model_name}.custom_postprocess'
+
+        custom_postproc_section = f"{self.model_name}.custom_postprocess"
         configPars[custom_postproc_section] = {}
         if self.postProcessGroupbox is not None:
             selectFeaturesWidget = (
@@ -12830,8 +12874,8 @@ class QDialogModelParams(QDialog):
             )
             for selector in selectFeaturesWidget.selectors:
                 col_name = selector.selectButton.text()
-                lowStr = 'None'
-                highStr = 'None'
+                lowStr = "None"
+                highStr = "None"
                 if selector.lowRangeWidgets.checkbox.isChecked():
                     lowVal = selector.lowRangeWidgets.spinbox.value()
                     lowStr = str(lowVal)
@@ -12839,29 +12883,26 @@ class QDialogModelParams(QDialog):
                     highVal = selector.highRangeWidgets.spinbox.value()
                     highStr = str(highVal)
 
-                configPars[custom_postproc_section][col_name] = (
-                    f'{lowStr}, {highStr}'
-                )
+                configPars[custom_postproc_section][col_name] = f"{lowStr}, {highStr}"
 
-        
         return configPars
-    
+
     def saveLastSelection(self):
         self.configPars = self.getConfigPars()
-        with open(self.ini_path, 'w') as configfile:
+        with open(self.ini_path, "w") as configfile:
             self.configPars.write(configfile)
 
-        mode = 'Segmentation' if not self.is_tracker else 'Tracking'
-        
+        mode = "Segmentation" if not self.is_tracker else "Tracking"
+
         print(f'{mode} parameters saved at "{self.ini_path}"')
-        
+
     def exec_(self):
         self.show(block=True)
 
     def show(self, block=False):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
-        if self.model_name == 'thresholding':
+        if self.model_name == "thresholding":
             self.segmentGroupBox.setDisabled(True)
         if block:
             self.loop = QEventLoop()
@@ -12869,18 +12910,16 @@ class QDialogModelParams(QDialog):
 
     def closeEvent(self, event):
         self.freePosData()
-        if hasattr(self, 'loop'):
+        if hasattr(self, "loop"):
             self.loop.exit()
 
     def cancel_cb(self, checked):
         self.cancel = True
         self.freePosData()
-    
+
     def showEvent(self, event) -> None:
         buttonHeight = self.okButton.minimumSizeHint().height()
-        heightInitParams = (
-            self.initParamsScrollArea.minimumHeightNoScrollbar()
-        )
+        heightInitParams = self.initParamsScrollArea.minimumHeightNoScrollbar()
         heightLeft = 70 + buttonHeight
         heightCenter = heightInitParams
         heightRight = 0
@@ -12888,35 +12927,33 @@ class QDialogModelParams(QDialog):
             heightSegmentParams = (
                 self.segmentParamsScrollArea.minimumHeightNoScrollbar()
             )
-            heightCenter += (heightSegmentParams+ 70 + buttonHeight)
-            
+            heightCenter += heightSegmentParams + 70 + buttonHeight
+
             rowInitParams, _ = self.paramsGroupPosMapper[self.initParamsScrollArea]
             rowSegmParams, _ = self.paramsGroupPosMapper[self.segmentParamsScrollArea]
-            
+
             numInitParams = len(self.init_params)
             numSegmentParams = len(self.segment_params)
-            
+
             try:
-                segmentParamsStretch = max(1, round(numSegmentParams/numInitParams))
+                segmentParamsStretch = max(1, round(numSegmentParams / numInitParams))
             except ZeroDivisionError as err:
                 segmentParamsStretch = 1
             self.secondColLayout.setStretch(rowInitParams, 1)
             self.secondColLayout.setStretch(rowSegmParams, segmentParamsStretch)
-            
+
         if self.extraParamsScrollArea is not None:
             heightRight += (
                 self.extraParamsScrollArea.minimumHeightNoScrollbar()
-                + 70 + buttonHeight
+                + 70
+                + buttonHeight
             )
-            
-        
+
         if self.additionalSegmGroupbox is not None:
             heightRight += self.additionalSegmGroupbox.minimumSizeHint().height()
             heightRight += buttonHeight
         if self.preProcessParamsWidget is not None:
-            heightPreprocParams = (
-                self.preProcessParamsWidget.minimumSizeHint().height()
-            )
+            heightPreprocParams = self.preProcessParamsWidget.minimumSizeHint().height()
             heightLeft += heightPreprocParams
             heightLeft += buttonHeight
         if self.postProcessGroupbox is not None:
@@ -12931,12 +12968,13 @@ class QDialogModelParams(QDialog):
         screenRight = screenGeom.right()
         screenCenter = (screenLeft + screenRight) / 2
         width = self.sizeHint().width()
-        windowLeft = int(screenCenter - width/2)
+        windowLeft = int(screenCenter - width / 2)
         self.move(windowLeft, 20)
-        
+
         if height >= screenHeight - 150:
             height = screenHeight - 150
         self.resize(width, height)
+
 
 class downloadModel:
     def __init__(self, model_name, parent=None):
@@ -12948,10 +12986,8 @@ class downloadModel:
         model_url = myutils._model_url(self.model_name)
         if model_url is None:
             return
-        
-        _, model_path = myutils.get_model_path(
-            self.model_name, create_temp_dir=False
-        )
+
+        _, model_path = myutils.get_model_path(self.model_name, create_temp_dir=False)
         model_name = self.model_name
         model_exists = myutils.check_model_exists(model_path, model_name)
         if not model_exists:
@@ -12962,30 +12998,29 @@ class downloadModel:
             )
         except Exception as err:
             pass
-        
+
         success = myutils.download_model(self.model_name)
         if not success:
             self.criticalDowloadFailed()
-        
+
     def warnDownloadModel(self, model_path, model_name):
         txt = html_utils.paragraph(
-            'Cell-ACDC needs to <b>download the model</b> '
-            f'<code>{model_name}</code>.<br><br>'
-            'The files will be dowloaded into the following folder:<br><br>'
-            f'<code>{model_path}</code><br><br>'
-            '<b>Progress</b> will be displayed in the <b>terminal</b>.<br>'
+            "Cell-ACDC needs to <b>download the model</b> "
+            f"<code>{model_name}</code>.<br><br>"
+            "The files will be dowloaded into the following folder:<br><br>"
+            f"<code>{model_path}</code><br><br>"
+            "<b>Progress</b> will be displayed in the <b>terminal</b>.<br>"
         )
         msg = widgets.myMessageBox()
-        msg.information(self._parent, 'Download model', txt)
+        msg.information(self._parent, "Download model", txt)
 
     def criticalDowloadFailed(self):
         import cellacdc
+
         model_name = self.model_name
         m = model_name.lower()
-        weights_filenames = getattr(cellacdc, f'{m}_weights_filenames')
-        url, alternative_url = myutils._model_url(
-            model_name, return_alternative=True
-        )
+        weights_filenames = getattr(cellacdc, f"{m}_weights_filenames")
+        url, alternative_url = myutils._model_url(model_name, return_alternative=True)
         url_href = f'<a href="{url}">this link</a>'
         alternative_url_href = f'<a href="{alternative_url}">this link</a>'
         _, model_path = myutils.get_model_path(model_name, create_temp_dir=False)
@@ -13003,15 +13038,14 @@ class downloadModel:
             <code>{alternative_url}</code>
         """)
         weights_paths = [os.path.join(model_path, f) for f in weights_filenames]
-        weights = '\n\n'.join(weights_paths)
-        detailsText = (
-            f'Files that {model_name} requires:\n\n'
-            f'{weights}'
-        )
+        weights = "\n\n".join(weights_paths)
+        detailsText = f"Files that {model_name} requires:\n\n{weights}"
         msg = widgets.myMessageBox()
         msg.critical(
-            self._parent, f'Download of {model_name} failed', txt, 
-            detailsText=detailsText
+            self._parent,
+            f"Download of {model_name} failed",
+            txt,
+            detailsText=detailsText,
         )
         self.close_()
 
@@ -13022,19 +13056,19 @@ class downloadModel:
         # if self.loop is not None:
         #     self.loop.exit()
 
+
 class combineMetricsEquationDialog(QBaseDialog):
     sigOk = Signal(object)
 
     def __init__(
-            self, allChNames, isZstack, isSegm3D, parent=None, debug=False,
-            closeOnOk=True
-        ):
+        self, allChNames, isZstack, isSegm3D, parent=None, debug=False, closeOnOk=True
+    ):
         super().__init__(parent)
 
-        self.setWindowTitle('Add combined measurement')
+        self.setWindowTitle("Add combined measurement")
 
         self.initAttributes()
-        
+
         self.allChNames = allChNames
 
         self.cancel = True
@@ -13051,7 +13085,7 @@ class combineMetricsEquationDialog(QBaseDialog):
 
         for chName in allChNames:
             channelTreeItem = QTreeWidgetItem(metricsTreeWidget)
-            channelTreeItem.setText(0, f'{chName} measurements')
+            channelTreeItem.setText(0, f"{chName} measurements")
             metricsTreeWidget.addTopLevelItem(channelTreeItem)
 
             metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
@@ -13062,52 +13096,41 @@ class combineMetricsEquationDialog(QBaseDialog):
             )
 
             foregrMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
-            foregrMetricsTreeItem.setText(0, 'Cell signal measurements')
+            foregrMetricsTreeItem.setText(0, "Cell signal measurements")
             channelTreeItem.addChild(foregrMetricsTreeItem)
 
             bkgrMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
-            bkgrMetricsTreeItem.setText(0, 'Background values')
+            bkgrMetricsTreeItem.setText(0, "Background values")
             channelTreeItem.addChild(bkgrMetricsTreeItem)
 
             if custom_metrics_desc:
                 customMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
-                customMetricsTreeItem.setText(0, 'Custom measurements')
+                customMetricsTreeItem.setText(0, "Custom measurements")
                 channelTreeItem.addChild(customMetricsTreeItem)
 
-            self.addTreeItems(
-                foregrMetricsTreeItem, metrics_desc.keys(), isCol=True
-            )
-            self.addTreeItems(
-                bkgrMetricsTreeItem, bkgr_val_desc.keys(), isCol=True
-            )
+            self.addTreeItems(foregrMetricsTreeItem, metrics_desc.keys(), isCol=True)
+            self.addTreeItems(bkgrMetricsTreeItem, bkgr_val_desc.keys(), isCol=True)
 
             if custom_metrics_desc:
                 self.addTreeItems(
-                    customMetricsTreeItem, custom_metrics_desc.keys(),
-                    isCol=True
+                    customMetricsTreeItem, custom_metrics_desc.keys(), isCol=True
                 )
 
         self.addChannelLessItems(isZstack, isSegm3D=isSegm3D)
 
         sizeMetricsTreeItem = QTreeWidgetItem(metricsTreeWidget)
-        sizeMetricsTreeItem.setText(0, 'Size measurements')
+        sizeMetricsTreeItem.setText(0, "Size measurements")
         metricsTreeWidget.addTopLevelItem(sizeMetricsTreeItem)
 
-        size_metrics_desc = measurements.get_size_metrics_desc(
-            isSegm3D, True
-        )
-        self.addTreeItems(
-            sizeMetricsTreeItem, size_metrics_desc.keys(), isCol=True
-        )
+        size_metrics_desc = measurements.get_size_metrics_desc(isSegm3D, True)
+        self.addTreeItems(sizeMetricsTreeItem, size_metrics_desc.keys(), isCol=True)
 
         propMetricsTreeItem = QTreeWidgetItem(metricsTreeWidget)
-        propMetricsTreeItem.setText(0, 'Region properties')
+        propMetricsTreeItem.setText(0, "Region properties")
         metricsTreeWidget.addTopLevelItem(propMetricsTreeItem)
 
         props_names = measurements.get_props_names()
-        self.addTreeItems(
-            propMetricsTreeItem, props_names, isCol=True
-        )
+        self.addTreeItems(propMetricsTreeItem, props_names, isCol=True)
 
         operatorsLayout = QHBoxLayout()
         operatorsLayout.addStretch(1)
@@ -13116,23 +13139,23 @@ class combineMetricsEquationDialog(QBaseDialog):
 
         self.operatorButtons = []
         self.operators = [
-            ('add', '+'),
-            ('subtract', '-'),
-            ('multiply', '*'),
-            ('divide', '/'),
-            ('open_bracket', '('),
-            ('close_bracket', ')'),
-            ('square', '**2'),
-            ('pow', '**'),
-            ('ln', 'log('),
-            ('log10', 'log10('),
+            ("add", "+"),
+            ("subtract", "-"),
+            ("multiply", "*"),
+            ("divide", "/"),
+            ("open_bracket", "("),
+            ("close_bracket", ")"),
+            ("square", "**2"),
+            ("pow", "**"),
+            ("ln", "log("),
+            ("log10", "log10("),
         ]
         operatorFont = QFont()
         operatorFont.setPixelSize(16)
         for name, text in self.operators:
             button = QPushButton()
-            button.setIcon(QIcon(f':{name}.svg'))
-            button.setIconSize(QSize(iconSize,iconSize))
+            button.setIcon(QIcon(f":{name}.svg"))
+            button.setIconSize(QSize(iconSize, iconSize))
             button.text = text
             operatorsLayout.addWidget(button)
             self.operatorButtons.append(button)
@@ -13140,14 +13163,14 @@ class combineMetricsEquationDialog(QBaseDialog):
             # button.setFont(operatorFont)
 
         clearButton = QPushButton()
-        clearButton.setIcon(QIcon(':clear.svg'))
-        clearButton.setIconSize(QSize(iconSize,iconSize))
+        clearButton.setIcon(QIcon(":clear.svg"))
+        clearButton.setIconSize(QSize(iconSize, iconSize))
         clearButton.setFont(operatorFont)
 
         clearEntryButton = QPushButton()
-        clearEntryButton.setIcon(QIcon(':backspace.svg'))
+        clearEntryButton.setIcon(QIcon(":backspace.svg"))
         clearEntryButton.setFont(operatorFont)
-        clearEntryButton.setIconSize(QSize(iconSize,iconSize))
+        clearEntryButton.setIconSize(QSize(iconSize, iconSize))
 
         operatorsLayout.addWidget(clearButton)
         operatorsLayout.addWidget(clearEntryButton)
@@ -13158,34 +13181,34 @@ class combineMetricsEquationDialog(QBaseDialog):
         newColNameLineEdit.setAlignment(Qt.AlignCenter)
         self.newColNameLineEdit = newColNameLineEdit
         newColNameLayout.addStretch(1)
-        newColNameLayout.addWidget(QLabel('New measurement name:'))
+        newColNameLayout.addWidget(QLabel("New measurement name:"))
         newColNameLayout.addWidget(newColNameLineEdit)
         newColNameLayout.addStretch(1)
 
         equationDisplayLayout = QVBoxLayout()
-        equationDisplayLayout.addWidget(QLabel('Equation:'))
+        equationDisplayLayout.addWidget(QLabel("Equation:"))
         equationDisplay = QPlainTextEdit()
         # equationDisplay.setReadOnly(True)
         self.equationDisplay = equationDisplay
         equationDisplayLayout.addWidget(equationDisplay)
-        equationDisplayLayout.setStretch(0,0)
-        equationDisplayLayout.setStretch(1,1)
+        equationDisplayLayout.setStretch(0, 0)
+        equationDisplayLayout.setStretch(1, 1)
 
         equationLayout.addLayout(newColNameLayout)
-        equationLayout.addWidget(QLabel(' = '))
+        equationLayout.addWidget(QLabel(" = "))
         equationLayout.addLayout(equationDisplayLayout)
-        equationLayout.setStretch(0,1)
-        equationLayout.setStretch(1,0)
-        equationLayout.setStretch(2,2)
+        equationLayout.setStretch(0, 1)
+        equationLayout.setStretch(1, 0)
+        equationLayout.setStretch(2, 2)
 
         testOutputLayout = QVBoxLayout()
-        testOutputLayout.addWidget(QLabel('Result of test with random inputs:'))
+        testOutputLayout.addWidget(QLabel("Result of test with random inputs:"))
         testOutputDisplay = QTextEdit()
         testOutputDisplay.setReadOnly(True)
         self.testOutputDisplay = testOutputDisplay
         testOutputLayout.addWidget(testOutputDisplay)
-        testOutputLayout.setStretch(0,0)
-        testOutputLayout.setStretch(1,1)
+        testOutputLayout.setStretch(0, 0)
+        testOutputLayout.setStretch(1, 1)
 
         instructions = html_utils.paragraph("""
             <b>Double-click</b> on any of the <b>available measurements</b>
@@ -13198,17 +13221,17 @@ class combineMetricsEquationDialog(QBaseDialog):
 
         buttonsLayout = QHBoxLayout()
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        helpButton = widgets.infoPushButton('  Help...')
-        testButton = widgets.calcPushButton('Test output')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets.cancelPushButton("Cancel")
+        helpButton = widgets.infoPushButton("  Help...")
+        testButton = widgets.calcPushButton("Test output")
+        okButton = widgets.okPushButton(" Ok ")
         okButton.setDisabled(True)
         self.okButton = okButton
 
         buttonsLayout.addStretch(1)
 
         if debug:
-            debugButton = QPushButton('Debug')
+            debugButton = QPushButton("Debug")
             debugButton.clicked.connect(self._debug)
             buttonsLayout.addWidget(debugButton)
 
@@ -13219,7 +13242,7 @@ class combineMetricsEquationDialog(QBaseDialog):
         buttonsLayout.addWidget(okButton)
 
         mainLayout.addWidget(QLabel(instructions))
-        mainLayout.addWidget(QLabel('Available measurements:'))
+        mainLayout.addWidget(QLabel("Available measurements:"))
         mainLayout.addWidget(metricsTreeWidget)
         mainLayout.addLayout(operatorsLayout)
         mainLayout.addLayout(equationLayout)
@@ -13243,51 +13266,51 @@ class combineMetricsEquationDialog(QBaseDialog):
 
     def addChannelLessItems(self, isZstack, isSegm3D=False):
         allChannelsTreeItem = QTreeWidgetItem(self.metricsTreeWidget)
-        allChannelsTreeItem.setText(0, f'All channels measurements')
+        allChannelsTreeItem.setText(0, f"All channels measurements")
         metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
-            isZstack, '', isSegm3D=isSegm3D
+            isZstack, "", isSegm3D=isSegm3D
         )
         custom_metrics_desc = measurements.custom_metrics_desc(
-            isZstack, '', isSegm3D=isSegm3D
+            isZstack, "", isSegm3D=isSegm3D
         )
 
         foregrMetricsTreeItem = QTreeWidgetItem(allChannelsTreeItem)
-        foregrMetricsTreeItem.setText(0, 'Cell signal measurements')
+        foregrMetricsTreeItem.setText(0, "Cell signal measurements")
         allChannelsTreeItem.addChild(foregrMetricsTreeItem)
 
         bkgrMetricsTreeItem = QTreeWidgetItem(allChannelsTreeItem)
-        bkgrMetricsTreeItem.setText(0, 'Background values')
+        bkgrMetricsTreeItem.setText(0, "Background values")
         allChannelsTreeItem.addChild(bkgrMetricsTreeItem)
 
         if custom_metrics_desc:
             customMetricsTreeItem = QTreeWidgetItem(allChannelsTreeItem)
-            customMetricsTreeItem.setText(0, 'Custom measurements')
+            customMetricsTreeItem.setText(0, "Custom measurements")
             allChannelsTreeItem.addChild(customMetricsTreeItem)
 
         self.addTreeItems(
-            foregrMetricsTreeItem, metrics_desc.keys(), isCol=True,
-            isChannelLess=True
+            foregrMetricsTreeItem, metrics_desc.keys(), isCol=True, isChannelLess=True
         )
         self.addTreeItems(
-            bkgrMetricsTreeItem, bkgr_val_desc.keys(), isCol=True,
-            isChannelLess=True
+            bkgrMetricsTreeItem, bkgr_val_desc.keys(), isCol=True, isChannelLess=True
         )
 
         if custom_metrics_desc:
             self.addTreeItems(
-                customMetricsTreeItem, custom_metrics_desc.keys(),
-                isCol=True, isChannelLess=True
+                customMetricsTreeItem,
+                custom_metrics_desc.keys(),
+                isCol=True,
+                isChannelLess=True,
             )
 
     def addOperator(self):
         button = self.sender()
-        text = f'{self.equationDisplay.toPlainText()}{button.text}'
+        text = f"{self.equationDisplay.toPlainText()}{button.text}"
         self.equationDisplay.setPlainText(text)
         self.clearLenghts.append(len(button.text))
 
     def clearEquation(self):
         self.isOperatorMode = False
-        self.equationDisplay.setPlainText('')
+        self.equationDisplay.setPlainText("")
         self.initAttributes()
 
     def initAttributes(self):
@@ -13300,8 +13323,8 @@ class combineMetricsEquationDialog(QBaseDialog):
             return
 
         text = self.equationDisplay.toPlainText()
-        newText = text[:-self.clearLenghts[-1]]
-        clearedText = text[-self.clearLenghts[-1]:]
+        newText = text[: -self.clearLenghts[-1]]
+        clearedText = text[-self.clearLenghts[-1] :]
         self.clearLenghts.pop(-1)
         self.equationDisplay.setPlainText(newText)
         if clearedText in self.equationColNames:
@@ -13309,9 +13332,7 @@ class combineMetricsEquationDialog(QBaseDialog):
         if clearedText in self.channelLessColnames:
             self.channelLessColnames.remove(clearedText)
 
-    def addTreeItems(
-            self, parentItem, itemsText, isCol=False, isChannelLess=False
-        ):
+    def addTreeItems(self, parentItem, itemsText, isCol=False, isChannelLess=False):
         for text in itemsText:
             _item = QTreeWidgetItem(parentItem)
             _item.setText(0, text)
@@ -13320,13 +13341,12 @@ class combineMetricsEquationDialog(QBaseDialog):
                 _item.isCol = True
             _item.isChannelLess = isChannelLess
 
-
     def addColname(self, item, column):
-        if not hasattr(item, 'isCol'):
+        if not hasattr(item, "isCol"):
             return
 
         colName = item.text(0)
-        text = f'{self.equationDisplay.toPlainText()}{colName}'
+        text = f"{self.equationDisplay.toPlainText()}{colName}"
         self.equationDisplay.setPlainText(text)
         self.clearLenghts.append(len(colName))
         self.equationColNames.append(colName)
@@ -13348,13 +13368,13 @@ class combineMetricsEquationDialog(QBaseDialog):
             if len(chNamesInTerms) == 1:
                 # Equation uses metrics from a single channel --> append channel name
                 chName = chNamesInTerms.pop()
-                chColName = f'{chName}_{newColName}'
+                chColName = f"{chName}_{newColName}"
                 isMixedChannels = False
-                return {chColName:equation}, isMixedChannels
+                return {chColName: equation}, isMixedChannels
             else:
                 # Equation doesn't use all channels metrics nor is single channel
                 isMixedChannels = True
-                return {newColName:equation}, isMixedChannels
+                return {newColName: equation}, isMixedChannels
 
         isMixedChannels = False
         equations = {}
@@ -13363,9 +13383,9 @@ class combineMetricsEquationDialog(QBaseDialog):
             chEquationName = newColName
             # Append each channel name to channelLess terms
             for colName in self.channelLessColnames:
-                chColName = f'{chName}{colName}'
+                chColName = f"{chName}{colName}"
                 chEquation = chEquation.replace(colName, chColName)
-                chEquationName = f'{chName}_{newColName}'
+                chEquationName = f"{chName}_{newColName}"
                 equations[chEquationName] = chEquation
         return equations, isMixedChannels
 
@@ -13373,7 +13393,7 @@ class combineMetricsEquationDialog(QBaseDialog):
         if not self.newColNameLineEdit.text():
             self.warnEmptyEquationName()
             return
-        
+
         self.cancel = False
 
         # Save equation to "<user_profile_path>/acdc-metrics/combine_metrics.ini" file
@@ -13390,14 +13410,13 @@ class combineMetricsEquationDialog(QBaseDialog):
             channelLess_equation = self.equationDisplay.toPlainText()
             equation_name = self.newColNameLineEdit.text()
             config = measurements.add_channelLess_combine_metrics(
-                config, channelLess_equation, equation_name,
-                self.channelLessColnames
+                config, channelLess_equation, equation_name, self.channelLessColnames
             )
 
         measurements.save_common_combine_metrics(config)
 
         self.sigOk.emit(self)
-        
+
         if self.closeOnOk:
             self.close()
 
@@ -13406,28 +13425,25 @@ class combineMetricsEquationDialog(QBaseDialog):
         txt = html_utils.paragraph("""
             "New measurement name" field <b>cannot be empty</b>!
         """)
-        msg.critical(
-            self, 'Empty new measurement name', txt
-        )
+        msg.critical(self, "Empty new measurement name", txt)
 
     def showHelp(self):
         txt = measurements.get_combine_metrics_help_txt()
         msg = widgets.myMessageBox(
-            showCentered=False, wrapText=False,
-            scrollableText=True, enlargeWidthFactor=1.7
+            showCentered=False,
+            wrapText=False,
+            scrollableText=True,
+            enlargeWidthFactor=1.7,
         )
         path = measurements.acdc_metrics_path
-        msg.addShowInFileManagerButton(path, txt='Show saved file...')
-        msg.information(self, 'Combine measurements help', txt)
+        msg.addShowInFileManagerButton(path, txt="Show saved file...")
+        msg.information(self, "Combine measurements help", txt)
 
     def test_cb(self):
         # Evaluate equation with random inputs
         equation = self.equationDisplay.toPlainText()
-        random_data = np.random.rand(1, len(self.equationColNames))*5
-        df = pd.DataFrame(
-            data=random_data,
-            columns=self.equationColNames
-        ).round(5)
+        random_data = np.random.rand(1, len(self.equationColNames)) * 5
+        df = pd.DataFrame(data=random_data, columns=self.equationColNames).round(5)
         newColName = self.newColNameLineEdit.text()
         try:
             df[newColName] = df.eval(equation)
@@ -13450,7 +13466,7 @@ class combineMetricsEquationDialog(QBaseDialog):
 
         # Format output into html text
         cols = self.equationColNames
-        inputs_txt = [f'{col} = {input}' for col, input in zip(cols, inputs)]
+        inputs_txt = [f"{col} = {input}" for col, input in zip(cols, inputs)]
         list_html = html_utils.to_list(inputs_txt)
         text = html_utils.paragraph(f"""
             By substituting the following random inputs:
@@ -13462,28 +13478,28 @@ class combineMetricsEquationDialog(QBaseDialog):
         """)
         self.testOutputDisplay.setHtml(text)
 
+
 class stopFrameDialog(QBaseDialog):
     def __init__(self, posDatas, parent=None):
         super().__init__(parent=parent)
 
         self.cancel = True
 
-        self.setWindowTitle('Stop frame')
+        self.setWindowTitle("Stop frame")
 
         mainLayout = QVBoxLayout()
 
         infoTxt = html_utils.paragraph(
-            'Enter a <b>stop frame number</b> for each of the loaded Positions',
-            center=True
+            "Enter a <b>stop frame number</b> for each of the loaded Positions",
+            center=True,
         )
         exp_path = posDatas[0].exp_path
         exp_path = os.path.normpath(exp_path).split(os.sep)
-        exp_path = f'...{f"{os.sep}".join(exp_path[-4:])}'
+        exp_path = f"...{f'{os.sep}'.join(exp_path[-4:])}"
         subInfoTxt = html_utils.paragraph(
-            f'Experiment folder: <code>{exp_path}<code>', font_size='12px',
-            center=True
+            f"Experiment folder: <code>{exp_path}<code>", font_size="12px", center=True
         )
-        infoLabel = QLabel(f'{infoTxt}{subInfoTxt}')
+        infoLabel = QLabel(f"{infoTxt}{subInfoTxt}")
         infoLabel.setToolTip(posDatas[0].exp_path)
         mainLayout.addWidget(infoLabel)
         mainLayout.addSpacing(20)
@@ -13492,7 +13508,7 @@ class stopFrameDialog(QBaseDialog):
         for posData in posDatas:
             _layout = QHBoxLayout()
             _layout.addStretch(1)
-            _label = QLabel(html_utils.paragraph(f'{posData.pos_foldername}'))
+            _label = QLabel(html_utils.paragraph(f"{posData.pos_foldername}"))
             _layout.addWidget(_label)
 
             _spinBox = QSpinBox()
@@ -13500,7 +13516,7 @@ class stopFrameDialog(QBaseDialog):
             _spinBox.setAlignment(Qt.AlignCenter)
             _spinBox.setFont(font)
             if posData.acdc_df is not None:
-                _val = posData.acdc_df.index.get_level_values(0).max()+1
+                _val = posData.acdc_df.index.get_level_values(0).max() + 1
             else:
                 _val = posData.readLastUsedStopFrameNumber()
             if _val is None:
@@ -13511,10 +13527,8 @@ class stopFrameDialog(QBaseDialog):
 
             _layout.addWidget(_spinBox)
 
-            viewButton = widgets.viewPushButton('Visualize...')
-            viewButton.clicked.connect(
-                partial(self.viewChannelData, posData, _spinBox)
-            )
+            viewButton = widgets.viewPushButton("Visualize...")
+            viewButton.clicked.connect(partial(self.viewChannelData, posData, _spinBox))
             _layout.addWidget(viewButton, alignment=Qt.AlignRight)
 
             _layout.addStretch(1)
@@ -13523,8 +13537,8 @@ class stopFrameDialog(QBaseDialog):
 
         buttonsLayout = QHBoxLayout()
 
-        okButton = widgets.okPushButton(' Ok ')
-        cancelButton = widgets.cancelPushButton(' Cancel ')
+        okButton = widgets.okPushButton(" Ok ")
+        cancelButton = widgets.cancelPushButton(" Cancel ")
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -13538,39 +13552,35 @@ class stopFrameDialog(QBaseDialog):
         cancelButton.clicked.connect(self.close)
 
         self.setLayout(mainLayout)
-    
+
     def viewChannelData(self, posData, spinBox):
-        self.sender().setText('Loading...')
+        self.sender().setText("Loading...")
         QTimer.singleShot(
             200, partial(self._viewChannelData, posData, spinBox, self.sender())
         )
 
-    def _viewChannelData(self, posData, spinBox, senderButton):      
+    def _viewChannelData(self, posData, spinBox, senderButton):
         chNames = posData.chNames
         if len(chNames) > 1:
             ch_name_selector = prompts.select_channel_name(
-                which_channel='segm', allow_abort=False
+                which_channel="segm", allow_abort=False
             )
             ch_name_selector.QtPrompt(
-                self, chNames,'Select channel name to visualize: '
+                self, chNames, "Select channel name to visualize: "
             )
             if ch_name_selector.was_aborted:
                 return
             chName = ch_name_selector.channel_name
         else:
             chName = chNames[0]
-        
-        channel_file_path = load.get_filename_from_channel(
-            posData.images_path, chName
-        )
+
+        channel_file_path = load.get_filename_from_channel(posData.images_path, chName)
         posData.frame_i = 0
         posData.loadImgData(imgPath=channel_file_path)
-        self.slideshowWin = imageViewer(
-            posData=posData, spinBox=spinBox
-        )
+        self.slideshowWin = imageViewer(posData=posData, spinBox=spinBox)
         self.slideshowWin.update_img()
         self.slideshowWin.show()
-        senderButton.setText('Visualize...')
+        senderButton.setText("Visualize...")
 
     def ok_cb(self):
         self.cancel = False
@@ -13578,6 +13588,7 @@ class stopFrameDialog(QBaseDialog):
             stopFrameNum = posData.stopFrameSpinbox.value()
             posData.stopFrameNum = stopFrameNum
         self.close()
+
 
 class pgTestWindow(QWidget):
     def __init__(self, parent=None):
@@ -13602,7 +13613,7 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
     def __init__(self, acdcDfs, allChNames, parent=None, debug=False):
         super().__init__(parent)
 
-        self.setWindowTitle('Add combined measurement')
+        self.setWindowTitle("Add combined measurement")
 
         self.initAttributes()
 
@@ -13625,63 +13636,63 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
 
             for chName in allChNames:
                 channelTreeItem = QTreeWidgetItem(metricsTreeWidget)
-                channelTreeItem.setText(0, f'{chName} measurements')
+                channelTreeItem.setText(0, f"{chName} measurements")
                 metricsTreeWidget.addTopLevelItem(channelTreeItem)
 
-                standard_metrics = classified_metrics['foregr'][chName]
-                bkgr_metrics = classified_metrics['bkgr'][chName]
-                custom_metrics = classified_metrics['custom'][chName]
+                standard_metrics = classified_metrics["foregr"][chName]
+                bkgr_metrics = classified_metrics["bkgr"][chName]
+                custom_metrics = classified_metrics["custom"][chName]
 
                 if standard_metrics:
                     foregrMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
-                    foregrMetricsTreeItem.setText(0, 'Cell signal measurements')
+                    foregrMetricsTreeItem.setText(0, "Cell signal measurements")
                     channelTreeItem.addChild(foregrMetricsTreeItem)
                     self.addTreeItems(
-                        foregrMetricsTreeItem, standard_metrics, 
-                        isCol=True, index=i
+                        foregrMetricsTreeItem, standard_metrics, isCol=True, index=i
                     )
 
                 if bkgr_metrics:
                     bkgrMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
-                    bkgrMetricsTreeItem.setText(0, 'Background values')
+                    bkgrMetricsTreeItem.setText(0, "Background values")
                     channelTreeItem.addChild(bkgrMetricsTreeItem)
                     self.addTreeItems(
-                        bkgrMetricsTreeItem, bkgr_metrics, 
-                        isCol=True, index=i
+                        bkgrMetricsTreeItem, bkgr_metrics, isCol=True, index=i
                     )
 
                 if custom_metrics:
                     customMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
-                    customMetricsTreeItem.setText(0, 'Custom measurements')
+                    customMetricsTreeItem.setText(0, "Custom measurements")
                     channelTreeItem.addChild(customMetricsTreeItem)
                     self.addTreeItems(
-                        customMetricsTreeItem, custom_metrics, 
-                        isCol=True, index=i
+                        customMetricsTreeItem, custom_metrics, isCol=True, index=i
                     )
 
-            if classified_metrics['size']:
+            if classified_metrics["size"]:
                 sizeMetricsTreeItem = QTreeWidgetItem(metricsTreeWidget)
-                sizeMetricsTreeItem.setText(0, 'Size measurements')
+                sizeMetricsTreeItem.setText(0, "Size measurements")
                 metricsTreeWidget.addTopLevelItem(sizeMetricsTreeItem)
                 self.addTreeItems(
-                    sizeMetricsTreeItem, classified_metrics['size'], 
-                    isCol=True, index=i
+                    sizeMetricsTreeItem, classified_metrics["size"], isCol=True, index=i
                 )
 
-            if classified_metrics['props']:
+            if classified_metrics["props"]:
                 propMetricsTreeItem = QTreeWidgetItem(metricsTreeWidget)
-                propMetricsTreeItem.setText(0, 'Region properties')
+                propMetricsTreeItem.setText(0, "Region properties")
                 metricsTreeWidget.addTopLevelItem(propMetricsTreeItem)
                 self.addTreeItems(
-                    propMetricsTreeItem, classified_metrics['props'], 
-                    isCol=True, index=i
+                    propMetricsTreeItem,
+                    classified_metrics["props"],
+                    isCol=True,
+                    index=i,
                 )
 
             treeLayout = QVBoxLayout()
-            treeTitle = QLabel(html_utils.paragraph(
-                f'{i+1}. <code>{acdc_df_endname}</code> measurements  '
-            ))
-            treeLayout.addWidget(treeTitle)       
+            treeTitle = QLabel(
+                html_utils.paragraph(
+                    f"{i + 1}. <code>{acdc_df_endname}</code> measurements  "
+                )
+            )
+            treeLayout.addWidget(treeTitle)
             treeLayout.addWidget(metricsTreeWidget)
             treesLayout.addLayout(treeLayout)
 
@@ -13695,23 +13706,23 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
 
         self.operatorButtons = []
         self.operators = [
-            ('add', '+'),
-            ('subtract', '-'),
-            ('multiply', '*'),
-            ('divide', '/'),
-            ('open_bracket', '('),
-            ('close_bracket', ')'),
-            ('square', '**2'),
-            ('pow', '**'),
-            ('ln', 'log('),
-            ('log10', 'log10('),
+            ("add", "+"),
+            ("subtract", "-"),
+            ("multiply", "*"),
+            ("divide", "/"),
+            ("open_bracket", "("),
+            ("close_bracket", ")"),
+            ("square", "**2"),
+            ("pow", "**"),
+            ("ln", "log("),
+            ("log10", "log10("),
         ]
         operatorFont = QFont()
         operatorFont.setPixelSize(16)
         for name, text in self.operators:
             button = QPushButton()
-            button.setIcon(QIcon(f':{name}.svg'))
-            button.setIconSize(QSize(iconSize,iconSize))
+            button.setIcon(QIcon(f":{name}.svg"))
+            button.setIconSize(QSize(iconSize, iconSize))
             button.text = text
             operatorsLayout.addWidget(button)
             self.operatorButtons.append(button)
@@ -13719,14 +13730,14 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
             # button.setFont(operatorFont)
 
         clearButton = QPushButton()
-        clearButton.setIcon(QIcon(':clear.svg'))
-        clearButton.setIconSize(QSize(iconSize,iconSize))
+        clearButton.setIcon(QIcon(":clear.svg"))
+        clearButton.setIconSize(QSize(iconSize, iconSize))
         clearButton.setFont(operatorFont)
 
         clearEntryButton = QPushButton()
-        clearEntryButton.setIcon(QIcon(':backspace.svg'))
+        clearEntryButton.setIcon(QIcon(":backspace.svg"))
         clearEntryButton.setFont(operatorFont)
-        clearEntryButton.setIconSize(QSize(iconSize,iconSize))
+        clearEntryButton.setIconSize(QSize(iconSize, iconSize))
 
         operatorsLayout.addWidget(clearButton)
         operatorsLayout.addWidget(clearEntryButton)
@@ -13737,25 +13748,25 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         newColNameLineEdit.setAlignment(Qt.AlignCenter)
         self.newColNameLineEdit = newColNameLineEdit
         newColNameLayout.addStretch(1)
-        newColNameLayout.addWidget(QLabel('New measurement name:'))
+        newColNameLayout.addWidget(QLabel("New measurement name:"))
         newColNameLayout.addWidget(newColNameLineEdit)
         newColNameLayout.addStretch(1)
 
         equationDisplayLayout = QVBoxLayout()
-        equationDisplayLayout.addWidget(QLabel('Equation:'))
+        equationDisplayLayout.addWidget(QLabel("Equation:"))
         equationDisplay = QPlainTextEdit()
         # equationDisplay.setReadOnly(True)
         self.equationDisplay = equationDisplay
         equationDisplayLayout.addWidget(equationDisplay)
-        equationDisplayLayout.setStretch(0,0)
-        equationDisplayLayout.setStretch(1,1)
+        equationDisplayLayout.setStretch(0, 0)
+        equationDisplayLayout.setStretch(1, 1)
 
         equationLayout.addLayout(newColNameLayout)
-        equationLayout.addWidget(QLabel(' = '))
+        equationLayout.addWidget(QLabel(" = "))
         equationLayout.addLayout(equationDisplayLayout)
-        equationLayout.setStretch(0,1)
-        equationLayout.setStretch(1,0)
-        equationLayout.setStretch(2,2)
+        equationLayout.setStretch(0, 1)
+        equationLayout.setStretch(1, 0)
+        equationLayout.setStretch(2, 2)
 
         instructions = html_utils.paragraph("""
             <b>Double-click</b> on any of the <b>available measurements</b>
@@ -13768,14 +13779,14 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
 
         buttonsLayout = QHBoxLayout()
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        testButton = widgets.calcPushButton('Test equation')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets.cancelPushButton("Cancel")
+        testButton = widgets.calcPushButton("Test equation")
+        okButton = widgets.okPushButton(" Ok ")
         okButton.setDisabled(True)
         self.okButton = okButton
 
         if debug:
-            debugButton = QPushButton('Debug')
+            debugButton = QPushButton("Debug")
             debugButton.clicked.connect(self._debug)
             buttonsLayout.addWidget(debugButton)
 
@@ -13808,31 +13819,31 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         self.setFont(font)
 
         self.setStyleSheet(TREEWIDGET_STYLESHEET)
-    
+
     def setLogger(self, logger, logs_path, log_path):
         self.logger = logger
         self.logs_path = logs_path
         self.log_path = log_path
-    
+
     def closeEvent(self, event):
         self.sigClose.emit(self.cancel)
         return super().closeEvent(event)
-    
+
     def getCombinedDf(self):
         dfs = []
         for i, acdc_df in enumerate(self.acdcDfs.values()):
-            dfs.append(acdc_df.add_suffix(f'_table{i+1}'))
+            dfs.append(acdc_df.add_suffix(f"_table{i + 1}"))
         return pd.concat(dfs, axis=1)
-    
+
     def _log(self, txt):
-        if hasattr(self, 'logger'):
+        if hasattr(self, "logger"):
             self.logger.info(txt)
         else:
-            print(f'[INFO]: {txt}')
-    
+            print(f"[INFO]: {txt}")
+
     def equationChanged(self):
         self.okButton.setDisabled(True)
-        self.statusLabel.setText('')
+        self.statusLabel.setText("")
 
     @exception_handler
     def test_cb(self):
@@ -13842,20 +13853,18 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         newColName = self.newColNameLineEdit.text()
         new_df[newColName] = combined_df.eval(equation)
         self.okButton.setDisabled(False)
-        self._log('Equation test was successful.')
-        self.statusLabel.setText(
-            'Equation test was successful. You can now click OK.'
-        )
+        self._log("Equation test was successful.")
+        self.statusLabel.setText("Equation test was successful. You can now click OK.")
 
     def addOperator(self):
         button = self.sender()
-        text = f'{self.equationDisplay.toPlainText()}{button.text}'
+        text = f"{self.equationDisplay.toPlainText()}{button.text}"
         self.equationDisplay.setPlainText(text)
         self.clearLenghts.append(len(button.text))
 
     def clearEquation(self):
         self.isOperatorMode = False
-        self.equationDisplay.setPlainText('')
+        self.equationDisplay.setPlainText("")
         self.initAttributes()
 
     def initAttributes(self):
@@ -13868,8 +13877,8 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
             return
 
         text = self.equationDisplay.toPlainText()
-        newText = text[:-self.clearLenghts[-1]]
-        clearedText = text[-self.clearLenghts[-1]:]
+        newText = text[: -self.clearLenghts[-1]]
+        clearedText = text[-self.clearLenghts[-1] :]
         self.clearLenghts.pop(-1)
         self.equationDisplay.setPlainText(newText)
         if clearedText in self.equationColNames:
@@ -13878,9 +13887,8 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
             self.channelLessColnames.remove(clearedText)
 
     def addTreeItems(
-            self, parentItem, itemsText, isCol=False, isChannelLess=False,
-            index=None
-        ):
+        self, parentItem, itemsText, isCol=False, isChannelLess=False, index=None
+    ):
         for text in itemsText:
             _item = QTreeWidgetItem(parentItem)
             _item.setText(0, text)
@@ -13892,11 +13900,11 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
             _item.isChannelLess = isChannelLess
 
     def addColname(self, item, column):
-        if not hasattr(item, 'isCol'):
+        if not hasattr(item, "isCol"):
             return
 
-        colName = f'{item.text(0)}_table{item.index+1}'
-        text = f'{self.equationDisplay.toPlainText()}{colName}'
+        colName = f"{item.text(0)}_table{item.index + 1}"
+        text = f"{self.equationDisplay.toPlainText()}{colName}"
 
         self.equationDisplay.setPlainText(text)
         self.clearLenghts.append(len(colName))
@@ -13920,31 +13928,26 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         self.cancel = False
         self.sigOk.emit(self.newColname, self.expression)
         self.close()
-    
+
     def warnEmptyEquation(self):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
             "Equation" field <b>cannot be empty</b>!
         """)
-        msg.critical(
-            self, 'Empty equation', txt
-        )
+        msg.critical(self, "Empty equation", txt)
 
     def warnEmptyEquationName(self):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
             "New measurement name" field <b>cannot be empty</b>!
         """)
-        msg.critical(
-            self, 'Empty new measurement name', txt
-        )
+        msg.critical(self, "Empty new measurement name", txt)
+
 
 class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
     sigLoadAdditionalAcdcDf = Signal()
 
-    def __init__(
-            self, acdcDfs, allChNames, parent=None, debug=False
-        ):
+    def __init__(self, acdcDfs, allChNames, parent=None, debug=False):
         super().__init__(parent)
 
         self.editedIndex = None
@@ -13952,19 +13955,19 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
         self.acdcDfs = acdcDfs
         self.allChNames = allChNames
 
-        self.setWindowTitle('Combine measurements summary')
-        
+        self.setWindowTitle("Combine measurements summary")
+
         mainLayout = QVBoxLayout()
         viewLayout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
         row = 0
-        txt = html_utils.paragraph('Selected acdc_output tables:')
+        txt = html_utils.paragraph("Selected acdc_output tables:")
         viewLayout.addWidget(QLabel(txt), row, 0)
 
         row += 1
         items = [
-            f'• <b>Table {i+1}</b>: <code>{e}</code>' 
+            f"• <b>Table {i + 1}</b>: <code>{e}</code>"
             for i, e in enumerate(acdcDfs.keys())
         ]
         selectedAcdcDfsList = widgets.readOnlyQList()
@@ -13972,14 +13975,11 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
         self.selectedAcdcDfsList = selectedAcdcDfsList
 
         tablesButtonsLayout = QVBoxLayout()
-        loadAcdcDfButton = widgets.showInFileManagerButton('Load additional tables')
+        loadAcdcDfButton = widgets.showInFileManagerButton("Load additional tables")
         tablesButtonsLayout.addWidget(loadAcdcDfButton)
-        
-        loadEquationsButton = widgets.reloadPushButton(
-            'Load previously used equations'
-        )
+
+        loadEquationsButton = widgets.reloadPushButton("Load previously used equations")
         tablesButtonsLayout.addWidget(loadEquationsButton)
-        
 
         tablesButtonsLayout.addStretch(1)
 
@@ -13988,20 +13988,21 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
         viewLayout.setRowStretch(row, 1)
 
         row += 1
-        txt = html_utils.paragraph('Equations:')
+        txt = html_utils.paragraph("Equations:")
         viewLayout.addWidget(QLabel(txt), row, 0)
 
         row += 1
         self.equationsList = widgets.TreeWidget()
         self.equationsList.setFont(font)
-        self.equationsList.setHeaderLabels(['Metric', 'Expression'])
+        self.equationsList.setHeaderLabels(["Metric", "Expression"])
         self.equationsList.setSelectionMode(
-            QAbstractItemView.SelectionMode.ExtendedSelection)
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
 
         equationsButtonsLayout = QVBoxLayout()
-        addEquationButton = widgets.addPushButton('Add metric')
-        removeEquationButton = widgets.subtractPushButton('Remove metric(s)')
-        editEquationButton = widgets.editPushButton('Edit metric')
+        addEquationButton = widgets.addPushButton("Add metric")
+        removeEquationButton = widgets.subtractPushButton("Remove metric(s)")
+        editEquationButton = widgets.editPushButton("Edit metric")
         removeEquationButton.setDisabled(True)
         editEquationButton.setDisabled(True)
         self.removeEquationButton = removeEquationButton
@@ -14011,13 +14012,13 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
         equationsButtonsLayout.addWidget(removeEquationButton)
         equationsButtonsLayout.addWidget(editEquationButton)
         equationsButtonsLayout.addStretch(1)
-        
+
         viewLayout.addWidget(self.equationsList, row, 0)
         viewLayout.addLayout(equationsButtonsLayout, row, 1)
         viewLayout.setRowStretch(row, 2)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton('Ok')
+        cancelButton = widgets.cancelPushButton("Cancel")
+        okButton = widgets.okPushButton("Ok")
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -14041,53 +14042,58 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
         )
 
         self.setLayout(mainLayout)
-    
+
     def setLogger(self, logger, logs_path, log_path):
         self.logger = logger
         self.logs_path = logs_path
         self.log_path = log_path
-    
+
     def loadEquationsButtonClicked(self):
         MostRecentPath = myutils.getMostRecentPath()
         file_path = QFileDialog.getOpenFileName(
-            self, 'Select equations file', MostRecentPath, "Config Files (*.ini)"
-            ";;All Files (*)")[0]
-        if file_path == '':
+            self,
+            "Select equations file",
+            MostRecentPath,
+            "Config Files (*.ini);;All Files (*)",
+        )[0]
+        if file_path == "":
             return
 
         cp = config.ConfigParser()
         cp.read(file_path)
-        sectionToMatch = [
-            f'table{i+1}:{end}' for i, end in enumerate(self.acdcDfs)
-        ]
-        sectionToMatch = ';'.join(sectionToMatch)
-        
+        sectionToMatch = [f"table{i + 1}:{end}" for i, end in enumerate(self.acdcDfs)]
+        sectionToMatch = ";".join(sectionToMatch)
+
         lists = {}
         nonMatchingLists = {}
         groupsDescr = {}
-        
+
         for section in cp.sections():
             # Tag acdc_output names with <code> html and table(\d+) with html bold tag
-            listName = ';'.join([
-                re.sub(r'table(\d+):(.*)', r'<b>table\g<1></b>: <code>\g<2></code>', s) 
-                for s in section.split(';')
-            ])
-            listName = listName.replace(';', ' ; ')
-            children = [f'{opt} = {cp[section][opt]}' for opt in cp[section]]
+            listName = ";".join(
+                [
+                    re.sub(
+                        r"table(\d+):(.*)", r"<b>table\g<1></b>: <code>\g<2></code>", s
+                    )
+                    for s in section.split(";")
+                ]
+            )
+            listName = listName.replace(";", " ; ")
+            children = [f"{opt} = {cp[section][opt]}" for opt in cp[section]]
             if section == sectionToMatch:
                 groupsDescr[listName] = (
-                    'Equations that were calculated from the <b>same '
-                    'table names</b> you loaded'
+                    "Equations that were calculated from the <b>same "
+                    "table names</b> you loaded"
                 )
                 lists[listName] = children
             else:
                 groupsDescr[listName] = (
-                    'Equations that were calculated from <b>table names that '
-                    'you did not load</b> now'
+                    "Equations that were calculated from <b>table names that "
+                    "you did not load</b> now"
                 )
                 nonMatchingLists[listName] = children
                 # # Not implemented yet --> selecting from non matching table names
-                # # would require an additional widget where the user sets 
+                # # would require an additional widget where the user sets
                 # # what df1 and df2 are.
                 # trees[treeName] = children
 
@@ -14100,16 +14106,18 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
             """)
             with open(file_path) as iniFile:
                 detailedText = iniFile.read()
-            
-            msg.warning(self, 'Not the same tables', txt, showDialog=False)
+
+            msg.warning(self, "Not the same tables", txt, showDialog=False)
             msg.setDetailedText(detailedText, visible=True)
             msg.addShowInFileManagerButton(os.path.dirname(file_path))
             msg.exec_()
             return
 
         selectWindow = MultiListSelector(
-            lists, groupsDescr=groupsDescr, title='Select equations to load',
-            infoTxt='Select equations you want to load'
+            lists,
+            groupsDescr=groupsDescr,
+            title="Select equations to load",
+            infoTxt="Select equations you want to load",
         )
         selectWindow.exec_()
         if selectWindow.cancel or not selectWindow.selectedItems:
@@ -14117,9 +14125,8 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
 
         for listName, equations in selectWindow.selectedItems.items():
             for equation in equations:
-                metricName, expression = equation.split(' = ')
+                metricName, expression = equation.split(" = ")
                 self.addEquation(metricName, expression)
-        
 
     def ok_cb(self):
         self.cancel = False
@@ -14129,19 +14136,19 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
             self.equations[item.text(0)] = item.text(1)
 
         self.close()
-    
+
     def loadButtonClicked(self):
         self.sigLoadAdditionalAcdcDf.emit()
-    
+
     def removeButtonClicked(self):
         for item in self.equationsList.selectedItems():
             self.equationsList.invisibleRootItem().removeChild(item)
-        
+
     def editButtonClicked(self):
         self.editedItem = self.equationsList.selectedItems()[0]
         self.editedIndex = self.equationsList.indexOfTopLevelItem(self.editedItem)
         self.addEquation_cb()
-    
+
     def onEquationItemSelectionChanged(self):
         selectedItems = self.equationsList.selectedItems()
         if len(selectedItems) == 1:
@@ -14153,11 +14160,11 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
         else:
             self.removeEquationButton.setDisabled(True)
             self.editEquationButton.setDisabled(True)
-    
+
     def addAcdcDfs(self, acdcDfsDict):
         self.acdcDfs = {**self.acdcDfs, **acdcDfsDict}
         items = [
-            f'• <b>Table {i+1}</b>: <code>{e}</code>' 
+            f"• <b>Table {i + 1}</b>: <code>{e}</code>"
             for i, e in enumerate(self.acdcDfs.keys())
         ]
         self.selectedAcdcDfsList = widgets.readOnlyQList()
@@ -14179,15 +14186,13 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
         self.equationsList.resizeColumnToContents(0)
         self.equationsList.resizeColumnToContents(1)
         self.editedIndex = None
-    
+
     def addEquation_cb(self):
         self.addEquationWin = CombineMetricsMultiDfsDialog(
             self.acdcDfs, self.allChNames, parent=self
         )
-        if hasattr(self, 'logger'):
-            self.addEquationWin.setLogger(
-                self.logger, self.logs_path, self.log_path
-            )
+        if hasattr(self, "logger"):
+            self.addEquationWin.setLogger(self.logger, self.logs_path, self.log_path)
         if self.editedIndex is not None:
             editedMetricName = self.editedItem.text(0)
             self.addEquationWin.newColNameLineEdit.setText(editedMetricName)
@@ -14196,26 +14201,28 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
         self.addEquationWin.show()
         self.addEquationWin.sigOk.connect(self.addEquation)
         self.addEquationWin.sigClose.connect(self.addEquationClosed)
-    
+
     def addEquationClosed(self, cancelled):
         if cancelled:
             self.editedIndex = None
-    
+
     def showEvent(self, event) -> None:
-        self.resize(int(self.width()*2), self.height())
+        self.resize(int(self.width() * 2), self.height())
+
 
 class ShortcutEditorDialog(QBaseDialog):
     def __init__(
-            self, widgetsWithShortcut: dict, 
-            delObjectKey='',
-            delObjectButton: Literal['Middle click', 'Left click']='Middle click',
-            zoomOutKeyValue: int=None,
-            parent=None
-        ):
+        self,
+        widgetsWithShortcut: dict,
+        delObjectKey="",
+        delObjectButton: Literal["Middle click", "Left click"] = "Middle click",
+        zoomOutKeyValue: int = None,
+        parent=None,
+    ):
         self.cancel = True
         super().__init__(parent)
 
-        self.setWindowTitle('Customize keyboard shortcuts')
+        self.setWindowTitle("Customize keyboard shortcuts")
 
         mainLayout = QVBoxLayout()
 
@@ -14226,7 +14233,7 @@ class ShortcutEditorDialog(QBaseDialog):
         scrollArea.setWidgetResizable(True)
         scrollAreaWidget = QWidget()
         entriesLayout = QGridLayout()
-        
+
         row = 0
         button = widgets.PushButton(self, flat=True)
         button.setIcon(QIcon(":del_obj_click.svg"))
@@ -14236,32 +14243,30 @@ class ShortcutEditorDialog(QBaseDialog):
         if delObjectKey is not None:
             self.delObjShortcutLineEdit.setText(delObjectKey)
         self.delObjButtonCombobox = QComboBox()
-        self.delObjButtonCombobox.addItems(['Middle click', 'Left click'])
+        self.delObjButtonCombobox.addItems(["Middle click", "Left click"])
         self.delObjButtonCombobox.setCurrentText(delObjectButton)
         entriesLayout.addWidget(button, row, 0)
-        entriesLayout.addWidget(QLabel('Delete object:'), row, 1)
+        entriesLayout.addWidget(QLabel("Delete object:"), row, 1)
         entriesLayout.addWidget(self.delObjShortcutLineEdit, row, 2)
         entriesLayout.addWidget(
             self.delObjButtonCombobox, row, 3, alignment=Qt.AlignLeft
         )
-        
+
         row += 1
-        name = 'Zoom out'
+        name = "Zoom out"
         button = widgets.PushButton(self, flat=True)
-        label = QLabel('Zoom out:')
+        label = QLabel("Zoom out:")
         self.zoomShortcutLineEdit = widgets.ShortcutLineEdit()
         if zoomOutKeyValue is not None:
             zoomOutKeySequence = widgets.KeySequenceFromText(zoomOutKeyValue)
             self.zoomShortcutLineEdit.setText(zoomOutKeySequence.toString())
             self.zoomShortcutLineEdit.key = zoomOutKeyValue
-        self.zoomShortcutLineEdit.textChanged.connect(
-            self.checkDuplicateShortcuts
-        )
+        self.zoomShortcutLineEdit.textChanged.connect(self.checkDuplicateShortcuts)
         entriesLayout.addWidget(button, row, 0)
         entriesLayout.addWidget(label, row, 1)
         entriesLayout.addWidget(self.zoomShortcutLineEdit, row, 2)
         self.shortcutLineEdits[name] = self.zoomShortcutLineEdit
-        
+
         row += 1
         for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=row):
             button = widgets.PushButton(self, flat=True)
@@ -14269,9 +14274,9 @@ class ShortcutEditorDialog(QBaseDialog):
                 button.setIcon(widget.icon())
             except:
                 pass
-            label = QLabel(f'{name}:')
+            label = QLabel(f"{name}:")
             shortcutLineEdit = widgets.ShortcutLineEdit()
-            if hasattr(widget, 'keyPressShortcut'):
+            if hasattr(widget, "keyPressShortcut"):
                 shortcutLineEdit.key = widget.keyPressShortcut
                 shortcut = widgets.KeySequenceFromText(widget.keyPressShortcut)
                 isShortcutKeyPress = True
@@ -14285,7 +14290,7 @@ class ShortcutEditorDialog(QBaseDialog):
             entriesLayout.addWidget(label, row, 1)
             entriesLayout.addWidget(shortcutLineEdit, row, 2)
             self.shortcutLineEdits[name] = shortcutLineEdit
-        
+
         entriesLayout.setColumnStretch(0, 0)
         entriesLayout.setColumnStretch(1, 0)
         entriesLayout.setColumnStretch(2, 1)
@@ -14304,133 +14309,127 @@ class ShortcutEditorDialog(QBaseDialog):
 
         self.setFont(font)
         self.setLayout(mainLayout)
-    
+
     def checkDuplicateShortcuts(self, text):
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
             if shortcutLineEdit == self.sender():
                 continue
             if shortcutLineEdit.text() != text:
                 continue
-            shortcutLineEdit.setText('')
-    
+            shortcutLineEdit.setText("")
+
     def warnInvalidKeySequenceDelObjWithLeftClick(self):
         txt = html_utils.paragraph(
             'The selected key sequence to delete objects with "Left click" '
-            'is invalid.<br><br>'
+            "is invalid.<br><br>"
             'Only "Middle click" can be used without pressing keys.<br><br>'
-            'Thank you for your patience!'
+            "Thank you for your patience!"
         )
         msg = widgets.myMessageBox()
-        msg.warning(self, 'Invalid key sequence to delete objects', txt)
-    
+        msg.warning(self, "Invalid key sequence to delete objects", txt)
+
     def ok_cb(self):
         delObjButtonText = self.delObjButtonCombobox.currentText()
         delObjKeySequence = self.delObjShortcutLineEdit.keySequence
-        if delObjButtonText == 'Left click' and delObjKeySequence is None:
+        if delObjButtonText == "Left click" and delObjKeySequence is None:
             self.warnInvalidKeySequenceDelObjWithLeftClick()
             return
-        
-        self.shortcutLineEdits.pop('Zoom out')
+
+        self.shortcutLineEdits.pop("Zoom out")
         self.cancel = False
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
             text = shortcutLineEdit.text()
             if shortcutLineEdit.isShortcutKeyPress:
                 self.customShortcuts[name] = (text, shortcutLineEdit.key)
             else:
-                self.customShortcuts[name] = (
-                    text, shortcutLineEdit.keySequence
-                )
-        
+                self.customShortcuts[name] = (text, shortcutLineEdit.keySequence)
+
         delObjQtButton = (
-            Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
+            Qt.MouseButton.LeftButton
+            if delObjButtonText == "Left click"
             else Qt.MouseButton.MiddleButton
         )
         self.delObjAction = delObjKeySequence, delObjQtButton
         self.zoomOutKeyValue = self.zoomShortcutLineEdit.key
-        
+
         self.close()
-    
+
     def showEvent(self, event) -> None:
-        self.resize(int(self.width()*1.2), self.height())
+        self.resize(int(self.width() * 1.2), self.height())
         self.move(self.x(), 100)
+
 
 class SelectAcdcDfVersionToRestore(QBaseDialog):
     def __init__(self, posData, parent=None):
         super().__init__(parent=parent)
-        
+
         self.cancel = True
-        
-        self.setWindowTitle('Select annotations table to restore')
-        
+
+        self.setWindowTitle("Select annotations table to restore")
+
         mainLayout = QVBoxLayout()
-        
+
         acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
         instructionsLabel = html_utils.paragraph(
-            f'Select an <b>older version</b> of the <code>{acdc_df_filename}</code> '
-            'annotations table to load.<br><br>'
-            'The datetime refers to the time you replaced the old version with '
-            'a newer one.<br><br>'
+            f"Select an <b>older version</b> of the <code>{acdc_df_filename}</code> "
+            "annotations table to load.<br><br>"
+            "The datetime refers to the time you replaced the old version with "
+            "a newer one.<br><br>"
         )
         mainLayout.addWidget(QLabel(instructionsLabel))
-        
+
         self.savedListBox = None
         if os.path.exists(posData.acdc_output_backup_zip_path):
             zip_path = posData.acdc_output_backup_zip_path
             self.savedArchivefilepath = zip_path
-            with zipfile.ZipFile(zip_path, mode='r') as zip:
+            with zipfile.ZipFile(zip_path, mode="r") as zip:
                 csv_names = natsorted(zip.namelist(), reverse=True)
-            
+
             keys = [csv_name[:-4] for csv_name in csv_names]
 
             self.savedKeys = keys
             f = load.ISO_TIMESTAMP_FORMAT
             timestamps = [datetime.datetime.strptime(key, f) for key in keys]
-            items = [date.strftime(r'%d %b %Y, %H:%M:%S') for date in timestamps]
-            mainLayout.addWidget(QLabel('Saved annotations:'))
+            items = [date.strftime(r"%d %b %Y, %H:%M:%S") for date in timestamps]
+            mainLayout.addWidget(QLabel("Saved annotations:"))
             self.savedListBox = widgets.listWidget()
             self.savedListBox.addItems(items)
             mainLayout.addWidget(self.savedListBox)
-            self.savedListBox.itemSelectionChanged.connect(
-                self.onItemSelectionChanged
-            )
-        
+            self.savedListBox.itemSelectionChanged.connect(self.onItemSelectionChanged)
+
         recovery_folderpath = posData.recoveryFolderpath()
-        unsaved_recovery_folderpath = os.path.join(
-            recovery_folderpath, 'never_saved'
-        )
+        unsaved_recovery_folderpath = os.path.join(recovery_folderpath, "never_saved")
         self.neverSavedFolderpath = unsaved_recovery_folderpath
         files = myutils.listdir(unsaved_recovery_folderpath)
-        csv_files = [file for file in files if file.endswith('.csv')]
+        csv_files = [file for file in files if file.endswith(".csv")]
         self.neverSavedListBox = None
         if csv_files:
             csv_names = natsorted(csv_files, reverse=True)
             keys = [csv_name[:-4] for csv_name in csv_names]
             self.neverSavedKeys = keys
             f = load.ISO_TIMESTAMP_FORMAT
-            timestamps = [
-                datetime.datetime.strptime(key, f) for key in keys
-            ]
-            items = [date.strftime(r'%d %b %Y, %H:%M:%S') for date in timestamps]
-            mainLayout.addWidget(QLabel('Never saved annotations:'))
+            timestamps = [datetime.datetime.strptime(key, f) for key in keys]
+            items = [date.strftime(r"%d %b %Y, %H:%M:%S") for date in timestamps]
+            mainLayout.addWidget(QLabel("Never saved annotations:"))
             self.neverSavedListBox = widgets.listWidget()
             self.neverSavedListBox.addItems(items)
             mainLayout.addWidget(self.neverSavedListBox)
             self.neverSavedListBox.itemSelectionChanged.connect(
                 self.onItemSelectionChanged
             )
-                
+
         cancelOkLayout = widgets.CancelOkButtonsLayout()
-        
+
         cancelOkLayout.okButton.clicked.connect(self.ok_cb)
         cancelOkLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addSpacing(20)
         mainLayout.addLayout(cancelOkLayout)
-        
+
         self.setLayout(mainLayout)
-        
+
         self.setFont(font)
-    
+
     def ok_cb(self):
         self.cancel = False
         try:
@@ -14443,7 +14442,7 @@ class SelectAcdcDfVersionToRestore(QBaseDialog):
                     break
         except Exception as e:
             pass
-        
+
         try:
             for i in range(self.neverSavedListBox.count()):
                 item = self.neverSavedListBox.item(i)
@@ -14455,10 +14454,11 @@ class SelectAcdcDfVersionToRestore(QBaseDialog):
         except Exception as e:
             pass
         self.close()
-    
+
     def onItemSelectionChanged(self):
         otherListBox = (
-            self.savedListBox if self.sender() == self.neverSavedListBox
+            self.savedListBox
+            if self.sender() == self.neverSavedListBox
             else self.neverSavedListBox
         )
         if otherListBox is None:
@@ -14467,69 +14467,65 @@ class SelectAcdcDfVersionToRestore(QBaseDialog):
             item = otherListBox.item(i)
             item.setSelected(False)
 
+
 class ChangeUserProfileFolderPathDialog(QBaseDialog):
     def __init__(self, posData, parent=None):
         super().__init__(parent=parent)
-        
+
         self.cancel = True
-        
-        self.setWindowTitle('Change user profile folder path')
-        
+
+        self.setWindowTitle("Change user profile folder path")
+
         mainLayout = QVBoxLayout()
-        
+
         acdc_folders = load.get_all_acdc_folders(user_profile_path)
-        acdc_folders_format = [f'  - {folder}' for folder in acdc_folders]
-        acdc_folders_format = '<br>'.join(acdc_folders_format)
-        
-        txt = (f"""
+        acdc_folders_format = [f"  - {folder}" for folder in acdc_folders]
+        acdc_folders_format = "<br>".join(acdc_folders_format)
+
+        txt = f"""
             Current user profile path:<br><br>
             <code>{user_profile_path}</code><br><br>
             The user profile contains the following Cell-ACDC folders:<br><br>
             {acdc_folders_format}<br><br>
             After clicking "Ok" you will be <b>asked to select the folder</b> where 
             you want to <b>migrate</b> the user profile data. 
-        """)
-        
+        """
+
         txt = html_utils.paragraph(txt)
         label = QLabel(txt)
-        
+
         mainLayout.addWidget(label)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
         mainLayout.addStretch()
-        
+
         self.setLayout(mainLayout)
-    
+
     def ok_cb(self):
         self.cancel = False
         self.close()
- 
+
+
 class SelectFeaturesRange:
     def __init__(
-            self, 
-            posData, 
-            force_postprocess_2D=False, 
-            qparent=None,
-            sigValueChanged=None
-        ) -> None:
+        self, posData, force_postprocess_2D=False, qparent=None, sigValueChanged=None
+    ) -> None:
         self.posData = posData
         self.qparent = qparent
         self.force_postprocess_2D = force_postprocess_2D
         self.sigValueChanged = sigValueChanged
-        
+
         self.lowRangeWidgets = widgets.CheckableSpinBoxWidgets()
-        self.highRangeWidgets = widgets.CheckableSpinBoxWidgets()        
-        
-        self.selectButton = widgets.FeatureSelectorButton(
-            'Click to select feature...'
-        )
+        self.highRangeWidgets = widgets.CheckableSpinBoxWidgets()
+
+        self.selectButton = widgets.FeatureSelectorButton("Click to select feature...")
         self.selectButton.setSizeLongestText(
-            'Spotfit intens. metric, Foregr. integral gauss. peak'
+            "Spotfit intens. metric, Foregr. integral gauss. peak"
         )
         self.selectButton.clicked.connect(self.selectFeature)
         self.selectButton.setCursor(Qt.PointingHandCursor)
@@ -14537,34 +14533,39 @@ class SelectFeaturesRange:
         self.selectedFeatureGroups = {}
 
         self.widgets = [
-            {'pos': (0, 0), 'widget': self.lowRangeWidgets.checkbox}, 
-            {'pos': (1, 0), 'widget': self.lowRangeWidgets.spinbox}, 
-            {'pos': (1, 1), 'widget': widgets.LessThanPushButton(flat=True)},
-            {'pos': (1, 2), 'widget': self.selectButton},
-            {'pos': (1, 3), 'widget': widgets.LessThanPushButton(flat=True)},
-            {'pos': (0, 4), 'widget': self.highRangeWidgets.checkbox},
-            {'pos': (1, 4), 'widget': self.highRangeWidgets.spinbox}, 
-            {'pos': (2, 0), 'widget': widgets.VerticalSpacerEmptyWidget(height=10)}
+            {"pos": (0, 0), "widget": self.lowRangeWidgets.checkbox},
+            {"pos": (1, 0), "widget": self.lowRangeWidgets.spinbox},
+            {"pos": (1, 1), "widget": widgets.LessThanPushButton(flat=True)},
+            {"pos": (1, 2), "widget": self.selectButton},
+            {"pos": (1, 3), "widget": widgets.LessThanPushButton(flat=True)},
+            {"pos": (0, 4), "widget": self.highRangeWidgets.checkbox},
+            {"pos": (1, 4), "widget": self.highRangeWidgets.spinbox},
+            {"pos": (2, 0), "widget": widgets.VerticalSpacerEmptyWidget(height=10)},
         ]
         self.columnsStretches = {0: 0, 1: 0, 2: 1, 3: 0, 4: 0}
-    
+
     def setText(self, text):
         self.selectButton.setText(text)
-    
+
     def selectFeature(self):
         loadedChNames = [self.posData.user_ch_name]
         notLoadedChNames = []
         isZstack = self.posData.SizeZ > 1 and not self.force_postprocess_2D
         isSegm3D = self.posData.isSegm3D and not self.force_postprocess_2D
         self.selectFeatureDialog = SetMeasurementsDialog(
-            loadedChNames, notLoadedChNames, isZstack, isSegm3D,
-            posData=self.posData, parent=self.qparent,
-            isSingleSelection=True, is_concat=True
+            loadedChNames,
+            notLoadedChNames,
+            isZstack,
+            isSegm3D,
+            posData=self.posData,
+            parent=self.qparent,
+            isSingleSelection=True,
+            is_concat=True,
         )
         # self.selectFeatureDialog.resizeVertical()
         self.selectFeatureDialog.sigClosed.connect(self.setFeatureText)
         self.selectFeatureDialog.show()
-    
+
     def setFeatureText(self):
         if self.selectFeatureDialog.cancel:
             return
@@ -14575,72 +14576,71 @@ class SelectFeaturesRange:
         self.selectButton.setText(selectedMetricName)
         self.featureGroup = selectedMetricGroup
 
+
 class SelectFeaturesRangeDialog(QBaseDialog):
     sigValueChanged = Signal(object)
-    
+
     def __init__(self, posData=None, parent=None, force_postprocess_2D=False):
         super().__init__(parent)
-        
+
         self.force_postprocess_2D = force_postprocess_2D
-        
+
         layout = QVBoxLayout()
-        self.setWindowTitle('Custom features for post-processing')
-        
+        self.setWindowTitle("Custom features for post-processing")
+
         self.groupbox = SelectFeaturesRangeGroupbox(
-            posData=posData, parent=parent, 
-            force_postprocess_2D=force_postprocess_2D
+            posData=posData, parent=parent, force_postprocess_2D=force_postprocess_2D
         )
-        
+
         buttonsLayout = QHBoxLayout()
-        okPushButton = widgets.okPushButton(' Ok ')
-        
+        okPushButton = widgets.okPushButton(" Ok ")
+
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(okPushButton)
-        
+
         okPushButton.clicked.connect(self.ok_cb)
 
         layout.addWidget(self.groupbox)
         layout.addSpacing(10)
         layout.addLayout(buttonsLayout)
-        
+
         self.setLayout(layout)
-    
+
     def ok_cb(self):
         if self.groupbox.selectedFeaturesRange():
             self.sigValueChanged.emit(None)
         self.hide()
 
+
 class SelectFeaturesRangeGroupbox(QGroupBox):
-    def __init__(
-            self, posData=None, parent=None, force_postprocess_2D=False
-        ):
+    def __init__(self, posData=None, parent=None, force_postprocess_2D=False):
         super().__init__(parent)
 
-        self.setTitle('Features and thresholds for filtering segmented objects')
+        self.setTitle("Features and thresholds for filtering segmented objects")
         # self.setCheckable(True)
 
         self.posData = posData
         self.force_postprocess_2D = force_postprocess_2D
-        
+
         self._layout = QGridLayout()
         self._layout.setVerticalSpacing(0)
 
         firstSelector = SelectFeaturesRange(
             posData, force_postprocess_2D=force_postprocess_2D
         )
-        self.addButton = widgets.addPushButton('  Add feature    ')
+        self.addButton = widgets.addPushButton("  Add feature    ")
         self.addButton.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         for col, widget in enumerate(firstSelector.widgets):
-            row, col = widget['pos']
-            self._layout.addWidget(widget['widget'], row, col)
+            row, col = widget["pos"]
+            self._layout.addWidget(widget["widget"], row, col)
         for col, stretch in firstSelector.columnsStretches.items():
             self._layout.setColumnStretch(col, stretch)
-            
+
         lastCol = self._layout.columnCount()
-        self._layout.addWidget(self.addButton, 0, lastCol+1, 2, 1)
-        self.lastCol = lastCol+1
+        self._layout.addWidget(self.addButton, 0, lastCol + 1, 2, 1)
+        self.lastCol = lastCol + 1
         self.selectors = [firstSelector]
 
         self.setLayout(self._layout)
@@ -14654,52 +14654,52 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
         selector = SelectFeaturesRange(
             self.posData, force_postprocess_2D=self.force_postprocess_2D
         )
-        delButton = widgets.delPushButton('Remove feature')
+        delButton = widgets.delPushButton("Remove feature")
         delButton.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         delButton.selector = selector
         selector.delButton = delButton
         for col, widget in enumerate(selector.widgets):
-            relRow, col = widget['pos']
-            self._layout.addWidget(widget['widget'], relRow+row, col)
+            relRow, col = widget["pos"]
+            self._layout.addWidget(widget["widget"], relRow + row, col)
         self._layout.addWidget(delButton, row, self.lastCol, 2, 1)
         self.selectors.append(selector)
         delButton.clicked.connect(self.removeFeatureField)
-    
+
     def resetFields(self):
         while len(self.selectors) > 1:
             selector = self.selectors[-1]
             selector.delButton.click()
         firstSelector = self.selectors[0]
-        firstSelector.selectButton.setText('Click to select feature...')
+        firstSelector.selectButton.setText("Click to select feature...")
         firstSelector.lowRangeWidgets.checkbox.setChecked(False)
         firstSelector.highRangeWidgets.checkbox.setChecked(False)
-    
+
     def removeFeatureField(self):
         delButton = self.sender()
         for widget in delButton.selector.widgets:
-            self._layout.removeWidget(widget['widget'])
+            self._layout.removeWidget(widget["widget"])
         self._layout.removeWidget(delButton)
         self.selectors.remove(delButton.selector)
-    
+
     def selectedFeaturesRange(self):
         featuresRange = {}
         for selector in self.selectors:
-            if selector.selectButton.text().find('Click') != -1:
+            if selector.selectButton.text().find("Click") != -1:
                 continue
             featuresRange[selector.selectButton.text()] = (
-                selector.lowRangeWidgets.value(), 
-                selector.highRangeWidgets.value()
+                selector.lowRangeWidgets.value(),
+                selector.highRangeWidgets.value(),
             )
         return featuresRange
 
     def selectedFeaturesGroup(self):
         featuresGroup = {}
         for selector in self.selectors:
-            if selector.selectButton.text().find('Click') != -1:
+            if selector.selectButton.text().find("Click") != -1:
                 continue
-            group = selector.featureGroup                
+            group = selector.featureGroup
             featuresGroup[selector.selectButton.text()] = group
         return featuresGroup
 
@@ -14721,219 +14721,211 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
                     groupedFeatures[key][channel] = []
                 groupedFeatures[key][channel].append(feature)
         return groupedFeatures
-    
+
     def setValue(self, value):
         pass
+
 
 def get_existing_directory(allow_images_path=True, **kwargs):
     while True:
         folder_path = qtpy.compat.getexistingdirectory(**kwargs)
         if not folder_path:
             return
-        
+
         if allow_images_path:
             return folder_path
-        
+
         pos_folderpath = os.path.dirname(folder_path)
         is_images_folder = (
-            folder_path.endswith('Images') 
-            and os.path.basename(pos_folderpath).startswith('Position_')
+            folder_path.endswith("Images")
+            and os.path.basename(pos_folderpath).startswith("Position_")
             and os.path.isdir(folder_path)
         )
         if not is_images_folder:
             return folder_path
-        
+
         txt = html_utils.paragraph(
-            'You <b>cannot save</b> to the <code>Images</code> folder '
-            'because it is reserved to files that start with the same '
-            'basename.<br><br>Thank you for your patience!'
+            "You <b>cannot save</b> to the <code>Images</code> folder "
+            "because it is reserved to files that start with the same "
+            "basename.<br><br>Thank you for your patience!"
         )
         msg = widgets.myMessageBox()
-        msg.warning(kwargs['parent'], 'Cannot save here', txt)
+        msg.warning(kwargs["parent"], "Cannot save here", txt)
+
 
 class ScaleBarPropertiesDialog(QBaseDialog):
     sigValueChanged = Signal(object)
-    
+
     def __init__(
-            self, maxLength, maxThickness, PhysicalSizeX, parent=None, 
-            **properties
-        ):
+        self, maxLength, maxThickness, PhysicalSizeX, parent=None, **properties
+    ):
         super().__init__(parent=parent)
-        
+
         self.cancel = True
-        self.setWindowTitle('Scale bar properties')
-        
+        self.setWindowTitle("Scale bar properties")
+
         self.PhysicalSizeX = PhysicalSizeX
-        
+
         mainLayout = QVBoxLayout()
-        
+
         formLayout = widgets.FormLayout()
         formLayout.setVerticalSpacing(10)
         formLayout.setHorizontalSpacing(50)
-        
+
         row = 0
         unitCombobox = QComboBox()
-        unitFormWidget = widgets.formWidget(
-            unitCombobox, labelTextLeft='Physical unit'
-        )
-        unitCombobox.addItems(
-            ['nm', 'μm', 'mm', 'cm']
-        )
-        if properties.get('unit') is None:
+        unitFormWidget = widgets.formWidget(unitCombobox, labelTextLeft="Physical unit")
+        unitCombobox.addItems(["nm", "μm", "mm", "cm"])
+        if properties.get("unit") is None:
             unitCombobox.setCurrentIndex(1)
         else:
-            unitCombobox.setCurrentText(properties.get('unit'))
+            unitCombobox.setCurrentText(properties.get("unit"))
         formLayout.addFormWidget(
-            unitFormWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
-        )       
+            unitFormWidget, row=row, leftLabelAlignment=Qt.AlignLeft
+        )
         self.unitCombobox = unitCombobox
-        
+
         row += 1
         lengthDoubleSpinbox = widgets.DoubleSpinBox()
         lengthDoubleSpinbox.setMaximum(maxLength)
         lengthDoubleSpinbox.setMinimum(PhysicalSizeX)
         lengthDoubleSpinbox.setDecimals(1)
-        if properties.get('length_unit') is not None:
-            lengthDoubleSpinbox.setValue(properties.get('length_unit'))
+        if properties.get("length_unit") is not None:
+            lengthDoubleSpinbox.setValue(properties.get("length_unit"))
         else:
-            deafultLength = np.ceil(PhysicalSizeX*15)
+            deafultLength = np.ceil(PhysicalSizeX * 15)
             lengthDoubleSpinbox.setValue(round(deafultLength))
         lengthFormWidget = widgets.formWidget(
-            lengthDoubleSpinbox, labelTextLeft='Length (μm)'
+            lengthDoubleSpinbox, labelTextLeft="Length (μm)"
         )
         self.lengthFormWidget = lengthFormWidget
         self.lengthDoubleSpinbox = lengthDoubleSpinbox
         formLayout.addFormWidget(
-            lengthFormWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
-        )       
-        
+            lengthFormWidget, row=row, leftLabelAlignment=Qt.AlignLeft
+        )
+
         row += 1
         thicknessSpinbox = widgets.DoubleSpinBox()
         thicknessSpinbox.setMaximum(maxThickness)
         thicknessSpinbox.setMinimum(1)
-        if properties.get('thickness') is not None:
-            thicknessSpinbox.setValue(properties.get('thickness'))
+        if properties.get("thickness") is not None:
+            thicknessSpinbox.setValue(properties.get("thickness"))
         else:
             thicknessSpinbox.setValue(round(4, 1))
         thicknessSpinbox.setDecimals(1)
         thicknessFormWidget = widgets.formWidget(
-            thicknessSpinbox, labelTextLeft='Thickness (pixel)'
+            thicknessSpinbox, labelTextLeft="Thickness (pixel)"
         )
         formLayout.addFormWidget(
-            thicknessFormWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
-        )       
+            thicknessFormWidget, row=row, leftLabelAlignment=Qt.AlignLeft
+        )
         self.thicknessSpinbox = thicknessSpinbox
-        
+
         row += 1
         locCombobox = QComboBox()
-        locFormWidget = widgets.formWidget(
-            locCombobox, labelTextLeft='Location'
-        )
+        locFormWidget = widgets.formWidget(locCombobox, labelTextLeft="Location")
         locCombobox.addItems(
-            ['Bottom-right', 'Bottom-left', 'Top-left', 'Top-right', 'Custom']
+            ["Bottom-right", "Bottom-left", "Top-left", "Top-right", "Custom"]
         )
-        loc = properties.get('loc')
+        loc = properties.get("loc")
         if isinstance(loc, str):
             locCombobox.setCurrentText(loc.capitalize())
         formLayout.addFormWidget(
-            locFormWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
-        )       
+            locFormWidget, row=row, leftLabelAlignment=Qt.AlignLeft
+        )
         self.locCombobox = locCombobox
-        
+
         row += 1
         self.colorButton = widgets.myColorButton(color=(255, 255, 255))
-        if properties.get('color') is not None:
-            self.colorButton.setColor(properties.get('color'))
+        if properties.get("color") is not None:
+            self.colorButton.setColor(properties.get("color"))
         colorFormWidget = widgets.formWidget(
-            self.colorButton, labelTextLeft='Color',
-            widgetAlignment=Qt.AlignCenter, stretchWidget=False
+            self.colorButton,
+            labelTextLeft="Color",
+            widgetAlignment=Qt.AlignCenter,
+            stretchWidget=False,
         )
         formLayout.addFormWidget(
-            colorFormWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
-        )  
-        
+            colorFormWidget, row=row, leftLabelAlignment=Qt.AlignLeft
+        )
+
         row += 1
         displayTextToggle = widgets.Toggle()
-        if properties.get('is_text_visible') is not None:
-            displayTextToggle.setChecked(properties.get('is_text_visible'))
+        if properties.get("is_text_visible") is not None:
+            displayTextToggle.setChecked(properties.get("is_text_visible"))
         else:
             displayTextToggle.setChecked(True)
         displayTextFormWidget = widgets.formWidget(
-            displayTextToggle, labelTextLeft='Display text',
-            widgetAlignment=Qt.AlignCenter, stretchWidget=False
+            displayTextToggle,
+            labelTextLeft="Display text",
+            widgetAlignment=Qt.AlignCenter,
+            stretchWidget=False,
         )
         formLayout.addFormWidget(
-            displayTextFormWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
-        )       
+            displayTextFormWidget, row=row, leftLabelAlignment=Qt.AlignLeft
+        )
         self.displayTextToggle = displayTextToggle
-        
+
         row += 1
         fontSizeSpinbox = widgets.SpinBox()
-        if properties.get('font_size') is not None:
-            fontSizeSpinbox.setValue(int(properties.get('font_size')))
+        if properties.get("font_size") is not None:
+            fontSizeSpinbox.setValue(int(properties.get("font_size")))
         else:
             fontSizeSpinbox.setValue(12)
         fontSizeFormWidget = widgets.formWidget(
-            fontSizeSpinbox, labelTextLeft='Font size (px)'
+            fontSizeSpinbox, labelTextLeft="Font size (px)"
         )
         self.fontSizeSpinbox = fontSizeSpinbox
         formLayout.addFormWidget(
-            fontSizeFormWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
-        ) 
-        
+            fontSizeFormWidget, row=row, leftLabelAlignment=Qt.AlignLeft
+        )
+
         row += 1
         decimalsSpinbox = widgets.SpinBox()
         decimalsSpinbox.setMaximum(6)
         decimalsSpinbox.setMinimum(0)
-        if properties.get('num_decimals') is not None:
-            decimalsSpinbox.setValue(properties.get('num_decimals'))
+        if properties.get("num_decimals") is not None:
+            decimalsSpinbox.setValue(properties.get("num_decimals"))
         else:
             decimalsSpinbox.setValue(0)
         decimalsFormWidget = widgets.formWidget(
-            decimalsSpinbox, labelTextLeft='Number of decimals'
+            decimalsSpinbox, labelTextLeft="Number of decimals"
         )
         formLayout.addFormWidget(
-            decimalsFormWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
-        )       
+            decimalsFormWidget, row=row, leftLabelAlignment=Qt.AlignLeft
+        )
         self.decimalsSpinbox = decimalsSpinbox
-        
+
         row += 1
         moveWithZoomToggle = widgets.Toggle()
         moveWithZoomWidget = widgets.formWidget(
-            moveWithZoomToggle, labelTextLeft='Move scale bar with zoom',
-            widgetAlignment=Qt.AlignCenter, stretchWidget=False
+            moveWithZoomToggle,
+            labelTextLeft="Move scale bar with zoom",
+            widgetAlignment=Qt.AlignCenter,
+            stretchWidget=False,
         )
         formLayout.addFormWidget(
-            moveWithZoomWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
+            moveWithZoomWidget, row=row, leftLabelAlignment=Qt.AlignLeft
         )
         self.moveWithZoomToggle = moveWithZoomToggle
-        
+
         mainLayout.addLayout(formLayout)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
         mainLayout.addStretch()
-        
+
         self.setLayout(mainLayout)
         self.setFont(font)
-        
+
         self.unitCombobox.currentTextChanged.connect(self.updateLengthUnit)
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
-        
+
         self.colorButton.sigColorChanging.connect(self.onValueChanged)
         self.lengthDoubleSpinbox.valueChanged.connect(self.onValueChanged)
         self.thicknessSpinbox.valueChanged.connect(self.onValueChanged)
@@ -14942,113 +14934,107 @@ class ScaleBarPropertiesDialog(QBaseDialog):
         self.fontSizeSpinbox.valueChanged.connect(self.onValueChanged)
         self.decimalsSpinbox.valueChanged.connect(self.onValueChanged)
         self.moveWithZoomToggle.toggled.connect(self.onValueChanged)
-    
+
     def onValueChanged(self, *args, **kwargs):
         self.sigValueChanged.emit(self.kwargs())
-    
+
     def selectColor(self):
         color = self.colorButton.color()
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
-        self.colorButton.colorDialog.setWindowFlags(
-            Qt.Window | Qt.WindowStaysOnTopHint
-        )
+        self.colorButton.colorDialog.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         self.colorButton.colorDialog.setParent(self)
         self.colorButton.colorDialog.open()
         w = self.width()
         left = self.pos().x()
         colorDialogTop = self.colorButton.colorDialog.pos().y()
-        self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
-    
+        self.colorButton.colorDialog.move(w + left + 10, colorDialogTop)
+
     def updateLengthUnit(self, unit):
-        newText = re.sub(
-            r'\(.*\)', f'({unit})', 
-            self.lengthFormWidget.labelLeft.text()
-        )
+        newText = re.sub(r"\(.*\)", f"({unit})", self.lengthFormWidget.labelLeft.text())
         self.lengthFormWidget.labelLeft.setText(newText)
         self.onValueChanged(self)
-    
+
     def kwargs(self):
         unit = self.unitCombobox.currentText()
         length_unit = self.lengthDoubleSpinbox.value()
-        length_um = _core.convert_length(length_unit, unit, 'μm')
-        length_pixel = length_um/self.PhysicalSizeX
+        length_um = _core.convert_length(length_unit, unit, "μm")
+        length_pixel = length_um / self.PhysicalSizeX
         kwargs = {
-            'thickness': self.thicknessSpinbox.value(),
-            'length_pixel': length_pixel,
-            'length_unit': length_unit,
-            'is_text_visible': self.displayTextToggle.isChecked(),
-            'color': self.colorButton.color(),
-            'loc': self.locCombobox.currentText().lower(),
-            'font_size': self.fontSizeSpinbox.value(),
-            'unit': unit,
-            'num_decimals': self.decimalsSpinbox.value(),
-            'move_with_zoom': self.moveWithZoomToggle.isChecked()
+            "thickness": self.thicknessSpinbox.value(),
+            "length_pixel": length_pixel,
+            "length_unit": length_unit,
+            "is_text_visible": self.displayTextToggle.isChecked(),
+            "color": self.colorButton.color(),
+            "loc": self.locCombobox.currentText().lower(),
+            "font_size": self.fontSizeSpinbox.value(),
+            "unit": unit,
+            "num_decimals": self.decimalsSpinbox.value(),
+            "move_with_zoom": self.moveWithZoomToggle.isChecked(),
         }
         return kwargs
-    
+
     def ok_cb(self):
         self.cancel = False
         self.close()
 
+
 class SetColumnNamesDialog(QBaseDialog):
-    def __init__(
-            self, columnNames, categories, 
-            optionalCategories=None, parent=None
-        ):
+    def __init__(self, columnNames, categories, optionalCategories=None, parent=None):
         super().__init__(parent)
-        
+
         if not optionalCategories:
             optionalCategories = None
-        
+
         self.cancel = True
-        
+
         mainLayout = QVBoxLayout()
-        
-        mainLayout.addWidget(QLabel(html_utils.paragraph(
-            'Assign a column to the following categories:<br>'
-        )))
-        
+
+        mainLayout.addWidget(
+            QLabel(
+                html_utils.paragraph("Assign a column to the following categories:<br>")
+            )
+        )
+
         self.categoriesWidgets = {}
         formLayout = QFormLayout()
         for row, category in enumerate(categories):
             combobox = widgets.ComboBox()
             combobox.addItems(columnNames)
             if optionalCategories is not None:
-                text = f'* {category}'
+                text = f"* {category}"
             else:
                 text = category
             formLayout.addRow(text, combobox)
             self.categoriesWidgets[category] = combobox
-        
+
         if optionalCategories is not None:
-            optionalItems = ['None', *columnNames]
+            optionalItems = ["None", *columnNames]
             for row, category in enumerate(optionalCategories):
                 combobox = widgets.ComboBox()
                 combobox.addItems(optionalItems)
                 formLayout.addRow(category, combobox)
                 self.categoriesWidgets[category] = combobox
-        
+
         mainLayout.addLayout(formLayout)
         if optionalCategories is not None:
             mainLayout.addSpacing(10)
-            mainLayout.addWidget(QLabel(html_utils.paragraph(
-                '* mandatory', font_size='11px'
-            )))
-        
+            mainLayout.addWidget(
+                QLabel(html_utils.paragraph("* mandatory", font_size="11px"))
+            )
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
-        
+
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.setLayout(mainLayout)
 
         self.setFont(font)
-    
+
     def _warnNonUniqueCategories(self, category_1, category_2):
         txt = html_utils.paragraph(f"""
             The following categories have the same column assigned to it.<br><br>
@@ -15057,92 +15043,96 @@ class SetColumnNamesDialog(QBaseDialog):
             {html_utils.to_list((category_1, category_2))}
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Non-unique columns', txt)
-    
+        msg.warning(self, "Non-unique columns", txt)
+
     def _checkUniqueNames(self):
         self.textToCategoryMapper = {}
         for category, combobox in self.categoriesWidgets.items():
-            if combobox.text() == 'None':
+            if combobox.text() == "None":
                 continue
-            
+
             if combobox.text() not in self.textToCategoryMapper:
                 self.textToCategoryMapper[combobox.text()] = category
                 continue
-            
+
             sameCategory = self.textToCategoryMapper[combobox.text()]
             self._warnNonUniqueCategories(category, sameCategory)
             return False
-        
+
         return True
-    
+
     def ok_cb(self):
         proceed = self._checkUniqueNames()
         if not proceed:
             return
-        
+
         self.selectedColumns = {
-            category:combobox.text() 
-            for category, combobox in self.categoriesWidgets.items() 
+            category: combobox.text()
+            for category, combobox in self.categoriesWidgets.items()
         }
         self.cancel = False
         self.close()
 
+
 class CombineFeaturesCalculator(QBaseDialog):
     sigOk = Signal(object)
-    
+
     def __init__(
-            self, features_groups: dict, 
-            group_name_to_col_mapper: dict=None,
-            title='Combine features calculator',
-            parent=None
-        ):
+        self,
+        features_groups: dict,
+        group_name_to_col_mapper: dict = None,
+        title="Combine features calculator",
+        parent=None,
+    ):
         super().__init__(parent)
-        
+
         self.cancel = True
-        
+
         self.setWindowTitle(title)
         self.initAttributes()
-        
+
         mainLayout = QVBoxLayout()
         equationLayout = QHBoxLayout()
-        
+
         metricsTreeWidget = QTreeWidget()
         metricsTreeWidget.setHeaderHidden(True)
         metricsTreeWidget.setFont(font)
         self.metricsTreeWidget = metricsTreeWidget
-        
+
         for groupName, features in features_groups.items():
             topLevelTreeWidgetItem = QTreeWidgetItem(metricsTreeWidget)
             topLevelTreeWidgetItem.setText(0, groupName)
             metricsTreeWidget.addTopLevelItem(topLevelTreeWidgetItem)
             self.addTreeItems(
-                topLevelTreeWidgetItem, features, isCol=True, 
-                name_to_col_mapper=group_name_to_col_mapper.get(groupName)
+                topLevelTreeWidgetItem,
+                features,
+                isCol=True,
+                name_to_col_mapper=group_name_to_col_mapper.get(groupName),
             )
-            
+
         operatorsLayout = self.createOperatorsLayout()
         newFeatureNameLayout = self.createNewFeatureNameLayout()
         equationDisplayLayout = self.createEquationDisplayLayout()
-        
+
         equationLayout.addLayout(newFeatureNameLayout)
-        equationLayout.addWidget(QLabel(' = '))
+        equationLayout.addWidget(QLabel(" = "))
         equationLayout.addLayout(equationDisplayLayout)
-        equationLayout.setStretch(0,1)
-        equationLayout.setStretch(1,0)
-        equationLayout.setStretch(2,2)
-        
+        equationLayout.setStretch(0, 1)
+        equationLayout.setStretch(1, 0)
+        equationLayout.setStretch(2, 2)
+
         testOutputLayout = self.createTestOutputLayout()
         buttonsLayout = self.createButtonsOutputLayout()
-        
+
         instructions = html_utils.paragraph("""
             <b>Double-click</b> on any of the <b>available measurements</b>
             to add it to the equation.<br><br>
             Before clicking the `Ok` button, check that the equation returns 
             the expected result by clicking the `Test output` button. 
         """)
-        
+
         mainLayout.addWidget(QLabel(instructions))
-        mainLayout.addWidget(QLabel('Available measurements:'))
+        mainLayout.addWidget(QLabel("Available measurements:"))
         mainLayout.addWidget(metricsTreeWidget)
         mainLayout.addLayout(operatorsLayout)
         mainLayout.addLayout(equationLayout)
@@ -15150,13 +15140,12 @@ class CombineFeaturesCalculator(QBaseDialog):
         mainLayout.addLayout(buttonsLayout)
         mainLayout.addLayout(testOutputLayout)
 
-        
         metricsTreeWidget.itemDoubleClicked.connect(self.addFeatureName)
         self.setLayout(mainLayout)
         self.setFont(font)
 
         self.setStyleSheet(TREEWIDGET_STYLESHEET)
-    
+
     def setExpandedAll(self, expanded):
         if expanded:
             self.expandAll()
@@ -15164,15 +15153,13 @@ class CombineFeaturesCalculator(QBaseDialog):
             for i in range(self.metricsTreeWidget.topLevelItemCount()):
                 topLevelItem = self.metricsTreeWidget.topLevelItem(i)
                 topLevelItem.setExpanded(False)
-    
+
     def expandAll(self):
         for i in range(self.metricsTreeWidget.topLevelItemCount()):
             topLevelItem = self.metricsTreeWidget.topLevelItem(i)
             topLevelItem.setExpanded(True)
-    
-    def addTreeItems(
-            self, parentItem, itemsText, isCol=False, name_to_col_mapper=None
-        ):
+
+    def addTreeItems(self, parentItem, itemsText, isCol=False, name_to_col_mapper=None):
         for text in itemsText:
             _item = QTreeWidgetItem(parentItem)
             _item.setText(0, text)
@@ -15182,36 +15169,35 @@ class CombineFeaturesCalculator(QBaseDialog):
             _item.variable_name = text
             if name_to_col_mapper is None:
                 continue
-            
+
             col_name = name_to_col_mapper.get(text, None)
             if col_name is None:
                 continue
-            
+
             _item.variable_name = col_name
-            
-    
+
     def addFeatureName(self, item, column):
-        if not hasattr(item, 'isCol'):
+        if not hasattr(item, "isCol"):
             return
 
         colName = item.variable_name
-        text = f'{self.equationDisplay.toPlainText()}{colName}'
+        text = f"{self.equationDisplay.toPlainText()}{colName}"
         self.equationDisplay.setPlainText(text)
         self.clearLenghts.append(len(colName))
         self.equationColNames.append(colName)
-    
+
     def clearEquation(self):
         self.isOperatorMode = False
-        self.equationDisplay.setPlainText('')
+        self.equationDisplay.setPlainText("")
         self.initAttributes()
-    
+
     def createButtonsOutputLayout(self):
         buttonsLayout = QHBoxLayout()
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        helpButton = widgets.infoPushButton('  Help...')
-        testButton = widgets.calcPushButton('Test output')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets.cancelPushButton("Cancel")
+        helpButton = widgets.infoPushButton("  Help...")
+        testButton = widgets.calcPushButton("Test output")
+        okButton = widgets.okPushButton(" Ok ")
         okButton.setDisabled(True)
         self.okButton = okButton
 
@@ -15221,33 +15207,30 @@ class CombineFeaturesCalculator(QBaseDialog):
         buttonsLayout.addWidget(helpButton)
         buttonsLayout.addWidget(testButton)
         buttonsLayout.addWidget(okButton)
-        
+
         helpButton.clicked.connect(self.showHelp)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         testButton.clicked.connect(self.test_cb)
-        
+
         return buttonsLayout
 
     def ok_cb(self):
         if not self.newFeatureNameLineEdit.text():
             self.warnEmptyEquationName()
             return
-        
+
         self.equation = self.equationDisplay.toPlainText()
         self.newFeatureName = self.newFeatureNameLineEdit.text()
         self.cancel = False
         self.close()
         self.sigOk.emit(self)
-    
+
     def test_cb(self):
         # Evaluate equation with random inputs
         equation = self.equationDisplay.toPlainText()
-        random_data = np.random.rand(1, len(self.equationColNames))*5
-        df = pd.DataFrame(
-            data=random_data,
-            columns=self.equationColNames
-        ).round(5)
+        random_data = np.random.rand(1, len(self.equationColNames)) * 5
+        df = pd.DataFrame(data=random_data, columns=self.equationColNames).round(5)
         newColName = self.newFeatureNameLineEdit.text()
         try:
             df[newColName] = df.eval(equation)
@@ -15270,7 +15253,7 @@ class CombineFeaturesCalculator(QBaseDialog):
 
         # Format output into html text
         cols = self.equationColNames
-        inputs_txt = [f'{col} = {input}' for col, input in zip(cols, inputs)]
+        inputs_txt = [f"{col} = {input}" for col, input in zip(cols, inputs)]
         list_html = html_utils.to_list(inputs_txt)
         text = html_utils.paragraph(f"""
             By substituting the following random inputs:
@@ -15281,53 +15264,51 @@ class CombineFeaturesCalculator(QBaseDialog):
             &nbsp;&nbsp;<code>{newColName} = {result}</code>
         """)
         self.testOutputDisplay.setHtml(text)
-    
+
     def warnEmptyEquationName(self):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
             "New measurement name" field <b>cannot be empty</b>!
         """)
-        msg.critical(
-            self, 'Empty new measurement name', txt
-        )
-    
+        msg.critical(self, "Empty new measurement name", txt)
+
     def showHelp(self):
         pass
-    
+
     def createTestOutputLayout(self):
         testOutputLayout = QVBoxLayout()
-        testOutputLayout.addWidget(QLabel('Result of test with random inputs:'))
+        testOutputLayout.addWidget(QLabel("Result of test with random inputs:"))
         testOutputDisplay = QTextEdit()
         testOutputDisplay.setReadOnly(True)
         self.testOutputDisplay = testOutputDisplay
         testOutputLayout.addWidget(testOutputDisplay)
-        testOutputLayout.setStretch(0,0)
-        testOutputLayout.setStretch(1,1)
-        
+        testOutputLayout.setStretch(0, 0)
+        testOutputLayout.setStretch(1, 1)
+
         return testOutputLayout
-    
+
     def createEquationDisplayLayout(self):
         equationDisplayLayout = QVBoxLayout()
-        equationDisplayLayout.addWidget(QLabel('Equation:'))
+        equationDisplayLayout.addWidget(QLabel("Equation:"))
         equationDisplay = QPlainTextEdit()
         # equationDisplay.setReadOnly(True)
         self.equationDisplay = equationDisplay
         equationDisplayLayout.addWidget(equationDisplay)
-        equationDisplayLayout.setStretch(0,0)
-        equationDisplayLayout.setStretch(1,1)
+        equationDisplayLayout.setStretch(0, 0)
+        equationDisplayLayout.setStretch(1, 1)
         return equationDisplayLayout
-    
+
     def createNewFeatureNameLayout(self):
         newFeatureNameLayout = QVBoxLayout()
         newFeatureNameLineEdit = widgets.alphaNumericLineEdit()
         newFeatureNameLineEdit.setAlignment(Qt.AlignCenter)
         self.newFeatureNameLineEdit = newFeatureNameLineEdit
         newFeatureNameLayout.addStretch(1)
-        newFeatureNameLayout.addWidget(QLabel('New measurement name:'))
+        newFeatureNameLayout.addWidget(QLabel("New measurement name:"))
         newFeatureNameLayout.addWidget(newFeatureNameLineEdit)
         newFeatureNameLayout.addStretch(1)
         return newFeatureNameLayout
-    
+
     def createOperatorsLayout(self):
         operatorsLayout = QHBoxLayout()
         operatorsLayout.addStretch(1)
@@ -15336,23 +15317,23 @@ class CombineFeaturesCalculator(QBaseDialog):
 
         self.operatorButtons = []
         self.operators = [
-            ('add', '+'),
-            ('subtract', '-'),
-            ('multiply', '*'),
-            ('divide', '/'),
-            ('open_bracket', '('),
-            ('close_bracket', ')'),
-            ('square', '**2'),
-            ('pow', '**'),
-            ('ln', 'log('),
-            ('log10', 'log10('),
+            ("add", "+"),
+            ("subtract", "-"),
+            ("multiply", "*"),
+            ("divide", "/"),
+            ("open_bracket", "("),
+            ("close_bracket", ")"),
+            ("square", "**2"),
+            ("pow", "**"),
+            ("ln", "log("),
+            ("log10", "log10("),
         ]
         operatorFont = QFont()
         operatorFont.setPixelSize(16)
         for name, text in self.operators:
             button = QPushButton()
-            button.setIcon(QIcon(f':{name}.svg'))
-            button.setIconSize(QSize(iconSize,iconSize))
+            button.setIcon(QIcon(f":{name}.svg"))
+            button.setIconSize(QSize(iconSize, iconSize))
             button.text = text
             operatorsLayout.addWidget(button)
             self.operatorButtons.append(button)
@@ -15360,47 +15341,47 @@ class CombineFeaturesCalculator(QBaseDialog):
             # button.setFont(operatorFont)
 
         clearButton = QPushButton()
-        clearButton.setIcon(QIcon(':clear.svg'))
-        clearButton.setIconSize(QSize(iconSize,iconSize))
+        clearButton.setIcon(QIcon(":clear.svg"))
+        clearButton.setIconSize(QSize(iconSize, iconSize))
         clearButton.setFont(operatorFont)
 
         clearEntryButton = QPushButton()
-        clearEntryButton.setIcon(QIcon(':backspace.svg'))
+        clearEntryButton.setIcon(QIcon(":backspace.svg"))
         clearEntryButton.setFont(operatorFont)
-        clearEntryButton.setIconSize(QSize(iconSize,iconSize))
+        clearEntryButton.setIconSize(QSize(iconSize, iconSize))
 
         operatorsLayout.addWidget(clearButton)
         operatorsLayout.addWidget(clearEntryButton)
         operatorsLayout.addStretch(1)
-        
+
         clearButton.clicked.connect(self.clearEquation)
         clearEntryButton.clicked.connect(self.clearEntryEquation)
-        
+
         return operatorsLayout
 
     def addOperator(self):
         button = self.sender()
-        text = f'{self.equationDisplay.toPlainText()}{button.text}'
+        text = f"{self.equationDisplay.toPlainText()}{button.text}"
         self.equationDisplay.setPlainText(text)
         self.clearLenghts.append(len(button.text))
 
     def clearEquation(self):
         self.isOperatorMode = False
-        self.equationDisplay.setPlainText('')
+        self.equationDisplay.setPlainText("")
         self.initAttributes()
-    
+
     def initAttributes(self):
         self.clearLenghts = []
         self.equationColNames = []
         self.channelLessColnames = []
-    
+
     def clearEntryEquation(self):
         if not self.clearLenghts:
             return
 
         text = self.equationDisplay.toPlainText()
-        newText = text[:-self.clearLenghts[-1]]
-        clearedText = text[-self.clearLenghts[-1]:]
+        newText = text[: -self.clearLenghts[-1]]
+        clearedText = text[-self.clearLenghts[-1] :]
         self.clearLenghts.pop(-1)
         self.equationDisplay.setPlainText(newText)
         if clearedText in self.equationColNames:
@@ -15408,8 +15389,9 @@ class CombineFeaturesCalculator(QBaseDialog):
         if clearedText in self.channelLessColnames:
             self.channelLessColnames.remove(clearedText)
 
+
 class QInput(QBaseDialog):
-    def __init__(self, parent=None, title='Input'):
+    def __init__(self, parent=None, title="Input"):
         self.cancel = True
         self.allowEmpty = True
 
@@ -15441,11 +15423,11 @@ class QInput(QBaseDialog):
 
         self.setFont(font)
         self.setLayout(self.mainLayout)
-    
-    def askText(self, prompt, infoText='', allowEmpty=False):
+
+    def askText(self, prompt, infoText="", allowEmpty=False):
         self.allowEmpty = allowEmpty
         if infoText:
-            infoText = f'{infoText}<br>'
+            infoText = f"{infoText}<br>"
             self.infoLabel.setText(html_utils.paragraph(infoText))
         self.promptLabel.setText(prompt)
         self.exec_(resizeWidthFactor=1.5)
@@ -15454,35 +15436,39 @@ class QInput(QBaseDialog):
         self.answer = self.lineEdit.text()
         if not self.allowEmpty and not self.answer:
             msg = widgets.myMessageBox(showCentered=False)
-            msg.critical(self, 'Empty', 'Entry cannot be empty.')
+            msg.critical(self, "Empty", "Entry cannot be empty.")
             return
         self.cancel = False
         self.close()
 
+
 class InstallPyTorchDialog(QBaseDialog):
-    def __init__(self, parent=None, caller_name='Cell-ACDC'):
+    def __init__(self, parent=None, caller_name="Cell-ACDC"):
         super().__init__(parent=parent)
-        
+
         self.cancel = True
-        
+
         mainLayout = QVBoxLayout()
-        
+
         innerLayout = QGridLayout()
-        
+
         iconLabel = QLabel(self)
-        standardIcon = getattr(QStyle, 'SP_MessageBoxInformation')
+        standardIcon = getattr(QStyle, "SP_MessageBoxInformation")
         icon = self.style().standardIcon(standardIcon)
         pixmap = icon.pixmap(60, 60)
         iconLabel.setPixmap(pixmap)
         innerLayout.addWidget(iconLabel, 0, 0, alignment=Qt.AlignTop)
-        
-        href = html_utils.href_tag('How to install PyTorch', urls.install_pytorch)
-        important = html_utils.to_admonition("""
+
+        href = html_utils.href_tag("How to install PyTorch", urls.install_pytorch)
+        important = html_utils.to_admonition(
+            """
             Should you choose to install PyTorch yourself, <b>make sure to 
             activate<br>
             the correct <code>acdc</code> environment first</b>.
-        """, admonition_type='important')
-        
+        """,
+            admonition_type="important",
+        )
+
         infoText = html_utils.paragraph(f"""
             {caller_name} needs to <b>install the package</b> <code>PyTorch</code>.<br><br>
             Select your preferences and click ok to install it now. 
@@ -15494,80 +15480,81 @@ class InstallPyTorchDialog(QBaseDialog):
         """)
         innerLayout.addWidget(QLabel(infoText), 0, 1)
         innerLayout.addItem(QSpacerItem(10, 10), 1, 1)
-        
+
         preferencesLayout = QGridLayout()
-        
+
         row = 0
         self.osCombobox = QComboBox()
-        self.osCombobox.addItems(['Linux', 'Mac', 'Windows'])
-        preferencesLayout.addWidget(QLabel('Your OS'), row, 0)
+        self.osCombobox.addItems(["Linux", "Mac", "Windows"])
+        preferencesLayout.addWidget(QLabel("Your OS"), row, 0)
         preferencesLayout.addWidget(self.osCombobox, row, 1)
-        
+
         if is_mac:
-            self.osCombobox.setCurrentText('Mac')
+            self.osCombobox.setCurrentText("Mac")
         elif is_win:
-            self.osCombobox.setCurrentText('Windows')
-        
+            self.osCombobox.setCurrentText("Windows")
+
         row += 1
         self.pkgManagerCombobox = QComboBox()
-        self.pkgManagerCombobox.addItems(['Pip'])
+        self.pkgManagerCombobox.addItems(["Pip"])
         if not is_conda_env():
-            self.pkgManagerCombobox.setCurrentText('Pip')
+            self.pkgManagerCombobox.setCurrentText("Pip")
             self.pkgManagerCombobox.setDisabled(True)
-        
-        preferencesLayout.addWidget(QLabel('Package manager'), row, 0)
+
+        preferencesLayout.addWidget(QLabel("Package manager"), row, 0)
         preferencesLayout.addWidget(self.pkgManagerCombobox, row, 1)
-        
+
         row += 1
         self.cmptPlatformCombobox = QComboBox()
         self.cmptPlatformCombobox.addItems(
-            ['CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)']
+            ["CPU", "CUDA 11.8 (NVIDIA GPU)", "CUDA 12.1 (NVIDIA GPU)"]
         )
-        
-        preferencesLayout.addWidget(QLabel('Compute Platform'), row, 0)
+
+        preferencesLayout.addWidget(QLabel("Compute Platform"), row, 0)
         preferencesLayout.addWidget(self.cmptPlatformCombobox, row, 1)
-        
+
         row += 1
         pip_prefix, conda_prefix = myutils.get_pip_conda_prefix()
         self.commandWidget = widgets.CopiableCommandWidget(
-            command=f'{pip_prefix} torch'
+            command=f"{pip_prefix} torch"
         )
-        preferencesLayout.addWidget(QLabel('Run this command: '), row, 0)
+        preferencesLayout.addWidget(QLabel("Run this command: "), row, 0)
         preferencesLayout.addWidget(self.commandWidget, row, 1, 1, 2)
         preferencesLayout.setColumnStretch(0, 0)
         preferencesLayout.setColumnStretch(1, 0)
         preferencesLayout.setColumnStretch(2, 1)
-        
+
         innerLayout.addLayout(preferencesLayout, 2, 1)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addLayout(innerLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.setLayout(mainLayout)
-        
+
         self.osCombobox.currentTextChanged.connect(self.updateCommand)
         self.pkgManagerCombobox.currentTextChanged.connect(self.updateCommand)
         self.cmptPlatformCombobox.currentTextChanged.connect(self.updateCommand)
-        
+
         self.updateCommand()
-    
+
     def updateCommand(self, *args, **kwargs):
         osText = self.osCombobox.currentText()
         pkgManager = self.pkgManagerCombobox.currentText()
         cmptPlatform = self.cmptPlatformCombobox.currentText()
         command = myutils.get_pytorch_command()[osText][pkgManager][cmptPlatform]
         self.commandWidget.setCommand(command)
-    
+
     def ok_cb(self):
         self.command = self.commandWidget.command()
         self.cancel = False
         self.close()
+
 
 class ExportToVideoParametersDialog(QBaseDialog):
     sigOk = Signal(dict)
@@ -15575,69 +15562,77 @@ class ExportToVideoParametersDialog(QBaseDialog):
     sigAddTimestamp = Signal(bool)
     sigRescaleIntensLut = Signal(str, str)
     sigChangeStartTime = Signal(str)
-    
+
     def __init__(
-            self, channels, parent=None, startFolderpath='', startFilename='', 
-            startFrameNum=1, SizeT=1, SizeZ=1, isTimelapseVideo=True, 
-            isScaleBarPresent=False, isTimestampPresent=False, 
-            rescaleIntensChannelHowMapper=None, 
-            startTime=None
-        ):
+        self,
+        channels,
+        parent=None,
+        startFolderpath="",
+        startFilename="",
+        startFrameNum=1,
+        SizeT=1,
+        SizeZ=1,
+        isTimelapseVideo=True,
+        isScaleBarPresent=False,
+        isTimestampPresent=False,
+        rescaleIntensChannelHowMapper=None,
+        startTime=None,
+    ):
         self.cancel = True
-        
+
         if rescaleIntensChannelHowMapper is None:
             rescaleIntensChannelHowMapper = {}
-        
+
         super().__init__(parent=parent)
-        
-        self.setWindowTitle('Preferences for output video')
-        
+
+        self.setWindowTitle("Preferences for output video")
+
         mainLayout = QVBoxLayout()
-        
+
         gridLayout = QGridLayout()
-        
-        navVar = 'frame number' if isTimelapseVideo else 'z-slice'
+
+        navVar = "frame number" if isTimelapseVideo else "z-slice"
         maxNavVar = SizeT if isTimelapseVideo else SizeZ
-        
+
         self.isTimelapseVideo = isTimelapseVideo
-        
+
         row = 0
-        gridLayout.addWidget(QLabel(f'Start {navVar}:'), row, 0)
+        gridLayout.addWidget(QLabel(f"Start {navVar}:"), row, 0)
         self.startNavVarNumberEntry = widgets.SpinBox()
         self.startNavVarNumberEntry.setMinimum(1)
-        self.startNavVarNumberEntry.setMaximum(maxNavVar-1)
+        self.startNavVarNumberEntry.setMaximum(maxNavVar - 1)
         self.startNavVarNumberEntry.setValue(startFrameNum)
         gridLayout.addWidget(self.startNavVarNumberEntry, row, 1)
-        
+
         row += 1
-        gridLayout.addWidget(QLabel(f'Stop {navVar}:'), row, 0)
+        gridLayout.addWidget(QLabel(f"Stop {navVar}:"), row, 0)
         self.stopNavVarNumberEntry = widgets.SpinBox()
         self.stopNavVarNumberEntry.setMinimum(2)
         self.stopNavVarNumberEntry.setMaximum(maxNavVar)
         self.stopNavVarNumberEntry.setValue(maxNavVar)
         gridLayout.addWidget(self.stopNavVarNumberEntry, row, 1)
-        
+
         row += 1
-        gridLayout.addWidget(QLabel('File format:'), row, 0)
+        gridLayout.addWidget(QLabel("File format:"), row, 0)
         self.fileFormatCombobox = QComboBox()
-        self.fileFormatCombobox.addItems(['MP4', 'AVI'])
+        self.fileFormatCombobox.addItems(["MP4", "AVI"])
         gridLayout.addWidget(self.fileFormatCombobox, row, 1)
-        
+
         row += 1
-        gridLayout.addWidget(QLabel('Frame rate (FPS):'), row, 0)
+        gridLayout.addWidget(QLabel("Frame rate (FPS):"), row, 0)
         self.fpsWidget = widgets.FloatLineEdit(allowNegative=False)
         self.fpsWidget.setValue(10.0)
         gridLayout.addWidget(self.fpsWidget, row, 1)
-        
+
         row += 1
         self.dpiWidget = widgets.IntLineEdit(allowNegative=False)
         self.dpiWidget.setValue(300)
-        self.dpiWidget.label = QLabel('DPI')
+        self.dpiWidget.label = QLabel("DPI")
         gridLayout.addWidget(self.dpiWidget.label, row, 0)
         gridLayout.addWidget(self.dpiWidget, row, 1)
-        
+
         row += 1
-        gridLayout.addWidget(QLabel('Folder path:'), row, 0)
+        gridLayout.addWidget(QLabel("Folder path:"), row, 0)
         self.folderPathLineEdit = widgets.ElidingLineEdit(minWidth=240)
         self.folderPathLineEdit.setText(startFolderpath)
         gridLayout.addWidget(self.folderPathLineEdit, row, 1)
@@ -15645,44 +15640,42 @@ class ExportToVideoParametersDialog(QBaseDialog):
             start_dir=startFolderpath, openFolder=True
         )
         gridLayout.addWidget(self.browseButton, row, 2)
-        
+
         row += 1
-        gridLayout.addWidget(QLabel('Filename:'), row, 0)
+        gridLayout.addWidget(QLabel("Filename:"), row, 0)
         self.filenameLineEdit = widgets.alphaNumericLineEdit()
         self.filenameLineEdit.setAlignment(Qt.AlignCenter)
         self.filenameLineEdit.setText(startFilename)
         gridLayout.addWidget(self.filenameLineEdit, row, 1)
-        self.fileFormatLabel = QLabel('.mp4')
+        self.fileFormatLabel = QLabel(".mp4")
         gridLayout.addWidget(self.fileFormatLabel, row, 2)
-        
+
         row += 1
-        gridLayout.addWidget(QLabel('Add Scale Bar:'), row, 0)
+        gridLayout.addWidget(QLabel("Add Scale Bar:"), row, 0)
         self.addScaleBarToggle = widgets.Toggle()
-        gridLayout.addWidget(
-            self.addScaleBarToggle, row, 1, alignment=Qt.AlignCenter
-        )
+        gridLayout.addWidget(self.addScaleBarToggle, row, 1, alignment=Qt.AlignCenter)
         self.addScaleBarToggle.setChecked(isScaleBarPresent)
-        
+
         if isTimelapseVideo:
             row += 1
-            gridLayout.addWidget(QLabel('Add timestamp:'), row, 0)
+            gridLayout.addWidget(QLabel("Add timestamp:"), row, 0)
             self.addTimestampToggle = widgets.Toggle()
             gridLayout.addWidget(
                 self.addTimestampToggle, row, 1, alignment=Qt.AlignCenter
             )
             self.addTimestampToggle.setChecked(isTimestampPresent)
-        
+
         for channel in channels:
             row += 1
-            labelText = f'Rescale intensities (LUT) <i>{channel}</i>:'
+            labelText = f"Rescale intensities (LUT) <i>{channel}</i>:"
             gridLayout.addWidget(QLabel(labelText), row, 0)
-            rescaleItems = ['Rescale each 2D image']
+            rescaleItems = ["Rescale each 2D image"]
             if SizeZ > 1:
-                rescaleItems.append('Rescale across z-stack')
+                rescaleItems.append("Rescale across z-stack")
             if isTimelapseVideo:
-                rescaleItems.append('Rescale across time frames')
-            rescaleItems.append('Choose custom levels...')
-            rescaleItems.append('Do no rescale, display raw image')
+                rescaleItems.append("Rescale across time frames")
+            rescaleItems.append("Choose custom levels...")
+            rescaleItems.append("Do no rescale, display raw image")
             rescaleIntensCombobox = QComboBox()
             rescaleIntensCombobox.addItems(rescaleItems)
             rescaleIntensHow = rescaleIntensChannelHowMapper.get(channel)
@@ -15692,117 +15685,107 @@ class ExportToVideoParametersDialog(QBaseDialog):
             rescaleIntensCombobox.textActivated.connect(
                 partial(self.emitRescaleIntens, channel=channel)
             )
-        
+
         row += 1
-        gridLayout.addWidget(QLabel('Save a PNG for each frame:'), row, 0)
+        gridLayout.addWidget(QLabel("Save a PNG for each frame:"), row, 0)
         self.saveFramesToggle = widgets.Toggle()
-        gridLayout.addWidget(
-            self.saveFramesToggle, row, 1, alignment=Qt.AlignCenter
-        )
-        
+        gridLayout.addWidget(self.saveFramesToggle, row, 1, alignment=Qt.AlignCenter)
+
         gridLayout.setColumnStretch(0, 0)
         gridLayout.setColumnStretch(1, 1)
         gridLayout.setColumnStretch(2, 0)
-        
-        self.fileFormatCombobox.currentTextChanged.connect(
-            self.updateFileFormat
-        )
+
+        self.fileFormatCombobox.currentTextChanged.connect(self.updateFileFormat)
         self.browseButton.sigPathSelected.connect(self.updateFolderPath)
         self.addScaleBarToggle.toggled.connect(self.addScaleBarToggled)
         if isTimelapseVideo:
             self.addTimestampToggle.toggled.connect(self.addTimestampToggled)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
-        buttonsLayout.okButton.setText('Export')
-        
+        buttonsLayout.okButton.setText("Export")
+
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addLayout(gridLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.setLayout(mainLayout)
-    
-    def emitRescaleIntens(self, how, channel=''):
+
+    def emitRescaleIntens(self, how, channel=""):
         self.sigRescaleIntensLut.emit(how, channel)
-    
+
     def addScaleBarToggled(self, checked):
         self.sigAddScaleBar.emit(checked)
-    
+
     def addTimestampToggled(self, checked):
         self.sigAddTimestamp.emit(checked)
-    
+
     def updateFolderPath(self, folderPath):
         self.folderPathLineEdit.setText(folderPath)
         self.browseButton.setStartPath(folderPath)
-    
+
     def updateFileFormat(self, fileFormat):
-        self.fileFormatLabel.setText(f'.{fileFormat.lower()}')
-    
+        self.fileFormatLabel.setText(f".{fileFormat.lower()}")
+
     def validateFolderPath(self):
         folderPath = self.folderPathLineEdit.text()
         if os.path.exists(folderPath) and os.path.isdir(folderPath):
             return True
-        
+
         text = html_utils.paragraph(
-            'The selected folder path is not a valid folder or does not exist'
+            "The selected folder path is not a valid folder or does not exist"
         )
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Not a valid folder', text)
+        msg.warning(self, "Not a valid folder", text)
         return False
-    
+
     def validateFilename(self):
         filename = self.filenameLineEdit.text()
         if filename:
             return True
-        
-        text = html_utils.paragraph(
-            'The filename cannot be empty!'
-        )
+
+        text = html_utils.paragraph("The filename cannot be empty!")
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Not a valid folder', text)
+        msg.warning(self, "Not a valid folder", text)
         return False
-    
+
     def validate(self):
         proceed = self.validateFolderPath()
         if not proceed:
             return False
-        
+
         proceed = self.validateFilename()
         if not proceed:
             return False
-        
+
         return True
-    
+
     def preferences(self, makedirs=True):
-        filename = f'{self.filenameLineEdit.text()}{self.fileFormatLabel.text()}'
-        avi_filename = f'{self.filenameLineEdit.text()}.avi'
+        filename = f"{self.filenameLineEdit.text()}{self.fileFormatLabel.text()}"
+        avi_filename = f"{self.filenameLineEdit.text()}.avi"
         avi_filepath = os.path.join(self.folderPathLineEdit.text(), avi_filename)
-        png_foldername = (
-            f'{self.filenameLineEdit.text()}_frames_PNG'
-        )
-        pngs_folderpath = os.path.join(
-            self.folderPathLineEdit.text(), png_foldername
-        )
+        png_foldername = f"{self.filenameLineEdit.text()}_frames_PNG"
+        pngs_folderpath = os.path.join(self.folderPathLineEdit.text(), png_foldername)
         if makedirs:
             os.makedirs(pngs_folderpath, exist_ok=True)
-        
+
         preferences = {
-            'start_nav_var_num': self.startNavVarNumberEntry.value(),
-            'stop_nav_var_num': self.stopNavVarNumberEntry.value(),
-            'filepath': os.path.join(self.folderPathLineEdit.text(), filename), 
-            'filename': self.filenameLineEdit.text(),
-            'avi_filepath': avi_filepath,
-            'pngs_folderpath': pngs_folderpath,
-            'num_digits': len(str(self.stopNavVarNumberEntry.value())),
-            'fps': self.fpsWidget.value(),
-            'save_pngs':  self.saveFramesToggle.isChecked(),
-            'is_timelapse': self.isTimelapseVideo,
-            'dpi': self.dpiWidget.value(),
+            "start_nav_var_num": self.startNavVarNumberEntry.value(),
+            "stop_nav_var_num": self.stopNavVarNumberEntry.value(),
+            "filepath": os.path.join(self.folderPathLineEdit.text(), filename),
+            "filename": self.filenameLineEdit.text(),
+            "avi_filepath": avi_filepath,
+            "pngs_folderpath": pngs_folderpath,
+            "num_digits": len(str(self.stopNavVarNumberEntry.value())),
+            "fps": self.fpsWidget.value(),
+            "save_pngs": self.saveFramesToggle.isChecked(),
+            "is_timelapse": self.isTimelapseVideo,
+            "dpi": self.dpiWidget.value(),
         }
         return preferences
-    
+
     def ok_cb(self):
         proceed = self.validate()
         if not proceed:
@@ -15811,186 +15794,186 @@ class ExportToVideoParametersDialog(QBaseDialog):
         self.sigOk.emit(self.preferences())
         self.selected_preferences = self.preferences()
         self.close()
-    
+
+
 class TimestampPropertiesDialog(QBaseDialog):
     sigValueChanged = Signal(object)
-    
+
     def __init__(self, parent=None, **properties):
         super().__init__(parent=parent)
-        
+
         self.cancel = True
-        self.setWindowTitle('Timestamp preferences')
-        
+        self.setWindowTitle("Timestamp preferences")
+
         mainLayout = QVBoxLayout()
-        
+
         formLayout = widgets.FormLayout()
         formLayout.setVerticalSpacing(10)
         formLayout.setHorizontalSpacing(50)
-        
+
         row = 0
         self.startTimeWidget = widgets.TimeWidget()
-        if properties.get('start_timedelta') is not None:
+        if properties.get("start_timedelta") is not None:
             self.startTimeWidget.setValuesFromTimedelta(
-                properties.get('start_timedelta')
+                properties.get("start_timedelta")
             )
         startTimeFormWidget = widgets.formWidget(
-            self.startTimeWidget, labelTextLeft='Start time',
+            self.startTimeWidget,
+            labelTextLeft="Start time",
         )
         formLayout.addFormWidget(
-            startTimeFormWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
+            startTimeFormWidget, row=row, leftLabelAlignment=Qt.AlignLeft
         )
-        
+
         row += 1
         self.colorButton = widgets.myColorButton(color=(255, 255, 255))
-        if properties.get('color') is not None:
-            self.colorButton.setColor(properties.get('color'))
+        if properties.get("color") is not None:
+            self.colorButton.setColor(properties.get("color"))
         colorFormWidget = widgets.formWidget(
-            self.colorButton, labelTextLeft='Color',
-            widgetAlignment=Qt.AlignCenter, stretchWidget=False
+            self.colorButton,
+            labelTextLeft="Color",
+            widgetAlignment=Qt.AlignCenter,
+            stretchWidget=False,
         )
         formLayout.addFormWidget(
-            colorFormWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
-        ) 
-        
+            colorFormWidget, row=row, leftLabelAlignment=Qt.AlignLeft
+        )
+
         row += 1
         fontSizeWidget = widgets.FontSizeWidget()
-        if properties.get('font_size') is not None:
-            fontSizeWidget.setValue(properties.get('font_size'))
+        if properties.get("font_size") is not None:
+            fontSizeWidget.setValue(properties.get("font_size"))
         else:
             fontSizeWidget.setValue(12)
         fontSizeFormWidget = widgets.formWidget(
-            fontSizeWidget, labelTextLeft='Font size (px)'
+            fontSizeWidget, labelTextLeft="Font size (px)"
         )
         self.fontSizeWidget = fontSizeWidget
         formLayout.addFormWidget(
-            fontSizeFormWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
+            fontSizeFormWidget, row=row, leftLabelAlignment=Qt.AlignLeft
         )
-        
+
         row += 1
         locCombobox = QComboBox()
-        locFormWidget = widgets.formWidget(
-            locCombobox, labelTextLeft='Location'
-        )
+        locFormWidget = widgets.formWidget(locCombobox, labelTextLeft="Location")
         locCombobox.addItems(
-            ['Top-left', 'Top-right', 'Bottom-left', 'Bottom-right', 'Custom']
+            ["Top-left", "Top-right", "Bottom-left", "Bottom-right", "Custom"]
         )
-        loc = properties.get('loc')
+        loc = properties.get("loc")
         if isinstance(loc, str):
             locCombobox.setCurrentText(loc.capitalize())
         formLayout.addFormWidget(
-            locFormWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
-        )       
+            locFormWidget, row=row, leftLabelAlignment=Qt.AlignLeft
+        )
         self.locCombobox = locCombobox
-        
+
         row += 1
         moveWithZoomToggle = widgets.Toggle()
         moveWithZoomWidget = widgets.formWidget(
-            moveWithZoomToggle, labelTextLeft='Move timestamp with zoom',
-            widgetAlignment=Qt.AlignCenter, stretchWidget=False
+            moveWithZoomToggle,
+            labelTextLeft="Move timestamp with zoom",
+            widgetAlignment=Qt.AlignCenter,
+            stretchWidget=False,
         )
         formLayout.addFormWidget(
-            moveWithZoomWidget, row=row, 
-            leftLabelAlignment=Qt.AlignLeft
+            moveWithZoomWidget, row=row, leftLabelAlignment=Qt.AlignLeft
         )
         self.moveWithZoomToggle = moveWithZoomToggle
-        
+
         mainLayout.addLayout(formLayout)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
         mainLayout.addStretch()
-        
+
         self.setLayout(mainLayout)
         self.setFont(font)
-        
+
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
-        
+
         self.startTimeWidget.sigValueChanged.connect(self.onValueChanged)
-        
+
         self.locCombobox.currentTextChanged.connect(self.onValueChanged)
         self.fontSizeWidget.sigTextChanged.connect(self.onValueChanged)
         self.moveWithZoomToggle.toggled.connect(self.onValueChanged)
-    
+
     def onValueChanged(self, *args, **kwargs):
         self.sigValueChanged.emit(self.kwargs())
-    
+
     def selectColor(self):
         color = self.colorButton.color()
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
-        self.colorButton.colorDialog.setWindowFlags(
-            Qt.Window | Qt.WindowStaysOnTopHint
-        )
+        self.colorButton.colorDialog.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         self.colorButton.colorDialog.setParent(self)
         self.colorButton.colorDialog.open()
         w = self.width()
         left = self.pos().x()
         colorDialogTop = self.colorButton.colorDialog.pos().y()
-        self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
-    
+        self.colorButton.colorDialog.move(w + left + 10, colorDialogTop)
+
     def kwargs(self):
         kwargs = {
-            'color': self.colorButton.color(),
-            'start_timedelta': self.startTimeWidget.timedelta(),
-            'loc': self.locCombobox.currentText().lower(),
-            'font_size': self.fontSizeWidget.text(),
-            'move_with_zoom': self.moveWithZoomToggle.isChecked()
+            "color": self.colorButton.color(),
+            "start_timedelta": self.startTimeWidget.timedelta(),
+            "loc": self.locCombobox.currentText().lower(),
+            "font_size": self.fontSizeWidget.text(),
+            "move_with_zoom": self.moveWithZoomToggle.isChecked(),
         }
         return kwargs
-    
+
     def ok_cb(self):
         self.cancel = False
         self.close()
+
 
 class ExportToImageParametersDialog(QBaseDialog):
     sigOk = Signal(dict)
     sigAddScaleBar = Signal(bool)
     sigRangeChanged = Signal(object)
-    
+
     def __init__(
-            self, parent=None, startFolderpath='', startFilename='', 
-            startViewRange=None, isScaleBarPresent=False
-        ):
+        self,
+        parent=None,
+        startFolderpath="",
+        startFilename="",
+        startViewRange=None,
+        isScaleBarPresent=False,
+    ):
         self.cancel = True
-        
+
         super().__init__(parent=parent)
-        
-        self.setWindowTitle('Preferences for output image')
-        
+
+        self.setWindowTitle("Preferences for output image")
+
         mainLayout = QVBoxLayout()
-        
+
         gridLayout = QGridLayout()
-        
+
         row = 0
-        gridLayout.addWidget(QLabel('View range X axis:'), row, 0)
+        gridLayout.addWidget(QLabel("View range X axis:"), row, 0)
         self.xRangeSelector = widgets.RangeSelector(integers=True)
         if startViewRange is not None:
             xRange, yRange = startViewRange
             self.xRangeSelector.setRange(*xRange)
         gridLayout.addWidget(self.xRangeSelector, row, 1)
-        
+
         row += 1
-        gridLayout.addWidget(QLabel('View range Y axis:'), row, 0)
+        gridLayout.addWidget(QLabel("View range Y axis:"), row, 0)
         self.yRangeSelector = widgets.RangeSelector(integers=True)
         if startViewRange is not None:
             xRange, yRange = startViewRange
             self.yRangeSelector.setRange(*yRange)
         gridLayout.addWidget(self.yRangeSelector, row, 1)
-        
+
         row += 1
-        gridLayout.addWidget(QLabel('Width and Height:'), row, 0)
-        self.widthHeightSelector = widgets.RangeSelector(
-            integers=True, ordered=False
-        )
+        gridLayout.addWidget(QLabel("Width and Height:"), row, 0)
+        self.widthHeightSelector = widgets.RangeSelector(integers=True, ordered=False)
         if startViewRange is not None:
             xRange, yRange = startViewRange
             width = int(xRange[1] - xRange[0])
@@ -15999,28 +15982,26 @@ class ExportToImageParametersDialog(QBaseDialog):
         gridLayout.addWidget(self.widthHeightSelector, row, 1)
         self.lockSizeButton = widgets.LockPushButton()
         self.lockSizeButton.setCheckable(True)
-        self.lockSizeButton.setToolTip(
-            'Lock width and height'
-        )
+        self.lockSizeButton.setToolTip("Lock width and height")
         gridLayout.addWidget(self.lockSizeButton, row, 2)
-        
+
         row += 1
-        gridLayout.addWidget(QLabel('File format:'), row, 0)
+        gridLayout.addWidget(QLabel("File format:"), row, 0)
         self.fileFormatCombobox = QComboBox()
-        self.fileFormatCombobox.addItems(['SVG', 'PNG', 'TIFF', 'JPEG'])
+        self.fileFormatCombobox.addItems(["SVG", "PNG", "TIFF", "JPEG"])
         gridLayout.addWidget(self.fileFormatCombobox, row, 1)
-        
+
         row += 1
         self.dpiWidget = widgets.IntLineEdit(allowNegative=False)
         self.dpiWidget.setValue(300)
-        self.dpiWidget.label = QLabel('DPI')
+        self.dpiWidget.label = QLabel("DPI")
         gridLayout.addWidget(self.dpiWidget.label, row, 0)
         gridLayout.addWidget(self.dpiWidget, row, 1)
         self.dpiWidget.hide()
         self.dpiWidget.label.hide()
-        
+
         row += 1
-        gridLayout.addWidget(QLabel('Folder path:'), row, 0)
+        gridLayout.addWidget(QLabel("Folder path:"), row, 0)
         self.folderPathLineEdit = widgets.ElidingLineEdit(minWidth=240)
         self.folderPathLineEdit.setText(startFolderpath)
         gridLayout.addWidget(self.folderPathLineEdit, row, 1)
@@ -16028,29 +16009,25 @@ class ExportToImageParametersDialog(QBaseDialog):
             start_dir=startFolderpath, openFolder=True
         )
         gridLayout.addWidget(self.browseButton, row, 2)
-        
+
         row += 1
-        gridLayout.addWidget(QLabel('Filename:'), row, 0)
+        gridLayout.addWidget(QLabel("Filename:"), row, 0)
         self.filenameLineEdit = widgets.alphaNumericLineEdit()
         self.filenameLineEdit.setAlignment(Qt.AlignCenter)
         self.filenameLineEdit.setText(startFilename)
         gridLayout.addWidget(self.filenameLineEdit, row, 1)
         self.fileFormatLabel = QLabel(
-            f'.{self.fileFormatCombobox.currentText().lower()}'
+            f".{self.fileFormatCombobox.currentText().lower()}"
         )
         gridLayout.addWidget(self.fileFormatLabel, row, 2)
-        
+
         row += 1
-        gridLayout.addWidget(QLabel('Add Scale Bar:'), row, 0)
+        gridLayout.addWidget(QLabel("Add Scale Bar:"), row, 0)
         self.addScaleBarToggle = widgets.Toggle()
-        gridLayout.addWidget(
-            self.addScaleBarToggle, row, 1, alignment=Qt.AlignCenter
-        )
+        gridLayout.addWidget(self.addScaleBarToggle, row, 1, alignment=Qt.AlignCenter)
         self.addScaleBarToggle.setChecked(isScaleBarPresent)
-        
-        self.fileFormatCombobox.currentTextChanged.connect(
-            self.updateFileFormat
-        )
+
+        self.fileFormatCombobox.currentTextChanged.connect(self.updateFileFormat)
         self.browseButton.sigPathSelected.connect(self.updateFolderPath)
         self.addScaleBarToggle.toggled.connect(self.addScaleBarToggled)
         self.xRangeSelector.sigLowValueChanged.connect(self.x0Changed)
@@ -16062,24 +16039,24 @@ class ExportToImageParametersDialog(QBaseDialog):
         self.widthHeightSelector.sigRangeManuallyChanged.connect(
             self.widthHeightManuallyChanged
         )
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
-        buttonsLayout.okButton.setText('Export')
-        
+        buttonsLayout.okButton.setText("Export")
+
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         gridLayout.setColumnStretch(2, 0)
-        
+
         mainLayout.addLayout(gridLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.setLayout(mainLayout)
-    
+
     def widthHeightManuallyChanged(self, *args):
         self.lockSizeButton.setChecked(True)
-    
+
     def x0Changed(self, *args):
         if self.lockSizeButton.isChecked():
             x0, _ = self.xRangeSelector.range()
@@ -16092,12 +16069,12 @@ class ExportToImageParametersDialog(QBaseDialog):
             yRange = self.yRangeSelector.range()
             _, height = self.widthHeightSelector.range()
             width = int(xRange[1] - xRange[0])
-            
+
         self.xRangeSelector.setRangeNoEmit(*xRange)
         self.yRangeSelector.setRangeNoEmit(*yRange)
         self.widthHeightSelector.setRangeNoEmit(width, height)
         self.rangeChanged()
-        
+
     def x1Changed(self, *args):
         if self.lockSizeButton.isChecked():
             _, x1 = self.xRangeSelector.range()
@@ -16110,13 +16087,13 @@ class ExportToImageParametersDialog(QBaseDialog):
             yRange = self.yRangeSelector.range()
             _, height = self.widthHeightSelector.range()
             width = int(xRange[1] - xRange[0])
-            
+
         self.xRangeSelector.setRangeNoEmit(*xRange)
         self.yRangeSelector.setRangeNoEmit(*yRange)
         self.widthHeightSelector.setRangeNoEmit(width, height)
-        
+
         self.rangeChanged()
-        
+
     def y0Changed(self, *args):
         if self.lockSizeButton.isChecked():
             xRange = self.xRangeSelector.range()
@@ -16129,13 +16106,13 @@ class ExportToImageParametersDialog(QBaseDialog):
             yRange = self.yRangeSelector.range()
             width, _ = self.widthHeightSelector.range()
             height = int(yRange[1] - yRange[0])
-            
+
         self.xRangeSelector.setRangeNoEmit(*xRange)
         self.yRangeSelector.setRangeNoEmit(*yRange)
         self.widthHeightSelector.setRangeNoEmit(width, height)
-        
+
         self.rangeChanged()
-    
+
     def y1Changed(self, *args):
         if self.lockSizeButton.isChecked():
             xRange = self.xRangeSelector.range()
@@ -16148,26 +16125,26 @@ class ExportToImageParametersDialog(QBaseDialog):
             yRange = self.yRangeSelector.range()
             width, _ = self.widthHeightSelector.range()
             height = int(yRange[1] - yRange[0])
-            
+
         self.xRangeSelector.setRangeNoEmit(*xRange)
         self.yRangeSelector.setRangeNoEmit(*yRange)
         self.widthHeightSelector.setRangeNoEmit(width, height)
-        
+
         self.rangeChanged()
-        
+
     def widthChanged(self, *args):
         self.widthHeightChanged()
         self.rangeChanged()
-        
+
     def heightChanged(self, *args):
         self.widthHeightChanged()
         self.rangeChanged()
-    
+
     def updateViewRangeExportToImageDialog(self, viewBox, viewRange, changed):
         xRange, yRange = viewRange
         self.xRangeSelector.setRangeNoEmit(*xRange)
         self.yRangeSelector.setRangeNoEmit(*yRange)
-    
+
     def widthHeightChanged(self, *args):
         x0, _ = self.xRangeSelector.range()
         y0, _ = self.yRangeSelector.range()
@@ -16177,64 +16154,62 @@ class ExportToImageParametersDialog(QBaseDialog):
         self.xRangeSelector.setRangeNoEmit(x0, x1)
         self.yRangeSelector.setRangeNoEmit(y0, y1)
         self.rangeChanged()
-    
+
     def rangeChanged(self, *args):
         xRange = self.xRangeSelector.range()
         yRange = self.yRangeSelector.range()
         self.sigRangeChanged.emit((xRange, yRange))
-    
+
     def addScaleBarToggled(self, checked):
         self.sigAddScaleBar.emit(checked)
-    
+
     def updateFolderPath(self, folderPath):
         self.folderPathLineEdit.setText(folderPath)
         self.browseButton.setStartPath(folderPath)
-    
+
     def updateFileFormat(self, fileFormat):
-        if fileFormat == 'SVG':
+        if fileFormat == "SVG":
             self.dpiWidget.hide()
             self.dpiWidget.label.hide()
         else:
             self.dpiWidget.show()
             self.dpiWidget.label.show()
-            
-        self.fileFormatLabel.setText(f'.{fileFormat.lower()}')
-    
+
+        self.fileFormatLabel.setText(f".{fileFormat.lower()}")
+
     def validateFolderPath(self):
         folderPath = self.folderPathLineEdit.text()
         if os.path.exists(folderPath) and os.path.isdir(folderPath):
             return True
-        
+
         text = html_utils.paragraph(
-            'The selected folder path is not a valid folder or does not exist'
+            "The selected folder path is not a valid folder or does not exist"
         )
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Not a valid folder', text)
+        msg.warning(self, "Not a valid folder", text)
         return False
-    
+
     def validateFilename(self):
         filename = self.filenameLineEdit.text()
         if filename:
             return True
-        
-        text = html_utils.paragraph(
-            'The filename cannot be empty!'
-        )
+
+        text = html_utils.paragraph("The filename cannot be empty!")
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Not a valid folder', text)
+        msg.warning(self, "Not a valid folder", text)
         return False
-    
+
     def validate(self):
         proceed = self.validateFolderPath()
         if not proceed:
             return False
-        
+
         proceed = self.validateFilename()
         if not proceed:
             return False
-        
+
         return True
-    
+
     def setViewRange(self, xRange, yRange, emitSignal=True):
         if self.lockSizeButton.isChecked():
             x0, _ = xRange
@@ -16247,31 +16222,31 @@ class ExportToImageParametersDialog(QBaseDialog):
         else:
             width = int(xRange[1] - xRange[0])
             height = int(yRange[1] - yRange[0])
-            
+
         self.xRangeSelector.setRangeNoEmit(*xRange)
         self.yRangeSelector.setRangeNoEmit(*yRange)
         self.widthHeightSelector.setRangeNoEmit(width, height)
         if not emitSignal:
             return
-        
+
         self.rangeChanged()
-    
+
     def viewRange(self):
         xRange = self.xRangeSelector.range()
         yRange = self.yRangeSelector.range()
         return (xRange, yRange)
-    
+
     def preferences(self):
-        filename = f'{self.filenameLineEdit.text()}{self.fileFormatLabel.text()}'
+        filename = f"{self.filenameLineEdit.text()}{self.fileFormatLabel.text()}"
         preferences = {
-            'view_range_x': self.xRangeSelector.range(),
-            'view_range_y': self.yRangeSelector.range(),
-            'filepath': os.path.join(self.folderPathLineEdit.text(), filename), 
-            'filename': self.filenameLineEdit.text(),
-            'dpi': self.dpiWidget.value(),
+            "view_range_x": self.xRangeSelector.range(),
+            "view_range_y": self.yRangeSelector.range(),
+            "filepath": os.path.join(self.folderPathLineEdit.text(), filename),
+            "filename": self.filenameLineEdit.text(),
+            "dpi": self.dpiWidget.value(),
         }
         return preferences
-    
+
     def ok_cb(self):
         proceed = self.validate()
         if not proceed:
@@ -16280,170 +16255,171 @@ class ExportToImageParametersDialog(QBaseDialog):
         self.sigOk.emit(self.preferences())
         self.selected_preferences = self.preferences()
         self.close()
-    
+
+
 class DataPrepSubCropsPathsDialog(QBaseDialog):
     def __init__(self, cropPaths=None, parent=None):
         self.cancel = True
-        
+
         super().__init__(parent=parent)
-        
+
         mainLayout = QVBoxLayout()
-        
-        gridLayout = QGridLayout()        
+
+        gridLayout = QGridLayout()
         row = 0
-        
+
         if cropPaths is None:
-            cropPaths = {os.path.expanduser('~'): 1}
-        
-        if any([numCrops>1 for numCrops in cropPaths.values()]):
+            cropPaths = {os.path.expanduser("~"): 1}
+
+        if any([numCrops > 1 for numCrops in cropPaths.values()]):
             row += 1
-            gridLayout.addWidget(
-                QLabel('Same folder for all crops:'), row, 0
-            )
+            gridLayout.addWidget(QLabel("Same folder for all crops:"), row, 0)
             self.sameFolderPathToggle = widgets.Toggle()
             gridLayout.addWidget(
                 self.sameFolderPathToggle, row, 1, alignment=Qt.AlignCenter
             )
             self.sameFolderPathToggle.setChecked(True)
             self.sameFolderPathToggle.toggled.connect(self.setSameFolderPath)
-        
+
         self.windowMinWidth = 0
-        minWidth = int(self.screen().size().width()/3)
+        minWidth = int(self.screen().size().width() / 3)
         self.folderPathLineEdits = defaultdict(list)
         for path, numCrops in cropPaths.items():
             row += 1
-            gridLayout.addWidget(QLabel('Master Position:'), row, 0)
-            masterPathLabel = QLabel(f'<code>{path}</code>')
+            gridLayout.addWidget(QLabel("Master Position:"), row, 0)
+            masterPathLabel = QLabel(f"<code>{path}</code>")
             gridLayout.addWidget(masterPathLabel, row, 1)
-            
+
             scrollArea = QScrollArea()
             scrollArea.setWidgetResizable(True)
             scrollAreaLayout = QGridLayout()
             for i in range(numCrops):
-                label = QLabel(f'<b>Crop {i+1}</b> folder path:')
+                label = QLabel(f"<b>Crop {i + 1}</b> folder path:")
                 scrollAreaLayout.addWidget(label, i, 0)
                 folderPathLineEdit = widgets.ElidingLineEdit()
                 folderPathLineEdit.label = label
                 folderPathLineEdit.setText(path)
                 scrollAreaLayout.addWidget(folderPathLineEdit, i, 1)
-                browseButton = widgets.browseFileButton(
-                    start_dir=path, openFolder=True
-                )
+                browseButton = widgets.browseFileButton(start_dir=path, openFolder=True)
                 scrollAreaLayout.addWidget(browseButton, i, 2)
                 browseButton.sigPathSelected.connect(
                     partial(self.updateFolderPath, lineEdit=folderPathLineEdit)
                 )
                 self.folderPathLineEdits[path].append(folderPathLineEdit)
                 folderPathLineEdit.browseButton = browseButton
-            
+
             scrollAreaLayout.setColumnStretch(0, 0)
             scrollAreaLayout.setColumnStretch(1, 1)
             scrollAreaLayout.setColumnStretch(2, 0)
             container = QWidget()
             container.setLayout(scrollAreaLayout)
             scrollArea.setWidget(container)
-            
+
             row += 1
             gridLayout.addWidget(scrollArea, row, 0, 1, 2)
             noHorizontalScrollbarWidth = (
-                container.sizeHint().width() 
-                + scrollArea.verticalScrollBar().sizeHint().width() + 20
+                container.sizeHint().width()
+                + scrollArea.verticalScrollBar().sizeHint().width()
+                + 20
             )
             if noHorizontalScrollbarWidth > self.windowMinWidth:
                 self.windowMinWidth = noHorizontalScrollbarWidth
 
             row += 1
             gridLayout.addWidget(widgets.QHLine(), row, 0, 1, 2)
-            
+
             row += 1
             gridLayout.addItem(QSpacerItem(10, 10), row, 0, 1, 2)
-            
+
             row += 1
-            
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
-        
+
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addLayout(gridLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.setLayout(mainLayout)
-    
+
     def show(self, block=False):
         self.resize(self.windowMinWidth, self.sizeHint().height())
         super().show(block=block)
-    
+
     def setSameFolderPath(self, checked):
         for masterPath, lineEdits in self.folderPathLineEdits.items():
             referencePath = lineEdits[0].text()
             for lineEdit in lineEdits[1:]:
                 if checked:
                     lineEdit.setText(referencePath)
-                
+
                 lineEdit.setDisabled(checked)
                 lineEdit.browseButton.setDisabled(checked)
                 lineEdit.label.setDisabled(checked)
-                
+
     def updateFolderPath(self, path, lineEdit=None):
         lineEdit.setText(path)
         lineEdit.browseButton.setStartPath(path)
-    
+
     def warnFolderPathNotValid(self, cropNum, masterPath, folderPath):
         text = html_utils.paragraph(
-            f'The following folder path for crop number {cropNum} '
-            'is <b>not a valid folder or does not exist</b>:'
+            f"The following folder path for crop number {cropNum} "
+            "is <b>not a valid folder or does not exist</b>:"
         )
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Not a valid folder', text, commands=(folderPath,))
-    
+        msg.warning(self, "Not a valid folder", text, commands=(folderPath,))
+
     def askOverwritingPaths(self, overwritingPaths):
         text = html_utils.paragraph(
-            'Data in the following paths will be <b>overwritten with '
-            'cropped data.</b><br><br>'
-            'Are you sure you want to continue?'
+            "Data in the following paths will be <b>overwritten with "
+            "cropped data.</b><br><br>"
+            "Are you sure you want to continue?"
         )
         msg = widgets.myMessageBox(wrapText=False)
         _, yesButton = msg.warning(
-            self, 'Not a valid folder', text, commands=overwritingPaths, 
-            buttonsTexts=('No, let me edit paths', 'Yes, overwrite')
+            self,
+            "Not a valid folder",
+            text,
+            commands=overwritingPaths,
+            buttonsTexts=("No, let me edit paths", "Yes, overwrite"),
         )
         return msg.clickedButton == yesButton
-    
+
     def validatePaths(self):
         for masterPath, lineEdits in self.folderPathLineEdits.items():
             for i, lineEdit in enumerate(lineEdits):
                 path = lineEdit.text()
                 if os.path.exists(path) and os.path.isdir(path):
                     continue
-                
-                self.warnFolderPathNotValid(i+1, masterPath, path)
+
+                self.warnFolderPathNotValid(i + 1, masterPath, path)
                 return False
 
         overwritingPaths = []
         for masterPath, lineEdits in self.folderPathLineEdits.items():
-            masterPath = masterPath.replace('\\', '/')
-            if not masterPath.endswith('Images'):
+            masterPath = masterPath.replace("\\", "/")
+            if not masterPath.endswith("Images"):
                 continue
-            
+
             for i, lineEdit in enumerate(lineEdits):
                 path = lineEdit.text()
-                path = path.replace('\\', '/')
+                path = path.replace("\\", "/")
                 if path == masterPath:
                     overwritingPaths.append(masterPath)
-        
+
         if not overwritingPaths:
             return True
-        
+
         return self.askOverwritingPaths(overwritingPaths)
-    
+
     def paths(self):
         selectedPaths = {}
         for masterPath, lineEdits in self.folderPathLineEdits.items():
             selectedPaths[masterPath] = [le.text() for le in lineEdits]
         return selectedPaths
-    
+
     def ok_cb(self):
         proceed = self.validatePaths()
         if not proceed:
@@ -16453,119 +16429,120 @@ class DataPrepSubCropsPathsDialog(QBaseDialog):
         self.cancel = False
         self.close()
 
+
 class PreProcessParamsWidget(QWidget):
     sigLoadRecipe = Signal()
     sigLoadSavedRecipe = Signal()
     sigValuesChanged = Signal(list)
-    
+
     def __init__(self, df_metadata=None, addApplyButton=False, parent=None):
         super().__init__(parent)
-        
+
         mainLayout = QVBoxLayout()
-        
+
         self.df_metadata = df_metadata
         self.addApplyButton = addApplyButton
-        
+
         groupbox = QGroupBox()
         self.groupbox = groupbox
-        
-        groupbox.setTitle('Pre-processing')
+
+        groupbox.setTitle("Pre-processing")
         groupbox.setCheckable(True)
-        
-        self.gridLayout = QGridLayout()        
+
+        self.gridLayout = QGridLayout()
         self.row = -1
         self.stepsWidgets = {}
-        
+
         self.gridLayout.setColumnStretch(0, 0)
         self.gridLayout.setColumnStretch(1, 1)
         self.gridLayout.setColumnStretch(2, 0)
         self.gridLayout.setColumnStretch(3, 0)
         self.gridLayout.setColumnStretch(4, 0)
         groupbox.setLayout(self.gridLayout)
-        
+
         buttonsLayout = QGridLayout()
         row = 0
         col = 0
         buttonsLayout.setColumnStretch(col, 1)
-        
-        loadRecipeButton = widgets.OpenFilePushButton('Load saved recipe...')
+
+        loadRecipeButton = widgets.OpenFilePushButton("Load saved recipe...")
         self.loadRecipeButton = loadRecipeButton
-        buttonsLayout.addWidget(loadRecipeButton, row, col+2)
-        
-        saveRecipeButton = widgets.savePushButton('Save current recipe...')
+        buttonsLayout.addWidget(loadRecipeButton, row, col + 2)
+
+        saveRecipeButton = widgets.savePushButton("Save current recipe...")
         self.saveRecipeButton = saveRecipeButton
-        buttonsLayout.addWidget(saveRecipeButton, row+1, col+2)
-        
-        loadLastRecipeButton = widgets.reloadPushButton('Load last parameters')
+        buttonsLayout.addWidget(saveRecipeButton, row + 1, col + 2)
+
+        loadLastRecipeButton = widgets.reloadPushButton("Load last parameters")
         self.loadLastRecipeButton = loadLastRecipeButton
-        buttonsLayout.addWidget(loadLastRecipeButton, row, col+1)
-        
+        buttonsLayout.addWidget(loadLastRecipeButton, row, col + 1)
+
         self.buttonsLayout = buttonsLayout
-        
+
         loadLastRecipeButton.clicked.connect(self.emitLoadRecipe)
         saveRecipeButton.clicked.connect(self.saveRecipe)
         loadRecipeButton.clicked.connect(self.selectAndLoadRecipe)
-        
+
         mainLayout.addWidget(groupbox)
         mainLayout.addSpacing(10)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.addStep(is_first=True)
-        
+
         mainLayout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(mainLayout)
-    
+
     def stepSizeHeightHint(self):
         stepWidgets = self.stepsWidgets[1]
         height = (
-            stepWidgets['stepLabel'].minimumSizeHint().height()
-            + stepWidgets['selector'].minimumSizeHint().height()
+            stepWidgets["stepLabel"].minimumSizeHint().height()
+            + stepWidgets["selector"].minimumSizeHint().height()
         )
         return height
-    
+
     def setChecked(self, checked):
         self.groupbox.setChecked(checked)
-    
+
     def emitLoadRecipe(self):
         self.sigLoadRecipe.emit()
-    
+
     def loadRecipe(self, configPars: dict):
         for stepWidgets in list(self.stepsWidgets.values()):
             try:
-                stepWidgets['delButton'].click()
+                stepWidgets["delButton"].click()
             except Exception as err:
                 pass
-        
+
         configPars = self.sortStepsConfigPars(configPars)
         for s in range(1, len(configPars)):
-            self.stepsWidgets[1]['addButton'].click()
-        
+            self.stepsWidgets[1]["addButton"].click()
+
         for i, (section, section_items) in enumerate(configPars.items()):
-            step_n = i+1
-            selector = self.stepsWidgets[step_n]['selector']
+            step_n = i + 1
+            selector = self.stepsWidgets[step_n]["selector"]
             kwarg_to_value_mapper = {}
             for option, value in section_items.items():
-                if option == 'method':
+                if option == "method":
                     selector.setCurrentText(value)
                     method = value
                 else:
                     kwarg_to_value_mapper[option] = value
             selector.setParams(method, kwarg_to_value_mapper)
-        
+
         self.setChecked(True)
-    
+
     def sortStepsConfigPars(self, configPars: dict):
         sortedConfigPars = {}
         sortedKeys = sorted(
-            configPars.keys(), 
-            key=lambda key: int(re.findall(r'step(\d+)', key)[0])
+            configPars.keys(), key=lambda key: int(re.findall(r"step(\d+)", key)[0])
         )
         for key in sortedKeys:
             sortedConfigPars[key] = configPars[key]
         return sortedConfigPars
-    
-    def saveRecipeUI(self, folder_path, ext, title, basename, hintText, 
-                     default_text):# -> tuple[Literal[False], Literal['']] | tuple[Literal[True], Any]:        
+
+    def saveRecipeUI(
+        self, folder_path, ext, title, basename, hintText, default_text
+    ):  # -> tuple[Literal[False], Literal['']] | tuple[Literal[True], Any]:
         win = filenameDialog(
             title=title,
             basename=basename,
@@ -16577,93 +16554,92 @@ class PreProcessParamsWidget(QWidget):
         )
         win.exec_()
         if win.cancel:
-            return False, ''
-        
+            return False, ""
+
         self.cancel = False
         filepath = win.filename
         os.makedirs(folder_path, exist_ok=True)
         filepath = os.path.join(folder_path, filepath)
-        
+
         if os.path.exists(filepath):
             proceed = self.warnExistingRecipeFile(filepath)
             if not proceed:
-                return False, ''
-        
+                return False, ""
+
         return True, filepath
-    
+
     def saveRecipe(self):
         recipe = self.recipe()
         if recipe is None:
             return
-        
-        default_text = ''
+
+        default_text = ""
         for step in recipe[:2]:
-            method = step['method']
-            func_name = config.PREPROCESS_MAPPER[method]['function_name']
-            default_text = f'{default_text}-{func_name}'
-        default_text = default_text.lstrip('-')
-        
-        proceed, ini_filepath = self.saveRecipeUI(preproc_recipes_path, '.ini', 
-                          'Filename for pre-processing recipe',
-                          'preprocessing_recipe', 
-                          'Insert a <b>filename</b> for the pre-processing recipe:',
-                          default_text
-                          )
+            method = step["method"]
+            func_name = config.PREPROCESS_MAPPER[method]["function_name"]
+            default_text = f"{default_text}-{func_name}"
+        default_text = default_text.lstrip("-")
+
+        proceed, ini_filepath = self.saveRecipeUI(
+            preproc_recipes_path,
+            ".ini",
+            "Filename for pre-processing recipe",
+            "preprocessing_recipe",
+            "Insert a <b>filename</b> for the pre-processing recipe:",
+            default_text,
+        )
         if not proceed:
             return
-        
-        cp = self.recipeConfigPars('acdc')
-        with open(ini_filepath, 'w') as configfile:
+
+        cp = self.recipeConfigPars("acdc")
+        with open(ini_filepath, "w") as configfile:
             cp.write(configfile)
-        
+
         self.communicateSavingRecipeFinished(ini_filepath)
-    
+
     def warnExistingRecipeFile(self, ini_filename):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
-            'A file with the following name<br><br>'
-            f'<code>{ini_filename}</code><br><br>'
-            '<b>already exists</b>.<br><br>'
-            'Do you want to <b>overwrite</b> the existing file?'
+            "A file with the following name<br><br>"
+            f"<code>{ini_filename}</code><br><br>"
+            "<b>already exists</b>.<br><br>"
+            "Do you want to <b>overwrite</b> the existing file?"
         )
         noButton, yesButton = msg.warning(
-            self, 'File name existing', txt, 
-            buttonsTexts=(
-                'No, stop saving process', 
-                'Yes, overwrite existing file'
-            )
+            self,
+            "File name existing",
+            txt,
+            buttonsTexts=("No, stop saving process", "Yes, overwrite existing file"),
         )
         return msg.clickedButton == yesButton
 
     def warnNoAvailableRecipesToLoad(self):
-        text = html_utils.paragraph(
-            'There are no recipes saved. Sorry about that :('
-        )
+        text = html_utils.paragraph("There are no recipes saved. Sorry about that :(")
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'No recipes saved', text)
-    
+        msg.warning(self, "No recipes saved", text)
+
     # def selectIniFileToLoadRecipe(self):
     #     import qtpy.compat
     #     ini_filepath = qtpy.compat.getopenfilename(
-    #         parent=self, 
-    #         caption='Select INI file to load pre-processing recipe', 
+    #         parent=self,
+    #         caption='Select INI file to load pre-processing recipe',
     #         filters='INI (*.ini);;All Files (*)'
     #     )[0]
     #     if not ini_filepath:
     #         return
-        
+
     #     cp = config.ConfigParser()
     #     cp.read(ini_filepath)
     #     preprocConfigPars = {}
     #     for section in cp.sections():
     #         if not section.startswith('acdc.preprocess'):
-    #             continue      
-            
+    #             continue
+
     #         preprocConfigPars[section] = cp[section]
-        
+
     #     if not preprocConfigPars:
     #         return
-        
+
     #     self.loadRecipe(preprocConfigPars)
 
     def selectRecipeFilepath(self, recipes_path, recipe_prefix, ext_label, ext):
@@ -16672,39 +16648,40 @@ class PreProcessParamsWidget(QWidget):
             for file in myutils.listdir(recipes_path):
                 if not file.startswith(recipe_prefix):
                     continue
-                endname = file.split(f'{recipe_prefix}_')[1]
+                endname = file.split(f"{recipe_prefix}_")[1]
                 availableRecipes.append(endname)
-        
+
         if not availableRecipes:
             import qtpy.compat
+
             filepath = qtpy.compat.getopenfilename(
                 parent=self,
-                caption=f'Select {ext_label} file to load recipe',
-                filters=f'{ext_label} (*.{ext});;All Files (*)'
+                caption=f"Select {ext_label} file to load recipe",
+                filters=f"{ext_label} (*.{ext});;All Files (*)",
             )[0]
             return filepath or None
-        
+
         browseButton = widgets.browseFileButton(
-            f'Select {ext_label} file...',
-            title=f'Select {ext_label} file to load recipe',
+            f"Select {ext_label} file...",
+            title=f"Select {ext_label} file to load recipe",
             openFolder=False,
             start_dir=myutils.getMostRecentPath(),
-            ext={ext_label: f'.{ext}'}
+            ext={ext_label: f".{ext}"},
         )
         selectRecipeWin = widgets.QDialogListbox(
-            'Select recipe',
-            'Select recipe to load:\n',
+            "Select recipe",
+            "Select recipe to load:\n",
             availableRecipes,
             multiSelection=False,
             allowEmptySelection=False,
             parent=self,
-            additionalButtons=(browseButton,)
+            additionalButtons=(browseButton,),
         )
         browseButton.sigPathSelected.connect(
             partial(
                 self.recipeIniFileSelected,
                 selectRecipeWin=selectRecipeWin,
-                sender=browseButton
+                sender=browseButton,
             )
         )
         selectRecipeWin.exec_()
@@ -16713,248 +16690,237 @@ class PreProcessParamsWidget(QWidget):
 
         if selectRecipeWin.clickedButton == browseButton:
             return selectRecipeWin.selectedIniFilepath
-        
+
         selected_endname = selectRecipeWin.selectedItemsText[0]
-        filename = f'{recipe_prefix}_{selected_endname}'
+        filename = f"{recipe_prefix}_{selected_endname}"
         return os.path.join(recipes_path, filename)
-    
+
     def selectAndLoadRecipe(self):
         filepath = self.selectRecipeFilepath(
-            preproc_recipes_path, 'preprocessing_recipe', 'INI', 'ini'
+            preproc_recipes_path, "preprocessing_recipe", "INI", "ini"
         )
         if filepath is None:
             return
         cp = config.ConfigParser()
         cp.read(filepath)
         preprocConfigPars = {
-            s: cp[s] for s in cp.sections() 
-            if s.startswith('acdc.preprocess')
+            s: cp[s] for s in cp.sections() if s.startswith("acdc.preprocess")
         }
         if not preprocConfigPars:
             return
         self.loadRecipe(preprocConfigPars)
-    
-    def recipeIniFileSelected(
-            self, ini_filepath, selectRecipeWin=None, sender=None
-        ):
+
+    def recipeIniFileSelected(self, ini_filepath, selectRecipeWin=None, sender=None):
         selectRecipeWin.clickedButton = sender
         selectRecipeWin.selectedIniFilepath = ini_filepath
         selectRecipeWin.cancel = False
         selectRecipeWin.close()
 
     def communicateSavingRecipeFinished(self, ini_filepath):
-        text = html_utils.paragraph(
-            'Done!<br><br>'
-            'Pre-processing recipe saved to:'
-        )
+        text = html_utils.paragraph("Done!<br><br>Pre-processing recipe saved to:")
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(
-            self, 'Pre-processing recipe saved!', text, 
+            self,
+            "Pre-processing recipe saved!",
+            text,
             commands=(ini_filepath,),
-            path_to_browse=os.path.dirname(ini_filepath)
+            path_to_browse=os.path.dirname(ini_filepath),
         )
-        
+
     def addStep(self, is_first=False):
         stepWidgets = {}
-        
+
         self.row += 1
-        
-        step_n = len(self.stepsWidgets)+1
-        label = QLabel(f'Step {step_n}: ')
+
+        step_n = len(self.stepsWidgets) + 1
+        label = QLabel(f"Step {step_n}: ")
         self.gridLayout.addWidget(label, self.row, 0)
-        stepWidgets['stepLabel'] = label
-        
+        stepWidgets["stepLabel"] = label
+
         selector = widgets.PreProcessingSelector()
         self.gridLayout.addWidget(selector, self.row, 1)
-        stepWidgets['selector'] = selector
-        
+        stepWidgets["selector"] = selector
+
         setParamsButton = widgets.setPushButton()
-        setParamsButton.setToolTip(
-            'Set step parameters'
-        )
+        setParamsButton.setToolTip("Set step parameters")
         self.gridLayout.addWidget(setParamsButton, self.row, 2)
-        setParamsButton.clicked.connect(
-            partial(self.setParamsStep, selector=selector)
-        )
-        stepWidgets['setParamsButton'] = setParamsButton
-        
+        setParamsButton.clicked.connect(partial(self.setParamsStep, selector=selector))
+        stepWidgets["setParamsButton"] = setParamsButton
+
         infoButton = widgets.infoPushButton()
         self.gridLayout.addWidget(infoButton, self.row, 3)
         infoButton.clicked.connect(partial(self.showInfo, selector=selector))
-        stepWidgets['infoButton'] = infoButton
-        
+        stepWidgets["infoButton"] = infoButton
+
         if is_first:
             addButton = widgets.addPushButton()
             self.gridLayout.addWidget(addButton, self.row, 4)
             addButton.clicked.connect(self.addStep)
-            stepWidgets['addButton'] = addButton
+            stepWidgets["addButton"] = addButton
         else:
             delButton = widgets.delPushButton()
             self.gridLayout.addWidget(delButton, self.row, 4)
             delButton.clicked.connect(self.removeStep)
             delButton.step_n = step_n
-            stepWidgets['delButton'] = delButton
-        
+            stepWidgets["delButton"] = delButton
+
         self.row += 1
         selector.row = self.row
         selector.step_n = step_n
 
         hline = widgets.QHLine()
         self.gridLayout.addWidget(hline, self.row, 0, 1, 6)
-        stepWidgets['hline'] = hline
+        stepWidgets["hline"] = hline
         self.row += 1
-              
+
         self.stepsWidgets[step_n] = stepWidgets
-        
+
         selector.sigValuesChanged.connect(self.emitValuesChanged)
         selector.currentTextChanged.connect(
             partial(self.clearInitKwargs, step_n=step_n)
         )
-        
+
         self.resetStretch()
-    
+
     def emitValuesChanged(self, functionKwargs, step_n):
-        self.stepsWidgets[step_n]['step_kwargs'] = functionKwargs
-        
+        self.stepsWidgets[step_n]["step_kwargs"] = functionKwargs
+
         recipe = self.recipe(warn=False)
         if recipe is None:
             return
-        
+
         self.sigValuesChanged.emit(recipe)
-    
+
     def clearInitKwargs(self, selected_method, step_n=0):
         stepWidgets = self.stepsWidgets[step_n]
-        stepWidgets.pop('step_kwargs', None)
-    
+        stepWidgets.pop("step_kwargs", None)
+
     def resetStretch(self):
         for row in range(self.gridLayout.rowCount()):
             self.gridLayout.setRowStretch(row, 0)
 
         self.gridLayout.setRowStretch(self.gridLayout.rowCount(), 1)
         self.row = self.gridLayout.rowCount() - 1
-        
+
     def showInfo(self, checked=False, selector=None):
         if selector is None:
             return
-        
+
         htmlText = selector.htmlInfo()
         htmlText = html_utils.paragraph(htmlText)
-        
+
         method = selector.currentText()
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(self, f'Info about `{method}`', htmlText)
-    
+        msg.information(self, f"Info about `{method}`", htmlText)
+
     def setParamsStep(
-            self, checked=False, 
-            selector: 'widgets.PreProcessingSelector'=None
-        ):
+        self, checked=False, selector: "widgets.PreProcessingSelector" = None
+    ):
         step_n = selector.step_n
         stepFunctionKwargs = selector.askSetParams(
-            df_metadata=self.df_metadata, 
-            addApplyButton=self.addApplyButton
+            df_metadata=self.df_metadata, addApplyButton=self.addApplyButton
         )
         if stepFunctionKwargs is None:
             return
-        
-        self.stepsWidgets[step_n]['step_kwargs'] = stepFunctionKwargs
-        
-    def removeStep(self, checked=False, step_n=None):        
+
+        self.stepsWidgets[step_n]["step_kwargs"] = stepFunctionKwargs
+
+    def removeStep(self, checked=False, step_n=None):
         if step_n is None:
             step_n = self.sender().step_n
-        
+
         stepWidgets = self.stepsWidgets[step_n]
-        
-        stepWidgets['stepLabel'].hide()
-        self.gridLayout.removeWidget(stepWidgets['stepLabel'])
-        
-        stepWidgets['selector'].hide()
-        self.gridLayout.removeWidget(stepWidgets['selector'])
-        
-        stepWidgets['infoButton'].hide()
-        self.gridLayout.removeWidget(stepWidgets['infoButton'])
-        
+
+        stepWidgets["stepLabel"].hide()
+        self.gridLayout.removeWidget(stepWidgets["stepLabel"])
+
+        stepWidgets["selector"].hide()
+        self.gridLayout.removeWidget(stepWidgets["selector"])
+
+        stepWidgets["infoButton"].hide()
+        self.gridLayout.removeWidget(stepWidgets["infoButton"])
+
         # stepWidgets['addButton'].hide()
         # self.gridLayout.removeWidget(stepWidgets['addButton'])
-        
-        stepWidgets['setParamsButton'].hide()
-        self.gridLayout.removeWidget(stepWidgets['setParamsButton'])
-        
-        stepWidgets['delButton'].hide()
-        self.gridLayout.removeWidget(stepWidgets['delButton'])
+
+        stepWidgets["setParamsButton"].hide()
+        self.gridLayout.removeWidget(stepWidgets["setParamsButton"])
+
+        stepWidgets["delButton"].hide()
+        self.gridLayout.removeWidget(stepWidgets["delButton"])
         self.row -= 1
-        
-        stepWidgets['hline'].hide()
-        self.gridLayout.removeWidget(stepWidgets['hline'])
+
+        stepWidgets["hline"].hide()
+        self.gridLayout.removeWidget(stepWidgets["hline"])
         self.row -= 1
 
         self.stepsWidgets.pop(step_n)
-        
+
         stepsWidgetsMapper = {1: self.stepsWidgets[1]}
         for i, stepWidgets in enumerate(self.stepsWidgets.values()):
             if i == 0:
                 continue
             step_n = i + 1
-            label = stepWidgets['stepLabel']
-            label.setText(f'Step {step_n}: ')
-            stepWidgets['delButton'].step_n = step_n
-            stepWidgets['selector'].step_n = step_n
+            label = stepWidgets["stepLabel"]
+            label.setText(f"Step {step_n}: ")
+            stepWidgets["delButton"].step_n = step_n
+            stepWidgets["selector"].step_n = step_n
             stepsWidgetsMapper[step_n] = stepWidgets
-        
+
         self.stepsWidgets = stepsWidgetsMapper
-        
+
         self.resetStretch()
 
     def isChecked(self):
         return self.groupbox.isChecked()
-    
+
     def warnStepNotInit(self, method):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
-            f'The parameters for the preprocessing step <b>{method}</b> '
-            'were not initialized.<br><br>'
-            'Please, click on the corresponding <code>Set step parameters</code> '
-            'button to initialize this step (cog icon).<br><br>'
-            'Thank you for your patience!'
+            f"The parameters for the preprocessing step <b>{method}</b> "
+            "were not initialized.<br><br>"
+            "Please, click on the corresponding <code>Set step parameters</code> "
+            "button to initialize this step (cog icon).<br><br>"
+            "Thank you for your patience!"
         )
-        msg.warning(self, 'Params not initialized!', txt)
+        msg.warning(self, "Params not initialized!", txt)
 
     def recipe(self, warn=True):
         recipe = []
         if not self.groupbox.isChecked() and self.groupbox.isCheckable():
             return recipe
-        
+
         for stepWidgets in self.stepsWidgets.values():
-            method = stepWidgets['selector'].currentText()
-            step_kwargs = stepWidgets.get('step_kwargs')
+            method = stepWidgets["selector"].currentText()
+            step_kwargs = stepWidgets.get("step_kwargs")
             if step_kwargs is None:
                 if warn:
                     self.warnStepNotInit(method)
                 return
 
             try:
-                init_func = config.PREPROCESS_INIT_MAPPER[method]['function']
+                init_func = config.PREPROCESS_INIT_MAPPER[method]["function"]
                 init_func(**step_kwargs)
             except Exception as err:
                 pass
-            
-            recipe.append({
-                'method': method, 'kwargs': step_kwargs
-            })
-        
+
+            recipe.append({"method": method, "kwargs": step_kwargs})
+
         return recipe
-    
+
     def recipeConfigPars(self, model_name):
         cp = config.ConfigParser()
         if not self.groupbox.isChecked() and self.groupbox.isCheckable():
             return cp
-        
+
         for s, step in enumerate(self.recipe()):
-            section = f'{model_name}.preprocess.step{s+1}'
+            section = f"{model_name}.preprocess.step{s + 1}"
             cp[section] = {}
-            cp[section]['method'] = step['method']
-            for option, value in step['kwargs'].items():
+            cp[section]["method"] = step["method"]
+            for option, value in step["kwargs"].items():
                 cp[section][option] = str(value)
         return cp
+
 
 # class QComboBoxChangeColor(QComboBox):
 #     def __init__(self, forbidden_items=None, parent=None):
@@ -16962,7 +16928,7 @@ class PreProcessParamsWidget(QWidget):
 #         self.forbiddenItems = forbidden_items or set()
 #         self._defaultStyleSheet = self.styleSheet()
 #         self.currentTextChanged.connect(self._updateColor)
-    
+
 #     def _updateColor(self, text=None):
 #         if not hasattr(self, '_defaultStyleSheet'):
 #             self._defaultStyleSheet = self.styleSheet()
@@ -16983,12 +16949,11 @@ class PreProcessParamsWidget(QWidget):
 #         else:
 #             self.setStyleSheet(self._defaultStyleSheet)
 
-        
-        
+
 class CombineChannelsWidget(PreProcessParamsWidget):
     sigValuesChangedCombineChannels = Signal()
-    
-    def __init__(self, channel_names:Iterable[str], parent=None):
+
+    def __init__(self, channel_names: Iterable[str], parent=None):
         self.channel_names = channel_names
 
         super().__init__(parent)
@@ -17000,207 +16965,179 @@ class CombineChannelsWidget(PreProcessParamsWidget):
 
     def addStep(self, is_first=False):
         stepWidgets = {}
-        
+
         self.row += 1
         if is_first:
             self.row += 1
-        
-        step_n = len(self.stepsWidgets)+1
-        tooltip = (
-            'Use this text in the formula'
-        )
+
+        step_n = len(self.stepsWidgets) + 1
+        tooltip = "Use this text in the formula"
         if is_first:
-            label = QLabel('Formula var')
-            label.setToolTip(
-                tooltip
-            )
-            self.gridLayout.addWidget(label, self.row-1, 1)
-        name_edit = QLineEdit(text=f'img{step_n}')
-        name_edit.setToolTip(
-            tooltip
-        )
+            label = QLabel("Formula var")
+            label.setToolTip(tooltip)
+            self.gridLayout.addWidget(label, self.row - 1, 1)
+        name_edit = QLineEdit(text=f"img{step_n}")
+        name_edit.setToolTip(tooltip)
         self.gridLayout.addWidget(name_edit, self.row, 1)
-        stepWidgets['name_edit'] = name_edit
+        stepWidgets["name_edit"] = name_edit
         name_edit.textChanged.connect(self.emitValuesChanged)
 
-        tooltip = (
-            'Select a channel or a segmentation mask'
-        )
+        tooltip = "Select a channel or a segmentation mask"
         if is_first:
-            label = QLabel('Channel')
-            label.setToolTip(
-                tooltip
-            )
-            self.gridLayout.addWidget(label, self.row-1, 2)
+            label = QLabel("Channel")
+            label.setToolTip(tooltip)
+            self.gridLayout.addWidget(label, self.row - 1, 2)
         ch_selector = QComboBox()
-        ch_selector.setToolTip(
-            tooltip
-        )
+        ch_selector.setToolTip(tooltip)
         ch_selector.addItems(self.channel_names)
         self.gridLayout.addWidget(ch_selector, self.row, 2)
-        stepWidgets['selector'] = ch_selector
+        stepWidgets["selector"] = ch_selector
         ch_selector.currentTextChanged.connect(self.setBinarizeCheckableAndNorm)
 
         # add binarisaion spinbox
         tooltip = (
-            'If binarize is selected, the channel will be binarized first, before applying offset and multiplier.\n'
-            'If inverse binarize is selected, the channel will be binerized and '
-            'then the logical NOT will be applied.'
+            "If binarize is selected, the channel will be binarized first, before applying offset and multiplier.\n"
+            "If inverse binarize is selected, the channel will be binerized and "
+            "then the logical NOT will be applied."
         )
         if is_first:
-            label = QLabel('Binarize')
-            label.setToolTip(
-                tooltip
-            )
-            self.gridLayout.addWidget(label, self.row-1, 5)
-        options = ['No', 'binarize', 'inverse binarize']
+            label = QLabel("Binarize")
+            label.setToolTip(tooltip)
+            self.gridLayout.addWidget(label, self.row - 1, 5)
+        options = ["No", "binarize", "inverse binarize"]
         self.binarizeCombobox = QComboBox()
         self.binarizeCombobox.addItems(options)
         self.binarizeCombobox.setCurrentIndex(0)
         self.binarizeCombobox.setEnabled(False)
-        self.binarizeCombobox.setToolTip(
-            tooltip
-        )
+        self.binarizeCombobox.setToolTip(tooltip)
         self.binarizeCombobox.currentIndexChanged.connect(self.emitValuesChanged)
         self.gridLayout.addWidget(self.binarizeCombobox, self.row, 5)
-        stepWidgets['binarize'] = self.binarizeCombobox
-        
-        tooltip = (
-            'Min value of the channel to be normalized to.'
-        )
+        stepWidgets["binarize"] = self.binarizeCombobox
+
+        tooltip = "Min value of the channel to be normalized to."
         if is_first:
-            label = QLabel('Min val')
-            label.setToolTip(
-                tooltip
-            )
-            self.gridLayout.addWidget(label, self.row-1, 6)
+            label = QLabel("Min val")
+            label.setToolTip(tooltip)
+            self.gridLayout.addWidget(label, self.row - 1, 6)
         self.minValueSpinbox = QDoubleSpinBox()
         self.minValueSpinbox.setRange(-np.inf, np.inf)
         self.minValueSpinbox.setSingleStep(0.1)
         self.minValueSpinbox.setValue(0)
-        self.minValueSpinbox.setToolTip(
-            tooltip
-        )
-        
+        self.minValueSpinbox.setToolTip(tooltip)
+
         self.minValueSpinbox.valueChanged.connect(self.emitValuesChanged)
         self.gridLayout.addWidget(self.minValueSpinbox, self.row, 6)
-        stepWidgets['minValueSpinbox'] = self.minValueSpinbox
-        
-        tooltip = (
-            'Max value of the channel to be normalized to.'
-        )
+        stepWidgets["minValueSpinbox"] = self.minValueSpinbox
+
+        tooltip = "Max value of the channel to be normalized to."
         if is_first:
-            label = QLabel('Max val')
-            label.setToolTip(
-                tooltip
-            )
-            self.gridLayout.addWidget(label, self.row-1, 7)
+            label = QLabel("Max val")
+            label.setToolTip(tooltip)
+            self.gridLayout.addWidget(label, self.row - 1, 7)
         self.maxValueSpinbox = QDoubleSpinBox()
         self.maxValueSpinbox.setRange(-np.inf, np.inf)
         self.maxValueSpinbox.setSingleStep(0.1)
         self.maxValueSpinbox.setValue(1)
-        self.maxValueSpinbox.setToolTip(
-            tooltip
-        )
-        
+        self.maxValueSpinbox.setToolTip(tooltip)
+
         self.maxValueSpinbox.valueChanged.connect(self.emitValuesChanged)
         self.gridLayout.addWidget(self.maxValueSpinbox, self.row, 7)
-        stepWidgets['maxValueSpinbox'] = self.maxValueSpinbox
+        stepWidgets["maxValueSpinbox"] = self.maxValueSpinbox
 
         if is_first:
             addButton = widgets.addPushButton()
             self.gridLayout.addWidget(addButton, self.row, 8)
             addButton.clicked.connect(self.addStep)
-            stepWidgets['addButton'] = addButton
-            
+            stepWidgets["addButton"] = addButton
+
         else:
             delButton = widgets.delPushButton()
             self.gridLayout.addWidget(delButton, self.row, 8)
             delButton.clicked.connect(self.removeStep)
             delButton.step_n = step_n
-            stepWidgets['delButton'] = delButton
-        
+            stepWidgets["delButton"] = delButton
+
         self.row += 1
         ch_selector.row = self.row
         ch_selector.step_n = step_n
 
         hline = widgets.QHLine()
         self.gridLayout.addWidget(hline, self.row, 0, 1, 8)
-        stepWidgets['hline'] = hline
+        stepWidgets["hline"] = hline
         self.row += 1
-              
+
         self.stepsWidgets[step_n] = stepWidgets
-                
+
         self.resetStretch()
         self.sigValuesChangedCombineChannels.emit()
         self.setBinarizeCheckableAndNorm()
-    
+
     def emitValuesChanged(self, *args):
         self.sigValuesChangedCombineChannels.emit()
-        
+
     def setBinarizeCheckableAndNorm(self):
         for step_n, stepWidgets in self.stepsWidgets.items():
-            binarizeSelector = stepWidgets['binarize']
-            channel = stepWidgets['selector'].currentText()
+            binarizeSelector = stepWidgets["binarize"]
+            channel = stepWidgets["selector"].currentText()
             if "segm" in channel:
                 binarizeSelector.setEnabled(True)
                 # set min and max to 0 and 1 and disable
-                stepWidgets['minValueSpinbox'].setValue(0)
-                stepWidgets['maxValueSpinbox'].setValue(1)
-                stepWidgets['minValueSpinbox'].setEnabled(False)
-                stepWidgets['maxValueSpinbox'].setEnabled(False)
+                stepWidgets["minValueSpinbox"].setValue(0)
+                stepWidgets["maxValueSpinbox"].setValue(1)
+                stepWidgets["minValueSpinbox"].setEnabled(False)
+                stepWidgets["maxValueSpinbox"].setEnabled(False)
             else:
                 binarizeSelector.setEnabled(False)
                 binarizeSelector.setCurrentIndex(0)
                 # set min and max to 0 and 1 and enable
-                stepWidgets['minValueSpinbox'].setEnabled(True)
-                stepWidgets['maxValueSpinbox'].setEnabled(True)
-        
+                stepWidgets["minValueSpinbox"].setEnabled(True)
+                stepWidgets["maxValueSpinbox"].setEnabled(True)
+
         self.emitValuesChanged()
 
-    def removeStep(self, checked=False, step_n=None):        
+    def removeStep(self, checked=False, step_n=None):
         if step_n is None:
             step_n = self.sender().step_n
-        
+
         stepWidgets = self.stepsWidgets[step_n]
-        
-        stepWidgets['name_edit'].hide()
-        self.gridLayout.removeWidget(stepWidgets['name_edit'])
-        
-        stepWidgets['selector'].hide()
-        self.gridLayout.removeWidget(stepWidgets['selector'])
-        
-        stepWidgets['binarize'].hide()
-        self.gridLayout.removeWidget(stepWidgets['binarize'])
-        
-        stepWidgets['minValueSpinbox'].hide()
-        self.gridLayout.removeWidget(stepWidgets['minValueSpinbox'])
-        
-        stepWidgets['maxValueSpinbox'].hide()
-        self.gridLayout.removeWidget(stepWidgets['maxValueSpinbox'])
-        
-        stepWidgets['delButton'].hide()
-        self.gridLayout.removeWidget(stepWidgets['delButton'])
-        
+
+        stepWidgets["name_edit"].hide()
+        self.gridLayout.removeWidget(stepWidgets["name_edit"])
+
+        stepWidgets["selector"].hide()
+        self.gridLayout.removeWidget(stepWidgets["selector"])
+
+        stepWidgets["binarize"].hide()
+        self.gridLayout.removeWidget(stepWidgets["binarize"])
+
+        stepWidgets["minValueSpinbox"].hide()
+        self.gridLayout.removeWidget(stepWidgets["minValueSpinbox"])
+
+        stepWidgets["maxValueSpinbox"].hide()
+        self.gridLayout.removeWidget(stepWidgets["maxValueSpinbox"])
+
+        stepWidgets["delButton"].hide()
+        self.gridLayout.removeWidget(stepWidgets["delButton"])
+
         self.row -= 1
-        
-        stepWidgets['hline'].hide()
-        self.gridLayout.removeWidget(stepWidgets['hline'])
+
+        stepWidgets["hline"].hide()
+        self.gridLayout.removeWidget(stepWidgets["hline"])
         self.row -= 1
 
         self.stepsWidgets.pop(step_n)
-        
+
         stepsWidgetsMapper = {1: self.stepsWidgets[1]}
         for i, stepWidgets in enumerate(self.stepsWidgets.values()):
             if i == 0:
                 continue
             step_n = i + 1
-            stepWidgets['delButton'].step_n = step_n
-            stepWidgets['selector'].step_n = step_n
+            stepWidgets["delButton"].step_n = step_n
+            stepWidgets["selector"].step_n = step_n
             stepsWidgetsMapper[step_n] = stepWidgets
-        
+
         self.stepsWidgets = stepsWidgetsMapper
-        
+
         self.resetStretch()
         self.sigValuesChangedCombineChannels.emit()
 
@@ -17208,24 +17145,25 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         steps = {}
         if not self.groupbox.isChecked() and self.groupbox.isCheckable():
             return steps
-        
+
         for step_number, stepWidgets in self.stepsWidgets.items():
-            name = stepWidgets['name_edit'].text()
-            channel = stepWidgets['selector'].currentText()
-            binarize = stepWidgets['binarize'].currentText()
-            min_val = stepWidgets['minValueSpinbox'].value()
-            max_val = stepWidgets['maxValueSpinbox'].value()
+            name = stepWidgets["name_edit"].text()
+            channel = stepWidgets["selector"].currentText()
+            binarize = stepWidgets["binarize"].currentText()
+            min_val = stepWidgets["minValueSpinbox"].value()
+            max_val = stepWidgets["maxValueSpinbox"].value()
             steps[step_number] = {
-                'name': name,
-                'channel': channel,
-                'binarize': binarize,
-                'min_val': min_val,
-                'max_val': max_val,
+                "name": name,
+                "channel": channel,
+                "binarize": binarize,
+                "min_val": min_val,
+                "max_val": max_val,
             }
 
         steps = dict(sorted(steps.items()))
         return steps
-    
+
+
 class FormulaEditWidget(QWidget):
     sigFormulaChanged = Signal(str, bool)  # formula_str, is_valid
 
@@ -17238,17 +17176,17 @@ class FormulaEditWidget(QWidget):
         layout.setSpacing(4)
 
         self._edit = QLineEdit()
-        self._edit.setPlaceholderText('e.g. img1 + img2 * 0.5')
+        self._edit.setPlaceholderText("e.g. img1 + img2 * 0.5")
         layout.addWidget(self._edit)
 
         self._status_label = QLabel()
         self._status_label.setWordWrap(True)
-        self._status_label.setStyleSheet('font-size: 11px;')
+        self._status_label.setStyleSheet("font-size: 11px;")
         layout.addWidget(self._status_label)
 
         self._edit.textChanged.connect(self._onTextChanged)
         self._clearStatus()
-        
+
         self.parent = parent
 
     def setVariableNames(self, variable_names):
@@ -17259,7 +17197,7 @@ class FormulaEditWidget(QWidget):
         variable_names : list
             list of variable names (strings)
         """
-        
+
         self._variable_names = variable_names
         self._onTextChanged(self._edit.text())
 
@@ -17272,8 +17210,8 @@ class FormulaEditWidget(QWidget):
         self._edit.setText(text)
 
     def _clearStatus(self):
-        self._status_label.setText('')
-        self._status_label.setStyleSheet('font-size: 11px;')
+        self._status_label.setText("")
+        self._status_label.setStyleSheet("font-size: 11px;")
 
     def _onTextChanged(self, text):
         if not text.strip():
@@ -17282,15 +17220,11 @@ class FormulaEditWidget(QWidget):
         success, reconstructed_str = self.checkValidity(self._variable_names)
 
         if success:
-            self._status_label.setText(f'→ {reconstructed_str}')
-            self._status_label.setStyleSheet(
-                'font-size: 11px; color: green;'
-            )
+            self._status_label.setText(f"→ {reconstructed_str}")
+            self._status_label.setStyleSheet("font-size: 11px; color: green;")
         else:
             self._status_label.setText(reconstructed_str)
-            self._status_label.setStyleSheet(
-                'font-size: 11px; color: red;'
-            )
+            self._status_label.setStyleSheet("font-size: 11px; color: red;")
 
         self.sigFormulaChanged.emit(text, success)
 
@@ -17300,75 +17234,83 @@ class FormulaEditWidget(QWidget):
         formula_str = self._edit.text()
         arrays = {name: 1 for name in variable_names}
         success = False
-        reconstructed_str = 'ERROR'
+        reconstructed_str = "ERROR"
         forb_ch = self.parent.forbiddenChannels
         if forb_ch:
             stepsWidgets = self.parent.combineChannelsWidget.stepsWidgets
-            channels = {stepsWidget['selector'].currentText() for stepsWidget in stepsWidgets.values()}
+            channels = {
+                stepsWidget["selector"].currentText()
+                for stepsWidget in stepsWidgets.values()
+            }
             if forb_ch.intersection(channels):
                 reconstructed_str = (
-                    'Channels that are forbidden are not allowed to be used!:\n'
-                    f'{forb_ch}'
+                    "Channels that are forbidden are not allowed to be used!:\n"
+                    f"{forb_ch}"
                 )
                 return False, reconstructed_str
-        if formula_str == '':
-            reconstructed_str = 'First channel is returned/applied'
+        if formula_str == "":
+            reconstructed_str = "First channel is returned/applied"
             return True, reconstructed_str
         try:
             symbols = {name: sp.Symbol(name) for name in arrays}
             expr = sp.sympify(formula_str, locals=symbols)
             missing = {str(s) for s in expr.free_symbols} - arrays.keys()
             if missing:
-                reconstructed_str = f'Missing variables: {missing}'
+                reconstructed_str = f"Missing variables: {missing}"
                 return False, reconstructed_str
 
-            if formula_str == '':
-                reconstructed_str = ''
+            if formula_str == "":
+                reconstructed_str = ""
                 return True, reconstructed_str
-            
+
             # filter out expressions that have no variables
             if not any(s.is_Symbol for s in expr.free_symbols):
-                reconstructed_str = 'No variables used'
+                reconstructed_str = "No variables used"
                 return False, reconstructed_str
-            
+
             reconstructed_str = str(expr)
             success = True
         except Exception as e:
-            if 'syntax' in str(e):
-                reconstructed_str = f'Syntax error'
+            if "syntax" in str(e):
+                reconstructed_str = f"Syntax error"
             else:
                 reconstructed_str = str(e)
             success = False
         return success, reconstructed_str
 
+
 class InitFijiMacroDialog(QBaseDialog):
     def __init__(self, parent=None):
         self.cancel = True
-        
+
         super().__init__(parent=parent)
-        
+
         mainLayout = QVBoxLayout()
-        
-        infoLabel = QLabel(html_utils.paragraph(
-            """ 
+
+        infoLabel = QLabel(
+            html_utils.paragraph(
+                """ 
             Place all the <b>raw microscopy files in a folder without any other 
             file</b><br>
             and provide the following information:
             """
-        ))
+            )
+        )
         mainLayout.addWidget(infoLabel)
-        
-        gridLayout = QGridLayout()       
-         
+
+        gridLayout = QGridLayout()
+
         row = 0
-        label = QLabel('Files internal structure: ')
+        label = QLabel("Files internal structure: ")
         gridLayout.addWidget(label, row, 0)
         self.filesStructureCombobox = QComboBox()
-        self.filesStructureCombobox.addItems([
-            'Positions (aka "series") embedded in the file',
-            'Positions (aka "series") separated, one for each file',
-            'Positions (aka "series") and channels separated, one for each file'
-        ])
+        self.filesStructureCombobox.addItems(
+            [
+                'Positions (aka "series") embedded in the file',
+                'Positions (aka "series") separated, one for each file',
+                'Positions (aka "series") and channels separated, one for each file',
+            ]
+        )
         gridLayout.addWidget(self.filesStructureCombobox, row, 1)
         self.filesStructureCombobox.currentTextChanged.connect(
             self.fileStructureChanged
@@ -17376,9 +17318,9 @@ class InitFijiMacroDialog(QBaseDialog):
         infoButton = widgets.infoPushButton()
         gridLayout.addWidget(infoButton, row, 2)
         infoButton.clicked.connect(self.showInfoFileStructure)
-        
+
         row += 1
-        label = QLabel('Folder with raw microscopy files: ')
+        label = QLabel("Folder with raw microscopy files: ")
         gridLayout.addWidget(label, row, 0)
         self.folderPathLineEdit = widgets.ElidingLineEdit()
         gridLayout.addWidget(self.folderPathLineEdit, row, 1)
@@ -17388,24 +17330,22 @@ class InitFijiMacroDialog(QBaseDialog):
             partial(self.updateFolderPath, lineEdit=self.folderPathLineEdit)
         )
         self.folderPathLineEdit.textChanged.connect(self.srcFolderPathChanged)
-        
+
         row += 1
-        label = QLabel('Destination folder: ')
+        label = QLabel("Destination folder: ")
         gridLayout.addWidget(label, row, 0)
         self.dstfolderPathLineEdit = widgets.ElidingLineEdit()
         gridLayout.addWidget(self.dstfolderPathLineEdit, row, 1)
         browseButton = widgets.browseFileButton(openFolder=True)
         gridLayout.addWidget(browseButton, row, 2)
         browseButton.sigPathSelected.connect(self.dstfolderPathLineEdit.setText)
-        
+
         row += 1
-        label = QLabel('Channel(s) name: ')
+        label = QLabel("Channel(s) name: ")
         gridLayout.addWidget(label, row, 0)
-        self.channelNamesLineEdit = widgets.alphaNumericLineEdit(
-            additionalChars=' ,'
-        )
+        self.channelNamesLineEdit = widgets.alphaNumericLineEdit(additionalChars=" ,")
         gridLayout.addWidget(self.channelNamesLineEdit, row, 1)
-        checkButton = widgets.TestPushButton('Check')
+        checkButton = widgets.TestPushButton("Check")
         gridLayout.addWidget(checkButton, row, 3)
         checkButton.clicked.connect(self.checkChannelNames)
         checkButton.setDisabled(True)
@@ -17413,12 +17353,12 @@ class InitFijiMacroDialog(QBaseDialog):
         infoButton = widgets.infoPushButton()
         gridLayout.addWidget(infoButton, row, 2)
         infoButton.clicked.connect(self.showInfoChannelName)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
-        
+
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         gridLayout.setColumnStretch(0, 0)
         gridLayout.setColumnStretch(1, 1)
         gridLayout.setColumnStretch(2, 0)
@@ -17427,45 +17367,42 @@ class InitFijiMacroDialog(QBaseDialog):
         mainLayout.addLayout(gridLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.setLayout(mainLayout)
-    
+
     def fileStructureChanged(self, text):
-        self.checkButton.setDisabled(not 'channels separated' in text)
-    
+        self.checkButton.setDisabled(not "channels separated" in text)
+
     def checkChannelNames(self, checked=False):
         proceed = self.validate()
         if not proceed:
             return
-        
+
         src_folderpath = self.folderPath()
         channel_names = self.channelNames()
-        extension = os.listdir(src_folderpath)[0].split('.')[-1]
+        extension = os.listdir(src_folderpath)[0].split(".")[-1]
         basenames = io.move_separate_channels_tiffs_to_pos_folders(
-            src_folderpath, channel_names, get_only_basenames=True,
-            extension=extension
+            src_folderpath, channel_names, get_only_basenames=True, extension=extension
         )
         pos_folders_texts = []
         for p, basename in enumerate(basenames):
-            pos_folders_texts.append(f'Position_{p+1}: <code>{basename}</code>')
+            pos_folders_texts.append(f"Position_{p + 1}: <code>{basename}</code>")
 
-        pos_folders_html_list = html_utils.to_list(
-            pos_folders_texts, ordered=True
-        )
+        pos_folders_html_list = html_utils.to_list(pos_folders_texts, ordered=True)
         text = html_utils.paragraph(
-            'The following Position folders will be created based on the provided channel names:<br>'
-            f'{pos_folders_html_list}'
+            "The following Position folders will be created based on the provided channel names:<br>"
+            f"{pos_folders_html_list}"
         )
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(self, 'Position folders', text)
+        msg.information(self, "Position folders", text)
 
     def srcFolderPathChanged(self, text):
         if self.dstfolderPathLineEdit.text():
             return
-        
+
         folderPath = self.folderPathLineEdit.text()
         self.dstfolderPathLineEdit.setText(folderPath)
-    
+
     def showInfoFileStructure(self):
         txt = html_utils.paragraph("""
             Select whether the microscopy files contains multiple "series".<br><br>
@@ -17475,8 +17412,8 @@ class InitFijiMacroDialog(QBaseDialog):
             positions.
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(self, 'Files structure info', txt)
-    
+        msg.information(self, "Files structure info", txt)
+
     def showInfoChannelName(self):
         txt = html_utils.paragraph("""
             Enter the channels name. Separate multiple channels with a comma.<br><br>
@@ -17492,9 +17429,9 @@ class InitFijiMacroDialog(QBaseDialog):
             The number of Positions that will be created will be displayed alongside the basename.
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(self, 'Files structure info', txt)
-    
-    def updateFolderPath(self, path, lineEdit=''):
+        msg.information(self, "Files structure info", txt)
+
+    def updateFolderPath(self, path, lineEdit=""):
         for file in os.listdir(path):
             if not is_alphanumeric_filename(file):
                 msg = widgets.myMessageBox(wrapText=False)
@@ -17508,12 +17445,10 @@ class InitFijiMacroDialog(QBaseDialog):
                     Thank you for your patience!
                     """
                 )
-                msg.critical(
-                    self, 'Invalid filename', txt, path_to_browse=path
-                )
-                lineEdit.setText('')
+                msg.critical(self, "Invalid filename", txt, path_to_browse=path)
+                lineEdit.setText("")
                 return
-            
+
         lineEdit.setText(path)
 
     def warnPathEmpty(self, path_name):
@@ -17521,24 +17456,24 @@ class InitFijiMacroDialog(QBaseDialog):
             {path_name} <b>cannot be empty</b>.
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Empty folder path', txt)
-    
+        msg.warning(self, "Empty folder path", txt)
+
     def warnSelectedPathDoesNotExist(self, path):
         txt = html_utils.paragraph("""
             The selected path <b>does not exist</b>.<br><br>
             Selected path:
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Folder path does not exist', txt, commands=(path,))
-    
+        msg.warning(self, "Folder path does not exist", txt, commands=(path,))
+
     def warnSelectedPathNotAFolder(self, path):
         txt = html_utils.paragraph("""
             The selected path is <b>not a folder</b>.<br><br>
             Selected path:
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Selected path not a folder', txt, commands=(path,))
-    
+        msg.warning(self, "Selected path not a folder", txt, commands=(path,))
+
     def warnMultipleExtensionsPresent(self, path, extensions):
         txt = html_utils.paragraph(f"""
             The selected path <b>contains files with different extensions</b>.
@@ -17549,37 +17484,35 @@ class InitFijiMacroDialog(QBaseDialog):
             Selected path:
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(
-            self, 'Multiple file extensions detected', txt, commands=(path,)
-        )
-    
+        msg.warning(self, "Multiple file extensions detected", txt, commands=(path,))
+
     def warnChannelNamesEmpty(self):
         txt = html_utils.paragraph("""
             Channel(s) name <b>cannot be empty</b>.
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Empty channel name', txt)
-    
+        msg.warning(self, "Empty channel name", txt)
+
     def validate(self):
         path = self.folderPath()
         dst_path = self.dstfolderPathLineEdit.text()
         paths = {
-            'Source folder': path,
-            'Destination folder': dst_path,
+            "Source folder": path,
+            "Destination folder": dst_path,
         }
         for _path_name, _path in paths.items():
             if not _path:
                 self.warnPathEmpty(_path_name)
                 return False
-            
+
             if not os.path.exists(_path):
                 self.warnSelectedPathDoesNotExist(_path)
                 return False
-            
+
             if not os.path.isdir(_path):
                 self.warnSelectedPathNotAFolder(_path)
                 return False
-        
+
         files = myutils.listdir(path)
         extensions = set([os.path.splitext(file)[1] for file in files])
         if len(extensions) > 1:
@@ -17589,115 +17522,117 @@ class InitFijiMacroDialog(QBaseDialog):
         if not self.channelNamesLineEdit.text():
             self.warnChannelNamesEmpty()
             return False
-        
+
         return True
-    
+
     def folderPath(self):
         return self.folderPathLineEdit.text()
-    
+
     def channelNames(self):
-        channel_names = self.channelNamesLineEdit.text().split(',')
+        channel_names = self.channelNamesLineEdit.text().split(",")
         channel_names = [ch.strip() for ch in channel_names]
         return channel_names
-    
+
     def ok_cb(self):
         proceed = self.validate()
         if not proceed:
             return
-        
+
         self.selectedFolderPath = self.folderPath()
         self.filesStructure = self.filesStructureCombobox.currentText()
-        is_multiple_files = self.filesStructure.find('separated') != -1
-        is_separate_channels = 'channels separated' in self.filesStructure
+        is_multiple_files = self.filesStructure.find("separated") != -1
+        is_separate_channels = "channels separated" in self.filesStructure
         dst_folderpath = self.dstfolderPathLineEdit.text()
         self.init_macro_args = (
-            self.folderPath(), 
-            is_multiple_files, 
+            self.folderPath(),
+            is_multiple_files,
             is_separate_channels,
             dst_folderpath,
             self.channelNames(),
         )
         self.cancel = False
         self.close()
-    
+
+
 class ImageJRoisToSegmManager(QBaseDialog):
     def __init__(
-            self, rois_filepath, TZYX_shape, 
-            addUseSamePropsForNextPosButton=False, parent=None
-        ):
+        self,
+        rois_filepath,
+        TZYX_shape,
+        addUseSamePropsForNextPosButton=False,
+        parent=None,
+    ):
         import roifile
-        
+
         self.cancel = True
         super().__init__(parent)
-        
-        self.setWindowTitle('ROI Manager')
-        
+
+        self.setWindowTitle("ROI Manager")
+
         mainLayout = QVBoxLayout()
-        
+
         rois = roifile.roiread(rois_filepath)
         self.rois = {roi.name: roi for roi in rois}
-        
+
         roisNamesTreeWidget = widgets.TreeWidget()
-        roisNamesTreeWidget.setHeaderLabels(['ROI name', 'Cell_ID'])
-        roisNamesTreeWidget.header().setSectionResizeMode(
-            QHeaderView.ResizeToContents
-        )
+        roisNamesTreeWidget.setHeaderLabels(["ROI name", "Cell_ID"])
+        roisNamesTreeWidget.header().setSectionResizeMode(QHeaderView.ResizeToContents)
         # roisNamesTreeWidget.header().setStretchLastSection(False)
         for r, roi in enumerate(rois):
             item = widgets.TreeWidgetItem()
             item.setText(0, roi.name)
-            item.setText(1, str(r+1))
+            item.setText(1, str(r + 1))
             roisNamesTreeWidget.addTopLevelItem(item)
         roisNamesTreeWidget.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection
         )
         roisNamesTreeWidget.selectAll()
-        mainLayout.addWidget(QLabel('Select ROIs to convert'))
+        mainLayout.addWidget(QLabel("Select ROIs to convert"))
         mainLayout.addWidget(roisNamesTreeWidget)
         self.roisNamesTreeWidget = roisNamesTreeWidget
         mainLayout.addSpacing(10)
         mainLayout.addWidget(widgets.QHLine())
         mainLayout.addSpacing(5)
-        
+
         gridLayout = None
         self.lowZspinbox = None
-        
+
         SizeT, SizeZ, SizeY, SizeX = TZYX_shape
         if SizeZ > 1:
             gridLayout = QGridLayout()
             self.lowZspinbox = widgets.SpinBox()
             self.lowZspinbox.setMinimum(0)
-            self.lowZspinbox.setMaximum(SizeZ-1)
-            
+            self.lowZspinbox.setMaximum(SizeZ - 1)
+
             self.highZspinbox = widgets.SpinBox()
             self.highZspinbox.setMinimum(0)
-            self.highZspinbox.setMaximum(SizeZ-1)
-            self.highZspinbox.setValue(SizeZ-1)
-            
-            gridLayout.addWidget(QLabel('Repeat 2D ROIs over z-range: '), 1, 0)
-            
-            gridLayout.addWidget(QLabel('Start z-slice'), 0, 1)
+            self.highZspinbox.setMaximum(SizeZ - 1)
+            self.highZspinbox.setValue(SizeZ - 1)
+
+            gridLayout.addWidget(QLabel("Repeat 2D ROIs over z-range: "), 1, 0)
+
+            gridLayout.addWidget(QLabel("Start z-slice"), 0, 1)
             gridLayout.addWidget(self.lowZspinbox, 1, 1)
-            
-            gridLayout.addWidget(QLabel('Stop z-slice'), 0, 2)
+
+            gridLayout.addWidget(QLabel("Stop z-slice"), 0, 2)
             gridLayout.addWidget(self.highZspinbox, 1, 2)
-        
+
         if gridLayout is not None:
             mainLayout.addLayout(gridLayout)
             mainLayout.addSpacing(5)
             mainLayout.addWidget(widgets.QHLine())
             mainLayout.addSpacing(10)
-        
+
         self.rescaleRoisGroupbox = widgets.RescaleImageJroisGroupbox(TZYX_shape)
         self.rescaleRoisGroupbox.setChecked(False)
         mainLayout.addWidget(self.rescaleRoisGroupbox)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
-        
+
         self.useSamePropsForNextPos = False
         if addUseSamePropsForNextPosButton:
             useSamePropsForNextPosButton = widgets.reloadPushButton(
-                'Keep the same preferences for all next Positions'
+                "Keep the same preferences for all next Positions"
             )
             buttonsLayout.insertWidget(3, useSamePropsForNextPosButton)
             useSamePropsForNextPosButton.clicked.connect(
@@ -17706,95 +17641,95 @@ class ImageJRoisToSegmManager(QBaseDialog):
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.setLayout(mainLayout)
-    
+
     def useSamePropsForNextPosClicked(self):
         self.useSamePropsForNextPos = True
         self.ok_cb()
-    
+
     def warnRoiSelectionEmpty(self):
         txt = html_utils.paragraph(f"""
             You did not select any ROI.<br><br>
             <b>ROIs selection cannot be empty</b>. Thank you for your patience! 
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'ROIs selection empty', txt)
-    
+        msg.warning(self, "ROIs selection empty", txt)
+
     def ok_cb(self):
         selectedRois = self.roisNamesTreeWidget.selectedItems()
         if not selectedRois:
             self.useSamePropsForNextPos = False
             self.warnRoiSelectionEmpty()
             return
-        
+
         self.IDsToRoisMapper = {}
         for item in selectedRois:
             roiName = item.text(0)
             ID = int(item.text(1))
             self.IDsToRoisMapper[ID] = self.rois[roiName]
-        
+
         numRois = self.roisNamesTreeWidget.topLevelItemCount()
         self.areAllRoisSelected = len(self.IDsToRoisMapper) == numRois
-        
+
         self.rescaleSizes = self.rescaleRoisGroupbox.inputOutputSizes()
         self.repeatRoisZslicesRange = None
         if self.lowZspinbox is not None:
             self.repeatRoisZslicesRange = (
-                self.lowZspinbox.value(), self.highZspinbox.value()+1
+                self.lowZspinbox.value(),
+                self.highZspinbox.value() + 1,
             )
-        
+
         self.cancel = False
         self.close()
 
+
 class ResizeUtilProps(QBaseDialog):
-    def __init__(self, input_path='', parent=None):        
+    def __init__(self, input_path="", parent=None):
         self.cancel = True
         super().__init__(parent)
-        
-        self.setWindowTitle('Resize Data Properties')
-        
+
+        self.setWindowTitle("Resize Data Properties")
+
         mainLayout = QVBoxLayout()
-        
+
         paramsLayout = QGridLayout()
-        
+
         self._input_path = input_path
-        
+
         row = 0
-        paramsLayout.addWidget(QLabel('Overwrite raw data: '), row, 0)
+        paramsLayout.addWidget(QLabel("Overwrite raw data: "), row, 0)
         self.overwriteToggle = widgets.Toggle()
         self.overwriteToggle.setChecked(True)
         paramsLayout.addWidget(
             self.overwriteToggle, row, 1, 1, 2, alignment=Qt.AlignCenter
         )
-        
+
         row += 1
-        paramsLayout.addWidget(
-            QLabel('Folder path for resized images: '), row, 0
-        )
+        paramsLayout.addWidget(QLabel("Folder path for resized images: "), row, 0)
         self.folderPathOutControl = widgets.filePathControl(
-            browseFolder=True, 
-            fileManagerTitle='Select folder where to save resized data', 
-            elide=True, 
-            startFolder=myutils.getMostRecentPath()
+            browseFolder=True,
+            fileManagerTitle="Select folder where to save resized data",
+            elide=True,
+            startFolder=myutils.getMostRecentPath(),
         )
         self.folderPathOutControl.setDisabled(True)
         paramsLayout.addWidget(self.folderPathOutControl, row, 1, 1, 2)
-        
+
         row += 1
-        paramsLayout.addWidget(QLabel('Text to append to files: '), row, 0)
+        paramsLayout.addWidget(QLabel("Text to append to files: "), row, 0)
         self.textToAppendLineEdit = widgets.alphaNumericLineEdit()
         self.textToAppendLineEdit.setAlignment(Qt.AlignCenter)
         self.textToAppendLineEdit.setDisabled(True)
         paramsLayout.addWidget(self.textToAppendLineEdit, row, 1, 1, 2)
-        
+
         row += 1
-        paramsLayout.addWidget(QLabel('Resize mode: '), row, 0)
-        self.downScaleRadioButton = QRadioButton('Downscale')
-        self.upScaleRadioButton = QRadioButton('Upscale')
+        paramsLayout.addWidget(QLabel("Resize mode: "), row, 0)
+        self.downScaleRadioButton = QRadioButton("Downscale")
+        self.upScaleRadioButton = QRadioButton("Upscale")
         self.downScaleRadioButton.setChecked(True)
         paramsLayout.addWidget(
             self.downScaleRadioButton, row, 1, alignment=Qt.AlignCenter
@@ -17802,64 +17737,64 @@ class ResizeUtilProps(QBaseDialog):
         paramsLayout.addWidget(
             self.upScaleRadioButton, row, 2, alignment=Qt.AlignCenter
         )
-        
+
         row += 1
-        paramsLayout.addWidget(QLabel('Resize factor: '), row, 0)
+        paramsLayout.addWidget(QLabel("Resize factor: "), row, 0)
         self.factorSpinbox = widgets.FloatLineEdit(allowNegative=False)
         self.factorSpinbox.setMinimum(1.0)
         self.factorSpinbox.setValue(2.0)
         paramsLayout.addWidget(self.factorSpinbox, row, 1, 1, 2)
-        
+
         paramsLayout.setColumnStretch(0, 0)
         paramsLayout.setVerticalSpacing(10)
-        
+
         self.overwriteToggle.toggled.connect(self.overwriteToggled)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
-        
+
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addLayout(paramsLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
         mainLayout.addStretch(1)
-        
+
         # self.textToAppendLineEdit.setText(self._getDefaultTextToAppend())
-        
+
         self.setLayout(mainLayout)
-    
+
     def _getDefaultTextToAppend(self):
-        rescale_mode = 'up' if self.upScaleRadioButton.isChecked() else 'down'
+        rescale_mode = "up" if self.upScaleRadioButton.isChecked() else "down"
         factor = self.factorSpinbox.value()
-        text = f'{rescale_mode}scaled_factor_{factor}'
+        text = f"{rescale_mode}scaled_factor_{factor}"
         return text
-    
+
     def overwriteToggled(self, checked):
         self.folderPathOutControl.setDisabled(checked)
         self.textToAppendLineEdit.setDisabled(checked)
         if checked:
-            text = ''
+            text = ""
         else:
             text = self._getDefaultTextToAppend()
         self.textToAppendLineEdit.setText(text)
-    
+
     def warnFolderPathEmpty(self):
         txt = html_utils.paragraph("""
             To prevent overwriting raw data the <code>Folder path for 
             resized images</code> <b>cannot be empty</b>.
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Empty folder path', txt)
-    
+        msg.warning(self, "Empty folder path", txt)
+
     def warnTextToAppendEmpty(self):
         txt = html_utils.paragraph("""
             To prevent overwriting raw data the <b>text to append 
             cannot be empty</b>.
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Empty text to append', txt)
-    
+        msg.warning(self, "Empty text to append", txt)
+
     def ok_cb(self):
         self.expFolderpathOut = self.folderPathOutControl.path()
         self.textToAppend = self.textToAppendLineEdit.text()
@@ -17871,237 +17806,234 @@ class ResizeUtilProps(QBaseDialog):
         if isAccidentalOverwrite:
             self.warnTextToAppendEmpty()
             return
-        
-        if self.textToAppend and not self.textToAppend.startswith('_'):
-            self.textToAppend = f'_{self.textToAppend}'
-            
+
+        if self.textToAppend and not self.textToAppend.startswith("_"):
+            self.textToAppend = f"_{self.textToAppend}"
+
         if self.overwriteToggle.isChecked():
             self.expFolderpathOut = None
-        
+
         factor = self.factorSpinbox.value()
         self.resizeFactor = (
-            factor if self.upScaleRadioButton.isChecked() else 1/factor
+            factor if self.upScaleRadioButton.isChecked() else 1 / factor
         )
-        
+
         self.cancel = False
         self.close()
+
 
 class LogoDialog(QDialog):
     def __init__(self, logo_path, icon_path, parent=None):
         super().__init__(parent)
-        
+
         layout = QVBoxLayout()
-        
+
         self.setWindowFlags(Qt.FramelessWindowHint)
         # self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
         # self.setAttribute(Qt.WA_TranslucentBackground)
         # self.setWindowIcon(QIcon(icon_path))
-        
+
         labelLogo = QLabel()
         pixmapLogo = QPixmap(logo_path)
         labelLogo.setPixmap(pixmapLogo)
-        
+
         layout.addWidget(labelLogo)
-    
+
         self.setLayout(layout)
+
 
 class SetCustomLevelsLut(QBaseDialog):
     sigLevelsChanged = Signal(object)
-    
+
     def __init__(
-            self, 
-            init_min_value=None, 
-            init_max_value=None, 
-            minimum_min_value=0,
-            maximum_max_value=None, 
-            parent=None
-        ):
+        self,
+        init_min_value=None,
+        init_max_value=None,
+        minimum_min_value=0,
+        maximum_max_value=None,
+        parent=None,
+    ):
         super().__init__(parent=parent)
-        
+
         self.cancel = True
-        
-        self.setWindowTitle('Custom LUT levels')
-        
+
+        self.setWindowTitle("Custom LUT levels")
+
         layout = QVBoxLayout()
-        
+
         self.minLevelSlider = widgets.sliderWithSpinBox(
-            title='Minimum', 
-            title_loc='top', 
+            title="Minimum",
+            title_loc="top",
         )
         self.minLevelSlider.setMinimum(minimum_min_value)
-            
+
         if init_min_value is not None:
             self.minLevelSlider.setValue(init_min_value)
-        
+
         layout.addWidget(self.minLevelSlider)
-        
+
         self.maxLevelSlider = widgets.sliderWithSpinBox(
-            title='Maximum', 
-            title_loc='top', 
+            title="Maximum",
+            title_loc="top",
         )
         self.maxLevelSlider.setMinimum(minimum_min_value)
         if init_max_value is not None:
             self.maxLevelSlider.setValue(init_max_value)
-        
+
         if maximum_max_value is not None:
             self.maxLevelSlider.setMaximum(maximum_max_value)
             self.minLevelSlider.setMaximum(maximum_max_value)
-            
+
         layout.addWidget(self.maxLevelSlider)
-        
+
         self.minLevelSlider.sigValueChange.connect(self.emitLevelsChanged)
         self.maxLevelSlider.sigValueChange.connect(self.emitLevelsChanged)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         layout.addSpacing(20)
         layout.addLayout(buttonsLayout)
-        
+
         self.setLayout(layout)
-    
+
     def sizeHint(self):
         heightHint = super().sizeHint().height()
-        widthHint = super().sizeHint().width()*2
+        widthHint = super().sizeHint().width() * 2
         return QSize(widthHint, heightHint)
-        
-    
+
     def levels(self):
         levels = (self.minLevelSlider.value(), self.maxLevelSlider.value())
         return levels
-    
+
     def emitLevelsChanged(self, value):
         self.sigLevelsChanged.emit(self.levels())
-    
+
     def ok_cb(self):
         self.cancel = False
         self.selectedLevels = self.levels()
         self.close()
 
+
 class FucciPreprocessDialog(FunctionParamsDialog):
     def __init__(
-            self, channel_names,
-            df_metadata=None,
-            parent=None,
-        ):
-        
+        self,
+        channel_names,
+        df_metadata=None,
+        parent=None,
+    ):
+
         from cellacdc.preprocess import fucci_filter
+
         params_argspecs = myutils.get_function_argspec(fucci_filter)
-        
+
         super().__init__(
-            params_argspecs, 
-            function_name='FUCCI pre-processing', 
+            params_argspecs,
+            function_name="FUCCI pre-processing",
             df_metadata=df_metadata,
             parent=parent,
         )
-        
+
         channelNamesLayout = QGridLayout()
-        
+
         row = 0
-        label = QLabel('First channel name:  ')
+        label = QLabel("First channel name:  ")
         channelNamesLayout.addWidget(label, row, 0, alignment=Qt.AlignLeft)
         self.firstChNameWidget = QComboBox()
         self.firstChNameWidget.addItems(channel_names)
         channelNamesLayout.addWidget(self.firstChNameWidget, row, 1)
-        
+
         row += 1
-        label = QLabel('Second channel name:  ')
+        label = QLabel("Second channel name:  ")
         channelNamesLayout.addWidget(label, row, 0, alignment=Qt.AlignLeft)
         self.secondChNameWidget = QComboBox()
         self.secondChNameWidget.addItems(channel_names)
         self.secondChNameWidget.setCurrentText(list(channel_names)[1])
         channelNamesLayout.addWidget(self.secondChNameWidget, row, 1)
-        
+
         channelNamesLayout.setColumnStretch(0, 0)
         channelNamesLayout.setColumnStretch(1, 1)
-        
+
         self.mainLayout.insertLayout(0, channelNamesLayout)
         self.mainLayout.insertWidget(1, widgets.QHLine())
-    
+
     def ok_cb(self):
         self.firstChannelName = self.firstChNameWidget.currentText()
         self.secondChannelName = self.secondChNameWidget.currentText()
         super().ok_cb()
-        
+
+
 class ViewCcaTableWindow(pdDataFrameWidget):
     sigUpdateCcaTable = Signal(object)
-    
+
     def __init__(self, df, parent=None):
         super().__init__(df, parent=parent)
-        
-        updateTableButton = widgets.reloadPushButton(
-            'Update table with visible IDs...'
-        )
+
+        updateTableButton = widgets.reloadPushButton("Update table with visible IDs...")
         buttonsLayout = QHBoxLayout()
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(updateTableButton)
-        
+
         self._layout.insertLayout(0, buttonsLayout)
-        
+
         updateTableButton.clicked.connect(self.emitUpdateCcaTable)
-    
+
     def emitUpdateCcaTable(self):
         self.sigUpdateCcaTable.emit(self)
-        
-        
+
+
 class ObjectCountDialog(QBaseDialog):
     sigShowEvent = Signal()
     sigUpdateCounts = Signal()
-    
+
     def __init__(
-            self, 
-            categoryCountMapper: dict,
-            parent=None,
-            data: list['load.loadData'] | None=None
-        ):
+        self,
+        categoryCountMapper: dict,
+        parent=None,
+        data: list["load.loadData"] | None = None,
+    ):
         super().__init__(parent=parent)
-        self.setWindowTitle('Object count')
-        
+        self.setWindowTitle("Object count")
+
         self.cancel = False
         mainLayout = QVBoxLayout()
 
         cancelOkLayout = widgets.CancelOkButtonsLayout()
         cancelOkLayout.okButton.clicked.connect(self.ok_cb)
         cancelOkLayout.cancelButton.clicked.connect(self.close)
-        
+
         self.data = data
         if data is not None:
-            saveCountsButton = widgets.savePushButton(
-                'Export counts to CSV table'
-            )
+            saveCountsButton = widgets.savePushButton("Export counts to CSV table")
             saveCountsButton.clicked.connect(self.saveCounts)
             cancelOkLayout.insertWidget(3, saveCountsButton)
-        
-        updateCountsButton = widgets.reloadPushButton('Update counts')
+
+        updateCountsButton = widgets.reloadPushButton("Update counts")
         cancelOkLayout.insertWidget(3, updateCountsButton)
         updateCountsButton.clicked.connect(self.emitUpdateCounts)
-        
+
         mainLayout.addWidget(
-            QLabel(html_utils.paragraph('Object count<br>', font_size='18px')), 
-            alignment=Qt.AlignLeft
+            QLabel(html_utils.paragraph("Object count<br>", font_size="18px")),
+            alignment=Qt.AlignLeft,
         )
         self.showHideButtons = []
         self.categoryLabelMapper = {}
         for category, count in categoryCountMapper.items():
             categoryLayout = QHBoxLayout()
             categoryLayout.addSpacing(10)
-            catText = html_utils.paragraph(
-                f'<br>{category}<br>', font_size='13px'
-            )
+            catText = html_utils.paragraph(f"<br>{category}<br>", font_size="13px")
             catLabel = QLabel(catText)
             categoryLayout.addWidget(catLabel)
             categoryLayout.addStretch(1)
-            
-            countText = html_utils.paragraph(
-                f'<br>{count}<br>', font_size='13px'
-            )
+
+            countText = html_utils.paragraph(f"<br>{count}<br>", font_size="13px")
             countLabel = QLabel(countText)
             categoryLayout.addWidget(countLabel)
-            
+
             self.categoryLabelMapper[category] = countLabel
-            
-            showHideButton = widgets.showDetailsButton(txt='')
+
+            showHideButton = widgets.showDetailsButton(txt="")
             showHideButton.setChecked(True)
             showHideButton.sigToggled.connect(
                 partial(self.showHideCount, labels=(catLabel, countLabel))
@@ -18110,99 +18042,97 @@ class ObjectCountDialog(QBaseDialog):
             categoryLayout.addSpacing(10)
             categoryLayout.addWidget(showHideButton)
             showHideButton.category = category
-            
+
             self.showHideButtons.append(showHideButton)
-            
+
             categoryLayout.setStretch(0, 0)
             categoryLayout.setStretch(1, 0)
             categoryLayout.setStretch(3, 0)
-            
+
             mainLayout.addLayout(categoryLayout)
             mainLayout.addWidget(widgets.QHLine())
-        
+
         mainLayout.addSpacing(10)
-        
+
         infoLayout = QHBoxLayout()
-        self.livePreviewCheckbox = QCheckBox('Live preview')
+        self.livePreviewCheckbox = QCheckBox("Live preview")
         self.livePreviewCheckbox.setChecked(True)
         infoLayout.addWidget(self.livePreviewCheckbox)
         infoLayout.addStretch(1)
-        self.warnLabel = QLabel('')
+        self.warnLabel = QLabel("")
         infoLayout.addWidget(self.warnLabel)
         self.livePreviewCheckbox.toggled.connect(self.updateWarnLabel)
         mainLayout.addLayout(infoLayout)
-        
+
         mainLayout.addSpacing(30)
         mainLayout.addStretch(1)
         mainLayout.addLayout(cancelOkLayout)
-        
+
         self.setLayout(mainLayout)
-    
+
     def saveCounts(self, checked=False):
         categories = self.activeCategories()
         for posData in self.data:
             countMapper = posData.countObjectsInSegm(categories)
-            countMapper.pop('In current frame', None)
+            countMapper.pop("In current frame", None)
             df_count_endname = posData.saveObjCounts(countMapper)
-        
+
         txt = html_utils.paragraph(f"""
             Done!<br><br>
             Objects count table saved in every loaded Position folder<br> 
             as a <b>CSV file ending with</b> <code>{df_count_endname}</code>
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(self, 'Objects count saved', txt)
-    
+        msg.information(self, "Objects count saved", txt)
+
     def updateWarnLabel(self, checked):
         if not checked:
             self.warnLabel.setText(
                 html_utils.paragraph(
-                    'WARNING: without live preview, counts are not updated', 
-                    font_color='red'
+                    "WARNING: without live preview, counts are not updated",
+                    font_color="red",
                 )
             )
         else:
-            self.warnLabel.setText('')
-    
+            self.warnLabel.setText("")
+
     def emitUpdateCounts(self):
         self.sigUpdateCounts.emit()
-    
+
     def activeCategories(self) -> List[str]:
         activeCategories = []
         for showHideButton in self.showHideButtons:
             if not showHideButton.isChecked():
                 continue
             activeCategories.append(showHideButton.category)
-        
+
         return activeCategories
-    
+
     def showHideCount(self, checked, labels):
         for label in labels:
             label.setVisible(checked)
-        
+
         QTimer.singleShot(100, self.resizeToHeightHint)
 
     def updateCounts(self, categoryCountMapper):
         for category, count in categoryCountMapper.items():
             countLabel = self.categoryLabelMapper[category]
-            countText = html_utils.paragraph(
-                f'<br>{count}<br>', font_size='13px'
-            )
+            countText = html_utils.paragraph(f"<br>{count}<br>", font_size="13px")
             countLabel.setText(countText)
-                
-    
+
     def resizeToHeightHint(self):
         heightHint = self.sizeHint().height()
         self.resize(self.width(), heightHint)
-        
+
     def showEvent(self, event):
         widthHint = self.sizeHint().width()
-        self.resize(int(widthHint*1.5), self.height())
+        self.resize(int(widthHint * 1.5), self.height())
         self.sigShowEvent.emit()
-    
+
     def ok_cb(self):
         self.cancel = False
         self.close()
+
 
 class PreProcessRecipeDialog(QBaseDialog):
     sigApplyImage = Signal(object)
@@ -18213,79 +18143,71 @@ class PreProcessRecipeDialog(QBaseDialog):
     sigValuesChanged = Signal(list)
     sigSavePreprocData = Signal(object)
     sigClose = Signal(object)
-    
+
     def __init__(
-            self, 
-            isTimelapse=False, 
-            isZstack=False, 
-            isMultiPos=False, 
-            df_metadata=None,
-            addApplyButton=False,
-            parent=None,
-            hideOnClosing=False,
-        ):
+        self,
+        isTimelapse=False,
+        isZstack=False,
+        isMultiPos=False,
+        df_metadata=None,
+        addApplyButton=False,
+        parent=None,
+        hideOnClosing=False,
+    ):
         super().__init__(parent=parent)
-        
-        self.setWindowTitle('Pre-processing recipe')
-        
+
+        self.setWindowTitle("Pre-processing recipe")
+
         self.cancel = True
         self.hideOnClosing = hideOnClosing
-        
+
         mainLayout = QVBoxLayout()
-        
+
         keepInputDataTypeLayout = QHBoxLayout()
         self.keepInputDataTypeToggle = widgets.Toggle()
         self.keepInputDataTypeToggle.setChecked(True)
         self.keepInputDataTypeToggle.toggled.connect(self.emitValuesChanged)
 
         keepInputDataTypeLayout.addStretch(1)
-        keepInputDataTypeLayout.addWidget(QLabel('Keep input data type: '))
+        keepInputDataTypeLayout.addWidget(QLabel("Keep input data type: "))
         keepInputDataTypeLayout.addWidget(self.keepInputDataTypeToggle)
         keepInputDataTypeInfoButton = widgets.infoPushButton()
         keepInputDataTypeLayout.addWidget(keepInputDataTypeInfoButton)
-        keepInputDataTypeInfoButton.clicked.connect(
-            self.showInfoKeepInputDataType
-        )
+        keepInputDataTypeInfoButton.clicked.connect(self.showInfoKeepInputDataType)
         self.keepInputDataTypeLayout = keepInputDataTypeLayout
-        
+
         self.preProcessParamsWidget = PreProcessParamsWidget(
-            df_metadata=df_metadata, 
-            addApplyButton=addApplyButton, 
-            parent=self
+            df_metadata=df_metadata, addApplyButton=addApplyButton, parent=self
         )
         self.preProcessParamsWidget.groupbox.setCheckable(False)
-        
-        buttonsLayout = QGridLayout() # self.preProcessParamsWidget.buttonsLayout
+
+        buttonsLayout = QGridLayout()  # self.preProcessParamsWidget.buttonsLayout
         self.buttonsLayout = buttonsLayout
-        self.previewCheckbox = QCheckBox('Preview')
+        self.previewCheckbox = QCheckBox("Preview")
         buttonsLayout.addWidget(self.previewCheckbox, 0, 0)
-        
+
         # Relocate buttons of PreProcessParamsWidget to this dialog
         pPPWBL = self.preProcessParamsWidget.buttonsLayout
-        loadRecipeButtIdx = pPPWBL.indexOf(
-            self.preProcessParamsWidget.loadRecipeButton
-        )
+        loadRecipeButtIdx = pPPWBL.indexOf(self.preProcessParamsWidget.loadRecipeButton)
         self.loadRecipeButton = pPPWBL.takeAt(loadRecipeButtIdx).widget()
         buttonsLayout.addWidget(self.loadRecipeButton, 0, 1)
-        
-        saveRecipeButtIdx = pPPWBL.indexOf(
-            self.preProcessParamsWidget.saveRecipeButton
-        )
+
+        saveRecipeButtIdx = pPPWBL.indexOf(self.preProcessParamsWidget.saveRecipeButton)
         self.saveRecipeButton = pPPWBL.takeAt(saveRecipeButtIdx).widget()
         buttonsLayout.addWidget(self.saveRecipeButton, 1, 1)
-        
+
         loadLastRecipeButtIdx = pPPWBL.indexOf(
             self.preProcessParamsWidget.loadLastRecipeButton
         )
         self.loadLastRecipeButton = pPPWBL.takeAt(loadLastRecipeButtIdx).widget()
         buttonsLayout.addWidget(self.loadLastRecipeButton, 1, 0)
-        
+
         self.loadLastRecipeButton.hide()
-        
+
         # self.cancelButton = widgets.cancelPushButton('Cancel')
         # buttonsLayout.insertWidget(2, self.cancelButton)
         # buttonsLayout.insertSpacing(3, 20)
-        
+
         self.allButtons = [
             self.previewCheckbox,
             self.loadRecipeButton,
@@ -18293,61 +18215,50 @@ class PreProcessRecipeDialog(QBaseDialog):
         ]
         col = 3
         row = 0
-        self.applyCurrentFrameButton = widgets.okPushButton(
-            'Apply to displayed image'
-        )
+        self.applyCurrentFrameButton = widgets.okPushButton("Apply to displayed image")
         buttonsLayout.addWidget(self.applyCurrentFrameButton, row, col)
         self.applyCurrentFrameButton.clicked.connect(
             partial(self.apply, signal=self.sigApplyImage)
         )
         self.allButtons.append(self.applyCurrentFrameButton)
-        
+
         infoLayout = QHBoxLayout()
         buttonsHeight = self.applyCurrentFrameButton.sizeHint().height()
-        self.loadingCircle = widgets.LoadingCircleAnimation(
-            size=buttonsHeight
-        )
+        self.loadingCircle = widgets.LoadingCircleAnimation(size=buttonsHeight)
         sp = self.loadingCircle.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         self.loadingCircle.setSizePolicy(sp)
         self.loadingCircle.setVisible(False)
         infoLayout.addWidget(self.loadingCircle)
-        
-        self.infoLabel = QLabel(
-            "<i>(Feel free to use Cell-ACDC while waiting)</i>"
-        )
+
+        self.infoLabel = QLabel("<i>(Feel free to use Cell-ACDC while waiting)</i>")
         sp = self.infoLabel.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         self.infoLabel.setSizePolicy(sp)
         self.infoLabel.hide()
         infoLayout.addWidget(self.infoLabel)
-        
+
         buttonsLayout.addLayout(
-            infoLayout, row+1, 0, 3, 2, 
-            alignment=Qt.AlignBottom | Qt.AlignLeft
+            infoLayout, row + 1, 0, 3, 2, alignment=Qt.AlignBottom | Qt.AlignLeft
         )
 
         if isZstack:
             row += 1
             self.applyAllZslicesButton = widgets.threeDPushButton(
-                'Apply to all z-slices of current image'
+                "Apply to all z-slices of current image"
             )
             buttonsLayout.addWidget(self.applyAllZslicesButton, row, col)
             self.applyAllZslicesButton.clicked.connect(self.applyAllZslices)
             self.allButtons.append(self.applyAllZslicesButton)
         if isTimelapse:
             row += 1
-            self.applyAllFramesButton = widgets.futurePushButton(
-                'Apply to all frames'
-            )
+            self.applyAllFramesButton = widgets.futurePushButton("Apply to all frames")
             buttonsLayout.addWidget(self.applyAllFramesButton, row, col)
             self.applyAllFramesButton.clicked.connect(self.applyAllFrames)
             self.allButtons.append(self.applyAllFramesButton)
         if isMultiPos:
             row += 1
-            self.applyAllPosButton = widgets.futurePushButton(
-                'Apply to all Positions'
-            )
+            self.applyAllPosButton = widgets.futurePushButton("Apply to all Positions")
             buttonsLayout.addWidget(self.applyAllPosButton, row, col)
             self.applyAllPosButton.clicked.connect(
                 partial(self.apply, signal=self.sigApplyAllPos)
@@ -18355,40 +18266,36 @@ class PreProcessRecipeDialog(QBaseDialog):
             self.allButtons.append(self.applyAllPosButton)
 
         row += 1
-        self.savePreprocButton = widgets.savePushButton(
-            'Save pre-processed data...'
-        )
+        self.savePreprocButton = widgets.savePushButton("Save pre-processed data...")
         buttonsLayout.addWidget(self.savePreprocButton, row, col)
 
         self.allButtons.append(self.savePreprocButton)
         self.savePreprocButton.clicked.connect(self.emitSignalSavePreprocData)
-        
+
         self.previewCheckbox.toggled.connect(self.emitSigPreviewToggled)
-        self.preProcessParamsWidget.sigValuesChanged.connect(
-            self.emitValuesChanged
-        )
-        
+        self.preProcessParamsWidget.sigValuesChanged.connect(self.emitValuesChanged)
+
         # self.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addLayout(keepInputDataTypeLayout)
         mainLayout.addSpacing(20)
         mainLayout.addWidget(self.preProcessParamsWidget)
         mainLayout.addLayout(buttonsLayout)
         self.mainLayout = mainLayout
-        
+
         self.setLayout(mainLayout)
 
     def applyAllZslices(self, checked=False):
-        # Preview needs to be turned off because we are computing on every 
-        # z-slice 
+        # Preview needs to be turned off because we are computing on every
+        # z-slice
         self.previewCheckbox.setChecked(False)
         self.apply(signal=self.sigApplyZstack)
-    
+
     def applyAllFrames(self, checked=False):
         # Preview needs to be turned off because we are computing on all frames
         self.previewCheckbox.setChecked(False)
         self.apply(signal=self.sigApplyAllFrames)
-    
+
     def emitSigPreviewToggled(self):
         self.sigPreviewToggled.emit(self.previewCheckbox.isChecked())
 
@@ -18402,18 +18309,18 @@ class PreProcessRecipeDialog(QBaseDialog):
             We <b>recommend keeping this option checked</b>.
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(self, 'Keep input data type', txt)
+        msg.information(self, "Keep input data type", txt)
 
     def emitSignalSavePreprocData(self):
         self.sigSavePreprocData.emit(self)
-           
+
     def emitValuesChanged(self):
         recipe = self.recipe(warn=False)
         if recipe is None:
             return
-        
+
         self.sigValuesChanged.emit(recipe)
-    
+
     def setDisabled(self, disabled: bool):
         self.preProcessParamsWidget.setDisabled(disabled)
         self.loadingCircle.setVisible(disabled)
@@ -18423,17 +18330,17 @@ class PreProcessRecipeDialog(QBaseDialog):
                 button.setDisabled(disabled)
             except RuntimeError as e:
                 printl(traceback.format_exc())
-                printl(f'Error: {e}')
-                printl(f'Button: {button}')
-    
-    def apply(self, checked=False, signal: Signal=None):
+                printl(f"Error: {e}")
+                printl(f"Button: {button}")
+
+    def apply(self, checked=False, signal: Signal = None):
         recipe = self.recipe()
         if recipe is None:
             return
-        
+
         if signal is not None:
             signal.emit(recipe)
-            
+
         if self.hideOnClosing:
             self.setDisabled(True)
             self.infoLabel.setText(
@@ -18442,23 +18349,21 @@ class PreProcessRecipeDialog(QBaseDialog):
             )
         else:
             self.ok_cb()
-    
+
     def appliedFinished(self):
         self.setDisabled(False)
-    
+
     def recipe(self, warn=True):
         recipe = self.preProcessParamsWidget.recipe(warn=warn)
         if recipe is None:
             return
-        
+
         for step in recipe:
-            step['keep_input_data_type'] = (
-                self.keepInputDataTypeToggle.isChecked()
-            )
+            step["keep_input_data_type"] = self.keepInputDataTypeToggle.isChecked()
         return recipe
-    
+
     def recipeConfigPars(self):
-        return self.preProcessParamsWidget.recipeConfigPars('acdc')
+        return self.preProcessParamsWidget.recipeConfigPars("acdc")
 
     def ok_cb(self):
         if self.hideOnClosing:
@@ -18467,79 +18372,78 @@ class PreProcessRecipeDialog(QBaseDialog):
 
         self.cancel = False
         self.close()
-    
+
     def close(self):
         super().close()
         self.sigClose.emit(self)
 
+
 class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
     def __init__(
-            self,
-            channel_names: Iterable[str],
-            df_metadata=None,
-            parent=None,
-        ):
+        self,
+        channel_names: Iterable[str],
+        df_metadata=None,
+        parent=None,
+    ):
         self.cancel = True
-        
+
         super().__init__(
-            isTimelapse=False, 
-            isZstack=False, 
-            isMultiPos=False, 
+            isTimelapse=False,
+            isZstack=False,
+            isMultiPos=False,
             addApplyButton=False,
             df_metadata=df_metadata,
             parent=parent,
-            hideOnClosing=False
+            hideOnClosing=False,
         )
-                
+
         self.listSelector = widgets.listWidget(
             isMultipleSelection=True, minimizeHeight=True
         )
         self.listSelector.addItems(channel_names)
         self.listSelector.setCurrentRow(0)
-        
+
         self.mainLayout.insertWidget(0, self.listSelector)
-        self.mainLayout.insertWidget(
-            0, QLabel('Select channel(s) to pre-process:')
-        )
+        self.mainLayout.insertWidget(0, QLabel("Select channel(s) to pre-process:"))
         self.mainLayout.insertSpacing(2, 10)
         self.mainLayout.insertWidget(2, widgets.QHLine())
-        
+
         self.savePreprocButton.hide()
         self.previewCheckbox.hide()
-        self.applyCurrentFrameButton.setText('Ok')
-        
+        self.applyCurrentFrameButton.setText("Ok")
+
         buttonsLayout = self.preProcessParamsWidget.buttonsLayout
-        
+
         saveRecipeButtonIndex = buttonsLayout.indexOf(
             self.preProcessParamsWidget.saveRecipeButton
-        )        
-        
+        )
+
         if saveRecipeButtonIndex == -1:
             return
-        
+
         saveRecipeButtonItem = buttonsLayout.takeAt(saveRecipeButtonIndex)
-        
+
         buttonsLayout.addItem(saveRecipeButtonItem, 0, 2)
-    
+
     def warnChannelSelectionEmpty(self):
         txt = html_utils.paragraph("""
             You did <b>not select any channel</b>.<br><br>
             <b>Channel selection cannot be empty</b>.<br><br>
             Thank you for your patience!
         """)
-    
+
     def ok_cb(self):
         selectedChannelItems = self.listSelector.selectedItems()
         if not selectedChannelItems:
             self.warnChannelSelectionEmpty()
-        
+
         recipe = self.recipe()
         if recipe is None:
             return
-        
+
         self.selectedRecipe = recipe
         self.selectedChannels = [item.text() for item in selectedChannelItems]
-        
+
         self.cancel = False
         self.close()
 
@@ -18554,7 +18458,8 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
 #         if text in self.bad_values:
 #             option.palette.setColor(option.palette.Text, QColor("red"))
 #         super().paint(painter, option, index)
-        
+
+
 class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     sigApplyImage = Signal(dict, bool, str)
     sigApplyZstack = Signal(dict, bool, str)
@@ -18563,27 +18468,28 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     sigValuesChanged = Signal()
     sigSaveAsSegmCheckboxToggled = Signal(bool)
 
-    
     # sigApplyAllZslices = Signal(dict, bool, str)
     # sigApplyAllFramesZslices = Signal(dict, bool, str)
 
     def __init__(
-            self,
-            channel_names,
-            df_metadata=None,
-            parent=None,
-            hideOnClosing=False,
-            isTimelapse=False,
-            isZstack=False,
-            isMultiPos=False,
-            ):
-        
+        self,
+        channel_names,
+        df_metadata=None,
+        parent=None,
+        hideOnClosing=False,
+        isTimelapse=False,
+        isZstack=False,
+        isMultiPos=False,
+    ):
+
         self.combineChannelsWidget = CombineChannelsWidget(channel_names, parent=self)
         self.warnExistingRecipeFile = self.combineChannelsWidget.warnExistingRecipeFile
-        self.communicateSavingRecipeFinished = self.combineChannelsWidget.communicateSavingRecipeFinished
+        self.communicateSavingRecipeFinished = (
+            self.combineChannelsWidget.communicateSavingRecipeFinished
+        )
         self.saveRecipeUI = self.combineChannelsWidget.saveRecipeUI
         self.selectRecipeFilepath = self.combineChannelsWidget.selectRecipeFilepath
-        
+
         super().__init__(
             isTimelapse=isTimelapse,
             isZstack=isZstack,
@@ -18596,73 +18502,74 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(
             self.emitValuesChangedSteps
         )
-        
 
         self.segm_blinked = False
-        self.validFormula = True # allow empty formula
-        self.forbiddenChannels = set() # channels that cannot be combined
+        self.validFormula = True  # allow empty formula
+        self.forbiddenChannels = set()  # channels that cannot be combined
 
         self.mainLayout.setSpacing(4)
-    
+
         self.mainLayout.insertWidget(2, self.combineChannelsWidget)
         self.combineChannelsWidget.groupbox.setCheckable(False)
-        self.combineChannelsWidget.groupbox.setTitle('Combine and manipulate channels and/or segmentation files')
-        
+        self.combineChannelsWidget.groupbox.setTitle(
+            "Combine and manipulate channels and/or segmentation files"
+        )
+
         self.formulaEditWidget = FormulaEditWidget(parent=self)
         self._updateFormulaVariableNames()
         self.formulaEditWidget.sigFormulaChanged.connect(self.formulaChanged)
         self.formulaEditWidget.setToolTip(
-            'Enter a formula to combine the channels. For example '
-            '"img1 + img2 * 0.5"'
+            'Enter a formula to combine the channels. For example "img1 + img2 * 0.5"'
         )
         self.mainLayout.insertWidget(3, self.formulaEditWidget)
-        
+
         buttonsLayoutSaveGroup = QGridLayout()
-        
+
         row = 0
         col = 0
-        loadRecipeButton = widgets.OpenFilePushButton('Load saved recipe')
+        loadRecipeButton = widgets.OpenFilePushButton("Load saved recipe")
         self.loadRecipeButtonComb = loadRecipeButton
         buttonsLayoutSaveGroup.addWidget(loadRecipeButton, row, col)
         self.loadRecipeButtonComb.clicked.connect(self.selectAndLoadRecipe)
-        
+
         col += 1
-        saveRecipeButton = widgets.savePushButton('Save current recipe')
+        saveRecipeButton = widgets.savePushButton("Save current recipe")
         self.saveRecipeButtonComb = saveRecipeButton
         buttonsLayoutSaveGroup.addWidget(saveRecipeButton, row, col)
         saveRecipeButton.clicked.connect(self.saveRecipe)
         saveRecipeButton.setToolTip(
-            'Save the current recipe to a file\n'
-            f'Location: <b>{combine_channels_recipes_path}</b>'
+            "Save the current recipe to a file\n"
+            f"Location: <b>{combine_channels_recipes_path}</b>"
         )
-        
+
         col += 1
-        loadLastRecipeButton = widgets.reloadPushButton('Load last recipe')
+        loadLastRecipeButton = widgets.reloadPushButton("Load last recipe")
         self.loadLastRecipeButtonComb = loadLastRecipeButton
-        buttonsLayoutSaveGroup.addWidget(loadLastRecipeButton, row, col)        
+        buttonsLayoutSaveGroup.addWidget(loadLastRecipeButton, row, col)
         self.mainLayout.addLayout(buttonsLayoutSaveGroup)
         loadLastRecipeButton.clicked.connect(self.loadLastRecipe)
         self.setLoadLastRecipe()
-        
-        loadLastRecipeButton.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+
+        loadLastRecipeButton.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
         loadLastRecipeButton.customContextMenuRequested.connect(
             self._showLoadRecipeContextMenu
         )
 
         self.cancel = True
 
-        self.setWindowTitle('Combine and manipulate channels and/or segmentation files')
+        self.setWindowTitle("Combine and manipulate channels and/or segmentation files")
         self.preProcessParamsWidget.hide()
         self.mainLayout.removeWidget(self.preProcessParamsWidget)
 
-        self.savePreprocButton.setText('Save combined data...')
-        
-        
+        self.savePreprocButton.setText("Save combined data...")
+
         tooltip = (
-            'Save as a segmentation file, for example '
-            'when combining a binary mask with a segmentation mask.'
-            )
-        label = QLabel('Save as segmentation:')
+            "Save as a segmentation file, for example "
+            "when combining a binary mask with a segmentation mask."
+        )
+        label = QLabel("Save as segmentation:")
         self.saveAsSegmlabel = label
         label.setToolTip(tooltip)
         self.saveAsSegmCheckbox = widgets.Toggle()
@@ -18670,7 +18577,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.saveAsSegmCheckbox.setChecked(False)
         self.saveAsSegmCheckbox.setEnabled(False)
         self.saveAsSegmCheckbox.toggled.connect(self.emitSaveAsSegmCheckboxToggled)
-        
+
         self.keepInputDataTypeLayout.insertWidget(0, label)
         self.keepInputDataTypeLayout.insertWidget(1, self.saveAsSegmCheckbox)
 
@@ -18687,7 +18594,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
 
     def _showLoadRecipeContextMenu(self, pos):
         menu = QMenu(self)
-        action = menu.addAction('Load recipe from before the last one')
+        action = menu.addAction("Load recipe from before the last one")
         action.triggered.connect(self.loadPreviousRecipe)
         action.setEnabled(self.returLoadSecondLastRecipe())
         menu.exec(self.loadLastRecipeButtonComb.mapToGlobal(pos))
@@ -18703,9 +18610,9 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         filepath = self._lastRecipePath()
         if not os.path.exists(filepath):
             return
-            
+
         self.loadRecipe(filepath)
-        
+
     def saveLastRecipe(self):
         os.makedirs(combine_channels_recipes_path, exist_ok=True)
         filepath = self._lastRecipePath()
@@ -18713,7 +18620,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         same = False
         if os.path.exists(filepath):
             steps_curr = self._getSaveRecipyDict()
-            with open(filepath, 'r') as f:
+            with open(filepath, "r") as f:
                 steps_prev = json.load(f)
             same = self._recipesMatch(steps_curr, steps_prev)
 
@@ -18727,7 +18634,6 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             os.rename(filepath, new_filename)
         self.saveRecipe(filepath=filepath)
 
-
     def _recipesMatch(self, steps_curr, steps_prev):
         # Normalize current dict to strings for comparison with JSON-loaded dict
         def normalize(d):
@@ -18737,7 +18643,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             key = str(raw_key)
             if key not in steps_prev:
                 return False
-            if key in ('formula', 'keep_input_data_type', 'save_as_segm'):
+            if key in ("formula", "keep_input_data_type", "save_as_segm"):
                 if str(steps_curr[raw_key]) != str(steps_prev[key]):
                     return False
             else:
@@ -18749,128 +18655,130 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
                     if val2 != str(step_dict_prev[key2]):
                         return False
         return True
-        
+
     def _lastRecipePath(self):
-        return os.path.join(combine_channels_recipes_path, '.last_combine_channels_recipe.json')
-    
+        return os.path.join(
+            combine_channels_recipes_path, ".last_combine_channels_recipe.json"
+        )
+
     def _secondLastRecipePath(self):
-        return os.path.join(combine_channels_recipes_path, '.previous_combine_channels_recipe.json')
-    
+        return os.path.join(
+            combine_channels_recipes_path, ".previous_combine_channels_recipe.json"
+        )
+
     def _getSaveRecipyDict(self):
-        steps = self.combineChannelsWidget.steps() # already returns a copy
+        steps = self.combineChannelsWidget.steps()  # already returns a copy
         formula = self.formulaEditWidget.text()
-        steps['formula'] = formula
-        steps['keep_input_data_type'] = self.keepInputDataTypeToggle.isChecked()
-        steps['save_as_segm'] = self.saveAsSegmCheckbox.isChecked()
+        steps["formula"] = formula
+        steps["keep_input_data_type"] = self.keepInputDataTypeToggle.isChecked()
+        steps["save_as_segm"] = self.saveAsSegmCheckbox.isChecked()
         return steps
-        
+
     def saveRecipe(self, dummy=None, filepath=None):
         os.makedirs(combine_channels_recipes_path, exist_ok=True)
-        
+
         filepath_provided = filepath is not None
         if not filepath_provided:
             folder_content = myutils.listdir(combine_channels_recipes_path)
             num_recipes = len(folder_content)
-            default_text = f'{num_recipes + 1}'
+            default_text = f"{num_recipes + 1}"
             proceed, filepath = self.saveRecipeUI(
-                combine_channels_recipes_path, '.json', 
-                'Save recipe', 'combine_channels_recipe',
-                'Insert a <b>filename</b> for the recipe:',
-                default_text
+                combine_channels_recipes_path,
+                ".json",
+                "Save recipe",
+                "combine_channels_recipe",
+                "Insert a <b>filename</b> for the recipe:",
+                default_text,
             )
-        
+
             if not proceed:
                 return
-            
+
         steps = self._getSaveRecipyDict()
-        
-        with open(filepath, 'w') as f:
+
+        with open(filepath, "w") as f:
             json.dump(steps, f, indent=2)
-        
+
         if not filepath_provided:
             self.communicateSavingRecipeFinished(filepath)
-    
+
     def selectAndLoadRecipe(self):
         filepath = self.selectRecipeFilepath(
-            combine_channels_recipes_path, 
-            'combine_channels_recipe', 'JSON', 'json'
+            combine_channels_recipes_path, "combine_channels_recipe", "JSON", "json"
         )
         if filepath is None:
             return
 
         self.loadRecipe(filepath)
-        
+
     def loadRecipe(self, filepath):
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             recipe = json.load(f)
-            
+
         recipe = dict(sorted(recipe.items()))
         keys_used = set()
         for key, value in recipe.items():
-            if key == 'formula':
+            if key == "formula":
                 formula = value
                 continue
-            if key == 'keep_input_data_type':
+            if key == "keep_input_data_type":
                 self.keepInputDataTypeToggle.setChecked(value)
                 continue
-            if key == 'save_as_segm':
+            if key == "save_as_segm":
                 self.saveAsSegmCheckbox.setChecked(value)
                 continue
-            
-            name = value['name']
-            channel = value['channel']
-            binarize = value['binarize']
-            min_val = float(value['min_val'])
-            max_val = float(value['max_val'])
+
+            name = value["name"]
+            channel = value["channel"]
+            binarize = value["binarize"]
+            min_val = float(value["min_val"])
+            max_val = float(value["max_val"])
             key = int(key)
             stepWidgetsNum = len(self.combineChannelsWidget.stepsWidgets)
             if key > stepWidgetsNum:
                 self.combineChannelsWidget.addStep()
-            
+
             stepWidgets = self.combineChannelsWidget.stepsWidgets[key]
-            idx = stepWidgets['selector'].findText(channel)
+            idx = stepWidgets["selector"].findText(channel)
             if idx == -1:
-                stepWidgets['selector'].addItem(channel)
+                stepWidgets["selector"].addItem(channel)
                 # stepWidgets['selector'].forbiddenItems.add(channel)
-                blinker = qutils.QControlBlink(
-                    stepWidgets['selector'], 
-                    qparent=self
-                )
+                blinker = qutils.QControlBlink(stepWidgets["selector"], qparent=self)
                 blinker.start()
-                stepWidgets['selector'].blinker = blinker
+                stepWidgets["selector"].blinker = blinker
                 self.forbiddenChannels.add(channel)
-            
-            stepWidgets['selector'].setCurrentText(channel)
-            stepWidgets['name_edit'].setText(name)
-            stepWidgets['binarize'].setCurrentText(binarize)
-            stepWidgets['minValueSpinbox'].setValue(min_val)
-            stepWidgets['maxValueSpinbox'].setValue(max_val)
-            
+
+            stepWidgets["selector"].setCurrentText(channel)
+            stepWidgets["name_edit"].setText(name)
+            stepWidgets["binarize"].setCurrentText(binarize)
+            stepWidgets["minValueSpinbox"].setValue(min_val)
+            stepWidgets["maxValueSpinbox"].setValue(max_val)
+
             keys_used.add(key)
-        
+
         # remove extra steps
-        keys_present = set(range(1, len(self.combineChannelsWidget.stepsWidgets)+1))
+        keys_present = set(range(1, len(self.combineChannelsWidget.stepsWidgets) + 1))
         extra_keys = keys_present - keys_used
         extra_keys = list(extra_keys)
         extra_keys.sort(reverse=True)
         for key in extra_keys:
-            self.combineChannelsWidget.removeStep(step_n = key) 
+            self.combineChannelsWidget.removeStep(step_n=key)
             # updates key dynamically so I have to rely that missing indx are always last steps
 
         # update formula
         self.formulaEditWidget.setText(formula)
-        
+
         for stepWidgets in self.combineChannelsWidget.stepsWidgets.values():
-            combo = stepWidgets['selector']
+            combo = stepWidgets["selector"]
             # set forbidden channels red in all steps
             for i in range(combo.count()):
                 item = combo.itemText(i)
                 if item in self.forbiddenChannels:
-                    combo.setItemData(i, QColor('red'), Qt.ForegroundRole)
-        
+                    combo.setItemData(i, QColor("red"), Qt.ForegroundRole)
+
     def _updateFormulaVariableNames(self):
         names = [
-            stepWidgets['name_edit'].text()
+            stepWidgets["name_edit"].text()
             for stepWidgets in self.combineChannelsWidget.stepsWidgets.values()
         ]
         self.formulaEditWidget.setVariableNames(names)
@@ -18880,7 +18788,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.validFormula = is_valid
         if is_valid:
             self.sigValuesChanged.emit()
-    
+
     def setButtonsEnabled(self, enabled):
         for i in range(self.buttonsLayout.count()):
             item = self.buttonsLayout.itemAt(i)
@@ -18889,7 +18797,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
                 continue
             if isinstance(widget, QPushButton):
                 label = widget.text().lower().rstrip().lstrip()
-                if 'apply' in label or 'save' in label or 'ok' in label:
+                if "apply" in label or "save" in label or "ok" in label:
                     if enabled:
                         try:
                             widget.setEnabled(True)
@@ -18900,23 +18808,22 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
                             widget.setDisabled(True)
                         except:
                             pass
-                    
-    
+
     def saveAsSegm(self):
         return self.saveAsSegmCheckbox.isChecked()
-    
+
     def emitSaveAsSegmCheckboxToggled(self):
         if self.validFormula:
             self.sigSaveAsSegmCheckboxToggled.emit(self.saveAsSegm())
-    
+
     def autoCheckSaveAsSegmCheckbox(self):
         any_not_seg = False
         for step in self.combineChannelsWidget.steps().values():
-            channel = step['channel']
-            if 'segm' not in channel:
+            channel = step["channel"]
+            if "segm" not in channel:
                 any_not_seg = True
                 break
-                
+
         if any_not_seg:
             self.saveAsSegmCheckbox.setChecked(False)
             self.saveAsSegmCheckbox.setEnabled(False)
@@ -18924,25 +18831,23 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             if not self.segm_blinked:
                 self.saveAsSegmCheckbox.setEnabled(True)
                 self.blinker = qutils.QControlBlink(
-                    self.saveAsSegmCheckbox, 
-                    qparent=self
+                    self.saveAsSegmCheckbox, qparent=self
                 )
                 self.blinker.start()
                 self.segm_blinked = True
 
-    def apply(self, checked=False, signal: Signal=None):
+    def apply(self, checked=False, signal: Signal = None):
         steps = self.combineChannelsWidget.steps()
         formula = self.formulaEditWidget.text()
         keep_input_dtype = self.keepInputDataTypeToggle.isChecked()
         if not steps or not self.validFormula:
             return
-        
+
         if signal is not None:
             try:
                 signal.emit(steps, formula)
             except TypeError as err:
                 signal.emit(steps, keep_input_dtype, formula)
-            
 
         self.saveLastRecipe()
         if self.hideOnClosing:
@@ -18953,13 +18858,14 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             )
         else:
             self.ok_cb(saveLastRecipe=False)
+
     # Not needed anymore since now we funnel all changes to the formulaEditWidget, which then verifies the formula and
     # emits a signal via  formulaChangeda
     # def emitValuesChanged(self):
     #     if not self.validFormula:
     #         return
     #     self.sigValuesChanged.emit()
-        
+
     def emitValuesChangedSteps(self):
         self.autoCheckSaveAsSegmCheckbox()
         self._updateFormulaVariableNames()
@@ -18967,33 +18873,29 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     def ok_cb(self, dummy=None, saveLastRecipe=True):
         if not self.validFormula:
             return
-        
+
         if saveLastRecipe:
             self.saveLastRecipe()
-            
+
         self.keepInputDataType = self.keepInputDataTypeToggle.isChecked()
         self.selectedSteps = self.combineChannelsWidget.steps()
         self.formula = self.formulaEditWidget.text()
         self.cancel = False
         self.close()
 
+
 class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
     def __init__(
-            self,
-            channel_names,
-            df_metadata=None,
-            parent=None,
-        ):
+        self,
+        channel_names,
+        df_metadata=None,
+        parent=None,
+    ):
 
-        super().__init__(
-            channel_names,
-            parent=parent,
-            df_metadata=df_metadata
-            )
-        
+        super().__init__(channel_names, parent=parent, df_metadata=df_metadata)
+
         # add int input for number of workers
 
-        
         self.mainLayout.addSpacing(20)
 
         qutils.hide_and_delete_layout(self.buttonsLayout)
@@ -19003,7 +18905,7 @@ class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
         buttonsLayout.cancelButton.clicked.connect(self.close)
 
         self.mainLayout.addLayout(buttonsLayout)
-        
+
         self.nThreadsSpinBox = QSpinBox()
         self.nThreadsSpinBox.setMinimum(1)
         self.nThreadsSpinBox.setValue(4)
@@ -19011,23 +18913,24 @@ class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
         self.mainLayout.addWidget(QLabel("Number of threads:"))
         self.mainLayout.addWidget(self.nThreadsSpinBox)
 
+
 class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
     def __init__(
-            self,
-            channel_names: Iterable[str],
-            df_metadata=None,
-            isTimelapse=False,
-            isZstack=False,
-            isMultiPos=False,
-            parent=None,
-            hideOnClosing=False
-        ):        
+        self,
+        channel_names: Iterable[str],
+        df_metadata=None,
+        isTimelapse=False,
+        isZstack=False,
+        isMultiPos=False,
+        parent=None,
+        hideOnClosing=False,
+    ):
         super().__init__(
             channel_names,
             df_metadata=df_metadata,
-            isTimelapse=isTimelapse, 
-            isZstack=isZstack, 
-            isMultiPos=isMultiPos, 
+            isTimelapse=isTimelapse,
+            isZstack=isZstack,
+            isMultiPos=isMultiPos,
             parent=parent,
             hideOnClosing=hideOnClosing,
         )
@@ -19042,16 +18945,17 @@ class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
         self.allButtons.remove(self.loadRecipeButton)
 
         self.previewCheckbox.setChecked(True)
-        self.saveAsSegmlabel.setText('Save and view as segmentation')
-    
+        self.saveAsSegmlabel.setText("Save and view as segmentation")
+
     def steps(self, return_keepInputDataType=False):
         steps = self.combineChannelsWidget.steps()
         formula = self.formulaEditWidget.text()
         # if not return_keepInputDataType:
         #     return steps, formula
-        
+
         keep_input_dtype = self.keepInputDataTypeToggle.isChecked()
         return steps, keep_input_dtype, formula
+
 
 class QCropTrangeTool(QBaseDialog):
     sigClose = Signal()
@@ -19060,12 +18964,13 @@ class QCropTrangeTool(QBaseDialog):
     sigCrop = Signal(int, int)
 
     def __init__(
-            self, SizeT, 
-            cropButtonText='Apply crop', 
-            parent=None, 
-            addDoNotShowAgain=False, 
-            title='Select frames range'
-        ):
+        self,
+        SizeT,
+        cropButtonText="Apply crop",
+        parent=None,
+        addDoNotShowAgain=False,
+        title="Select frames range",
+    ):
         super().__init__(parent)
 
         self.cancel = True
@@ -19081,29 +18986,25 @@ class QCropTrangeTool(QBaseDialog):
         buttonsLayout = QHBoxLayout()
 
         self.startFrameScrollbar = widgets.sliderWithSpinBox(
-            spinbox_loc='left', 
-            maximum_on_label=SizeT
+            spinbox_loc="left", maximum_on_label=SizeT
         )
         self.startFrameScrollbar.setMaximum(SizeT, including_spinbox=True)
         self.startFrameScrollbar.setMinimum(1, including_spinbox=True)
 
         self.endFrameScrollbar = widgets.sliderWithSpinBox(
-            spinbox_loc='left', 
-            maximum_on_label=SizeT
+            spinbox_loc="left", maximum_on_label=SizeT
         )
         self.endFrameScrollbar.setMaximum(SizeT, including_spinbox=True)
         self.endFrameScrollbar.setMinimum(1, including_spinbox=True)
         self.endFrameScrollbar.setValue(SizeT)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton("Cancel")
         cropButton = widgets.okPushButton(cropButtonText)
         buttonsLayout.addWidget(cropButton)
         buttonsLayout.addWidget(cancelButton)
 
         row = 0
-        layout.addWidget(
-            QLabel('Start frame n.  '), row, 0, alignment=Qt.AlignRight
-        )
+        layout.addWidget(QLabel("Start frame n.  "), row, 0, alignment=Qt.AlignRight)
         layout.addWidget(self.startFrameScrollbar, row, 2)
 
         row += 1
@@ -19111,21 +19012,19 @@ class QCropTrangeTool(QBaseDialog):
         layout.addItem(QSpacerItem(10, 10), row, 0)
 
         row += 1
-        layout.addWidget(
-            QLabel('Stop frame n. '), row, 0, alignment=Qt.AlignRight
-        )
+        layout.addWidget(QLabel("Stop frame n. "), row, 0, alignment=Qt.AlignRight)
         layout.addWidget(self.endFrameScrollbar, row, 2)
 
         row += 1
         if addDoNotShowAgain:
-            self.doNotShowAgainCheckbox = QCheckBox('Do not ask again')
+            self.doNotShowAgainCheckbox = QCheckBox("Do not ask again")
             layout.addWidget(
                 self.doNotShowAgainCheckbox, row, 2, alignment=Qt.AlignLeft
             )
             row += 1
 
         layout.addItem(QSpacerItem(10, 20), row, 0)
-        layout.addLayout(buttonsLayout, row+1, 2, alignment=Qt.AlignRight)
+        layout.addLayout(buttonsLayout, row + 1, 2, alignment=Qt.AlignRight)
 
         layout.setColumnStretch(0, 0)
         layout.setColumnStretch(1, 0)
@@ -19158,55 +19057,54 @@ class QCropTrangeTool(QBaseDialog):
         self.sigTvalueChanged.emit(frame_i)
 
     def showEvent(self, event):
-        self.resize(int(self.width()*2.0), self.height())
+        self.resize(int(self.width() * 2.0), self.height())
 
     def closeEvent(self, event):
         super().closeEvent(event)
         self.sigClose.emit()
 
+
 class QTreeDialog(QBaseDialog):
     def __init__(
-            self, 
-            items: List[Tuple[str]], 
-            headerLabels: List[str]=None,
-            parent=None, 
-            infoText='Select item',
-            title='Select item',
-            path_to_browse=None,
-            additional_buttons=None,
-        ):
+        self,
+        items: List[Tuple[str]],
+        headerLabels: List[str] = None,
+        parent=None,
+        infoText="Select item",
+        title="Select item",
+        path_to_browse=None,
+        additional_buttons=None,
+    ):
         self.cancel = True
         super().__init__(parent)
-        
+
         self.setWindowTitle(title)
-        
+
         mainLayout = QVBoxLayout()
-        
+
         infoLabel = QLabel(html_utils.paragraph(infoText))
-        
+
         self.treeWidget = widgets.TreeWidget()
         if headerLabels is not None:
             self.treeWidget.setHeaderLabels(headerLabels)
         else:
             self.treeWidget.setHeaderHidden(True)
-        
+
         for row, texts in enumerate(items):
             item = widgets.TreeWidgetItem(self.treeWidget)
             for i, text in enumerate(texts):
                 item.setText(i, text)
             self.treeWidget.addTopLevelItem(item)
-        
+
         self.treeWidget.resizeColumnToContents(0)
         self.treeWidget.resizeColumnToContents(1)
-        
+
         # self.treeWidget.header().setStretchLastSection(False)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
-        
+
         if path_to_browse is not None:
-            browseButton = widgets.showInFileManagerButton(
-                setDefaultText=True
-            )
+            browseButton = widgets.showInFileManagerButton(setDefaultText=True)
             browseButton.setPathToBrowse(path_to_browse)
             buttonsLayout.insertWidget(3, browseButton)
 
@@ -19216,20 +19114,20 @@ class QTreeDialog(QBaseDialog):
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addWidget(infoLabel)
         mainLayout.addWidget(self.treeWidget)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.setLayout(mainLayout)
-    
+
     def show(self, block=False):
         w = self.sizeHint().width()
         h = self.sizeHint().height()
-        self.resize(int(w*1.3), h)
+        self.resize(int(w * 1.3), h)
         super().show(block=block)
-    
+
     def ok_cb(self):
         self.clickedButton = self.sender()
         self.cancel = False
@@ -19237,121 +19135,122 @@ class QTreeDialog(QBaseDialog):
         self.selectedText = self.selectedItem.text(0)
         self.close()
 
+
 class SelectFoldersToAnalyse(QBaseDialog):
     def __init__(
-            self, parent=None, 
-            preSelectedPaths=None, 
-            onlyExpPaths=False, 
-            scanFolderTree=True,
-            instructionsText='Select experiment folders to analyse',
-            askSelectPosFolders=False
-        ):
+        self,
+        parent=None,
+        preSelectedPaths=None,
+        onlyExpPaths=False,
+        scanFolderTree=True,
+        instructionsText="Select experiment folders to analyse",
+        askSelectPosFolders=False,
+    ):
         super().__init__(parent)
-        
+
         self.cancel = True
         self.onlyExpPaths = onlyExpPaths
-        self.setWindowTitle('Select experiments to analyse')
+        self.setWindowTitle("Select experiments to analyse")
         self.scanTree = scanFolderTree
         self.askSelectPosFolders = askSelectPosFolders
-        
+
         mainLayout = QVBoxLayout()
-        
+
         instructionsText = html_utils.paragraph(
-            f'{instructionsText}<br><br>'
-            'Drag and drop folders or click on <code>Add folder</code> button to '
-            '<b>add</b> as many <b>folders</b> '
-            'as needed.<br>', font_size='14px'
+            f"{instructionsText}<br><br>"
+            "Drag and drop folders or click on <code>Add folder</code> button to "
+            "<b>add</b> as many <b>folders</b> "
+            "as needed.<br>",
+            font_size="14px",
         )
         instructionsLabel = QLabel(instructionsText)
         instructionsLabel.setAlignment(Qt.AlignCenter)
-        
-        infoText = html_utils.paragraph(            
-            'A <b>valid folder</b> is either a <b>Position</b> folder, '
-            'or an <b>experiment folder</b> (containing Position_n folders),<br>'
-            'or any folder that contains <b>multiple experiment folders</b>.<br><br>'
-            
-            'In the last case, Cell-ACDC will automatically scan the entire tree of '
-            'sub-directories<br>'
-            'and will add all experiments having the right folder structure.<br>',
-            font_size='12px'
+
+        infoText = html_utils.paragraph(
+            "A <b>valid folder</b> is either a <b>Position</b> folder, "
+            "or an <b>experiment folder</b> (containing Position_n folders),<br>"
+            "or any folder that contains <b>multiple experiment folders</b>.<br><br>"
+            "In the last case, Cell-ACDC will automatically scan the entire tree of "
+            "sub-directories<br>"
+            "and will add all experiments having the right folder structure.<br>",
+            font_size="12px",
         )
         infoLabel = QLabel(infoText)
         infoLabel.setAlignment(Qt.AlignCenter)
-        
+
         self.listWidget = widgets.listWidget()
         self.listWidget.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection
         )
         if preSelectedPaths is not None:
             self.listWidget.addItems(preSelectedPaths)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
-        delButton = widgets.delPushButton('Remove selected path(s)')
+        delButton = widgets.delPushButton("Remove selected path(s)")
         browseButton = widgets.browseFileButton(
-            'Add folder...', openFolder=True, 
-            start_dir=myutils.getMostRecentPath()
+            "Add folder...", openFolder=True, start_dir=myutils.getMostRecentPath()
         )
-        
+
         buttonsLayout.insertWidget(3, delButton)
         buttonsLayout.insertWidget(4, browseButton)
-        
+
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         browseButton.sigPathSelected.connect(self.addFolderPath)
         delButton.clicked.connect(self.removePaths)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addWidget(instructionsLabel)
         mainLayout.addWidget(infoLabel)
         mainLayout.addWidget(self.listWidget)
-        
+
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
         mainLayout.addStretch(1)
-        
+
         self.setLayout(mainLayout)
-        
+
         self.setAcceptDrops(True)
-        
+
         self.setFont(font)
-    
+
     def dragEnterEvent(self, event):
         event.acceptProposedAction()
-    
+
     def dropEvent(self, event):
         event.setDropAction(Qt.CopyAction)
         for url in event.mimeData().urls():
             dropped_path = url.toLocalFile()
             if os.path.isfile(dropped_path):
                 dropped_path = os.path.dirname(dropped_path)
-            
+
             QTimer.singleShot(50, partial(self.addFolderPath, dropped_path))
-    
+
     def pathsList(self):
         return [
-            self.listWidget.item(i).text().replace('\\', '/') 
+            self.listWidget.item(i).text().replace("\\", "/")
             for i in range(self.listWidget.count())
         ]
-    
+
     def expFolderToPosFoldernamesMapper(self):
         expPathsPosFoldernamesMapper = defaultdict(set)
         for selectedPath in self.pathsList():
             pos_foldernames = myutils.get_pos_foldernames(
                 selectedPath, check_if_is_sub_folder=True
             )
-            if not pos_foldernames: 
+            if not pos_foldernames:
                 images_path = myutils.get_images_folderpath(selectedPath)
-                expPathsPosFoldernamesMapper[selectedPath].add('')
+                expPathsPosFoldernamesMapper[selectedPath].add("")
             else:
                 expPath = load.get_exp_path(selectedPath)
                 expPathsPosFoldernamesMapper[expPath].update(pos_foldernames)
-        
+
         expPathsPosFoldernamesMapper = {
-            expPath: natsorted(pos_foldernames) 
+            expPath: natsorted(pos_foldernames)
             for expPath, pos_foldernames in expPathsPosFoldernamesMapper.items()
         }
         return expPathsPosFoldernamesMapper
-    
+
     def ok_cb(self):
         self.cancel = False
         self.paths = self.pathsList()
@@ -19359,7 +19258,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
             self.expFolderToPosFoldernamesMapper()
         )
         self.close()
-    
+
     def warnNoValidPathsFound(self, selected_path):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
@@ -19371,63 +19270,67 @@ class SelectFoldersToAnalyse(QBaseDialog):
             Selected path:
         """)
         msg.warning(
-            self, 'Training workflow generated', txt, 
-            commands=(f'{selected_path}',),
-            path_to_browse=selected_path
+            self,
+            "Training workflow generated",
+            txt,
+            commands=(f"{selected_path}",),
+            path_to_browse=selected_path,
         )
-    
+
     def warnNoValidExpPaths(self, selected_path):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             The selected folder does 
             <b>not contain any valid experiment folders</b>.
         """)
-        command = selected_path.replace('\\', os.sep)
-        command = selected_path.replace('/', os.sep)
+        command = selected_path.replace("\\", os.sep)
+        command = selected_path.replace("/", os.sep)
         msg.warning(
-            self, 'No valid folders found', txt,
-            commands=(command,), 
-            path_to_browse=selected_path
+            self,
+            "No valid folders found",
+            txt,
+            commands=(command,),
+            path_to_browse=selected_path,
         )
-    
-    def parse_select_from_exp_paths(
-            self, exp_paths: dict[os.PathLike, Iterable[str]]
-        ):
+
+    def parse_select_from_exp_paths(self, exp_paths: dict[os.PathLike, Iterable[str]]):
         if not self.askSelectPosFolders:
             return list(exp_paths.keys())
-        
+
         paths = []
         for exp_path, pos_foldernames in exp_paths.items():
             if len(pos_foldernames) == 1:
                 paths.append(exp_path)
                 continue
-            
+
             informativeText = html_utils.paragraph(
-                'The following experiment folder<br><br>'
-                f'<code>{exp_path}</code><br><br>'
-                'contains multiple Position folders.<br><br>'
-                'Please, select which Position folder(s) you want to analyse:<br>'
+                "The following experiment folder<br><br>"
+                f"<code>{exp_path}</code><br><br>"
+                "contains multiple Position folders.<br><br>"
+                "Please, select which Position folder(s) you want to analyse:<br>"
             )
             select_folder = load.select_exp_folder()
             values = select_folder.get_values_dataprep(exp_path)
             select_folder.QtPrompt(
-                self, values, toggleMulti=True, 
+                self,
+                values,
+                toggleMulti=True,
                 informativeText=informativeText,
-                selectedValues=values
+                selectedValues=values,
             )
             if select_folder.cancel:
                 return
-            
+
             for pos in select_folder.selected_pos:
                 paths.append(os.path.join(exp_path, pos))
-                
+
         return paths
-    
+
     def addFolderPath(self, selected_path):
         myutils.addToRecentPaths(selected_path)
-        
-        folder_type = myutils.determine_folder_type(selected_path)     
-        is_pos_folder, is_images_folder, folder_path = folder_type 
+
+        folder_type = myutils.determine_folder_type(selected_path)
+        is_pos_folder, is_images_folder, folder_path = folder_type
         if is_pos_folder:
             paths = [selected_path]
         elif is_images_folder:
@@ -19438,285 +19341,285 @@ class SelectFoldersToAnalyse(QBaseDialog):
             if not exp_paths:
                 self.warnNoValidExpPaths(selected_path)
                 return
-            
+
             paths = self.parse_select_from_exp_paths(exp_paths)
             if paths is None:
                 return
         else:
             paths = [selected_path]
-        
+
         if not paths:
             self.warnNoValidPathsFound(selected_path)
-        
+
         for selectedPath in paths:
             if self.onlyExpPaths:
                 selectedPath = load.get_exp_path(selectedPath)
-            
-            selectedPath = selectedPath.replace('\\', '/')
+
+            selectedPath = selectedPath.replace("\\", "/")
             if selectedPath in self.pathsList():
                 print(
-                    f'[WARNING]: The following path was already selected: '
+                    f"[WARNING]: The following path was already selected: "
                     f'"{selectedPath}"'
                 )
                 return
-                
+
             self.listWidget.addItem(selectedPath)
-    
+
     def removePaths(self):
         for item in self.listWidget.selectedItems():
             row = self.listWidget.row(item)
             self.listWidget.takeItem(row)
 
+
 class OverlayLabelsAppearanceDialog(QBaseDialog):
     sigValuesChanged = Signal(object)
-    
-    def __init__(self, scatterPlotItem: pg.ScatterPlotItem=None, parent=None):
+
+    def __init__(self, scatterPlotItem: pg.ScatterPlotItem = None, parent=None):
         super().__init__(parent)
-        
+
         self.cancel = True
-        
-        self.setWindowTitle('Overlay contours appearance properties')
+
+        self.setWindowTitle("Overlay contours appearance properties")
 
         mainLayout = QVBoxLayout()
-        
+
         formLayout = widgets.FormLayout()
-        
+
         row = -1
-        
+
         row += 1
         self.colorButton = widgets.myColorButton(color=(255, 0, 0))
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
         self.colorButton.setCursor(Qt.PointingHandCursor)
         self.colorWidget = widgets.formWidget(
-            self.colorButton, addInfoButton=False, stretchWidget=False,
-            labelTextLeft='Symbol color: ', parent=self, 
-            widgetAlignment='left'
+            self.colorButton,
+            addInfoButton=False,
+            stretchWidget=False,
+            labelTextLeft="Symbol color: ",
+            parent=self,
+            widgetAlignment="left",
         )
         if scatterPlotItem is not None:
-            pen = scatterPlotItem.opts['pen']
+            pen = scatterPlotItem.opts["pen"]
             color = pen.color()
             self.colorButton.setColor(color)
         formLayout.addFormWidget(self.colorWidget, row=row)
-        
+
         row += 1
         self.penWidthSpinBox = widgets.SpinBox()
         self.penWidthSpinBox.setMinimum(0)
         self.penWidthSpinBox.setValue(2)
 
         self.penWidthWidget = widgets.formWidget(
-            self.penWidthSpinBox, addInfoButton=False, stretchWidget=False,
-            labelTextLeft='Symbol weight: ', parent=self, 
-            widgetAlignment='left'
+            self.penWidthSpinBox,
+            addInfoButton=False,
+            stretchWidget=False,
+            labelTextLeft="Symbol weight: ",
+            parent=self,
+            widgetAlignment="left",
         )
         if scatterPlotItem is not None:
-            pen = scatterPlotItem.opts['pen']
+            pen = scatterPlotItem.opts["pen"]
             width = pen.width()
             self.penWidthSpinBox.setValue(width)
         formLayout.addFormWidget(self.penWidthWidget, row=row)
-        
+
         row += 1
-        self.opacitySlider = widgets.sliderWithSpinBox(
-            isFloat=True, normalize=True
-        )
+        self.opacitySlider = widgets.sliderWithSpinBox(isFloat=True, normalize=True)
         self.opacitySlider.setMinimum(0)
         self.opacitySlider.setMaximum(100)
         self.opacitySlider.setValue(0.8)
 
         self.opacityWidget = widgets.formWidget(
-            self.opacitySlider, addInfoButton=False, stretchWidget=True,
-            labelTextLeft='Symbol opacity: ', parent=self
+            self.opacitySlider,
+            addInfoButton=False,
+            stretchWidget=True,
+            labelTextLeft="Symbol opacity: ",
+            parent=self,
         )
         if scatterPlotItem is not None:
-            brush = scatterPlotItem.opts['brush']
+            brush = scatterPlotItem.opts["brush"]
             alpha = brush.color().alpha()
-            opacity = alpha/255
+            opacity = alpha / 255
             self.opacitySlider.setValue(opacity)
         formLayout.addFormWidget(self.opacityWidget, row=row)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
-        
+
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addLayout(formLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.setLayout(mainLayout)
-    
+
     def selectColor(self):
         color = self.colorButton.color()
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
-        self.colorButton.colorDialog.setWindowFlags(
-            Qt.Window | Qt.WindowStaysOnTopHint
-        )
+        self.colorButton.colorDialog.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         self.colorButton.colorDialog.open()
         w = self.width()
         left = self.pos().x()
         colorDialogTop = self.colorButton.colorDialog.pos().y()
-        self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
-    
+        self.colorButton.colorDialog.move(w + left + 10, colorDialogTop)
+
     def getBrush(self):
         r, g, b, _ = self.colorButton.color().getRgb()
-        alpha = round(self.opacitySlider.value()*255)
+        alpha = round(self.opacitySlider.value() * 255)
         brushColor = (r, g, b, alpha)
         brush = pg.mkBrush(brushColor)
         return brush
-    
+
     def getPen(self):
         color = self.colorButton.color()
         penWidth = self.penWidthSpinBox.value()
         if penWidth == 0:
             return
-        
+
         pen = pg.mkPen(color, width=penWidth)
         return pen
-    
+
     def ok_cb(self):
         self.cancel = False
-        self.properties = {
-            'brush': self.getBrush(),
-            'pen': self.getPen()
-        }
+        self.properties = {"brush": self.getBrush(), "pen": self.getPen()}
         self.close()
+
 
 class AutoSaveIntervalDialog(QBaseDialog):
     sigValueChanged = Signal(float, str)
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         self.cancel = True
-        
-        self.setWindowTitle('Change autosave interval')
+
+        self.setWindowTitle("Change autosave interval")
 
         mainLayout = QVBoxLayout()
-        
-        self.autoSaveIntervalWidget = (
-            widgets.AutoSaveIntervalWidget(parent=self)
-        )
-        
-        mainLayout.addWidget(QLabel('Autosave interval:'))
+
+        self.autoSaveIntervalWidget = widgets.AutoSaveIntervalWidget(parent=self)
+
+        mainLayout.addWidget(QLabel("Autosave interval:"))
         mainLayout.addWidget(self.autoSaveIntervalWidget)
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
-        
+
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.setLayout(mainLayout)
-    
+
     def setValues(self, autoSaveIntevalValue, autoSaveIntervalUnit):
         self.autoSaveIntervalWidget.spinbox.setValue(autoSaveIntevalValue)
-        self.autoSaveIntervalWidget.unitCombobox.setCurrentText(
-            autoSaveIntervalUnit
-        )
-    
+        self.autoSaveIntervalWidget.unitCombobox.setCurrentText(autoSaveIntervalUnit)
+
     def sizeHint(self):
         defaultWidth = super().sizeHint().width()
         defaultHeight = super().sizeHint().height()
-        return QSize(defaultWidth*2, defaultHeight)
-    
+        return QSize(defaultWidth * 2, defaultHeight)
+
     def ok_cb(self):
         self.cancel = False
         self.sigValueChanged.emit(
-            self.autoSaveIntervalWidget.spinbox.value(), 
-            self.autoSaveIntervalWidget.unitCombobox.currentText()
+            self.autoSaveIntervalWidget.spinbox.value(),
+            self.autoSaveIntervalWidget.unitCombobox.currentText(),
         )
         self.close()
+
 
 class TestSegmModelInitalDialog(QBaseDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         self.cancel = True
-        
+
         mainLayout = QVBoxLayout()
         entriesLayout = widgets.FormLayout()
-        
+
         row = 0
         self.startFrameNumberSpinbox = widgets.SpinBox()
         self.startFrameNumberSpinbox.setMinimum(1)
-        
+
         self.startFrameNumberFormWidget = widgets.formWidget(
-            self.startFrameNumberSpinbox, 
-            labelTextLeft='Start frame number',
-            addActivateCheckbox=True
+            self.startFrameNumberSpinbox,
+            labelTextLeft="Start frame number",
+            addActivateCheckbox=True,
         )
         entriesLayout.addFormWidget(self.startFrameNumberFormWidget, row=row)
-        
+
         row += 1
         self.stopFrameNumberSpinbox = widgets.SpinBox()
         self.stopFrameNumberSpinbox.setMinimum(1)
-        
+
         self.stopFrameNumberFormWidget = widgets.formWidget(
-            self.stopFrameNumberSpinbox, 
-            labelTextLeft='Stop frame number',
-            addActivateCheckbox=True
+            self.stopFrameNumberSpinbox,
+            labelTextLeft="Stop frame number",
+            addActivateCheckbox=True,
         )
         entriesLayout.addFormWidget(self.stopFrameNumberFormWidget, row=row)
-        
+
         row += 1
         self.startZsliceNumberSpinbox = widgets.SpinBox()
         self.startZsliceNumberSpinbox.setMinimum(1)
-        
+
         self.startZsliceNumberFormWidget = widgets.formWidget(
-            self.startZsliceNumberSpinbox, 
-            labelTextLeft='Start z-slice number',
-            addActivateCheckbox=True
+            self.startZsliceNumberSpinbox,
+            labelTextLeft="Start z-slice number",
+            addActivateCheckbox=True,
         )
         entriesLayout.addFormWidget(self.startZsliceNumberFormWidget, row=row)
-        
+
         row += 1
         self.stopZsliceNumberSpinbox = widgets.SpinBox()
         self.stopZsliceNumberSpinbox.setMinimum(1)
-        
+
         self.stopZsliceNumberFormWidget = widgets.formWidget(
-            self.stopZsliceNumberSpinbox, 
-            labelTextLeft='Stop z-slice number',
-            addActivateCheckbox=True
+            self.stopZsliceNumberSpinbox,
+            labelTextLeft="Stop z-slice number",
+            addActivateCheckbox=True,
         )
         entriesLayout.addFormWidget(self.stopZsliceNumberFormWidget, row=row)
-        
+
         row += 1
-        
+
         self.isTimelapseToggleFormWidget = widgets.formWidget(
-            widgets.Toggle(), 
-            labelTextLeft='Is timelapse?',
+            widgets.Toggle(),
+            labelTextLeft="Is timelapse?",
             stretchWidget=False,
-            valueGetterName='isChecked'
+            valueGetterName="isChecked",
         )
         entriesLayout.addFormWidget(self.isTimelapseToggleFormWidget, row=row)
-        
-        
+
         # self.stopFrameNumberSpinbox
         # self.startZsliceNumberSpinbox
         # self.stopZsliceNumberSpinbox
         # self.isTimelapseToggle
-        
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addLayout(entriesLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.setLayout(mainLayout)
-    
+
     def ok_cb(self):
         self.cancel = False
-        
+
         self.start_frame_n = self.startFrameNumberFormWidget.value()
         self.stop_frame_n = self.stopFrameNumberFormWidget.value()
         self.start_z_slice_n = self.startZsliceNumberFormWidget.value()
         self.stop_z_slice_n = self.stopZsliceNumberFormWidget.value()
         self.is_timelapse = self.isTimelapseToggleFormWidget.value()
-        
+
         self.close()

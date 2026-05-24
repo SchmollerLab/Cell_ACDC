@@ -36,7 +36,7 @@ def get_data_exception_handler(func):
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-            msg.addShowInFileManagerButton(self.logs_path, txt='Show log file...')
+            msg.addShowInFileManagerButton(self.logs_path, txt="Show log file...")
             msg.setDetailedText(traceback_str)
             err_msg = html_utils.paragraph(f"""
                 Error in function <code>{func.__name__}</code>.<br><br>
@@ -57,10 +57,11 @@ def get_data_exception_handler(func):
 
             """)
 
-            msg.critical(self, 'Critical error', err_msg)
+            msg.critical(self, "Critical error", err_msg)
             self.is_error_state = True
             raise e
         return result
+
     return inner_function
 
 
@@ -76,4 +77,5 @@ def resetViewRange(func):
             result = func(self, *args, **kwargs)
         QTimer.singleShot(200, self.resetRange)
         return result
+
     return inner_function

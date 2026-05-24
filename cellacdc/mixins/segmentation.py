@@ -21,6 +21,7 @@ from cellacdc.plot import imshow
 
 from .tool_activation import ToolActivation
 
+
 class Segmentation(ToolActivation):
     """Extracted from guiWin."""
 
@@ -30,11 +31,11 @@ class Segmentation(ToolActivation):
             # Ask which model
             models = myutils.get_list_of_models()
             win = widgets.QDialogListbox(
-                'Select model',
-                'Select model to use for segmentation: ',
+                "Select model",
+                "Select model to use for segmentation: ",
                 models,
                 multiSelection=False,
-                parent=self
+                parent=self,
             )
             win.exec_()
             if win.cancel:
@@ -65,30 +66,29 @@ class Segmentation(ToolActivation):
                 for lab in posData.segm_data:
                     if not np.any(lab):
                         ask = True
-                        txt = 'frames'
+                        txt = "frames"
                         break
             else:
                 if not np.any(posData.segm_data):
                     ask = True
-                    txt = 'positions'
+                    txt = "positions"
                     break
 
         if not ask:
             return
 
         questionTxt = html_utils.paragraph(
-            f'Some or all loaded {txt} contain <b>empty segmentation masks</b>.<br><br>'
-            'Do you want to <b>activate automatic segmentation</b><sup>*</sup> '
-            f'when visiting these {txt}?<br><br>'
-            '<i>* Automatic segmentation can always be turned ON/OFF from the menu<br>'
-            '  <code>Edit --> Segmentation --> Enable automatic segmentation</code><br><br></i>'
-            f'NOTE: you can automatically segment all {txt} using the<br>'
-            '    segmentation module.'
+            f"Some or all loaded {txt} contain <b>empty segmentation masks</b>.<br><br>"
+            "Do you want to <b>activate automatic segmentation</b><sup>*</sup> "
+            f"when visiting these {txt}?<br><br>"
+            "<i>* Automatic segmentation can always be turned ON/OFF from the menu<br>"
+            "  <code>Edit --> Segmentation --> Enable automatic segmentation</code><br><br></i>"
+            f"NOTE: you can automatically segment all {txt} using the<br>"
+            "    segmentation module."
         )
         msg = widgets.myMessageBox(wrapText=False)
         noButton, yesButton = msg.question(
-            self, 'Automatic segmentation?', questionTxt,
-            buttonsTexts=('No', 'Yes')
+            self, "Automatic segmentation?", questionTxt, buttonsTexts=("No", "Yes")
         )
         if msg.clickedButton == yesButton:
             self.autoSegmAction.setChecked(True)
@@ -99,7 +99,7 @@ class Segmentation(ToolActivation):
     def computeSegm(self, force=False):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
-        if mode == 'Viewer' or mode == 'Cell cycle analysis':
+        if mode == "Viewer" or mode == "Cell cycle analysis":
             return
 
         if np.any(posData.lab) and not force:
@@ -118,45 +118,58 @@ class Segmentation(ToolActivation):
         self.segmWorkerWaitCond.wakeAll()
 
     def initSegmModelParams(
-            self, model_name, acdcSegment, init_params, segment_params, 
-            is_label_roi=False, initLastParams=False,
-            extraParams=None, extraParamsTitle=None,ini_filename=None
-
-        ):
-        posData = self.data[self.pos_i]        
+        self,
+        model_name,
+        acdcSegment,
+        init_params,
+        segment_params,
+        is_label_roi=False,
+        initLastParams=False,
+        extraParams=None,
+        extraParamsTitle=None,
+        ini_filename=None,
+    ):
+        posData = self.data[self.pos_i]
         try:
             url = acdcSegment.url_help()
         except AttributeError:
             url = None
-        
-        text_if_cancelled = 'Segmentation process cancelled.'
+
+        text_if_cancelled = "Segmentation process cancelled."
         out = prompts.init_segm_model_params(
-            posData, model_name, init_params, segment_params, 
-            help_url=url, qparent=self, init_last_params=initLastParams, 
-            check_sam_embeddings=not is_label_roi, is_gui_caller=True,
-            extraParams=extraParams,extraParamsTitle=extraParamsTitle,
+            posData,
+            model_name,
+            init_params,
+            segment_params,
+            help_url=url,
+            qparent=self,
+            init_last_params=initLastParams,
+            check_sam_embeddings=not is_label_roi,
+            is_gui_caller=True,
+            extraParams=extraParams,
+            extraParamsTitle=extraParamsTitle,
             ini_filename=ini_filename,
         )
-        if out.get('load_sam_embeddings', False):
-            self.logger.info('Loading Segment Anything image embeddings...')
+        if out.get("load_sam_embeddings", False):
+            self.logger.info("Loading Segment Anything image embeddings...")
             for _posData in self.data:
                 _posData.loadSamEmbeddings(logger_func=None)
-            text_if_cancelled = 'SAM embeddings loaded.'
-            
-        win = out.get('win')
+            text_if_cancelled = "SAM embeddings loaded."
+
+        win = out.get("win")
         if win is None:
             self.logger.info(text_if_cancelled)
             self.titleLabel.setText(text_if_cancelled)
             return
-        
+
         if win.cancel:
             self.logger.info(text_if_cancelled)
             self.titleLabel.setText(text_if_cancelled)
             return
-        
-        if model_name != 'thresholding':
+
+        if model_name != "thresholding":
             self.model_kwargs = win.model_kwargs
-        
+
         return win
 
     def init_segmInfo_df(self):
@@ -174,12 +187,8 @@ class Segmentation(ToolActivation):
             SizeZ = None
         if checked:
             posData = self.data[self.pos_i]
-            self.postProcessSegmWin = apps.PostProcessSegmDialog(
-                posData, mainWin=self
-            )
-            self.postProcessSegmWin.sigClosed.connect(
-                self.postProcessSegmWinClosed
-            )
+            self.postProcessSegmWin = apps.PostProcessSegmDialog(posData, mainWin=self)
+            self.postProcessSegmWin.sigClosed.connect(self.postProcessSegmWinClosed)
             self.postProcessSegmWin.sigValueChanged.connect(
                 self.postProcessSegmValueChanged
             )
@@ -196,27 +205,30 @@ class Segmentation(ToolActivation):
             self.postProcessSegmWin = None
 
     def postProcessSegmApplyToAllFutureFrames(
-            self, postProcessKwargs, 
-            customPostProcessGroupedFeatures, 
-            customPostProcessFeatures
-        ):
+        self,
+        postProcessKwargs,
+        customPostProcessGroupedFeatures,
+        customPostProcessFeatures,
+    ):
         proceed = self.warnEditingWithCca_df(
-            'post-processing segmentation', update_images=False
+            "post-processing segmentation", update_images=False
         )
         if not proceed:
-            self.logger.info('Post-processing segmentation cancelled.')
+            self.logger.info("Post-processing segmentation cancelled.")
             return
 
         self.progressWin = apps.QDialogWorkerProgress(
-            title='Post-processing segmentation', parent=self,
-            pbarDesc=f'Post-processing segmentation masks...'
+            title="Post-processing segmentation",
+            parent=self,
+            pbarDesc=f"Post-processing segmentation masks...",
         )
         self.progressWin.show(self.app)
         self.progressWin.mainPbar.setMaximum(0)
 
         self.startPostProcessSegmWorker(
-            postProcessKwargs, customPostProcessGroupedFeatures, 
-            customPostProcessFeatures
+            postProcessKwargs,
+            customPostProcessGroupedFeatures,
+            customPostProcessFeatures,
         )
 
     def postProcessSegmEditingFinished(self):
@@ -228,19 +240,19 @@ class Segmentation(ToolActivation):
         for delObj in delObjs.values():
             self.clearObjContour(obj=delObj, ax=0)
             self.clearObjContour(obj=delObj, ax=1)
-            
+
         posData = self.data[self.pos_i]
-        
+
         labelsToSkip = {}
         for ID in posData.IDs:
             if ID in delObjs:
                 labelsToSkip[ID] = True
                 continue
-            
+
             restoreObj = self.postProcessSegmWin.origObjs[ID]
             self.addObjContourToContoursImage(obj=restoreObj, ax=0)
             self.addObjContourToContoursImage(obj=restoreObj, ax=1)
- 
+
         # self.setAllTextAnnotations(labelsToSkip=labelsToSkip)
 
         posData.lab = lab
@@ -262,34 +274,32 @@ class Segmentation(ToolActivation):
         self.progressWin = None
         self.get_data()
         self.updateAllImages()
-        self.titleLabel.setText('Post-processing segmentation done!', color='w')
-        self.logger.info('Post-processing segmentation done!')
+        self.titleLabel.setText("Post-processing segmentation done!", color="w")
+        self.logger.info("Post-processing segmentation done!")
 
     def postProcessing(self):
         if self.postProcessSegmWin is None:
             return
-        
+
         self.postProcessSegmWin.setPosData()
         posData = self.data[self.pos_i]
         lab, delIDs = self.postProcessSegmWin.apply()
-        if posData.allData_li[posData.frame_i]['labels'] is None:
+        if posData.allData_li[posData.frame_i]["labels"] is None:
             posData.lab = lab.copy()
             self.update_rp()
         else:
-            posData.allData_li[posData.frame_i]['labels'] = lab
+            posData.allData_li[posData.frame_i]["labels"] = lab
             self.get_data()
 
     def reinitStoredSegmModels(self):
-        self.models = [None]*len(self.models)
+        self.models = [None] * len(self.models)
 
-    def repeatSegm(
-            self, model_name='', askSegmParams=False, is_label_roi=False
-        ):
-        if model_name == 'thresholding':
+    def repeatSegm(self, model_name="", askSegmParams=False, is_label_roi=False):
+        if model_name == "thresholding":
             # thresholding model is stored as 'Automatic thresholding'
             # at line of code `models.append('Automatic thresholding')`
-            model_name = 'Automatic thresholding'
-        
+            model_name = "Automatic thresholding"
+
         idx = self.modelNames.index(model_name)
         # Ask segm parameters if not already set
         # and not called by segmSingleFrameMenu (askSegmParams=False)
@@ -302,17 +312,17 @@ class Segmentation(ToolActivation):
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
 
-        if model_name == 'Automatic thresholding':
-            # Automatic thresholding is the name of the models as stored 
+        if model_name == "Automatic thresholding":
+            # Automatic thresholding is the name of the models as stored
             # in self.modelNames, but the actual model is called thresholding
             # (see cellacdc/models/thresholding)
-            model_name = 'thresholding'
+            model_name = "thresholding"
 
         posData = self.data[self.pos_i]
         # Check if model needs to be imported
         acdcSegment = self.acdcSegment_li[idx]
         if acdcSegment is None:
-            self.logger.info(f'Importing {model_name}...')
+            self.logger.info(f"Importing {model_name}...")
             acdcSegment = myutils.import_segment_module(model_name)
             self.acdcSegment_li[idx] = acdcSegment
 
@@ -330,10 +340,10 @@ class Segmentation(ToolActivation):
                 url = acdcSegment.url_help()
             except AttributeError:
                 url = None
-            
+
             self.preproc_recipe = None
             initLastParams = True
-            if model_name == 'thresholding':
+            if model_name == "thresholding":
                 win = apps.QDialogAutomaticThresholding(
                     parent=self, isSegm3D=self.isSegm3D
                 )
@@ -341,56 +351,57 @@ class Segmentation(ToolActivation):
                 if win.cancel:
                     return
                 self.model_kwargs = win.segment_kwargs
-                thresh_method = self.model_kwargs['threshold_method']
-                gauss_sigma = self.model_kwargs['gauss_sigma']
+                thresh_method = self.model_kwargs["threshold_method"]
+                gauss_sigma = self.model_kwargs["gauss_sigma"]
                 segment_params = myutils.insertModelArgSpec(
-                    segment_params, 'threshold_method', thresh_method
+                    segment_params, "threshold_method", thresh_method
                 )
                 segment_params = myutils.insertModelArgSpec(
-                    segment_params, 'gauss_sigma', gauss_sigma
+                    segment_params, "gauss_sigma", gauss_sigma
                 )
                 initLastParams = False
-            
+
             win = self.initSegmModelParams(
-                model_name, acdcSegment, init_params, segment_params, 
-                is_label_roi=is_label_roi, 
-                initLastParams=initLastParams
+                model_name,
+                acdcSegment,
+                init_params,
+                segment_params,
+                is_label_roi=is_label_roi,
+                initLastParams=initLastParams,
             )
             if win is None:
                 return
-            
+
             self.standardPostProcessKwargs = win.standardPostProcessKwargs
             self.customPostProcessFeatures = win.customPostProcessFeatures
-            self.customPostProcessGroupedFeatures = (
-                win.customPostProcessGroupedFeatures
-            )
+            self.customPostProcessGroupedFeatures = win.customPostProcessGroupedFeatures
             self.applyPostProcessing = win.applyPostProcessing
             self.secondChannelName = win.secondChannelName
             self.preproc_recipe = win.preproc_recipe
-            
+
             myutils.log_segm_params(
-                model_name, win.init_kwargs, win.model_kwargs, 
-                logger_func=self.logger.info, 
-                preproc_recipe=win.preproc_recipe, 
-                apply_post_process=self.applyPostProcessing, 
-                standard_postprocess_kwargs=self.standardPostProcessKwargs, 
-                custom_postprocess_features=self.customPostProcessFeatures
+                model_name,
+                win.init_kwargs,
+                win.model_kwargs,
+                logger_func=self.logger.info,
+                preproc_recipe=win.preproc_recipe,
+                apply_post_process=self.applyPostProcessing,
+                standard_postprocess_kwargs=self.standardPostProcessKwargs,
+                custom_postprocess_features=self.customPostProcessFeatures,
             )
 
-            use_gpu = win.init_kwargs.get('gpu', False)
+            use_gpu = win.init_kwargs.get("gpu", False)
             proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
             if not proceed:
-                self.logger.info('Segmentation process cancelled.')
-                self.titleLabel.setText('Segmentation process cancelled.')
+                self.logger.info("Segmentation process cancelled.")
+                self.titleLabel.setText("Segmentation process cancelled.")
                 return
-            
-            model = myutils.init_segm_model(
-                acdcSegment, posData, win.init_kwargs
-            )
+
+            model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
             if model is None:
-                self.logger.info('Segmentation process cancelled.')
-                self.titleLabel.setText('Segmentation process cancelled.')
-                return            
+                self.logger.info("Segmentation process cancelled.")
+                self.titleLabel.setText("Segmentation process cancelled.")
+                return
             try:
                 model.setupLogger(self.logger)
             except Exception as e:
@@ -399,98 +410,101 @@ class Segmentation(ToolActivation):
             model.model_name = model_name
         else:
             model = self.models[idx]
-        
+
         if is_label_roi:
             return model
 
         self.titleLabel.setText(
-            f'Segmenting with {model_name}... '
-            '(check progress in terminal/console)', color=self.titleColor
+            f"Segmenting with {model_name}... (check progress in terminal/console)",
+            color=self.titleColor,
         )
-        
+
+        post_process_params = {"applied_postprocessing": self.applyPostProcessing}
         post_process_params = {
-            'applied_postprocessing': self.applyPostProcessing
-        }
-        post_process_params = {
-            **post_process_params, 
+            **post_process_params,
             **self.standardPostProcessKwargs,
-            **self.customPostProcessFeatures
+            **self.customPostProcessFeatures,
         }
         if askSegmParams:
             posData.saveSegmHyperparams(
-                model_name, win.init_kwargs, win.model_kwargs,
+                model_name,
+                win.init_kwargs,
+                win.model_kwargs,
                 post_process_params=post_process_params,
-                preproc_recipe=self.preproc_recipe
+                preproc_recipe=self.preproc_recipe,
             )
 
         if self.askRepeatSegment3D:
             self.segment3D = False
         if self.isSegm3D and self.askRepeatSegment3D:
             msg = widgets.myMessageBox(showCentered=False)
-            msg.addDoNotShowAgainCheckbox(text='Do not ask again')
+            msg.addDoNotShowAgainCheckbox(text="Do not ask again")
             txt = html_utils.paragraph(
-                'Do you want to segment the <b>entire z-stack</b> or only the '
-                '<b>current z-slice</b>?'
+                "Do you want to segment the <b>entire z-stack</b> or only the "
+                "<b>current z-slice</b>?"
             )
             _, segment3DButton, _ = msg.question(
-                self, '3D segmentation?', txt,
-                buttonsTexts=(
-                    'Cancel', 'Segment 3D z-stack', 'Segment 2D z-slice'
-                )
+                self,
+                "3D segmentation?",
+                txt,
+                buttonsTexts=("Cancel", "Segment 3D z-stack", "Segment 2D z-slice"),
             )
             if msg.cancel:
-                self.titleLabel.setText('Segmentation process aborted.')
-                self.logger.info('Segmentation process aborted.')
+                self.titleLabel.setText("Segmentation process aborted.")
+                self.logger.info("Segmentation process aborted.")
                 return
             self.segment3D = msg.clickedButton == segment3DButton
             if msg.doNotShowAgainCheckbox.isChecked():
                 self.askRepeatSegment3D = False
-        
+
         if self.askZrangeSegm3D:
             self.z_range = None
         if self.isSegm3D and self.segment3D and self.askZrangeSegm3D:
             idx = (posData.filename, posData.frame_i)
             try:
-                orignal_z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+                orignal_z = posData.segmInfo_df.at[idx, "z_slice_used_gui"]
             except ValueError as e:
-                orignal_z = posData.segmInfo_df.loc[idx, 'z_slice_used_gui'].iloc[0] 
+                orignal_z = posData.segmInfo_df.loc[idx, "z_slice_used_gui"].iloc[0]
             selectZtool = apps.QCropZtool(
-                posData.SizeZ, parent=self, cropButtonText='Ok',
-                addDoNotShowAgain=True, title='Select z-slice range to segment'
+                posData.SizeZ,
+                parent=self,
+                cropButtonText="Ok",
+                addDoNotShowAgain=True,
+                title="Select z-slice range to segment",
             )
             selectZtool.sigZvalueChanged.connect(self.selectZtoolZvalueChanged)
             selectZtool.sigCrop.connect(selectZtool.close)
             selectZtool.exec_()
             self.update_z_slice(orignal_z)
             if selectZtool.cancel:
-                self.titleLabel.setText('Segmentation process aborted.')
-                self.logger.info('Segmentation process aborted.')
+                self.titleLabel.setText("Segmentation process aborted.")
+                self.logger.info("Segmentation process aborted.")
                 return
             startZ = selectZtool.lowerZscrollbar.value()
             stopZ = selectZtool.upperZscrollbar.value()
             self.z_range = (startZ, stopZ)
             if selectZtool.doNotShowAgainCheckbox.isChecked():
                 self.askZrangeSegm3D = False
-        
+
         secondChannelData = None
         if self.secondChannelName is not None:
             secondChannelData = self.getSecondChannelData()
-        
+
         self.titleLabel.setText(
-            f'{model_name} is thinking... '
-            '(check progress in terminal/console)', color=self.titleColor
+            f"{model_name} is thinking... (check progress in terminal/console)",
+            color=self.titleColor,
         )
 
         self.model = model
-        
+
         self.segmWorkerMutex = QMutex()
         self.segmWorkerWaitCond = QWaitCondition()
         self.thread = QThread()
         self.worker = workers.segmWorker(
-            self, 
+            self,
             secondChannelData=secondChannelData,
-            mutex=self.segmWorkerMutex, 
-            waitCond=self.segmWorkerWaitCond
+            mutex=self.segmWorkerMutex,
+            waitCond=self.segmWorkerWaitCond,
         )
         self.worker.z_range = self.z_range
         self.worker.moveToThread(self.thread)
@@ -508,27 +522,27 @@ class Segmentation(ToolActivation):
         self.thread.start()
 
     def repeatSegmVideo(self, model_name, startFrameNum, stopFrameNum):
-        if model_name == 'thresholding':
+        if model_name == "thresholding":
             # thresholding model is stored as 'Automatic thresholding'
             # at line of code `models.append('Automatic thresholding')`
-            model_name = 'Automatic thresholding'
+            model_name = "Automatic thresholding"
 
         idx = self.modelNames.index(model_name)
 
         self.downloadWin = apps.downloadModel(model_name, parent=self)
         self.downloadWin.download()
 
-        if model_name == 'Automatic thresholding':
-            # Automatic thresholding is the name of the models as stored 
+        if model_name == "Automatic thresholding":
+            # Automatic thresholding is the name of the models as stored
             # in self.modelNames, but the actual model is called thresholding
             # (see cellacdc/models/thresholding)
-            model_name = 'thresholding'
+            model_name = "thresholding"
 
         posData = self.data[self.pos_i]
         # Check if model needs to be imported
         acdcSegment = self.acdcSegment_li[idx]
         if acdcSegment is None:
-            self.logger.info(f'Importing {model_name}...')
+            self.logger.info(f"Importing {model_name}...")
             acdcSegment = myutils.import_segment_module(model_name)
             self.acdcSegment_li[idx] = acdcSegment
 
@@ -539,15 +553,15 @@ class Segmentation(ToolActivation):
             url = acdcSegment.url_help()
         except AttributeError:
             url = None
-        
-        if model_name == 'thresholding':
+
+        if model_name == "thresholding":
             autoThreshWin = apps.QDialogAutomaticThresholding(
                 parent=self, isSegm3D=self.isSegm3D
             )
             autoThreshWin.exec_()
             if autoThreshWin.cancel:
                 return
-        
+
         win = self.initSegmModelParams(
             model_name, acdcSegment, init_params, segment_params
         )
@@ -556,58 +570,57 @@ class Segmentation(ToolActivation):
 
         self.standardPostProcessKwargs = win.standardPostProcessKwargs
         self.customPostProcessFeatures = win.customPostProcessFeatures
-        self.customPostProcessGroupedFeatures = (
-            win.customPostProcessGroupedFeatures
-        )
+        self.customPostProcessGroupedFeatures = win.customPostProcessGroupedFeatures
         self.applyPostProcessing = win.applyPostProcessing
         self.preproc_recipe = win.preproc_recipe
-        
+
         myutils.log_segm_params(
-            model_name, win.init_kwargs, win.model_kwargs, 
-            logger_func=self.logger.info, 
-            preproc_recipe=win.preproc_recipe, 
-            apply_post_process=self.applyPostProcessing, 
-            standard_postprocess_kwargs=self.standardPostProcessKwargs, 
-            custom_postprocess_features=self.customPostProcessFeatures
+            model_name,
+            win.init_kwargs,
+            win.model_kwargs,
+            logger_func=self.logger.info,
+            preproc_recipe=win.preproc_recipe,
+            apply_post_process=self.applyPostProcessing,
+            standard_postprocess_kwargs=self.standardPostProcessKwargs,
+            custom_postprocess_features=self.customPostProcessFeatures,
         )
-        
+
         secondChannelData = None
         if win.secondChannelName is not None:
             secondChannelData = self.getSecondChannelData()
 
-        use_gpu = win.init_kwargs.get('gpu', False)
+        use_gpu = win.init_kwargs.get("gpu", False)
         proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
         if not proceed:
-            self.logger.info('Segmentation process cancelled.')
-            self.titleLabel.setText('Segmentation process cancelled.')
+            self.logger.info("Segmentation process cancelled.")
+            self.titleLabel.setText("Segmentation process cancelled.")
             return
 
         model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
         if model is None:
-            self.logger.info('Segmentation process cancelled.')
-            self.titleLabel.setText('Segmentation process cancelled.')
+            self.logger.info("Segmentation process cancelled.")
+            self.titleLabel.setText("Segmentation process cancelled.")
             return
         try:
             model.setupLogger(self.logger)
         except Exception as e:
             pass
-        
+
         self.extendSegmDataIfNeeded(stopFrameNum)
-        self.reInitLastSegmFrame(
-            from_frame_i=startFrameNum-1, updateImages=False
-        )
+        self.reInitLastSegmFrame(from_frame_i=startFrameNum - 1, updateImages=False)
 
         self.titleLabel.setText(
-            f'{model_name} is thinking... '
-            '(check progress in terminal/console)', color=self.titleColor
+            f"{model_name} is thinking... (check progress in terminal/console)",
+            color=self.titleColor,
         )
 
         self.progressWin = apps.QDialogWorkerProgress(
-            title='Segmenting video', parent=self,
-            pbarDesc=f'Segmenting from frame n. {startFrameNum} to {stopFrameNum}...'
+            title="Segmenting video",
+            parent=self,
+            pbarDesc=f"Segmenting from frame n. {startFrameNum} to {stopFrameNum}...",
         )
         self.progressWin.show(self.app)
-        self.progressWin.mainPbar.setMaximum(stopFrameNum-startFrameNum)
+        self.progressWin.mainPbar.setMaximum(stopFrameNum - startFrameNum)
 
         self.thread = QThread()
         self.worker = workers.segmVideoWorker(
@@ -636,7 +649,7 @@ class Segmentation(ToolActivation):
     def segmFrameCallback(self, action):
         if action == self.addCustomModelFrameAction:
             return
-        
+
         idx = self.segmActions.index(action)
         model_name = self.modelNames[idx]
         self.repeatSegm(model_name=model_name, askSegmParams=True)
@@ -647,11 +660,11 @@ class Segmentation(ToolActivation):
 
         posData = self.data[self.pos_i]
         win = apps.startStopFramesDialog(
-            posData.SizeT, currentFrameNum=posData.frame_i+1
+            posData.SizeT, currentFrameNum=posData.frame_i + 1
         )
         win.exec_()
         if win.cancel:
-            self.logger.info('Segmentation on multiple frames aborted.')
+            self.logger.info("Segmentation on multiple frames aborted.")
             return
 
         idx = self.segmActionsVideo.index(action)
@@ -669,18 +682,18 @@ class Segmentation(ToolActivation):
         self.tracking(enforce=True)
         self.updateAllImages()
 
-        txt = f'Done. Segmentation computed in {exec_time:.3f} s'
-        self.logger.info('-----------------')
+        txt = f"Done. Segmentation computed in {exec_time:.3f} s"
+        self.logger.info("-----------------")
         self.logger.info(txt)
-        self.logger.info('=================')
-        self.titleLabel.setText(txt, color='g')
+        self.logger.info("=================")
+        self.titleLabel.setText(txt, color="g")
 
     def segmWorkerFinished(self, lab, exec_time):
         posData = self.data[self.pos_i]
 
-        if posData.segmInfo_df is not None and posData.SizeZ>1:
+        if posData.segmInfo_df is not None and posData.SizeZ > 1:
             idx = (posData.filename, posData.frame_i)
-            posData.segmInfo_df.at[idx, 'resegmented_in_gui'] = True
+            posData.segmInfo_df.at[idx, "resegmented_in_gui"] = True
 
         if lab.ndim == 2 and self.isSegm3D:
             self.set_2Dlab(lab)
@@ -688,23 +701,23 @@ class Segmentation(ToolActivation):
             posData.lab = lab.copy()
 
         self.activateAnnotations()
-        
+
         self.update_rp(wl_update=False)
-        self.tracking(enforce=True, against_next=posData.frame_i==0)
-        
+        self.tracking(enforce=True, against_next=posData.frame_i == 0)
+
         if self.isSnapshot:
-            self.fixCcaDfAfterEdit('Repeat segmentation')
+            self.fixCcaDfAfterEdit("Repeat segmentation")
             self.updateAllImages()
         else:
-            self.warnEditingWithCca_df('Repeat segmentation')
+            self.warnEditingWithCca_df("Repeat segmentation")
 
-        txt = f'Done. Segmentation computed in {exec_time:.3f} s'
-        self.logger.info('-----------------')
+        txt = f"Done. Segmentation computed in {exec_time:.3f} s"
+        self.logger.info("-----------------")
         self.logger.info(txt)
-        self.logger.info('=================')
-        self.titleLabel.setText(txt, color='g')
+        self.logger.info("=================")
+        self.titleLabel.setText(txt, color="g")
         self.checkIfAutoSegm()
-        
+
         QTimer.singleShot(200, self.resizeGui)
 
     def segmentToolActionTriggered(self):
@@ -712,14 +725,12 @@ class Segmentation(ToolActivation):
             win = apps.QDialogSelectModel(parent=self)
             win.exec_()
             if win.cancel:
-                self.logger.info('Repeat segmentation cancelled.')
+                self.logger.info("Repeat segmentation cancelled.")
                 return
             model_name = win.selectedModel
-            self.repeatSegm(
-                model_name=model_name, askSegmParams=True
-            )
+            self.repeatSegm(model_name=model_name, askSegmParams=True)
         else:
-            self.repeatSegm(model_name=self.segmModelName)        
+            self.repeatSegm(model_name=self.segmModelName)
 
     def selectZtoolZvalueChanged(self, whichZ, z):
         self.update_z_slice(z)
@@ -727,9 +738,9 @@ class Segmentation(ToolActivation):
     def showInstructionsCustomModel(self):
         modelFilePath = apps.addCustomModelMessages(self)
         if modelFilePath is None:
-            self.logger.info('Adding custom model process stopped.')
+            self.logger.info("Adding custom model process stopped.")
             return
-        
+
         myutils.store_custom_model_path(modelFilePath)
         modelName = os.path.basename(os.path.dirname(modelFilePath))
         customModelAction = QAction(modelName)

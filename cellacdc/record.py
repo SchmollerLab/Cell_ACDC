@@ -13,6 +13,7 @@ from .. import settings_csv_path
 from .. import user_data_folderpath
 from .. import workers
 
+
 class ScreenRecorderFrame(QFrame):
     def __init__(self, app, parent=None):
         super().__init__(parent)
@@ -21,14 +22,14 @@ class ScreenRecorderFrame(QFrame):
         # Border tolerance to trigger resizing
         self.px = 10
         self.app = app
-    
+
     def mousePressEvent(self, event):
         x, y = event.pos().x(), event.pos().y()
         # x00, y00 = self._parent.x0-self.px, self._parent.y0-self.px
-        x01, y01 = self._parent.x0+self.px, self._parent.y0+self.px
-        x10, y10 = self._parent.x1-self.px, self._parent.y1-self.px
+        x01, y01 = self._parent.x0 + self.px, self._parent.y0 + self.px
+        x10, y10 = self._parent.x1 - self.px, self._parent.y1 - self.px
         # x11, y11 = self._parent.x1+self.px, self._parent.y1+self.px
-        if y<y10 and y>y01 and x<x10 and x>x01:
+        if y < y10 and y > y01 and x < x10 and x > x01:
             # Cursor click inside rectangle
             self.app.setOverrideCursor(Qt.ClosedHandCursor)
             self.xc, self.yc = x, y
@@ -40,56 +41,55 @@ class ScreenRecorderFrame(QFrame):
             return
 
         x, y = event.pos().x(), event.pos().y()
-        x00, y00 = self._parent.x0-self.px, self._parent.y0-self.px
-        x01, y01 = self._parent.x0+self.px, self._parent.y0+self.px
-        x10, y10 = self._parent.x1-self.px, self._parent.y1-self.px
-        x11, y11 = self._parent.x1+self.px, self._parent.y1+self.px
-        if y<y10 and y>y01 and x<x10 and x>x01:
+        x00, y00 = self._parent.x0 - self.px, self._parent.y0 - self.px
+        x01, y01 = self._parent.x0 + self.px, self._parent.y0 + self.px
+        x10, y10 = self._parent.x1 - self.px, self._parent.y1 - self.px
+        x11, y11 = self._parent.x1 + self.px, self._parent.y1 + self.px
+        if y < y10 and y > y01 and x < x10 and x > x01:
             # Cursor inside rectangle
             self.app.setOverrideCursor(Qt.OpenHandCursor)
-        elif y<y11 and y>y00 and x<x11 and x>x00:
+        elif y < y11 and y > y00 and x < x11 and x > x00:
             # Cursor on border --> determine if ver, hor or diags
-            if x<x01 and y<y01:
+            if x < x01 and y < y01:
                 # Top left corner
                 self.app.setOverrideCursor(Qt.SizeFDiagCursor)
-                self.corner = 'topLeft'
-            elif x<x01 and y>y10:
+                self.corner = "topLeft"
+            elif x < x01 and y > y10:
                 # Bottom left corner
                 self.app.setOverrideCursor(Qt.SizeBDiagCursor)
-                self.corner = 'bottomLeft'
-            elif x>x10 and y<y01:
+                self.corner = "bottomLeft"
+            elif x > x10 and y < y01:
                 # Top right corner
                 self.app.setOverrideCursor(Qt.SizeBDiagCursor)
-                self.corner = 'topRight'
-            elif x>x10 and y>y10:
+                self.corner = "topRight"
+            elif x > x10 and y > y10:
                 # Bottom right corner
                 self.app.setOverrideCursor(Qt.SizeFDiagCursor)
-                self.corner = 'bottomRight'
-            elif x<x01 or x>x10:
+                self.corner = "bottomRight"
+            elif x < x01 or x > x10:
                 # Left or right side
                 self.app.setOverrideCursor(Qt.SizeHorCursor)
-                if x<x01:
-                    self.corner = 'left'
+                if x < x01:
+                    self.corner = "left"
                 else:
-                    self.corner = 'right'
+                    self.corner = "right"
             else:
                 # Top or bottom side
                 self.app.setOverrideCursor(Qt.SizeVerCursor)
-                if y<y01:
-                    self.corner = 'top'
+                if y < y01:
+                    self.corner = "top"
                 else:
-                    self.corner = 'bottom'
+                    self.corner = "bottom"
         elif not event.buttons():
             # Cursor outside rectangle
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
 
+
 class ScreenRecorderWindow(QMainWindow):
     def __init__(self, app, parent, parentName):
         super().__init__()
-        self.setWindowFlags(
-            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
-        )
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.app = app
         self.parentWin = parent
         self.parentWinName = parentName
@@ -110,17 +110,18 @@ class ScreenRecorderWindow(QMainWindow):
             self.x0, self.y0, self.x1, self.y1 = 100, 100, 400, 300
             return
 
-        idx = f'screenRecorder_rect_{self.parentWinName}'
-        self.df_settings = pd.read_csv(
-            settings_csv_path, index_col='setting'
-        )
+        idx = f"screenRecorder_rect_{self.parentWinName}"
+        self.df_settings = pd.read_csv(settings_csv_path, index_col="setting")
         if idx in self.df_settings.index:
-            s = self.df_settings.at[idx, 'value']
-            coords = [int(d) for d in s.split(',')]
+            s = self.df_settings.at[idx, "value"]
+            coords = [int(d) for d in s.split(",")]
             self.x0, self.y0, self.x1, self.y1 = coords
         else:
             self.x0, self.y0, self.x1, self.y1 = (
-                self.xmin, self.ymin, self.xmax, self.ymax
+                self.xmin,
+                self.ymin,
+                self.xmax,
+                self.ymax,
             )
 
     def getRectPoints(self):
@@ -133,7 +134,7 @@ class ScreenRecorderWindow(QMainWindow):
         for i, y in enumerate(yy[:3]):
             for j, x in enumerate(xx[:3]):
                 self.topLeft_points.append(QPoint(x, y))
-                self.bottomRight_points.append(QPoint(xx[j+1], yy[i+1]))
+                self.bottomRight_points.append(QPoint(xx[j + 1], yy[i + 1]))
 
     def paintEvent(self, event):
         if self.xymax is None:
@@ -171,7 +172,7 @@ class ScreenRecorderWindow(QMainWindow):
 
     def mousePressEvent(self, event):
         pass
-    
+
     def boundXYtoScreen(self, x, y):
         xmin = self.xmin
         ymin = self.ymin
@@ -181,19 +182,19 @@ class ScreenRecorderWindow(QMainWindow):
             x = xmin
         elif x > xmax:
             x = xmax
-        
+
         if y < xmin:
             y = ymin
         elif y > ymax:
             y = ymax
-        
-        return x, y        
-    
+
+        return x, y
+
     def mouseMoveEvent(self, event):
         x, y = event.pos().x(), event.pos().y()
         x, y = self.boundXYtoScreen(x, y)
         if self.app.overrideCursor() == Qt.SizeFDiagCursor:
-            if self.frame.corner == 'topLeft':
+            if self.frame.corner == "topLeft":
                 self.x0, self.y0 = x, y
                 self.update()
             else:
@@ -201,7 +202,7 @@ class ScreenRecorderWindow(QMainWindow):
                 self.x1, self.y1 = x, y
                 self.update()
         elif self.app.overrideCursor() == Qt.SizeBDiagCursor:
-            if self.frame.corner == 'bottomLeft':
+            if self.frame.corner == "bottomLeft":
                 self.x0, self.y1 = x, y
                 self.update()
             else:
@@ -209,23 +210,23 @@ class ScreenRecorderWindow(QMainWindow):
                 self.x1, self.y0 = x, y
                 self.update()
         elif self.app.overrideCursor() == Qt.SizeHorCursor:
-            if self.frame.corner == 'left':
+            if self.frame.corner == "left":
                 self.x0 = x
                 self.update()
             else:
                 self.x1 = x
                 self.update()
         elif self.app.overrideCursor() == Qt.SizeVerCursor:
-            if self.frame.corner == 'top':
+            if self.frame.corner == "top":
                 self.y0 = y
                 self.update()
             else:
                 self.y1 = y
                 self.update()
         elif self.app.overrideCursor() == Qt.ClosedHandCursor:
-            deltax, deltay = x-self.frame.xc, y-self.frame.yc
-            self.x0, self.y0 = self.x0+deltax, self.y0+deltay
-            self.x1, self.y1 = self.x1+deltax, self.y1+deltay
+            deltax, deltay = x - self.frame.xc, y - self.frame.yc
+            self.x0, self.y0 = self.x0 + deltax, self.y0 + deltay
+            self.x1, self.y1 = self.x1 + deltax, self.y1 + deltay
             self.frame.xc, self.frame.yc = x, y
             self.update()
 
@@ -237,9 +238,7 @@ class ScreenRecorderWindow(QMainWindow):
 
     def startRecorder(self):
         self.thread = QThread()
-        self.screenGrabWorker = workers.ScreenRecorderWorker(
-            self, user_data_folderpath
-        )
+        self.screenGrabWorker = workers.ScreenRecorderWorker(self, user_data_folderpath)
 
         self.screenGrabWorker.moveToThread(self.thread)
         self.screenGrabWorker.finished.connect(self.thread.quit)
@@ -248,7 +247,7 @@ class ScreenRecorderWindow(QMainWindow):
 
         self.thread.started.connect(self.screenGrabWorker.run)
         self.thread.start()
-        print('Recording started...')
+        print("Recording started...")
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:

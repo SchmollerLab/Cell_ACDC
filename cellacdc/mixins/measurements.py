@@ -17,7 +17,7 @@ class Measurements:
         for ch in self._measurements_kernel.chNamesToProcess:
             if ch not in self.notLoadedChNames:
                 continue
-            
+
             success = self.loadFluo_cb(fluo_channels=[ch])
             if not success:
                 continue
@@ -36,22 +36,20 @@ class Measurements:
         txt = measurements.add_metrics_instructions()
         metrics_path = measurements.metrics_path
         msg = widgets.myMessageBox()
-        msg.addShowInFileManagerButton(metrics_path, 'Show example...')
-        title = 'Add custom metrics instructions'
-        msg.information(self, title, txt, buttonsTexts=('Ok',))
+        msg.addShowInFileManagerButton(metrics_path, "Show example...")
+        title = "Add custom metrics instructions"
+        msg.information(self, title, txt, buttonsTexts=("Ok",))
 
     def initMetricsToSave(self, posData):
         self._measurements_kernel._init_metrics_to_save(posData)
 
     def initMetrics(self):
-        self.logger.info('Initializing measurements...')
+        self.logger.info("Initializing measurements...")
         posData = self.data[self.pos_i]
         self._measurements_kernel = cli.ComputeMeasurementsKernel(
             self.logger, self.log_path, False
         )
-        self._measurements_kernel.init_args(
-            posData.chNames, posData.getSegmEndname()
-        )
+        self._measurements_kernel.init_args(posData.chNames, posData.getSegmEndname())
         self._measurements_kernel._init_metrics(posData, self.isSegm3D)
 
     def showSetMeasurements(self, checked=False, qparent=None):
@@ -64,7 +62,7 @@ class Measurements:
 
         try:
             df_favourite_funcs = pd.read_csv(favourite_func_metrics_csv_path)
-            favourite_funcs = df_favourite_funcs['favourite_func_name'].to_list()
+            favourite_funcs = df_favourite_funcs["favourite_func_name"].to_list()
         except Exception as e:
             favourite_funcs = None
 
@@ -72,10 +70,10 @@ class Measurements:
         allPos_acdc_df_cols = set()
         for _posData in self.data:
             for frame_i, data_dict in enumerate(_posData.allData_li):
-                acdc_df = data_dict['acdc_df']
+                acdc_df = data_dict["acdc_df"]
                 if acdc_df is None:
                     continue
-                
+
                 allPos_acdc_df_cols.update(acdc_df.columns)
         loadedChNames = posData.setLoadedChannelNames(returnList=True)
         posData.fluo_data_dict.pop(self.user_ch_name, None)
@@ -84,14 +82,18 @@ class Measurements:
         notLoadedChNames = [c for c in self.ch_names if c not in loadedChNames]
         self.notLoadedChNames = notLoadedChNames
         self.measurementsWin = apps.SetMeasurementsDialog(
-            loadedChNames, notLoadedChNames, posData.SizeZ > 1, self.isSegm3D,
-            favourite_funcs=favourite_funcs, 
+            loadedChNames,
+            notLoadedChNames,
+            posData.SizeZ > 1,
+            self.isSegm3D,
+            favourite_funcs=favourite_funcs,
             allPos_acdc_df_cols=list(allPos_acdc_df_cols),
-            acdc_df_path=posData.images_path, posData=posData,
+            acdc_df_path=posData.images_path,
+            posData=posData,
             addCombineMetricCallback=self.addCombineMetric,
-            allPosData=self.data, 
-            parent=qparent, 
-            state=self.setMeasWinState
+            allPosData=self.data,
+            parent=qparent,
+            state=self.setMeasWinState,
         )
         self.measurementsWin.sigCancel.connect(self.setMeasurementsCancelled)
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
@@ -103,44 +105,42 @@ class Measurements:
     def setMeasurements(self):
         posData = self.data[self.pos_i]
         if self.measurementsWin.delExistingCols:
-            self.logger.info('Removing existing unchecked measurements...')
+            self.logger.info("Removing existing unchecked measurements...")
             delCols = self.measurementsWin.existingUncheckedColnames
             delRps = self.measurementsWin.existingUncheckedRps
-            delCols_format = [f'  *  {colname}' for colname in delCols]
-            delRps_format = [f'  *  {colname}' for colname in delRps]
+            delCols_format = [f"  *  {colname}" for colname in delCols]
+            delRps_format = [f"  *  {colname}" for colname in delRps]
             delCols_format.extend(delRps_format)
-            delCols_format = '\n'.join(delCols_format)
+            delCols_format = "\n".join(delCols_format)
             self.logger.info(delCols_format)
             for _posData in self.data:
                 for frame_i, data_dict in enumerate(_posData.allData_li):
-                    acdc_df = data_dict['acdc_df']
+                    acdc_df = data_dict["acdc_df"]
                     if acdc_df is None:
                         continue
-                    
-                    acdc_df = acdc_df.drop(columns=delCols, errors='ignore')
+
+                    acdc_df = acdc_df.drop(columns=delCols, errors="ignore")
                     for col_rp in delRps:
-                        drop_df_rp = acdc_df.filter(regex=fr'{col_rp}.*', axis=1)
+                        drop_df_rp = acdc_df.filter(regex=rf"{col_rp}.*", axis=1)
                         drop_cols_rp = drop_df_rp.columns
-                        acdc_df = acdc_df.drop(columns=drop_cols_rp, errors='ignore')
-                    _posData.allData_li[frame_i]['acdc_df'] = acdc_df
+                        acdc_df = acdc_df.drop(columns=drop_cols_rp, errors="ignore")
+                    _posData.allData_li[frame_i]["acdc_df"] = acdc_df
         self.setMeasWinState = self.measurementsWin.state()
-        self.logger.info('Setting measurements...')
+        self.logger.info("Setting measurements...")
         self._setMetrics(self.measurementsWin)
-        self.logger.info('Metrics successfully set.')
+        self.logger.info("Metrics successfully set.")
         self.measurementsWin = None
 
     def saveCombineMetricsToPosData(self, window):
         for posData in self.data:
             equationsDict, isMixedChannels = window.getEquationsDict()
             for newColName, equation in equationsDict.items():
-                posData.addEquationCombineMetrics(
-                    equation, newColName, isMixedChannels
-                )
+                posData.addEquationCombineMetrics(equation, newColName, isMixedChannels)
                 posData.saveCombineMetrics()
-        
+
         if self.measurementsWin is None:
             return
-        
+
         self.measurementsWinState = self.measurementsWin.state()
         self.measurementsWin.close()
         self.showSetMeasurements()

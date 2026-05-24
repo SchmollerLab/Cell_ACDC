@@ -19,15 +19,9 @@ from delta import pipeline
 
 
 class FakeReader:
-
-    def __init__(self,
-                 x,
-                 y,
-                 channels,
-                 timepoints,
-                 filename,
-                 original_video,
-                 starting_frame):
+    def __init__(
+        self, x, y, channels, timepoints, filename, original_video, starting_frame
+    ):
         """
         Initialize experiment reader
 
@@ -61,14 +55,15 @@ class FakeReader:
         self.original_video = original_video
         self.starting_frame = starting_frame
 
-    def getframes(self,
-                  squeeze_dimensions: bool = True,
-                  resize: Tuple[int, int] = None,
-                  rescale: Tuple[float, float] = None,
-                  globalrescale: Tuple[float, float] = None,
-                  rotate: float = None,
-                  **kwargs
-                  ):
+    def getframes(
+        self,
+        squeeze_dimensions: bool = True,
+        resize: Tuple[int, int] = None,
+        rescale: Tuple[float, float] = None,
+        globalrescale: Tuple[float, float] = None,
+        rotate: float = None,
+        **kwargs,
+    ):
         """
         Get frames from experiment.
 
@@ -102,9 +97,7 @@ class FakeReader:
 
         dt: Union[str, type] = self.dtype if rescale is None else np.float32
         if resize is None:
-            output = np.empty(
-                [self.timepoints, self.y, self.x], dtype=dt
-            )
+            output = np.empty([self.timepoints, self.y, self.x], dtype=dt)
         else:
             output = np.empty(
                 [self.timepoints, resize[0], resize[1]],
@@ -113,7 +106,6 @@ class FakeReader:
 
         # Load images:
         for f in range(self.timepoints):
-
             idx = f + self.starting_frame
             frame = self.original_video[idx].astype(np.uint16)
 
@@ -138,7 +130,6 @@ class FakeReader:
 
 
 class tracker:
-
     def __init__(self, **params):
         """
         Initializes Tracker
@@ -163,8 +154,7 @@ class tracker:
 
         self.params = params
 
-    def __read_tiff(self,
-                    path):
+    def __read_tiff(self, path):
         """
         Reads multipage tiff to numpy array.
 
@@ -186,8 +176,7 @@ class tracker:
             images.append(np.array(img))
         return np.array(images)
 
-    def __load_model_and_presets(self,
-                                 model_type):
+    def __load_model_and_presets(self, model_type):
         """
         Loads Presets for 2D or mothermachine, initializes model for tracking
         and loads model weights.
@@ -222,18 +211,20 @@ class tracker:
 
             except ValueError:
                 # Downloads model weights and configuration files for 2D and mothermachine
-                download_assets(load_models=True,
-                                load_sets=False,
-                                load_evals=False,
-                                config_level='local')
+                download_assets(
+                    load_models=True,
+                    load_sets=False,
+                    load_evals=False,
+                    config_level="local",
+                )
 
-        if self.params['single mothermachine chamber'] and model_type == 'mothermachine':
-            self.models.pop('rois')
+        if (
+            self.params["single mothermachine chamber"]
+            and model_type == "mothermachine"
+        ):
+            self.models.pop("rois")
 
-    def track(self,
-              segm_video,
-              signals=None,
-              export_to: os.PathLike=None):
+    def track(self, segm_video, signals=None, export_to: os.PathLike = None):
         """
         Tracks Cells
 
@@ -249,13 +240,13 @@ class tracker:
         """
 
         # Loads Presets and Initializes Model
-        self.__load_model_and_presets(model_type=self.params['model_type'])
+        self.__load_model_and_presets(model_type=self.params["model_type"])
 
         # Original Shape
         original_shape = segm_video[0].shape
 
         # Get original video and original image size
-        original_video = self.__read_tiff(self.params['original_images_path'])
+        original_video = self.__read_tiff(self.params["original_images_path"])
         reference = utils.rangescale(original_video[0], (0, 1))
 
         # Preprocess Segmentation Video
@@ -266,14 +257,18 @@ class tracker:
                 img = cv2.resize(img, cfg.target_size_seg[::-1])
             img_sm = (img > 0.5).astype(np.uint8)
             if cfg.crop_windows:
-                img_sm = img_sm[: original_shape[0], : original_shape[1]].astype(np.uint8)
+                img_sm = img_sm[: original_shape[0], : original_shape[1]].astype(
+                    np.uint8
+                )
             seg_stack.append(img_sm)
         segm_video = seg_stack
 
         # Preprocess Original Video
         box = utils.CroppingBox(
-            xtl=0, ytl=0,
-            xbr=reference.shape[1], ybr=reference.shape[0],
+            xtl=0,
+            ytl=0,
+            xbr=reference.shape[1],
+            ybr=reference.shape[0],
         )
         img_stack = []
         if len(original_video) != len(segm_video):
@@ -283,30 +278,35 @@ class tracker:
         for frame in range(len(segm_video)):
             idx = frame + starting_frame
             # Crop and scale:
-            i = utils.rangescale(utils.cropbox(original_video[idx], box), rescale=(0, 1))
+            i = utils.rangescale(
+                utils.cropbox(original_video[idx], box), rescale=(0, 1)
+            )
             # Append i as is to input images stack:
             img_stack.append(i)
 
         # Get Save Path (File Name is same as Original Images + .format)
-        savepath = self.params['original_images_path']
-        filename = savepath.replace('.tif', '')
+        savepath = self.params["original_images_path"]
+        filename = savepath.replace(".tif", "")
 
         # Init reader
-        xpreader = FakeReader(x=original_shape[1],
-                              y=original_shape[0],
-                              channels=0,
-                              timepoints=len(segm_video),
-                              filename=savepath,
-                              original_video=original_video,
-                              starting_frame=starting_frame
-                              )
+        xpreader = FakeReader(
+            x=original_shape[1],
+            y=original_shape[0],
+            channels=0,
+            timepoints=len(segm_video),
+            filename=savepath,
+            original_video=original_video,
+            starting_frame=starting_frame,
+        )
 
         # Init Position
-        xp = pipeline.Position(position_nb=0,
-                               reader=xpreader,
-                               models=self.models,
-                               drift_correction=False,
-                               crop_windows=cfg.crop_windows)
+        xp = pipeline.Position(
+            position_nb=0,
+            reader=xpreader,
+            models=self.models,
+            drift_correction=False,
+            crop_windows=cfg.crop_windows,
+        )
 
         # Preprocess
         xp.preprocess(rotation_correction=False)
@@ -325,13 +325,14 @@ class tracker:
         tracked_video = np.array(xp.rois[0].label_stack, dtype=np.uint8)
 
         # Save Results
-        if self.params['legacy']:
+        if self.params["legacy"]:
             xp.legacysave(filename + ".mat")
-        if self.params['pickle']:
+        if self.params["pickle"]:
             import pickle
+
             with open(filename + ".pkl", "wb") as file:
                 pickle.dump(self, file)
-        if self.params['movie']:
+        if self.params["movie"]:
             movie = xp.results_movie(frames=list(range(len(segm_video))))
             utils.vidwrite(movie, filename + ".mp4", verbose=False)
 

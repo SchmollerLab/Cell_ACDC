@@ -10,15 +10,16 @@ import skimage.measure
 from .brush_tools import BrushTools
 from .undo_redo import UndoRedo
 
+
 class CurvatureTools(BrushTools, UndoRedo):
     """Extracted from guiWin."""
 
     def clearCurvItems(self, removeItems=True):
         try:
             posData = self.data[self.pos_i]
-            curvItems = zip(posData.curvPlotItems,
-                            posData.curvAnchorsItems,
-                            posData.curvHoverItems)
+            curvItems = zip(
+                posData.curvPlotItems, posData.curvAnchorsItems, posData.curvHoverItems
+            )
             for plotItem, curvAnchors, hoverItem in curvItems:
                 plotItem.setData([], [])
                 curvAnchors.setData([], [])
@@ -60,12 +61,12 @@ class CurvatureTools(BrushTools, UndoRedo):
         if curvToolID <= 0:
             self.setBrushID()
             curvToolID = posData.brushID
-            
+
         lab2D = self.get_2Dlab(posData.lab).copy()
         newIDMask = np.zeros(lab2D.shape, bool)
         rr, cc = skimage.draw.polygon(yyS, xxS, shape=lab2D.shape)
         newIDMask[rr, cc] = True
-        newIDMask[lab2D!=0] = False
+        newIDMask[lab2D != 0] = False
         lab2D[newIDMask] = curvToolID
         self.set_2Dlab(lab2D)
         self.currentLab2D = lab2D
@@ -80,11 +81,14 @@ class CurvatureTools(BrushTools, UndoRedo):
             self.curvPlotItem = pg.PlotDataItem(pen=self.newIDs_cpen)
             self.curvHoverPlotItem = pg.PlotDataItem(pen=self.oldIDs_cpen)
             self.curvAnchors = pg.ScatterPlotItem(
-                symbol='o', size=9,
-                brush=pg.mkBrush((255,0,0,50)),
-                pen=pg.mkPen((255,0,0), width=2),
-                hoverable=True, hoverPen=pg.mkPen((255,0,0), width=3),
-                hoverBrush=pg.mkBrush((255,0,0)), tip=None
+                symbol="o",
+                size=9,
+                brush=pg.mkBrush((255, 0, 0, 50)),
+                pen=pg.mkPen((255, 0, 0), width=2),
+                hoverable=True,
+                hoverPen=pg.mkPen((255, 0, 0), width=3),
+                hoverBrush=pg.mkBrush((255, 0, 0)),
+                tip=None,
             )
             self.ax1.addItem(self.curvAnchors)
             self.ax1.addItem(self.curvPlotItem)
@@ -99,20 +103,20 @@ class CurvatureTools(BrushTools, UndoRedo):
             self.clearCurvItems()
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
-        
+
         self.showEditIDwidgets(checked)
 
     def drawAutoContour(self, y2, x2):
         y1, x1 = self.autoCont_y0, self.autoCont_x0
-        Dy = abs(y2-y1)
-        Dx = abs(x2-x1)
+        Dy = abs(y2 - y1)
+        Dx = abs(x2 - x1)
         edge = self.getDisplayedImg1()
         if Dy != 0 or Dx != 0:
             # NOTE: numIter takes care of any lag in mouseMoveEvent
             numIter = int(round(max((Dy, Dx))))
-            alfa = np.arctan2(y1-y2, x2-x1)
-            base = np.pi/4
-            alfa_dir = round((base * round(alfa/base))*180/np.pi)
+            alfa = np.arctan2(y1 - y2, x2 - x1)
+            base = np.pi / 4
+            alfa_dir = round((base * round(alfa / base)) * 180 / np.pi)
             for _ in range(numIter):
                 y1, x1 = self.autoCont_y0, self.autoCont_x0
                 yy, xx = self.get_dir_coords(alfa_dir, y1, x1, edge.shape)
@@ -142,29 +146,25 @@ class CurvatureTools(BrushTools, UndoRedo):
 
     def getClosedSplineCoords(self):
         xxS, yyS = self.curvPlotItem.getData()
-        bbox_area = (xxS.max()-xxS.min())*(yyS.max()-yyS.min())
+        bbox_area = (xxS.max() - xxS.min()) * (yyS.max() - yyS.min())
         if bbox_area < 26_000:
             # Using 1000 is fast enough according to profiling
-            return xxS, yyS 
-        
-        optimalSpaceSize = self.splineToObjModel.predict(
-            bbox_area, max_exec_time=150
-        )
+            return xxS, yyS
+
+        optimalSpaceSize = self.splineToObjModel.predict(bbox_area, max_exec_time=150)
         if optimalSpaceSize >= 1000:
             # Using 1000 is fast enough according to model
             return xxS, yyS
-        
+
         if optimalSpaceSize < 100:
             # Do not allow a rough spline
             optimalSpaceSize = 100
-        
-        # Get spline with optimal space size so that exec time 
+
+        # Get spline with optimal space size so that exec time
         # or skimage.draw.polygon is less than 150 ms
         xx, yy = self.curvAnchors.getData()
         resolutionSpace = np.linspace(0, 1, int(optimalSpaceSize))
-        xxS, yyS = self.getSpline(
-            xx, yy, resolutionSpace=resolutionSpace, per=True
-        )
+        xxS, yyS = self.getSpline(xx, yy, resolutionSpace=resolutionSpace, per=True)
         return xxS, yyS
 
     def getPolygonBrush(self, yxc2, Y, X):
@@ -174,26 +174,26 @@ class CurvatureTools(BrushTools, UndoRedo):
         R = self.brushSizeSpinbox.value()
         r = R
 
-        arcsin_den = np.sqrt((x2-x1)**2+(y2-y1)**2)
-        arctan_den = (x2-x1)
-        if arcsin_den!=0 and arctan_den!=0:
-            beta = np.arcsin((R-r)/arcsin_den)
-            gamma = -np.arctan((y2-y1)/arctan_den)
-            alpha = gamma-beta
-            x3 = x1 + r*np.sin(alpha)
-            y3 = y1 + r*np.cos(alpha)
-            x4 = x2 + R*np.sin(alpha)
-            y4 = y2 + R*np.cos(alpha)
+        arcsin_den = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        arctan_den = x2 - x1
+        if arcsin_den != 0 and arctan_den != 0:
+            beta = np.arcsin((R - r) / arcsin_den)
+            gamma = -np.arctan((y2 - y1) / arctan_den)
+            alpha = gamma - beta
+            x3 = x1 + r * np.sin(alpha)
+            y3 = y1 + r * np.cos(alpha)
+            x4 = x2 + R * np.sin(alpha)
+            y4 = y2 + R * np.cos(alpha)
 
-            alpha = gamma+beta
-            x5 = x1 - r*np.sin(alpha)
-            y5 = y1 - r*np.cos(alpha)
-            x6 = x2 - R*np.sin(alpha)
-            y6 = y2 - R*np.cos(alpha)
+            alpha = gamma + beta
+            x5 = x1 - r * np.sin(alpha)
+            y5 = y1 - r * np.cos(alpha)
+            x6 = x2 - R * np.sin(alpha)
+            y6 = y2 - R * np.cos(alpha)
 
-            rr_poly, cc_poly = skimage.draw.polygon([y3, y4, y6, y5],
-                                                    [x3, x4, x6, x5],
-                                                    shape=(Y, X))
+            rr_poly, cc_poly = skimage.draw.polygon(
+                [y3, y4, y6, y5], [x3, x4, x6, x5], shape=(Y, X)
+            )
         else:
             rr_poly, cc_poly = [], []
 
@@ -216,9 +216,7 @@ class CurvatureTools(BrushTools, UndoRedo):
         k = 2 if len(xx) == 3 else 3
 
         try:
-            tck, u = scipy.interpolate.splprep(
-                [xx, yy], s=0, k=k, per=per
-            )
+            tck, u = scipy.interpolate.splprep([xx, yy], s=0, k=k, per=per)
             xi, yi = scipy.interpolate.splev(resolutionSpace, tck)
             return xi, yi
         except (ValueError, TypeError):
@@ -227,10 +225,10 @@ class CurvatureTools(BrushTools, UndoRedo):
 
     def get_dir_coords(self, alfa_dir, yd, xd, shape, connectivity=1):
         h, w = shape
-        y_above = yd+1 if yd+1 < h else yd
-        y_below = yd-1 if yd > 0 else yd
-        x_right = xd+1 if xd+1 < w else xd
-        x_left = xd-1 if xd > 0 else xd
+        y_above = yd + 1 if yd + 1 < h else yd
+        y_below = yd - 1 if yd > 0 else yd
+        x_right = xd + 1 if xd + 1 < w else xd
+        x_left = xd - 1 if xd > 0 else xd
         if alfa_dir == 0:
             yy = [y_below, y_below, yd, y_above, y_above]
             xx = [xd, x_right, x_right, x_right, xd]
@@ -268,12 +266,12 @@ class CurvatureTools(BrushTools, UndoRedo):
         # If we are hovering the starting point we generate
         # a closed spline
         if len(xx) < 2:
-            return 
-        
-        if len(hoverAnchors)>0:
+            return
+
+        if len(hoverAnchors) > 0:
             xA_hover, yA_hover = hoverAnchors[0].pos()
-            if xx[0]==xA_hover and yy[0]==yA_hover:
-                per=True
+            if xx[0] == xA_hover and yy[0] == yA_hover:
+                per = True
         if per:
             # Append start coords and close spline
             xx = np.r_[xx, xx[0]]
@@ -301,11 +299,11 @@ class CurvatureTools(BrushTools, UndoRedo):
                 return
             obj = rp[0]
             cont = self.getObjContours(obj)
-            xxC, yyC = cont[:,0], cont[:,1]
+            xxC, yyC = cont[:, 0], cont[:, 1]
             xxA, yyA = xxC[::n], yyC[::n]
             self.xxA_autoCont, self.yyA_autoCont = xxA, yyA
             xxS, yyS = self.getSpline(xxA, yyA, per=True, appendFirst=True)
-            if len(xxS)>0:
+            if len(xxS) > 0:
                 self.curvPlotItem.setData(xxS, yyS)
         except (TypeError, ValueError):
             pass

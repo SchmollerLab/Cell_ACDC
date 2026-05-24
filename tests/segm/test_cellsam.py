@@ -59,6 +59,8 @@ class TestCellSAMAutomaticSegmentation:
             validate_labels(labels, frame.shape)
             print_segmentation_results(labels, frame, frame_i)
             save_segmentation_overlay(
-                labels, frame, frame_i,
+                labels,
+                frame,
+                frame_i,
                 plots_dir / f"test_cellsam_segmentation_frame_{frame_i:04d}.png",
             )

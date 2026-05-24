@@ -1,17 +1,27 @@
 from qtpy import QtGui, QtWidgets, QtCore
 
-print(f'Using Qt version {QtCore.__version__}')
+print(f"Using Qt version {QtCore.__version__}")
 
 from pprint import pprint
 
 app = QtWidgets.QApplication([])
-app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
+app.setStyle(QtWidgets.QStyleFactory.create("Fusion"))
 app.setPalette(app.style().standardPalette())
 
 roles = (
-    'Window', 'WindowText', 'Base', 'AlternateBase', 'ToolTipBase', 
-    'ToolTipText', 'Text', 'Button', 'ButtonText', 'BrightText', 
-    'Link', 'Highlight', 'HighlightedText'
+    "Window",
+    "WindowText",
+    "Base",
+    "AlternateBase",
+    "ToolTipBase",
+    "ToolTipText",
+    "Text",
+    "Button",
+    "ButtonText",
+    "BrightText",
+    "Link",
+    "Highlight",
+    "HighlightedText",
 )
 
 colors = {}

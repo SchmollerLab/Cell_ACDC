@@ -8,14 +8,15 @@ from cellacdc import disableWindow
 
 from .tool_activation import ToolActivation
 
+
 class ModeControls(ToolActivation):
     """Extracted from guiWin."""
 
     def blinkModeComboBox(self):
         if self.flag:
-            self.modeComboBox.setStyleSheet('background-color: orange')
+            self.modeComboBox.setStyleSheet("background-color: orange")
         else:
-            self.modeComboBox.setStyleSheet('background-color: none')
+            self.modeComboBox.setStyleSheet("background-color: none")
         self.flag = not self.flag
 
     def changeMode(self, text):
@@ -26,28 +27,28 @@ class ModeControls(ToolActivation):
         mode = text
         prevMode = self.modeComboBox.previousText()
         self.annotateToolbar.setVisible(False)
-        if prevMode != 'Viewer':
+        if prevMode != "Viewer":
             self.store_data(autosave=True)
-            
+
         self.copyLostObjButton.setChecked(False)
         self.stopCcaIntegrityCheckerWorker()
         self.setAutoSaveSegmentationEnabled(False)
         self.setAutoSaveAnnotationsEnabled(False)
-        if prevMode == 'Normal division: Lineage tree':
+        if prevMode == "Normal division: Lineage tree":
             self.askLineageTreeChanges()
             self.lineage_tree = None
             self.editLin_TreeBar.setVisible(False)
             self.uncheckAllButtonsFromButtonGroup(self.editLin_TreeGroup)
 
-        elif prevMode == 'Cell cycle analysis':
+        elif prevMode == "Cell cycle analysis":
             self.setEnabledCcaToolbar(enabled=False)
 
-        if mode == 'Segmentation and Tracking':
+        if mode == "Segmentation and Tracking":
             self.setAutoSaveSegmentationEnabled(True)
             self.setSwitchViewedPlaneDisabled(True)
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
-            self.lastTrackedFrameLabel.setText('')
+            self.lastTrackedFrameLabel.setText("")
             self.initSegmTrackMode()
             self.setEnabledEditToolbarButton(enabled=True)
             self.addExistingDelROIs()
@@ -60,7 +61,7 @@ class ModeControls(ToolActivation):
                 self.store_cca_df()
             self.restorePrevAnnotOptions()
             self.whitelistViewOGIDs(False)
-        elif mode == 'Cell cycle analysis':
+        elif mode == "Cell cycle analysis":
             self.setAutoSaveAnnotationsEnabled(True)
             self.setSwitchViewedPlaneDisabled(True)
             self.startCcaIntegrityCheckerWorker()
@@ -81,7 +82,7 @@ class ModeControls(ToolActivation):
                 self.removeAlldelROIsCurrentFrame()
                 self.setAnnotOptionsCcaMode()
                 self.clearGhost()
-        elif mode == 'Viewer':
+        elif mode == "Viewer":
             self.autoSaveTimer.stop()
             self.setSwitchViewedPlaneDisabled(False)
             self.modeToolBar.setVisible(True)
@@ -95,7 +96,7 @@ class ModeControls(ToolActivation):
             self.navSpinBox.setMaximum(posData.SizeT)
             self.clearGhost()
             self.computeAllContours()
-        elif mode == 'Custom annotations':
+        elif mode == "Custom annotations":
             self.setAutoSaveAnnotationsEnabled(True)
             self.setSwitchViewedPlaneDisabled(True)
             self.modeToolBar.setVisible(True)
@@ -108,14 +109,16 @@ class ModeControls(ToolActivation):
             self.clearGhost()
             self.doCustomAnnotation(0)
             self.computeAllContours()
-        elif mode == 'Snapshot':
+        elif mode == "Snapshot":
             self.setAutoSaveAnnotationsEnabled(True)
             self.setSwitchViewedPlaneDisabled(False)
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
             self.doCustomAnnotation(0)
             self.clearComputedContours()
-        elif mode == 'Normal division: Lineage tree': # Mode activation for lineage tree
+        elif (
+            mode == "Normal division: Lineage tree"
+        ):  # Mode activation for lineage tree
             # self.startLinTreeIntegrityCheckerWorker() # need to replace (postponed)
             proceed = self.initLinTree()
             self.setEnabledCcaToolbar(enabled=False)
@@ -134,7 +137,7 @@ class ModeControls(ToolActivation):
                 self.setAnnotOptionsLin_treeMode()
                 self.clearGhost()
                 self.editLin_TreeBar.setVisible(True)
-        
+
         self.disableNonFunctionalButtons()
 
     def changeModeFromMenu(self, action):
@@ -145,7 +148,7 @@ class ModeControls(ToolActivation):
         self.sender().clearFocus()
         try:
             self.timer.stop()
-            self.modeComboBox.setStyleSheet('background-color: none')
+            self.modeComboBox.setStyleSheet("background-color: none")
         except Exception as e:
             pass
 
@@ -176,12 +179,12 @@ class ModeControls(ToolActivation):
         self.brushSizeAction.setVisible(enabled)
         self.brushAutoFillAction.setVisible(enabled)
         self.brushAutoHideAction.setVisible(enabled)
-        self.brushEraserToolBar.setVisible(enabled)        
+        self.brushEraserToolBar.setVisible(enabled)
         self.disableNonFunctionalButtons()
 
     def nonViewerEditMenuOpened(self):
         mode = str(self.modeComboBox.currentText())
-        if mode == 'Viewer':
+        if mode == "Viewer":
             self.startBlinkingModeCB()
 
     def reconnectUndoRedo(self):
@@ -191,12 +194,12 @@ class ModeControls(ToolActivation):
         except Exception as e:
             pass
         mode = self.modeComboBox.currentText()
-        if mode == 'Segmentation and Tracking' or mode == 'Snapshot':
+        if mode == "Segmentation and Tracking" or mode == "Snapshot":
             self.undoAction.triggered.connect(self.undo)
             self.redoAction.triggered.connect(self.redo)
-        elif mode == 'Cell cycle analysis':
+        elif mode == "Cell cycle analysis":
             self.undoAction.triggered.connect(self.UndoCca)
-        elif mode == 'Custom annotations':
+        elif mode == "Custom annotations":
             self.undoAction.triggered.connect(self.undoCustomAnnotation)
         else:
             self.undoAction.setDisabled(True)
@@ -232,11 +235,11 @@ class ModeControls(ToolActivation):
         self.autoSegmAction.setEnabled(enabled)
         self.editToolBar.setVisible(enabled)
         mode = self.modeComboBox.currentText()
-        ccaON = mode == 'Cell cycle analysis'
+        ccaON = mode == "Cell cycle analysis"
         for action in self.editToolBar.actions():
             button = self.editToolBar.widgetForAction(action)
             # Keep binCellButton active in cca mode
-            if button==self.binCellButton and not enabled and ccaON:
+            if button == self.binCellButton and not enabled and ccaON:
                 action.setVisible(True)
                 button.setEnabled(True)
             else:
@@ -267,7 +270,7 @@ class ModeControls(ToolActivation):
         self.segmVideoMenu.setDisabled(True)
         self.trackingMenu.setDisabled(True)
         self.modeToolBar.setVisible(False)
-        
+
         self.relabelSequentialAction.setDisabled(False)
         self.postProcessSegmAction.setDisabled(False)
         self.autoSegmAction.setDisabled(False)
@@ -281,7 +284,7 @@ class ModeControls(ToolActivation):
                 action.setVisible(True)
             elif action == self.reInitCcaAction:
                 action.setVisible(True)
-            elif action == self.assignBudMothAutoAction and posData.SizeT==1:
+            elif action == self.assignBudMothAutoAction and posData.SizeT == 1:
                 action.setVisible(True)
         for action in self.editToolBar.actions():
             button = self.editToolBar.widgetForAction(action)
@@ -308,13 +311,13 @@ class ModeControls(ToolActivation):
                 self.drawIDsContComboBox.currentIndexChanged.disconnect()
             except Exception as e:
                 pass
-            
+
             self.imgGrad.rescaleAcrossTimeAction.setDisabled(True)
             self.repeatTrackingAction.setDisabled(True)
             self.manualTrackingAction.setDisabled(True)
             self.logger.info('Setting GUI mode to "Snapshots"...')
             self.modeComboBox.clear()
-            self.modeComboBox.addItems(['Snapshot'])
+            self.modeComboBox.addItems(["Snapshot"])
             self.modeComboBox.setDisabled(True)
             self.modeMenu.menuAction().setVisible(False)
             self.drawIDsContComboBox.clear()
@@ -323,7 +326,7 @@ class ModeControls(ToolActivation):
             self.modeToolBar.setVisible(False)
             self.skipToNewIdAction.setVisible(False)
             self.skipToNewIdAction.setDisabled(True)
-            self.modeComboBox.setCurrentText('Snapshot')
+            self.modeComboBox.setCurrentText("Snapshot")
             self.annotateToolbar.setVisible(True)
             self.labelsGrad.showNextFrameAction.setDisabled(True)
             self.drawIDsContComboBox.currentIndexChanged.connect(
@@ -374,12 +377,13 @@ class ModeControls(ToolActivation):
             self.modeComboBox.sigTextChanged.connect(self.changeMode)
             self.modeComboBox.activated.connect(self.clearComboBoxFocus)
             self.drawIDsContComboBox.currentIndexChanged.connect(
-                                                    self.drawIDsContComboBox_cb)
-            self.modeComboBox.setCurrentText('Viewer')
+                self.drawIDsContComboBox_cb
+            )
+            self.modeComboBox.setCurrentText("Viewer")
             self.showTreeInfoCheckbox.show()
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
-            self.labelsGrad.showNextFrameAction.setDisabled(False)  
+            self.labelsGrad.showNextFrameAction.setDisabled(False)
             self.manualAnnotPastButton.setDisabled(False)
             self.manualAnnotPastButton.action.setDisabled(False)
             self.manualAnnotPastButton.setVisible(True)
@@ -392,10 +396,10 @@ class ModeControls(ToolActivation):
             self.segForLostIDsAction.setDisabled(False)
             self.delNewObjAction.setVisible(True)
             self.delNewObjAction.setDisabled(False)
-        
+
         for ch, overlayItems in self.overlayLayersItems.items():
             lutItem = overlayItems[1]
-            lutItem.rescaleAcrossTimeAction.setDisabled(self.isSnapshot)      
+            lutItem.rescaleAcrossTimeAction.setDisabled(self.isSnapshot)
 
     def startBlinkingModeCB(self):
         try:
@@ -414,16 +418,16 @@ class ModeControls(ToolActivation):
 
     def stopBlinkingCB(self):
         self.timer.stop()
-        self.modeComboBox.setStyleSheet('background-color: none')
+        self.modeComboBox.setStyleSheet("background-color: none")
 
     def uncheckAllButtonsFromButtonGroup(self, buttonGroup):
         for button in buttonGroup.buttons():
             if not button.isCheckable():
                 continue
-            
+
             if not button.isChecked():
                 continue
-            
+
             button.setChecked(False)
 
     def updateModeMenuAction(self):

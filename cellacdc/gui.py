@@ -9,8 +9,8 @@ from . import myutils, autopilot, favourite_func_metrics_csv_path, settings_fold
 from .myutils import setupLogger
 from .gui_decorators import get_data_exception_handler, resetViewRange
 
-custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
-shortcut_filepath = os.path.join(settings_folderpath, 'shortcuts.ini')
+custom_annot_path = os.path.join(settings_folderpath, "custom_annotations.json")
+shortcut_filepath = os.path.join(settings_folderpath, "shortcuts.ini")
 from .mixins import (
     WhitelistGui,
     DataLoading,
@@ -35,48 +35,56 @@ from .mixins import (
     Measurements,
 )
 
-np.seterr(invalid='ignore')
+np.seterr(invalid="ignore")
 
-if os.name == 'nt':
+if os.name == "nt":
     try:
         import ctypes
-        myappid = 'schmollerlab.cellacdc.pyqt.v1'
+
+        myappid = "schmollerlab.cellacdc.pyqt.v1"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception:
         pass
 
 
-class guiWin(QMainWindow,
-             WhitelistGui,
-             DataLoading,
-             CanvasRightImage,
-             CanvasHover,
-             LineageInteractions,
-             CustomAnnotations,
-             MagicPrompts,
-             ObjectSearch,
-             ObjectCleanup,
-             SegForLostIds,
-             Exporting,
-             CombineWorker,
-             CurvatureTools,
-             DrawClearRegion,
-             LabelTransformTools,
-             DeletedRois,
-             Saving,
-             MainToolbar,
-             QuickSettings,
-             MainMenu,
-             Measurements):
+class guiWin(
+    QMainWindow,
+    WhitelistGui,
+    DataLoading,
+    CanvasRightImage,
+    CanvasHover,
+    LineageInteractions,
+    CustomAnnotations,
+    MagicPrompts,
+    ObjectSearch,
+    ObjectCleanup,
+    SegForLostIds,
+    Exporting,
+    CombineWorker,
+    CurvatureTools,
+    DrawClearRegion,
+    LabelTransformTools,
+    DeletedRois,
+    Saving,
+    MainToolbar,
+    QuickSettings,
+    MainMenu,
+    Measurements,
+):
     """Main Window."""
 
     sigClosed = Signal(object)
     sigExportFrame = Signal()
 
     def __init__(
-            self, app, parent=None, buttonToRestore=None,
-            mainWin=None, version=None, launcherSlot=None
-        ):
+        self,
+        app,
+        parent=None,
+        buttonToRestore=None,
+        mainWin=None,
+        version=None,
+        launcherSlot=None,
+    ):
         """Initializer."""
 
         super().__init__(parent)
@@ -84,10 +92,12 @@ class guiWin(QMainWindow,
         self._version = version
 
         from .trackers.YeaZ import tracking as tracking_yeaz
+
         self.tracking_yeaz = tracking_yeaz
 
         from .config import parser_args
-        self.debug = parser_args['debug']
+
+        self.debug = parser_args["debug"]
 
         self.buttonToRestore = buttonToRestore
         self.launcherSlot = launcherSlot
@@ -97,7 +107,7 @@ class guiWin(QMainWindow,
         self._acdc_version = myutils.read_version()
 
         self.setAcceptDrops(True)
-        self._appName = 'Cell-ACDC'
+        self._appName = "Cell-ACDC"
 
         self.lineage_tree = None
         self.already_synced_lin_tree = set()
@@ -105,24 +115,24 @@ class guiWin(QMainWindow,
         self.original_df_lin_tree = None
         self.original_df_lin_tree_i = None
 
-    def run(self, module='acdc_gui', logs_path=None):
+    def run(self, module="acdc_gui", logs_path=None):
         self.setWindowIcon()
         self.setWindowTitle()
 
         self.is_win = sys.platform.startswith("win")
         if self.is_win:
-            self.openFolderText = 'Show in Explorer...'
+            self.openFolderText = "Show in Explorer..."
         else:
-            self.openFolderText = 'Reveal in Finder...'
+            self.openFolderText = "Reveal in Finder..."
 
         self.is_error_state = False
         logger, logs_path, log_path, log_filename = setupLogger(
             module=module, logs_path=logs_path, caller=self._appName
         )
         if self._version is not None:
-            logger.info(f'Initializing GUI v{self._version}')
+            logger.info(f"Initializing GUI v{self._version}")
         else:
-            logger.info(f'Initializing GUI...')
+            logger.info(f"Initializing GUI...")
 
         self.module = module
         self.logger = logger
@@ -149,7 +159,7 @@ class guiWin(QMainWindow,
         self.flag = True
         self.currentPropsID = 0
         self.isSegm3D = False
-        self.newSegmEndName = ''
+        self.newSegmEndName = ""
         self.closeGUI = False
         self.warnKeyPressedMsg = None
         self.img1ChannelGradients = {}
@@ -170,23 +180,20 @@ class guiWin(QMainWindow,
         self.dirtyPointsLayerTableEndNames = set()
 
         self._setup_vars_combine()
-        if 'autoSaveIntevalValue' not in self.df_settings.index:
+        if "autoSaveIntevalValue" not in self.df_settings.index:
             autoSaveIntevalValue = 2
-            autoSaveIntervalUnit = 'minutes'
+            autoSaveIntervalUnit = "minutes"
         else:
             autoSaveIntevalValue = float(
-                self.df_settings.at['autoSaveIntevalValue', 'value']
+                self.df_settings.at["autoSaveIntevalValue", "value"]
             )
             autoSaveIntervalUnit = str(
-                self.df_settings.at['autoSaveIntervalUnit', 'value']
+                self.df_settings.at["autoSaveIntervalUnit", "value"]
             )
 
-        self.autoSaveIntevalValueUnit = (
-            autoSaveIntevalValue, autoSaveIntervalUnit
-        )
+        self.autoSaveIntevalValueUnit = (autoSaveIntevalValue, autoSaveIntervalUnit)
         self.logger.info(
-            'Autosave interval set to: '
-            f'{autoSaveIntevalValue} {autoSaveIntervalUnit}'
+            f"Autosave interval set to: {autoSaveIntevalValue} {autoSaveIntervalUnit}"
         )
 
         self.checkableButtons = []
@@ -252,4 +259,4 @@ class guiWin(QMainWindow,
         self.show()
         QTimer.singleShot(100, self.resizeRangeWelcomeText)
 
-        self.logger.info('GUI ready.')
+        self.logger.info("GUI ready.")

@@ -40,6 +40,7 @@ GREEN_HEX = _palettes.green()
 
 from .layout_controls import LayoutControls
 
+
 class DataLoading(LayoutControls):
     """Extracted from guiWin."""
 
@@ -47,34 +48,31 @@ class DataLoading(LayoutControls):
         self.MostRecentPath = self.getMostRecentPath()
         exp_path = QFileDialog.getExistingDirectory(
             self,
-            'Select experiment folder where to create empty data',
-            self.MostRecentPath
+            "Select experiment folder where to create empty data",
+            self.MostRecentPath,
         )
         if not exp_path:
             return
-        
-        pos_path = os.path.join(exp_path, 'Position_1')
-        images_path = os.path.join(pos_path, 'Images')
+
+        pos_path = os.path.join(exp_path, "Position_1")
+        images_path = os.path.join(pos_path, "Images")
         if os.path.exists(images_path):
             raise FileExistsError(f'The following path already exists "{images_path}"')
 
         os.makedirs(images_path, exist_ok=True)
-        
-        basename = 'test_empty_'
-        tif_filename = f'{basename}channel_1.tif'
+
+        basename = "test_empty_"
+        tif_filename = f"{basename}channel_1.tif"
         tif_filepath = os.path.join(images_path, tif_filename)
-        empty_img = np.zeros((256,256), dtype=np.uint8)
-        empty_img[0,0] = 255
+        empty_img = np.zeros((256, 256), dtype=np.uint8)
+        empty_img[0, 0] = 255
         skimage.io.imsave(tif_filepath, empty_img)
-        
-        metadata_filename = f'{basename}metadata.csv'
+
+        metadata_filename = f"{basename}metadata.csv"
         metadata_filepath = os.path.join(images_path, metadata_filename)
-        df_metadata = pd.DataFrame({
-            'Description': ['basename'],
-            'values': [basename]
-        })
+        df_metadata = pd.DataFrame({"Description": ["basename"], "values": [basename]})
         df_metadata.to_csv(metadata_filepath, index=False)
-        
+
         self.isNewFile = True
         self._openFolder(exp_path=images_path)
 
@@ -96,7 +94,7 @@ class DataLoading(LayoutControls):
 
         images_paths = []
         for pos in select_folder.selected_pos:
-            images_paths.append(os.path.join(exp_path, pos, 'Images'))
+            images_paths.append(os.path.join(exp_path, pos, "Images"))
         return images_paths
 
     def _openFile(self, file_path=None):
@@ -106,91 +104,87 @@ class DataLoading(LayoutControls):
         if file_path is None:
             self.MostRecentPath = self.getMostRecentPath()
             file_path = QFileDialog.getOpenFileName(
-                self, 'Select image file', self.MostRecentPath,
+                self,
+                "Select image file",
+                self.MostRecentPath,
                 "Image/Video Files (*.png *.tif *.tiff *.jpg *.jpeg *.mov *.avi *.mp4)"
-                ";;All Files (*)")[0]
+                ";;All Files (*)",
+            )[0]
             if not file_path:
                 return
-        
+
         filename, ext = os.path.splitext(os.path.basename(file_path))
         ext = ext.lower()
         dirpath = os.path.dirname(file_path)
         dirname = os.path.basename(dirpath)
-        filename = filename.rstrip('_')
+        filename = filename.rstrip("_")
         channel_name = None
         do_copy = True
-        if dirname != 'Images':
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            acdc_folder = f'{timestamp}_acdc'
-            exp_path = os.path.join(dirpath, acdc_folder, 'Images')
+        if dirname != "Images":
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            acdc_folder = f"{timestamp}_acdc"
+            exp_path = os.path.join(dirpath, acdc_folder, "Images")
             proceed, do_copy = self.warnUserCreationImagesFolder(exp_path, ext)
             if not proceed:
-                self.logger.info('Loading image file cancelled.')
+                self.logger.info("Loading image file cancelled.")
                 return
-            
-            proceed, channel_name = self.askUserChannelName(
-                filename, '.tif'
-            )
+
+            proceed, channel_name = self.askUserChannelName(filename, ".tif")
             if not proceed:
-                self.logger.info('Loading image file cancelled.')
+                self.logger.info("Loading image file cancelled.")
                 return
-            
+
             os.makedirs(exp_path, exist_ok=True)
         else:
             exp_path = dirpath
 
         if channel_name is not None:
             # Check if user wants to use the existing channel name
-            underscore_splits = filename.split('_')
+            underscore_splits = filename.split("_")
             if len(underscore_splits) > 1:
                 default_ch_name = underscore_splits[-1]
                 if channel_name == default_ch_name:
-                    filename = '_'.join(underscore_splits[:-1])
-                    
-            basename = f'{filename}_'
-            new_filename = f'{filename}_{channel_name}{ext}'
-            df_metadata = pd.DataFrame({
-                'Description': ['basename'],
-                'values': [basename]
-            })
-            metadata_csv_filename = f'{basename}metadata.csv'
-            metadata_csv_filepath = os.path.join(
-                exp_path, metadata_csv_filename
+                    filename = "_".join(underscore_splits[:-1])
+
+            basename = f"{filename}_"
+            new_filename = f"{filename}_{channel_name}{ext}"
+            df_metadata = pd.DataFrame(
+                {"Description": ["basename"], "values": [basename]}
             )
+            metadata_csv_filename = f"{basename}metadata.csv"
+            metadata_csv_filepath = os.path.join(exp_path, metadata_csv_filename)
             df_metadata.to_csv(metadata_csv_filepath, index=False)
         else:
-            new_filename = f'{filename}{ext}'
-        
+            new_filename = f"{filename}{ext}"
+
         if do_copy:
-            action_text = 'Copying'
+            action_text = "Copying"
         else:
-            action_text = 'Moving'
-        
-        if ext == '.tif' or ext == '.npz':
+            action_text = "Moving"
+
+        if ext == ".tif" or ext == ".npz":
             new_filepath = os.path.join(exp_path, new_filename)
             if not os.path.exists(new_filepath):
-                self.logger.info(f'{action_text} file to Images folder...')
+                self.logger.info(f"{action_text} file to Images folder...")
                 if do_copy:
                     shutil.copy2(file_path, new_filepath)
                 else:
                     shutil.move(file_path, new_filepath)
             self._openFolder(exp_path=exp_path, imageFilePath=new_filepath)
         else:
-            self.logger.info(f'{action_text} file to .tif format...')
-            data = load.loadData(file_path, '', log_func=self.logger.info)
+            self.logger.info(f"{action_text} file to .tif format...")
+            data = load.loadData(file_path, "", log_func=self.logger.info)
             data.loadImgData()
             img = data.img_data
             if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
-                self.logger.info('Converting RGB image to grayscale...')
+                self.logger.info("Converting RGB image to grayscale...")
                 if img.shape[-1] == 3:
                     data.img_data = skimage.color.rgb2gray(data.img_data)
                 else:
-                    data.img_data = cv2.cvtColor(
-                        data.img_data, cv2.COLOR_RGBA2GRAY
-                    )
+                    data.img_data = cv2.cvtColor(data.img_data, cv2.COLOR_RGBA2GRAY)
                 data.img_data = skimage.img_as_ubyte(data.img_data)
             new_filename_no_ext, ext = os.path.splitext(new_filename)
-            tif_filename = f'{new_filename_no_ext}.tif'
+            tif_filename = f"{new_filename_no_ext}.tif"
             tif_path = os.path.join(exp_path, tif_filename)
             if data.img_data.ndim == 3:
                 SizeT = data.img_data.shape[0]
@@ -213,9 +207,7 @@ class DataLoading(LayoutControls):
             myutils.to_tiff(tif_path, data.img_data)
             self._openFolder(exp_path=exp_path, imageFilePath=tif_path)
 
-    def _openFolder(
-            self, checked=False, exp_path=None, imageFilePath=''
-        ):
+    def _openFolder(self, checked=False, exp_path=None, imageFilePath=""):
         """Main function to load data.
 
         Parameters
@@ -238,9 +230,9 @@ class DataLoading(LayoutControls):
             self.MostRecentPath = self.getMostRecentPath()
             exp_path = QFileDialog.getExistingDirectory(
                 self,
-                'Select experiment folder containing Position_n folders '
-                'or specific Position_n folder',
-                self.MostRecentPath
+                "Select experiment folder containing Position_n folders "
+                "or specific Position_n folder",
+                self.MostRecentPath,
             )
 
         if not exp_path:
@@ -261,18 +253,18 @@ class DataLoading(LayoutControls):
             self.ccaTableWin.close()
 
         self.exp_path = exp_path
-        self.logger.info(f'Loading from {self.exp_path}')
+        self.logger.info(f"Loading from {self.exp_path}")
         self.addToRecentPaths(exp_path, logger=self.logger)
         self.addPathToOpenRecentMenu(exp_path)
 
         folder_type = myutils.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
 
-        self.titleLabel.setText('Loading data...', color=self.titleColor)
+        self.titleLabel.setText("Loading data...", color=self.titleColor)
 
         skip_channels = []
         ch_name_selector = prompts.select_channel_name(
-            which_channel='segm', allow_abort=False
+            which_channel="segm", allow_abort=False
         )
         user_ch_name = None
         if not is_pos_folder and not is_images_folder and not imageFilePath:
@@ -284,23 +276,23 @@ class DataLoading(LayoutControls):
         elif is_pos_folder and not imageFilePath:
             pos_foldername = os.path.basename(exp_path)
             exp_path = os.path.dirname(exp_path)
-            images_paths = [os.path.join(exp_path, pos_foldername, 'Images')]
+            images_paths = [os.path.join(exp_path, pos_foldername, "Images")]
 
         elif is_images_folder and not imageFilePath:
             images_paths = [exp_path]
             pos_path = os.path.dirname(exp_path)
             exp_path = os.path.dirname(pos_path)
-            
+
         elif imageFilePath:
             # images_path = exp_path because called by openFile func
             filenames = myutils.listdir(exp_path)
-            ch_names, basenameNotFound = (
-                ch_name_selector.get_available_channels(filenames, exp_path)
+            ch_names, basenameNotFound = ch_name_selector.get_available_channels(
+                filenames, exp_path
             )
             filename = os.path.basename(imageFilePath)
             self.ch_names = ch_names
             user_ch_name = [
-                chName for chName in ch_names if filename.find(chName)!=-1
+                chName for chName in ch_names if filename.find(chName) != -1
             ][0]
             images_paths = [exp_path]
             pos_path = os.path.dirname(exp_path)
@@ -321,16 +313,14 @@ class DataLoading(LayoutControls):
                 self.criticalNoTifFound(images_path)
                 return
             if len(ch_names) > 1:
-                CbLabel='Select channel name to load: '
-                ch_name_selector.QtPrompt(
-                    self, ch_names, CbLabel=CbLabel
-                )
+                CbLabel = "Select channel name to load: "
+                ch_name_selector.QtPrompt(self, ch_names, CbLabel=CbLabel)
                 if ch_name_selector.was_aborted:
                     self.openFolderAction.setEnabled(True)
                     return
-                skip_channels.extend([
-                    ch for ch in ch_names if ch!=ch_name_selector.channel_name
-                ])
+                skip_channels.extend(
+                    [ch for ch in ch_names if ch != ch_name_selector.channel_name]
+                )
             else:
                 ch_name_selector.channel_name = ch_names[0]
             ch_name_selector.setUserChannelName()
@@ -340,11 +330,14 @@ class DataLoading(LayoutControls):
             ch_name_selector.channel_name = user_ch_name
 
         user_ch_file_paths = []
-        not_allowed_ends = ['btrack_tracks.h5']
+        not_allowed_ends = ["btrack_tracks.h5"]
         for images_path in self.images_paths:
             channel_file_path = load.get_filename_from_channel(
-                images_path, user_ch_name, skip_channels=skip_channels,
-                not_allowed_ends=not_allowed_ends, logger=self.logger.info
+                images_path,
+                user_ch_name,
+                skip_channels=skip_channels,
+                not_allowed_ends=not_allowed_ends,
+                logger=self.logger.info,
             )
             if not channel_file_path:
                 self.criticalImgPathNotFound(images_path)
@@ -363,7 +356,7 @@ class DataLoading(LayoutControls):
         self.gui_createOverlayColors()
         self.gui_createOverlayItems()
         lastRow = self.bottomLeftLayout.rowCount()
-        self.bottomLeftLayout.setRowStretch(lastRow+1, 1)
+        self.bottomLeftLayout.setRowStretch(lastRow + 1, 1)
 
         self.num_pos = len(user_ch_file_paths)
         proceed = self.loadSelectedData(user_ch_file_paths, user_ch_name)
@@ -379,11 +372,11 @@ class DataLoading(LayoutControls):
 
     def askMismatchSegmDataShape(self, posData):
         msg = widgets.myMessageBox(wrapText=False)
-        title = 'Segm. data shape mismatch'
-        f = '3D' if self.isSegm3D else '2D'
-        f = f'{f} over time' if posData.SizeT > 1 else f
-        r = '2D' if self.isSegm3D else '3D'
-        r = f'{r} over time' if posData.SizeT > 1 else r
+        title = "Segm. data shape mismatch"
+        f = "3D" if self.isSegm3D else "2D"
+        f = f"{f} over time" if posData.SizeT > 1 else f
+        r = "2D" if self.isSegm3D else "3D"
+        r = f"{r} over time" if posData.SizeT > 1 else r
         text = html_utils.paragraph(f"""
             The segmentation masks of the first Position that you loaded is 
             <b>{f}</b>,<br>
@@ -393,27 +386,25 @@ class DataLoading(LayoutControls):
             Do you want to skip loading this position or cancel the process?
         """)
         _, skipPosButton = msg.warning(
-            self, title, text, buttonsTexts=('Cancel', 'Skip this Position')
+            self, title, text, buttonsTexts=("Cancel", "Skip this Position")
         )
         if skipPosButton == msg.clickedButton:
             self.loadDataWorker.skipPos = True
         self.loadDataWorker.waitCond.wakeAll()
 
     def askRecoverNotSavedData(self, posData):
-        last_modified_time_unsaved = 'NEVER'
+        last_modified_time_unsaved = "NEVER"
         if os.path.exists(posData.segm_npz_temp_path):
             recovered_file_path = posData.segm_npz_temp_path
             if os.path.exists(posData.segm_npz_path):
-                last_modified_time_unsaved = (
-                    datetime.fromtimestamp(
-                        os.path.getmtime(posData.segm_npz_path)
-                    ).strftime("%a %d. %b. %y - %H:%M:%S")
-                )
+                last_modified_time_unsaved = datetime.fromtimestamp(
+                    os.path.getmtime(posData.segm_npz_path)
+                ).strftime("%a %d. %b. %y - %H:%M:%S")
         else:
             posData.setTempPaths()
             if os.path.exists(posData.unsaved_acdc_df_autosave_path):
                 zip_path = posData.unsaved_acdc_df_autosave_path
-                with zipfile.ZipFile(zip_path, mode='r') as zip:
+                with zipfile.ZipFile(zip_path, mode="r") as zip:
                     csv_names = natsorted(set(zip.namelist()))
                 iso_key = csv_names[-1][:-4]
                 most_recent_unsaved_acdc_df_datetime = datetime.strptime(
@@ -422,45 +413,47 @@ class DataLoading(LayoutControls):
                 last_modified_time_unsaved = (
                     most_recent_unsaved_acdc_df_datetime
                 ).strftime("%a %d. %b. %y - %H:%M:%S")
-        
+
         if os.path.exists(posData.acdc_output_csv_path):
             acdc_df_mtime = os.path.getmtime(posData.acdc_output_csv_path)
             timestamp = datetime.fromtimestamp(acdc_df_mtime)
-            last_modified_time_saved = timestamp.strftime(
-                "%a %d. %b. %y - %H:%M:%S"
-            )
+            last_modified_time_saved = timestamp.strftime("%a %d. %b. %y - %H:%M:%S")
         else:
-            last_modified_time_saved = 'Null'
-        
+            last_modified_time_saved = "Null"
+
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph("""
             Cell-ACDC detected <b>unsaved data</b>.<br><br>
             Do you want to <b>load and recover</b> the unsaved data or 
             load the data that was <b>last saved by the user</b>?
         """)
-        details = (f"""
+        details = f"""
             The unsaved data was created on {last_modified_time_unsaved}\n\n
             The user saved the data last time on {last_modified_time_saved}
-        """)
+        """
         msg.setDetailedText(details)
-        loadUnsavedButton = widgets.reloadPushButton('Recover unsaved data')
-        loadSavedButton = widgets.savePushButton('Load saved data')
-        infoButton = widgets.infoPushButton('More info...')
-        loadSafeNpzButton = ''
+        loadUnsavedButton = widgets.reloadPushButton("Recover unsaved data")
+        loadSavedButton = widgets.savePushButton("Load saved data")
+        infoButton = widgets.infoPushButton("More info...")
+        loadSafeNpzButton = ""
         if posData.isSafeNpzOverwritePresent():
             loadSafeNpzButton = widgets.reloadPushButton(
-                'Load .safe.npz file from crash'
+                "Load .safe.npz file from crash"
             )
             buttons = (
-                loadSavedButton, loadUnsavedButton, loadSafeNpzButton, 
-                infoButton
+                loadSavedButton,
+                loadUnsavedButton,
+                loadSafeNpzButton,
+                infoButton,
             )
         else:
             buttons = (loadSavedButton, loadUnsavedButton, infoButton)
         msg.question(
-            self.progressWin, 'Recover unsaved data?', txt, 
-            buttonsTexts=('Cancel', *buttons), 
-            showDialog=False
+            self.progressWin,
+            "Recover unsaved data?",
+            txt,
+            buttonsTexts=("Cancel", *buttons),
+            showDialog=False,
         )
         infoButton.disconnect()
         infoButton.clicked.connect(partial(self.showInfoAutosave, posData))
@@ -471,7 +464,7 @@ class DataLoading(LayoutControls):
             self.loadDataWorker.loadUnsaved = True
         elif msg.clickedButton == loadSafeNpzButton:
             self.loadDataWorker.loadSafeOverwriteNpz = True
-            
+
         self.loadDataWorker.waitCond.wakeAll()
 
     def askUserChannelName(self, filename_no_ext, ext):
@@ -482,13 +475,13 @@ class DataLoading(LayoutControls):
         """)
 
         basename = filename_no_ext
-        underscore_splits = filename_no_ext.split('_')
+        underscore_splits = filename_no_ext.split("_")
         if len(underscore_splits) > 1:
             channel_name = underscore_splits[-1]
-            basename = '_'.join(underscore_splits[:-1])
+            basename = "_".join(underscore_splits[:-1])
         else:
-            channel_name = 'channel_1'
-        
+            channel_name = "channel_1"
+
         txt = html_utils.paragraph(f"""
             Provide some text (e.g., the channel name) to append at the end of the image file.
         """)
@@ -497,14 +490,14 @@ class DataLoading(LayoutControls):
             ext=ext,
             hintText=txt,
             defaultEntry=channel_name,
-            helpText=help_txt, 
+            helpText=help_txt,
             allowEmpty=False,
             parent=self,
-            title='Provide channel name for image file',
+            title="Provide channel name for image file",
         )
         win.exec_()
         if win.cancel:
-            return False, ''
+            return False, ""
 
         return True, win.entryText
 
@@ -512,12 +505,12 @@ class DataLoading(LayoutControls):
         posData = self.data[self.pos_i]
         posData.setTempPaths(createFolder=False)
         loaded_acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
-        
+
         if os.path.exists(posData.recoveryFolderpath()):
             self.manageVersionsAction.setDisabled(False)
             self.manageVersionsAction.setToolTip(
-                f'Load an older version of the `{loaded_acdc_df_filename}` file '
-                '(table with annotations and measurements).'
+                f"Load an older version of the `{loaded_acdc_df_filename}` file "
+                "(table with annotations and measurements)."
             )
         else:
             self.manageVersionsAction.setDisabled(True)
@@ -526,7 +519,7 @@ class DataLoading(LayoutControls):
         memory = psutil.virtual_memory()
         total_ram = memory.total
         available_ram = memory.available
-        if required_ram/available_ram > 0.3:
+        if required_ram / available_ram > 0.3:
             proceed = self.warnMemoryNotSufficient(
                 total_ram, available_ram, required_ram
             )
@@ -537,31 +530,26 @@ class DataLoading(LayoutControls):
     def criticalFluoChannelNotFound(self, fluo_ch, posData):
         msg = widgets.myMessageBox(showCentered=False)
         ls = "\n".join(myutils.listdir(posData.images_path))
-        msg.setDetailedText(
-            f'Files present in the {posData.relPath} folder:\n'
-            f'{ls}'
-        )
-        title = 'Requested channel data not found!'
+        msg.setDetailedText(f"Files present in the {posData.relPath} folder:\n{ls}")
+        title = "Requested channel data not found!"
         txt = html_utils.paragraph(
-            f'The folder <code>{posData.pos_path}</code> '
-            '<b>does not contain</b> '
-            'either one of the following files:<br><br>'
-            f'{posData.basename}{fluo_ch}.tif<br>'
-            f'{posData.basename}{fluo_ch}_aligned.npz<br><br>'
-            'Data loading aborted.'
+            f"The folder <code>{posData.pos_path}</code> "
+            "<b>does not contain</b> "
+            "either one of the following files:<br><br>"
+            f"{posData.basename}{fluo_ch}.tif<br>"
+            f"{posData.basename}{fluo_ch}_aligned.npz<br><br>"
+            "Data loading aborted."
         )
         msg.addShowInFileManagerButton(posData.images_path)
-        okButton = msg.warning(
-            self, title, txt, buttonsTexts=('Ok')
-        )
+        okButton = msg.warning(self, title, txt, buttonsTexts=("Ok"))
 
     def criticalImgPathNotFound(self, images_path):
         self.logger.info(
-            'The following folder does not contain valid image files: '
+            "The following folder does not contain valid image files: "
             f'"{images_path}"\n\n'
-            'Check that all the positions loaded contain the same channel name. '
-            'Make sure to double check for spelling mistakes or types in the '
-            'channel names.'
+            "Check that all the positions loaded contain the same channel name. "
+            "Make sure to double check for spelling mistakes or types in the "
+            "channel names."
         )
         msg = widgets.myMessageBox()
         msg.addShowInFileManagerButton(images_path)
@@ -572,11 +560,11 @@ class DataLoading(LayoutControls):
             Valid file formats are .h5, .tif, _aligned.h5, _aligned.npz.
         """)
         okButton = msg.critical(
-            self, 'No valid files found!', err_msg, buttonsTexts=('Ok',)
+            self, "No valid files found!", err_msg, buttonsTexts=("Ok",)
         )
 
     def criticalInvalidPosFolder(self, exp_path):
-        href = html_utils.href_tag('here', data_structure_docs_url)
+        href = html_utils.href_tag("here", data_structure_docs_url)
         txt = html_utils.paragraph(f"""
             The selected folder:<br><br>
             
@@ -597,43 +585,37 @@ class DataLoading(LayoutControls):
             For more information about the correct folder structure see {href}.
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        helpButton = widgets.helpPushButton('Help...')
+        helpButton = widgets.helpPushButton("Help...")
         msg.addButton(helpButton)
         helpButton.clicked.disconnect()
-        helpButton.clicked.connect(
-            partial(myutils.browse_url, data_structure_docs_url)
-        )
+        helpButton.clicked.connect(partial(myutils.browse_url, data_structure_docs_url))
         msg.addShowInFileManagerButton(exp_path)
-        msg.critical(
-            self, 'Incompatible folder', txt
-        )
+        msg.critical(self, "Incompatible folder", txt)
 
     def criticalNoTifFound(self, images_path):
-        err_title = 'No .tif files found in folder.'
+        err_title = "No .tif files found in folder."
         err_msg = html_utils.paragraph(
-            'The following folder<br><br>'
-            f'<code>{images_path}</code><br><br>'
-            '<b>does not contain .tif or .h5 files</b>.<br><br>'
+            "The following folder<br><br>"
+            f"<code>{images_path}</code><br><br>"
+            "<b>does not contain .tif or .h5 files</b>.<br><br>"
             'Only .tif or .h5 files can be loaded with "Open Folder" button.<br><br>'
-            'Try with <code>File --> Open image/video file...</code> '
-            'and directly select the file you want to load.'
+            "Try with <code>File --> Open image/video file...</code> "
+            "and directly select the file you want to load."
         )
         msg = widgets.myMessageBox()
         msg.addShowInFileManagerButton(images_path)
         msg.critical(self, err_title, err_msg)
 
     def getFileExtensions(self, images_path):
-        alignedFound = any([f.find('_aligned.np')!=-1
-                            for f in myutils.listdir(images_path)])
+        alignedFound = any(
+            [f.find("_aligned.np") != -1 for f in myutils.listdir(images_path)]
+        )
         if alignedFound:
             extensions = (
-                'Aligned channels (*npz *npy);; Tif channels(*tiff *tif)'
-                ';;All Files (*)'
+                "Aligned channels (*npz *npy);; Tif channels(*tiff *tif);;All Files (*)"
             )
         else:
-            extensions = (
-                'Tif channels(*tiff *tif);; All Files (*)'
-            )
+            extensions = "Tif channels(*tiff *tif);; All Files (*)"
         return extensions
 
     def getMostRecentPath(self):
@@ -641,12 +623,13 @@ class DataLoading(LayoutControls):
 
     def getPathFromChName(self, chName, posData):
         ls = myutils.listdir(posData.images_path)
-        endnames = {f[len(posData.basename):]:f for f in ls}
-        validEnds = ['_aligned.npz', '_aligned.h5', '.h5', '.tif', '.npz']
+        endnames = {f[len(posData.basename) :]: f for f in ls}
+        validEnds = ["_aligned.npz", "_aligned.h5", ".h5", ".tif", ".npz"]
         for end in validEnds:
             files = [
-                filename for endname, filename in endnames.items()
-                if endname == f'{chName}{end}'
+                filename
+                for endname, filename in endnames.items()
+                if endname == f"{chName}{end}"
             ]
             if files:
                 filename = files[0]
@@ -672,47 +655,47 @@ class DataLoading(LayoutControls):
             More info about Position folders in the {href} at the section 
             called "Create required data structure from microscopy file(s)".
         """)
-        msg.information(
-            self, 'Help on Position folders', txt
-        )
+        msg.information(self, "Help on Position folders", txt)
 
     def initFluoData(self):
         if len(self.ch_names) <= 1:
             return
-        
-        if 'ask_load_fluo_at_init' in self.df_settings.index:
-            if self.df_settings.at['ask_load_fluo_at_init', 'value'] == 'No':
-                return   
+
+        if "ask_load_fluo_at_init" in self.df_settings.index:
+            if self.df_settings.at["ask_load_fluo_at_init", "value"] == "No":
+                return
         msg = widgets.myMessageBox(allowClose=False)
         txt = (
-            'Do you also want to <b>load fluorescence images?</b><br>'
-            'You can load <b>as many channels as you want</b>.<br><br>'
-            'If you load fluorescence images then the software will '
-            '<b>calculate metrics</b> for each loaded fluorescence channel '
-            'such as min, max, mean, quantiles, etc. '
-            'of each segmented object.<br><br>'
-            'NOTE: You can always load them later from the menu '
-            '<code>File --> Load fluorescence images...</code> or when you set '
-            'measurements from the menu '
-            '<code>Measurements --> Set measurements...</code>'
+            "Do you also want to <b>load fluorescence images?</b><br>"
+            "You can load <b>as many channels as you want</b>.<br><br>"
+            "If you load fluorescence images then the software will "
+            "<b>calculate metrics</b> for each loaded fluorescence channel "
+            "such as min, max, mean, quantiles, etc. "
+            "of each segmented object.<br><br>"
+            "NOTE: You can always load them later from the menu "
+            "<code>File --> Load fluorescence images...</code> or when you set "
+            "measurements from the menu "
+            "<code>Measurements --> Set measurements...</code>"
         )
         msg.addDoNotShowAgainCheckbox(text="Don't ask again")
         no, yes = msg.question(
-            self, 'Load fluorescence images?', html_utils.paragraph(txt),
-            buttonsTexts=('No', 'Yes')
+            self,
+            "Load fluorescence images?",
+            html_utils.paragraph(txt),
+            buttonsTexts=("No", "Yes"),
         )
         if msg.doNotShowAgainCheckbox.isChecked():
-            self.df_settings.at['ask_load_fluo_at_init', 'value'] = 'No'
+            self.df_settings.at["ask_load_fluo_at_init", "value"] = "No"
             self.df_settings.to_csv(self.settings_csv_path)
         if msg.clickedButton == yes:
             self.loadFluo_cb(None)
         self.AutoPilotProfile.storeClickMessageBox(
-            'Load fluorescence images?', msg.clickedButton.text()
+            "Load fluorescence images?", msg.clickedButton.text()
         )
 
     def loadDataWorkerDataIntegrityCritical(self):
-        errTitle = 'All loaded positions contains frames over time!'
-        self.titleLabel.setText(errTitle, color='r')
+        errTitle = "All loaded positions contains frames over time!"
+        self.titleLabel.setText(errTitle, color="r")
 
         msg = widgets.myMessageBox(parent=self)
 
@@ -721,19 +704,19 @@ class DataLoading(LayoutControls):
             To load data that contains frames over time you have to select
             only ONE position.
         """)
-        msg.setIcon(iconName='SP_MessageBoxCritical')
-        msg.setWindowTitle('Loaded multiple positions with frames!')
+        msg.setIcon(iconName="SP_MessageBoxCritical")
+        msg.setWindowTitle("Loaded multiple positions with frames!")
         msg.addText(err_msg)
-        msg.addButton('Ok')
+        msg.addButton("Ok")
         msg.show(block=True)
 
     def loadDataWorkerDataIntegrityWarning(self, pos_foldername):
         err_msg = (
             'WARNING: Segmentation mask file ("..._segm.npz") not found. '
-            'You could run segmentation module first.'
+            "You could run segmentation module first."
         )
-        self.workerProgress(err_msg, 'INFO')
-        self.titleLabel.setText(err_msg, color='r')
+        self.workerProgress(err_msg, "INFO")
+        self.titleLabel.setText(err_msg, color="r")
         abort = False
         msg = widgets.myMessageBox(parent=self)
         warn_msg = html_utils.paragraph(f"""
@@ -743,11 +726,11 @@ class DataLoading(LayoutControls):
             pre-compute the mask with the segmentation module.<br><br>
             Do you want to continue?
         """)
-        msg.setIcon(iconName='SP_MessageBoxWarning')
-        msg.setWindowTitle('Segmentation file not found')
+        msg.setIcon(iconName="SP_MessageBoxWarning")
+        msg.setWindowTitle("Segmentation file not found")
         msg.addText(warn_msg)
-        msg.addButton('Ok')
-        continueWithBlankSegm = msg.addButton(' Cancel ')
+        msg.addButton("Ok")
+        continueWithBlankSegm = msg.addButton(" Cancel ")
         msg.show(block=True)
         if continueWithBlankSegm == msg.clickedButton:
             abort = True
@@ -755,16 +738,16 @@ class DataLoading(LayoutControls):
         self.loadDataWaitCond.wakeAll()
 
     def loadDataWorkerFinished(self, data):
-        self.funcDescription = 'loading data worker finished'
+        self.funcDescription = "loading data worker finished"
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
 
-        if data is None or data=='abort':
+        if data is None or data == "abort":
             self.loadingDataAborted()
             return
-        
+
         if data[0].onlyEditMetadata:
             self.loadingDataAborted()
             return
@@ -778,22 +761,25 @@ class DataLoading(LayoutControls):
         if fluo_channels is None:
             posData = self.data[self.pos_i]
             ch_names = [
-                ch for ch in self.ch_names if ch != self.user_ch_name
-                and ch not in posData.loadedFluoChannels
+                ch
+                for ch in self.ch_names
+                if ch != self.user_ch_name and ch not in posData.loadedFluoChannels
             ]
             if not ch_names:
                 msg = widgets.myMessageBox()
                 txt = html_utils.paragraph(
-                    'You already <b>loaded ALL channels</b>.<br><br>'
-                    'To <b>change the overlaid channel</b> '
-                    '<b>right-click</b> on the overlay button.'
+                    "You already <b>loaded ALL channels</b>.<br><br>"
+                    "To <b>change the overlaid channel</b> "
+                    "<b>right-click</b> on the overlay button."
                 )
-                msg.information(self, 'All channels are loaded', txt)
+                msg.information(self, "All channels are loaded", txt)
                 return False
             selectFluo = widgets.QDialogListbox(
-                'Select channel to load',
-                'Select channel names to load:\n',
-                ch_names, multiSelection=True, parent=self
+                "Select channel to load",
+                "Select channel names to load:\n",
+                ch_names,
+                multiSelection=True,
+                parent=self,
             )
             selectFluo.exec_()
 
@@ -821,26 +807,27 @@ class DataLoading(LayoutControls):
                 posData.fluo_data_dict[filename] = fluo_data
                 posData.fluo_bkgrData_dict[filename] = bkgrData
                 posData.ol_data_dict[filename] = fluo_data.copy()
-                
-        self.overlayButton.setStyleSheet(f'background-color: {GREEN_HEX}')
-        self.guiTabControl.addChannels([
-            posData.user_ch_name, *posData.loadedFluoChannels
-        ])
+
+        self.overlayButton.setStyleSheet(f"background-color: {GREEN_HEX}")
+        self.guiTabControl.addChannels(
+            [posData.user_ch_name, *posData.loadedFluoChannels]
+        )
         return True
 
     def loadNonAlignedFluoChannel(self, fluo_path):
         posData = self.data[self.pos_i]
-        if posData.filename.find('aligned') != -1:
+        if posData.filename.find("aligned") != -1:
             filename, _ = os.path.splitext(os.path.basename(fluo_path))
-            path = f'.../{posData.pos_foldername}/Images/{filename}_aligned.npz'
+            path = f".../{posData.pos_foldername}/Images/{filename}_aligned.npz"
             msg = widgets.myMessageBox()
             msg.critical(
-                self, 'Aligned fluo channel not found!',
-                'Aligned data for fluorescence channel not found!\n\n'
-                f'You loaded aligned data for the cells channel, therefore '
-                'loading NON-aligned fluorescence data is not allowed.\n\n'
+                self,
+                "Aligned fluo channel not found!",
+                "Aligned data for fluorescence channel not found!\n\n"
+                f"You loaded aligned data for the cells channel, therefore "
+                "loading NON-aligned fluorescence data is not allowed.\n\n"
                 'Run the script "dataPrep.py" to create the following file:\n\n'
-                f'{path}'
+                f"{path}",
             )
             return None
         fluo_data = np.squeeze(skimage.io.imread(fluo_path))
@@ -849,21 +836,23 @@ class DataLoading(LayoutControls):
     def loadPosTriggered(self):
         if not self.isDataLoaded:
             return
-        
+
         self.startAutomaticLoadingPos()
 
     def loadSelectedData(self, user_ch_file_paths, user_ch_name):
         data = []
         numPos = len(user_ch_file_paths)
         self.user_ch_file_paths = user_ch_file_paths
-        
-        self.logger.info(f'Reading {user_ch_name} channel metadata...')
+
+        self.logger.info(f"Reading {user_ch_name} channel metadata...")
         # Get information from first loaded position
-        posData = load.loadData(user_ch_file_paths[0], user_ch_name, log_func=self.logger.info)
+        posData = load.loadData(
+            user_ch_file_paths[0], user_ch_name, log_func=self.logger.info
+        )
         posData.getBasenameAndChNames(qparent=self)
         posData.buildPaths()
 
-        if posData.ext != '.h5':
+        if posData.ext != ".h5":
             self.lazyLoader.salute = False
             self.lazyLoader.exit = True
             self.lazyLoaderWaitCond.wakeAll()
@@ -875,30 +864,28 @@ class DataLoading(LayoutControls):
             _posData = load.loadData(filePath, user_ch_name, log_func=self.logger.info)
             _posData.getBasenameAndChNames(qparent=self)
             segm_files = load.get_segm_files(_posData.images_path)
-            _existingEndnames = load.get_endnames(
-                _posData.basename, segm_files
-            )
+            _existingEndnames = load.get_endnames(_posData.basename, segm_files)
             existingSegmEndNames.update(_existingEndnames)
 
-        selectedSegmEndName = ''
-        self.newSegmEndName = ''
+        selectedSegmEndName = ""
+        self.newSegmEndName = ""
         if self.isNewFile or not existingSegmEndNames:
             self.isNewFile = True
             # Remove the 'segm_' part to allow filenameDialog to check if
             # a new file is existing (since we only ask for the part after
             # 'segm_')
             existingEndNames = [
-                n.replace('segm', '', 1).replace('_', '', 1)
+                n.replace("segm", "", 1).replace("_", "", 1)
                 for n in existingSegmEndNames
             ]
-            if posData.basename.endswith('_'):
-                basename = f'{posData.basename}segm'
+            if posData.basename.endswith("_"):
+                basename = f"{posData.basename}segm"
             else:
-                basename = f'{posData.basename}_segm'
+                basename = f"{posData.basename}_segm"
             win = apps.filenameDialog(
                 basename=basename,
-                hintText='Insert a <b>filename</b> for the segmentation file:',
-                existingNames=existingEndNames
+                hintText="Insert a <b>filename</b> for the segmentation file:",
+                existingNames=existingEndNames,
             )
             win.exec_()
             if win.cancel:
@@ -908,8 +895,11 @@ class DataLoading(LayoutControls):
         else:
             if len(existingSegmEndNames) > 0:
                 win = apps.SelectSegmFileDialog(
-                    existingSegmEndNames, self.exp_path, parent=self,
-                    addNewFileButton=True, basename=posData.basename
+                    existingSegmEndNames,
+                    self.exp_path,
+                    parent=self,
+                    addNewFileButton=True,
+                    basename=posData.basename,
                 )
                 win.exec_()
                 if win.cancel:
@@ -917,9 +907,7 @@ class DataLoading(LayoutControls):
                     return
                 if win.newSegmEndName is None:
                     selectedSegmEndName = win.selectedItemText
-                    self.AutoPilotProfile.storeSelectedSegmFile(
-                        selectedSegmEndName
-                    )
+                    self.AutoPilotProfile.storeSelectedSegmFile(selectedSegmEndName)
                 else:
                     self.newSegmEndName = win.newSegmEndName
                     self.isNewFile = True
@@ -927,7 +915,7 @@ class DataLoading(LayoutControls):
                 selectedSegmEndName = list(existingSegmEndNames)[0]
 
         posData.loadImgData()
-        
+
         required_ram = posData.getBytesImageData()
         if required_ram >= 5e8:
             # Disable autosave for data > 500MB
@@ -937,7 +925,7 @@ class DataLoading(LayoutControls):
         if not proceed:
             self.loadingDataAborted()
             return
-        
+
         posData.loadOtherFiles(
             load_segm_data=True,
             load_metadata=True,
@@ -949,24 +937,22 @@ class DataLoading(LayoutControls):
         self.labelBoolSegm = posData.labelBoolSegm
         posData.labelSegmData()
 
-        print('')
-        self.logger.info(
-            f'Segmentation filename: {posData.segm_npz_path}'
-        )
+        print("")
+        self.logger.info(f"Segmentation filename: {posData.segm_npz_path}")
 
         proceed = posData.askInputMetadata(
             self.num_pos,
-            ask_SizeT=self.num_pos==1,
+            ask_SizeT=self.num_pos == 1,
             ask_TimeIncrement=True,
             ask_PhysicalSizes=True,
             singlePos=False,
-            save=True, 
-            warnMultiPos=True
+            save=True,
+            warnMultiPos=True,
         )
         if not proceed:
             self.loadingDataAborted()
             return
-        
+
         self.AutoPilotProfile.storeOkAskInputMetadata()
 
         if posData.isSegm3D is None:
@@ -992,13 +978,11 @@ class DataLoading(LayoutControls):
         self.createOverlayLabelsItems(existingSegmEndNames)
         self.disableNonFunctionalButtons()
 
-        self.isH5chunk = (
-            posData.ext == '.h5'
-            and (self.loadSizeT != self.SizeT
-                or self.loadSizeZ != self.SizeZ)
+        self.isH5chunk = posData.ext == ".h5" and (
+            self.loadSizeT != self.SizeT or self.loadSizeZ != self.SizeZ
         )
 
-        required_ram = posData.checkH5memoryFootprint()*self.loadSizeS
+        required_ram = posData.checkH5memoryFootprint() * self.loadSizeS
         if required_ram > 0:
             proceed = self.checkMemoryRequirements(required_ram)
             if not proceed:
@@ -1011,16 +995,15 @@ class DataLoading(LayoutControls):
             self.isSnapshot = False
 
         self.progressWin = apps.QDialogWorkerProgress(
-            title='Loading data...', parent=self,
-            pbarDesc=f'Loading "{user_ch_file_paths[0]}"...'
+            title="Loading data...",
+            parent=self,
+            pbarDesc=f'Loading "{user_ch_file_paths[0]}"...',
         )
         self.progressWin.show(self.app)
 
         func = partial(
-            self.startLoadDataWorker, user_ch_file_paths, user_ch_name,
-            posData
+            self.startLoadDataWorker, user_ch_file_paths, user_ch_name, posData
         )
-
 
         QTimer.singleShot(150, func)
 
@@ -1031,28 +1014,28 @@ class DataLoading(LayoutControls):
         # Load overlay frames and align if needed
         filename = os.path.basename(fluo_path)
         filename_noEXT, ext = os.path.splitext(filename)
-        if ext == '.npy' or ext == '.npz':
+        if ext == ".npy" or ext == ".npz":
             fluo_data = np.load(fluo_path)
             try:
-                fluo_data = np.squeeze(fluo_data['arr_0'])
+                fluo_data = np.squeeze(fluo_data["arr_0"])
             except Exception as e:
                 fluo_data = np.squeeze(fluo_data)
 
             # Load background data
             bkgrData_path = os.path.join(
-                posData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
+                posData.images_path, f"{filename_noEXT}_bkgrRoiData.npz"
             )
             if os.path.exists(bkgrData_path):
                 bkgrData = np.load(bkgrData_path)
-        elif ext == '.tif' or ext == '.tiff':
-            aligned_filename = f'{filename_noEXT}_aligned.npz'
+        elif ext == ".tif" or ext == ".tiff":
+            aligned_filename = f"{filename_noEXT}_aligned.npz"
             aligned_path = os.path.join(posData.images_path, aligned_filename)
             if os.path.exists(aligned_path):
-                fluo_data = np.load(aligned_path)['arr_0']
+                fluo_data = np.load(aligned_path)["arr_0"]
 
                 # Load background data
                 bkgrData_path = os.path.join(
-                    posData.images_path, f'{aligned_filename}_bkgrRoiData.npz'
+                    posData.images_path, f"{aligned_filename}_bkgrRoiData.npz"
                 )
                 if os.path.exists(bkgrData_path):
                     bkgrData = np.load(bkgrData_path)
@@ -1063,38 +1046,38 @@ class DataLoading(LayoutControls):
 
                 # Load background data
                 bkgrData_path = os.path.join(
-                    posData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
+                    posData.images_path, f"{filename_noEXT}_bkgrRoiData.npz"
                 )
                 if os.path.exists(bkgrData_path):
                     bkgrData = np.load(bkgrData_path)
         elif isGuiThread:
             txt = html_utils.paragraph(
-                f'File format {ext} is not supported!\n'
-                'Choose either .tif or .npz files.'
+                f"File format {ext} is not supported!\n"
+                "Choose either .tif or .npz files."
             )
             msg = widgets.myMessageBox()
-            msg.critical(self, 'File not supported', txt)
+            msg.critical(self, "File not supported", txt)
             return None, None
 
         return fluo_data, bkgrData
 
     def loadingDataAborted(self):
         self.openFolderAction.setEnabled(True)
-        self.titleLabel.setText('Loading data aborted.')
+        self.titleLabel.setText("Loading data aborted.")
 
     def loadingDataCompleted(self):
         self.isDataLoading = True
         posData = self.data[self.pos_i]
-        
-        files_format = '\n'.join([
-            f'  - {file}' for file in posData.images_folder_files
-        ])
-        sep = '-'*100
-        self.logger.info(
-            f'{sep}\nFiles present in the first Position folder loaded:\n\n'
-            f'{files_format}\n{sep}'
+
+        files_format = "\n".join(
+            [f"  - {file}" for file in posData.images_folder_files]
         )
-        self.logger.info(f'Basename of the first Position: {posData.basename}')
+        sep = "-" * 100
+        self.logger.info(
+            f"{sep}\nFiles present in the first Position folder loaded:\n\n"
+            f"{files_format}\n{sep}"
+        )
+        self.logger.info(f"Basename of the first Position: {posData.basename}")
         self.secondLevelToolbar.setVisible(True)
         self.updateImageValueFormatter()
         self.checkManageVersions()
@@ -1104,15 +1087,15 @@ class DataLoading(LayoutControls):
         self.setWindowTitle(
             f'Cell-ACDC v{self._acdc_version} - GUI - "{posData.exp_path}"'
         )
-        
+
         self.setupPreprocessing()
         self.setupCombiningChannels()
 
         if self.isSegm3D:
-            self.segmNdimIndicator.setText('3D')
+            self.segmNdimIndicator.setText("3D")
         else:
-            self.segmNdimIndicator.setText('2D')
-            
+            self.segmNdimIndicator.setText("2D")
+
         self.segmNdimIndicatorAction.setVisible(True)
 
         self.guiTabControl.addChannels([posData.user_ch_name])
@@ -1123,53 +1106,45 @@ class DataLoading(LayoutControls):
         self.init_segmInfo_df()
         self.connectScrollbars()
         self.initPosAttr()
-        
-        self.logger.info('Pre-computing min and max values of the images...')
+
+        self.logger.info("Pre-computing min and max values of the images...")
         self.img1.preComputedMinMaxValues(self.data)
         self.img2.minMaxValuesMapper = self.img1.minMaxValuesMapper
-        
+
         self.initMetrics()
         self.initFluoData()
         self.createChannelNamesActions()
         self.addActionsLutItemContextMenu(self.imgGrad)
-        
-        # Scrollbar for opacity of img1 (when overlaying)
-        self.img1.alphaScrollbar = self.addAlphaScrollbar(
-            self.user_ch_name, self.img1
-        )
 
-        self.navigateScrollBar.setSliderPosition(posData.frame_i+1)
+        # Scrollbar for opacity of img1 (when overlaying)
+        self.img1.alphaScrollbar = self.addAlphaScrollbar(self.user_ch_name, self.img1)
+
+        self.navigateScrollBar.setSliderPosition(posData.frame_i + 1)
 
         # Connect events at the end of loading data process
         self.gui_connectGraphicsEvents()
         if not self.isEditActionsConnected:
             self.gui_connectEditActions()
             self.normalizeToFloatAction.setChecked(True)
-            
+
         self.navSpinBox.connectValueChanged(self.navigateSpinboxValueChanged)
 
         self.setFramesSnapshotMode()
         if self.isSnapshot:
-            self.navSizeLabel.setText(f'/{len(self.data)}') 
+            self.navSizeLabel.setText(f"/{len(self.data)}")
         else:
-            self.navSizeLabel.setText(f'/{posData.SizeT}')
+            self.navSizeLabel.setText(f"/{posData.SizeT}")
 
         self.enableZstackWidgets(posData.SizeZ > 1)
         # self.showHighlightZneighCheckbox()
-        
-        self.exportToVideoAction.setDisabled(
-            posData.SizeZ == 1 and posData.SizeT == 1
-        )
+
+        self.exportToVideoAction.setDisabled(posData.SizeZ == 1 and posData.SizeT == 1)
 
         self.img1BottomGroupbox.show()
 
-        isLabVisible = self.df_settings.at['isLabelsVisible', 'value'] == 'Yes'
-        isRightImgVisible = (
-            self.df_settings.at['isRightImageVisible', 'value'] == 'Yes'
-        )
-        isNextFrameVisible = (
-            self.df_settings.at['isNextFrameVisible', 'value'] == 'Yes'
-        )
+        isLabVisible = self.df_settings.at["isLabelsVisible", "value"] == "Yes"
+        isRightImgVisible = self.df_settings.at["isRightImageVisible", "value"] == "Yes"
+        isNextFrameVisible = self.df_settings.at["isNextFrameVisible", "value"] == "Yes"
         isNextFrameActive = (
             isNextFrameVisible and self.labelsGrad.showNextFrameAction.isEnabled()
         )
@@ -1183,18 +1158,16 @@ class DataLoading(LayoutControls):
         self.labelsGrad.showNextFrameAction.setChecked(isNextFrameActive)
         if isRightImgVisible or isNextFrameActive:
             self.rightBottomGroupbox.setChecked(True)
-        
-        isTwoImagesLayout = (
-            isRightImgVisible or isLabVisible or isNextFrameActive
-        )
+
+        isTwoImagesLayout = isRightImgVisible or isLabVisible or isNextFrameActive
         self.setTwoImagesLayout(isTwoImagesLayout)
-        
+
         self.setBottomLayoutStretch()
-        
+
         if isNextFrameActive:
             self.rightBottomGroupbox.show()
             self.rightBottomGroupbox.setChecked(True)
-            self.drawNothingCheckboxRight.click()  
+            self.drawNothingCheckboxRight.click()
 
         self.readSavedCustomAnnot()
         self.addCustomAnnotButtonAllLoadedPos()
@@ -1212,16 +1185,13 @@ class DataLoading(LayoutControls):
         self.update_rp()
         self.updateAllImages()
         if posData.SizeT > 1:
-            self.rightImageFramesScrollbar.setValueNoSignal(posData.frame_i+2)
+            self.rightImageFramesScrollbar.setValueNoSignal(posData.frame_i + 2)
         self.setMetricsFunc()
 
         self.gui_createLabelRoiItem()
         self.gui_createZoomRectItem()
 
-        self.titleLabel.setText(
-            'Data successfully loaded.',
-            color=self.titleColor
-        )
+        self.titleLabel.setText("Data successfully loaded.", color=self.titleColor)
 
         self.disableNonFunctionalButtons()
         self.setVisible3DsegmWidgets()
@@ -1254,27 +1224,29 @@ class DataLoading(LayoutControls):
 
         self.isDataLoaded = True
         self.isDataLoading = False
-        
+
         self.initImgGradRescaleIntensitiesHowPreference()
-        
+
         self.rescaleIntensitiesLut(setImage=False)
-        
+
         self.gui_createAutoSaveWorker()
 
     def newFile(self):
-        self.newSegmEndName = ''
+        self.newSegmEndName = ""
         self.isNewFile = True
         msg = widgets.myMessageBox(parent=self, showCentered=False)
-        msg.setWindowTitle('File or folder?')
-        msg.addText(html_utils.paragraph(f"""
+        msg.setWindowTitle("File or folder?")
+        msg.addText(
+            html_utils.paragraph(f"""
             Do you want to load an <b>image file</b> or <b>Position 
             folder(s)</b>?
-        """))
-        loadPosButton = QPushButton('Load Position folder', msg)
+        """)
+        )
+        loadPosButton = QPushButton("Load Position folder", msg)
         loadPosButton.setIcon(QIcon(":folder-open.svg"))
-        loadFileButton = QPushButton('Load image file', msg)
+        loadFileButton = QPushButton("Load image file", msg)
         loadFileButton.setIcon(QIcon(":image.svg"))
-        helpButton = widgets.helpPushButton('Help...')
+        helpButton = widgets.helpPushButton("Help...")
         msg.addButton(helpButton)
         helpButton.disconnect()
         helpButton.clicked.connect(self.helpNewFile)
@@ -1285,7 +1257,7 @@ class DataLoading(LayoutControls):
         msg.exec_()
         if msg.cancel:
             return
-        
+
         if msg.clickedButton == loadPosButton:
             self._openFolder()
         else:
@@ -1297,23 +1269,20 @@ class DataLoading(LayoutControls):
         self.isNewFile = False
         self._openFile(file_path=file_path)
 
-    def openFolder(
-            self, checked=False, exp_path=None, imageFilePath=''
-        ):
+    def openFolder(self, checked=False, exp_path=None, imageFilePath=""):
         if exp_path is None:
-            self.logger.info('Asking to select a folder path...')
+            self.logger.info("Asking to select a folder path...")
         else:
             self.logger.info(f'Opening FOLDER "{exp_path}"...')
 
         self.isNewFile = False
-        if hasattr(self, 'data') and self.titleLabel.text != 'Saved!':
+        if hasattr(self, "data") and self.titleLabel.text != "Saved!":
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(
-                'Do you want to <b>save</b> before loading another dataset?'
+                "Do you want to <b>save</b> before loading another dataset?"
             )
             _, no, yes = msg.question(
-                self, 'Save?', txt,
-                buttonsTexts=('Cancel', 'No', 'Yes')
+                self, "Save?", txt, buttonsTexts=("Cancel", "No", "Yes")
             )
             if msg.clickedButton == yes:
                 func = partial(self._openFolder, exp_path, imageFilePath)
@@ -1325,12 +1294,10 @@ class DataLoading(LayoutControls):
             else:
                 self.store_data(autosave=False)
 
-        self._openFolder(
-            exp_path=exp_path, imageFilePath=imageFilePath
-        )
+        self._openFolder(exp_path=exp_path, imageFilePath=imageFilePath)
 
     def openRecentFile(self, path):
-        self.logger.info(f'Opening recent folder: {path}')
+        self.logger.info(f"Opening recent folder: {path}")
         self.addToRecentPaths(path, logger=self.logger)
         self.openFolder(exp_path=path)
 
@@ -1341,7 +1308,7 @@ class DataLoading(LayoutControls):
         labData = np.load(posData.segm_npz_path)
         # Keep compatibility with .npy and .npz files
         try:
-            lab = labData['arr_0'][posData.frame_i]
+            lab = labData["arr_0"][posData.frame_i]
         except Exception as e:
             lab = labData[posData.frame_i]
         posData.segm_data[posData.frame_i] = lab.copy()
@@ -1351,40 +1318,40 @@ class DataLoading(LayoutControls):
 
     def showInfoAutosave(self, posData):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        txt = (f"""
+        txt = f"""
             Cell-ACDC either detected unsaved data in a previous session and it 
             stored it because the <b>Autosave</b><br>
             function was active, or it crashed during saving.<br><br>
             You can toggle Autosave ON and OFF from the menu on the top menubar 
             <code>File --> Autosave</code>.
-        """)
-        txt = (f"""
+        """
+        txt = f"""
             {txt}<br><br>
             If Cell-ACDC crashed during saving, the segmentation file ending 
             with <code>.new.npz</code><br>
             is present and you might be able to recover the data from there. 
-        """) 
-        
-        txt = (f"""
+        """
+
+        txt = f"""
             {txt}<br><br>
             You can find additional recovered data in the following folder:
-        """)  
+        """
         txt = html_utils.paragraph(txt)
         msg.information(
-            self, 'Autosave info', txt, 
-            path_to_browse=posData.recoveryFolderPath, 
-            commands=(posData.recoveryFolderPath,)
+            self,
+            "Autosave info",
+            txt,
+            path_to_browse=posData.recoveryFolderPath,
+            commands=(posData.recoveryFolderPath,),
         )
 
     def startAutomaticLoadingPos(self):
         self.AutoPilot = autopilot.AutoPilot(self)
         self.AutoPilot.execLoadPos()
 
-    def startLoadDataWorker(
-            self, user_ch_file_paths, user_ch_name, firstPosData
-        ):
-        self.funcDescription = 'loading data'
-        
+    def startLoadDataWorker(self, user_ch_file_paths, user_ch_name, firstPosData):
+        self.funcDescription = "loading data"
+
         self.guiTabControl.propsQGBox.idSB.setValue(0)
 
         self.thread = QThread()
@@ -1397,24 +1364,14 @@ class DataLoading(LayoutControls):
 
         self.loadDataWorker.moveToThread(self.thread)
         self.loadDataWorker.signals.finished.connect(self.thread.quit)
-        self.loadDataWorker.signals.finished.connect(
-            self.loadDataWorker.deleteLater
-        )
+        self.loadDataWorker.signals.finished.connect(self.loadDataWorker.deleteLater)
         self.thread.finished.connect(self.thread.deleteLater)
 
-        self.loadDataWorker.signals.finished.connect(
-            self.loadDataWorkerFinished
-        )
+        self.loadDataWorker.signals.finished.connect(self.loadDataWorkerFinished)
         self.loadDataWorker.signals.progress.connect(self.workerProgress)
-        self.loadDataWorker.signals.initProgressBar.connect(
-            self.workerInitProgressbar
-        )
-        self.loadDataWorker.signals.progressBar.connect(
-            self.workerUpdateProgressbar
-        )
-        self.loadDataWorker.signals.critical.connect(
-            self.workerCritical
-        )
+        self.loadDataWorker.signals.initProgressBar.connect(self.workerInitProgressbar)
+        self.loadDataWorker.signals.progressBar.connect(self.workerUpdateProgressbar)
+        self.loadDataWorker.signals.critical.connect(self.workerCritical)
         self.loadDataWorker.signals.dataIntegrityCritical.connect(
             self.loadDataWorkerDataIntegrityCritical
         )
@@ -1427,9 +1384,7 @@ class DataLoading(LayoutControls):
         self.loadDataWorker.signals.sigWarnMismatchSegmDataShape.connect(
             self.askMismatchSegmDataShape
         )
-        self.loadDataWorker.signals.sigRecovery.connect(
-            self.askRecoverNotSavedData
-        )
+        self.loadDataWorker.signals.sigRecovery.connect(self.askRecoverNotSavedData)
 
         self.thread.started.connect(self.loadDataWorker.run)
         self.thread.start()
@@ -1437,7 +1392,7 @@ class DataLoading(LayoutControls):
     def stopAutomaticLoadingPos(self):
         if self.AutoPilot is None:
             return
-        
+
         if self.AutoPilot.timer.isActive():
             self.AutoPilot.timer.stop()
         self.AutoPilot = None
@@ -1446,7 +1401,7 @@ class DataLoading(LayoutControls):
         total_ram = myutils._bytes_to_GB(total_ram)
         available_ram = myutils._bytes_to_GB(available_ram)
         required_ram = myutils._bytes_to_GB(required_ram)
-        required_perc = round(100*required_ram/available_ram)
+        required_perc = round(100 * required_ram / available_ram)
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(f"""
             The total amount of data that you requested to load is about
@@ -1461,11 +1416,13 @@ class DataLoading(LayoutControls):
             What do you want to do?
         """)
         cancelButton, continueButton = msg.warning(
-            self, 'Memory not sufficient', txt,
-            buttonsTexts=('Cancel', 'Continue anyway')
+            self,
+            "Memory not sufficient",
+            txt,
+            buttonsTexts=("Cancel", "Continue anyway"),
         )
         if msg.clickedButton == continueButton:
-            # Disable autosaving since it would keep a copy of the data and 
+            # Disable autosaving since it would keep a copy of the data and
             # we cannot afford it with low memory
             self.autoSaveToggle.setChecked(False)
             return True
@@ -1474,7 +1431,7 @@ class DataLoading(LayoutControls):
 
     def warnUserCreationImagesFolder(self, images_path, ext):
         msg = widgets.myMessageBox(wrapText=False)
-        txt = (f"""
+        txt = f"""
             Cell-ACDC requires a specific folder structure to load the data.<br><br>
             Specifically, it requires the <b>image(s) to be located in a
             folder called <code>Images</code></b>.<br><br>
@@ -1489,24 +1446,22 @@ class DataLoading(LayoutControls):
             folder:
             <copiable>{images_path}</copiable>
             <br>
-        """)
-        
-        if ext == '.tif' or ext == '.npz':
-            txt = f'{txt}How do you want to proceed?'
+        """
+
+        if ext == ".tif" or ext == ".npz":
+            txt = f"{txt}How do you want to proceed?"
         else:
-            txt = f'{txt}Do you want to proceed?'
+            txt = f"{txt}Do you want to proceed?"
         txt = html_utils.paragraph(txt)
-        
-        if ext == '.tif' or ext == '.npz':
-            copyButton = widgets.copyPushButton(
-                'Copy the image into the new folder'
-            )
-            moveButton = widgets.movePushButton(
-                'Move the image into the new folder'
-            )
+
+        if ext == ".tif" or ext == ".npz":
+            copyButton = widgets.copyPushButton("Copy the image into the new folder")
+            moveButton = widgets.movePushButton("Move the image into the new folder")
             _, copyButton, moveButton = msg.information(
-                self, 'Creating Images folder', txt, 
-                buttonsTexts=('Cancel', copyButton, moveButton)
+                self,
+                "Creating Images folder",
+                txt,
+                buttonsTexts=("Cancel", copyButton, moveButton),
             )
             if msg.cancel:
                 return False, None
@@ -1515,23 +1470,25 @@ class DataLoading(LayoutControls):
                 return True, True
             elif msg.clickedButton == moveButton:
                 return True, False
-        
+
         else:
             msg.information(
-                self, 'Creating Images folder', txt, 
-                buttonsTexts=('Cancel', 'Yes, proceed')
+                self,
+                "Creating Images folder",
+                txt,
+                buttonsTexts=("Cancel", "Yes, proceed"),
             )
             if msg.cancel:
                 return False, None
-            
+
             return True, True
 
     def workerPermissionError(self, txt, waitCond):
         msg = widgets.myMessageBox(parent=self)
-        msg.setIcon(iconName='SP_MessageBoxCritical')
-        msg.setWindowTitle('Permission denied')
+        msg.setIcon(iconName="SP_MessageBoxCritical")
+        msg.setWindowTitle("Permission denied")
         msg.addText(txt)
-        msg.addButton('  Ok  ')
+        msg.addButton("  Ok  ")
         msg.exec_()
         waitCond.wakeAll()
 
@@ -1541,9 +1498,10 @@ class DataLoading(LayoutControls):
         chNames = posData.chNames
         filenamesPresent = posData.segmInfo_df.index.get_level_values(0).unique()
         chNamesPresent = [
-            ch for ch in chNames
+            ch
+            for ch in chNames
             for file in filenamesPresent
-            if file.endswith(ch) or file.endswith(f'{ch}_aligned')
+            if file.endswith(ch) or file.endswith(f"{ch}_aligned")
         ]
         win = apps.QDialogZsliceAbsent(filename, SizeZ, chNamesPresent)
         win.exec_()
@@ -1552,7 +1510,7 @@ class DataLoading(LayoutControls):
             self.waitCond.wakeAll()
             return
         if win.useMiddleSlice:
-            user_ch_name = filename[len(posData.basename):]
+            user_ch_name = filename[len(posData.basename) :]
             for _posData in self.data:
                 if _posData is None:
                     continue
@@ -1563,13 +1521,11 @@ class DataLoading(LayoutControls):
                 _posData.segmInfo_df = _posData.segmInfo_df[unique_idx]
                 _posData.segmInfo_df.to_csv(_posData.segmInfo_df_csv_path)
         elif win.useSameAsCh:
-            user_ch_name = filename[len(posData.basename):]
+            user_ch_name = filename[len(posData.basename) :]
             for _posData in self.data:
                 if _posData is None:
                     continue
-                _, srcFilename = self.getPathFromChName(
-                    win.selectedChannel, _posData
-                )
+                _, srcFilename = self.getPathFromChName(win.selectedChannel, _posData)
                 cellacdc_df = _posData.segmInfo_df.loc[srcFilename].copy()
                 _, dstFilename = self.getPathFromChName(user_ch_name, _posData)
                 if dstFilename is None:
@@ -1580,23 +1536,23 @@ class DataLoading(LayoutControls):
                 for z_info in cellacdc_df.itertuples():
                     frame_i = z_info.Index
                     zProjHow = z_info.which_z_proj
-                    if zProjHow == 'single z-slice':
+                    if zProjHow == "single z-slice":
                         src_idx = (srcFilename, frame_i)
-                        if _posData.segmInfo_df.at[src_idx, 'resegmented_in_gui']:
-                            col = 'z_slice_used_gui'
+                        if _posData.segmInfo_df.at[src_idx, "resegmented_in_gui"]:
+                            col = "z_slice_used_gui"
                         else:
-                            col = 'z_slice_used_dataPrep'
+                            col = "z_slice_used_dataPrep"
                         z_slice = _posData.segmInfo_df.at[src_idx, col]
                         dst_idx = (dstFilename, frame_i)
-                        dst_df.at[dst_idx, 'z_slice_used_dataPrep'] = z_slice
-                        dst_df.at[dst_idx, 'z_slice_used_gui'] = z_slice
+                        dst_df.at[dst_idx, "z_slice_used_dataPrep"] = z_slice
+                        dst_df.at[dst_idx, "z_slice_used_gui"] = z_slice
                 _posData.segmInfo_df = pd.concat([dst_df, _posData.segmInfo_df])
                 unique_idx = ~_posData.segmInfo_df.index.duplicated()
                 _posData.segmInfo_df = _posData.segmInfo_df[unique_idx]
                 _posData.segmInfo_df.to_csv(_posData.segmInfo_df_csv_path)
         elif win.runDataPrep:
             user_ch_file_paths = []
-            user_ch_name = filename[len(self.data[self.pos_i].basename):]
+            user_ch_name = filename[len(self.data[self.pos_i].basename) :]
             for _posData in self.data:
                 if _posData is None:
                     continue
@@ -1612,20 +1568,17 @@ class DataLoading(LayoutControls):
 
             dataPrepWin = dataPrep.dataPrepWin()
             dataPrepWin.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-            dataPrepWin.titleText = (
-            """
+            dataPrepWin.titleText = """
             Select z-slice (or projection) for each frame/position.<br>
             Once happy, close the window.
-            """)
+            """
             dataPrepWin.show()
             dataPrepWin.initLoading()
             dataPrepWin.SizeT = self.data[0].SizeT
             dataPrepWin.SizeZ = self.data[0].SizeZ
             dataPrepWin.metadataAlreadyAsked = True
-            self.logger.info(f'Loading channel {user_ch_name} data...')
-            dataPrepWin.loadFiles(
-                exp_path, user_ch_file_paths, user_ch_name
-            )
+            self.logger.info(f"Loading channel {user_ch_name} data...")
+            dataPrepWin.loadFiles(exp_path, user_ch_file_paths, user_ch_name)
             dataPrepWin.startAction.setDisabled(True)
             dataPrepWin.onlySelectingZslice = True
 
@@ -1640,18 +1593,18 @@ class DataLoading(LayoutControls):
         keys = []
         posData = self.data[self.pos_i]
         for frame_i, data_dict in enumerate(posData.allData_li):
-            lab = data_dict['labels']
+            lab = data_dict["labels"]
             if lab is None:
                 break
-            
-            acdc_df = data_dict['acdc_df']
+
+            acdc_df = data_dict["acdc_df"]
             if acdc_df is None:
                 break
-            
+
             acdc_dfs.append(acdc_df)
             keys.append(frame_i)
-        
+
         if not acdc_dfs:
             return
-        
-        return pd.concat(acdc_dfs, keys=keys, names=['frame_i'])
+
+        return pd.concat(acdc_dfs, keys=keys, names=["frame_i"])

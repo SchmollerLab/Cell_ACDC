@@ -7,6 +7,7 @@ import skimage.measure
 from .brush_tools import BrushTools
 from .label_editing import LabelEditing
 
+
 class LabelTransformTools(BrushTools, LabelEditing):
     """Extracted from guiWin."""
 
@@ -19,8 +20,7 @@ class LabelTransformTools(BrushTools, LabelEditing):
         # Re-initialize label to expand when we hover on a different ID
         # or we change direction
         reinitExpandingLab = (
-            self.expandingID != self.hoverLabelID
-            or dilation != self.isDilation
+            self.expandingID != self.hoverLabelID or dilation != self.isDilation
         )
 
         ID = self.hoverLabelID
@@ -34,32 +34,28 @@ class LabelTransformTools(BrushTools, LabelEditing):
             self.isExpandingLabel = True
             self.expandingID = ID
             self.expandingLab = np.zeros_like(self.currentLab2D)
-            self.expandingLab[obj.coords[:,-2], obj.coords[:,-1]] = ID
+            self.expandingLab[obj.coords[:, -2], obj.coords[:, -1]] = ID
             self.expandFootprintSize = 1
 
-        prevCoords = (obj.coords[:,-2], obj.coords[:,-1])
-        self.currentLab2D[obj.coords[:,-2], obj.coords[:,-1]] = 0
+        prevCoords = (obj.coords[:, -2], obj.coords[:, -1])
+        self.currentLab2D[obj.coords[:, -2], obj.coords[:, -1]] = 0
         lab_2D = self.get_2Dlab(posData.lab)
-        lab_2D[obj.coords[:,-2], obj.coords[:,-1]] = 0
+        lab_2D[obj.coords[:, -2], obj.coords[:, -1]] = 0
 
         footprint = skimage.morphology.disk(self.expandFootprintSize)
         if dilation:
-            expandedLab = skimage.morphology.dilation(
-                self.expandingLab, footprint
-            )
+            expandedLab = skimage.morphology.dilation(self.expandingLab, footprint)
             self.isDilation = True
         else:
-            expandedLab = skimage.morphology.erosion(
-                self.expandingLab, footprint
-            )
+            expandedLab = skimage.morphology.erosion(self.expandingLab, footprint)
             self.isDilation = False
 
         # Prevent expanding into neighbouring labels
-        expandedLab[self.currentLab2D>0] = 0
+        expandedLab[self.currentLab2D > 0] = 0
 
         # Get coords of the dilated/eroded object
         expandedObj = skimage.measure.regionprops(expandedLab)[0]
-        expandedObjCoords = (expandedObj.coords[:,-2], expandedObj.coords[:,-1])
+        expandedObjCoords = (expandedObj.coords[:, -2], expandedObj.coords[:, -1])
 
         # Add the dilated/erored object
         self.currentLab2D[expandedObjCoords] = self.expandingID
@@ -67,9 +63,9 @@ class LabelTransformTools(BrushTools, LabelEditing):
 
         self.set_2Dlab(lab_2D)
         self.currentLab2D = lab_2D
-        
+
         self.update_rp()
-        
+
         if self.labelsGrad.showLabelsImgAction.isChecked():
             self.img2.setImage(img=self.currentLab2D, autoLevels=False)
 
@@ -91,7 +87,7 @@ class LabelTransformTools(BrushTools, LabelEditing):
             self.updateAllImages()
 
     def _setTempImgExpandLabelContours(self, prevCoords, ax=0):
-        self.contoursImage[prevCoords] = [0,0,0,0]
+        self.contoursImage[prevCoords] = [0, 0, 0, 0]
         currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
         for obj in currentLab2Drp:
             if obj.label == self.expandingID:
@@ -103,16 +99,16 @@ class LabelTransformTools(BrushTools, LabelEditing):
         # Remove previous overlaid mask
         labelsImage = self.getLabelsLayerImage(ax=ax)
         labelsImage[prevCoords] = 0
-        
+
         # Overlay new moved mask
         labelsImage[prevCoords] = self.expandingID
 
         if ax == 0:
-            self.labelsLayerImg1.setImage(
-                self.labelsLayerImg1.image, autoLevels=False)
+            self.labelsLayerImg1.setImage(self.labelsLayerImg1.image, autoLevels=False)
         else:
             self.labelsLayerRightImg.setImage(
-                self.labelsLayerRightImg.image, autoLevels=False)
+                self.labelsLayerRightImg.image, autoLevels=False
+            )
 
     def resetExpandLabel(self):
         self.expandingID = -1
@@ -135,7 +131,7 @@ class LabelTransformTools(BrushTools, LabelEditing):
         self.prevMovePos = (xdata, ydata)
         movingObj = posData.rp[posData.IDs.index(ID)]
         self.movingObjCoords = movingObj.coords.copy()
-        yy, xx = movingObj.coords[:,-2], movingObj.coords[:,-1]
+        yy, xx = movingObj.coords[:, -2], movingObj.coords[:, -1]
         self.currentLab2D[yy, xx] = 0
 
     def moveLabel(self, xPos, yPos):
@@ -143,43 +139,43 @@ class LabelTransformTools(BrushTools, LabelEditing):
         lab_2D = self.get_2Dlab(posData.lab)
         Y, X = lab_2D.shape
         xdata, ydata = int(xPos), int(yPos)
-        if xdata<0 or ydata<0 or xdata>=X or ydata>=Y:
+        if xdata < 0 or ydata < 0 or xdata >= X or ydata >= Y:
             return
 
         self.clearObjContour(ID=self.movingID, ax=0)
 
         xStart, yStart = self.prevMovePos
-        deltaX = xdata-xStart
-        deltaY = ydata-yStart
+        deltaX = xdata - xStart
+        deltaY = ydata - yStart
 
-        yy, xx = self.movingObjCoords[:,-2], self.movingObjCoords[:,-1]
+        yy, xx = self.movingObjCoords[:, -2], self.movingObjCoords[:, -1]
 
         if self.isSegm3D:
-            zz = self.movingObjCoords[:,0]
+            zz = self.movingObjCoords[:, 0]
             posData.lab[zz, yy, xx] = 0
         else:
             posData.lab[yy, xx] = 0
 
-        self.movingObjCoords[:,-2] = self.movingObjCoords[:,-2]+deltaY
-        self.movingObjCoords[:,-1] = self.movingObjCoords[:,-1]+deltaX
+        self.movingObjCoords[:, -2] = self.movingObjCoords[:, -2] + deltaY
+        self.movingObjCoords[:, -1] = self.movingObjCoords[:, -1] + deltaX
 
-        yy, xx = self.movingObjCoords[:,-2], self.movingObjCoords[:,-1]
+        yy, xx = self.movingObjCoords[:, -2], self.movingObjCoords[:, -1]
 
-        yy[yy<0] = 0
-        xx[xx<0] = 0
-        yy[yy>=Y] = Y-1
-        xx[xx>=X] = X-1
+        yy[yy < 0] = 0
+        xx[xx < 0] = 0
+        yy[yy >= Y] = Y - 1
+        xx[xx >= X] = X - 1
 
         if self.isSegm3D:
-            zz = self.movingObjCoords[:,0]
+            zz = self.movingObjCoords[:, 0]
             posData.lab[zz, yy, xx] = self.movingID
         else:
             posData.lab[yy, xx] = self.movingID
-        
+
         self.currentLab2D = self.get_2Dlab(posData.lab)
         if self.labelsGrad.showLabelsImgAction.isChecked():
             self.img2.setImage(self.currentLab2D, autoLevels=False)
-        
+
         self.setTempImg1MoveLabel()
 
         self.prevMovePos = (xdata, ydata)
@@ -189,7 +185,7 @@ class LabelTransformTools(BrushTools, LabelEditing):
             how = self.drawIDsContComboBox.currentText()
         else:
             how = self.getAnnotateHowRightImage()
-        
+
         self._setTempImgExpandLabelContours(prevCoords, ax=ax)
 
     def setTempImg1MoveLabel(self, ax=0):
@@ -197,27 +193,25 @@ class LabelTransformTools(BrushTools, LabelEditing):
             how = self.drawIDsContComboBox.currentText()
         else:
             how = self.getAnnotateHowRightImage()
-        
-        if how.find('contours') != -1:
+
+        if how.find("contours") != -1:
             currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
             for obj in currentLab2Drp:
                 if obj.label == self.movingID:
                     self.addObjContourToContoursImage(obj=obj, ax=ax)
                     break
-        elif how.find('overlay segm. masks') != -1:
+        elif how.find("overlay segm. masks") != -1:
             if ax == 0:
                 self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
                 self.highLightIDLayerImg1.image[:] = 0
-                mask = self.currentLab2D==self.movingID
+                mask = self.currentLab2D == self.movingID
                 self.highLightIDLayerImg1.image[mask] = self.movingID
                 highlightedImage = self.highLightIDLayerImg1.image
                 self.highLightIDLayerImg1.setImage(highlightedImage)
             else:
-                self.labelsLayerRightImg.setImage(
-                    self.currentLab2D, autoLevels=False
-                )
+                self.labelsLayerRightImg.setImage(self.currentLab2D, autoLevels=False)
                 self.highLightIDLayerRightImage.image[:] = 0
-                mask = self.currentLab2D==self.movingID
+                mask = self.currentLab2D == self.movingID
                 self.highLightIDLayerRightImage.image[mask] = self.movingID
                 highlightedImage = self.highLightIDLayerRightImage.image
                 self.highLightIDLayerRightImage.setImage(highlightedImage)

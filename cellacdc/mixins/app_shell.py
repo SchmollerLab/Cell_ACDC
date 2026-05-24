@@ -21,6 +21,7 @@ from cellacdc import (
 from .actions import Actions
 from .session import Session
 
+
 class AppShell(Actions, Session):
     """Extracted from guiWin."""
 
@@ -29,13 +30,13 @@ class AppShell(Actions, Session):
 
     def cleanUpOnError(self):
         self.onEscape()
-        caller = 'Cell-ACDC'
-        if self.module.startswith('spotmax'):
-            caller = 'spotMAX'
-        txt = f'WARNING: {caller} is in error state. Please, restart.'
-        _hl = '*'*100
-        self.titleLabel.setText(txt, color='r')
-        self.logger.info(f'{_hl}\n{txt}\n{_hl}')
+        caller = "Cell-ACDC"
+        if self.module.startswith("spotmax"):
+            caller = "spotMAX"
+        txt = f"WARNING: {caller} is in error state. Please, restart."
+        _hl = "*" * 100
+        self.titleLabel.setText(txt, color="r")
+        self.logger.info(f"{_hl}\n{txt}\n{_hl}")
 
     def copyContent(self):
         pass
@@ -62,8 +63,8 @@ class AppShell(Actions, Session):
         winScreenCenterY = winScreenCenter.y()
         winScreenLeft = winScreenGeom.left()
         winScreenTop = winScreenGeom.top()
-        self.slideshowWinLeft = winScreenCenterX - int(850/2)
-        self.slideshowWinTop = winScreenCenterY - int(800/2)
+        self.slideshowWinLeft = winScreenCenterX - int(850 / 2)
+        self.slideshowWinTop = winScreenCenterY - int(800 / 2)
 
     def initGlobalAttr(self):
         self.setOverlayColors()
@@ -101,13 +102,13 @@ class AppShell(Actions, Session):
             self.keptIDsLineEdit, self.keepIDsConfirmAction
         )
         self._ZprojWidgersEnabledState = None
-        self.imgValueFormatter = 'd'
-        self.rawValueFormatter = 'd'
+        self.imgValueFormatter = "d"
+        self.rawValueFormatter = "d"
         self.lastHoverID = -1
         self.annotOptionsToRestore = None
         self.annotOptionsToRestoreRight = None
         self.rescaleIntensChannelHowMapper = {
-            self.user_ch_name: 'Rescale each 2D image'
+            self.user_ch_name: "Rescale each 2D image"
         }
         self.timestampDialog = None
         self.scaleBarDialog = None
@@ -134,7 +135,7 @@ class AppShell(Actions, Session):
         self.UserEnforced_Tracking = False
 
         self.ax1BrushHoverID = 0
-        
+
         self.disabled_cca_warnings = set()
 
         self.last_pos_i = -1
@@ -148,20 +149,17 @@ class AppShell(Actions, Session):
         self.clickObjYc, self.clickObjXc = None, None
 
         self.cca_df_colnames = cca_df_colnames
-        self.cca_df_dtypes = [
-            str, int, int, str, int, int, bool, bool, int
-        ]
+        self.cca_df_dtypes = [str, int, int, str, int, int, bool, bool, int]
         self.cca_df_default_values = list(base_cca_dict.values())
         self.cca_df_int_cols = [
             col for col in cca_df_colnames if type(base_cca_dict[col]) == int
         ]
         self.lin_tree_df_bool_col = [
-            col for col in cca_df_colnames 
-            if isinstance(base_cca_dict[col], bool)
+            col for col in cca_df_colnames if isinstance(base_cca_dict[col], bool)
         ]
 
         self.lin_tree_col_checks = [
-            'generation_num',
+            "generation_num",
         ]
 
         # self.lin_tree_df_colnames = set(base_cca_df.keys()) | set(lineage_tree_cols)
@@ -170,49 +168,55 @@ class AppShell(Actions, Session):
         # # ]
         # self.lin_tree_df_default_values = list(base_cca_df.values()) + lineage_tree_cols_std_val
         self.lin_tree_df_int_cols = [
-            'generation_num',
-            'relative_ID',
-            'emerg_frame_i',
-            'division_frame_i',
-            'corrected_on_frame_i'
+            "generation_num",
+            "relative_ID",
+            "emerg_frame_i",
+            "division_frame_i",
+            "corrected_on_frame_i",
         ]
         self.lin_tree_df_bool_col = [
-            'is_history_known',
+            "is_history_known",
         ]
 
         self.lin_tree_col_checks = [
-            'generation_num',
+            "generation_num",
         ]
 
-        self.lin_tree_df_colnames = self.lin_tree_df_int_cols + self.lin_tree_df_bool_col + self.lin_tree_col_checks
-        self.SegForLostIDsSettings =  {}
+        self.lin_tree_df_colnames = (
+            self.lin_tree_df_int_cols
+            + self.lin_tree_df_bool_col
+            + self.lin_tree_col_checks
+        )
+        self.SegForLostIDsSettings = {}
 
     def initProfileModels(self):
-        self.logger.info('Initiliazing profilers...')
-        
+        self.logger.info("Initiliazing profilers...")
+
         from ._profile.spline_to_obj import model
-        
+
         self.splineToObjModel = model.Model()
 
         self.splineToObjModel.fit()
 
     def onToggleColorScheme(self):
-        if self.toggleColorSchemeAction.text().find('light') != -1:
-            self._colorScheme = 'light'
+        if self.toggleColorSchemeAction.text().find("light") != -1:
+            self._colorScheme = "light"
             setDarkModeToggleChecked = False
         else:
-            self._colorScheme = 'dark'
+            self._colorScheme = "dark"
             setDarkModeToggleChecked = True
         self.gui_updateSwitchColorSchemeActionText()
         _warnings.warnRestartCellACDCcolorModeToggled(
             self._colorScheme, app_name=self._appName, parent=self
         )
         load.rename_qrc_resources_file(self._colorScheme)
-        self.statusBarLabel.setText(html_utils.paragraph(
-            f'<i>Restart {self._appName} for the change to take effect</i>', 
-            font_color='red'
-        ))
-        self.df_settings.at['colorScheme', 'value'] = self._colorScheme
+        self.statusBarLabel.setText(
+            html_utils.paragraph(
+                f"<i>Restart {self._appName} for the change to take effect</i>",
+                font_color="red",
+            )
+        )
+        self.df_settings.at["colorScheme", "value"] = self._colorScheme
         self.df_settings.to_csv(settings_csv_path)
 
     def openLogFile(self):
@@ -220,7 +224,7 @@ class AppShell(Actions, Session):
         myutils.showInExplorer(self.log_path)
 
     def openNewWindow(self):
-        self.logger.info('Opening a new window...')
+        self.logger.info("Opening a new window...")
         if self.launcherSlot is not None:
             self.launcherSlot()
             return
@@ -235,7 +239,9 @@ class AppShell(Actions, Session):
     def pasteContent(self):
         pass
 
-    def setDisabled(self, disabled:bool, keepDisabled:bool=None, force:bool=False):
+    def setDisabled(
+        self, disabled: bool, keepDisabled: bool = None, force: bool = False
+    ):
         if force:
             if disabled:
                 super().setDisabled(disabled)
@@ -262,21 +268,17 @@ class AppShell(Actions, Session):
 
         for key, tooltip in tooltips.items():
             setShortcut = getattr(self, key).shortcut().toString()
-            if 'Shortcut: ' in tooltip:
-                tooltip = tooltip.replace('Shortcut: ', '\nShortcut: ')
+            if "Shortcut: " in tooltip:
+                tooltip = tooltip.replace("Shortcut: ", "\nShortcut: ")
             elif setShortcut != "":
                 tooltip = re.sub(
-                    r'Shortcut: \"(.*)\"', 
-                    f"Shortcut: \"{setShortcut}\"", 
-                    tooltip
+                    r"Shortcut: \"(.*)\"", f'Shortcut: "{setShortcut}"', tooltip
                 )
             else:
                 tooltip = re.sub(
-                    r'Shortcut: \"(.*)\"', 
-                    f"Shortcut: \"No shortcut\"", 
-                    tooltip
+                    r"Shortcut: \"(.*)\"", f'Shortcut: "No shortcut"', tooltip
                 )
-            
+
             getattr(self, key).setToolTip(tooltip)
             getattr(self, key)._tooltip = tooltip
 
@@ -287,7 +289,7 @@ class AppShell(Actions, Session):
 
     def setWindowTitle(self, title=None):
         if title is None:
-            title = f'Cell-ACDC v{self._acdc_version} - GUI'
+            title = f"Cell-ACDC v{self._acdc_version} - GUI"
         super().setWindowTitle(title)
 
     def showAbout(self):

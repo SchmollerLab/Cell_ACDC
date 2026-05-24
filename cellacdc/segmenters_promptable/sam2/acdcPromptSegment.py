@@ -44,7 +44,9 @@ class Model:
 
         config_file, sam_checkpoint = model_types[model_type]
         sam_checkpoint = os.path.join(sam_segmenters_path, sam_checkpoint)
-        sam = build_sam2(config_file=config_file, ckpt_path=sam_checkpoint, device=device)
+        sam = build_sam2(
+            config_file=config_file, ckpt_path=sam_checkpoint, device=device
+        )
 
         self.model = SAM2ImagePredictor(sam)
         self._embedded_img = None
@@ -167,7 +169,10 @@ class Model:
         else:
             lab_out = np.zeros(image.shape, dtype=np.uint32)
 
-        for prompt_id, (prompt_image, image_origin) in self.prompt_ids_image_mapper.items():
+        for prompt_id, (
+            prompt_image,
+            image_origin,
+        ) in self.prompt_ids_image_mapper.items():
             if prompt_id == 0:
                 continue
 
@@ -178,12 +183,9 @@ class Model:
                 prompt_id, treat_other_objects_as_background
             )
 
-            is_prompt_rgb = (
-                prompt_image.ndim >= 3 and prompt_image.shape[-1] in (3, 4)
-            )
-            is_prompt_z_stack = (
-                (prompt_image.ndim == 3 and not is_prompt_rgb)
-                or (prompt_image.ndim == 4)
+            is_prompt_rgb = prompt_image.ndim >= 3 and prompt_image.shape[-1] in (3, 4)
+            is_prompt_z_stack = (prompt_image.ndim == 3 and not is_prompt_rgb) or (
+                prompt_image.ndim == 4
             )
 
             if is_prompt_rgb:
@@ -218,7 +220,9 @@ class Model:
                     )
                     mask_idx = np.argmax(scores) if multimask_output else 0
                     if multimask_output:
-                        log_mask_selection(prompt_id, masks, scores, mask_idx, z_slice=z)
+                        log_mask_selection(
+                            prompt_id, masks, scores, mask_idx, z_slice=z
+                        )
                     mask = masks[mask_idx].astype(bool)
                     obj_mask[z][mask] = True
             else:

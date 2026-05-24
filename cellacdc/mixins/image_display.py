@@ -23,56 +23,57 @@ from cellacdc import (
 
 from .display_decorations import DisplayDecorations
 
+
 class ImageDisplay(DisplayDecorations):
     """Extracted from guiWin."""
 
     def RGBtoGray(self, R, G, B):
         # see https://stackoverflow.com/questions/17615963/standard-rgb-to-grayscale-conversion
-        C_linear = (0.2126*R + 0.7152*G + 0.0722*B)/255
+        C_linear = (0.2126 * R + 0.7152 * G + 0.0722 * B) / 255
         if C_linear <= 0.0031309:
-            gray = 12.92*C_linear
+            gray = 12.92 * C_linear
         else:
-            gray = 1.055*(C_linear)**(1/2.4) - 0.055
+            gray = 1.055 * (C_linear) ** (1 / 2.4) - 0.055
         return gray
 
     def _getImageupdateAllImages(self, image=None):
         if image is not None:
             return image
-        
+
         img = self.getImage()
         return img
 
     def activeBrushCircleCursors(self, isHoverImg1):
         if self.showMirroredCursorAction.isChecked():
             return self.ax1_BrushCircle, self.ax2_BrushCircle
-        
+
         if isHoverImg1:
-            return self.ax1_BrushCircle,
+            return (self.ax1_BrushCircle,)
         else:
-            return self.ax2_BrushCircle,
+            return (self.ax2_BrushCircle,)
 
     def activeEraserCircleCursors(self, isHoverImg1):
         if self.showMirroredCursorAction.isChecked():
             return self.ax1_EraserCircle, self.ax2_EraserCircle
-        
+
         if isHoverImg1:
-            return self.ax1_EraserCircle,
+            return (self.ax1_EraserCircle,)
         else:
-            return self.ax2_EraserCircle,
+            return (self.ax2_EraserCircle,)
 
     def activeEraserXCursors(self, isHoverImg1):
         if self.showMirroredCursorAction.isChecked():
             return self.ax1_EraserX, self.ax2_EraserX
-        
+
         if isHoverImg1:
-            return self.ax1_EraserX,
+            return (self.ax1_EraserX,)
         else:
-            return self.ax2_EraserX,
+            return (self.ax2_EraserX,)
 
     def addFontSizeActions(self, menu, slot):
         fontActionGroup = QActionGroup(self)
         fontActionGroup.setExclusive(True)
-        for fontSize in range(4,27):
+        for fontSize in range(4, 27):
             action = QAction(self)
             action.setText(str(fontSize))
             action.setCheckable(True)
@@ -92,12 +93,12 @@ class ImageDisplay(DisplayDecorations):
         fontSize = self.fontSizeSpinBox.value()
         if fontSize == self.fontSize:
             return
-        
+
         self.fontSize = fontSize
 
-        self.df_settings.at['fontSize', 'value'] = self.fontSize
+        self.df_settings.at["fontSize", "value"] = self.fontSize
         self.df_settings.to_csv(self.settings_csv_path)
-        
+
         self.setAllIDs()
         posData = self.data[self.pos_i]
         for ax in range(2):
@@ -109,13 +110,17 @@ class ImageDisplay(DisplayDecorations):
 
     def clearCursors(self):
         self.ax1_cursor.setData([], [])
-        self.ax2_cursor.setData([], [])              
+        self.ax2_cursor.setData([], [])
         self.setHoverToolSymbolData(
-            [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
-        )  
+            [],
+            [],
+            (self.ax2_BrushCircle, self.ax1_BrushCircle),
+        )
         eraserCursors = (
-            self.ax1_EraserCircle, self.ax2_EraserCircle,
-            self.ax1_EraserX, self.ax2_EraserX
+            self.ax1_EraserCircle,
+            self.ax2_EraserCircle,
+            self.ax1_EraserX,
+            self.ax2_EraserX,
         )
         self.setHoverToolSymbolData([], [], eraserCursors)
 
@@ -129,14 +134,15 @@ class ImageDisplay(DisplayDecorations):
             ask_SizeT=True,
             ask_TimeIncrement=True,
             ask_PhysicalSizes=True,
-            save=True, singlePos=True,
-            askSegm3D=False
+            save=True,
+            singlePos=True,
+            askSegm3D=False,
         )
-        if hasattr(self, 'timestamp'):
+        if hasattr(self, "timestamp"):
             self.timestamp.setSecondsPerFrame(posData.TimeIncrement)
             self.updateTimestampFrame()
-        
-        if hasattr(self, 'scaleBar'):
+
+        if hasattr(self, "scaleBar"):
             self.scaleBar.updatePhysicalLength(posData.PhysicalSizeX)
 
     def enableZstackWidgets(self, enabled):
@@ -171,7 +177,7 @@ class ImageDisplay(DisplayDecorations):
             self.SizeZlabel.hide()
             self.switchPlaneCombobox.hide()
             self.switchPlaneCombobox.setDisabled(True)
-        
+
         self.imgGrad.rescaleAcrossZstackAction.setDisabled(not enabled)
         for ch, overlayItems in self.overlayLayersItems.items():
             lutItem = overlayItems[1]
@@ -179,12 +185,12 @@ class ImageDisplay(DisplayDecorations):
 
     def equalizeHist(self, checked=True):
         self.img1.useEqualized = checked
-        
+
         if not checked:
             self.updateAllImages()
             return
 
-        self.logger.info('Equalizing image histogram...')
+        self.logger.info("Equalizing image histogram...")
         for pos_i, _posData in enumerate(self.data):
             n_dim_img = _posData.img_data.ndim
             _posData.equalized_img_data = preprocess.PreprocessedData()
@@ -205,12 +211,12 @@ class ImageDisplay(DisplayDecorations):
                     self.img1.updateMinMaxValuesEqualizedData(
                         self.data, pos_i, frame_i, None
                     )
-                
+
         self.updateAllImages()
 
     def getCheckNormAction(self):
         normalize = False
-        how = ''
+        how = ""
         for action in self.normalizeQActionGroup.actions():
             if action.isChecked():
                 how = action.text()
@@ -221,7 +227,7 @@ class ImageDisplay(DisplayDecorations):
     def getContoursImageItem(self, ax, force=False):
         if not self.areContoursRequested(ax) and not force:
             return
-        
+
         if ax == 0:
             return self.ax1_contoursImageItem
         else:
@@ -235,11 +241,9 @@ class ImageDisplay(DisplayDecorations):
         return posData.img_data[posData.frame_i]
 
     def getDistantGray(self, desiredGray, bkgrGray):
-        isDesiredSimilarToBkgr = (
-            abs(desiredGray-bkgrGray) < 0.3
-        )
+        isDesiredSimilarToBkgr = abs(desiredGray - bkgrGray) < 0.3
         if isDesiredSimilarToBkgr:
-            return 1-desiredGray
+            return 1 - desiredGray
         else:
             return desiredGray
 
@@ -247,16 +251,16 @@ class ImageDisplay(DisplayDecorations):
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
-        
+
         if raw:
             return self.getRawImageLayer0(frame_i)
-        
+
         if self.viewPreprocDataToggle.isChecked():
             try:
                 img = posData.preproc_img_data[frame_i]
                 if posData.SizeZ == 1:
                     return np.array(img)
-                
+
                 self.updateZsliceScrollbar(frame_i)
                 z_slice = self.z_slice_index()
                 img = img[z_slice]
@@ -266,19 +270,19 @@ class ImageDisplay(DisplayDecorations):
                 #     'Pre-processed image not existing --> returning raw image'
                 # )
                 return self.getRawImageLayer0(frame_i)
-        
+
         viewCombinedImageData = (
             self.viewCombineChannelDataToggle.isChecked()
             and self.combineDialog is not None
             and not self.combineDialog.saveAsSegm()
         )
-        
+
         if viewCombinedImageData:
             try:
                 img = posData.combine_img_data[frame_i]
                 if posData.SizeZ == 1:
                     return np.array(img)
-                
+
                 self.updateZsliceScrollbar(frame_i)
                 z_slice = self.z_slice_index()
                 img = img[z_slice]
@@ -288,12 +292,12 @@ class ImageDisplay(DisplayDecorations):
                 #     'combined image not existing --> returning raw image'
                 # )
                 return self.getRawImageLayer0(frame_i)
-            
+
         if self.equalizeHistPushButton.isChecked():
             img = posData.equalized_img_data[frame_i]
             if posData.SizeZ == 1:
                 return np.array(img)
-            
+
             self.updateZsliceScrollbar(frame_i)
             z_slice = self.z_slice_index()
             img = img[z_slice]
@@ -321,16 +325,16 @@ class ImageDisplay(DisplayDecorations):
             return self.ax2_lostTrackedObjImageItem
 
     def getObjBbox(self, obj_bbox):
-        if self.isSegm3D and len(obj_bbox)==6:
+        if self.isSegm3D and len(obj_bbox) == 6:
             obj_bbox = (obj_bbox[1], obj_bbox[2], obj_bbox[4], obj_bbox[5])
             return obj_bbox
         else:
             return obj_bbox
 
     def getObjImage(self, obj_image, obj_bbox, z_slice=None):
-        if self.isSegm3D and len(obj_bbox)==6:
+        if self.isSegm3D and len(obj_bbox) == 6:
             zProjHow = self.zProjComboBox.currentText()
-            isZslice = zProjHow == 'single z-slice'
+            isZslice = zProjHow == "single z-slice"
             if not isZslice:
                 # required a projection
                 return obj_image.max(axis=0)
@@ -340,7 +344,7 @@ class ImageDisplay(DisplayDecorations):
                 z_slice = self.z_lab()
             if isinstance(z_slice, tuple):
                 z_slice = z_slice[-1]
-                
+
             local_z = z_slice - min_z
             try:
                 obi_image_2d = obj_image[local_z]
@@ -375,7 +379,7 @@ class ImageDisplay(DisplayDecorations):
     def getPreComputedMinMaxZstack(self, channel: str):
         if channel != self.user_ch_name:
             return None
-        
+
         posData = self.data[self.pos_i]
         zstack_min, zstack_max = np.inf, 0
         for z in range(posData.SizeZ):
@@ -383,14 +387,14 @@ class ImageDisplay(DisplayDecorations):
             levels = self.img1.minMaxValuesMapper.get(key)
             if levels is None:
                 return
-            
+
             img_min, img_max = levels
             if img_min < zstack_min:
                 zstack_min = img_min
-            
+
             if img_max > zstack_max:
                 zstack_max = img_max
-        
+
         return (zstack_min, zstack_max)
 
     def getRawImage(self, frame_i=None, filename=None):
@@ -400,7 +404,7 @@ class ImageDisplay(DisplayDecorations):
         if filename is None:
             rawImgData = posData.img_data[frame_i]
             isLayer0 = True
-        else: 
+        else:
             rawImgData = posData.ol_data[filename][frame_i]
             isLayer0 = False
         if posData.SizeZ > 1:
@@ -425,10 +429,10 @@ class ImageDisplay(DisplayDecorations):
             return img
 
         raise ValueError(
-            'Raw image for display must be 2D (Y, X) or RGB/A (Y, X, 3 or 4); '
-            f'got shape={getattr(img, "shape", None)}, ndim={getattr(img, "ndim", None)} '
-            f'for frame_i={frame_i} (metadata SizeT={posData.SizeT}, SizeZ={posData.SizeZ}). '
-            'Check that metadata SizeT/SizeZ matches the loaded array (e.g. squeezed TIFF vs CSV).'
+            "Raw image for display must be 2D (Y, X) or RGB/A (Y, X, 3 or 4); "
+            f"got shape={getattr(img, 'shape', None)}, ndim={getattr(img, 'ndim', None)} "
+            f"for frame_i={frame_i} (metadata SizeT={posData.SizeT}, SizeZ={posData.SizeZ}). "
+            "Check that metadata SizeT/SizeZ matches the loaded array (e.g. squeezed TIFF vs CSV)."
         )
 
     def get_2Dimg_from_3D(self, imgData, isLayer0=True, frame_i=None):
@@ -438,36 +442,36 @@ class ImageDisplay(DisplayDecorations):
         if frame_i < 0:
             frame_i = 0
             frame_i = posData.frame_i = 0
-        
+
         axis_slice = self.zSliceScrollBar.sliderPosition()
-        if self.switchPlaneCombobox.depthAxes() == 'x':
+        if self.switchPlaneCombobox.depthAxes() == "x":
             return imgData[:, :, axis_slice].copy()
-        elif self.switchPlaneCombobox.depthAxes() == 'y':
+        elif self.switchPlaneCombobox.depthAxes() == "y":
             return imgData[:, axis_slice].copy()
-        
+
         idx = (posData.filename, frame_i)
         zProjHow_L0 = self.zProjComboBox.currentText()
         if isLayer0:
             try:
-                z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+                z = posData.segmInfo_df.at[idx, "z_slice_used_gui"]
             except ValueError as e:
-                z = posData.segmInfo_df.loc[idx, 'z_slice_used_gui'].iloc[0] 
+                z = posData.segmInfo_df.loc[idx, "z_slice_used_gui"].iloc[0]
             zProjHow = zProjHow_L0
         else:
             z = self.zSliceOverlay_SB.sliderPosition()
             zProjHow_L1 = self.zProjOverlay_CB.currentText()
-            if zProjHow_L1 == 'same as above': 
+            if zProjHow_L1 == "same as above":
                 zProjHow = zProjHow_L0
             else:
                 zProjHow = zProjHow_L1
-        
-        if zProjHow == 'single z-slice':
-            img = imgData[z] #.copy()
-        elif zProjHow == 'max z-projection':
+
+        if zProjHow == "single z-slice":
+            img = imgData[z]  # .copy()
+        elif zProjHow == "max z-projection":
             img = imgData.max(axis=0)
-        elif zProjHow == 'mean z-projection':
+        elif zProjHow == "mean z-projection":
             img = imgData.mean(axis=0)
-        elif zProjHow == 'median z-proj.':
+        elif zProjHow == "median z-proj.":
             img = np.median(imgData, axis=0)
         return img
 
@@ -476,7 +480,7 @@ class ImageDisplay(DisplayDecorations):
             if force_z:
                 return lab[self.z_lab()]
             zProjHow = self.zProjComboBox.currentText()
-            isZslice = zProjHow == 'single z-slice'
+            isZslice = zProjHow == "single z-slice"
             if isZslice:
                 return lab[self.z_lab()]
             else:
@@ -484,7 +488,7 @@ class ImageDisplay(DisplayDecorations):
         else:
             return lab
 
-    def get_2Drp(self, lab=None):  
+    def get_2Drp(self, lab=None):
         if self.isSegm3D:
             if lab is None:
                 # self.currentLab2D is defined at self.setImageImg2()
@@ -500,27 +504,25 @@ class ImageDisplay(DisplayDecorations):
         z_slice = self.z_lab()
         img = posData.img_data[posData.frame_i]
         Y, X = img[z_slice].shape[-2:]
-            
+
         self.contoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
 
     def initImgCmap(self):
-        if not 'img_cmap' in self.df_settings.index:
-            self.df_settings.at['img_cmap', 'value'] = 'grey'
-        self.imgCmapName = self.df_settings.at['img_cmap', 'value']
+        if not "img_cmap" in self.df_settings.index:
+            self.df_settings.at["img_cmap", "value"] = "grey"
+        self.imgCmapName = self.df_settings.at["img_cmap", "value"]
         self.imgCmap = self.imgGrad.cmaps[self.imgCmapName]
-        if self.imgCmapName != 'grey':
+        if self.imgCmapName != "grey":
             # To ensure mapping to colors we need to normalize image
             self.normalizeByMaxAction.setChecked(True)
 
     def initImgGradRescaleIntensitiesHowPreference(self):
         posData = self.data[self.pos_i]
         channelName = posData.user_ch_name
-        if f'how_rescale_intensities_{channelName}' not in self.df_settings.index:
+        if f"how_rescale_intensities_{channelName}" not in self.df_settings.index:
             return
-        
-        how = self.df_settings.at[
-            f'how_rescale_intensities_{channelName}', 'value'
-        ]
+
+        how = self.df_settings.at[f"how_rescale_intensities_{channelName}", "value"]
         self.imgGrad.setRescaleIntensitiesHow(how)
 
     def initLostObjContoursImage(self):
@@ -528,7 +530,7 @@ class ImageDisplay(DisplayDecorations):
         z_slice = self.z_lab()
         img = posData.img_data[posData.frame_i]
         Y, X = img[z_slice].shape[-2:]
-            
+
         self.lostObjContoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
 
     def initLostTrackedObjContoursImage(self):
@@ -536,16 +538,16 @@ class ImageDisplay(DisplayDecorations):
         z_slice = self.z_lab()
         img = posData.img_data[posData.frame_i]
         Y, X = img[z_slice].shape[-2:]
-            
+
         self.lostTrackedObjContoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
 
     def initManualBackgroundImage(self):
         posData = self.data[self.pos_i]
-        if hasattr(posData, 'lab'):
+        if hasattr(posData, "lab"):
             Y, X = posData.lab.shape[-2:]
         else:
             Y, X = posData.img_data.shape[-2:]
-        if not hasattr(self, 'manualBackgroundTextItems'):
+        if not hasattr(self, "manualBackgroundTextItems"):
             self.manualBackgroundTextItems = {}
         posData.manualBackgroundImage = np.zeros((Y, X, 4), dtype=np.uint8)
         if posData.manualBackgroundLab is None:
@@ -553,21 +555,21 @@ class ImageDisplay(DisplayDecorations):
 
     def initTextAnnot(self, force=False):
         posData = self.data[self.pos_i]
-        if hasattr(posData, 'lab'):
+        if hasattr(posData, "lab"):
             Y, X = posData.lab.shape[-2:]
         else:
             Y, X = posData.img_data.shape[-2:]
         self.textAnnot[0].initItem((Y, X))
-        self.textAnnot[1].initItem((Y, X))  
+        self.textAnnot[1].initItem((Y, X))
 
     def invertBw(self, checked, update=True):
         self.invertBwAlreadyCalledOnce = True
-        
+
         try:
             self.labelsGrad.invertBwAction.toggled.disconnect()
         except Exception as err:
             pass
-        
+
         self.labelsGrad.invertBwAction.setChecked(checked)
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
 
@@ -584,7 +586,7 @@ class ImageDisplay(DisplayDecorations):
         self.imgGradRight.setInvertedColorMaps(checked)
         self.imgGradRight.invertCurrentColormap(checked)
 
-        if hasattr(self, 'overlayLayersItems'):
+        if hasattr(self, "overlayLayersItems"):
             for items in self.overlayLayersItems.values():
                 lutItem = items[1]
                 lutItem.invertBwAction.toggled.disconnect()
@@ -595,67 +597,65 @@ class ImageDisplay(DisplayDecorations):
         if self.slideshowWin is not None:
             self.slideshowWin.is_bw_inverted = checked
             self.slideshowWin.update_img()
-        self.df_settings.at['is_bw_inverted', 'value'] = 'Yes' if checked else 'No'
+        self.df_settings.at["is_bw_inverted", "value"] = "Yes" if checked else "No"
         self.df_settings.to_csv(self.settings_csv_path)
         if checked:
             # Light mode
-            self.equalizeHistPushButton.setStyleSheet('')
+            self.equalizeHistPushButton.setStyleSheet("")
             self.graphLayout.setBackground(graphLayoutBkgrColor)
-            self.ax2_BrushCirclePen = pg.mkPen((150,150,150), width=2)
-            self.ax2_BrushCircleBrush = pg.mkBrush((200,200,200,150))
-            self.titleColor = 'black'    
+            self.ax2_BrushCirclePen = pg.mkPen((150, 150, 150), width=2)
+            self.ax2_BrushCircleBrush = pg.mkBrush((200, 200, 200, 150))
+            self.titleColor = "black"
         else:
             # Dark mode
             self.equalizeHistPushButton.setStyleSheet(
-                'QPushButton {background-color: #282828; color: #F0F0F0;}'
+                "QPushButton {background-color: #282828; color: #F0F0F0;}"
             )
             self.graphLayout.setBackground(darkBkgrColor)
             self.ax2_BrushCirclePen = pg.mkPen(width=2)
-            self.ax2_BrushCircleBrush = pg.mkBrush((255,255,255,50))
-            self.titleColor = 'white'
-        
-        if not hasattr(self, 'textAnnot'):
+            self.ax2_BrushCircleBrush = pg.mkBrush((255, 255, 255, 50))
+            self.titleColor = "white"
+
+        if not hasattr(self, "textAnnot"):
             return
-        
+
         self.textAnnot[0].invertBlackAndWhite()
         self.textAnnot[1].invertBlackAndWhite()
 
-        self.objLabelAnnotRgb = tuple(
-            self.textAnnot[0].item.colors()['label'][:3]
-        )
+        self.objLabelAnnotRgb = tuple(self.textAnnot[0].item.colors()["label"][:3])
         self.textIDsColorButton.setColor(self.objLabelAnnotRgb)
         self.imgGrad.textColorButton.setColor(self.objLabelAnnotRgb)
         for items in self.overlayLayersItems.values():
             lutItem = items[1]
             lutItem.textColorButton.setColor(self.objLabelAnnotRgb)
-        
+
         if update:
             self.updateAllImages()
 
     def isObjVisible(self, obj_bbox, debug=False, z_slice=None):
         if z_slice is None:
             z_slice = self.z_lab()
-            
+
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
-            isZslice = zProjHow == 'single z-slice'
+            isZslice = zProjHow == "single z-slice"
             if not isZslice:
                 # required a projection --> all obj are visible
                 return True
-            
+
             depthAxes = self.switchPlaneCombobox.depthAxes()
-            
+
             min_z, min_y, min_x, max_z, max_y, max_x = obj_bbox
-            if depthAxes == 'z':
+            if depthAxes == "z":
                 min_val, max_val = min_z, max_z
                 val = z_slice
-            elif depthAxes == 'y':
+            elif depthAxes == "y":
                 min_val, max_val = min_y, max_y
                 val = z_slice[-1]
             else:
                 min_val, max_val = min_x, max_x
                 val = z_slice[-1]
-            
+
             if val >= min_val and val < max_val:
                 return True
             else:
@@ -671,18 +671,14 @@ class ImageDisplay(DisplayDecorations):
                 parent=self,
                 button_toUncheck=self.slideshowButton,
                 linkWindow=posData.SizeT > 1,
-                enableOverlay=True, 
-                enableMirroredCursor=True
+                enableOverlay=True,
+                enableMirroredCursor=True,
             )
-            self.slideshowWin.img.minMaxValuesMapper = (
-                self.img1.minMaxValuesMapper
-            )
+            self.slideshowWin.img.minMaxValuesMapper = self.img1.minMaxValuesMapper
             self.slideshowWin.img.setCurrentPosIndex(self.pos_i)
             h = self.drawIDsContComboBox.size().height()
             self.slideshowWin.framesScrollBar.setFixedHeight(h)
-            self.slideshowWin.overlayButton.setChecked(
-                self.overlayButton.isChecked()
-            )
+            self.slideshowWin.overlayButton.setChecked(self.overlayButton.isChecked())
             self.slideshowWin.sigHoveringImage.connect(
                 self.setMirroredCursorFromSecondWindow
             )
@@ -691,19 +687,17 @@ class ImageDisplay(DisplayDecorations):
                 self.slideshowWin.img.setCurrentZsliceIndex(z_slice)
                 self.slideshowWin.zSliceScrollBar.setSliderPosition(z_slice)
                 self.slideshowWin.z_label.setText(
-                    f'z-slice  {z_slice+1:02}/{posData.SizeZ}'
+                    f"z-slice  {z_slice + 1:02}/{posData.SizeZ}"
                 )
             self.slideshowWin.update_img()
-            self.slideshowWin.show(
-                left=self.slideshowWinLeft, top=self.slideshowWinTop
-            )
+            self.slideshowWin.show(left=self.slideshowWinLeft, top=self.slideshowWinTop)
         else:
             self.slideshowWin.close()
             self.slideshowWin = None
 
     def normaliseIntensitiesActionTriggered(self, action):
         how = action.text()
-        self.df_settings.at['how_normIntensities', 'value'] = how
+        self.df_settings.at["how_normIntensities", "value"] = how
         self.df_settings.to_csv(self.settings_csv_path)
         self.updateAllImages()
         self.updateImageValueFormatter()
@@ -712,32 +706,32 @@ class ImageDisplay(DisplayDecorations):
         action, normalize, how = self.getCheckNormAction()
         if not normalize:
             return img
-        
-        if how == 'Do not normalize. Display raw image':
-            img = img 
-        elif how == 'Convert to floating point format with values [0, 1]':
+
+        if how == "Do not normalize. Display raw image":
+            img = img
+        elif how == "Convert to floating point format with values [0, 1]":
             img = myutils.img_to_float(img)
         # elif how == 'Rescale to 8-bit unsigned integer format with values [0, 255]':
         #     img = skimage.img_as_float(img)
         #     img = (img*255).astype(np.uint8)
         #     return img
-        elif how == 'Rescale to [0, 1]':
+        elif how == "Rescale to [0, 1]":
             img = skimage.img_as_float(img)
             img = skimage.exposure.rescale_intensity(img)
-        elif how == 'Normalize by max value':
-            img = img/np.max(img)
+        elif how == "Normalize by max value":
+            img = img / np.max(img)
         return img
 
     def removeAxLimits(self):
-        self.ax1.vb.state['limits']['xLimits'] = [-1E307, +1E307]
-        self.ax1.vb.state['limits']['yLimits'] = [-1E307, +1E307]
+        self.ax1.vb.state["limits"]["xLimits"] = [-1e307, +1e307]
+        self.ax1.vb.state["limits"]["yLimits"] = [-1e307, +1e307]
 
     def rescaleIntensExportToVideoDialog(self, how, channel, setImage=True):
         if channel == self.user_ch_name:
             lutItem = self.imgGrad
         else:
             lutItem = self.overlayLayersItems[channel][1]
-            
+
         for action in lutItem.rescaleActionGroup.actions():
             if action.text() == how:
                 action.trigger()
@@ -745,17 +739,13 @@ class ImageDisplay(DisplayDecorations):
                 break
 
     def rescaleIntensitiesLut(
-            self, 
-            action: QAction=None, 
-            setImage: bool=True,
-            imageItem=None
-        ):
+        self, action: QAction = None, setImage: bool = True, imageItem=None
+    ):
         if not self.isDataLoaded:
             self.logger.info(
-                'WARNING: Data is not loaded. '
-                'Intensities will be rescaled later.'
+                "WARNING: Data is not loaded. Intensities will be rescaled later."
             )
-            return 
+            return
 
         posData = self.data[self.pos_i]
         if imageItem is None:
@@ -766,55 +756,55 @@ class ImageDisplay(DisplayDecorations):
             channel = imageItem.channelName
             _, filename = self.getPathFromChName(channel, posData)
             image_data = posData.fluo_data_dict[filename]
-        
+
         triggeredByUser = True
         if action is None:
             triggeredByUser = False
             action = imageItem.lutItem.rescaleActionGroup.checkedAction()
-        
+
         how = action.text()
-        
-        self.df_settings.at[f'how_rescale_intensities_{channel}', 'value'] = how
+
+        self.df_settings.at[f"how_rescale_intensities_{channel}", "value"] = how
         self.df_settings.to_csv(self.settings_csv_path)
-        
-        if how == 'Rescale each 2D image':
+
+        if how == "Rescale each 2D image":
             if how == self.rescaleIntensChannelHowMapper[channel]:
                 # No need to update since we have autoscale
-                return       
-            
+                return
+
             imageItem.setEnableAutoLevels(True)
             if setImage:
                 imageItem.setImage(imageItem.image)
             return
-        
+
         lutLevelsCh = posData.lutLevels[channel]
-        
-        if how == 'Rescale across z-stack':            
+
+        if how == "Rescale across z-stack":
             imageItem.setEnableAutoLevels(False)
             levels_key = (how, posData.frame_i)
             levels = lutLevelsCh.get(levels_key)
             if levels is None:
                 levels = self.getPreComputedMinMaxZstack(channel)
-                
+
             if levels is None:
                 image_zstack = image_data[posData.frame_i]
                 levels = (image_zstack.min(), image_zstack.max())
             lutLevelsCh[levels_key] = levels
             imageItem.setLevels(levels)
-        elif how == 'Rescale across time frames':            
+        elif how == "Rescale across time frames":
             imageItem.setEnableAutoLevels(False)
             levels_key = (how, None)
             levels = lutLevelsCh.get(levels_key)
             if levels is None:
                 levels = (image_data.min(), image_data.max())
-                
+
             lutLevelsCh[levels_key] = levels
             imageItem.setLevels(levels)
-        elif how == 'Choose custom levels...':
+        elif how == "Choose custom levels...":
             autoLevelsEnabledBefore = imageItem.autoLevelsEnabled
             imageItem.setEnableAutoLevels(False)
             if triggeredByUser:
-                current_min, current_max = imageItem.getLevels() 
+                current_min, current_max = imageItem.getLevels()
                 dtype_max = np.iinfo(image_data.dtype).max
                 max_value = image_data.max()
                 min_value = image_data.min()
@@ -823,7 +813,7 @@ class ImageDisplay(DisplayDecorations):
                     init_max_value=current_max,
                     maximum_max_value=max_value,
                     minimum_min_value=min_value,
-                    parent=self
+                    parent=self,
                 )
                 win.sigLevelsChanged.connect(
                     partial(self.customLevelsLutChanged, imageItem=imageItem)
@@ -831,14 +821,14 @@ class ImageDisplay(DisplayDecorations):
                 win.exec_()
                 if win.cancel:
                     imageItem.setEnableAutoLevels(autoLevelsEnabledBefore)
-                    self.logger.info('Custom LUT levels setting cancelled.')
+                    self.logger.info("Custom LUT levels setting cancelled.")
                     self.updateAllImages()
                     return
                 selectedLevels = win.selectedLevels
             else:
                 selectedLevels = imageItem.getLevels()
             imageItem.setLevels(selectedLevels)
-        elif how == 'Do no rescale, display raw image':            
+        elif how == "Do no rescale, display raw image":
             imageItem.setEnableAutoLevels(False)
             levels_key = (how, None)
             levels = lutLevelsCh.get(levels_key)
@@ -847,9 +837,9 @@ class ImageDisplay(DisplayDecorations):
                 levels = (0, dtype_max)
             lutLevelsCh[levels_key] = levels
             imageItem.setLevels(levels)
-        
+
         self.rescaleIntensChannelHowMapper[channel] = how
-        
+
         if setImage:
             imageItem.setImage(imageItem.image)
 
@@ -864,19 +854,16 @@ class ImageDisplay(DisplayDecorations):
         self.isRangeReset = True
 
     def resizeGui(self):
-        self.ax1.vb.state['limits']['xRange'] = [None, None]
-        self.ax1.vb.state['limits']['yRange'] = [None, None]
+        self.ax1.vb.state["limits"]["xRange"] = [None, None]
+        self.ax1.vb.state["limits"]["yRange"] = [None, None]
         self.autoRange()
-        if self.ax1.getViewBox().state['limits']['xRange'][0] is not None:
+        if self.ax1.getViewBox().state["limits"]["xRange"][0] is not None:
             self.bottomScrollArea._resizeVertical()
             return
         (xmin, xmax), (ymin, ymax) = self.ax1.viewRange()
-        maxYRange = int((ymax-ymin)*1.5)
-        maxXRange = int((xmax-xmin)*1.5)
-        self.ax1.setLimits(
-            maxYRange=maxYRange, 
-            maxXRange=maxXRange
-        )
+        maxYRange = int((ymax - ymin) * 1.5)
+        maxXRange = int((xmax - xmin) * 1.5)
+        self.ax1.setLimits(maxYRange=maxYRange, maxXRange=maxXRange)
         self.bottomScrollArea._resizeVertical()
         QTimer.singleShot(200, self.autoRange)
 
@@ -964,40 +951,41 @@ class ImageDisplay(DisplayDecorations):
         self.img1.setCurrentFrameIndex(posData.frame_i)
         if posData.SizeZ > 1:
             zProjHow = self.zProjComboBox.currentText()
-            if zProjHow == 'single z-slice':
+            if zProjHow == "single z-slice":
                 z = self.zSliceScrollBar.sliderPosition()
             else:
                 z = zProjHow
-            
+
             self.img1.setCurrentZsliceIndex(z)
 
         self.img1.setImage(
-            img, next_frame_image=self.nextFrameImage(),
-            scrollbar_value=posData.frame_i+2
+            img,
+            next_frame_image=self.nextFrameImage(),
+            scrollbar_value=posData.frame_i + 2,
         )
 
     def setImageImg2(self, updateLookuptable=True, set_image=True):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
-        if mode == 'Segmentation and Tracking' or self.isSnapshot:
+        if mode == "Segmentation and Tracking" or self.isSnapshot:
             # self.addExistingDelROIs()
             allDelIDs, lab2D = self.getDelROIlab()
         else:
             lab2D = self.get_2Dlab(posData.lab, force_z=False)
             allDelIDs = set()
-        
-        self.currentLab2D = lab2D   
+
+        self.currentLab2D = lab2D
         if self.labelsGrad.permanentGreedyCmapAction.isChecked() and updateLookuptable:
             self.greedyShuffleCmap(updateImages=False)
-            
+
         if self.labelsGrad.showLabelsImgAction.isChecked() and set_image:
             self.img2.setImage(lab2D, z=self.z_lab(), autoLevels=False)
-        
+
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
 
     def setLastUserNormAction(self):
-        how = self.df_settings.at['how_normIntensities', 'value']
+        how = self.df_settings.at["how_normIntensities", "value"]
         for action in self.normalizeQActionGroup.actions():
             if action.text() == how:
                 action.setChecked(True)
@@ -1028,7 +1016,7 @@ class ImageDisplay(DisplayDecorations):
         else:
             self.graphLayout.removeItem(self.titleLabel)
             self.graphLayout.addItem(self.titleLabel, row=0, col=1)
-            # self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignCenter)  
+            # self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignCenter)
             self.ax2.hide()
             oldLink = self.ax2.vb.linkedView(self.ax1.vb.YAxis)
             try:
@@ -1039,13 +1027,13 @@ class ImageDisplay(DisplayDecorations):
 
     def set_2Dlab(self, lab2D, lab3D=None):
         posData = self.data[self.pos_i]
-        
+
         if lab3D is None:
             lab3D = posData.lab
-            
+
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
-            isZslice = zProjHow == 'single z-slice'
+            isZslice = zProjHow == "single z-slice"
             if isZslice:
                 lab3D[self.z_lab()] = lab2D
             else:
@@ -1062,9 +1050,9 @@ class ImageDisplay(DisplayDecorations):
         self.setTwoImagesLayout(checked)
         self.setAnnotOptionsRightImageLabelsDisabled(checked)
         if checked:
-            self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
-            self.df_settings.at['isNextFrameVisible', 'value'] = 'No'
-            self.df_settings.at['isRightImageVisible', 'value'] = 'No'
+            self.df_settings.at["isLabelsVisible", "value"] = "Yes"
+            self.df_settings.at["isNextFrameVisible", "value"] = "No"
+            self.df_settings.at["isRightImageVisible", "value"] = "No"
             self.rightBottomGroupbox.show()
             self.rightBottomGroupbox.setChecked(True)
             if not self.isDataLoading:
@@ -1072,20 +1060,20 @@ class ImageDisplay(DisplayDecorations):
         else:
             self.clearAx2Items()
             self.img2.clear()
-            self.df_settings.at['isLabelsVisible', 'value'] = 'No'
+            self.df_settings.at["isLabelsVisible", "value"] = "No"
             self.rightBottomGroupbox.hide()
             self.moveDelRoisToLeft()
-        
+
         self.df_settings.to_csv(self.settings_csv_path)
         QTimer.singleShot(200, self.resizeGui)
 
         self.setBottomLayoutStretch()
 
     def showMirroredCursorToggled(self, checked):
-        value = 'Yes' if checked else 'No'
-        self.df_settings.at['showMirroredCursor', 'value'] = value
+        value = "Yes" if checked else "No"
+        self.df_settings.at["showMirroredCursor", "value"] = value
         self.df_settings.to_csv(settings_csv_path)
-        
+
         if not checked:
             self.clearCursors()
 
@@ -1094,84 +1082,83 @@ class ImageDisplay(DisplayDecorations):
         self.rightImageFramesScrollbar.setDisabled(not checked)
         self.setTwoImagesLayout(checked)
         if checked:
-            self.df_settings.at['isNextFrameVisible', 'value'] = 'Yes'
-            self.df_settings.at['isRightImageVisible', 'value'] = 'No'
-            self.df_settings.at['isLabelsVisible', 'value'] = 'No'
-            self.graphLayout.addItem(
-                self.imgGradRight, row=1, col=self.plotsCol+2
-            )
+            self.df_settings.at["isNextFrameVisible", "value"] = "Yes"
+            self.df_settings.at["isRightImageVisible", "value"] = "No"
+            self.df_settings.at["isLabelsVisible", "value"] = "No"
+            self.graphLayout.addItem(self.imgGradRight, row=1, col=self.plotsCol + 2)
             self.rightBottomGroupbox.show()
             self.rightBottomGroupbox.setChecked(True)
-            self.drawNothingCheckboxRight.click()            
+            self.drawNothingCheckboxRight.click()
             if not self.isDataLoading:
                 self.updateAllImages()
         else:
             self.clearAx2Items()
             self.rightBottomGroupbox.hide()
-            self.df_settings.at['isNextFrameVisible', 'value'] = 'No'
+            self.df_settings.at["isNextFrameVisible", "value"] = "No"
             try:
                 self.graphLayout.removeItem(self.imgGradRight)
             except Exception:
                 return
             self.rightImageItem.clear()
-        
+
         self.df_settings.to_csv(self.settings_csv_path)
-            
+
         QTimer.singleShot(300, self.resizeGui)
 
-        self.setBottomLayoutStretch()    
+        self.setBottomLayoutStretch()
 
     def showRightImageItem(self, checked):
         self.rightImageFramesScrollbar.setVisible(not checked)
         self.rightImageFramesScrollbar.setDisabled(checked)
         self.setTwoImagesLayout(checked)
         if checked:
-            self.df_settings.at['isRightImageVisible', 'value'] = 'Yes'
-            self.df_settings.at['isNextFrameVisible', 'value'] = 'No'
-            self.df_settings.at['isLabelsVisible', 'value'] = 'No'
-            self.graphLayout.addItem(
-                self.imgGradRight, row=1, col=self.plotsCol+2
-            )
+            self.df_settings.at["isRightImageVisible", "value"] = "Yes"
+            self.df_settings.at["isNextFrameVisible", "value"] = "No"
+            self.df_settings.at["isLabelsVisible", "value"] = "No"
+            self.graphLayout.addItem(self.imgGradRight, row=1, col=self.plotsCol + 2)
             self.rightBottomGroupbox.show()
             if not self.isDataLoading:
                 self.updateAllImages()
         else:
             self.clearAx2Items()
             self.rightBottomGroupbox.hide()
-            self.df_settings.at['isRightImageVisible', 'value'] = 'No'
+            self.df_settings.at["isRightImageVisible", "value"] = "No"
             try:
                 self.graphLayout.removeItem(self.imgGradRight)
             except Exception:
                 return
             self.rightImageItem.clear()
-        
+
         self.df_settings.to_csv(self.settings_csv_path)
-            
+
         QTimer.singleShot(300, self.resizeGui)
 
-        self.setBottomLayoutStretch()    
+        self.setBottomLayoutStretch()
 
     def updateAllImages(
-            self, image=None, computePointsLayers=True, computeContours=True,
-            updateLookuptable=True
-        ):
+        self,
+        image=None,
+        computePointsLayers=True,
+        computeContours=True,
+        updateLookuptable=True,
+    ):
         self.clearAllItems()
 
         posData = self.data[self.pos_i]
 
         self.last_pos_i = self.pos_i
         self.last_frame_i = posData.frame_i
-        
+
         self.rescaleIntensitiesLut(setImage=False)
 
-        self.setImageImg1(image=image)       
+        self.setImageImg1(image=image)
         self.setImageImg2(updateLookuptable=updateLookuptable)
-        
+
         self.setOverlayImages()
 
         self.setOverlayLabelsItems()
         self.setOverlaySegmMasks()
-              
+
         if self.slideshowWin is not None:
             self.slideshowWin.frame_i = posData.frame_i
             self.slideshowWin.update_img()
@@ -1179,19 +1166,17 @@ class ImageDisplay(DisplayDecorations):
         # self.update_rp()
 
         # Annotate ID and draw contours
-        delROIsIDs = self.setAllTextAnnotations()    
-        self.setAllContoursImages(
-            delROIsIDs=delROIsIDs, compute=False
-        )
+        delROIsIDs = self.setAllTextAnnotations()
+        self.setAllContoursImages(delROIsIDs=delROIsIDs, compute=False)
 
         mode = self.modeComboBox.currentText()
         self.drawAllMothBudLines()
-        if mode == 'Normal division: Lineage tree':
+        if mode == "Normal division: Lineage tree":
             self.drawAllLineageTreeLines()
 
-        self.highlightLostNew()      
+        self.highlightLostNew()
 
-        if self.ccaTableWin is not None: # need to add for lin tree, later
+        if self.ccaTableWin is not None:  # need to add for lin tree, later
             zoomIDs = self.getZoomIDs()
             self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
 
@@ -1203,10 +1188,10 @@ class ImageDisplay(DisplayDecorations):
         self.drawPointsLayers(computePointsLayers=computePointsLayers)
         self.setManualBackgroundImage()
         self.annotateAssignedObjsAcdcTrackerSecondStep()
-        
-        self.highlightSearchedID(self.highlightedID, force=True) 
-        self.updateTimestampFrame()   
-        
+
+        self.highlightSearchedID(self.highlightedID, force=True)
+        self.updateTimestampFrame()
+
         posData.visited = True
 
     def updateImageValueFormatter(self):
@@ -1214,41 +1199,41 @@ class ImageDisplay(DisplayDecorations):
             dtype = self.img1.image.dtype
             n_digits = len(str(int(self.img1.image.max())))
             self.imgValueFormatter = myutils.get_number_fstring_formatter(
-                dtype, precision=abs(n_digits-5)
+                dtype, precision=abs(n_digits - 5)
             )
 
         rawImgData = self.data[self.pos_i].img_data
         dtype = rawImgData.dtype
         n_digits = len(str(int(rawImgData.max())))
         self.rawValueFormatter = myutils.get_number_fstring_formatter(
-            dtype, precision=abs(n_digits-5)
+            dtype, precision=abs(n_digits - 5)
         )
 
     def updateLabelsAlpha(self, value):
-        self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
+        self.df_settings.at["overlaySegmMasksAlpha", "value"] = value
         self.df_settings.to_csv(self.settings_csv_path)
         if self.keepIDsButton.isChecked():
-            value = value/3
+            value = value / 3
         self.labelsLayerImg1.setOpacity(value)
         self.labelsLayerRightImg.setOpacity(value)
 
     def updateZsliceScrollbar(self, frame_i):
         posData = self.data[self.pos_i]
-        if self.switchPlaneCombobox.depthAxes() != 'z':
+        if self.switchPlaneCombobox.depthAxes() != "z":
             return
-            
+
         idx = (posData.filename, frame_i)
         try:
-            z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            z = posData.segmInfo_df.at[idx, "z_slice_used_gui"]
         except ValueError as e:
-            z = posData.segmInfo_df.loc[idx, 'z_slice_used_gui'].iloc[0] 
+            z = posData.segmInfo_df.loc[idx, "z_slice_used_gui"].iloc[0]
         try:
-            zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+            zProjHow = posData.segmInfo_df.at[idx, "which_z_proj_gui"]
         except ValueError as e:
-            zProjHow = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
-        
+            zProjHow = posData.segmInfo_df.loc[idx, "which_z_proj_gui"].iloc[0]
+
         self.zProjComboBox.setCurrentText(zProjHow)
-        
+
         reconnect = False
         try:
             self.zSliceScrollBar.actionTriggered.disconnect()
@@ -1261,39 +1246,37 @@ class ImageDisplay(DisplayDecorations):
             self.zSliceScrollBar.actionTriggered.connect(
                 self.zSliceScrollBarActionTriggered
             )
-            self.zSliceScrollBar.sliderReleased.connect(
-                self.zSliceScrollBarReleased
-            )
-        self.zSliceSpinbox.setValueNoEmit(z+1)
+            self.zSliceScrollBar.sliderReleased.connect(self.zSliceScrollBarReleased)
+        self.zSliceSpinbox.setValueNoEmit(z + 1)
 
     def zProjLockViewToggled(self, checked):
         self.updateZproj(self.zProjComboBox.currentText())
 
     def z_lab(self, checkIfProj=False):
-        if checkIfProj and self.zProjComboBox.currentText() != 'single z-slice':
+        if checkIfProj and self.zProjComboBox.currentText() != "single z-slice":
             return
-        
+
         if not self.isSegm3D:
-            return 
-        
+            return
+
         posData = self.data[self.pos_i]
 
         idx = self.zSliceScrollBar.sliderPosition()
-        
+
         # ensure idx doesnt exceed the number of z-slices of the position
-        idx_z = min(idx, posData.SizeZ-1)
-         
+        idx_z = min(idx, posData.SizeZ - 1)
+
         if not self.switchPlaneCombobox.isEnabled():
             return idx_z
-        
+
         depthAxes = self.switchPlaneCombobox.depthAxes()
-        if depthAxes == 'z':
+        if depthAxes == "z":
             return idx_z
-        elif depthAxes == 'y':
-            idx_y = min(idx, posData.SizeY-1)
+        elif depthAxes == "y":
+            idx_y = min(idx, posData.SizeY - 1)
             return (slice(None), idx_y)
         else:
-            idx_x = min(idx, posData.SizeX-1)
+            idx_x = min(idx, posData.SizeX - 1)
             return (slice(None), slice(None), idx_x)
 
     def z_slice_index(self):
@@ -1301,21 +1284,17 @@ class ImageDisplay(DisplayDecorations):
         if posData.SizeZ == 1:
             return None
         zProjHow = self.zProjComboBox.currentText()
-        if zProjHow != 'single z-slice':
+        if zProjHow != "single z-slice":
             return zProjHow
-        
+
         axis_slice = self.zSliceScrollBar.sliderPosition()
-        if self.switchPlaneCombobox.depthAxes() == 'x':
-            z_slice = (
-                slice(None, None, None), slice(None, None, None), axis_slice
-            )
-        elif self.switchPlaneCombobox.depthAxes() == 'y':
-            z_slice = (
-                slice(None, None, None), axis_slice
-            )
+        if self.switchPlaneCombobox.depthAxes() == "x":
+            z_slice = (slice(None, None, None), slice(None, None, None), axis_slice)
+        elif self.switchPlaneCombobox.depthAxes() == "y":
+            z_slice = (slice(None, None, None), axis_slice)
         else:
             z_slice = axis_slice
-            
+
         return z_slice
 
     def zoomOut(self):
@@ -1326,17 +1305,17 @@ class ImageDisplay(DisplayDecorations):
             return
 
         posData = self.data[self.pos_i]
-        lab_mask = (self.currentLab2D>0).astype(np.uint8)
+        lab_mask = (self.currentLab2D > 0).astype(np.uint8)
         rp = skimage.measure.regionprops(lab_mask)
         if not rp:
             Y, X = lab_mask.shape
-            xRange = -0.5, X+0.5
-            yRange = -0.5, Y+0.5
+            xRange = -0.5, X + 0.5
+            yRange = -0.5, Y + 0.5
         else:
             obj = rp[0]
             min_row, min_col, max_row, max_col = self.getObjBbox(obj.bbox)
-            xRange = min_col-10, max_col+10
-            yRange = max_row+10, min_row-10
+            xRange = min_col - 10, max_col + 10
+            yRange = max_row + 10, min_row - 10
 
         self.ax1.setRange(xRange=xRange, yRange=yRange)
 

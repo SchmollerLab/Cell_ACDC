@@ -3,10 +3,13 @@ import numpy as np
 import skimage.transform
 import skimage.measure
 
+
 def rotational_volume(
-        obj: skimage.measure._regionprops.RegionProperties, 
-        PhysicalSizeY=1.0, PhysicalSizeX=1.0, vox_to_fl=None
-    ):
+    obj: skimage.measure._regionprops.RegionProperties,
+    PhysicalSizeY=1.0,
+    PhysicalSizeX=1.0,
+    vox_to_fl=None,
+):
     """Given the region properties of a 2D or 3D object (from skimage.measure.regionprops).
     calculate the rotation volume as described in the Supplementary information of
     https://www.nature.com/articles/s41467-020-16764-x
@@ -21,7 +24,7 @@ def rotational_volume(
     PhysicalSizeX : float, optional
         Physical size of the pixel in the X-diretion in micrometer/pixel.
         By default 1.0
-    
+
     Returns
     -------
     tuple
@@ -29,11 +32,11 @@ def rotational_volume(
 
     Notes
     -------
-    For 3D objects we take the max projection. 
+    For 3D objects we take the max projection.
 
     We convert PhysicalSizeY and PhysicalSizeX to float because when they are
     read from csv they might be a string value.
-    """    
+    """
     if obj.image.ndim == 3:
         obj_image = obj.image.max(axis=0)
         obj_rp = skimage.measure.regionprops(obj_image.astype(np.uint8))[0]
@@ -41,17 +44,21 @@ def rotational_volume(
     else:
         obj_image = obj.image
         obj_orientation = obj.orientation
-    
+
     if vox_to_fl is None:
-        vox_to_fl = float(PhysicalSizeY)*(float(PhysicalSizeX)**2)
-    
+        vox_to_fl = float(PhysicalSizeY) * (float(PhysicalSizeX) ** 2)
+
     rotate_ID_img = skimage.transform.rotate(
-        obj_image.astype(np.uint8), -(obj_orientation*180/np.pi),
-        resize=True, order=3, preserve_range=True
+        obj_image.astype(np.uint8),
+        -(obj_orientation * 180 / np.pi),
+        resize=True,
+        order=3,
+        preserve_range=True,
     )
-    radii = np.sum(rotate_ID_img, axis=1)/2
-    vol_vox = np.sum(np.pi*(radii**2))
-    return vol_vox, float(vol_vox*vox_to_fl)
+    radii = np.sum(rotate_ID_img, axis=1) / 2
+    vol_vox = np.sum(np.pi * (radii**2))
+    return vol_vox, float(vol_vox * vox_to_fl)
+
 
 def separate_with_label(lab, rp, IDs_to_separate, maxID, click_coords_list=None):
     separate_lab = lab.copy()
@@ -80,7 +87,7 @@ def separate_with_label(lab, rp, IDs_to_separate, maxID, click_coords_list=None)
                 click_y_local = yclick - ymin
                 click_x_local = xclick - xmin
                 id_to_keep = label_obj[click_y_local, click_x_local]
-        
+
         separate_lab[obj.slice][obj.image] = 0
         separateIDs = []
         for sub_obj_idx, sub_obj in enumerate(label_obj_rp):
@@ -91,4 +98,3 @@ def separate_with_label(lab, rp, IDs_to_separate, maxID, click_coords_list=None)
             separate_lab[obj.slice][sub_obj.slice][sub_obj.image] = new_ID
             separateIDs.append(new_ID)
     return separate_lab, separateIDs
-            

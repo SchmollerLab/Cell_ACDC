@@ -23,14 +23,19 @@ from functools import wraps, partial
 from itertools import permutations
 
 from qtpy.QtWidgets import (
-    QApplication, QMainWindow, QFileDialog,
-    QVBoxLayout, QPushButton, QLabel, QStyleFactory,
-    QWidget, QMessageBox, QPlainTextEdit, QHBoxLayout
+    QApplication,
+    QMainWindow,
+    QFileDialog,
+    QVBoxLayout,
+    QPushButton,
+    QLabel,
+    QStyleFactory,
+    QWidget,
+    QMessageBox,
+    QPlainTextEdit,
+    QHBoxLayout,
 )
-from qtpy.QtCore import (
-    Qt, QObject, Signal, QThread, QMutex, QWaitCondition,
-    QEventLoop
-)
+from qtpy.QtCore import Qt, QObject, Signal, QThread, QMutex, QWaitCondition, QEventLoop
 from qtpy import QtGui
 
 # Here we use from cellacdc because this script is laucnhed in
@@ -47,14 +52,16 @@ from . import fiji_macros
 from . import acdc_regex
 from . import io
 
-if os.name == 'nt':
+if os.name == "nt":
     try:
         # Set taskbar icon in windows
         import ctypes
-        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
+
+        myappid = "schmollerlab.cellacdc.pyqt.v1"  # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except:
         pass
+
 
 def worker_exception_handler(func):
     @wraps(func)
@@ -65,7 +72,9 @@ def worker_exception_handler(func):
             result = None
             self.critical.emit(error)
         return result
+
     return run
+
 
 class bioFormatsWorker(QObject):
     finished = Signal()
@@ -74,21 +83,43 @@ class bioFormatsWorker(QObject):
     initPbar = Signal(int)
     criticalError = Signal(str, str, str)
     confirmMetadata = Signal(
-        str, float, int, int, int, int,
-        float, str, float, float, float,
-        str, list, list, str, str, object
+        str,
+        float,
+        int,
+        int,
+        int,
+        int,
+        float,
+        str,
+        float,
+        float,
+        float,
+        str,
+        list,
+        list,
+        str,
+        str,
+        object,
     )
     critical = Signal(object)
     sigFinishedReadingSampleImageData = Signal(object)
 
     def __init__(
-            self, raw_src_path, rawFilenames, exp_dst_path,
-            mutex, waitCond, rawDataStruct, 
-            bioformats_backend: Literal['bioio', 'python-bioformats'],
-            lazy_load=True, move_raw_microscopy_files=True,
-            overwrite=False, add_files=False, create_new=False,
-            start_pos_n=1
-        ):
+        self,
+        raw_src_path,
+        rawFilenames,
+        exp_dst_path,
+        mutex,
+        waitCond,
+        rawDataStruct,
+        bioformats_backend: Literal["bioio", "python-bioformats"],
+        lazy_load=True,
+        move_raw_microscopy_files=True,
+        overwrite=False,
+        add_files=False,
+        create_new=False,
+        start_pos_n=1,
+    ):
         QObject.__init__(self)
         self.raw_src_path = raw_src_path
         self.exp_dst_path = exp_dst_path
@@ -107,34 +138,41 @@ class bioFormatsWorker(QObject):
         self.bioformats_backend = bioformats_backend
         self.lazy_load = lazy_load
         self.move_raw_microscopy_files = move_raw_microscopy_files
-    
+
     def _readSampleDataPythonBioformats(
-            self, bioformats, rawFilePath, sampleImgData, SizeC, SizeT, SizeZ,
-            sampleSizeT, sampleSizeZ
-        ):
+        self,
+        bioformats,
+        rawFilePath,
+        sampleImgData,
+        SizeC,
+        SizeT,
+        SizeZ,
+        sampleSizeT,
+        sampleSizeZ,
+    ):
         dimsIdx = {}
         allChannelsData = None
         with bioformats.ImageReader(rawFilePath) as reader:
             permut_pbar = tqdm(total=6, ncols=100)
-            for dimsOrd in permutations('zct', 3):
-                if allChannelsData is not None and self.bioformats_backend == 'bioio':
-                    sampleImgData[''.join(dimsOrd)] = allChannelsData
+            for dimsOrd in permutations("zct", 3):
+                if allChannelsData is not None and self.bioformats_backend == "bioio":
+                    sampleImgData["".join(dimsOrd)] = allChannelsData
                     permut_pbar.update(1)
                     continue
-                
+
                 allChannelsData = []
                 idxs = self.buildIndexes(SizeC, SizeT, SizeZ, dimsOrd)
-                numIter = SizeC*sampleSizeT*sampleSizeZ
+                numIter = SizeC * sampleSizeT * sampleSizeZ
                 pbar = tqdm(total=numIter, ncols=100, leave=False)
                 skipPermutation = False
                 for c in range(SizeC):
-                    dimsIdx['c'] = c
+                    dimsIdx["c"] = c
                     imgData_tz = []
-                    for t in range(sampleSizeT):   
-                        dimsIdx['t'] = t
+                    for t in range(sampleSizeT):
+                        dimsIdx["t"] = t
                         imgData_z = []
                         for z in range(sampleSizeZ):
-                            dimsIdx['z'] = z
+                            dimsIdx["z"] = z
                             try:
                                 idx = self.getIndex(idxs, dimsIdx, dimsOrd)
                                 imgData = reader.read(
@@ -143,10 +181,10 @@ class bioFormatsWorker(QObject):
                             except Exception as e:
                                 skipPermutation = True
                                 break
-                            imgData_z.append(imgData) 
+                            imgData_z.append(imgData)
                             pbar.update()
                         if skipPermutation:
-                            break               
+                            break
                         imgData_z = np.array(imgData_z, dtype=imgData.dtype)
                         imgData_z = np.squeeze(imgData_z)
                         imgData_tz.append(imgData_z)
@@ -157,49 +195,49 @@ class bioFormatsWorker(QObject):
                 pbar.close()
                 permut_pbar.update(1)
                 if not skipPermutation:
-                    sampleImgData[''.join(dimsOrd)] = allChannelsData
+                    sampleImgData["".join(dimsOrd)] = allChannelsData
             permut_pbar.close()
 
         return sampleImgData
-    
+
     def readSampleData(self, rawFilePath, SizeC, SizeT, SizeZ):
-        if self.bioformats_backend == 'bioio':
+        if self.bioformats_backend == "bioio":
             from cellacdc import acdc_bioio_bioformats as bioformats
         else:
             import javabridge
             from cellacdc import bioformats
-             
+
         sampleImgData = {}
-        self.progress.emit('Reading sample image data...')
-        
-        if self.bioformats_backend == 'bioio':
-            # To avoid running Java in the main process, we spawn a new 
+        self.progress.emit("Reading sample image data...")
+
+        if self.bioformats_backend == "bioio":
+            # To avoid running Java in the main process, we spawn a new
             # process that runs a python script to read sample data, save
             # it to disk, and then load it back here.
             import subprocess
             from . import _process, bioio_sample_data_folderpath
-            
+
             read_sample_data_py_filepath = os.path.join(
-                os.path.dirname(bioformats.__file__), '_read_sample_data.py'
+                os.path.dirname(bioformats.__file__), "_read_sample_data.py"
             )
             uuid4 = uuid.uuid4()
             command = (
-                f'{sys.executable}, '
-                f'{read_sample_data_py_filepath}, '
-                f'-f, {rawFilePath}, '
-                f'-c, {SizeC}, '
-                f'-t, {SizeT}, '
-                f'-z, {SizeZ},'
-                f'-uuid, {uuid4}'
+                f"{sys.executable}, "
+                f"{read_sample_data_py_filepath}, "
+                f"-f, {rawFilePath}, "
+                f"-c, {SizeC}, "
+                f"-t, {SizeT}, "
+                f"-z, {SizeZ},"
+                f"-uuid, {uuid4}"
             )
             if not self.lazy_load:
-                command = f'{command}, -a'
-            
-            args = [sys.executable, _process.__file__, '-c', command]
+                command = f"{command}, -a"
+
+            args = [sys.executable, _process.__file__, "-c", command]
             subprocess.run(args)
-            
+
             bioformats._utils.check_raise_exception(uuid4)
-            
+
             allChannelsData = []
             for c in range(SizeC):
                 filepath = os.path.join(
@@ -208,35 +246,41 @@ class bioFormatsWorker(QObject):
                 channel_data = np.load(filepath)
                 allChannelsData.append(channel_data)
                 os.remove(filepath)
-            
-            for dimsOrd in permutations('zct', 3):
-                sampleImgData[''.join(dimsOrd)] = allChannelsData
+
+            for dimsOrd in permutations("zct", 3):
+                sampleImgData["".join(dimsOrd)] = allChannelsData
         else:
             if SizeT >= 4:
                 sampleSizeT = 4
             else:
-                sampleSizeT = SizeT 
+                sampleSizeT = SizeT
             if SizeZ > 20:
                 sampleSizeZ = 20
             else:
                 sampleSizeZ = SizeZ
             sampleImgData = self._readSampleDataPythonBioformats(
-                bioformats, rawFilePath, sampleImgData, SizeC, SizeT, SizeZ,
-                sampleSizeT, sampleSizeZ
+                bioformats,
+                rawFilePath,
+                sampleImgData,
+                SizeC,
+                SizeT,
+                SizeZ,
+                sampleSizeT,
+                sampleSizeZ,
             )
-            
+
         self.sigFinishedReadingSampleImageData.emit(sampleImgData)
         return sampleImgData
 
     def getSizeZ(self, rawFilePath):
-        if self.bioformats_backend == 'bioio':
+        if self.bioformats_backend == "bioio":
             from cellacdc import acdc_bioio_bioformats as bioformats
         else:
             import javabridge
             from cellacdc import bioformats
-            
+
         try:
-            if rawFilePath.endswith('.ome.tif'):
+            if rawFilePath.endswith(".ome.tif"):
                 metadata = load.OMEXML(rawFilePath)
                 metadataXML = metadata.omexml_string
             else:
@@ -249,51 +293,46 @@ class bioFormatsWorker(QObject):
     def _readMetadataBioIO(self, rawFilePath):
         from . import bioio_sample_data_folderpath, _process
         from . import acdc_bioio_bioformats as bioformats
-        
+
         import subprocess
-        
+
         read_metadata_py_filepath = os.path.join(
-            os.path.dirname(bioformats.__file__), '_read_metadata.py'
+            os.path.dirname(bioformats.__file__), "_read_metadata.py"
         )
         uuid4 = uuid.uuid4()
         command = (
-            f'{sys.executable}, {read_metadata_py_filepath}, '
-            f'-f, {rawFilePath}, '
-            f'-uuid, {uuid4}'
+            f"{sys.executable}, {read_metadata_py_filepath}, "
+            f"-f, {rawFilePath}, "
+            f"-uuid, {uuid4}"
         )
-        
-        args = [sys.executable, _process.__file__, '-c', command]
+
+        args = [sys.executable, _process.__file__, "-c", command]
         subprocess.run(args)
-        
+
         bioformats._utils.check_raise_exception(uuid4)
 
         metadataXML_filepath = os.path.join(
-            bioio_sample_data_folderpath, 'metadataXML.txt'
+            bioio_sample_data_folderpath, "metadataXML.txt"
         )
         metadataXML = bioformats.Metadata().init_from_file(metadataXML_filepath)
 
-        metadata_filepath = os.path.join(
-            bioio_sample_data_folderpath, 'metadata.txt'
-        )
-        metadata = bioformats.OMEXML().init_from_file(
-            metadata_filepath, rawFilePath
-        )
+        metadata_filepath = os.path.join(bioio_sample_data_folderpath, "metadata.txt")
+        metadata = bioformats.OMEXML().init_from_file(metadata_filepath, rawFilePath)
         return metadata, metadataXML
-        
-    
+
     def readMetadata(self, raw_src_path, filename):
-        if self.bioformats_backend == 'bioio':
+        if self.bioformats_backend == "bioio":
             from cellacdc import acdc_bioio_bioformats as bioformats
         else:
             import javabridge
             from cellacdc import bioformat
-            
+
         rawFilePath = os.path.join(raw_src_path, filename)
 
-        self.progress.emit('Reading OME metadata...')
+        self.progress.emit("Reading OME metadata...")
 
         try:
-            if rawFilePath.endswith('.ome.tif'):
+            if rawFilePath.endswith(".ome.tif"):
                 metadata = load.OMEXML(rawFilePath)
                 metadataXML = metadata.omexml_string
             else:
@@ -304,20 +343,17 @@ class bioFormatsWorker(QObject):
             traceback.print_exc()
             self.isCriticalError = True
             self.criticalError.emit(
-                'reading image data or metadata',
-                traceback.format_exc(), filename
+                "reading image data or metadata", traceback.format_exc(), filename
             )
             return True
 
         try:
             LensNA = float(metadata.instrument().Objective.LensNA)
         except Exception as e:
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("===================================================")
             self.progress.emit(rawFilePath)
-            self.progress.emit('WARNING: LensNA not found in metadata.')
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("WARNING: LensNA not found in metadata.")
+            self.progress.emit("===================================================")
             LensNA = 1.4
 
         if self.rawDataStruct != 2:
@@ -325,11 +361,13 @@ class bioFormatsWorker(QObject):
                 SizeS = int(metadata.get_image_count())
             except Exception as e:
                 self.progress.emit(
-                    '===================================================')
+                    "==================================================="
+                )
                 self.progress.emit(rawFilePath)
-                self.progress.emit('WARNING: SizeS not found in metadata.')
+                self.progress.emit("WARNING: SizeS not found in metadata.")
                 self.progress.emit(
-                    '===================================================')
+                    "==================================================="
+                )
                 SizeS = 1
         else:
             SizeS = self.SizeS
@@ -337,126 +375,105 @@ class bioFormatsWorker(QObject):
         try:
             SizeZ = int(metadata.image().Pixels.SizeZ)
         except Exception as e:
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("===================================================")
             self.progress.emit(rawFilePath)
-            self.progress.emit('WARNING: SizeZ not found in metadata.')
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("WARNING: SizeZ not found in metadata.")
+            self.progress.emit("===================================================")
             SizeZ = 1
 
         try:
             SizeT = int(metadata.image().Pixels.SizeT)
         except Exception as e:
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("===================================================")
             self.progress.emit(rawFilePath)
-            self.progress.emit('WARNING: SizeT not found in metadata.')
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("WARNING: SizeT not found in metadata.")
+            self.progress.emit("===================================================")
             SizeT = 1
 
         try:
             Pixels = metadata.image().Pixels
-            TimeIncrement = float(Pixels.node.get('TimeIncrement'))
+            TimeIncrement = float(Pixels.node.get("TimeIncrement"))
         except Exception as e:
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("===================================================")
             self.progress.emit(rawFilePath)
-            self.progress.emit('WARNING: TimeIncrement not found in metadata.')
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("WARNING: TimeIncrement not found in metadata.")
+            self.progress.emit("===================================================")
             TimeIncrement = 1.0
 
         try:
             Pixels = metadata.image().Pixels
-            TimeIncrementUnit = Pixels.node.get('TimeIncrementUnit')
+            TimeIncrementUnit = Pixels.node.get("TimeIncrementUnit")
             if TimeIncrementUnit is None:
                 raise
         except Exception as e:
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("===================================================")
             self.progress.emit(rawFilePath)
-            self.progress.emit('WARNING: TimeIncrementUnit not found in metadata.')
-            self.progress.emit(
-                '===================================================')
-            TimeIncrementUnit = 's'
+            self.progress.emit("WARNING: TimeIncrementUnit not found in metadata.")
+            self.progress.emit("===================================================")
+            TimeIncrementUnit = "s"
 
         try:
             SizeC = int(metadata.image().Pixels.SizeC)
         except Exception as e:
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("===================================================")
             self.progress.emit(rawFilePath)
-            self.progress.emit('WARNING: SizeC not found in metadata.')
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("WARNING: SizeC not found in metadata.")
+            self.progress.emit("===================================================")
             SizeC = 1
 
         try:
             PhysicalSizeX = float(metadata.image().Pixels.PhysicalSizeX)
         except Exception as e:
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("===================================================")
             self.progress.emit(rawFilePath)
-            self.progress.emit('WARNING: PhysicalSizeX not found in metadata.')
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("WARNING: PhysicalSizeX not found in metadata.")
+            self.progress.emit("===================================================")
             PhysicalSizeX = 1.0
 
         try:
             PhysicalSizeY = float(metadata.image().Pixels.PhysicalSizeY)
         except Exception as e:
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("===================================================")
             self.progress.emit(rawFilePath)
-            self.progress.emit('WARNING: PhysicalSizeY not found in metadata.')
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("WARNING: PhysicalSizeY not found in metadata.")
+            self.progress.emit("===================================================")
             PhysicalSizeY = 1.0
 
         try:
             PhysicalSizeZ = float(metadata.image().Pixels.PhysicalSizeZ)
         except Exception as e:
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("===================================================")
             self.progress.emit(rawFilePath)
-            self.progress.emit('WARNING: PhysicalSizeZ not found in metadata.')
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("WARNING: PhysicalSizeZ not found in metadata.")
+            self.progress.emit("===================================================")
             PhysicalSizeZ = 1.0
 
         try:
             Pixels = metadata.image().Pixels
-            PhysicalSizeUnit = Pixels.node.get('PhysicalSizeXUnit')
+            PhysicalSizeUnit = Pixels.node.get("PhysicalSizeXUnit")
             if PhysicalSizeUnit is None:
                 raise
         except Exception as e:
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("===================================================")
             self.progress.emit(rawFilePath)
-            self.progress.emit('WARNING: PhysicalSizeUnit not found in metadata.')
-            self.progress.emit(
-                '===================================================')
-            PhysicalSizeUnit = 'μm'
+            self.progress.emit("WARNING: PhysicalSizeUnit not found in metadata.")
+            self.progress.emit("===================================================")
+            PhysicalSizeUnit = "μm"
 
         try:
             ImageName = metadata.image().Name
             if ImageName is None:
                 raise
         except Exception as e:
-            self.progress.emit(
-                '===================================================')
+            self.progress.emit("===================================================")
             self.progress.emit(rawFilePath)
-            self.progress.emit('WARNING: Image Name not found in metadata.')
-            self.progress.emit(
-                '===================================================')
-            ImageName = ''
-
+            self.progress.emit("WARNING: Image Name not found in metadata.")
+            self.progress.emit("===================================================")
+            ImageName = ""
 
         if self.rawDataStruct != 2:
             try:
-                chNames = ['']*SizeC
+                chNames = [""] * SizeC
                 for c in range(SizeC):
                     try:
                         chNames[c] = metadata.image().Pixels.Channel(c).Name
@@ -464,19 +481,21 @@ class bioFormatsWorker(QObject):
                         pass
             except Exception as e:
                 self.progress.emit(
-                    '===================================================')
+                    "==================================================="
+                )
                 self.progress.emit(rawFilePath)
-                self.progress.emit('WARNING: chNames not found in metadata.')
+                self.progress.emit("WARNING: chNames not found in metadata.")
                 self.progress.emit(
-                    '===================================================')
-                chNames = ['']*SizeC
+                    "==================================================="
+                )
+                chNames = [""] * SizeC
         else:
             chNames = self.chNames
             SizeC = len(self.chNames)
 
         if self.rawDataStruct != 2:
             try:
-                emWavelens = [500.0]*SizeC
+                emWavelens = [500.0] * SizeC
                 for c in range(SizeC):
                     try:
                         Channel = metadata.image().Pixels.Channel(c)
@@ -487,14 +506,16 @@ class bioFormatsWorker(QObject):
             except Exception as e:
                 traceback.print_exc()
                 self.progress.emit(
-                    '===================================================')
+                    "==================================================="
+                )
                 self.progress.emit(rawFilePath)
-                self.progress.emit('WARNING: EmissionWavelength not found in metadata.')
+                self.progress.emit("WARNING: EmissionWavelength not found in metadata.")
                 self.progress.emit(
-                    '===================================================')
-                emWavelens = [500.0]*SizeC
+                    "==================================================="
+                )
+                emWavelens = [500.0] * SizeC
         else:
-            emWavelens = [500.0]*SizeC
+            emWavelens = [500.0] * SizeC
 
         if self.trustMetadataReader:
             self.LensNA = LensNA
@@ -514,14 +535,25 @@ class bioFormatsWorker(QObject):
         while True:
             self.mutex.lock()
             if self.rawDataStruct != 2:
-                sampleImgData = self.readSampleData(
-                    rawFilePath, SizeC, SizeT, SizeZ
-                )
+                sampleImgData = self.readSampleData(rawFilePath, SizeC, SizeT, SizeZ)
             self.confirmMetadata.emit(
-                filename, LensNA, SizeT, SizeZ, SizeC, SizeS,
-                TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
-                PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName,
-                rawFilePath, sampleImgData
+                filename,
+                LensNA,
+                SizeT,
+                SizeZ,
+                SizeC,
+                SizeS,
+                TimeIncrement,
+                TimeIncrementUnit,
+                PhysicalSizeX,
+                PhysicalSizeY,
+                PhysicalSizeZ,
+                PhysicalSizeUnit,
+                chNames,
+                emWavelens,
+                ImageName,
+                rawFilePath,
+                sampleImgData,
             )
             self.waitCond.wait(self.mutex)
             self.mutex.unlock()
@@ -566,50 +598,58 @@ class bioFormatsWorker(QObject):
         self.saveChannels = self.metadataWin.saveChannels
         self.emWavelens = self.metadataWin.emWavelens
         self.addImageName = self.metadataWin.addImageName
-        
+
         return False
 
     def saveToPosFolder(
-            self, p, raw_src_path, exp_dst_path, filename, series, pos_n,
-            p_idx=0,
-        ):
+        self,
+        p,
+        raw_src_path,
+        exp_dst_path,
+        filename,
+        series,
+        pos_n,
+        p_idx=0,
+    ):
         rawFilePath = os.path.join(raw_src_path, filename)
 
-        if os.path.basename(raw_src_path) == 'raw_microscopy_files':
+        if os.path.basename(raw_src_path) == "raw_microscopy_files":
             raw_src_path = os.path.dirname(raw_src_path)
 
-        in_file_pos_name = f'Position_{p+1}'
+        in_file_pos_name = f"Position_{p + 1}"
         savePos = (
-            'All Positions' in self.selectedPos 
-            or in_file_pos_name in self.selectedPos
+            "All Positions" in self.selectedPos or in_file_pos_name in self.selectedPos
         )
         if not savePos:
             return False
 
-        pos_path = os.path.join(exp_dst_path, f'Position_{pos_n}')
-        images_path = os.path.join(pos_path, 'Images')
+        pos_path = os.path.join(exp_dst_path, f"Position_{pos_n}")
+        images_path = os.path.join(pos_path, "Images")
 
         if os.path.exists(images_path) and self.overwritePos:
             shutil.rmtree(images_path)
-        
+
         if os.path.exists(images_path) and self.createNew:
-            images_path = re.sub(
-                r'Position_\d+', f'Position_{pos_n}', images_path
-            )
-        
+            images_path = re.sub(r"Position_\d+", f"Position_{pos_n}", images_path)
+
         if not os.path.exists(images_path):
             os.makedirs(images_path, exist_ok=True)
-        
+
         self.saveData(
-            images_path, rawFilePath, filename, p, series, pos_n, p_idx=p_idx,
+            images_path,
+            rawFilePath,
+            filename,
+            p,
+            series,
+            pos_n,
+            p_idx=p_idx,
         )
-        
+
         return False
 
     def _saveDataPythonBioformats(
-            self, bioformats, rawFilePath, series, images_path, filenameNOext, 
-            s0p, idxs
-        ):
+        self, bioformats, rawFilePath, series, images_path, filenameNOext, s0p, idxs
+    ):
         SizeZ = self.getSizeZ(rawFilePath)
         with bioformats.ImageReader(rawFilePath) as reader:
             iter = enumerate(zip(self.chNames, self.saveChannels))
@@ -619,155 +659,166 @@ class bioFormatsWorker(QObject):
                     continue
 
                 self.progress.emit(
-                    f'  Saving channel {c+1}/{len(self.chNames)} ({chName})'
+                    f"  Saving channel {c + 1}/{len(self.chNames)} ({chName})"
                 )
                 self.saveImgDataChannel(
-                    reader, series, images_path, filenameNOext, s0p,
-                    chName, c, idxs, SizeZ
+                    reader,
+                    series,
+                    images_path,
+                    filenameNOext,
+                    s0p,
+                    chName,
+                    c,
+                    idxs,
+                    SizeZ,
                 )
-    
+
     def _saveDataPythonBioformatsSingleChannel(
-            self, bioformats, rawFilePath, series, images_path, filenameNOext, 
-            s0p, idxs, chName, c_idx
-        ):
+        self,
+        bioformats,
+        rawFilePath,
+        series,
+        images_path,
+        filenameNOext,
+        s0p,
+        idxs,
+        chName,
+        c_idx,
+    ):
         SizeZ = self.getSizeZ(rawFilePath)
         with bioformats.ImageReader(rawFilePath) as reader:
             self.progress.emit(
-                f'  Saving channel {c_idx+1}/{len(self.chNames)} ({chName})'
+                f"  Saving channel {c_idx + 1}/{len(self.chNames)} ({chName})"
             )
             imgData_ch = []
             self.saveImgDataChannel(
-                reader, series, images_path, filenameNOext, s0p,
-                chName, 0, idxs, SizeZ
+                reader, series, images_path, filenameNOext, s0p, chName, 0, idxs, SizeZ
             )
-    
+
     def removeInvalidCharacters(self, chName_in):
         # Remove invalid charachters
         chName = "".join(
-            c if c.isalnum() or c=='_' or c=='' else '_' for c in chName_in
+            c if c.isalnum() or c == "_" or c == "" else "_" for c in chName_in
         )
-        trim_ = chName.endswith('_')
+        trim_ = chName.endswith("_")
         while trim_:
             chName = chName[:-1]
-            trim_ = chName.endswith('_')
+            trim_ = chName.endswith("_")
 
     def getFilename(
-            self, filenameNOext, s0p, appendTxt, series, ext, 
-            return_basename=False
-        ):
+        self, filenameNOext, s0p, appendTxt, series, ext, return_basename=False
+    ):
         # Do not allow dots in the filename since it breaks stuff here and there
-        filenameNOext = filenameNOext.replace('.', '_')
+        filenameNOext = filenameNOext.replace(".", "_")
         if self.addImageName:
             try:
                 ImageName = self.metadata.image(index=series).Name
                 if not isinstance(ImageName, str):
                     raise
             except Exception as e:
-                ImageName = ''
+                ImageName = ""
             self.removeInvalidCharacters(ImageName)
-            basename = f'{filenameNOext}_{ImageName}_s{s0p}_'
-            filename = f'{basename}{appendTxt}{ext}'
+            basename = f"{filenameNOext}_{ImageName}_s{s0p}_"
+            filename = f"{basename}{appendTxt}{ext}"
         else:
-            basename = f'{filenameNOext}_s{s0p}_'
-            filename = f'{basename}{appendTxt}{ext}'
+            basename = f"{filenameNOext}_s{s0p}_"
+            filename = f"{basename}{appendTxt}{ext}"
         if return_basename:
             return filename, basename
         else:
             return filename
-    
+
     def buildIndexes(self, SizeC, SizeT, SizeZ):
-        SizesCTZ = {'c': SizeC, 't': SizeT, 'z': SizeZ}
+        SizesCTZ = {"c": SizeC, "t": SizeT, "z": SizeZ}
         idxs = {}
-        k_key, i_key, j_key = 'ztc'
+        k_key, i_key, j_key = "ztc"
         idx = 0
 
         for k in range(SizesCTZ[k_key]):
             for i in range(SizesCTZ[i_key]):
                 for j in range(SizesCTZ[j_key]):
-                    idxs[(k,i,j)] = idx
+                    idxs[(k, i, j)] = idx
                     idx += 1
         return idxs
 
     def getIndex(self, idxs, dimsIdx):
-        dims = tuple([dimsIdx.get(v, 0) for v in 'ztc'])
+        dims = tuple([dimsIdx.get(v, 0) for v in "ztc"])
         return idxs[dims]
-            
+
     def saveImgDataChannel(
-            self, reader, series, images_path, filenameNOext, s0p, chName,
-            ch_idx, idxs, SizeZ
-        ):
+        self,
+        reader,
+        series,
+        images_path,
+        filenameNOext,
+        s0p,
+        chName,
+        ch_idx,
+        idxs,
+        SizeZ,
+    ):
         savedSizeT = self.timeRangeToSave[1] - self.timeRangeToSave[0] + 1
         if self.to_h5:
-            filename = self.getFilename(
-                filenameNOext, s0p, chName, series, '.h5'
-            )
+            filename = self.getFilename(filenameNOext, s0p, chName, series, ".h5")
             tempDir = tempfile.mkdtemp()
             tempFilepath = os.path.join(tempDir, filename)
-            print('==========================================================')
+            print("==========================================================")
             print(f'.h5 tempfile: "{tempFilepath}"')
-            print('==========================================================')
-            h5f = h5py.File(tempFilepath, 'w')
+            print("==========================================================")
+            h5f = h5py.File(tempFilepath, "w")
             # Read SizeX and SizeY from the shape of one image
-            imgData = reader.read(
-                c=ch_idx, z=0, t=0, series=series, rescale=False
-            )
+            imgData = reader.read(c=ch_idx, z=0, t=0, series=series, rescale=False)
             shape = (savedSizeT, SizeZ, *imgData.shape)
-            chunks = (1,1,*imgData.shape)
+            chunks = (1, 1, *imgData.shape)
             imgData_ch = h5f.create_dataset(
-                'data', shape, dtype=imgData.dtype,
-                chunks=chunks, shuffle=False
+                "data", shape, dtype=imgData.dtype, chunks=chunks, shuffle=False
             )
         else:
-            filename = self.getFilename(
-                filenameNOext, s0p, chName, series, '.tif'
-            )
+            filename = self.getFilename(filenameNOext, s0p, chName, series, ".tif")
             imgData_ch = []
 
-        framesRange = range(
-            self.timeRangeToSave[0]-1, 
-            self.timeRangeToSave[1]
-        )
+        framesRange = range(self.timeRangeToSave[0] - 1, self.timeRangeToSave[1])
         filePath = os.path.join(images_path, filename)
-        dimsIdx = {'c': ch_idx} 
+        dimsIdx = {"c": ch_idx}
         numFrames = len(framesRange)
-        num_imgs = numFrames*SizeZ
+        num_imgs = numFrames * SizeZ
         pbar = tqdm(
-            total=num_imgs, 
-            ncols=100, 
-            desc=f'Reading image (z 0/{SizeZ}, t 0/{numFrames})'
+            total=num_imgs,
+            ncols=100,
+            desc=f"Reading image (z 0/{SizeZ}, t 0/{numFrames})",
         )
         for out_t, t in enumerate(framesRange):
             imgData_z = []
-            dimsIdx['t'] = t
+            dimsIdx["t"] = t
             for z in range(SizeZ):
                 pbar.set_description(
-                    f'Reading image (z {z+1}/{SizeZ}, t {out_t+1}/{numFrames})'
+                    f"Reading image (z {z + 1}/{SizeZ}, t {out_t + 1}/{numFrames})"
                 )
-                dimsIdx['z'] = z
+                dimsIdx["z"] = z
                 if self.rawDataStruct != 2:
                     idx = self.getIndex(idxs, dimsIdx)
                 else:
                     idx = None
                 imgData = reader.read(
-                    c=ch_idx, z=z, t=t, series=series, rescale=False,
-                    index=idx
+                    c=ch_idx, z=z, t=t, series=series, rescale=False, index=idx
                 )
                 if self.to_h5:
                     imgData_ch[out_t, z] = imgData
                 else:
                     imgData_z.append(imgData)
-                
+
                 pbar.update()
 
             if not self.to_h5:
                 imgData_z = np.squeeze(np.array(imgData_z, dtype=imgData.dtype))
                 imgData_ch.append(imgData_z)
         pbar.close()
-        
+
         if not self.to_h5:
             imgData_ch = np.squeeze(np.array(imgData_ch, dtype=imgData.dtype))
             myutils.to_tiff(
-                filePath, imgData_ch, 
+                filePath,
+                imgData_ch,
                 SizeT=savedSizeT,
                 SizeZ=self.SizeZ,
                 TimeIncrement=self.TimeIncrement,
@@ -780,91 +831,91 @@ class bioFormatsWorker(QObject):
             shutil.move(tempFilepath, filePath)
             shutil.rmtree(tempDir)
 
-    def saveData(
-            self, images_path, rawFilePath, filename, p, series, pos_n,
-            p_idx=0
-        ):
-        if self.bioformats_backend == 'bioio':
+    def saveData(self, images_path, rawFilePath, filename, p, series, pos_n, p_idx=0):
+        if self.bioformats_backend == "bioio":
             from cellacdc import acdc_bioio_bioformats as bioformats
         else:
             import javabridge
             from cellacdc import bioformats
-        
+
         s0p = str(pos_n).zfill(self.numPosDigits)
         self.progress.emit(
-            f'Position {pos_n}/{self.numPos}: saving data to {images_path}...'
+            f"Position {pos_n}/{self.numPos}: saving data to {images_path}..."
         )
         filenameNOext, ext = os.path.splitext(filename)
 
         metadataXML_path = os.path.join(
             images_path,
-            self.getFilename(filenameNOext, s0p, 'metadataXML', series, '.txt')
+            self.getFilename(filenameNOext, s0p, "metadataXML", series, ".txt"),
         )
-        with open(metadataXML_path, 'w', encoding="utf-8") as txt:
+        with open(metadataXML_path, "w", encoding="utf-8") as txt:
             txt.write(str(self.metadataXML))
 
         metadata_filename, basename = self.getFilename(
-            filenameNOext, s0p, 'metadata', series, '.csv', 
-            return_basename=True
+            filenameNOext, s0p, "metadata", series, ".csv", return_basename=True
         )
         metadata_csv_path = os.path.join(images_path, metadata_filename)
-        savedSizeT = (
-            self.timeRangeToSave[1] - self.timeRangeToSave[0] + 1
-        )
-        df = pd.DataFrame({
-            'LensNA': self.LensNA,
-            'SizeT': savedSizeT,
-            'SizeZ': self.SizeZ,
-            'TimeIncrement': self.TimeIncrement,
-            'PhysicalSizeZ': self.PhysicalSizeZ,
-            'PhysicalSizeY': self.PhysicalSizeY,
-            'PhysicalSizeX': self.PhysicalSizeX,
-            'basename': basename
-        }, index=['values']).T
-        df.index.name = 'Description'
+        savedSizeT = self.timeRangeToSave[1] - self.timeRangeToSave[0] + 1
+        df = pd.DataFrame(
+            {
+                "LensNA": self.LensNA,
+                "SizeT": savedSizeT,
+                "SizeZ": self.SizeZ,
+                "TimeIncrement": self.TimeIncrement,
+                "PhysicalSizeZ": self.PhysicalSizeZ,
+                "PhysicalSizeY": self.PhysicalSizeY,
+                "PhysicalSizeX": self.PhysicalSizeX,
+                "basename": basename,
+            },
+            index=["values"],
+        ).T
+        df.index.name = "Description"
 
         ch_metadata = [
-            chName for c, chName in enumerate(self.chNames)
-            if self.saveChannels[c]
+            chName for c, chName in enumerate(self.chNames) if self.saveChannels[c]
         ]
         description = [
-            f'channel_{c}_name' for c in range(self.SizeC) 
-            if self.saveChannels[c]
+            f"channel_{c}_name" for c in range(self.SizeC) if self.saveChannels[c]
         ]
-        ch_metadata.extend([
-            wavelen for c, wavelen in enumerate(self.emWavelens)
-            if self.saveChannels[c]
-        ])
-        description.extend([
-            f'channel_{c}_emWavelen' for c in range(self.SizeC)
-            if self.saveChannels[c]
-        ])
+        ch_metadata.extend(
+            [
+                wavelen
+                for c, wavelen in enumerate(self.emWavelens)
+                if self.saveChannels[c]
+            ]
+        )
+        description.extend(
+            [
+                f"channel_{c}_emWavelen"
+                for c in range(self.SizeC)
+                if self.saveChannels[c]
+            ]
+        )
 
-        df_channelNames = pd.DataFrame({
-            'Description': description,
-            'values': ch_metadata
-        }).set_index('Description')
+        df_channelNames = pd.DataFrame(
+            {"Description": description, "values": ch_metadata}
+        ).set_index("Description")
 
         df = pd.concat([df, df_channelNames])
 
         if os.path.exists(metadata_csv_path):
             # Keep channel names already existing and not saved now
-            existing_df = pd.read_csv(metadata_csv_path).set_index('Description')
+            existing_df = pd.read_csv(metadata_csv_path).set_index("Description")
             for c, chName in enumerate(self.chNames):
                 if self.saveChannels[c]:
                     continue
-                chName_idx = f'channel_{c}_name'
-                chWavelen_idx = f'channel_{c}_emWavelen'
+                chName_idx = f"channel_{c}_name"
+                chWavelen_idx = f"channel_{c}_emWavelen"
                 try:
-                    existing_chName = existing_df.at[chName_idx, 'values']
-                    df.at[chName_idx, 'values'] = existing_chName
+                    existing_chName = existing_df.at[chName_idx, "values"]
+                    df.at[chName_idx, "values"] = existing_chName
                 except Exception as e:
                     traceback.print_exc()
                     pass
-                
+
                 try:
-                    existing_chWavelen = existing_df.at[chWavelen_idx, 'values']
-                    df.at[chWavelen_idx, 'values'] = existing_chWavelen
+                    existing_chWavelen = existing_df.at[chWavelen_idx, "values"]
+                    df.at[chWavelen_idx, "values"] = existing_chWavelen
                 except Exception as e:
                     traceback.print_exc()
                     pass
@@ -872,53 +923,58 @@ class bioFormatsWorker(QObject):
         df.to_csv(metadata_csv_path)
 
         idxs = self.buildIndexes(self.SizeC, self.SizeT, self.SizeZ)
-        if self.rawDataStruct != 2:     
-            if self.bioformats_backend == 'bioio':
+        if self.rawDataStruct != 2:
+            if self.bioformats_backend == "bioio":
                 import subprocess
                 from . import _process
-                
+
                 save_data_py_filepath = os.path.join(
-                    os.path.dirname(bioformats.__file__), '_save_data.py'
+                    os.path.dirname(bioformats.__file__), "_save_data.py"
                 )
                 zyx_physical_sizes = (
-                    self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX
+                    self.PhysicalSizeZ,
+                    self.PhysicalSizeY,
+                    self.PhysicalSizeX,
                 )
-                zyx_physical_sizes = " ".join(
-                    [str(val) for val in zyx_physical_sizes]
-                )
+                zyx_physical_sizes = " ".join([str(val) for val in zyx_physical_sizes])
                 uuid4 = uuid.uuid4()
                 command = (
-                    f'{sys.executable}, {save_data_py_filepath}, '
-                    f'-f, {rawFilePath}, '
-                    f'-d, {" ".join([str(val) for val in self.saveChannels])}, '
-                    f'-c, {" ".join(self.chNames)}, '
-                    f'-s, {series}, '
-                    f'-i, {images_path}, '
-                    f'-p, {filenameNOext}, '
-                    f'-pos, {s0p}, '
-                    f'-t, {self.SizeT}, '
-                    f'-z, {self.getSizeZ(rawFilePath)}, '
-                    f'-time_increment, {self.TimeIncrement}, '
-                    f'-zyx, {zyx_physical_sizes}, '
-                    f'-r, {" ".join([str(val) for val in self.timeRangeToSave])}, '
-                    f'-uuid, {uuid4}'
+                    f"{sys.executable}, {save_data_py_filepath}, "
+                    f"-f, {rawFilePath}, "
+                    f"-d, {' '.join([str(val) for val in self.saveChannels])}, "
+                    f"-c, {' '.join(self.chNames)}, "
+                    f"-s, {series}, "
+                    f"-i, {images_path}, "
+                    f"-p, {filenameNOext}, "
+                    f"-pos, {s0p}, "
+                    f"-t, {self.SizeT}, "
+                    f"-z, {self.getSizeZ(rawFilePath)}, "
+                    f"-time_increment, {self.TimeIncrement}, "
+                    f"-zyx, {zyx_physical_sizes}, "
+                    f"-r, {' '.join([str(val) for val in self.timeRangeToSave])}, "
+                    f"-uuid, {uuid4}"
                 )
                 if self.to_h5:
-                    command = f'{command}, -to_h5'
-                
+                    command = f"{command}, -to_h5"
+
                 if not self.lazy_load:
-                    command = f'{command}, -a'
-                    
-                args = [sys.executable, _process.__file__, '-c', command]
+                    command = f"{command}, -a"
+
+                args = [sys.executable, _process.__file__, "-c", command]
                 subprocess.run(args)
-                
+
                 bioformats._utils.check_raise_exception(uuid4)
-                
+
                 self.progressPbar.emit(len(self.chNames))
-            else:  
+            else:
                 self._saveDataPythonBioformats(
-                    bioformats, rawFilePath, series, images_path, 
-                    filenameNOext, s0p, idxs
+                    bioformats,
+                    rawFilePath,
+                    series,
+                    images_path,
+                    filenameNOext,
+                    s0p,
+                    idxs,
                 )
 
         elif self.rawDataStruct == 2:
@@ -930,74 +986,81 @@ class bioFormatsWorker(QObject):
                 if not saveCh:
                     continue
 
-                rawFilename = f'{basename}{pos_n}_{chName}'
+                rawFilename = f"{basename}{pos_n}_{chName}"
                 pos_rawFilenames.append(rawFilename)
                 raw_src_path = os.path.dirname(rawFilePath)
                 rawFilePath = [
                     os.path.join(raw_src_path, f)
                     for f in myutils.listdir(raw_src_path)
-                    if f.find(rawFilename)!=-1
+                    if f.find(rawFilename) != -1
                 ][0]
 
-                if self.bioformats_backend == 'bioio':
+                if self.bioformats_backend == "bioio":
                     import subprocess
                     from . import _process
-                    
+
                     save_data_py_filepath = os.path.join(
-                        os.path.dirname(bioformats.__file__), 
-                        '_save_data_single_channel.py'
+                        os.path.dirname(bioformats.__file__),
+                        "_save_data_single_channel.py",
                     )
                     zyx_physical_sizes = (
-                        self.PhysicalSizeZ, 
-                        self.PhysicalSizeY, 
-                        self.PhysicalSizeX
+                        self.PhysicalSizeZ,
+                        self.PhysicalSizeY,
+                        self.PhysicalSizeX,
                     )
                     zyx_physical_sizes = " ".join(
                         [str(val) for val in zyx_physical_sizes]
                     )
                     uuid4 = uuid.uuid4()
                     command = (
-                        f'{sys.executable}, {save_data_py_filepath}, '
-                        f'-f, {rawFilePath}, '
-                        f'-d, {" ".join([str(val) for val in self.saveChannels])}, '
-                        f'-c, {chName}, '
-                        f'-ch_idx, {c}, '
-                        f'-s, {series}, '
-                        f'-i, {images_path}, '
-                        f'-p, {filenameNOext}, '
-                        f'-pos, {s0p}, '
-                        f'-t, {self.SizeT}, '
-                        f'-z, {self.getSizeZ(rawFilePath)}, '
-                        f'-time_increment, {self.TimeIncrement}, '
-                        f'-zyx, {zyx_physical_sizes}, '
-                        f'-r, {" ".join([str(val) for val in self.timeRangeToSave])}, '
-                        f'-uuid, {uuid4}'
+                        f"{sys.executable}, {save_data_py_filepath}, "
+                        f"-f, {rawFilePath}, "
+                        f"-d, {' '.join([str(val) for val in self.saveChannels])}, "
+                        f"-c, {chName}, "
+                        f"-ch_idx, {c}, "
+                        f"-s, {series}, "
+                        f"-i, {images_path}, "
+                        f"-p, {filenameNOext}, "
+                        f"-pos, {s0p}, "
+                        f"-t, {self.SizeT}, "
+                        f"-z, {self.getSizeZ(rawFilePath)}, "
+                        f"-time_increment, {self.TimeIncrement}, "
+                        f"-zyx, {zyx_physical_sizes}, "
+                        f"-r, {' '.join([str(val) for val in self.timeRangeToSave])}, "
+                        f"-uuid, {uuid4}"
                     )
                     if self.to_h5:
-                        command = f'{command}, -to_h5'
-                    
-                    args = [sys.executable, _process.__file__, '-c', command]
+                        command = f"{command}, -to_h5"
+
+                    args = [sys.executable, _process.__file__, "-c", command]
                     subprocess.run(args)
-                    
+
                     bioformats._utils.check_raise_exception(uuid4)
-                    
+
                     self.progressPbar.emit(1)
-                else:  
+                else:
                     self._saveDataPythonBioformatsSingleChannel(
-                        bioformats, rawFilePath, series, images_path, 
-                        filenameNOext, s0p, idxs, chName, c
+                        bioformats,
+                        rawFilePath,
+                        series,
+                        images_path,
+                        filenameNOext,
+                        s0p,
+                        idxs,
+                        chName,
+                        c,
                     )
 
             if self.moveOtherFiles or self.copyOtherFiles:
                 # Move the other files present in the folder if they
                 # contain "otherFilename" in the name
-                otherFilename = f'{basename}{pos_n}'
+                otherFilename = f"{basename}{pos_n}"
                 rawFilePath = set()
                 for f in myutils.listdir(raw_src_path):
                     notRawFile = all(
-                        [f.find(rawName)==-1 for rawName in pos_rawFilenames]
+                        [f.find(rawName) == -1 for rawName in pos_rawFilenames]
                     )
-                    isPosFile = f.find(otherFilename)!=-1
+                    isPosFile = f.find(otherFilename) != -1
                     if isPosFile and notRawFile:
                         rawFilePath.add(os.path.join(raw_src_path, f))
 
@@ -1005,12 +1068,12 @@ class bioFormatsWorker(QObject):
                     # Determine basename, posNum and chName to build
                     # filename as "basename_s01_chName.ext"
                     _filename = os.path.basename(file)
-                    m = re.findall(fr'{basename}(\d+)_(.+)', _filename)
-                    if not m or len(m[0])!=2:
+                    m = re.findall(rf"{basename}(\d+)_(.+)", _filename)
+                    if not m or len(m[0]) != 2:
                         dst = os.path.join(images_path, _filename)
                     else:
                         _chNameWithExt = m[0][1]
-                        _filename = f'{filenameNOext}_s{s0p}_{_chNameWithExt}'
+                        _filename = f"{filenameNOext}_s{s0p}_{_chNameWithExt}"
                         dst = os.path.join(images_path, _filename)
                     if self.moveOtherFiles:
                         try:
@@ -1027,16 +1090,17 @@ class bioFormatsWorker(QObject):
     def run(self):
         raw_src_path = self.raw_src_path
         exp_dst_path = self.exp_dst_path
-        
-        if self.bioformats_backend == 'python-bioformats':
+
+        if self.bioformats_backend == "python-bioformats":
             import javabridge
             from cellacdc import bioformats
+
             javabridge.start_vm(class_path=bioformats.JARS, run_headless=True)
-            self.progress.emit('Java VM running.')
-            
+            self.progress.emit("Java VM running.")
+
         self.cancelled = False
         self.isCriticalError = False
-        
+
         for p, filename in enumerate(self.rawFilenames):
             pos_n = p + self.start_pos_n
             if self.rawDataStruct == 0:
@@ -1049,12 +1113,16 @@ class bioFormatsWorker(QObject):
                 self.numPos = self.SizeS
                 self.numPosDigits = len(str(self.numPos))
                 if p == 0:
-                    self.initPbar.emit(self.numPos*self.SizeC)
-                
+                    self.initPbar.emit(self.numPos * self.SizeC)
+
                 for in_file_p in range(self.SizeS):
                     cancel = self.saveToPosFolder(
-                        in_file_p, raw_src_path, exp_dst_path, filename, 
-                        in_file_p, pos_n
+                        in_file_p,
+                        raw_src_path,
+                        exp_dst_path,
+                        filename,
+                        in_file_p,
+                        pos_n,
                     )
                     if cancel:
                         self.cancelled = True
@@ -1069,7 +1137,7 @@ class bioFormatsWorker(QObject):
                 self.numPos = len(self.rawFilenames)
                 self.numPosDigits = len(str(self.numPos))
                 if p == 0:
-                    self.initPbar.emit(self.numPos*self.SizeC)
+                    self.initPbar.emit(self.numPos * self.SizeC)
                 cancel = self.saveToPosFolder(
                     p, raw_src_path, exp_dst_path, filename, 0, pos_n
                 )
@@ -1081,9 +1149,7 @@ class bioFormatsWorker(QObject):
                 break
 
             # Move files to raw_microscopy_files folder
-            self.move_to_raw_microscopy_files_folder(
-                self.raw_src_path, filename    
-            )
+            self.move_to_raw_microscopy_files_folder(self.raw_src_path, filename)
 
         if self.rawDataStruct == 2:
             filename = self.rawFilenames[0]
@@ -1091,48 +1157,45 @@ class bioFormatsWorker(QObject):
                 abort = self.readMetadata(raw_src_path, filename)
                 if abort:
                     self.cancelled = True
-                    if self.bioformats_backend == 'python-bioformats':
+                    if self.bioformats_backend == "python-bioformats":
                         javabridge.kill_vm()
                     self.finished.emit()
                     return
-      
+
             self.numPos = len(self.posNums)
             self.numPosDigits = len(str(self.numPos))
-            self.initPbar.emit(self.numPos*self.SizeC)
+            self.initPbar.emit(self.numPos * self.SizeC)
             for p_idx, pos in enumerate(self.posNums):
-                p = pos-1
+                p = pos - 1
                 abort = self.saveToPosFolder(
-                    p, raw_src_path, exp_dst_path, self.basename, 0,
-                    pos, p_idx=p_idx
+                    p, raw_src_path, exp_dst_path, self.basename, 0, pos, p_idx=p_idx
                 )
                 if abort:
                     self.cancelled = True
                     break
 
             for filename in self.rawFilenames:
-                self.move_to_raw_microscopy_files_folder(
-                    self.raw_src_path, filename    
-                )
+                self.move_to_raw_microscopy_files_folder(self.raw_src_path, filename)
 
-        if self.bioformats_backend == 'python-bioformats':
+        if self.bioformats_backend == "python-bioformats":
             javabridge.kill_vm()
         self.finished.emit()
-    
+
     def move_to_raw_microscopy_files_folder(self, raw_src_path, filename):
         # Move files to raw_microscopy_files folder
         foldername = os.path.basename(raw_src_path)
-        
+
         if self.cancelled:
             return
-        
-        if foldername == 'raw_microscopy_files':
+
+        if foldername == "raw_microscopy_files":
             return
-        
+
         if not self.move_raw_microscopy_files:
             return
-        
+
         rawFilePath = os.path.join(self.raw_src_path, filename)
-        raw_path = os.path.join(raw_src_path, 'raw_microscopy_files')
+        raw_path = os.path.join(raw_src_path, "raw_microscopy_files")
         if not os.path.exists(raw_path):
             os.mkdir(raw_path)
         dst = os.path.join(raw_path, filename)
@@ -1141,17 +1204,23 @@ class bioFormatsWorker(QObject):
         except PermissionError as e:
             self.progress.emit(e)
 
+
 class createDataStructWin(QMainWindow):
     def __init__(
-            self, parent=None, allowExit=False, buttonToRestore=None, 
-            mainWin=None, start_JVM=True, version=None
-        ):
+        self,
+        parent=None,
+        allowExit=False,
+        buttonToRestore=None,
+        mainWin=None,
+        start_JVM=True,
+        version=None,
+    ):
         super().__init__(parent)
 
         self._version = version
 
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
-            module='dataStruct'
+            module="dataStruct"
         )
         self.logger = logger
         self.log_path = log_path
@@ -1159,9 +1228,9 @@ class createDataStructWin(QMainWindow):
         self.logs_path = logs_path
 
         if self._version is not None:
-            logger.info(f'Initializing Data structure module v{self._version}...')
+            logger.info(f"Initializing Data structure module v{self._version}...")
         else:
-            logger.info(f'Initializing Data structure module...')
+            logger.info(f"Initializing Data structure module...")
 
         self.start_JVM = start_JVM
         self.allowExit = allowExit
@@ -1169,9 +1238,7 @@ class createDataStructWin(QMainWindow):
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
         self.metadataDialogIsOpen = False
-        self.df_settings = pd.read_csv(
-            settings_csv_path, index_col='setting'
-        )
+        self.df_settings = pd.read_csv(settings_csv_path, index_col="setting")
 
         version = myutils.read_version()
         self.setWindowTitle(f"Cell-ACDC v{version} - Data structure")
@@ -1182,9 +1249,7 @@ class createDataStructWin(QMainWindow):
 
         mainLayout = QVBoxLayout()
 
-        label = QLabel(
-            'Creating data structure from raw microscopy file(s)...'
-        )
+        label = QLabel("Creating data structure from raw microscopy file(s)...")
 
         label.setStyleSheet("padding:5px 10px 10px 10px;")
         label.setAlignment(Qt.AlignCenter)
@@ -1194,8 +1259,7 @@ class createDataStructWin(QMainWindow):
         label.setFont(font)
         mainLayout.addWidget(label)
 
-        informativeHtml = (
-        """
+        informativeHtml = """
         <html>
         <head>
         <title></title>
@@ -1224,7 +1288,6 @@ class createDataStructWin(QMainWindow):
         </body>
         </html>
         """
-        )
 
         informativeText = QLabel(self)
 
@@ -1237,104 +1300,104 @@ class createDataStructWin(QMainWindow):
         self.logWin.setReadOnly(True)
         mainLayout.addWidget(self.logWin)
 
-        abortButton = widgets.cancelPushButton(' Stop processs ')
+        abortButton = widgets.cancelPushButton(" Stop processs ")
         abortButton.clicked.connect(self.close)
-        
+
         buttonsLayout = QHBoxLayout()
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(abortButton)
-        
+
         mainLayout.addLayout(buttonsLayout)
 
         mainLayout.setContentsMargins(20, 0, 20, 20)
         mainContainer.setLayout(mainLayout)
 
         self.mainLayout = mainLayout
-        
+
         try:
             import javabridge
             from cellacdc import bioformats
-            self.bioformats_backend = 'python-bioformats'
+
+            self.bioformats_backend = "python-bioformats"
         except Exception as e:
             pass
-        
-        self.bioformats_backend = 'bioio'
+
+        self.bioformats_backend = "bioio"
         success = self.checkInstallBioIO(parent)
         if success:
             return
-        
-        self.bioformats_backend = 'python-bioformats'
+
+        self.bioformats_backend = "python-bioformats"
         self.checkInstallPythonBioformats(parent)
 
     def checkInstallBioIO(self, parent):
         myutils.check_install_package(
-            'BioIO', 
-            import_pkg_name='bioio', 
-            pypi_name='bioio', 
-            min_version='0.1.0',
+            "BioIO",
+            import_pkg_name="bioio",
+            pypi_name="bioio",
+            min_version="0.1.0",
             parent=parent,
         )
-        
+
         return True
-    
+
     def checkInstallPythonBioformats(self, parent):
         from . import is_win, is_mac
-        
+
         if not is_win and not is_mac:
             if parent is None:
                 self.show()
             self.criticalOSnotSupported()
             self.close()
-            raise OSError('This module is supported ONLY on Windows 10/10 and macOS')
+            raise OSError("This module is supported ONLY on Windows 10/10 and macOS")
 
         success, jar_dst_path = myutils.download_bioformats_jar(
-            qparent=self, logger_info=self.logger.info, 
-            logger_exception=self.logger.exception
+            qparent=self,
+            logger_info=self.logger.info,
+            logger_exception=self.logger.exception,
         )
-        self.logger.info('Checking if Java is installed...')
+        self.logger.info("Checking if Java is installed...")
         myutils.check_upgrade_javabridge()
         try:
             import javabridge
         except ModuleNotFoundError as e:
-            print('======================================')
+            print("======================================")
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
-            print('======================================')
+            print("======================================")
             cancel = myutils.install_javabridge_help(parent=self)
             if cancel:
-                raise ModuleNotFoundError(
-                    'User aborted javabridge installation'
-                )
+                raise ModuleNotFoundError("User aborted javabridge installation")
 
             isGitInstalled = myutils.check_git_installed(parent=self)
             if not isGitInstalled:
                 raise ModuleNotFoundError(
-                    'Git is not installed. Install from '
-                    'https://git-scm.com/book/en/v2/Getting-Started-Installing-Git'
+                    "Git is not installed. Install from "
+                    "https://git-scm.com/book/en/v2/Getting-Started-Installing-Git"
                 )
 
             try:
                 jre_path, jdk_path, url = myutils.download_java()
             except Exception as e:
-                print('======================================')
+                print("======================================")
                 traceback_str = traceback.format_exc()
                 self.logger.exception(traceback_str)
-                print('======================================')
+                print("======================================")
                 java_info = myutils.get_java_url()
                 url, file_size, os_foldername, unzipped_foldername = java_info
                 acdc_java_path, _ = myutils.get_acdc_java_path()
                 java_href = f'<a href="{url}">this</a>'
                 s = (
-                    f'1. Download {java_href} .zip file and unzip it.<br>'
-                    '2. Inside the unzipped folder there should be a folder called '
+                    f"1. Download {java_href} .zip file and unzip it.<br>"
+                    "2. Inside the unzipped folder there should be a folder called "
                     f'"{unzipped_foldername}". Open that folder and copy its '
-                    'content to the following path:<br><br>'
-                    f'{os.path.join(acdc_java_path, os_foldername)}'
+                    "content to the following path:<br><br>"
+                    f"{os.path.join(acdc_java_path, os_foldername)}"
                 )
                 note = (
-                    '<br><br><i>NOTE: if clicking on the link above does not work '
-                    'copy the link below and paste it into the browser</i><br><br>'
-                    f'{url}'
+                    "<br><br><i>NOTE: if clicking on the link above does not work "
+                    "copy the link below and paste it into the browser</i><br><br>"
+                    f"{url}"
                 )
                 msg = widgets.myMessageBox(wrapText=False)
                 txt = html_utils.paragraph(f"""
@@ -1343,79 +1406,69 @@ class createDataStructWin(QMainWindow):
                     launching this module again.<br><br>
                     {s}{note}
                 """)
-                msg.warning(self, 'Java not found', txt)
-                
-                err = s.replace('<br>', ' ')
-                err = err.replace('<a href=', '')
-                err = err.replace('>this</a>', '')
+                msg.warning(self, "Java not found", txt)
+
+                err = s.replace("<br>", " ")
+                err = err.replace("<a href=", "")
+                err = err.replace(">this</a>", "")
                 raise ModuleNotFoundError(
-                    'Installation of module "javabridge" failed. '
-                    f'{err}'
+                    f'Installation of module "javabridge" failed. {err}'
                 )
 
             if not is_win:
                 cancel = myutils.install_java()
                 if cancel:
-                    raise ModuleNotFoundError(
-                        'User aborted Java installation'
-                    )
+                    raise ModuleNotFoundError("User aborted Java installation")
                     return
 
             myutils.install_javabridge()
 
         except Exception as e:
-            print('======================================')
+            print("======================================")
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
-            print('======================================')
+            print("======================================")
             cancel = myutils.install_java()
             if cancel:
-                raise ModuleNotFoundError(
-                    'User aborted Java installation'
-                )
+                raise ModuleNotFoundError("User aborted Java installation")
                 return
-            myutils.install_javabridge(
-                force_compile=True, attempt_uninstall_first=True
-            )
+            myutils.install_javabridge(force_compile=True, attempt_uninstall_first=True)
 
         try:
             import javabridge
             from cellacdc import bioformats
         except Exception as e:
-            print('===============================================================')
+            print("===============================================================")
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
             error_msg = (
                 'Error while importing "javabridge" and "bioformats".\n\n'
-                f'Please report error here: {issues_url}\n'
+                f"Please report error here: {issues_url}\n"
             )
             print(error_msg)
-            print('===============================================================')
+            print("===============================================================")
 
-            title = 'Import javabridge/bioformats error'
-            txt = error_msg.replace('\n', '<br>')
-            txt = txt.replace(
-                issues_url, html_utils.href_tag(issues_url, issues_url)
-            )
+            title = "Import javabridge/bioformats error"
+            txt = error_msg.replace("\n", "<br>")
+            txt = txt.replace(issues_url, html_utils.href_tag(issues_url, issues_url))
             txt = html_utils.paragraph(txt)
             msg = widgets.myMessageBox(wrapText=False)
-            msg.critical(
-                self, title, txt, detailsText=traceback_str
-            )
+            msg.critical(self, title, txt, detailsText=traceback_str)
             raise ModuleNotFoundError(
-                'Error when importing javabridge. See above for details.'
+                "Error when importing javabridge. See above for details."
             )
 
     def criticalOSnotSupported(self):
         from cellacdc import widgets
+
         if self.parent() is None:
             msg = widgets.myMessageBox(self)
         else:
             msg = widgets.myMessageBox(self.parent())
-        msg.setIcon(iconName='SP_MessageBoxCritical')
-        msg.setWindowTitle('Not a supported OS')
-        msg.addButton('    Ok     ')
-        err_msg = (f"""
+        msg.setIcon(iconName="SP_MessageBoxCritical")
+        msg.setWindowTitle("Not a supported OS")
+        msg.addButton("    Ok     ")
+        err_msg = f"""
         <p style="font-size:12px">
         Unfortunately, the module "0. Create data structure from microscopy file(s)"
         is functional <b>only on Windows 10/11 and macOS</b>.<br><br>
@@ -1439,58 +1492,56 @@ class createDataStructWin(QMainWindow):
             here
         </a>.
         </p>
-        """)
+        """
         msg.addText(err_msg)
         # msg_label = msg.findChild(QLabel, "qt_msgbox_label")
         # msg_label.setOpenExternalLinks(False)
         # msg_label.linkActivated.connect(self.on_linkActivated)
         msg.exec_()
 
-
     def on_linkActivated(self, link):
-        if link == 'manual':
+        if link == "manual":
             systems = {
-                'nt': os.startfile,
-                'posix': lambda foldername: os.system('xdg-open "%s"' % foldername),
-                'os2': lambda foldername: os.system('open "%s"' % foldername)
-                 }
+                "nt": os.startfile,
+                "posix": lambda foldername: os.system('xdg-open "%s"' % foldername),
+                "os2": lambda foldername: os.system('open "%s"' % foldername),
+            }
 
             main_path = pathlib.Path(__file__).resolve().parents[1]
-            userManual_path = main_path / 'UserManual'
+            userManual_path = main_path / "UserManual"
             systems.get(os.name, os.startfile)(userManual_path)
-        elif link == 'fiji':
+        elif link == "fiji":
             systems = {
-                'nt': os.startfile,
-                'posix': lambda foldername: os.system('xdg-open "%s"' % foldername),
-                'os2': lambda foldername: os.system('open "%s"' % foldername)
-                 }
+                "nt": os.startfile,
+                "posix": lambda foldername: os.system('xdg-open "%s"' % foldername),
+                "os2": lambda foldername: os.system('open "%s"' % foldername),
+            }
 
             main_path = pathlib.Path(__file__).resolve().parents[1]
-            fijiMacros_path = main_path / 'FijiMacros'
+            fijiMacros_path = main_path / "FijiMacros"
             systems.get(os.name, os.startfile)(fijiMacros_path)
-
 
     def getMostRecentPath(self):
         if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            self.MostRecentPath = df.iloc[0]['path']
+            df = pd.read_csv(recentPaths_path, index_col="index")
+            if "opened_last_on" in df.columns:
+                df = df.sort_values("opened_last_on", ascending=False)
+            self.MostRecentPath = df.iloc[0]["path"]
             if not isinstance(self.MostRecentPath, str):
-                self.MostRecentPath = ''
+                self.MostRecentPath = ""
         else:
-            self.MostRecentPath = ''
+            self.MostRecentPath = ""
 
     def addToRecentPaths(self, raw_src_path):
         if not os.path.exists(raw_src_path):
             return
         if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            recentPaths = df['path'].to_list()
-            if 'opened_last_on' in df.columns:
-                openedOn = df['opened_last_on'].to_list()
+            df = pd.read_csv(recentPaths_path, index_col="index")
+            recentPaths = df["path"].to_list()
+            if "opened_last_on" in df.columns:
+                openedOn = df["opened_last_on"].to_list()
             else:
-                openedOn = [np.nan]*len(recentPaths)
+                openedOn = [np.nan] * len(recentPaths)
             if raw_src_path in recentPaths:
                 pop_idx = recentPaths.index(raw_src_path)
                 recentPaths.pop(pop_idx)
@@ -1504,15 +1555,18 @@ class createDataStructWin(QMainWindow):
         else:
             recentPaths = [raw_src_path]
             openedOn = [datetime.datetime.now()]
-        df = pd.DataFrame({'path': recentPaths,
-                           'opened_last_on': pd.Series(openedOn,
-                                                       dtype='datetime64[ns]')})
-        df.index.name = 'index'
+        df = pd.DataFrame(
+            {
+                "path": recentPaths,
+                "opened_last_on": pd.Series(openedOn, dtype="datetime64[ns]"),
+            }
+        )
+        df.index.name = "index"
         df.to_csv(recentPaths_path)
 
     @exception_handler
     def main(self):
-        self.log('Asking how raw data is structured...')
+        self.log("Asking how raw data is structured...")
         rawDataStruct, abort = self.askRawDataStruct()
         if abort:
             self.close()
@@ -1525,39 +1579,32 @@ class createDataStructWin(QMainWindow):
             self.close()
             return
 
-        self.log('Instructing to move raw data...')
+        self.log("Instructing to move raw data...")
         proceed = self.instructMoveRawFiles()
         if not proceed:
             self.close()
             return
 
-        self.log(
-            'Asking to select the folder that contains the microscopy files...'
-        )
+        self.log("Asking to select the folder that contains the microscopy files...")
         self.getMostRecentPath()
         raw_src_path = QFileDialog.getExistingDirectory(
-            self, 'Select folder containing the microscopy files', 
-            self.MostRecentPath
+            self, "Select folder containing the microscopy files", self.MostRecentPath
         )
         self.addToRecentPaths(raw_src_path)
 
-        if raw_src_path == '':
+        if raw_src_path == "":
             self.close()
             return
-        
+
         self.log(f'Selected folder: "{raw_src_path}"')
-        
-        self.log(
-            'Checking file format of loaded files...'
-        )
+
+        self.log("Checking file format of loaded files...")
         rawFilenames = self.checkFileFormat(raw_src_path)
         if not rawFilenames:
             self.close()
             return
-        
-        self.log(
-            'Checking file names of loaded files...'
-        )
+
+        self.log("Checking file names of loaded files...")
         proceed, rawFilenames = self.checkFileNames(rawFilenames, raw_src_path)
         if not proceed:
             self.close()
@@ -1569,41 +1616,38 @@ class createDataStructWin(QMainWindow):
                 self.close()
                 return
 
-        self.log(
-            'Asking in which folder to save the images files...'
-        )
+        self.log("Asking in which folder to save the images files...")
         exp_dst_path = QFileDialog.getExistingDirectory(
-            self, 'Select the folder in which to save the images files',
-            raw_src_path
+            self, "Select the folder in which to save the images files", raw_src_path
         )
         if not exp_dst_path:
             self.close()
             return
-        
+
         out = self.askPosFoldersExisting(exp_dst_path)
         if out is None:
             self.close()
             return
 
         overwrite, add_files, create_new, start_pos_n = out
-        
-        self.log('Instructing to move raw data...')
+
+        self.log("Instructing to move raw data...")
         loadEntirePosIntoRam = self.askHowToLoadData()
         if loadEntirePosIntoRam is None:
             self.close()
             return
-        
+
         if not loadEntirePosIntoRam:
             self._installLazyLoadModules()
-        
+
         self.loadEntirePosIntoRam = loadEntirePosIntoRam
 
         self.addToRecentPaths(exp_dst_path)
 
         self.addPbar()
-        
+
         self.initBioIO(raw_src_path, rawFilenames)
-        
+
         move_raw_microscopy_files = False
         if exp_dst_path == raw_src_path:
             move_raw_microscopy_files, cancel = self.askMoveRawMicroscopyFiles()
@@ -1616,9 +1660,13 @@ class createDataStructWin(QMainWindow):
         self.waitCond = QWaitCondition()
         self.thread = QThread()
         self.worker = bioFormatsWorker(
-            raw_src_path, rawFilenames, exp_dst_path,
-            self.mutex, self.waitCond, rawDataStruct, 
-            self.bioformats_backend, 
+            raw_src_path,
+            rawFilenames,
+            exp_dst_path,
+            self.mutex,
+            self.waitCond,
+            rawDataStruct,
+            self.bioformats_backend,
             lazy_load=not self.loadEntirePosIntoRam,
             move_raw_microscopy_files=move_raw_microscopy_files,
             overwrite=overwrite,
@@ -1649,7 +1697,7 @@ class createDataStructWin(QMainWindow):
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
-    
+
     def askMoveRawMicroscopyFiles(self):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
@@ -1658,29 +1706,28 @@ class createDataStructWin(QMainWindow):
             to a sub-folder called <code>raw_microscopy_files</code>?
         """)
         _, doNotMoveButton, moveButton = msg.warning(
-            self, 'Too many objects', txt,
-            buttonsTexts=(
-                'Cancel', 'No, do not move the files', 'Yes, move the files'        
-            )
+            self,
+            "Too many objects",
+            txt,
+            buttonsTexts=("Cancel", "No, do not move the files", "Yes, move the files"),
         )
         return msg.clickedButton == moveButton, msg.cancel
-    
+
     def _installLazyLoadModules(self):
         myutils.check_install_package(
-            'zarr',
-            installer='pip', 
+            "zarr",
+            installer="pip",
             is_cli=False,
             parent=self,
         )
-    
+
     @exception_handler
     def workerCritical(self, error):
         raise error
 
     def instructManualStruct(self):
-        manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
-        txt = (
-        f"""
+        manual_url = "https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf"
+        txt = f"""
         <p style="font-size:11px;">
         If you would like to add compatibility with your raw microscopy files,<br>
         you can request a new feature <a href=\"{issues_url}">here</a>.<br><br>
@@ -1692,9 +1739,8 @@ class createDataStructWin(QMainWindow):
         "Manually create data structure from microscopy file(s)"
         </p>
         """
-        )
         msg = QMessageBox(self)
-        msg.setWindowTitle('Data structure not available')
+        msg.setWindowTitle("Data structure not available")
         msg.setIcon(msg.Information)
         msg.setText(txt)
         msg.setTextInteractionFlags(Qt.TextBrowserInteraction)
@@ -1702,46 +1748,47 @@ class createDataStructWin(QMainWindow):
         msg.exec_()
 
     def initBioIO(self, raw_src_path, raw_filenames):
-        if self.bioformats_backend == 'python-bioformats':
+        if self.bioformats_backend == "python-bioformats":
             return
-        
+
         from cellacdc import acdc_bioio_bioformats as bioformats
+
         raw_filepath = os.path.join(raw_src_path, raw_filenames[0])
-        
+
         bioformats.install.install_reader_dependencies(
-            raw_filepath, 
+            raw_filepath,
             exception=Exception(
-                'Failed installing reader dependencies from the GUI, '
-                'trying from terminal...'
+                "Failed installing reader dependencies from the GUI, "
+                "trying from terminal..."
             ),
-            qparent=self
+            qparent=self,
         )
-        
+
         import subprocess
         from . import _process
-        
+
         init_reader_py_filepath = os.path.join(
-            os.path.dirname(bioformats.__file__), '_init_reader.py'
+            os.path.dirname(bioformats.__file__), "_init_reader.py"
         )
         uuid4 = uuid.uuid4()
         command = (
-            f'{sys.executable}, {init_reader_py_filepath}, '
-            f'-f, {raw_filepath}, '
-            f'-uuid, {uuid4}'
+            f"{sys.executable}, {init_reader_py_filepath}, "
+            f"-f, {raw_filepath}, "
+            f"-uuid, {uuid4}"
         )
-        
-        args = [sys.executable, _process.__file__, '-c', command]
+
+        args = [sys.executable, _process.__file__, "-c", command]
         subprocess.run(args)
-        
+
         bioformats._utils.check_raise_exception(uuid4)
-    
+
     def addPbar(self):
         self.QPbar = widgets.ProgressBar(self)
         self.QPbar.setValue(0)
         self.mainLayout.insertWidget(3, self.QPbar)
 
     def updatePbar(self, deltaPbar):
-        self.QPbar.setValue(self.QPbar.value()+deltaPbar)
+        self.QPbar.setValue(self.QPbar.value() + deltaPbar)
 
     def setPbarMax(self, max):
         self.QPbar.setMaximum(max)
@@ -1749,23 +1796,18 @@ class createDataStructWin(QMainWindow):
     def taskEnded(self):
         if self.worker.cancelled and not self.worker.isCriticalError:
             msg = widgets.myMessageBox(wrapText=False)
-            txt = html_utils.paragraph(
-                'Conversion task cancelled.'
-            )
-            msg.critical(
-               self, 'Conversion task cancelled.', txt
-            )
+            txt = html_utils.paragraph("Conversion task cancelled.")
+            msg.critical(self, "Conversion task cancelled.", txt)
             self.close()
         elif not self.worker.cancelled:
             msg = widgets.myMessageBox(wrapText=False)
-            txt = html_utils.paragraph(
-                'Conversion task ended.<br><br>'
-                'Files saved to'
-            )
+            txt = html_utils.paragraph("Conversion task ended.<br><br>Files saved to")
             abort = msg.information(
-               self, 'Conversion task ended.', txt,
-               commands=(self.worker.exp_dst_path,),
-               path_to_browse=self.worker.exp_dst_path
+                self,
+                "Conversion task ended.",
+                txt,
+                commands=(self.worker.exp_dst_path,),
+                path_to_browse=self.worker.exp_dst_path,
             )
             self.close()
 
@@ -1774,18 +1816,20 @@ class createDataStructWin(QMainWindow):
         self.logger.info(text)
 
     def askRawDataStruct(self):
-        infoText =  html_utils.paragraph(
-            'Select how you have your <b>raw microscopy files arranged</b>'
+        infoText = html_utils.paragraph(
+            "Select how you have your <b>raw microscopy files arranged</b>"
         )
         win = apps.QDialogCombobox(
-            'Raw data structure',
+            "Raw data structure",
             [
-                'Single microscopy file with multiple positions',
-                'One or more microscopy files, one for each position',
-                'One or more microscopy files, one for each channel',
-                'NONE of the above'
+                "Single microscopy file with multiple positions",
+                "One or more microscopy files, one for each position",
+                "One or more microscopy files, one for each channel",
+                "NONE of the above",
             ],
-            infoText, CbLabel='', parent=self
+            infoText,
+            CbLabel="",
+            parent=self,
         )
         win.exec_()
         if not win.cancel:
@@ -1795,9 +1839,9 @@ class createDataStructWin(QMainWindow):
     def instructMoveRawFiles(self):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         tip_admon = html_utils.to_admonition(
-            'If you have a single gray-scale TIFF file, '
-            'placing into a folder called <code>Images</code> will be enough.',
-            admonition_type='tip',
+            "If you have a single gray-scale TIFF file, "
+            "placing into a folder called <code>Images</code> will be enough.",
+            admonition_type="tip",
         )
         txt = html_utils.paragraph(f"""
             Put all of the raw microscopy files from the <b>same experiment</b>
@@ -1809,11 +1853,12 @@ class createDataStructWin(QMainWindow):
             by the microscope, for example '.czi' (Zeiss), '.nd2' (Nikon), 
             '.lif' (Leica), etc.<br><br>
             {tip_admon}
-        """
-        )
+        """)
         msg.information(
-            self, 'Microscopy files location', txt, 
-            buttonsTexts=('Cancel', widgets.okPushButton('Done'))
+            self,
+            "Microscopy files location",
+            txt,
+            buttonsTexts=("Cancel", widgets.okPushButton("Done")),
         )
         if msg.cancel:
             return False
@@ -1834,18 +1879,20 @@ class createDataStructWin(QMainWindow):
             """
         )
         _, loadFrameButton, loadPosButton = msg.warning(
-            self, 'Loading data', txt, 
+            self,
+            "Loading data",
+            txt,
             buttonsTexts=(
-                'Cancel', 
-                widgets.twoDPushButton('No, load one frame (2D) at a time'), 
-                widgets.FutureAllPushButton('Yes, load entire position at once')
-            )
+                "Cancel",
+                widgets.twoDPushButton("No, load one frame (2D) at a time"),
+                widgets.FutureAllPushButton("Yes, load entire position at once"),
+            ),
         )
         if msg.cancel:
             return None
 
         return msg.clickedButton == loadPosButton
-    
+
     def warnSelectedPathEmpty(self, raw_src_path):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
@@ -1857,24 +1904,28 @@ class createDataStructWin(QMainWindow):
             """
         )
         msg.warning(
-            self, 'Empty folder', txt, 
-            commands=(raw_src_path, ),
-            path_to_browse=raw_src_path
+            self,
+            "Empty folder",
+            txt,
+            commands=(raw_src_path,),
+            path_to_browse=raw_src_path,
         )
-    
+
     def checkFileFormat(self, raw_src_path):
         self.moveOtherFiles = False
         self.copyOtherFiles = False
         ls = natsorted(myutils.listdir(raw_src_path))
         files = [
-            filename for filename in ls
+            filename
+            for filename in ls
             if os.path.isfile(os.path.join(raw_src_path, filename))
         ]
         if not files:
             self.warnSelectedPathEmpty(raw_src_path)
             return []
         all_ext = [
-            os.path.splitext(filename)[1] for filename in ls
+            os.path.splitext(filename)[1]
+            for filename in ls
             if os.path.isfile(os.path.join(raw_src_path, filename))
         ]
         counter = Counter(all_ext)
@@ -1883,10 +1934,10 @@ class createDataStructWin(QMainWindow):
         most_common_ext, _ = counter.most_common(1)[0]
         if not is_ext_unique:
             if not most_common_ext:
-                most_common_ext_msg = '<empty>'
+                most_common_ext_msg = "<empty>"
             else:
                 most_common_ext_msg = most_common_ext
-            
+
             msg = widgets.myMessageBox(showCentered=False)
             txt = html_utils.paragraph(f"""
                 The following folder
@@ -1902,21 +1953,24 @@ class createDataStructWin(QMainWindow):
                 <br>
             """)
             _, yesButton, noButton = msg.warning(
-                self, 'Multiple extensions detected', txt, 
+                self,
+                "Multiple extensions detected",
+                txt,
                 buttonsTexts=(
-                    'Cancel', 'Yes, load only most common', 
-                    'No, load all files'
-                )
+                    "Cancel",
+                    "Yes, load only most common",
+                    "No, load all files",
+                ),
             )
             if msg.cancel:
                 return []
             if msg.clickedButton == yesButton:
                 files = [
-                    filename for filename in files
+                    filename
+                    for filename in files
                     if os.path.splitext(filename)[1] == most_common_ext
                 ]
-                otherExt = [
-                    ext for ext in unique_ext if ext != most_common_ext]
+                otherExt = [ext for ext in unique_ext if ext != most_common_ext]
                 files = self.askActionWithOtherFiles(files, otherExt)
             else:
                 return files
@@ -1948,40 +2002,38 @@ class createDataStructWin(QMainWindow):
                     'Rename file (replace invalid characters with "-")'
                 )
                 msg.warning(
-                    self, 'Invalid filename', txt, 
+                    self,
+                    "Invalid filename",
+                    txt,
                     path_to_browse=raw_src_path,
                     buttonsTexts=(
-                        'Let me rename files myself', 
-                        renameWithUnderscoresButton, 
-                        renameWithDashesButton
-                    )
+                        "Let me rename files myself",
+                        renameWithUnderscoresButton,
+                        renameWithDashesButton,
+                    ),
                 )
                 if msg.clickedButton == renameWithUnderscoresButton:
-                    self.log(
-                        'Renaming files to replace invalid characters with "_"...'
-                    )
+                    self.log('Renaming files to replace invalid characters with "_"...')
                     renamed_filenames = io.rename_files_replace_invalid_chars(
-                        raw_filenames, raw_src_path, replacement_char='_'
+                        raw_filenames, raw_src_path, replacement_char="_"
                     )
                     return True, renamed_filenames
                 elif msg.clickedButton == renameWithDashesButton:
-                    self.log(
-                        'Renaming files to replace invalid characters with "-"...'
-                    )
+                    self.log('Renaming files to replace invalid characters with "-"...')
                     renamed_filenames = io.rename_files_replace_invalid_chars(
-                        raw_filenames, raw_src_path, replacement_char='-'
+                        raw_filenames, raw_src_path, replacement_char="-"
                     )
                     return True, renamed_filenames
                 else:
                     return False, []
 
         return True, raw_filenames
-        
+
     def askActionWithOtherFiles(self, files, otherExt):
         self.moveOtherFiles = False
         msg = QMessageBox(self)
-        msg.setWindowTitle('Action with the other files?')
-        txt = (f"""
+        msg.setWindowTitle("Action with the other files?")
+        txt = f"""
         <p style="font-size:11px">
             What should I do with the other files (ext: {otherExt})
             in the folder?<br><br>
@@ -1989,21 +2041,13 @@ class createDataStructWin(QMainWindow):
             as the raw files will be moved or copied.</i>
         </p>
 
-        """)
+        """
         msg.setIcon(msg.Question)
         msg.setText(txt)
-        leaveButton = QPushButton(
-                'Leave them where they are'
-        )
-        moveButton = QPushButton(
-                'Attempt MOVING to their Position folder'
-        )
-        copyButton = QPushButton(
-                'Attempt COPYING to their Position folder'
-        )
-        cancelButton = QPushButton(
-                'Cancel'
-        )
+        leaveButton = QPushButton("Leave them where they are")
+        moveButton = QPushButton("Attempt MOVING to their Position folder")
+        copyButton = QPushButton("Attempt COPYING to their Position folder")
+        cancelButton = QPushButton("Cancel")
         msg.addButton(leaveButton, msg.YesRole)
         msg.addButton(moveButton, msg.NoRole)
         msg.addButton(copyButton, msg.RejectRole)
@@ -2024,16 +2068,17 @@ class createDataStructWin(QMainWindow):
         elif msg.clickedButton() == cancelButton:
             return []
 
-
     def warnMultipleFiles(self, files):
         win = apps.QDialogCombobox(
-            'Multiple microscopy files detected!', files,
-             '<p style="font-size:13px">'
-             'You selected "Single microscopy file", '
-             'but the <b>folder contains multiple files</b>.<br>'
-             '</p>',
-             CbLabel='Select which file to load: ', parent=self,
-             iconPixmap=QtGui.QPixmap(':warning.svg')
+            "Multiple microscopy files detected!",
+            files,
+            '<p style="font-size:13px">'
+            'You selected "Single microscopy file", '
+            "but the <b>folder contains multiple files</b>.<br>"
+            "</p>",
+            CbLabel="Select which file to load: ",
+            parent=self,
+            iconPixmap=QtGui.QPixmap(":warning.svg"),
         )
         win.exec_()
         if win.cancel:
@@ -2048,7 +2093,7 @@ class createDataStructWin(QMainWindow):
         stripped_filenames = []
         for file in rawFilenames:
             filename, ext = os.path.splitext(file)
-            m_iter = myutils.findalliter(fr'(\d+)_(.+)', filename)
+            m_iter = myutils.findalliter(rf"(\d+)_(.+)", filename)
             if len(m_iter) <= 1:
                 self.criticalNoFilenamePattern()
                 return False
@@ -2059,7 +2104,7 @@ class createDataStructWin(QMainWindow):
                 posNum, chName = int(m[0][0]), m[0][1]
                 self.chNames.add(chName)
                 self.posNums.add(posNum)
-                ch_idx = filename.find(f'{posNum}_{chName}')
+                ch_idx = filename.find(f"{posNum}_{chName}")
                 stripped_filenames.append(filename[:ch_idx])
             except Exception as e:
                 traceback_str = traceback.format_exc()
@@ -2079,10 +2124,8 @@ class createDataStructWin(QMainWindow):
         self.SizeS = len(self.posNums)
         return True
 
-
-    def criticalNoFilenamePattern(self, error=''):
-        txt = (
-        """
+    def criticalNoFilenamePattern(self, error=""):
+        txt = """
         <b>Files are named with a non-compatible pattern.</b><br><br>
         In order to automatically generate the required data structure
         from "Multiple files, one for each channel" the filenames must
@@ -2093,9 +2136,8 @@ class createDataStructWin(QMainWindow):
         <i>Note that the channel MUST be separated
         from the rest of the name by an underscore "_"</i>
         """
-        )
         msg = QMessageBox(self)
-        msg.setWindowTitle('Non-compatible pattern')
+        msg.setWindowTitle("Non-compatible pattern")
         msg.setIcon(msg.Critical)
         msg.setText(txt)
         if error:
@@ -2105,8 +2147,8 @@ class createDataStructWin(QMainWindow):
     def criticalBioFormats(self, actionTxt, tracebackFormat, filename):
         msg = widgets.myMessageBox(self, wrapText=True)
 
-        url = 'https://docs.openmicroscopy.org/bio-formats/6.7.0/supported-formats.html'
-        seeHere = f'<a href=\"{url}">here</a>'
+        url = "https://docs.openmicroscopy.org/bio-formats/6.7.0/supported-formats.html"
+        seeHere = f'<a href="{url}">here</a>'
 
         _, ext = os.path.splitext(filename)
         txt = html_utils.paragraph(
@@ -2124,31 +2166,55 @@ class createDataStructWin(QMainWindow):
             You were trying to read file: {filename}
             """
         )
-        
-        msg.critical(
-            self, 'Error with Bio-Formats', txt, detailsText=tracebackFormat
-        )
+
+        msg.critical(self, "Error with Bio-Formats", txt, detailsText=tracebackFormat)
 
         self.close()
 
     def askConfirmMetadata(
-            self, filename, LensNA, SizeT, SizeZ, SizeC, SizeS,
-            TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
-            PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName,
-            rawFilePath, sampleImgData
-        ):
+        self,
+        filename,
+        LensNA,
+        SizeT,
+        SizeZ,
+        SizeC,
+        SizeS,
+        TimeIncrement,
+        TimeIncrementUnit,
+        PhysicalSizeX,
+        PhysicalSizeY,
+        PhysicalSizeZ,
+        PhysicalSizeUnit,
+        chNames,
+        emWavelens,
+        ImageName,
+        rawFilePath,
+        sampleImgData,
+    ):
         if self.rawDataStruct == 2:
             filename = self.basename
         self.metadataDialogIsOpen = True
         self.metadataWin = apps.QDialogMetadataXML(
-            title=f'Metadata for {filename}', rawFilename=filename,
-            LensNA=LensNA, SizeT=SizeT, SizeZ=SizeZ, SizeC=SizeC, SizeS=SizeS,
-            TimeIncrement=TimeIncrement, TimeIncrementUnit=TimeIncrementUnit,
-            PhysicalSizeX=PhysicalSizeX, PhysicalSizeY=PhysicalSizeY,
-            PhysicalSizeZ=PhysicalSizeZ, PhysicalSizeUnit=PhysicalSizeUnit,
-            ImageName=ImageName, chNames=chNames, emWavelens=emWavelens,
-            parent=self, rawDataStruct=self.rawDataStruct,
-            sampleImgData=sampleImgData, rawFilePath=rawFilePath
+            title=f"Metadata for {filename}",
+            rawFilename=filename,
+            LensNA=LensNA,
+            SizeT=SizeT,
+            SizeZ=SizeZ,
+            SizeC=SizeC,
+            SizeS=SizeS,
+            TimeIncrement=TimeIncrement,
+            TimeIncrementUnit=TimeIncrementUnit,
+            PhysicalSizeX=PhysicalSizeX,
+            PhysicalSizeY=PhysicalSizeY,
+            PhysicalSizeZ=PhysicalSizeZ,
+            PhysicalSizeUnit=PhysicalSizeUnit,
+            ImageName=ImageName,
+            chNames=chNames,
+            emWavelens=emWavelens,
+            parent=self,
+            rawDataStruct=self.rawDataStruct,
+            sampleImgData=sampleImgData,
+            rawFilePath=rawFilePath,
         )
         self.metadataWin.exec_()
         self.metadataDialogIsOpen = False
@@ -2159,40 +2225,42 @@ class createDataStructWin(QMainWindow):
         pos_foldernames = myutils.get_pos_foldernames(exp_dst_path)
         if not pos_foldernames:
             return False, False, False, 1
-        
+
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
-            'The selected destination folder <b>already contains Position folders</b>.<br><br>'
-            'Do you want to <b>overwrite</b> all of its content, '
-            '<b>add files</b> to the existing Position folders,<br>'
-            'or <b>create new</b> Position folders?'
+            "The selected destination folder <b>already contains Position folders</b>.<br><br>"
+            "Do you want to <b>overwrite</b> all of its content, "
+            "<b>add files</b> to the existing Position folders,<br>"
+            "or <b>create new</b> Position folders?"
         )
         _, overwriteButton, addFilesButton, createNewButton = msg.warning(
-           self, 'Warning: existing Position folders detected!', txt,
-           buttonsTexts=(
-               'Cancel', 
-               'Overwrite', 
-               'Add files', 
-               widgets.newFilePushButton('Create new'),
+            self,
+            "Warning: existing Position folders detected!",
+            txt,
+            buttonsTexts=(
+                "Cancel",
+                "Overwrite",
+                "Add files",
+                widgets.newFilePushButton("Create new"),
             ),
-           path_to_browse=exp_dst_path
+            path_to_browse=exp_dst_path,
         )
         if msg.cancel:
-            return 
-        
+            return
+
         overwrite = overwriteButton == msg.clickedButton
         add_files = addFilesButton == msg.clickedButton
         create_new = createNewButton == msg.clickedButton
-        
+
         start_pos_n = 1
         if create_new:
-            pos_ns = [int(pos.split('_')[-1]) for pos in pos_foldernames]
+            pos_ns = [int(pos.split("_")[-1]) for pos in pos_foldernames]
             start_pos_n = max(pos_ns) + 1
-        
+
         return overwrite, add_files, create_new, start_pos_n
 
     def closeEvent(self, event):
-        self.logger.info('Closing data structure logger...')
+        self.logger.info("Closing data structure logger...")
         handlers = self.logger.handlers[:]
         for handler in handlers:
             handler.close()
@@ -2201,21 +2269,21 @@ class createDataStructWin(QMainWindow):
         if self.buttonToRestore is not None:
             button, color = self.buttonToRestore
             button.setText('0. Attempt "Create data structure" again')
-            button.setStyleSheet(
-                f'QPushButton {{background-color: {color};}}')
+            button.setStyleSheet(f"QPushButton {{background-color: {color};}}")
             self.mainWin.setWindowState(Qt.WindowNoState)
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
+
 
 class InitFijiMacro:
     def __init__(self, acdcLauncher):
         self.acdcLauncher = acdcLauncher
         self.logger = self.acdcLauncher.logger
-    
+
     def askSelectInstalledFiji(self):
         if os.path.exists(myutils.get_fiji_exec_folderpath()):
             return False, False
-        
+
         txt = html_utils.paragraph(f"""    
             Do you already have Fiji (ImageJ)?<br><br>
             If yes, click on the <code>Select Fiji location</code> button below 
@@ -2223,62 +2291,60 @@ class InitFijiMacro:
             Alternatively, you can ignore this and let Cell-ACDC automatically 
             download Fiji for you.
         """)
-        selectFijiButton = (
-            widgets.OpenFilePushButton('Select Fiji.app location')
-        )
-        downloadFijiButton = (
-            widgets.DownloadPushButton('Download Fiji.app')
-        )
+        selectFijiButton = widgets.OpenFilePushButton("Select Fiji.app location")
+        downloadFijiButton = widgets.DownloadPushButton("Download Fiji.app")
         msg = widgets.myMessageBox(wrapText=False)
         msg.did_user_selected_fiji = False
         msg.question(
-            self.acdcLauncher, 'Select Fiji location', txt, 
-            buttonsTexts=(
-                'Cancel', selectFijiButton, downloadFijiButton
-            ), 
-            showDialog=False
+            self.acdcLauncher,
+            "Select Fiji location",
+            txt,
+            buttonsTexts=("Cancel", selectFijiButton, downloadFijiButton),
+            showDialog=False,
         )
         selectFijiButton.clicked.disconnect()
         selectFijiButton.clicked.connect(
             partial(self.selectFijiLocation, messagebox=msg)
         )
         msg.exec_()
-        
+
         return msg.cancel, msg.did_user_selected_fiji
-    
+
     def selectFijiLocation(self, checked=True, messagebox=None):
         import qtpy.compat
+
         filepath = qtpy.compat.getopenfilename(
-            parent=messagebox, 
-            caption='Select Fiji.app location', 
-            filters='Application (*.app);;All Files (*)'
+            parent=messagebox,
+            caption="Select Fiji.app location",
+            filters="Application (*.app);;All Files (*)",
         )[0]
         if not filepath:
             return
-        
+
         from cellacdc import fiji_location_filepath
-        with open(fiji_location_filepath, 'w') as txt:
+
+        with open(fiji_location_filepath, "w") as txt:
             txt.write(os.path.join(filepath))
-        
+
         messagebox.did_user_selected_fiji = True
         messagebox.cancel = False
         messagebox.close()
-    
+
     def run(self):
         cancel, did_user_selected_fiji = self.askSelectInstalledFiji()
         if cancel:
             self.cancel()
             return
-        
-        txt = (f"""    
+
+        txt = f"""    
             In order to run Bio-Formats on your system, Cell-ACDC will use 
             <b>Fiji (ImageJ) from the command line</b>.<br><br>
             The process entails the creation of a macro (.ijm) file and 
             its execution from the command line.<br><br>
             If you prefer to run the macro yourself, you can go through 
             its creation process and cancel its execution later.
-        """)
-        self.logger.info('Testing Fiji command...')
+        """
+        self.logger.info("Testing Fiji command...")
         fiji_success = myutils.test_fiji_base_command(self.logger.info)
         commands = None
         if not fiji_success:
@@ -2287,96 +2353,98 @@ class InitFijiMacro:
                     shutil.rmtree(acdc_fiji_path)
                 except Exception as err:
                     pass
-            
-            href = html_utils.href_tag('here', urls.fiji_downloads)
-            note_download_txt = (f"""
+
+            href = html_utils.href_tag("here", urls.fiji_downloads)
+            note_download_txt = f"""
                 Before continuing, Fiji will be <b>automatically downloaded
                 now</b>.<br><br>
                 If the download fails, please download the zip file from {href} 
                 and unzip it in the following location:
-            """)
-            admon = html_utils.to_admonition(
-                note_download_txt, admonition_type='note'
-            )
-            txt = f'{txt}<br>{admon}'
+            """
+            admon = html_utils.to_admonition(note_download_txt, admonition_type="note")
+            txt = f"{txt}<br>{admon}"
             commands = (acdc_fiji_path,)
-            
+
         txt = html_utils.paragraph(txt)
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(
-            self.acdcLauncher, 'Running Fiji in the command line', txt, 
-            buttonsTexts=('Cancel', 'Ok'),
-            commands=commands
+            self.acdcLauncher,
+            "Running Fiji in the command line",
+            txt,
+            buttonsTexts=("Cancel", "Ok"),
+            commands=commands,
         )
         if msg.cancel:
             self.cancel()
             return
-        
+
         myutils.download_fiji(logger_func=self.logger.info)
-        
+
         win = apps.InitFijiMacroDialog(parent=self.acdcLauncher)
         win.exec_()
         if win.cancel:
             self.cancel()
             return
-        
+
         init_macro_args = win.init_macro_args
         is_separate_channels = init_macro_args[2]
         macro_filepath = fiji_macros.init_macro(*init_macro_args)
         macro_command = fiji_macros.command_run_macro(macro_filepath)
-        
-        txt = ("""
+
+        txt = """
             Cell-ACDC will now run the macro in the terminal.<br><br>
             During the process, the <b>GUI will be unresponsive</b>, while 
             progress will be displayed in the terminal.<br><br>
             If you prefer, you can stop the process now and run the command 
             yourself, or even run the macro directly from the Fiji GUI.<br>
-        """)
-        
+        """
+
         if is_separate_channels:
             important_admon = html_utils.to_admonition(
-                'There are still steps to run after the macro finishes, so '
-                'if you run it yourself, '
-                'please close this dialogue only after the macro completes.',
-                admonition_type='important'
+                "There are still steps to run after the macro finishes, so "
+                "if you run it yourself, "
+                "please close this dialogue only after the macro completes.",
+                admonition_type="important",
             )
-            txt = f'{txt}{important_admon}'
-        
-        txt = f'{txt}<br>Command to run the macro:'
-        
+            txt = f"{txt}{important_admon}"
+
+        txt = f"{txt}<br>Command to run the macro:"
+
         txt = html_utils.paragraph(txt)
         msg = widgets.myMessageBox(wrapText=False)
         _, _, okButton = msg.information(
-            self.acdcLauncher, 'Fiji macro command', txt, 
-            buttonsTexts=('Cancel', 'I already ran the macro', 'Ok'),
+            self.acdcLauncher,
+            "Fiji macro command",
+            txt,
+            buttonsTexts=("Cancel", "I already ran the macro", "Ok"),
             commands=(macro_filepath),
-            path_to_browse=os.path.dirname(macro_filepath)
+            path_to_browse=os.path.dirname(macro_filepath),
         )
         if msg.cancel:
             self.cancel()
             return
-        
+
         success = True
         if msg.clickedButton == okButton:
-            success = fiji_macros.run_macro(macro_command)            
-        
+            success = fiji_macros.run_macro(macro_command)
+
         files_folderpath = init_macro_args[0]
         dst_folderpath = init_macro_args[3]
         channels = init_macro_args[4]
         if success and is_separate_channels:
-            self.logger.info('Moving files to Position folders...')
+            self.logger.info("Moving files to Position folders...")
             success = io.move_separate_channels_tiffs_to_pos_folders(
                 dst_folderpath, channels
             )
-        
+
         if success:
             txt = html_utils.paragraph("""
                 Macro execution completed. 
                 Path to the macro file:
             """)
-            msg_func = 'information'
+            msg_func = "information"
         else:
-            href = html_utils.href_tag('GitHub page', urls.issues_url)
+            href = html_utils.href_tag("GitHub page", urls.issues_url)
             txt = html_utils.paragraph(f"""
                 Macro execution completed with errors. More details in the 
                 terminal.<br><br> 
@@ -2384,15 +2452,15 @@ class InitFijiMacro:
                 {href}<br><br>
                 Path to the macro file:
             """)
-            msg_func = 'information'
-        
+            msg_func = "information"
+
         msg = widgets.myMessageBox(wrapText=False)
         getattr(msg, msg_func)(
-            self.acdcLauncher, 'Macro execution completed', txt, 
-            commands=(macro_filepath,)
+            self.acdcLauncher,
+            "Macro execution completed",
+            txt,
+            commands=(macro_filepath,),
         )
-    
+
     def cancel(self):
-        self.logger.info('Running Bio-Formats from Fiji process cancelled.')
-        
-        
+        self.logger.info("Running Bio-Formats from Fiji process cancelled.")

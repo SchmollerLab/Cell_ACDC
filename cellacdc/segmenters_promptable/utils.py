@@ -28,11 +28,7 @@ def build_combined_mask(model_out):
     return combined
 
 
-def _apply_overlap_rule(
-        lab_old,
-        lab_new,
-        mode: Literal['union', 'intersection']
-    ):
+def _apply_overlap_rule(lab_old, lab_new, mode: Literal["union", "intersection"]):
     """
     Apply overlap rules between old and new label masks.
 
@@ -72,13 +68,13 @@ def _apply_overlap_rule(
                 p_only = np.logical_and(p_mask, ~q_mask)  # Old only
                 q_only = np.logical_and(q_mask, ~p_mask)  # New only
 
-                if mode == 'union':
+                if mode == "union":
                     # p OR q → all become p
                     result[p_and_q] = p
                     result[p_only] = p
                     result[q_only] = p
 
-                elif mode == 'intersection':
+                elif mode == "intersection":
                     # Only p AND q → p; p XOR q → 0
                     result[p_and_q] = p
                     # p_only and q_only become 0 (already 0 in result)
@@ -87,7 +83,7 @@ def _apply_overlap_rule(
     non_overlapping_new_ids = new_ids - overlapping_new_ids
     for q in non_overlapping_new_ids:
         q_mask = lab_new == q
-        if mode == 'union':
+        if mode == "union":
             result[q_mask] = q
         # In 'intersection' mode, non-overlapping new IDs are not added
 
@@ -95,10 +91,10 @@ def _apply_overlap_rule(
 
 
 def insert_model_output_into_labels(
-        lab,
-        model_out,
-        edited_IDs: int | List[int] = 0,
-    ):
+    lab,
+    model_out,
+    edited_IDs: int | List[int] = 0,
+):
     """
     Combine model output with existing labels using three strategies.
 
@@ -122,7 +118,7 @@ def insert_model_output_into_labels(
     lab_new = build_combined_mask(model_out)
 
     # Apply overlap rules for union and intersection
-    lab_union = _apply_overlap_rule(lab, lab_new, mode='union')
-    lab_intersection = _apply_overlap_rule(lab, lab_new, mode='intersection')
+    lab_union = _apply_overlap_rule(lab, lab_new, mode="union")
+    lab_intersection = _apply_overlap_rule(lab, lab_new, mode="intersection")
 
     return lab_new, lab_union, lab_intersection

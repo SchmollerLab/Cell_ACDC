@@ -1,9 +1,9 @@
-
 # -*- coding: utf-8 -*-
 """
 Created on Sat Dec 21 18:54:10 2019
 
 """
+
 import os
 import sys
 import numpy as np
@@ -13,16 +13,18 @@ import skimage.transform as trans
 
 from .model import unet
 
+
 def determine_path_weights():
     script_dirname = os.path.dirname(os.path.realpath(__file__))
     main_path = os.path.dirname(os.path.dirname(os.path.dirname(script_dirname)))
-    model_path = os.path.join(main_path, 'models', 'YeaZ_model')
+    model_path = os.path.join(main_path, "models", "YeaZ_model")
 
-    if getattr(sys, 'frozen', False):
-        path_weights  = os.path.join(sys._MEIPASS, 'unet/')
+    if getattr(sys, "frozen", False):
+        path_weights = os.path.join(sys._MEIPASS, "unet/")
     else:
         path_weights = model_path
     return path_weights
+
 
 def create_directory_if_not_exists(path):
     """
@@ -62,33 +64,28 @@ def prediction(im, is_pc, path_weights):
     """
     # pad with zeros such that is divisible by 16
     (nrow, ncol) = im.shape
-    row_add = 16-nrow%16
-    col_add = 16-ncol%16
-    padded = np.pad(im, ((0, row_add), (0, col_add)), 'constant')
+    row_add = 16 - nrow % 16
+    col_add = 16 - ncol % 16
+    padded = np.pad(im, ((0, row_add), (0, col_add)), "constant")
 
     # WHOLE CELL PREDICTION
-    model = unet(pretrained_weights = None,
-                 input_size = (None,None,1))
+    model = unet(pretrained_weights=None, input_size=(None, None, 1))
 
     if is_pc:
         path = os.path.join(
-            path_weights,
-            'unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5'
+            path_weights, "unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5"
         )
     else:
-        path = os.path.join(
-            path_weights,
-            'weights_budding_BF_multilab_0_1.hdf5'
-        )
+        path = os.path.join(path_weights, "weights_budding_BF_multilab_0_1.hdf5")
 
     if not os.path.exists(path):
-        raise ValueError(f'Weights file not found in {path}')
+        raise ValueError(f"Weights file not found in {path}")
 
     model.load_weights(path)
 
-    results = model.predict(padded[np.newaxis,:,:,np.newaxis], batch_size=1)
+    results = model.predict(padded[np.newaxis, :, :, np.newaxis], batch_size=1)
 
-    res = results[0,:,:,0]
+    res = results[0, :, :, 0]
     return res[:nrow, :ncol]
 
 
@@ -106,23 +103,27 @@ def batch_prediction(im_stack, is_pc, path_weights, batch_size=1):
     col_add = 16 - ncol % 16
     im_stack_padded = []
     for im in im_stack:
-        padded = np.pad(im, ((0, row_add), (0, col_add)), mode='constant')
+        padded = np.pad(im, ((0, row_add), (0, col_add)), mode="constant")
         im_stack_padded.append(padded)
     im_stack_padded = np.array(im_stack_padded)
     # WHOLE CELL PREDICTION
-    model = unet(pretrained_weights=None,
-                 input_size=(None, None, 1))
+    model = unet(pretrained_weights=None, input_size=(None, None, 1))
 
     if is_pc:
-        path = os.path.join(path_weights, 'unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5')
+        path = os.path.join(
+            path_weights, "unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5"
+        )
     else:
-        path = os.path.join(path_weights, 'unet_weights_BF_batchsize_25_Nepochs_100_SJR_0_1.hdf5')
+        path = os.path.join(
+            path_weights, "unet_weights_BF_batchsize_25_Nepochs_100_SJR_0_1.hdf5"
+        )
 
     if not os.path.exists(path):
         raise ValueError(
-            'Weights file not found! Download them from the link '
-            f'below and place them into {path_weights}.\n'
-            'Link: https://drive.google.com/file/d/1CO7uF-werl9y8s3Fel0cVjRHCdXRf2Ly/view?usp=sharing')
+            "Weights file not found! Download them from the link "
+            f"below and place them into {path_weights}.\n"
+            "Link: https://drive.google.com/file/d/1CO7uF-werl9y8s3Fel0cVjRHCdXRf2Ly/view?usp=sharing"
+        )
 
     model.load_weights(path)
 

@@ -20,26 +20,30 @@ custom_annot_path = os.path.join(settings_folderpath, "custom_annotations.json")
 from .annotation_display import AnnotationDisplay
 from .object_properties import ObjectProperties
 
+
 class CustomAnnotations(AnnotationDisplay, ObjectProperties):
     """Extracted from guiWin."""
 
-    def addCustomAnnnotScatterPlot(
-            self, symbolColor, symbol, toolButton
-        ):
+    def addCustomAnnnotScatterPlot(self, symbolColor, symbol, toolButton):
         # Add scatter plot item
         symbolColorBrush = [0, 0, 0, 50]
         symbolColorBrush[:3] = symbolColor.getRgb()[:3]
         scatterPlotItem = widgets.CustomAnnotationScatterPlotItem()
         scatterPlotItem.setData(
-            [], [], symbol=symbol, pxMode=False,
-            brush=pg.mkBrush(symbolColorBrush), size=15,
+            [],
+            [],
+            symbol=symbol,
+            pxMode=False,
+            brush=pg.mkBrush(symbolColorBrush),
+            size=15,
             pen=pg.mkPen(width=3, color=symbolColor),
-            hoverable=True, hoverBrush=pg.mkBrush(symbolColor),
-            tip=None
+            hoverable=True,
+            hoverBrush=pg.mkBrush(symbolColor),
+            tip=None,
         )
         scatterPlotItem.sigHovered.connect(self.customAnnotHovered)
         scatterPlotItem.button = toolButton
-        self.customAnnotDict[toolButton]['scatterPlotItem'] = scatterPlotItem
+        self.customAnnotDict[toolButton]["scatterPlotItem"] = scatterPlotItem
         self.ax1.addItem(scatterPlotItem)
 
     def addCustomAnnotButtonAllLoadedPos(self):
@@ -59,36 +63,51 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
         self.addAnnotWin.sigDeleteSelecAnnot.connect(self.deleteSelectedAnnot)
         self.addAnnotWin.exec_()
         if self.addAnnotWin.cancel:
-            self.logger.info('Custom annotation process cancelled.')
+            self.logger.info("Custom annotation process cancelled.")
             return
 
         symbol = self.addAnnotWin.symbol
-        symbolColor = self.addAnnotWin.state['symbolColor']
+        symbolColor = self.addAnnotWin.state["symbolColor"]
         keySequence = self.addAnnotWin.shortcutWidget.widget.keySequence
         toolTip = self.addAnnotWin.toolTip
-        name = self.addAnnotWin.state['name']
-        keepActive = self.addAnnotWin.state.get('keepActive', True)
-        isHideChecked = self.addAnnotWin.state.get('isHideChecked', True)
-        
+        name = self.addAnnotWin.state["name"]
+        keepActive = self.addAnnotWin.state.get("keepActive", True)
+        isHideChecked = self.addAnnotWin.state.get("isHideChecked", True)
+
         proceed = self.checkNameExists(name)
         if not proceed:
-            self.logger.info('Custom annotation process cancelled.')
+            self.logger.info("Custom annotation process cancelled.")
             return
 
         self.addCustomAnnotationItems(
-            symbol, symbolColor, keySequence, toolTip, name,
-            keepActive, isHideChecked, self.addAnnotWin.state
+            symbol,
+            symbolColor,
+            keySequence,
+            toolTip,
+            name,
+            keepActive,
+            isHideChecked,
+            self.addAnnotWin.state,
         )
         self.saveCustomAnnot()
         self.doCustomAnnotation(0)
 
     def addCustomAnnotationButton(
-            self, symbol, symbolColor, keySequence, toolTip, annotName,
-            keepActive, isHideChecked
-        ):
+        self,
+        symbol,
+        symbolColor,
+        keySequence,
+        toolTip,
+        annotName,
+        keepActive,
+        isHideChecked,
+    ):
         toolButton = widgets.customAnnotToolButton(
-            symbol, symbolColor, parent=self, keepToolActive=keepActive,
-            isHideChecked=isHideChecked
+            symbol,
+            symbolColor,
+            parent=self,
+            keepToolActive=keepActive,
+            isHideChecked=isHideChecked,
         )
         toolButton.setCheckable(True)
         self.checkableQButtonsGroup.addButton(toolButton)
@@ -105,23 +124,29 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
         return toolButton, action
 
     def addCustomAnnotationItems(
-            self, symbol, symbolColor, keySequence, toolTip, name,
-            keepActive, isHideChecked, state
-        ):
+        self,
+        symbol,
+        symbolColor,
+        keySequence,
+        toolTip,
+        name,
+        keepActive,
+        isHideChecked,
+        state,
+    ):
         toolButton, action = self.addCustomAnnotationButton(
-            symbol, symbolColor, keySequence, toolTip, name,
-            keepActive, isHideChecked
+            symbol, symbolColor, keySequence, toolTip, name, keepActive, isHideChecked
         )
 
         self.customAnnotDict[toolButton] = {
-            'action': action,
-            'state': state,
-            'annotatedIDs': [defaultdict(list) for _ in range(len(self.data))]
+            "action": action,
+            "state": state,
+            "annotatedIDs": [defaultdict(list) for _ in range(len(self.data))],
         }
 
         # Save custom annotation to cellacdc/temp/custom_annotations.json
         state_to_save = state.copy()
-        state_to_save['symbolColor'] = tuple(symbolColor.getRgb())
+        state_to_save["symbolColor"] = tuple(symbolColor.getRgb())
         self.savedCustomAnnot[name] = state_to_save
         for posData in self.data:
             posData.customAnnot[name] = state_to_save
@@ -130,11 +155,11 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
         self.addCustomAnnnotScatterPlot(symbolColor, symbol, toolButton)
 
         customAnnotButton = self.customAnnotDict[toolButton]
-        allPosAnnotatedIDs = customAnnotButton['annotatedIDs']
+        allPosAnnotatedIDs = customAnnotButton["annotatedIDs"]
         # Add 0s column to acdc_df
         for pos_i, posData in enumerate(self.data):
             for frame_i, data_dict in enumerate(posData.allData_li):
-                acdc_df = data_dict['acdc_df']
+                acdc_df = data_dict["acdc_df"]
                 if acdc_df is None:
                     continue
                 if name not in acdc_df.columns:
@@ -142,64 +167,67 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
                 else:
                     acdc_df[name] = acdc_df[name].astype(int)
                     acdc_df_annot = acdc_df[acdc_df[name] == 1].reset_index()
-                    annot_IDs = acdc_df_annot['Cell_ID'].to_list()
+                    annot_IDs = acdc_df_annot["Cell_ID"].to_list()
                     allPosAnnotatedIDs[pos_i][frame_i].extend(annot_IDs)
-                    
+
             if posData.acdc_df is not None:
                 if name not in posData.acdc_df.columns:
                     posData.acdc_df[name] = 0
                 else:
                     posData.acdc_df[name] = posData.acdc_df[name].astype(int)
-                    acdc_df_annot = (
-                        posData.acdc_df[posData.acdc_df[name] == 1]
-                        .reset_index()
-                    )
-                    annot_IDs = acdc_df_annot['Cell_ID'].to_list()
+                    acdc_df_annot = posData.acdc_df[
+                        posData.acdc_df[name] == 1
+                    ].reset_index()
+                    annot_IDs = acdc_df_annot["Cell_ID"].to_list()
                     allPosAnnotatedIDs[pos_i][frame_i].extend(annot_IDs)
 
     def addCustomAnnotationSavedPos(self, pos_i=None):
         if pos_i is None:
             pos_i = self.pos_i
-        
+
         posData = self.data[pos_i]
         for name, annotState in posData.customAnnot.items():
             # Check if button is already present and update only annotated IDs
-            buttons = [b for b in self.customAnnotDict.keys() if b.name==name]
+            buttons = [b for b in self.customAnnotDict.keys() if b.name == name]
             if buttons:
                 toolButton = buttons[0]
-                allAnnotedIDs = self.customAnnotDict[toolButton]['annotatedIDs']
+                allAnnotedIDs = self.customAnnotDict[toolButton]["annotatedIDs"]
                 allAnnotedIDs[pos_i] = posData.customAnnotIDs.get(name, {})
                 continue
 
             try:
-                symbol = re.findall(r"\'(.+)\'", annotState['symbol'])[0]
+                symbol = re.findall(r"\'(.+)\'", annotState["symbol"])[0]
             except Exception as e:
                 self.logger.info(traceback.format_exc())
-                symbol = 'o'
-            
-            symbolColor = QColor(*annotState['symbolColor'])
-            shortcut = annotState['shortcut']
+                symbol = "o"
+
+            symbolColor = QColor(*annotState["symbolColor"])
+            shortcut = annotState["shortcut"]
             if shortcut is not None:
                 keySequence = widgets.macShortcutToWindows(shortcut)
                 keySequence = widgets.KeySequenceFromText(keySequence)
             else:
                 keySequence = None
             toolTip = myutils.getCustomAnnotTooltip(annotState)
-            keepActive = annotState.get('keepActive', True)
-            isHideChecked = annotState.get('isHideChecked', True)
+            keepActive = annotState.get("keepActive", True)
+            isHideChecked = annotState.get("isHideChecked", True)
 
             toolButton, action = self.addCustomAnnotationButton(
-                symbol, symbolColor, keySequence, toolTip, name,
-                keepActive, isHideChecked
+                symbol,
+                symbolColor,
+                keySequence,
+                toolTip,
+                name,
+                keepActive,
+                isHideChecked,
             )
             allPosAnnotIDs = [
-                pos.customAnnotIDs.get(name, defaultdict(list)) 
-                for pos in self.data
+                pos.customAnnotIDs.get(name, defaultdict(list)) for pos in self.data
             ]
             self.customAnnotDict[toolButton] = {
-                'action': action,
-                'state': annotState,
-                'annotatedIDs': allPosAnnotIDs
+                "action": action,
+                "state": annotState,
+                "annotatedIDs": allPosAnnotIDs,
             }
 
             self.addCustomAnnnotScatterPlot(symbolColor, symbol, toolButton)
@@ -212,35 +240,36 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
             If you continue, this column will be used to initialize 
             pre-annotated objects.<br><br>
             Do you want to continue?
-        """
-        )
+        """)
         noButton, yesButton = msg.question(
-            self, 'Custom annotation name already exists', txt,
-            buttonsTexts=('No, stop process', 'Yes, use existing column')
+            self,
+            "Custom annotation name already exists",
+            txt,
+            buttonsTexts=("No, stop process", "Yes, use existing column"),
         )
         return msg.clickedButton == yesButton
 
     def checkNameExists(self, name):
         posData = self.data[self.pos_i]
         for frame_i, data_dict in enumerate(posData.allData_li):
-            acdc_df = data_dict['acdc_df']
+            acdc_df = data_dict["acdc_df"]
             if acdc_df is None:
                 continue
             if name in acdc_df.columns:
                 return self.askCustomAnnotationNameExists(name)
-        
+
         if posData.acdc_df is not None and name in posData.acdc_df.columns:
             return self.askCustomAnnotationNameExists(name)
-         
+
         return True
 
     def clearCustomAnnot(self):
         for button in self.customAnnotDict.keys():
-            scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
+            scatterPlotItem = self.customAnnotDict[button]["scatterPlotItem"]
             scatterPlotItem.setData([], [])
 
     def clearScatterPlotCustomAnnotButton(self, button):
-        scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
+        scatterPlotItem = self.customAnnotDict[button]["scatterPlotItem"]
         scatterPlotItem.setData([], [])
 
     def customAnnotButtonToggled(self, checked):
@@ -253,25 +282,25 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
 
                 button.toggled.disconnect()
                 self.clearScatterPlotCustomAnnotButton(button)
-                button.setChecked(False)                
+                button.setChecked(False)
                 button.toggled.connect(self.customAnnotButtonToggled)
             self.doCustomAnnotation(0)
         else:
             self.customAnnotButton = None
             button = self.sender()
             clearAnnotation = (
-                button.isHideChecked 
-                or not self.viewAllCustomAnnotAction.isChecked()
+                button.isHideChecked or not self.viewAllCustomAnnotAction.isChecked()
             )
-            if clearAnnotation:    
+            if clearAnnotation:
                 self.clearScatterPlotCustomAnnotButton(button)
             self.setHighlightID(False)
             self.resetCursor()
 
     def customAnnotHide(self, button):
-        self.customAnnotDict[button]['state']['isHideChecked'] = button.isHideChecked
+        self.customAnnotDict[button]["state"]["isHideChecked"] = button.isHideChecked
         clearAnnot = (
-            not button.isChecked() and button.isHideChecked
+            not button.isChecked()
+            and button.isHideChecked
             and not self.viewAllCustomAnnotAction.isChecked()
         )
         if clearAnnot:
@@ -292,18 +321,15 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
             x, y = point.pos().x(), point.pos().y()
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
-            vb.setToolTip(
-                f'Annotation name: {scatterPlotItem.button.name}\n'
-                f'ID = {ID}'
-            )
+            vb.setToolTip(f"Annotation name: {scatterPlotItem.button.name}\nID = {ID}")
         else:
-            vb.setToolTip('')
+            vb.setToolTip("")
 
     def customAnnotKeepActive(self, button):
-        self.customAnnotDict[button]['state']['keepActive'] = button.keepToolActive
+        self.customAnnotDict[button]["state"]["keepActive"] = button.keepToolActive
 
     def customAnnotModify(self, button):
-        state = self.customAnnotDict[button]['state']
+        state = self.customAnnotDict[button]["state"]
         self.addAnnotWin = apps.customAnnotationDialog(
             self.savedCustomAnnot, state=state
         )
@@ -314,36 +340,40 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
 
         # Rename column if existing
         posData = self.data[self.pos_i]
-        acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+        acdc_df = posData.allData_li[posData.frame_i]["acdc_df"]
         if acdc_df is not None:
-            old_name = self.customAnnotDict[button]['state']['name']
-            new_name = self.addAnnotWin.state['name']
+            old_name = self.customAnnotDict[button]["state"]["name"]
+            new_name = self.addAnnotWin.state["name"]
             acdc_df = acdc_df.rename(columns={old_name: new_name})
-            posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
+            posData.allData_li[posData.frame_i]["acdc_df"] = acdc_df
 
-        self.customAnnotDict[button]['state'] = self.addAnnotWin.state
+        self.customAnnotDict[button]["state"] = self.addAnnotWin.state
 
-        name = self.addAnnotWin.state['name']
+        name = self.addAnnotWin.state["name"]
         state_to_save = self.addAnnotWin.state.copy()
-        symbolColor = self.addAnnotWin.state['symbolColor']
-        state_to_save['symbolColor'] = tuple(symbolColor.getRgb())
+        symbolColor = self.addAnnotWin.state["symbolColor"]
+        state_to_save["symbolColor"] = tuple(symbolColor.getRgb())
         self.savedCustomAnnot[name] = self.addAnnotWin.state
         self.saveCustomAnnot()
 
         symbol = self.addAnnotWin.symbol
-        symbolColor = self.customAnnotDict[button]['state']['symbolColor']
+        symbolColor = self.customAnnotDict[button]["state"]["symbolColor"]
         button.setColor(symbolColor)
         button.update()
         symbolColorBrush = [0, 0, 0, 50]
         symbolColorBrush[:3] = symbolColor.getRgb()[:3]
-        scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
+        scatterPlotItem = self.customAnnotDict[button]["scatterPlotItem"]
         xx, yy = scatterPlotItem.getData()
         if xx is None:
             xx, yy = [], []
         scatterPlotItem.setData(
-            xx, yy, symbol=symbol, pxMode=False,
-            brush=pg.mkBrush(symbolColorBrush), size=15,
-            pen=pg.mkPen(width=3, color=symbolColor)
+            xx,
+            yy,
+            symbol=symbol,
+            pxMode=False,
+            brush=pg.mkBrush(symbolColorBrush),
+            size=15,
+            pen=pg.mkPen(width=3, color=symbolColor),
         )
 
     def deleteSavedAnnotation(self):
@@ -360,13 +390,13 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
 
     def doCustomAnnotation(self, ID):
         mode = self.modeComboBox.currentText()
-        if not self.isSnapshot and mode != 'Custom annotations':
+        if not self.isSnapshot and mode != "Custom annotations":
             # Do not show annotations if timelapse and mode not annotations
             return
-        
-        if self.switchPlaneCombobox.depthAxes() != 'z': 
+
+        if self.switchPlaneCombobox.depthAxes() != "z":
             return
-        
+
         # NOTE: pass 0 for ID to not add
         posData = self.data[self.pos_i]
         if self.viewAllCustomAnnotAction.isChecked():
@@ -377,56 +407,55 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
         else:
             # Annotate if the button is active or isHideChecked is False
             buttons = [
-                b for b in self.customAnnotDict.keys()
+                b
+                for b in self.customAnnotDict.keys()
                 if (b.isChecked() or not b.isHideChecked)
             ]
             if not buttons:
                 return
 
         for button in buttons:
-            annotatedIDs = (
-                self.customAnnotDict[button]['annotatedIDs'][self.pos_i]
-            )
+            annotatedIDs = self.customAnnotDict[button]["annotatedIDs"][self.pos_i]
             annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
-            state = self.customAnnotDict[button]['state']
-            acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-            
+            state = self.customAnnotDict[button]["state"]
+            acdc_df = posData.allData_li[posData.frame_i]["acdc_df"]
+
             if button.isChecked() and ID > 0:
                 # Annotate only if existing ID and the button is checked
                 if ID in annotIDs_frame_i:
                     annotIDs_frame_i.remove(ID)
-                    acdc_df.at[ID, state['name']] = 0
+                    acdc_df.at[ID, state["name"]] = 0
                 elif ID != 0:
                     annotIDs_frame_i.append(ID)
-            
+
             annotPerButton = self.customAnnotDict[button]
-            allAnnotedIDs = annotPerButton['annotatedIDs']
+            allAnnotedIDs = annotPerButton["annotatedIDs"]
             posAnnotedIDs = allAnnotedIDs[self.pos_i]
             posAnnotedIDs[posData.frame_i] = annotIDs_frame_i
-            
+
             if acdc_df is None:
                 self.store_data(autosave=False)
-            acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-            
+            acdc_df = posData.allData_li[posData.frame_i]["acdc_df"]
+
             xx, yy = [], []
             for annotID in annotIDs_frame_i:
                 if annotID not in posData.IDs_idxs:
                     continue
-            
+
                 obj_idx = posData.IDs_idxs[annotID]
                 obj = posData.rp[obj_idx]
-                acdc_df.at[annotID, state['name']] = 1
+                acdc_df.at[annotID, state["name"]] = 1
                 if not self.isObjVisible(obj.bbox):
                     continue
                 y, x = self.getObjCentroid(obj.centroid)
                 xx.append(x)
                 yy.append(y)
-                
-            scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
+
+            scatterPlotItem = self.customAnnotDict[button]["scatterPlotItem"]
             scatterPlotItem.setData(xx, yy)
 
-            posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
-        
+            posData.allData_li[posData.frame_i]["acdc_df"] = acdc_df
+
         # if self.highlightedID != 0:
         #     self.highlightedID = 0
         #     self.setHighlightID(False)
@@ -443,14 +472,16 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
             Click on "Add custom annotation" button to start adding new 
             annotations.
             """)
-            msg.warning(self, 'No annotations saved', txt)
+            msg.warning(self, "No annotations saved", txt)
             return
-        
+
         self.selectAnnotWin = widgets.QDialogListbox(
-            'Load previously used custom annotation(s)',
-            'Select annotations to load:', items,
-            additionalButtons=('Delete selected annnotations', ),
-            parent=self, multiSelection=True
+            "Load previously used custom annotation(s)",
+            "Select annotations to load:",
+            items,
+            additionalButtons=("Delete selected annnotations",),
+            parent=self,
+            multiSelection=True,
         )
         for button in self.selectAnnotWin._additionalButtons:
             button.disconnect()
@@ -458,64 +489,66 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
         self.selectAnnotWin.exec_()
         if self.selectAnnotWin.cancel:
             return
-        
+
         for selectedAnnotName in self.selectAnnotWin.selectedItemsText:
             selectedAnnot = self.savedCustomAnnot[selectedAnnotName]
 
-            symbol = selectedAnnot['symbol']
+            symbol = selectedAnnot["symbol"]
             symbol = re.findall(r"\'(.+)\'", symbol)[0]
-            symbolColor = selectedAnnot['symbolColor']
+            symbolColor = selectedAnnot["symbolColor"]
             symbolColor = pg.mkColor(symbolColor)
-            keySequence = widgets.KeySequenceFromText(selectedAnnot['shortcut'])
-            Type = selectedAnnot['type']
+            keySequence = widgets.KeySequenceFromText(selectedAnnot["shortcut"])
+            Type = selectedAnnot["type"]
             toolTip = (
-                f'Name: {selectedAnnotName}\n\n'
-                f'Type: {Type}\n\n'
-                f'Usage: activate the button and RIGHT-CLICK on cell to annotate\n\n'
-                f'Description: {selectedAnnot["description"]}\n\n'
+                f"Name: {selectedAnnotName}\n\n"
+                f"Type: {Type}\n\n"
+                f"Usage: activate the button and RIGHT-CLICK on cell to annotate\n\n"
+                f"Description: {selectedAnnot['description']}\n\n"
                 f'Shortcut: "{keySequence}"'
             )
-            keepActive = selectedAnnot['keepActive']
-            isHideChecked = selectedAnnot['isHideChecked']
+            keepActive = selectedAnnot["keepActive"]
+            isHideChecked = selectedAnnot["isHideChecked"]
             state = {
-                'type': Type,
-                'name': selectedAnnotName,
-                'symbol':  selectedAnnot['symbol'],
-                'shortcut': selectedAnnot['shortcut'],
-                'description': selectedAnnot["description"],
-                'keepActive': keepActive,
-                'isHideChecked': isHideChecked,
-                'symbolColor': symbolColor
+                "type": Type,
+                "name": selectedAnnotName,
+                "symbol": selectedAnnot["symbol"],
+                "shortcut": selectedAnnot["shortcut"],
+                "description": selectedAnnot["description"],
+                "keepActive": keepActive,
+                "isHideChecked": isHideChecked,
+                "symbolColor": symbolColor,
             }
             self.addCustomAnnotationItems(
-                symbol, symbolColor, keySequence, toolTip, selectedAnnotName,
-                keepActive, isHideChecked, state
+                symbol,
+                symbolColor,
+                keySequence,
+                toolTip,
+                selectedAnnotName,
+                keepActive,
+                isHideChecked,
+                state,
             )
             for pos_i, posData in enumerate(self.data):
                 posData.customAnnot[selectedAnnotName] = selectedAnnot
-            
+
         self.saveCustomAnnot()
 
     def readSavedCustomAnnot(self):
         tempAnnot = {}
         if os.path.exists(custom_annot_path):
-            self.logger.info('Loading saved custom annotations...')
-            tempAnnot = load.read_json(
-                custom_annot_path, logger_func=self.logger.info
-            )
+            self.logger.info("Loading saved custom annotations...")
+            tempAnnot = load.read_json(custom_annot_path, logger_func=self.logger.info)
 
         posData = self.data[self.pos_i]
         self.savedCustomAnnot = tempAnnot
         for pos_i, posData in enumerate(self.data):
-            self.savedCustomAnnot = {
-                **self.savedCustomAnnot, **posData.customAnnot
-            }
+            self.savedCustomAnnot = {**self.savedCustomAnnot, **posData.customAnnot}
 
     def reinitCustomAnnot(self):
         buttons = list(self.customAnnotDict.keys())
         for button in buttons:
             self.clearScatterPlotCustomAnnotButton(button)
-            action = self.customAnnotDict[button]['action']
+            action = self.customAnnotDict[button]["action"]
             self.annotateToolbar.removeAction(action)
             self.checkableQButtonsGroup.removeButton(button)
             self.customAnnotDict.pop(button)
@@ -531,19 +564,22 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
                 only the annotation button?<br>
             """)
             _, removeOnlyButton, removeColButton = msg.question(
-                self, 'Remove only button?', txt, 
+                self,
+                "Remove only button?",
+                txt,
                 buttonsTexts=(
-                    'Cancel', 'Remove only button', 
-                    ' Remove also column with annotations '
-                )
+                    "Cancel",
+                    "Remove only button",
+                    " Remove also column with annotations ",
+                ),
             )
             if msg.cancel:
                 return
             removeOnlyButton = msg.clickedButton == removeOnlyButton
         else:
             removeOnlyButton = True
-        
-        name = self.customAnnotDict[button]['state']['name']
+
+        name = self.customAnnotDict[button]["state"]["name"]
         # remove annotation from position
         for posData in self.data:
             try:
@@ -555,23 +591,21 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
 
             if posData.acdc_df is None:
                 continue
-            
+
             if removeOnlyButton:
                 continue
 
-            posData.acdc_df = posData.acdc_df.drop(
-                columns=name, errors='ignore'
-            )
+            posData.acdc_df = posData.acdc_df.drop(columns=name, errors="ignore")
             for frame_i, data_dict in enumerate(posData.allData_li):
-                acdc_df = data_dict['acdc_df']
+                acdc_df = data_dict["acdc_df"]
                 if acdc_df is None:
                     continue
-                acdc_df = acdc_df.drop(columns=name, errors='ignore')
-                posData.allData_li[frame_i]['acdc_df'] = acdc_df
+                acdc_df = acdc_df.drop(columns=name, errors="ignore")
+                posData.allData_li[frame_i]["acdc_df"] = acdc_df
 
         self.clearScatterPlotCustomAnnotButton(button)
 
-        action = self.customAnnotDict[button]['action']
+        action = self.customAnnotDict[button]["action"]
         self.annotateToolbar.removeAction(action)
         self.checkableQButtonsGroup.removeButton(button)
         self.customAnnotDict.pop(button)
@@ -580,20 +614,20 @@ class CustomAnnotations(AnnotationDisplay, ObjectProperties):
         self.saveCustomAnnot(only_temp=True)
 
     def saveCustomAnnot(self, only_temp=False):
-        if not hasattr(self, 'savedCustomAnnot'):
+        if not hasattr(self, "savedCustomAnnot"):
             return
 
         if not self.savedCustomAnnot:
             return
 
         # Save to cell acdc temp path
-        with open(custom_annot_path, mode='w') as file:
+        with open(custom_annot_path, mode="w") as file:
             json.dump(self.savedCustomAnnot, file, indent=2)
 
         if only_temp:
             return
-        
-        self.logger.info('Saving custom annotations parameters...')
+
+        self.logger.info("Saving custom annotations parameters...")
         # Save to pos path
         for _posData in self.data:
             _posData.saveCustomAnnotationParams()

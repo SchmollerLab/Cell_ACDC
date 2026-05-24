@@ -11,6 +11,7 @@ from collections import defaultdict
 
 from .label_editing import LabelEditing
 
+
 class UndoRedo(LabelEditing):
     """Extracted from guiWin."""
 
@@ -23,12 +24,11 @@ class UndoRedo(LabelEditing):
             self.addCcaState(posData.frame_i, posData.cca_df, undoId)
             storeState = True
 
-
         # Get previously stored state
         self.UndoCount += 1
         currentCcaStates = posData.UndoRedoCcaStates[posData.frame_i]
         prevCcaState = currentCcaStates[self.UndoCount]
-        posData.cca_df = prevCcaState['cca_df']
+        posData.cca_df = prevCcaState["cca_df"]
         self.store_cca_df()
         self.updateAllImages()
 
@@ -39,7 +39,7 @@ class UndoRedo(LabelEditing):
 
         # Undo all past and future frames that has a last status inserted
         # when modyfing current frame
-        prevStateId = prevCcaState['id']
+        prevStateId = prevCcaState["id"]
         for frame_i in range(0, posData.SizeT):
             if storeState:
                 cca_df_i = self.get_cca_df(frame_i=frame_i, return_df=True)
@@ -54,21 +54,21 @@ class UndoRedo(LabelEditing):
                 continue
 
             CcaState_i = CcaStates_i[self.UndoCount]
-            id_i = CcaState_i['id']
+            id_i = CcaState_i["id"]
             if id_i != prevStateId:
                 # The id of the state in frame_i is different from current frame
                 continue
 
-            cca_df_i = CcaState_i['cca_df']
+            cca_df_i = CcaState_i["cca_df"]
             self.store_cca_df(frame_i=frame_i, cca_df=cca_df_i, autosave=False)
-        
+
         self.resetWillDivideInfo()
         self.enqAutosave()
 
     def addCcaState(self, frame_i, cca_df, undoId):
         posData = self.data[self.pos_i]
         posData.UndoRedoCcaStates[frame_i].insert(
-            0, {'id': undoId, 'cca_df': cca_df.copy()}
+            0, {"id": undoId, "cca_df": cca_df.copy()}
         )
 
     def addCurrentState(self, storeImage=False, storeOnlyZoom=False):
@@ -85,8 +85,7 @@ class UndoRedo(LabelEditing):
 
         if storeOnlyZoom:
             labels, crop_slice = transformation.crop_2D(
-                self.currentLab2D, self.ax1.viewRange(), tolerance=10,
-                return_copy=False
+                self.currentLab2D, self.ax1.viewRange(), tolerance=10, return_copy=False
             )
             if self.isSegm3D:
                 z = self.z_lab(checkIfProj=True)
@@ -103,16 +102,16 @@ class UndoRedo(LabelEditing):
         else:
             labels = posData.lab.copy()
             crop_slice = None
-        
+
         state = {
-            'image': image,
-            'labels': labels,
-            'editID_info': posData.editID_info.copy(),
-            'binnedIDs': posData.binnedIDs.copy(),
-            'keptObejctsIDs': self.keptObjectsIDs.copy(),
-            'ripIDs': posData.ripIDs.copy(),
-            'cca_df': cca_df,
-            'crop_slice': crop_slice
+            "image": image,
+            "labels": labels,
+            "editID_info": posData.editID_info.copy(),
+            "binnedIDs": posData.binnedIDs.copy(),
+            "keptObejctsIDs": self.keptObjectsIDs.copy(),
+            "ripIDs": posData.ripIDs.copy(),
+            "cca_df": cca_df,
+            "crop_slice": crop_slice,
         }
         posData.UndoRedoStates[posData.frame_i].insert(0, state)
 
@@ -122,8 +121,7 @@ class UndoRedo(LabelEditing):
         """)
         msg = widgets.myMessageBox(wrapText=False)
         yesButton, _ = msg.question(
-            self, 'Propagate change to past frames', txt, 
-            buttonsTexts=('Yes', 'No')
+            self, "Propagate change to past frames", txt, buttonsTexts=("Yes", "No")
         )
         return msg.clickedButton == yesButton
 
@@ -134,7 +132,7 @@ class UndoRedo(LabelEditing):
         self.undoAction.setEnabled(False)
         posData.UndoRedoStates = [[] for _ in range(posData.SizeT)]
         posData.UndoRedoCcaStates = [[] for _ in range(posData.SizeT)]
-        if hasattr(self, 'undoAddPointQueueMapper'):
+        if hasattr(self, "undoAddPointQueueMapper"):
             self.undoAddPointQueueMapper = defaultdict(list)
 
     def getCurrentState(self):
@@ -142,36 +140,42 @@ class UndoRedo(LabelEditing):
         i = posData.frame_i
         c = self.UndoCount
         state = posData.UndoRedoStates[i][c]
-        if state['image'] is None:
+        if state["image"] is None:
             image_left = None
         else:
-            image_left = state['image'].copy()
-        
-        crop_slice = state['crop_slice']
+            image_left = state["image"].copy()
+
+        crop_slice = state["crop_slice"]
         if crop_slice is None:
-            posData.lab = state['labels'].copy()
+            posData.lab = state["labels"].copy()
         elif self.isSegm3D:
             z_slice, slice_y, slice_x = crop_slice
-            posData.lab[..., z_slice, slice_y, slice_x] = state['labels'].copy()
+            posData.lab[..., z_slice, slice_y, slice_x] = state["labels"].copy()
         else:
             slice_y, slice_x = crop_slice
-            posData.lab[..., slice_y, slice_x] = state['labels'].copy()
-        
-        posData.editID_info = state['editID_info'].copy()
-        posData.binnedIDs = state['binnedIDs'].copy()
-        posData.ripIDs = state['ripIDs'].copy()
-        self.keptObjectsIDs = state['keptObejctsIDs'].copy()
-        cca_df = state['cca_df']
+            posData.lab[..., slice_y, slice_x] = state["labels"].copy()
+
+        posData.editID_info = state["editID_info"].copy()
+        posData.binnedIDs = state["binnedIDs"].copy()
+        posData.ripIDs = state["ripIDs"].copy()
+        self.keptObjectsIDs = state["keptObejctsIDs"].copy()
+        cca_df = state["cca_df"]
         if cca_df is not None:
-            posData.cca_df = state['cca_df'].copy()
+            posData.cca_df = state["cca_df"].copy()
         else:
             posData.cca_df = None
         return image_left
 
     def propagateChange(
-            self, modID, modTxt, doNotShow, UndoFutFrames,
-            applyFutFrames, applyTrackingB=False, force=False
-        ):
+        self,
+        modID,
+        modTxt,
+        doNotShow,
+        UndoFutFrames,
+        applyFutFrames,
+        applyTrackingB=False,
+        force=False,
+    ):
         """
         This function determines whether there are already visited future frames
         that contains "modID". If so, it triggers a pop-up asking the user
@@ -179,7 +183,7 @@ class UndoRedo(LabelEditing):
         """
         posData = self.data[self.pos_i]
         # Do not check the future for the last frame
-        if posData.frame_i+1 == posData.SizeT:
+        if posData.frame_i + 1 == posData.SizeT:
             # No future frames to propagate the change to
             return False, False, None, doNotShow
 
@@ -189,8 +193,8 @@ class UndoRedo(LabelEditing):
         # frames has an ID affected by the change
         last_tracked_i_found = False
         segmSizeT = len(posData.segm_data)
-        for i in range(posData.frame_i+1, segmSizeT):
-            if posData.allData_li[i]['labels'] is None:
+        for i in range(posData.frame_i + 1, segmSizeT):
+            if posData.allData_li[i]["labels"] is None:
                 if not last_tracked_i_found:
                     # We set last tracked frame at -1 first None found
                     last_tracked_i = i - 1
@@ -201,11 +205,11 @@ class UndoRedo(LabelEditing):
                 else:
                     lab = posData.segm_data[i]
             else:
-                lab = posData.allData_li[i]['labels']
-            
+                lab = posData.allData_li[i]["labels"]
+
             if modID in lab:
                 areFutureIDs_affected.append(True)
-        
+
         if not last_tracked_i_found:
             # All frames have been visited in segm&track mode
             last_tracked_i = posData.SizeT - 1
@@ -221,18 +225,22 @@ class UndoRedo(LabelEditing):
         # Ask what to do unless the user has previously checked doNotShowAgain
         if doNotShow:
             endFrame_i = last_tracked_i
-            if applyFutFrames and not UndoFutFrames and modTxt == 'Edit ID':
-                self.whitelistSyncIDsOG(frame_is=range(posData.frame_i, endFrame_i+1))
+            if applyFutFrames and not UndoFutFrames and modTxt == "Edit ID":
+                self.whitelistSyncIDsOG(frame_is=range(posData.frame_i, endFrame_i + 1))
             return UndoFutFrames, applyFutFrames, endFrame_i, doNotShow
         else:
             addApplyAllButton = (
-                modTxt == 'Delete ID' or modTxt == 'Edit ID' 
-                or modTxt == 'Assign new ID'
+                modTxt == "Delete ID"
+                or modTxt == "Edit ID"
+                or modTxt == "Assign new ID"
             )
             ffa = apps.FutureFramesAction_QDialog(
-                posData.frame_i+1, last_tracked_i, modTxt, 
-                applyTrackingB=applyTrackingB, parent=self, 
-                addApplyAllButton=addApplyAllButton
+                posData.frame_i + 1,
+                last_tracked_i,
+                modTxt,
+                applyTrackingB=applyTrackingB,
+                parent=self,
+                addApplyAllButton=addApplyAllButton,
             )
             ffa.exec_()
             decision = ffa.decision
@@ -243,41 +251,41 @@ class UndoRedo(LabelEditing):
             endFrame_i = ffa.endFrame_i
             doNotShowAgain = ffa.doNotShowCheckbox.isChecked()
             askAction = self.askHowFutureFramesActions[modTxt]
-            askAction.setChecked( not doNotShowAgain)
+            askAction.setChecked(not doNotShowAgain)
             askAction.setDisabled(False)
 
             self.onlyTracking = False
-            if decision == 'apply_and_reinit':
+            if decision == "apply_and_reinit":
                 UndoFutFrames = True
                 applyFutFrames = False
-            elif decision == 'apply_and_NOTreinit':
+            elif decision == "apply_and_NOTreinit":
                 UndoFutFrames = False
                 applyFutFrames = False
-            elif decision == 'apply_to_all_visited':
+            elif decision == "apply_to_all_visited":
                 UndoFutFrames = False
                 applyFutFrames = True
-            elif decision == 'only_tracking':
+            elif decision == "only_tracking":
                 UndoFutFrames = False
                 applyFutFrames = True
                 self.onlyTracking = True
-            elif decision == 'apply_to_all':
+            elif decision == "apply_to_all":
                 UndoFutFrames = False
                 applyFutFrames = True
                 posData.includeUnvisitedInfo[modTxt] = True
 
-            if applyFutFrames and not UndoFutFrames and modTxt == 'Edit ID':
-                self.whitelistSyncIDsOG(frame_is=range(posData.frame_i, endFrame_i+1))
+            if applyFutFrames and not UndoFutFrames and modTxt == "Edit ID":
+                self.whitelistSyncIDsOG(frame_is=range(posData.frame_i, endFrame_i + 1))
         return UndoFutFrames, applyFutFrames, endFrame_i, doNotShowAgain
 
     def propagateMergeObjsPast(self, IDs_to_merge):
         self.store_data(autosave=False)
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
-        for past_frame_i in range(posData.frame_i-1, -1, -1):
+        for past_frame_i in range(posData.frame_i - 1, -1, -1):
             posData.frame_i = past_frame_i
             self.get_data()
-            
-            IDs = posData.allData_li[past_frame_i]['IDs']
+
+            IDs = posData.allData_li[past_frame_i]["IDs"]
             stop_loop = False
             for ID in IDs_to_merge:
                 if ID not in IDs:
@@ -286,14 +294,14 @@ class UndoRedo(LabelEditing):
 
                 if ID == 0:
                     continue
-                posData.lab[posData.lab==ID] = self.firstID
+                posData.lab[posData.lab == ID] = self.firstID
                 self.update_rp()
-                
+
                 self.store_data(autosave=False)
-            
+
             if stop_loop:
                 break
-        
+
         posData.frame_i = current_frame_i
         self.get_data()
 
@@ -341,15 +349,13 @@ class UndoRedo(LabelEditing):
         if len(posData.UndoRedoCcaStates[frame_i]) > 10:
             posData.UndoRedoCcaStates[frame_i].pop(-1)
 
-    def storeUndoRedoStates(
-            self, UndoFutFrames, storeImage=False, storeOnlyZoom=False
-        ):
+    def storeUndoRedoStates(self, UndoFutFrames, storeImage=False, storeOnlyZoom=False):
         posData = self.data[self.pos_i]
         if UndoFutFrames:
             # Since we modified current frame all future frames that were already
             # visited are not valid anymore. Undo changes there
             self.reInitLastSegmFrame(updateImages=False)
-        
+
         # Keep only 5 Undo/Redo states
         if len(posData.UndoRedoStates[posData.frame_i]) > 5:
             posData.UndoRedoStates[posData.frame_i].pop(-1)
@@ -358,9 +364,7 @@ class UndoRedo(LabelEditing):
         # NOTE: index 0 is most recent state before doing last change
         self.UndoCount = 0
         self.undoAction.setEnabled(True)
-        self.addCurrentState(
-            storeImage=storeImage, storeOnlyZoom=storeOnlyZoom
-        )
+        self.addCurrentState(storeImage=storeImage, storeOnlyZoom=storeOnlyZoom)
 
     def undo(self):
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
@@ -368,14 +372,14 @@ class UndoRedo(LabelEditing):
             done = self.undoAddPoint(addPointsByClickingButton.action)
             if done:
                 return
-        
+
         if self.UndoCount == 0:
             # Store current state to enable redoing it
             self.addCurrentState()
-    
+
         posData = self.data[self.pos_i]
         # Get previously stored state
-        if self.UndoCount < len(posData.UndoRedoStates[posData.frame_i])-1:
+        if self.UndoCount < len(posData.UndoRedoStates[posData.frame_i]) - 1:
             self.UndoCount += 1
             # Since we have undone then it is possible to redo
             self.redoAction.setEnabled(True)
@@ -386,10 +390,10 @@ class UndoRedo(LabelEditing):
             self.updateAllImages(image=image_left)
             self.store_data()
 
-        if not self.UndoCount < len(posData.UndoRedoStates[posData.frame_i])-1:
+        if not self.UndoCount < len(posData.UndoRedoStates[posData.frame_i]) - 1:
             # We have undone all available states
             self.undoAction.setEnabled(False)
-        
+
         if self.whitelistIDsButton.isChecked():
             self.whitelistHighlightIDs()
 

@@ -20,115 +20,122 @@ from cellacdc.gui_decorators import get_data_exception_handler
 
 from .worker import Worker
 
+
 class Session(Worker):
     """Extracted from guiWin."""
 
-    def _get_data_unvisited(self, posData, debug=False, lin_tree_init=True,):
+    def _get_data_unvisited(
+        self,
+        posData,
+        debug=False,
+        lin_tree_init=True,
+    ):
         posData.editID_info = []
         proceed_cca = True
         never_visited = True
-        if str(self.modeComboBox.currentText()) == 'Cell cycle analysis':
+        if str(self.modeComboBox.currentText()) == "Cell cycle analysis":
             # Warn that we are visiting a frame that was never segm-checked
             # on cell cycle analysis mode
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(
-                'Segmentation and Tracking was <b>never checked from '
-                f'frame {posData.frame_i+1} onwards</b>.<br><br>'
-                'To ensure correct cell cell cycle analysis you have to '
-                'first visit the frames after '
-                f'{posData.frame_i+1} with "Segmentation and Tracking" mode.'
+                "Segmentation and Tracking was <b>never checked from "
+                f"frame {posData.frame_i + 1} onwards</b>.<br><br>"
+                "To ensure correct cell cell cycle analysis you have to "
+                "first visit the frames after "
+                f'{posData.frame_i + 1} with "Segmentation and Tracking" mode.'
             )
             warn_cca = msg.critical(
-                self, 'Never checked segmentation on requested frame', txt                    
+                self, "Never checked segmentation on requested frame", txt
             )
             proceed_cca = False
             return proceed_cca, never_visited
 
-        elif str(self.modeComboBox.currentText()) == 'Normal division: Lineage tree':
+        elif str(self.modeComboBox.currentText()) == "Normal division: Lineage tree":
             # Warn that we are visiting a frame that was never segm-checked
             # on cell cycle analysis mode
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(
-                'Segmentation and Tracking was <b>never checked from '
-                f'frame {posData.frame_i+1} onwards</b>.<br><br>'
-                'To ensure correct lineage tree analysis you have to '
-                'first visit the frames after '
-                f'{posData.frame_i+1} with "Segmentation and Tracking" mode.'
+                "Segmentation and Tracking was <b>never checked from "
+                f"frame {posData.frame_i + 1} onwards</b>.<br><br>"
+                "To ensure correct lineage tree analysis you have to "
+                "first visit the frames after "
+                f'{posData.frame_i + 1} with "Segmentation and Tracking" mode.'
             )
-            warn_cca = msg.critical(#???
-                self, 'Never checked segmentation on requested frame', txt                    
+            warn_cca = msg.critical(  # ???
+                self, "Never checked segmentation on requested frame", txt
             )
             proceed_cca = False
             return proceed_cca, never_visited
-        
+
         # Requested frame was never visited before. Load from HDD
         labels = self.get_labels()
-        posData.lab = self.apply_manual_edits_to_lab_if_needed(
-            labels
-        )
+        posData.lab = self.apply_manual_edits_to_lab_if_needed(labels)
         posData.rp = skimage.measure.regionprops(posData.lab)
         self.setManualBackgroundLab()
-        
+
         if posData.acdc_df is not None:
             frames = posData.acdc_df.index.get_level_values(0)
             if posData.frame_i in frames:
                 # Since there was already segmentation metadata from
                 # previous closed session add it to current metadata
                 df = posData.acdc_df.loc[posData.frame_i].copy()
-                binnedIDs_df = df[df['is_cell_excluded']>0]
+                binnedIDs_df = df[df["is_cell_excluded"] > 0]
                 binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs)
                 posData.binnedIDs = binnedIDs
-                ripIDs_df = df[df['is_cell_dead']>0]
+                ripIDs_df = df[df["is_cell_dead"] > 0]
                 ripIDs = set(ripIDs_df.index).union(posData.ripIDs)
                 posData.ripIDs = ripIDs
                 posData.editID_info.extend(self._get_editID_info(df))
                 # Load cca df into current metadata
-                if 'cell_cycle_stage' in df.columns:
+                if "cell_cycle_stage" in df.columns:
                     cca_cols = df.columns.intersection(self.cca_df_colnames)
                     cca_df = df[cca_cols].dropna()
                     if cca_df.empty:
-                        df = df.drop(
-                            columns=self.cca_df_colnames, errors='ignore'
-                        )
+                        df = df.drop(columns=self.cca_df_colnames, errors="ignore")
                     else:
                         df = df.loc[cca_df.index]
                         cols = self.cca_df_int_cols
-                        df[cols] = df[cols].astype('Int64')
-                    
+                        df[cols] = df[cols].astype("Int64")
+
                 i = posData.frame_i
-                posData.allData_li[i]['acdc_df'] = df.copy()
-        
+                posData.allData_li[i]["acdc_df"] = df.copy()
+
         if self.lineage_tree is None and lin_tree_init:
             self.initLinTree()
-    
+
         self.get_cca_df()
-        
+
         return proceed_cca, never_visited
 
-    def _get_data_visited(self, posData, debug=False, lin_tree_init=True,):        
+    def _get_data_visited(
+        self,
+        posData,
+        debug=False,
+        lin_tree_init=True,
+    ):
         # Requested frame was already visited. Load from RAM.
         never_visited = False
         posData.lab = self.get_labels(from_store=True)
         posData.rp = skimage.measure.regionprops(posData.lab)
-        df = posData.allData_li[posData.frame_i]['acdc_df']
+        df = posData.allData_li[posData.frame_i]["acdc_df"]
         if df is None:
             posData.binnedIDs = set()
             posData.ripIDs = set()
             posData.editID_info = []
         else:
             try:
-                binnedIDs_df = df[df['is_cell_excluded']>0]
+                binnedIDs_df = df[df["is_cell_excluded"] > 0]
             except Exception as err:
                 df = myutils.fix_acdc_df_dtypes(df)
-                binnedIDs_df = df[df['is_cell_excluded']>0]
+                binnedIDs_df = df[df["is_cell_excluded"] > 0]
             posData.binnedIDs = set(binnedIDs_df.index)
-            ripIDs_df = df[df['is_cell_dead']>0]
+            ripIDs_df = df[df["is_cell_dead"] > 0]
             posData.ripIDs = set(ripIDs_df.index)
             posData.editID_info = self._get_editID_info(df)
         self.setManualBackgroundLab(load_from_store=True, debug=debug)
         if self.lineage_tree is None and lin_tree_init:
             self.initLinTree()
-        
+
         self.get_cca_df(debug=debug)
 
         return True, never_visited
@@ -140,7 +147,7 @@ class Session(Worker):
         else:
             action = QAction(path, self)
             action.triggered.connect(partial(self.openRecentFile, path))
-        
+
         try:
             firstAction = self.openRecentMenu.actions()[0]
             self.openRecentMenu.insertAction(firstAction, action)
@@ -151,7 +158,7 @@ class Session(Worker):
         posData = self.data[self.pos_i]
         segm_data = []
         for data_frame_i in posData.allData_li:
-            lab = data_frame_i['labels']
+            lab = data_frame_i["labels"]
             if lab is None:
                 break
             segm_data.append(lab)
@@ -163,7 +170,7 @@ class Session(Worker):
         never_visited = False
         if posData.frame_i > 2:
             # Remove undo states from 4 frames back to avoid memory issues
-            posData.UndoRedoStates[posData.frame_i-4] = []
+            posData.UndoRedoStates[posData.frame_i - 4] = []
             # Check if current frame contains undo states (not empty list)
             if posData.UndoRedoStates[posData.frame_i]:
                 self.undoAction.setDisabled(False)
@@ -173,9 +180,10 @@ class Session(Worker):
                 self.undoAction.setDisabled(True)
         self.UndoCount = 0
         # If stored labels is None then it is the first time we visit this frame
-        if posData.allData_li[posData.frame_i]['labels'] is None:
-            proceed_cca, never_visited =  self._get_data_unvisited(
-                posData, lin_tree_init=lin_tree_init,
+        if posData.allData_li[posData.frame_i]["labels"] is None:
+            proceed_cca, never_visited = self._get_data_unvisited(
+                posData,
+                lin_tree_init=lin_tree_init,
             )
             if not proceed_cca:
                 return proceed_cca, never_visited
@@ -183,35 +191,31 @@ class Session(Worker):
             proceed_cca, never_visited = self._get_data_visited(
                 posData, lin_tree_init=lin_tree_init, debug=debug
             )
-        
+
         self.update_rp_metadata(draw=False)
         posData.IDs = [obj.label for obj in posData.rp]
         posData.IDs_idxs = {
-            ID:i for ID, i in zip(posData.IDs, range(len(posData.IDs)))
+            ID: i for ID, i in zip(posData.IDs, range(len(posData.IDs)))
         }
         self.get_zslices_rp()
         self.pointsLayerDfsToData(posData)
         return proceed_cca, never_visited
 
     def get_labels(
-            self, 
-            from_store=False, 
-            frame_i=None, 
-            return_existing=False,
-            return_copy=True
-        ):
+        self, from_store=False, frame_i=None, return_existing=False, return_copy=True
+    ):
         """Get the labels array.
-        
+
         Parameters
         ----------
         from_store : bool, optional
-            If True load the labels array from the stored posData.allData_li, 
+            If True load the labels array from the stored posData.allData_li,
             i.e., from RAM. Default is False
         frame_i : int, optional
             If None, use the current frame index. Default is  None
         return_existing : bool, optional
-            If True, the second return element will be a boolean that 
-            is True if the labels array was found stored in `posData.allData_li`. 
+            If True, the second return element will be a boolean that
+            is True if the labels array was found stored in `posData.allData_li`.
             Default is  False
         return_copy : bool, optional
             If True returns a copy of the labels array
@@ -219,31 +223,31 @@ class Session(Worker):
         Returns
         -------
         numpy.ndarray or tuple of (numpy.ndarray, bool)
-            The first element is the labels array requested. If `return_existing` 
-            is True then this method also returns a second boolean element that 
+            The first element is the labels array requested. If `return_existing`
+            is True then this method also returns a second boolean element that
             is True if the labels array was found in in `posData.allData_li`.
-        
+
         Note
         ----
-        
-        If `from_store` is True then this method will try to get the stored 
-        labels array. If any error occurs then the returned labels are the 
+
+        If `from_store` is True then this method will try to get the stored
+        labels array. If any error occurs then the returned labels are the
         saved ones in the segmentation file (i.e., from hard drive).
-        
-        """   
+
+        """
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
-        
+
         existing = True
         if from_store:
             try:
-                labels = posData.allData_li[frame_i]['labels']
+                labels = posData.allData_li[frame_i]["labels"]
                 if labels is None:
                     from_store = False
             except Exception as err:
                 from_store = False
-        
+
         if not from_store:
             try:
                 labels = posData.segm_data[frame_i]
@@ -256,10 +260,10 @@ class Session(Worker):
                     shape = (posData.SizeY, posData.SizeX)
                 labels = np.zeros(shape, dtype=np.uint32)
                 return_copy = False
-        
+
         if return_copy:
             labels = labels.copy()
-            
+
         if return_existing:
             return labels, existing
         else:
@@ -298,15 +302,17 @@ class Session(Worker):
             posData.doNotShowAgain_keepID = False
             posData.UndoFutFrames_keepID = False
             posData.applyFutFrames_keepID = False
-            
+
             posData.doNotShowAgainAssignNewID = False
             posData.UndoFutFramesAssignNewID = False
             posData.applyFutFramesAssignNewID = False
 
             posData.includeUnvisitedInfo = {
-                'Delete ID': False, 'Edit ID': False, 'Keep ID': False
+                "Delete ID": False,
+                "Edit ID": False,
+                "Keep ID": False,
             }
-            
+
             posData.loadTrackedLostCentroids()
             posData.acdcTracker2stepsAnnotInfo = {}
 
@@ -324,17 +330,15 @@ class Session(Worker):
             posData.ol_data_dict = {}
             posData.ol_data = None
 
-            posData.ol_labels_data = None       
-            
+            posData.ol_labels_data = None
+
             missing_frames = posData.SizeT - len(posData.allData_li)
             if missing_frames > 0:
                 posData.allData_li.extend([None] * missing_frames)
             for i in range(posData.SizeT):
                 if posData.allData_li[i] is None:
-                    posData.allData_li[i] = (
-                        myutils.get_empty_stored_data_dict()
-                    )
-            
+                    posData.allData_li[i] = myutils.get_empty_stored_data_dict()
+
             posData.lutLevels = {channel: {} for channel in self.ch_names}
 
             posData.ccaStatus_whenEmerged = {}
@@ -345,7 +349,7 @@ class Session(Worker):
             posData.ripIDs = set()
             posData.cca_df = None
             if posData.last_tracked_i is not None:
-                last_tracked_num = posData.last_tracked_i+1
+                last_tracked_num = posData.last_tracked_i + 1
                 # Load previous session data
                 # Keep track of which ROIs have already been added
                 # in previous frame
@@ -358,30 +362,30 @@ class Session(Worker):
                     )
 
                 # Ask whether to resume from last frame
-                if last_tracked_num>1:
+                if last_tracked_num > 1:
                     msg = widgets.myMessageBox()
                     txt = html_utils.paragraph(
-                        'Cell-ACDC detected a previous session ended '
-                        f'at frame {last_tracked_num}.<br><br>'
-                        f'Do you want to <b>resume from frame '
-                        f'{last_tracked_num}?</b>'
+                        "Cell-ACDC detected a previous session ended "
+                        f"at frame {last_tracked_num}.<br><br>"
+                        f"Do you want to <b>resume from frame "
+                        f"{last_tracked_num}?</b>"
                     )
                     noButton, yesButton = msg.question(
-                        self, 'Start from last session?', txt,
-                        buttonsTexts=(' No ', 'Yes')
+                        self,
+                        "Start from last session?",
+                        txt,
+                        buttonsTexts=(" No ", "Yes"),
                     )
                     self.AutoPilotProfile.storeClickMessageBox(
-                        'Start from last session?', msg.clickedButton.text()
+                        "Start from last session?", msg.clickedButton.text()
                     )
                     if msg.clickedButton == yesButton:
                         posData.frame_i = posData.last_tracked_i
                         self.lastFrameRanOnFirstVisitTools = posData.frame_i
                     else:
                         posData.frame_i = 0
-                
-            posData.img_data_min_max = (
-                posData.img_data.min(), posData.img_data.max()
-            )    
+
+            posData.img_data_min_max = (posData.img_data.min(), posData.img_data.max())
 
         # Back to first position
         self.pos_i = 0
@@ -398,73 +402,71 @@ class Session(Worker):
     def loadLastSessionSettings(self):
         self.settings_csv_path = settings_csv_path
         if os.path.exists(settings_csv_path):
-            self.df_settings = pd.read_csv(
-                settings_csv_path, index_col='setting'
-            )
-            if 'is_bw_inverted' not in self.df_settings.index:
-                self.df_settings.at['is_bw_inverted', 'value'] = 'No'
+            self.df_settings = pd.read_csv(settings_csv_path, index_col="setting")
+            if "is_bw_inverted" not in self.df_settings.index:
+                self.df_settings.at["is_bw_inverted", "value"] = "No"
             else:
-                self.df_settings.loc['is_bw_inverted'] = (
-                    self.df_settings.loc['is_bw_inverted'].astype(str)
-                )
-            if 'fontSize' not in self.df_settings.index:
-                self.df_settings.at['fontSize', 'value'] = 12
-            if 'overlayColor' not in self.df_settings.index:
-                self.df_settings.at['overlayColor', 'value'] = '255-255-0'
-            if 'how_normIntensities' not in self.df_settings.index:
-                raw = 'Do not normalize. Display raw image'
-                self.df_settings.at['how_normIntensities', 'value'] = raw
+                self.df_settings.loc["is_bw_inverted"] = self.df_settings.loc[
+                    "is_bw_inverted"
+                ].astype(str)
+            if "fontSize" not in self.df_settings.index:
+                self.df_settings.at["fontSize", "value"] = 12
+            if "overlayColor" not in self.df_settings.index:
+                self.df_settings.at["overlayColor", "value"] = "255-255-0"
+            if "how_normIntensities" not in self.df_settings.index:
+                raw = "Do not normalize. Display raw image"
+                self.df_settings.at["how_normIntensities", "value"] = raw
         else:
-            idx = ['is_bw_inverted', 'fontSize', 'overlayColor', 'how_normIntensities']
-            values = ['No', 12, '255-255-0', 'raw']
-            self.df_settings = pd.DataFrame({
-                'setting': idx,'value': values}
-            ).set_index('setting')
-        
-        if 'isLabelsVisible' not in self.df_settings.index:
-            self.df_settings.at['isLabelsVisible', 'value'] = 'No'
-        
-        if 'isNextFrameVisible' not in self.df_settings.index:
-            self.df_settings.at['isNextFrameVisible', 'value'] = 'No'
-        
-        if 'isRightImageVisible' not in self.df_settings.index:
-            self.df_settings.at['isRightImageVisible', 'value'] = 'Yes'
-        
-        if 'manual_separate_draw_mode' not in self.df_settings.index:
-            col = 'manual_separate_draw_mode'
-            self.df_settings.at[col, 'value'] = 'threepoints_arc'
-        
-        if 'colorScheme' in self.df_settings.index:
-            col = 'colorScheme'
-            self._colorScheme = self.df_settings.at[col, 'value']
+            idx = ["is_bw_inverted", "fontSize", "overlayColor", "how_normIntensities"]
+            values = ["No", 12, "255-255-0", "raw"]
+            self.df_settings = pd.DataFrame(
+                {"setting": idx, "value": values}
+            ).set_index("setting")
+
+        if "isLabelsVisible" not in self.df_settings.index:
+            self.df_settings.at["isLabelsVisible", "value"] = "No"
+
+        if "isNextFrameVisible" not in self.df_settings.index:
+            self.df_settings.at["isNextFrameVisible", "value"] = "No"
+
+        if "isRightImageVisible" not in self.df_settings.index:
+            self.df_settings.at["isRightImageVisible", "value"] = "Yes"
+
+        if "manual_separate_draw_mode" not in self.df_settings.index:
+            col = "manual_separate_draw_mode"
+            self.df_settings.at[col, "value"] = "threepoints_arc"
+
+        if "colorScheme" in self.df_settings.index:
+            col = "colorScheme"
+            self._colorScheme = self.df_settings.at[col, "value"]
         else:
-            self._colorScheme = 'light'
-        
+            self._colorScheme = "light"
+
         self.doNotShowAgainMissingCca = False
-        if 'doNotShowAgainMissingCca' not in self.df_settings.index:
-            self.df_settings.at['doNotShowAgainMissingCca', 'value'] = 'No'
+        if "doNotShowAgainMissingCca" not in self.df_settings.index:
+            self.df_settings.at["doNotShowAgainMissingCca", "value"] = "No"
         else:
-            val = self.df_settings.at['doNotShowAgainMissingCca', 'value']
-            self.doNotShowAgainMissingCca = val=='Yes'
+            val = self.df_settings.at["doNotShowAgainMissingCca", "value"]
+            self.doNotShowAgainMissingCca = val == "Yes"
 
     def reInitGui(self):
         cancel = self.checkAskSavePointsLayers()
         if cancel:
             return False
-        
+
         if self.overlayToolbar.isTransparent():
             self.overlayToolbar.setTransparent(False)
-        
+
         self.secondLevelToolbar.setVisible(False)
-        
+
         self.gui_createLazyLoader()
 
         try:
             self.navSpinBox.valueChanged.disconnect()
         except Exception as e:
             pass
-        
-        try: 
+
+        try:
             self.scaleBar.removeFromAxis(self.ax1)
         except Exception as e:
             pass
@@ -483,7 +485,7 @@ class Session(Worker):
         self.showPropsDockButton.setDisabled(True)
         self.removeOverlayItems()
         self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)
-        
+
         self.reinitWidgetsPos()
         self.removeAllItems()
         self.reinitCustomAnnot()
@@ -495,30 +497,30 @@ class Session(Worker):
         self.reinitStoredSegmModels()
         self.removeAxLimits()
         self.curvToolButton.setChecked(False)
-        
+
         self.wandControlsToolbar.setVisible(False)
         self.wandToolButton.setChecked(False)
         self.segmNdimIndicatorAction.setVisible(False)
-        
+
         self.navigateToolBar.hide()
         self.ccaToolBar.hide()
         self.editToolBar.hide()
         self.brushEraserToolBar.hide()
         self.modeToolBar.hide()
 
-        self.modeComboBox.setCurrentText('Viewer')
-        
+        self.modeComboBox.setCurrentText("Viewer")
+
         alpha = self.imgGrad.labelsAlphaSlider.value()
         self.labelsLayerImg1.setOpacity(alpha)
         self.labelsLayerRightImg.setOpacity(alpha)
-        self.lastTrackedFrameLabel.setText('')
-        
+        self.lastTrackedFrameLabel.setText("")
+
         self.promptSegmentPointsLayerToolbar.isPointsLayerInit = False
-        
+
         for action in self.askHowFutureFramesActions.values():
             action.setChecked(True)
             action.setDisabled(True)
-        
+
         return True
 
     def readRecentPaths(self, recent_paths_path=None):
@@ -527,19 +529,19 @@ class Session(Worker):
 
         # Step 1. Read recent Paths
         if recent_paths_path is None:
-            recent_paths_path = recentPaths_path    
-        
+            recent_paths_path = recentPaths_path
+
         if os.path.exists(recent_paths_path):
-            df = pd.read_csv(recent_paths_path, index_col='index')
-            df['path'] = df['path'].str.replace('\\', '/')
-            df = df.drop_duplicates(subset=['path'])
+            df = pd.read_csv(recent_paths_path, index_col="index")
+            df["path"] = df["path"].str.replace("\\", "/")
+            df = df.drop_duplicates(subset=["path"])
             df.to_csv(recent_paths_path)
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            recentPaths = df['path'].to_list()
+            if "opened_last_on" in df.columns:
+                df = df.sort_values("opened_last_on", ascending=False)
+            recentPaths = df["path"].to_list()
         else:
             recentPaths = []
-        
+
         # Step 2. Dynamically create the actions
         actions = []
         for path in recentPaths:
@@ -556,9 +558,14 @@ class Session(Worker):
         pass
 
     def store_data(
-            self, pos_i=None, enforce=True, debug=False, mainThread=True,
-            autosave=True, store_cca_df_copy=False
-        ):
+        self,
+        pos_i=None,
+        enforce=True,
+        debug=False,
+        mainThread=True,
+        autosave=True,
+        store_cca_df_copy=False,
+    ):
         pos_i = self.pos_i if pos_i is None else pos_i
         posData = self.data[pos_i]
         if posData.frame_i < 0:
@@ -569,38 +576,32 @@ class Session(Worker):
 
         mode = str(self.modeComboBox.currentText())
 
-        if mode == 'Viewer' and not enforce:
+        if mode == "Viewer" and not enforce:
             return
 
         # if not mainThread:
         #     self.lin_tree_ask_changes()
-        
+
         allData_li = posData.allData_li[posData.frame_i]
-        allData_li['regionprops'] = posData.rp.copy()
-        allData_li['labels'] = posData.lab.copy()
-        allData_li['IDs'] = posData.IDs.copy()
-        allData_li['manualBackgroundLab'] = (
-            posData.manualBackgroundLab
-        )
-        allData_li['IDs_idxs'] = (
-            posData.IDs_idxs.copy()
-        )
+        allData_li["regionprops"] = posData.rp.copy()
+        allData_li["labels"] = posData.lab.copy()
+        allData_li["IDs"] = posData.IDs.copy()
+        allData_li["manualBackgroundLab"] = posData.manualBackgroundLab
+        allData_li["IDs_idxs"] = posData.IDs_idxs.copy()
         if self.manualAnnotPastButton.isChecked():
-            self.store_manual_annot_data(
-                posData=posData, data_frame_i=allData_li    
-            )
-        
+            self.store_manual_annot_data(posData=posData, data_frame_i=allData_li)
+
         self.store_zslices_rp()
 
         # Store dynamic metadata
-        is_cell_dead_li = [False]*len(posData.rp)
-        is_cell_excluded_li = [False]*len(posData.rp)
-        IDs = [0]*len(posData.rp)
-        xx_centroid = [0]*len(posData.rp)
-        yy_centroid = [0]*len(posData.rp)
+        is_cell_dead_li = [False] * len(posData.rp)
+        is_cell_excluded_li = [False] * len(posData.rp)
+        IDs = [0] * len(posData.rp)
+        xx_centroid = [0] * len(posData.rp)
+        yy_centroid = [0] * len(posData.rp)
         if self.isSegm3D:
-            zz_centroid = [0]*len(posData.rp)
-        areManuallyEdited = [0]*len(posData.rp)
+            zz_centroid = [0] * len(posData.rp)
+        areManuallyEdited = [0] * len(posData.rp)
         editedNewIDs = [vals[2] for vals in posData.editID_info]
         for i, obj in enumerate(posData.rp):
             is_cell_dead_li[i] = obj.dead
@@ -618,60 +619,58 @@ class Session(Worker):
 
         posData.STOREDmaxID = max(IDs, default=0)
 
-        acdc_df = allData_li['acdc_df']
+        acdc_df = allData_li["acdc_df"]
         if acdc_df is None:
-            allData_li['acdc_df'] = pd.DataFrame(
+            allData_li["acdc_df"] = pd.DataFrame(
                 {
-                    'Cell_ID': IDs,
-                    'is_cell_dead': is_cell_dead_li,
-                    'is_cell_excluded': is_cell_excluded_li,
-                    'x_centroid': xx_centroid,
-                    'y_centroid': yy_centroid,
-                    'was_manually_edited': areManuallyEdited
+                    "Cell_ID": IDs,
+                    "is_cell_dead": is_cell_dead_li,
+                    "is_cell_excluded": is_cell_excluded_li,
+                    "x_centroid": xx_centroid,
+                    "y_centroid": yy_centroid,
+                    "was_manually_edited": areManuallyEdited,
                 }
-            ).set_index('Cell_ID')
-           
+            ).set_index("Cell_ID")
+
             if self.isSegm3D:
-               allData_li['acdc_df']['z_centroid'] = (
-                    zz_centroid
-                )
+                allData_li["acdc_df"]["z_centroid"] = zz_centroid
         else:
             # Filter or add IDs that were not stored yet
-            acdc_df = acdc_df.drop(columns=['time_seconds'], errors='ignore')
+            acdc_df = acdc_df.drop(columns=["time_seconds"], errors="ignore")
             acdc_df = acdc_df.reindex(IDs, fill_value=0)
-            acdc_df['is_cell_dead'] = is_cell_dead_li
-            acdc_df['is_cell_excluded'] = is_cell_excluded_li
-            acdc_df['x_centroid'] = xx_centroid
-            acdc_df['y_centroid'] = yy_centroid
+            acdc_df["is_cell_dead"] = is_cell_dead_li
+            acdc_df["is_cell_excluded"] = is_cell_excluded_li
+            acdc_df["x_centroid"] = xx_centroid
+            acdc_df["y_centroid"] = yy_centroid
             if self.isSegm3D:
-                acdc_df['z_centroid'] = zz_centroid
-            acdc_df['was_manually_edited'] = areManuallyEdited
-            allData_li['acdc_df'] = acdc_df
+                acdc_df["z_centroid"] = zz_centroid
+            acdc_df["was_manually_edited"] = areManuallyEdited
+            allData_li["acdc_df"] = acdc_df
 
         if mainThread:
             self.pointsLayerDataToDf(posData)
-        
+
         self.store_cca_df(
-            pos_i=pos_i, mainThread=mainThread, autosave=autosave, 
-            store_cca_df_copy=store_cca_df_copy
+            pos_i=pos_i,
+            mainThread=mainThread,
+            autosave=autosave,
+            store_cca_df_copy=store_cca_df_copy,
         )
 
-    def store_manual_annot_data(
-            self, posData=None, data_frame_i=None    
-        ):
+    def store_manual_annot_data(self, posData=None, data_frame_i=None):
         if posData is None:
             posData = self.data[self.pos_i]
-        
+
         if data_frame_i is None:
             data_frame_i = posData.allData_li[posData.frame_i]
-        
+
         if not self.isSegm3D:
             lab = [posData.lab]
         else:
             lab = posData.lab
-            
+
         for z, lab_2D in enumerate(lab):
-            data_frame_i['manually_edited_lab']['lab'][z] = lab_2D
+            data_frame_i["manually_edited_lab"]["lab"][z] = lab_2D
 
     def unstore_data(self):
         posData = self.data[self.pos_i]
@@ -681,16 +680,16 @@ class Session(Worker):
         if last_visited_frame_i is None:
             posData = self.data[self.pos_i]
             last_visited_frame_i = posData.frame_i
-        
+
         mode = str(self.modeComboBox.currentText())
-        if mode == 'Viewer':
+        if mode == "Viewer":
             return
-        elif mode == 'Segmentation and Tracking':
+        elif mode == "Segmentation and Tracking":
             posData = self.data[self.pos_i]
             if posData.last_tracked_i >= last_visited_frame_i:
                 return
             posData.last_tracked_i = last_visited_frame_i
-        elif mode == 'Cell cycle analysis':
+        elif mode == "Cell cycle analysis":
             if self.last_cca_frame_i >= last_visited_frame_i:
                 return
             self.last_cca_frame_i = last_visited_frame_i

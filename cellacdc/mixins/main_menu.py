@@ -31,8 +31,8 @@ class MainMenu:
         fileMenu.addAction(self.saveAsAction)
         fileMenu.addAction(self.quickSaveAction)
         fileMenu.addSeparator()
-        
-        self.exportMenu = fileMenu.addMenu('Export')
+
+        self.exportMenu = fileMenu.addMenu("Export")
         self.exportMenu.addAction(self.exportToVideoAction)
         self.exportMenu.addAction(self.exportToImageAction)
         fileMenu.addSeparator()
@@ -41,7 +41,7 @@ class MainMenu:
         # Separator
         self.fileMenu.lastSeparator = fileMenu.addSeparator()
         fileMenu.addAction(self.exitAction)
-        
+
         # Edit menu
         editMenu = menuBar.addMenu("&Edit")
         editMenu.addSeparator()
@@ -70,32 +70,32 @@ class MainMenu:
             self.defaultRescaleIntensLutMenu
         )
         howTexts = (
-            'Rescale each 2D image', 
-            'Rescale across z-stack',
-            'Rescale across time frames',
-            'Do no rescale, display raw image'
+            "Rescale each 2D image",
+            "Rescale across z-stack",
+            "Rescale across time frames",
+            "Do no rescale, display raw image",
         )
         try:
-            self.defaultRescaleIntensHow = (
-                self.df_settings.at['default_rescale_intens_how', 'value']
-            )
+            self.defaultRescaleIntensHow = self.df_settings.at[
+                "default_rescale_intens_how", "value"
+            ]
         except Exception as err:
             self.defaultRescaleIntensHow = howTexts[0]
-            
+
         for howText in howTexts:
             action = QAction(howText, self.defaultRescaleIntensLutMenu)
             action.setCheckable(True)
             if howText == self.defaultRescaleIntensHow:
                 action.setChecked(True)
-                
+
             self.defaultRescaleIntensActionGroup.addAction(action)
             self.defaultRescaleIntensLutMenu.addAction(action)
-        
+
         ImageMenu.addAction(self.addScaleBarAction)
         ImageMenu.addAction(self.addTimestampAction)
-        
-        self.rescaleIntensMenu = ImageMenu.addMenu('Rescale intensities (LUT)')
-        
+
+        self.rescaleIntensMenu = ImageMenu.addMenu("Rescale intensities (LUT)")
+
         ImageMenu.addAction(self.preprocessAction)
         ImageMenu.addAction(self.combineChannelsAction)
         ImageMenu.addAction(self.saveLabColormapAction)
@@ -108,32 +108,28 @@ class MainMenu:
         SegmMenu = menuBar.addMenu("&Segment")
         self.segmentMenu = SegmMenu
         SegmMenu.addSeparator()
-        self.segmSingleFrameMenu = SegmMenu.addMenu('Segment displayed frame')
+        self.segmSingleFrameMenu = SegmMenu.addMenu("Segment displayed frame")
         for action in self.segmActions:
             self.segmSingleFrameMenu.addAction(action)
 
         self.segmSingleFrameMenu.addSeparator()
         self.segmSingleFrameMenu.addAction(self.addCustomModelFrameAction)
 
-        self.segmVideoMenu = SegmMenu.addMenu('Segment multiple frames')
+        self.segmVideoMenu = SegmMenu.addMenu("Segment multiple frames")
         for action in self.segmActionsVideo:
             self.segmVideoMenu.addAction(action)
 
         self.segmVideoMenu.addSeparator()
         self.segmVideoMenu.addAction(self.addCustomModelVideoAction)
-        
+
         self.segmWithPromptableModelMenu = SegmMenu.addMenu(
-            'Segment with promptable model'
+            "Segment with promptable model"
         )
-        
-        self.segmWithPromptableModelMenu.addAction(
-            self.segmWithPromptableModelAction
-        )
-        
+
+        self.segmWithPromptableModelMenu.addAction(self.segmWithPromptableModelAction)
+
         self.segmWithPromptableModelMenu.addSeparator()
-        self.segmWithPromptableModelMenu.addAction(
-            self.addCustomPromptModelAction
-        )
+        self.segmWithPromptableModelMenu.addAction(self.addCustomPromptModelAction)
 
         SegmMenu.addAction(self.EditSegForLostIDsSetSettings)
         SegmMenu.addAction(self.postProcessSegmAction)
@@ -146,7 +142,7 @@ class MainMenu:
         self.trackingMenu = trackingMenu
         trackingMenu.addSeparator()
         selectTrackAlgoMenu = trackingMenu.addMenu(
-            'Select real-time tracking algorithm'
+            "Select real-time tracking algorithm"
         )
         for rtTrackerAction in self.trackingAlgosGroup.actions():
             selectTrackAlgoMenu.addAction(rtTrackerAction)
@@ -156,14 +152,10 @@ class MainMenu:
 
         trackingMenu.addAction(self.repeatTrackingMenuAction)
         trackingMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
-        
+
         if self.mainWin is not None:
-            trackingMenu.addAction(
-                self.mainWin.applyTrackingFromTableAction
-            )
-            trackingMenu.addAction(
-                self.mainWin.applyTrackingFromTrackMateXMLAction
-            )
+            trackingMenu.addAction(self.mainWin.applyTrackingFromTableAction)
+            trackingMenu.addAction(self.mainWin.applyTrackingFromTrackMateXMLAction)
 
         # Measurements menu
         measurementsMenu = menuBar.addMenu("&Measurements")
@@ -189,7 +181,7 @@ class MainMenu:
         self.settingsMenu.addSeparator()
 
         # Mode menu (actions added when self.modeComboBox is created)
-        self.modeMenu = menuBar.addMenu('Mode')
+        self.modeMenu = menuBar.addMenu("Mode")
         self.modeMenu.menuAction().setVisible(False)
 
         # Help menu

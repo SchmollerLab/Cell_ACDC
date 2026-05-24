@@ -27,21 +27,21 @@ class Boolean:
 
 class Model:
     def __init__(
-            self,
-            model_type: AvailableModels='General',
-            model_path: os.PathLike='',
-            bbox_threshold: float=0.4,
-            low_contrast_enhancement: bool=False,
-            use_wsi: bool=True,
-            gauge_cell_size: bool=False,
-            block_size: int=400,
-            overlap: int=56,
-            iou_depth: int=56,
-            iou_threshold: float=0.5,
-            postprocess: bool=False,
-            remove_boundaries: bool=False,
-            gpu: bool=True
-        ):
+        self,
+        model_type: AvailableModels = "General",
+        model_path: os.PathLike = "",
+        bbox_threshold: float = 0.4,
+        low_contrast_enhancement: bool = False,
+        use_wsi: bool = True,
+        gauge_cell_size: bool = False,
+        block_size: int = 400,
+        overlap: int = 56,
+        iou_depth: int = 56,
+        iou_threshold: float = 0.5,
+        postprocess: bool = False,
+        remove_boundaries: bool = False,
+        gpu: bool = True,
+    ):
         """Initialization of CellSAM Model within Cell-ACDC
 
         CellSAM is a foundation model for cell segmentation that achieves
@@ -100,9 +100,9 @@ class Model:
             Whether to use GPU for inference (if available). Default is True
         """
         if gpu and torch.cuda.is_available():
-            self.device = 'cuda'
+            self.device = "cuda"
         else:
-            self.device = 'cpu'
+            self.device = "cpu"
 
         self.bbox_threshold = bbox_threshold
         self.low_contrast_enhancement = low_contrast_enhancement
@@ -118,7 +118,7 @@ class Model:
         model_path = myutils.translateStrNone(model_path)[0]
 
         if model_path:
-            print(f'Loading CellSAM model from {model_path}...')
+            print(f"Loading CellSAM model from {model_path}...")
             self.model = get_local_model(model_path)
         else:
             model_name = model_types[model_type]
@@ -127,7 +127,7 @@ class Model:
                 self.model = get_model(model=model_name)
             except Exception as e:
                 error_msg = str(e).lower()
-                if 'token' in error_msg or 'auth' in error_msg or '401' in error_msg:
+                if "token" in error_msg or "auth" in error_msg or "401" in error_msg:
                     raise RuntimeError(
                         f"Failed to download CellSAM model: {e}\n\n"
                         "Hint: CellSAM requires a DeepCell access token. "
@@ -139,15 +139,15 @@ class Model:
         self.model = self.model.to(self.device)
         self.model.bbox_threshold = bbox_threshold
 
-        print(f'CellSAM model loaded successfully on {self.device}')
+        print(f"CellSAM model loaded successfully on {self.device}")
 
     def segment(
-            self,
-            image: np.ndarray,
-            frame_i: int=0,
-            automatic_removal_of_background: Boolean=False,
-            posData: NotParam=None
-        ) -> np.ndarray:
+        self,
+        image: np.ndarray,
+        frame_i: int = 0,
+        automatic_removal_of_background: Boolean = False,
+        posData: NotParam = None,
+    ) -> np.ndarray:
         """Segment image using CellSAM
 
         Parameters
@@ -223,23 +223,28 @@ class Model:
         if self.use_wsi:
             # Use WSI pipeline for large images or dense cell populations
             import dask.array as da
+
             img_normalized = normalize_image(img.astype(np.float32))
 
             if self.low_contrast_enhancement:
                 from cellSAM.utils import enhance_low_contrast
+
                 img_normalized = enhance_low_contrast(img_normalized)
 
             inp = da.from_array(img_normalized, chunks=256)
 
             if self.gauge_cell_size:
                 from cellSAM.cellsam_pipeline import use_cellsize_gaging
+
                 labels = use_cellsize_gaging(
-                    inp, self.model, self.device,
+                    inp,
+                    self.model,
+                    self.device,
                     block_size=self.block_size,
                     overlap=self.overlap,
                     iou_depth=self.iou_depth,
                     iou_threshold=self.iou_threshold,
-                    bbox_threshold=self.bbox_threshold
+                    bbox_threshold=self.bbox_threshold,
                 )
             else:
                 labels = segment_wsi(
@@ -251,7 +256,7 @@ class Model:
                     normalize=True,
                     model=self.model,
                     device=self.device,
-                    bbox_threshold=self.bbox_threshold
+                    bbox_threshold=self.bbox_threshold,
                 ).compute()
         else:
             # Direct segmentation for smaller images
@@ -262,7 +267,7 @@ class Model:
                 postprocess=self.postprocess,
                 remove_boundaries=self.remove_boundaries,
                 bbox_threshold=self.bbox_threshold,
-                device=self.device
+                device=self.device,
             )
 
         return labels.astype(np.uint32)
@@ -304,7 +309,7 @@ class Model:
                 else:
                     # Pad with zeros
                     img = np.zeros((*image.shape[:-1], 3), dtype=image.dtype)
-                    img[..., :image.shape[-1]] = image
+                    img[..., : image.shape[-1]] = image
         else:
             raise ValueError(f"Unexpected image shape: {image.shape}")
 
@@ -350,4 +355,4 @@ class Model:
 
 
 def url_help():
-    return 'https://github.com/vanvalenlab/cellSAM'
+    return "https://github.com/vanvalenlab/cellSAM"

@@ -89,7 +89,12 @@ _RAW_MIXIN_PARENTS: dict[str, tuple[str, ...]] = {
     "canvas_right_image": ("canvas_drawing", "canvas_events", "canvas_context_menu"),
     "object_search": ("frame_navigation", "graphics", "session"),
     "object_cleanup": ("cell_cycle", "session", "image_display"),
-    "seg_for_lost_ids": ("segmentation", "frame_navigation", "label_editing", "session"),
+    "seg_for_lost_ids": (
+        "segmentation",
+        "frame_navigation",
+        "label_editing",
+        "session",
+    ),
     "exporting": ("app_shell", "frame_navigation", "session"),
     "combine_worker": ("combine", "graphics", "preprocessing", "worker"),
 }

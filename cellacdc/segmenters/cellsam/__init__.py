@@ -8,6 +8,6 @@ import cellSAM
 # cellsam_general: trained on datasets from the original publication
 # cellsam_extra: incorporates additional datasets beyond the paper
 model_types = {
-    'General': 'cellsam_general',
-    'Extra': 'cellsam_extra',
+    "General": "cellsam_general",
+    "Extra": "cellsam_extra",
 }

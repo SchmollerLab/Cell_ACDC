@@ -5,7 +5,8 @@ from . import cellacdc_path, myutils
 import gc
 import psutil
 
-def showRefGraph(object_str:str, debug:bool=True):
+
+def showRefGraph(object_str: str, debug: bool = True):
     """Save a reference graph of the given object type.
 
 
@@ -18,48 +19,51 @@ def showRefGraph(object_str:str, debug:bool=True):
     """
     if not debug:
         return
-    
+
     try:
         import objgraph
     except ImportError:
         conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
 
-        print(f"objgraph is not installed. Install it with '{pip_prefix} objgraph' to use reference graph features, as well as https://www.graphviz.org/")
+        print(
+            f"objgraph is not installed. Install it with '{pip_prefix} objgraph' to use reference graph features, as well as https://www.graphviz.org/"
+        )
         return
 
     caller_func = inspect.currentframe().f_back.f_code.co_name
     caller_file = inspect.currentframe().f_back.f_code.co_filename
-    caller_file = os.path.basename(caller_file).rstrip('.py')
+    caller_file = os.path.basename(caller_file).rstrip(".py")
     caller_line = inspect.currentframe().f_back.f_lineno
-    timestap = datetime.datetime.now().strftime('%H_%M_%S')
+    timestap = datetime.datetime.now().strftime("%H_%M_%S")
 
-    ref_graph_path = os.path.join(
-        os.path.dirname(cellacdc_path),
-        '.ref_graphs'
-    )
+    ref_graph_path = os.path.join(os.path.dirname(cellacdc_path), ".ref_graphs")
 
     os.makedirs(ref_graph_path, exist_ok=True)
-    
-    filename = os.path.join(ref_graph_path, f'ref_graph_{timestap}_{object_str}_from_{caller_file}_{caller_func}_{caller_line}.svg')
 
-    timestap = datetime.datetime.now().strftime('%H:%M:%S')
+    filename = os.path.join(
+        ref_graph_path,
+        f"ref_graph_{timestap}_{object_str}_from_{caller_file}_{caller_func}_{caller_line}.svg",
+    )
+
+    timestap = datetime.datetime.now().strftime("%H:%M:%S")
     currentframe = inspect.currentframe()
     outerframes = inspect.getouterframes(currentframe)
     callingframe = outerframes[1].frame
     callingframe_info = inspect.getframeinfo(callingframe)
     filepath = callingframe_info.filename
-    fileinfo_str = (
-        f'File "{filepath}", line {callingframe_info.lineno} - {timestap}:'
-    )
-
+    fileinfo_str = f'File "{filepath}", line {callingframe_info.lineno} - {timestap}:'
 
     gc.collect()
     instances = objgraph.by_type(object_str)
     if instances:
         objgraph.show_backrefs(instances, max_depth=500, filename=filename)
-        print(fileinfo_str, f'Graph saved as "{filename}" \n for {len(instances)} instances of "{object_str}"')
+        print(
+            fileinfo_str,
+            f'Graph saved as "{filename}" \n for {len(instances)} instances of "{object_str}"',
+        )
     else:
-        print(fileinfo_str, f'No {object_str} instances found.')
+        print(fileinfo_str, f"No {object_str} instances found.")
+
 
 def print_largest_attributes(
     obj, top_n=10, return_list=False, show_percent=True, process_mem=None
@@ -67,7 +71,7 @@ def print_largest_attributes(
     attrs = []
     total = 0
     for attr in dir(obj):
-        if attr.startswith('__'):
+        if attr.startswith("__"):
             continue
         try:
             val = getattr(obj, attr)
@@ -85,13 +89,16 @@ def print_largest_attributes(
         percent = (size / total * 100) if total > 0 else 0
         proc_percent = (size / process_mem * 100) if process_mem else 0
         if show_percent and process_mem:
-            print(f"{attr:30} {size:10,} bytes  {percent:6.2f}% of obj  {proc_percent:6.2f}% of proc   {typ}")
+            print(
+                f"{attr:30} {size:10,} bytes  {percent:6.2f}% of obj  {proc_percent:6.2f}% of proc   {typ}"
+            )
         elif show_percent:
             print(f"{attr:30} {size:10,} bytes  {percent:6.2f}%   {typ}")
         else:
             print(f"{attr:30} {size:10,} bytes   {typ}")
     if return_list:
         return attrs[:top_n]
+
 
 def print_call_stack(debug=True, depth=None):
     if not debug:
@@ -100,10 +107,11 @@ def print_call_stack(debug=True, depth=None):
     stack = stack[:-1]
     if depth:
         depth = depth + 1
-        stack = stack[-depth:] 
+        stack = stack[-depth:]
     print("Call stack:")
     for line in stack:
         print(line.strip())
+
 
 def print_largest_attributes_for_all_classes(package_prefix="cellacdc", top_n=5):
     # Find all classes defined in your package
@@ -119,11 +127,12 @@ def print_largest_attributes_for_all_classes(package_prefix="cellacdc", top_n=5)
             continue
         print(f"\nClass: {cls.__module__}.{cls.__name__} ({len(instances)} instances)")
         for i, inst in enumerate(instances):
-            print(f"  Instance {i+1}:")
+            print(f"  Instance {i + 1}:")
             try:
                 print_largest_attributes(inst, top_n=top_n)
             except Exception as e:
                 print(f"    Could not inspect instance: {e}")
+
 
 def print_largest_classes(package_prefix="cellacdc", top_n=10, max_instances=100):
     """
@@ -134,6 +143,7 @@ def print_largest_classes(package_prefix="cellacdc", top_n=10, max_instances=100
     import gc
     import psutil
     import os
+
     try:
         from pympler import asizeof
     except ImportError:
@@ -185,7 +195,7 @@ def print_largest_classes(package_prefix="cellacdc", top_n=10, max_instances=100
 
         # scale up if sampled
         if counted > 0 and n > counted:
-            total_size *= (n / counted)
+            total_size *= n / counted
 
         if total_size > 0:
             class_mem.append((cls, total_size, n))
@@ -193,7 +203,7 @@ def print_largest_classes(package_prefix="cellacdc", top_n=10, max_instances=100
     # ✅ Sort by memory
     class_mem.sort(key=lambda x: x[1], reverse=True)
 
-    print(f"Total process memory: {process_mem/1024**2:.1f} MB")
+    print(f"Total process memory: {process_mem / 1024**2:.1f} MB")
     print(f"{'Class':60} {'Instances':>10} {'Total MB':>12} {'% of proc':>10}")
 
     for cls, total_size, n in class_mem[:top_n]:
@@ -201,7 +211,7 @@ def print_largest_classes(package_prefix="cellacdc", top_n=10, max_instances=100
 
         name = f"{cls.__module__}.{cls.__name__}"
 
-        print(f"{name:<60} {n:10} {total_size/1024**2:12.2f} {percent:9.2f}%")
+        print(f"{name:<60} {n:10} {total_size / 1024**2:12.2f} {percent:9.2f}%")
 
 
 # Example usage:

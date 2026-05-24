@@ -5,18 +5,30 @@ import webbrowser
 import pandas as pd
 import numpy as np
 
-from qtpy.QtGui import (
-    QIcon, QFont, QFontMetrics, QPixmap, QPalette, QColor
-)
-from qtpy.QtCore import (
-    Qt, QSize, QEvent, Signal, QObject, QThread, QTimer
-)
+from qtpy.QtGui import QIcon, QFont, QFontMetrics, QPixmap, QPalette, QColor
+from qtpy.QtCore import Qt, QSize, QEvent, Signal, QObject, QThread, QTimer
 from qtpy.QtWidgets import (
-    QApplication, QWidget, QGridLayout, QTextEdit, QPushButton,
-    QListWidget, QListWidgetItem, QCheckBox, QFrame, QStyleFactory,
-    QLabel, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
-    QScrollArea, QComboBox, QHBoxLayout, QToolButton, QMainWindow,
-    QProgressBar, QAction
+    QApplication,
+    QWidget,
+    QGridLayout,
+    QTextEdit,
+    QPushButton,
+    QListWidget,
+    QListWidgetItem,
+    QCheckBox,
+    QFrame,
+    QStyleFactory,
+    QLabel,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QTreeWidgetItemIterator,
+    QScrollArea,
+    QComboBox,
+    QHBoxLayout,
+    QToolButton,
+    QMainWindow,
+    QProgressBar,
+    QAction,
 )
 
 script_path = os.path.dirname(os.path.realpath(__file__))
@@ -27,14 +39,16 @@ from .. import _palettes
 # NOTE: Enable icons
 from .. import cellacdc_path, settings_folderpath
 
-if os.name == 'nt':
+if os.name == "nt":
     try:
         # Set taskbar icon in windows
         import ctypes
-        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
+
+        myappid = "schmollerlab.cellacdc.pyqt.v1"  # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception as e:
         pass
+
 
 class downloadWorker(QObject):
     finished = Signal()
@@ -45,10 +59,9 @@ class downloadWorker(QObject):
         self.which = which
 
     def run(self):
-        self.exp_path = myutils.download_examples(
-            self.which, progress=self.progress
-        )
+        self.exp_path = myutils.download_examples(self.which, progress=self.progress)
         self.finished.emit()
+
 
 class QHLine(QFrame):
     def __init__(self):
@@ -63,7 +76,7 @@ class welcomeWin(QWidget):
         self.mainWin = mainWin
         self.app = app
         super().__init__(parent)
-        self.setWindowTitle('Welcome')
+        self.setWindowTitle("Welcome")
         self.setWindowIcon(QIcon(":icon.ico"))
         self.loadSettings()
 
@@ -103,23 +116,23 @@ class welcomeWin(QWidget):
         # self.setDebuggingTools()
 
     def setDebuggingTools(self):
-        self.debugButton = QPushButton('debug')
+        self.debugButton = QPushButton("debug")
         self.debugButton.clicked.connect(self.debug)
         self.mainLayout.addWidget(self.debugButton, 2, 0)
         # self.debugAction.hide()
 
     def loadSettings(self):
-        csv_path = os.path.join(settings_folderpath, 'settings.csv')
+        csv_path = os.path.join(settings_folderpath, "settings.csv")
         if os.path.exists(csv_path):
-            self.df_settings = pd.read_csv(csv_path, index_col='setting')
-            if 'showWelcomeGuide' not in self.df_settings.index:
-                self.df_settings.at['showWelcomeGuide', 'value'] = 'Yes'
+            self.df_settings = pd.read_csv(csv_path, index_col="setting")
+            if "showWelcomeGuide" not in self.df_settings.index:
+                self.df_settings.at["showWelcomeGuide", "value"] = "Yes"
         else:
-            idx = ['showWelcomeGuide']
-            values = ['Yes']
-            self.df_settings = pd.DataFrame({'setting': idx,
-                                             'value': values}
-                                           ).set_index('setting')
+            idx = ["showWelcomeGuide"]
+            values = ["Yes"]
+            self.df_settings = pd.DataFrame(
+                {"setting": idx, "value": values}
+            ).set_index("setting")
             self.df_settings.to_csv(csv_path)
         self.df_settings_path = csv_path
 
@@ -129,13 +142,13 @@ class welcomeWin(QWidget):
         treeSelector.setFrameStyle(QFrame.Shape.NoFrame)
 
         self.welcomeItem = QTreeWidgetItem(treeSelector)
-        self.welcomeItem.setIcon(0, QIcon(':home.svg'))
-        self.welcomeItem.setText(0, 'Welcome')
+        self.welcomeItem.setIcon(0, QIcon(":home.svg"))
+        self.welcomeItem.setText(0, "Welcome")
         treeSelector.addTopLevelItem(self.welcomeItem)
 
         self.quickStartItem = QTreeWidgetItem(treeSelector)
-        self.quickStartItem.setIcon(0, QIcon(':quickStart.svg'))
-        self.quickStartItem.setText(0, 'Quick Start')
+        self.quickStartItem.setIcon(0, QIcon(":quickStart.svg"))
+        self.quickStartItem.setText(0, "Quick Start")
         treeSelector.addTopLevelItem(self.quickStartItem)
 
         # self.settingsItem = QTreeWidgetItem(treeSelector)
@@ -144,17 +157,16 @@ class welcomeWin(QWidget):
         # treeSelector.addTopLevelItem(self.settingsItem)
 
         self.manualItem = QTreeWidgetItem(treeSelector)
-        self.manualItem.setIcon(0, QIcon(':book.svg'))
+        self.manualItem.setIcon(0, QIcon(":book.svg"))
         # textLabel = QLabel()
         # textLabel.setText("""
         # <p style="font-size:13px; font-family:ubuntu">
         #     User Manual
         # </p>
         # """)
-        self.manualItem.setText(0, 'User Manual')
+        self.manualItem.setText(0, "User Manual")
         treeSelector.addTopLevelItem(self.manualItem)
         # treeSelector.setItemWidget(self.manualItem, 0, textLabel)
-
 
         # self.manualDataPrepItem = QTreeWidgetItem(self.manualItem)
         # self.manualDataPrepItem.setText(0, '    Data Prep module')
@@ -167,8 +179,8 @@ class welcomeWin(QWidget):
         # self.manualItem.addChild(self.manualGUIItem)
 
         self.contributeItem = QTreeWidgetItem(treeSelector)
-        self.contributeItem.setIcon(0, QIcon(':contribute.svg'))
-        self.contributeItem.setText(0, 'Contribute')
+        self.contributeItem.setIcon(0, QIcon(":contribute.svg"))
+        self.contributeItem.setText(0, "Contribute")
         treeSelector.addTopLevelItem(self.contributeItem)
         # treeSelector.setSpacing(3)
 
@@ -189,7 +201,6 @@ class welcomeWin(QWidget):
             else:
                 frame.hide()
 
-
     def addWelcomePage(self):
         self.welcomeFrame = QFrame(self)
         welcomeLayout = QGridLayout()
@@ -202,8 +213,7 @@ class welcomeWin(QWidget):
         # welcomeTextWidget.setFrameStyle(QFrame.Shape.NoFrame)
         # welcomeTextWidget.viewport().setAutoFillBackground(False)
 
-        htmlTxt = (
-        """
+        htmlTxt = """
         <html>
         <head>
         <title></title>
@@ -252,37 +262,37 @@ class welcomeWin(QWidget):
         </body>
         </html>
         """
-        )
 
         # welcomeTextWidget.setHtml(htmlTxt)
         welcomeTextWidget.setText(htmlTxt)
         welcomeTextWidget.linkActivated.connect(self.linkActivated_cb)
 
-        welcomeLayout.addWidget(welcomeTextWidget, 0, 0, 1, 5,
-                                alignment=Qt.AlignTop)
+        welcomeLayout.addWidget(welcomeTextWidget, 0, 0, 1, 5, alignment=Qt.AlignTop)
 
-        startWizardButton = QPushButton(' Launch Wizard')
-        startWizardButton.setIcon(QIcon(':wizard.svg'))
+        startWizardButton = QPushButton(" Launch Wizard")
+        startWizardButton.setIcon(QIcon(":wizard.svg"))
         startWizardButton.clicked.connect(self.launchDataStruct)
 
         welcomeLayout.addWidget(startWizardButton, 1, 0)
 
-        testMyImageButton = QPushButton(' Test segmentation with my image/video')
-        testMyImageButton.setIcon(QIcon(':image.svg'))
+        testMyImageButton = QPushButton(" Test segmentation with my image/video")
+        testMyImageButton.setIcon(QIcon(":image.svg"))
         testMyImageButton.clicked.connect(self.openGUIsingleImage)
 
         welcomeLayout.addWidget(testMyImageButton, 1, 1)
 
         testTimeLapseButton = QPushButton(
-            text='Download and test with a time-lapse example')
-        testTimeLapseButton.setIcon(QIcon(':download.svg'))
+            text="Download and test with a time-lapse example"
+        )
+        testTimeLapseButton.setIcon(QIcon(":download.svg"))
         testTimeLapseButton.clicked.connect(self.testTimeLapseExample)
 
         welcomeLayout.addWidget(testTimeLapseButton, 1, 2)
 
         test3DzStackButton = QPushButton(
-            text='Download and test with a 3D z-stack example')
-        test3DzStackButton.setIcon(QIcon(':download.svg'))
+            text="Download and test with a 3D z-stack example"
+        )
+        test3DzStackButton.setIcon(QIcon(":download.svg"))
         test3DzStackButton.clicked.connect(self.test3DzStacksExample)
 
         welcomeLayout.addWidget(test3DzStackButton, 1, 3)
@@ -308,13 +318,12 @@ class welcomeWin(QWidget):
 
         QuickStartLayout = QGridLayout()
 
-        fs = 13 # font size
+        fs = 13  # font size
 
         row = 0
         QuickStartTextWidget = QLabel()
 
-        htmlHead = (
-        """
+        htmlHead = """
         <html>
         <head>
 
@@ -330,10 +339,8 @@ class welcomeWin(QWidget):
 
         </head>
         """
-        )
 
-        htmlTxt = (
-        f"""
+        htmlTxt = f"""
         {htmlHead}
         <body>
         <blockquote>
@@ -349,18 +356,15 @@ class welcomeWin(QWidget):
         </body>
         </html>
         """
-        )
 
         QuickStartTextWidget.setText(htmlTxt)
         QuickStartTextWidget.linkActivated.connect(self.linkActivated_cb)
 
-        QuickStartLayout.addWidget(QuickStartTextWidget, row, 0,
-                                   alignment=Qt.AlignTop)
+        QuickStartLayout.addWidget(QuickStartTextWidget, row, 0, alignment=Qt.AlignTop)
 
         row += 1
         QuickStartTextWidget = QLabel()
-        htmlTxt = (
-        f"""
+        htmlTxt = f"""
         {htmlHead}
         <body>
         <blockquote>
@@ -390,19 +394,16 @@ class welcomeWin(QWidget):
         </body>
         </html>
         """
-        )
 
         QuickStartTextWidget.setText(htmlTxt)
         QuickStartTextWidget.linkActivated.connect(self.linkActivated_cb)
 
-        QuickStartLayout.addWidget(QuickStartTextWidget, row, 0,
-                                   alignment=Qt.AlignTop)
+        QuickStartLayout.addWidget(QuickStartTextWidget, row, 0, alignment=Qt.AlignTop)
 
         row += 1
         QS_tipTxtLabel = QLabel()
 
-        htmlTxt = (
-        f"""
+        htmlTxt = f"""
         {htmlHead}
         <body>
         <blockquote>
@@ -416,14 +417,12 @@ class welcomeWin(QWidget):
         </p>
         </blockquote>
         """
-        )
 
         QS_tipTxtLabel.setText(htmlTxt)
-        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0,
-                                   alignment=Qt.AlignTop)
+        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0, alignment=Qt.AlignTop)
 
         row += 1
-        pixmap = QPixmap(':toolbar.png')
+        pixmap = QPixmap(":toolbar.png")
         label = QLabel()
         # padding: top, left, bottom, right
         label.setStyleSheet("padding:5px 0px 10px 40px;")
@@ -433,8 +432,7 @@ class welcomeWin(QWidget):
         row += 1
         QS_tipTxtLabel = QLabel()
 
-        htmlTxt = (
-        f"""
+        htmlTxt = f"""
         {htmlHead}
         <body>
         <blockquote>
@@ -447,18 +445,15 @@ class welcomeWin(QWidget):
         </p>
         </blockquote>
         """
-        )
 
         QS_tipTxtLabel.setText(htmlTxt)
-        QS_tipTxtLabel.setStyleSheet('padding-bottom: 10px')
-        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0,
-                                   alignment=Qt.AlignTop)
+        QS_tipTxtLabel.setStyleSheet("padding-bottom: 10px")
+        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0, alignment=Qt.AlignTop)
 
         row += 1
         QS_tipTxtLabel = QLabel()
 
-        htmlTxt = (
-        f"""
+        htmlTxt = f"""
         {htmlHead}
         <body>
         <blockquote>
@@ -472,14 +467,12 @@ class welcomeWin(QWidget):
         </p>
         </blockquote>
         """
-        )
 
         QS_tipTxtLabel.setText(htmlTxt)
-        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0,
-                                   alignment=Qt.AlignTop)
+        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0, alignment=Qt.AlignTop)
 
         row += 1
-        pixmap = QPixmap(':toolTip.png')
+        pixmap = QPixmap(":toolTip.png")
         label = QLabel()
         label.setStyleSheet("padding:5px 0px 10px 40px;")
         label.setPixmap(pixmap)
@@ -488,8 +481,7 @@ class welcomeWin(QWidget):
         row += 1
         QS_tipTxtLabel = QLabel()
 
-        htmlTxt = (
-        f"""
+        htmlTxt = f"""
         {htmlHead}
         <body>
         <blockquote>
@@ -503,18 +495,15 @@ class welcomeWin(QWidget):
         </p>
         </blockquote>
         """
-        )
 
         QS_tipTxtLabel.setText(htmlTxt)
-        QS_tipTxtLabel.setStyleSheet('padding-bottom: 10px')
-        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0,
-                                   alignment=Qt.AlignTop)
+        QS_tipTxtLabel.setStyleSheet("padding-bottom: 10px")
+        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0, alignment=Qt.AlignTop)
 
         row += 1
         QS_tipTxtLabel = QLabel()
 
-        htmlTxt = (
-        f"""
+        htmlTxt = f"""
         {htmlHead}
         <body>
         <blockquote>
@@ -556,18 +545,15 @@ class welcomeWin(QWidget):
         </p>
         </blockquote>
         """
-        )
 
         QS_tipTxtLabel.setText(htmlTxt)
-        QS_tipTxtLabel.setStyleSheet('padding-bottom: 10px')
-        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0,
-                                   alignment=Qt.AlignTop)
+        QS_tipTxtLabel.setStyleSheet("padding-bottom: 10px")
+        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0, alignment=Qt.AlignTop)
 
         row += 1
         QS_tipTxtLabel = QLabel()
 
-        htmlTxt = (
-        f"""
+        htmlTxt = f"""
         {htmlHead}
         <body>
         <blockquote>
@@ -580,19 +566,15 @@ class welcomeWin(QWidget):
         </p>
         </blockquote>
         """
-        )
 
         QS_tipTxtLabel.setText(htmlTxt)
-        QS_tipTxtLabel.setStyleSheet('padding-bottom: 10px')
-        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0,
-                                   alignment=Qt.AlignTop)
+        QS_tipTxtLabel.setStyleSheet("padding-bottom: 10px")
+        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0, alignment=Qt.AlignTop)
 
         row += 1
         QS_tipTxtLabel = QLabel()
 
-
-        htmlTxt = (
-        f"""
+        htmlTxt = f"""
         {htmlHead}
         <body>
         <blockquote>
@@ -606,21 +588,19 @@ class welcomeWin(QWidget):
         </p>
         </blockquote>
         """
-        )
 
         QS_tipTxtLabel.setText(htmlTxt)
-        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0,
-                                   alignment=Qt.AlignTop)
+        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0, alignment=Qt.AlignTop)
 
         row += 1
         modeComboBox = QComboBox()
-        modeComboBox.addItems(['Segmentation and Tracking',
-                                'Cell cycle analysis',
-                                'Viewer'])
-        modeComboBox.setCurrentText('Viewer')
+        modeComboBox.addItems(
+            ["Segmentation and Tracking", "Cell cycle analysis", "Viewer"]
+        )
+        modeComboBox.setCurrentText("Viewer")
         modeComboBox.setFocusPolicy(Qt.StrongFocus)
         modeComboBox.installEventFilter(self)
-        modeComboBoxLabel = QLabel('    Mode: ')
+        modeComboBoxLabel = QLabel("    Mode: ")
         layout = QHBoxLayout()
         layout.addWidget(modeComboBoxLabel)
         layout.addWidget(modeComboBox)
@@ -631,8 +611,7 @@ class welcomeWin(QWidget):
 
         row += 1
         QS_tipTxtLabel = QLabel()
-        htmlTxt = (
-        f"""
+        htmlTxt = f"""
         {htmlHead}
         <body>
         <blockquote>
@@ -646,18 +625,14 @@ class welcomeWin(QWidget):
         </p>
         </blockquote>
         """
-        )
 
         QS_tipTxtLabel.setText(htmlTxt)
-        QS_tipTxtLabel.setStyleSheet('padding-bottom: 10px')
-        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0,
-                                   alignment=Qt.AlignTop)
-
+        QS_tipTxtLabel.setStyleSheet("padding-bottom: 10px")
+        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0, alignment=Qt.AlignTop)
 
         row += 1
         QS_tipTxtLabel = QLabel()
-        htmlTxt = (
-        f"""
+        htmlTxt = f"""
         {htmlHead}
         <body>
         <blockquote>
@@ -671,27 +646,22 @@ class welcomeWin(QWidget):
         </p>
         </blockquote>
         """
-        )
         QS_tipTxtLabel.setText(htmlTxt)
-        QS_tipTxtLabel.setStyleSheet('padding-bottom: 8px')
+        QS_tipTxtLabel.setStyleSheet("padding-bottom: 8px")
 
         viewerButton = QToolButton()
-        viewerButton.setIcon(QIcon(':eye-plus.svg'))
-        viewerButton.setIconSize(QSize(24, 24));
-
+        viewerButton.setIcon(QIcon(":eye-plus.svg"))
+        viewerButton.setIconSize(QSize(24, 24))
         layout = QHBoxLayout()
         layout.addWidget(QS_tipTxtLabel, alignment=Qt.AlignBottom)
         layout.addWidget(viewerButton)
         layout.addStretch(1)
         QuickStartLayout.addLayout(layout, row, 0)
 
-
-
         row += 1
         QS_tipTxtLabel = QLabel()
 
-        htmlTxt = (
-        f"""
+        htmlTxt = f"""
         {htmlHead}
         <body>
         <blockquote>
@@ -706,17 +676,14 @@ class welcomeWin(QWidget):
         </p>
         </blockquote>
         """
-        )
 
         QS_tipTxtLabel.setText(htmlTxt)
-        QS_tipTxtLabel.setStyleSheet('padding-top: 2px')
-        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0,
-                                   alignment=Qt.AlignTop)
+        QS_tipTxtLabel.setStyleSheet("padding-top: 2px")
+        QuickStartLayout.addWidget(QS_tipTxtLabel, row, 0, alignment=Qt.AlignTop)
 
-        row +=1
+        row += 1
         QuickStartTextWidget = QLabel()
-        htmlTxt = (
-        f"""
+        htmlTxt = f"""
         {htmlHead}
         <body>
         <blockquote>
@@ -729,29 +696,28 @@ class welcomeWin(QWidget):
         </body>
         </html>
         """
-        )
 
         QuickStartTextWidget.setText(htmlTxt)
-        QuickStartLayout.addWidget(QuickStartTextWidget, row, 0,
-                                   alignment=Qt.AlignTop)
+        QuickStartLayout.addWidget(QuickStartTextWidget, row, 0, alignment=Qt.AlignTop)
 
         row += 1
         layout = QHBoxLayout()
-        testMyImage = QPushButton(
-            text='Test segmentation with my image/video')
-        testMyImage.setIcon(QIcon(':image.svg'))
+        testMyImage = QPushButton(text="Test segmentation with my image/video")
+        testMyImage.setIcon(QIcon(":image.svg"))
         layout.addWidget(testMyImage)
         testMyImage.clicked.connect(self.openGUIsingleImage)
 
         testTimeLapseButton = QPushButton(
-            text='Download and test with a time-lapse example')
-        testTimeLapseButton.setIcon(QIcon(':download.svg'))
+            text="Download and test with a time-lapse example"
+        )
+        testTimeLapseButton.setIcon(QIcon(":download.svg"))
         layout.addWidget(testTimeLapseButton)
         testTimeLapseButton.clicked.connect(self.testTimeLapseExample)
 
         test3DzStackButton = QPushButton(
-            text='Download and test with a 3D z-stack example')
-        test3DzStackButton.setIcon(QIcon(':download.svg'))
+            text="Download and test with a 3D z-stack example"
+        )
+        test3DzStackButton.setIcon(QIcon(":download.svg"))
         layout.addWidget(test3DzStackButton)
         test3DzStackButton.clicked.connect(self.test3DzStacksExample)
 
@@ -775,7 +741,7 @@ class welcomeWin(QWidget):
         manualLayout = QGridLayout()
 
         openManualButton = widgets.showInFileManagerButton(
-            ' Download and open user manual... '
+            " Download and open user manual... "
         )
         openManualButton.clicked.connect(myutils.browse_docs)
 
@@ -794,15 +760,15 @@ class welcomeWin(QWidget):
 
         layout = QGridLayout()
 
-        contribute_href = html_utils.href_tag('here', urls.contribute_url)
-        github_href = html_utils.href_tag('GitHub page', urls.github_url)
-        issues_href = html_utils.href_tag('Issues', urls.issues_url)
-        forum_href = html_utils.href_tag('Discussions', urls.forum_url)
-        resources_href = html_utils.href_tag('here', urls.resources_url)
-        my_contact_href = html_utils.href_tag('my email', urls.my_contact_url)
-        user_manual_href = html_utils.href_tag('User Manual', urls.user_manual_url)
+        contribute_href = html_utils.href_tag("here", urls.contribute_url)
+        github_href = html_utils.href_tag("GitHub page", urls.github_url)
+        issues_href = html_utils.href_tag("Issues", urls.issues_url)
+        forum_href = html_utils.href_tag("Discussions", urls.forum_url)
+        resources_href = html_utils.href_tag("here", urls.resources_url)
+        my_contact_href = html_utils.href_tag("my email", urls.my_contact_url)
+        user_manual_href = html_utils.href_tag("User Manual", urls.user_manual_url)
 
-        text = (f"""
+        text = f"""
         <p style="font-size:15px; font-family:ubuntu">
             Here at Cell-ACDC we want to keep a <b>community-centred approach</b>.<br><br>
             
@@ -833,7 +799,7 @@ class welcomeWin(QWidget):
 
             Additional resources {resources_href}.
         </p>
-        """)
+        """
 
         label = QLabel()
         label.setText(text)
@@ -844,28 +810,27 @@ class welcomeWin(QWidget):
         self.mainLayout.addWidget(self.contributeFrame, 0, 1)
         self.itemsDict[self.contributeItem.text(0)] = self.contributeFrame
 
-
     def linkActivated_cb(self, link):
-        if link == 'DataPrepMore':
+        if link == "DataPrepMore":
             pass
-        elif link == 'paper':
+        elif link == "paper":
             url = cite_url
             webbrowser.open(url)
-        elif link == 'tweet':
-            url = 'https://twitter.com/frank_pado/status/1443957038841794561?s=20'
+        elif link == "tweet":
+            url = "https://twitter.com/frank_pado/status/1443957038841794561?s=20"
             webbrowser.open(url)
-        elif link == 'segmMore':
+        elif link == "segmMore":
             pass
-        elif link == 'guiMore':
+        elif link == "guiMore":
             pass
-        elif link == 'quickStart':
+        elif link == "quickStart":
             self.showPage(self.quickStartItem)
-        elif link == 'userManual':
+        elif link == "userManual":
             self.showPage(self.manualItem)
 
     def addShowGuideCheckbox(self):
-        checkBox = QCheckBox('Show Welcome Guide when opening Cell-ACDC')
-        checked = self.df_settings.at['showWelcomeGuide', 'value'] == 'Yes'
+        checkBox = QCheckBox("Show Welcome Guide when opening Cell-ACDC")
+        checked = self.df_settings.at["showWelcomeGuide", "value"] == "Yes"
         checkBox.setChecked(checked)
         self.mainLayout.addWidget(checkBox, 1, 1, alignment=Qt.AlignRight)
 
@@ -873,13 +838,13 @@ class welcomeWin(QWidget):
 
     def showWelcomeGuideCheckBox_cb(self, state):
         if state == 0:
-            show = 'No'
+            show = "No"
         else:
-            show = 'Yes'
-        self.df_settings.loc['showWelcomeGuide'] = (
-            self.df_settings.loc['showWelcomeGuide'].astype(str)
-        )
-        self.df_settings.at['showWelcomeGuide', 'value'] = show
+            show = "Yes"
+        self.df_settings.loc["showWelcomeGuide"] = self.df_settings.loc[
+            "showWelcomeGuide"
+        ].astype(str)
+        self.df_settings.at["showWelcomeGuide", "value"] = show
         self.saveSettings()
 
     def saveSettings(self):
@@ -893,10 +858,8 @@ class welcomeWin(QWidget):
             You will then be asked to select an image file (e.g., .tif or .png), 
             or a video file (e.g., .avi). 
         """)
-        msg.information(
-            self, 'Test with my image', txt
-        )
-        
+        msg.information(self, "Test with my image", txt)
+
         if self.mainWin is not None:
             self.mainWin.launchGui()
             guiWin = self.mainWin.guiWins[-1]
@@ -910,9 +873,7 @@ class welcomeWin(QWidget):
         if self.mainWin is not None:
             self.mainWin.launchGui()
             guiWin = self.mainWin.guiWins[-1]
-            QTimer.singleShot(
-                200, partial(guiWin.openFolder, exp_path=exp_path)
-            )
+            QTimer.singleShot(200, partial(guiWin.openFolder, exp_path=exp_path))
         else:
             self.guiWin = gui.guiWin(self.app)
             self.guiWin.showAndSetSize()
@@ -927,14 +888,12 @@ class welcomeWin(QWidget):
         self.welcomeLayout.addWidget(self.QPbar, 3, 0, 1, 3)
 
     def testTimeLapseExample(self, checked=True):
-        _, example_path, _, _ = myutils.get_examples_path('time_lapse_2D')
-        txt = (
-        f"""
+        _, example_path, _, _ = myutils.get_examples_path("time_lapse_2D")
+        txt = f"""
         <p style="font-size:11px; font-family:ubuntu">
             <br><b>Downloading example</b> to {example_path}...
         </p>
         """
-        )
         self.infoTextWidget.setText(txt)
 
         if self.QPbar is None:
@@ -943,7 +902,7 @@ class welcomeWin(QWidget):
             self.QPbar.setVisible(True)
 
         self.thread = QThread()
-        self.worker = downloadWorker('time_lapse_2D')
+        self.worker = downloadWorker("time_lapse_2D")
         self.worker.moveToThread(self.thread)
         self.worker.progress.connect(self.downloadProgress)
         self.worker.finished.connect(self.thread.quit)
@@ -958,7 +917,7 @@ class welcomeWin(QWidget):
         if file_size != -1:
             self.QPbar.setMaximum(file_size)
         elif len_chunk != -1:
-            self.QPbar.setValue(self.QPbar.value()+len_chunk)
+            self.QPbar.setValue(self.QPbar.value() + len_chunk)
         elif len_chunk == 0:
             self.QPbar.setValue(self.QPbar.maximum())
 
@@ -971,40 +930,37 @@ class welcomeWin(QWidget):
             Do you want to <b>open it in the GUI</b>?
         """)
         _, yesButton = msg.question(
-            self, 'Open downloaded dataset?', txt,
-            buttonsTexts=('No, thanks', 'Yes, please, open the GUI'),
+            self,
+            "Open downloaded dataset?",
+            txt,
+            buttonsTexts=("No, thanks", "Yes, please, open the GUI"),
             commands=(self.worker.exp_path,),
-            path_to_browse=self.worker.exp_path
+            path_to_browse=self.worker.exp_path,
         )
         self.infoTextWidget.setText(
-            '<br><b>Example downloaded</b> to '
-            f'<code>{self.worker.exp_path}</code>.<br>'
+            f"<br><b>Example downloaded</b> to <code>{self.worker.exp_path}</code>.<br>"
         )
         if msg.clickedButton == yesButton:
             self.openGUIexample()
-    
+
     def openGUIexample(self):
-        txt = (
-        f"""
+        txt = f"""
         <p style="font-size:11px; font-family:ubuntu">
             <br><b>Example downloaded</b> to 
             <code>{self.worker.exp_path}</code>.<br>
             Opening GUI...
         </p>
         """
-        )
         self.infoTextWidget.setText(txt)
         self.openGUIfolder(self.worker.exp_path)
 
     def test3DzStacksExample(self, checked=True):
-        _, example_path, _, _ = myutils.get_examples_path('snapshots_3D')
-        txt = (
-        f"""
+        _, example_path, _, _ = myutils.get_examples_path("snapshots_3D")
+        txt = f"""
         <p style="font-size:11px; font-family:ubuntu">
             <br><b>Downloading example</b> to {example_path}...
         </p>
         """
-        )
         self.infoTextWidget.setText(txt)
 
         if self.QPbar is None:
@@ -1013,7 +969,7 @@ class welcomeWin(QWidget):
             self.QPbar.setVisible(True)
 
         self.thread = QThread()
-        self.worker = downloadWorker('snapshots_3D')
+        self.worker = downloadWorker("snapshots_3D")
         self.worker.moveToThread(self.thread)
         self.worker.progress.connect(self.downloadProgress)
         self.worker.finished.connect(self.thread.quit)
@@ -1030,7 +986,7 @@ class welcomeWin(QWidget):
     def showAndSetSize(self):
         font = QFont()
         font.setPixelSize(13)
-        font.setFamily('Ubuntu')
+        font.setFamily("Ubuntu")
         self.treeSelector.setFont(font)
         self.showPage(self.quickStartItem)
 
@@ -1044,7 +1000,7 @@ class welcomeWin(QWidget):
 
     def resizeScrollbar(self):
         if self.quickStartScrollArea.horizontalScrollBar().isVisible():
-            self.resize(self.width()+5, self.height())
+            self.resize(self.width() + 5, self.height())
         else:
             self.timer.stop()
             self.moveWindow()
@@ -1065,20 +1021,19 @@ class welcomeWin(QWidget):
         left = screenLeft + 10
         top = screenTop + 70
         width = w
-        height = int(h*Dh)
-        if height > 0.9*screenHeight:
-            height = int(0.9*screenHeight)
+        height = int(h * Dh)
+        if height > 0.9 * screenHeight:
+            height = int(0.9 * screenHeight)
 
         self.setGeometry(left, top, width, height)
         if self.mainWin is not None:
             mainWinWidth = self.mainWin.width()
-            welcomeWinRight = left+width
-            if welcomeWinRight+mainWinWidth > screenRight:
+            welcomeWinRight = left + width
+            if welcomeWinRight + mainWinWidth > screenRight:
                 # The right edge of the welcome window is out of screen bounds
                 # Keep it in the screen
-                welcomeWinRight = screenRight-mainWinWidth
+                welcomeWinRight = screenRight - mainWinWidth
             self.mainWin.move(welcomeWinRight, top)
-
 
     def showPage(self, currentItem):
         self.treeSelector.setCurrentItem(currentItem, 0)
@@ -1090,11 +1045,12 @@ class welcomeWin(QWidget):
             return True
         return False
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     app = QApplication([])
     win = welcomeWin(app=app)
     win.showAndSetSize()
     win.showPage(win.welcomeItem)
     # win.showPage(win.quickStartItem)
-    app.setStyle(QStyleFactory.create('Fusion'))
+    app.setStyle(QStyleFactory.create("Fusion"))
     sys.exit(app.exec_())

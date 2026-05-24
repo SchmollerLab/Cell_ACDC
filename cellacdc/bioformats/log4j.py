@@ -7,8 +7,9 @@
 
 import javabridge
 
+
 def basic_config():
-    '''Configure logging for "ERROR" level'''
+    """Configure logging for "ERROR" level"""
     log4j = javabridge.JClassWrapper("loci.common.Log4jTools")
     log4j.enableLogging()
     log4j.setRootLevel("ERROR")

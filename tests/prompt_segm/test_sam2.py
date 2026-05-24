@@ -70,7 +70,9 @@ class TestPromptableSAM2:
 
         plots_dir = Path(__file__).parent.parent / "_plots" / "prompt_segm" / "sam2"
         save_segmentation_overlay(
-            labels, frame, frame_index,
+            labels,
+            frame,
+            frame_index,
             plots_dir / f"test_promptable_sam2_frame_{frame_index:04d}.png",
             prompt_points=centroids,
         )

@@ -1,14 +1,13 @@
 class Model:
     def __init__(self, segm_data):
         self.segm_data = segm_data
-        
 
     def segment(
-            self,
-            image,
-            frame_i,
-            skip_segmentation = True,
-        ):
+        self,
+        image,
+        frame_i,
+        skip_segmentation=True,
+    ):
         """Skips the segmentation step and instead uses the provided segmentation data.
 
         Parameters
@@ -21,6 +20,6 @@ class Model:
         -------
         _type_
             Segmented image (same as segm_data)
-        """      
-        
+        """
+
         return self.segm_data[frame_i]

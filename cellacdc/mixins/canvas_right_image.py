@@ -10,6 +10,7 @@ from cellacdc import exception_handler
 from .canvas_drawing import CanvasDrawing
 from .canvas_events import CanvasEvents
 
+
 class CanvasRightImage(CanvasDrawing, CanvasEvents):
     """Extracted from guiWin."""
 
@@ -17,13 +18,13 @@ class CanvasRightImage(CanvasDrawing, CanvasEvents):
         text = self.wcLabel.text()
         if not text:
             return
-        
-        ax_idx = int(re.findall(r'\(ax(\d)\)', text)[0])
+
+        ax_idx = int(re.findall(r"\(ax(\d)\)", text)[0])
         if ax_idx == 0:
             return
-        
-        coords = re.findall(r'x=(\d+), y=(\d+) \|', text)[0]
-        
+
+        coords = re.findall(r"x=(\d+), y=(\d+) \|", text)[0]
+
         return tuple([int(val) for val in coords])
 
     def gui_mousePressRightImage(self, event):
@@ -32,15 +33,15 @@ class CanvasRightImage(CanvasDrawing, CanvasEvents):
         alt = modifiers == Qt.AltModifier
         isMod = alt
         right_click = event.button() == Qt.MouseButton.RightButton and not isMod
-        is_right_click_action_ON = any([
-            b.isChecked() for b in self.checkableQButtonsGroup.buttons()
-        ])
+        is_right_click_action_ON = any(
+            [b.isChecked() for b in self.checkableQButtonsGroup.buttons()]
+        )
         self.typingEditID = False
         showLabelsGradMenu = right_click and not is_right_click_action_ON
         if showLabelsGradMenu:
             self.gui_rightImageShowContextMenu(event)
             event.ignore()
-        else: 
+        else:
             self.gui_mousePressEventImg1(event)
 
     def gui_mouseDragRightImage(self, event):
