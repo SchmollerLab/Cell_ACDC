@@ -106,6 +106,24 @@ class Metadata:
 class Channel:
     pass
 
+def _get_reader_channel_wavelengths(bioimage):
+    reader = getattr(bioimage, 'reader', None)
+    if reader is None:
+        return None, None
+    emission = getattr(reader, 'channel_emission_wavelengths', None)
+    excitation = getattr(reader, 'channel_excitation_wavelengths', None)
+    return emission, excitation
+
+def _read_channel_wavelengths_from_filepath(image_filepath):
+    from bioio import BioImage
+
+    try:
+        kwargs = set_reader(image_filepath)
+        bioimage = BioImage(image_filepath, **kwargs)
+        return _get_reader_channel_wavelengths(bioimage)
+    except Exception:
+        return None, None
+
 class Node:
     def __init__(self, image_filepath, bioimage_class):
         _, ext = os.path.splitext(image_filepath)
@@ -144,10 +162,36 @@ class Node:
         
         return value
 
-class Pixels:    
+class Pixels:
+    def _get_channel_wavelengths(self):
+        if hasattr(self, '_channel_wavelength_cache'):
+            return self._channel_wavelength_cache
+        emission, excitation = _get_reader_channel_wavelengths(
+            getattr(self, 'bioimage', None)
+        )
+        if emission is None:
+            image_filepath = getattr(self, 'image_filepath', None)
+            if image_filepath is not None:
+                emission, excitation = _read_channel_wavelengths_from_filepath(
+                    image_filepath
+                )
+        self._channel_wavelength_cache = (emission, excitation)
+        return self._channel_wavelength_cache
+
     def Channel(self, c: int):
         channel = Channel()
         channel.Name = self.channel_names[c]
+        emission, excitation = self._get_channel_wavelengths()
+        node = {}
+        if emission is not None and c < len(emission):
+            em_wavelength = emission[c]
+            if em_wavelength is not None:
+                node['EmissionWavelength'] = str(em_wavelength)
+        if excitation is not None and c < len(excitation):
+            ex_wavelength = excitation[c]
+            if ex_wavelength is not None:
+                node['ExcitationWavelength'] = str(ex_wavelength)
+        channel.node = node
         return channel
 
 def get_omexml_metadata(image_filepath, qparent=None):
@@ -195,6 +239,8 @@ class OMEXML:
     
     def _init_Pixels(self, image_filepath):
         self.Pixels = Pixels()
+        self.Pixels.bioimage = self.bioimage
+        self.Pixels.image_filepath = image_filepath
         self.Pixels.node = Node(image_filepath, self.bioimage)
         self.Pixels.channel_names = self.bioimage.channel_names 
     
