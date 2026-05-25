@@ -109,13 +109,21 @@ class Channel:
 class Node:
     def __init__(self, image_filepath, bioimage_class):
         _, ext = os.path.splitext(image_filepath)
+        self._node = {}
         try:
             self._node = {
                 'TimeIncrement': bioimage_class.time_interval.total_seconds(),
                 'TimeIncrementUnit': 's'
             }
-        except Exception as err:
-            self._node = {}
+        except Exception:
+            time_increment = getattr(bioimage_class, 'time_increment', None)
+            if time_increment is not None:
+                self._node = {
+                    'TimeIncrement': time_increment,
+                    'TimeIncrementUnit': getattr(
+                        bioimage_class, 'time_increment_unit', 's'
+                    ),
+                }
             
         if ext not in EXTENSION_METADATA_ATTR_MAPPER:
             return
@@ -123,9 +131,11 @@ class Node:
         name_expression_mapper = EXTENSION_METADATA_ATTR_MAPPER[ext]
         for name, expression in name_expression_mapper.items():
             try:
-                self._node[name] = safe_get_or_call(bioimage_class, expression)
+                value = safe_get_or_call(bioimage_class, expression)
+                if value is not None:
+                    self._node[name] = value
             except Exception as err:
-                self._node[name] = None
+                pass
         
     def get(self, name):
         value = self._node.get(name)
@@ -153,7 +163,8 @@ class BioImageMetadata:
     def __init__(
             self, SizeT, SizeC, SizeZ, SizeY, SizeX, 
             PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ, 
-            channel_names, image_count
+            channel_names, image_count,
+            time_increment=None, time_increment_unit='s',
         ):
         self.shape = (SizeT, SizeC, SizeZ, SizeY, SizeX)
         self.physical_pixel_sizes = PhysicalPixelSizes(
@@ -161,6 +172,8 @@ class BioImageMetadata:
         )
         self.channel_names = channel_names
         self.scenes = list(range(image_count))
+        self.time_increment = time_increment
+        self.time_increment_unit = time_increment_unit
 
 class OMEXML:
     def __init__(self):
@@ -200,6 +213,16 @@ class OMEXML:
             f'PhysicalSizeZ: {self.bioimage.physical_pixel_sizes.Z}\n'
             f'Image count: {self.get_image_count()}'
         )
+        try:
+            time_increment = self.Pixels.node.get('TimeIncrement')
+            time_increment_unit = self.Pixels.node.get('TimeIncrementUnit')
+            txt = (
+                f'{txt}\n'
+                f'TimeIncrement: {time_increment}\n'
+                f'TimeIncrementUnit: {time_increment_unit}'
+            )
+        except Exception:
+            pass
         return txt
     
     def to_file(self, filepath):
@@ -230,11 +253,25 @@ class OMEXML:
                 setattr(self, kwarg, dtype(value))
             except Exception as err:
                 setattr(self, kwarg, default)
+
+        time_increment = None
+        time_increment_unit = 's'
+        time_increment_match = re.search(r'TimeIncrement: (.+)', txt)
+        if time_increment_match is not None:
+            try:
+                time_increment = float(time_increment_match.group(1))
+            except Exception:
+                pass
+        time_increment_unit_match = re.search(r'TimeIncrementUnit: (.+)', txt)
+        if time_increment_unit_match is not None:
+            time_increment_unit = time_increment_unit_match.group(1)
         
         self.bioimage = BioImageMetadata(
             self.SizeT, self.SizeC, self.SizeZ, self.SizeY, self.SizeX, 
             self.PhysicalSizeX, self.PhysicalSizeY, self.PhysicalSizeZ, 
-            self.channel_names, self.image_count
+            self.channel_names, self.image_count,
+            time_increment=time_increment,
+            time_increment_unit=time_increment_unit,
         )
         
         self._init_Pixels(image_filepath)
