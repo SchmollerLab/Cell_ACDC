@@ -292,6 +292,44 @@ class _GuiWinRenderer3DAdapter:
         finally:
             self._gui._renderer3d_sync_blocked = False
 
+    def get_available_cell_ids(self):
+        if not getattr(self._gui, 'isDataLoaded', False):
+            return []
+        try:
+            posData = self._gui.data[self._gui.pos_i]
+            return [int(i) for i in posData.IDs]
+        except Exception:
+            return []
+
+    def apply_cell_id_from_renderer(self, cell_id: int) -> None:
+        if getattr(self._gui, '_renderer3d_sync_blocked', False):
+            return
+        self._gui._renderer3d_sync_blocked = True
+        try:
+            cell_id = int(cell_id)
+            propsQGBox = self._gui.guiTabControl.propsQGBox
+            propsQGBox.idSB.blockSignals(True)
+            propsQGBox.idSB.setValue(cell_id)
+            propsQGBox.idSB.blockSignals(False)
+            if hasattr(self._gui, 'highlightIDToolbar'):
+                self._gui.highlightIDToolbar.setIDNoSignals(cell_id)
+            if cell_id > 0:
+                self._gui.highlightSearchedID(cell_id, force=True)
+            else:
+                self._gui.clearHighlightedKeepIDs()
+        finally:
+            self._gui._renderer3d_sync_blocked = False
+
+    def on_cell_id_changed_from_main(self, cell_id: int) -> None:
+        win = getattr(self._gui, '_renderer3d_window', None)
+        if win is None or not win.isVisible():
+            return
+        win._syncing_cell_id_from_main = True
+        try:
+            win.set_active_cell_id(int(cell_id), sync_main_gui=False)
+        finally:
+            win._syncing_cell_id_from_main = False
+
 
 class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
              gui_combine.CombineGuiElements, 
@@ -20306,19 +20344,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if 'overlay segm. masks' in how and labels_alpha > 0 and posData.lab is not None:
             lab = posData.lab
             if lab.ndim == 3:
+                label_vol = lab.astype(np.int32, copy=False)
                 mask = (lab > 0).astype(np.float32)
             elif lab.ndim == 2:
-                # 2D segmentation on a 3D z-stack: extrude along Z (cylinder)
+                label_vol = np.repeat(
+                    lab.astype(np.int32, copy=False)[np.newaxis],
+                    posData.SizeZ,
+                    axis=0,
+                )
                 mask = np.repeat(
                     (lab > 0).astype(np.float32)[np.newaxis], posData.SizeZ, axis=0
                 )
             else:
                 mask = None
-            if mask is not None:
+                label_vol = None
+            if mask is not None and label_vol is not None:
                 meta = {
                     'kind': 'segm',
                     'channel_name': '__segm__',
                     'overlay_index': len(result),
+                    'label_data': label_vol,
                 }
                 segm_alpha_max = max(1, self.imgGrad.labelsAlphaSlider.maximum())
                 segm_opacity = float(labels_alpha) / segm_alpha_max
@@ -20339,8 +20384,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     continue
                 ol_lab = posData.ol_labels_data[segmEndname][posData.frame_i]
                 if ol_lab.ndim == 3:
+                    label_vol = ol_lab.astype(np.int32, copy=False)
                     mask = (ol_lab > 0).astype(np.float32)
                 elif ol_lab.ndim == 2:
+                    label_vol = np.repeat(
+                        ol_lab.astype(np.int32, copy=False)[np.newaxis],
+                        posData.SizeZ,
+                        axis=0,
+                    )
                     mask = np.repeat(
                         (ol_lab > 0).astype(np.float32)[np.newaxis], posData.SizeZ, axis=0
                     )
@@ -20351,6 +20402,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     'kind': 'ol_labels',
                     'channel_name': segmEndname,
                     'overlay_index': len(result),
+                    'label_data': label_vol,
                 }
                 result.append((mask, 0.5, cmap, 'mip', meta))
 
@@ -20392,6 +20444,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 lutItem.overlayColorButton.sigColorChanged.connect(push)
             connected.add(sb_id)
         self._renderer3d_overlay_connected = connected
+
+    def _connect_3d_renderer_cell_id_sync(self):
+        """Wire main GUI cell ID controls to the open 3D renderer."""
+        win = getattr(self, '_renderer3d_window', None)
+        if win is None:
+            return
+
+        adapter = win._adapter
+        if adapter is None:
+            adapter = _GuiWinRenderer3DAdapter(self)
+            win._adapter = adapter
+
+        if not hasattr(self, '_renderer3d_cell_id_push'):
+            def _push_cell_id(*_args):
+                if getattr(self, '_renderer3d_sync_blocked', False):
+                    return
+                cell_id = self.guiTabControl.propsQGBox.idSB.value()
+                adapter.on_cell_id_changed_from_main(cell_id)
+
+            self._renderer3d_cell_id_push = _push_cell_id
+            self.guiTabControl.propsQGBox.idSB.valueChanged.connect(
+                _push_cell_id
+            )
+            if hasattr(self, 'highlightIDToolbar'):
+                self.highlightIDToolbar.sigIDChanged.connect(_push_cell_id)
 
     def _get_current_zstack(self):
         """Return a (Z, Y, X) float32 array for the current position and frame.
@@ -20459,6 +20536,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if first_launch:
             self._position_renderer3d_window()
         self._connect_3d_renderer_overlay_sync()
+        self._connect_3d_renderer_cell_id_sync()
+        self._renderer3d_window.update_cell_id_range()
+        active_cell_id = self.guiTabControl.propsQGBox.idSB.value()
+        self._renderer3d_window.set_active_cell_id(
+            int(active_cell_id),
+            sync_main_gui=False,
+        )
         self._renderer3d_window.show()
         self._renderer3d_window.raise_()
 
@@ -20511,6 +20595,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self._renderer3d_window.update_volume(data)
         self._renderer3d_window.update_overlay_volumes(
             self._get_overlay_zstacks()
+        )
+        self._renderer3d_window.update_cell_id_range()
+        self._renderer3d_window.set_active_cell_id(
+            self._renderer3d_window._active_cell_id,
+            sync_main_gui=False,
         )
         voxel_sizes = self._get_current_voxel_sizes()
         if voxel_sizes is not None:

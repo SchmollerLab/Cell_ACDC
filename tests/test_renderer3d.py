@@ -1158,3 +1158,51 @@ def test_volume_cmap_from_spec_pg_colormap():
     result = _volume_cmap_from_spec(pg_cmap)
     assert isinstance(result, Colormap)
     assert _volume_cmap_from_spec('viridis') == 'viridis'
+
+
+def test_mask_labels_for_display():
+    from cellacdc.renderer3d import _mask_labels_for_display
+
+    labels = np.array([[[0, 1], [2, 0]]], dtype=np.int32)
+    all_mask = _mask_labels_for_display(labels, 0)
+    assert all_mask.shape == labels.shape
+    assert all_mask.max() == 1.0
+    assert all_mask.min() == 0.0
+
+    one_mask = _mask_labels_for_display(labels, 2)
+    assert one_mask[0, 1, 0] == 1.0
+    assert one_mask.sum() == 1.0
+
+
+def test_scene_pos_to_voxel_indices():
+    from cellacdc.renderer3d import _scene_pos_to_voxel_indices
+
+    assert _scene_pos_to_voxel_indices((0.0, 0.0, 0.0), (4, 8, 8)) == (0, 0, 0)
+    assert _scene_pos_to_voxel_indices((7.4, 3.6, 1.2), (4, 8, 8)) == (1, 4, 7)
+    assert _scene_pos_to_voxel_indices((99, 0, 0), (4, 8, 8)) is None
+
+
+def test_set_active_cell_id_updates_overlay_node():
+    from cellacdc.renderer3d import VolumeRenderer3DWindow
+    from unittest.mock import MagicMock
+
+    win = VolumeRenderer3DWindow.__new__(VolumeRenderer3DWindow)
+    node = MagicMock()
+    win._volume_nodes = {'overlay:0': node}
+    win._label_volumes = {
+        'overlay:0': np.array([[[0, 1], [2, 0]]], dtype=np.int32),
+    }
+    win._volumes_data = {}
+    win._overlay_meta = {'overlay:0': {'kind': 'segm'}}
+    win._controls = MagicMock()
+    win._controls._cell_id_spin = MagicMock()
+    win._canvas = MagicMock()
+    win._adapter = None
+    win._max_texture_3d = 512
+    win._active_cell_id = 0
+    win._syncing_cell_id_from_main = False
+    win._syncing_cell_id_from_renderer = False
+
+    win.set_active_cell_id(2, sync_main_gui=False)
+    assert win._active_cell_id == 2
+    node.set_data.assert_called_once()

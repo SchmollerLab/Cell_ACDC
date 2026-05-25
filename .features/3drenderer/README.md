@@ -37,7 +37,7 @@ See [batch-1-done.md — Honored commits mapping](batch-1-done.md#honored-commit
 
 ## Feature progress
 
-**Summary:** 14 Done · 0 Partial · 4 Not started (batches 3–4)
+**Summary:** 16 Done · 0 Partial · 2 Not started (batch 4)
 
 | # | Feature | Status | Batch | Notes |
 |---|---------|--------|-------|-------|
@@ -55,8 +55,8 @@ See [batch-1-done.md — Honored commits mapping](batch-1-done.md#honored-commit
 | 12 | Opacity sliders for overlay channels | **Done** | [Batch 2](batch-2-lut-overlays.md) | In-renderer + bidirectional sync with main GUI |
 | 13 | LUT sliders for overlay channels | **Done** | [Batch 2](batch-2-lut-overlays.md) | PG gradient from main GUI `lutItem` |
 | 14 | Segmentation mask opacity slider in 3D UI | **Done** | [Batch 2](batch-2-lut-overlays.md) | Overlays panel + sync with `labelsAlphaSlider` |
-| 15 | Cell ID selector (show one cell) | **Not started** | [Batch 3](batch-3-cell-id.md) | |
-| 16 | Clickable Cell ID (show one cell) | **Not started** | [Batch 3](batch-3-cell-id.md) | |
+| 15 | Cell ID selector (show one cell) | **Done** | [Batch 3](batch-3-cell-id.md) | Spinbox + Show all; `_label_volumes` masking |
+| 16 | Clickable Cell ID (show one cell) | **Done** | [Batch 3](batch-3-cell-id.md) | Shift+left-click pick on canvas |
 | 17 | z-anisotropy via `scipy.ndimage.zoom` | **Not started** | [Batch 4](batch-4-z-anisotropy.md) | Transform-only scaling today |
 | 18 | z-anisotropy numeric control | **Not started** | [Batch 4](batch-4-z-anisotropy.md) | |
 
@@ -66,7 +66,7 @@ See [batch-1-done.md — Honored commits mapping](batch-1-done.md#honored-commit
 |-------|-------|----------|--------|-----|
 | 1 | Core renderer, toolbar, primary LUT, overlay data path, launch button (`:3d.svg`) | 10 / 10 scope items | **Complete** | [batch-1-done.md](batch-1-done.md) |
 | 2 | LUT polish + in-renderer overlay UI + live sync | 5 / 5 checklist items | **Complete** | [batch-2-lut-overlays.md](batch-2-lut-overlays.md) |
-| 3 | Cell ID isolation (selector + click) | 0 / 2 checklist items | **Planned** | [batch-3-cell-id.md](batch-3-cell-id.md) |
+| 3 | Cell ID isolation (selector + Shift+click pick) | 2 / 2 checklist items | **Complete** | [batch-3-cell-id.md](batch-3-cell-id.md) |
 | 4 | z-anisotropy UI + `ndimage.zoom` resampling | 0 / 2 checklist items | **Planned** | [batch-4-z-anisotropy.md](batch-4-z-anisotropy.md) |
 
 ## Data flow

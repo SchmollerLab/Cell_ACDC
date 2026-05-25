@@ -135,6 +135,28 @@ def _parse_overlay_entry(entry, index: int):
     return data, opacity, cmap_spec, mode_override, meta
 
 
+def _mask_labels_for_display(labels: np.ndarray, cell_id: int) -> np.ndarray:
+    """Build a float32 overlay mask from integer label data and active cell ID."""
+    lab = labels.astype(np.int32, copy=False)
+    if int(cell_id) <= 0:
+        return (lab > 0).astype(np.float32)
+    return (lab == int(cell_id)).astype(np.float32)
+
+
+def _scene_pos_to_voxel_indices(
+        local_pos,
+        shape: tuple[int, int, int],
+    ) -> tuple[int, int, int] | None:
+    """Convert vispy volume local coordinates to (z, y, x) voxel indices."""
+    nz, ny, nx = shape
+    x = int(np.floor(float(local_pos[0]) + 0.5))
+    y = int(np.floor(float(local_pos[1]) + 0.5))
+    z = int(np.floor(float(local_pos[2]) + 0.5))
+    if 0 <= z < nz and 0 <= y < ny and 0 <= x < nx:
+        return (z, y, x)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Pure-stdlib PNG writer (fallback when skimage is not available)
 # ---------------------------------------------------------------------------
@@ -191,6 +213,16 @@ class VolumeRendererAdapter:
             labels_alpha: float | None = None,
         ) -> None:
         """Update main GUI overlay widgets from the 3D renderer (bidirectional sync)."""
+
+    def get_available_cell_ids(self) -> list[int]:
+        """Return valid cell IDs for the current frame, or empty if unknown."""
+        return []
+
+    def apply_cell_id_from_renderer(self, cell_id: int) -> None:
+        """Update main GUI cell selection from the 3D renderer."""
+
+    def on_cell_id_changed_from_main(self, cell_id: int) -> None:
+        """Push main GUI cell ID selection to the 3D renderer."""
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +288,31 @@ class VolumeRendererControls(QWidget):
             labelTextLeft='Step:',
         )
         layout.addFormWidget(_step_form_widget, row=row)
+
+        row += 1
+        cell_id_row = QHBoxLayout()
+        self._cell_id_spin = widgets.SpinBox()
+        self._cell_id_spin.setMinimum(0)
+        self._cell_id_spin.setMaximum(999999)
+        self._cell_id_spin.setToolTip(
+            'Show only this cell ID in segmentation overlays (0 = all cells).\n'
+            'Shift+left-click on the volume to pick a cell.'
+        )
+        self._cell_id_spin.valueChanged.connect(self._on_cell_id_changed)
+        cell_id_row.addWidget(self._cell_id_spin)
+        self._show_all_cells_btn = QPushButton('Show all')
+        self._show_all_cells_btn.setToolTip(
+            'Reset to show all labelled cells (Cell ID 0)'
+        )
+        self._show_all_cells_btn.clicked.connect(self._on_show_all_cells)
+        cell_id_row.addWidget(self._show_all_cells_btn)
+        cell_id_widget = QWidget()
+        cell_id_widget.setLayout(cell_id_row)
+        _cell_id_form = widgets.formWidget(
+            cell_id_widget,
+            labelTextLeft='Cell ID:',
+        )
+        layout.addFormWidget(_cell_id_form, row=row)
 
         row += 1
         # Primary-channel opacity is controlled via the right-side grayscale
@@ -399,6 +456,16 @@ class VolumeRendererControls(QWidget):
         self._update_mode_controls(mode)
         self._renderer.set_rendering_mode(mode)
 
+    def _on_cell_id_changed(self, value: int) -> None:
+        if getattr(self._renderer, '_syncing_cell_id_from_main', False):
+            return
+        if getattr(self._renderer, '_syncing_cell_id_from_renderer', False):
+            return
+        self._renderer.set_active_cell_id(int(value))
+
+    def _on_show_all_cells(self) -> None:
+        self._cell_id_spin.setValue(0)
+
     def _on_gamma_changed(self, value: float) -> None:
         self._renderer.set_gamma(value)
 
@@ -493,6 +560,10 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._overlay_controls_host: QWidget | None = None
         self._syncing_overlay_from_main = False
         self._syncing_overlay_from_renderer = False
+        self._label_volumes: dict[str, np.ndarray] = {}
+        self._active_cell_id: int = 0
+        self._syncing_cell_id_from_main = False
+        self._syncing_cell_id_from_renderer = False
         self._overlay_mode_overrides: dict[str, str | None] = {}
         self.channels: list[str] | None = None
         self._last_shape: tuple | None = None
@@ -537,6 +608,7 @@ class VolumeRenderer3DWindow(QMainWindow):
             if self._volumes_data is not None:
                 self._volumes_data.pop(name, None)
             self._overlay_meta.pop(name, None)
+            self._label_volumes.pop(name, None)
         self._overlay_mode_overrides.clear()
         if clear_widgets:
             self._clear_overlay_widgets()
@@ -566,6 +638,122 @@ class VolumeRenderer3DWindow(QMainWindow):
         else:
             vol = np.zeros_like(vol)
         return vol
+
+    def _store_label_volume(
+            self,
+            channel_name: str,
+            label_data: np.ndarray,
+        ) -> None:
+        if label_data.ndim != 3:
+            return
+        lab = label_data.astype(np.int32, copy=False)
+        max_tex = self._resolve_max_texture_3d()
+        if max(lab.shape) > max_tex:
+            lab = self._downsample(lab, max_tex)
+        self._label_volumes[channel_name] = np.ascontiguousarray(lab)
+
+    def _overlay_volume_from_labels(self, channel_name: str) -> np.ndarray | None:
+        labels = self._label_volumes.get(channel_name)
+        if labels is None:
+            return None
+        mask = _mask_labels_for_display(labels, self._active_cell_id)
+        return self._normalize_overlay_volume(mask)
+
+    def _connect_canvas_events(self) -> None:
+        if not hasattr(self, '_canvas') or self._canvas is None:
+            return
+        self._canvas.events.mouse_press.connect(self._on_canvas_mouse_press)
+
+    def _on_canvas_mouse_press(self, event) -> None:
+        modifiers = getattr(event, 'modifiers', ()) or ()
+        if event.button != 1 or 'Shift' not in modifiers:
+            return
+        picked_id = self._pick_cell_id_at_canvas_pos(event.pos)
+        if picked_id is None:
+            return
+        self.set_active_cell_id(int(picked_id))
+
+    def _pick_cell_id_at_canvas_pos(self, canvas_pos) -> int | None:
+        key = self._find_overlay_by_kind(OVERLAY_KIND_SEGM)
+        if key is None:
+            for candidate, labels in self._label_volumes.items():
+                if labels is not None:
+                    key = candidate
+                    break
+        if key is None or self._volume_nodes is None:
+            return None
+        labels = self._label_volumes.get(key)
+        volume_node = self._volume_nodes.get(key)
+        if labels is None or volume_node is None:
+            return None
+        try:
+            scene_pos = self._canvas.scene.node_transform.imap(canvas_pos)
+            node_tr = volume_node.transform
+            if node_tr is None:
+                return None
+            inv = node_tr.inverse
+            if inv is None:
+                return None
+            local_pos = inv.map(scene_pos)
+        except Exception:
+            return None
+        indices = _scene_pos_to_voxel_indices(local_pos, labels.shape)
+        if indices is None:
+            return None
+        z, y, x = indices
+        cell_id = int(labels[z, y, x])
+        return cell_id if cell_id > 0 else None
+
+    def update_cell_id_range(self) -> None:
+        if self._controls is None:
+            return
+        adapter = self._adapter
+        if adapter is None or not hasattr(adapter, 'get_available_cell_ids'):
+            return
+        ids = adapter.get_available_cell_ids()
+        if not ids:
+            return
+        spin = self._controls._cell_id_spin
+        spin.setMaximum(max(ids))
+
+    def set_active_cell_id(
+            self,
+            cell_id: int,
+            *,
+            sync_main_gui: bool = True,
+        ) -> None:
+        cell_id = int(cell_id)
+        self._active_cell_id = cell_id
+        if self._controls is not None and not self._syncing_cell_id_from_main:
+            self._syncing_cell_id_from_renderer = True
+            try:
+                spin = self._controls._cell_id_spin
+                spin.blockSignals(True)
+                spin.setValue(cell_id)
+                spin.blockSignals(False)
+            finally:
+                self._syncing_cell_id_from_renderer = False
+
+        if self._volume_nodes is not None:
+            for key in list(self._label_volumes.keys()):
+                vol = self._overlay_volume_from_labels(key)
+                if vol is None:
+                    continue
+                self._volumes_data[key] = vol
+                volume_node = self._volume_nodes.get(key)
+                if volume_node is not None:
+                    volume_node.set_data(vol, clim=(0.0, 1.0))
+
+        if (
+            sync_main_gui
+            and not self._syncing_cell_id_from_main
+            and self._adapter is not None
+            and hasattr(self._adapter, 'apply_cell_id_from_renderer')
+        ):
+            self._adapter.apply_cell_id_from_renderer(cell_id)
+
+        if hasattr(self, '_canvas') and self._canvas is not None:
+            self._canvas.update()
 
     # -- vispy setup ----------------------------------------------------------
 
@@ -1334,6 +1522,7 @@ class VolumeRenderer3DWindow(QMainWindow):
             self._add_lut_items(self.scene_layout)
             self.scene_layout.addWidget(self._canvas.native, stretch=1)
             self._add_opacity_lut_items(self.scene_layout)
+            self._connect_canvas_events()
         
         if cmaps is not None:
             for channel_name, cmap in cmaps.items():
@@ -1437,6 +1626,12 @@ class VolumeRenderer3DWindow(QMainWindow):
             if data.ndim != 3:
                 continue
             channel_name = overlay_channel_name(index)
+            if 'label_data' in meta:
+                self._store_label_volume(channel_name, meta['label_data'])
+                data = _mask_labels_for_display(
+                    self._label_volumes[channel_name],
+                    self._active_cell_id,
+                )
             vol = self._normalize_overlay_volume(data)
             self._volumes_data[channel_name] = vol
             meta.setdefault('overlay_index', index)
