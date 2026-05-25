@@ -215,6 +215,83 @@ class _GuiWinRenderer3DAdapter:
     def on_renderer_closed(self):
         pass
 
+    def on_main_overlay_changed(self):
+        from cellacdc.renderer3d import _parse_overlay_entry, overlay_channel_name
+
+        win = getattr(self._gui, '_renderer3d_window', None)
+        if win is None or not win.isVisible():
+            return
+        overlays = self._gui._get_overlay_zstacks()
+        win._syncing_overlay_from_main = True
+        try:
+            if not overlays:
+                win.update_overlay_volumes([])
+                return
+            existing = [
+                k for k in (win._volume_nodes or {})
+                if k.startswith('overlay:')
+            ]
+            if len(existing) != len(overlays):
+                win.update_overlay_volumes(overlays)
+                return
+            for index, entry in enumerate(overlays):
+                _data, opacity, cmap_spec, _mode, meta = _parse_overlay_entry(
+                    entry, index
+                )
+                key = overlay_channel_name(index)
+                win.set_overlay_opacity(key, opacity, sync_main_gui=False)
+                win.set_overlay_cmap(key, cmap_spec, sync_main_gui=False)
+                widgets_info = win._overlay_widgets.get(key)
+                if widgets_info is None:
+                    continue
+                opacity_spin = widgets_info.get('opacity_spin')
+                if opacity_spin is not None:
+                    opacity_spin.blockSignals(True)
+                    opacity_spin.setValue(float(opacity))
+                    opacity_spin.blockSignals(False)
+                lut_item = widgets_info.get('lut_item')
+                if lut_item is not None and hasattr(cmap_spec, 'getLookupTable'):
+                    lut_item.blockSignals(True)
+                    lut_item.setGradient(win._pg_cmap_to_gradient(cmap_spec))
+                    lut_item.blockSignals(False)
+        finally:
+            win._syncing_overlay_from_main = False
+
+    def apply_overlay_control_from_renderer(
+            self,
+            channel_name: str,
+            opacity: float | None = None,
+            gradient_state: dict | None = None,
+            labels_alpha: float | None = None,
+        ) -> None:
+        if getattr(self._gui, '_renderer3d_sync_blocked', False):
+            return
+        self._gui._renderer3d_sync_blocked = True
+        try:
+            if labels_alpha is not None:
+                slider = self._gui.imgGrad.labelsAlphaSlider
+                slider.blockSignals(True)
+                slider.setValue(
+                    float(labels_alpha) * slider.maximum()
+                )
+                slider.blockSignals(False)
+                return
+            if channel_name not in getattr(self._gui, 'overlayLayersItems', {}):
+                return
+            _imageItem, lutItem, alphaSB = self._gui.overlayLayersItems[
+                channel_name
+            ][:3]
+            if opacity is not None:
+                alphaSB.blockSignals(True)
+                alphaSB.setValue(int(round(opacity * alphaSB.maximum())))
+                alphaSB.blockSignals(False)
+            if gradient_state is not None:
+                lutItem.gradient.blockSignals(True)
+                lutItem.gradient.restoreState(gradient_state)
+                lutItem.gradient.blockSignals(False)
+        finally:
+            self._gui._renderer3d_sync_blocked = False
+
 
 class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
              gui_combine.CombineGuiElements, 
@@ -20180,7 +20257,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return None
 
     def _get_overlay_zstacks(self):
-        """Return list of (data, opacity, cmap) for each active overlay volume.
+        """Return list of overlay tuples for each active overlay volume.
+
+        Each entry is ``(data, opacity, cmap_spec, mode_override, meta)`` where
+        *meta* contains ``kind``, ``channel_name``, and ``overlay_index``.
 
         Covers three sources:
           1. Fluorescence overlay channels (alpha scrollbar opacity, toolbar gate).
@@ -20188,7 +20268,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
              and labelsAlphaSlider > 0.
           3. Overlay labels channels — when the overlay-labels button is checked.
         """
-        _FLUO_CMAPS = ['green', 'magenta', 'cyan', 'yellow', 'orange']
         _LABEL_CMAPS = ['blue', 'cyan', 'magenta']
         if not self.isDataLoaded:
             return []
@@ -20213,8 +20292,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if data.ndim != 3:
                     continue
                 opacity = alphaSB.value() / alphaSB.maximum()
-                cmap = _FLUO_CMAPS[i % len(_FLUO_CMAPS)]
-                result.append((data, opacity, cmap))
+                cmap_spec = lutItem.gradient.colorMap()
+                meta = {
+                    'kind': 'fluo',
+                    'channel_name': chName,
+                    'overlay_index': len(result),
+                }
+                result.append((data, opacity, cmap_spec, None, meta))
 
         # -- 2. Primary segmentation mask (2D or 3D segmentation) -------------
         how = self.drawIDsContComboBox.currentText()
@@ -20231,7 +20315,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 mask = None
             if mask is not None:
-                result.append((mask, float(labels_alpha), 'red', 'mip'))
+                meta = {
+                    'kind': 'segm',
+                    'channel_name': '__segm__',
+                    'overlay_index': len(result),
+                }
+                segm_alpha_max = max(1, self.imgGrad.labelsAlphaSlider.maximum())
+                segm_opacity = float(labels_alpha) / segm_alpha_max
+                result.append(
+                    (mask, segm_opacity, 'red', 'mip', meta)
+                )
 
         # -- 3. Overlay label channels -----------------------------------------
         ol_labels_active = (
@@ -20254,9 +20347,51 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     continue
                 cmap = _LABEL_CMAPS[j % len(_LABEL_CMAPS)]
-                result.append((mask, 0.5, cmap, 'mip'))
+                meta = {
+                    'kind': 'ol_labels',
+                    'channel_name': segmEndname,
+                    'overlay_index': len(result),
+                }
+                result.append((mask, 0.5, cmap, 'mip', meta))
 
         return result
+
+    def _connect_3d_renderer_overlay_sync(self):
+        """Wire main GUI overlay widgets to the open 3D renderer (bidirectional)."""
+        win = getattr(self, '_renderer3d_window', None)
+        if win is None:
+            return
+
+        self._renderer3d_sync_blocked = False
+        adapter = win._adapter
+        if adapter is None:
+            adapter = _GuiWinRenderer3DAdapter(self)
+            win._adapter = adapter
+
+        if not hasattr(self, '_renderer3d_overlay_push'):
+            def _push_overlay_changes(*_args):
+                if getattr(self, '_renderer3d_sync_blocked', False):
+                    return
+                adapter.on_main_overlay_changed()
+
+            self._renderer3d_overlay_push = _push_overlay_changes
+            self.imgGrad.labelsAlphaSlider.valueChanged.connect(
+                _push_overlay_changes
+            )
+
+        connected = getattr(self, '_renderer3d_overlay_connected', set())
+        push = self._renderer3d_overlay_push
+        for items in getattr(self, 'overlayLayersItems', {}).values():
+            lutItem, alphaSB = items[1], items[2]
+            sb_id = id(alphaSB)
+            if sb_id in connected:
+                continue
+            alphaSB.valueChanged.connect(push)
+            lutItem.sigLookupTableChanged.connect(push)
+            if hasattr(lutItem, 'overlayColorButton'):
+                lutItem.overlayColorButton.sigColorChanged.connect(push)
+            connected.add(sb_id)
+        self._renderer3d_overlay_connected = connected
 
     def _get_current_zstack(self):
         """Return a (Z, Y, X) float32 array for the current position and frame.
@@ -20323,6 +20458,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         if first_launch:
             self._position_renderer3d_window()
+        self._connect_3d_renderer_overlay_sync()
         self._renderer3d_window.show()
         self._renderer3d_window.raise_()
 

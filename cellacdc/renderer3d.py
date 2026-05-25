@@ -104,6 +104,37 @@ def overlay_channel_name(index: int) -> str:
     return f'{OVERLAY_CHANNEL_PREFIX}{index}'
 
 
+OVERLAY_KIND_FLUO = 'fluo'
+OVERLAY_KIND_SEGM = 'segm'
+OVERLAY_KIND_OL_LABELS = 'ol_labels'
+
+
+def _volume_cmap_from_spec(cmap_spec):
+    """Build a vispy colormap from a PG ColorMap, colour name, or passthrough."""
+    if cmap_spec is None:
+        return colors.vispy_cmap_from_spec('green')
+    if hasattr(cmap_spec, 'getLookupTable'):
+        return colors.pg_to_vispy_cmap(cmap_spec)
+    if isinstance(cmap_spec, str):
+        return colors.vispy_cmap_from_spec(cmap_spec)
+    return cmap_spec
+
+
+def _parse_overlay_entry(entry, index: int):
+    """Return (data, opacity, cmap_spec, mode_override, meta) from an overlay tuple."""
+    data, opacity, cmap_spec = entry[0], entry[1], entry[2]
+    mode_override = None
+    meta: dict = {'overlay_index': index}
+    if len(entry) > 3:
+        if isinstance(entry[3], str):
+            mode_override = entry[3]
+            if len(entry) > 4 and isinstance(entry[4], dict):
+                meta.update(entry[4])
+        elif isinstance(entry[3], dict):
+            meta.update(entry[3])
+    return data, opacity, cmap_spec, mode_override, meta
+
+
 # ---------------------------------------------------------------------------
 # Pure-stdlib PNG writer (fallback when skimage is not available)
 # ---------------------------------------------------------------------------
@@ -148,6 +179,18 @@ class VolumeRendererAdapter:
 
     def on_renderer_closed(self) -> None:
         """Called when the renderer window is closed (hidden)."""
+
+    def on_main_overlay_changed(self) -> None:
+        """Push overlay opacity/cmap changes from the main GUI to the renderer."""
+
+    def apply_overlay_control_from_renderer(
+            self,
+            channel_name: str,
+            opacity: float | None = None,
+            gradient_state: dict | None = None,
+            labels_alpha: float | None = None,
+        ) -> None:
+        """Update main GUI overlay widgets from the 3D renderer (bidirectional sync)."""
 
 
 # ---------------------------------------------------------------------------
@@ -215,31 +258,8 @@ class VolumeRendererControls(QWidget):
         layout.addFormWidget(_step_form_widget, row=row)
 
         row += 1
-        self._opacity_spins = {}
-        for r, channel in enumerate(self._channels):
-            opacity_spin = widgets.sliderWithSpinBox(
-                title_loc='in_line', 
-                isFloat=True, 
-                parent=self,
-                normalize_factor=20
-            )
-            opacity_spin.setRange(0.0, 1.0)
-            opacity_spin.setSingleStep(0.05)
-            opacity_spin.setValue(1.0)
-            opacity_spin.setDecimals(2)
-            opacity_spin.setToolTip(
-                f'Opacity for {channel} (0 = transparent, 1 = opaque).\n'
-                'Mirrors napari\'s layer opacity control.'
-            )
-            opacity_spin.valueChanged.connect(
-                partial(self._on_opacity_changed, channel=channel)
-            )
-            _opacity_form_widget = widgets.formWidget(
-                opacity_spin,
-                labelTextLeft=f'Opacity ({channel}):',
-            )
-            layout.addFormWidget(_opacity_form_widget, row=row+r)
-            self._opacity_spins[channel] = opacity_spin
+        # Primary-channel opacity is controlled via the right-side grayscale
+        # colorbar in the 3D window (see VolumeRenderer3DWindow._add_opacity_lut_items).
 
         layout.addNewColumn(with_separator=True)
 
@@ -466,6 +486,13 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._volumes_data: dict[str, np.ndarray] | None = None
         self._raw_volumes_data: dict[str, np.ndarray] | None = None
         self.lut_items: dict[str, widgets.baseHistogramLUTitem] | None = None
+        self._opacity_lut_items: dict[str, widgets.baseHistogramLUTitem] = {}
+        self._overlay_meta: dict[str, dict] = {}
+        self._overlay_widgets: dict[str, dict] = {}
+        self._overlay_controls_layout: QVBoxLayout | None = None
+        self._overlay_controls_host: QWidget | None = None
+        self._syncing_overlay_from_main = False
+        self._syncing_overlay_from_renderer = False
         self._overlay_mode_overrides: dict[str, str | None] = {}
         self.channels: list[str] | None = None
         self._last_shape: tuple | None = None
@@ -497,8 +524,10 @@ class VolumeRenderer3DWindow(QMainWindow):
             return self._volumes_data[channel].shape
         return self._last_shape
 
-    def _remove_overlay_channels(self) -> None:
+    def _remove_overlay_channels(self, clear_widgets: bool = True) -> None:
         if not self._volume_nodes:
+            if clear_widgets:
+                self._clear_overlay_widgets()
             return
         for name in list(self._volume_nodes):
             if not is_overlay_channel(name):
@@ -507,7 +536,20 @@ class VolumeRenderer3DWindow(QMainWindow):
             del self._volume_nodes[name]
             if self._volumes_data is not None:
                 self._volumes_data.pop(name, None)
+            self._overlay_meta.pop(name, None)
         self._overlay_mode_overrides.clear()
+        if clear_widgets:
+            self._clear_overlay_widgets()
+
+    def _clear_overlay_widgets(self) -> None:
+        self._overlay_widgets.clear()
+        if self._overlay_controls_layout is None:
+            return
+        while self._overlay_controls_layout.count():
+            item = self._overlay_controls_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
 
     def _normalize_overlay_volume(self, data: np.ndarray) -> np.ndarray:
         if data.ndim != 3:
@@ -550,6 +592,42 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._axis_visual = scene.visuals.XYZAxis(parent=self._view.scene)
         self._axis_visual.visible = False
 
+    def _configure_renderer_lut_item(
+            self,
+            lut_item: widgets.myHistogramLUTitem,
+        ) -> None:
+        """Strip 2D-only gradient menu entries not applicable to the 3D renderer."""
+        lut_item.removeAddScaleBarAction()
+        lut_item.removeAddTimestampAction()
+        menu = lut_item.gradient.menu
+        for attr in (
+            'invertBwAction',
+            'fontSizeMenu',
+            'contLineWightActionGroup',
+            'mothBudLineWightActionGroup',
+        ):
+            item = getattr(lut_item, attr, None)
+            if item is None:
+                continue
+            try:
+                if hasattr(item, 'menuAction'):
+                    menu.removeAction(item.menuAction())
+                else:
+                    menu.removeAction(item)
+            except Exception:
+                pass
+        for attr in ('textColorButton', 'contoursColorButton', 'mothBudLineColorButton'):
+            button = getattr(lut_item, attr, None)
+            if button is None:
+                continue
+            for action in menu.actions():
+                if action.defaultWidget() is not None:
+                    try:
+                        if button in action.defaultWidget().findChildren(type(button)):
+                            menu.removeAction(action)
+                    except Exception:
+                        pass
+
     def _add_lut_items(self, scene_layout: QHBoxLayout) -> None:
         self.lut_items_graphics_layout = pg.GraphicsLayoutWidget()
         self.lut_items_graphics_layout.setBackground('black')
@@ -572,12 +650,13 @@ class VolumeRenderer3DWindow(QMainWindow):
             full_btn_proxy.setWidget(full_btn)
             self.lut_items_layout.addItem(full_btn_proxy, row=1, col=c)
             
-            lut_item = widgets.baseHistogramLUTitem(
-                parent=self, 
-                name=channel, 
-                axisLabel=channel,
-                include_rescale_lut_options=False
+            lut_item = widgets.myHistogramLUTitem(
+                parent=self,
+                name=channel,
+                axisLabel='Clim:',
+                include_rescale_lut_options=False,
             )
+            self._configure_renderer_lut_item(lut_item)
             self.lut_items[channel] = (lut_item, auto_btn, full_btn)
             self.lut_items_layout.addItem(lut_item, row=2, col=c)
             
@@ -594,9 +673,173 @@ class VolumeRenderer3DWindow(QMainWindow):
             total_width += lut_item.sizeHint(Qt.PreferredSize).width()
         
         scene_layout.addWidget(self.lut_items_graphics_layout, stretch=0)
-        
-        # Add some padding to prevent clipping
-        self.lut_items_graphics_layout.setFixedWidth(int(total_width + 20))  
+        self.lut_items_graphics_layout.setFixedWidth(int(total_width + 20))
+
+    def _add_opacity_lut_items(self, scene_layout: QHBoxLayout) -> None:
+        self._opacity_lut_graphics_layout = pg.GraphicsLayoutWidget()
+        self._opacity_lut_graphics_layout.setBackground('black')
+        self._opacity_lut_layout = self._opacity_lut_graphics_layout.addLayout(
+            row=0, col=0
+        )
+        total_width = 0
+        for c, channel in enumerate(self.channels):
+            opacity_lut = widgets.baseHistogramLUTitem(
+                parent=self,
+                name=f'opacity_{channel}',
+                axisLabel='Opacity:',
+                gradientPosition='left',
+                include_rescale_lut_options=False,
+            )
+            opacity_lut.channel = channel
+            opacity_lut.vb.hide()
+            from pyqtgraph.graphicsItems.GradientEditorItem import Gradients
+            opacity_lut.setGradient(Gradients['grey'])
+            ticks = opacity_lut.gradient.listTicks()
+            if len(ticks) >= 2:
+                opacity_lut.gradient.setTickValue(ticks[0][0], 0.0)
+                opacity_lut.gradient.setTickValue(ticks[-1][0], 1.0)
+            opacity_lut.sigLookupTableChanged.connect(
+                partial(self._on_opacity_lut_changed, lut_item=opacity_lut)
+            )
+            primary_lut = self.lut_items[channel][0]
+            primary_lut.setChildLutItem(opacity_lut)
+            self._opacity_lut_items[channel] = opacity_lut
+            self._opacity_lut_layout.addItem(opacity_lut, row=0, col=c)
+            total_width += opacity_lut.sizeHint(Qt.PreferredSize).width()
+
+        scene_layout.addWidget(self._opacity_lut_graphics_layout, stretch=0)
+        self._opacity_lut_graphics_layout.setFixedWidth(int(total_width + 20))
+
+    def _on_opacity_lut_changed(
+            self,
+            lut_item: widgets.baseHistogramLUTitem,
+        ) -> None:
+        ticks_pos = [x for _t, x in lut_item.gradient.listTicks()]
+        if not ticks_pos:
+            return
+        opacity = max(0.0, min(1.0, max(ticks_pos)))
+        self.set_opacity(opacity, channel=lut_item.channel)
+
+    def _sync_opacity_lut_value(
+            self,
+            channel: str,
+            opacity: float,
+        ) -> None:
+        opacity_lut = self._opacity_lut_items.get(channel)
+        if opacity_lut is None:
+            return
+        ticks = opacity_lut.gradient.listTicks()
+        if not ticks:
+            return
+        high_tick = max(ticks, key=lambda item: item[1])[0]
+        opacity_lut.gradient.setTickValue(high_tick, max(0.0, min(1.0, opacity)))
+
+    def _pg_cmap_to_gradient(self, pg_cmap):
+        table = pg_cmap.getLookupTable(0.0, 1.0, 2)
+        rgba = [tuple(row) for row in table]
+        return colors.get_pg_gradient(rgba)
+
+    def _rebuild_overlay_controls(self, overlay_entries) -> None:
+        if self._overlay_controls_layout is None:
+            return
+        self._clear_overlay_widgets()
+        if not overlay_entries:
+            if self._overlay_controls_host is not None:
+                self._overlay_controls_host.hide()
+            return
+        if self._overlay_controls_host is not None:
+            self._overlay_controls_host.show()
+
+        for channel_name, opacity, cmap_spec, _mode_override, meta in overlay_entries:
+            kind = meta.get('kind', '')
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            widgets_info: dict = {}
+
+            if kind == OVERLAY_KIND_FLUO:
+                label = meta.get('channel_name', channel_name)
+                lut_item = widgets.baseHistogramLUTitem(
+                    parent=self,
+                    name=channel_name,
+                    axisLabel=label,
+                    include_rescale_lut_options=False,
+                )
+                lut_item.vb.hide()
+                if hasattr(cmap_spec, 'getLookupTable'):
+                    lut_item.setGradient(self._pg_cmap_to_gradient(cmap_spec))
+                elif isinstance(cmap_spec, str):
+                    bkgr = (0, 0, 0, 255)
+                    fg = colors.FLUO_CHANNELS_COLORS.get(
+                        cmap_spec, (0, 255, 0, 255)
+                    )
+                    if len(fg) == 3:
+                        fg = (*fg, 255)
+                    lut_item.setGradient(colors.get_pg_gradient((bkgr, fg)))
+                lut_item.sigLookupTableChanged.connect(
+                    partial(
+                        self._on_overlay_lut_changed,
+                        overlay_key=channel_name,
+                        lut_item=lut_item,
+                    )
+                )
+                row_layout.addWidget(lut_item)
+                widgets_info['lut_item'] = lut_item
+
+            opacity_spin = widgets.sliderWithSpinBox(
+                title_loc='in_line',
+                isFloat=True,
+                parent=row_widget,
+                normalize_factor=20,
+            )
+            opacity_spin.setRange(0.0, 1.0)
+            opacity_spin.setSingleStep(0.05)
+            opacity_spin.setDecimals(2)
+            opacity_spin.setValue(float(opacity))
+            if kind == OVERLAY_KIND_SEGM:
+                opacity_spin.setToolTip('Segmentation mask overlay opacity')
+                label_widget = QLabel('Segmentation opacity:')
+                row_layout.addWidget(label_widget)
+            elif kind == OVERLAY_KIND_OL_LABELS:
+                opacity_spin.setToolTip(
+                    f'Opacity for overlay labels ({meta.get("channel_name", "")})'
+                )
+            else:
+                opacity_spin.setToolTip(
+                    f'Opacity for overlay channel {meta.get("channel_name", "")}'
+                )
+            opacity_spin.valueChanged.connect(
+                partial(
+                    self._on_overlay_opacity_changed,
+                    overlay_key=channel_name,
+                )
+            )
+            row_layout.addWidget(opacity_spin)
+            widgets_info['opacity_spin'] = opacity_spin
+            self._overlay_widgets[channel_name] = widgets_info
+            self._overlay_controls_layout.addWidget(row_widget)
+
+    def _on_overlay_lut_changed(
+            self,
+            overlay_key: str,
+            lut_item: widgets.baseHistogramLUTitem,
+        ) -> None:
+        if self._syncing_overlay_from_main:
+            return
+        self.set_overlay_cmap(
+            overlay_key,
+            lut_item.gradient.colorMap(),
+            sync_main_gui=True,
+        )
+
+    def _on_overlay_opacity_changed(
+            self,
+            overlay_key: str,
+            value: float,
+        ) -> None:
+        if self._syncing_overlay_from_main:
+            return
+        self.set_overlay_opacity(overlay_key, value, sync_main_gui=True)
     
     def _on_lut_changed(self, lut_item: widgets.baseHistogramLUTitem) -> None:
         ticks = lut_item.gradient.listTicks()
@@ -669,11 +912,17 @@ class VolumeRenderer3DWindow(QMainWindow):
         
         self.scene_layout = QHBoxLayout()
 
+        self._overlay_controls_host = QGroupBox('Overlays')
+        self._overlay_controls_layout = QVBoxLayout(self._overlay_controls_host)
+        self._overlay_controls_layout.setContentsMargins(4, 4, 4, 4)
+        self._overlay_controls_host.hide()
+
         central = QWidget()
         main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         main_layout.addLayout(self.scene_layout)
+        main_layout.addWidget(self._overlay_controls_host)
         main_layout.addWidget(controls_box)
         self.setCentralWidget(central)
         
@@ -977,7 +1226,7 @@ class VolumeRenderer3DWindow(QMainWindow):
             volume,
             clim=(0.0, 1.0),
             method=node_mode,
-            cmap=colors.vispy_cmap_from_spec(cmap_spec),
+            cmap=_volume_cmap_from_spec(cmap_spec),
             interpolation=current_interp,
             relative_step_size=current_step,
             parent=self._view.scene,
@@ -1082,8 +1331,9 @@ class VolumeRenderer3DWindow(QMainWindow):
             self._volume_nodes = {}
         
         if self.lut_items is None:
-            lut_items = self._add_lut_items(self.scene_layout)
+            self._add_lut_items(self.scene_layout)
             self.scene_layout.addWidget(self._canvas.native, stretch=1)
+            self._add_opacity_lut_items(self.scene_layout)
         
         if cmaps is not None:
             for channel_name, cmap in cmaps.items():
@@ -1126,12 +1376,14 @@ class VolumeRenderer3DWindow(QMainWindow):
             maximum 3-D texture size.
         """
         vol = self._preprocess_volume(data, channel=channel_name)
-        
+
+        if self._volumes_data is None or self.channels is None:
+            name = channel_name or 'Channel 1'
+            self.set_volume(data, channel_name=name)
+            return
+
         if channel_name is None and channel_index is None:
-            raise ValueError(
-                'Both `channel_name` and `channel_index` are None. '
-                'Updating volume requires either one of them.'
-            )
+            channel_name = self.channels[0]
         
         if channel_index is not None and channel_index >= len(self.channels):
             self.channels.append(f'Channel {channel_index+1}')
@@ -1160,12 +1412,13 @@ class VolumeRenderer3DWindow(QMainWindow):
     def update_overlay_volumes(
             self,
             overlays: list[tuple],
+            preserve_widgets: bool = False,
         ) -> None:
         """Replace overlay volumes stored in ``_volume_nodes`` under ``overlay:N``."""
         if self._controls is None:
             return
 
-        self._remove_overlay_channels()
+        self._remove_overlay_channels(clear_widgets=not preserve_widgets)
 
         if not overlays:
             if hasattr(self, '_canvas') and self._canvas is not None:
@@ -1176,24 +1429,142 @@ class VolumeRenderer3DWindow(QMainWindow):
         if self._volumes_data is None:
             self._volumes_data = {}
 
+        overlay_entries = []
         for index, entry in enumerate(overlays):
-            data, opacity, cmap = entry[0], entry[1], entry[2]
-            mode_override = entry[3] if len(entry) > 3 else None
+            data, opacity, cmap_spec, mode_override, meta = _parse_overlay_entry(
+                entry, index
+            )
             if data.ndim != 3:
                 continue
-
             channel_name = overlay_channel_name(index)
             vol = self._normalize_overlay_volume(data)
             self._volumes_data[channel_name] = vol
+            meta.setdefault('overlay_index', index)
+            meta.setdefault('channel_name', channel_name)
+            self._overlay_meta[channel_name] = meta
             nodes[channel_name] = self._init_overlay_volume_node(
                 vol,
                 channel_name,
                 opacity,
-                cmap,
+                cmap_spec,
                 mode_override,
             )
+            overlay_entries.append(
+                (channel_name, opacity, cmap_spec, mode_override, meta)
+            )
+
+        if not preserve_widgets:
+            self._rebuild_overlay_controls(overlay_entries)
 
         self._canvas.update()
+
+    def _overlay_key_from_index(self, index_or_key) -> str | None:
+        if isinstance(index_or_key, str):
+            if index_or_key in (self._volume_nodes or {}):
+                return index_or_key
+            if index_or_key.isdigit():
+                index_or_key = int(index_or_key)
+        if isinstance(index_or_key, int):
+            key = overlay_channel_name(index_or_key)
+            if self._volume_nodes and key in self._volume_nodes:
+                return key
+        return None
+
+    def _find_overlay_by_kind(self, kind: str) -> str | None:
+        for key, meta in self._overlay_meta.items():
+            if meta.get('kind') == kind:
+                return key
+        return None
+
+    def set_overlay_opacity(
+            self,
+            index_or_key,
+            value: float,
+            *,
+            sync_main_gui: bool = True,
+        ) -> None:
+        key = self._overlay_key_from_index(index_or_key)
+        if key is None or self._volume_nodes is None:
+            return
+        volume_node = self._volume_nodes.get(key)
+        if volume_node is None:
+            return
+        opacity = max(0.0, min(1.0, float(value)))
+        volume_node.opacity = opacity
+        widgets_info = self._overlay_widgets.get(key)
+        if widgets_info is not None:
+            opacity_spin = widgets_info.get('opacity_spin')
+            if opacity_spin is not None and not self._syncing_overlay_from_main:
+                self._syncing_overlay_from_renderer = True
+                try:
+                    opacity_spin.blockSignals(True)
+                    opacity_spin.setValue(opacity)
+                    opacity_spin.blockSignals(False)
+                finally:
+                    self._syncing_overlay_from_renderer = False
+        if sync_main_gui and not self._syncing_overlay_from_main:
+            meta = self._overlay_meta.get(key, {})
+            adapter = self._adapter
+            if adapter is not None and hasattr(
+                adapter, 'apply_overlay_control_from_renderer'
+            ):
+                kind = meta.get('kind')
+                channel_name = meta.get('channel_name', '')
+                if kind == OVERLAY_KIND_SEGM:
+                    adapter.apply_overlay_control_from_renderer(
+                        channel_name, labels_alpha=opacity
+                    )
+                else:
+                    adapter.apply_overlay_control_from_renderer(
+                        channel_name, opacity=opacity
+                    )
+        self._canvas.update()
+
+    def set_overlay_cmap(
+            self,
+            index_or_key,
+            cmap_spec,
+            *,
+            sync_main_gui: bool = True,
+        ) -> None:
+        key = self._overlay_key_from_index(index_or_key)
+        if key is None or self._volume_nodes is None:
+            return
+        volume_node = self._volume_nodes.get(key)
+        if volume_node is None:
+            return
+        volume_node.cmap = _volume_cmap_from_spec(cmap_spec)
+        if sync_main_gui and not self._syncing_overlay_from_main:
+            meta = self._overlay_meta.get(key, {})
+            adapter = self._adapter
+            if adapter is not None and hasattr(
+                adapter, 'apply_overlay_control_from_renderer'
+            ):
+                kind = meta.get('kind')
+                if kind == OVERLAY_KIND_FLUO:
+                    gradient_state = None
+                    widgets_info = self._overlay_widgets.get(key)
+                    lut_item = widgets_info.get('lut_item') if widgets_info else None
+                    if lut_item is not None:
+                        gradient_state = lut_item.gradient.saveState()
+                    adapter.apply_overlay_control_from_renderer(
+                        meta.get('channel_name', ''),
+                        gradient_state=gradient_state,
+                    )
+        self._canvas.update()
+
+    def set_segm_overlay_opacity(
+            self,
+            value: float,
+            *,
+            sync_main_gui: bool = True,
+        ) -> None:
+        key = self._find_overlay_by_kind(OVERLAY_KIND_SEGM)
+        if key is None:
+            return
+        self.set_overlay_opacity(
+            key, value, sync_main_gui=sync_main_gui
+        )
 
     def set_rendering_mode(self, mode: str) -> None:
         if not self._has_volume_nodes():
@@ -1335,6 +1706,8 @@ class VolumeRenderer3DWindow(QMainWindow):
             return
         
         volume_node.opacity = max(0.0, min(1.0, value))
+        if channel is not None:
+            self._sync_opacity_lut_value(channel, volume_node.opacity)
         self._canvas.update()
 
     def set_iso_threshold(self, value: float) -> None:

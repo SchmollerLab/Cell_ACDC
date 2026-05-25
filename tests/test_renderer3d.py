@@ -1087,3 +1087,74 @@ def test_on_full_clim_sets_normalized_range():
     lut_item.gradient.setTickValue.assert_any_call(low_tick, 0.0)
     lut_item.gradient.setTickValue.assert_any_call(high_tick, 1.0)
     assert set_clim_calls == [(0.0, 1.0, 'Channel 1')]
+
+
+def test_parse_overlay_entry_with_meta():
+    from cellacdc.renderer3d import _parse_overlay_entry
+
+    entry = (None, 0.5, 'green', 'mip', {'kind': 'segm'})
+    data, opacity, cmap, mode, meta = _parse_overlay_entry(entry, 0)
+    assert mode == 'mip'
+    assert meta['kind'] == 'segm'
+    assert opacity == 0.5
+
+    legacy = (None, 0.3, 'cyan')
+    _d, op, cm, mo, me = _parse_overlay_entry(legacy, 1)
+    assert mo is None
+    assert me['overlay_index'] == 1
+
+
+def test_set_overlay_opacity_incremental():
+    from cellacdc.renderer3d import VolumeRenderer3DWindow
+    from unittest.mock import MagicMock
+
+    win = VolumeRenderer3DWindow.__new__(VolumeRenderer3DWindow)
+    node = MagicMock()
+    node.opacity = 1.0
+    win._volume_nodes = {'overlay:0': node}
+    win._overlay_meta = {
+        'overlay:0': {'kind': 'fluo', 'channel_name': 'GFP'},
+    }
+    win._overlay_widgets = {}
+    win._canvas = MagicMock()
+    win._adapter = None
+    win._syncing_overlay_from_main = False
+    win._syncing_overlay_from_renderer = False
+
+    win.set_overlay_opacity('overlay:0', 0.4, sync_main_gui=False)
+    assert node.opacity == 0.4
+
+
+def test_set_segm_overlay_opacity_finds_segm_node():
+    from cellacdc.renderer3d import (
+        OVERLAY_KIND_SEGM,
+        VolumeRenderer3DWindow,
+    )
+    from unittest.mock import MagicMock
+
+    win = VolumeRenderer3DWindow.__new__(VolumeRenderer3DWindow)
+    node = MagicMock()
+    win._volume_nodes = {'overlay:0': node}
+    win._overlay_meta = {
+        'overlay:0': {'kind': OVERLAY_KIND_SEGM, 'channel_name': '__segm__'},
+    }
+    win._overlay_widgets = {}
+    win._canvas = MagicMock()
+    win._adapter = MagicMock()
+    win._syncing_overlay_from_main = False
+    win._syncing_overlay_from_renderer = False
+
+    win.set_segm_overlay_opacity(0.25, sync_main_gui=True)
+    assert node.opacity == 0.25
+    win._adapter.apply_overlay_control_from_renderer.assert_called_once()
+
+
+def test_volume_cmap_from_spec_pg_colormap():
+    from cellacdc.renderer3d import _volume_cmap_from_spec
+    from pyqtgraph.colormap import ColorMap
+    from vispy.color import Colormap
+
+    pg_cmap = ColorMap(pos=[0, 1], color=[[0, 0, 0, 255], [0, 255, 0, 255]])
+    result = _volume_cmap_from_spec(pg_cmap)
+    assert isinstance(result, Colormap)
+    assert _volume_cmap_from_spec('viridis') == 'viridis'
