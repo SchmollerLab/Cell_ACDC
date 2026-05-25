@@ -1,5 +1,4 @@
 from __future__ import annotations
-from functools import partial
 
 import numpy as np
 
@@ -106,6 +105,13 @@ def overlay_channel_name(index: int) -> str:
 
 OVERLAY_KIND_FLUO = 'fluo'
 OVERLAY_KIND_SEGM = 'segm'
+# Label overlays use translucent alpha compositing (not additive, which sums
+# RGB along the ray and washes multi-colour labels to white).
+_LABEL_OVERLAY_MODE = 'translucent'
+_LABEL_VOLUME_INTERP = 'nearest'
+
+SEGM_PRIMARY_CHANNEL = 'Segmentation'
+
 OVERLAY_KIND_OL_LABELS = 'ol_labels'
 
 
@@ -126,21 +132,56 @@ def _parse_overlay_entry(entry, index: int):
     mode_override = None
     meta: dict = {'overlay_index': index}
     if len(entry) > 3:
-        if isinstance(entry[3], str):
-            mode_override = entry[3]
+        third = entry[3]
+        if third is None:
             if len(entry) > 4 and isinstance(entry[4], dict):
                 meta.update(entry[4])
-        elif isinstance(entry[3], dict):
-            meta.update(entry[3])
+        elif isinstance(third, str):
+            mode_override = third
+            if len(entry) > 4 and isinstance(entry[4], dict):
+                meta.update(entry[4])
+        elif isinstance(third, dict):
+            meta.update(third)
     return data, opacity, cmap_spec, mode_override, meta
 
 
-def _mask_labels_for_display(labels: np.ndarray, cell_id: int) -> np.ndarray:
-    """Build a float32 overlay mask from integer label data and active cell ID."""
-    lab = labels.astype(np.int32, copy=False)
+def _is_labels_lut_spec(cmap_spec) -> bool:
+    return (
+        isinstance(cmap_spec, np.ndarray)
+        and cmap_spec.ndim == 2
+        and cmap_spec.shape[1] >= 3
+    )
+
+
+def _labels_overlay_clim(cmap_spec) -> tuple[float, float]:
+    if _is_labels_lut_spec(cmap_spec):
+        # Center integer label IDs on LUT entries (matches napari / PG indexing).
+        n = float(len(cmap_spec))
+        return (-0.5, n - 0.5)
+    return (0.0, 1.0)
+
+
+def _label_overlay_cmap(cmap_spec):
+    if _is_labels_lut_spec(cmap_spec):
+        return colors.labels_lut_vispy_cmap(cmap_spec)
+    if isinstance(cmap_spec, str):
+        return colors.overlay_mask_vispy_cmap(cmap_spec)
+    return _volume_cmap_from_spec(cmap_spec)
+
+
+def _labels_for_display(labels: np.ndarray, cell_id: int) -> np.ndarray:
+    """Return label IDs for 3D overlay coloring (matches 2D LUT indexing)."""
+    lab = labels.astype(np.float32, copy=False)
     if int(cell_id) <= 0:
-        return (lab > 0).astype(np.float32)
-    return (lab == int(cell_id)).astype(np.float32)
+        return lab
+    cid = float(int(cell_id))
+    return np.where(lab == cid, lab, 0.0).astype(np.float32, copy=False)
+
+
+def _segm_blend_opacities(blend_0_to_100: float) -> tuple[float, float]:
+    """Return (brightfield_opacity, segmentation_opacity) for blend 0–100."""
+    t = max(0.0, min(100.0, float(blend_0_to_100))) / 100.0
+    return 1.0 - t, t
 
 
 def _resample_z_axis(
@@ -368,7 +409,10 @@ class VolumeRendererControls(QWidget):
             'physically isotropic. Slower and uses more memory than transform-only.'
         )
         self._resample_z_cb.toggled.connect(self._on_resample_z_changed)
-        layout.addFormWidget(self._resample_z_cb, row=row)
+        layout.addFormWidget(
+            widgets.formWidget(self._resample_z_cb, labelTextLeft=''),
+            row=row,
+        )
 
         self._z_aniso_debounce = QTimer(self)
         self._z_aniso_debounce.setSingleShot(True)
@@ -377,8 +421,7 @@ class VolumeRendererControls(QWidget):
         self._pending_z_aniso = 1.0
 
         row += 1
-        # Primary-channel opacity is controlled via the right-side grayscale
-        # colorbar in the 3D window (see VolumeRenderer3DWindow._add_opacity_lut_items).
+        # Segmentation label colours are edited via the right-side labels gradient bar.
 
         layout.addNewColumn(with_separator=True)
 
@@ -431,7 +474,10 @@ class VolumeRendererControls(QWidget):
             'requiring custom GLSL injection.'
         )
         self._smooth_iso_cb.toggled.connect(self._on_smooth_iso_changed)
-        layout.addFormWidget(self._smooth_iso_cb, row=row)
+        layout.addFormWidget(
+            widgets.formWidget(self._smooth_iso_cb, labelTextLeft=''),
+            row=row,
+        )
 
         row += 1
         self._attn_spin = QDoubleSpinBox()
@@ -519,8 +565,6 @@ class VolumeRendererControls(QWidget):
         self._renderer.set_rendering_mode(mode)
 
     def _on_cell_id_changed(self, value: int) -> None:
-        if getattr(self._renderer, '_syncing_cell_id_from_main', False):
-            return
         if getattr(self._renderer, '_syncing_cell_id_from_renderer', False):
             return
         self._renderer.set_active_cell_id(int(value))
@@ -634,7 +678,9 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._volumes_data: dict[str, np.ndarray] | None = None
         self._raw_volumes_data: dict[str, np.ndarray] | None = None
         self.lut_items: dict[str, widgets.baseHistogramLUTitem] | None = None
-        self._opacity_lut_items: dict[str, widgets.baseHistogramLUTitem] = {}
+        self._labels_grad: widgets.labelsGradientWidget | None = None
+        self._3d_labels_lut_rgba: np.ndarray | None = None
+        self._3d_lut_rgb: np.ndarray | None = None
         self._overlay_meta: dict[str, dict] = {}
         self._overlay_widgets: dict[str, dict] = {}
         self._overlay_controls_layout: QVBoxLayout | None = None
@@ -650,8 +696,9 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._resample_z_enabled: bool = False
         self._syncing_z_aniso: bool = False
         self._active_cell_id: int = 0
-        self._syncing_cell_id_from_main = False
         self._syncing_cell_id_from_renderer = False
+        self._syncing_primary_lut_from_main = False
+        self._syncing_primary_lut_from_renderer = False
         self._overlay_mode_overrides: dict[str, str | None] = {}
         self.channels: list[str] | None = None
         self._last_shape: tuple | None = None
@@ -661,6 +708,10 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._last_raw_data: np.ndarray | None = None  # float32, for re-render
         self._ui_initialised: bool = False
         self._is_set_volumes_first_call: bool = True
+        self._controls = None
+        self._segmentation_only: bool = False
+        self._cached_primary_lut_state = None
+        self._segm_blend: float = 50.0
         
         self._init_vispy()
 
@@ -733,7 +784,7 @@ class VolumeRenderer3DWindow(QMainWindow):
         vmin, vmax = float(vol.min()), float(vol.max())
         max_tex = self._resolve_max_texture_3d()
         if max(vol.shape) > max_tex:
-            vol = self._downsample(vol, max_tex)
+            vol = self._downsample_max_pool(vol, max_tex)
         if vmax > vmin:
             vol = (vol - vmin) / (vmax - vmin)
         else:
@@ -749,7 +800,9 @@ class VolumeRenderer3DWindow(QMainWindow):
             )
         max_tex = self._resolve_max_texture_3d()
         if max(lab.shape) > max_tex:
-            lab = self._downsample(lab, max_tex)
+            lab = self._downsample_max_pool(lab.astype(np.float32), max_tex).astype(
+                np.int32
+            )
         return np.ascontiguousarray(lab)
 
     def _store_label_volume(
@@ -767,8 +820,28 @@ class VolumeRenderer3DWindow(QMainWindow):
         labels = self._label_volumes.get(channel_name)
         if labels is None:
             return None
-        mask = _mask_labels_for_display(labels, self._active_cell_id)
-        return self._normalize_overlay_volume(mask, skip_resample=True)
+        return np.ascontiguousarray(
+            _labels_for_display(labels, self._active_cell_id)
+        )
+
+    def _resolve_label_cmap_spec(self, cmap_spec):
+        if _is_labels_lut_spec(cmap_spec):
+            return cmap_spec
+        local = self._get_segm_labels_cmap()
+        if local is not None:
+            return local
+        return cmap_spec
+
+    def _label_overlay_clim_for_key(self, channel_name: str) -> tuple[float, float]:
+        meta = self._overlay_meta.get(channel_name, {})
+        cmap_spec = self._resolve_label_cmap_spec(meta.get('cmap_spec'))
+        return _labels_overlay_clim(cmap_spec)
+
+    def _get_segm_labels_cmap(self):
+        lut = self._build_labels_image_lut()
+        if _is_labels_lut_spec(lut):
+            return lut
+        return None
 
     def _connect_canvas_events(self) -> None:
         if not hasattr(self, '_canvas') or self._canvas is None:
@@ -827,15 +900,10 @@ class VolumeRenderer3DWindow(QMainWindow):
         spin = self._controls._cell_id_spin
         spin.setMaximum(max(ids))
 
-    def set_active_cell_id(
-            self,
-            cell_id: int,
-            *,
-            sync_main_gui: bool = True,
-        ) -> None:
+    def set_active_cell_id(self, cell_id: int) -> None:
         cell_id = int(cell_id)
         self._active_cell_id = cell_id
-        if self._controls is not None and not self._syncing_cell_id_from_main:
+        if self._controls is not None and not self._syncing_cell_id_from_renderer:
             self._syncing_cell_id_from_renderer = True
             try:
                 spin = self._controls._cell_id_spin
@@ -850,18 +918,14 @@ class VolumeRenderer3DWindow(QMainWindow):
                 vol = self._overlay_volume_from_labels(key)
                 if vol is None:
                     continue
+                clim = self._label_overlay_clim_for_key(key)
                 self._volumes_data[key] = vol
                 volume_node = self._volume_nodes.get(key)
                 if volume_node is not None:
-                    volume_node.set_data(vol, clim=(0.0, 1.0))
-
-        if (
-            sync_main_gui
-            and not self._syncing_cell_id_from_main
-            and self._adapter is not None
-            and hasattr(self._adapter, 'apply_cell_id_from_renderer')
-        ):
-            self._adapter.apply_cell_id_from_renderer(cell_id)
+                    volume_node.set_data(vol, clim=clim)
+                    volume_node.clim = clim
+                    if self._segmentation_only and key == SEGM_PRIMARY_CHANNEL:
+                        self._apply_segmentation_volume_style(volume_node, key)
 
         if hasattr(self, '_canvas') and self._canvas is not None:
             self._canvas.update()
@@ -920,12 +984,17 @@ class VolumeRenderer3DWindow(QMainWindow):
             if button is None:
                 continue
             for action in menu.actions():
-                if action.defaultWidget() is not None:
-                    try:
-                        if button in action.defaultWidget().findChildren(type(button)):
-                            menu.removeAction(action)
-                    except Exception:
-                        pass
+                get_widget = getattr(action, 'defaultWidget', None)
+                if get_widget is None:
+                    continue
+                widget = get_widget()
+                if widget is None:
+                    continue
+                try:
+                    if button in widget.findChildren(type(button)):
+                        menu.removeAction(action)
+                except Exception:
+                    pass
 
     def _add_lut_items(self, scene_layout: QHBoxLayout) -> None:
         self.lut_items_graphics_layout = pg.GraphicsLayoutWidget()
@@ -963,10 +1032,10 @@ class VolumeRenderer3DWindow(QMainWindow):
             
             lut_item.sigLookupTableChanged.connect(self._on_lut_changed)
             auto_btn.clicked.connect(
-                partial(self._on_auto_clim, lut_item=lut_item)
+                lambda *_args, li=lut_item: self._on_auto_clim(li)
             )
             full_btn.clicked.connect(
-                partial(self._on_full_clim, lut_item=lut_item)
+                lambda *_args, li=lut_item: self._on_full_clim(li)
             )
             
             total_width += lut_item.sizeHint(Qt.PreferredSize).width()
@@ -974,64 +1043,167 @@ class VolumeRenderer3DWindow(QMainWindow):
         scene_layout.addWidget(self.lut_items_graphics_layout, stretch=0)
         self.lut_items_graphics_layout.setFixedWidth(int(total_width + 20))
 
-    def _add_opacity_lut_items(self, scene_layout: QHBoxLayout) -> None:
-        self._opacity_lut_graphics_layout = pg.GraphicsLayoutWidget()
-        self._opacity_lut_graphics_layout.setBackground('black')
-        self._opacity_lut_layout = self._opacity_lut_graphics_layout.addLayout(
-            row=0, col=0
+    def _add_labels_lut_widget(self, scene_layout: QHBoxLayout) -> None:
+        """Right-side labels gradient (same role as the main GUI labelsGrad bar)."""
+        self._labels_grad = widgets.labelsGradientWidget(
+            parent=self,
+            orientation='left',
         )
-        total_width = 0
-        for c, channel in enumerate(self.channels):
-            opacity_lut = widgets.baseHistogramLUTitem(
-                parent=self,
-                name=f'opacity_{channel}',
-                axisLabel='Opacity:',
-                gradientPosition='left',
-                include_rescale_lut_options=False,
+        self._labels_grad.setToolTip(
+            'Colormap for segmentation label IDs (independent from the 2D labels bar).'
+        )
+        self._labels_grad.sigGradientChangeFinished.connect(
+            self._on_labels_grad_finished
+        )
+        self._labels_grad.shuffleCmapAction.triggered.connect(
+            self._shuffle_3d_labels_lut
+        )
+        self._labels_grad.colorButton.sigColorChanged.connect(
+            self._on_labels_bkgr_color_changed
+        )
+        width = max(80, self._labels_grad.sizeHint().width())
+        self._labels_grad.setFixedWidth(int(width))
+        scene_layout.addWidget(self._labels_grad, stretch=0)
+        self._init_labels_grad_from_main()
+
+    def _init_labels_grad_from_main(self) -> None:
+        if self._labels_grad is None:
+            return
+        adapter = self._adapter
+        copied_lut = None
+        if adapter is not None and hasattr(adapter, 'get_labels_image_lut'):
+            copied_lut = adapter.get_labels_image_lut()
+        if copied_lut is not None:
+            self._3d_labels_lut_rgba = np.asarray(copied_lut, dtype=np.uint8).copy()
+            self._3d_lut_rgb = self._3d_labels_lut_rgba[:, :3].copy()
+            if adapter is not None and hasattr(adapter, 'get_labels_gradient_initial_state'):
+                state = adapter.get_labels_gradient_initial_state()
+                if state:
+                    grad, bkgr = state
+                    self._labels_grad.item.restoreState(grad)
+                    self._labels_grad.colorButton.setColor(bkgr)
+        else:
+            if adapter is not None and hasattr(adapter, 'get_labels_gradient_initial_state'):
+                state = adapter.get_labels_gradient_initial_state()
+                if state:
+                    grad, bkgr = state
+                    self._labels_grad.item.restoreState(grad)
+                    self._labels_grad.colorButton.setColor(bkgr)
+            self._rebuild_3d_labels_lut_from_gradient(shuffle=True)
+        self._ensure_3d_labels_lut_size()
+        self._apply_labels_lut_to_segm()
+
+    def _sample_gradient_rgb_table(self, *, shuffle: bool) -> np.ndarray:
+        table = np.asarray(
+            self._labels_grad.item.colorMap().getLookupTable(0, 1, 255),
+            dtype=np.uint8,
+        )
+        if table.ndim != 2:
+            raise ValueError(f'Expected 2D LUT table; got shape {table.shape}')
+        table = table[:, :3].copy()
+        if shuffle:
+            np.random.shuffle(table)
+        return table
+
+    def _labels_rgba_from_lut_rgb(self, lut_rgb: np.ndarray) -> np.ndarray:
+        lut_rgb = np.asarray(lut_rgb, dtype=np.uint8)
+        rgba = np.zeros((len(lut_rgb), 4), dtype=np.uint8)
+        rgba[:, :3] = lut_rgb[:, :3]
+        rgba[:, 3] = 255
+        rgba[0] = [0, 0, 0, 0]
+        return rgba
+
+    def _max_label_id_in_volumes(self) -> int:
+        max_id = 0
+        for labels in self._label_volumes.values():
+            if labels is None or labels.size == 0:
+                continue
+            max_id = max(max_id, int(labels.max()))
+        return max_id
+
+    def _ensure_3d_labels_lut_size(self) -> None:
+        """Grow the LUT when label IDs exceed the current table (matches 2D extendLabelsLUT)."""
+        if self._3d_labels_lut_rgba is None:
+            return
+        need = self._max_label_id_in_volumes() + 1
+        if need <= len(self._3d_labels_lut_rgba):
+            return
+        old = self._3d_labels_lut_rgba
+        extra_count = need - len(old)
+        if len(old) > 1:
+            pick = np.random.randint(1, len(old), size=extra_count)
+            extra = old[pick].copy()
+        else:
+            extra = np.zeros((extra_count, 4), dtype=np.uint8)
+            extra[:, 3] = 255
+        self._3d_labels_lut_rgba = np.concatenate([old, extra], axis=0)
+        if self._3d_lut_rgb is not None:
+            self._3d_lut_rgb = self._3d_labels_lut_rgba[:, :3].copy()
+
+    def _rebuild_3d_labels_lut_from_gradient(self, *, shuffle: bool) -> None:
+        table = self._sample_gradient_rgb_table(shuffle=shuffle)
+        bkgr = np.asarray(
+            self._labels_grad.colorButton.color().getRgb()[:3],
+            dtype=np.uint8,
+        )
+        self._3d_lut_rgb = np.insert(table, 0, bkgr, axis=0)
+        self._3d_labels_lut_rgba = self._labels_rgba_from_lut_rgb(self._3d_lut_rgb)
+
+    def _build_labels_image_lut(self) -> np.ndarray | None:
+        if self._3d_labels_lut_rgba is None and self._labels_grad is not None:
+            self._rebuild_3d_labels_lut_from_gradient(shuffle=True)
+        self._ensure_3d_labels_lut_size()
+        return self._3d_labels_lut_rgba
+
+    def _apply_labels_lut_to_segm(self) -> None:
+        lut = self._build_labels_image_lut()
+        if lut is None:
+            return
+        key = self._find_overlay_by_kind(OVERLAY_KIND_SEGM)
+        if key is not None:
+            self.set_overlay_cmap(key, lut, sync_main_gui=False)
+            volume_node = self._volume_nodes.get(key) if self._volume_nodes else None
+            if volume_node is not None:
+                volume_node.clim = _labels_overlay_clim(lut)
+            return
+        if self._segmentation_only and self._volume_nodes is not None:
+            volume_node = self._volume_nodes.get(SEGM_PRIMARY_CHANNEL)
+            if volume_node is not None:
+                volume_node.cmap = colors.labels_lut_vispy_cmap(lut)
+                volume_node.clim = _labels_overlay_clim(lut)
+                self._apply_label_overlay_node_style(volume_node)
+                self._canvas.update()
+
+    def _on_labels_grad_finished(self, *_args) -> None:
+        # Match 2D updateLabelsCmap → setLut(shuffle=True): permute palette entries.
+        self._rebuild_3d_labels_lut_from_gradient(shuffle=True)
+        self._ensure_3d_labels_lut_size()
+        self._apply_labels_lut_to_segm()
+
+    def _on_labels_bkgr_color_changed(self, *_args) -> None:
+        if self._3d_lut_rgb is not None:
+            bkgr = np.asarray(
+                self._labels_grad.colorButton.color().getRgb()[:3],
+                dtype=np.uint8,
             )
-            opacity_lut.channel = channel
-            opacity_lut.vb.hide()
-            from pyqtgraph.graphicsItems.GradientEditorItem import Gradients
-            opacity_lut.setGradient(Gradients['grey'])
-            ticks = opacity_lut.gradient.listTicks()
-            if len(ticks) >= 2:
-                opacity_lut.gradient.setTickValue(ticks[0][0], 0.0)
-                opacity_lut.gradient.setTickValue(ticks[-1][0], 1.0)
-            opacity_lut.sigLookupTableChanged.connect(
-                partial(self._on_opacity_lut_changed, lut_item=opacity_lut)
-            )
-            primary_lut = self.lut_items[channel][0]
-            primary_lut.setChildLutItem(opacity_lut)
-            self._opacity_lut_items[channel] = opacity_lut
-            self._opacity_lut_layout.addItem(opacity_lut, row=0, col=c)
-            total_width += opacity_lut.sizeHint(Qt.PreferredSize).width()
+            self._3d_lut_rgb[0] = bkgr
+            self._3d_labels_lut_rgba = self._labels_rgba_from_lut_rgb(self._3d_lut_rgb)
+        else:
+            self._rebuild_3d_labels_lut_from_gradient(shuffle=True)
+        self._apply_labels_lut_to_segm()
 
-        scene_layout.addWidget(self._opacity_lut_graphics_layout, stretch=0)
-        self._opacity_lut_graphics_layout.setFixedWidth(int(total_width + 20))
+    def _shuffle_3d_labels_lut(self) -> None:
+        if self._3d_lut_rgb is None or len(self._3d_lut_rgb) < 2:
+            self._rebuild_3d_labels_lut_from_gradient(shuffle=True)
+        else:
+            np.random.shuffle(self._3d_lut_rgb[1:])
+            self._3d_labels_lut_rgba = self._labels_rgba_from_lut_rgb(self._3d_lut_rgb)
+        self._ensure_3d_labels_lut_size()
+        self._apply_labels_lut_to_segm()
 
-    def _on_opacity_lut_changed(
-            self,
-            lut_item: widgets.baseHistogramLUTitem,
-        ) -> None:
-        ticks_pos = [x for _t, x in lut_item.gradient.listTicks()]
-        if not ticks_pos:
-            return
-        opacity = max(0.0, min(1.0, max(ticks_pos)))
-        self.set_opacity(opacity, channel=lut_item.channel)
-
-    def _sync_opacity_lut_value(
-            self,
-            channel: str,
-            opacity: float,
-        ) -> None:
-        opacity_lut = self._opacity_lut_items.get(channel)
-        if opacity_lut is None:
-            return
-        ticks = opacity_lut.gradient.listTicks()
-        if not ticks:
-            return
-        high_tick = max(ticks, key=lambda item: item[1])[0]
-        opacity_lut.gradient.setTickValue(high_tick, max(0.0, min(1.0, opacity)))
+    def _primary_bf_opacity(self) -> float:
+        bf_opacity, _segm_opacity = _segm_blend_opacities(self._segm_blend)
+        return bf_opacity
 
     def _pg_cmap_to_gradient(self, pg_cmap):
         table = pg_cmap.getLookupTable(0.0, 1.0, 2)
@@ -1076,10 +1248,8 @@ class VolumeRenderer3DWindow(QMainWindow):
                         fg = (*fg, 255)
                     lut_item.setGradient(colors.get_pg_gradient((bkgr, fg)))
                 lut_item.sigLookupTableChanged.connect(
-                    partial(
-                        self._on_overlay_lut_changed,
-                        overlay_key=channel_name,
-                        lut_item=lut_item,
+                    lambda *_args, k=channel_name, li=lut_item: (
+                        self._on_overlay_lut_changed(k, li)
                     )
                 )
                 row_layout.addWidget(lut_item)
@@ -1091,26 +1261,37 @@ class VolumeRenderer3DWindow(QMainWindow):
                 parent=row_widget,
                 normalize_factor=20,
             )
-            opacity_spin.setRange(0.0, 1.0)
-            opacity_spin.setSingleStep(0.05)
-            opacity_spin.setDecimals(2)
-            opacity_spin.setValue(float(opacity))
             if kind == OVERLAY_KIND_SEGM:
-                opacity_spin.setToolTip('Segmentation mask overlay opacity')
-                label_widget = QLabel('Segmentation opacity:')
+                opacity_spin.setRange(0.0, 100.0)
+                opacity_spin.setSingleStep(1.0)
+                opacity_spin.setDecimals(0)
+                opacity_spin.setValue(float(opacity))
+                opacity_spin.setToolTip(
+                    'Crossfade brightfield ↔ segmentation (0–100). '
+                    '0 = 100% brightfield / 0% labels, '
+                    '40 = 60% brightfield / 40% labels, '
+                    '100 = 0% brightfield / 100% labels.'
+                )
+                label_widget = QLabel('BF ↔ Segm:')
                 row_layout.addWidget(label_widget)
-            elif kind == OVERLAY_KIND_OL_LABELS:
-                opacity_spin.setToolTip(
-                    f'Opacity for overlay labels ({meta.get("channel_name", "")})'
-                )
             else:
-                opacity_spin.setToolTip(
-                    f'Opacity for overlay channel {meta.get("channel_name", "")}'
-                )
+                opacity_spin.setRange(0.0, 1.0)
+                opacity_spin.setSingleStep(0.05)
+                opacity_spin.setDecimals(2)
+                opacity_spin.setValue(float(opacity))
+                if kind == OVERLAY_KIND_OL_LABELS:
+                    opacity_spin.setToolTip(
+                        f'Opacity for overlay labels '
+                        f'({meta.get("channel_name", "")})'
+                    )
+                else:
+                    opacity_spin.setToolTip(
+                        f'Opacity for overlay channel '
+                        f'{meta.get("channel_name", "")}'
+                    )
             opacity_spin.valueChanged.connect(
-                partial(
-                    self._on_overlay_opacity_changed,
-                    overlay_key=channel_name,
+                lambda value, k=channel_name: (
+                    self._on_overlay_opacity_changed(k, value)
                 )
             )
             row_layout.addWidget(opacity_spin)
@@ -1128,7 +1309,7 @@ class VolumeRenderer3DWindow(QMainWindow):
         self.set_overlay_cmap(
             overlay_key,
             lut_item.gradient.colorMap(),
-            sync_main_gui=True,
+            sync_main_gui=False,
         )
 
     def _on_overlay_opacity_changed(
@@ -1136,11 +1317,18 @@ class VolumeRenderer3DWindow(QMainWindow):
             overlay_key: str,
             value: float,
         ) -> None:
-        if self._syncing_overlay_from_main:
+        if self._syncing_overlay_from_main or self._syncing_overlay_from_renderer:
             return
-        self.set_overlay_opacity(overlay_key, value, sync_main_gui=True)
+        self.set_overlay_opacity(overlay_key, value, sync_main_gui=False)
     
     def _on_lut_changed(self, lut_item: widgets.baseHistogramLUTitem) -> None:
+        if (
+            self._segmentation_only
+            and lut_item.channel == SEGM_PRIMARY_CHANNEL
+        ):
+            return
+        if self._syncing_primary_lut_from_main:
+            return
         ticks = lut_item.gradient.listTicks()
         ticks_pos = [x for t, x in ticks]
         min_val = min(ticks_pos) if ticks_pos else 0.0
@@ -1208,6 +1396,7 @@ class VolumeRenderer3DWindow(QMainWindow):
         box_layout = QVBoxLayout(controls_box)
         box_layout.setContentsMargins(4, 4, 4, 4)
         box_layout.addWidget(self._controls)
+        controls_box.hide()
         
         self.scene_layout = QHBoxLayout()
 
@@ -1268,14 +1457,12 @@ class VolumeRenderer3DWindow(QMainWindow):
 
         # Restore numeric spinboxes — clamp to widget range so stale values
         # from older versions don't break the UI.
-        c._clim_min.setValue(
-            max(c._clim_min.minimum(),
-                min(s.value('clim_min', 0.0, type=float), c._clim_min.maximum()))
-        )
-        c._clim_max.setValue(
-            max(c._clim_max.minimum(),
-                min(s.value('clim_max', 1.0, type=float), c._clim_max.maximum()))
-        )
+        if self.lut_items and self.channels:
+            channel = self.channels[0]
+            lo = max(0.0, min(s.value('clim_min', 0.0, type=float), 1.0))
+            hi = max(0.0, min(s.value('clim_max', 1.0, type=float), 1.0))
+            if hi > lo:
+                self.set_clim(lo, hi, channel)
         c._gamma_spin.setValue(
             max(c._gamma_spin.minimum(),
                 min(s.value('gamma', 1.0, type=float), c._gamma_spin.maximum()))
@@ -1304,11 +1491,12 @@ class VolumeRenderer3DWindow(QMainWindow):
                 min(s.value('plane_thickness', 1.0, type=float),
                     c._plane_thick_spin.maximum()))
         )
-        c._opacity_spin.setValue(
-            max(c._opacity_spin.minimum(),
-                min(s.value('opacity', 1.0, type=float),
-                    c._opacity_spin.maximum()))
-        )
+        if self.channels:
+            channel = self.channels[0]
+            self.set_opacity(
+                max(0.0, min(s.value('opacity', 1.0, type=float), 1.0)),
+                channel=channel,
+            )
 
     def _save_settings(self) -> None:
         """Persist current rendering settings so they survive app restarts."""
@@ -1317,8 +1505,12 @@ class VolumeRenderer3DWindow(QMainWindow):
         c = self._controls
         s.setValue('mode_idx',       c._mode_combo.currentIndex())
         s.setValue('interp_idx',     c._interp_combo.currentIndex())
-        s.setValue('clim_min',       c._clim_min.value())
-        s.setValue('clim_max',       c._clim_max.value())
+        if self.lut_items and self.channels:
+            channel = self.channels[0]
+            lo, hi = self._get_clim(self._get_lut_item(channel))
+            s.setValue('clim_min', lo)
+            s.setValue('clim_max', hi)
+            s.setValue('opacity', self._primary_bf_opacity())
         s.setValue('gamma',          c._gamma_spin.value())
         s.setValue('step_size',      c._step_spin.value())
         s.setValue('smooth_iso',     c._smooth_iso_cb.isChecked())
@@ -1326,7 +1518,6 @@ class VolumeRenderer3DWindow(QMainWindow):
         s.setValue('z_aniso_ratio',  c._z_aniso_spin.value())
         s.setValue('depict_idx',     c._depict_combo.currentIndex())
         s.setValue('plane_thickness', c._plane_thick_spin.value())
-        s.setValue('opacity',         c._opacity_spin.value())
 
     # -- GPU helpers ----------------------------------------------------------
 
@@ -1373,6 +1564,20 @@ class VolumeRenderer3DWindow(QMainWindow):
         if all(s == 1 for s in strides):
             return vol
         return np.ascontiguousarray(vol[::strides[0], ::strides[1], ::strides[2]])
+
+    @staticmethod
+    def _downsample_max_pool(vol: np.ndarray, max_size: int) -> np.ndarray:
+        """Downsample *vol* preserving any foreground in each block (for masks)."""
+        strides = tuple(max(1, int(np.ceil(s / max_size))) for s in vol.shape)
+        if all(s == 1 for s in strides):
+            return np.ascontiguousarray(vol)
+        pad_shape = tuple(int(np.ceil(s / st)) * st for s, st in zip(vol.shape, strides))
+        padded = np.zeros(pad_shape, dtype=vol.dtype)
+        padded[: vol.shape[0], : vol.shape[1], : vol.shape[2]] = vol
+        sz, sy, sx = strides
+        z, y, x = pad_shape
+        reshaped = padded.reshape(z // sz, sz, y // sy, sy, x // sx, sx)
+        return np.ascontiguousarray(reshaped.max(axis=(1, 3, 5)))
 
     def _preprocess_volume(
             self,
@@ -1449,6 +1654,71 @@ class VolumeRenderer3DWindow(QMainWindow):
     
     def _get_lut_item(self, channel_name: str):
         return self.lut_items[channel_name][0]
+
+    def _primary_channel_name(self) -> str | None:
+        for channel in self.channels or []:
+            if not is_overlay_channel(channel):
+                return channel
+        return None
+
+    def _set_primary_clim_ticks(
+            self,
+            lut_item: widgets.baseHistogramLUTitem,
+            clim: tuple[float, float],
+        ) -> None:
+        lo, hi = clim
+        low_tick = high_tick = None
+        max_tick_val = -np.inf
+        min_tick_val = np.inf
+        for tick, x in lut_item.gradient.listTicks():
+            if x > max_tick_val:
+                high_tick = tick
+                max_tick_val = x
+            if x < min_tick_val:
+                low_tick = tick
+                min_tick_val = x
+        if low_tick is not None and high_tick is not None:
+            lut_item.gradient.setTickValue(low_tick, lo)
+            lut_item.gradient.setTickValue(high_tick, hi)
+
+    def apply_primary_lut_from_main(
+            self,
+            gradient_state,
+            clim: tuple[float, float],
+        ) -> None:
+        """Apply the main GUI brightfield LUT (gradient + contrast) to 3D."""
+        if self._segmentation_only or not self.lut_items:
+            return
+        channel = self._primary_channel_name()
+        if channel is None:
+            return
+        lut_item = self._get_lut_item(channel)
+        self._syncing_primary_lut_from_main = True
+        try:
+            lut_item.blockSignals(True)
+            lut_item.gradient.blockSignals(True)
+            try:
+                lut_item.gradient.restoreState(gradient_state)
+                self._set_primary_clim_ticks(lut_item, clim)
+            finally:
+                lut_item.gradient.blockSignals(False)
+                lut_item.blockSignals(False)
+            lo, hi = clim
+            self.set_clim(lo, hi, channel)
+            self.set_cmap(lut_item)
+            # LUT-only update: do not touch BF↔Segm crossfade or opacity LUT.
+        finally:
+            self._syncing_primary_lut_from_main = False
+
+    def get_primary_lut_state_for_main(self) -> tuple | None:
+        """Return (gradient saveState, clim) for the primary 3D channel."""
+        if self._segmentation_only or not self.lut_items:
+            return None
+        channel = self._primary_channel_name()
+        if channel is None:
+            return None
+        lut_item = self._get_lut_item(channel)
+        return lut_item.gradient.saveState(), self._get_clim(lut_item)
     
     def _init_volume_node(
             self, 
@@ -1483,9 +1753,7 @@ class VolumeRenderer3DWindow(QMainWindow):
         )
         
         volume_node.gamma = self._controls._gamma_spin.value()
-        volume_node.opacity = (
-            self._controls._opacity_spins[channel_name].value()
-        )
+        volume_node.opacity = self._primary_bf_opacity()
         volume_node.attenuation = 0.05
         
         if current_mode in _ATTN_MODES:
@@ -1532,33 +1800,56 @@ class VolumeRenderer3DWindow(QMainWindow):
             opacity: float,
             cmap_spec: str,
             mode_override: str | None,
+            *,
+            is_label_mask: bool = False,
         ):
         from vispy.scene import visuals  # noqa: PLC0415
 
         primary_mode = self._controls._mode_combo.currentData() or 'mip'
-        node_mode = mode_override or primary_mode
-        current_interp = self._controls._interp_combo.currentData() or 'linear'
+        if is_label_mask:
+            node_mode = _LABEL_OVERLAY_MODE
+        else:
+            node_mode = mode_override or primary_mode
+        if is_label_mask:
+            current_interp = _LABEL_VOLUME_INTERP
+        else:
+            current_interp = self._controls._interp_combo.currentData() or 'linear'
         current_step = self._controls._step_spin.value()
         depict_mode = self._controls._depict_combo.currentData() or 'volume'
         is_plane = depict_mode in _PLANE_CONFIGS
         plane_fraction = self._controls._zplane_slider.value() / 100.0
 
+        if is_label_mask:
+            cmap_spec = self._resolve_label_cmap_spec(cmap_spec)
+            cmap = _label_overlay_cmap(cmap_spec)
+        else:
+            cmap = _volume_cmap_from_spec(cmap_spec)
+
+        clim = _labels_overlay_clim(cmap_spec) if is_label_mask else (0.0, 1.0)
+
         volume_node = visuals.Volume(
             volume,
-            clim=(0.0, 1.0),
+            clim=clim,
             method=node_mode,
-            cmap=_volume_cmap_from_spec(cmap_spec),
+            cmap=cmap,
             interpolation=current_interp,
             relative_step_size=current_step,
             parent=self._view.scene,
         )
-        volume_node.opacity = max(0.0, min(1.0, opacity))
-        volume_node.gamma = self._controls._gamma_spin.value()
-        self._apply_mode_cutoffs_to(volume_node, node_mode, 0.0, 1.0)
+        if is_label_mask and opacity > 1.0:
+            _bf_opacity, segm_opacity = _segm_blend_opacities(opacity)
+            volume_node.opacity = segm_opacity
+        else:
+            volume_node.opacity = max(0.0, min(1.0, opacity))
+        volume_node.gamma = 1.0 if is_label_mask else self._controls._gamma_spin.value()
+        if node_mode in _MIP_CUTOFF_MODES:
+            self._apply_mode_cutoffs_to(volume_node, node_mode, 0.0, 1.0)
         if node_mode in _ATTN_MODES:
             volume_node.attenuation = self._controls._attn_spin.value()
         if node_mode in _ISO_MODES:
             volume_node.threshold = self._controls._iso_spin.value()
+        if node_mode in ('translucent', 'additive'):
+            volume_node.set_gl_state(node_mode, depth_test=False)
         if is_plane:
             volume_node.raycasting_mode = 'plane'
             self._set_plane_uniforms(
@@ -1569,8 +1860,37 @@ class VolumeRenderer3DWindow(QMainWindow):
             )
 
         self._apply_voxel_scale(volume_node)
-        self._overlay_mode_overrides[channel_name] = mode_override
+        if is_label_mask:
+            if opacity > 1.0:
+                _bf_opacity, segm_opacity = _segm_blend_opacities(opacity)
+            else:
+                segm_opacity = max(0.0, min(1.0, float(opacity)))
+            self._apply_label_overlay_node_style(
+                volume_node, opacity=segm_opacity
+            )
+        self._overlay_mode_overrides[channel_name] = (
+            _LABEL_OVERLAY_MODE if is_label_mask else mode_override
+        )
         return volume_node
+    
+    def _is_label_overlay_channel(self, channel_name: str) -> bool:
+        if channel_name in self._label_volumes:
+            return True
+        kind = self._overlay_meta.get(channel_name, {}).get('kind')
+        return kind in (OVERLAY_KIND_SEGM, OVERLAY_KIND_OL_LABELS)
+
+    def _apply_label_overlay_node_style(
+            self,
+            volume_node,
+            *,
+            opacity: float | None = None,
+        ) -> None:
+        volume_node.method = _LABEL_OVERLAY_MODE
+        volume_node.interpolation = _LABEL_VOLUME_INTERP
+        volume_node.gamma = 1.0
+        if opacity is not None:
+            volume_node.opacity = max(0.0, min(1.0, float(opacity)))
+        volume_node.set_gl_state(_LABEL_OVERLAY_MODE, depth_test=False)
     
     def _get_clim(self, lut_item):
         ticks = lut_item.gradient.listTicks()
@@ -1594,6 +1914,142 @@ class VolumeRenderer3DWindow(QMainWindow):
     
     # -- Public API -----------------------------------------------------------
 
+    def _clear_primary_channels(self) -> None:
+        if not self._volume_nodes:
+            return
+        for ch in list(self.channels or []):
+            if is_overlay_channel(ch):
+                continue
+            node = self._volume_nodes.pop(ch, None)
+            if node is not None:
+                node.parent = None
+            if self._volumes_data is not None:
+                self._volumes_data.pop(ch, None)
+            self._label_volumes.pop(ch, None)
+            self._raw_label_volumes.pop(ch, None)
+        self.channels = []
+
+    def _apply_segmentation_volume_style(
+            self,
+            volume_node=None,
+            channel: str | None = None,
+        ) -> None:
+        channel = channel or SEGM_PRIMARY_CHANNEL
+        if volume_node is None and self._volume_nodes is not None:
+            volume_node = self._volume_nodes.get(channel)
+        if volume_node is None:
+            return
+        volume_node.method = _LABEL_OVERLAY_MODE
+        labels_cmap = self._get_segm_labels_cmap()
+        if labels_cmap is not None:
+            volume_node.cmap = colors.labels_lut_vispy_cmap(labels_cmap)
+            volume_node.clim = _labels_overlay_clim(labels_cmap)
+        else:
+            volume_node.cmap = colors.overlay_mask_vispy_cmap('red')
+            volume_node.clim = (0.0, 1.0)
+        volume_node.interpolation = _LABEL_VOLUME_INTERP
+        volume_node.gamma = 1.0
+        volume_node.opacity = 1.0
+        volume_node.set_gl_state(_LABEL_OVERLAY_MODE, depth_test=False)
+
+    def set_segmentation_volume(self, label_data: np.ndarray) -> None:
+        """Show only the segmentation mask as the primary 3D volume."""
+        if label_data.ndim != 3:
+            raise ValueError(
+                f'Expected 3-D (Z, Y, X) label array; got shape {label_data.shape}'
+            )
+        self._segmentation_only = True
+        channel = SEGM_PRIMARY_CHANNEL
+        self._clear_primary_channels()
+        self._store_label_volume(channel, label_data)
+        labels_cmap = self._get_segm_labels_cmap()
+        vol = self._overlay_volume_from_labels(channel)
+        if vol is None:
+            vol = np.ascontiguousarray(
+                _labels_for_display(label_data, self._active_cell_id)
+            )
+        cmap_spec = labels_cmap if labels_cmap is not None else 'red'
+
+        if self._volumes_data is None:
+            self._volumes_data = {}
+        if self._volume_nodes is None:
+            self._volume_nodes = {}
+
+        self.channels = [channel]
+        self._init_ui()
+
+        if self.lut_items is None:
+            self.scene_layout.addWidget(self._canvas.native, stretch=1)
+            self._connect_canvas_events()
+
+        self._volume_nodes[channel] = self._init_overlay_volume_node(
+            vol,
+            channel,
+            1.0,
+            cmap_spec,
+            _LABEL_OVERLAY_MODE,
+            is_label_mask=True,
+        )
+        self._apply_segmentation_volume_style(self._volume_nodes[channel], channel)
+        self._volumes_data[channel] = vol
+        self._last_shape = vol.shape
+        self._last_raw_data = None
+
+        if self._is_set_volumes_first_call:
+            from vispy import gloo
+            gloo.set_state(blend=True, depth_test=False)
+            self._is_set_volumes_first_call = False
+
+        self._apply_voxel_scale(self._volume_nodes[channel])
+        self._view.camera.set_range()
+        self._canvas.update()
+
+    def switch_to_image_volume(
+            self,
+            data: np.ndarray,
+            channel_name: str = 'Channel 1',
+        ) -> None:
+        """Replace a segmentation-only view with a normal image primary volume."""
+        self._segmentation_only = False
+        if self._volume_nodes and SEGM_PRIMARY_CHANNEL in self._volume_nodes:
+            self._volume_nodes[SEGM_PRIMARY_CHANNEL].parent = None
+            del self._volume_nodes[SEGM_PRIMARY_CHANNEL]
+        self._label_volumes.pop(SEGM_PRIMARY_CHANNEL, None)
+        self._raw_label_volumes.pop(SEGM_PRIMARY_CHANNEL, None)
+        if self._volumes_data is not None:
+            self._volumes_data.pop(SEGM_PRIMARY_CHANNEL, None)
+        self.channels = []
+        self.lut_items = None
+        self.set_volume(data, channel_name=channel_name)
+
+    def update_segmentation_volume(self, label_data: np.ndarray) -> None:
+        """Replace the segmentation-only primary volume."""
+        if label_data.ndim != 3:
+            raise ValueError(
+                f'Expected 3-D (Z, Y, X) label array; got shape {label_data.shape}'
+            )
+        channel = SEGM_PRIMARY_CHANNEL
+        if (
+            not self._segmentation_only
+            or self._volume_nodes is None
+            or channel not in self._volume_nodes
+        ):
+            self.set_segmentation_volume(label_data)
+            return
+
+        self._store_label_volume(channel, label_data)
+        vol = self._overlay_volume_from_labels(channel)
+        if vol is None:
+            vol = np.ascontiguousarray(
+                _labels_for_display(label_data, self._active_cell_id)
+            )
+        clim = self._label_overlay_clim_for_key(channel)
+        self._volumes_data[channel] = vol
+        self._volume_nodes[channel].set_data(vol, clim=clim)
+        self._apply_segmentation_volume_style(self._volume_nodes[channel], channel)
+        self._last_shape = vol.shape
+        self._canvas.update()
+
     def set_volume(
             self, 
             volume: np.ndarray,
@@ -1611,6 +2067,8 @@ class VolumeRenderer3DWindow(QMainWindow):
             channel_names = [channel_name]
         
         self.set_volumes([volume], channel_names)
+        
+        self._segmentation_only = False
         
         if cmap is None:
             return
@@ -1635,15 +2093,14 @@ class VolumeRenderer3DWindow(QMainWindow):
         
         if not isinstance(volumes, dict):
             if channel_names is None:
-                keys = [
+                channel_names = [
                     f'Channel {ch_idx+1}' for ch_idx in range(num_volumes)
                 ]
-                
-            volumes = dict(zip(keys, volumes))
-            channel_names = keys
+
+            volumes = dict(zip(channel_names, volumes))
         
         if cmaps is not None and not isinstance(cmaps, dict):
-            cmaps = dict(zip(channel_names, volumes))
+            cmaps = dict(zip(channel_names, cmaps))
         
         self.channels = list(volumes.keys())
         self._init_ui()
@@ -1651,10 +2108,11 @@ class VolumeRenderer3DWindow(QMainWindow):
         if self._volume_nodes is None:
             self._volume_nodes = {}
         
-        if self.lut_items is None:
+        if not self.lut_items:
             self._add_lut_items(self.scene_layout)
-            self.scene_layout.addWidget(self._canvas.native, stretch=1)
-            self._add_opacity_lut_items(self.scene_layout)
+            if self._canvas.native.parent() is None:
+                self.scene_layout.addWidget(self._canvas.native, stretch=1)
+            self._add_labels_lut_widget(self.scene_layout)
             self._connect_canvas_events()
         
         if cmaps is not None:
@@ -1663,12 +2121,12 @@ class VolumeRenderer3DWindow(QMainWindow):
         
         for channel, volume in volumes.items():
             vol = self._preprocess_volume(volume, channel=channel)
-            self._volumes_data[channel] = vol
-            
+
             vol_node = self._init_volume_node(
                 vol, channel, update_canvas=False
             )
             self._volume_nodes[channel] = vol_node
+            self._volumes_data[channel] = vol
             self._last_shape = vol.shape
         
         if self._is_set_volumes_first_call:
@@ -1715,9 +2173,14 @@ class VolumeRenderer3DWindow(QMainWindow):
         
         if channel_name not in self._volumes_data.keys():
             self.set_volume(data, channel_name)
-        
+            return
+
+        volume_node = self._volume_nodes.get(channel_name)
+        if volume_node is None:
+            self.set_volume(data, channel_name=channel_name)
+            return
+
         current_mode = self._controls._mode_combo.currentData() or 'mip'
-        volume_node = self._volume_nodes[channel_name]
         
         lut_item = self._get_lut_item(channel_name)
         
@@ -1730,6 +2193,86 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._last_shape = vol.shape
 
         self._canvas.update()
+
+    def _overlays_match_existing(self, overlays: list[tuple]) -> bool:
+        if not self._volume_nodes or not overlays:
+            return False
+        for index, entry in enumerate(overlays):
+            _, _, _, _, meta = _parse_overlay_entry(entry, index)
+            key = overlay_channel_name(index)
+            if key not in self._volume_nodes:
+                return False
+            old_meta = self._overlay_meta.get(key, {})
+            if old_meta.get('kind') != meta.get('kind'):
+                return False
+            if old_meta.get('channel_name') != meta.get('channel_name'):
+                return False
+        expected = {overlay_channel_name(i) for i in range(len(overlays))}
+        existing = {k for k in self._volume_nodes if is_overlay_channel(k)}
+        return existing == expected
+
+    def _overlay_volume_from_entry(
+            self,
+            entry: tuple,
+            index: int,
+            channel_name: str,
+    ) -> tuple[np.ndarray, object, float, dict]:
+        data, opacity, cmap_spec, _mode_override, meta = _parse_overlay_entry(
+            entry, index
+        )
+        if 'label_data' in meta:
+            self._store_label_volume(channel_name, meta['label_data'])
+            vol = self._overlay_volume_from_labels(channel_name)
+            if vol is None:
+                vol = np.ascontiguousarray(
+                    _labels_for_display(
+                        self._label_volumes[channel_name],
+                        self._active_cell_id,
+                    )
+                )
+        else:
+            self._raw_overlay_data[channel_name] = np.ascontiguousarray(
+                data.astype(np.float32, copy=False)
+            )
+            vol = self._normalize_overlay_volume(data)
+        return vol, cmap_spec, opacity, meta
+
+    def refresh_overlay_volumes(self, overlays: list[tuple]) -> bool:
+        """Update overlay textures in place when structure is unchanged."""
+        if self._controls is None or not self._overlays_match_existing(overlays):
+            return False
+
+        self._cached_overlay_entries = list(overlays)
+        for index, entry in enumerate(overlays):
+            channel_name = overlay_channel_name(index)
+            vol, cmap_spec, opacity, meta = self._overlay_volume_from_entry(
+                entry, index, channel_name
+            )
+            volume_node = self._volume_nodes.get(channel_name)
+            if volume_node is None:
+                return False
+            is_label_mask = 'label_data' in meta
+            if is_label_mask:
+                cmap_spec = self._resolve_label_cmap_spec(cmap_spec)
+                clim = _labels_overlay_clim(cmap_spec)
+                volume_node.cmap = _label_overlay_cmap(cmap_spec)
+                volume_node.interpolation = _LABEL_VOLUME_INTERP
+                volume_node.gamma = 1.0
+                self._apply_label_overlay_node_style(volume_node)
+            else:
+                clim = (0.0, 1.0)
+            volume_node.set_data(vol, clim=clim)
+            volume_node.clim = clim
+            if not is_label_mask:
+                volume_node.opacity = max(0.0, min(1.0, float(opacity)))
+            self._volumes_data[channel_name] = vol
+            meta.setdefault('overlay_index', index)
+            meta.setdefault('channel_name', channel_name)
+            meta['cmap_spec'] = cmap_spec
+            self._overlay_meta[channel_name] = meta
+
+        self._canvas.update()
+        return True
 
     def update_overlay_volumes(
             self,
@@ -1762,11 +2305,14 @@ class VolumeRenderer3DWindow(QMainWindow):
             channel_name = overlay_channel_name(index)
             if 'label_data' in meta:
                 self._store_label_volume(channel_name, meta['label_data'])
-                data = _mask_labels_for_display(
-                    self._label_volumes[channel_name],
-                    self._active_cell_id,
-                )
-                vol = self._normalize_overlay_volume(data, skip_resample=True)
+                vol = self._overlay_volume_from_labels(channel_name)
+                if vol is None:
+                    vol = np.ascontiguousarray(
+                        _labels_for_display(
+                            self._label_volumes[channel_name],
+                            self._active_cell_id,
+                        )
+                    )
             else:
                 self._raw_overlay_data[channel_name] = np.ascontiguousarray(
                     data.astype(np.float32, copy=False)
@@ -1775,6 +2321,7 @@ class VolumeRenderer3DWindow(QMainWindow):
             self._volumes_data[channel_name] = vol
             meta.setdefault('overlay_index', index)
             meta.setdefault('channel_name', channel_name)
+            meta['cmap_spec'] = cmap_spec
             self._overlay_meta[channel_name] = meta
             nodes[channel_name] = self._init_overlay_volume_node(
                 vol,
@@ -1782,6 +2329,7 @@ class VolumeRenderer3DWindow(QMainWindow):
                 opacity,
                 cmap_spec,
                 mode_override,
+                is_label_mask='label_data' in meta,
             )
             overlay_entries.append(
                 (channel_name, opacity, cmap_spec, mode_override, meta)
@@ -1789,6 +2337,13 @@ class VolumeRenderer3DWindow(QMainWindow):
 
         if not preserve_widgets:
             self._rebuild_overlay_controls(overlay_entries)
+
+        for _channel_name, blend, _cmap, _mode, meta in overlay_entries:
+            if meta.get('kind') == OVERLAY_KIND_SEGM and not preserve_widgets:
+                self.set_segm_brightfield_blend(
+                    blend, sync_main_gui=False, update_widget=True
+                )
+                break
 
         self._canvas.update()
 
@@ -1810,15 +2365,67 @@ class VolumeRenderer3DWindow(QMainWindow):
                 return key
         return None
 
+    def set_segm_brightfield_blend(
+            self,
+            blend_0_to_100: float,
+            *,
+            sync_main_gui: bool = False,
+            update_widget: bool = True,
+        ) -> None:
+        """Crossfade primary brightfield vs segmentation (0=BF only, 100=segm only)."""
+        blend = max(0.0, min(100.0, float(blend_0_to_100)))
+        if abs(self._segm_blend - blend) < 1e-6:
+            return
+        self._segm_blend = blend
+        bf_opacity, segm_opacity = _segm_blend_opacities(blend)
+
+        primary = self._primary_channel_name()
+        if primary is not None and self._volume_nodes is not None:
+            volume_node = self._volume_nodes.get(primary)
+            if volume_node is not None:
+                volume_node.opacity = bf_opacity
+
+        key = self._find_overlay_by_kind(OVERLAY_KIND_SEGM)
+        if key is not None and self._volume_nodes is not None:
+            volume_node = self._volume_nodes.get(key)
+            if volume_node is not None:
+                volume_node.opacity = segm_opacity
+            if (
+                update_widget
+                and not self._syncing_overlay_from_main
+            ):
+                widgets_info = self._overlay_widgets.get(key)
+                opacity_spin = (
+                    widgets_info.get('opacity_spin') if widgets_info else None
+                )
+                if opacity_spin is not None:
+                    self._syncing_overlay_from_renderer = True
+                    try:
+                        opacity_spin.blockSignals(True)
+                        opacity_spin.setValue(blend)
+                        opacity_spin.blockSignals(False)
+                    finally:
+                        self._syncing_overlay_from_renderer = False
+
+        self._canvas.update()
+
     def set_overlay_opacity(
             self,
             index_or_key,
             value: float,
             *,
-            sync_main_gui: bool = True,
+            sync_main_gui: bool = False,
         ) -> None:
         key = self._overlay_key_from_index(index_or_key)
         if key is None or self._volume_nodes is None:
+            return
+        meta = self._overlay_meta.get(key, {})
+        if meta.get('kind') == OVERLAY_KIND_SEGM:
+            self.set_segm_brightfield_blend(
+                value,
+                sync_main_gui=sync_main_gui,
+                update_widget=False,
+            )
             return
         volume_node = self._volume_nodes.get(key)
         if volume_node is None:
@@ -1836,22 +2443,6 @@ class VolumeRenderer3DWindow(QMainWindow):
                     opacity_spin.blockSignals(False)
                 finally:
                     self._syncing_overlay_from_renderer = False
-        if sync_main_gui and not self._syncing_overlay_from_main:
-            meta = self._overlay_meta.get(key, {})
-            adapter = self._adapter
-            if adapter is not None and hasattr(
-                adapter, 'apply_overlay_control_from_renderer'
-            ):
-                kind = meta.get('kind')
-                channel_name = meta.get('channel_name', '')
-                if kind == OVERLAY_KIND_SEGM:
-                    adapter.apply_overlay_control_from_renderer(
-                        channel_name, labels_alpha=opacity
-                    )
-                else:
-                    adapter.apply_overlay_control_from_renderer(
-                        channel_name, opacity=opacity
-                    )
         self._canvas.update()
 
     def set_overlay_cmap(
@@ -1859,7 +2450,7 @@ class VolumeRenderer3DWindow(QMainWindow):
             index_or_key,
             cmap_spec,
             *,
-            sync_main_gui: bool = True,
+            sync_main_gui: bool = False,
         ) -> None:
         key = self._overlay_key_from_index(index_or_key)
         if key is None or self._volume_nodes is None:
@@ -1867,31 +2458,29 @@ class VolumeRenderer3DWindow(QMainWindow):
         volume_node = self._volume_nodes.get(key)
         if volume_node is None:
             return
-        volume_node.cmap = _volume_cmap_from_spec(cmap_spec)
-        if sync_main_gui and not self._syncing_overlay_from_main:
-            meta = self._overlay_meta.get(key, {})
-            adapter = self._adapter
-            if adapter is not None and hasattr(
-                adapter, 'apply_overlay_control_from_renderer'
-            ):
-                kind = meta.get('kind')
-                if kind == OVERLAY_KIND_FLUO:
-                    gradient_state = None
-                    widgets_info = self._overlay_widgets.get(key)
-                    lut_item = widgets_info.get('lut_item') if widgets_info else None
-                    if lut_item is not None:
-                        gradient_state = lut_item.gradient.saveState()
-                    adapter.apply_overlay_control_from_renderer(
-                        meta.get('channel_name', ''),
-                        gradient_state=gradient_state,
-                    )
+        is_label_mask = (
+            key in self._label_volumes
+            or self._overlay_meta.get(key, {}).get('kind')
+            in (OVERLAY_KIND_SEGM, OVERLAY_KIND_OL_LABELS)
+        )
+        if is_label_mask:
+            volume_node.cmap = _label_overlay_cmap(cmap_spec)
+            if _is_labels_lut_spec(cmap_spec):
+                volume_node.clim = _labels_overlay_clim(cmap_spec)
+                meta = self._overlay_meta.setdefault(key, {})
+                meta['cmap_spec'] = cmap_spec
+            self._apply_label_overlay_node_style(volume_node)
+        elif isinstance(cmap_spec, str):
+            volume_node.cmap = _volume_cmap_from_spec(cmap_spec)
+        else:
+            volume_node.cmap = _volume_cmap_from_spec(cmap_spec)
         self._canvas.update()
 
     def set_segm_overlay_opacity(
             self,
             value: float,
             *,
-            sync_main_gui: bool = True,
+            sync_main_gui: bool = False,
         ) -> None:
         key = self._find_overlay_by_kind(OVERLAY_KIND_SEGM)
         if key is None:
@@ -1914,6 +2503,9 @@ class VolumeRenderer3DWindow(QMainWindow):
 
         for channel, volume_node in self._volume_nodes.items():
             if is_overlay_channel(channel):
+                if self._is_label_overlay_channel(channel):
+                    self._apply_label_overlay_node_style(volume_node)
+                    continue
                 if self._overlay_mode_overrides.get(channel) is not None:
                     continue
                 volume_node.method = mode
@@ -1922,6 +2514,10 @@ class VolumeRenderer3DWindow(QMainWindow):
                     volume_node.threshold = self._controls._iso_spin.value()
                 if mode in _ATTN_MODES:
                     volume_node.attenuation = self._controls._attn_spin.value()
+                continue
+
+            if self._segmentation_only and channel == SEGM_PRIMARY_CHANNEL:
+                self._apply_segmentation_volume_style(volume_node, channel)
                 continue
 
             lut_item = self._get_lut_item(channel)
@@ -1938,6 +2534,10 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._canvas.update()
 
     def set_clim(self, lo: float, hi: float, channel: str) -> None:
+        if self._segmentation_only and channel == SEGM_PRIMARY_CHANNEL:
+            return
+        if self._is_label_overlay_channel(channel):
+            return
         volume_node = self._volume_nodes.get(channel, None)
         if volume_node is None:
             return
@@ -1948,8 +2548,12 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._canvas.update()
     
     def set_cmap(self, lut_item: widgets.baseHistogramLUTitem):
-        cmap = colors.pg_to_vispy_cmap(lut_item.gradient.colorMap())
         channel = lut_item.channel
+        if self._segmentation_only and channel == SEGM_PRIMARY_CHANNEL:
+            return
+        if self._is_label_overlay_channel(channel):
+            return
+        cmap = colors.pg_to_vispy_cmap(lut_item.gradient.colorMap())
         volume_node = self._volume_nodes.get(channel, None)
         if volume_node is None:
             return
@@ -2021,7 +2625,10 @@ class VolumeRenderer3DWindow(QMainWindow):
     def set_gamma(self, value: float) -> None:
         if not self._has_volume_nodes():
             return
-        for volume_node in self._each_volume_node():
+        for channel, volume_node in self._volume_nodes.items():
+            if self._is_label_overlay_channel(channel):
+                volume_node.gamma = 1.0
+                continue
             volume_node.gamma = value
         self._canvas.update()
 
@@ -2040,8 +2647,6 @@ class VolumeRenderer3DWindow(QMainWindow):
             return
         
         volume_node.opacity = max(0.0, min(1.0, value))
-        if channel is not None:
-            self._sync_opacity_lut_value(channel, volume_node.opacity)
         self._canvas.update()
 
     def set_iso_threshold(self, value: float) -> None:
@@ -2064,9 +2669,12 @@ class VolumeRenderer3DWindow(QMainWindow):
         """Set 3D volume interpolation method (e.g. 'linear', 'nearest', 'catrom')."""
         if self._volume_nodes is None:
             return
-        for volume_node in self._volume_nodes.values():
-            volume_node.interpolation = method
-            
+        for channel, volume_node in self._volume_nodes.items():
+            if self._is_label_overlay_channel(channel):
+                volume_node.interpolation = _LABEL_VOLUME_INTERP
+            else:
+                volume_node.interpolation = method
+
         self._canvas.update()
 
     def set_depiction(self, mode: str) -> None:
@@ -2187,6 +2795,18 @@ class VolumeRenderer3DWindow(QMainWindow):
 
     def _rerender_all(self) -> None:
         """Re-process primary and overlay volumes from cached raw data."""
+        if self._segmentation_only:
+            channel = SEGM_PRIMARY_CHANNEL
+            raw_labels = self._raw_label_volumes.get(channel)
+            if raw_labels is not None:
+                self.update_segmentation_volume(raw_labels)
+            if self._cached_overlay_entries:
+                self.update_overlay_volumes(
+                    self._cached_overlay_entries,
+                    preserve_widgets=True,
+                )
+            return
+
         if self._raw_volumes_data:
             for channel_name, raw in self._raw_volumes_data.items():
                 self.update_volume(raw, channel_name=channel_name)

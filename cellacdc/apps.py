@@ -14206,9 +14206,7 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
 
 class ShortcutEditorDialog(QBaseDialog):
     def __init__(
-            self, widgetsWithShortcut: dict, 
-            delObjectKey='',
-            delObjectButton: Literal['Middle click', 'Left click']='Middle click',
+            self, widgetsWithShortcut: dict,
             zoomOutKeyValue: int=None,
             parent=None
         ):
@@ -14226,26 +14224,8 @@ class ShortcutEditorDialog(QBaseDialog):
         scrollArea.setWidgetResizable(True)
         scrollAreaWidget = QWidget()
         entriesLayout = QGridLayout()
-        
+
         row = 0
-        button = widgets.PushButton(self, flat=True)
-        button.setIcon(QIcon(":del_obj_click.svg"))
-        self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
-            allowModifiers=True, notAllowedModifier=Qt.AltModifier
-        )
-        if delObjectKey is not None:
-            self.delObjShortcutLineEdit.setText(delObjectKey)
-        self.delObjButtonCombobox = QComboBox()
-        self.delObjButtonCombobox.addItems(['Middle click', 'Left click'])
-        self.delObjButtonCombobox.setCurrentText(delObjectButton)
-        entriesLayout.addWidget(button, row, 0)
-        entriesLayout.addWidget(QLabel('Delete object:'), row, 1)
-        entriesLayout.addWidget(self.delObjShortcutLineEdit, row, 2)
-        entriesLayout.addWidget(
-            self.delObjButtonCombobox, row, 3, alignment=Qt.AlignLeft
-        )
-        
-        row += 1
         name = 'Zoom out'
         button = widgets.PushButton(self, flat=True)
         label = QLabel('Zoom out:')
@@ -14261,7 +14241,7 @@ class ShortcutEditorDialog(QBaseDialog):
         entriesLayout.addWidget(label, row, 1)
         entriesLayout.addWidget(self.zoomShortcutLineEdit, row, 2)
         self.shortcutLineEdits[name] = self.zoomShortcutLineEdit
-        
+
         row += 1
         for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=row):
             button = widgets.PushButton(self, flat=True)
@@ -14324,12 +14304,6 @@ class ShortcutEditorDialog(QBaseDialog):
         msg.warning(self, 'Invalid key sequence to delete objects', txt)
     
     def ok_cb(self):
-        delObjButtonText = self.delObjButtonCombobox.currentText()
-        delObjKeySequence = self.delObjShortcutLineEdit.keySequence
-        if delObjButtonText == 'Left click' and delObjKeySequence is None:
-            self.warnInvalidKeySequenceDelObjWithLeftClick()
-            return
-        
         self.shortcutLineEdits.pop('Zoom out')
         self.cancel = False
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
@@ -14340,14 +14314,9 @@ class ShortcutEditorDialog(QBaseDialog):
                 self.customShortcuts[name] = (
                     text, shortcutLineEdit.keySequence
                 )
-        
-        delObjQtButton = (
-            Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
-            else Qt.MouseButton.MiddleButton
-        )
-        self.delObjAction = delObjKeySequence, delObjQtButton
+
         self.zoomOutKeyValue = self.zoomShortcutLineEdit.key
-        
+
         self.close()
     
     def showEvent(self, event) -> None:

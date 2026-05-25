@@ -411,6 +411,46 @@ PLAIN_VISPY_COLOUR_NAMES = frozenset({
 })
 
 
+def labels_lut_vispy_cmap(lut: np.ndarray):
+    """Convert the 2D labels LUT (N×4 uint8, index 0 transparent) to VisPy."""
+    table = np.asarray(lut, dtype=np.float32)
+    if table.ndim != 2 or table.shape[1] < 3:
+        raise ValueError(
+            f'Expected labels LUT with shape (N, 4); got {table.shape}'
+        )
+    if table.shape[1] == 3:
+        alpha = np.ones((len(table), 1), dtype=np.float32)
+        table = np.concatenate([table, alpha], axis=1)
+    rgba = table[:, :4] / 255.0
+    transparent = (0.0, 0.0, 0.0, 0.0)
+    return VisPyColormap(
+        rgba,
+        interpolation='zero',
+        bad_color=transparent,
+        low_color=transparent,
+        high_color=transparent,
+    )
+
+
+def overlay_mask_vispy_cmap(color: str = 'red'):
+    """Colormap for binary label-mask overlays (transparent at 0, *color* at 1)."""
+    rgb = {
+        'red': (1.0, 0.0, 0.0),
+        'green': (0.0, 1.0, 0.0),
+        'blue': (0.0, 0.0, 1.0),
+        'cyan': (0.0, 1.0, 1.0),
+        'magenta': (1.0, 0.0, 1.0),
+        'yellow': (1.0, 1.0, 0.0),
+        'orange': (1.0, 0.5, 0.0),
+        'white': (1.0, 1.0, 1.0),
+    }.get(color, (1.0, 0.0, 0.0))
+    colors = np.array(
+        [[0.0, 0.0, 0.0, 0.0], [*rgb, 1.0]],
+        dtype=np.float32,
+    )
+    return VisPyColormap(colors)
+
+
 def vispy_cmap_from_spec(spec: str):
     """Return a vispy colormap object or name for *spec*.
 
