@@ -908,7 +908,7 @@ class VolumeRenderer3DWindow(QMainWindow):
             method=current_mode,
             cmap=current_cmap,
             interpolation=current_interp,
-            relative_step_size=2.5,
+            relative_step_size=current_step,
             parent=self._view.scene,
         )
         
