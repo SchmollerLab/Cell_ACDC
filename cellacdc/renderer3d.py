@@ -18,7 +18,7 @@ from qtpy.QtWidgets import (
     QGraphicsProxyWidget,
     QGridLayout
 )
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QKeySequence
 
 import pyqtgraph as pg
@@ -141,6 +141,23 @@ def _mask_labels_for_display(labels: np.ndarray, cell_id: int) -> np.ndarray:
     if int(cell_id) <= 0:
         return (lab > 0).astype(np.float32)
     return (lab == int(cell_id)).astype(np.float32)
+
+
+def _resample_z_axis(
+        vol: np.ndarray,
+        z_factor: float,
+        *,
+        is_labels: bool,
+    ) -> np.ndarray:
+    """Stretch or compress the Z axis with ``scipy.ndimage.zoom``."""
+    if abs(z_factor - 1.0) < 1e-6:
+        return vol
+    try:
+        import scipy.ndimage  # noqa: PLC0415
+    except ImportError:
+        return vol
+    order = 0 if is_labels else 1
+    return scipy.ndimage.zoom(vol, (z_factor, 1.0, 1.0), order=order)
 
 
 def _scene_pos_to_voxel_indices(
@@ -315,6 +332,51 @@ class VolumeRendererControls(QWidget):
         layout.addFormWidget(_cell_id_form, row=row)
 
         row += 1
+        z_aniso_row = QHBoxLayout()
+        self._z_aniso_spin = widgets.sliderWithSpinBox(
+            title_loc='in_line',
+            isFloat=True,
+            parent=self,
+            normalize_factor=10,
+        )
+        self._z_aniso_spin.setRange(0.1, 50.0)
+        self._z_aniso_spin.setSingleStep(0.1)
+        self._z_aniso_spin.setValue(1.0)
+        self._z_aniso_spin.setToolTip(
+            'Physical Z/X voxel size ratio.\n'
+            '1.0 = isotropic. Values >1 stretch Z.'
+        )
+        self._z_aniso_spin.valueChanged.connect(self._on_z_aniso_changed)
+        z_aniso_row.addWidget(self._z_aniso_spin)
+        self._z_aniso_reset_btn = QPushButton('Reset')
+        self._z_aniso_reset_btn.setToolTip(
+            'Reset Z anisotropy to the value from image metadata'
+        )
+        self._z_aniso_reset_btn.clicked.connect(self._on_z_aniso_reset)
+        z_aniso_row.addWidget(self._z_aniso_reset_btn)
+        z_aniso_widget = QWidget()
+        z_aniso_widget.setLayout(z_aniso_row)
+        layout.addFormWidget(
+            widgets.formWidget(z_aniso_widget, labelTextLeft='Z anisotropy (dz/dx):'),
+            row=row,
+        )
+
+        row += 1
+        self._resample_z_cb = QCheckBox('Resample Z to isotropic voxels')
+        self._resample_z_cb.setToolTip(
+            'Resample volume data along Z before GPU upload so voxels are\n'
+            'physically isotropic. Slower and uses more memory than transform-only.'
+        )
+        self._resample_z_cb.toggled.connect(self._on_resample_z_changed)
+        layout.addFormWidget(self._resample_z_cb, row=row)
+
+        self._z_aniso_debounce = QTimer(self)
+        self._z_aniso_debounce.setSingleShot(True)
+        self._z_aniso_debounce.setInterval(150)
+        self._z_aniso_debounce.timeout.connect(self._emit_z_aniso_changed)
+        self._pending_z_aniso = 1.0
+
+        row += 1
         # Primary-channel opacity is controlled via the right-side grayscale
         # colorbar in the 3D window (see VolumeRenderer3DWindow._add_opacity_lut_items).
 
@@ -466,6 +528,25 @@ class VolumeRendererControls(QWidget):
     def _on_show_all_cells(self) -> None:
         self._cell_id_spin.setValue(0)
 
+    def _on_z_aniso_changed(self, value: float) -> None:
+        if getattr(self._renderer, '_syncing_z_aniso', False):
+            return
+        self._pending_z_aniso = float(value)
+        self._z_aniso_debounce.start()
+
+    def _emit_z_aniso_changed(self) -> None:
+        self._renderer.set_z_anisotropy_ratio(
+            self._pending_z_aniso,
+            from_user=True,
+        )
+
+    def _on_z_aniso_reset(self) -> None:
+        self._z_aniso_debounce.stop()
+        self._renderer.reset_z_anisotropy_to_metadata()
+
+    def _on_resample_z_changed(self, checked: bool) -> None:
+        self._renderer.set_resample_z_enabled(checked)
+
     def _on_gamma_changed(self, value: float) -> None:
         self._renderer.set_gamma(value)
 
@@ -561,6 +642,13 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._syncing_overlay_from_main = False
         self._syncing_overlay_from_renderer = False
         self._label_volumes: dict[str, np.ndarray] = {}
+        self._raw_label_volumes: dict[str, np.ndarray] = {}
+        self._raw_overlay_data: dict[str, np.ndarray] = {}
+        self._cached_overlay_entries: list[tuple] = []
+        self._metadata_voxel_sizes: tuple[float, float, float] = (1.0, 1.0, 1.0)
+        self._z_aniso_user_override: float | None = None
+        self._resample_z_enabled: bool = False
+        self._syncing_z_aniso: bool = False
         self._active_cell_id: int = 0
         self._syncing_cell_id_from_main = False
         self._syncing_cell_id_from_renderer = False
@@ -609,6 +697,8 @@ class VolumeRenderer3DWindow(QMainWindow):
                 self._volumes_data.pop(name, None)
             self._overlay_meta.pop(name, None)
             self._label_volumes.pop(name, None)
+            self._raw_label_volumes.pop(name, None)
+            self._raw_overlay_data.pop(name, None)
         self._overlay_mode_overrides.clear()
         if clear_widgets:
             self._clear_overlay_widgets()
@@ -623,12 +713,23 @@ class VolumeRenderer3DWindow(QMainWindow):
             if widget is not None:
                 widget.deleteLater()
 
-    def _normalize_overlay_volume(self, data: np.ndarray) -> np.ndarray:
+    def _normalize_overlay_volume(
+            self,
+            data: np.ndarray,
+            *,
+            skip_resample: bool = False,
+        ) -> np.ndarray:
         if data.ndim != 3:
             raise ValueError(
                 f'Expected 3-D (Z, Y, X) overlay array; got shape {data.shape}'
             )
         vol = data.astype(np.float32, copy=False)
+        if self._resample_z_enabled and not skip_resample:
+            vol = _resample_z_axis(
+                vol,
+                self._effective_z_ratio(),
+                is_labels=False,
+            )
         vmin, vmax = float(vol.min()), float(vol.max())
         max_tex = self._resolve_max_texture_3d()
         if max(vol.shape) > max_tex:
@@ -639,6 +740,18 @@ class VolumeRenderer3DWindow(QMainWindow):
             vol = np.zeros_like(vol)
         return vol
 
+    def _process_label_volume(self, lab: np.ndarray) -> np.ndarray:
+        if self._resample_z_enabled:
+            lab = _resample_z_axis(
+                lab,
+                self._effective_z_ratio(),
+                is_labels=True,
+            )
+        max_tex = self._resolve_max_texture_3d()
+        if max(lab.shape) > max_tex:
+            lab = self._downsample(lab, max_tex)
+        return np.ascontiguousarray(lab)
+
     def _store_label_volume(
             self,
             channel_name: str,
@@ -647,17 +760,15 @@ class VolumeRenderer3DWindow(QMainWindow):
         if label_data.ndim != 3:
             return
         lab = label_data.astype(np.int32, copy=False)
-        max_tex = self._resolve_max_texture_3d()
-        if max(lab.shape) > max_tex:
-            lab = self._downsample(lab, max_tex)
-        self._label_volumes[channel_name] = np.ascontiguousarray(lab)
+        self._raw_label_volumes[channel_name] = np.ascontiguousarray(lab)
+        self._label_volumes[channel_name] = self._process_label_volume(lab)
 
     def _overlay_volume_from_labels(self, channel_name: str) -> np.ndarray | None:
         labels = self._label_volumes.get(channel_name)
         if labels is None:
             return None
         mask = _mask_labels_for_display(labels, self._active_cell_id)
-        return self._normalize_overlay_volume(mask)
+        return self._normalize_overlay_volume(mask, skip_resample=True)
 
     def _connect_canvas_events(self) -> None:
         if not hasattr(self, '_canvas') or self._canvas is None:
@@ -1127,12 +1238,16 @@ class VolumeRenderer3DWindow(QMainWindow):
     # Per-axis downsampling strides used in the last upload (z, y, x).
     # Stored so set_voxel_scale can correct for non-uniform stride compression.
     _last_strides: tuple = (1, 1, 1)
-    # Last physical voxel sizes (µm) passed to set_voxel_scale.
+    # Last physical voxel sizes (µm) used for STTransform scaling.
     # Auto-reapplied when a new volume node is created in update_volume so
-    # callers need not re-call set_voxel_scale after a shape change.
+    # callers need not re-call set_metadata_voxel_sizes after a shape change.
     _voxel_dz: float = 1.0
     _voxel_dy: float = 1.0
     _voxel_dx: float = 1.0
+    _metadata_voxel_sizes: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    _z_aniso_user_override: float | None = None
+    _resample_z_enabled: bool = False
+    _syncing_z_aniso: bool = False
 
     _SETTINGS_ORG = 'Cell-ACDC'
     _SETTINGS_APP = 'renderer3d'
@@ -1171,6 +1286,13 @@ class VolumeRenderer3DWindow(QMainWindow):
                     c._step_spin.maximum()))
         )
         c._smooth_iso_cb.setChecked(s.value('smooth_iso', False, type=bool))
+        c._resample_z_cb.setChecked(s.value('resample_z', False, type=bool))
+        z_aniso = s.value('z_aniso_ratio', None, type=float)
+        if z_aniso is not None:
+            c._z_aniso_spin.setValue(
+                max(c._z_aniso_spin.minimum(),
+                    min(z_aniso, c._z_aniso_spin.maximum()))
+            )
 
         # Depiction and plane parameters.
         depict_idx = s.value('depict_idx', 0, type=int)
@@ -1200,6 +1322,8 @@ class VolumeRenderer3DWindow(QMainWindow):
         s.setValue('gamma',          c._gamma_spin.value())
         s.setValue('step_size',      c._step_spin.value())
         s.setValue('smooth_iso',     c._smooth_iso_cb.isChecked())
+        s.setValue('resample_z',     c._resample_z_cb.isChecked())
+        s.setValue('z_aniso_ratio',  c._z_aniso_spin.value())
         s.setValue('depict_idx',     c._depict_combo.currentIndex())
         s.setValue('plane_thickness', c._plane_thick_spin.value())
         s.setValue('opacity',         c._opacity_spin.value())
@@ -1270,7 +1394,13 @@ class VolumeRenderer3DWindow(QMainWindow):
             if self._raw_volumes_data is None:
                 self._raw_volumes_data = {}
             self._raw_volumes_data[channel] = vol
-        original_shape = vol.shape
+
+        if self._resample_z_enabled:
+            vol = _resample_z_axis(
+                vol,
+                self._effective_z_ratio(),
+                is_labels=False,
+            )
 
         # Compute the value range on the full-resolution data BEFORE downsampling
         # so that stride-based subsampling cannot accidentally exclude extreme voxels
@@ -1607,6 +1737,7 @@ class VolumeRenderer3DWindow(QMainWindow):
         if self._controls is None:
             return
 
+        self._cached_overlay_entries = list(overlays)
         self._remove_overlay_channels(clear_widgets=not preserve_widgets)
 
         if not overlays:
@@ -1632,7 +1763,12 @@ class VolumeRenderer3DWindow(QMainWindow):
                     self._label_volumes[channel_name],
                     self._active_cell_id,
                 )
-            vol = self._normalize_overlay_volume(data)
+                vol = self._normalize_overlay_volume(data, skip_resample=True)
+            else:
+                self._raw_overlay_data[channel_name] = np.ascontiguousarray(
+                    data.astype(np.float32, copy=False)
+                )
+                vol = self._normalize_overlay_volume(data)
             self._volumes_data[channel_name] = vol
             meta.setdefault('overlay_index', index)
             meta.setdefault('channel_name', channel_name)
@@ -2044,8 +2180,112 @@ class VolumeRenderer3DWindow(QMainWindow):
 
     def _rerender(self) -> None:
         """Re-process and re-upload the last received volume (smooth ISO toggle)."""
-        if self._last_raw_data is not None:
+        self._rerender_all()
+
+    def _rerender_all(self) -> None:
+        """Re-process primary and overlay volumes from cached raw data."""
+        if self._raw_volumes_data:
+            for channel_name, raw in self._raw_volumes_data.items():
+                self.update_volume(raw, channel_name=channel_name)
+        elif self._last_raw_data is not None:
             self.update_volume(self._last_raw_data)
+
+        if self._cached_overlay_entries:
+            self.update_overlay_volumes(
+                self._cached_overlay_entries,
+                preserve_widgets=True,
+            )
+
+    def _metadata_z_ratio(self) -> float:
+        dz, _dy, dx = self._metadata_voxel_sizes
+        if dx <= 0:
+            return 1.0
+        return dz / dx
+
+    def _effective_z_ratio(self) -> float:
+        if self._z_aniso_user_override is not None:
+            return self._z_aniso_user_override
+        return self._metadata_z_ratio()
+
+    def sync_z_aniso_spinbox(self, ratio: float) -> None:
+        if self._controls is None:
+            return
+        self._syncing_z_aniso = True
+        try:
+            spin = self._controls._z_aniso_spin
+            spin.blockSignals(True)
+            spin.setValue(float(ratio))
+            spin.blockSignals(False)
+        finally:
+            self._syncing_z_aniso = False
+
+    def _apply_effective_voxel_sizes(self) -> None:
+        dz_meta, dy_meta, dx_meta = self._metadata_voxel_sizes
+        if dx_meta <= 0:
+            dx_meta = 1.0
+        if self._resample_z_enabled:
+            self._voxel_dz = dx_meta
+            self._voxel_dy = dy_meta
+            self._voxel_dx = dx_meta
+        else:
+            self._voxel_dz = self._effective_z_ratio() * dx_meta
+            self._voxel_dy = dy_meta
+            self._voxel_dx = dx_meta
+        if self._has_volume_nodes():
+            self._apply_voxel_scale()
+
+    def set_metadata_voxel_sizes(
+        self,
+        dz: float = 1.0,
+        dy: float = 1.0,
+        dx: float = 1.0,
+    ) -> None:
+        """Store physical voxel sizes from metadata and apply the active Z ratio."""
+        old_ratio = self._metadata_z_ratio()
+        self._metadata_voxel_sizes = (float(dz), float(dy), float(dx))
+        ratio_changed = (
+            self._z_aniso_user_override is None
+            and abs(self._metadata_z_ratio() - old_ratio) > 1e-9
+        )
+        if self._z_aniso_user_override is None:
+            self.sync_z_aniso_spinbox(self._metadata_z_ratio())
+        self._apply_effective_voxel_sizes()
+        if self._resample_z_enabled and ratio_changed:
+            self._rerender_all()
+
+    def set_z_anisotropy_ratio(
+            self,
+            ratio: float,
+            *,
+            from_user: bool = True,
+        ) -> None:
+        ratio = float(ratio)
+        if from_user:
+            self._z_aniso_user_override = ratio
+        self.sync_z_aniso_spinbox(ratio)
+        if self._resample_z_enabled:
+            self._apply_effective_voxel_sizes()
+            self._rerender_all()
+        else:
+            self._apply_effective_voxel_sizes()
+
+    def reset_z_anisotropy_to_metadata(self) -> None:
+        self._z_aniso_user_override = None
+        ratio = self._metadata_z_ratio()
+        self.sync_z_aniso_spinbox(ratio)
+        if self._resample_z_enabled:
+            self._apply_effective_voxel_sizes()
+            self._rerender_all()
+        else:
+            self._apply_effective_voxel_sizes()
+
+    def set_resample_z_enabled(self, enabled: bool) -> None:
+        enabled = bool(enabled)
+        if enabled == self._resample_z_enabled:
+            return
+        self._resample_z_enabled = enabled
+        self._apply_effective_voxel_sizes()
+        self._rerender_all()
 
     def set_smooth_iso(self, enabled: bool) -> None:
         """
@@ -2085,33 +2325,8 @@ class VolumeRenderer3DWindow(QMainWindow):
         dy: float = 1.0,
         dx: float = 1.0,
     ) -> None:
-        """
-        Correct for anisotropic voxel sizes by scaling the volume transform.
-
-        Parameters
-        ----------
-        dz, dy, dx:
-            Physical voxel size in µm along Z, Y, X.  All three are normalised
-            to *dx* so the rendered volume has correct physical proportions.
-
-        The scale also accounts for per-axis downsampling strides (stored in
-        ``_last_strides`` from the last ``update_volume`` call).  When the GPU
-        texture limit forces non-uniform downsampling (e.g. stride_x=4 while
-        stride_z=1), each downsampled voxel along X spans ``stride_x × dx``
-        physical µm.  Ignoring this would compress the X axis by 4×.
-
-        Example — 100×512×2048 confocal stack on a 512-texture GPU:
-          Physical voxels: dz=1 µm, dy=0.2 µm, dx=0.2 µm
-          Downsampling:    stride=(1, 1, 4) → shape (100, 512, 512)
-          Effective sizes: dz_eff=1, dy_eff=0.2, dx_eff=0.8 µm
-          Scale:           (1.0, 0.2/0.8, 1.0/0.8) = (1, 0.25, 1.25)
-        """
-        # Persist so the transform is re-applied automatically when the node is
-        # rebuilt due to a shape change (update_volume calls _apply_voxel_scale).
-        self._voxel_dz, self._voxel_dy, self._voxel_dx = dz, dy, dx
-        if not self._has_volume_nodes():
-            return
-        self._apply_voxel_scale()
+        """Backward-compatible alias for :meth:`set_metadata_voxel_sizes`."""
+        self.set_metadata_voxel_sizes(dz, dy, dx)
 
     def _apply_voxel_scale(self, node=None) -> None:
         """Apply the stored voxel scale and stride correction to volume nodes."""

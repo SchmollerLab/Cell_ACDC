@@ -192,7 +192,9 @@ def test_renderer_public_api():
         'set_gamma', 'set_opacity', 'set_iso_threshold', 'set_attenuation',
         'set_interpolation', 'set_step_size', 'set_smooth_iso',
         'set_depiction', 'set_zplane_position', 'set_plane_thickness',
-        'set_voxel_scale', 'reset_view', 'save_screenshot',
+        'set_voxel_scale', 'set_metadata_voxel_sizes', 'set_z_anisotropy_ratio',
+        'reset_z_anisotropy_to_metadata', 'set_resample_z_enabled',
+        'reset_view', 'save_screenshot',
         'auto_contrast_percentile', 'get_auto_contrast_percentile',
     }
     missing = required - set(dir(VolumeRenderer3DWindow))
@@ -1199,6 +1201,7 @@ def test_set_active_cell_id_updates_overlay_node():
     win._canvas = MagicMock()
     win._adapter = None
     win._max_texture_3d = 512
+    win._resample_z_enabled = False
     win._active_cell_id = 0
     win._syncing_cell_id_from_main = False
     win._syncing_cell_id_from_renderer = False
@@ -1206,3 +1209,134 @@ def test_set_active_cell_id_updates_overlay_node():
     win.set_active_cell_id(2, sync_main_gui=False)
     assert win._active_cell_id == 2
     node.set_data.assert_called_once()
+
+
+def _make_bare_renderer():
+    from cellacdc.renderer3d import VolumeRenderer3DWindow
+
+    class _Bare(VolumeRenderer3DWindow):
+        def _init_vispy(self):
+            pass
+
+        def _init_ui(self):
+            self._controls = None
+
+    r = _Bare()
+    r._overlay_mode_overrides = {}
+    return r
+
+
+def test_z_aniso_ratio_default_from_metadata():
+    from unittest.mock import MagicMock
+
+    r = _make_bare_renderer()
+    r._controls = MagicMock()
+    r._controls._z_aniso_spin = MagicMock()
+    r.set_metadata_voxel_sizes(2.0, 1.0, 1.0)
+    assert r._metadata_z_ratio() == 2.0
+    assert r._z_aniso_user_override is None
+    r._controls._z_aniso_spin.setValue.assert_called_with(2.0)
+    r.close()
+    del r
+
+
+def test_z_aniso_user_override_updates_transform():
+    from unittest.mock import MagicMock
+
+    r = _make_bare_renderer()
+    mock_node = MagicMock()
+    r._volume_nodes = {'Channel 1': mock_node}
+    r._canvas = MagicMock()
+    r._last_strides = (1, 1, 1)
+    r.set_metadata_voxel_sizes(1.0, 1.0, 1.0)
+
+    assigned_transforms = []
+    type(mock_node).transform = property(
+        fget=lambda self: None,
+        fset=lambda self, v: assigned_transforms.append(v),
+    )
+
+    r.set_z_anisotropy_ratio(3.0, from_user=True)
+    assert r._z_aniso_user_override == 3.0
+    assert r._voxel_dz == 3.0
+    assert len(assigned_transforms) >= 1
+    scale = assigned_transforms[-1].scale
+    assert abs(scale[2] - 3.0) < 1e-6
+    r.close()
+    del r
+
+
+def test_metadata_update_preserves_user_override():
+    from unittest.mock import MagicMock
+
+    r = _make_bare_renderer()
+    mock_node = MagicMock()
+    r._volume_nodes = {'Channel 1': mock_node}
+    r._canvas = MagicMock()
+    r._last_strides = (1, 1, 1)
+    r._controls = MagicMock()
+    r._controls._z_aniso_spin = MagicMock()
+    r.set_metadata_voxel_sizes(1.0, 1.0, 1.0)
+    r.set_z_anisotropy_ratio(4.0, from_user=True)
+    r._controls._z_aniso_spin.reset_mock()
+
+    r.set_metadata_voxel_sizes(2.0, 0.5, 0.5)
+    assert r._z_aniso_user_override == 4.0
+    r._controls._z_aniso_spin.setValue.assert_not_called()
+    assert r._voxel_dz == 4.0 * 0.5
+    r.close()
+    del r
+
+
+def test_resample_z_axis_shape():
+    from cellacdc.renderer3d import _resample_z_axis
+
+    vol = np.zeros((10, 20, 30), dtype=np.float32)
+    out = _resample_z_axis(vol, 2.0, is_labels=False)
+    assert out.shape[0] == 20
+    assert out.shape[1:] == vol.shape[1:]
+
+
+def test_resample_labels_uses_nearest():
+    from cellacdc.renderer3d import _resample_z_axis
+
+    labels = np.zeros((4, 2, 2), dtype=np.int32)
+    labels[1, 0, 0] = 5
+    out = _resample_z_axis(labels, 2.0, is_labels=True)
+    assert np.issubdtype(out.dtype, np.integer)
+    assert out.max() <= 5
+
+
+def test_resample_then_mask_cell_id():
+    from cellacdc.renderer3d import _mask_labels_for_display, _resample_z_axis
+
+    labels = np.zeros((4, 2, 2), dtype=np.int32)
+    labels[1, 0, 0] = 2
+    labels[2, 1, 1] = 3
+    resampled = _resample_z_axis(labels, 2.0, is_labels=True)
+    mask = _mask_labels_for_display(resampled, 2)
+    assert mask.sum() >= 1.0
+    assert mask.max() <= 1.0
+
+
+def test_resample_disabled_skips_zoom():
+    from cellacdc.renderer3d import _resample_z_axis
+
+    vol = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
+    out = _resample_z_axis(vol, 1.0, is_labels=False)
+    assert out is vol or np.array_equal(out, vol)
+
+
+def test_reset_z_anisotropy_to_metadata():
+    from unittest.mock import MagicMock
+
+    r = _make_bare_renderer()
+    r._controls = MagicMock()
+    r._controls._z_aniso_spin = MagicMock()
+    r.set_metadata_voxel_sizes(3.0, 1.0, 1.0)
+    r.set_z_anisotropy_ratio(7.0, from_user=True)
+    r.reset_z_anisotropy_to_metadata()
+    assert r._z_aniso_user_override is None
+    assert r._metadata_z_ratio() == 3.0
+    r.close()
+    del r

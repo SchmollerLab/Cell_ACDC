@@ -20526,7 +20526,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         voxel_sizes = self._get_current_voxel_sizes()
         if voxel_sizes is not None:
-            self._renderer3d_window.set_voxel_scale(*voxel_sizes)
+            self._renderer3d_window.set_metadata_voxel_sizes(*voxel_sizes)
 
         posData = self.data[self.pos_i]
         self._renderer3d_window.setWindowTitle(
@@ -20603,7 +20603,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         voxel_sizes = self._get_current_voxel_sizes()
         if voxel_sizes is not None:
-            self._renderer3d_window.set_voxel_scale(*voxel_sizes)
+            self._renderer3d_window.set_metadata_voxel_sizes(*voxel_sizes)
         posData = self.data[self.pos_i]
         self._renderer3d_window.setWindowTitle(
             f'3D Z-Stack Renderer  —  '
