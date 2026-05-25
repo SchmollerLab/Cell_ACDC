@@ -403,3 +403,20 @@ def pg_to_vispy_cmap(pg_cmap, n=256):
     colors = np.array(colors) / 255.0
 
     return VisPyColormap(colors)
+
+# Plain colour names mapped to black→colour two-stop vispy colormaps for
+# overlay channels (e.g. fluorescence hue on a black renderer background).
+PLAIN_VISPY_COLOUR_NAMES = frozenset({
+    'red', 'green', 'blue', 'cyan', 'magenta', 'yellow', 'white', 'orange',
+})
+
+
+def vispy_cmap_from_spec(spec: str):
+    """Return a vispy colormap object or name for *spec*.
+
+    Plain colour names produce a black→colour ramp.  Anything else is passed
+    through as a standard vispy colormap name string.
+    """
+    if spec in PLAIN_VISPY_COLOUR_NAMES:
+        return VisPyColormap(['black', spec])
+    return spec

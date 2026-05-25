@@ -5,13 +5,8 @@ requiring a running display or GPU context.  Window/canvas creation is not
 tested here because it requires an OpenGL context.
 """
 
-try:
-    import pytest
-    pytest.skip('skipping this test since it is gui based', allow_module_level=True)
-except Exception as e:
-    pass
-
 import numpy as np
+import pytest
 
 
 def test_module_imports():
@@ -181,12 +176,12 @@ def test_renderer_public_api():
     """VolumeRenderer3DWindow must expose all expected public methods."""
     from cellacdc.renderer3d import VolumeRenderer3DWindow
     required = {
-        'update_volume', 'set_rendering_mode', 'set_clim',
+        'update_volume', 'update_overlay_volumes', 'set_rendering_mode', 'set_clim',
         'set_gamma', 'set_opacity', 'set_iso_threshold', 'set_attenuation',
         'set_interpolation', 'set_step_size', 'set_smooth_iso',
         'set_depiction', 'set_zplane_position', 'set_plane_thickness',
         'set_voxel_scale', 'reset_view', 'save_screenshot',
-        'auto_contrast_percentile', # 'set_colormap'
+        'auto_contrast_percentile', 'get_auto_contrast_percentile',
     }
     missing = required - set(dir(VolumeRenderer3DWindow))
     assert not missing, f"Missing public methods: {missing}"
@@ -206,12 +201,12 @@ def test_set_voxel_scale_noop_without_node():
 
     class _Bare(VolumeRenderer3DWindow):
         def _init_vispy(self):
-            if self._volume_node is None:
-                return
+            pass
         def _init_ui(self): self._controls = None
 
     r = _Bare()
-    r._volume_node = None
+    r._volume_nodes = None
+    r._overlay_mode_overrides = {}
     r.set_voxel_scale(0.5, 0.2, 0.2)  # must not raise
     r.close()
     del r
@@ -230,17 +225,18 @@ def test_set_voxel_scale_stride_correction():
 
     class _Bare(VolumeRenderer3DWindow):
         def _init_vispy(self):
-            if self._volume_node is None:
-                return
+            pass
         def _init_ui(self): self._controls = None
 
     r = _Bare()
-    r._volume_node = MagicMock()
+    mock_node = MagicMock()
+    r._volume_nodes = {'Channel 1': mock_node}
+    r._overlay_mode_overrides = {}
     r._canvas = MagicMock()
     r._last_strides = (1, 1, 4)  # only X was downsampled
 
     assigned_transforms = []
-    type(r._volume_node).transform = property(
+    type(mock_node).transform = property(
         fget=lambda self: None,
         fset=lambda self, v: assigned_transforms.append(v),
     )
@@ -278,12 +274,12 @@ def test_voxel_scale_persists_across_node_rebuild():
 
     class _Bare(VolumeRenderer3DWindow):
         def _init_vispy(self):
-            if self._volume_node is None:
-                return
+            pass
         def _init_ui(self): self._controls = None
 
     r = _Bare()
-    r._volume_node = None
+    r._volume_nodes = None
+    r._overlay_mode_overrides = {}
     # Store scale without a node — must not raise, must persist.
     r.set_voxel_scale(dz=2.0, dy=1.0, dx=1.0)
     assert r._voxel_dz == 2.0
@@ -321,12 +317,12 @@ def test_step_size_noop_without_node():
 
     class _Bare(VolumeRenderer3DWindow):
         def _init_vispy(self):
-            if self._volume_node is None:
-                return
+            pass
         def _init_ui(self): self._controls = None
 
     r = _Bare()
-    r._volume_node = None
+    r._volume_nodes = None
+    r._overlay_mode_overrides = {}
     r.set_step_size(0.5)  # must not raise
     r.close()
     del r
@@ -338,12 +334,12 @@ def test_set_opacity_noop_without_node():
 
     class _Bare(VolumeRenderer3DWindow):
         def _init_vispy(self):
-            if self._volume_node is None:
-                return
+            pass
         def _init_ui(self): self._controls = None
 
     r = _Bare()
-    r._volume_node = None
+    r._volume_nodes = None
+    r._overlay_mode_overrides = {}
     r.set_opacity(0.5)  # must not raise
     r.close()
     del r
@@ -356,28 +352,28 @@ def test_set_opacity_clamps_to_unit_range():
 
     class _Bare(VolumeRenderer3DWindow):
         def _init_vispy(self):
-            if self._volume_node is None:
-                return
+            pass
         def _init_ui(self): self._controls = None
 
     r = _Bare()
-    r._volume_node = MagicMock()
+    mock_node = MagicMock()
+    r._volume_nodes = {'Channel 1': mock_node}
+    r._overlay_mode_overrides = {}
     r._canvas = MagicMock()
 
-    # Track what value was actually assigned to _volume_node.opacity
     assigned = []
-    type(r._volume_node).opacity = property(
+    type(mock_node).opacity = property(
         fget=lambda self: None,
         fset=lambda self, v: assigned.append(v),
     )
 
-    r.set_opacity(2.0)    # above 1 → clamp to 1.0
+    r.set_opacity(2.0, channel='Channel 1')
     assert assigned[-1] == 1.0
 
-    r.set_opacity(-0.5)   # below 0 → clamp to 0.0
+    r.set_opacity(-0.5, channel='Channel 1')
     assert assigned[-1] == 0.0
 
-    r.set_opacity(0.7)    # in-range → pass through
+    r.set_opacity(0.7, channel='Channel 1')
     assert abs(assigned[-1] - 0.7) < 1e-9
     
     r.close()
@@ -405,12 +401,12 @@ def test_apply_mode_cutoffs_noop_without_node():
 
     class _Bare(VolumeRenderer3DWindow):
         def _init_vispy(self):
-            if self._volume_node is None:
-                return
+            pass
         def _init_ui(self): self._controls = None
 
     r = _Bare()
-    r._volume_node = None
+    r._volume_nodes = None
+    r._overlay_mode_overrides = {}
     r._apply_mode_cutoffs('mip', 0.1, 0.9)  # must not raise
     
     r.close()
@@ -451,12 +447,12 @@ def test_plane_thickness_noop_without_node():
 
     class _Bare(VolumeRenderer3DWindow):
         def _init_vispy(self):
-            if self._volume_node is None:
-                return
+            pass
         def _init_ui(self): self._controls = None
 
     r = _Bare()
-    r._volume_node = None
+    r._volume_nodes = None
+    r._overlay_mode_overrides = {}
     r.set_plane_thickness(5.0)   # must not raise
     r.set_plane_thickness(0.0)   # must clamp silently (no node)
     r.close()
@@ -469,12 +465,12 @@ def test_zplane_uniforms_noop_without_node():
 
     class _Bare(VolumeRenderer3DWindow):
         def _init_vispy(self):
-            if self._volume_node is None:
-                return
+            pass
         def _init_ui(self): self._controls = None
 
     r = _Bare()
-    r._volume_node = None
+    r._volume_nodes = None
+    r._overlay_mode_overrides = {}
     r._last_shape = None
     r.set_depiction('plane')       # must not raise
     r.set_zplane_position(0.5)     # must not raise
@@ -488,7 +484,7 @@ def test_set_plane_uniforms_geometry():
     from unittest.mock import MagicMock
 
     r = VolumeRenderer3DWindow.__new__(VolumeRenderer3DWindow)
-    r._volume_node = MagicMock()
+    plane_node = MagicMock()
     r._last_shape = None
     # Set up _controls mock directly (not via _init_ui to avoid display).
     controls = MagicMock()
@@ -498,9 +494,9 @@ def test_set_plane_uniforms_geometry():
     shape = (30, 64, 128)  # NZ=30, NY=64, NX=128
 
     # --- plane_z: XY cross-section, normal along Z (scene-z = data-Z axis) ---
-    r._set_plane_uniforms('plane_z', 0.0, shape=shape)
-    pos = r._volume_node.plane_position
-    normal = r._volume_node.plane_normal
+    r._set_plane_uniforms('plane_z', 0.0, shape=shape, node=plane_node)
+    pos = plane_node.plane_position
+    normal = plane_node.plane_normal
     assert normal == [0.0, 0.0, 1.0]
     # fraction=0.0 → z = 0.0*(30-1) = 0.0 (first voxel centre)
     assert abs(pos[2] - 0.0) < 1e-6, f"plane_z pos[2] should be 0.0, got {pos[2]}"
@@ -508,38 +504,38 @@ def test_set_plane_uniforms_geometry():
     assert abs(pos[0] - 63.5) < 1e-6
     assert abs(pos[1] - 31.5) < 1e-6
 
-    r._set_plane_uniforms('plane_z', 1.0, shape=shape)
-    pos = r._volume_node.plane_position
+    r._set_plane_uniforms('plane_z', 1.0, shape=shape, node=plane_node)
+    pos = plane_node.plane_position
     # fraction=1.0 → z = 1.0*(30-1) = 29.0 (last voxel centre)
     assert abs(pos[2] - 29.0) < 1e-6, f"plane_z pos[2] should be 29.0, got {pos[2]}"
 
-    r._set_plane_uniforms('plane_z', 0.5, shape=shape)
-    pos = r._volume_node.plane_position
+    r._set_plane_uniforms('plane_z', 0.5, shape=shape, node=plane_node)
+    pos = plane_node.plane_position
     # fraction=0.5 → z = 0.5*(30-1) = 14.5  →  texture_z = (14.5+0.5)/30 = 0.5 ✓ (exact centre)
     assert abs(pos[2] - 14.5) < 1e-6, f"plane_z pos[2] should be 14.5, got {pos[2]}"
 
     # --- plane_y: XZ cross-section, normal along Y (scene-y = data-Y axis) ---
-    r._set_plane_uniforms('plane_y', 0.5, shape=shape)
-    pos = r._volume_node.plane_position
-    normal = r._volume_node.plane_normal
+    r._set_plane_uniforms('plane_y', 0.5, shape=shape, node=plane_node)
+    pos = plane_node.plane_position
+    normal = plane_node.plane_normal
     assert normal == [0.0, 1.0, 0.0]
     # fraction=0.5 → y = 0.5*(64-1) = 31.5  →  texture_y = (31.5+0.5)/64 = 0.5 ✓
     assert abs(pos[1] - 31.5) < 1e-6, f"plane_y pos[1] should be 31.5, got {pos[1]}"
 
     # --- plane_x: YZ cross-section, normal along X (scene-x = data-X axis) ---
-    r._set_plane_uniforms('plane_x', 0.5, shape=shape)
-    pos = r._volume_node.plane_position
-    normal = r._volume_node.plane_normal
+    r._set_plane_uniforms('plane_x', 0.5, shape=shape, node=plane_node)
+    pos = plane_node.plane_position
+    normal = plane_node.plane_normal
     assert normal == [1.0, 0.0, 0.0]
     # fraction=0.5 → x = 0.5*(128-1) = 63.5  →  texture_x = (63.5+0.5)/128 = 0.5 ✓
     assert abs(pos[0] - 63.5) < 1e-6, f"plane_x pos[0] should be 63.5, got {pos[0]}"
 
     # Thickness must be read from the spinbox (mocked to 2.0)
-    assert r._volume_node.plane_thickness == 2.0
+    assert plane_node.plane_thickness == 2.0
 
     # None shape + _last_shape=None → must return without crash
     r._last_shape = None
-    r._set_plane_uniforms('plane_z', 0.5, shape=None)  # must not raise
+    r._set_plane_uniforms('plane_z', 0.5, shape=None, node=plane_node)
 
 
 def test_smooth_iso_constant():
@@ -635,7 +631,6 @@ def test_settings_roundtrip():
         # Verify all 10 settings were persisted correctly.
         s = QSettings(TEST_ORG, TEST_APP)
         assert s.value('mode_idx',       type=int)   == 3
-        assert s.value('colormap',       type=str)   == 'viridis'
         assert s.value('interp_idx',     type=int)   == 1
         assert abs(s.value('clim_min',   type=float) - 0.05) < 1e-6
         assert abs(s.value('clim_max',   type=float) - 0.95) < 1e-6
@@ -686,16 +681,12 @@ def test_gui_renderer3d_methods_exist():
 
 
 def test_gui_py_constant():
-    """_ZPROJMODE_3D must appear exactly once as a string literal in gui.py."""
+    """gui.py must wire the 3D renderer launch helper."""
     import pathlib
     gui_src = pathlib.Path(__file__).parent.parent / 'cellacdc' / 'gui.py'
     text = gui_src.read_text(encoding='utf-8')
-    # The constant definition line is the only place the raw string should appear.
-    count = text.count("'3D z-render'")
-    assert count == 1, (
-        f"Expected exactly 1 occurrence of raw '3D z-render' in gui.py "
-        f"(the constant definition); found {count}."
-    )
+    assert '_launch_3d_renderer' in text
+    assert 'renderer3d.create_renderer' in text
 
 
 def test_last_raw_data_cached_after_update_volume():
@@ -732,11 +723,17 @@ def test_last_raw_data_cached_after_update_volume():
         win = _Headless.__new__(_Headless)
         win._hide_on_close = True
         win._adapter = None
-        win._volume_node = None
-        win._last_shape = None
+        win.channels = ['Channel 1']
+        win._volume_nodes = {'Channel 1': MagicMock()}
+        lut_item = MagicMock()
+        lut_item.gradient.listTicks.return_value = [(MagicMock(), 0.0), (MagicMock(), 1.0)]
+        win.lut_items = {'Channel 1': (lut_item, None, None)}
+        win._volumes_data = {'Channel 1': np.zeros((10, 20, 30), dtype=np.float32)}
+        win._last_shape = (10, 20, 30)
         win._max_texture_3d = 512
         win._smooth_iso = False
         win._last_raw_data = None
+        win._raw_volumes_data = {}
         win._init_ui()
 
         canvas_mock = MagicMock()
@@ -747,7 +744,7 @@ def test_last_raw_data_cached_after_update_volume():
         statusbar_mock = MagicMock()
         win.statusBar = MagicMock(return_value=statusbar_mock)
 
-        win.update_volume(data)
+        win.update_volume(data, channel_name='Channel 1')
 
     assert win._last_raw_data is not None
     assert win._last_raw_data.dtype == np.float32
@@ -820,7 +817,14 @@ def test_set_rendering_mode_triggers_rerender_on_stale_smooth():
     win._smooth_iso = True          # smooth enabled
     win._gpu_data_is_smoothed = False  # but GPU has unsmoothed data (stale)
     win._last_raw_data = np.zeros((10, 10, 10), dtype=np.float32)
-    win._volume_node = MagicMock()
+    mock_node = MagicMock()
+    win._volume_nodes = {'Channel 1': mock_node}
+    win.channels = ['Channel 1']
+    lut_item = MagicMock()
+    lut_item.gradient.listTicks.return_value = [(MagicMock(), 0.0), (MagicMock(), 1.0)]
+    win.lut_items = {'Channel 1': (lut_item, None, None)}
+    win._overlay_mode_overrides = {}
+    win._overlay_mode_overrides = {}
     win._canvas = MagicMock()
     win._view = MagicMock()
     win.statusBar = MagicMock(return_value=MagicMock())
@@ -845,25 +849,17 @@ def test_set_rendering_mode_triggers_rerender_on_stale_smooth():
 def test_auto_contrast_percentile_no_data():
     """auto_contrast_percentile returns [0,1] when no raw data is cached."""
     from cellacdc.renderer3d import VolumeRenderer3DWindow
-    from unittest.mock import MagicMock
 
     class _Headless(VolumeRenderer3DWindow):
         def _init_vispy(self): pass
-        def _init_ui(self):
-            c = MagicMock()
-            c._clim_min.value.return_value = 0.0
-            c._clim_max.value.return_value = 1.0
-            self._controls = c
+        def _init_ui(self): pass
 
     win = _Headless.__new__(_Headless)
     win._last_raw_data = None
-    win._volume_node = None
-    win._init_ui()
-    win.auto_contrast_percentile()  # must not raise
-
-    # Spinboxes set to full range fallback
-    win._controls._clim_min.setValue.assert_called_with(0.0)
-    win._controls._clim_max.setValue.assert_called_with(1.0)
+    win._raw_volumes_data = None
+    lo, hi = win.auto_contrast_percentile()
+    assert lo == 0.0
+    assert hi == 1.0
 
 
 def test_auto_contrast_percentile_with_data():
@@ -894,18 +890,13 @@ def test_auto_contrast_percentile_with_data():
 
     win = _Headless.__new__(_Headless)
     win._last_raw_data = raw
-    win._volume_node = None
-    win._init_ui()
-    win.auto_contrast_percentile(lo_pct=1.0, hi_pct=99.5)
+    win._raw_volumes_data = {'Channel 1': raw}
+    lo, hi = win.auto_contrast_percentile(lo_pct=1.0, hi_pct=99.5, channel='Channel 1')
 
-    # The 99.5th percentile (index 994 of 1000) falls within the 997 background
-    # voxels → hi is mapped to well below 1.0 in normalised space.
-    hi_call = win._controls._clim_max.setValue.call_args[0][0]
-    assert hi_call < 1.0, (
-        f"Expected hi < 1.0 (outliers excluded by percentile), got {hi_call}"
+    assert hi < 1.0, (
+        f"Expected hi < 1.0 (outliers excluded by percentile), got {hi}"
     )
-    lo_call = win._controls._clim_min.setValue.call_args_list[0][0][0]
-    assert 0.0 <= lo_call <= hi_call <= 1.0
+    assert 0.0 <= lo <= hi <= 1.0
 
 
 def test_auto_contrast_percentile_constant_data():
@@ -925,13 +916,9 @@ def test_auto_contrast_percentile_constant_data():
 
     win = _Headless.__new__(_Headless)
     win._last_raw_data = raw
-    win._volume_node = None
-    win._init_ui()
-    win.auto_contrast_percentile()
-
-    # Falls back to [0, 1] when span is zero (degenerate data).
-    win._controls._clim_min.setValue.assert_called_with(0.0)
-    win._controls._clim_max.setValue.assert_called_with(1.0)
+    lo, hi = win.auto_contrast_percentile()
+    assert lo == 0.0
+    assert hi == 1.0
 
 
 def test_auto_contrast_percentile_large_volume_subsampled():
@@ -955,12 +942,7 @@ def test_auto_contrast_percentile_large_volume_subsampled():
 
     win = _Headless.__new__(_Headless)
     win._last_raw_data = raw
-    win._volume_node = None
-    win._init_ui()
-    win.auto_contrast_percentile(lo_pct=1.0, hi_pct=99.0)
-
-    lo = win._controls._clim_min.setValue.call_args_list[0][0][0]
-    hi = win._controls._clim_max.setValue.call_args[0][0]
+    lo, hi = win.auto_contrast_percentile(lo_pct=1.0, hi_pct=99.0)
     assert 0.0 <= lo <= hi <= 1.0, f"Invalid limits: lo={lo}, hi={hi}"
 
 
@@ -971,12 +953,13 @@ def test_apply_voxel_scale_updates_canvas():
 
     class _Bare(VolumeRenderer3DWindow):
         def _init_vispy(self):
-            if self._volume_node is None:
-                return
+            pass
         def _init_ui(self): self._controls = None
 
     r = _Bare()
-    r._volume_node = MagicMock()
+    mock_node = MagicMock()
+    r._volume_nodes = {'Channel 1': mock_node}
+    r._overlay_mode_overrides = {}
     r._canvas = MagicMock()
     r._last_strides = (1, 1, 1)
     r._voxel_dz = 2.0
@@ -984,7 +967,7 @@ def test_apply_voxel_scale_updates_canvas():
     r._voxel_dx = 1.0
 
     assigned = []
-    type(r._volume_node).transform = property(
+    type(mock_node).transform = property(
         fget=lambda self: None,
         fset=lambda self, v: assigned.append(v),
     )
@@ -996,3 +979,99 @@ def test_apply_voxel_scale_updates_canvas():
     
     r.close()
     del r
+
+
+def test_vispy_cmap_from_spec_plain_colour():
+    from cellacdc.colors import vispy_cmap_from_spec
+    from vispy.color import Colormap
+
+    cmap = vispy_cmap_from_spec('green')
+    assert isinstance(cmap, Colormap)
+    assert vispy_cmap_from_spec('viridis') == 'viridis'
+
+
+def test_overlay_channel_helpers():
+    from cellacdc.renderer3d import (
+        OVERLAY_CHANNEL_PREFIX,
+        is_overlay_channel,
+        overlay_channel_name,
+    )
+
+    assert OVERLAY_CHANNEL_PREFIX == 'overlay:'
+    assert is_overlay_channel('overlay:0')
+    assert not is_overlay_channel('Channel 1')
+    assert overlay_channel_name(2) == 'overlay:2'
+
+
+def test_update_overlay_volumes_clear_and_add():
+    from cellacdc.renderer3d import VolumeRenderer3DWindow
+    from unittest.mock import MagicMock, patch
+
+    class _Headless(VolumeRenderer3DWindow):
+        def _init_vispy(self): pass
+        def _init_ui(self):
+            c = MagicMock()
+            c._mode_combo.currentData.return_value = 'mip'
+            c._interp_combo.currentData.return_value = 'linear'
+            c._step_spin.value.return_value = 0.8
+            c._depict_combo.currentData.return_value = 'volume'
+            c._zplane_slider.value.return_value = 50
+            c._gamma_spin.value.return_value = 1.0
+            c._attn_spin.value.return_value = 0.5
+            c._iso_spin.value.return_value = 0.5
+            self._controls = c
+
+    win = _Headless.__new__(_Headless)
+    win._overlay_mode_overrides = {}
+    win._volume_nodes = None
+    win._volumes_data = None
+    win._canvas = MagicMock()
+    win._view = MagicMock()
+    win._last_strides = (1, 1, 1)
+    win._voxel_dz = 1.0
+    win._voxel_dy = 1.0
+    win._voxel_dx = 1.0
+    win._max_texture_3d = 512
+    win._init_ui()
+
+    win.update_overlay_volumes([])
+    assert win._overlay_mode_overrides == {}
+
+    data = np.ones((4, 8, 8), dtype=np.float32)
+
+    def _fake_init_overlay(self, vol, channel_name, opacity, cmap_spec, mode_override):
+        node = MagicMock()
+        self._overlay_mode_overrides[channel_name] = mode_override
+        return node
+
+    with patch.object(
+        _Headless, '_init_overlay_volume_node', _fake_init_overlay
+    ):
+        win.update_overlay_volumes([(data, 0.5, 'green', 'mip')])
+
+    assert 'overlay:0' in win._volume_nodes
+    assert win._overlay_mode_overrides == {'overlay:0': 'mip'}
+    assert win._volumes_data['overlay:0'].shape == data.shape
+
+
+def test_on_full_clim_sets_normalized_range():
+    from cellacdc.renderer3d import VolumeRenderer3DWindow
+    from unittest.mock import MagicMock
+
+    win = VolumeRenderer3DWindow.__new__(VolumeRenderer3DWindow)
+    low_tick = MagicMock()
+    high_tick = MagicMock()
+    lut_item = MagicMock()
+    lut_item.channel = 'Channel 1'
+    lut_item.gradient.listTicks.return_value = [
+        (low_tick, 0.2),
+        (high_tick, 0.8),
+    ]
+
+    set_clim_calls = []
+    win.set_clim = lambda lo, hi, channel: set_clim_calls.append((lo, hi, channel))
+    win._on_full_clim(lut_item)
+
+    lut_item.gradient.setTickValue.assert_any_call(low_tick, 0.0)
+    lut_item.gradient.setTickValue.assert_any_call(high_tick, 1.0)
+    assert set_clim_calls == [(0.0, 1.0, 'Channel 1')]

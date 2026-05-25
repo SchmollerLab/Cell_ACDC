@@ -12156,4 +12156,5 @@ class VolumeRendererToolbar(ToolBar):
         )
         self.addAction(self.saveAction)
         
+        self.homeViewAction.triggered.connect(self.sigHomeView.emit)
         self.saveAction.triggered.connect(self.sigSave.emit)

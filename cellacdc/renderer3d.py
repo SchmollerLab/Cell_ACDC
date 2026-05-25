@@ -90,6 +90,19 @@ _PLANE_CONFIGS: dict[str, tuple[list[float], int]] = {
     'plane_x':  ([1.0, 0.0, 0.0],      2),   # normal along scene-X = data-X axis
 }
 
+# Overlay channels live in ``_volume_nodes`` with this prefix (e.g.
+# ``overlay:0``).  Primary fluorescence channels use plain names from
+# ``self.channels`` and have LUT sliders; overlays do not.
+OVERLAY_CHANNEL_PREFIX = 'overlay:'
+
+
+def is_overlay_channel(channel: str) -> bool:
+    return channel.startswith(OVERLAY_CHANNEL_PREFIX)
+
+
+def overlay_channel_name(index: int) -> str:
+    return f'{OVERLAY_CHANNEL_PREFIX}{index}'
+
 
 # ---------------------------------------------------------------------------
 # Pure-stdlib PNG writer (fallback when skimage is not available)
@@ -255,32 +268,23 @@ class VolumeRendererControls(QWidget):
             labelTextLeft='Interpolation:',
         )
         layout.addFormWidget(_interp_form_widget, row=row)
-        
-        row1 = QHBoxLayout()
-        row2 = QHBoxLayout()
 
-        # Rendering mode
-        row1.addWidget(QLabel('Render:'))
-        self._mode_combo = QComboBox()
-        for mode_id, label in RENDERING_MODES:
-            self._mode_combo.addItem(label, mode_id)
-        self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
-        row1.addWidget(self._mode_combo)
-
-        # ISO threshold + smooth option (iso mode only)
-        self._iso_label = QLabel('ISO:')
-        row1.addWidget(self._iso_label)
+        row += 1
         self._iso_spin = QDoubleSpinBox()
         self._iso_spin.setRange(0.0, 1.0)
         self._iso_spin.setSingleStep(0.01)
         self._iso_spin.setValue(0.5)
         self._iso_spin.setDecimals(3)
-        self._iso_spin.setFixedWidth(65)
         self._iso_spin.setToolTip('Isosurface threshold')
         self._iso_spin.valueChanged.connect(self._on_iso_changed)
-        row1.addWidget(self._iso_spin)
+        self._iso_label = _iso_form_widget = widgets.formWidget(
+            self._iso_spin,
+            labelTextLeft='ISO:',
+        )
+        layout.addFormWidget(_iso_form_widget, row=row)
 
-        self._smooth_iso_cb = QCheckBox('Smooth')
+        row += 1
+        self._smooth_iso_cb = QCheckBox('Pre-smooth volume for ISO rendering')
         self._smooth_iso_cb.setToolTip(
             'Pre-smooth the volume with a Gaussian filter (σ=1) before ISO\n'
             'rendering. Approximates napari\'s SMOOTH_GRADIENT_DEFINITION\n'
@@ -288,29 +292,23 @@ class VolumeRendererControls(QWidget):
             'requiring custom GLSL injection.'
         )
         self._smooth_iso_cb.toggled.connect(self._on_smooth_iso_changed)
-        row1.addWidget(self._smooth_iso_cb)
+        layout.addFormWidget(self._smooth_iso_cb, row=row)
 
-        # Attenuation (attenuated_mip mode only)
-        self._attn_label = QLabel('Attn:')
-        row1.addWidget(self._attn_label)
+        row += 1
         self._attn_spin = QDoubleSpinBox()
         self._attn_spin.setRange(0.0, 2.0)
         self._attn_spin.setSingleStep(0.05)
         self._attn_spin.setValue(0.5)
         self._attn_spin.setDecimals(2)
-        self._attn_spin.setFixedWidth(60)
         self._attn_spin.setToolTip('Attenuation factor for Attenuated MIP')
         self._attn_spin.valueChanged.connect(self._on_attn_changed)
-        row1.addWidget(self._attn_spin)
+        self._attn_label = _attn_form_widget = widgets.formWidget(
+            self._attn_spin,
+            labelTextLeft='Attenuation:',
+        )
+        layout.addFormWidget(_attn_form_widget, row=row)
 
-        row1.addStretch()
-
-        # ── Row 2: Display / camera parameters ───────────────────────────────
-
-        
-
-        # Depiction (napari: layer.depiction — volume vs plane)
-        row2.addWidget(QLabel('Depict:'))
+        row += 1
         self._depict_combo = QComboBox()
         for did, dlabel in DEPICTION_MODES:
             self._depict_combo.addItem(dlabel, did)
@@ -319,42 +317,48 @@ class VolumeRendererControls(QWidget):
             'Z-Plane: single cross-section embedded in 3D space.'
         )
         self._depict_combo.currentIndexChanged.connect(self._on_depiction_changed)
-        row2.addWidget(self._depict_combo)
+        layout.addFormWidget(
+            widgets.formWidget(self._depict_combo, labelTextLeft='Depiction:'),
+            row=row,
+        )
 
-        self._zplane_label = QLabel('Pos:')
-        row2.addWidget(self._zplane_label)
+        row += 1
         self._zplane_slider = QSlider(Qt.Horizontal)
         self._zplane_slider.setMinimum(0)
         self._zplane_slider.setMaximum(99)
         self._zplane_slider.setValue(50)
-        self._zplane_slider.setFixedWidth(80)
-        self._zplane_slider.setToolTip('Position of the cross-section plane (0=start, 100=end)')
+        self._zplane_slider.setToolTip(
+            'Position of the cross-section plane (0=start, 100=end)'
+        )
         self._zplane_slider.valueChanged.connect(self._on_zplane_changed)
-        row2.addWidget(self._zplane_slider)
+        self._zplane_label = _zplane_form_widget = widgets.formWidget(
+            self._zplane_slider,
+            labelTextLeft='Plane pos:',
+        )
+        layout.addFormWidget(_zplane_form_widget, row=row)
 
-        # Plane thickness (napari: layer.plane.thickness / _on_plane_thickness_change)
-        self._plane_thick_label = QLabel('Thick:')
-        row2.addWidget(self._plane_thick_label)
+        row += 1
         self._plane_thick_spin = QDoubleSpinBox()
         self._plane_thick_spin.setRange(1.0, 50.0)
         self._plane_thick_spin.setSingleStep(1.0)
         self._plane_thick_spin.setValue(1.0)
         self._plane_thick_spin.setDecimals(1)
-        self._plane_thick_spin.setFixedWidth(55)
         self._plane_thick_spin.setToolTip(
             'Thickness of the plane cross-section in voxels.\n'
             'Mirrors napari\'s plane.thickness parameter.'
         )
         self._plane_thick_spin.valueChanged.connect(self._on_plane_thickness_changed)
-        row2.addWidget(self._plane_thick_spin)
+        self._plane_thick_label = _plane_thick_form_widget = widgets.formWidget(
+            self._plane_thick_spin,
+            labelTextLeft='Plane thick:',
+        )
+        layout.addFormWidget(_plane_thick_form_widget, row=row)
 
         # Initially hide plane controls
         self._zplane_label.setVisible(False)
         self._zplane_slider.setVisible(False)
         self._plane_thick_label.setVisible(False)
         self._plane_thick_spin.setVisible(False)
-
-        row2.addStretch()
 
         # Initial visibility for mode-specific controls
         self._update_mode_controls('mip')
@@ -365,10 +369,8 @@ class VolumeRendererControls(QWidget):
         show_iso = mode in _ISO_MODES
         show_attn = mode in _ATTN_MODES
         self._iso_label.setVisible(show_iso)
-        self._iso_spin.setVisible(show_iso)
         self._smooth_iso_cb.setVisible(show_iso)
         self._attn_label.setVisible(show_attn)
-        self._attn_spin.setVisible(show_attn)
 
     # -- slots ----------------------------------------------------------------
 
@@ -406,7 +408,9 @@ class VolumeRendererControls(QWidget):
         if is_plane:
             # Label shows which data axis the slider moves along.
             axis_names = {'plane_z': 'Z:', 'plane_y': 'Y:', 'plane_x': 'X:'}
-            self._zplane_label.setText(axis_names.get(mode, 'Pos:'))
+            self._zplane_label.labelLeft.setText(
+                axis_names.get(mode, 'Plane pos:')
+            )
             # Reset the slider to centre so slider position always matches the
             # rendered plane (set_depiction initialises the plane at 0.5).
             self._zplane_slider.blockSignals(True)
@@ -460,7 +464,9 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._adapter = adapter
         self._volume_nodes: dict[str, visuals.Volume] | None = None
         self._volumes_data: dict[str, np.ndarray] | None = None
+        self._raw_volumes_data: dict[str, np.ndarray] | None = None
         self.lut_items: dict[str, widgets.baseHistogramLUTitem] | None = None
+        self._overlay_mode_overrides: dict[str, str | None] = {}
         self.channels: list[str] | None = None
         self._last_shape: tuple | None = None
         self._max_texture_3d: int | None = None  # resolved on first upload
@@ -468,9 +474,56 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._gpu_data_is_smoothed: bool = False  # tracks whether GPU texture has Gaussian filter
         self._last_raw_data: np.ndarray | None = None  # float32, for re-render
         self._ui_initialised: bool = False
-        self._is_set_volumes_first_call: bool = False
+        self._is_set_volumes_first_call: bool = True
         
         self._init_vispy()
+
+    # -- volume-node helpers (primary + overlay share ``_volume_nodes``) ------
+
+    def _ensure_volume_nodes(self) -> dict:
+        if self._volume_nodes is None:
+            self._volume_nodes = {}
+        return self._volume_nodes
+
+    def _has_volume_nodes(self) -> bool:
+        return bool(self._volume_nodes)
+
+    def _each_volume_node(self):
+        if self._volume_nodes:
+            yield from self._volume_nodes.values()
+
+    def _volume_shape(self, channel: str) -> tuple[int, int, int] | None:
+        if self._volumes_data and channel in self._volumes_data:
+            return self._volumes_data[channel].shape
+        return self._last_shape
+
+    def _remove_overlay_channels(self) -> None:
+        if not self._volume_nodes:
+            return
+        for name in list(self._volume_nodes):
+            if not is_overlay_channel(name):
+                continue
+            self._volume_nodes[name].parent = None
+            del self._volume_nodes[name]
+            if self._volumes_data is not None:
+                self._volumes_data.pop(name, None)
+        self._overlay_mode_overrides.clear()
+
+    def _normalize_overlay_volume(self, data: np.ndarray) -> np.ndarray:
+        if data.ndim != 3:
+            raise ValueError(
+                f'Expected 3-D (Z, Y, X) overlay array; got shape {data.shape}'
+            )
+        vol = data.astype(np.float32, copy=False)
+        vmin, vmax = float(vol.min()), float(vol.max())
+        max_tex = self._resolve_max_texture_3d()
+        if max(vol.shape) > max_tex:
+            vol = self._downsample(vol, max_tex)
+        if vmax > vmin:
+            vol = (vol - vmin) / (vmax - vmin)
+        else:
+            vol = np.zeros_like(vol)
+        return vol
 
     # -- vispy setup ----------------------------------------------------------
 
@@ -511,10 +564,13 @@ class VolumeRenderer3DWindow(QMainWindow):
             auto_btn_proxy.setWidget(auto_btn)
             self.lut_items_layout.addItem(auto_btn_proxy, row=0, col=c)
             
-            reset_btn = QPushButton('Reset')
-            reset_btn_proxy = QGraphicsProxyWidget()
-            reset_btn_proxy.setWidget(reset_btn)
-            self.lut_items_layout.addItem(reset_btn_proxy, row=1, col=c)
+            full_btn = QPushButton('Full')
+            full_btn.setToolTip(
+                'Reset contrast limits to full normalized range [0, 1]'
+            )
+            full_btn_proxy = QGraphicsProxyWidget()
+            full_btn_proxy.setWidget(full_btn)
+            self.lut_items_layout.addItem(full_btn_proxy, row=1, col=c)
             
             lut_item = widgets.baseHistogramLUTitem(
                 parent=self, 
@@ -522,7 +578,7 @@ class VolumeRenderer3DWindow(QMainWindow):
                 axisLabel=channel,
                 include_rescale_lut_options=False
             )
-            self.lut_items[channel] = (lut_item, auto_btn, reset_btn)
+            self.lut_items[channel] = (lut_item, auto_btn, full_btn)
             self.lut_items_layout.addItem(lut_item, row=2, col=c)
             
             lut_item.channel = channel
@@ -531,8 +587,8 @@ class VolumeRenderer3DWindow(QMainWindow):
             auto_btn.clicked.connect(
                 partial(self._on_auto_clim, lut_item=lut_item)
             )
-            reset_btn.clicked.connect(
-                partial(self._on_reset_clim, lut_item=lut_item)
+            full_btn.clicked.connect(
+                partial(self._on_full_clim, lut_item=lut_item)
             )
             
             total_width += lut_item.sizeHint(Qt.PreferredSize).width()
@@ -551,7 +607,8 @@ class VolumeRenderer3DWindow(QMainWindow):
         self.set_cmap(lut_item)
         
     def _on_auto_clim(self, lut_item: widgets.baseHistogramLUTitem) -> None:
-        lo, hi = self.get_auto_contrast_percentile()
+        lo, hi = self.get_auto_contrast_percentile(channel=lut_item.channel)
+        low_tick = high_tick = None
         max_tick_val = -np.inf
         min_tick_val = np.inf
         for tick, x in lut_item.gradient.listTicks():
@@ -562,12 +619,30 @@ class VolumeRenderer3DWindow(QMainWindow):
             if x < min_tick_val:
                 low_tick = tick
                 min_tick_val = x
-            
-        lut_item.gradient.setTickValue(high_tick, hi)
-        lut_item.gradient.setTickValue(low_tick, lo)
+        
+        if low_tick is not None and high_tick is not None:
+            lut_item.gradient.setTickValue(low_tick, lo)
+            lut_item.gradient.setTickValue(high_tick, hi)
+            self.set_clim(lo, hi, lut_item.channel)
 
-    def _on_reset_clim(self, lut_item: widgets.baseHistogramLUTitem) -> None:
-        lut_item.resetState()
+    def _on_full_clim(self, lut_item: widgets.baseHistogramLUTitem) -> None:
+        lo, hi = 0.0, 1.0
+        low_tick = high_tick = None
+        max_tick_val = -np.inf
+        min_tick_val = np.inf
+        for tick, x in lut_item.gradient.listTicks():
+            if x > max_tick_val:
+                high_tick = tick
+                max_tick_val = x
+            
+            if x < min_tick_val:
+                low_tick = tick
+                min_tick_val = x
+        
+        if low_tick is not None and high_tick is not None:
+            lut_item.gradient.setTickValue(low_tick, lo)
+            lut_item.gradient.setTickValue(high_tick, hi)
+            self.set_clim(lo, hi, lut_item.channel)
 
     # -- Qt UI ----------------------------------------------------------------
     
@@ -580,6 +655,7 @@ class VolumeRenderer3DWindow(QMainWindow):
         
         self.topToolBar.sigHomeView.connect(self.reset_view)
         self.topToolBar.sigSave.connect(self.save_screenshot)
+        self.topToolBar.homeViewAction.setShortcutContext(Qt.WindowShortcut)
         
         controls_box = QGroupBox('Rendering Controls')
         self._controls = VolumeRendererControls(
@@ -716,8 +792,13 @@ class VolumeRenderer3DWindow(QMainWindow):
             node.minip_cutoff = hi
 
     def _apply_mode_cutoffs(self, mode: str, lo: float, hi: float) -> None:
-        """Apply cutoffs to the primary volume node (wrapper for backwards compat)."""
-        self._apply_mode_cutoffs_to(self._volume_node, mode, lo, hi)
+        """Apply cutoffs to primary volume nodes (not overlays)."""
+        if self._volume_nodes is None or not self.channels:
+            return
+        for channel in self.channels:
+            volume_node = self._volume_nodes.get(channel)
+            if volume_node is not None:
+                self._apply_mode_cutoffs_to(volume_node, mode, lo, hi)
 
     @staticmethod
     def _downsample(vol: np.ndarray, max_size: int) -> np.ndarray:
@@ -732,7 +813,11 @@ class VolumeRenderer3DWindow(QMainWindow):
             return vol
         return np.ascontiguousarray(vol[::strides[0], ::strides[1], ::strides[2]])
 
-    def _preprocess_volume(self, volume: np.ndarray):
+    def _preprocess_volume(
+            self,
+            volume: np.ndarray,
+            channel: str | None = None,
+        ):
         if volume.ndim != 3:
             raise ValueError(
                 f'Expected 3-D (Z, Y, X) array; got shape {volume.shape}')
@@ -744,6 +829,10 @@ class VolumeRenderer3DWindow(QMainWindow):
         # Cache raw float32 data so smooth-ISO toggle can re-process without
         # requiring a frame navigation in the host application.
         self._last_raw_data = vol
+        if channel is not None:
+            if self._raw_volumes_data is None:
+                self._raw_volumes_data = {}
+            self._raw_volumes_data[channel] = vol
         original_shape = vol.shape
 
         # Compute the value range on the full-resolution data BEFORE downsampling
@@ -865,6 +954,53 @@ class VolumeRenderer3DWindow(QMainWindow):
             self._canvas.update()
         
         return volume_node
+
+    def _init_overlay_volume_node(
+            self,
+            volume: np.ndarray,
+            channel_name: str,
+            opacity: float,
+            cmap_spec: str,
+            mode_override: str | None,
+        ):
+        from vispy.scene import visuals  # noqa: PLC0415
+
+        primary_mode = self._controls._mode_combo.currentData() or 'mip'
+        node_mode = mode_override or primary_mode
+        current_interp = self._controls._interp_combo.currentData() or 'linear'
+        current_step = self._controls._step_spin.value()
+        depict_mode = self._controls._depict_combo.currentData() or 'volume'
+        is_plane = depict_mode in _PLANE_CONFIGS
+        plane_fraction = self._controls._zplane_slider.value() / 100.0
+
+        volume_node = visuals.Volume(
+            volume,
+            clim=(0.0, 1.0),
+            method=node_mode,
+            cmap=colors.vispy_cmap_from_spec(cmap_spec),
+            interpolation=current_interp,
+            relative_step_size=current_step,
+            parent=self._view.scene,
+        )
+        volume_node.opacity = max(0.0, min(1.0, opacity))
+        volume_node.gamma = self._controls._gamma_spin.value()
+        self._apply_mode_cutoffs_to(volume_node, node_mode, 0.0, 1.0)
+        if node_mode in _ATTN_MODES:
+            volume_node.attenuation = self._controls._attn_spin.value()
+        if node_mode in _ISO_MODES:
+            volume_node.threshold = self._controls._iso_spin.value()
+        if is_plane:
+            volume_node.raycasting_mode = 'plane'
+            self._set_plane_uniforms(
+                depict_mode,
+                plane_fraction,
+                shape=volume.shape,
+                node=volume_node,
+            )
+
+        self._apply_voxel_scale(volume_node)
+        self._overlay_mode_overrides[channel_name] = mode_override
+        return volume_node
     
     def _get_clim(self, lut_item):
         ticks = lut_item.gradient.listTicks()
@@ -954,23 +1090,23 @@ class VolumeRenderer3DWindow(QMainWindow):
                 self._set_cmap(cmap, channel_name)
         
         for channel, volume in volumes.items():
-            vol = self._preprocess_volume(volume)
+            vol = self._preprocess_volume(volume, channel=channel)
             self._volumes_data[channel] = vol
             
             vol_node = self._init_volume_node(
                 vol, channel, update_canvas=False
             )
             self._volume_nodes[channel] = vol_node
+            self._last_shape = vol.shape
         
         if self._is_set_volumes_first_call:
             # Enable blending
             from vispy import gloo
             gloo.set_state(blend=True, depth_test=False)
             gloo.set_blend_func('one', 'one')
+            self._is_set_volumes_first_call = False
         
         self._canvas.update()
-        
-        self._is_set_volumes_first_call = False
     
     def update_volume(
             self, 
@@ -989,7 +1125,7 @@ class VolumeRenderer3DWindow(QMainWindow):
             Data is automatically downsampled if any dimension exceeds the GPU's
             maximum 3-D texture size.
         """
-        vol = self._preprocess_volume(data)
+        vol = self._preprocess_volume(data, channel=channel_name)
         
         if channel_name is None and channel_index is None:
             raise ValueError(
@@ -1000,7 +1136,7 @@ class VolumeRenderer3DWindow(QMainWindow):
         if channel_index is not None and channel_index >= len(self.channels):
             self.channels.append(f'Channel {channel_index+1}')
             channel_name = self.channels[-1]
-        elif channel_index < len(self.channels):
+        elif channel_index is not None and channel_index < len(self.channels):
             channel_name = self.channels[channel_index]
         
         if channel_name not in self._volumes_data.keys():
@@ -1017,32 +1153,78 @@ class VolumeRenderer3DWindow(QMainWindow):
         volume_node.set_data(vol, clim=clim)
         self._apply_mode_cutoffs_to(volume_node, current_mode, lo, hi)
 
-        # self._last_shape = vol.shape
+        self._last_shape = vol.shape
+
+        self._canvas.update()
+
+    def update_overlay_volumes(
+            self,
+            overlays: list[tuple],
+        ) -> None:
+        """Replace overlay volumes stored in ``_volume_nodes`` under ``overlay:N``."""
+        if self._controls is None:
+            return
+
+        self._remove_overlay_channels()
+
+        if not overlays:
+            if hasattr(self, '_canvas') and self._canvas is not None:
+                self._canvas.update()
+            return
+
+        nodes = self._ensure_volume_nodes()
+        if self._volumes_data is None:
+            self._volumes_data = {}
+
+        for index, entry in enumerate(overlays):
+            data, opacity, cmap = entry[0], entry[1], entry[2]
+            mode_override = entry[3] if len(entry) > 3 else None
+            if data.ndim != 3:
+                continue
+
+            channel_name = overlay_channel_name(index)
+            vol = self._normalize_overlay_volume(data)
+            self._volumes_data[channel_name] = vol
+            nodes[channel_name] = self._init_overlay_volume_node(
+                vol,
+                channel_name,
+                opacity,
+                cmap,
+                mode_override,
+            )
 
         self._canvas.update()
 
     def set_rendering_mode(self, mode: str) -> None:
+        if not self._has_volume_nodes():
+            return
+
+        if mode in _ISO_MODES and (self._smooth_iso != self._gpu_data_is_smoothed):
+            for channel in self.channels or []:
+                volume_node = self._volume_nodes.get(channel)
+                if volume_node is not None:
+                    volume_node.method = mode
+                    self._rerender()
+                    return
+
         for channel, volume_node in self._volume_nodes.items():
-            # When entering ISO mode, the GPU texture must match the smooth flag.
-            # Re-upload if the smooth state changed since the last upload (e.g.
-            # the user toggled Smooth while in MIP mode, then switches to ISO —
-            # the GPU still has the old texture from the last update_volume call).
-            if mode in _ISO_MODES and (self._smooth_iso != self._gpu_data_is_smoothed):
-                volume_node.method = mode  # set before _rerender reads it
-                self._rerender()
-                return
-            
-            volume_node.method = mode
-            
+            if is_overlay_channel(channel):
+                if self._overlay_mode_overrides.get(channel) is not None:
+                    continue
+                volume_node.method = mode
+                self._apply_mode_cutoffs_to(volume_node, mode, 0.0, 1.0)
+                if mode in _ISO_MODES:
+                    volume_node.threshold = self._controls._iso_spin.value()
+                if mode in _ATTN_MODES:
+                    volume_node.attenuation = self._controls._attn_spin.value()
+                continue
+
             lut_item = self._get_lut_item(channel)
-            
-            ticks = lut_item.gradient.listTicks()
-            ticks_pos = [x for t, x in ticks]
+            volume_node.method = mode
+            ticks_pos = [x for t, x in lut_item.gradient.listTicks()]
             lo = min(ticks_pos) if ticks_pos else 0.0
             hi = max(ticks_pos) if ticks_pos else 1.0
-            
             self._apply_mode_cutoffs_to(volume_node, mode, lo, hi)
-            
             if mode in _ISO_MODES:
                 volume_node.threshold = self._controls._iso_spin.value()
             if mode in _ATTN_MODES:
@@ -1071,7 +1253,10 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._canvas.update()
 
     def get_auto_contrast_percentile(
-            self, lo_pct: float = 1.0, hi_pct: float = 99.5
+            self,
+            lo_pct: float = 1.0,
+            hi_pct: float = 99.5,
+            channel: str | None = None,
         ) -> tuple[float, float]:
         """
         Set contrast limits to the *lo_pct*–*hi_pct* percentile of the raw
@@ -1084,10 +1269,19 @@ class VolumeRenderer3DWindow(QMainWindow):
 
         Falls back to [0, 1] when no volume has been loaded yet.
         """
-        if self._last_raw_data is None:
+        raw = None
+        if (
+            channel is not None
+            and self._raw_volumes_data is not None
+            and channel in self._raw_volumes_data
+        ):
+            raw = self._raw_volumes_data[channel]
+        elif self._last_raw_data is not None:
+            raw = self._last_raw_data
+
+        if raw is None:
             lo, hi = 0.0, 1.0
         else:
-            raw = self._last_raw_data
             vmin_raw = float(raw.min())
             vmax_raw = float(raw.max())
             if vmax_raw <= vmin_raw:
@@ -1108,8 +1302,21 @@ class VolumeRenderer3DWindow(QMainWindow):
 
         return lo, hi
 
+    def auto_contrast_percentile(
+            self,
+            lo_pct: float = 1.0,
+            hi_pct: float = 99.5,
+            channel: str | None = None,
+        ) -> tuple[float, float]:
+        """Backwards-compatible alias for :meth:`get_auto_contrast_percentile`."""
+        return self.get_auto_contrast_percentile(
+            lo_pct=lo_pct, hi_pct=hi_pct, channel=channel
+        )
+
     def set_gamma(self, value: float) -> None:
-        for volume_node in self._volume_nodes.values():
+        if not self._has_volume_nodes():
+            return
+        for volume_node in self._each_volume_node():
             volume_node.gamma = value
         self._canvas.update()
 
@@ -1121,6 +1328,8 @@ class VolumeRenderer3DWindow(QMainWindow):
         depends on the rendering mode: most visible in translucent and additive
         modes; has no visual effect in MIP/MinIP (which project to a 2D plane).
         """
+        if self._volume_nodes is None:
+            return
         volume_node = self._volume_nodes.get(channel)
         if volume_node is None:
             return
@@ -1129,12 +1338,16 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._canvas.update()
 
     def set_iso_threshold(self, value: float) -> None:
+        if self._volume_nodes is None:
+            return
         for volume_node in self._volume_nodes.values():
             volume_node.threshold = value
             
         self._canvas.update()
 
     def set_attenuation(self, value: float) -> None:
+        if self._volume_nodes is None:
+            return
         for volume_node in self._volume_nodes.values():
             volume_node.attenuation = value
             
@@ -1142,6 +1355,8 @@ class VolumeRenderer3DWindow(QMainWindow):
 
     def set_interpolation(self, method: str) -> None:
         """Set 3D volume interpolation method (e.g. 'linear', 'nearest', 'catrom')."""
+        if self._volume_nodes is None:
+            return
         for volume_node in self._volume_nodes.values():
             volume_node.interpolation = method
             
@@ -1163,15 +1378,17 @@ class VolumeRenderer3DWindow(QMainWindow):
             'plane_x' — YZ cross-section (normal along X).
         """
         is_plane = mode in _PLANE_CONFIGS
-        if self._volume_node is not None:
-            self._volume_node.raycasting_mode = 'plane' if is_plane else 'volume'
-            if is_plane and self._last_shape is not None:
-                self._set_plane_uniforms(mode, 0.5)
-        for node in self._overlay_nodes:
-            node.raycasting_mode = 'plane' if is_plane else 'volume'
-            if is_plane and self._last_shape is not None:
-                self._set_plane_uniforms(mode, 0.5, node=node)
-        self._canvas.update()
+        if self._volume_nodes is not None:
+            for channel, volume_node in self._volume_nodes.items():
+                volume_node.raycasting_mode = 'plane' if is_plane else 'volume'
+                if is_plane:
+                    shape = self._volume_shape(channel)
+                    if shape is not None:
+                        self._set_plane_uniforms(
+                            mode, 0.5, shape=shape, node=volume_node
+                        )
+        if hasattr(self, '_canvas') and self._canvas is not None:
+            self._canvas.update()
 
     def set_zplane_position(self, fraction: float) -> None:
         """
@@ -1179,15 +1396,19 @@ class VolumeRenderer3DWindow(QMainWindow):
 
         The axis is determined by the currently selected depiction mode.
         """
-        if self._last_shape is None:
+        if self._last_shape is None and not self._has_volume_nodes():
             return
         current_mode = self._controls._depict_combo.currentData() or 'volume'
         if current_mode not in _PLANE_CONFIGS:
             return
-        if self._volume_node is not None:
-            self._set_plane_uniforms(current_mode, fraction)
-        for node in self._overlay_nodes:
-            self._set_plane_uniforms(current_mode, fraction, node=node)
+        if self._volume_nodes is not None:
+            for channel, volume_node in self._volume_nodes.items():
+                shape = self._volume_shape(channel)
+                if shape is None:
+                    continue
+                self._set_plane_uniforms(
+                    current_mode, fraction, shape=shape, node=volume_node
+                )
         self._canvas.update()
 
     def _set_plane_uniforms(
@@ -1206,10 +1427,8 @@ class VolumeRenderer3DWindow(QMainWindow):
             ``self._last_shape``.  Must be supplied when called from
             ``update_volume`` before ``_last_shape`` is updated.
         node:
-            Volume node to update.  Defaults to ``self._volume_node``.
+            Volume node to update.  When omitted, the caller must iterate nodes.
         """
-        if node is None:
-            node = self._volume_node
         if node is None:
             return
         normal, axis = _PLANE_CONFIGS[mode]
@@ -1249,12 +1468,11 @@ class VolumeRenderer3DWindow(QMainWindow):
         Larger values produce a thicker slab that shows more context.
         """
         t = max(1.0, thickness)
-        if self._volume_node is not None:
-            self._volume_node.plane_thickness = t
-        for node in self._overlay_nodes:
-            node.plane_thickness = t
-        if self._volume_node is not None or self._overlay_nodes:
-            self._canvas.update()
+        if not self._has_volume_nodes():
+            return
+        for volume_node in self._each_volume_node():
+            volume_node.plane_thickness = t
+        self._canvas.update()
 
     def _rerender(self) -> None:
         """Re-process and re-upload the last received volume (smooth ISO toggle)."""
@@ -1286,10 +1504,12 @@ class VolumeRenderer3DWindow(QMainWindow):
         Smaller values cast more rays per voxel → sharper but slower.
         vispy default and napari default: 0.8.  Range: (0, 2].
         """
-        for volume_node in self._volume_nodes.values():
+        if not self._has_volume_nodes():
+            return
+        for volume_node in self._each_volume_node():
             volume_node.relative_step_size = value
-            
-        self._canvas.update()
+        if hasattr(self, '_canvas') and self._canvas is not None:
+            self._canvas.update()
 
     def set_voxel_scale(
         self,
@@ -1321,15 +1541,12 @@ class VolumeRenderer3DWindow(QMainWindow):
         # Persist so the transform is re-applied automatically when the node is
         # rebuilt due to a shape change (update_volume calls _apply_voxel_scale).
         self._voxel_dz, self._voxel_dy, self._voxel_dx = dz, dy, dx
-        if self._volume_node is None:
+        if not self._has_volume_nodes():
             return
         self._apply_voxel_scale()
 
     def _apply_voxel_scale(self, node=None) -> None:
-        """Apply the stored voxel scale and stride correction to all volume nodes."""
-        if node is None:
-            node = self._volume_node
-        
+        """Apply the stored voxel scale and stride correction to volume nodes."""
         from vispy.visuals.transforms import STTransform  # noqa: PLC0415
         sz, sy, sx = self._last_strides
         dx_eff = self._voxel_dx * sx
@@ -1338,8 +1555,13 @@ class VolumeRenderer3DWindow(QMainWindow):
         if dx_eff <= 0:
             dx_eff = 1.0
         transform = STTransform(scale=(1.0, dy_eff / dx_eff, dz_eff / dx_eff))
-        node.transform = transform
-        self._canvas.update()
+        if node is not None:
+            node.transform = transform
+        else:
+            for volume_node in self._each_volume_node():
+                volume_node.transform = transform
+        if hasattr(self, '_canvas') and self._canvas is not None:
+            self._canvas.update()
 
     def reset_view(self) -> None:
         """Reset the camera to the default orientation and fit the volume."""
