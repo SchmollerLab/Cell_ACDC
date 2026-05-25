@@ -619,6 +619,50 @@ def run_cli(ini_filepath):
     logger.info('**********************************************')
     logger.info(f'Cell-ACDC command-line closed. {myutils.get_salute_string()}')
     logger.info('**********************************************')
+
+
+def run_data_metadata(parser_args):
+    from cellacdc import myutils, cli
+
+    logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        module='data_metadata', logs_path=None
+    )
+    kernel = cli.DataMetadataKernel(logger, log_path, parser_args)
+    kernel.run()
+
+    logger.info('**********************************************')
+    logger.info(f'Cell-ACDC metadata CLI closed. {myutils.get_salute_string()}')
+    logger.info('**********************************************')
+
+
+def run_data_convert(parser_args):
+    from cellacdc import myutils, cli
+
+    logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        module='data_convert', logs_path=None
+    )
+    kernel = cli.DataConvertKernel(logger, log_path, parser_args)
+    kernel.run()
+
+    logger.info('**********************************************')
+    logger.info(f'Cell-ACDC data convert closed. {myutils.get_salute_string()}')
+    logger.info('**********************************************')
+
+
+def run_data_restructure(parser_args):
+    from cellacdc import myutils, cli
+
+    logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        module='data_restructure', logs_path=None
+    )
+    kernel = cli.DataRestructureKernel(logger, log_path, parser_args)
+    kernel.run()
+
+    logger.info('**********************************************')
+    logger.info(
+        f'Cell-ACDC data restructure closed. {myutils.get_salute_string()}'
+    )
+    logger.info('**********************************************')
     
     
 def _setup_numpy(caller_name='Cell-ACDC'):

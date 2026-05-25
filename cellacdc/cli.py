@@ -1995,3 +1995,46 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             self.sigLog.emit(traceback.format_exc())
         
         return all_frames_acdc_df
+
+
+class DataMetadataKernel(_WorkflowKernel):
+    def __init__(self, logger, log_path, parser_args):
+        super().__init__(logger, log_path, is_cli=True)
+        self.parser_args = parser_args
+
+    @exception_handler_cli
+    def run(self):
+        from cellacdc import data_cli
+
+        self.logger.info('Extracting metadata from raw microscopy file...')
+        data_cli.run_metadata_cli(self.parser_args)
+
+
+class DataConvertKernel(_WorkflowKernel):
+    def __init__(self, logger, log_path, parser_args):
+        super().__init__(logger, log_path, is_cli=True)
+        self.parser_args = parser_args
+
+    @exception_handler_cli
+    def run(self):
+        from cellacdc import data_cli
+
+        self.logger.info('Starting BioIO data conversion...')
+        data_cli.run_convert_cli(
+            self.parser_args, logger_func=self.logger.info
+        )
+
+
+class DataRestructureKernel(_WorkflowKernel):
+    def __init__(self, logger, log_path, parser_args):
+        super().__init__(logger, log_path, is_cli=True)
+        self.parser_args = parser_args
+
+    @exception_handler_cli
+    def run(self):
+        from cellacdc import data_cli
+
+        self.logger.info('Starting data restructure...')
+        data_cli.run_restructure_cli(
+            self.parser_args, logger_func=self.logger.info
+        )

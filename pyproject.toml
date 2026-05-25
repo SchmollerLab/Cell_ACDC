@@ -142,6 +142,7 @@ dev = [
 cellacdc = "cellacdc.__main__:run"
 acdc = "cellacdc.__main__:run"
 Cell-ACDC = "cellacdc.__main__:run"
+acdc-data = "cellacdc.data_cli:run"
 
 [tool.setuptools]
 include-package-data = true
