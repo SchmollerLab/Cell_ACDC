@@ -148,6 +148,7 @@ dev = [
 [project.scripts]
 cellacdc = "cellacdc.__main__:run"
 acdc = "cellacdc.__main__:run"
+acdc-gui = "cellacdc.__main__:run_gui_direct"
 Cell-ACDC = "cellacdc.__main__:run"
 
 [tool.setuptools]

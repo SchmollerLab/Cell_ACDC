@@ -38,116 +38,131 @@ if cellacdc_installation_path != site_packages:
 
 from cellacdc import _run
 
-def run():
+
+def _handle_parser_early_exit():
     from cellacdc.config import parser_args
 
-    PARAMS_PATH = parser_args['params']
-    
     if parser_args['version'] or parser_args['info']:
         from cellacdc.myutils import get_info_version_text
-        info_txt = get_info_version_text()
-        print(info_txt)
+        print(get_info_version_text())
         exit()
 
     if parser_args['reset']:
         from cellacdc.myutils import reset_settings
-        reset_info_txt = reset_settings()
-        print(reset_info_txt)
+        print(reset_settings())
         exit()
-    
+
+
+def _bootstrap_gui_app():
+    from ._run import (
+        _setup_gui_libraries,
+        _setup_symlink_app_name_macos,
+        _setup_numpy,
+        download_model_params,
+        _exit_on_setup,
+    )
+
+    _setup_symlink_app_name_macos()
+
+    requires_exit = _setup_gui_libraries(exit_at_end=False)
+
+    _setup_numpy()
+
+    download_model_params()
+
+    if requires_exit:
+        _exit_on_setup()
+
+    from qtpy import QtWidgets, QtCore
+
+    if os.name == 'nt':
+        try:
+            import ctypes
+            myappid = 'schmollerlab.cellacdc.pyqt.v1'
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
+
+    try:
+        QtWidgets.QApplication.setAttribute(
+            QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+        )
+    except Exception:
+        pass
+
+    import pyqtgraph as pg
+    pg.setConfigOption('imageAxisOrder', 'row-major')
+    try:
+        import numba  # noqa: F401
+        pg.setConfigOption('useNumba', True)
+    except Exception:
+        pass
+
+    try:
+        import cupy as cp  # noqa: F401
+        pg.setConfigOption('useCupy', True)
+    except Exception:
+        pass
+
+    return _run._setup_app(splashscreen=True)
+
+
+def _read_gui_version(logger_func=None):
+    from cellacdc import myutils
+
+    version, success = myutils.read_version(
+        logger=logger_func, return_success=True
+    )
+    if success:
+        return version
+
+    error = myutils.check_install_package(
+        'setuptools_scm', pypi_name='setuptools-scm'
+    )
+    if error and logger_func is not None:
+        logger_func(error)
+    return myutils.read_version(logger=logger_func)
+
+
+def run():
+    from cellacdc.config import parser_args
+
+    _handle_parser_early_exit()
+
+    PARAMS_PATH = parser_args['params']
+
     if PARAMS_PATH:
         _run.run_cli(PARAMS_PATH)
     else:
         run_gui()
+
 
 def main():
     # Keep compatibility with users that installed older versions
     # where the entry point was main()
     run()
 
+
 def run_gui():
-    from ._run import (
-        _setup_gui_libraries, 
-        _setup_symlink_app_name_macos,
-        _setup_numpy, 
-        download_model_params, 
-        _exit_on_setup
-    )
-    
-    _setup_symlink_app_name_macos()
-    
-    requires_exit = _setup_gui_libraries(exit_at_end=False)
-    
-    _setup_numpy()
-    
-    download_model_params()
-    
-    if requires_exit:
-        _exit_on_setup()
-    
-    from qtpy import QtGui, QtWidgets, QtCore
+    app, splashScreen = _bootstrap_gui_app()
 
-    if os.name == 'nt':
-        try:
-            # Set taskbar icon in windows
-            import ctypes
-            myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-        except Exception as e:
-            pass
+    from cellacdc import myutils
 
-    # Needed by pyqtgraph with display resolution scaling
-    try:
-        QtWidgets.QApplication.setAttribute(
-            QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-        )
-    except Exception as e:
-        pass
-
-    import pyqtgraph as pg
-    # Interpret image data as row-major instead of col-major
-    pg.setConfigOption('imageAxisOrder', 'row-major')
-    try:
-        import numba
-        pg.setConfigOption("useNumba", True)
-    except Exception as e:
-        pass
-
-    try:
-        import cupy as cp
-        pg.setConfigOption("useCupy", True)
-    except Exception as e:
-        pass
-
-    # Create the application
-    app, splashScreen = _run._setup_app(splashscreen=True)
-
-    from cellacdc import myutils, printl
-    
     print('Launching application...')
 
     from cellacdc._main import mainWin
-    
+
     if not splashScreen.isVisible():
         splashScreen.show()
-    
+
     win = mainWin(app)
 
     try:
         myutils.check_matplotlib_version(qparent=win)
-    except Exception as e:
+    except Exception:
         pass
-    version, success = myutils.read_version(
-        logger=win.logger.info, return_success=True
-    )
-    if not success:
-        error = myutils.check_install_package(
-            'setuptools_scm', pypi_name='setuptools-scm'
-        )
-        if error:
-            win.logger.info(error)
-        else:
-            version = myutils.read_version(logger=win.logger.info)
+
+    version = _read_gui_version(logger_func=win.logger.info)
     win.setVersion(version)
     win.launchWelcomeGuide()
     win.show()
@@ -159,10 +174,65 @@ def run_gui():
     win.logger.info(f'Welcome to Cell-ACDC v{version}')
     win.logger.info('**********************************************')
     win.logger.info('----------------------------------------------')
-    win.logger.info('NOTE: If application is not visible, it is probably minimized\n'
-        'or behind some other open windows.')
+    win.logger.info(
+        'NOTE: If application is not visible, it is probably minimized\n'
+        'or behind some other open windows.'
+    )
     win.logger.info('----------------------------------------------')
     splashScreen.close()
-    # splashScreenApp.quit()
-    # modernWin.show()
+    app.exec_()
+
+
+def run_gui_direct():
+    """Launch the annotation GUI directly, skipping the module launcher."""
+    _handle_parser_early_exit()
+
+    app, splashScreen = _bootstrap_gui_app()
+
+    from cellacdc import myutils
+    from cellacdc.gui import guiWin
+
+    print('Launching GUI...')
+
+    if not splashScreen.isVisible():
+        splashScreen.show()
+
+    version = _read_gui_version()
+    gui_windows = []
+
+    def launch_gui_window(checked=False):
+        win = guiWin(
+            app,
+            mainWin=None,
+            version=version,
+            launcherSlot=launch_gui_window,
+        )
+        gui_windows.append(win)
+        win.sigClosed.connect(_gui_window_closed)
+        win.run()
+        return win
+
+    def _gui_window_closed(closed_win):
+        try:
+            gui_windows.remove(closed_win)
+        except ValueError:
+            pass
+
+    win = launch_gui_window()
+
+    try:
+        myutils.check_matplotlib_version(qparent=win)
+    except Exception:
+        pass
+
+    win.logger.info('**********************************************')
+    win.logger.info(f'Welcome to Cell-ACDC GUI v{version}')
+    win.logger.info('**********************************************')
+    win.logger.info('----------------------------------------------')
+    win.logger.info(
+        'NOTE: If application is not visible, it is probably minimized\n'
+        'or behind some other open windows.'
+    )
+    win.logger.info('----------------------------------------------')
+    splashScreen.close()
     app.exec_()

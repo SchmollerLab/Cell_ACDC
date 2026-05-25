@@ -1425,7 +1425,10 @@ class VolumeRenderer3DWindow(QMainWindow):
         else:
             vol = np.zeros_like(vol)
         
-        current_mode = self._controls._mode_combo.currentData() or 'mip'
+        current_mode = (
+            self._controls._mode_combo.currentData() or 'mip'
+            if self._controls is not None else 'mip'
+        )
 
         # Smooth ISO pre-filter: approximates napari's SMOOTH_GRADIENT_DEFINITION
         # (Sobel-Feldman 27-sample kernel) without requiring custom GLSL injection.
@@ -1694,12 +1697,12 @@ class VolumeRenderer3DWindow(QMainWindow):
             Data is automatically downsampled if any dimension exceeds the GPU's
             maximum 3-D texture size.
         """
-        vol = self._preprocess_volume(data, channel=channel_name)
-
         if self._volumes_data is None or self.channels is None:
             name = channel_name or 'Channel 1'
             self.set_volume(data, channel_name=name)
             return
+
+        vol = self._preprocess_volume(data, channel=channel_name)
 
         if channel_name is None and channel_index is None:
             channel_name = self.channels[0]

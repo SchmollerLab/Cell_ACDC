@@ -44,7 +44,9 @@ if GUI_INSTALLED:
 help_text = (
     'Welcome to Cell-ACDC!\n\n'
     'You can run Cell-ACDC both as a GUI or in the command line.\n'
-    'To run the GUI type `acdc`. To run the command line type `acdc -p <path_to_params_file>`.\n'
+    'To run the GUI type `acdc`. To open the annotation GUI directly '
+    '(skipping the launcher) type `acdc-gui`.\n'
+    'To run the command line type `acdc -p <path_to_params_file>`.\n'
     'The `<path_to_params_file>` must be a workflow INI file.\n'
     'If you do not have one, use the GUI to set up the parameters.\n\n'
     'Enjoy!'

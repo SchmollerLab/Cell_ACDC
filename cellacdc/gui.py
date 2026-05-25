@@ -2187,6 +2187,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if 'brushAutoHide' in self.df_settings.index:
             checked = self.df_settings.at['brushAutoHide', 'value'] == 'Yes'
             self.brushAutoHideCheckbox.setChecked(checked)
+
+        brushEraserToolBar.addWidget(QLabel('  '))
+        self.brushLazyModeCheckbox = QCheckBox('Lazy mode')
+        self.brushLazyModeCheckbox.setToolTip(
+            'Click once to start brushing or erasing, move without holding '
+            'the mouse button, then click again to finish.'
+        )
+        self.brushLazyModeAction = brushEraserToolBar.addWidget(
+            self.brushLazyModeCheckbox
+        )
+        self.brushLazyModeAction.setVisible(False)
+        if 'brushLazyMode' in self.df_settings.index:
+            checked = self.df_settings.at['brushLazyMode', 'value'] == 'Yes'
+            self.brushLazyModeCheckbox.setChecked(checked)
         
         brushEraserToolBar.setVisible(False)
         self.brushEraserToolBar = brushEraserToolBar
@@ -3717,6 +3731,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.brushAutoFillCheckbox.toggled.connect(self.brushAutoFillToggled)
         self.brushAutoHideCheckbox.toggled.connect(self.brushAutoHideToggled)
+        self.brushLazyModeCheckbox.toggled.connect(self.brushLazyModeToggled)
 
         self.imgGrad.sigAddScaleBar.connect(self.addScaleBarAction.setChecked)
         self.imgGrad.sigAddTimestamp.connect(self.addTimestampAction.setChecked)
@@ -5187,6 +5202,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.startBlinkingModeCB()
             event.ignore()
             return
+
+        if (
+            left_click and brushON
+            and (mode == 'Segmentation and Tracking' or self.isSnapshot)
+            and not is_event_from_img1
+        ):
+            ctrl = modifiers == Qt.ControlModifier
+            if self._lazyModeEnabled() and self.isMouseDragImg1:
+                self.finishLazyStroke()
+                return
+            self.startBrushStroke(xdata, ydata, ctrl=ctrl)
+            return
+
+        if (
+            left_click and eraserON
+            and (mode == 'Segmentation and Tracking' or self.isSnapshot)
+            and not is_event_from_img1
+        ):
+            if self._lazyModeEnabled() and self.isMouseDragImg1:
+                self.finishLazyStroke()
+                return
+            self.startEraserStroke(xdata, ydata)
+            return
         
         # Left-click is used for brush, eraser, separate bud, curvature tool
         # and magic labeller
@@ -5954,103 +5992,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         # Brush dragging mouse --> keep brushing
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
-            lab_2D = self.get_2Dlab(posData.lab)
-
-            # t1 = time.perf_counter()
-
-            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
-            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
-
-            # t2 = time.perf_counter()
-
-            diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
-
-            # Build brush mask
-            mask = np.zeros(lab_2D.shape, bool)
-            mask[diskSlice][diskMask] = True
-            mask[rrPoly, ccPoly] = True
-            
-            modifiers = QGuiApplication.keyboardModifiers()
-            ctrl = modifiers == Qt.ControlModifier
-
-            # t3 = time.perf_counter()
-            if not self.isPowerBrush() and not ctrl:
-                mask[lab_2D!=0] = False
-                self.setHoverToolSymbolColor(
-                    xdata, ydata, self.ax2_BrushCirclePen,
-                    (self.ax2_BrushCircle, self.ax1_BrushCircle),
-                    self.brushButton, brush=self.ax2_BrushCircleBrush
-                )
-
-            # t4 = time.perf_counter()
-
-            # Apply brush mask
-            self.applyBrushMask(mask, posData.brushID)
-
-            self.setImageImg2(updateLookuptable=False)
-
-            # t5 = time.perf_counter()
-
-            lab2D = self.get_2Dlab(posData.lab)
-            brushMask = np.logical_and(
-                lab2D[diskSlice] == posData.brushID, diskMask
-            )
-            self.setTempImg1Brush(
-                False, brushMask, posData.brushID, 
-                toLocalSlice=diskSlice
-            )
-
-            # t6 = time.perf_counter()
-
-            # printl(
-            #     'Brush exec times =\n'
-            #     f'  * {(t1-t0)*1000 = :.4f} ms\n'
-            #     f'  * {(t2-t1)*1000 = :.4f} ms\n'
-            #     f'  * {(t3-t2)*1000 = :.4f} ms\n'
-            #     f'  * {(t4-t3)*1000 = :.4f} ms\n'
-            #     f'  * {(t5-t4)*1000 = :.4f} ms\n'
-            #     f'  * {(t6-t5)*1000 = :.4f} ms\n'
-            #     f'  * {(t6-t0)*1000 = :.4f} ms'
-            # )
+            self._continueBrushStroke(x, y, xdata, ydata)
 
         # Eraser dragging mouse --> keep erasing
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
-            posData = self.data[self.pos_i]
-            lab_2D = self.get_2Dlab(posData.lab)
-            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
-
-            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
-
-            diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
-
-            # Build eraser mask
-            mask = np.zeros(lab_2D.shape, bool)
-            mask[ymin:ymax, xmin:xmax][diskMask] = True
-            mask[rrPoly, ccPoly] = True
-
-            if self.eraseOnlyOneID:
-                mask[lab_2D!=self.erasedID] = False
-                self.setHoverToolSymbolColor(
-                    xdata, ydata, self.eraserCirclePen,
-                    (self.ax2_EraserCircle, self.ax1_EraserCircle),
-                    self.eraserButton, hoverRGB=self.img2.lut[self.erasedID],
-                    ID=self.erasedID
-                )
-
-            self.erasedIDs.update(lab_2D[mask])
-            self.applyEraserMask(mask)
-
-            self.setImageImg2()
-            
-            for erasedID in self.erasedIDs:
-                if erasedID == 0:
-                    continue
-                self.erasedLab[lab_2D==erasedID] = erasedID
-                self.erasedLab[mask] = 0
-
-            eraserMask = mask[diskSlice]
-            self.setTempImg1Eraser(eraserMask, toLocalSlice=diskSlice)
-            self.setTempImg1Eraser(eraserMask, toLocalSlice=diskSlice, ax=1)
+            self._continueEraserStroke(x, y, xdata, ydata)
 
         # Move label dragging mouse --> keep moving
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
@@ -6397,6 +6343,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.checkHighlightScaleBar(x, y, activeToolButton)
                 self.checkHighlightTimestamp(x, y, activeToolButton)
                 self.wcLabel.setText(hoverText)
+                if self._lazyStrokeActive():
+                    if self.brushButton.isChecked():
+                        self._continueBrushStroke(x, y, xdata, ydata)
+                    elif self.eraserButton.isChecked():
+                        self._continueEraserStroke(x, y, xdata, ydata)
         else:
             self.clickedOnBud = False
             self.BudMothTempLine.setData([], [])
@@ -6452,6 +6403,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             x, y = event.pos()
             self.updateBrushCursor(x, y, isHoverImg1=isHoverImg1)
             self.hideItemsHoverBrush(xy=(x, y))
+        elif cursorsInfo['setCurvCursor'] and not event.isExit():
+            x, y = event.pos()
+            xdata, ydata = int(x), int(y)
+            if self.autoIDcheckbox.isChecked():
+                self.getHoverID(xdata, ydata)
         elif cursorsInfo['setAddPointCursor']:
             x, y = event.pos()
             self.setHoverCircleAddPoint(x, y)
@@ -6786,9 +6742,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # hoverText = self.hoverValuesFormatted(xdata, ydata)
             # self.wcLabel.setText(hoverText)
         else:
-            if self.eraserButton.isChecked() or self.brushButton.isChecked():
+            if (
+                (self.eraserButton.isChecked() or self.brushButton.isChecked())
+                and not self._lazyStrokeActive()
+            ):
                 self.gui_mouseReleaseEventImg2(event)
             self.wcLabel.setText(f'')
+
+        if not event.isExit():
+            x, y = event.pos()
+            xdata, ydata = int(x), int(y)
+            if (
+                self._lazyStrokeActive()
+                and myutils.is_in_bounds(
+                    xdata, ydata, *self.currentLab2D.shape[::-1]
+                )
+            ):
+                if self.brushButton.isChecked():
+                    self._continueBrushStroke(x, y, xdata, ydata)
+                elif self.eraserButton.isChecked():
+                    self._continueEraserStroke(x, y, xdata, ydata)
 
         if setMoveLabelCursor or setExpandLabelCursor:
             x, y = event.pos()
@@ -6858,66 +6831,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         # Eraser dragging mouse --> keep erasing
-        if self.isMouseDragImg2 and self.eraserButton.isChecked():
-            posData = self.data[self.pos_i]
-            lab_2D = self.get_2Dlab(posData.lab)
-            Y, X = lab_2D.shape
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
-            brushSize = self.brushSizeSpinbox.value()
-            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
-
-            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
-
-            # Build eraser mask
-            mask = np.zeros(lab_2D.shape, bool)
-            mask[ymin:ymax, xmin:xmax][diskMask] = True
-            mask[rrPoly, ccPoly] = True
-
-            if self.eraseOnlyOneID:
-                mask[lab_2D!=self.erasedID] = False
-                self.setHoverToolSymbolColor(
-                    xdata, ydata, self.eraserCirclePen,
-                    (self.ax2_EraserCircle, self.ax1_EraserCircle),
-                    self.eraserButton, hoverRGB=self.img2.lut[self.erasedID],
-                    ID=self.erasedID
-                )
-
-            self.erasedIDs.update(lab_2D[mask])
-
-            self.applyEraserMask(mask)
-            self.setImageImg2(updateLookuptable=False)
+        if self.isMouseDragImg1 and self.eraserButton.isChecked():
+            self._continueEraserStroke(x, y, xdata, ydata)
 
         # Brush paint dragging mouse --> keep painting
-        if self.isMouseDragImg2 and self.brushButton.isChecked():
-            posData = self.data[self.pos_i]
-            lab_2D = self.get_2Dlab(posData.lab)
-            Y, X = lab_2D.shape
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
-
-            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
-            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
-
-            # Build brush mask
-            mask = np.zeros(lab_2D.shape, bool)
-            mask[ymin:ymax, xmin:xmax][diskMask] = True
-            mask[rrPoly, ccPoly] = True
-
-            # If user double-pressed 'b' then draw over the labels
-            color = self.brushButton.palette().button().color().name()
-            if color != self.doublePressKeyButtonColor:
-                mask[lab_2D!=0] = False
-                self.setHoverToolSymbolColor(
-                    xdata, ydata, self.ax2_BrushCirclePen,
-                    (self.ax2_BrushCircle, self.ax1_BrushCircle),
-                    self.eraserButton, brush=self.ax2_BrushCircleBrush
-                )
-
-            # Apply brush mask
-            self.applyBrushMask(mask, self.ax2BrushID)
-
-            self.setImageImg2()
+        if self.isMouseDragImg1 and self.brushButton.isChecked():
+            self._continueBrushStroke(x, y, xdata, ydata)
 
         # Move label dragging mouse --> keep moving
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
@@ -7078,7 +6997,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.curvToolSplineToObj(isRightClick=True)
                 self.update_rp()
                 if self.autoIDcheckbox.isChecked():
-                    self.trackManuallyAddedObject(posData.brushID, True)
+                    self.trackManuallyAddedObject(
+                        posData.brushID, self.isNewID
+                    )
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
                     self.updateAllImages()
@@ -7093,25 +7014,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         # Eraser mouse release --> update IDs and contours
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
-            self.isMouseDragImg1 = False
+            if self._lazyModeEnabled():
+                return
 
-            self.clearTempBrushImage()
-        
-            # Update data (rp, etc)
-            self.update_rp()
-
-            doUpdateImages = self.checkWarnDeletedIDwithEraser()
-            
-            if doUpdateImages:
-                self.updateAllImages()
+            self.finishEraserStroke()
 
         # Brush button mouse release
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
-            self.isMouseDragImg1 = False
+            if self._lazyModeEnabled():
+                return
 
-            self.clearTempBrushImage()
-            
-            self.brushReleased()
+            self.finishBrushStroke()
 
         # Wand tool release, add new object
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
@@ -7734,100 +7647,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xdata, ydata = int(x), int(y)
             lab_2D = self.get_2Dlab(posData.lab)
             Y, X = lab_2D.shape
-            
-            # Store undo state before modifying stuff
-            self.storeUndoRedoStates(False, storeOnlyZoom=True)
-
-            ID = self.getHoverID(xdata, ydata)
-
-            if ID > 0:
-                posData.brushID = ID
-                self.isNewID = False
-            else:
-                # Update brush ID. Take care of disappearing cells to remember
-                # to not use their IDs anymore in the future
-                self.isNewID = True
-                self.setBrushID()
-                self.updateLookuptable(lenNewLut=posData.brushID+1)
-
-            self.brushColor = self.lut[posData.brushID]/255
 
             self.yPressAx2, self.xPressAx2 = y, x
 
-            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
-            diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
+            if self._lazyModeEnabled() and self.isMouseDragImg1:
+                self.finishLazyStroke()
+                return
 
-            self.isMouseDragImg1 = True
-
-            # Draw new objects
-            localLab = lab_2D[diskSlice]
-            mask = diskMask.copy()
-            if not self.isPowerBrush() and not ctrl:
-                mask[localLab!=0] = False
-
-            self.applyBrushMask(mask, posData.brushID, toLocalSlice=diskSlice)
-
-            self.setImageImg2(updateLookuptable=False)
-
-            how = self.drawIDsContComboBox.currentText()
-            lab2D = self.get_2Dlab(posData.lab)
-            self.globalBrushMask = np.zeros(lab2D.shape, dtype=bool)
-            brushMask = localLab == posData.brushID
-            brushMask = np.logical_and(brushMask, diskMask)
-            self.setTempImg1Brush(
-                True, brushMask, posData.brushID, toLocalSlice=diskSlice
-            )
-
-            self.lastHoverID = -1
+            self.startBrushStroke(xdata, ydata, ctrl=ctrl)
 
         elif left_click and canErase:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            lab_2D = self.get_2Dlab(posData.lab)
-            Y, X = lab_2D.shape
 
-            # Store undo state before modifying stuff
-            self.storeUndoRedoStates(False, storeOnlyZoom=True)
+            if self._lazyModeEnabled() and self.isMouseDragImg1:
+                self.finishLazyStroke()
+                return
 
-            self.yPressAx2, self.xPressAx2 = y, x
-            # Keep a list of erased IDs got erased
-            self.erasedIDs = set()
-            
-            if self.xyOnCtrlPressedFirstTime is not None:
-                self.erasedID = self.getHoverID(*self.xyOnCtrlPressedFirstTime)
-            else: 
-                self.erasedID = self.getHoverID(xdata, ydata)
-
-            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
-
-            # Build eraser mask
-            mask = np.zeros(lab_2D.shape, bool)
-            mask[ymin:ymax, xmin:xmax][diskMask] = True
-
-
-            # If user double-pressed 'b' then erase over ALL labels
-            color = self.eraserButton.palette().button().color().name()
-            eraseOnlyOneID = (
-                color != self.doublePressKeyButtonColor
-                and self.erasedID != 0
-            )
-
-            self.eraseOnlyOneID = eraseOnlyOneID
-
-            if eraseOnlyOneID:
-                mask[lab_2D!=self.erasedID] = False
-
-            self.setTempImg1Eraser(mask, init=True)
-            self.applyEraserMask(mask)
-
-            self.erasedIDs.update(lab_2D[mask])  
-
-            for erasedID in self.erasedIDs:
-                if erasedID == 0:
-                    continue
-                self.erasedLab[lab_2D==erasedID] = erasedID
-            
-            self.isMouseDragImg1 = True
+            self.startEraserStroke(xdata, ydata)
 
         elif canAddPoint:
             action = addPointsByClickingButton.action
@@ -8067,7 +7904,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.curvToolSplineToObj()
                 self.update_rp()
                 if self.autoIDcheckbox.isChecked():
-                    self.trackManuallyAddedObject(posData.brushID, True)
+                    self.trackManuallyAddedObject(
+                        posData.brushID, self.isNewID
+                    )
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
                     self.updateAllImages()
@@ -9925,7 +9764,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.isSegm3D:
             z = self.z_lab()
             SizeZ = posData.lab.shape[0]
-            doNotLinkThroughZ = self.brushButton.isChecked() and shift
+            doNotLinkThroughZ = (
+                shift
+                and (
+                    self.brushButton.isChecked()
+                    or self.curvToolButton.isChecked()
+                )
+            )
             if doNotLinkThroughZ:
                 if self.brushHoverCenterModeAction.isChecked() or ID>0:
                     hoverID = ID
@@ -9972,8 +9817,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     hoverID = 0
         else:
-            if self.brushButton.isChecked() and shift:
-                # Force new ID with brush and Shift
+            if shift and (
+                self.brushButton.isChecked()
+                or self.curvToolButton.isChecked()
+            ):
+                # Force new ID with brush/curvature tool and Shift
                 hoverID = 0
             elif self.brushHoverCenterModeAction.isChecked() or ID>0:
                 hoverID = ID
@@ -11755,6 +11603,203 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         val = 'Yes' if checked else 'No'
         self.df_settings.at['brushAutoHide', 'value'] = val
         self.df_settings.to_csv(self.settings_csv_path)
+
+    def brushLazyModeToggled(self, checked):
+        val = 'Yes' if checked else 'No'
+        self.df_settings.at['brushLazyMode', 'value'] = val
+        self.df_settings.to_csv(self.settings_csv_path)
+        if not checked:
+            self.finishLazyStroke()
+
+    def _lazyModeEnabled(self):
+        return self.brushLazyModeCheckbox.isChecked()
+
+    def _lazyStrokeActive(self):
+        return (
+            self._lazyModeEnabled()
+            and self.isMouseDragImg1
+            and (
+                self.brushButton.isChecked()
+                or self.eraserButton.isChecked()
+            )
+        )
+
+    def finishLazyStroke(self):
+        if self.brushButton.isChecked() and self.isMouseDragImg1:
+            self.finishBrushStroke()
+        elif self.eraserButton.isChecked() and self.isMouseDragImg1:
+            self.finishEraserStroke()
+
+    def _continueBrushStroke(self, x, y, xdata, ydata):
+        posData = self.data[self.pos_i]
+        lab_2D = self.get_2Dlab(posData.lab)
+        Y, X = lab_2D.shape
+
+        ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+        rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
+        diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
+
+        mask = np.zeros(lab_2D.shape, bool)
+        mask[diskSlice][diskMask] = True
+        mask[rrPoly, ccPoly] = True
+
+        modifiers = QGuiApplication.keyboardModifiers()
+        ctrl = modifiers == Qt.ControlModifier
+        if not self.isPowerBrush() and not ctrl:
+            mask[lab_2D != 0] = False
+            self.setHoverToolSymbolColor(
+                xdata, ydata, self.ax2_BrushCirclePen,
+                (self.ax2_BrushCircle, self.ax1_BrushCircle),
+                self.brushButton, brush=self.ax2_BrushCircleBrush,
+            )
+
+        self.applyBrushMask(mask, posData.brushID)
+        self.setImageImg2(updateLookuptable=False)
+
+        lab2D = self.get_2Dlab(posData.lab)
+        brushMask = np.logical_and(
+            lab2D[diskSlice] == posData.brushID, diskMask
+        )
+        self.setTempImg1Brush(
+            False, brushMask, posData.brushID,
+            toLocalSlice=diskSlice,
+        )
+
+    def startBrushStroke(self, xdata, ydata, ctrl=False):
+        posData = self.data[self.pos_i]
+        lab_2D = self.get_2Dlab(posData.lab)
+
+        self.storeUndoRedoStates(False, storeOnlyZoom=True)
+
+        ID = self.getHoverID(xdata, ydata)
+
+        if ID > 0:
+            posData.brushID = ID
+            self.isNewID = False
+        else:
+            self.isNewID = True
+            self.setBrushID()
+            self.updateLookuptable(lenNewLut=posData.brushID+1)
+
+        self.brushColor = self.lut[posData.brushID]/255
+
+        ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+        diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
+
+        self.isMouseDragImg1 = True
+
+        localLab = lab_2D[diskSlice]
+        mask = diskMask.copy()
+        if not self.isPowerBrush() and not ctrl:
+            mask[localLab!=0] = False
+
+        self.applyBrushMask(mask, posData.brushID, toLocalSlice=diskSlice)
+
+        self.setImageImg2(updateLookuptable=False)
+
+        lab2D = self.get_2Dlab(posData.lab)
+        self.globalBrushMask = np.zeros(lab2D.shape, dtype=bool)
+        brushMask = localLab == posData.brushID
+        brushMask = np.logical_and(brushMask, diskMask)
+        self.setTempImg1Brush(
+            True, brushMask, posData.brushID, toLocalSlice=diskSlice
+        )
+
+        self.lastHoverID = -1
+
+    def startEraserStroke(self, xdata, ydata):
+        posData = self.data[self.pos_i]
+        lab_2D = self.get_2Dlab(posData.lab)
+
+        self.storeUndoRedoStates(False, storeOnlyZoom=True)
+
+        self.yPressAx2, self.xPressAx2 = ydata, xdata
+        self.erasedIDs = set()
+
+        if self.xyOnCtrlPressedFirstTime is not None:
+            self.erasedID = self.getHoverID(*self.xyOnCtrlPressedFirstTime)
+        else:
+            self.erasedID = self.getHoverID(xdata, ydata)
+
+        ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+        mask = np.zeros(lab_2D.shape, bool)
+        mask[ymin:ymax, xmin:xmax][diskMask] = True
+
+        color = self.eraserButton.palette().button().color().name()
+        self.eraseOnlyOneID = (
+            color != self.doublePressKeyButtonColor
+            and self.erasedID != 0
+        )
+
+        if self.eraseOnlyOneID:
+            mask[lab_2D != self.erasedID] = False
+
+        self.setTempImg1Eraser(mask, init=True)
+        self.applyEraserMask(mask)
+
+        self.erasedIDs.update(lab_2D[mask])
+        for erasedID in self.erasedIDs:
+            if erasedID == 0:
+                continue
+            self.erasedLab[lab_2D == erasedID] = erasedID
+
+        self.isMouseDragImg1 = True
+
+    def _continueEraserStroke(self, x, y, xdata, ydata):
+        posData = self.data[self.pos_i]
+        lab_2D = self.get_2Dlab(posData.lab)
+        Y, X = lab_2D.shape
+
+        ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+        rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
+        diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
+
+        mask = np.zeros(lab_2D.shape, bool)
+        mask[ymin:ymax, xmin:xmax][diskMask] = True
+        mask[rrPoly, ccPoly] = True
+
+        if self.eraseOnlyOneID:
+            mask[lab_2D != self.erasedID] = False
+            self.setHoverToolSymbolColor(
+                xdata, ydata, self.eraserCirclePen,
+                (self.ax2_EraserCircle, self.ax1_EraserCircle),
+                self.eraserButton, hoverRGB=self.img2.lut[self.erasedID],
+                ID=self.erasedID,
+            )
+
+        self.erasedIDs.update(lab_2D[mask])
+        self.applyEraserMask(mask)
+        self.setImageImg2()
+
+        for erasedID in self.erasedIDs:
+            if erasedID == 0:
+                continue
+            self.erasedLab[lab_2D == erasedID] = erasedID
+            self.erasedLab[mask] = 0
+
+        eraserMask = mask[diskSlice]
+        self.setTempImg1Eraser(eraserMask, toLocalSlice=diskSlice)
+        self.setTempImg1Eraser(eraserMask, toLocalSlice=diskSlice, ax=1)
+
+    def finishEraserStroke(self):
+        if not self.isMouseDragImg1:
+            return
+
+        self.isMouseDragImg1 = False
+        self.clearTempBrushImage()
+        self.update_rp()
+
+        doUpdateImages = self.checkWarnDeletedIDwithEraser()
+        if doUpdateImages:
+            self.updateAllImages()
+
+    def finishBrushStroke(self):
+        if not self.isMouseDragImg1:
+            return
+
+        self.isMouseDragImg1 = False
+        self.clearTempBrushImage()
+        self.brushReleased()
 
     def brushReleased(self):
         posData = self.data[self.pos_i]
@@ -14350,6 +14395,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.connectLeftClickButtons()
             self.setFocusGraphics()
         else:
+            if self.isMouseDragImg1:
+                self.finishLazyStroke()
             self.ax1_lostObjScatterItem.setVisible(True)
             self.ax2_lostObjScatterItem.setVisible(True)
             self.ax1_lostTrackedScatterItem.setVisible(True)
@@ -14361,6 +14408,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.resetCursors()
         
         self.showEditIDwidgets(checked)
+        self.brushLazyModeAction.setVisible(checked)
         self.enableSizeSpinbox(checked)
     
     def showEditIDwidgets(self, visible):
@@ -14530,6 +14578,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def curvTool_cb(self, checked):
         posData = self.data[self.pos_i]
         if checked:
+            self.setDiskMask()
             self.disconnectLeftClickButtons()
             self.uncheckLeftClickButtons(self.curvToolButton)
             self.connectLeftClickButtons()
@@ -14633,6 +14682,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.brushButton.setStyleSheet(f'background-color: {c}')
             self.connectLeftClickButtons()
         else:
+            if self.isMouseDragImg1:
+                self.finishLazyStroke()
             self.setHoverToolSymbolData(
                 [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
                          self.ax1_EraserX, self.ax2_EraserX)
@@ -14641,6 +14692,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.updateAllImages()
             
         self.showEditIDwidgets(checked)
+        self.brushLazyModeAction.setVisible(checked)
         self.enableSizeSpinbox(checked)
     
     def storeCurrentAnnotOptions_ax1(self, return_value=False):
@@ -20738,16 +20790,32 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         xxS, yyS = self.getClosedSplineCoords()
 
+        xx, yy = self.curvAnchors.getData()
+        if len(xx) > 0:
+            xdata, ydata = int(round(xx[0])), int(round(yy[0]))
+        else:
+            xdata, ydata = int(self.autoCont_x0), int(self.autoCont_y0)
+
         if self.autoIDcheckbox.isChecked():
-            self.setBrushID()
-            curvToolID = posData.brushID
+            hoverID = self.getHoverID(xdata, ydata)
+            if hoverID > 0:
+                curvToolID = hoverID
+                self.isNewID = False
+            else:
+                self.setBrushID()
+                curvToolID = posData.brushID
+                self.isNewID = True
+                self.updateLookuptable(lenNewLut=posData.brushID+1)
         else:
             curvToolID = self.editIDspinbox.value()
-            posData.brushID = curvToolID
-
-        if curvToolID <= 0:
-            self.setBrushID()
-            curvToolID = posData.brushID
+            if curvToolID <= 0:
+                self.setBrushID()
+                curvToolID = posData.brushID
+                self.isNewID = True
+                self.updateLookuptable(lenNewLut=posData.brushID+1)
+            else:
+                self.isNewID = False
+        posData.brushID = curvToolID
             
         lab2D = self.get_2Dlab(posData.lab).copy()
         newIDMask = np.zeros(lab2D.shape, bool)
@@ -33268,6 +33336,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.brushButton.isChecked() and self.typingEditID:
             self.autoIDcheckbox.setChecked(True)
             self.typingEditID = False
+            QTimer.singleShot(300, self.autoRange)
+            return
+
+        if (
+            self.isMouseDragImg1
+            and self._lazyModeEnabled()
+            and (
+                self.brushButton.isChecked()
+                or self.eraserButton.isChecked()
+            )
+        ):
+            self.finishLazyStroke()
             QTimer.singleShot(300, self.autoRange)
             return
         
