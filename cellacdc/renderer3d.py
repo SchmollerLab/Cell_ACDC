@@ -91,26 +91,6 @@ _PLANE_CONFIGS: dict[str, tuple[list[float], int]] = {
 }
 
 
-# Plain colour names that _make_cmap converts to black→colour two-stop maps.
-# Anything else is forwarded directly to vispy as a standard colormap name.
-_PLAIN_COLOURS = frozenset({
-    'red', 'green', 'blue', 'cyan', 'magenta', 'yellow', 'white', 'orange',
-})
-
-
-def _make_cmap(spec: str):
-    """Return a vispy colormap for *spec*.
-
-    Plain colour names ('red', 'green', …) produce a black→colour ramp so
-    the channel appears in that hue against the black renderer background.
-    Anything else is passed through as a standard vispy colormap name.
-    """
-    if spec in _PLAIN_COLOURS:
-        from vispy.color import Colormap  # noqa: PLC0415
-        return Colormap(['black', spec])
-    return spec
-
-
 # ---------------------------------------------------------------------------
 # Pure-stdlib PNG writer (fallback when skimage is not available)
 # ---------------------------------------------------------------------------
@@ -454,7 +434,7 @@ class VolumeRenderer3DWindow(QMainWindow):
     Usage (minimal)::
 
         renderer = VolumeRenderer3DWindow()
-        renderer.update_volume(zstack_array)   # (Z, Y, X) numpy array
+        renderer.set_volume(zstack_array)   # (Z, Y, X) numpy array
         renderer.run()
 
     The window hides (rather than closes) when the user presses X so the GPU
@@ -478,17 +458,18 @@ class VolumeRenderer3DWindow(QMainWindow):
         
         self._hide_on_close = hide_on_close
         self._adapter = adapter
-        self._volume_nodes: dict[str, visuals.Volume] | None = None
         self._volumes_data: dict[str, np.ndarray] | None = None
+        self._volume_node: visuals.Volume | None = None
         self.lut_items: dict[str, widgets.baseHistogramLUTitem] | None = None
-        self._overlay_nodes: list = []
-        self._overlay_mode_overrides: list = []  # str or None per overlay node
+        self.channels: list[str] | None = None
         self._last_shape: tuple | None = None
         self._max_texture_3d: int | None = None  # resolved on first upload
         self._smooth_iso: bool = False
         self._gpu_data_is_smoothed: bool = False  # tracks whether GPU texture has Gaussian filter
         self._last_raw_data: np.ndarray | None = None  # float32, for re-render
-
+        self._ui_initialised: bool = False
+        self._is_set_volumes_first_call: bool = False
+        
         self._init_vispy()
 
     # -- vispy setup ----------------------------------------------------------
@@ -591,6 +572,9 @@ class VolumeRenderer3DWindow(QMainWindow):
     # -- Qt UI ----------------------------------------------------------------
     
     def _init_ui(self) -> None:
+        if self._ui_initialised:
+            return
+        
         self.topToolBar = widgets.VolumeRendererToolbar(parent=self)
         self.addToolBar(Qt.TopToolBarArea, self.topToolBar)
         
@@ -616,6 +600,8 @@ class VolumeRenderer3DWindow(QMainWindow):
         main_layout.addLayout(self.scene_layout)
         main_layout.addWidget(controls_box)
         self.setCentralWidget(central)
+        
+        self._ui_initialised = True
 
         # Restore settings saved in a previous session.
         # self._load_settings()
@@ -784,7 +770,7 @@ class VolumeRenderer3DWindow(QMainWindow):
             vol = np.zeros_like(vol)
         
         current_mode = self._controls._mode_combo.currentData() or 'mip'
-        
+
         # Smooth ISO pre-filter: approximates napari's SMOOTH_GRADIENT_DEFINITION
         # (Sobel-Feldman 27-sample kernel) without requiring custom GLSL injection.
         # Applied after normalisation so the threshold remains in [0, 1].
@@ -802,6 +788,9 @@ class VolumeRenderer3DWindow(QMainWindow):
         
         return vol
     
+    def _get_lut_item(self, channel_name: str):
+        return self.lut_items[channel_name][0]
+    
     def _init_volume_node(
             self, 
             volume: np.ndarray, 
@@ -814,7 +803,7 @@ class VolumeRenderer3DWindow(QMainWindow):
         current_interp = self._controls._interp_combo.currentData() or 'linear'
         current_step = self._controls._step_spin.value()
         
-        lut_item = self.lut_items[channel_name][0]
+        lut_item = self._get_lut_item(channel_name)
         
         pg_cmap = lut_item.gradient.colorMap()
         current_cmap = colors.pg_to_vispy_cmap(pg_cmap)
@@ -830,7 +819,7 @@ class VolumeRenderer3DWindow(QMainWindow):
             method=current_mode,
             cmap=current_cmap,
             interpolation=current_interp,
-            relative_step_size=current_step,
+            relative_step_size=2.5,
             parent=self._view.scene,
         )
         
@@ -838,11 +827,12 @@ class VolumeRenderer3DWindow(QMainWindow):
         volume_node.opacity = (
             self._controls._opacity_spins[channel_name].value()
         )
+        volume_node.attenuation = 0.05
         
         if current_mode in _ATTN_MODES:
-            self._volume_node.attenuation = self._controls._attn_spin.value()
+            volume_node.attenuation = self._controls._attn_spin.value()
         if current_mode in _ISO_MODES:
-            self._volume_node.threshold = self._controls._iso_spin.value()
+            volume_node.threshold = self._controls._iso_spin.value()
         
         self._apply_mode_cutoffs_to(
             volume_node, current_mode, clim[0], clim[1]
@@ -856,7 +846,7 @@ class VolumeRenderer3DWindow(QMainWindow):
             self._set_plane_uniforms(
                 depict_mode,
                 self._controls._zplane_slider.value() / 100.0,
-                shape=vol.shape,
+                shape=volume.shape,
                 node=volume_node
             )
         
@@ -884,23 +874,51 @@ class VolumeRenderer3DWindow(QMainWindow):
         clim = (min_val, max_val)
         return clim
     
+    def _set_cmap(
+            self, 
+            cmap: str | list[colors.RgbaColor], 
+            channel_name: str
+        ):
+        lut_item = self._get_lut_item(channel_name)
+        if isinstance(cmap, str):
+            lut_item.gradient.loadPreset(cmap)
+        else:
+            gradient = colors.get_pg_gradient(cmap)
+            lut_item.setGradient(gradient)
+    
     # -- Public API -----------------------------------------------------------
 
     def set_volume(
             self, 
             volume: np.ndarray,
             channel_name: None | str=None,
+            cmap: str | list[colors.RgbaColor] | None=None,
         ):
+        if self.channels is not None and channel_name is None:
+            raise ValueError(
+                'When setting up multiple volumes `channel_name` needs to '
+                'be specified.'
+            )
+        
         channel_names = None
         if channel_name is not None:
             channel_names = [channel_name]
         
         self.set_volumes([volume], channel_names)
         
+        if cmap is None:
+            return
+        
+        if channel_name is None:
+            channel_name = self.channels[0]
+        
+        self._set_cmap(cmap, channel_name)
+        
     def set_volumes(
             self, 
             volumes: dict[str, np.ndarray] | list[np.ndarray],
             channel_names: None | list[str]=None,
+            cmaps: None | dict[str, list[colors.RgbaColor]] | list[list[colors.RgbaColor]]=None,
         ):
         if self._volumes_data is None:
             self._volumes_data = {}
@@ -916,6 +934,10 @@ class VolumeRenderer3DWindow(QMainWindow):
                 ]
                 
             volumes = dict(zip(keys, volumes))
+            channel_names = keys
+        
+        if cmaps is not None and not isinstance(cmaps, dict):
+            cmaps = dict(zip(channel_names, volumes))
         
         self.channels = list(volumes.keys())
         
@@ -928,16 +950,22 @@ class VolumeRenderer3DWindow(QMainWindow):
             lut_items = self._add_lut_items(self.scene_layout)
             self.scene_layout.addWidget(self._canvas.native, stretch=1)
         
+        if cmaps is not None:
+            for channel_name, cmap in cmaps.items():
+                self._set_cmap(cmap, channel_name)
+        
         for channel, volume in volumes.items():
             vol = self._preprocess_volume(volume)
             self._volumes_data[channel] = vol
-            
-            vol_node = self._init_volume_node(
-                vol, channel, update_canvas=False
-            )
-            self._volume_nodes[channel] = vol_node
+        
+        self._set_volume_node_data()
         
         self._canvas.update()
+        
+        self._is_set_volumes_first_call = False
+    
+    def _set_volume_node_data(self):
+        ...
     
     def update_volume(
             self, 
@@ -974,9 +1002,9 @@ class VolumeRenderer3DWindow(QMainWindow):
             self.set_volume(data, channel_name)
         
         current_mode = self._controls._mode_combo.currentData() or 'mip'
-        volume_node = self._volume_nodes[channel_name]
+        volume_node = self._volume_node
         
-        lut_item = self.lut_items[channel_name]
+        lut_item = self._get_lut_item(channel_name)
         
         clim = self._get_clim(lut_item)
         lo, hi = clim
@@ -988,124 +1016,55 @@ class VolumeRenderer3DWindow(QMainWindow):
 
         self._canvas.update()
 
-    def update_overlay_volumes(
-            self,
-            overlays: list[tuple],
-        ) -> None:
-        """Replace the displayed overlay volumes.
-
-        Parameters
-        ----------
-        overlays:
-            List of tuples ``(data, opacity, colormap[, mode_override])``.
-            *data* is a ``(Z, Y, X)`` array; *opacity* ∈ ``[0, 1]``;
-            *colormap* is a vispy colormap name.  The optional fourth element
-            *mode_override* (str or None) forces a specific rendering mode for
-            this overlay independently of the primary volume's mode — pass
-            ``'mip'`` for binary masks so filled interiors are always visible
-            regardless of the primary's ISO/translucent mode.
-            Pass an empty list to clear all overlays.
-        """
-        from vispy.scene import visuals  # noqa: PLC0415
-
-        for node in self._overlay_nodes:
-            node.parent = None
-        self._overlay_nodes.clear()
-        self._overlay_mode_overrides.clear()
-
-        if not overlays:
-            self._canvas.update()
-            return
-
-        max_tex = self._resolve_max_texture_3d()
-        primary_mode = self._controls._mode_combo.currentData() or 'mip'
-        current_interp = self._controls._interp_combo.currentData() or 'linear'
-        current_step = self._controls._step_spin.value()
-        depict_mode = self._controls._depict_combo.currentData() or 'volume'
-        is_plane = depict_mode in _PLANE_CONFIGS
-        plane_fraction = self._controls._zplane_slider.value() / 100.0
-
-        for entry in overlays:
-            data, opacity, cmap = entry[0], entry[1], entry[2]
-            mode_override = entry[3] if len(entry) > 3 else None
-            node_mode = mode_override or primary_mode
-
-            if data.ndim != 3:
-                continue
-            vol = data.astype(np.float32, copy=False)
-            vmin, vmax = float(vol.min()), float(vol.max())
-            if max(vol.shape) > max_tex:
-                vol = self._downsample(vol, max_tex)
-            if vmax > vmin:
-                vol = (vol - vmin) / (vmax - vmin)
-            else:
-                vol = np.zeros_like(vol)
-            
-            node = visuals.Volume(
-                vol,
-                clim=(0.0, 1.0),
-                method=node_mode,
-                cmap=_make_cmap(cmap),
-                interpolation=current_interp,
-                relative_step_size=current_step,
-                parent=self._view.scene,
-            )
-            node.opacity = max(0.0, min(1.0, opacity))
-            node.gamma = self._controls._gamma_spin.value()
-            self._apply_mode_cutoffs_to(node, node_mode, 0.0, 1.0)
-            if node_mode in _ATTN_MODES:
-                node.attenuation = self._controls._attn_spin.value()
-            if node_mode in _ISO_MODES:
-                node.threshold = self._controls._iso_spin.value()
-            if is_plane:
-                node.raycasting_mode = 'plane'
-                self._set_plane_uniforms(depict_mode, plane_fraction,
-                                         shape=vol.shape, node=node)
-            self._overlay_nodes.append(node)
-            self._overlay_mode_overrides.append(mode_override)
-
-        # Apply the stored voxel-scale transform so overlays align with the
-        # primary volume even when dz≠dy≠dx.
-        self._apply_voxel_scale()
-
     def set_rendering_mode(self, mode: str) -> None:
-        for channel, volume_node in self._volume_nodes.items():
-            # When entering ISO mode, the GPU texture must match the smooth flag.
-            # Re-upload if the smooth state changed since the last upload (e.g.
-            # the user toggled Smooth while in MIP mode, then switches to ISO —
-            # the GPU still has the old texture from the last update_volume call).
-            if mode in _ISO_MODES and (self._smooth_iso != self._gpu_data_is_smoothed):
-                volume_node.method = mode  # set before _rerender reads it
-                self._rerender()
-                return
-            
-            lut_item = self.lut_items[channel]
+        volume_node = self._volume_node
+        
+        # When entering ISO mode, the GPU texture must match the smooth flag.
+        # Re-upload if the smooth state changed since the last upload (e.g.
+        # the user toggled Smooth while in MIP mode, then switches to ISO —
+        # the GPU still has the old texture from the last update_volume call).
+        if mode in _ISO_MODES and (self._smooth_iso != self._gpu_data_is_smoothed):
+            volume_node.method = mode  # set before _rerender reads it
+            self._rerender()
+            return
+        
+        volume_node.method = mode
+        
+        if len(self.channels) == 1:
+            channel = self.channels[0]
+            lut_item = self._get_lut_item(channel)
             
             ticks = lut_item.gradient.listTicks()
             ticks_pos = [x for t, x in ticks]
             lo = min(ticks_pos) if ticks_pos else 0.0
             hi = max(ticks_pos) if ticks_pos else 1.0
             
-            self._apply_mode_cutoffs_to(volume_node, mode, lo, hi)
-            
-            if mode in _ISO_MODES:
-                volume_node.threshold = self._controls._iso_spin.value()
-            if mode in _ATTN_MODES:
-                volume_node.attenuation = self._controls._attn_spin.value()
+            self._apply_mode_cutoffs(volume_node, mode, lo, hi)
+        
+        if mode in _ISO_MODES:
+            volume_node.threshold = self._controls._iso_spin.value()
+        if mode in _ATTN_MODES:
+            volume_node.attenuation = self._controls._attn_spin.value()
 
         self._canvas.update()
 
     def set_clim(self, lo: float, hi: float, channel: str) -> None:
-        volume_node = self._volume_nodes[channel]
+        volume_node = self._volume_node
+        if volume_node is None:
+            return
+        
         volume_node.clim = (lo, hi)
         current_mode = self._controls._mode_combo.currentData() or 'mip'
-        self._apply_mode_cutoffs_to(volume_node, current_mode, lo, hi)
+        self._apply_mode_cutoffs(current_mode, lo, hi)
         self._canvas.update()
     
-    def set_cmap(self, lut_item):
+    def set_cmap(self, lut_item: widgets.baseHistogramLUTitem):
         cmap = colors.pg_to_vispy_cmap(lut_item.gradient.colorMap())
         channel = lut_item.channel
-        volume_node = self._volume_nodes[channel]
+        volume_node = self._volume_node
+        if volume_node is None:
+            return
+        
         volume_node.cmap = cmap
         self._canvas.update()
 
@@ -1148,8 +1107,8 @@ class VolumeRenderer3DWindow(QMainWindow):
         return lo, hi
 
     def set_gamma(self, value: float) -> None:
-        for volume_node in self._volume_nodes.values():
-            volume_node.gamma = value
+        volume_node = self._volume_node
+        volume_node.gamma = value
         self._canvas.update()
 
     def set_opacity(self, value: float, channel: str | None = None) -> None:
@@ -1160,27 +1119,37 @@ class VolumeRenderer3DWindow(QMainWindow):
         depends on the rendering mode: most visible in translucent and additive
         modes; has no visual effect in MIP/MinIP (which project to a 2D plane).
         """
-        for volume_node in self._volume_nodes.values():
-            volume_node.opacity = max(0.0, min(1.0, value))
-            
+        volume_node = self._volume_node
+        if volume_node is None:
+            return
+        
+        volume_node.opacity = max(0.0, min(1.0, value))
         self._canvas.update()
 
     def set_iso_threshold(self, value: float) -> None:
-        for volume_node in self._volume_nodes.values():
-            volume_node.threshold = value
-            
+        volume_node = self._volume_node
+        if volume_node is None:
+            return
+        
+        volume_node.threshold = value
         self._canvas.update()
 
     def set_attenuation(self, value: float) -> None:
-        for volume_node in self._volume_nodes.values():
-            volume_node.attenuation = value
+        volume_node = self._volume_node
+        if volume_node is None:
+            return
+        
+        volume_node.attenuation = value
             
         self._canvas.update()
 
     def set_interpolation(self, method: str) -> None:
         """Set 3D volume interpolation method (e.g. 'linear', 'nearest', 'catrom')."""
-        for volume_node in self._volume_nodes.values():
-            volume_node.interpolation = method
+        volume_node = self._volume_node
+        if volume_node is None:
+            return
+        
+        volume_node.interpolation = method
             
         self._canvas.update()
 
@@ -1323,8 +1292,11 @@ class VolumeRenderer3DWindow(QMainWindow):
         Smaller values cast more rays per voxel → sharper but slower.
         vispy default and napari default: 0.8.  Range: (0, 2].
         """
-        for volume_node in self._volume_nodes.values():
-            volume_node.relative_step_size = value
+        volume_node = self._volume_node
+        if volume_node is None:
+            return
+        
+        volume_node.relative_step_size = value
             
         self._canvas.update()
 
