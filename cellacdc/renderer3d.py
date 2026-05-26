@@ -490,7 +490,6 @@ class VolumeRenderer3DWindow(QMainWindow):
         self._last_raw_data: np.ndarray | None = None  # float32, for re-render
 
         self._init_vispy()
-        self._init_ui()
 
     # -- vispy setup ----------------------------------------------------------
 
@@ -599,7 +598,11 @@ class VolumeRenderer3DWindow(QMainWindow):
         self.topToolBar.sigSave.connect(self.save_screenshot)
         
         controls_box = QGroupBox('Rendering Controls')
-        self._controls = VolumeRendererControls(self, parent=controls_box)
+        self._controls = VolumeRendererControls(
+            self, 
+            parent=controls_box,
+            channels=self.channels
+        )
         box_layout = QVBoxLayout(controls_box)
         box_layout.setContentsMargins(4, 4, 4, 4)
         box_layout.addWidget(self._controls)
@@ -915,6 +918,8 @@ class VolumeRenderer3DWindow(QMainWindow):
             volumes = dict(zip(keys, volumes))
         
         self.channels = list(volumes.keys())
+        
+        self._init_ui()
         
         if self._volume_nodes is None:
             self._volume_nodes = {}
