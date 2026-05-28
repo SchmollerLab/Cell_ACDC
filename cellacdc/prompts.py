@@ -124,7 +124,10 @@ class select_channel_name:
                 channel_names = load.get_channel_names_from_symlink(
                     os.path.join(images_path, file)
                 )
-                if self.basename is not None:
+                if channel_names:
+                    basename = file[:-len('_symlink.ini')]
+                    self.basename = basename
+                    self.basenameNotFound = False
                     return channel_names, False
         
         # Find basename as intersection of filenames
