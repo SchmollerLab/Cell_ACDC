@@ -3697,6 +3697,8 @@ class OMEXML:
             return tif.ome_metadata
     
     def parse_metadata(self):
+        self.root = None
+        self.ome_schema = None
         self.omexml_string = self.read_omexml_string()
         if self.omexml_string is None:
             return
@@ -3706,6 +3708,9 @@ class OMEXML:
     
     def instrument(self):
         instrument = OMEXML_intrument()
+        if self.root is None:
+            return instrument
+        
         instrument_xml = self.root.find(f'{self.ome_schema}Instrument')
         if instrument_xml is None:
             return instrument
@@ -3719,9 +3724,15 @@ class OMEXML:
         return instrument
 
     def get_image_count(self):
+        if self.root is None:
+            return 1
+        
         return len(self.root.findall(f'{self.ome_schema}Image'))
 
     def image(self):
+        if self.root is None:
+            return 'undefined'
+        
         Image = self.root.find(f'{self.ome_schema}Image')
         Pixels = Image.find(f'{self.ome_schema}Pixels')
         image = OMEXML_image(Pixels, self.ome_schema)

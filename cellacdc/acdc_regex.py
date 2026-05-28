@@ -33,6 +33,9 @@ def is_alphanumeric_filename(
     else:
         pattern = r'^[\w\-_.]+$'
     
+    if allowed is None:
+        allowed = []
+    
     if isinstance(allowed, str):
         allowed = (allowed,)
     
