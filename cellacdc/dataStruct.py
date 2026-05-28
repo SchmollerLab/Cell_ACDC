@@ -1927,8 +1927,11 @@ class createDataStructWin(QMainWindow):
         return files
 
     def checkFileNames(self, raw_filenames, raw_src_path):
+        allowed = (
+            '.ome.tif',
+        )
         for file in raw_filenames:
-            if not acdc_regex.is_alphanumeric_filename(file):
+            if not acdc_regex.is_alphanumeric_filename(file, allowed=allowed):
                 msg = widgets.myMessageBox(wrapText=False)
                 txt = html_utils.paragraph(
                     f"""

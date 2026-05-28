@@ -23,13 +23,32 @@ def get_function_names(text, include_class_methods=True):
         pattern = r'\ndef\s+([a-zA-Z_]\w*)\s*\('
     return re.findall(pattern, text)
 
-def is_alphanumeric_filename(text, allow_space=True):
+def is_alphanumeric_filename(
+        text, 
+        allow_space=True, 
+        allowed: str | list[str] | None=None
+    ):
     if allow_space:
         pattern = r'^[\w\-_. ]+$'
     else:
         pattern = r'^[\w\-_.]+$'
-    is_single_or_no_dot = len(re.findall(r'\.', text)) <= 1
-    return bool(re.match(pattern, text)) and is_single_or_no_dot
+    
+    if allowed is None:
+        allowed = []
+    
+    if isinstance(allowed, str):
+        allowed = (allowed,)
+    
+    max_num_dots = 1
+    if allowed is not None:
+        max_num_dots += sum([txt.count('.') for txt in allowed])
+    
+    for allowed_text in allowed:
+        allowed_text = re.escape(allowed_text)
+        pattern = pattern.replace(r'+$', fr'+({allowed_text})?$')
+    
+    is_less_max_num_dots = len(re.findall(r'\.', text)) <= max_num_dots
+    return bool(re.match(pattern, text)) and is_less_max_num_dots
 
 def get_non_alphanumeric_characters(text):
     return re.findall(r'[^\w\-.]', text)

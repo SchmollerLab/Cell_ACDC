@@ -3659,8 +3659,12 @@ class OMEXML_intrument:
 
 class OMEXML_Channel:
     def __init__(self, Channel) -> None:
-        self.Name = Channel.attrib.get('Name', '')
-        self.node = Channel.attrib
+        if not Channel or Channel is None:
+            self.Name = 'not_found'
+            self.node = None
+        else:
+            self.Name = Channel.attrib.get('Name', '')
+            self.node = Channel.attrib
 
 class OMEXML_Pixels:
     def __init__(self, Pixels, node, ome_schema) -> None:
@@ -3683,7 +3687,10 @@ class OMEXML_Pixels:
             self.PhysicalSizeZ = node.get('PhysicalSizeZ', 1.0)
         
     def Channel(self, channel_index=0):
-        Channel = self.Pixels.findall(f'{self.ome_schema}Channel')[channel_index]
+        try:
+            Channel = self.Pixels.findall(f'{self.ome_schema}Channel')[channel_index]
+        except Exception as err:
+            Channel = None
         return OMEXML_Channel(Channel)
 
 class OMEXML:
@@ -3697,12 +3704,20 @@ class OMEXML:
             return tif.ome_metadata
     
     def parse_metadata(self):
+        self.root = None
+        self.ome_schema = None
         self.omexml_string = self.read_omexml_string()
+        if self.omexml_string is None:
+            return
+        
         self.root = ET.fromstring(self.omexml_string)
         self.ome_schema = re.findall(r'({.+})OME', self.root.tag)[0]
     
     def instrument(self):
         instrument = OMEXML_intrument()
+        if self.root is None:
+            return instrument
+        
         instrument_xml = self.root.find(f'{self.ome_schema}Instrument')
         if instrument_xml is None:
             return instrument
@@ -3716,9 +3731,15 @@ class OMEXML:
         return instrument
 
     def get_image_count(self):
+        if self.root is None:
+            return 1
+        
         return len(self.root.findall(f'{self.ome_schema}Image'))
 
     def image(self):
+        if self.root is None:
+            return OMEXML_image(None, 'not_found')
+        
         Image = self.root.find(f'{self.ome_schema}Image')
         Pixels = Image.find(f'{self.ome_schema}Pixels')
         image = OMEXML_image(Pixels, self.ome_schema)
