@@ -3683,7 +3683,10 @@ class OMEXML_Pixels:
             self.PhysicalSizeZ = node.get('PhysicalSizeZ', 1.0)
         
     def Channel(self, channel_index=0):
-        Channel = self.Pixels.findall(f'{self.ome_schema}Channel')[channel_index]
+        try:
+            Channel = self.Pixels.findall(f'{self.ome_schema}Channel')[channel_index]
+        except Exception as err:
+            Channel = 'not_found'
         return OMEXML_Channel(Channel)
 
 class OMEXML:
@@ -3731,7 +3734,7 @@ class OMEXML:
 
     def image(self):
         if self.root is None:
-            return 'undefined'
+            return OMEXML_image(None, 'not_found')
         
         Image = self.root.find(f'{self.ome_schema}Image')
         Pixels = Image.find(f'{self.ome_schema}Pixels')
