@@ -3659,8 +3659,12 @@ class OMEXML_intrument:
 
 class OMEXML_Channel:
     def __init__(self, Channel) -> None:
-        self.Name = Channel.attrib.get('Name', '')
-        self.node = Channel.attrib
+        if not Channel or Channel is None:
+            self.Name = 'not_found'
+            self.node = None
+        else:
+            self.Name = Channel.attrib.get('Name', '')
+            self.node = Channel.attrib
 
 class OMEXML_Pixels:
     def __init__(self, Pixels, node, ome_schema) -> None:
@@ -3686,7 +3690,7 @@ class OMEXML_Pixels:
         try:
             Channel = self.Pixels.findall(f'{self.ome_schema}Channel')[channel_index]
         except Exception as err:
-            Channel = 'not_found'
+            Channel = None
         return OMEXML_Channel(Channel)
 
 class OMEXML:
