@@ -4340,7 +4340,9 @@ def save_symlink_ini_from_image_filepath(
         image_filepath: os.PathLike,
         images_folderpath: os.PathLike,
         channel_name: str,
-        basename: str=''
+        basename: str='',
+        frames_range: tuple[int] | None=None,
+        zslices_range: tuple[int] | None=None,
     ):
     filename = os.path.basename(image_filepath)
     filename_no_ext, ext = os.path.splitext(filename)
@@ -4353,12 +4355,22 @@ def save_symlink_ini_from_image_filepath(
     cp_symlink = config.ConfigParser()
     if os.path.exists(symlink_ini_filepath):
         cp_symlink.read(symlink_ini_filepath)
-        
+    
+    if frames_range is None:
+        frames_range = (0,1)
+    
+    frames_range_str = ','.join(frames_range)
+    
+    if zslices_range is None:
+        zslices_range = (0,1)
+    
+    zslices_range_str = ','.join(zslices_range)
+    
     use_bioio = 'False' if ext in ACDC_IMAGE_EXTENSIONS else 'True'
     cp_symlink[f'channel_name.{channel_name}'] = {
         'source_filepath': image_filepath,
-        'frames_range': '0,1',
-        'zslices_range': '0,1',
+        'frames_range': frames_range_str,
+        'zslices_range': zslices_range_str,
         'channel_index': '0',
         'series_index': '0',
         'lazy_load': 'False',
@@ -4383,7 +4395,6 @@ def create_symlinked_pos_folder(
     
     basename = get_basename(src_images_path)
     channel_names = get_channel_names(src_images_path)
-    symlink_ini_filename = f'{basename}symlink.ini'
     for file in myutils.listdir(src_images_path):
         filepath = os.path.join(src_images_path, file)
         dst_filepath = os.path.join(dst_images_path, file)

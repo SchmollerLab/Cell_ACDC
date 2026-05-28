@@ -19419,7 +19419,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
             if doNotAskAgain:
                 for pos in pos_foldernames:
                     paths.append(os.path.join(exp_path, pos))
-                    continue
+                continue
             
             informativeText = html_utils.paragraph(
                 'The following experiment folder<br><br>'
@@ -19442,7 +19442,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
                 doNotAskAgain = True
                 for pos in pos_foldernames:
                     paths.append(os.path.join(exp_path, pos))
-                    continue
+                continue
             
             for pos in select_folder.selected_pos:
                 paths.append(os.path.join(exp_path, pos))

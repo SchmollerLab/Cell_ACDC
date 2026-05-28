@@ -2696,7 +2696,6 @@ class CreateSymLinkToPosWin(QMainWindow):
             dst_folderpath, 
             exp_segm_files_to_copy_mapper
         ):
-        printl(exp_segm_files_to_copy_mapper)
         self._worker_thread = QThread()
         
         self._worker = workers.CreateSymLinkToPosWinWorker(
