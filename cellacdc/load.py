@@ -4347,7 +4347,8 @@ def save_symlink_ini_from_image_filepath(
     if not basename:
         symlink_ini_filename = f'{filename_no_ext}_symlink.ini'
     else:
-        symlink_ini_filename = f'{basename}symlink.ini'
+        separator = '' if basename.endswith('_') else '_'
+        symlink_ini_filename = f'{basename}{separator}symlink.ini'
     symlink_ini_filepath = os.path.join(images_folderpath, symlink_ini_filename)
     cp_symlink = config.ConfigParser()
     if os.path.exists(symlink_ini_filepath):
