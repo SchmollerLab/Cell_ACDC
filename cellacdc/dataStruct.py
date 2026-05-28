@@ -2502,7 +2502,7 @@ class CreateSymLinkToPosWin(QMainWindow):
         infoText = html_utils.paragraph("""
             This module allows you to create symbolic links to your 
             existing Position folders, instead of copying the raw microscopy files into them.<br><br>
-            To so so, follow the instructions in the pop-up windows.<br><br>
+            To do so, follow the instructions in the pop-up windows.<br><br>
             Progress will be displayed below.
         """)
         
