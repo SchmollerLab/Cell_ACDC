@@ -28,6 +28,62 @@ from cellacdc import widgets
 from cellacdc._run import _setup_app
 from cellacdc import colors
 
+from typing import Literal
+
+VolumeBlending = Literal[
+    "translucent",
+    "translucent_no_depth",
+    "additive",
+]
+
+# Mirrors napari._vispy.utils.gl.BLENDING_MODES (subset used for volumes).
+_BLENDING_MODES: dict[VolumeBlending, dict] = {
+    "translucent": {
+        "depth_test": True,
+        "cull_face": False,
+        "blend": True,
+        "blend_func": ("src_alpha", "one_minus_src_alpha", "one", "one"),
+        "blend_equation": "func_add",
+    },
+    "translucent_no_depth": {
+        "depth_test": False,
+        "cull_face": False,
+        "blend": True,
+        "blend_func": ("src_alpha", "one_minus_src_alpha", "one", "one"),
+        "blend_equation": "func_add",
+    },
+    "additive": {
+        "depth_test": False,
+        "cull_face": False,
+        "blend": True,
+        "blend_func": ("src_alpha", "dst_alpha", "one", "one"),
+        "blend_equation": "func_add",
+    },
+}
+
+def volume_gl_state(
+    blending: VolumeBlending,
+    *,
+    first_visible: bool,
+) -> dict:
+    """Return kwargs for ``vispy`` ``set_gl_state`` for a volume visual."""
+    state = dict(_BLENDING_MODES[blending])
+    if not first_visible:
+        return state
+
+    # Bottommost visible layer: avoid pathological blending with the canvas.
+    if blending == "additive":
+        src_color, dst_color = "src_alpha", "zero"
+    else:
+        src_color, dst_color = "src_alpha", "one_minus_src_alpha"
+    return {
+        "depth_test": state["depth_test"],
+        "cull_face": False,
+        "blend": True,
+        "blend_func": (src_color, dst_color, "one", "one"),
+        "blend_equation": "func_add",
+    }
+
 # ---------------------------------------------------------------------------
 # Rendering-mode registry
 # Matches exactly the set in vispy.scene.visuals.Volume._rendering_methods
@@ -825,51 +881,47 @@ class VolumeRenderer3DWindow(QMainWindow):
         clim = (min_val, max_val)
         
         volume_node = visuals.Volume(
-            volume,
-            clim=clim,
-            method=current_mode,
-            cmap=current_cmap,
-            interpolation=current_interp,
-            relative_step_size=current_step,
+            np.zeros((2, 2, 2), dtype=np.float32),
+            method="mip",
             parent=self._view.scene,
         )
         
-        volume_node.gamma = self._controls._gamma_spin.value()
-        volume_node.opacity = (
-            self._controls._opacity_spins[channel_name].value()
-        )
+        # volume_node.gamma = self._controls._gamma_spin.value()
+        # volume_node.opacity = (
+        #     self._controls._opacity_spins[channel_name].value()
+        # )
         
-        if current_mode in _ATTN_MODES:
-            self._volume_node.attenuation = self._controls._attn_spin.value()
-        if current_mode in _ISO_MODES:
-            self._volume_node.threshold = self._controls._iso_spin.value()
+        # if current_mode in _ATTN_MODES:
+        #     self._volume_node.attenuation = self._controls._attn_spin.value()
+        # if current_mode in _ISO_MODES:
+        #     self._volume_node.threshold = self._controls._iso_spin.value()
         
-        self._apply_mode_cutoffs_to(
-            volume_node, current_mode, clim[0], clim[1]
-        )
+        # self._apply_mode_cutoffs_to(
+        #     volume_node, current_mode, clim[0], clim[1]
+        # )
         
-        depict_mode = self._controls._depict_combo.currentData() or 'volume'
+        # depict_mode = self._controls._depict_combo.currentData() or 'volume'
         
-        if depict_mode in _PLANE_CONFIGS:
-            volume_node.raycasting_mode = 'plane'
-            # Pass vol.shape explicitly: _last_shape not yet updated here.
-            self._set_plane_uniforms(
-                depict_mode,
-                self._controls._zplane_slider.value() / 100.0,
-                shape=vol.shape,
-                node=volume_node
-            )
+        # if depict_mode in _PLANE_CONFIGS:
+        #     volume_node.raycasting_mode = 'plane'
+        #     # Pass vol.shape explicitly: _last_shape not yet updated here.
+        #     self._set_plane_uniforms(
+        #         depict_mode,
+        #         self._controls._zplane_slider.value() / 100.0,
+        #         shape=volume.shape,
+        #         node=volume_node
+        #     )
         
-        self._apply_voxel_scale(volume_node)
+        # self._apply_voxel_scale(volume_node)
         
-        self._view.camera.set_range()
+        # self._view.camera.set_range()
         
-        from vispy.visuals.transforms import STTransform  # noqa: PLC0415
-        axis_scale = max(2.0, max(volume.shape) * 0.10)
-        self._axis_visual.transform = STTransform(
-            scale=(axis_scale, axis_scale, axis_scale)
-        )
-        self._axis_visual.visible = True
+        # from vispy.visuals.transforms import STTransform  # noqa: PLC0415
+        # axis_scale = max(2.0, max(volume.shape) * 0.10)
+        # self._axis_visual.transform = STTransform(
+        #     scale=(axis_scale, axis_scale, axis_scale)
+        # )
+        # self._axis_visual.visible = True
         
         if update_canvas:
             self._canvas.update()
@@ -936,6 +988,18 @@ class VolumeRenderer3DWindow(QMainWindow):
                 vol, channel, update_canvas=False
             )
             self._volume_nodes[channel] = vol_node
+
+        i = 0
+        for channel, node in self._volume_nodes.items():
+            node.order = i
+            node.set_data(self._volumes_data[channel])
+            node.opacity = 0.5
+            blending = "translucent_no_depth" if i == 0 else "additive"
+            node.set_gl_state(
+                **volume_gl_state(blending, first_visible=i==0)
+            )
+            i += 1
+            
         
         self._canvas.update()
     
