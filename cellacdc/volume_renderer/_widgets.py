@@ -1,5 +1,11 @@
 from qtpy.QtCore import (
-    Signal
+    Signal, Qt
+)
+from qtpy.QtWidgets import (
+    QAction
+)
+from qtpy.QtGui import (
+    QIcon,
 )
 
 from cellacdc.widgets import ToolBar

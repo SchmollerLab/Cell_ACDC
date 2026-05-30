@@ -23367,17 +23367,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return fluo_data, bkgrData
 
     def setOverlayColors(self):
-        self.overlayRGBs = [
-            (255, 255, 0),
-            (252, 72, 254),
-            (49, 222, 134),
-            (22, 108, 27)
-        ]
-        self.overlayCmap = matplotlib.colormaps['hsv']
-        self.overlayRGBs.extend(
-            [tuple([round(c*255) for c in self.overlayCmap(i)][:3]) 
-            for i in np.linspace(0,1,8)]
-        )
+        self.overlayRGBs = colors.overlay_default_plt_cmap.copy()
 
     def getFileExtensions(self, images_path):
         alignedFound = any([f.find('_aligned.np')!=-1
