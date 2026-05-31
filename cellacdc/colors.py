@@ -430,3 +430,25 @@ def pg_to_vispy_cmap(pg_cmap, n=256):
     colors = np.array(colors) / 255.0
 
     return VisPyColormap(colors)
+
+def get_auto_contrast_percentile(
+        image_data: np.ndarray,
+        low_pct=0.02,
+        high_pct=99.98
+    ):
+    # Subsample large volumes for speed (< 1 M samples is fast).
+    vmin_raw = float(image_data.min())
+    vmax_raw = float(image_data.max())
+    flat = image_data.ravel()
+    if flat.size > 1_000_000:
+        step = flat.size // 1_000_000 + 1
+        flat = flat[::step]
+    p_lo = float(np.percentile(flat, low_pct))
+    p_hi = float(np.percentile(flat, high_pct))
+    span = vmax_raw - vmin_raw
+    lo = max(0.0, min(1.0, (p_lo - vmin_raw) / span))
+    hi = max(0.0, min(1.0, (p_hi - vmin_raw) / span))
+    if hi <= lo:
+        lo, hi = 0.0, 1.0
+    
+    return lo, hi

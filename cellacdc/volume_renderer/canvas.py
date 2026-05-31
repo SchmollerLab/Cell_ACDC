@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from functools import partial
 
 import numpy as np
 
@@ -6,7 +7,8 @@ from qtpy.QtCore import (
     Signal, Qt, QCoreApplication, QEventLoop
 )
 from qtpy.QtWidgets import (
-    QMainWindow, QHBoxLayout, QVBoxLayout, QWidget
+    QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, 
+    QGraphicsProxyWidget    
 )
 
 import pyqtgraph as pg
@@ -30,9 +32,10 @@ ColorMapPerChannel = (
 @dataclass
 class _ChannelData:
     node: object
-    lut: widgets.baseHistogramLUTitem
+    lut_item: widgets.baseHistogramLUTitem
     volume: np.ndarray
-    pg_cmap_name: str
+    auto_button: QPushButton
+    reset_button: QPushButton
 
 class VolumeRendererWindow(QMainWindow):
     """
@@ -222,10 +225,82 @@ class VolumeRendererWindow(QMainWindow):
             foregr_rgb = self._default_rgbs.pop(0)
         
         pg_gradient = colors.get_pg_gradient([(0,0,0,0), foregr_rgb])
-        lut_item.setGradient(gradient)
+        lut_item = self._channels_data[channel_name].lut_item
+        lut_item.setGradient(pg_gradient)
         cmap = colors.pg_to_vispy_cmap(lut_item)
         return cmap
+    
+    def _set_channels_data(
+            self, 
+            volumes: list[np.ndarray],
+            channel_names: list[str],
+            cmaps: ColorMapPerChannel=None,
+        ):
+        from vispy.scene import visuals
         
+        for channel, volume in zip(channel_names, volumes):
+            col = len(self._channels_data)
+            
+            auto_btn = QPushButton('Auto')
+            auto_btn_proxy = QGraphicsProxyWidget()
+            auto_btn_proxy.setWidget(auto_btn)
+            self._lut_items_layout.addItem(auto_btn_proxy, row=0, col=col)
+            
+            reset_btn = QPushButton('Reset')
+            reset_btn_proxy = QGraphicsProxyWidget()
+            reset_btn_proxy.setWidget(reset_btn)
+            self._lut_items_layout.addItem(reset_btn_proxy, row=1, col=col)
+            
+            node = visuals.Volume(
+                volume,
+                method="mip",
+                parent=self._view.scene,
+            )
+            
+            lut_item = widgets.baseHistogramLUTitem()
+            
+            channel_data = _ChannelData(
+                node=node,
+                lut_item=lut_item,
+                volume=volume,
+                auto_button=auto_btn,
+                reset_button=reset_btn
+            )
+            
+            auto_btn.clicked.connect(
+                partial(self._on_auto_clim, channel_data=channel_data)
+            )
+            reset_btn.clicked.connect(
+                partial(self._on_reset_clim, channel_data=channel_data)
+            )
+            
+            self._lut_items_layout.addItem(lut_item, row=2, col=col)
+        
+        if cmaps is None:
+            cmaps = {
+                ch: self._get_channel_default_cmap(ch) for ch in channel_names
+            }
+    
+    def _on_auto_clim(self, channel_data: _ChannelData) -> None:
+        lut_item = channel_data.lut_item
+        
+        if len(lut_item.gradient.listTicks()) != 2:
+            self.logger.info(
+                '[WARNING]: Auto contrast is available only with LUTs '
+                'that have two ticks.'
+            )
+            return
+        
+        volume = channel_data.volume
+        lo, hi = colors.get_auto_contrast_percentile(volume)
+        (low_tick, _), (high_tick, _) = lut_item.gradient.listTicks()            
+        lut_item.gradient.setTickValue(high_tick, hi)
+        lut_item.gradient.setTickValue(low_tick, lo)
+    
+    def _on_reset_clim(self, lut_item: widgets.baseHistogramLUTitem) -> None:
+        lut_item = channel_data.lut_item
+        lut_item.resetState()
+    
     def set_volume(
             self,
             volume: np.ndarray, 
@@ -265,12 +340,10 @@ class VolumeRendererWindow(QMainWindow):
                 for c in range(num_existing_channels, tot_num_channels)
             ]
         
-        self._add_lut_items()
-        
-        if cmaps is None:
-            cmaps = {
-                ch: self._get_channel_default_cmap(ch) for ch in channel_names
-            }
+        self._set_channels_data(
+            volumes, channel_names, 
+            cmaps=cmaps
+        )
         
         printl(cmaps)
         printl(channel_names)
