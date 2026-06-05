@@ -32,6 +32,34 @@ def warnTooManyItems(mainWin, numItems, qparent):
     )
     return msg.cancel, msg.clickedButton==switchToLowResButton
 
+def warnTooManyNewItems(mainWin, numItems, qparent):
+    from . import widgets
+    mainWin.logger.info(
+        '[WARNING]: asking user what to do with too many objects...'
+    )
+    msg = widgets.myMessageBox(wrapText=False)
+    txt = html_utils.paragraph(f"""
+        WARNING: The resulting segmentation mask has <b>{numItems} objects</b>.<br><br>
+        Creating <b>high resolution</b> text annotations 
+        for these many objects could take a <b>long time</b>.<br><br>
+        We recommend <b>deactivating text annotations</b> or <b>switching to low resolution</b> annotations.<br><br>
+        You can still try to switch to activate them or switch to high resolution later.<br><br>
+        What do you want to do?
+    """)
+
+    _, switchToLowResButton, deactivateAnnotButton = msg.warning(
+        qparent, 'Too many objects', txt,
+        buttonsTexts=(
+            'Cancel', 
+            widgets.reloadPushButton(' Switch to low resolution '), 
+            widgets.noPushButton(' Deactivate text annotations ')              
+        )
+    )
+    switchToLowRes = msg.clickedButton==switchToLowResButton
+    deactivateAnnot = msg.clickedButton==deactivateAnnotButton
+    
+    return msg.cancel, switchToLowRes, deactivateAnnot
+
 def warnRestartCellACDCcolorModeToggled(
         scheme, app_name='Cell-ACDC', parent=None
     ):
