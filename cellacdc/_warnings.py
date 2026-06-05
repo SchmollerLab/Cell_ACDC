@@ -43,7 +43,7 @@ def warnTooManyNewItems(mainWin, numItems, qparent):
         Creating <b>high resolution</b> text annotations 
         for these many objects could take a <b>long time</b>.<br><br>
         We recommend <b>deactivating text annotations</b> or <b>switching to low resolution</b> annotations.<br><br>
-        You can still try to switch to activate them or switch to high resolution later.<br><br>
+        You can still try to activate them or switch to high resolution later.<br><br>
         What do you want to do?
     """)
 
