@@ -807,3 +807,16 @@ single_pos_index_cols = (
     'experiment_folderpath', 
     'Position_n'
 )
+
+precompiled_import_success = False
+try:
+    from cellacdc.precompiled.precompiled_functions import (
+        find_all_objects_2D,
+        find_all_objects_3D,
+        calc_IoA_matrix_2D,
+        calc_IoA_matrix_3D,
+        most_common_projection_3D,
+    )
+    precompiled_import_success = True
+except Exception:
+    pass

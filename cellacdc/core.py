@@ -50,6 +50,7 @@ from . import io
 from . import measurements
 from . import favourite_func_metrics_csv_path
 from . import default_index_cols
+from . import regionprops
 
 from ._types import (
     ChannelsDict
@@ -756,6 +757,19 @@ def get_obj_contours(
         only_longest_contour=True, 
         local=False,
     ):
+    if obj is not None and obj_image is None and not local:
+        if all_external and not all:
+            obj_image = np.ascontiguousarray(obj.image, dtype=np.uint8)
+            contours, _ = cv2.findContours(
+                obj_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+            )
+            min_y, min_x, _, _ = obj.bbox
+            return [np.squeeze(cont, axis=1)+[min_x, min_y] for cont in contours]
+        if all and hasattr(obj, 'contour_all'):
+            return obj.contour_all
+        if only_longest_contour and hasattr(obj, 'contour'):
+            return obj.contour
+
     if all:
         retrieveMode = cv2.RETR_CCOMP
     else:
@@ -1273,8 +1287,12 @@ def cca_df_to_acdc_df(cca_df, rp, acdc_df=None):
             IDs.append(obj.label)
             is_cell_dead_li.append(0)
             is_cell_excluded_li.append(0)
-            xx_centroid.append(int(obj.centroid[1]))
-            yy_centroid.append(int(obj.centroid[0]))
+            if isinstance(rp, regionprops.acdcRegionprops):
+                centroid = rp.get_centroid(obj.label, exact=True)
+            else:
+                centroid = obj.centroid
+            xx_centroid.append(int(centroid[1]))
+            yy_centroid.append(int(centroid[0]))
         acdc_df = pd.DataFrame({
             'Cell_ID': IDs,
             'is_cell_dead': is_cell_dead_li,
@@ -3036,16 +3054,25 @@ def split_connected_components(lab, rp=None, max_ID=None):
     return split_occured
 
 def split_along_convexity_defects(
-        ID, lab, max_ID, max_i=1, eps_percent=0.01
+        ID, lab, max_ID, max_i=1, eps_percent=0.01, rp=None
     ):
-    lab_ID_bool = lab == ID
+    if rp is not None:
+        obj = rp.get_obj_from_ID(ID)
+        lab_ID_bool = np.zeros_like(lab[obj.slice], dtype=bool)
+        lab_ID_bool[obj.image] = True
+    else:
+        lab_ID_bool = lab == ID
     # First try separating by labelling
     lab_ID = lab_ID_bool.astype(int)
     rp_ID = skimage.measure.regionprops(lab_ID)
     split_occured = split_connected_components(lab_ID, rp=rp_ID, max_ID=max_ID)
     if split_occured:
         success = True
-        lab[lab_ID_bool] = lab_ID[lab_ID_bool]
+        if rp is not None:
+            lab[obj.slice][obj.image] = lab_ID[obj.image]
+        else:
+            lab[lab_ID_bool] = lab_ID[lab_ID_bool]
+            
         rp_ID = skimage.measure.regionprops(lab_ID)
         separateIDs = [obj.label for obj in rp_ID]
         return lab, success, separateIDs
@@ -3093,7 +3120,10 @@ def split_along_convexity_defects(
     sep_bud_label = temp_sep_bud_lab
     sep_bud_label_mask = sep_bud_label != 0
     # plt.imshow_tk(sep_bud_label, dots_coords=np.asarray(defects_points))
-    lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
+    if rp is not None:
+        lab[obj.slice][sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
+    else:
+        lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
     max_i += 1
     success = True
     return lab, success, splittedIDs
@@ -3194,53 +3224,119 @@ def insert_missing_objects(
         
     return segm_dst
     
-def process_lab(task):
-    i, lab = task
-    # Assuming this function processes each lab independently
-    data_dict = {}
-    rp = skimage.measure.regionprops(lab)
-    IDs = [obj.label for obj in rp]
-    data_dict['IDs'] = IDs
-    data_dict['regionprops'] = rp
-    data_dict['IDs_idxs'] = {ID: idx for idx, ID in enumerate(IDs)}
+### out of date
+# def process_lab(task):
+#     i, lab = task
+#     # Assuming this function processes each lab independently
+#     data_dict = {}
+#     rp = skimage.measure.regionprops(lab)
+#     IDs = [obj.label for obj in rp]
+#     data_dict['IDs'] = IDs
+#     data_dict['regionprops'] = rp
+#     data_dict['IDs_idxs'] = {ID: idx for idx, ID in enumerate(IDs)}
     
-    return i, data_dict, IDs  # Return index, data_dict, and IDs
+#     return i, data_dict, IDs  # Return index, data_dict, and IDs
 
-def parallel_count_objects(posData, logger_func):
-    benchmark = True
-    #futile attempt to use multiprocessing to speed things up
-    logger_func('Counting total number of segmented objects...')
+# def parallel_count_objects(posData, logger_func):
+#     benchmark = True
+#     #futile attempt to use multiprocessing to speed things up
+#     logger_func('Counting total number of segmented objects...')
     
-    allIDs = set()
-    seg_data = posData.segm_data
+#     allIDs = set()
+#     seg_data = posData.segm_data
     
-    # Initialize empty data dictionary to avoid recalculating each time
-    tasks = [(i, lab) for i, lab in enumerate(seg_data)]
+#     # Initialize empty data dictionary to avoid recalculating each time
+#     tasks = [(i, lab) for i, lab in enumerate(seg_data)]
 
-    if benchmark:
-        t0 = time.perf_counter()
-    # Process in batches to optimize memory usage and control parallelism
-    with ThreadPoolExecutor() as executor:
-        futures = [executor.submit(process_lab, task) for task in tasks]
+#     if benchmark:
+#         t0 = time.perf_counter()
+#     # Process in batches to optimize memory usage and control parallelism
+#     with ThreadPoolExecutor() as executor:
+#         futures = [executor.submit(process_lab, task) for task in tasks]
         
-        # Process results as they are completed
-        for future in tqdm(as_completed(futures), total=len(futures), ncols=100):
-            i, data_dict, IDs = future.result()
-            posData.allData_li[i] = myutils.get_empty_stored_data_dict() # or directly assign if it's mutable
-            posData.allData_li[i]['IDs'] = data_dict['IDs']
-            posData.allData_li[i]['regionprops'] = data_dict['regionprops']
-            posData.allData_li[i]['IDs_idxs'] = data_dict['IDs_idxs']
-            allIDs.update(IDs)
+#         # Process results as they are completed
+#         for future in tqdm(as_completed(futures), total=len(futures), ncols=100):
+#             i, data_dict, IDs = future.result()
+#             posData.allData_li[i] = myutils.get_empty_stored_data_dict() # or directly assign if it's mutable
+#             posData.allData_li[i]['IDs'] = data_dict['IDs']
+#             posData.allData_li[i]['regionprops'] = data_dict['regionprops']
+#             posData.allData_li[i]['IDs_idxs'] = data_dict['IDs_idxs']
+#             allIDs.update(IDs)
     
-    if benchmark:
-        t1 = time.perf_counter()
-        logger_func(f'Counting objects took {(t1 - t0)*1000:.2f} ms')
+#     if benchmark:
+#         t1 = time.perf_counter()
+#         logger_func(f'Counting objects took {(t1 - t0)*1000:.2f} ms')
 
-    return allIDs, posData
+#     return allIDs, posData
 
-def count_objects(posData, logger_func):
-    benchmark = False
+def check_file_time_proximity(file1, file2, max_seconds=300, logger_func=print):
+    if not os.path.isfile(file1):
+        return False
+    
+    if not os.path.isfile(file2):
+        return False
+    
+    mtime1 = os.path.getmtime(file1)
+    mtime2 = os.path.getmtime(file2)
+    
+    if abs(mtime1 - mtime2) <= max_seconds:
+        return True
+    else:
+        logger_func(f'Warning: The files "{file1}" and "{file2}" were not saved within {max_seconds} seconds of each other.')
+        return False
 
+def verify_acdc_df_segm(posData: load.loadData, logger_func=print):
+    if posData.segmMetadata is None:
+        return None
+    segm_info = posData.segmMetadata[os.path.basename(posData.segm_npz_path)]
+    imgs_folder = posData.images_path
+    csv_name = segm_info['acdc_df_segm'] if 'acdc_df_segm' in segm_info else None
+    if csv_name is None:
+        return None
+    csv_filepath = os.path.join(imgs_folder, csv_name)
+    
+    # verify that that both files exist and are within the allowed time proximity
+    success = check_file_time_proximity(
+        posData.segm_npz_path, csv_filepath, max_seconds=120, logger_func=logger_func
+    )
+    if not success:
+        return None
+    
+    return csv_filepath
+
+def verify_add_data_segm_proximity(posData: load.loadData, logger_func=print):
+    segm_path = posData.segm_npz_path
+    segm_filename = os.path.basename(segm_path).replace('.npz', '')
+    add_data_folder = os.path.join(posData.images_path, segm_filename)
+    
+    centroids_path = os.path.join(add_data_folder, 'centroids.pkl')
+    # IDs_path = os.path.join(add_data_folder, 'IDs.pkl')
+    centroids_IDs_exact_path = os.path.join(add_data_folder, 'centroids_IDs_exact.pkl')
+    # ID_to_idx_path = os.path.join(add_data_folder, 'ID_to_idx.pkl')
+    
+    ok = [True] * 2
+    for idx, file in enumerate([centroids_path, centroids_IDs_exact_path]):
+        success = check_file_time_proximity(
+            segm_path, file, max_seconds=120, logger_func=logger_func
+        )
+        if not success:
+            ok[idx] = False
+            
+    return {
+        'centroids': centroids_path if ok[0] else None,
+        # 'IDs': IDs_path if ok[1] else None,
+        'centroids_IDs_exact': centroids_IDs_exact_path if ok[1] else None,
+        # 'ID_to_idx': ID_to_idx_path if ok[3] else None,
+    }
+        
+    
+# WARNING: this function has been attempted to be optimized by
+#    parallelization, loading data from last session
+# The main bottleneck seams to be the rp creation (not even for example getting the IDs or centorids)
+# Total time spend optimising here
+#     >5 hrs
+# please update this if you try to optimize again
+def count_objects_and_init_rps(posData: load.loadData, logger_func=print):
     allIDs = set()
 
     segm_data = posData.segm_data
@@ -3250,23 +3346,14 @@ def count_objects(posData, logger_func):
     
     logger_func('Counting total number of segmented objects...')
     pbar = tqdm(total=len(segm_data), ncols=100)
-    if benchmark:
-        t0 = time.perf_counter()
     for i, lab in enumerate(segm_data):
         posData.allData_li[i] = myutils.get_empty_stored_data_dict()
-        rp = skimage.measure.regionprops(lab)
-        IDs = [obj.label for obj in rp]
-        posData.allData_li[i]['IDs'] = IDs
+        rp = regionprops.acdcRegionprops(lab)
+        IDs = rp.IDs_set      
         posData.allData_li[i]['regionprops'] = rp
-        posData.allData_li[i]['IDs_idxs'] = { # IDs_idxs[obj.label] = idx
-            ID: idx for idx, ID in enumerate(IDs)
-        }
         allIDs.update(IDs)
         pbar.update()
     pbar.close()
-    if benchmark:
-        t1 = time.perf_counter()
-        logger_func(f'Counting objects took {(t1 - t0)*1000:.2f} ms')
     return allIDs, posData
 
 def fix_sparse_directML(verbose=True):

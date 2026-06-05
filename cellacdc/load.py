@@ -1306,6 +1306,7 @@ class loadData:
         self.loadLastEntriesMetadata()
         self.attempFixBasenameBug()
         self.non_aligned_ext = '.tif'
+        self.segmMetadata = None
         if filename_ext.endswith('aligned.npz'):
             for file in myutils.listdir(self.images_path):
                 if file.endswith(f'{user_ch_name}.h5'):
@@ -1646,7 +1647,13 @@ class loadData:
         for frame_i in range(len(self.segm_data)):
             lab = self.allData_li[frame_i]['labels']
             if lab is not None:
-                IDsFrame = self.allData_li[frame_i]['IDs']
+                if hasattr(self.allData_li[frame_i]['regionprops'], 'IDs'):
+                    IDsFrame = self.allData_li[frame_i]['regionprops'].IDs
+                else:
+                    IDsFrame = [
+                        obj.label 
+                        for obj in self.allData_li[frame_i]['regionprops']
+                    ]
                 
                 if uniqueIDsVisited is not None:
                     uniqueIDsVisited.update(IDsFrame)
@@ -1866,6 +1873,7 @@ class loadData:
             new_endname='',
             labelBoolSegm=None,
             load_whitelistIDs=False,
+            load_segm_info_ini=False
         ):
         self.segmFound = False if load_segm_data else None
         self.acdc_df_found = False if load_acdc_df else None
@@ -2069,6 +2077,9 @@ class loadData:
 
         if load_whitelistIDs:
             self.loadWhitelist()
+            
+        if load_segm_info_ini:
+            self.readSegmMetadataIni()
     
     def checkAndFixZsliceSegmInfo(self):
         if not hasattr(self, 'segmInfo_df'):
@@ -2322,14 +2333,14 @@ class loadData:
             rp = skimage.measure.regionprops(lab)
             for obj in rp:
                 centroid = obj.centroid
-                yc, xc = obj.centroid[-2:]
+                yc, xc = centroid[-2:]
                 acdc_df.at[(frame_i, obj.label), 'x_centroid'] = int(xc)
                 acdc_df.at[(frame_i, obj.label), 'y_centroid'] = int(yc)
 
                 if len(centroid) == 3:
                     if 'z_centroid' not in acdc_df.columns:
                         acdc_df['z_centroid'] = 0
-                    zc = obj.centroid[0]
+                    zc = centroid[0]
                     acdc_df.at[(frame_i, obj.label), 'z_centroid'] = int(zc)                
 
         if not save:
@@ -3059,6 +3070,7 @@ class loadData:
         self.raw_postproc_segm_path = f'{base_path}segm_raw_postproc'
         self.post_proc_mot_metrics = f'{base_path}post_proc_mot_metrics'
         self.segm_hyperparams_ini_path = f'{base_path}segm_hyperparams.ini'
+        self.segm_metadata_ini_path = f'{base_path}segm_metadata_data.ini'
         self.custom_annot_json_path = f'{base_path}custom_annot_params.json'
         self.custom_combine_metrics_path = (
             f'{base_path}custom_combine_metrics.ini'
@@ -3082,6 +3094,7 @@ class loadData:
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
         if not hasattr(self, 'img_data'):
             self.segm_data = None
+            self.single_timepoint_size = None
             return
 
         Y, X = self.img_data.shape[-2:]
@@ -3093,7 +3106,16 @@ class loadData:
             elif SizeT > 1:
                 self.segm_data = np.zeros((SizeT, Y, X), int)
             else:
-                self.segm_data = np.zeros((Y, X), int)
+                self.segm_data = np.zeros((Y, X), int)        
+
+    def getSingleTimepointSegmSize(self):
+        if hasattr(self, 'single_timepoint_size') and self.single_timepoint_size is not None:
+            return self.single_timepoint_size
+        if self.SizeT > 1:
+            self.single_timepoint_size = np.prod(self.segm_data.shape[1:])
+        else: # not sure if time axis is present but would be 1 anyways
+            self.single_timepoint_size = np.prod(self.segm_data.shape)
+        return self.single_timepoint_size
 
     def loadAllImgPaths(self):
         tif_paths = []
@@ -3421,7 +3443,15 @@ class loadData:
         self.whitelist = whitelist.Whitelist(
             total_frames=self.SizeT,
         )
-        whitelist_path = self.segm_npz_path.replace('.npz', '_whitelistIDs.json')
+        whitelist_path_legacy = self.segm_npz_path.replace(
+            '.npz', '_whitelistIDs.json')
+        segm_filename = os.path.basename(self.segm_npz_path).replace('.npz', '')
+        segm_add_data_folder = os.path.join(self.images_path, segm_filename)
+        os.makedirs(segm_add_data_folder, exist_ok=True)
+        whitelist_path = os.path.join(segm_add_data_folder, 'whitelistIDs.json')
+        if os.path.exists(whitelist_path_legacy):
+            # move to new path
+            shutil.move(whitelist_path_legacy, whitelist_path)
         new_centroids_path = self.segm_npz_path.replace('.npz', '_new_centroids.json')
         success = self.whitelist.load(
             whitelist_path, new_centroids_path, self.segm_data, self.allData_li,
@@ -3432,7 +3462,96 @@ class loadData:
         if not success:
             self.whitelist = None
             
-
+    def readSegmMetadataIni(self):
+        if not os.path.exists(self.segm_metadata_ini_path):
+            return None
+        
+        cp = config.ConfigParser()
+        cp.read(self.segm_metadata_ini_path)
+        # one entry for each segmentation file
+        self.segmMetadata = {}
+        for segm_file in cp.sections():
+            sizeX = cp.getint(segm_file, 'sizeX', fallback=None)
+            sizeY = cp.getint(segm_file, 'sizeY', fallback=None)
+            sizeT = cp.getint(segm_file, 'SizeT', fallback=None)
+            sizeZ = cp.getint(segm_file, 'SizeZ', fallback=None)
+            is_3D = sizeZ > 1 if sizeZ is not None else False
+            last_modified_date = cp.get(segm_file, 'last_modified_date', fallback=None)
+            acdc_df_segm = cp.get(segm_file, 'acdc_df_segm', fallback=None)
+            acdc_df_save_date = cp.get(segm_file, 'acdc_df_save_date', fallback=None)
+            self.segmMetadata[segm_file] = {
+                'SizeT': sizeT,
+                'SizeZ': sizeZ,
+                'is_3D': is_3D,
+                'last_modified_date': last_modified_date,
+                'acdc_df_segm': acdc_df_segm,
+                'acdc_df_save_date': acdc_df_save_date,
+                'sizeX': sizeX,
+                'sizeY': sizeY,
+            }
+            
+    def saveSegmMetadataIni(self):
+        # need to be called in more locations, will be full yimplemented in workflow gui
+        cp = config.ConfigParser()
+        for segm_file, metadata in self.segmMetadata.items():
+            cp[segm_file] = {}
+            cp[segm_file]['SizeT'] = str(metadata.get('SizeT', ''))
+            cp[segm_file]['SizeZ'] = str(metadata.get('SizeZ', ''))
+            cp[segm_file]['last_modified_date'] = str(metadata.get('last_modified_date', ''))
+            cp[segm_file]['acdc_df_segm'] = str(metadata.get('acdc_df_segm', ''))
+            cp[segm_file]['sizeX'] = str(metadata.get('sizeX', ''))
+            cp[segm_file]['sizeY'] = str(metadata.get('sizeY', ''))
+            cp[segm_file]['acdc_df_save_date'] = str(
+                metadata.get('acdc_df_save_date', '')
+            )
+        
+        with open(self.segm_metadata_ini_path, 'w') as configfile:
+            cp.write(configfile)
+            
+    def updateSegmMetadata(self, segm_file=None, SizeT=None, SizeZ=None,
+                           acdc_df_segm=None, last_modified_date=None,
+                           sizeY=None, sizeX=None, all=False, acdc_df_save_date=None):
+        if segm_file is None:
+            segm_file = os.path.basename(self.segm_npz_path)
+            
+        if self.segmMetadata is None:
+            self.segmMetadata = {}
+        segm_metadata = self.segmMetadata.get(segm_file, {})
+        if SizeT is not None or all:
+            if SizeT is True or SizeT is None:
+                SizeT = self.SizeT
+            segm_metadata['SizeT'] = SizeT
+        if SizeZ is not None or all:
+            if SizeZ is True or SizeZ is None:
+                SizeZ = self.SizeZ if self.isSegm3D else 1
+            segm_metadata['SizeZ'] = SizeZ
+            segm_metadata['is_3D'] = SizeZ > 1
+        if acdc_df_segm is not None or all:
+            if acdc_df_segm is True or acdc_df_segm is None:
+                acdc_df_segm = os.path.basename(self.acdc_output_csv_path) #  for future if we allow multpiple outputs
+            # clear other segm metadata entries with acdc_df info to avoid confusion
+            for info in self.segmMetadata.values():
+                if info.get('acdc_df_segm', '') == acdc_df_segm:
+                    info['acdc_df_segm'] = None
+            segm_metadata['acdc_df_segm'] = acdc_df_segm
+        if last_modified_date is not None or all:
+            if last_modified_date is True or last_modified_date is None: # explicitly in this cane set curr datetime
+                last_modified_date = datetime.now()
+            segm_metadata['last_modified_date'] = last_modified_date
+        if sizeY is not None or all:
+            if sizeY is True or sizeY is None:
+                sizeY = self.SizeY
+            segm_metadata['sizeY'] = sizeY
+        if sizeX is not None or all:
+            if sizeX is True or sizeX is None:
+                sizeX = self.SizeX
+            segm_metadata['sizeX'] = sizeX
+        if acdc_df_save_date is not None or all:
+            if acdc_df_save_date is True or acdc_df_save_date is None:
+                acdc_df_save_date = datetime.now()
+            segm_metadata['acdc_df_save_date'] = acdc_df_save_date
+        self.segmMetadata[segm_file] = segm_metadata
+            
 class select_exp_folder:
     def __init__(self):
         self.exp_path = None
