@@ -275,11 +275,15 @@ class VolumeRendererWindow(QMainWindow):
             )
             
             self._lut_items_layout.addItem(lut_item, row=2, col=col)
+            
+            self._channels_data[channel] = channel_data
         
         if cmaps is None:
             cmaps = {
                 ch: self._get_channel_default_cmap(ch) for ch in channel_names
             }
+        
+        printl(cmaps)
     
     def _on_auto_clim(self, channel_data: _ChannelData) -> None:
         lut_item = channel_data.lut_item
@@ -297,7 +301,7 @@ class VolumeRendererWindow(QMainWindow):
         lut_item.gradient.setTickValue(high_tick, hi)
         lut_item.gradient.setTickValue(low_tick, lo)
     
-    def _on_reset_clim(self, lut_item: widgets.baseHistogramLUTitem) -> None:
+    def _on_reset_clim(self, channel_data: _ChannelData) -> None:
         lut_item = channel_data.lut_item
         lut_item.resetState()
     
@@ -344,9 +348,6 @@ class VolumeRendererWindow(QMainWindow):
             volumes, channel_names, 
             cmaps=cmaps
         )
-        
-        printl(cmaps)
-        printl(channel_names)
         
     def show(self, block=False):
         self.resize(960, 720)

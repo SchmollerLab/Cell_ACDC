@@ -23367,7 +23367,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return fluo_data, bkgrData
 
     def setOverlayColors(self):
-        self.overlayRGBs = colors.overlay_default_plt_cmap.copy()
+        self.overlayRGBs = colors.overlay_rgbs.copy()
 
     def getFileExtensions(self, images_path):
         alignedFound = any([f.find('_aligned.np')!=-1
