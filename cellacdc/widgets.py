@@ -5276,6 +5276,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
 
         super().__init__(**kwargs)
 
+        self._defaultState = super().saveState()
         self.labelStyle = {'color': '#ffffff', 'font-size': '11px'}
 
         if axisLabel:
@@ -5416,6 +5417,9 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
     def sortTicks(self, ticks):
         sortedTicks = sorted(ticks, key=operator.itemgetter(0))
         return sortedTicks
+    
+    def resetState(self):
+        self.restoreState(self._defaultState)
     
     def getInvertedGradients(self):
         invertedGradients = {}
@@ -6951,6 +6955,8 @@ class sliderWithSpinBox(QWidget):
         if isFloat is not None and isFloat:
             self._isFloat = True
 
+        self._normalize_factor = kwargs.get('normalize_factor', 1.0)
+        
         self.slider = QSlider(Qt.Horizontal, self)
 
         if self._normalize or self._isFloat:
@@ -6999,7 +7005,6 @@ class sliderWithSpinBox(QWidget):
         
         self.setLayout(layout)
 
-        
         if maximum_on_label is not None:
             self.setMaximum(maximum_on_label)
             self.labelMaximum.setText(f'/{maximum_on_label}')
@@ -7018,7 +7023,7 @@ class sliderWithSpinBox(QWidget):
         if self._normalize:
             valueInt = int(value*self.slider.maximum())
         elif self._isFloat:
-            valueInt = int(value)
+            valueInt = int(value*self._normalize_factor)
 
         self.spinBox.valueChanged.disconnect()
         self.spinBox.setValue(value)
@@ -7034,18 +7039,30 @@ class sliderWithSpinBox(QWidget):
             self.sigValueChange.emit(self.value())
             self.valueChanged.emit(self.value())
 
-    def setMaximum(self, max, including_spinbox=False):
-        self.slider.setMaximum(max)
+    def setMaximum(self, max_val, including_spinbox=False):
+        max_val_int = max_val
+        if isinstance(max_val, float):
+            max_val_int = int(max_val*self._normalize_factor)
+            
+        self.slider.setMaximum(max_val_int)
         if including_spinbox:
-            self.spinBox.setMaximum(max)
+            self.spinBox.setMaximum(max_val)
 
     def setSingleStep(self, step):
         self.spinBox.setSingleStep(step)
 
-    def setMinimum(self, min, including_spinbox=False):
-        self.slider.setMinimum(min)
+    def setMinimum(self, min_val, including_spinbox=False):
+        min_val_int = min_val
+        if isinstance(min_val, float):
+            min_val_int = int(min_val*self._normalize_factor)
+            
+        self.slider.setMinimum(min_val_int)
         if including_spinbox:
-            self.spinBox.setMinimum(min)
+            self.spinBox.setMinimum(min_val)
+
+    def setRange(self, min_val, max_val, including_spinbox=False):
+        self.setMinimum(min_val, including_spinbox=including_spinbox)
+        self.setMaximum(max_val, including_spinbox=including_spinbox)
 
     def setSingleStep(self, step):
         self.spinBox.setSingleStep(step)
@@ -7060,13 +7077,16 @@ class sliderWithSpinBox(QWidget):
         self.slider.setTickInterval(interval)
 
     def sliderValueChanged(self, val):
-        self.spinBox.valueChanged.disconnect()
+        self.spinBox.blockSignals(True)
         if self._normalize:
             valF = val/self.slider.maximum()
             self.spinBox.setValue(valF)
+        elif self._isFloat:
+            val_float = val / self._normalize_factor
+            self.spinBox.setValue(val_float)
         else:
             self.spinBox.setValue(val)
-        self.spinBox.valueChanged.connect(self.spinboxValueChanged)
+        self.spinBox.blockSignals(False)
         self.sigValueChange.emit(self.value())
         self.valueChanged.emit(self.value())
 

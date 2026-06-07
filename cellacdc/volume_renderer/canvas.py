@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from functools import partial
 
 import numpy as np
+from math import ceil
 
 from qtpy.QtCore import (
     Signal, Qt, QCoreApplication, QEventLoop
@@ -36,6 +37,7 @@ class _ChannelData:
     volume: np.ndarray
     auto_button: QPushButton
     reset_button: QPushButton
+    opacity_slider: widgets.sliderWithSpinBox
 
 class VolumeRendererWindow(QMainWindow):
     """
@@ -69,6 +71,7 @@ class VolumeRendererWindow(QMainWindow):
         self._ui_initialised = False
         self._hide_on_close = hide_on_close
         self._max_texture_3d = None
+        self._lut_items_width = 20 # Start with some padding
         
         if app is None:
             app = QCoreApplication.instance()
@@ -76,8 +79,8 @@ class VolumeRendererWindow(QMainWindow):
         self.app = app
         
         self._channels_data: dict[_ChannelData] = {}
-        self._default_rgbs = self._init_default_rgbs()
         
+        self._init_default_rgbs()
         self._init_vispy()
         self._init_ui()
     
@@ -140,11 +143,14 @@ class VolumeRendererWindow(QMainWindow):
         self._scene_layout.addWidget(lut_items_graphics_layout, stretch=0)
         self._scene_layout.addWidget(self._canvas.native, stretch=1)
         
+        self._controls_layout = widgets.FormLayout()
+        
         central = QWidget()
         main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         main_layout.addLayout(self._scene_layout)
+        main_layout.addLayout(self._controls_layout)
         self.setCentralWidget(central)
         
         self._ui_initialised = True
@@ -219,16 +225,38 @@ class VolumeRendererWindow(QMainWindow):
         self._default_rgbs = colors.overlay_rgbs.copy()
         self._default_rgbs.insert(0, (255, 255, 255))
     
-    def _get_channel_default_cmap(self, channel_name: str):        
+    def _get_channel_default_cmap(self, channel_name: str, channel_idx: int):        
         foregr_rgb = colors.FLUO_CHANNELS_COLORS.get(channel_name)
         if foregr_rgb is None:
-            foregr_rgb = self._default_rgbs.pop(0)
+            foregr_rgb = self._default_rgbs.pop(channel_idx)
         
         pg_gradient = colors.get_pg_gradient([(0,0,0,0), foregr_rgb])
         lut_item = self._channels_data[channel_name].lut_item
         lut_item.setGradient(pg_gradient)
-        cmap = colors.pg_to_vispy_cmap(lut_item)
+        pg_cmap = lut_item.gradient.colorMap()
+        cmap = colors.pg_to_vispy_cmap(pg_cmap)
         return cmap
+    
+    def _add_opacity_slider(self, channel_name: str, row: int):
+        opacity_slider = widgets.sliderWithSpinBox(
+            title_loc='in_line', 
+            isFloat=True, 
+            parent=self,
+            normalize_factor=10
+        )
+        opacity_slider.setRange(0.0, 1.0)
+        opacity_slider.setSingleStep(0.05)
+        opacity_slider.setValue(1.0)
+        opacity_slider.setDecimals(2)
+        opacity_slider.setToolTip(f'Opacity of channel {channel_name}')
+        opacity_slider.valueChanged.connect(self._on_opacity_changed)
+        opacity_slider_form_widget = widgets.formWidget(
+            opacity_slider,
+            labelTextLeft=f'{channel_name} opacity:',
+        )
+        layout.addFormWidget(opacity_slider_form_widget, row=row)
+        
+        return opacity_slider
     
     def _set_channels_data(
             self, 
@@ -259,12 +287,20 @@ class VolumeRendererWindow(QMainWindow):
             
             lut_item = widgets.baseHistogramLUTitem()
             
+            opacity_slider = widgets.sliderWithSpinBox(
+                title_loc='in_line', 
+                isFloat=True, 
+                parent=self,
+                normalize_factor=10
+            )
+            
             channel_data = _ChannelData(
                 node=node,
                 lut_item=lut_item,
                 volume=volume,
                 auto_button=auto_btn,
-                reset_button=reset_btn
+                reset_button=reset_btn,
+                opacity_slider=opacity_slider
             )
             
             auto_btn.clicked.connect(
@@ -276,14 +312,41 @@ class VolumeRendererWindow(QMainWindow):
             
             self._lut_items_layout.addItem(lut_item, row=2, col=col)
             
+            lut_item.sigLookupTableChanged.connect(
+                partial(self._on_lut_changed, channel_data=channel_data)
+            )
+            
             self._channels_data[channel] = channel_data
+            
+            lut_item_width = lut_item.sizeHint(Qt.PreferredSize).width()
+            self._lut_items_width += lut_item_width
+            
+            auto_btn.setMaximumWidth(ceil(lut_item_width))
+            reset_btn.setMaximumWidth(ceil(lut_item_width))
+        
+        self._lut_items_graphics_layout.setFixedWidth(int(self._lut_items_width))  
         
         if cmaps is None:
             cmaps = {
-                ch: self._get_channel_default_cmap(ch) for ch in channel_names
+                ch: self._get_channel_default_cmap(ch, c) 
+                for c, ch in enumerate(channel_names)
             }
         
-        printl(cmaps)
+    def _on_lut_changed(
+            self, 
+            lut_item, 
+            channel_data: _ChannelData=None,
+            channel_name: str=None,
+            update: bool=True
+        ) -> None:
+        if channel_data is None:
+            channel_data = self._channels_data[channel_name]
+            
+        cmap = colors.pg_to_vispy_cmap(lut_item.gradient.colorMap())
+        node = channel_data.node
+        node.cmap = cmap
+        if update:
+            self._canvas.update()
     
     def _on_auto_clim(self, channel_data: _ChannelData) -> None:
         lut_item = channel_data.lut_item
@@ -304,7 +367,18 @@ class VolumeRendererWindow(QMainWindow):
     def _on_reset_clim(self, channel_data: _ChannelData) -> None:
         lut_item = channel_data.lut_item
         lut_item.resetState()
-    
+        
+    def _set_gl_blend_states(self):
+        from .gl_blend import volume_gl_state
+        
+        opacity = 0.5 if len(self._channels_data) > 1 else 1.0
+        for c, (channel, channel_data) in enumerate(self._channels_data.items()):
+            blending = "translucent_no_depth" if c == 0 else "additive"
+            node = channel_data.node
+            node.order = c
+            node.opacity = opacity
+            node.set_gl_state(**volume_gl_state(blending, first_visible=c==0))    
+        
     def set_volume(
             self,
             volume: np.ndarray, 
@@ -349,6 +423,10 @@ class VolumeRendererWindow(QMainWindow):
             cmaps=cmaps
         )
         
+        self._set_gl_blend_states()
+        
+        self._canvas.update()
+    
     def show(self, block=False):
         self.resize(960, 720)
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)

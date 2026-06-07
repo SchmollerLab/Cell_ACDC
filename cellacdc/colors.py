@@ -26,18 +26,23 @@ except:
 
 __all__ = ['ColorMap']
 
+CYAN_RGB = (0, 255, 255)
+MAGENTA_RGB = (255, 0, 255)
+YELLOW_RGB = (255, 255, 0)
+
 FLUO_CHANNELS_COLORS = {
-    'mCardinal': (255, 0, 255), 
-    'mNeonGreen': (0, 255, 0),
-    'NeonGreen': (0, 255, 0),
-    'mNG': (0, 255, 0), 
-    'mScarlet': (255, 0, 255), 
-    'mScarlet-I3': (255, 0, 255), 
-    'mKate': (255, 0, 255), 
-    'mKate2': (255, 0, 255),
-    'GFP': (0, 255, 0),
-    'EGFP': (0, 255, 0),
-    'mCitrine': (255, 255, 0)
+    'mCardinal': MAGENTA_RGB,
+    'mNeonGreen': CYAN_RGB,
+    'NeonGreen': CYAN_RGB,
+    'mNeon': CYAN_RGB,
+    'mNG': CYAN_RGB, 
+    'mScarlet': MAGENTA_RGB, 
+    'mScarlet-I3': MAGENTA_RGB, 
+    'mKate': MAGENTA_RGB, 
+    'mKate2': MAGENTA_RGB,
+    'GFP': CYAN_RGB,
+    'EGFP': CYAN_RGB,
+    'mCitrine': YELLOW_RGB
 }
 
 # Tuple of 3 or 4 uint8 values
