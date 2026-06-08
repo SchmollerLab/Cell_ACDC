@@ -160,9 +160,8 @@ class select_channel_name:
             basename = file[i:i+k]
         self.basename = basename
         
-        if channel_names is not None:
+        if channel_names:
             return channel_names, False
-        
         channel_names = set()
         basenameNotFound = [False]
         for file in filenames:
