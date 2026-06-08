@@ -4357,9 +4357,9 @@ def save_symlink_ini_from_image_filepath(
         cp_symlink.read(symlink_ini_filepath)
     
     if frames_range is None:
-        frames_range = (0,1)
+        frames_range = (0, 1)
     
-    frames_range_str = ','.join(frames_range)
+    frames_range_str = ','.join(map(str, frames_range))
     
     if zslices_range is None:
         zslices_range = (0,1)
