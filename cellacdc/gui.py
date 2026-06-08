@@ -12077,7 +12077,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.scaleBar.removeFromAxis(self.ax1)
 
         self.scaleBarDialog = None
+        self.imgGrad.addScaleBarAction.blockSignals(True)
         self.imgGrad.addScaleBarAction.setChecked(checked)
+        self.imgGrad.addScaleBarAction.blockSignals(False)
     
     def updateScaleBar(self, scaleBarKwargs):
         self.scaleBar.draw(**scaleBarKwargs)
