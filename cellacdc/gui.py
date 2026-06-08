@@ -30760,14 +30760,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def checkHandleTooManyNewItems(self):
         posData = self.data[self.pos_i]
         num_objects = len(posData.rp)
-        if num_objects < 1500:
+        if num_objects <= 1500:
             return True
 
         out = _warnings.warnTooManyNewItems(self, num_objects, self)
-        cancel, switchToLowRes, deactivateAnnot = out
-        if cancel:
-            return False
+        closed, switchToLowRes, deactivateAnnot = out
+        if closed:
+            # Segmentation is already computed at this point; just proceed
+            return True
 
+        if not switchToLowRes and not deactivateAnnot:
+            # User chose to proceed without changing anything
+            return True
+    
         if switchToLowRes:
             self.highLowResAction.setChecked(False)
             self.changeTextResolution()

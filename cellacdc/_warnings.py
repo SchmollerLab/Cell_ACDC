@@ -47,10 +47,9 @@ def warnTooManyNewItems(mainWin, numItems, qparent):
         What do you want to do?
     """)
 
-    _, switchToLowResButton, deactivateAnnotButton = msg.warning(
+    switchToLowResButton, deactivateAnnotButton = msg.warning(
         qparent, 'Too many objects', txt,
         buttonsTexts=(
-            'Cancel', 
             widgets.reloadPushButton(' Switch to low resolution '), 
             widgets.noPushButton(' Deactivate text annotations ')              
         )
