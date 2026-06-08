@@ -683,7 +683,6 @@ def save_acdc_df_file(
     try:
         images_path = os.path.dirname(csv_path)
         basename = get_basename(images_path)
-        acdc_df.insert(0, 'basename', basename)
         if 'basename' in acdc_df.columns:
             acdc_df['basename'] = basename
         else:
@@ -4212,18 +4211,12 @@ def search_filepath_in_pos_path_from_endname(
             return os.path.join(images_path, file)
 
 def get_basename(images_path):
-    images_files = myutils.listdir(images_path)
-    sample_filepath = os.path.join(images_path, images_files[0])
-    posData = loadData(sample_filepath, '')
-    posData.getBasenameAndChNames()
-    return posData.basename
+    basename, _ = myutils.getBasenameAndChNames(images_path)
+    return basename
 
 def get_channel_names(images_path):
-    images_files = myutils.listdir(images_path)
-    sample_filepath = os.path.join(images_path, images_files[0])
-    posData = loadData(sample_filepath, '')
-    posData.getBasenameAndChNames()
-    return posData.chNames
+    _, chNames = myutils.getBasenameAndChNames(images_path)
+    return chNames
 
 def search_filepath_from_endname(exp_path, endname, include_spotmax_out=False):
     pos_foldernames = myutils.get_pos_foldernames(exp_path)
@@ -4362,9 +4355,9 @@ def save_symlink_ini_from_image_filepath(
     frames_range_str = ','.join(map(str, frames_range))
     
     if zslices_range is None:
-        zslices_range = (0,1)
+        zslices_range = (0, 1)
     
-    zslices_range_str = ','.join(zslices_range)
+    zslices_range_str = ','.join(map(str, zslices_range))
     
     use_bioio = 'False' if ext in ACDC_IMAGE_EXTENSIONS else 'True'
     cp_symlink[f'channel_name.{channel_name}'] = {

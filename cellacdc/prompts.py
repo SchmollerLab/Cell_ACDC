@@ -162,6 +162,7 @@ class select_channel_name:
         
         if channel_names:
             return channel_names, False
+        
         channel_names = set()
         basenameNotFound = [False]
         for file in filenames:

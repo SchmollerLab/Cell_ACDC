@@ -2533,7 +2533,7 @@ class CreateSymLinkToPosWin(QMainWindow):
             parent=self, 
             instructionsText=
                 'Select experiment or specific <b>Position folders '
-                'to link<b>',
+                'to link</b>',
             askSelectPosFolders=True,
             title='Select Position folders to link'
         )
