@@ -4106,13 +4106,9 @@ class DoubleSpinBox(QDoubleSpinBox):
             self.clearFocus()
         else:
             super().keyPressEvent(event)
-    
-    def textFromValue(self, value: float) -> str:
-        text = super().textFromValue(value)
-        return text.replace(QLocale().decimalPoint(), '.')
 
     def valueFromText(self, text: str) -> float:
-        text = text.replace('.', QLocale().decimalPoint())
+        text = text.replace(',', '.')
         return super().valueFromText(text)
 
 class SpinBox(QSpinBox):
