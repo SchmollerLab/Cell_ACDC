@@ -99,7 +99,6 @@ from . import debugutils
 from .plot import imshow
 from . import gui_utils
 from . import gui_combine
-from . import valid_image_data_ends
 
 np.seterr(invalid='ignore')
 

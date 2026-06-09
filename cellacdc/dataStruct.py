@@ -1272,6 +1272,7 @@ class createDataStructWin(QMainWindow):
 
         cancelButton = widgets.cancelPushButton(' Stop process ')
         cancelButton.clicked.connect(self.close)
+        self.cancelButton = cancelButton
         
         buttonsLayout = QHBoxLayout()
         buttonsLayout.addStretch(1)
@@ -1644,6 +1645,8 @@ class createDataStructWin(QMainWindow):
                 self.close()
                 return
 
+        self.cancelButton.setEnabled(False)
+        
         # Set up separate thread for bioFormatsWorker class
         self.mutex = QMutex()
         self.waitCond = QWaitCondition()
@@ -2519,6 +2522,7 @@ class CreateSymLinkToPosWin(QMainWindow):
         buttonsLayout = QHBoxLayout()
         cancelButton = widgets.cancelPushButton(' Close ')
         cancelButton.clicked.connect(self.cancelProcess)
+        self.cancelButton = cancelButton
         
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -2582,6 +2586,7 @@ class CreateSymLinkToPosWin(QMainWindow):
             self.cancelProcess()
             return
         
+        self.cancelButton.setEnabled(False)
         self.startWorker(
             expToPosFoldersMapper, 
             dst_folderpath, 

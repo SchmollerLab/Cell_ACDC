@@ -1914,6 +1914,7 @@ class mainWin(QMainWindow):
             )
             self.dataStructWin.show()
             self.dataStructWin.main()
+            self.restoreDefaultButtons()
         
         elif msg.clickedButton == restructButton:
             self.progressWin = apps.QDialogWorkerProgress(

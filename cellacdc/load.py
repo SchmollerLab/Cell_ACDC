@@ -1042,6 +1042,7 @@ def imread(path):
 def load_image_file(filepath: str | os.PathLike):
     # The function `get_filename_from_channel` will append ';;channel_name' 
     # when the imgPath is the symlink.ini file
+    filepath = os.fspath(filepath)
     parts = filepath.split(';;')
     if len(parts) == 2:
         filepath, channel_name = parts
