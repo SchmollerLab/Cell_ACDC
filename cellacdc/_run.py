@@ -449,6 +449,10 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     if hasattr(QtCore.Qt, 'AA_PluginApplication'):
         QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_PluginApplication, False)
 
+    from qtpy.QtCore import QLocale
+    # Set locale to English (United States) to avoid issues with decimal separator in some countries (e.g. comma instead of dot)
+    QLocale.setDefault(QLocale(QLocale.English, QLocale.UnitedStates))
+    
     # Check OS dark or light mode
     from qtpy.QtWidgets import QApplication, QStyleFactory
     from qtpy.QtGui import QPalette, QIcon

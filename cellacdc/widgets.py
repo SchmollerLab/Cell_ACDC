@@ -4106,13 +4106,9 @@ class DoubleSpinBox(QDoubleSpinBox):
             self.clearFocus()
         else:
             super().keyPressEvent(event)
-    
-    def textFromValue(self, value: float) -> str:
-        text = super().textFromValue(value)
-        return text.replace(QLocale().decimalPoint(), '.')
 
     def valueFromText(self, text: str) -> float:
-        text = text.replace('.', QLocale().decimalPoint())
+        text = text.replace(',', '.')
         return super().valueFromText(text)
 
 class SpinBox(QSpinBox):
@@ -9147,6 +9143,7 @@ class ScaleBar(QGraphicsObject):
         self.contextMenu = QMenu()
         action = QAction('Edit properties...', self.contextMenu)
         action.triggered.connect(self.emitEditProperties)
+        self.contextMenu.addAction(action)
         self.contextMenu.addSeparator()
         action = QAction('Remove', self.contextMenu)
         action.triggered.connect(self.emitRemove)
@@ -10613,6 +10610,7 @@ class TimestampItem(LabelItem):
         self.contextMenu = QMenu()
         action = QAction('Edit properties...', self.contextMenu)
         action.triggered.connect(self.emitEditProperties)
+        self.contextMenu.addAction(action)
         self.contextMenu.addSeparator()
         action = QAction('Remove', self.contextMenu)
         action.triggered.connect(self.emitRemove)
