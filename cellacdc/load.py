@@ -4392,6 +4392,10 @@ def create_symlinked_pos_folder(
     for file in myutils.listdir(src_images_path):
         filepath = os.path.join(src_images_path, file)
         dst_filepath = os.path.join(dst_images_path, file)
+        if file.endswith('_symlink.ini'):
+            shutil.copy2(filepath, dst_filepath)
+            continue
+        
         for channel in channel_names:
             if file == f'{basename}{channel}.tif':
                 save_symlink_ini_from_image_filepath(

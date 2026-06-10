@@ -373,12 +373,15 @@ class Logger(logging.Logger):
             self._stdout.write(text)
         
         if self._q_log_widget is not None:
-            self._q_log_widget.appendPlainText(text)
             try:
-                self._q_log_widget.verticalScrollBar().setValue(
-                    self._q_log_widget.verticalScrollBar().maximum()
-                )
-            except Exception as err:
+                # Log thread-safely to the QPlainTextEdit widget
+                from qtpy.QtCore import QThread
+                if QThread.currentThread() == self._q_log_widget.thread():
+                    self._q_log_widget.appendPlainText(text)
+                    self._q_log_widget.verticalScrollBar().setValue(
+                        self._q_log_widget.verticalScrollBar().maximum()
+                    )
+            except Exception:
                 pass
         
         if not log_to_file:
