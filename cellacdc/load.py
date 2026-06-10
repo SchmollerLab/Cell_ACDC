@@ -21,6 +21,8 @@ import zipfile
 from natsort import natsorted
 import time
 
+from functools import partial
+
 import skimage
 import skimage.io
 import skimage.measure    
@@ -39,7 +41,7 @@ from . import cca_functions
 from . import sorted_cols
 from . import io
 from . import core
-from . import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+from . import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, ACDC_IMAGE_EXTENSIONS
 
 from . import GUI_INSTALLED
 
@@ -651,7 +653,9 @@ def load_acdc_df_file(
         return acdc_df
 
 def save_acdc_df_file(
-        acdc_df, csv_path, custom_annot_columns=None, 
+        acdc_df: pd.DataFrame, 
+        csv_path: os.PathLike, 
+        custom_annot_columns=None, 
         last_cca_frame_i=None
     ):
     if custom_annot_columns is not None:
@@ -675,6 +679,16 @@ def save_acdc_df_file(
         max_frame_i = acdc_df.index.get_level_values('frame_i').max()
         if last_cca_frame_i < max_frame_i:
             acdc_df.loc[last_cca_frame_i+1:, cca_df_colnames] = pd.NA
+    
+    try:
+        images_path = os.path.dirname(csv_path)
+        basename = get_basename(images_path)
+        if 'basename' in acdc_df.columns:
+            acdc_df['basename'] = basename
+        else:
+            acdc_df.insert(0, 'basename', basename)
+    except Exception as err:
+        printl(f'[WARNING]: Failed to set basename column for "{csv_path}": {err}')
     
     try:
         acdc_df.to_csv(csv_path)
@@ -830,20 +844,13 @@ def read_acdc_df_from_archive(archive_path, key):
 def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []
     for images_path in images_paths:
-        img_aligned_found = False
-        for filename in myutils.listdir(images_path):
-            if filename.find(f'{user_ch_name}_aligned.np') != -1:
-                img_path_aligned = f'{images_path}/{filename}'
-                img_aligned_found = True
-            elif filename.find(f'{user_ch_name}.tif') != -1:
-                img_path_tif = f'{images_path}/{filename}'
-
-        if img_aligned_found:
-            img_path = img_path_aligned
-        else:
-            img_path = img_path_tif
+        img_path = get_filename_from_channel(images_path, user_ch_name)
+        if not img_path:
+            raise FileNotFoundError(
+                f'Could not find a file for channel "{user_ch_name}" '
+                f'in images path "{images_path}".'
+            )
         user_ch_file_paths.append(img_path)
-        print(f'Loading {img_path}...')
     return user_ch_file_paths
 
 def get_acdc_output_files(images_path):
@@ -931,6 +938,7 @@ def get_filename_from_channel(
     if basename is None:
         basename = ''
     
+    symlink_channel_filepath = ''
     channel_filepath = ''
     h5_aligned_path = ''
     h5_path = ''
@@ -957,40 +965,73 @@ def get_filename_from_channel(
         if is_channel_to_skip:
             continue
 
-        channelDataPath = os.path.join(images_path, file)
+        filepath = os.path.join(images_path, file)
+        if file.endswith('_symlink.ini'):
+            cp_symlink = config.ConfigParser()
+            cp_symlink.read(filepath)
+            channel_section = f'channel_name.{channel_name}'
+            if channel_section in cp_symlink.sections():
+                symlink_channel_filepath = f'{filepath};;{channel_name}'
+                
         if file == f'{basename}{channel_name}':
-            channel_filepath = channelDataPath
+            channel_filepath = filepath
         elif file.endswith(f'{basename}{channel_name}_aligned.h5'):
-            h5_aligned_path = channelDataPath
+            h5_aligned_path = filepath
         elif file.endswith(f'{basename}{channel_name}.h5'):
-            h5_path = channelDataPath
+            h5_path = filepath
         elif file.endswith(f'{basename}{channel_name}_aligned.npz'):
-            npz_aligned_path = channelDataPath
+            npz_aligned_path = filepath
         elif file.endswith(f'{basename}{channel_name}.tif'):
-            tif_path = channelDataPath
+            tif_path = filepath
+    
+    if symlink_channel_filepath:
+        return symlink_channel_filepath
     
     if channel_filepath:
         if logger is not None:
             logger(f'Using channel file ({channel_filepath})...')
         return channel_filepath
-    elif h5_aligned_path:
+    
+    
+    if h5_aligned_path:
         if logger is not None:
             logger(f'Using .h5 aligned file ({h5_aligned_path})...')
         return h5_aligned_path
-    elif h5_path:
+    
+    if h5_path:
         if logger is not None:
             logger(f'Using .h5 file ({h5_path})...')
         return h5_path
-    elif npz_aligned_path:
+    
+    if npz_aligned_path:
         if logger is not None:
             logger(f'Using .npz aligned file ({npz_aligned_path})...')
         return npz_aligned_path
-    elif tif_path:
+    
+    if tif_path:
         if logger is not None:
             logger(f'Using .tif file ({tif_path})...')
         return tif_path
+
+    return ''
+
+def read_img_data_from_symlink(symlink_filepath, channel_name):
+    cp_symlink = config.ConfigParser()
+    cp_symlink.read(symlink_filepath)
+    channel_section = f'channel_name.{channel_name}'
+    if cp_symlink[channel_section].getboolean('use_bioio', True):
+        from cellacdc.acdc_bioio_bioformats._utils import (
+            load_image_data_from_symlink as bioio_load_image_data_from_symlink
+        )
+        
+        img_data = bioio_load_image_data_from_symlink(cp_symlink, channel_name)
+        img_data = np.squeeze(img_data)
     else:
-        return ''
+        img_data = load_image_data_from_symlink(
+            cp_symlink=cp_symlink, 
+            channel_name=channel_name
+        )
+    return img_data
 
 def imread(path):
     if path.endswith('.tif') or path.endswith('.tiff'):
@@ -998,8 +1039,25 @@ def imread(path):
     else:
         return skimage.io.imread(path)
 
-def load_image_file(filepath):
-    if filepath.endswith('.h5'):
+def load_image_file(filepath: str | os.PathLike):
+    # The function `get_filename_from_channel` will append ';;channel_name' 
+    # when the imgPath is the symlink.ini file
+    filepath = os.fspath(filepath)
+    parts = filepath.split(';;')
+    if len(parts) == 2:
+        filepath, channel_name = parts
+        if filepath.endswith('symlink.ini'):
+            img_data = read_img_data_from_symlink(filepath, channel_name)
+        else:
+            raise ValueError(
+                "Malformed image filepath with ';;channel_name' suffix: "
+                f"{filepath} does not point to a symlink.ini file."
+            )
+    elif len(parts) > 2:
+        raise ValueError(
+            f"Malformed image filepath: expected at most one ';;' separator, got {filepath!r}"
+        )
+    elif filepath.endswith('.h5'):
         with h5py.File(filepath, 'r') as h5f:
             img_data = h5f['data'][()]
     elif filepath.endswith('.npz'):
@@ -1010,6 +1068,7 @@ def load_image_file(filepath):
         img_data = np.load(filepath)
     else:
         img_data = imread(filepath)
+    
     return np.squeeze(img_data)
 
 def load_image_data_from_channel(images_path: os.PathLike, channel_name: str):
@@ -1077,7 +1136,6 @@ def get_endname_from_filepath(filepath, allow_empty=False):
     
     return endname
     
-
 def get_endnames_from_basename(basename, filenames):
     return [os.path.splitext(f)[0][len(basename):] for f in filenames]
 
@@ -1280,7 +1338,9 @@ class loadData:
         self.bkgrROIs = []
         self.loadedFluoChannels = set()
         self.parent = QParent
-        self.imgPath = imgPath
+        # The function `get_filename_from_channel` will append ';;channel_name' 
+        # when the imgPath is the symlink.ini file
+        self.imgPath = imgPath.split(';;')[0]
         self.user_ch_name = user_ch_name
         self.images_path = os.path.dirname(imgPath)
         self.images_folder_files = os.listdir(self.images_path)
@@ -1300,8 +1360,13 @@ class loadData:
         path_li = os.path.normpath(imgPath).split(os.sep)
         self.relPath = f'{f"{os.sep}".join(path_li[-relPathDepth:])}'
         filename_ext = os.path.basename(imgPath)
+        filename, ext = os.path.splitext(filename_ext)
+        if ext.startswith('.ini;;') and ';;' not in filename:
+            # This is needed to make the filename unique to the channel, 
+            # since the symlink.ini file is shared for all channels
+            filename = f'{filename};;{user_ch_name}'
         self.filename_ext = filename_ext
-        self.filename, self.ext = os.path.splitext(filename_ext)
+        self.filename, self.ext = filename, ext
         self._additionalMetadataValues = None
         self.loadLastEntriesMetadata()
         self.attempFixBasenameBug()
@@ -1379,6 +1444,10 @@ class loadData:
             if chName.endswith('_aligned'):
                 aligned_idx = chName.find('_aligned')
                 chName = chName[:aligned_idx]
+            
+            if ';;' in chName:
+                chName = chName.split(';;')[-1]
+            
             loadedChNames.append(chName)
 
         if returnList:
@@ -1511,7 +1580,14 @@ class loadData:
             imgPath = self.imgPath
         self.z0_window = 0
         self.t0_window = 0
-        if self.ext == '.h5':
+        if imgPath.endswith('symlink.ini'):
+            img_data = read_img_data_from_symlink(
+                imgPath, self.user_ch_name
+            )
+            self.img_data = img_data
+            self.dset = self.img_data
+            self.img_data_shape = self.img_data.shape
+        elif self.ext == '.h5':
             self.h5f = h5py.File(imgPath, 'r')
             self.dset = self.h5f['data']
             self.img_data_shape = self.dset.shape
@@ -1545,7 +1621,6 @@ class loadData:
                 self.img_data = np.squeeze(self.dset[:self.loadSizeT])
             elif is2D:
                 self.img_data = np.squeeze(self.dset[:])
-
         elif self.ext == '.npz':
             self.img_data = np.squeeze(np.load(imgPath)['arr_0'])
             self.dset = self.img_data
@@ -3437,15 +3512,25 @@ class select_exp_folder:
     def __init__(self):
         self.exp_path = None
 
+    def doNotAskAgainCallback(self, selectWindow):
+        self.doNotAskAgain = True
+        selectWindow.setAllSelected(True)
+        selectWindow.cancel = False
+        selectWindow.close()
+    
     def QtPrompt(
             self, parentQWidget, values,
             current=0, title='Select Position folder',
             CbLabel="Select folder to load:",
-            showinexplorer_button=False, full_paths=None,
-            allow_cancel=True, show=False, toggleMulti=False,
+            showinexplorer_button=False, 
+            full_paths=None,
+            allow_cancel=True, 
+            show=False, 
+            toggleMulti=False,
             allowMultiSelection=True, 
             informativeText='',
-            selectedValues=None
+            selectedValues=None,
+            addDoNotAskAgain=False
         ):
         from . import apps
         font = QtGui.QFont()
@@ -3456,6 +3541,16 @@ class select_exp_folder:
             showInFileManagerPath=self.exp_path
         )
         win.setFont(font)
+        self.doNotAskAgain = False
+        if addDoNotAskAgain:
+            doNotAskAgainButton = widgets.SkipPushButton(
+                'Select all Positions for next experiment folders'
+            )
+            win.buttonsLayout.insertWidget(3, doNotAskAgainButton)
+            doNotAskAgainButton.clicked.connect(
+                partial(self.doNotAskAgainCallback, selectWindow=win)
+            )
+        
         toFront = win.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
         win.setWindowState(toFront)
         win.activateWindow()
@@ -4045,6 +4140,19 @@ def get_tooltips_from_docs():
             tipdict[name] = f"Name: {title}\nShortcut: {shortcut}\n\n{desc}"
     return tipdict
 
+def get_channel_names_from_symlink(symlink_ini_filepath):
+    cp_symlink = config.ConfigParser()
+    cp_symlink.read(symlink_ini_filepath)
+    channel_names = []
+    for section_name in cp_symlink.sections():
+        if not section_name.startswith('channel_name.'):
+            continue
+        
+        channel_name = section_name.split('.')[-1]
+        channel_names.append(channel_name)
+    
+    return channel_names
+
 def save_df_to_csv_temp_path(df, csv_filename, **to_csv_kwargs):
     tempDir = tempfile.mkdtemp()
     tempFilepath = os.path.join(tempDir, csv_filename)
@@ -4124,6 +4232,14 @@ def search_filepath_in_pos_path_from_endname(
         if file == to_match:
             return os.path.join(images_path, file)
 
+def get_basename(images_path):
+    basename, _ = myutils.getBasenameAndChNames(images_path)
+    return basename
+
+def get_channel_names(images_path):
+    _, chNames = myutils.getBasenameAndChNames(images_path)
+    return chNames
+
 def search_filepath_from_endname(exp_path, endname, include_spotmax_out=False):
     pos_foldernames = myutils.get_pos_foldernames(exp_path)
     for pos in pos_foldernames:
@@ -4194,3 +4310,174 @@ def read_measurements_workflow_from_config(filepath):
             
             ini_items[section][option] = value
     return ini_items
+
+def load_image_and_bkgr_data(image_filepath: os.PathLike):
+    images_path = os.path.dirname(image_filepath)
+    bkgrData = None
+    # Load overlay frames and align if needed
+    filename = os.path.basename(image_filepath)
+    filename_noEXT, ext = os.path.splitext(filename)
+    img_data = load_image_file(image_filepath)
+    if ext == '.npy' or ext == '.npz':
+        # Load background data
+        bkgrData_path = os.path.join(
+            images_path, f'{filename_noEXT}_bkgrRoiData.npz'
+        )
+        if os.path.exists(bkgrData_path):
+            bkgrData = np.load(bkgrData_path)
+    elif ext == '.tif' or ext == '.tiff':
+        aligned_filename = f'{filename_noEXT}_aligned.npz'
+        aligned_path = os.path.join(images_path, aligned_filename)
+        if os.path.exists(aligned_path):
+            # Load background data
+            bkgrData_path = os.path.join(
+                images_path, f'{aligned_filename}_bkgrRoiData.npz'
+            )
+            if os.path.exists(bkgrData_path):
+                bkgrData = np.load(bkgrData_path)
+        else:
+            # Load background data
+            bkgrData_path = os.path.join(
+                images_path, f'{filename_noEXT}_bkgrRoiData.npz'
+            )
+            if os.path.exists(bkgrData_path):
+                bkgrData = np.load(bkgrData_path)
+    elif ext.startswith('.ini;;'):
+        # If the file is .ini, it's a raw file that was not cropped, 
+        # hence `_bkgrRoiData.npz` file does not exist.
+        pass
+    else:
+        return None, None
+
+    return img_data, bkgrData
+
+def save_symlink_ini_from_image_filepath(
+        image_filepath: os.PathLike,
+        images_folderpath: os.PathLike,
+        channel_name: str,
+        basename: str='',
+        frames_range: tuple[int] | None=None,
+        zslices_range: tuple[int] | None=None,
+    ):
+    filename = os.path.basename(image_filepath)
+    filename_no_ext, ext = os.path.splitext(filename)
+    if not basename:
+        symlink_ini_filename = f'{filename_no_ext}_symlink.ini'
+    else:
+        separator = '' if basename.endswith('_') else '_'
+        symlink_ini_filename = f'{basename}{separator}symlink.ini'
+    symlink_ini_filepath = os.path.join(images_folderpath, symlink_ini_filename)
+    cp_symlink = config.ConfigParser()
+    if os.path.exists(symlink_ini_filepath):
+        cp_symlink.read(symlink_ini_filepath)
+    
+    if frames_range is None:
+        frames_range = (0, 1)
+    
+    frames_range_str = ','.join(map(str, frames_range))
+    
+    if zslices_range is None:
+        zslices_range = (0, 1)
+    
+    zslices_range_str = ','.join(map(str, zslices_range))
+    
+    use_bioio = 'False' if ext in ACDC_IMAGE_EXTENSIONS else 'True'
+    cp_symlink[f'channel_name.{channel_name}'] = {
+        'source_filepath': image_filepath,
+        'frames_range': frames_range_str,
+        'zslices_range': zslices_range_str,
+        'channel_index': '0',
+        'series_index': '0',
+        'lazy_load': 'False',
+        'use_bioio': use_bioio,
+    }
+    with open(symlink_ini_filepath, 'w') as configfile:
+        cp_symlink.write(configfile)
+    
+    return symlink_ini_filepath
+
+def create_symlinked_pos_folder(
+        src_pos_folderpath: os.PathLike,
+        dst_pos_folderpath: os.PathLike,
+        segm_endanmes_to_copy: None | list[str]=None
+    ):
+    if segm_endanmes_to_copy is None:
+        segm_endanmes_to_copy = []
+    
+    src_images_path = os.path.join(src_pos_folderpath, 'Images')
+    dst_images_path = os.path.join(dst_pos_folderpath, 'Images')
+    os.makedirs(dst_images_path, exist_ok=True)
+    
+    basename = get_basename(src_images_path)
+    channel_names = get_channel_names(src_images_path)
+    for file in myutils.listdir(src_images_path):
+        filepath = os.path.join(src_images_path, file)
+        dst_filepath = os.path.join(dst_images_path, file)
+        if file.endswith('_symlink.ini'):
+            shutil.copy2(filepath, dst_filepath)
+            continue
+        
+        for channel in channel_names:
+            valid_image_files = (
+                f'{basename}{channel}.tif',
+                f'{basename}{channel}.tiff',
+                f'{basename}{channel}.h5',
+                f'{basename}_{channel}_aligned.npz',
+                f'{basename}_{channel}_aligned.npz',
+            )
+            if file in valid_image_files:
+                save_symlink_ini_from_image_filepath(
+                    filepath, dst_images_path, channel, 
+                    basename=basename
+                )
+        
+        if file.endswith('metadata.csv'):
+            shutil.copy2(filepath, dst_filepath)
+        elif file.endswith('metadataXML.txt'):
+            shutil.copy2(filepath, dst_filepath)
+        
+        if not segm_endanmes_to_copy:
+            continue
+        
+        if file.endswith('segm_hyperparams.ini'):
+            shutil.copy2(filepath, dst_filepath)
+        elif file.endswith('segmInfo.csv'):
+            shutil.copy2(filepath, dst_filepath)
+        
+        for segm_endname in segm_endanmes_to_copy:
+            acdc_output_endname = segm_endname.replace('segm', 'acdc_output')
+            if file == f'{basename}{segm_endname}.npz':
+                shutil.copy2(filepath, dst_filepath)
+            if file == f'{basename}{acdc_output_endname}.csv':
+                shutil.copy2(filepath, dst_filepath)
+
+def load_image_data_from_symlink(
+        cp_symlink: config.ConfigParser=None,
+        channel_name: str='', 
+        cp_symlink_filepath: os.PathLike=None
+    ):
+    if cp_symlink_filepath is not None:
+        cp_symlink = config.ConfigParser()
+        cp_symlink.read(cp_symlink_filepath)
+
+    section_name = f'channel_name.{channel_name}'
+    section = cp_symlink[section_name]
+    source_filepath = section['source_filepath']
+    img_data = load_image_file(source_filepath)
+    is_rgb = (
+        img_data.ndim == 3 and img_data.shape[-1] == 3
+    )
+    is_rgba = (
+        img_data.ndim == 3 and img_data.shape[-1] == 4
+    )
+    
+    if not is_rgb and not is_rgba:
+        return img_data
+    
+    if is_rgb:
+        img_data = skimage.color.rgb2gray(img_data)
+    else:
+        img_data = cv2.cvtColor(img_data, cv2.COLOR_RGBA2GRAY)
+    
+    img_data = skimage.img_as_ubyte(img_data)
+    return img_data

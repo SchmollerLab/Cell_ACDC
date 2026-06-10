@@ -69,6 +69,9 @@ IMAGE_EXTENSIONS = (
 VIDEO_EXTENSIONS = (
     '.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv',
 )
+ACDC_IMAGE_EXTENSIONS = (
+    *IMAGE_EXTENSIONS, '.h5', '.npy', '.npz'
+)
 
 def _warn_ask_install_package(
         commands: Iterable[str], note_txt='', caller='SpotMAX'
@@ -806,4 +809,13 @@ default_index_cols = (
 single_pos_index_cols = (
     'experiment_folderpath', 
     'Position_n'
+)
+
+valid_image_data_ends = (
+    '_aligned.npz', 
+    '_aligned.h5', 
+    '.h5', 
+    '.tif', 
+    '.npz',
+    '_symlink.ini'
 )

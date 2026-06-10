@@ -58,7 +58,7 @@ from . import settings_folderpath
 from .models._cellpose_base import min_target_versions_cp
 
 if GUI_INSTALLED:
-    from qtpy.QtWidgets import QMessageBox
+    from qtpy.QtWidgets import QMessageBox, QPlainTextEdit
     from qtpy.QtCore import Signal, QObject, QCoreApplication
     
     from . import widgets, apps
@@ -341,7 +341,8 @@ class Logger(logging.Logger):
             self,
             module='base', 
             name='cellacdc-logger', 
-            level=logging.DEBUG
+            level=logging.DEBUG,
+            QLogWidget: 'QPlainTextEdit'=None
         ):
         super().__init__(f'{name}-{module}', level=level)
         self._stdout = sys.stdout
@@ -355,6 +356,7 @@ class Logger(logging.Logger):
             10: "DEBUG",
             0: "NOTSET"
         }
+        self._q_log_widget = QLogWidget
         
     def write(self, text, log_to_file=True, write_to_stdout=True):
         """Capture print statements, print to terminal and log text to 
@@ -369,7 +371,19 @@ class Logger(logging.Logger):
         """     
         if write_to_stdout:   
             self._stdout.write(text)
-            
+        
+        if self._q_log_widget is not None:
+            try:
+                # Log thread-safely to the QPlainTextEdit widget
+                from qtpy.QtCore import QThread
+                if QThread.currentThread() == self._q_log_widget.thread():
+                    self._q_log_widget.appendPlainText(text)
+                    self._q_log_widget.verticalScrollBar().setValue(
+                        self._q_log_widget.verticalScrollBar().maximum()
+                    )
+            except Exception:
+                pass
+        
         if not log_to_file:
             return
         
@@ -604,11 +618,16 @@ def _log_system_info(logger, log_path, is_cli=False, also_spotmax=False):
     smax_info_txt = smax_info(include_platform=False)
     logger.info(smax_info_txt)
 
-def setupLogger(module='base', logs_path=None, caller='Cell-ACDC'):
+def setupLogger(
+        module='base', 
+        logs_path=None, 
+        caller='Cell-ACDC', 
+        QLogWidget=None
+    ):
     if logs_path is None:
         logs_path = get_logs_path()
     
-    logger = Logger(module=module)
+    logger = Logger(module=module, QLogWidget=QLogWidget)
     sys.stdout = logger
     
     delete_older_log_files(logs_path)
@@ -1089,26 +1108,8 @@ def getAcdcDfSegmPaths(images_path):
     return paths
 
 def getChannelFilePath(images_path, chName):
-    file = ''
-    alignedFilePath = ''
-    tifFilePath = ''
-    h5FilePath = ''
-    for file in listdir(images_path):
-        filePath = os.path.join(images_path, file)
-        if file.endswith(f'{chName}_aligned.npz'):
-            alignedFilePath = filePath
-        elif file.endswith(f'{chName}.tif'):
-            tifFilePath = filePath
-        elif file.endswith(f'{chName}.h5'):
-            h5FilePath = filePath
-    if alignedFilePath:
-        return alignedFilePath
-    elif h5FilePath:
-        return h5FilePath
-    elif tifFilePath:
-        return tifFilePath
-    else:
-        return ''
+    channel_filepath = load.get_filename_from_channel(images_path, chName)
+    return channel_filepath
 
 def get_number_fstring_formatter(dtype, precision=4):
     if np.issubdtype(dtype, np.integer):
@@ -1123,6 +1124,10 @@ def get_chname_from_basename(filename, basename, remove_ext=True):
     aligned_idx = chName.find('_aligned')
     if aligned_idx != -1:
         chName = chName[:aligned_idx]
+    
+    if ';;' in chName:
+        chName = chName.split(';;')[-1]
+        
     return chName
 
 def getBaseAcdcDf(rp):
