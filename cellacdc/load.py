@@ -4397,15 +4397,16 @@ def create_symlinked_pos_folder(
             continue
         
         for channel in channel_names:
-            if file == f'{basename}{channel}.tif':
+            valid_image_files = (
+                f'{basename}{channel}.tif',
+                f'{basename}{channel}.tiff',
+                f'{basename}{channel}.h5',
+                f'{basename}_{channel}_aligned.npz',
+                f'{basename}_{channel}_aligned.npz',
+            )
+            if file in valid_image_files:
                 save_symlink_ini_from_image_filepath(
                     filepath, dst_images_path, channel, 
-                    basename=basename
-                )
-            
-            elif file == f'{basename}{channel}.h5':
-                save_symlink_ini_from_image_filepath(
-                    filepath, dst_images_path, channel,
                     basename=basename
                 )
         

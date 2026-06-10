@@ -29397,6 +29397,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         filename = filename.rstrip('_')
         channel_name = None
         do_copy = True
+        do_move = False
+        use_symlink = False
         if dirname != 'Images':
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             acdc_folder = f'{timestamp}_acdc'
@@ -29438,6 +29440,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             new_filename = f'{filename}{ext}'
         
+        action_text = ''
         if do_copy:
             action_text = 'Copying'
         elif do_move:
@@ -29454,7 +29457,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 imageFilePath=symlink_filepath,
                 user_ch_name=channel_name
             )
-        elif ext == '.tif' or ext == '.npz':
+        elif ext == '.tif' or ext == '.npz' or ext == '.tiff':
             new_filepath = os.path.join(exp_path, new_filename)
             if not os.path.exists(new_filepath):
                 self.logger.info(f'{action_text} file to Images folder...')
