@@ -249,12 +249,13 @@ class VolumeRendererWindow(QMainWindow):
         opacity_slider.setValue(1.0)
         opacity_slider.setDecimals(2)
         opacity_slider.setToolTip(f'Opacity of channel {channel_name}')
-        opacity_slider.valueChanged.connect(self._on_opacity_changed)
         opacity_slider_form_widget = widgets.formWidget(
             opacity_slider,
             labelTextLeft=f'{channel_name} opacity:',
         )
-        layout.addFormWidget(opacity_slider_form_widget, row=row)
+        self._controls_layout.addFormWidget(
+            opacity_slider_form_widget, row=row
+        )
         
         return opacity_slider
     
@@ -266,6 +267,7 @@ class VolumeRendererWindow(QMainWindow):
         ):
         from vispy.scene import visuals
         
+        c = 0
         for channel, volume in zip(channel_names, volumes):
             col = len(self._channels_data)
             
@@ -287,12 +289,7 @@ class VolumeRendererWindow(QMainWindow):
             
             lut_item = widgets.baseHistogramLUTitem()
             
-            opacity_slider = widgets.sliderWithSpinBox(
-                title_loc='in_line', 
-                isFloat=True, 
-                parent=self,
-                normalize_factor=10
-            )
+            opacity_slider = self._add_opacity_slider(channel, row=c)
             
             channel_data = _ChannelData(
                 node=node,
@@ -315,6 +312,9 @@ class VolumeRendererWindow(QMainWindow):
             lut_item.sigLookupTableChanged.connect(
                 partial(self._on_lut_changed, channel_data=channel_data)
             )
+            opacity_slider.valueChanged.connect(
+                partial(self._on_opacity_changed, channel_data=channel_data)
+            )
             
             self._channels_data[channel] = channel_data
             
@@ -323,6 +323,8 @@ class VolumeRendererWindow(QMainWindow):
             
             auto_btn.setMaximumWidth(ceil(lut_item_width))
             reset_btn.setMaximumWidth(ceil(lut_item_width))
+            
+            c += 1
         
         self._lut_items_graphics_layout.setFixedWidth(int(self._lut_items_width))  
         
@@ -331,7 +333,22 @@ class VolumeRendererWindow(QMainWindow):
                 ch: self._get_channel_default_cmap(ch, c) 
                 for c, ch in enumerate(channel_names)
             }
+    
+    def _on_opacity_changed(
+            self,
+            value, 
+            channel_data: _ChannelData=None,
+            channel_name: str=None,
+            update: bool=True
+        ) -> None:
+        if channel_data is None:
+            channel_data = self._channels_data[channel_name]
         
+        node = channel_data.node
+        node.opacity = value
+        if update:
+            self._canvas.update()
+    
     def _on_lut_changed(
             self, 
             lut_item, 
@@ -370,13 +387,12 @@ class VolumeRendererWindow(QMainWindow):
         
     def _set_gl_blend_states(self):
         from .gl_blend import volume_gl_state
-        
-        opacity = 0.5 if len(self._channels_data) > 1 else 1.0
+
         for c, (channel, channel_data) in enumerate(self._channels_data.items()):
             blending = "translucent_no_depth" if c == 0 else "additive"
             node = channel_data.node
             node.order = c
-            node.opacity = opacity
+            node.opacity = channel_data.node.opacity_slider.value()
             node.set_gl_state(**volume_gl_state(blending, first_visible=c==0))    
         
     def set_volume(
@@ -419,7 +435,8 @@ class VolumeRendererWindow(QMainWindow):
             ]
         
         self._set_channels_data(
-            volumes, channel_names, 
+            volumes, 
+            channel_names, 
             cmaps=cmaps
         )
         
