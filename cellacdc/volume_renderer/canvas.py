@@ -32,7 +32,7 @@ ColorMapPerChannel = (
 
 @dataclass
 class _ChannelData:
-    node: object
+    node: object # vispy.scene.visuals.Volume
     lut_item: widgets.baseHistogramLUTitem
     volume: np.ndarray
     auto_button: QPushButton
@@ -132,6 +132,7 @@ class VolumeRendererWindow(QMainWindow):
         
         self._toolbar.sigHomeView.connect(self.reset_view)
         self._toolbar.sigSave.connect(self.save_screenshot)
+        self._toolbar.sigSetSingleChannel.connect(self._set_single_channel)
         
         lut_items_graphics_layout = pg.GraphicsLayoutWidget()
         lut_items_graphics_layout.setBackground('black')
@@ -294,7 +295,8 @@ class VolumeRendererWindow(QMainWindow):
             toolbutton = widgets.OverlayChannelToolButton(
                 channel, lut_item, shortcut=str(c_idx)
             )
-            toolbutton.action = self.overlayToolbar.addWidget(toolbutton)
+            toolbutton.action = self._toolbar.addWidget(toolbutton)
+            toolbutton.setChecked(True)
 
             channel_data = _ChannelData(
                 node=node,
@@ -334,8 +336,6 @@ class VolumeRendererWindow(QMainWindow):
             
             auto_btn.setMaximumWidth(ceil(lut_item_width))
             reset_btn.setMaximumWidth(ceil(lut_item_width))
-            
-            c += 1
         
         self._lut_items_graphics_layout.setFixedWidth(int(self._lut_items_width))  
         
@@ -344,6 +344,43 @@ class VolumeRendererWindow(QMainWindow):
                 ch: self._get_channel_default_cmap(ch, c) 
                 for c, ch in enumerate(channel_names)
             }
+    
+    def number_of_visible_channels(self) -> int:
+        return sum(
+            1 for ch_data in self._channels_data.values() 
+            if ch_data.node.visible
+        )
+    
+    def _on_channel_toolbutton_clicked(
+            self, 
+            checked, 
+            channel_data: _ChannelData,
+            update: bool=True
+        ):
+        node = channel_data.node
+        node.visible = checked
+        if update:
+            self._canvas.update()
+        
+        if not self._toolbar.is_single_channel_mode():
+            return
+        
+        if checked:
+            for other_ch, other_ch_data in self._channels_data.items():
+                if other_ch_data is channel_data:
+                    continue
+                
+                if other_ch_data.node.visible:
+                    other_ch_data.toolbutton.setChecked(False)
+            
+            self._set_visiblity()
+    
+    def _set_visiblity(self, update=False):
+        for channel_data in self._channels_data.values():
+            channel_data.node.visible = channel_data.toolbutton.isChecked()
+        
+        if update:
+            self._canvas.update()
     
     def _on_opacity_changed(
             self,
@@ -403,9 +440,32 @@ class VolumeRendererWindow(QMainWindow):
             blending = "translucent_no_depth" if c == 0 else "additive"
             node = channel_data.node
             node.order = c
-            node.opacity = channel_data.node.opacity_slider.value()
+            node.opacity = channel_data.opacity_slider.value()
             node.set_gl_state(**volume_gl_state(blending, first_visible=c==0))    
-        
+    
+    def _set_single_channel(self, single: bool):
+        if single:
+            for ch_data in self._channels_data.values():
+                ch_data.toolbutton.setChecked(False)
+                    
+            self._last_visible_channels_data = [
+                ch_data for ch_data in self._channels_data.values() 
+                if ch_data.node.visible
+            ]
+            if len(self._last_visible_channels_data) == 0:
+                self._last_visible_channels_data = [
+                    list(self._channels_data.values())[0]
+                ]
+            
+            first_visible_channel_data = self._last_visible_channels_data[0]
+            first_visible_channel_data.toolbutton.setChecked(True)
+        else:
+            for ch_data in self._last_visible_channels_data:
+                if not ch_data.node.visible:
+                    ch_data.toolbutton.setChecked(True)
+
+        self._set_visiblity(update=True)
+    
     def set_volume(
             self,
             volume: np.ndarray, 
