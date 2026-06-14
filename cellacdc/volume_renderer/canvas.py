@@ -38,6 +38,7 @@ class _ChannelData:
     auto_button: QPushButton
     reset_button: QPushButton
     opacity_slider: widgets.sliderWithSpinBox
+    toolbutton: widgets.OverlayChannelToolButton
 
 class VolumeRendererWindow(QMainWindow):
     """
@@ -267,19 +268,18 @@ class VolumeRendererWindow(QMainWindow):
         ):
         from vispy.scene import visuals
         
-        c = 0
         for channel, volume in zip(channel_names, volumes):
-            col = len(self._channels_data)
+            c_idx = len(self._channels_data)
             
             auto_btn = QPushButton('Auto')
             auto_btn_proxy = QGraphicsProxyWidget()
             auto_btn_proxy.setWidget(auto_btn)
-            self._lut_items_layout.addItem(auto_btn_proxy, row=0, col=col)
-            
+            self._lut_items_layout.addItem(auto_btn_proxy, row=0, col=c_idx)
+
             reset_btn = QPushButton('Reset')
             reset_btn_proxy = QGraphicsProxyWidget()
             reset_btn_proxy.setWidget(reset_btn)
-            self._lut_items_layout.addItem(reset_btn_proxy, row=1, col=col)
+            self._lut_items_layout.addItem(reset_btn_proxy, row=1, col=c_idx)
             
             node = visuals.Volume(
                 volume,
@@ -288,16 +288,22 @@ class VolumeRendererWindow(QMainWindow):
             )
             
             lut_item = widgets.baseHistogramLUTitem()
+
+            opacity_slider = self._add_opacity_slider(channel, row=c_idx)
             
-            opacity_slider = self._add_opacity_slider(channel, row=c)
-            
+            toolbutton = widgets.OverlayChannelToolButton(
+                channel, lut_item, shortcut=str(c_idx)
+            )
+            toolbutton.action = self.overlayToolbar.addWidget(toolbutton)
+
             channel_data = _ChannelData(
                 node=node,
                 lut_item=lut_item,
                 volume=volume,
                 auto_button=auto_btn,
                 reset_button=reset_btn,
-                opacity_slider=opacity_slider
+                opacity_slider=opacity_slider,
+                toolbutton=toolbutton
             )
             
             auto_btn.clicked.connect(
@@ -307,7 +313,7 @@ class VolumeRendererWindow(QMainWindow):
                 partial(self._on_reset_clim, channel_data=channel_data)
             )
             
-            self._lut_items_layout.addItem(lut_item, row=2, col=col)
+            self._lut_items_layout.addItem(lut_item, row=2, col=c_idx)
             
             lut_item.sigLookupTableChanged.connect(
                 partial(self._on_lut_changed, channel_data=channel_data)
@@ -315,9 +321,14 @@ class VolumeRendererWindow(QMainWindow):
             opacity_slider.valueChanged.connect(
                 partial(self._on_opacity_changed, channel_data=channel_data)
             )
-            
+            toolbutton.clicked.connect(
+                partial(
+                    self._on_channel_toolbutton_clicked, 
+                    channel_data=channel_data
+                )
+            )
             self._channels_data[channel] = channel_data
-            
+
             lut_item_width = lut_item.sizeHint(Qt.PreferredSize).width()
             self._lut_items_width += lut_item_width
             
