@@ -3094,7 +3094,7 @@ class QDialogMetadataXML(QDialog):
     
         if rawDataStruct == 0:
             row += 1
-            self.SizeS_SB.setValue(1)
+            # self.SizeS_SB.setValue(1)
             self.SizeS_SB.setDisabled(True)
             self.posSelector = widgets.ExpandableListBox()
             positions = ['All positions']
