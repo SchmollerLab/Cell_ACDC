@@ -2713,7 +2713,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         # Edit actions
         models = myutils.get_list_of_models()
-        models = [*models, 'local_seg'] # Add local_seg for SegForLostIDsAction
         self.segmActions = []
         self.modelNames = []
         self.acdcSegment_li = []
@@ -8954,8 +8953,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.progressWin.close()
             self.progressWin = None
         
-    def showImageDebug(self, img):
-        imshow(img)
+    def showImageDebug(self, display_info):
+        title = ''
+        img_titles = None
+        if isinstance(display_info, dict):
+            title = display_info.get('title', '')
+            img_titles = display_info.get('img_titles', None)
+            imgs = display_info.get('images', [])
+        imshow(*imgs, window_title=str(title), figure_title=str(title),
+                axis_titles=img_titles)
     
     def gui_raiseBottomLayoutContextMenu(self, event):
         try:
