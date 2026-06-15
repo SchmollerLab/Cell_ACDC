@@ -2247,8 +2247,8 @@ class createDataStructWin(QMainWindow):
            buttonsTexts=(
                'Cancel', 
                'Overwrite', 
-               'Add files', 
-               widgets.newFilePushButton('Create new'),
+               'Add image files to existing Positions', 
+               widgets.newFilePushButton('Create new Position folders'),
             ),
            path_to_browse=exp_dst_path
         )
