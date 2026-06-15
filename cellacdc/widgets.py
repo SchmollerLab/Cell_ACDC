@@ -5270,6 +5270,7 @@ class BaseGradientEditorItemLabels(pg.GradientEditorItem):
 class baseHistogramLUTitem(pg.HistogramLUTItem):
     sigAddColormap = Signal(object, str)
     sigRescaleIntes = Signal(object)
+    sigGradientChanged = Signal(object)
 
     def __init__(self, name='image', axisLabel='', parent=None, **kwargs):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
@@ -5386,6 +5387,10 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
     
     def onShowCustomCmapsMenu(self):
         self.customCmapsMenu.show()
+        
+    def gradientChanged(self):
+        super().gradientChanged()
+        self.sigGradientChanged.emit(self)
     
     def customCmapsMenuTriggered(self, action):
         cmap = action.cmap
@@ -5786,7 +5791,6 @@ class ToggleVisibilityCheckBox(QCheckBox):
 
 class myHistogramLUTitem(baseHistogramLUTitem):
     sigGradientMenuEvent = Signal(object)
-    sigGradientChanged = Signal(object)
     sigTickColorAccepted = Signal(object)
     sigAddScaleBar = Signal(bool)
     sigAddTimestamp = Signal(bool)
@@ -5947,10 +5951,6 @@ class myHistogramLUTitem(baseHistogramLUTitem):
     
     def emitAddTimestamp(self):
         self.sigAddTimestamp.emit(self.addTimestampAction.isChecked())
-    
-    def gradientChanged(self):
-        super().gradientChanged()
-        self.sigGradientChanged.emit(self)
     
     def gradientMenuEventFilter(self, object, event):
         if event.type() == QEvent.Type.MouseMove:

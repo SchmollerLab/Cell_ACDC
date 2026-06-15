@@ -13,6 +13,7 @@ from cellacdc.widgets import ToolBar
 class VolumeRendererToolbar(ToolBar):
     sigHomeView = Signal()
     sigSave = Signal()
+    sigSetSingleChannel = Signal(bool)
     
     def __init__(self, name='Volume Renderer Toolbar', parent=None):
         
@@ -36,5 +37,23 @@ class VolumeRendererToolbar(ToolBar):
         )
         self.addAction(self.saveAction)
         
+        self.addSeparator()
+        
+        self.singleChannelCheckbox = self.addCheckBox(
+            text='Single channel'
+        )
+        
+        self.singleChannelCheckbox.setToolTip(
+            'When single channel mode is activated, selecting a channel '
+            'will display only that channel in the overlay.'
+        )
+        
         self.homeViewAction.triggered.connect(self.sigHomeView.emit)
         self.saveAction.triggered.connect(self.sigSave.emit)
+        
+        self.singleChannelCheckbox.toggled.connect(
+            self.sigSetSingleChannel.emit
+        )
+    
+    def is_single_channel_mode(self) -> bool:
+        return self.singleChannelCheckbox.isChecked()

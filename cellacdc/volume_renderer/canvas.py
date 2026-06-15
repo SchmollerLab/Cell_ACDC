@@ -32,12 +32,13 @@ ColorMapPerChannel = (
 
 @dataclass
 class _ChannelData:
-    node: object
+    node: object # vispy.scene.visuals.Volume
     lut_item: widgets.baseHistogramLUTitem
     volume: np.ndarray
     auto_button: QPushButton
     reset_button: QPushButton
     opacity_slider: widgets.sliderWithSpinBox
+    toolbutton: widgets.OverlayChannelToolButton
 
 class VolumeRendererWindow(QMainWindow):
     """
@@ -131,6 +132,7 @@ class VolumeRendererWindow(QMainWindow):
         
         self._toolbar.sigHomeView.connect(self.reset_view)
         self._toolbar.sigSave.connect(self.save_screenshot)
+        self._toolbar.sigSetSingleChannel.connect(self._set_single_channel)
         
         lut_items_graphics_layout = pg.GraphicsLayoutWidget()
         lut_items_graphics_layout.setBackground('black')
@@ -249,12 +251,13 @@ class VolumeRendererWindow(QMainWindow):
         opacity_slider.setValue(1.0)
         opacity_slider.setDecimals(2)
         opacity_slider.setToolTip(f'Opacity of channel {channel_name}')
-        opacity_slider.valueChanged.connect(self._on_opacity_changed)
         opacity_slider_form_widget = widgets.formWidget(
             opacity_slider,
             labelTextLeft=f'{channel_name} opacity:',
         )
-        layout.addFormWidget(opacity_slider_form_widget, row=row)
+        self._controls_layout.addFormWidget(
+            opacity_slider_form_widget, row=row
+        )
         
         return opacity_slider
     
@@ -267,17 +270,17 @@ class VolumeRendererWindow(QMainWindow):
         from vispy.scene import visuals
         
         for channel, volume in zip(channel_names, volumes):
-            col = len(self._channels_data)
+            c_idx = len(self._channels_data)
             
             auto_btn = QPushButton('Auto')
             auto_btn_proxy = QGraphicsProxyWidget()
             auto_btn_proxy.setWidget(auto_btn)
-            self._lut_items_layout.addItem(auto_btn_proxy, row=0, col=col)
-            
+            self._lut_items_layout.addItem(auto_btn_proxy, row=0, col=c_idx)
+
             reset_btn = QPushButton('Reset')
             reset_btn_proxy = QGraphicsProxyWidget()
             reset_btn_proxy.setWidget(reset_btn)
-            self._lut_items_layout.addItem(reset_btn_proxy, row=1, col=col)
+            self._lut_items_layout.addItem(reset_btn_proxy, row=1, col=c_idx)
             
             node = visuals.Volume(
                 volume,
@@ -286,21 +289,23 @@ class VolumeRendererWindow(QMainWindow):
             )
             
             lut_item = widgets.baseHistogramLUTitem()
+
+            opacity_slider = self._add_opacity_slider(channel, row=c_idx)
             
-            opacity_slider = widgets.sliderWithSpinBox(
-                title_loc='in_line', 
-                isFloat=True, 
-                parent=self,
-                normalize_factor=10
+            toolbutton = widgets.OverlayChannelToolButton(
+                channel, lut_item, shortcut=str(c_idx)
             )
-            
+            toolbutton.action = self._toolbar.addWidget(toolbutton)
+            toolbutton.setChecked(True)
+
             channel_data = _ChannelData(
                 node=node,
                 lut_item=lut_item,
                 volume=volume,
                 auto_button=auto_btn,
                 reset_button=reset_btn,
-                opacity_slider=opacity_slider
+                opacity_slider=opacity_slider,
+                toolbutton=toolbutton
             )
             
             auto_btn.clicked.connect(
@@ -310,14 +315,22 @@ class VolumeRendererWindow(QMainWindow):
                 partial(self._on_reset_clim, channel_data=channel_data)
             )
             
-            self._lut_items_layout.addItem(lut_item, row=2, col=col)
+            self._lut_items_layout.addItem(lut_item, row=2, col=c_idx)
             
             lut_item.sigLookupTableChanged.connect(
                 partial(self._on_lut_changed, channel_data=channel_data)
             )
-            
+            opacity_slider.valueChanged.connect(
+                partial(self._on_opacity_changed, channel_data=channel_data)
+            )
+            toolbutton.clicked.connect(
+                partial(
+                    self._on_channel_toolbutton_clicked, 
+                    channel_data=channel_data
+                )
+            )
             self._channels_data[channel] = channel_data
-            
+
             lut_item_width = lut_item.sizeHint(Qt.PreferredSize).width()
             self._lut_items_width += lut_item_width
             
@@ -331,7 +344,59 @@ class VolumeRendererWindow(QMainWindow):
                 ch: self._get_channel_default_cmap(ch, c) 
                 for c, ch in enumerate(channel_names)
             }
+    
+    def number_of_visible_channels(self) -> int:
+        return sum(
+            1 for ch_data in self._channels_data.values() 
+            if ch_data.node.visible
+        )
+    
+    def _on_channel_toolbutton_clicked(
+            self, 
+            checked, 
+            channel_data: _ChannelData,
+            update: bool=True
+        ):
+        node = channel_data.node
+        node.visible = checked
+        if update:
+            self._canvas.update()
         
+        if not self._toolbar.is_single_channel_mode():
+            return
+        
+        if checked:
+            for other_ch, other_ch_data in self._channels_data.items():
+                if other_ch_data is channel_data:
+                    continue
+                
+                if other_ch_data.node.visible:
+                    other_ch_data.toolbutton.setChecked(False)
+            
+            self._set_visiblity()
+    
+    def _set_visiblity(self, update=False):
+        for channel_data in self._channels_data.values():
+            channel_data.node.visible = channel_data.toolbutton.isChecked()
+        
+        if update:
+            self._canvas.update()
+    
+    def _on_opacity_changed(
+            self,
+            value, 
+            channel_data: _ChannelData=None,
+            channel_name: str=None,
+            update: bool=True
+        ) -> None:
+        if channel_data is None:
+            channel_data = self._channels_data[channel_name]
+        
+        node = channel_data.node
+        node.opacity = value
+        if update:
+            self._canvas.update()
+    
     def _on_lut_changed(
             self, 
             lut_item, 
@@ -370,15 +435,37 @@ class VolumeRendererWindow(QMainWindow):
         
     def _set_gl_blend_states(self):
         from .gl_blend import volume_gl_state
-        
-        opacity = 0.5 if len(self._channels_data) > 1 else 1.0
+
         for c, (channel, channel_data) in enumerate(self._channels_data.items()):
             blending = "translucent_no_depth" if c == 0 else "additive"
             node = channel_data.node
             node.order = c
-            node.opacity = opacity
+            node.opacity = channel_data.opacity_slider.value()
             node.set_gl_state(**volume_gl_state(blending, first_visible=c==0))    
-        
+    
+    def _set_single_channel(self, single: bool):
+        if single:
+            for ch_data in self._channels_data.values():
+                ch_data.toolbutton.setChecked(False)
+                    
+            self._last_visible_channels_data = [
+                ch_data for ch_data in self._channels_data.values() 
+                if ch_data.node.visible
+            ]
+            if len(self._last_visible_channels_data) == 0:
+                self._last_visible_channels_data = [
+                    list(self._channels_data.values())[0]
+                ]
+            
+            first_visible_channel_data = self._last_visible_channels_data[0]
+            first_visible_channel_data.toolbutton.setChecked(True)
+        else:
+            for ch_data in self._last_visible_channels_data:
+                if not ch_data.node.visible:
+                    ch_data.toolbutton.setChecked(True)
+
+        self._set_visiblity(update=True)
+    
     def set_volume(
             self,
             volume: np.ndarray, 
@@ -419,7 +506,8 @@ class VolumeRendererWindow(QMainWindow):
             ]
         
         self._set_channels_data(
-            volumes, channel_names, 
+            volumes, 
+            channel_names, 
             cmaps=cmaps
         )
         
