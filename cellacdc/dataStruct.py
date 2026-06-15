@@ -586,6 +586,7 @@ class bioFormatsWorker(QObject):
             'All Positions' in self.selectedPos 
             or in_file_pos_name in self.selectedPos
         )
+        
         if not savePos:
             return False
 
@@ -1076,7 +1077,7 @@ class bioFormatsWorker(QObject):
                 for in_file_p in range(self.SizeS):
                     cancel = self.saveToPosFolder(
                         in_file_p, raw_src_path, exp_dst_path, filename, 
-                        in_file_p, pos_n
+                        in_file_p, pos_n+in_file_p
                     )
                     if cancel:
                         self.cancelled = True
