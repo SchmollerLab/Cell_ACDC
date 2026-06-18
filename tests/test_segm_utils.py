@@ -168,6 +168,7 @@ def test_seg_for_lost_ids_worker_thresholding_relabels_recovered_object(monkeypa
     monkeypatch.setattr(myutils, 'import_segment_module', lambda base_model_name: SimpleNamespace(Model=ThresholdingModel))
     monkeypatch.setattr(myutils, 'init_segm_model', lambda acdcSegment, posData, init_kwargs_new: ThresholdingModel())
 
+    monkeypatch.setattr(worker, 'emitGetSegForLostIDsInputImg', lambda image_channel_name: curr_img)
     worker.run()
 
     assert posData.lab[3:7, 3:7].min() == 5
