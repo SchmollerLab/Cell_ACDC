@@ -17911,11 +17911,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.update_rp(wl_update=False)
         self.tracking(enforce=True, against_next=posData.frame_i==0)
         
-        if self.isSnapshot:
-            self.fixCcaDfAfterEdit('Repeat segmentation')
-            self.updateAllImages()
-        else:
-            self.warnEditingWithCca_df('Repeat segmentation')
+        proceed = self.checkHandleTooManyNewItems()
+        if proceed:
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit('Repeat segmentation')
+                self.updateAllImages()
+            else:
+                self.warnEditingWithCca_df('Repeat segmentation')
 
         txt = f'Done. Segmentation computed in {exec_time:.3f} s'
         self.logger.info('-----------------')
@@ -31312,6 +31314,44 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.setDrawAnnotComboboxTextRight(saveSettings=saveSettings)
 
+    def checkHandleTooManyNewItems(self):
+        posData = self.data[self.pos_i]
+        num_objects = len(posData.rp)
+        if num_objects < 1500:
+            return True
+
+        out = _warnings.warnTooManyNewItems(self, num_objects, self)
+        cancel, switchToLowRes, deactivateAnnot = out
+        if cancel:
+            return False
+
+        if switchToLowRes:
+            self.highLowResAction.setChecked(False)
+            self.changeTextResolution()
+            return True
+        
+        if deactivateAnnot:
+            self.annotCcaInfoCheckbox.blockSignals(True)
+            self.annotIDsCheckbox.blockSignals(True)
+            self.annotCcaInfoCheckbox.setChecked(False)
+            self.annotIDsCheckbox.setChecked(False)
+            self.annotCcaInfoCheckbox.blockSignals(False)
+            self.annotIDsCheckbox.blockSignals(False)
+
+            self.annotCcaInfoCheckboxRight.blockSignals(True)
+            self.annotIDsCheckboxRight.blockSignals(True)
+            self.annotCcaInfoCheckboxRight.setChecked(False)
+            self.annotIDsCheckboxRight.setChecked(False)
+            self.annotCcaInfoCheckboxRight.blockSignals(False)
+            self.annotIDsCheckboxRight.blockSignals(False)
+
+            self.textAnnot[0].setCcaAnnot(False)
+            self.textAnnot[0].setLabelAnnot(False)
+            self.textAnnot[1].setCcaAnnot(False)
+            self.textAnnot[1].setLabelAnnot(False)
+            return True
+
+    
     def setAnnotOptionsCcaMode(self):
         self.prevAnnotOptions = self.storeCurrentAnnotOptions_ax1(
             return_value=True
