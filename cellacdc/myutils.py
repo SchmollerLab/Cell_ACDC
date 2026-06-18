@@ -345,6 +345,7 @@ class Logger(logging.Logger):
             level=logging.DEBUG
         ):
         super().__init__(f'{name}-{module}', level=level)
+        self.propagate = False  # prevent UnicodeEncodeError via root StreamHandler
         self._stdout = sys.stdout
         self._stderr = StdErr(logger=self)
         sys.stderr = self._stderr
@@ -368,8 +369,13 @@ class Logger(logging.Logger):
         log_to_file : bool, optional
             If True, call `info` method with `text`. Default is True
         """     
-        if write_to_stdout:   
-            self._stdout.write(text)
+        if write_to_stdout:
+            try:
+                self._stdout.write(text)
+            except UnicodeEncodeError:
+                self._stdout.write(text.encode(
+                    self._stdout.encoding, errors='replace'
+                ).decode(self._stdout.encoding))
             
         if not log_to_file:
             return
@@ -379,8 +385,11 @@ class Logger(logging.Logger):
         
         if not text:
             return 
-        
-        self.debug(text)
+
+        try:
+            self.debug(text)
+        except UnicodeEncodeError:
+            self.debug(text.encode('ascii', errors='replace').decode('ascii'))
 
     def close(self):
         for handler in self.handlers:
@@ -615,7 +624,7 @@ def setupLogger(module='base', logs_path=None, caller='Cell-ACDC'):
     log_filename = f'{date_time}_{module}_{id}_stdout.log'
     log_path = os.path.join(logs_path, log_filename)
 
-    output_file_handler = logging.FileHandler(log_path, mode='w')
+    output_file_handler = logging.FileHandler(log_path, mode='w', encoding='utf-8')
 
     # Format your logs (optional)
     formatter = logging.Formatter(
@@ -1729,7 +1738,7 @@ def download_java():
 
 def get_model_path(model_name, create_temp_dir=True):
     if model_name == 'Automatic thresholding':
-        model_name == 'thresholding'
+        model_name = 'thresholding'
         
     model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
     
@@ -4137,13 +4146,31 @@ def init_tracker(
         return tracker, track_params
 
 def import_segment_module(model_name):
+    original_model_name = model_name
+    if model_name == 'Automatic thresholding':
+        model_name = 'thresholding'
+
     try:
         acdcSegment = import_module(f'cellacdc.models.{model_name}.acdcSegment')
     except ModuleNotFoundError as e:
+        # Do not mask missing dependencies imported by the module itself.
+        expected_missing_module = f'cellacdc.models.{model_name}'
+        if e.name != expected_missing_module:
+            raise
+
         # Check if custom model
         cp = config.ConfigParser()
         cp.read(models_list_file_path)
-        model_path = cp[model_name]['path']
+        model_key = None
+        for key in (original_model_name, model_name):
+            if key in cp:
+                model_key = key
+                break
+
+        if model_key is None:
+            raise
+
+        model_path = cp[model_key]['path']
         spec = importlib.util.spec_from_file_location('acdcSegment', model_path)
         acdcSegment = importlib.util.module_from_spec(spec)
         sys.modules['acdcSegment'] = acdcSegment

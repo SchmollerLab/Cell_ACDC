@@ -518,7 +518,7 @@ class segmWin(QMainWindow):
         
         model_name = win.selectedModel
 
-        if model_name == 'thresholding':
+        if model_name in ('thresholding', 'Automatic thresholding'):
             win = apps.QDialogAutomaticThresholding(
                 parent=self, isSegm3D=self.isSegm3D
             )
@@ -527,6 +527,9 @@ class segmWin(QMainWindow):
                 self.processStopped()
                 return
             self.model_kwargs = win.segment_kwargs
+
+        if model_name == 'Automatic thresholding':
+            model_name = 'thresholding'
 
         self.log(f'Downloading {model_name} (if needed)...')
         self.downloadWin = apps.downloadModel(model_name, parent=self)

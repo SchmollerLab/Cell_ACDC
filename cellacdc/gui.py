@@ -543,7 +543,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ]
 
         self.lin_tree_df_colnames = self.lin_tree_df_int_cols + self.lin_tree_df_bool_col + self.lin_tree_col_checks
-        self.SegForLostIDsSettings =  {}
+        self.SegForLostIDsSettings = {}
     
     def setWindowIcon(self, icon=None):
         if icon is None:
@@ -2713,7 +2713,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         # Edit actions
         models = myutils.get_list_of_models()
-        models = [*models, 'local_seg'] # Add local_seg for SegForLostIDsAction
         self.segmActions = []
         self.modelNames = []
         self.acdcSegment_li = []
@@ -8452,102 +8451,324 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax1.exportMaskImageItem = self.exportMaskImageItem
 
     def SegForLostIDsSetSettings(self):
+        posData = self.data[self.pos_i]
+        displayed_input_label = 'Displayed image'
+
+        recipe_json_path = os.path.join(
+            settings_folderpath, 'segmentation_for_lostIDs_recipe.json'
+        )
 
         try:
-            prev_model = str(self.df_settings.at['SegForLostIDsModel', 'value'])
+            prev_models = [
+                model.strip() for model in str(
+                    self.df_settings.at['SegForLostIDsModel', 'value']
+                ).split(',') if model.strip()
+            ]
         except KeyError:
-            prev_model = None
-        win = apps.QDialogSelectModel(parent=self, customFirst=prev_model)
+            prev_models = []
+
+        has_last_recipe = bool(prev_models) and os.path.exists(recipe_json_path)
+        seg_for_lost_ids_info = (
+            '<b>Segmentation for lost IDs settings</b><br><br>'
+            'Use this dialog to define the segmentation workflow used for '
+            'resegmenting local neighborhood lost IDs. Other already segmented cells are filled '
+            'with background, which makes even dimm cells seem bright after '
+            'rescaling before resegmentation. This is especially usefull for '
+            'cells which have varying intensities over time, like FUCCI cells. <br><br>'
+            '<b>How model selection works</b><br>'
+            '- You can select one model or multiple models.<br>'
+            '- In multi-selection mode you can include the same model multiple '
+            'times (for example, model A, then model B, then model A again).<br>'
+            '- After confirming, you can reorder the selected models. The order '
+            'is the execution order. '
+            '- You then will be asked to set model parameters in the order selected. <br><br>'
+            '    - Pay special attention to the additional "Settings for local '
+            'segmentation" section, here you can for example select any image as input.<br><br>'
+            '<b>Load last selection...</b><br>'
+            'Restores only the list of selected model names (the recipe order '
+            'selection), then lets you continue configuring parameters.<br><br>'
+            '<b>Load last recipe...</b><br>'
+            'Loads the complete saved recipe from disk, including model order and '
+            'all model-specific settings (when available).<br><br>'
+            '<b>Add custom model...</b><br>'
+            'Lets you register an additional local custom model and include it in '
+            'the sequence.<br><br>'
+            'Tip: if you want to run the same model twice with different '
+            'parameters, add it twice and configure each step independently.'
+        )
+        win = apps.QDialogSelectModel(
+            parent=self,
+            allowMultiSelection=True,
+            lastSelection=prev_models,
+            addSelectLastSelectionButton=bool(prev_models),
+            addSelectLastRecipeButton=has_last_recipe,
+            custom_title='Select model(s) for segmentation of lost IDs',
+            info_label=seg_for_lost_ids_info,
+        )
         win.exec_()
         if win.cancel:
             self.logger.info('Seg for lost IDs cancelled.')
             return
-        base_model_name = win.selectedModel
 
-        if base_model_name:
-            self.df_settings.at['SegForLostIDsModel', 'value'] = base_model_name
+        if getattr(win, 'loadLastRecipe', False):
+            self.logger.info('Loading last segmentation recipe for lost IDs...')
+            try:
+                with open(recipe_json_path, 'r') as f:
+                    recipe_data = json.load(f)
+                model_settings = []
+                for entry in recipe_data['models']:
+                    model_settings.append({
+                        'win': None,
+                        'init_kwargs_new': entry['init_kwargs_new'],
+                        'args_new': entry['args_new'],
+                        'base_model_name': entry['base_model_name'],
+                        'init_kwargs': entry.get('init_kwargs', {}),
+                        'model_kwargs': entry.get('model_kwargs', {}),
+                        'preproc_recipe': entry.get('preproc_recipe', None),
+                        'applyPostProcessing': entry.get('applyPostProcessing', False),
+                        'standardPostProcessKwargs': entry.get('standardPostProcessKwargs', {}),
+                        'customPostProcessFeatures': entry.get('customPostProcessFeatures', None),
+                        'customPostProcessGroupedFeatures': entry.get('customPostProcessGroupedFeatures', None),
+                    })
+                self.SegForLostIDsSettings = {'models_settings': model_settings}
+                # Restore model names in settings
+                restored_models = [
+                    'Automatic thresholding'
+                    if m['base_model_name'] == 'thresholding'
+                    else m['base_model_name']
+                    for m in model_settings
+                ]
+                self.df_settings.at['SegForLostIDsModel', 'value'] = (
+                    ', '.join(restored_models)
+                )
+                self.df_settings.to_csv(self.settings_csv_path)
+                self.logger.info('Last segmentation recipe loaded successfully.')
+            except Exception as e:
+                self.logger.error(f'Failed to load last recipe: {e}')
+            return
+
+        selected_models = win.selectedModel
+        if isinstance(selected_models, str):
+            selected_models = [selected_models]
+
+        if not selected_models:
+            self.logger.info('Seg for lost IDs cancelled.')
+            return
+
+        if selected_models:
+            self.df_settings.at['SegForLostIDsModel', 'value'] = (
+                ', '.join(selected_models)
+            )
             self.df_settings.to_csv(self.settings_csv_path)
 
-        model_name = 'local_seg'
+        all_extra_params = [
+            'image_channel_name',
+            'overlap_threshold',
+            'padding',
+            'size_perc_diff',
+            'distance_filler_growth',
+            'allow_only_tracked_cells',
+        ]
+        extra_types = {
+            'overlap_threshold': float,
+            'padding': float,
+            'size_perc_diff': float,
+            'distance_filler_growth': float,
+            'allow_only_tracked_cells': bool,
+            'image_channel_name': str,
+        }
+        extra_defaults = {
+            'overlap_threshold': 0.5,
+            'padding': 0.8,
+            'size_perc_diff': 0.3,
+            'distance_filler_growth': 1.,
+            'allow_only_tracked_cells': False,
+            'image_channel_name': displayed_input_label,
+        }
+        extra_desc = {
+            'overlap_threshold': (
+                'Overlap threshold with other already segemented cells '
+                'over which newly segmented cells are discarded'
+            ),
+            'padding': (
+                'Padding of the box used for new segmentation around the '
+                'segmentation from the previous frame'
+            ),
+            'size_perc_diff': (
+                'Relative size difference acceptable compared to previous '
+                'frames'
+            ),
+            'distance_filler_growth': (
+                'Cells which are already segmented are filled with random '
+                'noise sampled from background to ensure that they do not '
+                'get segmented again. This parameter controls the additional '
+                'padding around the already segmented cells.'
+            ),
+            'allow_only_tracked_cells': (
+                'If no new cell IDs should be permitted '
+                '(based on real time tracking)'
+            ),
+            'image_channel_name': (
+                'Image channel used as model input. '
+                'Select "Displayed image" to use exactly what is currently '
+                'shown in the viewer, or select a specific fluorescence '
+                'channel.'
+            ),
+        }
 
-        idx = self.modelNames.index(model_name)
-        acdcSegment = self.acdcSegment_li[idx]
+        model_settings = []
+        remembered_extra_args = {}
+        for model_idx, selected_model_name in enumerate(selected_models):
+            model_name = selected_model_name
+            if model_name == 'Automatic thresholding':
+                model_name = 'thresholding'
+            try:
+                if selected_model_name in self.modelNames:
+                    idx = self.modelNames.index(selected_model_name)
+                    acdcSegment = self.acdcSegment_li[idx]
+                    if acdcSegment is None:
+                        self.logger.info(f'Importing {model_name}...')
+                        acdcSegment = myutils.import_segment_module(model_name)
+                        self.acdcSegment_li[idx] = acdcSegment
+                else:
+                    self.logger.info(f'Importing {model_name}...')
+                    acdcSegment = myutils.import_segment_module(model_name)
+            except (ImportError, KeyError) as e:
+                self.logger.error(f'Error importing {model_name}: {e}')
+                return
 
-        try:
-            if acdcSegment is None or base_model_name != self.local_seg_base_model_name:
-                self.logger.info(f'Importing {base_model_name}...')
-                acdcSegment = myutils.import_segment_module(base_model_name)
-                self.acdcSegment_li[idx] = acdcSegment
-                self.local_seg_base_model_name = base_model_name
-        except (IndexError, ImportError, KeyError) as e:
-            self.logger.error(f'Error importing {base_model_name}: {e}')
-            return
-        
-        extra_params = ['overlap_threshold',
-                        'padding',
-                        'size_perc_diff',
-                        'distance_filler_growth',
-                        'max_iterations',
-                        'allow_only_tracked_cells']
+            extra_params = all_extra_params
 
-        extra_types = [float, float, float, float, int, bool]
+            available_fluo_channels = [
+                ch for ch in posData.chNames if ch != self.user_ch_name
+            ]
+            channel_options = [displayed_input_label, *available_fluo_channels]
 
-        extra_defaults = [0.5, 0.8, 0.3, 1., 2, False]
+            class _SegForLostIDsInputChannelType:
+                values = channel_options
 
-        extra_desc = ['Overlap threshold with other already segemented cells over which newly segmented cells are discarded', 
-                    'Padding of the box used for new segmentation around the segmentation from the previous frame', 
-                    'Relative size difference acceptable compared to previous frames',
-                    """Cells which are already segmented are filled with random noise sampled from background 
-                    to ensure that they don't get segmented again. 
-                    This parameter controls the additional padding around the already segmented cells.""",
-                    """The algorithm will try and segment the maximum amount 
-                    of cells in the image by running the model several 
-                    times and filling new found cells with background noise. 
-                    How many of these iterations should be run?""",
-                    "If no new cell IDs should be permitted (based on real time tracking)"]
+            extra_types['image_channel_name'] = _SegForLostIDsInputChannelType
 
-        extra_ArgSpec = []
-        for i, param in enumerate(extra_params):
-            param = ArgSpec(name=param, 
-                            default=extra_defaults[i],
-                            type=extra_types[i],
-                            desc=extra_desc[i],
-                            docstring='')
+            extra_ArgSpec = []
+            for param in extra_params:
+                param_arg = ArgSpec(
+                    name=param,
+                    default=extra_defaults[param],
+                    type=extra_types[param],
+                    desc=extra_desc[param],
+                    docstring=''
+                )
+                extra_ArgSpec.append(param_arg)
 
-            extra_ArgSpec.append(param)
+            init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+            segment_params = [
+                arg for arg in segment_params if arg[0] != 'diameter'
+            ]
 
-        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
-        segment_params = [arg for arg in segment_params if arg[0] != 'diameter']
-                
-        extraParamsTitle = 'Settings for local segmentation'
-        win = self.initSegmModelParams(
-            base_model_name, acdcSegment, init_params, segment_params,
-            extraParams=extra_ArgSpec, extraParamsTitle=extraParamsTitle,
-            initLastParams=True, ini_filename='segmentation_for_lostIDs.ini',
-        )
+            initLastParams = True
+            if model_name == 'thresholding':
+                win_thresh = apps.QDialogAutomaticThresholding(
+                    parent=self, isSegm3D=self.isSegm3D
+                )
+                win_thresh.exec_()
+                if win_thresh.cancel:
+                    self.logger.info('Segmentation for lost IDs cancelled.')
+                    return
+                self.model_kwargs = win_thresh.segment_kwargs
+                thresh_method = self.model_kwargs['threshold_method']
+                gauss_sigma = self.model_kwargs['gauss_sigma']
+                segment_params = myutils.insertModelArgSpec(
+                    segment_params, 'threshold_method', thresh_method
+                )
+                segment_params = myutils.insertModelArgSpec(
+                    segment_params, 'gauss_sigma', gauss_sigma
+                )
+                initLastParams = False
 
-        if win is None:
-            self.logger.info('Segmentation for lost IDs cancelled.')
-            return
+            extraParamsTitle = (
+                f'Settings for local segmentation '
+                f'({model_idx + 1}/{len(selected_models)})'
+            )
+            win = self.initSegmModelParams(
+                model_name, acdcSegment, init_params, segment_params,
+                extraParams=extra_ArgSpec,
+                extraParamsTitle=extraParamsTitle,
+                initLastParams=initLastParams,
+                ini_filename='segmentation_for_lostIDs.ini',
+            )
 
-        init_kwargs_new = {}
-        args_new = {}
-        for key, val in win.init_kwargs.items():
-            if key in extra_params:
-                args_new[key] = val
-            else:
-                init_kwargs_new[key] = val
+            if win is None:
+                self.logger.info('Segmentation for lost IDs cancelled.')
+                return
 
-        for key, val in win.extra_kwargs.items():
-            if key in extra_params:
-                args_new[key] = val
+            init_kwargs_new = {}
+            args_new = {}
+            for key, val in win.init_kwargs.items():
+                if key in extra_params:
+                    args_new[key] = val
+                else:
+                    init_kwargs_new[key] = val
+
+            for key, val in win.extra_kwargs.items():
+                if key in extra_params:
+                    if key == 'image_channel_name':
+                        init_kwargs_new[key] = val
+                    else:
+                        args_new[key] = val
+
+            for key, val in remembered_extra_args.items():
+                if key == 'image_channel_name':
+                    init_kwargs_new.setdefault(key, val)
+                    continue
+                args_new.setdefault(key, val)
+
+            if model_idx == 0:
+                remembered_extra_args = args_new.copy()
+                remembered_extra_args['image_channel_name'] = (
+                    init_kwargs_new.get('image_channel_name', displayed_input_label)
+                )
+
+            model_settings.append({
+                'win': win,
+                'init_kwargs_new': init_kwargs_new,
+                'args_new': args_new,
+                'base_model_name': model_name,
+                'init_kwargs': dict(win.init_kwargs),
+                'model_kwargs': dict(win.model_kwargs),
+                'preproc_recipe': win.preproc_recipe,
+                'applyPostProcessing': win.applyPostProcessing,
+                'standardPostProcessKwargs': win.standardPostProcessKwargs,
+                'customPostProcessFeatures': win.customPostProcessFeatures,
+                'customPostProcessGroupedFeatures': win.customPostProcessGroupedFeatures,
+            })
 
         self.SegForLostIDsSettings = {
-            'win': win,
-            'init_kwargs_new': init_kwargs_new,
-            'args_new': args_new,
-            'base_model_name': base_model_name,
+            'models_settings': model_settings,
         }
+
+        # Persist recipe to disk so it survives across sessions
+        try:
+            recipe_data = {
+                'models': [
+                    {
+                        'base_model_name': ms['base_model_name'],
+                        'init_kwargs_new': ms['init_kwargs_new'],
+                        'args_new': ms['args_new'],
+                        'init_kwargs': ms['init_kwargs'],
+                        'model_kwargs': ms['model_kwargs'],
+                        'preproc_recipe': ms['preproc_recipe'],
+                        'applyPostProcessing': ms['applyPostProcessing'],
+                        'standardPostProcessKwargs': ms['standardPostProcessKwargs'],
+                        'customPostProcessFeatures': ms['customPostProcessFeatures'],
+                        'customPostProcessGroupedFeatures': ms['customPostProcessGroupedFeatures'],
+                    }
+                    for ms in model_settings
+                ]
+            }
+            with open(recipe_json_path, 'w') as f:
+                json.dump(recipe_data, f, indent=2, default=str)
+        except Exception as e:
+            self.logger.warning(f'Could not save recipe to disk: {e}')
 
     def segForLostIDsButtonClicked(self):
 
@@ -8572,9 +8793,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.SegForLostIDsSetSettings()
         self.SegForLostIDsWaitCond.wakeAll()
     
-    def SegForLostIDsWorkerAskInstallModel(self, model_name):
-        myutils.check_install_package(model_name)
-        self.SegForLostIDsWaitCond.wakeAll()
+    # def SegForLostIDsWorkerAskInstallModel(self, model_name):
+    #     myutils.check_install_package(model_name)
+    #     self.SegForLostIDsWaitCond.wakeAll()
 
     def startSegForLostIDsWorker(self):
         self.SegForLostIDsMutex = QMutex()
@@ -8588,9 +8809,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         # Connect the worker's signal to the main thread's slot
         self.SegForLostIDsWorker.sigAskInit.connect(self.onSegForLostInit)
-        self.SegForLostIDsWorker.sigAskInstallModel.connect(
-            self.SegForLostIDsWorkerAskInstallModel
-        )
+        # self.SegForLostIDsWorker.sigAskInstallModel.connect(
+        #     self.SegForLostIDsWorkerAskInstallModel
+        # )
         self.SegForLostIDsWorker.sigshowImageDebug.connect(
             self.showImageDebug
         )
@@ -8603,6 +8824,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.onSigStoreDataSegForLostIDsWorker)
         self.SegForLostIDsWorker.sigUpdateRP.connect(
             self.onSigUpdateRPSegForLostIDsWorker)
+        self.SegForLostIDsWorker.sigGetSegForLostIDsInputImg.connect(
+            self.onSigGetInputImgSegForLostIDsWorker
+        )
         # self.SegForLostIDsWorker.sigGetData.connect(self.onSigGetDataSegForLostIDsWorker)
         # self.SegForLostIDsWorker.sigGet2Dlab.connect(self.onSigGet2DlabSegForLostIDsWorker)
         # self.SegForLostIDsWorker.sigGetTrackedLostIDs.connect(self.onSigGetTrackedSegForLostIDsWorker)
@@ -8667,6 +8891,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.trackManuallyAddedObject(added_IDs, isNewID, wl_update=wl_update, wl_track_og_curr=wl_track_og_curr)
         self.SegForLostIDsWaitCond.wakeAll()
 
+    def onSigGetInputImgSegForLostIDsWorker(self, image_channel_name):
+        displayed_input_label = 'Displayed image'
+        posData = self.data[self.pos_i]
+
+        if (
+                not image_channel_name
+                or image_channel_name == displayed_input_label
+            ):
+            img = self.getDisplayedImg1()
+            self.SegForLostIDsWorker.inputImgForSegForLostIDs = img
+            self.SegForLostIDsWaitCond.wakeAll()
+            return
+
+        self.getChData(requ_ch={image_channel_name})
+
+        _, filename = self.getPathFromChName(image_channel_name, posData)
+        fluo_data = posData.fluo_data_dict.get(filename)
+        if posData.SizeT > 1:
+            fluo_img_data = fluo_data[posData.frame_i]
+        else:
+            fluo_img_data = fluo_data
+
+        self.SegForLostIDsWorker.inputImgForSegForLostIDs = fluo_img_data
+        self.SegForLostIDsWaitCond.wakeAll()
+
         
     def onSigStoreData(
             self, waitcond, pos_i=None, enforce=True, debug=False,
@@ -8704,8 +8953,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.progressWin.close()
             self.progressWin = None
         
-    def showImageDebug(self, img):
-        imshow(img)
+    def showImageDebug(self, display_info):
+        title = ''
+        img_titles = None
+        if isinstance(display_info, dict):
+            title = display_info.get('title', '')
+            img_titles = display_info.get('img_titles', None)
+            imgs = display_info.get('images', [])
+        imshow(*imgs, window_title=str(title), figure_title=str(title),
+                axis_titles=img_titles)
     
     def gui_raiseBottomLayoutContextMenu(self, event):
         try:
@@ -28847,7 +29103,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         kwargs_total.update(self.track_frame_params)
         
         kwargs = {k: v for k, v in kwargs_total.items() if k in self.realTimeTracker_kwargs}
-        printl(kwargs)
         tracked_result = self.realTimeTracker.track_frame(
             prev_lab, currentLab,
             **kwargs,
@@ -28902,7 +29157,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return tracked_lab
 
         # get assignments
-        printl(assignments)
         if assignments is None:
             assignments = dict()
             for obj in curr_rp:

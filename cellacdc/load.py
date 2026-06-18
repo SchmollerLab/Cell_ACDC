@@ -40,7 +40,7 @@ from . import sorted_cols
 from . import io
 from . import core
 from . import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
-
+from . import fonts
 from . import GUI_INSTALLED
 
 if GUI_INSTALLED:
@@ -3207,7 +3207,7 @@ class loadData:
             self.SizeT, self.SizeZ, self.TimeIncrement,
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
-            parent=self.parent, font=apps.font, imgDataShape=self.img_data_shape,
+            parent=self.parent, font=fonts.font, imgDataShape=self.img_data_shape,
             posData=self, singlePos=singlePos, askSegm3D=askSegm3D,
             additionalValues=self._additionalMetadataValues,
             forceEnableAskSegm3D=forceEnableAskSegm3D, 
