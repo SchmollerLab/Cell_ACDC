@@ -227,9 +227,9 @@ class SegForLostIDsWorker(QObject):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
     
-    def emitSigUpdateRP(self, wl_track_og_curr, wl_update):
+    def emitSigUpdateRP(self, wl_update, wl_track_og_curr):
         self.mutex.lock()
-        self.sigUpdateRP.emit(wl_track_og_curr, wl_update)
+        self.sigUpdateRP.emit(wl_update, wl_track_og_curr)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
 
