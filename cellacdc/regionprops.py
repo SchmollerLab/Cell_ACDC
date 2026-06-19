@@ -145,6 +145,26 @@ def _acdc_regionprops_factory(
             ))
     return regions
 
+def find_IDs(label_image):
+    if _CYTHON_FIND_OBJECTS:
+        img_uint32 = label_image.astype(np.uint32, copy=False)
+        if label_image.ndim == 2:
+            out = find_all_objects_2D(img_uint32)
+            labels, bboxes = out
+            return labels
+        else:
+            out = find_all_objects_3D(img_uint32)
+            labels, bboxes = out
+            return labels
+    else:
+        objects = ndi.find_objects(label_image)
+        labels = []
+        for i, sl in enumerate(objects, start=1):
+            if sl is None:
+                continue
+            labels.append(i)
+        return labels
+    
 class acdcRegionProperties(_RegionProperties):
     def __init__(
         self,

@@ -5170,7 +5170,9 @@ def get_empty_stored_data_dict():
             'labels': None,
             'acdc_df': None,
             'delROIs_info': {
-                    'rois': [], 'delMasks': [], 'delIDsROI': [], 'state': []
+                    'rois': [], 'delMasks': [], 'delIDsROI': [], 'state': [],
+                    'delMasksCoords': [],
+                    
                 },
             'manually_edited_lab': {'lab': {}, 'zoom_slice': None}
         }

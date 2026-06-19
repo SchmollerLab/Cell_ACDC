@@ -435,6 +435,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.splineHoverON = False
         self.tempSegmentON = False
+        self.draggingDelROI = False
         self.xyOnCtrlPressedFirstTime = None
         self.typingEditID = False
         self.prevAnnotOptions = None
@@ -5120,8 +5121,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.warnEditingWithCca_df('Delete ID', update_images=False)
             
             self.setImageImg2()
-            delROIsIDs = self.setAllTextAnnotations()
-            self.setAllContoursImages(delROIsIDs=delROIsIDs, compute=False)
+            self.setAllTextAnnotations()
+            self.setAllContoursImages(compute=False)
 
             how = self.drawIDsContComboBox.currentText()
             if how.find('overlay segm. masks') != -1:
@@ -7238,11 +7239,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.allData_li[posData.frame_i]['delROIs_info']['rois'].copy()
         )
         for r, roi in enumerate(delROIs):
-            ROImask = self.getDelRoiMask(roi)
-            if self.isSegm3D:
-                clickedOnROI = ROImask[self.z_lab(), int(y), int(x)]
+            mask, bbox = self.getRoiCoords(roi, return_mask=True)
+            # check if click insde bbox by correcting x and y and checking if something is out of bounds
+            (r0, r1, c0, c1) = bbox
+            if y<r0 or y>=r1 or x<c0 or x>=c1:
+                clickedOnROI = False
             else:
-                clickedOnROI = ROImask[int(y), int(x)]
+                # exact check
+                y_rel, x_rel = int(y-r0), int(x-c0)
+                if mask[y_rel, x_rel]:
+                    clickedOnROI = True
+                else:
+                    clickedOnROI = False
             raiseContextMenuRoi = right_click and clickedOnROI
             dragRoi = left_click and clickedOnROI
             if raiseContextMenuRoi:
@@ -10306,7 +10314,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             idx = delROIs_info['rois'].index(roi_to_del)         
             if delROIs_info['delIDsROI'][idx]:
                 posData.lab = posData.allData_li[i]['labels']
-                self.restoreAnnotDelROI(roi_to_del, enforce=True, draw=False)
                 posData.allData_li[i]['labels'] = posData.lab
                 self.get_data()
                 self.store_data(autosave=False)
@@ -10359,7 +10366,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             posData.frame_i = i
             posData.lab = posData.allData_li[i]['labels']
-            self.restoreAnnotDelROI(roi, enforce=False, draw=False)
             posData.allData_li[i]['labels'] = posData.lab
             self.get_data()
             self.store_data(autosave=False)
@@ -11957,8 +11963,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.ax1.addDelRoiItem(roi, key)
         else:
             self.ax2.addDelRoiItem(roi, key)
-        self.applyDelROIimg1(roi, init=True)
-        self.applyDelROIimg1(roi, init=True, ax=1)
 
         if self.isSnapshot:
             self.fixCcaDfAfterEdit('Delete IDs using ROI')
@@ -11991,8 +11995,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             delROIs_info = posData.allData_li[i]['delROIs_info']
             delROIs_info['rois'].append(roi)
             delROIs_info['state'].append(roi.getState())
-            delROIs_info['delMasks'].append(np.zeros_like(self.currentLab2D))
-            delROIs_info['delIDsROI'].append(set())
+            delROIs_info['delMasks'].append(list())
+            delROIs_info['delMasksCoords'].append(list())
+            delROIs_info['delIDsROI'].append(list())
     
     def addDelPolyLineRoi_cb(self, checked):
         if checked:
@@ -12073,8 +12078,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             roi.addScaleHandle([1, 0], [0, 1])
 
         roi.handleSize = 7
-        roi.sigRegionChanged.connect(self.delROImoving)
         roi.sigRegionChanged.connect(self.delROIstartedMoving)
+        roi.sigRegionChanged.connect(self.delROImoving)
         roi.sigRegionChangeFinished.connect(self.delROImovingFinished)
         
         key = uuid.uuid4()
@@ -12082,7 +12087,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return roi, key
     
     def delROIstartedMoving(self, roi):
-        self.clearLostObjContoursItems()
+        if self.draggingDelROI is True: # already ran started moving routine
+            return
+
+        self.draggingDelROI = True
+        self.delROIpreviewDelIDsObjDict = dict()
+        self.delROIoriginalLab = self.currentLab2D.copy()
+        # placeholder readd weakly deleted items
+
     
     def clearLostObjContoursItems(self):
         self.ax1_lostObjScatterItem.setData([], [])
@@ -12098,173 +12110,74 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax1_lostTrackedObjImageItem.clear()
     
     def delROImoving(self, roi):
-        roi.setPen(color=(255,255,0))
-        # First bring back IDs if the ROI moved away
-        self.restoreAnnotDelROI(roi)
-        self.setImageImg2()
-        self.applyDelROIimg1(roi)
-        self.applyDelROIimg1(roi, ax=1)
-
-    def delROImovingFinished(self, roi: pg.ROI):
-        roi.setPen(color='r')
-        self.update_rp() # get bbox of delROI old and new, run update_rp on both seperately
-        self.updateAllImages()
-        QTimer.singleShot(
-            300, partial(self.updateDelROIinFutureFrames, roi)
-        )
-
-    def restoreAnnotDelROI(self, roi, enforce=True, draw=True):
-        posData = self.data[self.pos_i]
-        ROImask = self.getDelRoiMask(roi)
-        delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-        try:
-            idx = delROIs_info['rois'].index(roi)
-        except Exception as err:
-            return 
+        # get touching cell IDs
+        self.updateROIpreview(roi)
         
-        delMask = delROIs_info['delMasks'][idx]
-        delIDs = delROIs_info['delIDsROI'][idx]
-        overlapROIdelIDs = np.unique(delMask[ROImask])
-        lab2D = self.get_2Dlab(posData.lab)
-        restoredIDs = set()
-        for ID in delIDs:
-            if ID in overlapROIdelIDs and not enforce:
-                continue
+    def _getROIDelIDs(self, roi, lab, hidden_IDs):
+        mask, bbox = self.getRoiCoords(roi, return_mask=True)            
+        cutout = np.where(mask, lab[bbox[0]:bbox[1], bbox[2]:bbox[3]], 0)   # same shape as mask, non-roi pixels set to 0
             
-            restoredIDs.add(ID)
-            
-            delMaskID = delMask==ID
-            self.currentLab2D[delMaskID] = ID
-            lab2D[delMaskID] = ID
-            
-            if draw:
-                self.restoreDelROIimg1(delMaskID, ID, ax=0)
-                self.restoreDelROIimg1(delMaskID, ID, ax=1)
+        touching_IDs = set(regionprops.find_IDs(cutout))
+        to_hide_IDs = touching_IDs - set(hidden_IDs)
+        to_restore_IDs = set(hidden_IDs) - touching_IDs
+        
+        return to_hide_IDs, to_restore_IDs
                 
-            delMask[delMaskID] = 0
-            
-        delROIs_info['delIDsROI'][idx] = delIDs - restoredIDs
-        self.set_2Dlab(lab2D)
-        self.update_rp() # get bbox of delROI old and new, run update_rp on both seperately
-
-    def restoreDelROIimg1(self, delMaskID, delID, ax=0):
-        if ax == 0:
-            how = self.drawIDsContComboBox.currentText()
-        else:
-            how = self.getAnnotateHowRightImage()
-
-        if how.find('nothing') != -1:
+    def updateROIpreview(self, roi):
+        for i, ax in enumerate([self.ax1, self.ax2]):
+            if i == 0:
+                how = self.drawIDsContComboBox.currentText()
+                contour_shown_1 = 'contours' in how
+                label_shown_1 = 'overlay segm. masks' in how
+            else:
+                how = self.getAnnotateHowRightImage()
+                contour_shown_2 = 'contours' in how
+                label_shown_2 = 'overlay segm. masks' in how
+        
+        hidden_IDs = self.delROIpreviewDelIDsObjDict.keys()
+        lab = self.delROIoriginalLab
+        to_hide_IDs, to_restore_IDs = self._getROIDelIDs(roi, lab, hidden_IDs)
+        
+        if not to_hide_IDs and not to_restore_IDs:
             return
         
-        if how.find('contours') != -1:
-            rp_delmask = regionprops.acdcRegionprops(
-                delMaskID.astype(np.uint8), precache_centroids=False
-            )
-            if len(rp_delmask) > 0:
-                obj = rp_delmask[0]
-                self.addObjContourToContoursImage(obj=obj, ax=ax)  
-        elif how.find('overlay segm. masks') != -1:
-            if ax == 0:
-                self.labelsLayerImg1.setImage(
-                    self.currentLab2D, autoLevels=False
+        posData = self.data[self.pos_i]
+        curr_lab = self.currentLab2D
+        for ID in to_hide_IDs:
+            obj = posData.rp.get_obj_from_ID(ID)
+            self.delROIpreviewDelIDsObjDict[ID] = obj
+            # posData.rp.remove_obj(obj)
+            curr_lab[obj.slice][obj.image] = 0
+        
+        if contour_shown_1:
+            self.updateContoursImage(ax=0, delROIsIDs=hidden_IDs)
+        if contour_shown_2:
+            self.updateContoursImage(ax=1, delROIsIDs=hidden_IDs)
+                    
+        for ID in to_restore_IDs:
+            obj = self.delROIpreviewDelIDsObjDict.pop(ID)
+            curr_lab[obj.slice][obj.image] = ID
+
+            if contour_shown_1:
+                self.addObjContourToContoursImage(
+                    obj=obj, ax=0
                 )
-            else:
-                self.labelsLayerRightImg.setImage(
-                    self.currentLab2D, autoLevels=False
+            if contour_shown_2:
+                self.addObjContourToContoursImage(
+                    obj=obj, ax=1
                 )
 
-    def getDelRoisIDs(self):
-        posData = self.data[self.pos_i]
-        if posData.frame_i > 0:
-            prev_lab = posData.allData_li[posData.frame_i-1]['labels']
-        allDelIDs = set()
-        for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
-            if (
-                    not self.ax1.isDelRoiItemPresent(roi) 
-                    and not self.ax2.isDelRoiItemPresent(roi)
-                ):
-                continue
-            
-            ROImask = self.getDelRoiMask(roi)
-            delIDs = posData.lab[ROImask]
-            allDelIDs.update(delIDs)
-            if posData.frame_i > 0:
-                delIDsPrevFrame = prev_lab[ROImask]
-                allDelIDs.update(delIDsPrevFrame)
-        return allDelIDs
-    
-    def getStoredDelRoiIDs(self, frame_i=None):
-        posData = self.data[self.pos_i]
-        if frame_i is None:
-            frame_i = posData.frame_i
-        allDelIDs = set()
-        delROIs_info = posData.allData_li[frame_i]['delROIs_info']
-        delIDs_rois = delROIs_info['delIDsROI']
-        for delIDs in delIDs_rois:
-            allDelIDs.update(delIDs)
-        return allDelIDs
-    
-    # @exec_time
-    def getDelROIlab(self, input_lab_2D=None):
-        posData = self.data[self.pos_i]
-        if self.delRoiLab is None:
-            self.initDelRoiLab()
-        
-        out_lab = self.delRoiLab
-        if input_lab_2D is None:
-            out_lab[:] = self.get_2Dlab(posData.lab, force_z=False)
-        else:
-            out_lab[:] = input_lab_2D
-        
-        allDelIDs = set()
-        # Iterate rois and delete IDs
-        for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
-            if (
-                    not self.ax1.isDelRoiItemPresent(roi) 
-                    and not self.ax2.isDelRoiItemPresent(roi)
-                ):
-                continue     
-            ROImask = self.getDelRoiMask(roi)
-            delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-            idx = delROIs_info['rois'].index(roi)
-            delObjROImask = delROIs_info['delMasks'][idx]
-            delIDsROI = delROIs_info['delIDsROI'][idx]   
-            delROIlabRp = regionprops.acdcRegionprops(
-                out_lab, precache_centroids=False
+        if label_shown_1:
+            self.labelsLayerImg1.setImage(
+               curr_lab, autoLevels=False
             )
-            for delObj in delROIlabRp:
-                isDelObj = np.any(ROImask[delObj.slice][delObj.image])
-                if not isDelObj:
-                    continue
-                
-                delObjROImask[delObj.slice][delObj.image] = delObj.label
-                out_lab[delObj.slice][delObj.image] = 0
+        if label_shown_2:
+            self.labelsLayerRightImg.setImage(
+                curr_lab, autoLevels=False
+            )
             
-                delIDsROI.add(delObj.label)
-                allDelIDs.add(delObj.label)
-
-            # Keep a mask of deleted IDs to bring them back when roi moves
-            delROIs_info['delMasks'][idx] = delObjROImask
-            delROIs_info['delIDsROI'][idx] = delIDsROI
-        
-        # printl(
-        #     f't1-t0: {(t1-t0)*1000:.3f} ms,',
-        #     f't2-t1: {(t2-t1)*1000:.3f} ms,',
-        #     f't3-t2: {(t3-t2)*1000:.3f} ms,',
-        #     # f't4-t3: {(t4-t3)*1000:.3f} ms,',
-        #     # f't5-t4: {(t5-t4)*1000:.3f} ms,',
-        #     # f't6-t5: {(t6-t5)*1000:.3f} ms',
-        #     sep='\n'
-        # )
-        
-        return allDelIDs, out_lab
-    
-    def getDelRoiMask(self, roi, posData=None, z_slice=None):
-        if posData is None:
-            posData = self.data[self.pos_i]
-        if z_slice is None:
-            z_slice = self.z_lab()
-        ROImask = np.zeros(posData.lab.shape, bool)
+    def getRoiPixelCoords(self, roi):
+        """Raw (rr, cc) pixel coords covered by roi, no z/mask handling."""
         if isinstance(roi, pg.PolyLineROI):
             r, c = [], []
             x0, y0 = roi.pos().x(), roi.pos().y()
@@ -12273,21 +12186,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 r.append(int(yr+y0))
                 c.append(int(xr+x0))
             if not r or not c:
-                return ROImask
-            
+                return np.array([], dtype=int), np.array([], dtype=int)
+
             if len(r) == 2:
                 rr, cc, val = skimage.draw.line_aa(r[0], c[0], r[1], c[1])
             else:
                 rr, cc = skimage.draw.polygon(r, c, shape=self.currentLab2D.shape)
-            
+
             Y, X = self.currentLab2D.shape
             rr = rr[(rr>=0) & (rr<Y)]
             cc = cc[(cc>=0) & (cc<X)]
-            
-            if self.isSegm3D:
-                ROImask[z_slice, rr, cc] = True
-            else:
-                ROImask[rr, cc] = True
+            return rr, cc
         elif isinstance(roi, pg.LineROI):
             (_, point1), (_, point2) = roi.getSceneHandlePositions()
             point1 = self.ax1.vb.mapSceneToView(point1)
@@ -12295,18 +12204,58 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             x1, y1 = int(point1.x()), int(point1.y())
             x2, y2 = int(point2.x()), int(point2.y())
             rr, cc, val = skimage.draw.line_aa(y1, x1, y2, x2)
-            if self.isSegm3D:
-                ROImask[z_slice, rr, cc] = True
-            else:
-                ROImask[rr, cc] = True
-        else: 
+            return rr, cc
+        else:
             x0, y0 = [int(c) for c in roi.pos()]
             w, h = [int(c) for c in roi.size()]
+            rr, cc = np.mgrid[y0:y0+h, x0:x0+w]
+            return rr.ravel(), cc.ravel()
+
+
+    def getRoiCoords(self, roi, return_mask=False, z_slice=None):
+        """
+        Return coordinates covered by roi.
+
+        return_mask=False: (rr, cc)
+        return_mask=True:  always (mask, bbox).
+            mask is a cropped boolean array containing the roi's exact shape
+            (all True for a rectangular ROI, the real silhouette for a
+            polygon/line).
+            bbox = (r0, r1, c0, c1)
+            Placement: 
+                full_mask[r0:r1, c0:c1] = mask (2D)
+        """
+        rr, cc = self.getRoiPixelCoords(roi)
+
+        if not return_mask:
             if self.isSegm3D:
-                ROImask[z_slice, y0:y0+h, x0:x0+w] = True
-            else:
-                ROImask[y0:y0+h, x0:x0+w] = True
-        return ROImask
+                return z_slice, rr, cc
+            return rr, cc
+
+        if rr.size == 0:
+            mask = np.zeros((0, 0), bool)
+            r0, r1, c0, c1 = 0, 0, 0, 0
+        else:
+            r0, r1 = int(rr.min()), int(rr.max()) + 1
+            c0, c1 = int(cc.min()), int(cc.max()) + 1
+            mask = np.zeros((r1 - r0, c1 - c0), bool)
+            mask[rr - r0, cc - c0] = True
+
+        bbox = (r0, r1, c0, c1)
+        return mask, bbox
+
+    def delROImovingFinished(self, roi: pg.ROI):
+        self.draggingDelROI = False
+        self.delROIpreviewDelIDsObjDict = dict()  # clear preview dict
+        self.currentLab2D[:] = self.delROIoriginalLab  # restore original lab
+        self.delROIoriginalLab[:] = 0  # clear original lab copy
+
+        # apply changes, this time properly
+
+        # QTimer.singleShot(
+        #     300, partial(self.updateDelROIinFutureFrames, roi)
+        # )
+
 
     def enableSmartTrack(self, checked):
         posData = self.data[self.pos_i]
@@ -13257,8 +13206,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.setSwitchViewedPlaneDisabled(True)
             self.startCcaIntegrityCheckerWorker()
             proceed = self.initCca()
-            if proceed:
-                self.applyDelROIs()
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
@@ -13307,8 +13254,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             proceed = self.initLinTree()
             self.setEnabledCcaToolbar(enabled=False)
             self.setNavigateScrollBarMaximum()
-            if proceed:
-                self.applyDelROIs()
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
@@ -13676,15 +13621,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         prev_IDs = self.getPrevFrameIDs()  
         tracked_lost_IDs = self.getTrackedLostIDs()
         curr_IDs = posData.IDs
-        curr_delRoiIDs = self.getStoredDelRoiIDs()
-        prev_delRoiIDs = self.getStoredDelRoiIDs(frame_i=posData.frame_i-1)
         lost_IDs = [
             ID for ID in prev_IDs if ID not in curr_IDs
-            and ID not in prev_delRoiIDs and ID not in tracked_lost_IDs
+            and ID not in tracked_lost_IDs
         ]
         new_IDs = [
-            ID for ID in curr_IDs if ID not in prev_IDs 
-            and ID not in curr_delRoiIDs
+            ID for ID in curr_IDs if ID not in prev_IDs
         ]
         IDs_with_holes = []
         posData.lost_IDs = lost_IDs
@@ -13693,7 +13635,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData.IDs = curr_IDs
         
         out = (
-            lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs, curr_delRoiIDs
+            lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs
         )
         return out
 
@@ -18450,7 +18392,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.pointsLayerLoadedDfsToData()
         self.flushDirtyPointsLayersAutosave()
         self.initContoursImage()
-        self.initDelRoiLab()
         self.initTextAnnot()
         self.postProcessing()
         self.updateScrollbars()
@@ -19788,7 +19729,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.initContoursImage()
         self.initTextAnnot()
-        self.initDelRoiLab()
 
         self.update_rp()
         self.updateAllImages()
@@ -20340,7 +20280,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.zProjComboBox.setCurrentText('single z-slice')
         depthAxes = self.switchPlaneCombobox.depthAxes()
         self.onEscape()
-        self.initDelRoiLab()
         if depthAxes != 'z':
             # Disable projections on plane that is not xy
             self.zProjComboBox.setCurrentText('single z-slice')
@@ -25688,14 +25627,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         self.contoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
     
-    def initDelRoiLab(self):
-        posData = self.data[self.pos_i]
-        z_slice = self.z_lab()
-        img = posData.img_data[posData.frame_i]
-        Y, X = img[z_slice].shape[-2:]
-        
-        self.delRoiLab = np.zeros((Y, X), dtype=np.uint32)
-    
     def initLostObjContoursImage(self):
         posData = self.data[self.pos_i]
         z_slice = self.z_lab()
@@ -26667,12 +26598,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def setImageImg2(self, updateLookuptable=True, set_image=True):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
-        if mode == 'Segmentation and Tracking' or self.isSnapshot:
-            # self.addExistingDelROIs()
-            allDelIDs, lab2D = self.getDelROIlab()
-        else:
-            lab2D = self.get_2Dlab(posData.lab, force_z=False)
-            allDelIDs = set()
+        # if mode == 'Segmentation and Tracking' or self.isSnapshot:
+        #     # self.addExistingDelROIs()
+        #     allDelIDs, lab2D = self.getDelROIlab()
+        # else:
+        lab2D = self.get_2Dlab(posData.lab, force_z=False)
+        allDelIDs = set()
         
         self.currentLab2D = lab2D   
         if self.labelsGrad.permanentGreedyCmapAction.isChecked() and updateLookuptable:
@@ -26683,76 +26614,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
-
-    def applyDelROIimg1(self, roi, init=False, ax=0):
-        if ax == 0:
-            how = self.drawIDsContComboBox.currentText()
-        else:
-            how = self.getAnnotateHowRightImage()
-        
-        if ax == 1 and not self.labelsGrad.showRightImgAction.isChecked():
-            return
-        
-        if init and how.find('contours') == -1:
-            self.setOverlaySegmMasks(force=True)
-            return
-
-        posData = self.data[self.pos_i]
-        delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-        try:
-            idx = delROIs_info['rois'].index(roi)
-        except Exception as err:
-            try:
-                ax.removeDelRoiItem(roi)
-            except Exception as err:
-                pass
-            return
-        delIDs = delROIs_info['delIDsROI'][idx]
-        delMask = delROIs_info['delMasks'][idx]
-        if how.find('nothing') != -1:
-            return
-        elif how.find('contours') != -1:
-            self.updateContoursImage(ax=ax)
-        
-        if not delIDs:
-            return
-        
-        if how.find('overlay segm. masks') != -1:
-            lab = self.currentLab2D.copy()
-            lab[delMask > 0] = 0
-            if ax == 0:
-                self.labelsLayerImg1.setImage(lab, autoLevels=False)
-            else:
-                self.labelsLayerRightImg.setImage(lab, autoLevels=False)
-
-        self.setAllTextAnnotations(labelsToSkip={ID:True for ID in delIDs})
     
-    def applyDelROIs(self):
-        self.logger.info('Applying deletion ROIs (if present)...')
-        
-        for posData in self.data:
-            self.current_frame_i = posData.frame_i
-            for frame_i in range(posData.SizeT):
-                lab = posData.allData_li[frame_i]['labels']
-                if lab is None:
-                    break
-                delROIs_info = posData.allData_li[frame_i]['delROIs_info']
-                delIDs_rois = delROIs_info['delIDsROI']
-                if not delIDs_rois:
-                    continue
-                for delIDs in delIDs_rois:
-                    for delID in delIDs:
-                        lab[lab==delID] = 0
-                posData.allData_li[frame_i]['labels'] = lab
-                # Get the rest of the metadata and store data based on the new lab
-                posData.frame_i = frame_i
-                self.get_data()
-                self.store_data(autosave=False)
-            
-            # Back to current frame
-            posData.frame_i = self.current_frame_i
-            self.get_data()
-                
+    def updateDelROIpreview(self, roi):
+        posData = self.data[self.pos_i]
+
+
+
     def initTempLayerBrush(self, ID, ax=0):
         posData = self.data[self.pos_i]
         if ax == 0:
@@ -27894,6 +27761,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             rp = self.rpCurr2D()
 
         for obj in rp:
+            if delROIsIDs and obj.label in delROIsIDs:
+                continue
             obj_contours = self.getObjContours(
                 obj,
                 all_external=True,
@@ -28229,14 +28098,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     # @exec_time
     def setAllTextAnnotations(self, labelsToSkip=None):
-        delROIsIDs = self.setLostNewOldPrevIDs()
+        self.setLostNewOldPrevIDs()
         posData = self.data[self.pos_i]
         self.textAnnot[0].setAnnotations(
             posData=posData, 
             labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
             highlightedID=self.highlightedID, 
-            delROIsIDs=delROIsIDs,
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getCurrentZfunc=self.z_lab, 
             getObjCentroidFunc=self.getObjCentroid
@@ -28245,14 +28113,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData=posData, labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
             highlightedID=self.highlightedID, 
-            delROIsIDs=delROIsIDs,
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getCurrentZfunc=self.z_lab, 
             getObjCentroidFunc=self.getObjCentroid
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
-        return delROIsIDs
     
     def setAllContoursImages(self, delROIsIDs=None, compute=True):
         self.updateContoursImage(ax=0, delROIsIDs=delROIsIDs, compute=compute) #almost all from here
@@ -28410,9 +28276,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.update_rp()
 
         # Annotate ID and draw contours
-        delROIsIDs = self.setAllTextAnnotations()    
+        self.setAllTextAnnotations()    
         self.setAllContoursImages(
-            delROIsIDs=delROIsIDs, compute=False
+            compute=False
         )
 
         mode = self.modeComboBox.currentText()
@@ -28722,7 +28588,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         posData = self.data[self.pos_i]
-        delROIsIDs = self.getDelRoisIDs()
         
         # self.setAllContoursImages(delROIsIDs=delROIsIDs)
         if posData.frame_i == 0:
@@ -28736,8 +28601,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if prev_rp is None:
             return
 
-        self.setAllLostObjContoursImage(delROIsIDs=delROIsIDs)        
-        self.setAllLostTrackedObjContoursImage(delROIsIDs=delROIsIDs)
+        self.setAllLostObjContoursImage()        
+        self.setAllLostTrackedObjContoursImage()
 
     def addLostObjsToLostObjImage(self, lostObj, lostID, force=False):
         if not force:
@@ -28834,13 +28699,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         #     pass
         
         out = self.updateLostNewCurrentIDs()
-        lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs, curr_delRoiIDs = (
+        lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs = (
             out
         )
         self.setTitleText(
             lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs
         )
-        return curr_delRoiIDs
+        return
     
 
     def setTitleFormatter(self, htmlTxt_li, htmlTxtFull_li, pretxt, color, IDs):
@@ -30214,7 +30079,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.retainSizeLutItems = False
         self.setMeasWinState = None
         self.addPointsWin = None
-        self.delRoiLab = None
         self.showPropsDockButton.setDisabled(True)
         self.removeOverlayItems()
         self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)
@@ -32818,7 +32682,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.askLineageTreeChanges()
 
         self.store_data(autosave=False)
-        self.applyDelROIs()
         self.store_data()
         self._isQuickSave = isQuickSave
 
