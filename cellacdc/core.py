@@ -2553,7 +2553,9 @@ def combine_channels_func(
     
     channel_names = [step['channel'] for step in steps.values()]
     channel_keys = steps.keys()
-    segm_channels, fluo_channel_names, current_segm = myutils.separate_fluo_segment_channels(channel_names)
+    segm_channels, fluo_channel_names, current_segm = (
+        myutils.separate_fluo_segment_channels(channel_names)
+    )
     original_dtype = None
     
     target_dims = 0
@@ -2573,6 +2575,7 @@ def combine_channels_func(
                  target_dims, target_shape, ch_image_data
             )
             fluo_ch_data_list[channel] = ch_image_data
+        
         for channel in segm_channels:
             ch_filepath = load.get_filepath_from_endname(
                 images_path, channel
@@ -2605,7 +2608,8 @@ def combine_channels_func(
             channel_full_name = pathlib.Path(channel_path).stem
             # remove the file extension
             
-            channel_img_data = _get_img_from_data_key(fluo_data_dict[channel_full_name], key, n_dim)
+            channel_img_data = _get_img_from_data_key(
+                fluo_data_dict[channel_full_name], key, n_dim)
             if original_dtype is None:
                 original_dtype = channel_img_data.dtype
             channel_img_data_float = myutils.img_to_float(channel_img_data)
@@ -2666,14 +2670,16 @@ def combine_channels_func(
     for i, ch in zip(channel_keys, channel_names):
         if ch in fluo_ch_data_list:
             ch_image_data = fluo_ch_data_list[ch]
-            _verify_shape_ndim(ch_image_data, target_dims, target_shape, is_segm=False)
+            _verify_shape_ndim(
+                ch_image_data, target_dims, target_shape, is_segm=False)
 
         elif ch in segm_ch_data_list:
             ch_image_data = segm_ch_data_list[ch]
             ch_image_data, text = _add_missing_dims(ch_image_data, target_shape)
             if text:
                 _log_printl_fallback(text, logger_func)
-            _verify_shape_ndim(ch_image_data, target_dims, target_shape, is_segm=False) # false since we already expanded
+            _verify_shape_ndim(
+                ch_image_data, target_dims, target_shape, is_segm=False) # false since we already expanded
             segm_ch_data_list[ch] = ch_image_data
         else:
             raise ValueError(f'Channel "{ch}" not found.')
@@ -2767,10 +2773,15 @@ def combine_channels_func(
     if return_img:
         return output_img, key, txt
     
-    txt = f'Saving combined {"segmentation" if output_as_segm else "image"} to {save_filepath}'
+    txt = (
+        f'Saving combined {"segmentation" if output_as_segm else "image"} to '
+        f'{save_filepath}'
+    )
     _log_printl_fallback(txt, logger_func)
     
 
+    printl(save_filepath)
+    
     io.save_image_data( # handles saving img and segm
         save_filepath, output_img
     )
