@@ -3237,13 +3237,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if triggeredByUser:
                 current_min, current_max = imageItem.getLevels() 
                 dtype_max = np.iinfo(image_data.dtype).max
-                max_value = image_data.max()
-                min_value = image_data.min()
+                # max_value = image_data.max()
+                # min_value = image_data.min()
                 win = apps.SetCustomLevelsLut(
-                    init_min_value=current_min,
-                    init_max_value=current_max,
-                    maximum_max_value=max_value,
-                    minimum_min_value=min_value,
+                    init_min_value=round(current_min),
+                    init_max_value=round(current_max),
+                    maximum_max_value=dtype_max,
+                    minimum_min_value=0,
                     parent=self
                 )
                 win.sigLevelsChanged.connect(
@@ -30929,7 +30929,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             how = self.df_settings.at[
                 f'how_rescale_intensities_{channelName}', 'value'
             ]
-            lutItem.setRescaleIntensitiesHow(how)
+            if not 'custom' in how:
+                lutItem.setRescaleIntensitiesHow(how)
         
         self.rescaleIntensChannelHowMapper[channelName] = (
             'Rescale each 2D image'
@@ -32050,7 +32051,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
     
     @disableWindow
-    def exportToImage(self, preferences):        
+    def exportToImage(self, preferences):      
         filepath = preferences['filepath']
         self.logger.info(f'Saving image to "{filepath}"...')
         
@@ -32058,6 +32059,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             exporter = exporters.SVGExporter(self.ax1)
         else:
             exporter = exporters.ImageExporter(self.ax1, dpi=preferences['dpi'])
+        
         exporter.export(filepath)
         self.logger.info(f'Image saved.')
         
