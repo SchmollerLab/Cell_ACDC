@@ -819,3 +819,6 @@ valid_image_data_ends = (
     '.npz',
     '_symlink.ini'
 )
+
+if GUI_INSTALLED:
+    from cellacdc.volume_renderer.canvas import VolumeRendererWindow

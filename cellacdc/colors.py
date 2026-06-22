@@ -5,6 +5,7 @@ import skimage.segmentation
 import skimage.measure
 
 from collections.abc import Callable, Sequence
+from typing import Literal
 import numpy as np
 
 from . import GUI_INSTALLED, printl
@@ -25,19 +26,59 @@ except:
 
 __all__ = ['ColorMap']
 
+CYAN_RGB = (0, 255, 255)
+MAGENTA_RGB = (255, 0, 255)
+YELLOW_RGB = (255, 255, 0)
+
 FLUO_CHANNELS_COLORS = {
-    'mCardinal': (255, 0, 255), 
-    'mNeonGreen': (0, 255, 0),
-    'NeonGreen': (0, 255, 0),
-    'mNG': (0, 255, 0), 
-    'mScarlet': (255, 0, 255), 
-    'mScarlet-I3': (255, 0, 255), 
-    'mKate': (255, 0, 255), 
-    'mKate2': (255, 0, 255),
-    'GFP': (0, 255, 0),
-    'EGFP': (0, 255, 0),
-    'mCitrine': (255, 255, 0)
+    'mCardinal': MAGENTA_RGB,
+    'mNeonGreen': CYAN_RGB,
+    'NeonGreen': CYAN_RGB,
+    'mNeon': CYAN_RGB,
+    'mNG': CYAN_RGB, 
+    'mScarlet': MAGENTA_RGB, 
+    'mScarlet-I3': MAGENTA_RGB, 
+    'mKate': MAGENTA_RGB, 
+    'mKate2': MAGENTA_RGB,
+    'GFP': CYAN_RGB,
+    'EGFP': CYAN_RGB,
+    'mCitrine': YELLOW_RGB
 }
+
+# Tuple of 3 or 4 uint8 values
+RgbaColor = tuple[int]
+
+AcdcPyQtGraphColorMapName = Literal[
+    'hot', 
+    'flame',
+    'yellowy',
+    'bipolar',
+    'spectrum',
+    'cyclic',
+    'greyclip',
+    'grey', 
+    'viridis', 
+    'inferno', 
+    'plasma',
+    'magma',
+    'turbo',
+    'cividis',
+    'cool',
+    'sunset'
+]
+
+overlay_rgbs = [
+    (255, 255, 0),
+    (252, 72, 254),
+    (49, 222, 134),
+    (22, 108, 27)
+]
+if GUI_INSTALLED:
+    overlay_default_plt_cmap = matplotlib.colormaps['hsv']
+    overlay_rgbs.extend(
+        [tuple([round(c*255) for c in overlay_default_plt_cmap(i)][:3]) 
+        for i in np.linspace(0,1,8)]
+    )
 
 _mapCache = {}
 def getFromMatplotlib(name):
@@ -367,3 +408,52 @@ def grayscale_apply_lut(image, lut):
 def get_complementary_color(rgba_str: str) -> str:
     r, g, b, a = rgba_str_to_values(rgba_str)
     return f'rgba({255 - r}, {255 - g}, {255 - b}, {a})'
+
+def pg_to_vispy_cmap(pg_cmap, n=256):
+    """Convert PyQtGraph colormap to vispy
+
+    Parameters
+    ----------
+    pg_cmap : pyqtgraph.colormap.ColorMap
+        PyQtGraph Colormap. For example, it can be obtained with 
+        `pyqtgraph.HistogramLUTItem.gradient.colorMap()`
+    n : int, optional
+        Number of colors, by default 256
+
+    Returns
+    -------
+    vispy.color.Colormap
+        VisPy colormap
+    """
+    
+    from vispy.color import Colormap as VisPyColormap
+    
+    # Sample the colormap
+    colors = pg_cmap.getLookupTable(0.0, 1.0, n)
+
+    # Normalize to 0–1 (VisPy expects floats)
+    colors = np.array(colors) / 255.0
+
+    return VisPyColormap(colors)
+
+def get_auto_contrast_percentile(
+        image_data: np.ndarray,
+        low_pct=0.02,
+        high_pct=99.98
+    ):
+    # Subsample large volumes for speed (< 1 M samples is fast).
+    vmin_raw = float(image_data.min())
+    vmax_raw = float(image_data.max())
+    flat = image_data.ravel()
+    if flat.size > 1_000_000:
+        step = flat.size // 1_000_000 + 1
+        flat = flat[::step]
+    p_lo = float(np.percentile(flat, low_pct))
+    p_hi = float(np.percentile(flat, high_pct))
+    span = vmax_raw - vmin_raw
+    lo = max(0.0, min(1.0, (p_lo - vmin_raw) / span))
+    hi = max(0.0, min(1.0, (p_hi - vmin_raw) / span))
+    if hi <= lo:
+        lo, hi = 0.0, 1.0
+    
+    return lo, hi
