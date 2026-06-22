@@ -3140,7 +3140,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # self.rescaleIntensitiesLut(setImage=setImage)
                 break
     
-    def customLevelsLutChanged(self, levels, imageItem=None):
+    def customLevelsLutChanged(self, levels, imageItem: pg.ImageItem=None):
         imageItem.setLevels(levels)
     
     def getPreComputedMinMaxZstack(self, channel: str):
@@ -31092,7 +31092,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if otherToolbutton.isChecked() and isSingleChannel:
                 op_val = 1.0
             elif otherToolbutton.isChecked():
-                op_val = channel_opacity_mapper[channel]
+                op_val = channel_opacity_mapper.get(channel, 0.01)
             else:
                 op_val = 0.0
             
