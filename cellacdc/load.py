@@ -1873,7 +1873,8 @@ class loadData:
             new_endname='',
             labelBoolSegm=None,
             load_whitelistIDs=False,
-            load_segm_info_ini=False
+            load_segm_info_ini=False,
+            loadTrackedLostCentroids=False
         ):
         self.segmFound = False if load_segm_data else None
         self.acdc_df_found = False if load_acdc_df else None
@@ -2080,6 +2081,10 @@ class loadData:
             
         if load_segm_info_ini:
             self.readSegmMetadataIni()
+            
+        if loadTrackedLostCentroids:
+            self.trackedLostCentroidsPath()
+            self.loadTrackedLostCentroids()
     
     def checkAndFixZsliceSegmInfo(self):
         if not hasattr(self, 'segmInfo_df'):
@@ -2309,6 +2314,7 @@ class loadData:
         cca_dfs_auto_attr = hasattr(tracker, 'cca_dfs_auto')
 
         if hasattr(tracker, 'tracked_lost_centroids'):
+            self.trackedLostCentroidsPath()
             self.saveTrackedLostCentroids(tracker.tracked_lost_centroids)
 
         if not cca_dfs_attr and not cca_dfs_auto_attr:
@@ -3371,6 +3377,10 @@ class loadData:
             return None
         elif signals is not None:
             raise FileNotFoundError(err_title)
+        
+    def trackedLostCentroidsPath(self):
+        self.tracked_lost_centroids_json_path = self.segm_npz_path.replace('segm', 'tracked_lost_centroids').replace('.npz', '.json')
+        print(self.tracked_lost_centroids_json_path)
         
     def saveTrackedLostCentroids(self, tracked_lost_centroids_list=None, _tracked_lost_centroids_list=None):
 
