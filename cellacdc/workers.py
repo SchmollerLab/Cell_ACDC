@@ -6064,7 +6064,7 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
         printl(images_path_to_process, pretty=True)
         
         core.combine_channels_multithread(
-            steps=steps,
+            inputs_info=steps,
             images_paths=images_path_to_process,
             keep_input_data_type=keep_input_data_type,
             save_filepaths=save_filepaths,
