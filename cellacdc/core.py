@@ -2555,17 +2555,11 @@ def combine_channels_func(
     fluo_ch_data_list = dict()
     segm_ch_data_list = dict()
     
-<<<<<<< Updated upstream
-    channel_names = [step['channel'] for step in steps.values()]
-    channel_keys = steps.keys()
+    channel_names = [step['channel'] for step in inputs_info.values()]
+    channel_keys = inputs_info.keys()
     segm_channels, fluo_channel_names, current_segm = (
         myutils.separate_fluo_segment_channels(channel_names)
     )
-=======
-    channel_names = [step['channel'] for step in inputs_info.values()]
-    channel_keys = inputs_info.keys()
-    segm_channels, fluo_channel_names, current_segm = myutils.separate_fluo_segment_channels(channel_names)
->>>>>>> Stashed changes
     original_dtype = None
     
     target_dims = 0
@@ -2585,13 +2579,8 @@ def combine_channels_func(
                  target_dims, target_shape, ch_image_data
             )
             fluo_ch_data_list[channel] = ch_image_data
-<<<<<<< Updated upstream
-        
-        for channel in segm_channels:
-=======
             
         for segm_channel in segm_channels:
->>>>>>> Stashed changes
             ch_filepath = load.get_filepath_from_endname(
                 images_path, segm_channel
             )
