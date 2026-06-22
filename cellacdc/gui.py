@@ -19202,7 +19202,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             create_new_segm=self.isNewFile,
             new_endname=self.newSegmEndName,
             end_filename_segm=selectedSegmEndName,
-            load_segm_info_ini=True
+            load_segm_info_ini=True,
+            loadTrackedLostCentroids=True,
         )
         self.selectedSegmEndName = selectedSegmEndName
         self.labelBoolSegm = posData.labelBoolSegm
@@ -20745,7 +20746,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 'Delete ID': False, 'Edit ID': False, 'Keep ID': False
             }
             
-            posData.loadTrackedLostCentroids()
             posData.acdcTracker2stepsAnnotInfo = {}
 
             posData.doNotShowAgain_BinID = False
