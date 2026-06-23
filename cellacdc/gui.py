@@ -5995,7 +5995,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             mask = lab2D == ID
             filledMask = scipy.ndimage.binary_fill_holes(mask)
             newFilledMask = np.logical_and(filledMask, ~mask)
-            print(newFilledMask)
             if not np.any(newFilledMask):
                 return False
 
