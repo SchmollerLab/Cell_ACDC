@@ -10340,15 +10340,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             delROIs_info['state'].pop(idx)
             delROIs_info['delMasksCoords'].pop(idx)
         
-        if isinstance(self.roi_to_del, pg.PolyLineROI):
+        if isinstance(roi_to_del, pg.PolyLineROI):
             # PolyLine ROIs are only on ax1
-            self.ax1.removeItem(self.roi_to_del)
+            self.ax1.removeItem(roi_to_del)
         elif not self.labelsGrad.showLabelsImgAction.isChecked():
             # Rect ROI is on ax1 because ax2 is hidden
-            self.ax1.removeItem(self.roi_to_del)
+            self.ax1.removeItem(roi_to_del)
         else:
             # Rect ROI is on ax2 because ax2 is visible
-            self.ax2.removeItem(self.roi_to_del)
+            self.ax2.removeItem(roi_to_del)
 
         if not has_to_restore_frame_i:
             return
@@ -19927,7 +19927,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.initLoadedDelROI()
 
     def initLoadedDelROI(self):
-        for posData in self.data:
+        for i, posData in enumerate(self.data):
+            self.pos_i = i
+            self.updateFramePosLabel()
+            self.updatePos()
             curr_frame = posData.frame_i
             ROI_key_frame_lookup = posData.loadROIInfo()
             if ROI_key_frame_lookup is None:
