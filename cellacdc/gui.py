@@ -25468,15 +25468,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     imageItem.lutItem.rescaleActionGroup.checkedAction()
                 )
                 rescale_lut_how = rescale_lut_action.text()
+                in_range = 'image'
                 if rescale_lut_how == 'Choose custom levels...':
-                    out_range = imageItem.getLevels()
-                    ol_img = skimage.exposure.rescale_intensity(
-                        ol_img, out_range=out_range
-                    ) 
+                    in_range = tuple(imageItem.getLevels())
                     
                 alpha_val = alphaSB.value()/alphaSB.maximum()
                 ol_img = skimage.exposure.rescale_intensity(
-                    ol_img, out_range=(0.0, 1.0)
+                    ol_img, in_range=in_range, out_range=(0.0, 1.0)
                 )               
                 rgba_imgs_info[chName] = (ol_img, alpha_val, lutItem, imageItem)
             else:
@@ -25503,13 +25501,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.imgGrad.rescaleActionGroup.checkedAction()
             )
             rescale_lut_how = rescale_lut_action.text()
+            in_range = 'image'
             if rescale_lut_how == 'Choose custom levels...':
-                out_range = self.img1.getLevels()
-                ol_img = skimage.exposure.rescale_intensity(
-                    ol_img, out_range=out_range
-                ) 
+                in_range = tuple(self.img1.getLevels())
+                
             image1 = skimage.exposure.rescale_intensity(
-                image1, out_range=(0.0, 1.0)
+                image1, in_range=in_range, out_range=(0.0, 1.0)
             )        
             images.append(image1)
             baseLut = (
@@ -31954,8 +31951,39 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return 
         
         return msg.clickedButton == timelapseButton
+
+    def exportToCheckAskOverlay(self, output='image'):
+        if not self.overlayButton.isChecked():
+            return True
+        
+        if self.overlayToolbar.isTransparent():
+            return True
+        
+        self.blinker = qutils.QControlBlink(
+            self.overlayToolbar.transparencyCheckbox, qparent=self
+        )
+        self.blinker.start()
+        
+        cancel, activateTransparencyMode = (
+            _warnings.warnAskTransparencyModeNeededForExport(
+                self, output=output
+            )
+        )
+        
+        if cancel:
+            return False
+        
+        if activateTransparencyMode:
+            self.overlayToolbar.setTransparent(True)
+        
+        return True
     
     def exportToVideoTriggered(self):
+        proceed = self.exportToCheckAskOverlay(output='video')
+        if not proceed:
+            self.logger.info('Export to video process cancelled')
+            return
+        
         posData = self.data[self.pos_i]
         
         doTimelapseVideo = posData.SizeT > 1
@@ -32090,6 +32118,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         prompts.exportToImageFinished(filepath, qparent=self)
     
     def exportToImageTriggered(self):
+        proceed = self.exportToCheckAskOverlay()
+        if not proceed:
+            self.logger.info('Export to video process cancelled')
+            return
+        
         posData = self.data[self.pos_i]
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'{timestamp}_acdc_exported_image'
