@@ -4952,8 +4952,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.zSliceSpinbox.hide()
         self.SizeZlabel.hide()
 
-    def rpCurr2D(self, frame_i=None, slice_i=None, depth_axis=None):
-        posData = self.data[self.pos_i]
+    def rpCurr2D(self, frame_i=None, slice_i=None, depth_axis=None, pos_i=None):
+        posData = self.data[self.pos_i if pos_i is None else pos_i]
         if frame_i is None:
             rp = posData.rp
         else:
@@ -12166,12 +12166,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         posData = self.data[self.pos_i]
-        curr_lab = self.currentLab2D
+        curr_lab_view = self.currentLab2D
         for ID in to_hide_IDs:
-            obj = posData.rp.get_obj_from_ID(ID)
+            rp = self.rpCurr2D()
+            obj = rp.get_obj_from_ID(ID)
             self.delROIpreviewDelIDsObjDict[ID] = obj
-            # posData.rp.remove_obj(obj)
-            curr_lab[obj.slice][obj.image] = 0
+            curr_lab_view[obj.slice][obj.image] = 0
         
         if contour_shown_1:
             self.updateContoursImage(ax=0, delROIsIDs=hidden_IDs)
@@ -12180,7 +12180,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     
         for ID in to_restore_IDs:
             obj = self.delROIpreviewDelIDsObjDict.pop(ID)
-            curr_lab[obj.slice][obj.image] = ID
+            curr_lab_view[obj.slice][obj.image] = ID
 
             if contour_shown_1:
                 self.addObjContourToContoursImage(
@@ -12193,11 +12193,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if label_shown_1:
             self.labelsLayerImg1.setImage(
-               curr_lab, autoLevels=False
+               curr_lab_view, autoLevels=False
             )
         if label_shown_2:
             self.labelsLayerRightImg.setImage(
-                curr_lab, autoLevels=False
+                curr_lab_view, autoLevels=False
             )
             
     def getRoiPixelCoords(self, roi):
@@ -19311,6 +19311,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not self.isSegm3D:
             return 
 
+        disabledTooltip = (
+            'Disabled for 3D. If this sounds usefull, please contact us '
+            'so we can implement it!'
+        )
+
+        def addDisabledTooltip(widget):
+            if widget is None:
+                return
+            currentTooltip = widget.toolTip()
+            if disabledTooltip in currentTooltip:
+                return
+            newTooltip = (
+                f'{disabledTooltip}\n\n{currentTooltip}'
+                if currentTooltip else disabledTooltip
+            )
+            widget.setToolTip(newTooltip)
+
         for item in self.functionsNotTested3D:
             if hasattr(item, 'action'):
                 toolButton = item
@@ -19320,10 +19337,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 toolbar = item.toolbar
                 action = item
                 toolButton = toolbar.widgetForAction(action)
-                toolButton.setDisabled(True)    
-            else: 
+                toolButton.setDisabled(True)
+            else:
                 action = item
+                toolButton = None
+
             action.setDisabled(True)
+            addDisabledTooltip(action)
+            addDisabledTooltip(toolButton)
 
     @exception_handler
     def startLoadDataWorker(
@@ -20576,6 +20597,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             
             if button in self.toolsActiveInProj3Dsegm:
+                continue
+
+            if action in self.functionsNotTested3D or button in self.functionsNotTested3D:
                 continue
             
             try:
