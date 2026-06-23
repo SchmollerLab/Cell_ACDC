@@ -1201,6 +1201,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.brushButton.keyPressShortcut = Qt.Key_B
         self.widgetsWithShortcut['Brush'] = self.brushButton
         self.manulAnnotToolButtons.add(self.brushButton)
+        self.toolsActiveInProj3Dsegm.add(self.brushButton)
 
         self.eraserButton = QToolButton(self)
         self.eraserButton.setIcon(QIcon(":eraser.svg"))
@@ -5428,6 +5429,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.assignNewIDfromClickedID(ID, event, shift=shift)
                 return
             
+            merging_IDs = editID.mergeWithExistingID
             if not self.doNotAskAgainExistingID:    
                 self.editIDmergeIDs = editID.mergeWithExistingID
             self.doNotAskAgainExistingID = editID.doNotAskAgainExistingID
@@ -5435,7 +5437,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.applyEditID(
                 ID, currentIDs, editID.how, x, y, 
                 shift=shift,
-                doPropagateUnvisited=editID.doPropagateFutureFrames
+                doPropagateUnvisited=editID.doPropagateFutureFrames,
+                merging_IDs=merging_IDs
             )
         
         elif (right_click or left_click) and self.keepIDsButton.isChecked():
@@ -5988,7 +5991,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if not self.brushButton.isChecked():
                 return False
             
-            lab2D = self.get_2Dlab(posData.lab, force_z=False)
+            lab2D = self.get_2Dlab(posData.lab)
             mask = lab2D == ID
             filledMask = scipy.ndimage.binary_fill_holes(mask)
             newFilledMask = np.logical_and(filledMask, ~mask)
@@ -9954,7 +9957,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     # @exec_time
     def applyEditID(
-            self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y, shift=False, doPropagateUnvisited=False
+            self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y, shift=False, doPropagateUnvisited=False,
+            merging_IDs=False
         ):  
         posData = self.data[self.pos_i]
         rp = self.rpCurr2D() if (shift and self.isSegm3D) else posData.rp
@@ -9983,7 +9987,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.storeUndoRedoStates(UndoFutFrames)
         # could this be chained??? If yes we have to "simplify" to least swops to since we keep RP stale
         # oldIDnewIDMapper
-        assignments = {}
+        assignments = {}        
         for old_ID, new_ID in oldIDnewIDMapper: 
             if new_ID in currentIDs and not self.editIDmergeIDs:
                 objo = rp.get_obj_from_ID(old_ID)
@@ -9998,7 +10002,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 slc_n = objn.slice
                 mask_n = objn.image
                 lab[slc_n][mask_n] = old_ID
-
 
                 # ¯\_(ツ)_/¯
                 if use_3D_obj_centroid:
@@ -10034,6 +10037,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # When shift is active we edited the 2D slice of a 3D lab; the cached 
         # slice/image data in the old RP objects is stale so we must do a full 
         # recompute rather than the fast assignments-only path.
+        
+        # check for merger
+        assignments = assignments if not merging_IDs else None
         self.update_rp(assignments=None if (shift and self.isSegm3D) else assignments)
 
         # Since we manually changed an ID we don't want to repeat tracking
@@ -10069,7 +10075,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.changeIDfutureFrames(
             endFrame_i, oldIDnewIDMapper, includeUnvisited,
-            shift=shift
+            shift=shift, merging_IDs=merging_IDs
         )
     
     def getLastHoveredID(self):
@@ -22902,7 +22908,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def changeIDfutureFrames(
             self, endFrame_i, oldIDnewIDMapper, includeUnvisited,
-            shift=False
+            shift=False, merging_IDs=False
         ):
         posData = self.data[self.pos_i]
         self.current_frame_i = posData.frame_i
@@ -22946,7 +22952,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
                     self.update_rp(
                         draw=False,
-                        assignments=assignments if not (shift and self.isSegm3D) else None)
+                        assignments=assignments if not ((shift and self.isSegm3D) or merging_IDs) else None)
                 self.store_data(autosave=i==endFrame_i)
             elif includeUnvisited:
                 # Unvisited frame (includeUnvisited = True)
@@ -22963,7 +22969,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self._changeIDhelper(
                         lab, old_ID, new_ID, rp, assignments) 
 
-                if shift and self.isSegm3D:
+                if (shift and self.isSegm3D) or merging_IDs:
                     posData.segm_data[i][self.z_lab()] = lab
                     rp.update_regionprops(lab)
                 else:
@@ -23652,6 +23658,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     posData.lab
                 )
         else:
+            print("updating rp the old school ways")
             posData.rp.update_regionprops(
                 posData.lab,
                 specific_IDs_update_centroids=specific_IDs if preloaded_bbox is not False else None, # since sometimes I preload
@@ -28300,7 +28307,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             highlightedID=self.highlightedID, 
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getCurrentZfunc=self.z_lab, 
-            getObjCentroidFunc=self.getObjCentroid
+            getObjCentroidFunc=self.getObjCentroid,
+            rp_2D_func=self.rpCurr2D
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
@@ -28308,7 +28316,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             highlightedID=self.highlightedID, 
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getCurrentZfunc=self.z_lab, 
-            getObjCentroidFunc=self.getObjCentroid
+            getObjCentroidFunc=self.getObjCentroid,
+            rp_2D_func=self.rpCurr2D
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
