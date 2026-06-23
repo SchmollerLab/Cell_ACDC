@@ -1201,7 +1201,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.brushButton.keyPressShortcut = Qt.Key_B
         self.widgetsWithShortcut['Brush'] = self.brushButton
         self.manulAnnotToolButtons.add(self.brushButton)
-        # self.toolsActiveInProj3Dsegm.add(self.brushButton)
+        self.toolsActiveInProj3Dsegm.add(self.brushButton)
 
         self.eraserButton = QToolButton(self)
         self.eraserButton.setIcon(QIcon(":eraser.svg"))
@@ -5991,10 +5991,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if not self.brushButton.isChecked():
                 return False
             
-            lab2D = self.get_2Dlab(posData.lab, force_z=False)
+            lab2D = self.get_2Dlab(posData.lab)
             mask = lab2D == ID
             filledMask = scipy.ndimage.binary_fill_holes(mask)
             newFilledMask = np.logical_and(filledMask, ~mask)
+            print(newFilledMask)
             if not np.any(newFilledMask):
                 return False
 
