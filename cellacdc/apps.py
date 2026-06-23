@@ -9914,7 +9914,7 @@ class EditIDDialog(QDialog):
         self.clickedID = clickedID
         self.cancel = True
         self.how = None
-        self.mergeWithExistingID = True
+        self.mergeWithExistingID = False
         self.doNotAskAgainExistingID = doNotShowAgain
         self.allIDs = allIDs
         if allIDs is None:
@@ -10061,7 +10061,7 @@ class EditIDDialog(QDialog):
         if msg.cancel:
             return False
         self.doNotAskAgainExistingID = doNotAskAgainCheckbox.isChecked()
-        self.mergeWithExistingID = msg.clickedButton ==  mergeButton
+        self.mergeWithExistingID = True
         return True
 
     def assignNewIDclicked(self):
