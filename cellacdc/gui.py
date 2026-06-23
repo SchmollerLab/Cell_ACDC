@@ -3142,6 +3142,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def customLevelsLutChanged(self, levels, imageItem: pg.ImageItem=None):
         imageItem.setLevels(levels)
+        if self.overlayToolbar.isTransparent():
+            self.updateTransparentOverlayRgba()
     
     def getPreComputedMinMaxZstack(self, channel: str):
         if channel != self.user_ch_name:
@@ -25461,12 +25463,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 toolbutton = items[3]
                 if not toolbutton.isChecked():
                     continue
+                
+                rescale_lut_action = (
+                    imageItem.lutItem.rescaleActionGroup.checkedAction()
+                )
+                rescale_lut_how = rescale_lut_action.text()
+                if rescale_lut_how == 'Choose custom levels...':
+                    out_range = imageItem.getLevels()
+                    ol_img = skimage.exposure.rescale_intensity(
+                        ol_img, out_range=out_range
+                    ) 
+                    
                 alpha_val = alphaSB.value()/alphaSB.maximum()
                 ol_img = skimage.exposure.rescale_intensity(
                     ol_img, out_range=(0.0, 1.0)
-                )
-                out_range_min, out_range_max = lutItem.getLevels()                
-                rgba_imgs_info[chName] = (ol_img, alpha_val, lutItem)
+                )               
+                rgba_imgs_info[chName] = (ol_img, alpha_val, lutItem, imageItem)
             else:
                 self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
                 imageItem.setImage(ol_img)
@@ -25478,7 +25490,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         images = []
         luts = []
         for channel, info in rgba_imgs_info.items():
-            ol_img, alpha_val, lutItem = info
+            ol_img, alpha_val, lutItem, imageItem = info
             alpha_values.append(alpha_val)
             images.append(ol_img)
             luts.append(lutItem.gradient.getLookupTable(256, alpha=255)/255)
@@ -25487,6 +25499,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if self.baseLayerToolbutton.isChecked():
             image1 = self._getImageupdateAllImages()
+            rescale_lut_action = (
+                self.imgGrad.rescaleActionGroup.checkedAction()
+            )
+            rescale_lut_how = rescale_lut_action.text()
+            if rescale_lut_how == 'Choose custom levels...':
+                out_range = self.img1.getLevels()
+                ol_img = skimage.exposure.rescale_intensity(
+                    ol_img, out_range=out_range
+                ) 
             image1 = skimage.exposure.rescale_intensity(
                 image1, out_range=(0.0, 1.0)
             )        
