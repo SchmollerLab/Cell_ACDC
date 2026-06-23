@@ -10280,13 +10280,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.ax2.removeDelRoiItem(roi)
             self.ax1.removeDelRoiItem(roi)
 
-        # for item in self.ax2.items:
-        #     if isinstance(item, pg.ROI):
-        #         self.ax2.removeDelRoiItem(item)
+        for item in self.ax2.items:
+            if isinstance(item, pg.ROI):
+                self.ax2.removeDelRoiItem(item)
         
-        # for item in self.ax1.items:
-        #     if isinstance(item, pg.ROI) and item != self.labelRoiItem:
-        #         self.ax1.removeDelRoiItem(item)
+        for item in self.ax1.items:
+            if isinstance(item, pg.ROI) and item != self.labelRoiItem:
+                self.ax1.removeDelRoiItem(item)
         # if self.polyLineRoi is shown also clear it
         
         if hasattr(self, 'polyLineRoi') and self.polyLineRoi is not None:
@@ -10325,10 +10325,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Restore deleted IDs from already visited future frames
         current_frame_i = posData.frame_i
         has_to_restore_frame_i = False
-        for i in range(posData.frame_i+1, posData.SizeT):
-            if posData.allData_li[i]['labels'] is None:
-                break
-            
+        for i in range(posData.frame_i+1, posData.SizeT):            
             delROIs_info = posData.allData_li[i]['delROIs_info']
             try:
                 idx = delROIs_info['rois'].index(roi_to_del) 
@@ -12281,14 +12278,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def delROImovingFinished(self, roi: pg.ROI):
         posData = self.data[self.pos_i]
-        delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-        idx = delROIs_info['rois'].index(roi)
+        curr_delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+        curr_idx = curr_delROIs_info['rois'].index(roi)
 
+        update_key = False
+        if posData.frame_i > 0:
+            prev_delROIs_info = posData.allData_li[posData.frame_i - 1]['delROIs_info']
+            try:
+                prev_delROIs_info['rois'].index(roi)
+                update_key = True
+            except ValueError:
+                update_key = False
+                pass
+                        
         update_point_state = False
         if not self.draggingDelROI:
             # check if actual number of points of the poly line is different (i.e. point was added)
             if isinstance(roi, pg.PolyLineROI):
-                state = delROIs_info['state'][idx]
+                state = curr_delROIs_info['state'][curr_idx]
                 saved_points_len = len(state['points'])
                 current_points_len = len(roi.getState()['points'])
                 if current_points_len != saved_points_len:
@@ -12303,10 +12310,30 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.currentLab2D[:] = self.delROIoriginalLab # restore original lab
             self.delROIoriginalLab[:] = 0  # clear original lab copy
 
-        self.applyDelROI(roi)
-        # update state
+        new_key = uuid.uuid4()
 
-        delROIs_info['state'][idx] = roi.getState()
+        curr_state = roi.getState()
+        if update_key:
+            new_roi = self._createROIfromState(curr_state, new_key)
+            self.setDelRoiState(new_roi, curr_state)
+            for i in range(posData.frame_i, posData.SizeT):
+                frame_delROIs_info = posData.allData_li[i]['delROIs_info']
+                try:
+                    frame_idx = frame_delROIs_info['rois'].index(roi)
+                except ValueError:
+                    continue
+
+                frame_delROIs_info['rois'][frame_idx] = new_roi
+                frame_delROIs_info['state'][frame_idx] = curr_state
+                self.ax2.removeDelRoiItem(roi)
+                self.ax1.removeDelRoiItem(roi)
+
+            roi = new_roi
+            curr_delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+            curr_idx = curr_delROIs_info['rois'].index(roi)
+
+        self.applyDelROI(roi)
+        curr_delROIs_info['state'][curr_idx] = curr_state
         
         QTimer.singleShot(
             300, partial(self.updateDelROIinFutureFrames, roi)
@@ -18749,6 +18776,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if mode == 'Segmentation and Tracking' or self.isSnapshot:
             self.addExistingDelROIs()
+            self.applyAllDelROI()
         
         self.updatePreprocessPreview()
         self.updateCombineChannelsPreview()
@@ -18780,6 +18808,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.apply_tools_on_new_frame()
         
+    def applyAllDelROI(self):
+        posData = self.data[self.pos_i]
+        delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+        for roi in delROIs_info['rois']:
+            self.applyDelROI(roi)
+
     def apply_tools_on_new_frame(self):
         mode = str(self.modeComboBox.currentText())
         if mode != 'Segmentation and Tracking':
@@ -19932,7 +19966,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.initLoadedDelROI()
 
+    def _createROIfromState(self, state, key):
+        if 'points' in state and isinstance(state['points'], list) and len(state['points']) > 1:
+            # normal poly line
+            self.createDelPolyLineRoi(key=key)
+            self.polyLineRoi.points = state['points']
+            self.addPointsPolyLineRoi(closed=True)
+            if len(state['points']) == 2:
+                roi = self.replacePolyLineRoiWithLineRoi(self.polyLineRoi)
+            else:
+                roi = self.polyLineRoi
+        else:
+            roi, _ = self.createDelROI(key=key)
+            if not self.labelsGrad.showLabelsImgAction.isChecked():
+                self.ax1.addDelRoiItem(roi, key)
+            else:
+                self.ax2.addDelRoiItem(roi, key)
+        return roi
+
     def initLoadedDelROI(self):
+        og_pos_i = self.pos_i
         for i, posData in enumerate(self.data):
             self.pos_i = i
             self.updateFramePosLabel()
@@ -19947,28 +20000,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 idx = delROIs_info_first['rois'].index(ROI_key)
                 state = delROIs_info_first['state'][idx]
                 
-                if 'points' in state and isinstance(state['points'], list) and len(state['points']) > 1:
-                    # normal poly line
-                    self.createDelPolyLineRoi(key=ROI_key)
-                    self.polyLineRoi.points = state['points']
-                    self.addPointsPolyLineRoi(closed=True)
-                    if len(state['points']) == 2:
-                        roi = self.replacePolyLineRoiWithLineRoi(self.polyLineRoi)
-                    else:
-                        roi = self.polyLineRoi
-                else:
-                    roi, _ = self.createDelROI(key=ROI_key)
-                    if not self.labelsGrad.showLabelsImgAction.isChecked():
-                        self.ax1.addDelRoiItem(roi, ROI_key)
-                    else:
-                        self.ax2.addDelRoiItem(roi, ROI_key)
-                    if self.isSnapshot:
-                        self.fixCcaDfAfterEdit('Delete IDs using ROI')
-                        self.updateAllImages()
-                    else:
-                        self.warnEditingWithCca_df(
-                            'Delete IDs using ROI', get_cancelled=True
-                        )
+                roi = self._createROIfromState(state, ROI_key)
                 
                 for frame in frames:
                     delROIs_info = posData.allData_li[frame]['delROIs_info']
@@ -19980,8 +20012,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 state = curr_delROIs_info['state'][idx]
                 self.setDelRoiState(roi, state)
                 
-        self.addExistingDelROIs()
-        self.removeAlldelROIsCurrentFrame()
+            self.addExistingDelROIs()
+            self.removeAlldelROIsCurrentFrame()
+        self.pos_i = og_pos_i
+        self.updateFramePosLabel()
+        self.updatePos()
     
     def initImgGradRescaleIntensitiesHowPreference(self):
         posData = self.data[self.pos_i]
@@ -23602,13 +23637,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Update rp for current posData.lab (e.g. after any change)
         if wl_update:
             if self.whitelistOriginalIDs is None:
-                old_IDs = posData.allData_li[posData.frame_i]['regionprops'].IDs.copy() # for whitelist stuff
+                old_IDs = (posData.allData_li[posData.frame_i]['regionprops'].IDs.copy()
+                if posData.allData_li[posData.frame_i]['regionprops'] is not None
+                else set()
+                )
             else:
                 old_IDs = self.whitelistOriginalIDs.copy()
                 self.whitelistOriginalIDs = None
         elif self.whitelistOriginalIDs is None:
             self.whitelist_old_IDs = (
-                posData.allData_li[posData.frame_i]['regionprops'].IDs.copy())
+                posData.allData_li[posData.frame_i]['regionprops'].IDs.copy()
+            if posData.allData_li[posData.frame_i]['regionprops'] is not None
+            else set()
+            )
         
         # check if only one of assignments, deletionIDs or only_current_view is given
         if sum([assignments is not None, 
@@ -23628,17 +23669,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # posData.rp is an acdcRegionprops instance here.
         # if rp is None (can sometimes happen appearantly???)
+        curr_lab = posData.lab if posData.lab is not None else posData.allData_li[posData.frame_i]['labels']
         if posData.rp is None:
             printl(f'''Warning: posData.rp is None for pos {self.pos_i}, 
                    frame {posData.frame_i}. Recomputing rp from labels.''')
             
             posData.rp = regionprops.acdcRegionprops(
-                posData.lab, precache_centroids=False
+                curr_lab, precache_centroids=False
             )
         
         if assignments is not None:
             # {old_ID: new_ID, ...}
-            posData.rp.update_regionprops_via_assignments(assignments, posData.lab)
+            posData.rp.update_regionprops_via_assignments(assignments, curr_lab)
         elif deletionIDs is not None:
             # (delID1, delID2, ...)
             posData.rp.update_regionprops_via_deletions(deletionIDs)
@@ -23649,18 +23691,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                                        specific_IDs=specific_IDs)
             if preloaded_bbox is not False:
                 posData.rp.update_regionprops_via_cutout(
-                    posData.lab, cutout_bbox=preloaded_bbox, specific_IDs=specific_IDs
+                    curr_lab, cutout_bbox=preloaded_bbox, specific_IDs=specific_IDs
                 )
                 # if ID touches border but is not in specific_IDs, it will not be updated,
                 # so be careful!
             else:
                 posData.rp.update_regionprops(
-                    posData.lab
+                    curr_lab
                 )
         else:
-            print("updating rp the old school ways")
             posData.rp.update_regionprops(
-                posData.lab,
+                curr_lab,
                 specific_IDs_update_centroids=specific_IDs if preloaded_bbox is not False else None, # since sometimes I preload
             )
         posData.IDs = posData.rp.IDs
@@ -23671,7 +23712,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         # Update tracking whitelist
-        accepted_lost_centroids = self.getTrackedLostIDs()
+        if self.isSnapshot:
+            accepted_lost_centroids = set()
+        else:
+            accepted_lost_centroids = self.getTrackedLostIDs()
         new_IDs = posData.IDs
         added_IDs = set(new_IDs) - set(old_IDs)
         removed_IDs = (
@@ -23684,7 +23728,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             IDs_to_add=added_IDs, IDs_to_remove=removed_IDs,
             curr_frame_only=True, IDs_curr=new_IDs,
             track_og_curr=wl_track_og_curr,
-            curr_lab=posData.lab, curr_rp=posData.rp,
+            curr_lab=curr_lab, curr_rp=posData.rp,
             update_lab=wl_update_lab
         )
 
@@ -29554,7 +29598,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         try:
             tracked_lost_centroids = posData.tracked_lost_centroids[frame_i]
-        except KeyError:
+        except KeyError or TypeError:
             tracked_lost_centroids = set()
 
         for centroid in tracked_lost_centroids:
