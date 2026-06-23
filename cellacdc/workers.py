@@ -6343,7 +6343,11 @@ class saveDataWorker(QObject):
             posData.saveCustomAnnotationParams()
             current_frame_i = posData.frame_i
 
+            posData.trackedLostCentroidsPath()
             posData.saveTrackedLostCentroids()
+            
+            
+            posData.saveROIInfo()
 
             if not self.mainWin.isSnapshot:
                 last_tracked_i = self.mainWin.last_tracked_i

@@ -20,11 +20,11 @@ import tifffile
 import zipfile
 from natsort import natsorted
 import time
-
 import skimage
 import skimage.io
 import skimage.measure    
-    
+from copy import deepcopy
+
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -42,6 +42,7 @@ from . import core
 from . import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from . import fonts
 from . import GUI_INSTALLED
+from . import acdc_regex
 
 if GUI_INSTALLED:
     from qtpy import QtGui
@@ -56,6 +57,7 @@ if GUI_INSTALLED:
     from . import qrc_resources_path, qrc_resources_light_path
     from . import qrc_resources_dark_path
     from . import whitelist
+    from pyqtgraph import Point
 
 acdc_df_bool_cols = [
     'is_cell_dead',
@@ -1873,7 +1875,8 @@ class loadData:
             new_endname='',
             labelBoolSegm=None,
             load_whitelistIDs=False,
-            load_segm_info_ini=False
+            load_segm_info_ini=False,
+            loadTrackedLostCentroids=False
         ):
         self.segmFound = False if load_segm_data else None
         self.acdc_df_found = False if load_acdc_df else None
@@ -2080,6 +2083,10 @@ class loadData:
             
         if load_segm_info_ini:
             self.readSegmMetadataIni()
+            
+        if loadTrackedLostCentroids:
+            self.trackedLostCentroidsPath()
+            self.loadTrackedLostCentroids()
     
     def checkAndFixZsliceSegmInfo(self):
         if not hasattr(self, 'segmInfo_df'):
@@ -2309,6 +2316,7 @@ class loadData:
         cca_dfs_auto_attr = hasattr(tracker, 'cca_dfs_auto')
 
         if hasattr(tracker, 'tracked_lost_centroids'):
+            self.trackedLostCentroidsPath()
             self.saveTrackedLostCentroids(tracker.tracked_lost_centroids)
 
         if not cca_dfs_attr and not cca_dfs_auto_attr:
@@ -3371,6 +3379,164 @@ class loadData:
             return None
         elif signals is not None:
             raise FileNotFoundError(err_title)
+        
+    def delROIInfoPaths(self):
+        self.delROIs_info_path = self.segm_npz_path.replace('segm', 'delROIs_info').replace('.npz', '.json')
+        self.delROIs_cutout_path = self.segm_npz_path.replace('segm', 'delROIs_cutouts')
+        
+    def saveROIInfo(self):
+        def _serialize_state_value(val):
+            if hasattr(val, 'tolist'):  # numpy array
+                return [round(float(v), 3) for v in val.tolist()]
+            if hasattr(val, 'x') and callable(val.x) and hasattr(val, 'y'):
+                # pg.Point / QPointF
+                return [round(float(val.x()), 3), round(float(val.y()), 3)]
+            if isinstance(val, (list, tuple)):
+                return [_serialize_state_value(v) for v in val]
+            if isinstance(val, bool):
+                return val           # store real JSON booleans, not "True"/"False"
+            if isinstance(val, float):
+                return round(val, 4)
+            if isinstance(val, (int, str)) or val is None:
+                return val
+            return str(val)
+
+        def _serialize_slice(s):
+            return [s.start, s.stop, s.step]
+
+        def _serialize_coords(coords):
+            """coords is a tuple/list of slice objects, one per dimension."""
+            return [_serialize_slice(s) for s in coords]
+
+        self.delROIInfoPaths()
+        save_dict_info = {}
+        save_dict_masks = {}
+        for frame_i in range(self.SizeT):
+
+            frame_dict = {}
+            all_data_li_frame = self.allData_li[frame_i] if self.allData_li is not None and len(self.allData_li) > frame_i else None
+            if all_data_li_frame is None:
+                continue
+            delROIs_info = all_data_li_frame.get('delROIs_info')
+            if delROIs_info is None:
+                continue
+            for idx, roi in enumerate(delROIs_info['rois']):
+                roi_key = str(roi.key)
+                delMasks = delROIs_info['delMasks'][idx]
+                
+                delIDsROI = delROIs_info['delIDsROI'][idx].copy()
+                delMasksCoords = deepcopy(delROIs_info['delMasksCoords'][idx])
+                state = deepcopy(delROIs_info['state'][idx])
+                for key, val in state.items():
+                    state[key] = _serialize_state_value(val)
+                mask_keys = []
+                for ID_idx, ID in enumerate(delIDsROI):
+                    key = f'{frame_i};;{roi_key};;{ID}'
+                    save_dict_masks[key] = delMasks[ID_idx]
+                    mask_keys.append(key)
+
+                    delIDsROI[ID_idx] = str(ID)
+
+                frame_dict[roi_key] = {
+                    'delIDsROI': delIDsROI,
+                    'delMasksCoords': [_serialize_coords(coords) for coords in delMasksCoords],
+                    'state': state,
+                    'mask_keys': mask_keys
+                }
+            save_dict_info[frame_i] = frame_dict
+
+        with open(self.delROIs_info_path, 'w') as f:
+            json.dump(save_dict_info, f, indent=2)
+        np.savez_compressed(self.delROIs_cutout_path, **save_dict_masks)
+        
+    def loadROIInfo(self):
+        def _str_to_point(s):
+            """'Point(105.000000, 88.000000)' -> pg.Point(105.0, 88.0)"""
+            m = acdc_regex.POINT_RE.match(s.strip())
+            if m is None:
+                raise ValueError(f'Could not parse Point from {s!r}')
+            return Point(float(m.group(1)), float(m.group(2))) if GUI_INSTALLED else (float(m.group(1)), float(m.group(2)))
+
+        def _str_to_points_list(s):
+            """'[Point(1.0, 2.0), Point(3.0, 4.0)]' -> [pg.Point(1.0, 2.0), pg.Point(3.0, 4.0)]"""
+            return [Point(float(x), float(y)) if GUI_INSTALLED else (float(x), float(y)) for x, y in acdc_regex.POINT_RE.findall(s)]
+
+        def _deserialize_roi_state(state):
+            """Reverse the str-ification done in saveROIInfo so the dict is
+            suitable for ROI.setState()."""
+            new_state = {}
+            for key, val in state.items():
+                if key in ('pos', 'size'):
+                    if isinstance(val, str):
+                        new_state[key] = _str_to_point(val)
+                    elif isinstance(val, (list, tuple)) and len(val) == 2:
+                        new_state[key] = Point(float(val[0]), float(val[1])) if GUI_INSTALLED else (float(val[0]), float(val[1]))
+                    else:
+                        raise ValueError(f'Unexpected value for {key}: {val!r}')
+                elif key == 'angle':
+                    new_state[key] = float(val)
+                elif key == 'closed':
+                    if isinstance(val, str):
+                        new_state[key] = val.lower() == 'true'
+                    else:
+                        new_state[key] = bool(val)
+                elif key == 'points':
+                    if isinstance(val, str):
+                        new_state[key] = _str_to_points_list(val)
+                    elif isinstance(val, (list, tuple)):
+                        new_state[key] = [Point(float(x), float(y)) if GUI_INSTALLED else (float(x), float(y)) for x, y in val]
+                    else:
+                        raise ValueError(f'Unexpected value for points: {val!r}')
+                else:
+                    raise ValueError(f'Unexpected key in ROI state: {key}')
+            return new_state
+
+        self.delROIInfoPaths()
+        if not os.path.exists(self.delROIs_info_path) or not os.path.exists(self.delROIs_cutout_path):
+            return
+        
+        with open(self.delROIs_info_path, 'r') as f:
+            save_dict_info = json.load(f)
+        save_dict_masks = np.load(self.delROIs_cutout_path, allow_pickle=True)
+
+        ROI_key_frame_lookup = {}
+        
+        for frame_i_str, frame_dict in save_dict_info.items():
+            frame_i = int(frame_i_str)
+            all_data_li_frame = self.allData_li[frame_i] if self.allData_li is not None and len(self.allData_li) > frame_i else None
+            if all_data_li_frame is None:
+                continue
+            delROIs_info = {
+                'rois': [],
+                'delIDsROI': [],
+                'delMasks': [],
+                'delMasksCoords': [],
+                'state': []
+            }
+            for roi_key, roi_data in frame_dict.items():
+                delIDsROI = [int(ID) for ID in roi_data['delIDsROI']]
+                delMasksCoords = [tuple(slice(*s) for s in coords) for coords in roi_data['delMasksCoords']]
+                state = _deserialize_roi_state(roi_data['state'])
+                mask_keys = roi_data['mask_keys']
+                delMasks = [save_dict_masks[key] for key in mask_keys]
+
+                delROIs_info['rois'].append(roi_key)
+                delROIs_info['delIDsROI'].append(delIDsROI)
+                delROIs_info['delMasks'].append(delMasks)
+                delROIs_info['delMasksCoords'].append(delMasksCoords)
+                delROIs_info['state'].append(state)
+                
+                if roi_key not in ROI_key_frame_lookup:
+                    ROI_key_frame_lookup[roi_key] = []
+                ROI_key_frame_lookup[roi_key].append(frame_i)
+
+            all_data_li_frame['delROIs_info'] = delROIs_info
+        
+        save_dict_masks.close()
+        return ROI_key_frame_lookup
+
+    def trackedLostCentroidsPath(self):
+        self.tracked_lost_centroids_json_path = self.segm_npz_path.replace('segm', 'tracked_lost_centroids').replace('.npz', '.json')
         
     def saveTrackedLostCentroids(self, tracked_lost_centroids_list=None, _tracked_lost_centroids_list=None):
 
