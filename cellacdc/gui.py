@@ -28304,7 +28304,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             highlightedID=self.highlightedID, 
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getCurrentZfunc=self.z_lab, 
-            getObjCentroidFunc=self.getObjCentroid
+            getObjCentroidFunc=self.getObjCentroid,
+            rp_2D_func=self.rpCurr2D
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
@@ -28312,7 +28313,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             highlightedID=self.highlightedID, 
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getCurrentZfunc=self.z_lab, 
-            getObjCentroidFunc=self.getObjCentroid
+            getObjCentroidFunc=self.getObjCentroid,
+            rp_2D_func=self.rpCurr2D
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()

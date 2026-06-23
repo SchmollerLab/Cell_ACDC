@@ -597,6 +597,7 @@ class TextAnnotations:
         isAnnotateNumZslices = self.isAnnotateNumZslices()
         isLabelTreeAnnotation = self.isLabelTreeAnnotation()
         isGenNumTreeAnnotation = self.isGenNumTreeAnnotation()
+        rpCurr2D_func = kwargs.get('rp_2D_func')
         
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
         if posData.cca_df is not None and acdc_df is not None:
@@ -618,24 +619,26 @@ class TextAnnotations:
             if obj.label in delROIsIDs:
                 continue
 
-            isNewObject = obj.label in posData.new_IDs
             
+            rp = rpCurr2D_func()
+            if obj.label not in rp.IDs:
+                continue
+            yc, xc = rp.get_centroid(obj.label)
+            # yc, xc = getObjCentroidFunc(centroid)
+            # try:
+            #     rp_zslice = rpCurr2D_func()
+            # except Exception as err:
+            #     pass
+                
+            pos = (int(xc), int(yc))
+            
+            isNewObject = obj.label in posData.new_IDs
             objOpts = get_obj_text_annot_opts(
                 obj, acdc_df, isCcaAnnot, isNewObject,
                 isAnnotateNumZslices, isLabelTreeAnnotation, 
                 isGenNumTreeAnnotation, posData.frame_i
             )
             
-            centroid = posData.rp.get_centroid(obj.label)
-            yc, xc = getObjCentroidFunc(centroid)
-            try:
-                rp_zslice = posData.zSlicesRp[currentZ]
-                obj_2d = rp_zslice[obj.label]
-                yc, xc = obj_2d.centroid
-            except Exception as err:
-                pass
-                
-            pos = (int(xc), int(yc))
             
             objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
             objData['data'] = obj.label
