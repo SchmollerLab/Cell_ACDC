@@ -11998,9 +11998,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         xr1, yr1 = point1.x(), point1.y()
         xr2, yr2 = point2.x(), point2.y()
         x1, y1 = xr1+x0, yr1+y0
-        x2, y2 = xr2+x0, yr2+x0
+        x2, y2 = xr2+x0, yr2+y0
+        key = self.polyLineRoi.key
         lineRoi = pg.LineROI((x1, y1), (x2, y2), width=0.5)
         lineRoi.handleSize = 7
+        lineRoi.key = key
         self.ax1.removeItem(self.polyLineRoi)
         self.ax1.addItem(lineRoi)
         lineRoi.removeHandle(2)
@@ -12358,7 +12360,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 backed_up_masks_new.append(mask)
                 backed_up_masks_coords_new.append(coords)
                 curr_deleted_IDs_new.append(delID)
-                curr_lab[coords] = np.where(mask, 0, curr_lab[coords])
+                curr_lab[coords] = np.where(curr_lab[coords] == delID, 0, curr_lab[coords])
                 
         if not removing_roi:
             delROIs_info['delMasks'][idx] = backed_up_masks_new
@@ -19316,7 +19318,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return 
 
         disabledTooltip = (
-            'Disabled for 3D. If this sounds usefull, please contact us '
+            'Disabled for 3D. If this sounds useful, please contact us '
             'so we can implement it!'
         )
 

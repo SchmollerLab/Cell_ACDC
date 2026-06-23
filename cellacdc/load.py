@@ -20,7 +20,6 @@ import tifffile
 import zipfile
 from natsort import natsorted
 import time
-import uuid
 import skimage
 import skimage.io
 import skimage.measure    
@@ -3446,7 +3445,8 @@ class loadData:
                 }
             save_dict_info[frame_i] = frame_dict
 
-        json.dump(save_dict_info, open(self.delROIs_info_path, 'w'), indent=2)
+        with open(self.delROIs_info_path, 'w') as f:
+            json.dump(save_dict_info, f, indent=2)
         np.savez_compressed(self.delROIs_cutout_path, **save_dict_masks)
         
     def loadROIInfo(self):
@@ -3495,7 +3495,8 @@ class loadData:
         if not os.path.exists(self.delROIs_info_path) or not os.path.exists(self.delROIs_cutout_path):
             return
         
-        save_dict_info = json.load(open(self.delROIs_info_path, 'r'))
+        with open(self.delROIs_info_path, 'r') as f:
+            save_dict_info = json.load(f)
         save_dict_masks = np.load(self.delROIs_cutout_path, allow_pickle=True)
 
         ROI_key_frame_lookup = {}
@@ -3530,6 +3531,8 @@ class loadData:
                 ROI_key_frame_lookup[roi_key].append(frame_i)
 
             all_data_li_frame['delROIs_info'] = delROIs_info
+        
+        save_dict_masks.close()
         return ROI_key_frame_lookup
 
     def trackedLostCentroidsPath(self):
