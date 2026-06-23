@@ -10326,7 +10326,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             delROIs_info = posData.allData_li[i]['delROIs_info']
             try:
                 idx = delROIs_info['rois'].index(roi_to_del) 
-            except IndexError:
+            except ValueError:
                 continue
             has_to_restore_frame_i = True
             self.store_data(autosave=False)
@@ -10369,7 +10369,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         for i in range(posData.frame_i+1, posData.SizeT):
             delROIs_info = posData.allData_li[i]['delROIs_info']
-            idx = delROIs_info['rois'].index(roi)
+            try:
+                idx = delROIs_info['rois'].index(roi)
+            except ValueError:
+                continue
             
             delROIs_info['state'][idx] = roiState
             if posData.allData_li[i]['labels'] is None:
@@ -12306,6 +12309,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         changed_frame_i = frame_i is not None and frame_i != posData.frame_i
         if changed_frame_i:
+            og_frame_i = posData.frame_i
             self.store_data()
             posData.frame_i = frame_i
             self.get_data()
@@ -12368,7 +12372,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if changed_frame_i:
             self.store_data()
-            posData.frame_i = frame_i
+            posData.frame_i = og_frame_i
             self.get_data()
 
     def enableSmartTrack(self, checked):
@@ -21172,7 +21176,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.store_manual_annot_data(
                 posData=posData, data_frame_i=allData_li
             )
-        
 
         # Store dynamic metadata
         is_cell_dead_li = [False]*len(posData.rp)
@@ -26802,11 +26805,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
-    
-    def updateDelROIpreview(self, roi):
-        posData = self.data[self.pos_i]
-
-
 
     def initTempLayerBrush(self, ID, ax=0):
         posData = self.data[self.pos_i]

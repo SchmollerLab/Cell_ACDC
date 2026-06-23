@@ -10,7 +10,6 @@ import h5py
 import shutil
 from math import isnan
 import xml.etree.ElementTree as ET
-from pyqtgraph import Point
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
@@ -25,7 +24,8 @@ import uuid
 import skimage
 import skimage.io
 import skimage.measure    
-    
+from copy import deepcopy
+
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -58,6 +58,7 @@ if GUI_INSTALLED:
     from . import qrc_resources_path, qrc_resources_light_path
     from . import qrc_resources_dark_path
     from . import whitelist
+    from pyqtgraph import Point
 
 acdc_df_bool_cols = [
     'is_cell_dead',
@@ -3423,9 +3424,10 @@ class loadData:
             for idx, roi in enumerate(delROIs_info['rois']):
                 roi_key = str(roi.key)
                 delMasks = delROIs_info['delMasks'][idx]
-                delIDsROI = delROIs_info['delIDsROI'][idx]
-                delMasksCoords = delROIs_info['delMasksCoords'][idx]
-                state = delROIs_info['state'][idx]
+                
+                delIDsROI = delROIs_info['delIDsROI'][idx].copy()
+                delMasksCoords = deepcopy(delROIs_info['delMasksCoords'][idx])
+                state = deepcopy(delROIs_info['state'][idx])
                 for key, val in state.items():
                     state[key] = _serialize_state_value(val)
                 mask_keys = []
@@ -3444,8 +3446,6 @@ class loadData:
                 }
             save_dict_info[frame_i] = frame_dict
 
-        printl(save_dict_info)
-
         json.dump(save_dict_info, open(self.delROIs_info_path, 'w'), indent=2)
         np.savez_compressed(self.delROIs_cutout_path, **save_dict_masks)
         
@@ -3455,11 +3455,11 @@ class loadData:
             m = acdc_regex.POINT_RE.match(s.strip())
             if m is None:
                 raise ValueError(f'Could not parse Point from {s!r}')
-            return Point(float(m.group(1)), float(m.group(2)))
+            return Point(float(m.group(1)), float(m.group(2))) if GUI_INSTALLED else (float(m.group(1)), float(m.group(2)))
 
         def _str_to_points_list(s):
             """'[Point(1.0, 2.0), Point(3.0, 4.0)]' -> [pg.Point(1.0, 2.0), pg.Point(3.0, 4.0)]"""
-            return [Point(float(x), float(y)) for x, y in acdc_regex.POINT_RE.findall(s)]
+            return [Point(float(x), float(y)) if GUI_INSTALLED else (float(x), float(y)) for x, y in acdc_regex.POINT_RE.findall(s)]
 
         def _deserialize_roi_state(state):
             """Reverse the str-ification done in saveROIInfo so the dict is
@@ -3470,7 +3470,7 @@ class loadData:
                     if isinstance(val, str):
                         new_state[key] = _str_to_point(val)
                     elif isinstance(val, (list, tuple)) and len(val) == 2:
-                        new_state[key] = Point(float(val[0]), float(val[1]))
+                        new_state[key] = Point(float(val[0]), float(val[1])) if GUI_INSTALLED else (float(val[0]), float(val[1]))
                     else:
                         raise ValueError(f'Unexpected value for {key}: {val!r}')
                 elif key == 'angle':
@@ -3484,7 +3484,7 @@ class loadData:
                     if isinstance(val, str):
                         new_state[key] = _str_to_points_list(val)
                     elif isinstance(val, (list, tuple)):
-                        new_state[key] = [Point(float(x), float(y)) for x, y in val]
+                        new_state[key] = [Point(float(x), float(y)) if GUI_INSTALLED else (float(x), float(y)) for x, y in val]
                     else:
                         raise ValueError(f'Unexpected value for points: {val!r}')
                 else:
