@@ -33,6 +33,8 @@ def is_alphanumeric_filename(text, allow_space=True):
 
 def get_non_alphanumeric_characters(text):
     return re.findall(r'[^\w\-.]', text)
+
+POINT_RE = re.compile(r'Point\(\s*([-+0-9.eE]+)\s*,\s*([-+0-9.eE]+)\s*\)')
     
 if __name__ == '__main__':
     import re

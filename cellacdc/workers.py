@@ -6345,6 +6345,9 @@ class saveDataWorker(QObject):
 
             posData.trackedLostCentroidsPath()
             posData.saveTrackedLostCentroids()
+            
+            
+            posData.saveROIInfo()
 
             if not self.mainWin.isSnapshot:
                 last_tracked_i = self.mainWin.last_tracked_i

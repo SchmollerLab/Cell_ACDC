@@ -7817,6 +7817,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     QTimer.singleShot(
                         300, partial(self.updateDelROIinFutureFrames, self.polyLineRoi)
                     )
+
+                    # reset polyline roi
+                    self.polyLineRoi = None
         
         elif left_click and canKeep:
             x, y = event.pos().x(), event.pos().y()
@@ -10269,15 +10272,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         rois = delROIs_info['rois'].copy()
         for roi in rois:
             self.ax2.removeDelRoiItem(roi)
+            self.ax1.removeDelRoiItem(roi)
 
-        for item in self.ax2.items:
-            if isinstance(item, pg.ROI):
-                self.ax2.removeDelRoiItem(item)
+        # for item in self.ax2.items:
+        #     if isinstance(item, pg.ROI):
+        #         self.ax2.removeDelRoiItem(item)
         
-        for item in self.ax1.items:
-            if isinstance(item, pg.ROI) and item != self.labelRoiItem:
-                self.ax1.removeDelRoiItem(item)
-
+        # for item in self.ax1.items:
+        #     if isinstance(item, pg.ROI) and item != self.labelRoiItem:
+        #         self.ax1.removeDelRoiItem(item)
+        # if self.polyLineRoi is shown also clear it
+        
+        if hasattr(self, 'polyLineRoi') and self.polyLineRoi is not None:
+            try:
+                self.polyLineRoi = None
+                # self.polyLineRoi.clearPoints()
+            except:
+                pass
+            
     def removeDelROI(self, event):
         posData = self.data[self.pos_i]
         
@@ -11994,7 +12006,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         lineRoi.sigRegionChanged.connect(self.delROImoving)
         lineRoi.sigRegionChangeFinished.connect(self.delROImovingFinished)
         return lineRoi
-    
+        
     def addRoiToDelRoiInfo(self, roi: pg.ROI):
         posData = self.data[self.pos_i]
         for i in range(posData.frame_i, posData.SizeT):
@@ -12023,7 +12035,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
          
-    def createDelPolyLineRoi(self):
+    def createDelPolyLineRoi(self, key=None):
         Y, X = self.currentLab2D.shape
         self.polyLineRoi = pg.PolyLineROI(
             [], rotatable=False,
@@ -12032,7 +12044,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.polyLineRoi.handleSize = 7
         self.polyLineRoi.points = []
-        key = uuid.uuid4()
+        if key is None:
+            key = uuid.uuid4()
         self.ax1.addDelRoiItem(self.polyLineRoi, key)
     
     def addPointsPolyLineRoi(self, closed=False):
@@ -12055,7 +12068,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ymax = Y if yRange[1] >= Y else yRange[1]
         return int(ymin), int(ymax), int(xmin), int(xmax)
 
-    def createDelROI(self, xl=None, yb=None, w=32, h=32, anchors=None):
+    def createDelROI(self, xl=None, yb=None, w=32, h=32, anchors=None, key=None):
         posData = self.data[self.pos_i]
         if xl is None:
             xRange, yRange = self.ax1.viewRange()
@@ -12089,7 +12102,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         roi.sigRegionChanged.connect(self.delROImoving)
         roi.sigRegionChangeFinished.connect(self.delROImovingFinished)
         
-        key = uuid.uuid4()
+        if key is None:
+            key = uuid.uuid4()
         
         return roi, key
     
@@ -12297,7 +12311,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.get_data()
             
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-        idx = delROIs_info['rois'].index(roi)        
+        idx = delROIs_info['rois'].index(roi)
         
         backed_up_masks = delROIs_info['delMasks'][idx]
         backed_up_masks_coords = delROIs_info['delMasksCoords'][idx]
@@ -19882,6 +19896,56 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.rescaleIntensitiesLut(setImage=False)
         
         self.gui_createAutoSaveWorker()
+        
+        self.initLoadedDelROI()
+
+    def initLoadedDelROI(self):
+        for posData in self.data:
+            curr_frame = posData.frame_i
+            ROI_key_frame_lookup = posData.loadROIInfo()
+            if ROI_key_frame_lookup is None:
+                continue
+            for ROI_key, frames in ROI_key_frame_lookup.items():
+                first_frame = min(frames)
+                delROIs_info_first = posData.allData_li[first_frame]['delROIs_info']
+                idx = delROIs_info_first['rois'].index(ROI_key)
+                state = delROIs_info_first['state'][idx]
+                
+                if 'points' in state and isinstance(state['points'], list) and len(state['points']) > 1:
+                    # normal poly line
+                    self.createDelPolyLineRoi(key=ROI_key)
+                    self.polyLineRoi.points = state['points']
+                    self.addPointsPolyLineRoi(closed=True)
+                    if len(state['points']) == 2:
+                        roi = self.replacePolyLineRoiWithLineRoi(self.polyLineRoi)
+                    else:
+                        roi = self.polyLineRoi
+                else:
+                    roi, _ = self.createDelROI(key=ROI_key)
+                    if not self.labelsGrad.showLabelsImgAction.isChecked():
+                        self.ax1.addDelRoiItem(roi, ROI_key)
+                    else:
+                        self.ax2.addDelRoiItem(roi, ROI_key)
+                    if self.isSnapshot:
+                        self.fixCcaDfAfterEdit('Delete IDs using ROI')
+                        self.updateAllImages()
+                    else:
+                        self.warnEditingWithCca_df(
+                            'Delete IDs using ROI', get_cancelled=True
+                        )
+                
+                for frame in frames:
+                    delROIs_info = posData.allData_li[frame]['delROIs_info']
+                    idx = delROIs_info['rois'].index(ROI_key)
+                    delROIs_info['rois'][idx] = roi
+                    
+            curr_delROIs_info = posData.allData_li[curr_frame]['delROIs_info']
+            for idx, roi in enumerate(curr_delROIs_info['rois']):
+                state = curr_delROIs_info['state'][idx]
+                self.setDelRoiState(roi, state)
+                
+        self.addExistingDelROIs()
+        self.removeAlldelROIsCurrentFrame()
     
     def initImgGradRescaleIntensitiesHowPreference(self):
         posData = self.data[self.pos_i]
@@ -27333,6 +27397,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def setDelRoiState(self, roi: pg.ROI, state):
         roi.sigRegionChanged.disconnect()
         roi.sigRegionChangeFinished.disconnect()
+        roi.sigRegionChangeStarted.disconnect()
         roi.setState(state)
         roi.sigRegionChanged.connect(self.delROImoving)
         roi.sigRegionChangeStarted.connect(self.delROIstartedMoving)
@@ -33363,7 +33428,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.typingEditID = False
         self.clearHighlightedID()
         try:
-            self.polyLineRoi.clearPoints()
+            # check if polyLineRoi is closed
+            state = self.polyLineRoi.getState()
+            if not ('closed' in state and state['closed'] is True):
+                self.polyLineRoi.clearPoints()
         except Exception as e:
             pass
         
