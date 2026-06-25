@@ -3,6 +3,9 @@ import traceback
 
 import skimage.segmentation
 import skimage.measure
+import skimage
+
+import cv2
 
 from collections.abc import Callable, Sequence
 import numpy as np
@@ -367,3 +370,45 @@ def grayscale_apply_lut(image, lut):
 def get_complementary_color(rgba_str: str) -> str:
     r, g, b, a = rgba_str_to_values(rgba_str)
     return f'rgba({255 - r}, {255 - g}, {255 - b}, {a})'
+
+def image_2d_rgb_or_rgba_to_uint8_grayscale(image: np.ndarray):
+    if image.ndim != 3:
+        raise TypeError(
+            'Input image is not a 2D RGB or RGBA image. '
+            'Only 2D images can be converted to grayscale'
+        )
+    
+    is_rgb = image.shape[-1] == 3
+    is_rgba = image.shape[-1] == 4
+    
+    if not is_rgb and not is_rgba:
+        raise TypeError(
+            f'Input image is not RGB nor RGBA. Current shape is {image.shape}'
+        )
+        
+    if is_rgb == 3:
+        image_grayscale = skimage.color.rgb2gray(image)
+    else:
+        image_grayscale = cv2.cvtColor(image, cv2.COLOR_RGBA2GRAY)
+        
+    image_grayscale = skimage.img_as_ubyte(image_grayscale)
+    return image_grayscale
+
+def image_rgb_or_rgba_to_uint8_grayscale(image: np.ndarray):
+    is_rgb = image.ndim >= 3 and image.shape[-1] in (3, 4)
+    
+    if not is_rgb:
+        raise TypeError(
+            f'Input image is not RGB nor RGBA. Current shape is {image.shape}'
+        )
+        
+    if image.ndim == 3:
+        return image_2d_rgb_or_rgba_to_uint8_grayscale(image)
+    
+    image_grayscale = np.zeros(image.shape[:-1], dtype=np.uint8)
+    leading_shape = image.shape[:-3]
+    for idx in np.ndindex(*leading_shape):
+        img_rgb = image[idx]
+        image_grayscale[idx] = image_2d_rgb_or_rgba_to_uint8_grayscale(img_rgb)
+    
+    return image_grayscale
