@@ -27,6 +27,7 @@ from itertools import product
 import pathlib
 from natsort import natsorted
 import sympy as sp
+from copy import deepcopy
 
 from math import sqrt
 from scipy.stats import norm
@@ -2268,7 +2269,7 @@ def preprocess_image_from_recipe_multithread(
     return preprocessed_image
 
 def combine_channels_multithread(
-        steps: Dict[str, Dict[str, Any]],
+        inputs_info: Dict[str, Dict[str, Any]],
         formula: str,
         images_paths: List[str],
         keep_input_data_type: bool,
@@ -2286,6 +2287,8 @@ def combine_channels_multithread(
                 total=len(images_paths), ncols=100, desc='Combining channels'
             )
         
+        inputs_info_copies = [deepcopy(inputs_info) for _ in images_paths]
+        
         func = partial(
             combine_channels_executor_map,
             keep_input_data_type=keep_input_data_type,
@@ -2293,9 +2296,8 @@ def combine_channels_multithread(
             logger_func=logger_func,
             output_as_segm=output_as_segm,
             formula=formula,
-            steps=steps,
         )
-        iterable = zip(images_paths, save_filepaths)
+        iterable = zip(images_paths, save_filepaths, inputs_info_copies)        
         result = executor.map(func, iterable)
         for res in result:
             if signals:
@@ -2314,8 +2316,9 @@ def combine_channels_multithread_return_imgs(
         output_as_segm: bool = False,
         formula: str = None,
     ):
-
-
+    # NOTE: `steps` is the same as `inputs_info` in 
+    # `combine_channels_multithread`. It's called steps only because it would 
+    # be harder to rename. `inputs_info` would be a better name
     total = len(keys)
     
     output_imgs = [None] * total
@@ -2365,9 +2368,10 @@ def combine_channels_multithread_return_imgs(
     return output_imgs, keys_out
 
 def combine_channels_executor_map(args, **kwargs):
-    images_path, save_filepath = args
+    images_path, save_filepath, inputs_info = args
     kwargs['save_filepath'] = save_filepath
     kwargs['images_path'] = images_path
+    kwargs['inputs_info'] = inputs_info
     return combine_channels_func(**kwargs)
 
 def combine_channels_executor_map_return_img(args, **kwargs):
@@ -2529,7 +2533,7 @@ def _update_target_shape_target_dims(target_dims, target_shape, img_data):
         
 
 def combine_channels_func(
-        steps: Dict[str, Dict[str, Any]],
+        inputs_info: Dict[str, Dict[str, Any]],
         keep_input_data_type: bool,
         save_filepath: str=None,
         return_img: bool=False,
@@ -2551,9 +2555,11 @@ def combine_channels_func(
     fluo_ch_data_list = dict()
     segm_ch_data_list = dict()
     
-    channel_names = [step['channel'] for step in steps.values()]
-    channel_keys = steps.keys()
-    segm_channels, fluo_channel_names, current_segm = myutils.separate_fluo_segment_channels(channel_names)
+    channel_names = [step['channel'] for step in inputs_info.values()]
+    channel_keys = inputs_info.keys()
+    segm_channels, fluo_channel_names, current_segm = (
+        myutils.separate_fluo_segment_channels(channel_names)
+    )
     original_dtype = None
     
     target_dims = 0
@@ -2573,9 +2579,10 @@ def combine_channels_func(
                  target_dims, target_shape, ch_image_data
             )
             fluo_ch_data_list[channel] = ch_image_data
-        for channel in segm_channels:
+            
+        for segm_channel in segm_channels:
             ch_filepath = load.get_filepath_from_endname(
-                images_path, channel
+                images_path, segm_channel
             )
             ch_image_data = load.load_image_file(ch_filepath)
             if original_dtype is None:
@@ -2585,7 +2592,7 @@ def combine_channels_func(
             target_dims, target_shape = _update_target_shape_target_dims(
                  target_dims, target_shape, ch_image_data
             )
-            segm_ch_data_list[channel] = ch_image_data
+            segm_ch_data_list[segm_channel] = ch_image_data
     else:
         posData = data[key[0]]
         n_dim = 4
@@ -2605,7 +2612,8 @@ def combine_channels_func(
             channel_full_name = pathlib.Path(channel_path).stem
             # remove the file extension
             
-            channel_img_data = _get_img_from_data_key(fluo_data_dict[channel_full_name], key, n_dim)
+            channel_img_data = _get_img_from_data_key(
+                fluo_data_dict[channel_full_name], key, n_dim)
             if original_dtype is None:
                 original_dtype = channel_img_data.dtype
             channel_img_data_float = myutils.img_to_float(channel_img_data)
@@ -2666,37 +2674,39 @@ def combine_channels_func(
     for i, ch in zip(channel_keys, channel_names):
         if ch in fluo_ch_data_list:
             ch_image_data = fluo_ch_data_list[ch]
-            _verify_shape_ndim(ch_image_data, target_dims, target_shape, is_segm=False)
+            _verify_shape_ndim(
+                ch_image_data, target_dims, target_shape, is_segm=False)
 
         elif ch in segm_ch_data_list:
             ch_image_data = segm_ch_data_list[ch]
             ch_image_data, text = _add_missing_dims(ch_image_data, target_shape)
             if text:
                 _log_printl_fallback(text, logger_func)
-            _verify_shape_ndim(ch_image_data, target_dims, target_shape, is_segm=False) # false since we already expanded
+            _verify_shape_ndim(
+                ch_image_data, target_dims, target_shape, is_segm=False) # false since we already expanded
             segm_ch_data_list[ch] = ch_image_data
         else:
             raise ValueError(f'Channel "{ch}" not found.')
-        if steps[i]['channel'] != ch:
+        if inputs_info[i]['channel'] != ch:
             raise ValueError(f'Channel "{ch}" not found.')        
-        steps[i]['channel_data'] = ch_image_data
+        inputs_info[i]['channel_data'] = ch_image_data
     
-    for i, step_info in steps.items():
+    for i, step_info in inputs_info.items():
         binarize = step_info['binarize']
-        steps[i]['channel_data'] = _combine_channels_multiplier_apply(
+        inputs_info[i]['channel_data'] = _combine_channels_multiplier_apply(
             binarize, step_info['channel_data']
         )
         norm_min, norm_max = step_info['min_val'], step_info['max_val']
         # use rescale_intensity to normalize
         if norm_min == 0 and norm_max == 1:
             continue # cases where either the fields where disabled/reset or default, where we already normalized
-        steps[i]['channel_data'] = skimage.exposure.rescale_intensity(
-            steps[i]['channel_data'], 
+        inputs_info[i]['channel_data'] = skimage.exposure.rescale_intensity(
+            inputs_info[i]['channel_data'], 
             out_range=(norm_min, norm_max)
         )
     
     if formula != '':
-        input_img_data = {step['name']: step['channel_data'] for step in steps.values()}
+        input_img_data = {step['name']: step['channel_data'] for step in inputs_info.values()}
         
         symbols = {name: sp.Symbol(name) for name in input_img_data}
         expr = sp.sympify(formula, locals=symbols)
@@ -2711,8 +2721,8 @@ def combine_channels_func(
         args = [input_img_data[v] for v in used_vars]
         output_img = func(*args)
     else:
-        key0 = list(steps.keys())[0]
-        output_img = steps[key0]['channel_data']
+        key0 = list(inputs_info.keys())[0]
+        output_img = inputs_info[key0]['channel_data']
 
     if not output_as_segm:
         output_img = skimage.exposure.rescale_intensity(
@@ -2767,10 +2777,15 @@ def combine_channels_func(
     if return_img:
         return output_img, key, txt
     
-    txt = f'Saving combined {"segmentation" if output_as_segm else "image"} to {save_filepath}'
+    txt = (
+        f'Saving combined {"segmentation" if output_as_segm else "image"} to '
+        f'{save_filepath}'
+    )
     _log_printl_fallback(txt, logger_func)
     
 
+    printl(save_filepath)
+    
     io.save_image_data( # handles saving img and segm
         save_filepath, output_img
     )

@@ -7015,7 +7015,7 @@ class sliderWithSpinBox(QWidget):
             valueInt = int(value*self.slider.maximum())
         elif self._isFloat:
             valueInt = int(value)
-
+        
         self.spinBox.valueChanged.disconnect()
         self.spinBox.setValue(value)
         self.spinBox.valueChanged.connect(self.spinboxValueChanged)

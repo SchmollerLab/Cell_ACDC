@@ -6047,6 +6047,7 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
         else:
             out_ext = '.tif'
             basename_ext = ''
+        
         for images_path in image_paths:
             basename, channels = myutils.getBasenameAndChNames(images_path)
             
@@ -6058,7 +6059,7 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             save_filepaths.append(os.path.join(images_path, savename))
         
         core.combine_channels_multithread(
-            steps=steps,
+            inputs_info=steps,
             images_paths=images_path_to_process,
             keep_input_data_type=keep_input_data_type,
             save_filepaths=save_filepaths,

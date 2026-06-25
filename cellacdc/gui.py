@@ -3140,8 +3140,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # self.rescaleIntensitiesLut(setImage=setImage)
                 break
     
-    def customLevelsLutChanged(self, levels, imageItem=None):
+    def customLevelsLutChanged(self, levels, imageItem: pg.ImageItem=None):
         imageItem.setLevels(levels)
+        if self.overlayToolbar.isTransparent():
+            self.updateTransparentOverlayRgba()
     
     def getPreComputedMinMaxZstack(self, channel: str):
         if channel != self.user_ch_name:
@@ -3237,13 +3239,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if triggeredByUser:
                 current_min, current_max = imageItem.getLevels() 
                 dtype_max = np.iinfo(image_data.dtype).max
-                max_value = image_data.max()
-                min_value = image_data.min()
+                # max_value = image_data.max()
+                # min_value = image_data.min()
                 win = apps.SetCustomLevelsLut(
-                    init_min_value=current_min,
-                    init_max_value=current_max,
-                    maximum_max_value=max_value,
-                    minimum_min_value=min_value,
+                    init_min_value=round(current_min),
+                    init_max_value=round(current_max),
+                    maximum_max_value=dtype_max,
+                    minimum_min_value=0,
                     parent=self
                 )
                 win.sigLevelsChanged.connect(
@@ -25461,12 +25463,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 toolbutton = items[3]
                 if not toolbutton.isChecked():
                     continue
+                
+                rescale_lut_action = (
+                    imageItem.lutItem.rescaleActionGroup.checkedAction()
+                )
+                rescale_lut_how = rescale_lut_action.text()
+                in_range = 'image'
+                if rescale_lut_how == 'Choose custom levels...':
+                    in_range = tuple(imageItem.getLevels())
+                    
                 alpha_val = alphaSB.value()/alphaSB.maximum()
                 ol_img = skimage.exposure.rescale_intensity(
-                    ol_img, out_range=(0.0, 1.0)
-                )
-                out_range_min, out_range_max = lutItem.getLevels()                
-                rgba_imgs_info[chName] = (ol_img, alpha_val, lutItem)
+                    ol_img, in_range=in_range, out_range=(0.0, 1.0)
+                )               
+                rgba_imgs_info[chName] = (ol_img, alpha_val, lutItem, imageItem)
             else:
                 self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
                 imageItem.setImage(ol_img)
@@ -25478,7 +25488,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         images = []
         luts = []
         for channel, info in rgba_imgs_info.items():
-            ol_img, alpha_val, lutItem = info
+            ol_img, alpha_val, lutItem, imageItem = info
             alpha_values.append(alpha_val)
             images.append(ol_img)
             luts.append(lutItem.gradient.getLookupTable(256, alpha=255)/255)
@@ -25487,8 +25497,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if self.baseLayerToolbutton.isChecked():
             image1 = self._getImageupdateAllImages()
+            rescale_lut_action = (
+                self.imgGrad.rescaleActionGroup.checkedAction()
+            )
+            rescale_lut_how = rescale_lut_action.text()
+            in_range = 'image'
+            if rescale_lut_how == 'Choose custom levels...':
+                in_range = tuple(self.img1.getLevels())
+                
             image1 = skimage.exposure.rescale_intensity(
-                image1, out_range=(0.0, 1.0)
+                image1, in_range=in_range, out_range=(0.0, 1.0)
             )        
             images.append(image1)
             baseLut = (
@@ -30929,7 +30947,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             how = self.df_settings.at[
                 f'how_rescale_intensities_{channelName}', 'value'
             ]
-            lutItem.setRescaleIntensitiesHow(how)
+            if not 'custom' in how:
+                lutItem.setRescaleIntensitiesHow(how)
         
         self.rescaleIntensChannelHowMapper[channelName] = (
             'Rescale each 2D image'
@@ -31091,7 +31110,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if otherToolbutton.isChecked() and isSingleChannel:
                 op_val = 1.0
             elif otherToolbutton.isChecked():
-                op_val = channel_opacity_mapper[channel]
+                op_val = channel_opacity_mapper.get(channel, 0.01)
             else:
                 op_val = 0.0
             
@@ -31932,8 +31951,39 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return 
         
         return msg.clickedButton == timelapseButton
+
+    def exportToCheckAskOverlay(self, output='image'):
+        if not self.overlayButton.isChecked():
+            return True
+        
+        if self.overlayToolbar.isTransparent():
+            return True
+        
+        self.blinker = qutils.QControlBlink(
+            self.overlayToolbar.transparencyCheckbox, qparent=self
+        )
+        self.blinker.start()
+        
+        cancel, activateTransparencyMode = (
+            _warnings.warnAskTransparencyModeNeededForExport(
+                self, output=output
+            )
+        )
+        
+        if cancel:
+            return False
+        
+        if activateTransparencyMode:
+            self.overlayToolbar.setTransparent(True)
+        
+        return True
     
     def exportToVideoTriggered(self):
+        proceed = self.exportToCheckAskOverlay(output='video')
+        if not proceed:
+            self.logger.info('Export to video process cancelled')
+            return
+        
         posData = self.data[self.pos_i]
         
         doTimelapseVideo = posData.SizeT > 1
@@ -32050,7 +32100,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
     
     @disableWindow
-    def exportToImage(self, preferences):        
+    def exportToImage(self, preferences):      
         filepath = preferences['filepath']
         self.logger.info(f'Saving image to "{filepath}"...')
         
@@ -32058,6 +32108,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             exporter = exporters.SVGExporter(self.ax1)
         else:
             exporter = exporters.ImageExporter(self.ax1, dpi=preferences['dpi'])
+        
         exporter.export(filepath)
         self.logger.info(f'Image saved.')
         
@@ -32067,6 +32118,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         prompts.exportToImageFinished(filepath, qparent=self)
     
     def exportToImageTriggered(self):
+        proceed = self.exportToCheckAskOverlay()
+        if not proceed:
+            self.logger.info('Export to video process cancelled')
+            return
+        
         posData = self.data[self.pos_i]
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'{timestamp}_acdc_exported_image'
