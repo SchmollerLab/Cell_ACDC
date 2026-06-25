@@ -6739,7 +6739,7 @@ class MainPlotItem(pg.PlotItem):
     def __init__(
             self, parent=None, name=None, labels=None, title=None, 
             viewBox=None, axisItems=None, enableMenu=True, 
-            showWelcomeText=False, **kargs
+            showWelcomeText=False, ax_number=0, **kargs
         ):
         super().__init__(
             parent, name, labels, title, viewBox, axisItems, enableMenu, 
@@ -6765,7 +6765,16 @@ class MainPlotItem(pg.PlotItem):
         self._baseImageItem = None
         self._imageItems = []
         self.highlightingRectItemsColor = None
-    
+        self.ax_number = ax_number
+        
+    def __eq__(self, other):
+        if isinstance(other, int):
+            return self.ax_number == other
+        return NotImplemented
+        
+    def __hash__(self):
+        return id(self)
+        
     def addHighlightingRectItems(self, color=None):
         self.highlightingRectItems = {
             'left': RectItem(QRectF()),

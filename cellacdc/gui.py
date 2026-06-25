@@ -4181,7 +4181,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.lutItemsLayout.setBorder('w')
 
         # Left plot
-        self.ax1 = widgets.MainPlotItem(showWelcomeText=True)
+        self.ax1 = widgets.MainPlotItem(showWelcomeText=True, ax_number=0)
         self.ax1.invertY(True)
         self.ax1.setAspectLocked(True)
         self.ax1.hideAxis('bottom')
@@ -4190,7 +4190,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.graphLayout.addItem(self.ax1, row=1, col=1)
 
         # Right plot
-        self.ax2 = widgets.MainPlotItem()
+        self.ax2 = widgets.MainPlotItem(ax_number=1)
         self.ax2.setAspectLocked(True)
         self.ax2.invertY(True)
         self.ax2.hideAxis('bottom')
@@ -4955,11 +4955,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def rpCurr2D(self, frame_i=None, slice_i=None, depth_axis=None, pos_i=None):
         posData = self.data[self.pos_i if pos_i is None else pos_i]
+        # zProjHow = self.zProjComboBox.currentText()
+        # isZslice = zProjHow == 'single z-slice'
         if frame_i is None:
             rp = posData.rp
         else:
             rp = posData.allData_li[frame_i]['regionprops']
-        if not self.isSegm3D:
+        if not self.isSegm3D: # or not isZslice:
             return rp
 
         if slice_i is None:
@@ -7661,7 +7663,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             self.setImageImg2(updateLookuptable=False)
 
-            how = self.drawIDsContComboBox.currentText()
             lab2D = self.get_2Dlab(posData.lab, force_z=False)
             self.globalBrushMask = np.zeros(lab2D.shape, dtype=bool)
             brushMask = localLab == posData.brushID
@@ -9361,13 +9362,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             self.lostObjContoursImage[:] = 0  
 
-        contours = []
-        obj_contours = self.getObjContours(
+        display_rp = self.get2DRP(frame_i=posData.frame_i -1)
+        obj = display_rp.get_obj_from_ID(lostID)
+        contours = self.getObjContours(
             obj,
             all_external=True,
             include_internal=self.showAllContoursToggle.isChecked()
         )
-        contours.extend(obj_contours)
         
         self.addLostObjsToLostObjImage(obj, lostID)
         self.drawLostObjContoursImage(
@@ -9381,7 +9382,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         obj = prev_rp.get_obj_from_ID(acceptedLostID)
         self.goToZsliceSearchedID(obj)
         
-        self.updateLostTrackedContoursImage(tracked_lost_IDs=[acceptedLostID])
+        for ax in (self.ax1, self.ax2):
+            self.updateLostTrackedContoursImage(ax=ax, tracked_lost_IDs=[acceptedLostID])
     
     def askGoToFrameFoundID(self, searchedID, frame_i_found):
         msg = widgets.myMessageBox(wrapText=False)
@@ -14193,9 +14195,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             obj = posData.rp.get_obj_from_ID(self.ax1BrushHoverID)
             if not self.isObjVisible(obj.bbox):
                 return
-            
-            self.addObjContourToContoursImage(obj=obj, ax=0)
-            self.addObjContourToContoursImage(obj=obj, ax=1)
+
+            display_rp = self.get2DRP()
+            obj = display_rp.get_obj_from_ID(self.ax1BrushHoverID)
+            for ax in (self.ax1, self.ax2):
+                self.addObjContourToContoursImage(obj=obj, ax=ax)
 
     def hideItemsHoverBrush(self, xy=None, ID=None, force=False):
         if xy is not None:
@@ -14232,11 +14236,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         # Restore ID previously hovered
         if ID != self.ax1BrushHoverID and not self.isMouseDragImg1:
-            try:
-                self.restoreHoverObjBrush()
-            except Exception as e:
-                self.ax1BrushHoverID = 0
-                return
+            # try:
+                self.restoreHoverObjBrush() # maybe want to put into try except later again
+            # except Exception as e:
+            #     self.ax1BrushHoverID = 0
+            #     return
 
         # Hide items hover ID
         if ID != 0:
@@ -16253,7 +16257,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.manualBackgroundObjItem.clear()
             return
         
-        self.manualBackgroundObj = posData.rp.get_obj_from_ID(ID)
+        display_rp = self.get2DRP()
+        self.manualBackgroundObj = display_rp.get_obj_from_ID(ID)
         
         self.manualBackgroundToolbar.clearInfoText()
         self.manualBackgroundObj.contour = self.getObjContours(
@@ -16291,12 +16296,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.ghostObject = None
             return
         
-        for obj in prevFrameRp:
-            if obj.label != ID:
-                continue
-            self.ghostObject = obj
-            break
-        else:
+        display_rp = self.get2DRP(frame_i=posData.frame_i -1)
+        obj = display_rp.get_obj_from_ID(ID, warn=False)
+        if obj is None:
             self.ghostObject = None
             self.manualTrackingToolbar.showWarning(
                 f'The ID {ID} does not exist in previous frame '
@@ -21632,7 +21634,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 except ValueError:
                     continue
 
-                cont = self.getObjContours(obj)
+                cont = self.getObjContours(obj) # here 3D always is correct!
                 i = IDsCellsG1.index(ID)
                 
                 # Get distance from cell in G1 and all other new cells
@@ -21785,7 +21787,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for obj in posData.rp:
             ID = obj.label
             if ID in posData.new_IDs:
-                cont = self.getObjContours(obj)
+                cont = self.getObjContours(obj) # here 3D always is correct!
                 newIDs_contours.append(cont)
 
         # Compute cost matrix
@@ -25919,36 +25921,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.textAnnot[0].initItem((Y, X))
         self.textAnnot[1].initItem((Y, X))  
 
-    def _get_obj_for_current_view_rp(self, obj, posData):
-        # 2D segmentation already has the correct regionprops object.
-        if not self.isSegm3D or not posData.rp.is3D:
-            return obj
+    # def _get_obj_for_current_view_rp(self, obj, posData):
+    #     # 2D segmentation already has the correct regionprops object.
+    #     if not self.isSegm3D or not posData.rp.is3D:
+    #         return obj
 
-        slicing = self.switchPlaneCombobox.depthAxes()
-        zProjHow = self.zProjComboBox.currentText()
-        if zProjHow == 'single z-slice':
-            slice_selector = self.z_lab()
-            slice_number = slice_selector[-1] if isinstance(slice_selector, tuple) else slice_selector
-            obj_current_view = posData.rp.get_obj_from_slice_rp(
-                obj.label, slice_number, slicing=slicing, warn=False
-            )
-            return obj_current_view or obj
+    #     slicing = self.switchPlaneCombobox.depthAxes()
+    #     zProjHow = self.zProjComboBox.currentText()
+    #     if zProjHow == 'single z-slice':
+    #         slice_selector = self.z_lab()
+    #         slice_number = slice_selector[-1] if isinstance(slice_selector, tuple) else slice_selector
+    #         obj_current_view = posData.rp.get_obj_from_slice_rp(
+    #             obj.label, slice_number, slicing=slicing, warn=False
+    #         )
+    #         return obj_current_view or obj
 
-        obj_current_view = posData.rp.get_obj_from_proj_rp(
-            obj.label, kind='most_common', slicing=slicing, warn=False
-        )
-        return obj_current_view or obj
+    #     obj_current_view = posData.rp.get_obj_from_proj_rp(
+    #         obj.label, kind='most_common', slicing=slicing, warn=False
+    #     )
+    #     return obj_current_view or obj
 
     def getObjContours(
             self, obj, all_external=False, local=False,
             include_internal=False, rp=None
-        ):
-        posData = self.data[self.pos_i]
-        obj_to_use = self._get_obj_for_current_view_rp(obj, posData)
-        
+        ):        
         try:
             contours = core.get_obj_contours(
-                obj=obj_to_use,
+                obj=obj,
                 local=local,
                 all_external=all_external,
                 all=include_internal
@@ -26874,13 +26873,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         tempImage = np.zeros((Y, X), dtype=np.uint32)
         if how.find('contours') != -1:
             # Keep the currently edited object visible while painting.
-            obj = None
-            rp = getattr(posData, 'rp', None)
-            if rp is not None:
-                obj = rp.get_obj_from_ID(ID, warn=False)
-            if obj is not None:
-                obj = self._get_obj_for_current_view_rp(obj, posData)
-
+            rp_2D = self.get2DRP()
+            obj = rp_2D.get_obj_from_ID(ID, warn=False) # new IDs would spam errors
             if (
                 obj is not None
                 and hasattr(obj, 'slice')
@@ -27678,6 +27672,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.highLightIDLayerImg1.setImage(self.highlightedLab)          
             self.labelsLayerImg1.setOpacity(alpha/3)
         else:
+            display_rp = self.get2DRP()
+            obj = display_rp.get_obj_from_ID(ID)
             contours = self.getObjContours(
                 obj,
                 all_external=True,
@@ -27692,6 +27688,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.labelsLayerRightImg.setOpacity(alpha/3)
         else:
             if contours is None:
+                display_rp = self.get2DRP()
+                obj = display_rp.get_obj_from_ID(ID)
                 contours = self.getObjContours(
                     obj,
                     all_external=True,
@@ -27862,7 +27860,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def getContoursImageItem(self, ax, force=False):
         if not self.areContoursRequested(ax) and not force:
             return
-        
+                
         if ax == 0:
             return self.ax1_contoursImageItem
         else:
@@ -27979,7 +27977,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             self.manualBackgroundTextItems[obj.label] = textItem
     
-    def updateContoursImage(self, ax, delROIsIDs=None, compute=True):
+    def updateContoursImage(self, ax, delROIsIDs=[], compute=True):
         imageItem = self.getContoursImageItem(ax)
         if imageItem is None:
             return
@@ -27990,30 +27988,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.contoursImage[:] = 0
         
         contours = []
-        posData = self.data[self.pos_i]
-        rp = posData.rp
-        use_local_rp = (
-            self.isSegm3D
-            and self.zProjComboBox.currentText() == 'single z-slice'
-        )
-        if rp is None:
-            lab = self.currentLab2D
-            rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
-            if not use_local_rp:
-                posData.rp = rp
-        elif use_local_rp and rp.is3D:
-            rp = self.rpCurr2D()
+        display_rp = self.get2DRP()
 
-        for obj in rp:
+        for obj in display_rp:
             if delROIsIDs and obj.label in delROIsIDs:
                 continue
-            obj_contours = self.getObjContours(
+            contours_obj = self.getObjContours(
                 obj,
                 all_external=True,
-                include_internal=self.showAllContoursToggle.isChecked()
+                include_internal=self.showAllContoursToggle.isChecked(),
             )
-            contours.extend(obj_contours)
-
+            contours.extend(contours_obj)
+            
         thickness = self.contLineWeight
         color = self.contLineColor
         self.setContoursImage(imageItem, contours, thickness, color)
@@ -28030,34 +28016,35 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         return obj
     
-    def setLostObjectContour(self, obj):
-        allContours = self.getObjContours(
-            obj,
-            all_external=True,
-            include_internal=self.showAllContoursToggle.isChecked()
-        )
-        for objContours in allContours:
-            xx = objContours[:,0] + 0.5
-            yy = objContours[:,1] + 0.5
-            data = [obj.label]*len(xx)
-            self.ax1_lostObjScatterItem.addPoints(xx, yy, data=data)
-            self.ax2_lostObjScatterItem.addPoints(xx, yy)
+    # def setLostObjectContour(self, obj):
 
-    def setTrackedLostObjectContour(self, obj):
-        if self.isExportingVideo:
-            return
+    #     allContours = self.getObjContours(
+    #         obj,
+    #         all_external=True,
+    #         include_internal=self.showAllContoursToggle.isChecked()
+    #     )
+    #     for objContours in allContours:
+    #         xx = objContours[:,0] + 0.5
+    #         yy = objContours[:,1] + 0.5
+    #         data = [obj.label]*len(xx)
+    #         self.ax1_lostObjScatterItem.addPoints(xx, yy, data=data)
+    #         self.ax2_lostObjScatterItem.addPoints(xx, yy)
+
+    # def setTrackedLostObjectContour(self, obj):
+    #     if self.isExportingVideo:
+    #         return
         
-        allContours = self.getObjContours(
-            obj,
-            all_external=True,
-            include_internal=self.showAllContoursToggle.isChecked()
-        )
-        for objContours in allContours:
-            xx = objContours[:,0] + 0.5
-            yy = objContours[:,1] + 0.5
-            data = [obj.label]*len(xx)
-            self.ax1_lostTrackedScatterItem.addPoints(xx, yy, data=data)
-            self.ax2_lostTrackedScatterItem.addPoints(xx, yy)
+    #     allContours = self.getObjContours(
+    #         obj,
+    #         all_external=True,
+    #         include_internal=self.showAllContoursToggle.isChecked()
+    #     )
+    #     for objContours in allContours:
+    #         xx = objContours[:,0] + 0.5
+    #         yy = objContours[:,1] + 0.5
+    #         data = [obj.label]*len(xx)
+    #         self.ax1_lostTrackedScatterItem.addPoints(xx, yy, data=data)
+    #         self.ax2_lostTrackedScatterItem.addPoints(xx, yy)
     
     def updateLostContoursImage(self, ax, draw=True, delROIsIDs=None):
         if draw:
@@ -28075,6 +28062,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         posData = self.data[self.pos_i]
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        display_rp_prev = self.get2DRP(frame_i=posData.frame_i -1)
         if posData.whitelist is not None and posData.whitelist.whitelistIDs is not None:
             whitelist = posData.whitelist.whitelistIDs[posData.frame_i-1]
         else:
@@ -28088,9 +28076,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             obj = prev_rp.get_obj_from_ID(lostID)
             if not self.isObjVisible(obj.bbox):
                 continue
+            obj_display = display_rp_prev.get_obj_from_ID(lostID)
+
         
             obj_contours = self.getObjContours(
-                obj,
+                obj_display,
                 all_external=True,
                 include_internal=self.showAllContoursToggle.isChecked()
             )
@@ -28134,6 +28124,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             tracked_lost_IDs = self.getTrackedLostIDs()
             
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        display_rp_prev = self.get2DRP(frame_i=posData.frame_i - 1)
         contours = []
         for tracked_lost_ID in tracked_lost_IDs:
             if tracked_lost_ID in delROIsIDs:
@@ -28143,6 +28134,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if not self.isObjVisible(obj.bbox):
                 continue
         
+            obj = display_rp_prev.get_obj_from_ID(tracked_lost_ID)
             obj_contours = self.getObjContours(
                 obj,
                 all_external=True,
@@ -28205,6 +28197,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return nearest_ID
     
     def setCcaIssueContour(self, obj):
+        label = obj.label
+        
+        display_rp = self.get2DRP()
+        obj = display_rp.get_obj_from_ID(label)
         objContours = self.getObjContours(
             obj,
             all_external=True,
@@ -28257,7 +28253,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def highlightNewCellNotEnoughG1cells(self, IDsCellsG1):
         posData = self.data[self.pos_i]
-        for obj in posData.rp:
+        
+        display_rp = self.get2DRP()
+        for obj in display_rp:
             if obj.label not in IDsCellsG1:
                 continue
             objContours = self.getObjContours(obj)
@@ -28293,18 +28291,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return notEnoughG1Cells, proceed
     
     def addObjContourToContoursImage(
-            self, ID=0, obj=None, ax=0, thickness=None, color=None,
+            self, obj=None, ax=0, thickness=None, color=None,
             force=False
-        ):        
+        ):   
         imageItem = self.getContoursImageItem(ax, force=force)
         if imageItem is None:
             return
-        
-        if obj is None:
-            obj = self.getObjFromID(ID)
-            if obj is None:
-                return
-
+    
         contours = self.getObjContours(
             obj,
             all_external=True,
@@ -28339,11 +28332,51 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def clearAnnotItems(self):
         self.textAnnot[0].clear()
         self.textAnnot[1].clear()
+        
+    def get2DRP(self, pos_i=None, frame_i=None, slice_i=None, zProjHow=None, depthAxes=None):
+        posData = self.data[self.pos_i if pos_i is None else pos_i]
+        frame_i = posData.frame_i if frame_i is None else frame_i
+
+        if frame_i == posData.frame_i:
+            rp = posData.rp
+        else:
+            rp = posData.allData_li[frame_i]['regionprops']
+
+        if rp is None:
+            self.logger(
+                f"[WARNING] rp for displaying contours was requested before being set properly"
+            )
+            if frame_i == posData.frame_i:
+                lab = posData.lab
+            else:
+                lab = posData.allData_li[frame_i]['labels']
+            rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+            if frame_i == posData.frame_i:
+                posData.rp = rp
+            posData.allData_li[frame_i]['regionprops'] = rp
+        if not self.isSegm3D:
+            return rp
+
+        if zProjHow is None:
+            zProjHow = self.zProjComboBox.currentText()
+        
+        if zProjHow != 'single z-slice':
+            rp_2D = rp.get_proj_rp('most_common')
+            return rp_2D
+
+        if slice_i is None:
+            slice_i = self.zSliceScrollBar.sliderPosition()
+        if depthAxes is None:
+            depthAxes = self.switchPlaneCombobox.depthAxes()
+
+        rp_2D = rp.get_slice_rp(slice_i, depthAxes)
+        return rp_2D
 
     # @exec_time
     def setAllTextAnnotations(self, labelsToSkip=None):
         self.setLostNewOldPrevIDs()
         posData = self.data[self.pos_i]
+        
         self.textAnnot[0].setAnnotations(
             posData=posData, 
             labelsToSkip=labelsToSkip, 
@@ -28352,16 +28385,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getCurrentZfunc=self.z_lab, 
             getObjCentroidFunc=self.getObjCentroid,
-            rp_2D_func=self.rpCurr2D
+            rp_func2D=self.get2DRP,
+            rp3D=posData.rp
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
             highlightedID=self.highlightedID, 
             annotateLost=self.annotLostObjsToggle.isChecked(), 
-            getCurrentZfunc=self.z_lab, 
             getObjCentroidFunc=self.getObjCentroid,
-            rp_2D_func=self.rpCurr2D
+            rp_func=self.get2DRP,
+            rp3D=posData.rp
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
@@ -28883,8 +28917,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.ax1_lostObjScatterItem.setSize(self.contLineWeight+1)
             self.ax1_lostObjScatterItem.setData([], [])
         else:
-            prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-            lostObj = prev_rp.get_obj_from_ID(hoverLostID)
+            display_rp = self.get2DRP(frame_i=posData.frame_i - 1)
+            lostObj = display_rp.get_obj_from_ID(hoverLostID)
             obj_contours = self.getObjContours(
                 lostObj,
                 all_external=True,
@@ -29140,10 +29174,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not isNewID:
             return
 
+        posData = self.data[self.pos_i]
+        if posData.frame_i == 0:
+            return
+
         if isinstance(added_IDs, int):
             added_IDs = [added_IDs]
         
-        posData = self.data[self.pos_i]
         tracked_lab, assignments = self.tracking(
             enforce=True, assign_unique_new_IDs=False, return_lab=True,
             specific_IDs=added_IDs, return_assignments=True,
