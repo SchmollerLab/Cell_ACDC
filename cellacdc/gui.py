@@ -27977,7 +27977,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             self.manualBackgroundTextItems[obj.label] = textItem
     
-    def updateContoursImage(self, ax, delROIsIDs=[], compute=True):
+    def updateContoursImage(self, ax, delROIsIDs=None, compute=True):
+        if delROIsIDs is None:
+            delROIsIDs = []
         imageItem = self.getContoursImageItem(ax)
         if imageItem is None:
             return
@@ -28343,7 +28345,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             rp = posData.allData_li[frame_i]['regionprops']
 
         if rp is None:
-            self.logger(
+            self.logger.warning(
                 f"[WARNING] rp for displaying contours was requested before being set properly"
             )
             if frame_i == posData.frame_i:
