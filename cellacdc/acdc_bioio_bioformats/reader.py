@@ -63,8 +63,7 @@ class ImageReader:
         
         if lazy_load:
             return
-        
-        _, ext = os.path.splitext(image_filepath)        
+                
         self.img_data = self._check_rgb_to_grayscale(self._bioioimage.data)
     
     def _check_rgb_to_grayscale(self, image_data):
@@ -78,7 +77,9 @@ class ImageReader:
         if self._bioioimage.current_scene_index != series:
             self._bioioimage.set_scene(series)
             if not self._is_lazy_load:
-                self.img_data = self._bioioimage.data
+                self.img_data = self._check_rgb_to_grayscale(
+                    self._bioioimage.data
+                )
         
         if not self._is_lazy_load:
             return self.img_data[t, c, z]
