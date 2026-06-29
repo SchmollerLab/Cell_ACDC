@@ -386,7 +386,7 @@ def image_2d_rgb_or_rgba_to_uint8_grayscale(image: np.ndarray):
             f'Input image is not RGB nor RGBA. Current shape is {image.shape}'
         )
         
-    if is_rgb == 3:
+    if is_rgb:
         image_grayscale = skimage.color.rgb2gray(image)
     else:
         image_grayscale = cv2.cvtColor(image, cv2.COLOR_RGBA2GRAY)
