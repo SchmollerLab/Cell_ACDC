@@ -84,8 +84,11 @@ class ImageReader:
             return self.img_data[t, c, z]
         
         dims_order = self._bioioimage.dims.order
-        s_size = self._bioioimage.dims.shape[dims_order.index("S")]
-        if 'S' in dims_order and s_size > 1:
+        if 'S' in dims_order:
+            s_size = self._bioioimage.dims.shape[dims_order.index("S")]
+        else:
+            s_size = 0
+        if s_size > 1:
             # RGB(A)
             lazy_img_rgb = self._bioioimage.get_image_dask_data(
                 "YXS", T=t, C=c, Z=z
