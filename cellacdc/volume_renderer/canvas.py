@@ -61,23 +61,30 @@ class VolumeRendererWindow(QMainWindow):
             parent=None, 
             version=None,
             title='Cell-ACDC - Volume Renderer',
-            hide_on_close=True
+            hide_on_close=False,
+            logger_func=print
         ):
         """Initializer."""
-
-        super().__init__(parent)
-        self.setWindowTitle(title)
-
         self._version = version
+        self._logger_func = logger_func
         self._ui_initialised = False
+        self._is_labels_set = False
         self._hide_on_close = hide_on_close
         self._max_texture_3d = None
         self._lut_items_width = 20 # Start with some padding
+        self._SizeZ = None
         
         if app is None:
             app = QCoreApplication.instance()
         
+        if app is None:
+            app, splashScreen = _setup_app(splashscreen=True)  
+            splashScreen.close()
+        
         self.app = app
+        
+        super().__init__(parent)
+        self.setWindowTitle(title)
         
         self._channels_data: dict[_ChannelData] = {}
         
@@ -113,10 +120,7 @@ class VolumeRendererWindow(QMainWindow):
         self._axis_visual = scene.visuals.XYZAxis(parent=self._view.scene)
         self._axis_visual.visible = False
     
-    def _init_ui(self):
-        if self._ui_initialised:
-            return
-        
+    def _init_lab_ui_items(self):
         from vispy.scene import visuals
         
         self._lab_node = visuals.Volume(
@@ -126,6 +130,31 @@ class VolumeRendererWindow(QMainWindow):
             parent=self._view.scene,
         )
         self._lab_node.visible = False
+        
+        self._lab_opacity_slider = widgets.sliderWithSpinBox(
+            title_loc='in_line', 
+            isFloat=True, 
+            parent=self,
+            normalize_factor=10
+        )
+        
+        self._lab_opacity_slider.setRange(0.0, 1.0)
+        self._lab_opacity_slider.setSingleStep(0.05)
+        self._lab_opacity_slider.setValue(0.5)
+        self._lab_opacity_slider.setDecimals(2)
+        
+        self._lab_opacity_slider.setToolTip(f'Opacity of segmentation masks')
+        opacity_slider_form_widget = widgets.formWidget(
+            self._lab_opacity_slider,
+            labelTextLeft=f'Segmentation masks opacity:',
+        )
+        self._controls_layout.addFormWidget(
+            opacity_slider_form_widget, row=0
+        )
+        
+    def _init_ui(self):
+        if self._ui_initialised:
+            return
         
         self._toolbar = _widgets.VolumeRendererToolbar(parent=self)
         self.addToolBar(Qt.TopToolBarArea, self._toolbar)
@@ -194,6 +223,8 @@ class VolumeRendererWindow(QMainWindow):
         if volume.ndim != 3:
             raise ValueError(
                 f'Expected 3-D (Z, Y, X) array; got shape {volume.shape}')
+        
+        self._SizeZ = len(volume)
         
         # copy=False avoids a redundant allocation when data is already float32
         vol = volume.astype(np.float32, copy=False)
@@ -290,7 +321,7 @@ class VolumeRendererWindow(QMainWindow):
             
             lut_item = widgets.baseHistogramLUTitem()
 
-            opacity_slider = self._add_opacity_slider(channel, row=c_idx)
+            opacity_slider = self._add_opacity_slider(channel, row=c_idx+1)
             
             toolbutton = widgets.OverlayChannelToolButton(
                 channel, lut_item, shortcut=str(c_idx)
@@ -466,6 +497,41 @@ class VolumeRendererWindow(QMainWindow):
 
         self._set_visiblity(update=True)
     
+    def set_labels(
+            self, 
+            lab: np.ndarray, 
+            cmap: list[RgbaColor] | AcdcPyQtGraphColorMapName=None,
+            SizeZ: int=None
+        ):
+        if self._is_labels_set:
+            self._logger_func(
+                '[WARNING]: Labels already set. '
+                'Only one labels volumes can be set'
+            )
+            return
+        
+        if lab.ndim == 2 and SizeZ is None and self._SizeZ is None:
+            raise ValueError(
+                f'Labels array is 2D but SizeZ not set.'
+            )
+        
+        if lab.ndim == 2:
+            if SizeZ is None:
+                SizeZ = self._SizeZ
+        
+            lab = np.array([lab]*SizeZ)
+        
+        if lab.ndim != 3:
+            raise ValueError(
+                f'Expected 3-D (Z, Y, X) labels array; got shape {lab.shape}')
+        
+        self._lab = self._preprocess_volume(lab)
+        
+        self._init_lab_ui_items()
+        
+        self._is_labels_set = True
+        
+    
     def set_volume(
             self,
             volume: np.ndarray, 
@@ -528,11 +594,7 @@ class VolumeRendererWindow(QMainWindow):
         if block:
             self._block_exec()
     
-    def run(self, block=True):
-        if self.app is None:
-            app, splashScreen = _setup_app(splashscreen=True)  
-            splashScreen.close()
-        
+    def run(self, block=True):        
         self.show()
         self.reset_view()
         if block:
