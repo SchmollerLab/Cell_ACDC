@@ -21920,7 +21920,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             if goToFrameButton == msg.clickedButton:
                 self.addMissingIDs_cca_df(posData)
-                self.store_cca_df()
                 msg = 'Looking good!'
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
