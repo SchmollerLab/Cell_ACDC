@@ -590,14 +590,13 @@ class TextAnnotations:
         isObjVisibleFunc = kwargs.get('isVisibleCheckFunc')
         highlightedID = kwargs.get('highlightedID')
         annotateLost = kwargs.get('annotateLost')
-        getCurrentZfunc = kwargs.get('getCurrentZfunc')
         getObjCentroidFunc = kwargs.get('getObjCentroidFunc')
-        currentZ = getCurrentZfunc(checkIfProj=True)
         isCcaAnnot = self.isCcaAnnot()
         isAnnotateNumZslices = self.isAnnotateNumZslices()
         isLabelTreeAnnotation = self.isLabelTreeAnnotation()
         isGenNumTreeAnnotation = self.isGenNumTreeAnnotation()
-        rpCurr2D_func = kwargs.get('rp_2D_func')
+        rp_func = kwargs.get('rp_func')
+        rp3D = kwargs.get('rp3D')
         
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
         if posData.cca_df is not None and acdc_df is not None:
@@ -608,27 +607,20 @@ class TextAnnotations:
         if acdc_df is None and posData.cca_df is not None:
             acdc_df = posData.cca_df
         
-        for obj in posData.rp:
+        rp = rp_func()
+        for obj in rp:
             if labelsToSkip is not None:
                 if labelsToSkip.get(obj.label, False):
                     continue
             
-            if not isObjVisibleFunc(obj.bbox):
+            obj3D = rp3D.get_obj_from_ID(obj.label)
+            if not isObjVisibleFunc(obj3D.bbox):
                 continue
             
             if obj.label in delROIsIDs:
                 continue
-
-            
-            rp = rpCurr2D_func()
-            if obj.label not in rp.IDs:
-                continue
+                
             yc, xc = rp.get_centroid(obj.label)
-            # yc, xc = getObjCentroidFunc(centroid)
-            # try:
-            #     rp_zslice = rpCurr2D_func()
-            # except Exception as err:
-            #     pass
                 
             pos = (int(xc), int(yc))
             
