@@ -574,6 +574,14 @@ class VolumeRendererWindow(QMainWindow):
 
         self._set_visiblity(update=True)
     
+    def set_segmentation_masks(
+            self, 
+            lab: np.ndarray, 
+            cmap: list[RgbaColor] | AcdcPyQtGraphColorMapName=None,
+            SizeZ: int=None
+        ):
+        self.set_labels(lab, cmap=cmap, Size=SizeZ)
+    
     def set_labels(
             self, 
             lab: np.ndarray, 

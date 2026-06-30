@@ -24,5 +24,5 @@ lab_filepath = os.path.join(
 lab = np.load(lab_filepath)['arr_0']
 
 renderer = VolumeRendererWindow()
-renderer.set_labels(lab) 
+renderer.set_labels(lab, SizeZ=10) 
 renderer.run()
