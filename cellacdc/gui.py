@@ -17899,11 +17899,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.thread.started.connect(self.worker.run)
         self.thread.start()
 
-    def segmVideoWorkerFinished(self, exec_time):
+    def segmVideoWorkerFinished(self, exec_time, startFrameNum, stopFrameNum):
         self.progressWin.workerFinished = True
         self.progressWin.close()
         self.progressWin = None
 
+        # update RP and allData_li
+        printl(range(startFrameNum-1, stopFrameNum))
+
+        posData = self.data[self.pos_i]
+        for frame_i in range(startFrameNum-1, stopFrameNum):
+            lab = posData.segm_data[frame_i]
+            allData_li_frame = posData.allData_li[frame_i]
+            allData_li_frame['regionprops'] = regionprops.acdcRegionprops(
+                    lab, precache_centroids=False
+                )
+            if allData_li_frame['labels'] is not None:
+                allData_li_frame['labels'] = lab
+            
         self.activateAnnotations()
 
         self.get_data()

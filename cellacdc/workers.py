@@ -1201,7 +1201,7 @@ class segmWorker(QObject):
         self.finished.emit(lab, exec_time)
 
 class segmVideoWorker(QObject):
-    finished = Signal(float)
+    finished = Signal(float, int, int)
     debug = Signal(object)
     critical = Signal(object)
     progressBar = Signal(int)
@@ -1296,7 +1296,7 @@ class segmVideoWorker(QObject):
             self.progressBar.emit(1)
         t1 = time.perf_counter()
         exec_time = t1-t0
-        self.finished.emit(exec_time)
+        self.finished.emit(exec_time, self.startFrameNum, self.stopFrameNum)
 
 class ComputeMetricsWorker(QObject):
     progressBar = Signal(int, int, float)
