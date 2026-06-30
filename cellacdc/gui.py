@@ -16261,7 +16261,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.manualBackgroundObj = display_rp.get_obj_from_ID(ID)
         
         if self.manualBackgroundObj is None:
-            print(f"Could not find object with ID {ID} in current frame.")
+            self.logger.warning(f"Could not find object with ID {ID} in current frame.")
             return
 
         self.manualBackgroundToolbar.clearInfoText()
@@ -23680,7 +23680,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 deletionIDs is not None, 
                 local_rp_update, 
                 ]) > 1:
-            print(assignments is not None, deletionIDs is not None, local_rp_update)
+            self.logger.warning(assignments is not None, deletionIDs is not None, local_rp_update)
             raise ValueError('Only one of assignments, deletionIDs, '
                              'use_curr_view or use_bbox, preloaded_bbox can be used '
                              'at a time')
@@ -28105,7 +28105,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             obj_display = display_rp_prev.get_obj_from_ID(lostID)
 
-        
+            if obj_display is None:
+                self.logger.warning(f"Failed to annotate {lostID} as lost ID!")
+                continue
             obj_contours = self.getObjContours(
                 obj_display,
                 all_external=True,
