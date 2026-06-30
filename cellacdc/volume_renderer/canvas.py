@@ -34,6 +34,9 @@ ColorMapPerChannel = (
 )
 LabelsGradientName = colors.AcdcPyQtGraphColorMapName
 
+_SLIDER_NORMALIZE_FACTOR = 20
+_DEFAULT_LABELS_CMAP_NAME = 'viridis'
+
 @dataclass
 class _ChannelData:
     node: object # vispy.scene.visuals.Volume
@@ -77,6 +80,8 @@ class VolumeRendererWindow(QMainWindow):
         self._max_texture_3d = None
         self._lut_items_width = 20 # Start with some padding
         self._SizeZ = None
+        self._gradient_item_state = None
+        self._lab_gradient_cmap_name = None
         
         if app is None:
             app = QCoreApplication.instance()
@@ -124,7 +129,12 @@ class VolumeRendererWindow(QMainWindow):
         self._axis_visual = scene.visuals.XYZAxis(parent=self._view.scene)
         self._axis_visual.visible = False
     
-    def _init_lab_ui_items(self, lab_volume, cmap=None):
+    def _init_lab_ui_items(
+            self, 
+            lab_volume, 
+            cmap_name=None,
+            gradient_item_state=None,
+        ):
         from vispy.scene import visuals
         from .gl_blend import volume_gl_state
         
@@ -143,7 +153,7 @@ class VolumeRendererWindow(QMainWindow):
             title_loc='in_line', 
             isFloat=True, 
             parent=self,
-            normalize_factor=10
+            normalize_factor=_SLIDER_NORMALIZE_FACTOR
         )
         
         self._lab_opacity_slider.setRange(0.0, 1.0)
@@ -163,7 +173,7 @@ class VolumeRendererWindow(QMainWindow):
         lab_reset_btn = QPushButton('Reset')
         self._lab_gradient_item_layout.addWidget(lab_reset_btn)
         
-        lab_gradient_item = widgets.labelsGradientWidget(parent=self)
+        lab_gradient_item = widgets.BaseLabelsGradientWidget(parent=self)
         self._lab_gradient_item_layout.addWidget(lab_gradient_item)
         self._lab_gradient_item = lab_gradient_item
         
@@ -183,8 +193,14 @@ class VolumeRendererWindow(QMainWindow):
                 lab_gradient_item=lab_gradient_item)
         )
         
-        if cmap is None:
-            lab_gradient_item.item.loadPreset('viridis')
+        if gradient_item_state is not None:
+            lab_gradient_item.item.restoreState(gradient_item_state)
+            self._lab_gradient_item_state = gradient_item_state
+        elif cmap_name is not None:
+            self._lab_gradient_cmap_name = cmap_name
+            lab_gradient_item.item.loadPreset(cmap_name)
+        else:
+            lab_gradient_item.item.loadPreset(_DEFAULT_LABELS_CMAP_NAME)
             
         self._lab_node.opacity = self._lab_opacity_slider.value()
     
@@ -192,7 +208,15 @@ class VolumeRendererWindow(QMainWindow):
         if lab_gradient_item is None:
             return
         
-        lab_gradient_item.item.loadPreset('viridis')
+        if self._lab_gradient_item_state is not None:
+            lab_gradient_item.item.restoreState(self._lab_gradient_item_state)
+            return
+        
+        if self._lab_gradient_cmap_name is not None:
+            lab_gradient_item.item.loadPreset(self._lab_gradient_cmap_name)
+            return
+        
+        lab_gradient_item.item.loadPreset(_DEFAULT_LABELS_CMAP_NAME)
     
     def _on_lab_gradient_changed(self, lab_gradient_item, update: bool=True):
         cmap = colors.pg_to_vispy_cmap(
@@ -352,7 +376,7 @@ class VolumeRendererWindow(QMainWindow):
             title_loc='in_line', 
             isFloat=True, 
             parent=self,
-            normalize_factor=10
+            normalize_factor=_SLIDER_NORMALIZE_FACTOR
         )
         opacity_slider.setRange(0.0, 1.0)
         opacity_slider.setSingleStep(0.05)
@@ -585,7 +609,8 @@ class VolumeRendererWindow(QMainWindow):
     def set_labels(
             self, 
             lab: np.ndarray, 
-            cmap: list[RgbaColor] | AcdcPyQtGraphColorMapName=None,
+            cmap_name: AcdcPyQtGraphColorMapName=None,
+            gradient_item_state: dict=None,
             SizeZ: int=None
         ):
         if self._is_labels_set:
@@ -612,7 +637,11 @@ class VolumeRendererWindow(QMainWindow):
         
         self._lab = self._preprocess_lab(lab)
         
-        self._init_lab_ui_items(self._lab, cmap=cmap)
+        self._init_lab_ui_items(
+            self._lab, 
+            cmap_name=cmap_name, 
+            gradient_item_state=gradient_item_state
+        )
         
         self._is_labels_set = True
         

@@ -6351,11 +6351,7 @@ class overlayLabelsGradientWidget(pg.GradientWidget):
     def updateImageOpacity(self, value):
         self.imageItem.setOpacity(value)
 
-class labelsGradientWidget(pg.GradientWidget):
-    sigShowRightImgToggled = Signal(bool)
-    sigShowLabelsImgToggled = Signal(bool)
-    sigShowNextFrameToggled = Signal(bool)
-
+class BaseLabelsGradientWidget(pg.GradientWidget):
     def __init__( self, *args, parent=None, orientation='right', **kargs):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
         
@@ -6388,7 +6384,42 @@ class labelsGradientWidget(pg.GradientWidget):
         )
 
         self.addCustomGradients()
+    
+    def onShowCustomCmapsMenu(self):
+        self.customCmapsMenu.show()
+        
+    def customCmapsMenuTriggered(self, action):
+        cmap = action.cmap
+        self.item.colorMapMenuClicked(cmap)
+        self.item.showTicks(True)
+    
+    def saveColormap(self):
+        cmapName = self._askNameColormap()
+        if cmapName is None:
+            return
+        
+        cp = config.ConfigParser()
+        if os.path.exists(custom_cmaps_filepath):
+            cp.read(custom_cmaps_filepath)
+        
+        SECTION = f'{self.name}.{cmapName}'
+        cp[SECTION] = {}
 
+        state = self.item.saveState()
+        for key, value in state.items():
+            if key != 'ticks':
+                continue
+            for t, tick in enumerate(value):
+                pos, rgb = tick
+                rgb = ','.join([str(c) for c in rgb])
+                val = f'{pos},{rgb}'
+                cp[SECTION][f'tick_{t}_pos_rgb'] = val
+        
+        with open(custom_cmaps_filepath, mode='w') as file:
+            cp.write(file)
+        
+        self.addCustomGradient(cmapName, state, restore=False)
+        
         # Background color button
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel('Background color: '))
@@ -6401,6 +6432,62 @@ class labelsGradientWidget(pg.GradientWidget):
         act.setDefaultWidget(widget)
         act.triggered.connect(self.colorButton.click)
         self.menu.addAction(act)
+        
+        # Shuffle colors action
+        self.shuffleCmapAction =  QAction(
+            'Randomly shuffle colormap   (Shift+S)', self
+        )
+        self.menu.addAction(self.shuffleCmapAction)
+
+        self.greedyShuffleCmapAction = QAction(
+            'Greedily shuffle colormap  (Alt+Shift+S)', self
+        )
+        self.menu.addAction(self.greedyShuffleCmapAction)
+    
+    def addCustomGradients(self):
+        try:
+            CustomGradients = getCustomGradients(name='labels')
+            if not CustomGradients:
+                return
+            for gradient_name, gradient_ticks in CustomGradients.items():
+                self.addCustomGradient(gradient_name, gradient_ticks)
+        except Exception as e:
+            printl(traceback.format_exc())
+            pass
+    
+    def _askNameColormap(self):
+        inputWin = apps.QInput(parent=self._parent, title='Colormap name')
+        inputWin.askText('Insert a name for the colormap: ', allowEmpty=False)
+        if inputWin.cancel:
+            return
+        cmapName = inputWin.answer
+        return cmapName
+
+    def addCustomGradient(self, gradient_name, gradient_ticks, restore=True):
+        currentState = self.item.saveState()
+        self.originalLength = self.item.length
+        self.item.length = 100
+        if restore:
+            self.item.restoreState(gradient_ticks)
+        gradient = self.item.getGradient()
+        action = CustomGradientMenuAction(gradient, gradient_name, self.item)
+        # action.triggered.connect(self.item.contextMenuClicked)
+        action.delButton.clicked.connect(self.removeCustomGradient)
+        action.cmap = colors.pg_ticks_to_colormap(gradient_ticks['ticks'])
+        # self.item.menu.insertAction(self.saveColormapAction, action)
+        self.customCmapsMenu.addAction(action)
+        self.item.length = self.originalLength
+        self.item.restoreState(currentState)
+        GradientsLabels[gradient_name] = gradient_ticks
+
+class labelsGradientWidget(BaseLabelsGradientWidget):
+    sigShowRightImgToggled = Signal(bool)
+    sigShowLabelsImgToggled = Signal(bool)
+    sigShowNextFrameToggled = Signal(bool)
+
+    def __init__( self, *args, parent=None, orientation='right', **kargs):
+        super().__init__(
+            *args, parent=parent, orientation=orientation, **kargs)
 
         # Font size menu action
         self.fontSizeMenu =  QMenu('Text font size', self)
@@ -6419,17 +6506,6 @@ class labelsGradientWidget(pg.GradientWidget):
         act.triggered.connect(self.textColorButton.click)
         self.menu.addAction(act)   
         self.menu.addSeparator()  
-
-        # Shuffle colors action
-        self.shuffleCmapAction =  QAction(
-            'Randomly shuffle colormap   (Shift+S)', self
-        )
-        self.menu.addAction(self.shuffleCmapAction)
-
-        self.greedyShuffleCmapAction = QAction(
-            'Greedily shuffle colormap  (Alt+Shift+S)', self
-        )
-        self.menu.addAction(self.greedyShuffleCmapAction)
         
         self.permanentGreedyCmapAction = QAction(
             'Always use greedy colormap', self
@@ -6458,7 +6534,8 @@ class labelsGradientWidget(pg.GradientWidget):
         self.menu.addAction(self.showNextFrameAction)
 
         # Default settings
-        self.defaultSettingsAction = QAction('Restore default settings...', self)
+        self.defaultSettingsAction = QAction(
+            'Restore default settings...', self)
         self.menu.addAction(self.defaultSettingsAction)
 
         self.menu.addSeparator()
@@ -6466,31 +6543,6 @@ class labelsGradientWidget(pg.GradientWidget):
         self.showRightImgAction.toggled.connect(self.showRightImageToggled)
         self.showLabelsImgAction.toggled.connect(self.showLabelsImageToggled)
         self.showNextFrameAction.toggled.connect(self.showNextFrameToggled)
-    
-    def onShowCustomCmapsMenu(self):
-        self.customCmapsMenu.show()
-    
-    def customCmapsMenuTriggered(self, action):
-        cmap = action.cmap
-        self.item.colorMapMenuClicked(cmap)
-        self.item.showTicks(True)
-    
-    def addCustomGradient(self, gradient_name, gradient_ticks, restore=True):
-        currentState = self.item.saveState()
-        self.originalLength = self.item.length
-        self.item.length = 100
-        if restore:
-            self.item.restoreState(gradient_ticks)
-        gradient = self.item.getGradient()
-        action = CustomGradientMenuAction(gradient, gradient_name, self.item)
-        # action.triggered.connect(self.item.contextMenuClicked)
-        action.delButton.clicked.connect(self.removeCustomGradient)
-        action.cmap = colors.pg_ticks_to_colormap(gradient_ticks['ticks'])
-        # self.item.menu.insertAction(self.saveColormapAction, action)
-        self.customCmapsMenu.addAction(action)
-        self.item.length = self.originalLength
-        self.item.restoreState(currentState)
-        GradientsLabels[gradient_name] = gradient_ticks
     
     def removeCustomGradient(self):
         button = self.sender()
@@ -6501,52 +6553,6 @@ class labelsGradientWidget(pg.GradientWidget):
         cp.remove_section(f'labels.{action.name}')
         with open(custom_cmaps_filepath, mode='w') as file:
             cp.write(file)
-    
-    def addCustomGradients(self):
-        try:
-            CustomGradients = getCustomGradients(name='labels')
-            if not CustomGradients:
-                return
-            for gradient_name, gradient_ticks in CustomGradients.items():
-                self.addCustomGradient(gradient_name, gradient_ticks)
-        except Exception as e:
-            printl(traceback.format_exc())
-            pass
-    
-    def _askNameColormap(self):
-        inputWin = apps.QInput(parent=self._parent, title='Colormap name')
-        inputWin.askText('Insert a name for the colormap: ', allowEmpty=False)
-        if inputWin.cancel:
-            return
-        cmapName = inputWin.answer
-        return cmapName
-    
-    def saveColormap(self):
-        cmapName = self._askNameColormap()
-        if cmapName is None:
-            return
-        
-        cp = config.ConfigParser()
-        if os.path.exists(custom_cmaps_filepath):
-            cp.read(custom_cmaps_filepath)
-        
-        SECTION = f'{self.name}.{cmapName}'
-        cp[SECTION] = {}
-
-        state = self.item.saveState()
-        for key, value in state.items():
-            if key != 'ticks':
-                continue
-            for t, tick in enumerate(value):
-                pos, rgb = tick
-                rgb = ','.join([str(c) for c in rgb])
-                val = f'{pos},{rgb}'
-                cp[SECTION][f'tick_{t}_pos_rgb'] = val
-        
-        with open(custom_cmaps_filepath, mode='w') as file:
-            cp.write(file)
-        
-        self.addCustomGradient(cmapName, state, restore=False)
     
     def isRightImageVisible(self):
         return (
