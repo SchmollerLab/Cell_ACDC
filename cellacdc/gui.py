@@ -16261,13 +16261,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.manualBackgroundObj = display_rp.get_obj_from_ID(ID)
         
         self.manualBackgroundToolbar.clearInfoText()
-        self.manualBackgroundObj.contour = self.getObjContours(
+        self.manualBackgroundObj.contour_local = self.getObjContours(
             self.manualBackgroundObj, local=True
         )
-        xx_contour = self.manualBackgroundObj.contour[:,0]
-        yy_contour = self.manualBackgroundObj.contour[:,1]
-        self.manualBackgroundObj.xx_contour = xx_contour
-        self.manualBackgroundObj.yy_contour = yy_contour
     
     def initGhostObject(self, ID=None):
         mode = self.modeComboBox.currentText()
@@ -16308,11 +16304,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.manualTrackingToolbar.clearInfoText()
 
-        self.ghostObject.contour = self.getObjContours(
+        self.ghostObject.contour_local = self.getObjContours(
             self.ghostObject, local=True
         )
-        self.ghostObject.xx_contour = self.ghostObject.contour[:,0]
-        self.ghostObject.yy_contour = self.ghostObject.contour[:,1]
 
         self.ghostMaskItemLeft.initLookupTable(self.lut[ID])
         self.ghostMaskItemRight.initLookupTable(self.lut[ID])
@@ -18810,6 +18804,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.apply_tools_on_new_frame()
         
+        
+        self.resetManualBackgroundSpinboxID()
+        
     def applyAllDelROI(self):
         posData = self.data[self.pos_i]
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
@@ -19171,6 +19168,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateViewerWindow()
         self.updateItemsMousePos()
         self.updateObjectCounts()
+        
+        self.self.resetManualBackgroundSpinboxID()
 
     def loadSelectedData(self, user_ch_file_paths, user_ch_name):
         data = []
@@ -27716,8 +27715,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         yc, xc = self.ghostObject.local_centroid
         Dx = x-xc
         Dy = y-yc
-        xx = self.ghostObject.xx_contour + Dx
-        yy = self.ghostObject.yy_contour + Dy
+        xx = self.ghostObject.contour_local[:,0] + Dx
+        yy = self.ghostObject.contour_local[:,1] + Dy
         self.ghostContourItemLeft.setData(
             xx, yy, fontSize=self.fontSize, ID=ID, y_cursor=y, x_cursor=x
         )
@@ -27733,8 +27732,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         yc, xc = self.manualBackgroundObj.local_centroid
         Dx = x-xc
         Dy = y-yc
-        xx = self.manualBackgroundObj.xx_contour + Dx
-        yy = self.manualBackgroundObj.yy_contour + Dy
+        xx = self.manualBackgroundObj.contour_local[:,0] + Dx
+        yy = self.manualBackgroundObj.contour_local[:,1] + Dy
         self.manualBackgroundObjItem.setData(
             xx, yy, fontSize=self.fontSize, ID=ID, y_cursor=y, x_cursor=x
         )
@@ -27910,7 +27909,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def setManualBackgrounNextID(self):
         posData = self.data[self.pos_i]
         currentID = self.manualBackgroundObj.label
-        idx = posData.rp.ID_to_idx[currentID]
+        if currentID in posData.rp.ID_to_idx:
+            idx = posData.rp.ID_to_idx[currentID]
+        else:
+            return
         next_idx = idx + 1
         if next_idx >= len(posData.IDs):
             return
@@ -28387,7 +28389,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getCurrentZfunc=self.z_lab, 
             getObjCentroidFunc=self.getObjCentroid,
-            rp_func2D=self.get2DRP,
+            rp_func=self.get2DRP,
             rp3D=posData.rp
         )
         self.textAnnot[1].setAnnotations(

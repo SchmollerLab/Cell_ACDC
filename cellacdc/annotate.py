@@ -595,7 +595,7 @@ class TextAnnotations:
         isAnnotateNumZslices = self.isAnnotateNumZslices()
         isLabelTreeAnnotation = self.isLabelTreeAnnotation()
         isGenNumTreeAnnotation = self.isGenNumTreeAnnotation()
-        rp_func2D = kwargs.get('rp_func2D')
+        rp_func = kwargs.get('rp_func')
         rp3D = kwargs.get('rp3D')
         
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
@@ -607,7 +607,7 @@ class TextAnnotations:
         if acdc_df is None and posData.cca_df is not None:
             acdc_df = posData.cca_df
         
-        rp = rp_func2D()
+        rp = rp_func()
         for obj in rp:
             if labelsToSkip is not None:
                 if labelsToSkip.get(obj.label, False):
