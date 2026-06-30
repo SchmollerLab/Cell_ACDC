@@ -16260,6 +16260,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         display_rp = self.get2DRP()
         self.manualBackgroundObj = display_rp.get_obj_from_ID(ID)
         
+        if self.manualBackgroundObj is None:
+            print(f"Could not find object with ID {ID} in current frame.")
+            return
+
         self.manualBackgroundToolbar.clearInfoText()
         self.manualBackgroundObj.contour_local = self.getObjContours(
             self.manualBackgroundObj, local=True
@@ -18803,10 +18807,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateObjectCounts()
         
         self.apply_tools_on_new_frame()
-        
-        
-        self.resetManualBackgroundSpinboxID()
-        
+                
     def applyAllDelROI(self):
         posData = self.data[self.pos_i]
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
@@ -19169,8 +19170,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateItemsMousePos()
         self.updateObjectCounts()
         
-        self.self.resetManualBackgroundSpinboxID()
-
     def loadSelectedData(self, user_ch_file_paths, user_ch_name):
         data = []
         numPos = len(user_ch_file_paths)
@@ -20254,6 +20253,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.segForLostIDsAction.setDisabled(True)
             self.delNewObjAction.setVisible(False)
             self.delNewObjAction.setDisabled(True)
+            self.manualBackgroundButton.setVisible(True)
+            self.manualBackgroundButton.setDisabled(False)
+            self.manualBackgroundButton.setCheckable(True)
+
         else:
             self.imgGrad.rescaleAcrossTimeAction.setDisabled(False)
             self.annotateToolbar.setVisible(False)
@@ -20296,6 +20299,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.segForLostIDsAction.setDisabled(False)
             self.delNewObjAction.setVisible(True)
             self.delNewObjAction.setDisabled(False)
+            self.manualBackgroundButton.setVisible(False)
+            self.manualBackgroundButton.setDisabled(True)
+            self.manualBackgroundButton.setCheckable(False)
+            
         
         for ch, overlayItems in self.overlayLayersItems.items():
             lutItem = overlayItems[1]
