@@ -45,6 +45,15 @@ FLUO_CHANNELS_COLORS = {
     'mCitrine': YELLOW_RGB
 }
 
+PltColorName = str
+if GUI_INSTALLED:
+    import matplotlib.colors as mcolors
+    PltColorName = (
+        Literal[tuple(mcolors.BASE_COLORS)]
+        | Literal[tuple(mcolors.TABLEAU_COLORS)]
+        | Literal[tuple(mcolors.CSS4_COLORS)]
+    )
+
 # Tuple of 3 or 4 uint8 values
 RgbaColor = tuple[int]
 
@@ -409,7 +418,7 @@ def get_complementary_color(rgba_str: str) -> str:
     r, g, b, a = rgba_str_to_values(rgba_str)
     return f'rgba({255 - r}, {255 - g}, {255 - b}, {a})'
 
-def pg_to_vispy_cmap(pg_cmap, n=256):
+def pg_to_vispy_cmap(pg_cmap, n=256, debug=False, transparent_zero=False):
     """Convert PyQtGraph colormap to vispy
 
     Parameters
@@ -419,6 +428,8 @@ def pg_to_vispy_cmap(pg_cmap, n=256):
         `pyqtgraph.HistogramLUTItem.gradient.colorMap()`
     n : int, optional
         Number of colors, by default 256
+    transparent_zero : bool, optional
+        If `True`, zero value will be mapped to transparent RGBA
 
     Returns
     -------
@@ -433,6 +444,14 @@ def pg_to_vispy_cmap(pg_cmap, n=256):
 
     # Normalize to 0–1 (VisPy expects floats)
     colors = np.array(colors) / 255.0
+    
+    if transparent_zero:
+        if colors.shape[-1] == 3:
+            rgba_colors = np.ones((len(colors), 4))
+            rgba_colors[:, :3] = colors
+            colors = rgba_colors
+        
+        colors[0] = [0, 0, 0, 0]
 
     return VisPyColormap(colors)
 

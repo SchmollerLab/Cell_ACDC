@@ -23,12 +23,16 @@ from . import _widgets
 
 RgbaColor = colors.RgbaColor
 AcdcPyQtGraphColorMapName = colors.AcdcPyQtGraphColorMapName
+PltColorName = colors.PltColorName
 ColorMapPerChannel = (
     list[list[RgbaColor]]
     | dict[str, list[RgbaColor]]
     | list[AcdcPyQtGraphColorMapName]
     | dict[str, AcdcPyQtGraphColorMapName]
+    | list[PltColorName]
+    | dict[str, PltColorName]
 )
+LabelsGradientName = colors.AcdcPyQtGraphColorMapName
 
 @dataclass
 class _ChannelData:
@@ -120,16 +124,20 @@ class VolumeRendererWindow(QMainWindow):
         self._axis_visual = scene.visuals.XYZAxis(parent=self._view.scene)
         self._axis_visual.visible = False
     
-    def _init_lab_ui_items(self):
+    def _init_lab_ui_items(self, lab_volume, cmap=None):
         from vispy.scene import visuals
+        from .gl_blend import volume_gl_state
+        
+        vmin, vmax = float(lab_volume.min()), float(lab_volume.max())
         
         self._lab_node = visuals.Volume(
-            np.zeros((2, 2, 2), dtype=np.float32),
+            lab_volume,
             method="translucent",
             interpolation="nearest",
             parent=self._view.scene,
+            
         )
-        self._lab_node.visible = False
+        self._lab_node.clim = (vmin, vmax)
         
         self._lab_opacity_slider = widgets.sliderWithSpinBox(
             title_loc='in_line', 
@@ -140,18 +148,74 @@ class VolumeRendererWindow(QMainWindow):
         
         self._lab_opacity_slider.setRange(0.0, 1.0)
         self._lab_opacity_slider.setSingleStep(0.05)
-        self._lab_opacity_slider.setValue(0.5)
+        self._lab_opacity_slider.setValue(0.3)
         self._lab_opacity_slider.setDecimals(2)
         
         self._lab_opacity_slider.setToolTip(f'Opacity of segmentation masks')
         opacity_slider_form_widget = widgets.formWidget(
             self._lab_opacity_slider,
-            labelTextLeft=f'Segmentation masks opacity:',
+            labelTextLeft='Segmentation masks opacity:',
         )
         self._controls_layout.addFormWidget(
             opacity_slider_form_widget, row=0
         )
         
+        lab_reset_btn = QPushButton('Reset')
+        self._lab_gradient_item_layout.addWidget(lab_reset_btn)
+        
+        lab_gradient_item = widgets.labelsGradientWidget(parent=self)
+        self._lab_gradient_item_layout.addWidget(lab_gradient_item)
+        self._lab_gradient_item = lab_gradient_item
+        
+        self._lab_opacity_slider.valueChanged.connect(
+            partial(
+                self._on_lab_opacity_changed, 
+                lab_gradient_item=lab_gradient_item
+            )
+        )
+        lab_gradient_item.sigGradientChangeFinished.connect(
+            self._on_lab_gradient_changed
+        )
+        # lab_lut_item.sigGradientChanged.connect(self.ticksCmapMoved)
+        lab_reset_btn.clicked.connect(
+            partial(
+                self._on_reset_lab_gradient, 
+                lab_gradient_item=lab_gradient_item)
+        )
+        
+        if cmap is None:
+            lab_gradient_item.item.loadPreset('viridis')
+            
+        self._lab_node.opacity = self._lab_opacity_slider.value()
+    
+    def _on_reset_lab_gradient(self, *args, lab_gradient_item=None):
+        if lab_gradient_item is None:
+            return
+        
+        lab_gradient_item.item.loadPreset('viridis')
+    
+    def _on_lab_gradient_changed(self, lab_gradient_item, update: bool=True):
+        cmap = colors.pg_to_vispy_cmap(
+            lab_gradient_item.colorMap(), transparent_zero=True
+        )
+        self._lab_node.cmap = cmap
+        if update:
+            self._canvas.update()
+    
+    def _on_lab_opacity_changed(
+            self, 
+            value, 
+            lab_gradient_item=None, 
+            update: bool=True
+        ):
+        if lab_gradient_item is None:
+            return
+        
+        node = self._lab_node
+        node.opacity = value
+        if update:
+            self._canvas.update()
+    
     def _init_ui(self):
         if self._ui_initialised:
             return
@@ -169,10 +233,16 @@ class VolumeRendererWindow(QMainWindow):
             row=0, col=0
         )
         self._lut_items_graphics_layout = lut_items_graphics_layout
+
+        self._lab_gradient_item_layout = QVBoxLayout()
+        self._lab_gradient_item_layout.setContentsMargins(5, 5, 5, 5)
         
         self._scene_layout = QHBoxLayout()
         self._scene_layout.addWidget(lut_items_graphics_layout, stretch=0)
         self._scene_layout.addWidget(self._canvas.native, stretch=1)
+        self._scene_layout.addLayout(
+            self._lab_gradient_item_layout, stretch=0
+        )
         
         self._controls_layout = widgets.FormLayout()
         
@@ -240,11 +310,8 @@ class VolumeRendererWindow(QMainWindow):
         # non-uniform compression (e.g. stride_x=4 while stride_z=1).
         max_tex = self._resolve_max_texture_3d()
         if max(vol.shape) > max_tex:
-            strides = tuple(max(1, int(np.ceil(s / max_tex))) for s in vol.shape)
-            self._last_strides = strides
             vol = self._downsample(vol, max_tex)
-        else:
-            self._last_strides = (1, 1, 1)
+            self._last_max_tex = max_tex
 
         # Normalise the (possibly downsampled) array using the full-resolution range.
         if vmax > vmin:
@@ -253,6 +320,16 @@ class VolumeRendererWindow(QMainWindow):
             vol = np.zeros_like(vol)
         
         return vol
+    
+    def _preprocess_lab(self, lab: np.ndarray):
+        if lab.ndim != 3:
+            raise ValueError(
+                f'Expected 3-D (Z, Y, X) labels array; got shape {lab.shape}')
+        
+        max_tex = self._resolve_max_texture_3d()
+        lab = self._downsample(lab, max_tex)
+        
+        return lab
     
     def _init_default_rgbs(self):
         self._default_rgbs = colors.overlay_rgbs.copy()
@@ -525,9 +602,9 @@ class VolumeRendererWindow(QMainWindow):
             raise ValueError(
                 f'Expected 3-D (Z, Y, X) labels array; got shape {lab.shape}')
         
-        self._lab = self._preprocess_volume(lab)
+        self._lab = self._preprocess_lab(lab)
         
-        self._init_lab_ui_items()
+        self._init_lab_ui_items(self._lab, cmap=cmap)
         
         self._is_labels_set = True
         

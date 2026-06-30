@@ -7094,8 +7094,8 @@ class sliderWithSpinBox(QWidget):
         if self._normalize:
             val = int(val*self.slider.maximum())
         elif self._isFloat:
-            val = int(val)
-
+            val = int(val*self._normalize_factor)
+        
         self.slider.valueChanged.disconnect()
         self.slider.setValue(val)
         self.slider.valueChanged.connect(self.sliderValueChanged)
