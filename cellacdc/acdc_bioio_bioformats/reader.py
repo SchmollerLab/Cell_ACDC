@@ -4,6 +4,7 @@ import re
 import numpy as np
 
 from .. import printl
+from .. import colors
 from ..myutils import safe_get_or_call
 from . import install, EXTENSION_PACKAGE_MAPPER
 from . import EXTENSION_BIOIMAGE_KWARGS_MAPPER
@@ -62,20 +63,44 @@ class ImageReader:
         
         if lazy_load:
             return
+                
+        self.img_data = self._check_rgb_to_grayscale(self._bioioimage.data)
+    
+    def _check_rgb_to_grayscale(self, image_data):
+        is_rgb = image_data.ndim >= 3 and image_data.shape[-1] in (3, 4)
+        if not is_rgb:
+            return image_data
         
-        self.img_data = self._bioioimage.data
-        
+        return colors.image_rgb_or_rgba_to_uint8_grayscale(image_data)
+    
     def read(self, c=0, z=0, t=0, rescale=False, index=None, series=0):
         if self._bioioimage.current_scene_index != series:
             self._bioioimage.set_scene(series)
             if not self._is_lazy_load:
-                self.img_data = self._bioioimage.data
+                self.img_data = self._check_rgb_to_grayscale(
+                    self._bioioimage.data
+                )
         
-        if self._is_lazy_load:
+        if not self._is_lazy_load:
+            return self.img_data[t, c, z]
+        
+        dims_order = self._bioioimage.dims.order
+        if 'S' in dims_order:
+            s_size = self._bioioimage.dims.shape[dims_order.index("S")]
+        else:
+            s_size = 0
+        if s_size > 1:
+            # RGB(A)
+            lazy_img_rgb = self._bioioimage.get_image_dask_data(
+                "YXS", T=t, C=c, Z=z
+            )
+            img_rgb = lazy_img_rgb.compute()
+            img = colors.image_2d_rgb_or_rgba_to_uint8_grayscale(img_rgb)
+        else:
             lazy_img = self._bioioimage.get_image_dask_data("YX", T=t, C=c, Z=z)
-            return lazy_img.compute()
-        
-        return self.img_data[t, c, z]
+            img = lazy_img.compute()
+
+        return img
     
     def __enter__(self):
         return self
@@ -245,8 +270,8 @@ class OMEXML:
         
         return self
     
-    def image(self):        
-        SizeT, SizeC, SizeZ, SizeY, SizeX = self.bioimage.shape
+    def image(self):
+        SizeT, SizeC, SizeZ, SizeY, SizeX = self.bioimage.shape[:5]
         
         self.Pixels.SizeY = SizeY
         self.Pixels.SizeX = SizeX

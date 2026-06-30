@@ -29495,13 +29495,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             img = data.img_data
             if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
                 self.logger.info('Converting RGB image to grayscale...')
-                if img.shape[-1] == 3:
-                    data.img_data = skimage.color.rgb2gray(data.img_data)
-                else:
-                    data.img_data = cv2.cvtColor(
-                        data.img_data, cv2.COLOR_RGBA2GRAY
-                    )
-                data.img_data = skimage.img_as_ubyte(data.img_data)
+                data.img_data = colors.image_2d_rgb_or_rgba_to_uint8_grayscale(
+                    data.img_data
+                )
             new_filename_no_ext, ext = os.path.splitext(new_filename)
             tif_filename = f'{new_filename_no_ext}.tif'
             tif_path = os.path.join(exp_path, tif_filename)
