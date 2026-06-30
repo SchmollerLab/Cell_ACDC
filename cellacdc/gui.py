@@ -16274,7 +16274,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if mode != 'Segmentation and Tracking':
             self.ghostObject = None
             return
-        
+                
         if not self.manualTrackingButton.isChecked():
             self.ghostObject = None
             return
@@ -16305,7 +16305,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 '--> starting a new track.'
             )
             return
-        
+
+        self.ghostObject = obj
         self.manualTrackingToolbar.clearInfoText()
 
         self.ghostObject.contour_local = self.getObjContours(
@@ -21398,7 +21399,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # No cells in S that disappears --> do nothing
             return False, automaticallyDividedIDs
 
-        self.highlightNewIDs_ccaFailed(ScellsIDsGone, rp=prev_rp)
+        self.highlightNewIDs_ccaFailed(ScellsIDsGone, prev_rp=True)
         proceed = self.warnScellsGone(ScellsIDsGone, posData.frame_i)
         self.clearLostObjContoursItems()
         
@@ -28207,10 +28208,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         return nearest_ID
     
-    def setCcaIssueContour(self, obj):
+    def setCcaIssueContour(self, obj, prev_rp=False):
         label = obj.label
-        
-        display_rp = self.get2DRP()
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        display_rp = self.get2DRP(frame_i = frame_i if not prev_rp else frame_i-1)
         obj = display_rp.get_obj_from_ID(label)
         objContours = self.getObjContours(
             obj,
@@ -28222,10 +28224,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             yy = cont[:,1] + 0.5
             self.ax1_lostObjScatterItem.addPoints(xx, yy)
             
-        posData = self.data[self.pos_i]
         self.textAnnot[0].addObjAnnotation(
             obj, 'lost_object', f'{obj.label}?', False,
-            rp=posData.rp, getObjCentroidFunc=self.getObjCentroid
+            rp=display_rp, getObjCentroidFunc=self.getObjCentroid
         )
     
     def isLastVisitedAgainCca(self, curr_df, enforceAll=False):
@@ -28864,14 +28865,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.timer.stop()
         self.modeComboBox.setStyleSheet('background-color: none')
 
-    def highlightNewIDs_ccaFailed(self, IDsWithIssue, rp=None):
-        if rp is None:
-            posData = self.data[self.pos_i]
+    def highlightNewIDs_ccaFailed(self, IDsWithIssue, prev_rp=False):
+        posData = self.data[self.pos_i]
+        if prev_rp is False:
             rp = posData.rp
+            frame_i = posData.frame_i
+        else:
+            frame_i = posData.frame_i - 1
+            rp = posData.allData_li[frame_i]['regionprops']
         for obj in rp:
             if obj.label not in IDsWithIssue:
                 continue
-            self.setCcaIssueContour(obj)
+            self.setCcaIssueContour(obj, prev_rp=prev_rp)
 
     # @exec_time
     def highlightLostNew(self):
