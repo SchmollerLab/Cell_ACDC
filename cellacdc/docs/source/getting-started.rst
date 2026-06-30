@@ -19,6 +19,62 @@ Running Cell-ACDC
 2. **Activate** the **environment** (conda: ``conda activate acdc``, pip on Windows: ``.\env\Scripts\activate``, pip on Unix: ``source env/bin/activate``) 
 3. **Run** the command ``acdc`` or ``cellacdc``
 
+Command-line data tools
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Cell-ACDC provides headless commands to extract metadata and convert raw microscopy
+files to the required ACDC data structure (Module 0 equivalent). These commands use
+BioIO only (no Java/python-bioformats), via the ``acdc-data`` entry point.
+
+Extract metadata from a raw microscopy file::
+
+    acdc-data metadata --input /path/to/file.czi
+    acdc-data metadata --input /path/to/file.czi --format json
+    acdc-data metadata --input /path/to/file.czi --output /path/to/Position_1/Images/
+
+Convert raw microscopy files to the ACDC folder structure::
+
+    acdc-data convert \\
+        --input /path/to/raw_files/ \\
+        --output /path/to/experiment/ \\
+        --layout one-per-pos \\
+        --trust-metadata
+
+Layout options for ``--layout``:
+
+* ``single-multi-pos`` — single file containing multiple positions/series
+* ``one-per-pos`` — one microscopy file per position
+* ``one-per-channel`` — one file per channel (pattern ``basenameN_channelName``)
+
+Restructure pre-processed image files (GUI "Data Re-Struct" utility)::
+
+    acdc-data restructure \\
+        --input /path/to/image_files/ \\
+        --output /path/to/experiment/ \\
+        --layout multi-timepoint \\
+        --channels GFP,mCherry
+
+    acdc-data restructure \\
+        --input /path/to/image_files/ \\
+        --output /path/to/experiment/ \\
+        --layout multi-channel \\
+        --action move
+
+Restructure layout options:
+
+* ``multi-timepoint`` — one file per time-point (e.g. ``pos1_GFP_1.tif``), stacked into channel TIFFs
+* ``multi-channel`` — flat channel files grouped into ``Position_n/Images/``
+
+Additional useful flags for ``acdc-data convert``:
+
+* ``--format tif|h5`` — output image format (default: tif)
+* ``--lazy-load`` / ``--no-lazy-load`` — load one frame at a time (default: lazy load)
+* ``--on-existing overwrite|add|create-new`` — policy when destination has Position folders
+* ``--channels "ch1,ch2"`` — override channel names
+* ``--metadata-csv /path/to/overrides.csv`` — apply metadata overrides
+
+For interactive metadata review and visual confirmation, use GUI Module 0 instead.
+
 The Main Menu
 -------------
 The main menu is a **hub** through which you can access all relevant modules.
