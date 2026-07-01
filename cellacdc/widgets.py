@@ -6352,6 +6352,9 @@ class overlayLabelsGradientWidget(pg.GradientWidget):
         self.imageItem.setOpacity(value)
 
 class BaseLabelsGradientWidget(pg.GradientWidget):
+    sigShuffleCmap = Signal()
+    sigGreeedyShuffleCmap = Signal()
+    
     def __init__( self, *args, parent=None, orientation='right', **kargs):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
         
@@ -6382,8 +6385,24 @@ class BaseLabelsGradientWidget(pg.GradientWidget):
         self.saveColormapAction.triggered.connect(
             self.saveColormap
         )
+        
+        # Shuffle colors action
+        self.shuffleCmapAction =  QAction(
+            'Randomly shuffle colormap   (Shift+S)', self
+        )
+        self.menu.addAction(self.shuffleCmapAction)
+
+        self.greedyShuffleCmapAction = QAction(
+            'Greedily shuffle colormap  (Alt+Shift+S)', self
+        )
+        self.menu.addAction(self.greedyShuffleCmapAction)
 
         self.addCustomGradients()
+        
+        self.shuffleCmapAction.triggered.connect(self.sigShuffleCmap.emit)
+        self.greedyShuffleCmapAction.triggered.connect(
+            self.sigGreeedyShuffleCmap.emit
+        )
     
     def onShowCustomCmapsMenu(self):
         self.customCmapsMenu.show()
@@ -6432,17 +6451,6 @@ class BaseLabelsGradientWidget(pg.GradientWidget):
         act.setDefaultWidget(widget)
         act.triggered.connect(self.colorButton.click)
         self.menu.addAction(act)
-        
-        # Shuffle colors action
-        self.shuffleCmapAction =  QAction(
-            'Randomly shuffle colormap   (Shift+S)', self
-        )
-        self.menu.addAction(self.shuffleCmapAction)
-
-        self.greedyShuffleCmapAction = QAction(
-            'Greedily shuffle colormap  (Alt+Shift+S)', self
-        )
-        self.menu.addAction(self.greedyShuffleCmapAction)
     
     def addCustomGradients(self):
         try:

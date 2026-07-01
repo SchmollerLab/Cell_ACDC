@@ -14,6 +14,7 @@ class VolumeRendererToolbar(ToolBar):
     sigHomeView = Signal()
     sigSave = Signal()
     sigSetSingleChannel = Signal(bool)
+    sigSelectObjects = Signal(bool)
     
     def __init__(self, name='Volume Renderer Toolbar', parent=None):
         
@@ -39,6 +40,18 @@ class VolumeRendererToolbar(ToolBar):
         
         self.addSeparator()
         
+        # self.selectObjectsAction = QAction(
+        #     QIcon(':keep_objects.svg'), 'Select objects', self)
+        # self.selectObjectsAction.setToolTip(
+        #     'Select objects in the view.\n\n'
+        #     'Ctrl+Click to select multiple objects.\n\n'
+        #     'Press Esc to exit selection mode.'
+        # )
+        # self.selectObjectsAction.setCheckable(True)
+        # self.addAction(self.selectObjectsAction)
+        
+        # self.addSeparator()
+        
         self.singleChannelCheckbox = self.addCheckBox(
             text='Single channel'
         )
@@ -50,6 +63,9 @@ class VolumeRendererToolbar(ToolBar):
         
         self.homeViewAction.triggered.connect(self.sigHomeView.emit)
         self.saveAction.triggered.connect(self.sigSave.emit)
+        # self.selectObjectsAction.toggled.connect(
+        #     self.sigSelectObjects.emit
+        # )
         
         self.singleChannelCheckbox.toggled.connect(
             self.sigSetSingleChannel.emit

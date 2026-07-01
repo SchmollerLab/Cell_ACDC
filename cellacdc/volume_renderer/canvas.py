@@ -3,13 +3,14 @@ from functools import partial
 
 import numpy as np
 from math import ceil
+import skimage
 
 from qtpy.QtCore import (
     Signal, Qt, QCoreApplication, QEventLoop
 )
 from qtpy.QtWidgets import (
     QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, 
-    QGraphicsProxyWidget    
+    QGraphicsProxyWidget, QGroupBox, QCheckBox    
 )
 
 import pyqtgraph as pg
@@ -19,7 +20,7 @@ from .._run import _setup_app
 from .. import widgets
 from .. import colors
 
-from . import _widgets
+from . import _widgets, utils
 
 RgbaColor = colors.RgbaColor
 AcdcPyQtGraphColorMapName = colors.AcdcPyQtGraphColorMapName
@@ -82,6 +83,9 @@ class VolumeRendererWindow(QMainWindow):
         self._SizeZ = None
         self._gradient_item_state = None
         self._lab_gradient_cmap_name = None
+        self._lab_node = None
+        self._canvas = None
+        self._voxel_size = None
         
         if app is None:
             app = QCoreApplication.instance()
@@ -186,12 +190,21 @@ class VolumeRendererWindow(QMainWindow):
         lab_gradient_item.sigGradientChangeFinished.connect(
             self._on_lab_gradient_changed
         )
+        lab_gradient_item.sigShuffleCmap.connect(
+            self._random_shuffle_lab_gradient_cmap
+        )
+        lab_gradient_item.sigGreeedyShuffleCmap.connect(
+            self._greedy_shuffle_lab_gradient_cmap
+        )
         # lab_lut_item.sigGradientChanged.connect(self.ticksCmapMoved)
         lab_reset_btn.clicked.connect(
             partial(
                 self._on_reset_lab_gradient, 
                 lab_gradient_item=lab_gradient_item)
         )
+        
+        lab_reset_btn.setMaximumWidth(
+            ceil(lab_gradient_item.sizeHint().width()))
         
         if gradient_item_state is not None:
             lab_gradient_item.item.restoreState(gradient_item_state)
@@ -203,6 +216,34 @@ class VolumeRendererWindow(QMainWindow):
             lab_gradient_item.item.loadPreset(_DEFAULT_LABELS_CMAP_NAME)
             
         self._lab_node.opacity = self._lab_opacity_slider.value()
+        
+        for obj in self._rp:
+            obj_checkbox = QCheckBox(f'{obj.label}')
+            obj_checkbox.setChecked(True)
+            self._object_labels_list_layout.addWidget(obj_checkbox)
+            
+            obj_checkbox.toggled.connect(
+                partial(self._set_object_checked, obj=obj)
+            )
+        
+        self._object_labels_list_layout.addStretch(1)
+    
+    def _random_shuffle_lab_gradient_cmap(self):
+        ...
+    
+    def _greedy_shuffle_lab_gradient_cmap(self):
+        ...
+    
+    def _set_object_checked(self, checked: bool, obj=None):
+        if obj is None:
+            return
+        
+        _id = obj.label if checked else 0
+        self._lab[obj.slice][obj.image] = _id
+        
+        self._lab_node.set_data(self._lab)
+        
+        self._canvas.update()
     
     def _on_reset_lab_gradient(self, *args, lab_gradient_item=None):
         if lab_gradient_item is None:
@@ -261,21 +302,38 @@ class VolumeRendererWindow(QMainWindow):
         self._lab_gradient_item_layout = QVBoxLayout()
         self._lab_gradient_item_layout.setContentsMargins(5, 5, 5, 5)
         
+        self._object_labels_list_groupbox = QGroupBox('Object labels')
+        self._object_labels_list_scrollarea = widgets.ScrollArea()
+        self._object_labels_list_scrollarea.setWidget(
+            self._object_labels_list_groupbox
+        )
+        self._object_labels_list_layout = QVBoxLayout()
+        self._object_labels_list_groupbox.setLayout(
+            self._object_labels_list_layout
+        )
+        
         self._scene_layout = QHBoxLayout()
         self._scene_layout.addWidget(lut_items_graphics_layout, stretch=0)
-        self._scene_layout.addWidget(self._canvas.native, stretch=1)
+        self._scene_layout.addWidget(self._canvas.native, stretch=10)
         self._scene_layout.addLayout(
             self._lab_gradient_item_layout, stretch=0
         )
+        self._scene_layout.addWidget(
+            self._object_labels_list_scrollarea, stretch=1
+        )
         
+        self._controls_groupbox = QGroupBox('Controls')
         self._controls_layout = widgets.FormLayout()
+        self._controls_groupbox.setLayout(self._controls_layout)
         
         central = QWidget()
         main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         main_layout.addLayout(self._scene_layout)
-        main_layout.addLayout(self._controls_layout)
+        main_layout.addWidget(self._controls_groupbox)
+        main_layout.setStretch(0, 10)
+        main_layout.setStretch(1, 0)
         self.setCentralWidget(central)
         
         self._ui_initialised = True
@@ -598,17 +656,10 @@ class VolumeRendererWindow(QMainWindow):
 
         self._set_visiblity(update=True)
     
-    def set_segmentation_masks(
-            self, 
-            lab: np.ndarray, 
-            cmap: list[RgbaColor] | AcdcPyQtGraphColorMapName=None,
-            SizeZ: int=None
-        ):
-        self.set_labels(lab, cmap=cmap, Size=SizeZ)
-    
     def set_labels(
             self, 
             lab: np.ndarray, 
+            voxel_size: tuple[float, float, float]=None,
             cmap_name: AcdcPyQtGraphColorMapName=None,
             gradient_item_state: dict=None,
             SizeZ: int=None
@@ -636,6 +687,7 @@ class VolumeRendererWindow(QMainWindow):
                 f'Expected 3-D (Z, Y, X) labels array; got shape {lab.shape}')
         
         self._lab = self._preprocess_lab(lab)
+        self._rp = skimage.measure.regionprops(self._lab)
         
         self._init_lab_ui_items(
             self._lab, 
@@ -643,13 +695,16 @@ class VolumeRendererWindow(QMainWindow):
             gradient_item_state=gradient_item_state
         )
         
+        self.set_voxel_size(voxel_size)
         self._is_labels_set = True
         
+    set_segmentation_masks = set_labels
     
     def set_volume(
             self,
             volume: np.ndarray, 
             channel_name: str='',
+            voxel_size: tuple[float, float, float]=None,
             cmap: list[RgbaColor] | AcdcPyQtGraphColorMapName=None,
         ):        
         num_channels = len(self._channels_data)
@@ -664,10 +719,31 @@ class VolumeRendererWindow(QMainWindow):
         
         self.set_volumes(volumes, cmaps)
     
+    def set_voxel_size(self, voxel_size: tuple[float, float, float] | None):
+        if voxel_size is None:
+            voxel_size = self._voxel_size
+        
+        self._voxel_size = voxel_size
+        
+        from vispy.visuals.transforms import STTransform
+
+        scale = utils.voxel_display_scale(*voxel_size)
+        transform = STTransform(scale=scale)
+        
+        for channel_data in self._channels_data.values():
+            channel_data.node.transform = transform
+            
+        if self._lab_node is not None:
+            self._lab_node.transform = transform
+            
+        if self._canvas is not None:
+            self._canvas.update()
+    
     def set_volumes(
             self,
             volumes: list[np.ndarray] | dict[str, np.ndarray], 
             channel_names: list[str] | None=None,
+            voxel_size: tuple[float, float, float]=None,
             cmaps: ColorMapPerChannel=None,
         ):
         if isinstance(volumes, dict):
@@ -692,6 +768,8 @@ class VolumeRendererWindow(QMainWindow):
         )
         
         self._set_gl_blend_states()
+        
+        self.set_voxel_size(voxel_size)
         
         self._canvas.update()
     

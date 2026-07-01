@@ -3489,8 +3489,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         #     self.labelsGrad.fontSizeMenu, self.setFontSizeActionChecked
         # )
 
-        self.labelsGrad.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
-        self.labelsGrad.greedyShuffleCmapAction.triggered.connect(
+        self.labelsGrad.sigShuffleCmap.connect(self.shuffle_cmap)
+        self.labelsGrad.sigGreeedyShuffleCmap.connect(
             self.greedyShuffleCmap
         )
         self.labelsGrad.permanentGreedyCmapAction.toggled.connect(
