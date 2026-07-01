@@ -15,6 +15,7 @@ class VolumeRendererToolbar(ToolBar):
     sigSave = Signal()
     sigSetSingleChannel = Signal(bool)
     sigSelectObjects = Signal(bool)
+    sigUpdate = Signal()
     
     def __init__(self, name='Volume Renderer Toolbar', parent=None):
         
@@ -23,6 +24,15 @@ class VolumeRendererToolbar(ToolBar):
         self.parentWin = parent
         
         self.setContextMenuPolicy(Qt.PreventContextMenu)
+        
+        self.emitSigUpdateAction = QAction(
+            QIcon(':reload.svg'), 'Emit update signal', self)
+        self.emitSigUpdateAction.setToolTip(
+            'Emit the `sigUpdate` signal.'
+            'Click to tell the Cell-ACDC GUI to update the 3D viewer '
+            'with the current data.'
+        )
+        self.addAction(self.emitSigUpdateAction)
         
         self.homeViewAction = QAction(QIcon(':home.svg'), 'Home view', self)
         self.homeViewAction.setShortcut('H')
@@ -61,6 +71,7 @@ class VolumeRendererToolbar(ToolBar):
             'will display only that channel in the overlay.'
         )
         
+        self.emitSigUpdateAction.triggered.connect(self.sigUpdate.emit)
         self.homeViewAction.triggered.connect(self.sigHomeView.emit)
         self.saveAction.triggered.connect(self.sigSave.emit)
         # self.selectObjectsAction.toggled.connect(

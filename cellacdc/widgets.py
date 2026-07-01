@@ -5596,6 +5596,33 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
             if action.text() == how:
                 action.setChecked(True)
                 return
+    
+    def setColormap(
+            self, 
+            cmap: colors.AcdcColorMap
+        ) -> None:
+        if isinstance(cmap, str):
+            self.gradient.loadPreset(cmap)
+            return
+        
+        lut = []
+        for color in cmap:
+            qcolor = pg.mkColor(color)
+            rgba_float = qcolor.getRgbF()
+            rgba_uint = [int(c*255) for c in rgba_float]
+            lut.append(rgba_uint)
+        
+        ncolors = len(lut)
+        positions = np.linspace(0, 1, len(lut))
+        state = {
+            "mode": "rgb",
+            "ticks": [
+                (float(pos), tuple(color))
+                for pos, color in zip(positions, lut)
+            ]
+        }
+        
+        self.gradient.restoreState(state)
 
 class ROI(pg.ROI):
     def __init__(
@@ -6048,6 +6075,9 @@ class myHistogramLUTitem(baseHistogramLUTitem):
 
         self.restoreColormap(df)
     
+    def super_saveState(self):
+        return super().saveState()
+    
     def saveState(self, df):
         # remove previous state
         df = df[~df.index.str.contains('img_cmap')].copy()
@@ -6386,6 +6416,8 @@ class BaseLabelsGradientWidget(pg.GradientWidget):
             self.saveColormap
         )
         
+        self.menu.addSeparator()
+        
         # Shuffle colors action
         self.shuffleCmapAction =  QAction(
             'Randomly shuffle colormap (Shift+S)', self
@@ -6398,6 +6430,19 @@ class BaseLabelsGradientWidget(pg.GradientWidget):
         self.menu.addAction(self.greedyShuffleCmapAction)
 
         self.addCustomGradients()
+        
+        # Background color button
+        hbox = QHBoxLayout()
+        hbox.addWidget(QLabel('Background color: '))
+        self.colorButton = myColorButton(color=(25,25,25))
+        hbox.addStretch(1)
+        hbox.addWidget(self.colorButton)
+        widget = QWidget()
+        widget.setLayout(hbox)
+        act = highlightableQWidgetAction(self)
+        act.setDefaultWidget(widget)
+        act.triggered.connect(self.colorButton.click)
+        self.menu.addAction(act)
         
         self.shuffleCmapAction.triggered.connect(self.sigShuffleCmap.emit)
         self.greedyShuffleCmapAction.triggered.connect(
@@ -6438,19 +6483,6 @@ class BaseLabelsGradientWidget(pg.GradientWidget):
             cp.write(file)
         
         self.addCustomGradient(cmapName, state, restore=False)
-        
-        # Background color button
-        hbox = QHBoxLayout()
-        hbox.addWidget(QLabel('Background color: '))
-        self.colorButton = myColorButton(color=(25,25,25))
-        hbox.addStretch(1)
-        hbox.addWidget(self.colorButton)
-        widget = QWidget()
-        widget.setLayout(hbox)
-        act = highlightableQWidgetAction(self)
-        act.setDefaultWidget(widget)
-        act.triggered.connect(self.colorButton.click)
-        self.menu.addAction(act)
     
     def addCustomGradients(self):
         try:

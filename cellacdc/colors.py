@@ -76,6 +76,8 @@ AcdcPyQtGraphColorMapName = Literal[
     'sunset'
 ]
 
+AcdcColorMap = list[RgbaColor] | AcdcPyQtGraphColorMapName | list[PltColorName]
+
 overlay_rgbs = [
     (255, 255, 0),
     (252, 72, 254),
@@ -88,6 +90,9 @@ if GUI_INSTALLED:
         [tuple([round(c*255) for c in overlay_default_plt_cmap(i)][:3]) 
         for i in np.linspace(0,1,8)]
     )
+
+# See pg.HistogramLUTItem.saveState() and pg.HistogramLUTItem.restoreState()
+LutItemState = dict[str, object]
 
 _mapCache = {}
 def getFromMatplotlib(name):

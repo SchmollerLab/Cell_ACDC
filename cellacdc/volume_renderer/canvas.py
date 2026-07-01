@@ -24,18 +24,20 @@ from . import _widgets, utils
 
 rng = np.random.default_rng(42)
 
-RgbaColor = colors.RgbaColor
+AcdcColorMap = colors.AcdcColorMap
 AcdcPyQtGraphColorMapName = colors.AcdcPyQtGraphColorMapName
 PltColorName = colors.PltColorName
 ColorMapPerChannel = (
-    list[list[RgbaColor]]
-    | dict[str, list[RgbaColor]]
-    | list[AcdcPyQtGraphColorMapName]
-    | dict[str, AcdcPyQtGraphColorMapName]
-    | list[PltColorName]
-    | dict[str, PltColorName]
+    list[AcdcColorMap]
+    | dict[str, AcdcColorMap]
 )
 LabelsGradientName = colors.AcdcPyQtGraphColorMapName
+
+LutItemState = colors.LutItemState
+LutItemStates = (
+    list[LutItemState]
+    | dict[str, LutItemState]
+)
 
 _SLIDER_NORMALIZE_FACTOR = 20
 _DEFAULT_LABELS_CMAP_NAME = 'viridis'
@@ -64,6 +66,8 @@ class VolumeRendererWindow(QMainWindow):
     state is preserved for re-display.  Pass ``hide_on_close=False`` to
     destroy on close instead.
     """
+    sigClose = Signal(object)
+    sigUpdate = Signal()
     
     def __init__(
             self, 
@@ -318,6 +322,7 @@ class VolumeRendererWindow(QMainWindow):
         self._toolbar = _widgets.VolumeRendererToolbar(parent=self)
         self.addToolBar(Qt.TopToolBarArea, self._toolbar)
         
+        self._toolbar.sigUpdate.connect(self.sigUpdate.emit)
         self._toolbar.sigHomeView.connect(self.reset_view)
         self._toolbar.sigSave.connect(self.save_screenshot)
         self._toolbar.sigSetSingleChannel.connect(self._set_single_channel)
@@ -447,7 +452,7 @@ class VolumeRendererWindow(QMainWindow):
         self._default_rgbs = colors.overlay_rgbs.copy()
         self._default_rgbs.insert(0, (255, 255, 255))
     
-    def _get_channel_default_cmap(self, channel_name: str, channel_idx: int):        
+    def _set_channel_default_cmap(self, channel_name: str, channel_idx: int):        
         foregr_rgb = colors.FLUO_CHANNELS_COLORS.get(channel_name)
         if foregr_rgb is None:
             foregr_rgb = self._default_rgbs.pop(channel_idx)
@@ -485,7 +490,6 @@ class VolumeRendererWindow(QMainWindow):
             self, 
             volumes: list[np.ndarray],
             channel_names: list[str],
-            cmaps: ColorMapPerChannel=None,
         ):
         from vispy.scene import visuals
         
@@ -558,12 +562,6 @@ class VolumeRendererWindow(QMainWindow):
             reset_btn.setMaximumWidth(ceil(lut_item_width))
         
         self._lut_items_graphics_layout.setFixedWidth(int(self._lut_items_width))  
-        
-        if cmaps is None:
-            cmaps = {
-                ch: self._get_channel_default_cmap(ch, c) 
-                for c, ch in enumerate(channel_names)
-            }
     
     def number_of_visible_channels(self) -> int:
         return sum(
@@ -738,7 +736,7 @@ class VolumeRendererWindow(QMainWindow):
             volume: np.ndarray, 
             channel_name: str='',
             voxel_size: tuple[float, float, float]=None,
-            cmap: list[RgbaColor] | AcdcPyQtGraphColorMapName=None,
+            cmap: list[colors.RgbaColor] | AcdcPyQtGraphColorMapName=None,
         ):        
         num_channels = len(self._channels_data)
         if not channel_name:
@@ -747,14 +745,17 @@ class VolumeRendererWindow(QMainWindow):
         cmaps = None
         if cmap is not None:
             cmaps = {channel_name: cmap}
-        
+            
         volumes = {channel_name: volume}
         
-        self.set_volumes(volumes, cmaps)
+        self.set_volumes(volumes, cmaps=cmaps)
     
     def set_voxel_size(self, voxel_size: tuple[float, float, float] | None):
         if voxel_size is None:
             voxel_size = self._voxel_size
+        
+        if voxel_size is None:
+            return
         
         self._voxel_size = voxel_size
         
@@ -777,6 +778,7 @@ class VolumeRendererWindow(QMainWindow):
             volumes: list[np.ndarray] | dict[str, np.ndarray], 
             channel_names: list[str] | None=None,
             voxel_size: tuple[float, float, float]=None,
+            lut_items_states: LutItemStates | None=None, 
             cmaps: ColorMapPerChannel=None,
         ):
         if isinstance(volumes, dict):
@@ -797,8 +799,30 @@ class VolumeRendererWindow(QMainWindow):
         self._set_channels_data(
             volumes, 
             channel_names, 
-            cmaps=cmaps
         )
+        
+        if lut_items_states is not None:
+            for c, (ch, channel_data) in enumerate(self._channels_data.items()):
+                if isinstance(lut_items_states, list):
+                    state = lut_items_states[c]
+                else:
+                    state = lut_items_states.get(ch)
+                channel_data.lut_item.restoreState(state)
+        elif cmaps is not None:
+            for c, (ch, channel_data) in enumerate(self._channels_data.items()):
+                if isinstance(cmaps, list):
+                    cmap = cmaps[c]
+                else:
+                    cmap = cmaps.get(ch)
+                
+                channel_data.lut_item.setColormap(cmap)
+                for tick in channel_data.lut_item.gradient.listTicks():
+                    tick[0].hide()
+        else:
+            cmaps = {
+                ch: self._set_channel_default_cmap(ch, c) 
+                for c, ch in enumerate(channel_names)
+            }
         
         self._set_gl_blend_states()
         
@@ -825,7 +849,14 @@ class VolumeRendererWindow(QMainWindow):
         if block:
             self._block_exec()
     
+    def force_close(self):
+        """Force the window to close (bypassing hide_on_close)."""
+        self._hide_on_close = False
+        self.close()
+    
     def closeEvent(self, event):
+        self.sigClose.emit(self)
+        
         if self._hide_on_close:
             event.ignore()
             self.hide()
@@ -838,9 +869,25 @@ class VolumeRendererWindow(QMainWindow):
 
     def reset_view(self):
         """Reset the camera to the default orientation and fit the volume."""
-        self._view.camera.set_range()
+        first_channel = list(self._channels_data.keys())[0]
+        first_volume = self._channels_data[first_channel].volume
+        first_node = self._channels_data[first_channel].node
+        Z, Y, X = first_volume.shape
+        xyz_center = (X/2, Y/2, Z/2)
+        self._view.camera.center = first_node.transform.map(xyz_center)[:3]
         self._view.camera.elevation = 30.0
-        self._view.camera.azimuth = -60.0
+        self._view.camera.azimuth = 45.0
+        self._view.camera.fov = 60.0
+        
+        corners = np.array([
+            [0, 0, 0],
+            [X, Y, Z],
+        ])
+        world = first_node.transform.map(corners)[:, :3]
+        diag = np.linalg.norm(world[1] - world[0])
+        
+        self._view.camera.distance = diag
+        
         self._canvas.update()
     
     def save_screenshot(self):
