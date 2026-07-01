@@ -446,14 +446,37 @@ def pg_to_vispy_cmap(pg_cmap, n=256, debug=False, transparent_zero=False):
     colors = np.array(colors) / 255.0
     
     if transparent_zero:
-        if colors.shape[-1] == 3:
-            rgba_colors = np.ones((len(colors), 4))
-            rgba_colors[:, :3] = colors
-            colors = rgba_colors
-        
-        colors[0] = [0, 0, 0, 0]
+        colors = replace_background_rgba_lut(colors)
 
     return VisPyColormap(colors)
+
+def replace_background_rgba_lut(
+        lut: np.ndarray, 
+        background_rgba: tuple[int]=(0, 0, 0, 0)
+    ) -> np.ndarray:
+    """Replace the background color in a LUT with a new RGBA color.
+
+    Parameters
+    ----------
+    lut : np.ndarray
+        Lookup table of shape (N, 4) with RGBA values.
+    background_rgba : tuple[int]
+        New background color as an RGBA tuple. Default is (0, 0, 0, 0) 
+        for transparent black.
+
+    Returns
+    -------
+    np.ndarray
+        Updated lookup table with the new background color.
+    """
+    updated_lut = lut.copy()
+    if updated_lut.shape[-1] == 3:
+        rgba_lut = np.ones((len(updated_lut), 4))
+        rgba_lut[:, :3] = updated_lut
+        updated_lut = rgba_lut
+            
+    updated_lut[0] = background_rgba
+    return updated_lut
 
 def get_auto_contrast_percentile(
         image_data: np.ndarray,

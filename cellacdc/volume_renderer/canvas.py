@@ -22,6 +22,8 @@ from .. import colors
 
 from . import _widgets, utils
 
+rng = np.random.default_rng(42)
+
 RgbaColor = colors.RgbaColor
 AcdcPyQtGraphColorMapName = colors.AcdcPyQtGraphColorMapName
 PltColorName = colors.PltColorName
@@ -86,6 +88,7 @@ class VolumeRendererWindow(QMainWindow):
         self._lab_node = None
         self._canvas = None
         self._voxel_size = None
+        self._lab_ncolors = 256
         
         if app is None:
             app = QCoreApplication.instance()
@@ -149,7 +152,6 @@ class VolumeRendererWindow(QMainWindow):
             method="translucent",
             interpolation="nearest",
             parent=self._view.scene,
-            
         )
         self._lab_node.clim = (vmin, vmax)
         
@@ -182,10 +184,7 @@ class VolumeRendererWindow(QMainWindow):
         self._lab_gradient_item = lab_gradient_item
         
         self._lab_opacity_slider.valueChanged.connect(
-            partial(
-                self._on_lab_opacity_changed, 
-                lab_gradient_item=lab_gradient_item
-            )
+            self._on_lab_opacity_changed
         )
         lab_gradient_item.sigGradientChangeFinished.connect(
             self._on_lab_gradient_changed
@@ -196,6 +195,8 @@ class VolumeRendererWindow(QMainWindow):
         lab_gradient_item.sigGreeedyShuffleCmap.connect(
             self._greedy_shuffle_lab_gradient_cmap
         )
+        lab_gradient_item.shuffleCmapAction.setShortcut('Shift+S')
+        lab_gradient_item.greedyShuffleCmapAction.setShortcut('Alt+Shift+S')
         # lab_lut_item.sigGradientChanged.connect(self.ticksCmapMoved)
         lab_reset_btn.clicked.connect(
             partial(
@@ -229,10 +230,38 @@ class VolumeRendererWindow(QMainWindow):
         self._object_labels_list_layout.addStretch(1)
     
     def _random_shuffle_lab_gradient_cmap(self):
-        ...
-    
+        from vispy.color import Colormap as VisPyColormap
+        
+        perm = rng.permutation(self._lab_ncolors)
+        lut = self._lab_gradient_item.colorMap().getLookupTable(
+            0.0, 1.0, self._lab_ncolors
+        )
+        shuffle_lut = lut[perm]
+        
+        shuffle_lut = np.array(shuffle_lut) / 255.0
+        shuffle_lut = colors.replace_background_rgba_lut(shuffle_lut)
+        
+        cmap = VisPyColormap(shuffle_lut)
+        
+        self._lab_node.cmap = cmap
+        self._canvas.update()
+
     def _greedy_shuffle_lab_gradient_cmap(self):
-        ...
+        from vispy.color import Colormap as VisPyColormap
+        
+        lut = self._lab_gradient_item.colorMap().getLookupTable(
+            0.0, 1.0, self._lab_ncolors
+        )
+        labels = [obj.label for obj in self._rp]
+        greedy_lut = colors.get_greedy_lut(self._lab, lut, ids=labels)
+        
+        greedy_lut = np.array(greedy_lut) / 255.0
+        greedy_lut = colors.replace_background_rgba_lut(greedy_lut)
+        
+        cmap = VisPyColormap(greedy_lut)
+        
+        self._lab_node.cmap = cmap
+        self._canvas.update()
     
     def _set_object_checked(self, checked: bool, obj=None):
         if obj is None:
@@ -245,23 +274,23 @@ class VolumeRendererWindow(QMainWindow):
         
         self._canvas.update()
     
-    def _on_reset_lab_gradient(self, *args, lab_gradient_item=None):
-        if lab_gradient_item is None:
-            return
-        
+    def _on_reset_lab_gradient(self, *args):        
         if self._lab_gradient_item_state is not None:
-            lab_gradient_item.item.restoreState(self._lab_gradient_item_state)
+            self._lab_gradient_item.item.restoreState(
+                self._lab_gradient_item_state)
             return
         
         if self._lab_gradient_cmap_name is not None:
-            lab_gradient_item.item.loadPreset(self._lab_gradient_cmap_name)
+            self._lab_gradient_item.item.loadPreset(
+                self._lab_gradient_cmap_name)
             return
         
-        lab_gradient_item.item.loadPreset(_DEFAULT_LABELS_CMAP_NAME)
+        self._lab_gradient_item.item.loadPreset(_DEFAULT_LABELS_CMAP_NAME)
     
     def _on_lab_gradient_changed(self, lab_gradient_item, update: bool=True):
         cmap = colors.pg_to_vispy_cmap(
-            lab_gradient_item.colorMap(), transparent_zero=True
+            lab_gradient_item.colorMap(), transparent_zero=True,
+            n=self._lab_ncolors
         )
         self._lab_node.cmap = cmap
         if update:
@@ -270,9 +299,10 @@ class VolumeRendererWindow(QMainWindow):
     def _on_lab_opacity_changed(
             self, 
             value, 
-            lab_gradient_item=None, 
             update: bool=True
         ):
+        lab_gradient_item = self._lab_gradient_item
+        
         if lab_gradient_item is None:
             return
         
@@ -670,6 +700,9 @@ class VolumeRendererWindow(QMainWindow):
                 'Only one labels volumes can be set'
             )
             return
+        
+        if lab.dtype == bool:
+            lab = lab.astype(np.uint8)
         
         if lab.ndim == 2 and SizeZ is None and self._SizeZ is None:
             raise ValueError(

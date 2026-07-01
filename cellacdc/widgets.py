@@ -6388,12 +6388,12 @@ class BaseLabelsGradientWidget(pg.GradientWidget):
         
         # Shuffle colors action
         self.shuffleCmapAction =  QAction(
-            'Randomly shuffle colormap   (Shift+S)', self
+            'Randomly shuffle colormap (Shift+S)', self
         )
         self.menu.addAction(self.shuffleCmapAction)
 
         self.greedyShuffleCmapAction = QAction(
-            'Greedily shuffle colormap  (Alt+Shift+S)', self
+            'Greedily shuffle colormap (Alt+Shift+S)', self
         )
         self.menu.addAction(self.greedyShuffleCmapAction)
 

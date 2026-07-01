@@ -1,5 +1,8 @@
 import os
 
+import numpy as np
+import pandas as pd
+
 import skimage
 
 from cellacdc._run import _setup_app
@@ -7,13 +10,42 @@ from cellacdc._run import _setup_app
 from cellacdc import VolumeRendererWindow
 from cellacdc import data_path
 
-zstack_filepath = os.path.join(
-    data_path, 'test_3Dsegm', 'Arohi', 'Position_1', 'Images', 
-    'CMJ030_1.100 H3__fl-01_s1_Ch1_IF_H3_405_T3.tif'
+images_path = os.path.join(
+    data_path, 
+    'test_snapshots', 
+    'mtDNA_Anika', 
+    'Position_17',
+    'Images', 
 )
 
-zstack_array = skimage.io.imread(zstack_filepath)
+mneon_filepath = os.path.join(
+    images_path, 'ASY15-1_0nM-17_s17_mNeon.tif'
+)
+
+lab_filepath = os.path.join(
+    images_path, 'ASY15-1_0nM-17_s17_mKate_mask.npz'
+)
+
+lab = np.load(lab_filepath)['arr_0']
+
+metadata_filepath = os.path.join(
+    images_path, 'ASY15-1_0nM-17_s17_metadata.csv'
+)
+
+df_metadata = pd.read_csv(metadata_filepath, index_col='Description')
+voxel_size = (
+    float(df_metadata.at['PhysicalSizeZ', 'values']),
+    float(df_metadata.at['PhysicalSizeY', 'values']),
+    float(df_metadata.at['PhysicalSizeX', 'values'])
+)
+
+volume = skimage.io.imread(mneon_filepath)
+data = {'mNeon': volume}
 
 renderer = VolumeRendererWindow()
-renderer.set_volume(zstack_array)   # (Z, Y, X) numpy array
+renderer.set_volumes(
+    data,
+    voxel_size=voxel_size
+)
+renderer.set_labels(lab) 
 renderer.run()
