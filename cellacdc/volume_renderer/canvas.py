@@ -834,6 +834,8 @@ class VolumeRendererWindow(QMainWindow):
         self.resize(960, 720)
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
+        
+        self.set_camera_view()
 
         try:
             self.setEnabled(True)
@@ -845,7 +847,6 @@ class VolumeRendererWindow(QMainWindow):
     
     def run(self, block=True):        
         self.show()
-        self.reset_view()
         if block:
             self._block_exec()
     
@@ -868,19 +869,22 @@ class VolumeRendererWindow(QMainWindow):
         return super().closeEvent(event)
 
     def reset_view(self):
+        camera = self._view.camera
+        
+        camera.center = self._home_center
+        camera.distance = self._home_distance
+        camera.azimuth = self._home_azimuth
+        camera.elevation = self._home_elevation
+        camera.scale_factor = self._default_scale_factor
+    
+    def set_camera_view(self):
         """Reset the camera to the default orientation and fit the volume."""
-        self._view.camera.set_range()
         
         first_channel = list(self._channels_data.keys())[0]
         first_volume = self._channels_data[first_channel].volume
         first_node = self._channels_data[first_channel].node
         Z, Y, X = first_volume.shape
-        xyz_center = (X/2, Y/2, Z/2)
-        self._view.camera.center = first_node.transform.map(xyz_center)[:3]
-        self._view.camera.elevation = 30.0
-        self._view.camera.azimuth = 45.0
-        self._view.camera.fov = 60.0
-        
+        xyz_center = (X/2, Y/2, Z/2)     
         corners = np.array([
             [0, 0, 0],
             [X, Y, Z],
@@ -888,7 +892,20 @@ class VolumeRendererWindow(QMainWindow):
         world = first_node.transform.map(corners)[:, :3]
         diag = np.linalg.norm(world[1] - world[0])
         
+        self._home_center = first_node.transform.map(xyz_center)[:3]
+        self._home_elevation = 30.0
+        self._home_azimuth = 45.0
+        self._home_fov = 60.0
+        self._home_distance = diag
+        
+        self._view.camera.set_range()
+        self._view.camera.center = first_node.transform.map(xyz_center)[:3]
+        self._view.camera.elevation = 30.0
+        self._view.camera.azimuth = 45.0
+        self._view.camera.fov = 60.0
         self._view.camera.distance = diag
+        
+        self._default_scale_factor = self._view.camera.scale_factor
         
         self._canvas.update()
     
