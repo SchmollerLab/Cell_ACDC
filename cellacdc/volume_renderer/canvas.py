@@ -1,8 +1,12 @@
 from dataclasses import dataclass
 from functools import partial
+from math import ceil
+
+from typing import Literal
 
 import numpy as np
-from math import ceil
+import pandas as pd
+
 import skimage
 
 from qtpy.QtCore import (
@@ -20,7 +24,10 @@ from .._run import _setup_app
 from .. import widgets
 from .. import colors
 
-from . import _widgets, utils
+from . import _widgets, utils, plot
+
+import vispy.scene
+import vispy.color
 
 rng = np.random.default_rng(42)
 
@@ -39,12 +46,14 @@ LutItemStates = (
     | dict[str, LutItemState]
 )
 
+MarkerSymbols = plot.VisPyMarkerSymbols
+
 _SLIDER_NORMALIZE_FACTOR = 20
 _DEFAULT_LABELS_CMAP_NAME = 'viridis'
 
 @dataclass
 class _ChannelData:
-    node: object # vispy.scene.visuals.Volume
+    node: vispy.scene.visuals.Volume
     lut_item: widgets.baseHistogramLUTitem
     volume: np.ndarray
     auto_button: QPushButton
@@ -52,6 +61,24 @@ class _ChannelData:
     opacity_slider: widgets.sliderWithSpinBox
     toolbutton: widgets.OverlayChannelToolButton
 
+@dataclass
+class _PointsLayer:
+    name: str
+    
+    points: np.ndarray # (N, [z, y, x]) voxel coordinates
+    labels: list[str] | None
+    df: pd.DataFrame | None=None
+    
+    markers: vispy.scene.visuals.Markers
+    text: vispy.scene.visuals.Text | None=None
+    
+    visible: bool = True
+    color: vispy.color.Color = 'red'
+    size: float = 8.0
+    symbol: str = 'disc'
+    opacity_slider: widgets.sliderWithSpinBox
+    
+    
 class VolumeRendererWindow(QMainWindow):
     """
     A standalone Qt window that displays a 3D z-stack volume using vispy.
@@ -106,7 +133,8 @@ class VolumeRendererWindow(QMainWindow):
         super().__init__(parent)
         self.setWindowTitle(title)
         
-        self._channels_data: dict[_ChannelData] = {}
+        self._channels_data: dict[str, _ChannelData] = {}
+        self._points_layers: dict[str, _PointsLayer] = {}
         
         self._init_default_rgbs()
         self._init_vispy()
@@ -736,6 +764,7 @@ class VolumeRendererWindow(QMainWindow):
             volume: np.ndarray, 
             channel_name: str='',
             voxel_size: tuple[float, float, float]=None,
+            lut_item_state: LutItemState | None=None, 
             cmap: list[colors.RgbaColor] | AcdcPyQtGraphColorMapName=None,
         ):        
         num_channels = len(self._channels_data)
@@ -743,12 +772,19 @@ class VolumeRendererWindow(QMainWindow):
             channel_name = f'channel_{num_channels+1}'
 
         cmaps = None
-        if cmap is not None:
+        lut_items_states = None
+        if lut_item_state is not None:
+            lut_items_states = {channel_name: cmap}
+        elif cmap is not None:
             cmaps = {channel_name: cmap}
             
         volumes = {channel_name: volume}
         
-        self.set_volumes(volumes, cmaps=cmaps)
+        self.set_volumes(
+            volumes, 
+            cmaps=cmaps, 
+            lut_items_states=lut_items_states
+        )
     
     def set_voxel_size(self, voxel_size: tuple[float, float, float] | None):
         if voxel_size is None:
@@ -829,6 +865,49 @@ class VolumeRendererWindow(QMainWindow):
         self.set_voxel_size(voxel_size)
         
         self._canvas.update()
+    
+    def add_points_layer(
+            self,
+            name: str,
+            points: np.ndarray | None=None, # (N, [z, y, x]) voxel coordinates
+            points_df: pd.DataFrame | None=None,
+            zyx_columns_names: list[str] | None=None,
+            labels: list[str] | None=None,
+            color: vispy.color.Color='red',
+            size: float=8.0,
+            opacity: float=1.0,
+            symbol: MarkerSymbols='disc',
+            scaling: Literal['fixed', 'scene']='scene'
+        ):
+        from vispy.scene import visuals
+        
+        if zyx_columns_names is None:
+            zyx_columns_names = ['z', 'y', 'x']
+        
+        if points_df is not None:
+            points_xyz = points_df[zyx_columns_names[::-1]].to_numpy()
+        elif points:
+            points_xyz = points[:, [2, 1, 0]]
+        else:
+            raise ValueError(
+                "Either 'points' or 'points_df' must be provided."
+            ) 
+        
+        face_color = vispy.color.Color(color, alpha=opacity*0.5)
+        edge_color = vispy.color.Color(color, alpha=opacity)
+        markers = visuals.Markers(
+            parent=self._view.scene,
+            spherical=True,
+            scaling=scaling
+        )
+        
+        markers.set_data(
+            points_xyz, 
+            symbol=symbol,
+            size=size,
+            face_color=face_color,
+            edge_color=edge_color
+        )
     
     def show(self, block=False):
         self.resize(960, 720)

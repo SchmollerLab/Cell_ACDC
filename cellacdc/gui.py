@@ -3185,7 +3185,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.PhysicalSizeZ, posData.PhysicalSizeY, posData.PhysicalSizeX
         )
         
-        from cellacdc import VolumeRendererWindow
+        from cellacdc.volume_renderer.canvas import VolumeRendererWindow
         
         self._volume_renderer = VolumeRendererWindow(
             app=self.app, 

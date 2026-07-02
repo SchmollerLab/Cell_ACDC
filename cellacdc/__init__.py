@@ -821,4 +821,7 @@ valid_image_data_ends = (
 )
 
 if GUI_INSTALLED:
-    from cellacdc.volume_renderer.canvas import VolumeRendererWindow
+    try:
+        from cellacdc.volume_renderer.canvas import VolumeRendererWindow
+    except ModuleNotFoundError:
+        pass

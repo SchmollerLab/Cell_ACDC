@@ -27,6 +27,23 @@ from . import printl
 from . import _core, error_below, error_close
 from . import _run, core, myutils
 
+VisPyMarkerSymbols = Literal[
+    'disc', 
+    'arrow', 
+    'ring', 
+    'clobber', 
+    'square', 
+    'diamond', 
+    'vbar', 
+    'hbar', 
+    'cross', 
+    'tailed_arrow', 
+    'x', 
+    'triangle_up', 
+    'triangle_down', 
+    'star'
+]
+
 def matplotlib_cmap_to_lut(
         cmap: Union[Iterable, matplotlib.colors.Colormap, str], 
         n_colors: int=256
