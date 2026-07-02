@@ -133,6 +133,7 @@ def test_seg_for_lost_ids_worker_thresholding_relabels_recovered_object(monkeypa
                             'padding': 1.0,
                         'size_perc_diff': 1.0,
                         'allow_only_tracked_cells': True,
+                        'fill_other_cells_with_background': False,
                     },
                     'init_kwargs': {},
                     'model_kwargs': {
@@ -150,7 +151,7 @@ def test_seg_for_lost_ids_worker_thresholding_relabels_recovered_object(monkeypa
         getDisplayedImg1=lambda: curr_img,
         get_2Dlab=lambda lab: lab,
         getTrackedLostIDs=lambda: [],
-        setBrushID=lambda useCurrentLab=True, return_val=True: 10,
+        setBrushID=lambda useCurrentLab=True, return_val=True: 5,
         logger=_DummyLogger(),
     )
 
@@ -173,3 +174,121 @@ def test_seg_for_lost_ids_worker_thresholding_relabels_recovered_object(monkeypa
 
     assert posData.lab[3:7, 3:7].min() == 5
     assert posData.lab[3:7, 3:7].max() == 5
+
+
+def test_seg_for_lost_ids_worker_does_not_replay_inherited_labels_from_later_model(monkeypatch):
+    prev_lab = np.zeros((12, 12), dtype=np.uint16)
+    prev_lab[3:7, 3:7] = 5
+
+    curr_lab = np.zeros((12, 12), dtype=np.uint16)
+    curr_img = np.zeros((12, 12), dtype=np.float32)
+
+    prev_rp = acdcRegionprops(prev_lab)
+    curr_rp = acdcRegionprops(curr_lab)
+
+    posData = SimpleNamespace(
+        frame_i=1,
+        lab=curr_lab.copy(),
+        rp=curr_rp,
+        allData_li=[
+            {'labels': prev_lab, 'regionprops': prev_rp},
+            {'labels': curr_lab, 'regionprops': curr_rp},
+        ],
+    )
+
+    guiWin = SimpleNamespace(
+        data=[posData],
+        pos_i=0,
+        SegForLostIDsSettings={
+            'models_settings': [
+                {
+                    'base_model_name': 'thresholding',
+                    'init_kwargs_new': {},
+                    'args_new': {
+                        'distance_filler_growth': 1.0,
+                        'overlap_threshold': 0.5,
+                        'padding': 1.0,
+                        'size_perc_diff': 10.0,
+                        'allow_only_tracked_cells': False,
+                        'fill_other_cells_with_background': False,
+                    },
+                    'init_kwargs': {},
+                    'model_kwargs': {
+                        'gauss_sigma': 0,
+                        'threshold_method': 'threshold_otsu',
+                    },
+                    'preproc_recipe': None,
+                    'applyPostProcessing': False,
+                    'standardPostProcessKwargs': {},
+                    'customPostProcessFeatures': None,
+                    'customPostProcessGroupedFeatures': None,
+                },
+                {
+                    'base_model_name': 'thresholding',
+                    'init_kwargs_new': {},
+                    'args_new': {
+                        'distance_filler_growth': 1.0,
+                        'overlap_threshold': 0.5,
+                        'padding': 1.0,
+                        'size_perc_diff': 10.0,
+                        'allow_only_tracked_cells': False,
+                        'fill_other_cells_with_background': False,
+                    },
+                    'init_kwargs': {},
+                    'model_kwargs': {
+                        'gauss_sigma': 0,
+                        'threshold_method': 'threshold_otsu',
+                    },
+                    'preproc_recipe': None,
+                    'applyPostProcessing': False,
+                    'standardPostProcessKwargs': {},
+                    'customPostProcessFeatures': None,
+                    'customPostProcessGroupedFeatures': None,
+                },
+            ]
+        },
+        getDisplayedImg1=lambda: curr_img,
+        get_2Dlab=lambda lab: lab,
+        getTrackedLostIDs=lambda: [],
+        setBrushID=lambda useCurrentLab=True, return_val=True: 10,
+        logger=_DummyLogger(),
+    )
+
+    worker = SegForLostIDsWorker(guiWin, mutex=SimpleNamespace(lock=lambda: None, unlock=lambda: None), waitCond=SimpleNamespace(wait=lambda mutex: None))
+    worker.signals = _DummySignals()
+    worker.logger = _DummyLogger()
+    worker.gpu_go = True
+    worker.dont_force_cpu = True
+
+    monkeypatch.setattr(worker, 'emitSigAskInit', lambda: None)
+    monkeypatch.setattr(worker, 'emitSigAskInstallGPU', lambda base_model_name, use_gpu: None)
+    monkeypatch.setattr(worker, 'emitSigUpdateRP', lambda wl_update=True, wl_track_og_curr=False: None)
+    monkeypatch.setattr(worker, 'emitSigStoreData', lambda autosave=True: None)
+    monkeypatch.setattr(worker, 'emitTrackManuallyAddedObject', lambda *args, **kwargs: None)
+    monkeypatch.setattr(myutils, 'import_segment_module', lambda base_model_name: SimpleNamespace(Model=ThresholdingModel))
+    monkeypatch.setattr(myutils, 'init_segm_model', lambda acdcSegment, posData, init_kwargs_new: ThresholdingModel())
+    monkeypatch.setattr(worker, 'emitGetSegForLostIDsInputImg', lambda image_channel_name: curr_img)
+
+    call_counter = {'n': 0}
+
+    def fake_single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, posData, **kwargs):
+        out_lab = np.zeros_like(curr_lab)
+        if call_counter['n'] == 0:
+            out_lab[4:6, 4:6] = 10
+            call_counter['n'] += 1
+            return out_lab, [10], [[5]], [(2, 10, 2, 10)], {}
+
+        out_lab[3:9, 3:9] = 10
+        out_lab[7:9, 7:9] = 11
+        call_counter['n'] += 1
+        return out_lab, [11], [[5]], [(1, 11, 1, 11)], {}
+
+    monkeypatch.setattr('cellacdc.segm_utils.single_cell_seg', fake_single_cell_seg)
+
+    worker.run()
+
+    assert posData.lab[3, 3] == 0
+    assert posData.lab[4:6, 4:6].min() == 10
+    assert posData.lab[4:6, 4:6].max() == 10
+    assert posData.lab[7:9, 7:9].min() == 11
+    assert posData.lab[7:9, 7:9].max() == 11

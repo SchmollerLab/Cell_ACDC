@@ -2469,6 +2469,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Delete bordering objects': self.delBorderObjAction.button,
             'Delete newly segmented objects': self.delNewObjAction.button,
         }
+        apply_tools_on_new_frame_start_event_loop = (
+            'Segmenting for lost IDs'
+        )
         
         allToolsList = list(keepToolActiveNames.keys()) + list(applyToNewFrameNames.keys())
         allToolsList = natsorted(allToolsList)
@@ -2497,7 +2500,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             menu.addAction(action)
             self.keepToolActiveActions[toolName] = action
             
-        for toolName, button in applyToNewFrameNames.items():
+        for toolName, button in applyToNewFrameNames.items():                
             menu = menus[toolName]
             action = QAction(button)
             action.setText('Apply when visitng new frame')            
@@ -2506,6 +2509,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             menu.addAction(action)
             self.applyToolNewFrameActions[toolName] = action
             self.applyToolNewFrameButtons[toolName] = button
+            button.start_event_loop = toolName in apply_tools_on_new_frame_start_event_loop
         
         for toolName in self.applyToolNewFrameActions.keys():
             settingString = toolName.strip()
@@ -8355,18 +8359,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if ID not in self.distanceListMissingIDs.keys():
             prev_rp = posData.allData_li[frame_i-1]['regionprops']
-            relevant_rp = [
-                obj for obj in prev_rp if obj.label not in posData.IDs
+            relevant_IDs = [
+                ID for ID in prev_rp.IDs if ID not in posData.IDs
             ]
-            len_relevant_rp = len(relevant_rp)
-            if len_relevant_rp == 0:
+            len_relevant_IDs = len(relevant_IDs)
+            if len_relevant_IDs == 0:
                 self.logger.info('No missing IDs found in previous frame.')
                 return []
-            elif len_relevant_rp == 1:
-                self.distanceListMissingIDs[ID] = [relevant_rp[0].label]
-                return [relevant_rp[0].label]
+            elif len_relevant_IDs == 1:
+                self.distanceListMissingIDs[ID] = relevant_IDs
+                return relevant_IDs
             else:
-                sorted_missing_IDs = myutils.sort_IDs_dist(relevant_rp, point=point)
+                sorted_missing_IDs = myutils.sort_IDs_dist(prev_rp, point=point, relevant_IDs=relevant_IDs)
                 self.distanceListMissingIDs[ID] = sorted_missing_IDs
                 return sorted_missing_IDs
         else:
@@ -8581,6 +8585,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         all_extra_params = [
             'image_channel_name',
             'overlap_threshold',
+            'fill_other_cells_with_background',
             'padding',
             'size_perc_diff',
             'distance_filler_growth',
@@ -8588,6 +8593,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ]
         extra_types = {
             'overlap_threshold': float,
+            'fill_other_cells_with_background': bool,
             'padding': float,
             'size_perc_diff': float,
             'distance_filler_growth': float,
@@ -8596,6 +8602,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         }
         extra_defaults = {
             'overlap_threshold': 0.5,
+            'fill_other_cells_with_background': True,
             'padding': 0.8,
             'size_perc_diff': 0.3,
             'distance_filler_growth': 1.,
@@ -8606,6 +8613,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'overlap_threshold': (
                 'Overlap threshold with other already segemented cells '
                 'over which newly segmented cells are discarded'
+            ),
+            'fill_other_cells_with_background' : (
+                'Fill already segmented cells with background'
             ),
             'padding': (
                 'Padding of the box used for new segmentation around the '
@@ -8829,7 +8839,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.SegForLostIDsWorker.sigAskInstallModel.connect(
         #     self.SegForLostIDsWorkerAskInstallModel
         # )
-        self.SegForLostIDsWorker.sigshowImageDebug.connect(
+        self.SegForLostIDsWorker.sigShowImageDebug.connect(
             self.showImageDebug
         )
         
@@ -8905,7 +8915,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     #     self.SegForLostIDsWaitCond.wakeAll()
 
     def onSigTrackManuallyAddedObjectSegForLostIDsWorker(self, added_IDs, isNewID, wl_update, wl_track_og_curr):
-        self.trackManuallyAddedObject(added_IDs, isNewID, wl_update=wl_update, wl_track_og_curr=wl_track_og_curr)
+        assignments = self.trackManuallyAddedObject(added_IDs, isNewID, wl_update=wl_update, wl_track_og_curr=wl_track_og_curr)
+        self.SegForLostIDsWorker.assignments = assignments
         self.SegForLostIDsWaitCond.wakeAll()
 
     def onSigGetInputImgSegForLostIDsWorker(self, image_channel_name):
@@ -8969,16 +8980,85 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
+            
+        if hasattr(self, "wait_worker_loop"):
+            self.wait_worker_loop.exit()
         
     def showImageDebug(self, display_info):
         title = ''
         img_titles = None
+        imgs = []
+        labs = None
         if isinstance(display_info, dict):
             title = display_info.get('title', '')
+            imgs = list(display_info.get('images', []))
             img_titles = display_info.get('img_titles', None)
-            imgs = display_info.get('images', [])
-        imshow(*imgs, window_title=str(title), figure_title=str(title),
-                axis_titles=img_titles)
+
+            if img_titles is not None:
+                img_titles = list(img_titles)
+                if len(img_titles) < len(imgs):
+                    img_titles.extend([''] * (len(imgs) - len(img_titles)))
+
+            if 'img_seg_pairs' in display_info:
+                new_imgs, labs, new_titles = [], [], []
+                pairs = display_info['img_seg_pairs']
+                i_to_skip = set()
+                for i, img in enumerate(imgs):
+                    if i in i_to_skip:
+                        continue
+
+                    title_i = img_titles[i] if img_titles is not None else f'image_{i}'
+                    if i in pairs:
+                        lab_i = pairs[i]
+                        if 0 <= lab_i < len(imgs):
+                            i_to_skip.add(lab_i)
+                            lab = imgs[lab_i]
+                            lab_title = (
+                                img_titles[lab_i]
+                                if img_titles is not None else f'image_{lab_i}'
+                            )
+                            img_title = f"{title_i} ({lab_title}) "
+                        else:
+                            lab = None
+                            img_title = title_i
+                    else:
+                        lab = None
+                        img_title = title_i
+
+                    new_imgs.append(img)
+                    labs.append(lab)
+                    new_titles.append(img_title)
+
+                imgs = new_imgs
+                img_titles = new_titles
+
+        if not imgs:
+            self.logger.warning(
+                'showImageDebug called without images. Ignoring debug display.'
+            )
+            return
+
+        win = imshow(
+            *imgs,
+            window_title=str(title),
+            figure_title=str(title),
+            axis_titles=img_titles,
+            labels_overlays=labs,
+            parent=self,
+            block=True,
+            show_contours=True,
+            show_IDs=True,
+            win_stay_on_top=False,
+        )
+        if not hasattr(self, '_debug_imshow_windows'):
+            self._debug_imshow_windows = []
+        self._debug_imshow_windows = [
+            w for w in self._debug_imshow_windows
+            if w is not None
+        ]
+        self._debug_imshow_windows.append(win)
+        
+        self.SegForLostIDsWorker.waitCond.wakeAll()
     
     def gui_raiseBottomLayoutContextMenu(self, event):
         try:
@@ -11928,7 +12008,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData.lab = lab
         
         self.update_rp(deletionIDs=new_IDs)
-        
+                
         if posData.cca_df is not None:
             posData.cca_df = posData.cca_df.drop(index=new_IDs)
         self.store_data()
@@ -18844,6 +18924,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             tool_button = self.applyToolNewFrameButtons[name]
             try:
+
                 if hasattr(tool_button, 'click'):
                     tool_button.click()
                 elif hasattr(tool_button, 'trigger'):
@@ -18852,6 +18933,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     printl(
                         f"Warning: {name} has no click or trigger method"
                     )
+                if tool_button.start_event_loop:
+                    printl(f"starting event loop for {name}")
+                    self.wait_worker_loop = QEventLoop()
+                    self.wait_worker_loop.exec_()
+                    
+
             except Exception as e:
                 self.logger.info(f"Error applying tool {name}: {e}")
         
@@ -21138,12 +21225,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             nextLab = posData.allData_li[posData.frame_i+1]['labels']
         except IndexError:
             # This is last frame --> there are no future frames
+            assignments = dict()
             return None, assignments
         
         if nextLab is None:
+            assignments = dict()
             return None, assignments
         
         if obj is None:
+            assignments = dict()
             return None, assignments
              
         
@@ -21169,6 +21259,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             k:v for k, v in assignments_new.items() if k != v
         }
         if not assignments_new:
+            assignments = dict()
             return None, assignments
         
         trackedIDs = list(assignments_new.values())
@@ -21176,13 +21267,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         trackedID = trackedIDs[0]
         if trackedID == newID:
             # Object does not exist in future frame --> do not track
+            assignments = dict()
             return None, assignments
         
         if posData.rp.get_obj_from_ID(trackedID, warn=False) is not None:
             # Tracked ID already exists --> do not track to avoid merging
+            assignments = dict()
             return None, assignments
-                
-
         
         # update assignments
         assignments = {
@@ -23356,12 +23447,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 lin_tree_df_ID = lin_tree_df.loc[ID]
 
                 # lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
-                if lin_tree_df_ID["parent_ID_tree"] == -1: # make sure that new obj where the parents are not known get skipped
+                if lin_tree_df_ID['parent_ID_tree'] == -1: # make sure that new obj where the parents are not known get skipped
                     continue
                 
-                mother_obj = prev_rp.get_obj_from_ID(lin_tree_df_ID["parent_ID_tree"])
+                mother_obj = prev_rp.get_obj_from_ID(lin_tree_df_ID['parent_ID_tree'])
 
-                emerg_frame_i = lin_tree_df_ID["emerg_frame_i"]
+                emerg_frame_i = lin_tree_df_ID['emerg_frame_i']
                 isNew = emerg_frame_i == frame_i
 
                 self.drawObjLin_TreeMothBudLines(ax, curr_obj, mother_obj, isNew, ID=ID)
@@ -29202,14 +29293,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         not already existing in current frame (to avoid merging).    
         """        
         if self.isSnapshot:
-            return 
+            return dict()
         
         if not isNewID:
-            return
+            return dict()
 
         posData = self.data[self.pos_i]
         if posData.frame_i == 0:
-            return
+            return dict()
 
         if isinstance(added_IDs, int):
             added_IDs = [added_IDs]
@@ -29223,7 +29314,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # RP not updated after tracking!!!
         self.clearAssignedObjsSecondStep()
         if tracked_lab is None:
-            return
+            return dict()
         
         # Track only new object
         prevIDs = posData.allData_li[posData.frame_i-1]['regionprops'].IDs
@@ -29248,9 +29339,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 and added_ID != trackedID
             )
             if isTrackedIDalreadyPresentAndNotNew:
-                self.updatePointsLayerClickEntryTableEndname(
-                    'added obj already present', added_ID, trackedID
-                )
+                # self.updatePointsLayerClickEntryTableEndname(
+                #     'added obj already present', added_ID, trackedID
+                # )
                 continue
             
             isTrackedIDinPrevIDs = trackedID in prevIDs
@@ -29261,12 +29352,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 trackedID, assignments = self.trackNewIDtoNewIDsFutureFrame(added_ID, obj, assignments)
                 if trackedID is None:
                     self.clearAssignedObjsSecondStep()
+                    # update assignments
+                    
                     continue
                 posData.lab[obj.slice][obj.image] = trackedID
         
             self.keepOnlyNewIDAssignedObjsSecondStep(trackedID)
         
         self.update_rp(wl_update=wl_update, assignments=assignments)
+        return assignments
             
     def trackFrameCustomTracker(
             self, prev_lab, currentLab, specific_IDs=None, unique_ID=None,
@@ -29627,7 +29721,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if obj.label not in tracked_lost_IDs:
                 continue
             if isinstance(prev_rp, regionprops.acdcRegionprops):
-                ID = obj.ID
+                ID = obj.label
                 centroid = prev_rp.get_centroid(ID, exact=True)
             else:
                 centroid = obj.centroid

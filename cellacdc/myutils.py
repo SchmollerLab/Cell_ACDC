@@ -5525,7 +5525,7 @@ def get_obj_by_label(rp, target_label):
             return obj
     return None
 
-def find_distances_ID(rps, point=None, ID=None):
+def find_distances_ID(rps, point=None, ID=None, relevant_IDs=None):
     """
     Calculate the distances between a given point and the centroids of a list of regionprops.
 
@@ -5567,12 +5567,15 @@ def find_distances_ID(rps, point=None, ID=None):
     
     point = point[::-1] # rp are in (y, x) format (or (z, y, x) for 3D data) so I need to reverse order
     point = np.array([point])
-    centroids = np.array([rps.get_centroid(ID) for ID in rps.IDs])
+    if relevant_IDs is not None:
+        centroids = np.array([rps.get_centroid(obj.label) for obj in rps if obj.label in relevant_IDs])
+    else:
+        centroids = np.array([rps.get_centroid(obj.label) for obj in rps]) # here RPS is a list and not a regionprops object
     diff = point[:, np.newaxis] - centroids
     dist_matrix = np.linalg.norm(diff, axis=2)
     return dist_matrix
 
-def sort_IDs_dist(rps, point=None, ID=None):
+def sort_IDs_dist(rps, point=None, ID=None, relevant_IDs=None):
     """Sorts the IDs of regionprops based on their distances to a given point.
 
     Parameters
@@ -5616,11 +5619,13 @@ def sort_IDs_dist(rps, point=None, ID=None):
     
 
     IDs = rps.IDs
+    if relevant_IDs is not None:
+        IDs = [ID for ID in IDs if ID in relevant_IDs]
     if len(IDs) == 0:
         return []
     elif len(IDs) == 1:
         return IDs
-    dist_matrix = find_distances_ID(rps, point=point)        
+    dist_matrix = find_distances_ID(rps, point=point, relevant_IDs=relevant_IDs)        
     dist_matrix = np.squeeze(dist_matrix)
 
     sorted_ids = sorted(zip(dist_matrix, IDs))
