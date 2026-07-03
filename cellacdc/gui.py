@@ -9058,7 +9058,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ]
         self._debug_imshow_windows.append(win)
         
-        self.SegForLostIDsWorker.waitCond.wakeAll()
+        try:
+            self.SegForLostIDsWorker.waitCond.wakeAll()
+        except:
+            pass
     
     def gui_raiseBottomLayoutContextMenu(self, event):
         try:
@@ -18934,7 +18937,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         f"Warning: {name} has no click or trigger method"
                     )
                 if tool_button.start_event_loop:
-                    printl(f"starting event loop for {name}")
                     self.wait_worker_loop = QEventLoop()
                     self.wait_worker_loop.exec_()
                     
@@ -23427,6 +23429,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.clearAllCellToCellLines()
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
+
+        if frame_i == 0:
+            return 
+
         lin_tree_df = posData.allData_li[frame_i]['acdc_df']
         lin_tree_df_prev = posData.allData_li[frame_i-1]['acdc_df']
         rp = posData.rp
