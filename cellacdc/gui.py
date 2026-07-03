@@ -8662,6 +8662,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     acdcSegment = myutils.import_segment_module(model_name)
             except (ImportError, KeyError) as e:
                 self.logger.error(f'Error importing {model_name}: {e}')
+                # start worker cleanup
+                worker = self.SegForLostIDsWorker
+                self.SegForLostIDsWorker.signals.finished.emit(worker)
                 return
 
             extra_params = all_extra_params
@@ -8982,6 +8985,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.progressWin = None
             
         if hasattr(self, "wait_worker_loop"):
+            printl("exiting event loop")
             self.wait_worker_loop.exit()
         
     def showImageDebug(self, display_info):
@@ -18066,7 +18070,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         except Exception as err:
             # Worker already closed
             pass
-        raise error
+
+        if isinstance(error, str):
+            self.logger.critical(error)
+            raise
+        else:
+            raise error
     
     def workerLog(self, text):
         self.logger.info(text)
@@ -18937,6 +18946,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         f"Warning: {name} has no click or trigger method"
                     )
                 if tool_button.start_event_loop:
+                    printl(f"starting event loop: {name}")
                     self.wait_worker_loop = QEventLoop()
                     self.wait_worker_loop.exec_()
                     

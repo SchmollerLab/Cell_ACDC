@@ -257,7 +257,6 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
         IDs = np.array(IDs)
         # box_curr_lab_other_IDs[np.isin(box_curr_lab_other_IDs, IDs)] = 0
 
-        printl(distance_filler_growth)
         box_curr_lab_other_IDs_grown = skimage.segmentation.expand_labels(box_curr_lab_other_IDs, distance=distance_filler_growth)
         if debug:
             imgs_to_show[i].append(box_curr_lab_other_IDs_grown.copy())

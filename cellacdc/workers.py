@@ -206,7 +206,7 @@ class SegForLostIDsWorker(QObject):
     sigSegForLostIDsWorkerAskInstallGPU = Signal(str, bool)
     sigTrackManuallyAddedObject = Signal(object, object, bool, bool)
 
-    def __init__(self, guiWin, mutex, waitCond, debug=True):
+    def __init__(self, guiWin, mutex, waitCond, debug=False):
         QObject.__init__(self)
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
@@ -565,7 +565,7 @@ class SegForLostIDsWorker(QObject):
 
             self.signals.progressBar.emit(1)
 
-        posData.lab = final_lab
+        posData.lab = original_lab
         self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
         self.emitSigStoreData(autosave=True)
 
