@@ -14,17 +14,18 @@ from qtpy.QtCore import (
 )
 from qtpy.QtWidgets import (
     QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, 
-    QGraphicsProxyWidget, QGroupBox, QCheckBox    
+    QGraphicsProxyWidget, QGroupBox, QCheckBox, QMenu    
 )
 
 import pyqtgraph as pg
 
 from .. import printl
 from .._run import _setup_app
-from .. import widgets
+from .. import apps, widgets
 from .. import colors
+from .. import plot
 
-from . import _widgets, utils, plot
+from . import _widgets, utils
 
 import vispy.scene
 import vispy.color
@@ -65,19 +66,17 @@ class _ChannelData:
 class _PointsLayer:
     name: str
     
-    points: np.ndarray # (N, [z, y, x]) voxel coordinates
+    points_xyz: np.ndarray # (N, [x, y, z]) voxel coordinates
     labels: list[str] | None
-    df: pd.DataFrame | None=None
     
     markers: vispy.scene.visuals.Markers
+    
+    toolbutton: widgets.PointsLayerToolButton
+    properties_dialog: apps.EditPointsLayerAppearanceDialog
+    context_menu: widgets.PointsLayerContextMenu
+    
+    df: pd.DataFrame | None=None
     text: vispy.scene.visuals.Text | None=None
-    
-    visible: bool = True
-    color: vispy.color.Color = 'red'
-    size: float = 8.0
-    symbol: str = 'disc'
-    opacity_slider: widgets.sliderWithSpinBox
-    
     
 class VolumeRendererWindow(QMainWindow):
     """
@@ -120,6 +119,8 @@ class VolumeRendererWindow(QMainWindow):
         self._canvas = None
         self._voxel_size = None
         self._lab_ncolors = 256
+        self._voxel_size_transform = None
+        self._downsample_strides = None
         
         if app is None:
             app = QCoreApplication.instance()
@@ -261,6 +262,30 @@ class VolumeRendererWindow(QMainWindow):
         
         self._object_labels_list_layout.addStretch(1)
     
+    def _init_points_layer_ui_items(
+            self,
+            markers: vispy.scene.visuals.Markers,
+            name: str,
+            points_xyz: np.ndarray | None=None, # (N, [z, y, x]) voxel coordinates
+            labels: list[str] | None=None,
+            color: vispy.color.Color='red',
+            size: float=8.0,
+            opacity: float=1.0,
+            symbol: MarkerSymbols='disc',
+            points_df: pd.DataFrame | None=None,
+        ):
+        rgb_color = vispy.color.Color(color).rgb
+        rgb_color = [round(val*255) for val in rgb_color]
+        
+        toolbutton = widgets.PointsLayerToolButton(
+            symbol, rgb_color, parent=self
+        )
+        toolbutton.setChecked(True)
+        
+        self._points_toolbar.addWidget(toolbutton)
+        
+        self._points_toolbar.show()
+    
     def _random_shuffle_lab_gradient_cmap(self):
         from vispy.color import Colormap as VisPyColormap
         
@@ -350,6 +375,11 @@ class VolumeRendererWindow(QMainWindow):
         self._toolbar = _widgets.VolumeRendererToolbar(parent=self)
         self.addToolBar(Qt.TopToolBarArea, self._toolbar)
         
+        self.addToolBarBreak(Qt.TopToolBarArea)
+        self._points_toolbar = _widgets.PointsLayersToolbar(parent=self)
+        self.addToolBar(Qt.TopToolBarArea, self._points_toolbar)
+        self._points_toolbar.hide()
+        
         self._toolbar.sigUpdate.connect(self.sigUpdate.emit)
         self._toolbar.sigHomeView.connect(self.reset_view)
         self._toolbar.sigSave.connect(self.save_screenshot)
@@ -421,15 +451,21 @@ class VolumeRendererWindow(QMainWindow):
             self._max_texture_3d = 512
         return self._max_texture_3d
     
-    @staticmethod
-    def _downsample(vol: np.ndarray, max_size: int) -> np.ndarray:
+    def _downsample(self, vol: np.ndarray, max_size: int) -> np.ndarray:
         """
         Return a stride-subsampled view of *vol* so no dimension exceeds *max_size*.
 
         Uses integer strides (fast, no interpolation) — suitable for interactive
         previews.  Returns the original array unchanged if no downsampling is needed.
         """
-        strides = tuple(max(1, int(np.ceil(s / max_size))) for s in vol.shape)
+        if self._downsample_strides is None:
+            strides = tuple(
+                max(1, int(np.ceil(s / max_size))) for s in vol.shape
+            )
+            self._downsample_strides = strides
+        else:
+            strides = self._downsample_strides
+        
         if all(s == 1 for s in strides):
             return vol
         return np.ascontiguousarray(vol[::strides[0], ::strides[1], ::strides[2]])
@@ -753,8 +789,12 @@ class VolumeRendererWindow(QMainWindow):
             cmap_name=cmap_name, 
             gradient_item_state=gradient_item_state
         )
-        
-        self.set_voxel_size(voxel_size)
+
+        if self._voxel_size_transform is not None:
+            self._lab_node.transform = self._voxel_size_transform
+        else:
+            self.set_voxel_size(voxel_size)
+            
         self._is_labels_set = True
         
     set_segmentation_masks = set_labels
@@ -791,21 +831,30 @@ class VolumeRendererWindow(QMainWindow):
             voxel_size = self._voxel_size
         
         if voxel_size is None:
-            return
+            voxel_size = (1.0, 1.0, 1.0)
         
         self._voxel_size = voxel_size
         
         from vispy.visuals.transforms import STTransform
 
-        scale = utils.voxel_display_scale(*voxel_size)
+        sx, sy, sz = utils.voxel_display_scale(*voxel_size)
+        scale = (
+            sx * self._downsample_strides[2],
+            sy * self._downsample_strides[1],
+            sz * self._downsample_strides[0],
+        )
         transform = STTransform(scale=scale)
+        self._voxel_size_transform = transform
         
         for channel_data in self._channels_data.values():
             channel_data.node.transform = transform
             
         if self._lab_node is not None:
             self._lab_node.transform = transform
-            
+        
+        for points_layer in self._points_layers.values():
+            points_layer.markers.transform = transform
+        
         if self._canvas is not None:
             self._canvas.update()
     
@@ -907,6 +956,20 @@ class VolumeRendererWindow(QMainWindow):
             size=size,
             face_color=face_color,
             edge_color=edge_color
+        )
+        
+        markers.set_gl_state(depth_test=False)
+        
+        self._init_points_layer_ui_items(
+            markers,
+            name,
+            points_xyz, 
+            labels=labels,
+            color=edge_color,
+            size=size,
+            opacity=opacity,
+            symbol=symbol,
+            points_df=points_df
         )
     
     def show(self, block=False):

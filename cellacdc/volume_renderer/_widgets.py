@@ -84,3 +84,9 @@ class VolumeRendererToolbar(ToolBar):
     
     def is_single_channel_mode(self) -> bool:
         return self.singleChannelCheckbox.isChecked()
+
+class PointsLayersToolbar(ToolBar):    
+    def __init__(self, name='Points Layer Toolbar', parent=None):
+        super().__init__(name, parent)
+        
+        self.addLabel('Points: ')

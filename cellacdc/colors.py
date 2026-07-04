@@ -29,11 +29,13 @@ __all__ = ['ColorMap']
 CYAN_RGB = (0, 255, 255)
 MAGENTA_RGB = (255, 0, 255)
 YELLOW_RGB = (255, 255, 0)
+GREEN_RGB = (0, 255, 0)
 
 FLUO_CHANNELS_COLORS = {
     'mCardinal': MAGENTA_RGB,
     'mNeonGreen': CYAN_RGB,
     'NeonGreen': CYAN_RGB,
+    'KaedeGreen': GREEN_RGB,
     'mNeon': CYAN_RGB,
     'mNG': CYAN_RGB, 
     'mScarlet': MAGENTA_RGB, 

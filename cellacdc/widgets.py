@@ -71,6 +71,7 @@ from . import urls
 from . import _core, core
 from . import QtScoped
 from . import prompts
+from . import plot
 from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER
 from . import _base_widgets
@@ -3391,6 +3392,7 @@ class ToolButtonCustomColor(rightClickToolButton):
         super().__init__(parent=parent)
         if not isinstance(color, QColor):
             color = pg.mkColor(color)
+
         self.symbol = symbol
         self.setColor(color)
 
@@ -3418,15 +3420,15 @@ class ToolButtonCustomColor(rightClickToolButton):
 
     def paintEvent(self, event):
         QToolButton.paintEvent(self, event)
-        p = QPainter(self)
-        w, h = self.width(), self.height()
-        sf = 0.6
-        p.scale(w*sf, h*sf)
-        p.translate(0.5/sf, 0.5/sf)
-        symbol = pg.graphicsItems.ScatterPlotItem.Symbols[self.symbol]
-        pen = pg.mkPen(color=self.penColor, width=2)
-        brush = pg.mkBrush(color=self.brushColor)
         try:
+            p = QPainter(self)
+            w, h = self.width(), self.height()
+            sf = 0.6
+            p.scale(w*sf, h*sf)
+            p.translate(0.5/sf, 0.5/sf)
+            symbol = plot.PyQtGraphScatterPlotSymbolPathMatter[self.symbol]
+            pen = pg.mkPen(color=self.penColor, width=2)
+            brush = pg.mkBrush(color=self.brushColor)
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
             p.setPen(pen)
             p.setBrush(brush)
@@ -12159,3 +12161,29 @@ class warnVisualCppRequired(myMessageBox):
             self.screenShotWin.close()
             
         return super().closeEvent(event)
+
+class PointsLayerContextMenu(QMenu):
+    sigEditPropertes = Signal()
+    sigRemove = Signal()
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        editPropertiesAction = QAction('Edit properties...', self)
+        self.addAction(editPropertiesAction)
+        
+        self.addSeparator()
+        
+        removeAction =  QAction('Remove points layer', self)
+        self.addAction(removeAction)
+        
+        editPropertiesAction.triggered.connect(self.emitSigEditProperties)
+        removeAction.triggered.connect(self.emitSigRemoveAction)
+    
+    def emitSigEditProperties(self):
+        self.sigEditPropertes.emit()
+    
+    def emitSigRemoveAction(self):
+        self.sigRemove.emit()
+        
+        

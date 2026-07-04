@@ -8,28 +8,28 @@ import skimage
 from cellacdc._run import _setup_app
 
 from cellacdc import VolumeRendererWindow
-from cellacdc import data_path
+from cellacdc import myutils
+
+exp_folderpath = myutils.download_3d_renderer_demo_data()
 
 images_path = os.path.join(
-    data_path, 
-    'test_snapshots', 
-    'mtDNA_Anika', 
-    'Position_17',
+    exp_folderpath, 
+    'Position_3',
     'Images', 
 )
 
-mneon_filepath = os.path.join(
-    images_path, 'ASY15-1_0nM-17_s17_mNeon.tif'
+kaedegreen_filepath = os.path.join(
+    images_path, 'FPY015-2_SCD-03_s03_run_num1_KaeGr_preprocessed.tif'
 )
 
 lab_filepath = os.path.join(
-    images_path, 'ASY15-1_0nM-17_s17_segm.npz'
+    images_path, 'FPY015-2_SCD-03_s03_segm.npz'
 )
 
 lab = np.load(lab_filepath)['arr_0']
 
 metadata_filepath = os.path.join(
-    images_path, 'ASY15-1_0nM-17_s17_metadata.csv'
+    images_path, 'FPY015-2_SCD-03_s03_metadata.csv'
 )
 
 df_metadata = pd.read_csv(metadata_filepath, index_col='Description')
@@ -39,8 +39,8 @@ voxel_size = (
     float(df_metadata.at['PhysicalSizeX', 'values'])
 )
 
-volume = skimage.io.imread(mneon_filepath)
-data = {'mNeon': volume}
+volume = skimage.io.imread(kaedegreen_filepath)
+data = {'KaedeGreen': volume}
 
 renderer = VolumeRendererWindow()
 renderer.set_volumes(

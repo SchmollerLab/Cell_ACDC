@@ -22,7 +22,9 @@ from . import GUI_INSTALLED
 if GUI_INSTALLED:
     from qtpy import QtGui
     from . import widgets
-
+    import pyqtgraph as pg
+    
+    
 from . import printl
 from . import _core, error_below, error_close
 from . import _run, core, myutils
@@ -44,6 +46,58 @@ VisPyMarkerSymbols = Literal[
     'star'
 ]
 
+PyQtGraphScatterPlotSymbolPathMatter = {}
+if GUI_INSTALLED:
+    PyQtGraphScatterPlotSymbolPathMatter = (
+        pg.graphicsItems.ScatterPlotItem.Symbols.copy()
+    )
+    # VisPy -> PyQtGraph
+    PyQtGraphScatterPlotSymbolPathMatter['disc'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['o']
+    )
+    PyQtGraphScatterPlotSymbolPathMatter['ring'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['o']
+    )
+    PyQtGraphScatterPlotSymbolPathMatter['square'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['s']
+    )
+    PyQtGraphScatterPlotSymbolPathMatter['diamond'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['d']
+    )
+    PyQtGraphScatterPlotSymbolPathMatter['triangle_up'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['t']
+    )
+    PyQtGraphScatterPlotSymbolPathMatter['triangle_down'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['t1']
+    )
+    PyQtGraphScatterPlotSymbolPathMatter['arrow'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['arrow_up']
+    )
+    PyQtGraphScatterPlotSymbolPathMatter['cross'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['+']
+    )
+    PyQtGraphScatterPlotSymbolPathMatter['x'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['x']
+    )
+    PyQtGraphScatterPlotSymbolPathMatter['star'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['star']
+    )
+    PyQtGraphScatterPlotSymbolPathMatter['vbar'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['|']
+    )
+    PyQtGraphScatterPlotSymbolPathMatter['hbar'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['_']
+    )
+
+    # Closest available approximations
+    PyQtGraphScatterPlotSymbolPathMatter['clobber'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['x']
+    )
+    PyQtGraphScatterPlotSymbolPathMatter['tailed_arrow'] = (
+        PyQtGraphScatterPlotSymbolPathMatter['arrow_up']
+    )
+    
+    
 def matplotlib_cmap_to_lut(
         cmap: Union[Iterable, matplotlib.colors.Colormap, str], 
         n_colors: int=256
