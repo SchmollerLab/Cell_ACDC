@@ -638,9 +638,16 @@ class customAnnotationDialog(QDialog):
             self.loop.exec_()
 
 class _PointsLayerAppearanceGroupbox(QGroupBox):
-    def __init__(self, *args):
+    def __init__(
+            self, 
+            *args, 
+            backend: Literal['pyqtgraph', 'vispy']='pyqtgraph',
+            is_3d=False
+        ):
         super().__init__(*args)
 
+        self._backend = backend
+        
         self.setTitle('Points appearance')
 
         layout = widgets.FormLayout()
@@ -683,21 +690,10 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         '----------------------------------------------------------------------' 
         
         '----------------------------------------------------------------------' 
-        row += 1
-        zHeightTooltip = (
-            'If "Z-depth" is greater than 1, the points will be annotated '
-            'in all the z-slices in the range `z - (Z-depth/2) < z < z + (Z-depth/2)`\n'
-            'where `z` is the center z-slice of the added point.'
-        )
-        self.zHeightSpinBox = widgets.OddSpinBox()
-        self.zHeightSpinBox.setValue(1)
-        self.zHeightSpinBox.setMinimum(1)
-        self.zHeightWidget = widgets.formWidget(
-            self.zHeightSpinBox, stretchWidget=True,
-            labelTextLeft='Z-depth: ', parent=self,
-            toolTip=zHeightTooltip
-        )
-        layout.addFormWidget(self.zHeightWidget, row=row)
+        if not is_3d:
+            row += 1
+            self.addZheightSpinbox(row)
+            layout.addFormWidget(self.zHeightWidget, row=row)
         '----------------------------------------------------------------------'
 
         '----------------------------------------------------------------------' 
@@ -714,6 +710,22 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         '----------------------------------------------------------------------'
 
         self.setLayout(layout)
+    
+    def addZheightSpinbox(self, row: int):
+        zHeightTooltip = (
+            'If "Z-depth" is greater than 1, the points will be annotated '
+            'in all the z-slices in the range '
+            '`z - (Z-depth/2) < z < z + (Z-depth/2)`\n'
+            'where `z` is the center z-slice of the added point.'
+        )
+        self.zHeightSpinBox = widgets.OddSpinBox()
+        self.zHeightSpinBox.setValue(1)
+        self.zHeightSpinBox.setMinimum(1)
+        self.zHeightWidget = widgets.formWidget(
+            self.zHeightSpinBox, stretchWidget=True,
+            labelTextLeft='Z-depth: ', parent=self,
+            toolTip=zHeightTooltip
+        )
     
     def restoreState(self, state):
         self.shortcutWidget.widget.setText(state['shortcut'])
@@ -1417,18 +1429,25 @@ class AddPointsLayerDialog(QBaseDialog):
 class EditPointsLayerAppearanceDialog(QBaseDialog):
     sigClosed = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(
+            self, 
+            backend: Literal['pyqtgraph', 'vispy']='pyqtgraph', 
+            parent=None
+        ):
         self.cancel = True
         super().__init__(parent)
 
         self._parent = parent
+        self._backend = backend
 
         self.setWindowTitle('Custom annotation')
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         mainLayout = QVBoxLayout()
 
-        self.appearanceGroupbox = _PointsLayerAppearanceGroupbox()
+        self.appearanceGroupbox = _PointsLayerAppearanceGroupbox(
+            backend=self._backend
+        )
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
 

@@ -1,5 +1,5 @@
 from collections import defaultdict, deque
-from typing import Dict, List, Union, Iterable, Sequence
+from typing import Dict, List, Union, Iterable, Sequence, get_args
 import os
 import sys
 import operator
