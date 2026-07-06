@@ -8655,7 +8655,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     acdcSegment = self.acdcSegment_li[idx]
                     if acdcSegment is None:
                         self.logger.info(f'Importing {model_name}...')
-                        acdcSegment = myutils.import_segment_module(model_name)
+                        acdcSegment = myutils.import_segment_module(model_name,parent=self)
                         self.acdcSegment_li[idx] = acdcSegment
                 else:
                     self.logger.info(f'Importing {model_name}...')
@@ -8836,9 +8836,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         # Connect the worker's signal to the main thread's slot
         self.SegForLostIDsWorker.sigAskInit.connect(self.onSegForLostInit)
-        # self.SegForLostIDsWorker.sigAskInstallModel.connect(
-        #     self.SegForLostIDsWorkerAskInstallModel
-        # )
+        self.SegForLostIDsWorker.sigSegForLostIDsImportModel.connect(
+            self.onSegForLostIDsImportModel
+        )
         self.SegForLostIDsWorker.sigShowImageDebug.connect(
             self.showImageDebug
         )
@@ -8878,7 +8878,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Start the thread and worker
         self._thread.started.connect(self.SegForLostIDsWorker.run)
         self._thread.start()
-        
+
+    def onSegForLostIDsImportModel(self, model_name):
+        myutils.import_segment_module(model_name)
+        self.SegForLostIDsWaitCond.wakeAll()
+
     def SegForLostIDsWorkerAskInstallGPU(self, model_name, use_gpu):
         result = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
         self.SegForLostIDsWorker.gpu_go = result

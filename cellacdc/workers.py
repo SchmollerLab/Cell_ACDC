@@ -204,6 +204,7 @@ class SegForLostIDsWorker(QObject):
     sigUpdateRP = Signal(bool, bool)
     sigGetSegForLostIDsInputImg = Signal(str)
     sigSegForLostIDsWorkerAskInstallGPU = Signal(str, bool)
+    sigSegForLostIDsImportModel = Signal(str)
     sigTrackManuallyAddedObject = Signal(object, object, bool, bool)
 
     def __init__(self, guiWin, mutex, waitCond, debug=True):
@@ -347,6 +348,10 @@ class SegForLostIDsWorker(QObject):
 
             try:
                 self.logger.info(f'Importing {base_model_name}...')
+                self.mutex.lock()
+                self.sigSegForLostIDsImportModel.emit(base_model_name)
+                self.waitCond.wait(self.mutex)
+                self.mutex.unlock()
                 acdcSegment = myutils.import_segment_module(base_model_name)
             except (IndexError, ImportError, KeyError):
                 self.logger.warning(

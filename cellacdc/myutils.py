@@ -3047,12 +3047,13 @@ def is_pkg_version_within_range(
 
 def check_install_cellpose(
         version: Literal['2.0', '3.0', '4.0', 'any'] = '2.0', 
-        version_to_install_if_missing: Literal['2.0', '3.0', '4.0'] = '4.0'
+        version_to_install_if_missing: Literal['2.0', '3.0', '4.0'] = '4.0',
+        parent=None
     ):
     if isinstance(version, int):
         version = f'{version}.0'
         
-    check_install_torch()
+    check_install_torch(qparent=parent)
 
     if version == 'any':
         try:
@@ -3076,7 +3077,31 @@ def check_install_cellpose(
         max_version=f'{next_version}.0',
         min_version=min_version,
         include_lower_version=True,
+        install_dependencies=False,
+        parent= parent
     )
+    
+    if major_version <= 3:
+        check_install_package(
+            'fastremap',
+            parent=parent
+        )
+        check_install_package(
+            'numba',
+            parent=parent
+        )
+        check_install_package(
+            'roifile',
+            parent=parent
+        )
+        check_install_package(
+            'imagecodecs',
+            parent=parent
+        )
+        check_install_package(
+            'fill_voids',
+            parent=parent
+        )
 
     purge_module('cellpose')
 
