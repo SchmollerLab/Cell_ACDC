@@ -45,6 +45,20 @@ VisPyMarkerSymbols = Literal[
     'triangle_down', 
     'star'
 ]
+PyQtGraphScatterPlotSymbolToVispyMapper = {
+    'o': 'disc',
+    's': 'square', 
+    'd': 'diamond',
+    't': 'triangle_up', 
+    't1': 'triangle_down',
+    'arrow_up': 'arrow',
+    '+': 'cross',
+    'x': 'x',
+    'star': 'star',
+    '|': 'vbar',
+    '_': 'hbar'
+}
+
 
 PyQtGraphScatterPlotSymbolPathMatter = {}
 if GUI_INSTALLED:

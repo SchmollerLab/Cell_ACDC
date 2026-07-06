@@ -3205,6 +3205,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             SizeZ=posData.SizeZ
         ) 
         
+        self.addPointsLayersToVolumeViewer(self._volume_renderer)
+        
         self._volume_renderer.sigClose.connect(self.onClose3dViewer)
         self._volume_renderer.sigUpdate.connect(self.onUpdate3dViewer)
         self._volume_renderer.run(block=False)
@@ -24312,6 +24314,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             np.array(action.penColor)/255, 0.3
         )
         action.pointSize = pointSize
+        action.symbol = symbol
         action.zRadius = zRadius
         action.button = toolButton
         action.scatterItem = scatterItem
@@ -24668,6 +24671,43 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     action.pointsData[self.pos_i][posData.frame_i]['id'].append(
                         obj.label
                     )
+    
+    def addPointsLayersToVolumeViewer(self, volume_renderer):
+        from cellacdc.plot import PyQtGraphScatterPlotSymbolToVispyMapper
+        
+        posData = self.data[self.pos_i]
+        for toolbar in self.pointsLayersToolbars:
+            for action in toolbar.actions()[1:]:
+                if not hasattr(action, 'layerTypeIdx'):
+                    continue
+
+                if action.layerTypeIdx < 2 and computePointsLayers:
+                    self.getCentroidsPointsData(action)
+                
+                frames = action.pointsData.get(self.pos_i, set())
+                if posData.frame_i not in frames:
+                    continue
+                
+                xx, yy, zz = [], [], []
+                for z, z_data in framePointsData.items():
+                    xx.extend(z_data['x'])
+                    yy.extend(z_data['y'])
+                    zz.extend([z]*len(z_data['x']))
+                
+                color = np.array(action.penColor)/255
+                vispy_symbol = (
+                    PyQtGraphScatterPlotSymbolToVispyMapper[action.symbol]
+                )
+                points_zyx = np.column_stack((zz, yy, xx))
+                volume_renderer.add_points_layer(
+                    name,
+                    points=points_zyx,
+                    color=color,
+                    size=action.pointSize,
+                    opacity=1.0,
+                    symbol=vispy_symbol,
+                    visible=action.button.isChecked()
+                )
     
     def drawPointsLayers(self, computePointsLayers=True):
         posData = self.data[self.pos_i]

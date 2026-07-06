@@ -1150,6 +1150,7 @@ class VolumeRendererWindow(QMainWindow):
             size: float=8.0,
             opacity: float=1.0,
             symbol: MarkerSymbols='disc',
+            visible: bool=True,
             scaling: Literal['fixed', 'scene']='scene'
         ):
         if name in self._points_layers.keys():
@@ -1249,6 +1250,8 @@ class VolumeRendererWindow(QMainWindow):
                 self._toggle_points_layer, points_layer=points_layer
             )
         )
+        if not visible:
+            toolbutton.setChecked(False)
         
         self._points_layers[name] = points_layer
     
