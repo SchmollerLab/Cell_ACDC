@@ -4173,7 +4173,7 @@ def init_tracker(
     else:
         return tracker, track_params
 
-def import_segment_module(model_name):
+def import_segment_module(model_name, parent=None):
     original_model_name = model_name
     if model_name == 'Automatic thresholding':
         model_name = 'thresholding'

@@ -8804,10 +8804,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.setFrameNavigationDisabled(disable=True, why='Segmentation for lost IDs')
         posData = self.data[self.pos_i]
-        if posData.frame_i == 0:
+        frame_i = posData.frame_i
+        if frame_i == 0:
             self.logger.info('Segmentation for lost IDs not available on first frame.')
             self.setFrameNavigationDisabled(disable=False, why='Segmentation for lost IDs')
+                        
+            if hasattr(self, "wait_worker_loop"):
+                self.wait_worker_loop.exit()
             return
+
+        prev_IDs = posData.allData_li[frame_i-1]['regionprops'].IDs_set
+        tracked_lost_IDs = self.getTrackedLostIDs()
+
+        missing_IDs = prev_IDs - posData.rp.IDs_set - set(tracked_lost_IDs)
+        if not missing_IDs:
+            self.logger.info('No missing IDs, skipping Segmentation for lost IDs')
+            self.setFrameNavigationDisabled(disable=False, why='Segmentation for lost IDs')
+
+            if hasattr(self, "wait_worker_loop"):
+                self.wait_worker_loop.exit()
+            return
+
         self.storeUndoRedoStates(False)
         self.progressWin = apps.QDialogWorkerProgress(
             title='Segmenting for lost IDs', parent=self,
@@ -8822,10 +8839,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.logger.info('Settings for segmentation for lost IDs not set.')
         self.SegForLostIDsSetSettings()
         self.SegForLostIDsWaitCond.wakeAll()
-    
-    # def SegForLostIDsWorkerAskInstallModel(self, model_name):
-    #     myutils.check_install_package(model_name)
-    #     self.SegForLostIDsWaitCond.wakeAll()
 
     def startSegForLostIDsWorker(self):
         self.SegForLostIDsMutex = QMutex()
@@ -8857,12 +8870,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.SegForLostIDsWorker.sigGetSegForLostIDsInputImg.connect(
             self.onSigGetInputImgSegForLostIDsWorker
         )
-        # self.SegForLostIDsWorker.sigGetData.connect(self.onSigGetDataSegForLostIDsWorker)
-        # self.SegForLostIDsWorker.sigGet2Dlab.connect(self.onSigGet2DlabSegForLostIDsWorker)
-        # self.SegForLostIDsWorker.sigGetTrackedLostIDs.connect(self.onSigGetTrackedSegForLostIDsWorker)
-        # self.SegForLostIDsWorker.sigGetBrushID.connect(self.onSigGetBrushIDSegForLostIDsWorker)
-        self.SegForLostIDsWorker.sigTrackManuallyAddedObject.connect(self.onSigTrackManuallyAddedObjectSegForLostIDsWorker)
-
+        self.SegForLostIDsWorker.sigTrackManuallyAddedObject.connect(
+            self.onSigTrackManuallyAddedObjectSegForLostIDsWorker
+            )
         # Move the worker to the thread
         self.SegForLostIDsWorker.moveToThread(self._thread)
 
@@ -8907,24 +8917,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.onSigUpdateRP(self.SegForLostIDsWaitCond,
                            wl_update=wl_update, 
                            wl_track_og_curr=wl_track_og_curr)
-        
-    # def onSigGetDataSegForLostIDsWorker(self):
-    #     self.onSigGetData(
-    #         self.SegForLostIDsWaitCond)
-
-    # def onSigGet2DlabSegForLostIDsWorker(self):
-    #     posData = self.data[self.pos_i]
-    #     lab = self.get_2Dlab(posData.lab)
-    #     self.SegForLostIDsWorker.lab = lab
-    #     self.SegForLostIDsWaitCond.wakeAll()
-    
-    # def onSigGetTrackedSegForLostIDsWorker(self):
-    #     self.SegForLostIDsWorker.trackedLostIDs = self.getTrackedLostIDs()
-    #     self.SegForLostIDsWaitCond.wakeAll()
-    
-    # def onSigGetBrushIDSegForLostIDsWorker(self):
-    #     self.SegForLostIDsWorker.brushID = self.setBrushID(useCurrentLab=True, return_val=True)
-    #     self.SegForLostIDsWaitCond.wakeAll()
 
     def onSigTrackManuallyAddedObjectSegForLostIDsWorker(self, added_IDs, isNewID, wl_update, wl_track_og_curr):
         assignments = self.trackManuallyAddedObject(added_IDs, isNewID, wl_update=wl_update, wl_track_og_curr=wl_track_og_curr)
