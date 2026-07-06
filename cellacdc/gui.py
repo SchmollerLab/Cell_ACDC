@@ -8883,7 +8883,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self._thread.start()
 
     def onSegForLostIDsImportModel(self, model_name):
-        myutils.import_segment_module(model_name)
+        model = myutils.import_segment_module(model_name)
+        if model is None:
+            raise ModuleNotFoundError(
+                f'{model_name} install failed'
+            )
+
         self.SegForLostIDsWaitCond.wakeAll()
 
     def SegForLostIDsWorkerAskInstallGPU(self, model_name, use_gpu):

@@ -3072,16 +3072,19 @@ def check_install_cellpose(
 
     min_version = min_target_versions_cp[str(major_version)]
     
+    py_version = f'{sys.version_info.major}.{sys.version_info.minor}'
+    install_deps_separately = True if major_version <= 3 and py_version >= '3.13' else False
+    
     check_install_package(
         'cellpose', 
         max_version=f'{next_version}.0',
         min_version=min_version,
         include_lower_version=True,
-        install_dependencies=False,
+        install_dependencies=not install_deps_separately,
         parent= parent
     )
     
-    if major_version <= 3:
+    if install_deps_separately:
         check_install_package(
             'fastremap',
             parent=parent
