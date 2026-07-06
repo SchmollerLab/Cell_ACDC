@@ -257,7 +257,6 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
         IDs = np.array(IDs)
         # box_curr_lab_other_IDs[np.isin(box_curr_lab_other_IDs, IDs)] = 0
 
-        printl(distance_filler_growth)
         box_curr_lab_other_IDs_grown = skimage.segmentation.expand_labels(box_curr_lab_other_IDs, distance=distance_filler_growth)
         if debug:
             imgs_to_show[i].append(box_curr_lab_other_IDs_grown.copy())
@@ -319,13 +318,13 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
 
         # Set overlapping regions to 0, so already segmented cells are not overwritten
         IDs_to_filter = [ID for ID, overlap_perc in overlaps if overlap_perc >= overlap_threshold]
-            
+
         if IDs_to_filter:
             box_model_lab[np.isin(box_model_lab, IDs_to_filter)] = 0
                
         rp_model_lab = regionprops.acdcRegionprops(box_model_lab,precache_centroids=False)
         for obj in rp_model_lab:
-            box_curr_lab_other_IDs[box_model_lab == obj.label] = new_unique_ID
+            box_curr_lab_other_IDs[obj.slice][obj.image] = new_unique_ID
             assigned_IDs.append(new_unique_ID)
             new_unique_ID += 1
 

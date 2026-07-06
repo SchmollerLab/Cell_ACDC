@@ -207,7 +207,7 @@ class SegForLostIDsWorker(QObject):
     sigSegForLostIDsImportModel = Signal(str)
     sigTrackManuallyAddedObject = Signal(object, object, bool, bool)
 
-    def __init__(self, guiWin, mutex, waitCond, debug=True):
+    def __init__(self, guiWin, mutex, waitCond, debug=False):
         QObject.__init__(self)
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
@@ -431,15 +431,10 @@ class SegForLostIDsWorker(QObject):
             if assignments is None:
                 assignments = {} 
 
+            # update assigned_IDs based on assignments made during tracking
             for i, ID in enumerate(assigned_IDs):
                 if ID in assignments:
                     assigned_IDs[i] = assignments[ID]
-
-            # for bbox_ID, IDs in enumerate(IDs_bboxs):
-            #     for i, ID in enumerate(IDs):
-            #         if ID in assignments:
-            #             IDs[i] = assignments[ID]
-            #     IDs_bboxs[bbox_ID] = IDs
 
             IDs_bboxs_list.append(IDs_bboxs)
             newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
@@ -473,9 +468,6 @@ class SegForLostIDsWorker(QObject):
                     # self.sigShowImageDebug.emit(display_info)
         global_areas = [obj.area for obj in posData.rp]
         global_area_mean = np.mean(global_areas) if len(global_areas) > 0 else None
-
-        reference_lab = deepcopy(original_lab)
-        final_lab = deepcopy(original_lab)
         
         for i, (IDs_bboxs, bboxs) in enumerate(zip(IDs_bboxs_list, bboxs_list)):
             args_new = model_settings[i]['args_new']
@@ -507,52 +499,37 @@ class SegForLostIDsWorker(QObject):
                         if ID not in model_lab_rp.IDs_set
                     ]
 
-                original_bbox_lab = deepcopy(reference_lab[box_x_min:box_x_max, box_y_min:box_y_max])
-                original_bbox_lab_cleared_borders = skimage.segmentation.clear_border(original_bbox_lab)
-                original_lab_rp = regionprops.acdcRegionprops(original_bbox_lab_cleared_borders, precache_centroids=False)
+                original_bbox_lab = original_lab[box_x_min:box_x_max, box_y_min:box_y_max] # deepcopy(original_lab[box_x_min:box_x_max, box_y_min:box_y_max])
+                # original_bbox_lab_cleared_borders = skimage.segmentation.clear_border(original_bbox_lab)
+                # original_lab_rp = regionprops.acdcRegionprops(original_bbox_lab_cleared_borders, precache_centroids=False)
 
 
-                areas = [obj.area for obj in original_lab_rp]
-                if len(areas) > 0:
-                    area_mean = np.mean(areas)
-                elif global_area_mean is not None:
-                    area_mean = global_area_mean
-                else:
-                    model_areas = [obj.area for obj in model_lab_rp]
-                    area_mean = np.mean(model_areas) if len(model_areas) > 0 else None
+                # areas = [obj.area for obj in original_lab_rp]
+                # if len(areas) > 0:
+                #     area_mean = np.mean(areas)
+                # elif global_area_mean is not None:
+                #     area_mean = global_area_mean
+                # else:
+                #     model_areas = [obj.area for obj in model_lab_rp]
+                #     area_mean = np.mean(model_areas) if len(model_areas) > 0 else None
 
+                area_mean = global_area_mean
+                
                 skip_size_filter = area_mean is None
                 if not skip_size_filter:
                     min_area = (1 - args_new['size_perc_diff']) * area_mean
                     max_area = (1 + args_new['size_perc_diff']) * area_mean
 
-                output_bbox_lab = final_lab[box_x_min:box_x_max, box_y_min:box_y_max].copy()
-                # occupied_mask = output_bbox_lab > 0
-
                 filtered_IDs = []
-                IDs_filtered_for_overlap = []
                 for obj in model_lab_rp:
-                    keep_obj = True
-
+                    if obj.label not in current_model_new_IDs: # make sure its an ID actually found by model and not prev model
+                        continue
                     if not skip_size_filter and not (obj.area > min_area and obj.area < max_area):
-                        keep_obj = False
-
+                        continue
                     if args_new['allow_only_tracked_cells'] and obj.label not in prev_IDs:
-                        keep_obj = False
+                        continue
 
-                    if obj.label not in current_model_new_IDs:
-                        keep_obj = False
-
-                    # if keep_obj:
-                    #     obj_mask = model_bbox_lab == obj.label
-                    #     overlap_area = np.logical_and(obj_mask, occupied_mask).sum()
-                    #     overlap_perc = overlap_area / max(1, obj.area)
-                    #     if overlap_perc >= args_new['overlap_threshold']:
-                    #         keep_obj = False
-                    #         IDs_filtered_for_overlap.append(obj.label)
-
-                    if keep_obj:
-                        filtered_IDs.append(obj.label)
+                    filtered_IDs.append(obj.label)
                     
                 if self._debug:
                     IDs_filtered_for_size = [
@@ -573,10 +550,12 @@ class SegForLostIDsWorker(QObject):
                     print(f'    Border: {IDs_filtered_border}')
                     print(f'    End: {filtered_IDs}')
 
-                mask = np.isin(model_bbox_lab, filtered_IDs)
-                output_bbox_lab[mask] = model_bbox_lab[mask]
-                final_lab[box_x_min:box_x_max, box_y_min:box_y_max] = output_bbox_lab
-
+                if filtered_IDs:
+                    mask = np.isin(model_bbox_lab, filtered_IDs)
+                    # make sure to not overwrite any existing IDs in the original lab
+                    mask = np.logical_and(mask, original_bbox_lab == 0)
+                    original_bbox_lab[mask] = model_bbox_lab[mask]
+                    # original_lab[box_x_min:box_x_max, box_y_min:box_y_max] = original_bbox_lab
                 
                 if self._debug:
                     display_info = {
@@ -591,7 +570,7 @@ class SegForLostIDsWorker(QObject):
 
             self.signals.progressBar.emit(1)
 
-        posData.lab = final_lab
+        posData.lab = original_lab
         self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
         self.emitSigStoreData(autosave=True)
 
