@@ -57,7 +57,7 @@ data = {'mScarlet-I3': volume}
 renderer = VolumeRendererWindow()
 renderer.set_volumes(
     data,
-    # voxel_size=voxel_size
+    voxel_size=voxel_size
 )
 renderer.set_labels(lab) 
 renderer.add_points_layer(

@@ -118,8 +118,9 @@ class VolumeRendererWindow(QMainWindow):
         self._lab_node = None
         self._canvas = None
         self._voxel_size = None
-        self._lab_ncolors = 256
         self._voxel_size_transform = None
+        self._lab_ncolors = 256
+        self._voxel_size_strides_transform = None
         self._downsample_strides = None
         
         if app is None:
@@ -280,11 +281,33 @@ class VolumeRendererWindow(QMainWindow):
         toolbutton = widgets.PointsLayerToolButton(
             symbol, rgb_color, parent=self
         )
+        toolbutton.setCheckable(True)
         toolbutton.setChecked(True)
         
-        self._points_toolbar.addWidget(toolbutton)
+        properties_dialog = apps.EditPointsLayerAppearanceDialog(
+            backend='vispy', 
+            is_3d=True, 
+            add_opacity_slider=True,
+            parent=toolbutton,
+            hide_on_close=True
+        )
+
+        properties_dialog.restoreState({
+            'symbol': symbol,
+            'color': rgb_color,
+            'pointSize': size,
+            'opacity': opacity
+        })
+        properties_dialog.hide()
         
+        context_menu = widgets.PointsLayerContextMenu(toolbutton)
+        toolbutton._contextMenu = context_menu
+        context_menu.hide()
+        
+        toolbutton.action = self._points_toolbar.addWidget(toolbutton)
         self._points_toolbar.show()
+        
+        return toolbutton, properties_dialog, context_menu
     
     def _random_shuffle_lab_gradient_cmap(self):
         from vispy.color import Colormap as VisPyColormap
@@ -748,6 +771,60 @@ class VolumeRendererWindow(QMainWindow):
 
         self._set_visiblity(update=True)
     
+    def _update_points_layer_properties(self, points_state, points_layer=None):
+        if points_layer is None:
+            return
+        
+        symbol = points_state['symbol']
+        color = [val/255 for val in points_state['color']]
+        size = points_state['pointSize']
+        opacity = points_state['opacity']
+    
+        face_color = vispy.color.Color(color, alpha=opacity*0.5)
+        edge_color = vispy.color.Color(color, alpha=opacity)
+        
+        markers = points_layer.markers
+        markers.set_data(
+            points_layer.points_xyz, 
+            symbol=symbol,
+            size=size,
+            face_color=face_color,
+            edge_color=edge_color
+        )
+        self._canvas.update()
+    
+    def _toggle_points_layer(self, checked, points_layer=None):
+        if points_layer is None:
+            return
+        
+        markers = points_layer.markers
+        markers.visible = checked
+        
+        self._canvas.update()
+    
+    def _edit_points_layer_properties(self, points_layer=None):
+        if points_layer is None:
+            return
+        
+        properties_dialog = points_layer.properties_dialog
+        properties_dialog.exec_()
+    
+    def _remove_points_layer(self, points_layer=None):
+        if points_layer is None:
+            return
+        
+        name = points_layer.name
+        points_layer.markers.parent = None
+        if points_layer.text is not None:
+            points_layer.text = None
+        
+        points_layer.properties_dialog.force_close()
+        
+        points_layer.toolbutton.setChecked(False)
+        self._points_toolbar.removeAction(points_layer.toolbutton.action)
+        
+        del self._points_layers[name]
+    
     def set_labels(
             self, 
             lab: np.ndarray, 
@@ -790,10 +867,10 @@ class VolumeRendererWindow(QMainWindow):
             gradient_item_state=gradient_item_state
         )
 
-        if self._voxel_size_transform is not None:
-            self._lab_node.transform = self._voxel_size_transform
+        if self._voxel_size_strides_transform is not None:
+            self._lab_node.transform = self._voxel_size_strides_transform
         else:
-            self.set_voxel_size(voxel_size)
+            self.set_voxel_size_strides_transform(voxel_size)
             
         self._is_labels_set = True
         
@@ -826,7 +903,10 @@ class VolumeRendererWindow(QMainWindow):
             lut_items_states=lut_items_states
         )
     
-    def set_voxel_size(self, voxel_size: tuple[float, float, float] | None):
+    def set_voxel_size_strides_transform(
+            self, 
+            voxel_size: tuple[float, float, float] | None
+        ):
         if voxel_size is None:
             voxel_size = self._voxel_size
         
@@ -844,7 +924,8 @@ class VolumeRendererWindow(QMainWindow):
             sz * self._downsample_strides[0],
         )
         transform = STTransform(scale=scale)
-        self._voxel_size_transform = transform
+        self._voxel_size_strides_transform = transform
+        self._voxel_size_transform = STTransform(scale=(sx, sy, sz))
         
         for channel_data in self._channels_data.values():
             channel_data.node.transform = transform
@@ -853,7 +934,7 @@ class VolumeRendererWindow(QMainWindow):
             self._lab_node.transform = transform
         
         for points_layer in self._points_layers.values():
-            points_layer.markers.transform = transform
+            points_layer.markers.transform = self._voxel_size_transform
         
         if self._canvas is not None:
             self._canvas.update()
@@ -911,7 +992,11 @@ class VolumeRendererWindow(QMainWindow):
         
         self._set_gl_blend_states()
         
-        self.set_voxel_size(voxel_size)
+        if self._voxel_size_strides_transform is not None:
+            for channel_data in self._channels_data.values():
+                channel_data.node.transform = self._voxel_size_strides_transform
+        else:
+            self.set_voxel_size_strides_transform(voxel_size)
         
         self._canvas.update()
     
@@ -928,6 +1013,12 @@ class VolumeRendererWindow(QMainWindow):
             symbol: MarkerSymbols='disc',
             scaling: Literal['fixed', 'scene']='scene'
         ):
+        if name in self._points_layers.keys():
+            raise NameError(
+                f'Points layer with name "{name}" already existing. '
+                'Choose a different name'
+            )
+            
         from vispy.scene import visuals
         
         if zyx_columns_names is None:
@@ -959,8 +1050,10 @@ class VolumeRendererWindow(QMainWindow):
         )
         
         markers.set_gl_state(depth_test=False)
+        if self._voxel_size_transform is not None:
+            markers.transform = self._voxel_size_transform
         
-        self._init_points_layer_ui_items(
+        ui_items = self._init_points_layer_ui_items(
             markers,
             name,
             points_xyz, 
@@ -971,6 +1064,45 @@ class VolumeRendererWindow(QMainWindow):
             symbol=symbol,
             points_df=points_df
         )
+        
+        toolbutton, properties_dialog, context_menu = ui_items
+        
+        points_layer = _PointsLayer(
+            name=name,
+            points_xyz=points_xyz, 
+            labels=labels, 
+            markers=markers,
+            toolbutton=toolbutton,
+            properties_dialog=properties_dialog,
+            context_menu=context_menu,
+            df=points_df
+        )
+        
+        properties_dialog.sigValueChanged.connect(
+            partial(
+                self._update_points_layer_properties, points_layer=points_layer
+            )
+        )
+        
+        context_menu.sigEditPropertes.connect(
+            partial(
+                self._edit_points_layer_properties, points_layer=points_layer
+            )
+        )
+        
+        context_menu.sigRemove.connect(
+            partial(
+                self._remove_points_layer, points_layer=points_layer
+            )
+        )
+        
+        toolbutton.toggled.connect(
+            partial(
+                self._toggle_points_layer, points_layer=points_layer
+            )
+        )
+        
+        self._points_layers[name] = points_layer
     
     def show(self, block=False):
         self.resize(960, 720)
@@ -1004,7 +1136,10 @@ class VolumeRendererWindow(QMainWindow):
             event.ignore()
             self.hide()
             return
-            
+        
+        for points_layer in self._points_layers.values():
+            points_layer.properties_dialog.force_close()
+        
         if hasattr(self, 'loop'):
             self.loop.exit()
         

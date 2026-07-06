@@ -3490,8 +3490,9 @@ class PointsLayerToolButton(ToolButtonCustomColor):
     def __init__(self, symbol, color='r', parent=None):
         super().__init__(symbol, color=color, parent=parent)
         self.sigRightClick.connect(self.showContextMenu)
+        self.initContextMenu()
     
-    def showContextMenu(self, event):
+    def initContextMenu(self):
         contextMenu = QMenu(self)
         contextMenu.addSeparator()
 
@@ -3508,8 +3509,11 @@ class PointsLayerToolButton(ToolButtonCustomColor):
         showIdsAction.setChecked(True)
         contextMenu.addAction(showIdsAction)
         showIdsAction.toggled.connect(self.emitShowIdsToggled)
-
-        contextMenu.exec(event.globalPos())
+        
+        self._contextMenu = contextMenu
+    
+    def showContextMenu(self, event):
+        self._contextMenu.exec(event.globalPos())
     
     def emitRemove(self):
         self.sigRemove.emit(self)
@@ -12192,4 +12196,18 @@ class PointsLayerContextMenu(QMenu):
     def emitSigRemoveAction(self):
         self.sigRemove.emit()
         
-        
+class DummyWidget:
+    def __init__(self, *args, **kwargs):
+        pass
+    
+    def setValue(self, *args, **kwargs):
+        pass
+    
+    def setText(self, *args, **kwargs):
+        pass
+    
+    def text(self):
+        return
+    
+    def value(self):
+        return
