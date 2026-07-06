@@ -8994,7 +8994,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.progressWin = None
             
         if hasattr(self, "wait_worker_loop"):
-            printl("exiting event loop")
             self.wait_worker_loop.exit()
         
     def showImageDebug(self, display_info):
@@ -18955,8 +18954,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         f"Warning: {name} has no click or trigger method"
                     )
                 if tool_button.start_event_loop:
-                    printl(f"starting event loop: {name}")
-                    self.wait_worker_loop = QEventLoop()
+b                    self.wait_worker_loop = QEventLoop()
                     self.wait_worker_loop.exec_()
                     
 
