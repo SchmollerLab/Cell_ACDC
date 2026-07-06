@@ -14,7 +14,8 @@ from qtpy.QtCore import (
 )
 from qtpy.QtWidgets import (
     QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, 
-    QGraphicsProxyWidget, QGroupBox, QCheckBox, QMenu    
+    QGraphicsProxyWidget, QGroupBox, QCheckBox, QMenu, QRadioButton, 
+    QButtonGroup   
 )
 
 import pyqtgraph as pg
@@ -55,10 +56,15 @@ _DEFAULT_LABELS_CMAP_NAME = 'viridis'
 @dataclass
 class _ChannelData:
     node: vispy.scene.visuals.Volume
-    lut_item: widgets.baseHistogramLUTitem
+    
     volume: np.ndarray
+    _raw_volume: np.ndarray
+    _off_focus_volume: np.ndarray
+    
     auto_button: QPushButton
     reset_button: QPushButton
+    lut_item: widgets.baseHistogramLUTitem
+    
     opacity_slider: widgets.sliderWithSpinBox
     toolbutton: widgets.OverlayChannelToolButton
 
@@ -67,6 +73,7 @@ class _PointsLayer:
     name: str
     
     points_xyz: np.ndarray # (N, [x, y, z]) voxel coordinates
+    _label_ids: np.ndarray | None # (N, id) id in self._orig_lab
     labels: list[str] | None
     
     markers: vispy.scene.visuals.Markers
@@ -116,6 +123,7 @@ class VolumeRendererWindow(QMainWindow):
         self._gradient_item_state = None
         self._lab_gradient_cmap_name = None
         self._lab_node = None
+        self._orig_lab = None
         self._canvas = None
         self._voxel_size = None
         self._voxel_size_transform = None
@@ -252,17 +260,118 @@ class VolumeRendererWindow(QMainWindow):
             
         self._lab_node.opacity = self._lab_opacity_slider.value()
         
+        self._object_labels_list_buttongroup = QButtonGroup(self)
+        self._object_labels_list_buttongroup.setExclusive(False)
         for obj in self._rp:
             obj_checkbox = QCheckBox(f'{obj.label}')
             obj_checkbox.setChecked(True)
+            obj_checkbox.obj = obj
             self._object_labels_list_layout.addWidget(obj_checkbox)
-            
+            self._object_labels_list_buttongroup.addButton(obj_checkbox)
             obj_checkbox.toggled.connect(
                 partial(self._set_object_checked, obj=obj)
             )
         
         self._object_labels_list_layout.addStretch(1)
+        
+        select_all_button = widgets.selectAllPushButton()
+        select_all_button.sigClicked.connect(
+            self._set_all_object_labels_list_checked
+        )
+        self._right_vertical_layout.addWidget(select_all_button)
+        
+        self._right_vertical_layout.addSpacing(10)
+        
+        display_mode_groupbox = QGroupBox('Display mode')
+        display_mode_layout = QVBoxLayout()
+        display_mode_groupbox.setLayout(display_mode_layout)
+        
+        self._display_mode_hide_unselected_rb = QRadioButton(
+            'Hide unselected', self
+        )
+        self._display_mode_focus_selected_rb = QRadioButton(
+            'Focus on selected', self
+        )
+        self._display_mode_hide_unselected_rb.setChecked(True)
+        
+        self._display_mode_focus_selected_rb.toggled.connect(
+            self._display_mode_radio_button_toggled
+        )
+        
+        display_mode_layout.addWidget(self._display_mode_hide_unselected_rb)
+        display_mode_layout.addWidget(self._display_mode_focus_selected_rb)
+        
+        self._right_vertical_layout.addWidget(display_mode_groupbox)
     
+    def _display_mode_radio_button_toggled(self, toggled: bool):
+        self._update_display()
+    
+    def _set_all_object_labels_list_checked(self, select_all_button, checked):
+        for checkbox in self._object_labels_list_buttongroup.buttons():
+            checkbox.blockSignals(True)
+            checkbox.setChecked(checked)
+            checkbox.blockSignals(False)
+
+        self._update_display()
+    
+    def _update_lab_node(self, update=True):
+        for checkbox in self._object_labels_list_buttongroup.buttons(): 
+            obj = checkbox.obj
+            checked = checkbox.isChecked()
+            _id = obj.label if checked else 0
+            self._lab[obj.slice][obj.image] = _id
+            
+        self._lab_node.set_data(self._lab)
+        
+        if update:
+            self._canvas.update()
+    
+    def _update_markers(self, update=True):
+        for points_layer in self._points_layers.values():
+            state = points_layer.properties_dialog.state()
+            self._update_points_layer_properties(
+                state, points_layer=points_layer, update=update
+            )
+        
+        if update:
+            self._canvas.update()
+    
+    def _update_volume_nodes(self, update=True):
+        for channel_data in self._channels_data.values():
+            displayed_volume = channel_data.volume
+            if self._display_mode_focus_selected_rb.isChecked():
+                unselected_vals = channel_data._off_focus_volume
+                np.copyto(displayed_volume, unselected_vals)
+            elif self._display_mode_hide_unselected_rb.isChecked():
+                displayed_volume[:] = 0
+            
+            for checkbox in self._object_labels_list_buttongroup.buttons(): 
+                obj = checkbox.obj
+                checked = checkbox.isChecked()
+                if not checked:
+                    continue
+                
+                src_intensities = (
+                    channel_data._raw_volume[obj.slice][obj.image]
+                )
+                displayed_volume[obj.slice][obj.image] = src_intensities
+            
+            channel_data.node.set_data(displayed_volume)
+
+        if update:
+            self._canvas.update()
+    
+    def _update_display(self, exclude_lab=False, exclude_markers=False):
+        if not exclude_lab:
+            self._update_lab_node(update=False)
+        
+        if not exclude_markers:
+            self._update_markers(update=False)
+
+        self._update_volume_nodes(update=False)
+        
+        self._canvas.update()
+        
     def _init_points_layer_ui_items(
             self,
             markers: vispy.scene.visuals.Markers,
@@ -351,8 +460,7 @@ class VolumeRendererWindow(QMainWindow):
         self._lab[obj.slice][obj.image] = _id
         
         self._lab_node.set_data(self._lab)
-        
-        self._canvas.update()
+        self._update_display(exclude_lab=True)
     
     def _on_reset_lab_gradient(self, *args):        
         if self._lab_gradient_item_state is not None:
@@ -428,14 +536,20 @@ class VolumeRendererWindow(QMainWindow):
             self._object_labels_list_layout
         )
         
+        self._right_vertical_layout = QVBoxLayout()
+        self._right_vertical_layout.addWidget(
+            self._object_labels_list_scrollarea
+        )
+        self._right_vertical_layout.addSpacing(10)
+        
         self._scene_layout = QHBoxLayout()
         self._scene_layout.addWidget(lut_items_graphics_layout, stretch=0)
         self._scene_layout.addWidget(self._canvas.native, stretch=10)
         self._scene_layout.addLayout(
             self._lab_gradient_item_layout, stretch=0
         )
-        self._scene_layout.addWidget(
-            self._object_labels_list_scrollarea, stretch=1
+        self._scene_layout.addLayout(
+            self._right_vertical_layout, stretch=1
         )
         
         self._controls_groupbox = QGroupBox('Controls')
@@ -608,11 +722,21 @@ class VolumeRendererWindow(QMainWindow):
             )
             toolbutton.action = self._toolbar.addWidget(toolbutton)
             toolbutton.setChecked(True)
+            
+            _raw_volume = volume.copy()
+            _off_focus_volume = skimage.filters.gaussian(_raw_volume, sigma=1.2)
+            _off_focus_volume *= (
+                np.percentile(_raw_volume, 99.9) 
+                / np.percentile(_off_focus_volume, 99.9)
+            )
+            _off_focus_volume *= 0.9
 
             channel_data = _ChannelData(
                 node=node,
                 lut_item=lut_item,
                 volume=volume,
+                _raw_volume=_raw_volume,
+                _off_focus_volume=_off_focus_volume,
                 auto_button=auto_btn,
                 reset_button=reset_btn,
                 opacity_slider=opacity_slider,
@@ -771,7 +895,9 @@ class VolumeRendererWindow(QMainWindow):
 
         self._set_visiblity(update=True)
     
-    def _update_points_layer_properties(self, points_state, points_layer=None):
+    def _update_points_layer_properties(
+            self, points_state, points_layer=None, update=True
+        ):
         if points_layer is None:
             return
         
@@ -783,15 +909,27 @@ class VolumeRendererWindow(QMainWindow):
         face_color = vispy.color.Color(color, alpha=opacity*0.5)
         edge_color = vispy.color.Color(color, alpha=opacity)
         
+        points_xyz = points_layer.points_xyz
+        if self._orig_lab is not None:
+            visible_label_ids = [
+                int(cb.text()) 
+                for cb in self._object_labels_list_buttongroup.buttons()
+                if cb.isChecked()
+            ]
+            visible = np.isin(points_layer._label_ids, visible_label_ids)
+            points_xyz = points_xyz[visible]
+
         markers = points_layer.markers
         markers.set_data(
-            points_layer.points_xyz, 
+            points_xyz, 
             symbol=symbol,
             size=size,
             face_color=face_color,
             edge_color=edge_color
         )
-        self._canvas.update()
+        
+        if update:
+            self._canvas.update()
     
     def _toggle_points_layer(self, checked, points_layer=None):
         if points_layer is None:
@@ -858,6 +996,7 @@ class VolumeRendererWindow(QMainWindow):
             raise ValueError(
                 f'Expected 3-D (Z, Y, X) labels array; got shape {lab.shape}')
         
+        self._orig_lab = lab.copy()
         self._lab = self._preprocess_lab(lab)
         self._rp = skimage.measure.regionprops(self._lab)
         
@@ -1053,6 +1192,14 @@ class VolumeRendererWindow(QMainWindow):
         if self._voxel_size_transform is not None:
             markers.transform = self._voxel_size_transform
         
+        _label_ids = None
+        if self._orig_lab is not None:
+            _label_ids = self._orig_lab[
+                points_xyz[:, 2], 
+                points_xyz[:, 1], 
+                points_xyz[:, 0], 
+            ]
+        
         ui_items = self._init_points_layer_ui_items(
             markers,
             name,
@@ -1070,6 +1217,7 @@ class VolumeRendererWindow(QMainWindow):
         points_layer = _PointsLayer(
             name=name,
             points_xyz=points_xyz, 
+            _label_ids=_label_ids,
             labels=labels, 
             markers=markers,
             toolbutton=toolbutton,

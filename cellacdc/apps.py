@@ -1528,8 +1528,8 @@ class EditPointsLayerAppearanceDialog(QBaseDialog):
 
         self.setFont(font)
     
-    def emitValueChanged(self, state):
-        self.sigValueChanged.emit(state)
+    def emitValueChanged(self, *args):
+        self.sigValueChanged.emit(self.appearanceGroupbox.state())
     
     def restoreState(self, state):
         self.appearanceGroupbox.restoreState(state)
