@@ -658,8 +658,12 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
             <b>Symbol</b> used to draw the points.
         """)
         symbolInfoTxt = (f'{html_utils.paragraph(symbolInfoTxt)}')
+        if backend == 'pyqtgraph':
+            symbolCombobox = widgets.pgScatterSymbolsCombobox()
+        elif backend == 'vispy':
+            symbolCombobox = widgets.VisPyMarkersSymbolsCombobox()
         self.symbolWidget = widgets.formWidget(
-            widgets.pgScatterSymbolsCombobox(), addInfoButton=True,
+            symbolCombobox, addInfoButton=True,
             labelTextLeft='Symbol: ', parent=self, infoTxt=symbolInfoTxt,
             stretchWidget=False
         )

@@ -2233,6 +2233,12 @@ class pgScatterSymbolsCombobox(QComboBox):
         ]
         self.addItems(symbols)
 
+class VisPyMarkersSymbolsCombobox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        symbols = get_args(plot.VisPyMarkerSymbols)
+        self.addItems(symbols)
 
 class alphaNumericLineEdit(QLineEdit):
     sigInvalidCharacterPressed = Signal(str)
