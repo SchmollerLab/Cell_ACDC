@@ -18954,7 +18954,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         f"Warning: {name} has no click or trigger method"
                     )
                 if tool_button.start_event_loop:
-b                    self.wait_worker_loop = QEventLoop()
+                    self.wait_worker_loop = QEventLoop()
                     self.wait_worker_loop.exec_()
                     
 
