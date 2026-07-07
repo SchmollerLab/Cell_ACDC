@@ -397,6 +397,11 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
+        if len(images_paths) == 0:
+            self.criticalEmptySelection()
+            self.close()
+            return
+            
         ref_images_path = images_paths[0]
         filenames = myutils.listdir(ref_images_path)
         ch_names, warn = (
@@ -937,6 +942,14 @@ class segmWin(QMainWindow):
         )
         msg = widgets.myMessageBox()
         msg.addShowInFileManagerButton(images_path)
+        msg.critical(self, err_title, err_msg)
+
+    def criticalEmptySelection(self):
+        err_title = 'Empty selection of folders'
+        err_msg = html_utils.paragraph(
+            'Please select at least one experiment folder to analyse.<br><br>'
+        )
+        msg = widgets.myMessageBox()
         msg.critical(self, err_title, err_msg)
     
     def criticalNoTifFound(self, images_path):

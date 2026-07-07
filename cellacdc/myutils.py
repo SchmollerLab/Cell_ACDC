@@ -2925,6 +2925,7 @@ def _install_pip_package(
         force_binary: bool = True,
         pref_binary: bool = True,
         ) -> None:
+    pkg_name = pkg_name.replace('"', '')
     command = [sys.executable, '-m', 'pip', 'install', pkg_name,]
     if force_binary:
         command.append('--only-binary=:all:')
@@ -3260,6 +3261,8 @@ def install_package_conda(conda_pkg_name, channel='conda-forge'):
         raise EnvironmentError(
             'Cell-ACDC is not running in a `conda` environment.'
         )
+    
+    conda_pkg_name = conda_pkg_name.replace('"', '')
     conda_prefix, pip_prefix = get_pip_conda_prefix()
     conda_prefix = re.sub(
         r'(-c\sconda-forge\s?|--channel=conda-forge\s?)', f'-c {channel} ', 
@@ -3538,7 +3541,9 @@ def check_install_package(
                     including_lower_version=include_lower_version,
                 )
                 if installer == 'pip':
-                    _install_pip_package(pkg_command, install_dependencies=install_dependencies)
+                    _install_pip_package(
+                        pkg_command, install_dependencies=install_dependencies
+                    )
                 else:
                     install_package_conda(pkg_command)
         except Exception as e:
@@ -3779,6 +3784,7 @@ def _get_pkg_command_pip_install(
     ):
     if exact_version:
         pkg_command = f'{pkg_command}=={exact_version}'
+        pkg_command = f'"{pkg_command}"'
         return pkg_command
     
     if including_higher_version:
@@ -3797,6 +3803,7 @@ def _get_pkg_command_pip_install(
     if max_version:
         pkg_command = f'{pkg_command}{sign_max}{max_version}'
         
+    pkg_command = f'"{pkg_command}"'    
     return pkg_command
 
 def _install_package_cli_msg(
@@ -3912,6 +3919,8 @@ def _install_tensorflow(max_version='', min_version=''):
         min_version=min_version
     )
     conda_prefix, pip_prefix = get_pip_conda_prefix()
+    
+    pkg_command = pkg_command.replace('"', '')
 
     if is_mac and cpu == 'arm':
         args = [f'{conda_prefix} "{pkg_command}"']
