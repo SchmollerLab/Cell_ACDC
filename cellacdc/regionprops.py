@@ -446,7 +446,8 @@ class acdcRegionprops:
             return np.max(lab, axis=axis)
 
         if kind == 'most_common':
-            return self._compute_most_common_projection(lab, axis=axis)
+            # Use stacked projection for projected RP updates so overlap edits
+            return self.get_projection_lab_sorted(slicing=slicing, dtype=lab.dtype)
 
         if kind == 'mean':
             projected = np.mean(lab, axis=axis)
@@ -528,6 +529,18 @@ class acdcRegionprops:
         projected.sort(key=lambda entry: (-entry[1], entry[0]))
         return projected
 
+    def _compute_stacked_projection_patch(self, slicing, cutout_bbox, dtype=None):
+        if dtype is None:
+            dtype = self.lab.dtype
+
+        patch_slices = self._get_projection_patch_slices(slicing, cutout_bbox)
+        if any(slc.start >= slc.stop for slc in patch_slices):
+            return None
+
+        patch_lab = self._get_projection_patch_lab(slicing, cutout_bbox)
+        patch_rp = acdcRegionprops(patch_lab, precache_centroids=False)
+        return patch_rp.get_projection_lab_sorted(slicing=slicing, dtype=dtype)
+
     def get_projection_lab_sorted(self, slicing='z', dtype=None):
         if not self.is3D:
             raise ValueError('Projection helpers are only supported for 3D labels.')
@@ -569,7 +582,12 @@ class acdcRegionprops:
         if any(slc.start >= slc.stop for slc in patch_slices):
             return lab_proj
 
-        patch = self._compute_most_common_projection_patch(slicing, cutout_bbox)
+        patch = self._compute_stacked_projection_patch(
+            slicing, cutout_bbox, dtype=lab_proj.dtype
+        )
+        if patch is None:
+            return lab_proj
+
         lab_proj[patch_slices] = patch
         self._proj_labs[slicing]['most_common'] = lab_proj
         return lab_proj
