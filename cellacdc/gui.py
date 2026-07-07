@@ -22613,7 +22613,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return proceed_cca, never_visited
         
         # Requested frame was never visited before. Load from HDD
-        labels = self.get_labels()
+        labels = self.get_labels_array()
         posData.lab = self.apply_manual_edits_to_lab_if_needed(
             labels
         )
