@@ -28754,15 +28754,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if zProjHow is None:
             zProjHow = self.zProjComboBox.currentText()
+        if depthAxes is None:
+            depthAxes = self.switchPlaneCombobox.depthAxes()
         
         if zProjHow != 'single z-slice':
-            rp_2D = rp.get_proj_rp('most_common')
+            rp_2D = rp.get_proj_rp('most_common', slicing=depthAxes)
             return rp_2D
 
         if slice_i is None:
             slice_i = self.zSliceScrollBar.sliderPosition()
-        if depthAxes is None:
-            depthAxes = self.switchPlaneCombobox.depthAxes()
 
         rp_2D = rp.get_slice_rp(slice_i, depthAxes)
         return rp_2D

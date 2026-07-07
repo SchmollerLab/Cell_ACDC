@@ -614,7 +614,7 @@ class TextAnnotations:
                     continue
             
             obj3D = rp3D.get_obj_from_ID(obj.label)
-            if not isObjVisibleFunc(obj3D.bbox):
+            if obj3D is not None and not isObjVisibleFunc(obj3D.bbox):
                 continue
             
             if obj.label in delROIsIDs:
