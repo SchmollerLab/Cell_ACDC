@@ -3724,6 +3724,7 @@ def _get_pkg_command_pip_install(
     if exact_version:
         pkg_command = f'{pkg_command}=={exact_version}'
         pkg_command = f'"{pkg_command}"'
+        pkg_command = f'"{pkg_command}"'
         return pkg_command
     
     if including_higher_version:
@@ -3741,6 +3742,8 @@ def _get_pkg_command_pip_install(
     
     if max_version:
         pkg_command = f'{pkg_command}{sign_max}{max_version}'
+        
+    pkg_command = f'"{pkg_command}"'
     
     pkg_command = f'"{pkg_command}"'
     
