@@ -132,6 +132,7 @@ class VolumeRendererWindow(QMainWindow):
         self._voxel_size_strides_transform = None
         self._downsample_strides = None
         self._object_labels_list_buttongroup = None
+        self._data_shape = None
         
         if app is None:
             app = QCoreApplication.instance()
@@ -854,6 +855,8 @@ class VolumeRendererWindow(QMainWindow):
         for channel_data in self._channels_data.values():
             channel_data.node.visible = channel_data.toolbutton.isChecked()
         
+        self._set_gl_blend_states()
+        
         if update:
             self._canvas.update()
     
@@ -892,7 +895,7 @@ class VolumeRendererWindow(QMainWindow):
         lut_item = channel_data.lut_item
         
         if len(lut_item.gradient.listTicks()) != 2:
-            self.logger.info(
+            self._logger_func(
                 '[WARNING]: Auto contrast is available only with LUTs '
                 'that have two ticks.'
             )
@@ -1024,6 +1027,16 @@ class VolumeRendererWindow(QMainWindow):
             )
             return
         
+        if self._data_shape is None:
+            self._data_shape = lab.shape
+        
+        if lab.shape != self._data_shape:
+            raise ValueError(
+                f'Labels array shape {lab.shape} does not match the current '
+                f'viewer shape {self._data_shape}. '
+                'All displayed volumes must have the same shape.'
+            )
+        
         if lab.dtype == bool:
             lab = lab.astype(np.uint8)
         
@@ -1055,7 +1068,7 @@ class VolumeRendererWindow(QMainWindow):
         if self._voxel_size_strides_transform is not None:
             self._lab_node.transform = self._voxel_size_strides_transform
         else:
-            self.set_voxel_size_strides_transform(voxel_size)
+            self._set_voxel_size_strides_transform(voxel_size)
             
         self._is_labels_set = True
         
@@ -1076,7 +1089,7 @@ class VolumeRendererWindow(QMainWindow):
         cmaps = None
         lut_items_states = None
         if lut_item_state is not None:
-            lut_items_states = {channel_name: cmap}
+            lut_items_states = {channel_name: lut_item_state}
         elif cmap is not None:
             cmaps = {channel_name: cmap}
             
@@ -1085,10 +1098,11 @@ class VolumeRendererWindow(QMainWindow):
         self.set_volumes(
             volumes, 
             cmaps=cmaps, 
-            lut_items_states=lut_items_states
+            lut_items_states=lut_items_states,
+            voxel_size=voxel_size
         )
     
-    def set_voxel_size_strides_transform(
+    def _set_voxel_size_strides_transform(
             self, 
             voxel_size: tuple[float, float, float] | None
         ):
@@ -1097,6 +1111,9 @@ class VolumeRendererWindow(QMainWindow):
         
         if voxel_size is None:
             voxel_size = (1.0, 1.0, 1.0)
+        
+        if self._downsample_strides:
+            self._downsample_strides = (1.0, 1.0, 1.0)
         
         self._voxel_size = voxel_size
         
@@ -1135,6 +1152,17 @@ class VolumeRendererWindow(QMainWindow):
         if isinstance(volumes, dict):
             channel_names = list(volumes.keys())
             volumes = list(volumes.values())
+        
+        if self._data_shape is None:
+            self._data_shape = volumes[0].shape
+        
+        for volume in volumes:
+            if volume.shape != self._data_shape:
+                raise ValueError(
+                    f'Volume shape {volume.shape} does not match the current '
+                    f'viewer shape {self._data_shape}. '
+                    'All displayed volumes must have the same shape.'
+                ) 
         
         volumes = [self._preprocess_volume(vol) for vol in volumes]
         
@@ -1181,7 +1209,7 @@ class VolumeRendererWindow(QMainWindow):
             for channel_data in self._channels_data.values():
                 channel_data.node.transform = self._voxel_size_strides_transform
         else:
-            self.set_voxel_size_strides_transform(voxel_size)
+            self._set_voxel_size_strides_transform(voxel_size)
         
         self._canvas.update()
     
@@ -1212,7 +1240,8 @@ class VolumeRendererWindow(QMainWindow):
         
         if points_df is not None:
             points_xyz = points_df[zyx_columns_names[::-1]].to_numpy()
-        elif points:
+        elif points is not None:
+            points = np.asarray(points)
             points_xyz = points[:, [2, 1, 0]]
         else:
             raise ValueError(

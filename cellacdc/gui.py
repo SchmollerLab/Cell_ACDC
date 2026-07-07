@@ -3220,7 +3220,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self._volume_renderer.raise_()
         self._volume_renderer.activateWindow()
 
-    def onClose3dViewer(self):
+    def onClose3dViewer(self, *args, **kwargs):
         self.launch3dViewerAction.setChecked(False)
     
     def onUpdate3dViewer(self):
