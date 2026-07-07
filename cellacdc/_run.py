@@ -111,7 +111,6 @@ def _install_tables(parent_software='Cell-ACDC'):
                         f'message above**): {issues_url}'
                     )
                     print('^'*60)
-                finally:
                     break
             elif answer.lower() == 'n':
                 raise e
