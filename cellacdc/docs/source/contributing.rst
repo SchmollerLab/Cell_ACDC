@@ -57,7 +57,7 @@ Development process
          # Install Cell-ACDC in developer mode
          pip install -e .
   
-     * ``conda`` (Miniconda, Miniforge etc.)
+     * ``conda`` (Miniforge)
 
        ::
 

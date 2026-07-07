@@ -69,6 +69,9 @@ IMAGE_EXTENSIONS = (
 VIDEO_EXTENSIONS = (
     '.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv',
 )
+ACDC_IMAGE_EXTENSIONS = (
+    *IMAGE_EXTENSIONS, '.h5', '.npy', '.npz'
+)
 
 def _warn_ask_install_package(
         commands: Iterable[str], note_txt='', caller='SpotMAX'
@@ -820,3 +823,12 @@ try:
     precompiled_import_success = True
 except Exception:
     pass
+
+valid_image_data_ends = (
+    '_aligned.npz', 
+    '_aligned.h5', 
+    '.h5', 
+    '.tif', 
+    '.npz',
+    '_symlink.ini'
+)

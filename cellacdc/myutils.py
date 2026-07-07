@@ -59,7 +59,7 @@ from . import regionprops
 from .models._cellpose_base import min_target_versions_cp
 
 if GUI_INSTALLED:
-    from qtpy.QtWidgets import QMessageBox
+    from qtpy.QtWidgets import QMessageBox, QPlainTextEdit
     from qtpy.QtCore import Signal, QObject, QCoreApplication
     
     from . import widgets, apps
@@ -342,7 +342,8 @@ class Logger(logging.Logger):
             self,
             module='base', 
             name='cellacdc-logger', 
-            level=logging.DEBUG
+            level=logging.DEBUG,
+            QLogWidget: 'QPlainTextEdit'=None
         ):
         super().__init__(f'{name}-{module}', level=level)
         self.propagate = False  # prevent UnicodeEncodeError via root StreamHandler
@@ -357,6 +358,7 @@ class Logger(logging.Logger):
             10: "DEBUG",
             0: "NOTSET"
         }
+        self._q_log_widget = QLogWidget
         
     def write(self, text, log_to_file=True, write_to_stdout=True):
         """Capture print statements, print to terminal and log text to 
@@ -376,7 +378,19 @@ class Logger(logging.Logger):
                 self._stdout.write(text.encode(
                     self._stdout.encoding, errors='replace'
                 ).decode(self._stdout.encoding))
-            
+        
+        if self._q_log_widget is not None:
+            try:
+                # Log thread-safely to the QPlainTextEdit widget
+                from qtpy.QtCore import QThread
+                if QThread.currentThread() == self._q_log_widget.thread():
+                    self._q_log_widget.appendPlainText(text)
+                    self._q_log_widget.verticalScrollBar().setValue(
+                        self._q_log_widget.verticalScrollBar().maximum()
+                    )
+            except Exception:
+                pass
+        
         if not log_to_file:
             return
         
@@ -565,6 +579,12 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
         except Exception as err:
             info_txts.append('Qt: Not installed')
     
+    try:
+        branch_name = get_git_branch_name()
+        info_txts.append(f'Git branch: "{branch_name}"')
+    except Exception as err:
+        pass
+    
     info_txts.append(f'Working directory: {os.getcwd()}')
     
     if not cli_formatted_text:
@@ -608,11 +628,16 @@ def _log_system_info(logger, log_path, is_cli=False, also_spotmax=False):
     smax_info_txt = smax_info(include_platform=False)
     logger.info(smax_info_txt)
 
-def setupLogger(module='base', logs_path=None, caller='Cell-ACDC'):
+def setupLogger(
+        module='base', 
+        logs_path=None, 
+        caller='Cell-ACDC', 
+        QLogWidget=None
+    ):
     if logs_path is None:
         logs_path = get_logs_path()
     
-    logger = Logger(module=module)
+    logger = Logger(module=module, QLogWidget=QLogWidget)
     sys.stdout = logger
     
     delete_older_log_files(logs_path)
@@ -1035,6 +1060,14 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
     
     return 'ND'  
 
+def get_git_branch_name():
+    command = 'git rev-parse --abbrev-ref HEAD'
+    output = _subprocess_run_command(
+        command, shell=False, callback='check_output'
+    )
+    branch_name = output.decode().strip()
+    return branch_name
+
 def showInExplorer(path):
     if is_mac:
         os.system(f'open "{path}"')
@@ -1069,26 +1102,8 @@ def getAcdcDfSegmPaths(images_path):
     return paths
 
 def getChannelFilePath(images_path, chName):
-    file = ''
-    alignedFilePath = ''
-    tifFilePath = ''
-    h5FilePath = ''
-    for file in listdir(images_path):
-        filePath = os.path.join(images_path, file)
-        if file.endswith(f'{chName}_aligned.npz'):
-            alignedFilePath = filePath
-        elif file.endswith(f'{chName}.tif'):
-            tifFilePath = filePath
-        elif file.endswith(f'{chName}.h5'):
-            h5FilePath = filePath
-    if alignedFilePath:
-        return alignedFilePath
-    elif h5FilePath:
-        return h5FilePath
-    elif tifFilePath:
-        return tifFilePath
-    else:
-        return ''
+    channel_filepath = load.get_filename_from_channel(images_path, chName)
+    return channel_filepath
 
 def get_number_fstring_formatter(dtype, precision=4):
     if np.issubdtype(dtype, np.integer):
@@ -1103,6 +1118,10 @@ def get_chname_from_basename(filename, basename, remove_ext=True):
     aligned_idx = chName.find('_aligned')
     if aligned_idx != -1:
         chName = chName[:aligned_idx]
+    
+    if ';;' in chName:
+        chName = chName.split(';;')[-1]
+        
     return chName
 
 def _edge_ids_2d(lab):
@@ -3817,9 +3836,7 @@ def _install_package_cli_msg(
         f'{install_command}\n'
     )
     logger_func(txt)
-    
-    
-        
+
     while True:
         answer = try_input_install_package(pkg_name, install_command)
         if not answer or answer.lower() == 'y':
@@ -4278,11 +4295,12 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     pip_prefix = pip_prefix.replace('install -y', 'uninstall')
     txt_cuda = html_utils.paragraph(f"""
         Check out these instructions {cellpose_href}, and {torch_href}.<br>
-        First, uninstall the CPU version of PyTorch with the following command:
-        <copiable>{pip_prefix} uninstall torch</copiable>
-        <br>Then, install the CUDA version required by your GPU with the following 
-        command (in this case 12.8):
-        <copiable>{pip_prefix} torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128</copiable>
+        First, uninstall the CPU version of PyTorch with the following command:<br><br>
+        <code>{pip_prefix} uninstall torch</code>.<br><br>
+        Then, install the CUDA version required by your GPU with the follwing 
+        command (in this case 12.8):<br><br>
+        <code>{pip_prefix} torch torchvision torchaudio --index-url 
+        https://download.pytorch.org/whl/cu128</code>
         <br>
         """)
     
@@ -5202,7 +5220,9 @@ def get_empty_stored_data_dict():
                     'delMasksCoords': []
                     
                 },
-            'manually_edited_lab': {'lab': {}, 'zoom_slice': None}
+            'IDs': [],
+            'manually_edited_lab': {'lab': {}, 'zoom_slice': None},
+            'single_moth_bud_pair_cca': None,
         }
 
 def iterate_along_axes(arr, axes, arr_ndim=None):

@@ -10,52 +10,52 @@ from cellacdc import acdc_bioio_bioformats as bioformats
 import argparse
 
 ap = bioformats._utils.setup_argparser()
+ap.add_argument(
+    '-f', 
+    '--filepath', 
+    required=True, 
+    type=str, 
+    metavar='FILEPATH',
+    help='Filepath of a raw microscopy file to test.'
+)
+
+ap.add_argument(
+    '-c', 
+    '--SizeC', 
+    required=True, 
+    type=int, 
+    metavar='SIZEC',
+    help='Number of channels in the microscopy file.'
+)
+
+ap.add_argument(
+    '-t', 
+    '--SizeT', 
+    required=True, 
+    type=int, 
+    metavar='SIZET',
+    help='Number of timepoints in the microscopy file.'
+)
+
+ap.add_argument(
+    '-z', 
+    '--SizeZ', 
+    required=True, 
+    type=int, 
+    metavar='SIZEZ',
+    help='Number of z-slices in a single z-stack.'
+)
+
+ap.add_argument(
+    '-a', 
+    '--all', 
+    action='store_true', 
+    help='Whether to read entire position into RAM or not.'
+)
+
+args = vars(ap.parse_args())
 
 try:
-    ap.add_argument(
-        '-f', 
-        '--filepath', 
-        required=True, 
-        type=str, 
-        metavar='FILEPATH',
-        help='Filepath of a raw microscopy file to test.'
-    )
-
-    ap.add_argument(
-        '-c', 
-        '--SizeC', 
-        required=True, 
-        type=int, 
-        metavar='SIZEC',
-        help='Number of channels in the microscopy file.'
-    )
-
-    ap.add_argument(
-        '-t', 
-        '--SizeT', 
-        required=True, 
-        type=int, 
-        metavar='SIZET',
-        help='Number of timepoints in the microscopy file.'
-    )
-
-    ap.add_argument(
-        '-z', 
-        '--SizeZ', 
-        required=True, 
-        type=int, 
-        metavar='SIZEZ',
-        help='Number of z-slices in a single z-stack.'
-    )
-    
-    ap.add_argument(
-        '-a', 
-        '--all', 
-        action='store_true', 
-        help='Whether to read entire position into RAM or not.'
-    )
-
-    args = vars(ap.parse_args())
     raw_filepath = args['filepath']
 
     SizeC = args['SizeC']
@@ -101,7 +101,5 @@ try:
         np.save(filepath, channel_data)
 
 except Exception as err:
-    args = vars(ap.parse_args())
-    uuid4 = args['uuid']
-    
+    uuid4 = args['uuid4']
     bioformats._utils.dump_exception(err, uuid4)

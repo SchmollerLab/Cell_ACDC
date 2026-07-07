@@ -954,7 +954,7 @@ class AutoSaveWorker(QObject):
         self.stopSaving = False
         self.isSaving = False
         self.isPaused = False
-        self.dataQ = deque(maxlen=5)
+        self.dataQ = deque(maxlen=2)
         self.isAutoSaveON = False
         self.isAutoSaveAnnotON = True
         self.debug = False
@@ -6159,6 +6159,7 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
         else:
             out_ext = '.tif'
             basename_ext = ''
+        
         for images_path in image_paths:
             basename, channels = myutils.getBasenameAndChNames(images_path)
             
@@ -6170,7 +6171,7 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             save_filepaths.append(os.path.join(images_path, savename))
         
         core.combine_channels_multithread(
-            steps=steps,
+            inputs_info=steps,
             images_paths=images_path_to_process,
             keep_input_data_type=keep_input_data_type,
             save_filepaths=save_filepaths,
@@ -6865,4 +6866,57 @@ class CountObjectsInSegm(BaseWorkerUtil):
                 
                 self.signals.progressBar.emit(1)
 
+        self.signals.finished.emit(self)
+
+class CreateSymLinkToPosWinWorker(QObject):
+    def __init__(
+            self, 
+            exp_pos_mapper, 
+            dst_folderpath, 
+            exp_segm_files_to_copy_mapper
+        ):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        
+        self._exp_pos_mapper = exp_pos_mapper
+        self._dst_folderpath = dst_folderpath
+        self._exp_segm_files_to_copy_mapper = exp_segm_files_to_copy_mapper
+    
+    def log_current_pos(self, src_pos_path, dst_pos_path):
+        sep = '-'*100
+        text = (
+            f'{sep}\nLinking following positions:\n\n'
+            f'{src_pos_path}\n'
+            f'--> {dst_pos_path}\n'
+        )
+        self.logger.log(text)
+    
+    @worker_exception_handler
+    def run(self):
+        for exp_path, pos_foldernames in self._exp_pos_mapper.items():
+            exp_foldername = os.path.basename(exp_path)
+            dst_exp_path = os.path.join(self._dst_folderpath, exp_foldername)
+            if os.path.exists(dst_exp_path):
+                raise FileExistsError(
+                    'The destination folder path already exists. '
+                    'Please, select a destination folder where '
+                    'the experiment folders do not exist. '
+                    f'Existing folder: "{dst_exp_path}"'
+                )
+            
+            segm_endanmes_to_copy = self._exp_segm_files_to_copy_mapper.get(
+                exp_path, []
+            )
+            for pos in pos_foldernames:
+                src_pos_path = os.path.join(exp_path, pos)
+                dst_pos_path = os.path.join(dst_exp_path, pos)
+                self.log_current_pos(src_pos_path, dst_pos_path)
+                load.create_symlinked_pos_folder(
+                    src_pos_path, 
+                    dst_pos_path, 
+                    segm_endanmes_to_copy
+                )
+                self.signals.progressBar.emit(1)
+                
         self.signals.finished.emit(self)
