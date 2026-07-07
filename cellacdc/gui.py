@@ -22672,7 +22672,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def _get_data_visited(self, posData, debug=False, lin_tree_init=True,):        
         # Requested frame was already visited. Load from RAM.
         never_visited = False
-        posData.lab = self.get_labels(from_store=True)
+        posData.lab = self.get_labels_array(from_store=True)
         # posData.rp = regionprops.acdcRegionprops(posData.lab, precache_centroids=False)
         posData.rp = posData.allData_li[posData.frame_i]['regionprops']
         df = posData.allData_li[posData.frame_i]['acdc_df']
