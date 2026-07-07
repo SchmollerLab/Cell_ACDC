@@ -9,7 +9,7 @@ if conda_prefix is not None:
     else:
         os.environ["JAVA_HOME"] = conda_prefix
     
-    print('Setting JAVA_HOME:', os.environ["JAVA_HOME"])
+    # print('Setting JAVA_HOME:', os.environ["JAVA_HOME"])
 
 EXTENSION_PACKAGE_MAPPER = {
     '.czi': 'bioio-czi',
@@ -19,6 +19,10 @@ EXTENSION_PACKAGE_MAPPER = {
     '.nd2': 'bioio-nd2',
     '.tif': 'bioio-tifffile', 
     '.tiff': 'bioio-tifffile',
+    '.png': 'bioio-imageio',
+    '.jpg': 'bioio-imageio',
+    '.gif': 'bioio-imageio',
+    '.jpeg': 'bioio-imageio',
     '.ome.tiff': 'bioio-ome-tiff',
     '.zarr': 'bioio-ome-zarr',
     '.sldy': 'bioio-sldy',

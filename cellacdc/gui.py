@@ -99,7 +99,6 @@ from . import regionprops
 from . import exec_time
 from .plot import imshow
 from . import gui_utils
-
 from . import gui_combine
 
 np.seterr(invalid='ignore')
@@ -3173,8 +3172,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # self.rescaleIntensitiesLut(setImage=setImage)
                 break
     
-    def customLevelsLutChanged(self, levels, imageItem=None):
+    def customLevelsLutChanged(self, levels, imageItem: pg.ImageItem=None):
         imageItem.setLevels(levels)
+        if self.overlayToolbar.isTransparent():
+            self.updateTransparentOverlayRgba()
     
     def getPreComputedMinMaxZstack(self, channel: str):
         if channel != self.user_ch_name:
@@ -3218,7 +3219,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             image_data = posData.img_data
         else:
             channel = imageItem.channelName
-            _, filename = self.getPathFromChName(channel, posData)
+            _, filename = self.getPathAndFilenameNoExtFromChName(channel, posData)
             image_data = posData.fluo_data_dict[filename]
         
         triggeredByUser = True
@@ -3270,13 +3271,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if triggeredByUser:
                 current_min, current_max = imageItem.getLevels() 
                 dtype_max = np.iinfo(image_data.dtype).max
-                max_value = image_data.max()
-                min_value = image_data.min()
+                # max_value = image_data.max()
+                # min_value = image_data.min()
                 win = apps.SetCustomLevelsLut(
-                    init_min_value=current_min,
-                    init_max_value=current_max,
-                    maximum_max_value=max_value,
-                    minimum_min_value=min_value,
+                    init_min_value=round(current_min),
+                    init_max_value=round(current_max),
+                    maximum_max_value=dtype_max,
+                    minimum_min_value=0,
                     parent=self
                 )
                 win.sigLevelsChanged.connect(
@@ -6201,7 +6202,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         selectedChannel = intensMeasurQGBox.channelCombobox.currentText()
         
         try:
-            _, filename = self.getPathFromChName(selectedChannel, posData)
+            _, filename = self.getPathAndFilenameNoExtFromChName(selectedChannel, posData)
             image = posData.ol_data_dict[filename][posData.frame_i]
         except Exception as e:
             image = posData.img_data[posData.frame_i]
@@ -12635,7 +12636,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.scaleBar.removeFromAxis(self.ax1)
 
         self.scaleBarDialog = None
+        self.imgGrad.addScaleBarAction.blockSignals(True)
         self.imgGrad.addScaleBarAction.setChecked(checked)
+        self.imgGrad.addScaleBarAction.blockSignals(False)
     
     def updateScaleBar(self, scaleBarKwargs):
         self.scaleBar.draw(**scaleBarKwargs)
@@ -18290,6 +18293,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.update_rp(wl_update=False)
         self.tracking(enforce=True, against_next=posData.frame_i==0)
         
+        proceed = self.checkHandleTooManyNewItems()
+        if proceed:
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit('Repeat segmentation')
+                self.updateAllImages()
+            else:
+                self.warnEditingWithCca_df('Repeat segmentation')
         proceed = self.checkHandleTooManyNewItems()
         if proceed:
             if self.isSnapshot:
@@ -24529,56 +24539,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def load_fluo_data(self, fluo_path, isGuiThread=True):
         self.logger.info(f'Loading fluorescence image data from "{fluo_path}"...')
-        bkgrData = None
-        posData = self.data[self.pos_i]
-        # Load overlay frames and align if needed
-        filename = os.path.basename(fluo_path)
-        filename_noEXT, ext = os.path.splitext(filename)
-        if ext == '.npy' or ext == '.npz':
-            fluo_data = np.load(fluo_path)
-            try:
-                fluo_data = np.squeeze(fluo_data['arr_0'])
-            except Exception as e:
-                fluo_data = np.squeeze(fluo_data)
-
-            # Load background data
-            bkgrData_path = os.path.join(
-                posData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
-            )
-            if os.path.exists(bkgrData_path):
-                bkgrData = np.load(bkgrData_path)
-        elif ext == '.tif' or ext == '.tiff':
-            aligned_filename = f'{filename_noEXT}_aligned.npz'
-            aligned_path = os.path.join(posData.images_path, aligned_filename)
-            if os.path.exists(aligned_path):
-                fluo_data = np.load(aligned_path)['arr_0']
-
-                # Load background data
-                bkgrData_path = os.path.join(
-                    posData.images_path, f'{aligned_filename}_bkgrRoiData.npz'
-                )
-                if os.path.exists(bkgrData_path):
-                    bkgrData = np.load(bkgrData_path)
-            else:
-                fluo_data = self.loadNonAlignedFluoChannel(fluo_path)
-                if fluo_data is None:
-                    return None, None
-
-                # Load background data
-                bkgrData_path = os.path.join(
-                    posData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
-                )
-                if os.path.exists(bkgrData_path):
-                    bkgrData = np.load(bkgrData_path)
-        elif isGuiThread:
-            txt = html_utils.paragraph(
-                f'File format {ext} is not supported!\n'
-                'Choose either .tif or .npz files.'
-            )
-            msg = widgets.myMessageBox()
-            msg.critical(self, 'File not supported', txt)
-            return None, None
-
+        fluo_data, bkgrData = load.load_image_and_bkgr_data(fluo_path)
         return fluo_data, bkgrData
 
     def setOverlayColors(self):
@@ -24629,7 +24590,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:
                 ol_data = {}
             for i, ol_ch in enumerate(ol_channels):
-                _, filename = self.getPathFromChName(ol_ch, posData)
+                _, filename = self.getPathAndFilenameNoExtFromChName(ol_ch, posData)
                 ol_data[filename] = (
                     posData.ol_data_dict[filename].copy()
                 )                        
@@ -25717,7 +25678,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 action.weighingData.append(wData)
                 continue
 
-            path, filename = self.getPathFromChName(weighingChannel, posData)
+            path, filename = self.getPathAndFilenameNoExtFromChName(weighingChannel, posData)
             if path is None:
                 self.criticalFluoChannelNotFound(weighingChannel, posData) 
                 action.weighingData = []
@@ -26114,27 +26075,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.zSliceOverlay_SB.valueChanged.disconnect()
             self.zProjOverlay_CB.currentTextChanged.disconnect()
             self.zProjOverlay_CB.activated.disconnect()
-
-
+            
     def criticalFluoChannelNotFound(self, fluo_ch, posData):
-        msg = widgets.myMessageBox(showCentered=False)
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         ls = "\n".join(myutils.listdir(posData.images_path))
-        msg.setDetailedText(
+        detailsText = (
             f'Files present in the {posData.relPath} folder:\n'
             f'{ls}'
         )
         title = 'Requested channel data not found!'
-        txt = html_utils.paragraph(
-            f'The folder <code>{posData.pos_path}</code> '
-            '<b>does not contain</b> '
-            'either one of the following files:<br><br>'
-            f'{posData.basename}{fluo_ch}.tif<br>'
-            f'{posData.basename}{fluo_ch}_aligned.npz<br><br>'
-            'Data loading aborted.'
-        )
-        msg.addShowInFileManagerButton(posData.images_path)
-        okButton = msg.warning(
-            self, title, txt, buttonsTexts=('Ok')
+        href = f'<a href="{issues_url}">GitHub page</a>'
+        txt = html_utils.paragraph(f"""
+            The folder
+            <copiable>{posData.images_path}</copiable>
+            <b>does not contain</b> valid image data files.<br><br>
+            Valid files are <code>.tif</code>, 
+            <code>_aligned.npz</code>, <code>.h5</code>, 
+            or <code>_symlink.ini</code>.<br><br>
+            If you need help understanding this, feel free to contact us by 
+            opening an issue on our {href}.<br><br>
+            Thank you for your patience!
+        """)
+        msg.warning(
+            self, title, txt, buttonsTexts=('Ok'), 
+            path_to_browse=posData.images_path,
+            detailsText=detailsText,
         )
 
     def imgGradLUTfinished_cb(self):
@@ -26504,12 +26469,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 toolbutton = items[3]
                 if not toolbutton.isChecked():
                     continue
+                
+                rescale_lut_action = (
+                    imageItem.lutItem.rescaleActionGroup.checkedAction()
+                )
+                rescale_lut_how = rescale_lut_action.text()
+                in_range = 'image'
+                if rescale_lut_how == 'Choose custom levels...':
+                    in_range = tuple(imageItem.getLevels())
+                    
                 alpha_val = alphaSB.value()/alphaSB.maximum()
                 ol_img = skimage.exposure.rescale_intensity(
-                    ol_img, out_range=(0.0, 1.0)
-                )
-                out_range_min, out_range_max = lutItem.getLevels()                
-                rgba_imgs_info[chName] = (ol_img, alpha_val, lutItem)
+                    ol_img, in_range=in_range, out_range=(0.0, 1.0)
+                )               
+                rgba_imgs_info[chName] = (ol_img, alpha_val, lutItem, imageItem)
             else:
                 self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
                 imageItem.setImage(ol_img)
@@ -26521,7 +26494,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         images = []
         luts = []
         for channel, info in rgba_imgs_info.items():
-            ol_img, alpha_val, lutItem = info
+            ol_img, alpha_val, lutItem, imageItem = info
             alpha_values.append(alpha_val)
             images.append(ol_img)
             luts.append(lutItem.gradient.getLookupTable(256, alpha=255)/255)
@@ -26530,8 +26503,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if self.baseLayerToolbutton.isChecked():
             image1 = self._getImageupdateAllImages()
+            rescale_lut_action = (
+                self.imgGrad.rescaleActionGroup.checkedAction()
+            )
+            rescale_lut_how = rescale_lut_action.text()
+            in_range = 'image'
+            if rescale_lut_how == 'Choose custom levels...':
+                in_range = tuple(self.img1.getLevels())
+                
             image1 = skimage.exposure.rescale_intensity(
-                image1, out_range=(0.0, 1.0)
+                image1, in_range=in_range, out_range=(0.0, 1.0)
             )        
             images.append(image1)
             baseLut = (
@@ -30476,13 +30457,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateAllImages()
         self.logger.info('Annotations correctly recovered.')
 
-    def askUserChannelName(self, filename_no_ext, ext):
-        help_txt = html_utils.paragraph(f"""
-            Cell-ACDC requires that every image file has a basename and some 
-            additional text, typically the channel name.<br><br>
-            The basename will be common to all created files, while the additional text is used to identify the image files.
-        """)
-
+    def askUserChannelName(self, filename_no_ext):
         basename = filename_no_ext
         underscore_splits = filename_no_ext.split('_')
         if len(underscore_splits) > 1:
@@ -30492,32 +30467,38 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             channel_name = 'channel_1'
         
         txt = html_utils.paragraph(f"""
-            Provide some text (e.g., the channel name) to append at the end of the image file.
+            Provide some text (e.g., the channel name) to identify the image file.
         """)
-        win = apps.filenameDialog(
-            basename=basename,
-            ext=ext,
-            hintText=txt,
-            defaultEntry=channel_name,
-            helpText=help_txt, 
-            allowEmpty=False,
+        
+        win = apps.QLineEditDialog(
+            title='Provide id text for image file',
+            msg=txt,
+            defaultTxt=channel_name,
             parent=self,
-            title='Provide channel name for image file',
+            allowEmpty=False,
+            allowText=True
         )
         win.exec_()
         if win.cancel:
-            return False, ''
-
-        return True, win.entryText
+            return True, ''
+        
+        return False, win.enteredValue
     
-    def warnUserCreationImagesFolder(self, images_path, ext):
+    def askUserCreationImagesFolder(self, images_path, ext):
         msg = widgets.myMessageBox(wrapText=False)
         txt = (f"""
             Cell-ACDC requires a specific folder structure to load the data.<br><br>
             Specifically, it requires the <b>image(s) to be located in a
             folder called <code>Images</code></b>.<br><br>
-            The <b>file format</b> of the images must be <b>TIFF or NPZ</b> 
-            (.tif or .npz extension).<br><br>
+            The <b>file format</b> of the images must be <b>TIFF, H5, or NPZ</b> 
+            (.tif, .h5, or .npz extension).<br><br>
+            However, Cell-ACDC can also create a <b>symbolic link</b> to the image file.<br><br> 
+            A symbolic link is a special type of file that acts as a pointer or alias,<br>
+            referring to another file by its path rather than its content.<br><br>
+            With the symbolic link, no data will be copied or moved, but the 
+            source data file's location<br>
+            cannot change, otherwise the link will be broken.<br><br>
+            Note that any new file created by Cell-ACDC will be saved in the newly created <code>Images</code> folder (see below).<br><br>            
             You can choose to let Cell-ACDC create the required data structure 
             from your file,<br>
             or you can stop the 
@@ -30527,14 +30508,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             folder:
             <copiable>{images_path}</copiable>
             <br>
+            How do you want to proceed?
         """)
-        
-        if ext == '.tif' or ext == '.npz':
-            txt = f'{txt}How do you want to proceed?'
-        else:
-            txt = f'{txt}Do you want to proceed?'
         txt = html_utils.paragraph(txt)
-        
+        symlinkButton = widgets.SegmentPushButton(
+            'Create symbolic link to the image'
+        )
+        copyButton = None
+        moveButton = None
         if ext == '.tif' or ext == '.npz':
             copyButton = widgets.copyPushButton(
                 'Copy the image into the new folder'
@@ -30542,27 +30523,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             moveButton = widgets.movePushButton(
                 'Move the image into the new folder'
             )
-            _, copyButton, moveButton = msg.information(
-                self, 'Creating Images folder', txt, 
-                buttonsTexts=('Cancel', copyButton, moveButton)
+            buttonsTexts = (
+                'Cancel', 
+                copyButton, 
+                moveButton,
+                symlinkButton
             )
-            if msg.cancel:
-                return False, None
-
-            if msg.clickedButton == copyButton:
-                return True, True
-            elif msg.clickedButton == moveButton:
-                return True, False
-        
         else:
-            msg.information(
-                self, 'Creating Images folder', txt, 
-                buttonsTexts=('Cancel', 'Yes, proceed')
+            copyButton = widgets.copyPushButton(
+                'Create grayscale TIFF file in the new folder'
             )
-            if msg.cancel:
-                return False, None
-            
-            return True, True
+            buttonsTexts=('Cancel', copyButton, symlinkButton)
+        
+        msg.information(
+            self, 'Creating Images folder', txt, buttonsTexts=buttonsTexts
+        )
+        do_copy = msg.clickedButton == copyButton
+        do_move = msg.clickedButton == moveButton
+        use_symlink = msg.clickedButton == symlinkButton
+        
+        return msg.cancel, do_copy, do_move, use_symlink
 
     @exception_handler
     def _openFile(self, file_path=None):
@@ -30585,19 +30565,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         filename = filename.rstrip('_')
         channel_name = None
         do_copy = True
+        do_move = False
+        use_symlink = False
         if dirname != 'Images':
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             acdc_folder = f'{timestamp}_acdc'
             exp_path = os.path.join(dirpath, acdc_folder, 'Images')
-            proceed, do_copy = self.warnUserCreationImagesFolder(exp_path, ext)
-            if not proceed:
+            out = self.askUserCreationImagesFolder(exp_path, ext)
+            cancel, do_copy, do_move, use_symlink = out
+            if cancel:
                 self.logger.info('Loading image file cancelled.')
                 return
             
-            proceed, channel_name = self.askUserChannelName(
-                filename, '.tif'
-            )
-            if not proceed:
+            cancel, channel_name = self.askUserChannelName(filename)
+            if cancel:
                 self.logger.info('Loading image file cancelled.')
                 return
             
@@ -30616,8 +30597,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             basename = f'{filename}_'
             new_filename = f'{filename}_{channel_name}{ext}'
             df_metadata = pd.DataFrame({
-                'Description': ['basename'],
-                'values': [basename]
+                'Description': ['basename', 'channel_0_name'],
+                'values': [basename, channel_name]
             })
             metadata_csv_filename = f'{basename}metadata.csv'
             metadata_csv_filepath = os.path.join(
@@ -30627,12 +30608,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             new_filename = f'{filename}{ext}'
         
+        action_text = ''
         if do_copy:
             action_text = 'Copying'
-        else:
+        elif do_move:
             action_text = 'Moving'
+        elif use_symlink:
+            action_text = 'Creating symbolic link'
         
-        if ext == '.tif' or ext == '.npz':
+        if use_symlink:
+            symlink_filepath = load.save_symlink_ini_from_image_filepath(
+                file_path, exp_path, channel_name
+            )
+            self._openFolder(
+                exp_path=exp_path, 
+                imageFilePath=symlink_filepath,
+                user_ch_name=channel_name
+            )
+        elif ext == '.tif' or ext == '.npz' or ext == '.tiff':
             new_filepath = os.path.join(exp_path, new_filename)
             if not os.path.exists(new_filepath):
                 self.logger.info(f'{action_text} file to Images folder...')
@@ -30648,13 +30641,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             img = data.img_data
             if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
                 self.logger.info('Converting RGB image to grayscale...')
-                if img.shape[-1] == 3:
-                    data.img_data = skimage.color.rgb2gray(data.img_data)
-                else:
-                    data.img_data = cv2.cvtColor(
-                        data.img_data, cv2.COLOR_RGBA2GRAY
-                    )
-                data.img_data = skimage.img_as_ubyte(data.img_data)
+                data.img_data = colors.image_2d_rgb_or_rgba_to_uint8_grayscale(
+                    data.img_data
+                )
             new_filename_no_ext, ext = os.path.splitext(new_filename)
             tif_filename = f'{new_filename_no_ext}.tif'
             tif_path = os.path.join(exp_path, tif_filename)
@@ -30936,7 +30925,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     @exception_handler
     def _openFolder(
-            self, checked=False, exp_path=None, imageFilePath=''
+            self, 
+            checked=False, 
+            exp_path=None, 
+            imageFilePath='', 
+            user_ch_name=None
         ):
         """Main function to load data.
 
@@ -30996,7 +30989,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ch_name_selector = prompts.select_channel_name(
             which_channel='segm', allow_abort=False
         )
-        user_ch_name = None
         if not is_pos_folder and not is_images_folder and not imageFilePath:
             images_paths = self._loadFromExperimentFolder(exp_path)
             if not images_paths:
@@ -31021,9 +31013,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             filename = os.path.basename(imageFilePath)
             self.ch_names = ch_names
-            user_ch_name = [
-                chName for chName in ch_names if filename.find(chName)!=-1
-            ][0]
+            if user_ch_name is None:
+                user_ch_name = [
+                    chName for chName in ch_names if filename.find(chName)!=-1
+                ][0]
             images_paths = [exp_path]
             pos_path = os.path.dirname(exp_path)
             exp_path = os.path.dirname(pos_path)
@@ -31263,7 +31256,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if channelName not in posData.loadedFluoChannels:
                 self.loadOverlayData([channelName], addToExisting=True)
             else:
-                _, filename = self.getPathFromChName(channelName, posData)
+                _, filename = self.getPathAndFilenameNoExtFromChName(channelName, posData)
                 posData.ol_data[filename] = (
                     posData.ol_data_dict[filename].copy()
                 )
@@ -31447,26 +31440,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Load fluorescence images?', msg.clickedButton.text()
         )
 
-    def getPathFromChName(self, chName, posData):
-        ls = myutils.listdir(posData.images_path)
-        endnames = {f[len(posData.basename):]:f for f in ls}
-        validEnds = ['_aligned.npz', '_aligned.h5', '.h5', '.tif', '.npz']
-        for end in validEnds:
-            files = [
-                filename for endname, filename in endnames.items()
-                if endname == f'{chName}{end}'
-            ]
-            if files:
-                filename = files[0]
-                break
-        else:
-            self.criticalFluoChannelNotFound(chName, posData)
+    def getPathAndFilenameNoExtFromChName(self, chName, posData):
+        channel_file_path = load.get_filename_from_channel(
+            posData.images_path, chName
+        )
+        if not channel_file_path:
             self.app.restoreOverrideCursor()
             return None, None
-
-        fluo_path = os.path.join(posData.images_path, filename)
-        filename, _ = os.path.splitext(filename)
-        return fluo_path, filename
+        
+        # The function `get_filename_from_channel` will append ';;channel_name' 
+        # when the imgPath is the symlink.ini file
+        filename = os.path.basename(channel_file_path)
+        filename_no_ext, ext = os.path.splitext(filename)
+        if not ext.startswith('.ini;;'):
+            filename = filename_no_ext
+        else:
+            filename_no_ext = filename.replace('.ini', '')
+        
+        return channel_file_path, filename_no_ext
     
     def loadPosTriggered(self):
         if not self.isDataLoaded:
@@ -31592,7 +31583,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for p, posData in enumerate(self.data):
             # posData.ol_data = None
             for fluo_ch in fluo_channels:
-                fluo_path, filename = self.getPathFromChName(fluo_ch, posData)
+                fluo_path, filename = self.getPathAndFilenameNoExtFromChName(fluo_ch, posData)
                 if fluo_path is None:
                     self.criticalFluoChannelNotFound(fluo_ch, posData)
                     return False
@@ -31659,7 +31650,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
 
         fluo_ch = self.secondChannelName
-        fluo_path, filename = self.getPathFromChName(fluo_ch, posData)
+        fluo_path, filename = self.getPathAndFilenameNoExtFromChName(fluo_ch, posData)
         if filename in posData.fluo_data_dict:
             fluo_data = posData.fluo_data_dict[filename]
         else:
@@ -32098,7 +32089,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             how = self.df_settings.at[
                 f'how_rescale_intensities_{channelName}', 'value'
             ]
-            lutItem.setRescaleIntensitiesHow(how)
+            if not 'custom' in how:
+                lutItem.setRescaleIntensitiesHow(how)
         
         self.rescaleIntensChannelHowMapper[channelName] = (
             'Rescale each 2D image'
@@ -32260,7 +32252,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if otherToolbutton.isChecked() and isSingleChannel:
                 op_val = 1.0
             elif otherToolbutton.isChecked():
-                op_val = channel_opacity_mapper[channel]
+                op_val = channel_opacity_mapper.get(channel, 0.01)
             else:
                 op_val = 0.0
             
@@ -32346,27 +32338,35 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.worker.abort = True
             self.waitCond.wakeAll()
             return
+        
+        parts = filename[len(posData.basename):].split(';;')
+        if len(parts) == 2:
+            channel_name = parts[1]
+        else:
+            channel_name = parts[0]
+            
         if win.useMiddleSlice:
-            user_ch_name = filename[len(posData.basename):]
             for _posData in self.data:
                 if _posData is None:
                     continue
-                _, filename = self.getPathFromChName(user_ch_name, _posData)
-                df = myutils.getDefault_SegmInfo_df(_posData, filename)
+                
+                _, _filename = self.getPathAndFilenameNoExtFromChName(channel_name, _posData)
+                df = myutils.getDefault_SegmInfo_df(_posData, _filename)
                 _posData.segmInfo_df = pd.concat([df, _posData.segmInfo_df])
                 unique_idx = ~_posData.segmInfo_df.index.duplicated()
                 _posData.segmInfo_df = _posData.segmInfo_df[unique_idx]
                 _posData.segmInfo_df.to_csv(_posData.segmInfo_df_csv_path)
         elif win.useSameAsCh:
-            user_ch_name = filename[len(posData.basename):]
             for _posData in self.data:
                 if _posData is None:
                     continue
-                _, srcFilename = self.getPathFromChName(
+                _, srcFilename = self.getPathAndFilenameNoExtFromChName(
                     win.selectedChannel, _posData
                 )
                 cellacdc_df = _posData.segmInfo_df.loc[srcFilename].copy()
-                _, dstFilename = self.getPathFromChName(user_ch_name, _posData)
+                _, dstFilename = self.getPathAndFilenameNoExtFromChName(
+                    channel_name, _posData
+                )
                 if dstFilename is None:
                     self.worker.abort = True
                     self.waitCond.wakeAll()
@@ -32391,12 +32391,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 _posData.segmInfo_df.to_csv(_posData.segmInfo_df_csv_path)
         elif win.runDataPrep:
             user_ch_file_paths = []
-            user_ch_name = filename[len(self.data[self.pos_i].basename):]
             for _posData in self.data:
                 if _posData is None:
                     continue
                 user_ch_path = load.get_filename_from_channel(
-                    _posData.images_path, user_ch_name
+                    _posData.images_path, channel_name
                 )
                 if user_ch_path is None:
                     self.worker.abort = True
@@ -32417,9 +32416,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             dataPrepWin.SizeT = self.data[0].SizeT
             dataPrepWin.SizeZ = self.data[0].SizeZ
             dataPrepWin.metadataAlreadyAsked = True
-            self.logger.info(f'Loading channel {user_ch_name} data...')
+            self.logger.info(f'Loading channel {channel_name} data...')
             dataPrepWin.loadFiles(
-                exp_path, user_ch_file_paths, user_ch_name
+                exp_path, user_ch_file_paths, channel_name
             )
             dataPrepWin.startAction.setDisabled(True)
             dataPrepWin.onlySelectingZslice = True
@@ -33094,8 +33093,39 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return 
         
         return msg.clickedButton == timelapseButton
+
+    def exportToCheckAskOverlay(self, output='image'):
+        if not self.overlayButton.isChecked():
+            return True
+        
+        if self.overlayToolbar.isTransparent():
+            return True
+        
+        self.blinker = qutils.QControlBlink(
+            self.overlayToolbar.transparencyCheckbox, qparent=self
+        )
+        self.blinker.start()
+        
+        cancel, activateTransparencyMode = (
+            _warnings.warnAskTransparencyModeNeededForExport(
+                self, output=output
+            )
+        )
+        
+        if cancel:
+            return False
+        
+        if activateTransparencyMode:
+            self.overlayToolbar.setTransparent(True)
+        
+        return True
     
     def exportToVideoTriggered(self):
+        proceed = self.exportToCheckAskOverlay(output='video')
+        if not proceed:
+            self.logger.info('Export to video process cancelled')
+            return
+        
         posData = self.data[self.pos_i]
         
         doTimelapseVideo = posData.SizeT > 1
@@ -33214,7 +33244,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
     
     @disableWindow
-    def exportToImage(self, preferences):        
+    def exportToImage(self, preferences):      
         filepath = preferences['filepath']
         self.logger.info(f'Saving image to "{filepath}"...')
         
@@ -33222,6 +33252,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             exporter = exporters.SVGExporter(self.ax1)
         else:
             exporter = exporters.ImageExporter(self.ax1, dpi=preferences['dpi'])
+        
         exporter.export(filepath)
         self.logger.info(f'Image saved.')
         
@@ -33231,6 +33262,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         prompts.exportToImageFinished(filepath, qparent=self)
     
     def exportToImageTriggered(self):
+        proceed = self.exportToCheckAskOverlay()
+        if not proceed:
+            self.logger.info('Export to video process cancelled')
+            return
+        
         posData = self.data[self.pos_i]
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'{timestamp}_acdc_exported_image'
