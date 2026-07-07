@@ -448,6 +448,12 @@ class reloadPushButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':reload.svg'))
 
+class SegmentPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':segment.svg'))
+
+
 class savePushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2858,7 +2864,8 @@ class myMessageBox(_base_widgets.QBaseDialog):
             commands=None, path_to_browse=None, browse_button_text=None,
             url_to_open=None, open_url_button_text='Open url', 
             image_paths=None, wrapDetails=True,
-            add_do_not_show_again_checkbox=False
+            add_do_not_show_again_checkbox=False,
+            details_expanded=True
         ):
         if parent is not None:
             self.setParent(parent)
@@ -2915,7 +2922,9 @@ class myMessageBox(_base_widgets.QBaseDialog):
                 buttons.append(button)
         
         if detailsText is not None:
-            self.setDetailedText(detailsText, visible=True, wrap=wrapDetails)
+            self.setDetailedText(
+                detailsText, visible=details_expanded, wrap=wrapDetails
+            )
         
         if add_do_not_show_again_checkbox:
             self.addDoNotShowAgainCheckbox()
@@ -4106,13 +4115,9 @@ class DoubleSpinBox(QDoubleSpinBox):
             self.clearFocus()
         else:
             super().keyPressEvent(event)
-    
-    def textFromValue(self, value: float) -> str:
-        text = super().textFromValue(value)
-        return text.replace(QLocale().decimalPoint(), '.')
 
     def valueFromText(self, text: str) -> float:
-        text = text.replace('.', QLocale().decimalPoint())
+        text = text.replace(',', '.')
         return super().valueFromText(text)
 
 class SpinBox(QSpinBox):
@@ -9147,6 +9152,7 @@ class ScaleBar(QGraphicsObject):
         self.contextMenu = QMenu()
         action = QAction('Edit properties...', self.contextMenu)
         action.triggered.connect(self.emitEditProperties)
+        self.contextMenu.addAction(action)
         self.contextMenu.addSeparator()
         action = QAction('Remove', self.contextMenu)
         action.triggered.connect(self.emitRemove)
@@ -10613,6 +10619,7 @@ class TimestampItem(LabelItem):
         self.contextMenu = QMenu()
         action = QAction('Edit properties...', self.contextMenu)
         action.triggered.connect(self.emitEditProperties)
+        self.contextMenu.addAction(action)
         self.contextMenu.addSeparator()
         action = QAction('Remove', self.contextMenu)
         action.triggered.connect(self.emitRemove)

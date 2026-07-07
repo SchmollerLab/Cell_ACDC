@@ -11,15 +11,11 @@ from . import EXTENSION_METADATA_ATTR_MAPPER
 
 def set_reader(image_filepath, **kwargs):
     if 'reader' in kwargs:
-        return kwargs
+        return kwargs, {}
     
     _, ext = os.path.splitext(image_filepath)
     if ext in EXTENSION_PACKAGE_MAPPER:
-        all_kwargs = {
-            **kwargs, 
-            **EXTENSION_BIOIMAGE_KWARGS_MAPPER.get(ext, {})
-        }
-        return all_kwargs
+        return kwargs, EXTENSION_BIOIMAGE_KWARGS_MAPPER.get(ext, {})
     
     try:
         import bioio_bioformats
@@ -30,7 +26,7 @@ def set_reader(image_filepath, **kwargs):
             'Bioformats', 'Bioformats reader is not installed'
         )
     
-    return kwargs
+    return kwargs, {}
 
 class ImageReader:
     def __init__(
@@ -44,15 +40,23 @@ class ImageReader:
         
         # Capture BioImage error and install required dependencies
         try:
-            kwargs = set_reader(image_filepath, **kwargs)
-            self._bioioimage = BioImage(image_filepath, **kwargs)
+            kwargs, other_kwargs = set_reader(image_filepath, **kwargs)
+            try:
+                all_kwargs = {**kwargs, **other_kwargs}
+                self._bioioimage = BioImage(image_filepath, **all_kwargs)
+            except Exception as err:
+                self._bioioimage = BioImage(image_filepath, **kwargs)
         except UnsupportedFileFormatError as err:
             install.install_reader_dependencies(
                 image_filepath, err, 
                 qparent=qparent
             )
-            kwargs = set_reader(image_filepath, **kwargs)
-            self._bioioimage = BioImage(image_filepath, **kwargs)
+            kwargs, other_kwargs = set_reader(image_filepath, **kwargs)
+            try:
+                all_kwargs = {**kwargs, **other_kwargs}
+                self._bioioimage = BioImage(image_filepath, **all_kwargs)
+            except Exception as err:
+                self._bioioimage = BioImage(image_filepath, **kwargs)
         
         self._is_lazy_load = lazy_load
         

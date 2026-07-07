@@ -3035,7 +3035,7 @@ class dataPrepWin(QMainWindow):
             user_ch_name = ch_name_selector.user_ch_name
 
         user_ch_file_paths = load.get_user_ch_paths(
-                self.images_paths, user_ch_name
+            self.images_paths, user_ch_name
         )
         self.AutoPilotProfile.storeSelectedChannel(user_ch_name)
 

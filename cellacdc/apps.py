@@ -3377,7 +3377,7 @@ class QDialogMetadataXML(QDialog):
                 "it is very likely that metadata from the metadata reader\n"
                 "will be correct also for all the next positions.\n\n"
                 "Click this button to stop showing this dialog and use\n"
-                "the metadata from the reader\n"
+                "the metadata from the reader for all the next files.\n"
                 "(except for channel names, I will use the manually entered)"
             )
             buttonsLayout.addWidget(trustButton, 1, 1)
@@ -9569,6 +9569,7 @@ class QLineEditDialog(QDialog):
 
         # Add layouts
         mainLayout.addLayout(LineEditLayout)
+        mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
@@ -10051,6 +10052,8 @@ class QtSelectItems(QDialog):
         multiPosButton.setCheckable(True)
         self.multiPosButton = multiPosButton
         bottomLayout.addWidget(multiPosButton, alignment=Qt.AlignLeft)
+        
+        self.buttonsLayout = bottomLayout
 
         listBox = widgets.listWidget()
         listBox.addItems(items)
@@ -10080,6 +10083,11 @@ class QtSelectItems(QDialog):
 
         self.setFont(font)
 
+    def setAllSelected(self, selected: bool):
+        for i in range(self.ListBox.count()):
+            item = self.ListBox.item(i)
+            item.setSelected(selected)
+    
     def setSelectedItems(self, selectedItemsText):
         if self.multiPosButton.isChecked():
             for i in range(self.ListBox.count()):
@@ -10918,7 +10926,8 @@ class QDialogZsliceAbsent(QDialog):
         buttonsLayout = QGridLayout()
 
         txt = html_utils.paragraph(f"""
-            You loaded the fluorescent file called<br><br>{filename}<br><br>
+            You loaded the fluorescent file called<br><br>
+            <code>{filename}</code><br><br>
             however you <b>never selected which z-slice</b><br> you want to use
             when calculating metrics<br> (e.g., mean, median, amount...etc.)<br><br>
             Choose one of following options:
@@ -19244,13 +19253,14 @@ class SelectFoldersToAnalyse(QBaseDialog):
             onlyExpPaths=False, 
             scanFolderTree=True,
             instructionsText='Select experiment folders to analyse',
-            askSelectPosFolders=False
+            askSelectPosFolders=False,
+            title='Select experiments to analyse'
         ):
         super().__init__(parent)
         
         self.cancel = True
         self.onlyExpPaths = onlyExpPaths
-        self.setWindowTitle('Select experiments to analyse')
+        self.setWindowTitle(title)
         self.scanTree = scanFolderTree
         self.askSelectPosFolders = askSelectPosFolders
         
@@ -19307,7 +19317,10 @@ class SelectFoldersToAnalyse(QBaseDialog):
         
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        mainLayout.addStretch(1)
+        mainLayout.setStretch(0, 0)
+        mainLayout.setStretch(1, 0)
+        mainLayout.setStretch(2, 1)
+        mainLayout.setStretch(3, 0)
         
         self.setLayout(mainLayout)
         
@@ -19397,9 +19410,15 @@ class SelectFoldersToAnalyse(QBaseDialog):
             return list(exp_paths.keys())
         
         paths = []
+        doNotAskAgain = False
         for exp_path, pos_foldernames in exp_paths.items():
             if len(pos_foldernames) == 1:
                 paths.append(exp_path)
+                continue
+            
+            if doNotAskAgain:
+                for pos in pos_foldernames:
+                    paths.append(os.path.join(exp_path, pos))
                 continue
             
             informativeText = html_utils.paragraph(
@@ -19413,10 +19432,17 @@ class SelectFoldersToAnalyse(QBaseDialog):
             select_folder.QtPrompt(
                 self, values, toggleMulti=True, 
                 informativeText=informativeText,
-                selectedValues=values
+                selectedValues=values, 
+                addDoNotAskAgain=True
             )
             if select_folder.cancel:
                 return
+            
+            if select_folder.doNotAskAgain:
+                doNotAskAgain = True
+                for pos in pos_foldernames:
+                    paths.append(os.path.join(exp_path, pos))
+                continue
             
             for pos in select_folder.selected_pos:
                 paths.append(os.path.join(exp_path, pos))

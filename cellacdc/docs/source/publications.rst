@@ -16,6 +16,7 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Vandal, E. S., et al. <i>The role of cell growth rate on accumulation of the mitotic cyclin Cdc13 in fission yeast</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.05.14.724355">10.64898/2026.05.14.724355</a>.</li><br>
       <li>Kim, J., et al. <i>A Fkh1/2 binding site array in the WHI5 promoter drives sub-scaling transcription</i>. <b>Cell Reports</b> (2026) DOI: <a href="https://doi.org/10.1016/j.celrep.2026.117304">10.1016/j.celrep.2026.117304</a>.</li><br>
       <li>Benedikt, A. et al. <i>Retrograde signalling mediates cellular adaptation to mitochondrial DNA copy number alterations</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.04.22.720057">10.64898/2026.04.22.720057</a>.</li><br>
       <li>Lanz, M. C., et al. <i>Cell enlargement drives aging-associated proteome remodeling and shortens replicative lifespan</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.02.15.706013">10.64898/2026.02.15.706013</a>.</li><br>
