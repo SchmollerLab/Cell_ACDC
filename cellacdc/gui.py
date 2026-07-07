@@ -8802,7 +8802,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def segForLostIDsButtonClicked(self):
 
-        self.setFrameNavigationDisabled(disable=True, why='Segmentation for lost IDs')
+        self.setFrameNavigationDisabled(disable=True, why='Segmentation for lost IDs',warn=False)
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
         if frame_i == 0:
@@ -8810,7 +8810,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.setFrameNavigationDisabled(disable=False, why='Segmentation for lost IDs')
                         
             if hasattr(self, "wait_worker_loop"):
-                self.wait_worker_loop.exit()
+                self.wait_worker_loop = None
             return
 
         prev_IDs = posData.allData_li[frame_i-1]['regionprops'].IDs_set
@@ -8818,11 +8818,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         missing_IDs = prev_IDs - posData.rp.IDs_set - set(tracked_lost_IDs)
         if not missing_IDs:
-            self.logger.info('No missing IDs, skipping Segmentation for lost IDs')
+            # self.logger.info('No missing IDs, skipping Segmentation for lost IDs')
             self.setFrameNavigationDisabled(disable=False, why='Segmentation for lost IDs')
 
             if hasattr(self, "wait_worker_loop"):
-                self.wait_worker_loop.exit()
+                self.wait_worker_loop = None
             return
 
         self.storeUndoRedoStates(False)
@@ -14578,7 +14578,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         return curr_lab
 
-    def setFrameNavigationDisabled(self, disable: bool, why: str):
+    def setFrameNavigationDisabled(self, disable: bool, why: str, warn=True):
         """Disables the frame navigation buttons and scrollbar.
         This is used when the user is not allowed to navigate through frames
         Call again to unlock it again. Also sets tooltips to inform the user
@@ -14623,7 +14623,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         txt = f'Frame navigation disabled: {self.whyNavigateDisabled}'
-        self.logger.info(txt)
+        if warn:
+            self.logger.info(txt)
         self.navigateScrollBar.setToolTip(txt)
         
     def delObjsOutSegmMaskActionTriggered(self):
@@ -18936,7 +18937,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             tool_button = self.applyToolNewFrameButtons[name]
             try:
-
+                if tool_button.start_event_loop:
+                    self.wait_worker_loop = QEventLoop()
                 if hasattr(tool_button, 'click'):
                     tool_button.click()
                 elif hasattr(tool_button, 'trigger'):
@@ -18945,8 +18947,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     printl(
                         f"Warning: {name} has no click or trigger method"
                     )
-                if tool_button.start_event_loop:
-                    self.wait_worker_loop = QEventLoop()
+
+                if self.wait_worker_loop is not None and tool_button.start_event_loop:
                     self.wait_worker_loop.exec_()
                     
 

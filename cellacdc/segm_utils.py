@@ -315,22 +315,17 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
             ### maybe add roi extension if cells are deleted...
 
         overlaps = find_overlap(box_model_lab, box_curr_lab)
-
         # Set overlapping regions to 0, so already segmented cells are not overwritten
         IDs_to_filter = [ID for ID, overlap_perc in overlaps if overlap_perc >= overlap_threshold]
-
         if IDs_to_filter:
             box_model_lab[np.isin(box_model_lab, IDs_to_filter)] = 0
-               
         rp_model_lab = regionprops.acdcRegionprops(box_model_lab,precache_centroids=False)
         for obj in rp_model_lab:
             box_curr_lab_other_IDs[obj.slice][obj.image] = new_unique_ID
             assigned_IDs.append(new_unique_ID)
             new_unique_ID += 1
-
         positive_mask = box_curr_lab_other_IDs > 0
         curr_lab[box_x_min:box_x_max, box_y_min:box_y_max][positive_mask] = box_curr_lab_other_IDs[positive_mask]
-
         if export_bbox_for_training:
             bboxs_for_debug[-1].append(box_curr_lab_other_IDs.copy())
 

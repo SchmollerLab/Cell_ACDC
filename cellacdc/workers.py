@@ -292,7 +292,7 @@ class SegForLostIDsWorker(QObject):
         self.signals.initProgressBar.emit(total_steps)
         
         assigned_IDs = []
-        original_lab = deepcopy(posData.lab)
+        original_lab = posData.lab.copy()
         IDs_bboxs_list = []
         bboxs_list = []
         new_labs = []
@@ -399,6 +399,7 @@ class SegForLostIDsWorker(QObject):
             # 'images': [posData.lab.copy()],
             # 'img_titles': [f'posData.lab ({model_idx}) right before running single_cell_seg']
             #     })
+            
             out = segm_utils.single_cell_seg(
                 model, prev_lab, posData.lab, curr_img,
                 missing_IDs, new_unique_ID,
@@ -436,11 +437,12 @@ class SegForLostIDsWorker(QObject):
                 if ID in assignments:
                     assigned_IDs[i] = assignments[ID]
 
+
             IDs_bboxs_list.append(IDs_bboxs)
             newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
             newly_assigned_IDs_list.append(newly_assigned_IDs)
 
-            new_labs.append(deepcopy(posData.lab))
+            new_labs.append(posData.lab.copy())
             self.signals.progressBar.emit(1)
             
             if self._debug:
@@ -571,6 +573,7 @@ class SegForLostIDsWorker(QObject):
             self.signals.progressBar.emit(1)
 
         posData.lab = original_lab
+        
         self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
         self.emitSigStoreData(autosave=True)
 
