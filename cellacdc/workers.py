@@ -445,29 +445,29 @@ class SegForLostIDsWorker(QObject):
             new_labs.append(posData.lab.copy())
             self.signals.progressBar.emit(1)
             
-            if self._debug:
-                print(f'Model {model_idx}:')
-                print('Displaying curr_img and curr_lab:')
-                display_info = {
-                    'title': f'Model {model_idx}, input image and lab',
-                    'images': [curr_img, posData.lab],
-                    'img_titles': ['curr_img', ' posData.lab after model and tracking'],
-                }
-                # self.sigShowImageDebug.emit(display_info)
-                for i, imgs in imgs_to_show.items():
-                    display_info = {
-                        'title': f'Model {model_idx}, bbox {i}',
-                        'images': imgs,
-                        'img_titles': [
-                            'box_curr_img', 'box_curr_lab', 'box_curr_lab_other_IDs_grown', 
-                            'box_curr_img (after filling)', 'box_model_lab'
-                        ],
-                        'img_seg_pairs': {
-                            0: 1,
-                            3: 4
-                        }
-                    }
-                    # self.sigShowImageDebug.emit(display_info)
+            # if self._debug:
+            #     print(f'Model {model_idx}:')
+            #     print('Displaying curr_img and curr_lab:')
+            #     display_info = {
+            #         'title': f'Model {model_idx}, input image and lab',
+            #         'images': [curr_img, posData.lab],
+            #         'img_titles': ['curr_img', ' posData.lab after model and tracking'],
+            #     }
+            #     # self.sigShowImageDebug.emit(display_info)
+            #     for i, imgs in imgs_to_show.items():
+            #         display_info = {
+            #             'title': f'Model {model_idx}, bbox {i}',
+            #             'images': imgs,
+            #             'img_titles': [
+            #                 'box_curr_img', 'box_curr_lab', 'box_curr_lab_other_IDs_grown', 
+            #                 'box_curr_img (after filling)', 'box_model_lab'
+            #             ],
+            #             'img_seg_pairs': {
+            #                 0: 1,
+            #                 3: 4
+            #             }
+            #         }
+            #         # self.sigShowImageDebug.emit(display_info)
         global_areas = [obj.area for obj in posData.rp]
         global_area_mean = np.mean(global_areas) if len(global_areas) > 0 else None
         
@@ -482,24 +482,11 @@ class SegForLostIDsWorker(QObject):
             
             for j, (IDs_prev_bbox, bbox) in enumerate(zip(IDs_bboxs, bboxs)):
                 box_x_min, box_x_max, box_y_min, box_y_max = bbox
-                
-                if self._debug:
-                    _debug_rp_og_model = regionprops.acdcRegionprops(
-                        model_lab[box_x_min:box_x_max, box_y_min:box_y_max],
-                        precache_centroids=False
-                    )
-                    _og_IDs = _debug_rp_og_model.IDs
+    
                 
                 model_bbox_lab = model_lab[box_x_min:box_x_max, box_y_min:box_y_max]
                 model_bbox_lab_cleared = skimage.segmentation.clear_border(model_bbox_lab, buffer_size=1)
                 model_lab_rp = regionprops.acdcRegionprops(model_bbox_lab_cleared, precache_centroids=False)
-                
-                if self._debug:
-
-                    IDs_filtered_border = [
-                        ID for ID in _og_IDs
-                        if ID not in model_lab_rp.IDs_set
-                    ]
 
                 original_bbox_lab = original_lab[box_x_min:box_x_max, box_y_min:box_y_max] # deepcopy(original_lab[box_x_min:box_x_max, box_y_min:box_y_max])
                 # original_bbox_lab_cleared_borders = skimage.segmentation.clear_border(original_bbox_lab)
@@ -532,25 +519,6 @@ class SegForLostIDsWorker(QObject):
                         continue
 
                     filtered_IDs.append(obj.label)
-                    
-                if self._debug:
-                    IDs_filtered_for_size = [
-                        obj.label for obj in model_lab_rp
-                        if not (skip_size_filter or (obj.area > min_area and obj.area < max_area))
-                    ]
-
-                    IDs_filtered_for_tracking = [
-                        obj.label for obj in model_lab_rp
-                        if not (obj.label in prev_IDs)
-                    ]
-                    print(f'Model {i}, bbox {j}:')
-                    print(f'    BBOX IDs: {IDs_prev_bbox}')
-                    print(f'    Start: {[obj.label for obj in model_lab_rp]}')
-                    print(f'    Size: {IDs_filtered_for_size}')
-                    print(f'    Tracking: {IDs_filtered_for_tracking}')
-                    print(f'    Overlap: {IDs_filtered_for_overlap}')
-                    print(f'    Border: {IDs_filtered_border}')
-                    print(f'    End: {filtered_IDs}')
 
                 if filtered_IDs:
                     mask = np.isin(model_bbox_lab, filtered_IDs)
@@ -558,17 +526,6 @@ class SegForLostIDsWorker(QObject):
                     mask = np.logical_and(mask, original_bbox_lab == 0)
                     original_bbox_lab[mask] = model_bbox_lab[mask]
                     # original_lab[box_x_min:box_x_max, box_y_min:box_y_max] = original_bbox_lab
-                
-                if self._debug:
-                    display_info = {
-                        'title': f'Applying, Model {i}, bbox {j}',
-                        'images': [deepcopy(model_bbox_lab),
-                                   deepcopy(model_bbox_lab_cleared), 
-                                   deepcopy(original_bbox_lab_cleared_borders), 
-                                   deepcopy(final_lab[box_x_min:box_x_max, box_y_min:box_y_max])],
-                        'img_titles': ['model_bbox_lab', 'model_bbox_lab_cleared', 'original_bbox_lab_cleared_borders', 'final']
-                    }
-                    # self.sigShowImageDebug.emit(display_info)
 
             self.signals.progressBar.emit(1)
 
