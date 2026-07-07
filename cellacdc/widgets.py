@@ -17,6 +17,8 @@ import random
 from functools import partial
 from math import ceil
 
+import html
+
 import skimage.draw
 import skimage.morphology
 
@@ -2612,7 +2614,8 @@ class myMessageBox(_base_widgets.QBaseDialog):
     def copyToClipboard(self):
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
-        cb.setText(self.sender()._command, mode=cb.Clipboard)
+        plain_text = html.unescape(self.sender()._command).replace("\xa0", " ")
+        cb.setText(plain_text, mode=cb.Clipboard)
         print('Command copied!')
 
     def addButton(self, buttonText):
@@ -7790,10 +7793,11 @@ class CopiableCommandWidget(QGroupBox):
     def setWordWrap(self, wordWrap):
         self.label.setWordWrap(wordWrap)
     
-    def copyToClipboard(self):
+    def copyToClipboard(self):        
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
-        cb.setText(self._command, mode=cb.Clipboard)
+        plain_command = html.unescape(self._command).replace("\xa0", " ")
+        cb.setText(plain_command, mode=cb.Clipboard)
         print('Command copied!')
     
     def setCommand(self, command, font_size=None):
@@ -10400,7 +10404,8 @@ class installJavaDialog(myMessageBox):
     def copyToClipboard(self):
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
-        cb.setText(self.sender().textToCopy, mode=cb.Clipboard)
+        plain_text = html.unescape(self.sender().textToCopy).replace("\xa0", " ")
+        cb.setText(plain_text, mode=cb.Clipboard)
         print('Command copied!')
 
     def showInstructions(self, checked):
