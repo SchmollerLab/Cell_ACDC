@@ -10084,7 +10084,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     # @exec_time
     def applyEditID(
-            self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y, shift=False, doPropagateUnvisited=False,
+            self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y, 
+            shift=False, doPropagateUnvisited=False,
             merging_IDs=False
         ):  
         posData = self.data[self.pos_i]
