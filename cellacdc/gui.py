@@ -24694,13 +24694,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if not hasattr(action, 'layerTypeIdx'):
                     continue
 
-                if action.layerTypeIdx < 2 and computePointsLayers:
+                if action.layerTypeIdx < 2:
                     self.getCentroidsPointsData(action)
                 
                 frames = action.pointsData.get(self.pos_i, set())
                 if posData.frame_i not in frames:
                     continue
                 
+                framePointsData = action.pointsData[self.pos_i][posData.frame_i]
                 xx, yy, zz = [], [], []
                 for z, z_data in framePointsData.items():
                     xx.extend(z_data['x'])
@@ -24713,7 +24714,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
                 points_zyx = np.column_stack((zz, yy, xx))
                 volume_renderer.add_points_layer(
-                    name,
+                    str(id(action.button)),
                     points=points_zyx,
                     color=color,
                     size=action.pointSize,
