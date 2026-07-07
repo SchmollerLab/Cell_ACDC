@@ -10061,7 +10061,10 @@ class EditIDDialog(QDialog):
         if msg.cancel:
             return False
         self.doNotAskAgainExistingID = doNotAskAgainCheckbox.isChecked()
-        self.mergeWithExistingID = True
+        if msg.clickedButton == swapButton:
+            self.mergeWithExistingID = False
+        else:
+            self.mergeWithExistingID = True
         return True
 
     def assignNewIDclicked(self):
@@ -10082,6 +10085,8 @@ class EditIDDialog(QDialog):
                 proceed = self._warnExistingID(self.clickedID, ID)
                 if not proceed:
                     return
+                if not self.mergeWithExistingID:
+                    how.append((ID, self.clickedID))
                 valid = True
             else:
                 valid = True
