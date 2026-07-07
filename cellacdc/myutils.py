@@ -3836,9 +3836,7 @@ def _install_package_cli_msg(
         f'{install_command}\n'
     )
     logger_func(txt)
-    
-    
-        
+
     while True:
         answer = try_input_install_package(pkg_name, install_command)
         if not answer or answer.lower() == 'y':
