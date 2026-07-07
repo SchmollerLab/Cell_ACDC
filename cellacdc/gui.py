@@ -14598,12 +14598,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         newBottomLayoutHeight = self.bottomScrollArea.minimumHeight() - event.y()
         if newBottomLayoutHeight <= 0:
             newBottomLayoutHeight = 1
-            return
         
         self.bottomScrollArea.setFixedHeight(newBottomLayoutHeight)
     
     def resizeBottomLayoutLineReleased(self):
-        bottomLayoutHeight = self.bottomScrollArea.height()
+        bottomLayoutHeight = max(1, self.bottomScrollArea.height())
         self.df_settings.at['bottomLayoutHeight', 'value'] = str(
             bottomLayoutHeight
         )
