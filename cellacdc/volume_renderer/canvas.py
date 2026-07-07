@@ -241,11 +241,7 @@ class VolumeRendererWindow(QMainWindow):
         lab_gradient_item.shuffleCmapAction.setShortcut('Shift+S')
         lab_gradient_item.greedyShuffleCmapAction.setShortcut('Alt+Shift+S')
         # lab_lut_item.sigGradientChanged.connect(self.ticksCmapMoved)
-        lab_reset_btn.clicked.connect(
-            partial(
-                self._on_reset_lab_gradient, 
-                lab_gradient_item=lab_gradient_item)
-        )
+        lab_reset_btn.clicked.connect(self._on_reset_lab_gradient)
         
         lab_reset_btn.setMaximumWidth(
             ceil(lab_gradient_item.sizeHint().width()))
@@ -488,7 +484,7 @@ class VolumeRendererWindow(QMainWindow):
         self._lab_node.set_data(self._lab)
         self._update_display(exclude_lab=True)
     
-    def _on_reset_lab_gradient(self, *args):        
+    def _on_reset_lab_gradient(self, *args, **kwargs):        
         if self._lab_gradient_item_state is not None:
             self._lab_gradient_item.item.restoreState(
                 self._lab_gradient_item_state)
