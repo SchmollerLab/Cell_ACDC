@@ -1821,7 +1821,6 @@ class ScrollArea(QScrollArea):
         self.containerWidget.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
-
         self.setFixedHeight(height)
 
     def eventFilter(self, object, event: QEvent):
