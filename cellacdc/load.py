@@ -683,7 +683,6 @@ def save_acdc_df_file(
     try:
         images_path = os.path.dirname(csv_path)
         basename = get_basename(images_path)
-        acdc_df.insert(0, 'basename', basename)
         if 'basename' in acdc_df.columns:
             acdc_df['basename'] = basename
         else:
@@ -1043,6 +1042,7 @@ def imread(path):
 def load_image_file(filepath: str | os.PathLike):
     # The function `get_filename_from_channel` will append ';;channel_name' 
     # when the imgPath is the symlink.ini file
+    filepath = os.fspath(filepath)
     parts = filepath.split(';;')
     if len(parts) == 2:
         filepath, channel_name = parts
@@ -3754,8 +3754,12 @@ class OMEXML_intrument:
 
 class OMEXML_Channel:
     def __init__(self, Channel) -> None:
-        self.Name = Channel.attrib.get('Name', '')
-        self.node = Channel.attrib
+        if not Channel or Channel is None:
+            self.Name = 'not_found'
+            self.node = None
+        else:
+            self.Name = Channel.attrib.get('Name', '')
+            self.node = Channel.attrib
 
 class OMEXML_Pixels:
     def __init__(self, Pixels, node, ome_schema) -> None:
@@ -3778,7 +3782,10 @@ class OMEXML_Pixels:
             self.PhysicalSizeZ = node.get('PhysicalSizeZ', 1.0)
         
     def Channel(self, channel_index=0):
-        Channel = self.Pixels.findall(f'{self.ome_schema}Channel')[channel_index]
+        try:
+            Channel = self.Pixels.findall(f'{self.ome_schema}Channel')[channel_index]
+        except Exception as err:
+            Channel = None
         return OMEXML_Channel(Channel)
 
 class OMEXML:
@@ -3792,12 +3799,20 @@ class OMEXML:
             return tif.ome_metadata
     
     def parse_metadata(self):
+        self.root = None
+        self.ome_schema = None
         self.omexml_string = self.read_omexml_string()
+        if self.omexml_string is None:
+            return
+        
         self.root = ET.fromstring(self.omexml_string)
         self.ome_schema = re.findall(r'({.+})OME', self.root.tag)[0]
     
     def instrument(self):
         instrument = OMEXML_intrument()
+        if self.root is None:
+            return instrument
+        
         instrument_xml = self.root.find(f'{self.ome_schema}Instrument')
         if instrument_xml is None:
             return instrument
@@ -3811,9 +3826,15 @@ class OMEXML:
         return instrument
 
     def get_image_count(self):
+        if self.root is None:
+            return 1
+        
         return len(self.root.findall(f'{self.ome_schema}Image'))
 
     def image(self):
+        if self.root is None:
+            return OMEXML_image(None, 'not_found')
+        
         Image = self.root.find(f'{self.ome_schema}Image')
         Pixels = Image.find(f'{self.ome_schema}Pixels')
         image = OMEXML_image(Pixels, self.ome_schema)
@@ -4212,18 +4233,12 @@ def search_filepath_in_pos_path_from_endname(
             return os.path.join(images_path, file)
 
 def get_basename(images_path):
-    images_files = myutils.listdir(images_path)
-    sample_filepath = os.path.join(images_path, images_files[0])
-    posData = loadData(sample_filepath, '')
-    posData.getBasenameAndChNames()
-    return posData.basename
+    basename, _ = myutils.getBasenameAndChNames(images_path)
+    return basename
 
 def get_channel_names(images_path):
-    images_files = myutils.listdir(images_path)
-    sample_filepath = os.path.join(images_path, images_files[0])
-    posData = loadData(sample_filepath, '')
-    posData.getBasenameAndChNames()
-    return posData.chNames
+    _, chNames = myutils.getBasenameAndChNames(images_path)
+    return chNames
 
 def search_filepath_from_endname(exp_path, endname, include_spotmax_out=False):
     pos_foldernames = myutils.get_pos_foldernames(exp_path)
@@ -4357,14 +4372,14 @@ def save_symlink_ini_from_image_filepath(
         cp_symlink.read(symlink_ini_filepath)
     
     if frames_range is None:
-        frames_range = (0,1)
+        frames_range = (0, 1)
     
-    frames_range_str = ','.join(frames_range)
+    frames_range_str = ','.join(map(str, frames_range))
     
     if zslices_range is None:
-        zslices_range = (0,1)
+        zslices_range = (0, 1)
     
-    zslices_range_str = ','.join(zslices_range)
+    zslices_range_str = ','.join(map(str, zslices_range))
     
     use_bioio = 'False' if ext in ACDC_IMAGE_EXTENSIONS else 'True'
     cp_symlink[f'channel_name.{channel_name}'] = {
@@ -4398,16 +4413,21 @@ def create_symlinked_pos_folder(
     for file in myutils.listdir(src_images_path):
         filepath = os.path.join(src_images_path, file)
         dst_filepath = os.path.join(dst_images_path, file)
+        if file.endswith('_symlink.ini'):
+            shutil.copy2(filepath, dst_filepath)
+            continue
+        
         for channel in channel_names:
-            if file == f'{basename}{channel}.tif':
+            valid_image_files = (
+                f'{basename}{channel}.tif',
+                f'{basename}{channel}.tiff',
+                f'{basename}{channel}.h5',
+                f'{basename}_{channel}_aligned.npz',
+                f'{basename}_{channel}_aligned.npz',
+            )
+            if file in valid_image_files:
                 save_symlink_ini_from_image_filepath(
                     filepath, dst_images_path, channel, 
-                    basename=basename
-                )
-            
-            elif file == f'{basename}{channel}.h5':
-                save_symlink_ini_from_image_filepath(
-                    filepath, dst_images_path, channel,
                     basename=basename
                 )
         

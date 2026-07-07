@@ -32,6 +32,33 @@ def warnTooManyItems(mainWin, numItems, qparent):
     )
     return msg.cancel, msg.clickedButton==switchToLowResButton
 
+def warnTooManyNewItems(mainWin, numItems, qparent):
+    from . import widgets
+    mainWin.logger.info(
+        '[WARNING]: asking user what to do with too many objects...'
+    )
+    msg = widgets.myMessageBox(wrapText=False)
+    txt = html_utils.paragraph(f"""
+        WARNING: The resulting segmentation mask has <b>{numItems} objects</b>.<br><br>
+        Creating <b>high resolution</b> text annotations 
+        for these many objects could take a <b>long time</b>.<br><br>
+        We recommend <b>deactivating text annotations</b> or <b>switching to low resolution</b> annotations.<br><br>
+        You can still try to activate them or switch to high resolution later.<br><br>
+        What do you want to do?
+    """)
+
+    switchToLowResButton, deactivateAnnotButton = msg.warning(
+        qparent, 'Too many objects', txt,
+        buttonsTexts=(
+            widgets.reloadPushButton(' Switch to low resolution '), 
+            widgets.noPushButton(' Deactivate text annotations ')              
+        )
+    )
+    switchToLowRes = msg.clickedButton==switchToLowResButton
+    deactivateAnnot = msg.clickedButton==deactivateAnnotButton
+    
+    return msg.cancel, switchToLowRes, deactivateAnnot
+
 def warnRestartCellACDCcolorModeToggled(
         scheme, app_name='Cell-ACDC', parent=None
     ):
@@ -355,3 +382,31 @@ def warnMissingCca(missing_cca_items, qparent=None):
     )
     doNotShowAgain = msg.doNotShowAgainCheckbox.isChecked()
     return msg.clickedButton == ignoreButton, doNotShowAgain
+
+def warnAskTransparencyModeNeededForExport(
+        mainWin, output='image', qparent=None
+    ):
+    if qparent is None:
+        qparent = mainWin
+        
+    from . import widgets
+    mainWin.logger.info(
+        '[WARNING]: prompting user to activate transparency mode for exporting '
+        'multichannel (overlay) image...'
+    )
+    msg = widgets.myMessageBox(wrapText=False)
+    txt = html_utils.paragraph(f"""
+        In order to export a multichannel (overlay) view to {output}, 
+        you need to activate 
+        <code>True transparency (RGBA composite)</code> mode.<br><br>
+        Without this mode, the intensity levels in the exported image would not 
+        correspond to the displayed image.<br><br>
+        Do you want to activate the transparency mode now?
+    """)
+
+    _, yesButton = msg.warning(
+        qparent, 'Transparency mode required', txt,
+        buttonsTexts=('Cancel', 'Yes, activate transparency mode')
+    )
+    
+    return msg.cancel, msg.clickedButton==yesButton

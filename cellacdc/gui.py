@@ -99,7 +99,6 @@ from . import debugutils
 from .plot import imshow
 from . import gui_utils
 from . import gui_combine
-from . import valid_image_data_ends
 
 np.seterr(invalid='ignore')
 
@@ -3234,8 +3233,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # self.rescaleIntensitiesLut(setImage=setImage)
                 break
     
-    def customLevelsLutChanged(self, levels, imageItem=None):
+    def customLevelsLutChanged(self, levels, imageItem: pg.ImageItem=None):
         imageItem.setLevels(levels)
+        if self.overlayToolbar.isTransparent():
+            self.updateTransparentOverlayRgba()
     
     def getPreComputedMinMaxZstack(self, channel: str):
         if channel != self.user_ch_name:
@@ -3331,13 +3332,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if triggeredByUser:
                 current_min, current_max = imageItem.getLevels() 
                 dtype_max = np.iinfo(image_data.dtype).max
-                max_value = image_data.max()
-                min_value = image_data.min()
+                # max_value = image_data.max()
+                # min_value = image_data.min()
                 win = apps.SetCustomLevelsLut(
-                    init_min_value=current_min,
-                    init_max_value=current_max,
-                    maximum_max_value=max_value,
-                    minimum_min_value=min_value,
+                    init_min_value=round(current_min),
+                    init_max_value=round(current_max),
+                    maximum_max_value=dtype_max,
+                    minimum_min_value=0,
                     parent=self
                 )
                 win.sigLevelsChanged.connect(
@@ -12183,7 +12184,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.scaleBar.removeFromAxis(self.ax1)
 
         self.scaleBarDialog = None
+        self.imgGrad.addScaleBarAction.blockSignals(True)
         self.imgGrad.addScaleBarAction.setChecked(checked)
+        self.imgGrad.addScaleBarAction.blockSignals(False)
     
     def updateScaleBar(self, scaleBarKwargs):
         self.scaleBar.draw(**scaleBarKwargs)
@@ -17676,11 +17679,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.update_rp(wl_update=False)
         self.tracking(enforce=True, against_next=posData.frame_i==0)
         
-        if self.isSnapshot:
-            self.fixCcaDfAfterEdit('Repeat segmentation')
-            self.updateAllImages()
-        else:
-            self.warnEditingWithCca_df('Repeat segmentation')
+        proceed = self.checkHandleTooManyNewItems()
+        if proceed:
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit('Repeat segmentation')
+                self.updateAllImages()
+            else:
+                self.warnEditingWithCca_df('Repeat segmentation')
 
         txt = f'Done. Segmentation computed in {exec_time:.3f} s'
         self.logger.info('-----------------')
@@ -22031,7 +22036,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             if goToFrameButton == msg.clickedButton:
                 self.addMissingIDs_cca_df(posData)
-                self.store_cca_df()
                 msg = 'Looking good!'
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
@@ -25603,12 +25607,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 toolbutton = items[3]
                 if not toolbutton.isChecked():
                     continue
+                
+                rescale_lut_action = (
+                    imageItem.lutItem.rescaleActionGroup.checkedAction()
+                )
+                rescale_lut_how = rescale_lut_action.text()
+                in_range = 'image'
+                if rescale_lut_how == 'Choose custom levels...':
+                    in_range = tuple(imageItem.getLevels())
+                    
                 alpha_val = alphaSB.value()/alphaSB.maximum()
                 ol_img = skimage.exposure.rescale_intensity(
-                    ol_img, out_range=(0.0, 1.0)
-                )
-                out_range_min, out_range_max = lutItem.getLevels()                
-                rgba_imgs_info[chName] = (ol_img, alpha_val, lutItem)
+                    ol_img, in_range=in_range, out_range=(0.0, 1.0)
+                )               
+                rgba_imgs_info[chName] = (ol_img, alpha_val, lutItem, imageItem)
             else:
                 self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
                 imageItem.setImage(ol_img)
@@ -25620,7 +25632,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         images = []
         luts = []
         for channel, info in rgba_imgs_info.items():
-            ol_img, alpha_val, lutItem = info
+            ol_img, alpha_val, lutItem, imageItem = info
             alpha_values.append(alpha_val)
             images.append(ol_img)
             luts.append(lutItem.gradient.getLookupTable(256, alpha=255)/255)
@@ -25629,8 +25641,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if self.baseLayerToolbutton.isChecked():
             image1 = self._getImageupdateAllImages()
+            rescale_lut_action = (
+                self.imgGrad.rescaleActionGroup.checkedAction()
+            )
+            rescale_lut_how = rescale_lut_action.text()
+            in_range = 'image'
+            if rescale_lut_how == 'Choose custom levels...':
+                in_range = tuple(self.img1.getLevels())
+                
             image1 = skimage.exposure.rescale_intensity(
-                image1, out_range=(0.0, 1.0)
+                image1, in_range=in_range, out_range=(0.0, 1.0)
             )        
             images.append(image1)
             baseLut = (
@@ -29543,6 +29563,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         filename = filename.rstrip('_')
         channel_name = None
         do_copy = True
+        do_move = False
+        use_symlink = False
         if dirname != 'Images':
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             acdc_folder = f'{timestamp}_acdc'
@@ -29584,6 +29606,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             new_filename = f'{filename}{ext}'
         
+        action_text = ''
         if do_copy:
             action_text = 'Copying'
         elif do_move:
@@ -29600,7 +29623,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 imageFilePath=symlink_filepath,
                 user_ch_name=channel_name
             )
-        elif ext == '.tif' or ext == '.npz':
+        elif ext == '.tif' or ext == '.npz' or ext == '.tiff':
             new_filepath = os.path.join(exp_path, new_filename)
             if not os.path.exists(new_filepath):
                 self.logger.info(f'{action_text} file to Images folder...')
@@ -29616,13 +29639,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             img = data.img_data
             if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
                 self.logger.info('Converting RGB image to grayscale...')
-                if img.shape[-1] == 3:
-                    data.img_data = skimage.color.rgb2gray(data.img_data)
-                else:
-                    data.img_data = cv2.cvtColor(
-                        data.img_data, cv2.COLOR_RGBA2GRAY
-                    )
-                data.img_data = skimage.img_as_ubyte(data.img_data)
+                data.img_data = colors.image_2d_rgb_or_rgba_to_uint8_grayscale(
+                    data.img_data
+                )
             new_filename_no_ext, ext = os.path.splitext(new_filename)
             tif_filename = f'{new_filename_no_ext}.tif'
             tif_path = os.path.join(exp_path, tif_filename)
@@ -30866,6 +30885,49 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.setDrawAnnotComboboxTextRight(saveSettings=saveSettings)
 
+    def checkHandleTooManyNewItems(self):
+        posData = self.data[self.pos_i]
+        num_objects = len(posData.rp)
+        if num_objects <= 1500:
+            return True
+
+        out = _warnings.warnTooManyNewItems(self, num_objects, self)
+        closed, switchToLowRes, deactivateAnnot = out
+        if closed:
+            # Segmentation is already computed at this point; just proceed
+            return True
+
+        if not switchToLowRes and not deactivateAnnot:
+            # User chose to proceed without changing anything
+            return True
+    
+        if switchToLowRes:
+            self.highLowResAction.setChecked(False)
+            self.changeTextResolution()
+            return True
+        
+        if deactivateAnnot:
+            self.annotCcaInfoCheckbox.blockSignals(True)
+            self.annotIDsCheckbox.blockSignals(True)
+            self.annotCcaInfoCheckbox.setChecked(False)
+            self.annotIDsCheckbox.setChecked(False)
+            self.annotCcaInfoCheckbox.blockSignals(False)
+            self.annotIDsCheckbox.blockSignals(False)
+
+            self.annotCcaInfoCheckboxRight.blockSignals(True)
+            self.annotIDsCheckboxRight.blockSignals(True)
+            self.annotCcaInfoCheckboxRight.setChecked(False)
+            self.annotIDsCheckboxRight.setChecked(False)
+            self.annotCcaInfoCheckboxRight.blockSignals(False)
+            self.annotIDsCheckboxRight.blockSignals(False)
+
+            self.textAnnot[0].setCcaAnnot(False)
+            self.textAnnot[0].setLabelAnnot(False)
+            self.textAnnot[1].setCcaAnnot(False)
+            self.textAnnot[1].setLabelAnnot(False)
+            return True
+
+    
     def setAnnotOptionsCcaMode(self):
         self.prevAnnotOptions = self.storeCurrentAnnotOptions_ax1(
             return_value=True
@@ -31025,7 +31087,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             how = self.df_settings.at[
                 f'how_rescale_intensities_{channelName}', 'value'
             ]
-            lutItem.setRescaleIntensitiesHow(how)
+            if not 'custom' in how:
+                lutItem.setRescaleIntensitiesHow(how)
         
         self.rescaleIntensChannelHowMapper[channelName] = (
             'Rescale each 2D image'
@@ -31187,7 +31250,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if otherToolbutton.isChecked() and isSingleChannel:
                 op_val = 1.0
             elif otherToolbutton.isChecked():
-                op_val = channel_opacity_mapper[channel]
+                op_val = channel_opacity_mapper.get(channel, 0.01)
             else:
                 op_val = 0.0
             
@@ -32028,8 +32091,39 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return 
         
         return msg.clickedButton == timelapseButton
+
+    def exportToCheckAskOverlay(self, output='image'):
+        if not self.overlayButton.isChecked():
+            return True
+        
+        if self.overlayToolbar.isTransparent():
+            return True
+        
+        self.blinker = qutils.QControlBlink(
+            self.overlayToolbar.transparencyCheckbox, qparent=self
+        )
+        self.blinker.start()
+        
+        cancel, activateTransparencyMode = (
+            _warnings.warnAskTransparencyModeNeededForExport(
+                self, output=output
+            )
+        )
+        
+        if cancel:
+            return False
+        
+        if activateTransparencyMode:
+            self.overlayToolbar.setTransparent(True)
+        
+        return True
     
     def exportToVideoTriggered(self):
+        proceed = self.exportToCheckAskOverlay(output='video')
+        if not proceed:
+            self.logger.info('Export to video process cancelled')
+            return
+        
         posData = self.data[self.pos_i]
         
         doTimelapseVideo = posData.SizeT > 1
@@ -32146,7 +32240,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
     
     @disableWindow
-    def exportToImage(self, preferences):        
+    def exportToImage(self, preferences):      
         filepath = preferences['filepath']
         self.logger.info(f'Saving image to "{filepath}"...')
         
@@ -32154,6 +32248,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             exporter = exporters.SVGExporter(self.ax1)
         else:
             exporter = exporters.ImageExporter(self.ax1, dpi=preferences['dpi'])
+        
         exporter.export(filepath)
         self.logger.info(f'Image saved.')
         
@@ -32163,6 +32258,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         prompts.exportToImageFinished(filepath, qparent=self)
     
     def exportToImageTriggered(self):
+        proceed = self.exportToCheckAskOverlay()
+        if not proceed:
+            self.logger.info('Export to video process cancelled')
+            return
+        
         posData = self.data[self.pos_i]
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'{timestamp}_acdc_exported_image'

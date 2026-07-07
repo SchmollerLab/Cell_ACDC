@@ -111,7 +111,6 @@ def _install_tables(parent_software='Cell-ACDC'):
                         f'message above**): {issues_url}'
                     )
                     print('^'*60)
-                finally:
                     break
             elif answer.lower() == 'n':
                 raise e
@@ -449,6 +448,10 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     if hasattr(QtCore.Qt, 'AA_PluginApplication'):
         QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_PluginApplication, False)
 
+    from qtpy.QtCore import QLocale
+    # Set locale to English (United States) to avoid issues with decimal separator in some countries (e.g. comma instead of dot)
+    QLocale.setDefault(QLocale(QLocale.English, QLocale.UnitedStates))
+    
     # Check OS dark or light mode
     from qtpy.QtWidgets import QApplication, QStyleFactory
     from qtpy.QtGui import QPalette, QIcon
@@ -622,24 +625,22 @@ def run_cli(ini_filepath):
     
     
 def _setup_numpy(caller_name='Cell-ACDC'):
-    import urllib.request
+    from importlib.metadata import requires
     import json
     import re
     
     from . import try_input_install_package
     
     numpy_versions = []
-    url = "https://pypi.org/pypi/numba/json"
+    
+
     try:
-        with urllib.request.urlopen(url) as response:
-            data = json.load(response)
-            requires_dist = data["info"].get("requires_dist", [])
-            numpy_versions = [
-                req for req in requires_dist if "numpy" in req.lower()
-            ]
-    except urllib.error.URLError as e:
-        print(f"Could not update np: {e}")
-        return
+        reqs = requires("numba") or []
+        numpy_versions = [
+            req for req in reqs if req.lower().startswith("numpy")
+        ]
+    except Exception:
+        reqs = []    
     
     if not numpy_versions:
         print(

@@ -586,6 +586,7 @@ class bioFormatsWorker(QObject):
             'All Positions' in self.selectedPos 
             or in_file_pos_name in self.selectedPos
         )
+        
         if not savePos:
             return False
 
@@ -1076,7 +1077,7 @@ class bioFormatsWorker(QObject):
                 for in_file_p in range(self.SizeS):
                     cancel = self.saveToPosFolder(
                         in_file_p, raw_src_path, exp_dst_path, filename, 
-                        in_file_p, pos_n
+                        in_file_p, pos_n+in_file_p
                     )
                     if cancel:
                         self.cancelled = True
@@ -1272,6 +1273,7 @@ class createDataStructWin(QMainWindow):
 
         cancelButton = widgets.cancelPushButton(' Stop process ')
         cancelButton.clicked.connect(self.close)
+        self.cancelButton = cancelButton
         
         buttonsLayout = QHBoxLayout()
         buttonsLayout.addStretch(1)
@@ -1644,6 +1646,8 @@ class createDataStructWin(QMainWindow):
                 self.close()
                 return
 
+        self.cancelButton.setEnabled(False)
+        
         # Set up separate thread for bioFormatsWorker class
         self.mutex = QMutex()
         self.waitCond = QWaitCondition()
@@ -1961,8 +1965,11 @@ class createDataStructWin(QMainWindow):
         return files
 
     def checkFileNames(self, raw_filenames, raw_src_path):
+        allowed = (
+            '.ome.tif',
+        )
         for file in raw_filenames:
-            if not acdc_regex.is_alphanumeric_filename(file):
+            if not acdc_regex.is_alphanumeric_filename(file, allowed=allowed):
                 msg = widgets.myMessageBox(wrapText=False)
                 txt = html_utils.paragraph(
                     f"""
@@ -2241,8 +2248,8 @@ class createDataStructWin(QMainWindow):
            buttonsTexts=(
                'Cancel', 
                'Overwrite', 
-               'Add files', 
-               widgets.newFilePushButton('Create new'),
+               'Add image files to existing Positions', 
+               widgets.newFilePushButton('Create new Position folders'),
             ),
            path_to_browse=exp_dst_path
         )
@@ -2519,6 +2526,7 @@ class CreateSymLinkToPosWin(QMainWindow):
         buttonsLayout = QHBoxLayout()
         cancelButton = widgets.cancelPushButton(' Close ')
         cancelButton.clicked.connect(self.cancelProcess)
+        self.cancelButton = cancelButton
         
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -2533,7 +2541,7 @@ class CreateSymLinkToPosWin(QMainWindow):
             parent=self, 
             instructionsText=
                 'Select experiment or specific <b>Position folders '
-                'to link<b>',
+                'to link</b>',
             askSelectPosFolders=True,
             title='Select Position folders to link'
         )
@@ -2582,6 +2590,7 @@ class CreateSymLinkToPosWin(QMainWindow):
             self.cancelProcess()
             return
         
+        self.cancelButton.setEnabled(False)
         self.startWorker(
             expToPosFoldersMapper, 
             dst_folderpath, 
@@ -2703,6 +2712,7 @@ class CreateSymLinkToPosWin(QMainWindow):
             dst_folderpath, 
             exp_segm_files_to_copy_mapper
         )
+        self._worker.moveToThread(self._worker_thread)
         self._worker.success = False
 
         self._worker.signals.finished.connect(

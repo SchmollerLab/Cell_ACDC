@@ -373,12 +373,15 @@ class Logger(logging.Logger):
             self._stdout.write(text)
         
         if self._q_log_widget is not None:
-            self._q_log_widget.appendPlainText(text)
             try:
-                self._q_log_widget.verticalScrollBar().setValue(
-                    self._q_log_widget.verticalScrollBar().maximum()
-                )
-            except Exception as err:
+                # Log thread-safely to the QPlainTextEdit widget
+                from qtpy.QtCore import QThread
+                if QThread.currentThread() == self._q_log_widget.thread():
+                    self._q_log_widget.appendPlainText(text)
+                    self._q_log_widget.verticalScrollBar().setValue(
+                        self._q_log_widget.verticalScrollBar().maximum()
+                    )
+            except Exception:
                 pass
         
         if not log_to_file:
@@ -565,6 +568,12 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
             info_txts.append(f'Qt {QtCore.__version__}')
         except Exception as err:
             info_txts.append('Qt: Not installed')
+    
+    try:
+        branch_name = get_git_branch_name()
+        info_txts.append(f'Git branch: "{branch_name}"')
+    except Exception as err:
+        pass
     
     info_txts.append(f'Working directory: {os.getcwd()}')
     
@@ -1040,6 +1049,14 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
             traceback.print_exc()
     
     return 'ND'  
+
+def get_git_branch_name():
+    command = 'git rev-parse --abbrev-ref HEAD'
+    output = _subprocess_run_command(
+        command, shell=False, callback='check_output'
+    )
+    branch_name = output.decode().strip()
+    return branch_name
 
 def showInExplorer(path):
     if is_mac:
@@ -2875,6 +2892,7 @@ def _install_pip_package(
         force_binary: bool = True,
         pref_binary: bool = True,
         ) -> None:
+    pkg_name = pkg_name.replace('"', '')
     command = [sys.executable, '-m', 'pip', 'install', pkg_name,]
     if force_binary:
         command.append('--only-binary=:all:')
@@ -3182,6 +3200,8 @@ def install_package_conda(conda_pkg_name, channel='conda-forge'):
         raise EnvironmentError(
             'Cell-ACDC is not running in a `conda` environment.'
         )
+    
+    conda_pkg_name = conda_pkg_name.replace('"', '')
     conda_prefix, pip_prefix = get_pip_conda_prefix()
     conda_prefix = re.sub(
         r'(-c\sconda-forge\s?|--channel=conda-forge\s?)', f'-c {channel} ', 
@@ -3460,7 +3480,9 @@ def check_install_package(
                     including_lower_version=include_lower_version,
                 )
                 if installer == 'pip':
-                    _install_pip_package(pkg_command, install_dependencies=install_dependencies)
+                    _install_pip_package(
+                        pkg_command, install_dependencies=install_dependencies
+                    )
                 else:
                     install_package_conda(pkg_command)
         except Exception as e:
@@ -3701,6 +3723,7 @@ def _get_pkg_command_pip_install(
     ):
     if exact_version:
         pkg_command = f'{pkg_command}=={exact_version}'
+        pkg_command = f'"{pkg_command}"'
         return pkg_command
     
     if including_higher_version:
@@ -3719,6 +3742,7 @@ def _get_pkg_command_pip_install(
     if max_version:
         pkg_command = f'{pkg_command}{sign_max}{max_version}'
         
+    pkg_command = f'"{pkg_command}"'    
     return pkg_command
 
 def _install_package_cli_msg(
@@ -3759,8 +3783,6 @@ def _install_package_cli_msg(
     )
     logger_func(txt)
     
-    
-        
     while True:
         answer = try_input_install_package(pkg_name, install_command)
         if not answer or answer.lower() == 'y':
@@ -3836,6 +3858,8 @@ def _install_tensorflow(max_version='', min_version=''):
         min_version=min_version
     )
     conda_prefix, pip_prefix = get_pip_conda_prefix()
+    
+    pkg_command = pkg_command.replace('"', '')
 
     if is_mac and cpu == 'arm':
         args = [f'{conda_prefix} "{pkg_command}"']
