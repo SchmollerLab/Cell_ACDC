@@ -3143,8 +3143,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         myutils.check_install_package(
             'PyOpenGL',
-            import_pkg_name='pyopengl',
-            pypi_name='pyopengl',
+            import_pkg_name='OpenGL',
+            pypi_name='PyOpenGL',
             parent=self,
         )
         
