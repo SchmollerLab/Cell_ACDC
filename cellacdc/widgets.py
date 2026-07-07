@@ -17,6 +17,8 @@ import random
 from functools import partial
 from math import ceil
 
+import html
+
 import skimage.draw
 import skimage.morphology
 
@@ -2610,8 +2612,6 @@ class myMessageBox(_base_widgets.QBaseDialog):
         self.currentRow += 1
     
     def copyToClipboard(self):
-        import html
-        
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
         plain_text = html.unescape(self.sender()._command).replace("\xa0", " ")
@@ -7793,9 +7793,7 @@ class CopiableCommandWidget(QGroupBox):
     def setWordWrap(self, wordWrap):
         self.label.setWordWrap(wordWrap)
     
-    def copyToClipboard(self):
-        import html
-        
+    def copyToClipboard(self):        
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
         plain_command = html.unescape(self._command).replace("\xa0", " ")
@@ -10404,8 +10402,6 @@ class installJavaDialog(myMessageBox):
         self.scrollArea.hide()
 
     def copyToClipboard(self):
-        import html
-        
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
         plain_text = html.unescape(self.sender().textToCopy).replace("\xa0", " ")
