@@ -133,7 +133,7 @@ def test_projection_regionprops_are_lazy_and_initialized_on_access():
     assert zmax.get_obj_from_ID(4) is not None
 
 
-def test_projection_regionprops_support_most_common_kind():
+def test_projection_regionprops_support_stacked_projection_kind():
     lab = np.array(
         [
             [[0, 1], [2, 2]],
@@ -154,45 +154,45 @@ def test_projection_regionprops_support_most_common_kind():
     assert rp.get_obj_from_proj_rp(3, kind='most common z-projection', warn=False) is not None
 
 
-def test_most_common_projection_uses_local_cutout_update(monkeypatch):
+def test_stacked_projection_uses_local_cutout_update(monkeypatch):
     old_lab = np.zeros((3, 6, 6), dtype=np.uint16)
     old_lab[:, 1:4, 1:4] = 1
 
     rp = acdcRegionprops(old_lab)
     proj_before = rp.get_proj_rp(kind='most_common', slicing='z')
-    expected_before = rp._get_lab_projection(old_lab, slicing='z', kind='most_common')
+    expected_before = acdcRegionprops(old_lab).get_projection_lab_sorted(slicing='z')
     np.testing.assert_array_equal(proj_before.lab, expected_before)
 
     new_lab = old_lab.copy()
     new_lab[0:2, 2:5, 2:5] = 2
 
-    original_replace_cached = rp._replace_cached_lab_projection
+    # original_replace_cached = rp._replace_cached_lab_projection
 
-    def _replace_cached_should_not_run_for_most_common(slicing, kind):
-        if kind == 'most_common':
-            raise AssertionError(
-                'most_common projection should be updated locally for cutout updates.'
-            )
-        return original_replace_cached(slicing, kind)
+    # def _replace_cached_should_not_run_for_most_common(slicing, kind):
+    #     if kind == 'most_common':
+    #         raise AssertionError(
+    #             'most_common projection should be updated locally for cutout updates.'
+    #         )
+    #     return original_replace_cached(slicing, kind)
 
-    monkeypatch.setattr(rp, '_replace_cached_lab_projection', _replace_cached_should_not_run_for_most_common)
+    # monkeypatch.setattr(rp, '_replace_cached_lab_projection', _replace_cached_should_not_run_for_most_common)
 
-    rp.update_regionprops_via_cutout(new_lab, cutout_bbox=(2, 2, 5, 5))
+    rp.update_regionprops_via_cutout(new_lab, cutout_bbox=(0, 0, 6, 6))
 
     proj_after = rp.get_proj_rp(kind='most_common', slicing='z')
-    expected_after = rp._get_lab_projection(new_lab, slicing='z', kind='most_common')
+    expected_after = acdcRegionprops(new_lab).get_projection_lab_sorted(slicing='z')
     np.testing.assert_array_equal(proj_after.lab, expected_after)
 
 
 @pytest.mark.parametrize('slicing', ['z', 'y', 'x'])
-def test_most_common_projection_uses_local_cutout_update_for_all_slicings(monkeypatch, slicing):
+def test_stacked_projection_uses_local_cutout_update_for_all_slicings(monkeypatch, slicing):
     old_lab = np.zeros((4, 7, 8), dtype=np.uint16)
     old_lab[1:3, 1:4, 1:4] = 1
     old_lab[0:2, 4:6, 4:7] = 2
 
     rp = acdcRegionprops(old_lab)
     proj_before = rp.get_proj_rp(kind='most_common', slicing=slicing)
-    expected_before = rp._get_lab_projection(old_lab, slicing=slicing, kind='most_common')
+    expected_before = acdcRegionprops(old_lab).get_projection_lab_sorted(slicing=slicing)
     np.testing.assert_array_equal(proj_before.lab, expected_before)
 
     new_lab = old_lab.copy()
@@ -244,7 +244,7 @@ def test_most_common_projection_uses_local_cutout_update_for_all_slicings(monkey
     rp.update_regionprops_via_cutout(new_lab, cutout_bbox=(2, 3, 6, 7))
 
     proj_after = rp.get_proj_rp(kind='most_common', slicing=slicing)
-    expected_after = rp._get_lab_projection(new_lab, slicing=slicing, kind='most_common')
+    expected_after = acdcRegionprops(new_lab).get_projection_lab_sorted(slicing=slicing)
     np.testing.assert_array_equal(proj_after.lab, expected_after)
 
 

@@ -272,16 +272,23 @@ def test_seg_for_lost_ids_worker_does_not_replay_inherited_labels_from_later_mod
     call_counter = {'n': 0}
 
     def fake_single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, posData, **kwargs):
+        debug = kwargs.get('debug', False)
         out_lab = np.zeros_like(curr_lab)
         if call_counter['n'] == 0:
             out_lab[4:6, 4:6] = 10
             call_counter['n'] += 1
-            return out_lab, [10], [[5]], [(2, 10, 2, 10)], {}
+            if debug:
+                return out_lab, [10], [[5]], [(2, 10, 2, 10)], {}
+            else:
+                return out_lab, [10], [[5]], [(2, 10, 2, 10)]
 
         out_lab[3:9, 3:9] = 10
         out_lab[7:9, 7:9] = 11
         call_counter['n'] += 1
-        return out_lab, [11], [[5]], [(1, 11, 1, 11)], {}
+        if debug:
+            return out_lab, [11], [[5]], [(1, 11, 1, 11)], {}
+        else:
+            return out_lab, [11], [[5]], [(1, 11, 1, 11)]
 
     monkeypatch.setattr('cellacdc.segm_utils.single_cell_seg', fake_single_cell_seg)
 

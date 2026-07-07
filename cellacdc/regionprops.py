@@ -323,7 +323,7 @@ class acdcRegionprops:
             self._slice_rps[slicing][slice_number] = rp
         return rp
 
-    def get_proj_rp(self, kind='max', slicing='z'):
+    def get_proj_rp(self, kind='most_common', slicing='z'):
         if not self.is3D:
             raise ValueError('Projection-specific regionprops are only supported for 3D labels.')
 
