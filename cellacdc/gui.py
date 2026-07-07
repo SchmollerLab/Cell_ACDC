@@ -3140,6 +3140,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateZproj(self.zProjComboBox.currentText())
     
     def launch3dViewerToggled(self, checked):
+        self.logger.info('Launching 3D volume viewer...')
+        
         myutils.check_install_package(
             'VisPy',
             import_pkg_name='vispy',
@@ -3178,7 +3180,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             volumes[channel_name] = volume
             
             overlayItems = self.overlayLayersItems[channel_name]
-            lutItem = overlayItems[2]
+            lutItem = overlayItems[1]
             lut_items_states[channel_name] = lutItem.super_saveState()
 
         voxel_size = (

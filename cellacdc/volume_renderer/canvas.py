@@ -130,6 +130,7 @@ class VolumeRendererWindow(QMainWindow):
         self._lab_ncolors = 256
         self._voxel_size_strides_transform = None
         self._downsample_strides = None
+        self._object_labels_list_buttongroup = None
         
         if app is None:
             app = QCoreApplication.instance()
@@ -271,6 +272,7 @@ class VolumeRendererWindow(QMainWindow):
             obj_checkbox.toggled.connect(
                 partial(self._set_object_checked, obj=obj)
             )
+            obj_checkbox.setDisabled(True)
         
         self._object_labels_list_layout.addStretch(1)
         
@@ -286,24 +288,43 @@ class VolumeRendererWindow(QMainWindow):
         display_mode_layout = QVBoxLayout()
         display_mode_groupbox.setLayout(display_mode_layout)
         
+        display_mode_buttonsgroup = QButtonGroup(self)
+        
+        self._display_mode_show_all_rb = QRadioButton(
+            'Show all objets', self
+        )
         self._display_mode_hide_unselected_rb = QRadioButton(
             'Hide unselected', self
         )
         self._display_mode_focus_selected_rb = QRadioButton(
             'Focus on selected', self
         )
-        self._display_mode_hide_unselected_rb.setChecked(True)
+        self._display_mode_show_all_rb.setChecked(True)
+        display_mode_buttonsgroup.addButton(self._display_mode_show_all_rb)
+        display_mode_buttonsgroup.addButton(
+            self._display_mode_hide_unselected_rb)
+        display_mode_buttonsgroup.addButton(
+            self._display_mode_focus_selected_rb)
         
-        self._display_mode_focus_selected_rb.toggled.connect(
+        display_mode_buttonsgroup.buttonToggled.connect(
             self._display_mode_radio_button_toggled
         )
         
+        display_mode_layout.addWidget(self._display_mode_show_all_rb)
         display_mode_layout.addWidget(self._display_mode_hide_unselected_rb)
         display_mode_layout.addWidget(self._display_mode_focus_selected_rb)
         
         self._right_vertical_layout.addWidget(display_mode_groupbox)
     
-    def _display_mode_radio_button_toggled(self, toggled: bool):
+    def _display_mode_radio_button_toggled(
+            self, button: QRadioButton, toggled: bool
+        ):
+        if not toggled:
+            return
+        
+        is_show_all = self._display_mode_show_all_rb.isChecked()
+        self._set_object_labels_checkboxes_disabled(disabled=is_show_all)
+            
         self._update_display()
     
     def _set_all_object_labels_list_checked(self, select_all_button, checked):
@@ -338,6 +359,11 @@ class VolumeRendererWindow(QMainWindow):
     
     def _update_volume_nodes(self, update=True):
         for channel_data in self._channels_data.values():
+            if self._display_mode_show_all_rb.isChecked():
+                displayed_volume = channel_data._raw_volume
+                channel_data.node.set_data(displayed_volume)
+                continue
+            
             displayed_volume = channel_data.volume
             if self._display_mode_focus_selected_rb.isChecked():
                 unselected_vals = channel_data._off_focus_volume
@@ -535,6 +561,7 @@ class VolumeRendererWindow(QMainWindow):
         self._object_labels_list_groupbox.setLayout(
             self._object_labels_list_layout
         )
+        self._set_object_labels_checkboxes_disabled()
         
         self._right_vertical_layout = QVBoxLayout()
         self._right_vertical_layout.addWidget(
@@ -567,6 +594,28 @@ class VolumeRendererWindow(QMainWindow):
         self.setCentralWidget(central)
         
         self._ui_initialised = True
+    
+    def _set_object_labels_checkboxes_disabled(self, disabled=True):
+        if disabled:
+            tooltip = (
+                'Object selection is disabled when display mode '
+                'is "Show all objects"\n\n'
+                'Choose a different display mode below to activate selection.'
+            )
+        else:
+            tooltip = None
+            
+        self._object_labels_list_groupbox.setToolTip(tooltip)
+        if self._object_labels_list_buttongroup is None:
+            return
+        
+        for checkbox in self._object_labels_list_buttongroup.buttons():
+            checkbox.blockSignals(True)
+            if disabled:
+                checkbox.setChecked(True)
+            checkbox.setDisabled(disabled)
+            checkbox.blockSignals(False)
+        
     
     def _block_exec(self):
         if hasattr(self, 'loop'):
@@ -729,7 +778,7 @@ class VolumeRendererWindow(QMainWindow):
                 np.percentile(_raw_volume, 99.9) 
                 / np.percentile(_off_focus_volume, 99.9)
             )
-            _off_focus_volume *= 0.9
+            _off_focus_volume *= 0.8
 
             channel_data = _ChannelData(
                 node=node,
