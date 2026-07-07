@@ -1357,10 +1357,15 @@ class VolumeRendererWindow(QMainWindow):
     def set_camera_view(self):
         """Reset the camera to the default orientation and fit the volume."""
         
-        first_channel = list(self._channels_data.keys())[0]
-        first_volume = self._channels_data[first_channel].volume
-        first_node = self._channels_data[first_channel].node
-        Z, Y, X = first_volume.shape
+        if self._channels_data:
+            first_channel = list(self._channels_data.keys())[0]
+            first_volume = self._channels_data[first_channel].volume
+            first_node = self._channels_data[first_channel].node
+            Z, Y, X = first_volume.shape
+        else:
+            first_node = self._lab_node
+            Z, Y, X = self._lab.shape
+            
         xyz_center = (X/2, Y/2, Z/2)     
         corners = np.array([
             [0, 0, 0],
