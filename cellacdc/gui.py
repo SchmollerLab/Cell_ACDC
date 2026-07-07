@@ -3142,6 +3142,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.logger.info('Launching 3D volume viewer...')
         
         myutils.check_install_package(
+            'PyOpenGL',
+            import_pkg_name='pyopengl',
+            pypi_name='pyopengl',
+            parent=self,
+        )
+        
+        myutils.check_install_package(
             'VisPy',
             import_pkg_name='vispy',
             pypi_name='vispy',
