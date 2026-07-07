@@ -408,14 +408,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.isEditActionsConnected = False
 
         self.readRecentPaths()
-
         self.initShortcuts()
         self.show()
         QTimer.singleShot(100, self.resizeRangeWelcomeText)
         # self.installEventFilter(self)
         
         self.logger.info('GUI ready.')
-        
+    
     def initGlobalAttr(self):
         self.setOverlayColors()
 
@@ -4141,7 +4140,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         resetAction = self.bottomLayoutContextMenu.addAction(
             'Reset default height'
         )
-        resetAction.triggered.connect(self.resizeGui)
+        resetAction.triggered.connect(self.resetBottomLayoutHeight)
         retainSpaceAction = self.bottomLayoutContextMenu.addAction(
             'Retain space of hidden sliders'
         )
@@ -14590,7 +14589,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             self.restoreAnnotOptions_ax2()
 
-
     def resizeBottomLayoutLineClicked(self, event):
         pass
         
@@ -14598,9 +14596,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not self.img1BottomGroupbox.isVisible():
             return
         newBottomLayoutHeight = self.bottomScrollArea.minimumHeight() - event.y()
+        if newBottomLayoutHeight <= 0:
+            newBottomLayoutHeight = 1
+        
         self.bottomScrollArea.setFixedHeight(newBottomLayoutHeight)
     
     def resizeBottomLayoutLineReleased(self):
+        bottomLayoutHeight = max(1, self.bottomScrollArea.height())
+        self.df_settings.at['bottomLayoutHeight', 'value'] = str(
+            bottomLayoutHeight
+        )
+        self.df_settings.to_csv(self.settings_csv_path)
+        
         QTimer.singleShot(100, self.autoRange)
     
     def mousePressEvent(self, event) -> None:
@@ -19530,7 +19537,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             maxXRange=maxXRange
         )
         self.bottomScrollArea._resizeVertical()
-        QTimer.singleShot(200, self.autoRange)
+        self.setBottomLayoutHeight()
+    
+    def resetBottomLayoutHeight(self):
+        self.bottomScrollArea._resizeVertical()
+        self.resizeBottomLayoutLineReleased()
+        self.resizeGui()
     
     def setVisible3DsegmWidgets(self):
         self.annotNumZslicesCheckbox.setVisible(self.isSegm3D)
@@ -29685,6 +29697,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             action.setDisabled(True)
         
         return True
+    
+    def setBottomLayoutHeight(self):
+        if 'bottomLayoutHeight' in self.df_settings.index:
+            bottomLayoutHeight = int(
+                self.df_settings.at['bottomLayoutHeight', 'value']
+            )
+            self.bottomScrollArea.setFixedHeight(bottomLayoutHeight)
     
     def reinitPointsLayers(self):
         for toolbar in self.pointsLayersToolbars:
