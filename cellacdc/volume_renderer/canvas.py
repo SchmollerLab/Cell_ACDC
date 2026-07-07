@@ -122,6 +122,7 @@ class VolumeRendererWindow(QMainWindow):
         self._SizeZ = None
         self._gradient_item_state = None
         self._lab_gradient_cmap_name = None
+        self._lab_gradient_item_state = None
         self._lab_node = None
         self._orig_lab = None
         self._canvas = None
@@ -1352,16 +1353,16 @@ class VolumeRendererWindow(QMainWindow):
     
     def set_camera_view(self):
         """Reset the camera to the default orientation and fit the volume."""
-        
-        if self._channels_data:
-            first_channel = list(self._channels_data.keys())[0]
-            first_volume = self._channels_data[first_channel].volume
-            first_node = self._channels_data[first_channel].node
-            Z, Y, X = first_volume.shape
-        else:
-            first_node = self._lab_node
+        if not self._channels_data:
             Z, Y, X = self._lab.shape
-            
+            dummy_vol = np.zeros((Z, Y, X), dtype=np.float32)
+            self.set_volume(dummy_vol, channel_name='1')
+        
+        first_channel = list(self._channels_data.keys())[0]
+        first_volume = self._channels_data[first_channel].volume
+        first_node = self._channels_data[first_channel].node
+        Z, Y, X = first_volume.shape
+
         xyz_center = (X/2, Y/2, Z/2)     
         corners = np.array([
             [0, 0, 0],
