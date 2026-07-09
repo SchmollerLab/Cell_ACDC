@@ -271,6 +271,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         from . import regionprops as acdc_regionprops
         
         self._acdcRegionProps = acdc_regionprops._acdcRegionProps
+        self._acdc_regionprops = acdc_regionprops
                
         self.setWindowIcon()
         self.setWindowTitle()
@@ -12273,11 +12274,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateROIpreview(roi)
 
         
-    def _getROIDelIDs(self, roi, lab, hidden_IDs):
+    def _getROIDelIDs(self, roi, lab, hidden_IDs):        
         mask, bbox = self.getRoiCoords(roi, return_mask=True)
         cutout = np.where(mask, lab[bbox[0]:bbox[1], bbox[2]:bbox[3]], 0)   # same shape as mask, non-roi pixels set to 0
             
-        touching_IDs = set(regionprops.find_IDs(cutout))
+        touching_IDs = set(self._acdc_regionprops.find_IDs(cutout))
         to_hide_IDs = touching_IDs - set(hidden_IDs)
         to_restore_IDs = set(hidden_IDs) - touching_IDs
         
@@ -12495,7 +12496,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         curr_lab = posData.lab
         if not removing_roi:
-            touching_IDs = set(regionprops.find_IDs(cutout))
+            touching_IDs = set(self._acdc_regionprops.find_IDs(cutout))
             
             backed_up_masks_new = []
             backed_up_masks_coords_new = []
