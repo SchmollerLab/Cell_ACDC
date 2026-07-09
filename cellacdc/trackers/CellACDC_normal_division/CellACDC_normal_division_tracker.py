@@ -752,7 +752,7 @@ class normal_division_lineage_tree:
                 raise ValueError('In GUI mode, the DataFrame index must be Cell_ID for lineage updates to work.')
             
             for ID, Cell_info in df.iterrows():
-                cell_row = df_data.loc[ID]
+                cell_row = df_data.loc[ID].copy()
                 if Cell_info['parent_ID_tree'] == -1:
                     df.loc[ID, ['generation_num_tree', 'root_ID_tree', 
                                 'sister_ID_tree', 'is_history_known', 
@@ -814,10 +814,10 @@ class normal_division_lineage_tree:
         - The function maintains a lookup dictionary and a list of fixed DataFrames to efficiently propagate updates.
         - Sister IDs are stored as sets, excluding the cell's own ID; if a cell has no sisters, the value is set to {-1}.
         """
-        columns_to_replace = ['generation_num_tree', 
-                            'root_ID_tree', 
-                            'sister_ID_tree', 
-                            'parent_ID_tree']
+        columns_to_replace = ['generation_num_tree',
+                              'root_ID_tree',
+                              'sister_ID_tree',
+                              'parent_ID_tree']
             
         if fixed_df is not None:
             fixed_df = checked_reset_index_Cell_ID(fixed_df)

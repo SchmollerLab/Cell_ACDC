@@ -230,6 +230,34 @@ def warnPromptSegmentPointsLayerNotInit(qparent=None):
     )
     return msg.cancel
 
+def warnNoIDsInS(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        <b>None</b> of the IDs present at this frame 
+        <b>are in 'S' phase</b>.<br><br>
+        This tool can be used only for mother-bud pairs.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'No cells in "S" phase', txt, 
+    )
+    return msg.cancel
+
+def warnSelectedIDisNotInS(ID, qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        The selected ID {ID} <b>cell cycle stage is not 'S'</b>!<br><br>
+        Make sure you are hovering a cell ID in 'S' (mother of bud), 
+        when activating this mode.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Selected ID not in S', txt, 
+    )
+    return msg.cancel
+
 def warnPromptSegmentModelNotInit(qparent=None):
     from cellacdc import widgets
     txt = html_utils.paragraph(f"""
@@ -383,3 +411,31 @@ def warnMissingCca(missing_cca_items, qparent=None):
     )
     doNotShowAgain = msg.doNotShowAgainCheckbox.isChecked()
     return msg.clickedButton == ignoreButton, doNotShowAgain
+
+def warnAskTransparencyModeNeededForExport(
+        mainWin, output='image', qparent=None
+    ):
+    if qparent is None:
+        qparent = mainWin
+        
+    from . import widgets
+    mainWin.logger.info(
+        '[WARNING]: prompting user to activate transparency mode for exporting '
+        'multichannel (overlay) image...'
+    )
+    msg = widgets.myMessageBox(wrapText=False)
+    txt = html_utils.paragraph(f"""
+        In order to export a multichannel (overlay) view to {output}, 
+        you need to activate 
+        <code>True transparency (RGBA composite)</code> mode.<br><br>
+        Without this mode, the intensity levels in the exported image would not 
+        correspond to the displayed image.<br><br>
+        Do you want to activate the transparency mode now?
+    """)
+
+    _, yesButton = msg.warning(
+        qparent, 'Transparency mode required', txt,
+        buttonsTexts=('Cancel', 'Yes, activate transparency mode')
+    )
+    
+    return msg.cancel, msg.clickedButton==yesButton

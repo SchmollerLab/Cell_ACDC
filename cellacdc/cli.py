@@ -1354,47 +1354,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         
     def _load_channel_data(self, channel_path):
         self.log(f'Loading fluorescence image data from "{channel_path}"...')
-        images_path = os.path.dirname(channel_path)
-        bkgrData = None
-        # Load overlay frames and align if needed
-        filename = os.path.basename(channel_path)
-        filename_noEXT, ext = os.path.splitext(filename)
-        if ext == '.npy' or ext == '.npz':
-            img_data = np.load(channel_path)
-            try:
-                img_data = np.squeeze(img_data['arr_0'])
-            except Exception as e:
-                img_data = np.squeeze(img_data)
-
-            # Load background data
-            bkgrData_path = os.path.join(
-                images_path, f'{filename_noEXT}_bkgrRoiData.npz'
-            )
-            if os.path.exists(bkgrData_path):
-                bkgrData = np.load(bkgrData_path)
-        elif ext == '.tif' or ext == '.tiff':
-            aligned_filename = f'{filename_noEXT}_aligned.npz'
-            aligned_path = os.path.join(images_path, aligned_filename)
-            if os.path.exists(aligned_path):
-                img_data = np.load(aligned_path)['arr_0']
-
-                # Load background data
-                bkgrData_path = os.path.join(
-                    images_path, f'{aligned_filename}_bkgrRoiData.npz'
-                )
-                if os.path.exists(bkgrData_path):
-                    bkgrData = np.load(bkgrData_path)
-            else:
-                img_data = np.squeeze(skimage.io.imread(channel_path))
-
-                # Load background data
-                bkgrData_path = os.path.join(
-                    images_path, f'{filename_noEXT}_bkgrRoiData.npz'
-                )
-                if os.path.exists(bkgrData_path):
-                    bkgrData = np.load(bkgrData_path)
-        else:
-            return None, None
+        img_data, bkgrData = load.load_image_and_bkgr_data(channel_path)
 
         return img_data, bkgrData
     

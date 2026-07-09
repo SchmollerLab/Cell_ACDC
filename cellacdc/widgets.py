@@ -13,12 +13,15 @@ import traceback
 import logging
 import textwrap
 import random
-
+import cv2
 from functools import partial
 from math import ceil
 
+import html
+
 import skimage.draw
 import skimage.morphology
+import skimage.segmentation
 
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 import matplotlib.pyplot as plt
@@ -75,6 +78,7 @@ from . import fonts
 from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER
 from . import _base_widgets
+from . import regionprops
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
@@ -447,6 +451,12 @@ class reloadPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':reload.svg'))
+
+class SegmentPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':segment.svg'))
+
 
 class savePushButton(PushButton):
     def __init__(self, *args, **kwargs):
@@ -1817,7 +1827,6 @@ class ScrollArea(QScrollArea):
         self.containerWidget.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
-
         self.setFixedHeight(height)
 
     def eventFilter(self, object, event: QEvent):
@@ -2608,7 +2617,8 @@ class myMessageBox(_base_widgets.QBaseDialog):
     def copyToClipboard(self):
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
-        cb.setText(self.sender()._command, mode=cb.Clipboard)
+        plain_text = html.unescape(self.sender()._command).replace("\xa0", " ")
+        cb.setText(plain_text, mode=cb.Clipboard)
         print('Command copied!')
 
     def addButton(self, buttonText):
@@ -2860,7 +2870,8 @@ class myMessageBox(_base_widgets.QBaseDialog):
             commands=None, path_to_browse=None, browse_button_text=None,
             url_to_open=None, open_url_button_text='Open url', 
             image_paths=None, wrapDetails=True,
-            add_do_not_show_again_checkbox=False
+            add_do_not_show_again_checkbox=False,
+            details_expanded=True
         ):
         if parent is not None:
             self.setParent(parent)
@@ -2917,7 +2928,9 @@ class myMessageBox(_base_widgets.QBaseDialog):
                 buttons.append(button)
         
         if detailsText is not None:
-            self.setDetailedText(detailsText, visible=True, wrap=wrapDetails)
+            self.setDetailedText(
+                detailsText, visible=details_expanded, wrap=wrapDetails
+            )
         
         if add_do_not_show_again_checkbox:
             self.addDoNotShowAgainCheckbox()
@@ -4108,13 +4121,9 @@ class DoubleSpinBox(QDoubleSpinBox):
             self.clearFocus()
         else:
             super().keyPressEvent(event)
-    
-    def textFromValue(self, value: float) -> str:
-        text = super().textFromValue(value)
-        return text.replace(QLocale().decimalPoint(), '.')
 
     def valueFromText(self, text: str) -> float:
-        text = text.replace('.', QLocale().decimalPoint())
+        text = text.replace(',', '.')
         return super().valueFromText(text)
 
 class SpinBox(QSpinBox):
@@ -6739,7 +6748,7 @@ class MainPlotItem(pg.PlotItem):
     def __init__(
             self, parent=None, name=None, labels=None, title=None, 
             viewBox=None, axisItems=None, enableMenu=True, 
-            showWelcomeText=False, **kargs
+            showWelcomeText=False, ax_number=0, **kargs
         ):
         super().__init__(
             parent, name, labels, title, viewBox, axisItems, enableMenu, 
@@ -6765,7 +6774,16 @@ class MainPlotItem(pg.PlotItem):
         self._baseImageItem = None
         self._imageItems = []
         self.highlightingRectItemsColor = None
-    
+        self.ax_number = ax_number
+        
+    def __eq__(self, other):
+        if isinstance(other, int):
+            return self.ax_number == other
+        return NotImplemented
+        
+    def __hash__(self):
+        return id(self)
+        
     def addHighlightingRectItems(self, color=None):
         self.highlightingRectItems = {
             'left': RectItem(QRectF()),
@@ -7012,7 +7030,7 @@ class sliderWithSpinBox(QWidget):
             valueInt = int(value*self.slider.maximum())
         elif self._isFloat:
             valueInt = int(value)
-
+        
         self.spinBox.valueChanged.disconnect()
         self.spinBox.setValue(value)
         self.spinBox.valueChanged.connect(self.spinboxValueChanged)
@@ -7787,10 +7805,11 @@ class CopiableCommandWidget(QGroupBox):
     def setWordWrap(self, wordWrap):
         self.label.setWordWrap(wordWrap)
     
-    def copyToClipboard(self):
+    def copyToClipboard(self):        
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
-        cb.setText(self._command, mode=cb.Clipboard)
+        plain_command = html.unescape(self._command).replace("\xa0", " ")
+        cb.setText(plain_command, mode=cb.Clipboard)
         print('Command copied!')
     
     def setCommand(self, command, font_size=None):
@@ -8286,19 +8305,22 @@ class ImShow(QBaseWindow):
             link_scrollbars=True, 
             infer_rgb=True, 
             figure_title='',
-            selectable_images=False
+            selectable_images=False,
+            win_stay_on_top=True,
         ):
         super().__init__(parent=parent)
         self._linkedScrollbars = link_scrollbars
         self._infer_rgb = infer_rgb
         self._figure_title = figure_title
-        self._selectable_images = True
+        self._selectable_images = selectable_images
         self.selected_idx = None
 
         self._autoLevels = True
 
         self.textItems = []
         self.group_to_idx_mapper = {'': 0}
+        if not win_stay_on_top:
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, False)
     
     def _getGraphicsScrollbar(self, idx, image, imageItem, maximum):
         proxy = QGraphicsProxyWidget(imageItem)
@@ -8324,6 +8346,11 @@ class ImShow(QBaseWindow):
         overlayLab = self._get2DlabOverlay(imageItem)
         if overlayLab is not None:
             imageItem.labImageItem.setImage(overlayLab, autoLevels=False)
+            if hasattr(imageItem, 'labContoursImageItem'):
+                contours_overlay = self._get2DlabContoursOverlay(imageItem)
+                imageItem.labContoursImageItem.setImage(
+                    contours_overlay, autoLevels=False
+                )
         
         self.setPointsVisible(imageItem)
 
@@ -8372,6 +8399,30 @@ class ImShow(QBaseWindow):
                 lab = lab[scrollbar.value()]
         
         return lab
+
+    def _get2DlabContoursOverlay(self, imageItem):
+        overlay_lab = self._get2DlabOverlay(imageItem)
+        H, W = imageItem.image.shape[:2]
+        overlay = np.zeros((H, W, 4), dtype=np.uint8)
+        color = (255, 0, 0, 255) # RED
+        thickness = 1
+        if overlay_lab is None:
+            return None
+
+        contours = []
+        rp = regionprops.acdcRegionprops(overlay_lab,precache_centroids=False)
+        for obj in rp:
+            contours_obj = core.get_obj_contours(
+                obj,
+                all_external=True,
+            )
+            contours.extend(contours_obj)
+        try:
+            cv2.drawContours(overlay, contours, -1, color, thickness) 
+        except:
+            import pdb; pdb.set_trace()
+        return overlay
+        
     
     def isObjVisible(self, obj, imageItem):
         if len(obj.centroid) == 2:
@@ -8395,6 +8446,11 @@ class ImShow(QBaseWindow):
         overlayLab = self._get2DlabOverlay(imageItem)
         if overlayLab is not None:
             imageItem.labImageItem.setImage(overlayLab, autoLevels=False)
+            if hasattr(imageItem, 'labContoursImageItem'):
+                contours_overlay = self._get2DlabContoursOverlay(imageItem)
+                imageItem.labContoursImageItem.setImage(
+                    contours_overlay, autoLevels=False
+                )
         self.setPointsVisible(imageItem)
         if not self._linkedScrollbars:
             return
@@ -8619,7 +8675,9 @@ class ImShow(QBaseWindow):
             luts=None, 
             labels_overlays_luts=None,
             autoLevels=True, 
-            autoLevelsOnScroll=False
+            autoLevelsOnScroll=False,
+            show_contours=False,
+            show_IDs=False,
         ):
         from .plot import matplotlib_cmap_to_lut
         
@@ -8657,6 +8715,8 @@ class ImShow(QBaseWindow):
                 f'while number of labels_overaly is {len(labels_overlays)}. '
                 'Pass `None` if you do not need overlaid labeles.'
             )
+
+        annotate_labels_idxs = []
         
         for i, (image, imageItem) in enumerate(zip(images, self.ImageItems)):
             if luts is not None:
@@ -8724,9 +8784,26 @@ class ImShow(QBaseWindow):
             
             imageItem.lab = lab_overlay
             imageItem.labImageItem = labImageItem
+            imageItem.labels_overlays_lut = labels_overlays_lut
             
             overlayLab = self._get2DlabOverlay(imageItem)
             labImageItem.setImage(overlayLab, autoLevels=False)
+
+            if show_contours:
+                labContoursImageItem = pg.ImageItem()
+                labContoursImageItem.setOpacity(1.0)
+                plot.addImageItem(labContoursImageItem)
+                imageItem.labContoursImageItem = labContoursImageItem
+                contours_overlay = self._get2DlabContoursOverlay(imageItem)
+                labContoursImageItem.setImage(contours_overlay, autoLevels=False)
+
+            annotate_labels_idxs.append(i)
+
+        if show_IDs and annotate_labels_idxs:
+            self.annotateObjectIDs(
+                annotate_labels_idxs=annotate_labels_idxs,
+                init=True,
+            )
 
         # Share axis between images with same X, Y shape
         all_shapes = [image.shape[-2:] for image in images]
@@ -8746,11 +8823,15 @@ class ImShow(QBaseWindow):
     
     def _getDefaultLabelsOverlayLut(self, lab_overlay):
         IDs = [obj.label for obj in skimage.measure.regionprops(lab_overlay)]
+        if not IDs:
+            return np.zeros((1, 4), dtype=np.uint8)
         n_objs = len(IDs)
-        lut = np.zeros((n_objs+1, 4), dtype=np.uint8)
+        max_id = max(IDs)
+        lut = np.zeros((max_id + 1, 4), dtype=np.uint8)
         rgbas = colors.plt_colormap_to_pg_lut('tab20', ncolors=n_objs)
         np.random.shuffle(rgbas)
-        lut[1:] = rgbas
+        for i, label_id in enumerate(IDs):
+            lut[label_id] = rgbas[i]
         return lut
     
     def _createPointsScatterItem(self, xx, yy, group, colors=None, data=None):
@@ -9149,6 +9230,7 @@ class ScaleBar(QGraphicsObject):
         self.contextMenu = QMenu()
         action = QAction('Edit properties...', self.contextMenu)
         action.triggered.connect(self.emitEditProperties)
+        self.contextMenu.addAction(action)
         self.contextMenu.addSeparator()
         action = QAction('Remove', self.contextMenu)
         action.triggered.connect(self.emitRemove)
@@ -10396,7 +10478,8 @@ class installJavaDialog(myMessageBox):
     def copyToClipboard(self):
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
-        cb.setText(self.sender().textToCopy, mode=cb.Clipboard)
+        plain_text = html.unescape(self.sender().textToCopy).replace("\xa0", " ")
+        cb.setText(plain_text, mode=cb.Clipboard)
         print('Command copied!')
 
     def showInstructions(self, checked):
@@ -10615,6 +10698,7 @@ class TimestampItem(LabelItem):
         self.contextMenu = QMenu()
         action = QAction('Edit properties...', self.contextMenu)
         action.triggered.connect(self.emitEditProperties)
+        self.contextMenu.addAction(action)
         self.contextMenu.addSeparator()
         action = QAction('Remove', self.contextMenu)
         action.triggered.connect(self.emitRemove)

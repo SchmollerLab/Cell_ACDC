@@ -3,7 +3,7 @@ import numpy as np
 import time
 from .core import segm_model_segment, post_process_segm
 from .features import custom_post_process_segm
-from . import io, plot, regionprops
+from . import io, plot, regionprops, printl
 import inspect
 
 
@@ -183,6 +183,7 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
                     posData, distance_filler_growth=1,
                     overlap_threshold=0.5, padding=0.4,
                     export_bbox_for_training=False,
+                    fill_other_cells_with_background=True,
                     model_kwargs=None,
                     preproc_recipe=None,
                     applyPostProcessing=False,
@@ -190,6 +191,7 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
                     customPostProcessFeatures=None,
                     customPostProcessGroupedFeatures=None,
                     debug=False,
+                    sigShowImageFunc=None
                     ):
     """
     Function to segment single cells in the current frame using the previous frame segmentation as a reference. 
@@ -253,17 +255,18 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
 
         box_curr_lab_other_IDs = box_curr_lab.copy()
         IDs = np.array(IDs)
-        box_curr_lab_other_IDs[np.isin(box_curr_lab_other_IDs, IDs)] = 0
+        # box_curr_lab_other_IDs[np.isin(box_curr_lab_other_IDs, IDs)] = 0
 
         box_curr_lab_other_IDs_grown = skimage.segmentation.expand_labels(box_curr_lab_other_IDs, distance=distance_filler_growth)
         if debug:
             imgs_to_show[i].append(box_curr_lab_other_IDs_grown.copy())
 
         # Fill other IDs with random samples from the background
-        indices_to_fill = np.where(box_curr_lab_other_IDs_grown != 0)
-        box_background = box_curr_img[box_curr_lab_other_IDs_grown==0]
-        random_samples = np.random.choice(box_background, size=indices_to_fill[0].shape, replace=True)
-        box_curr_img[indices_to_fill] = random_samples
+        if fill_other_cells_with_background:
+            indices_to_fill = np.where(box_curr_lab_other_IDs_grown != 0)
+            box_background = box_curr_img[box_curr_lab_other_IDs_grown==0]
+            random_samples = np.random.choice(box_background, size=indices_to_fill[0].shape, replace=True)
+            box_curr_img[indices_to_fill] = random_samples
         
         if debug:
             imgs_to_show[i].append(box_curr_img.copy())
@@ -311,23 +314,18 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
 
             ### maybe add roi extension if cells are deleted...
 
-        # Find the overlap between the model segmentation and the other IDs
-        overlaps = find_overlap(box_model_lab, box_curr_lab_other_IDs)
-
+        overlaps = find_overlap(box_model_lab, box_curr_lab)
         # Set overlapping regions to 0, so already segmented cells are not overwritten
-        IDs_to_filter = [ID for ID, overlap_perc in overlaps if overlap_perc > overlap_threshold]
+        IDs_to_filter = [ID for ID, overlap_perc in overlaps if overlap_perc >= overlap_threshold]
         if IDs_to_filter:
             box_model_lab[np.isin(box_model_lab, IDs_to_filter)] = 0
-                
         rp_model_lab = regionprops.acdcRegionprops(box_model_lab,precache_centroids=False)
         for obj in rp_model_lab:
-            box_curr_lab_other_IDs[box_model_lab == obj.label] = new_unique_ID
+            box_curr_lab_other_IDs[obj.slice][obj.image] = new_unique_ID
             assigned_IDs.append(new_unique_ID)
             new_unique_ID += 1
-
         positive_mask = box_curr_lab_other_IDs > 0
         curr_lab[box_x_min:box_x_max, box_y_min:box_y_max][positive_mask] = box_curr_lab_other_IDs[positive_mask]
-
         if export_bbox_for_training:
             bboxs_for_debug[-1].append(box_curr_lab_other_IDs.copy())
 

@@ -64,7 +64,10 @@ def imshow(
         show_duplicated_cursor=True, 
         selectable_images=False,
         infer_rgb=True,
-        print_call_stack: bool=False
+        print_call_stack: bool=False,
+        show_contours: bool=False,
+        show_IDs: bool=False,
+        win_stay_on_top: bool=True,
     ):
     if print_call_stack:
         myutils.print_call_stack()
@@ -111,6 +114,7 @@ def imshow(
         infer_rgb=infer_rgb,
         figure_title=figure_title,
         selectable_images=selectable_images,
+        win_stay_on_top=win_stay_on_top,
     )
     win.setWindowTitle(window_title)
     if app is not None:
@@ -131,7 +135,9 @@ def imshow(
         labels_overlays_luts=labels_overlays_luts,
         luts=luts, 
         autoLevels=autoLevels, 
-        autoLevelsOnScroll=autoLevelsOnScroll
+        autoLevelsOnScroll=autoLevelsOnScroll,
+        show_contours=show_contours,
+        show_IDs=show_IDs,
     )
     if points_coords_df is not None:
         win.drawPointsFromDf(points_coords_df, points_groups=points_groups) 
@@ -142,10 +148,11 @@ def imshow(
         win.setPointsData(points_data)
     if show_duplicated_cursor:
         win.setupDuplicatedCursors()
-    win.annotateObjectIDs(
-        annotate_labels_idxs=annotate_labels_idxs, 
-        init=True,
-    )
+    if annotate_labels_idxs is not None:
+        win.annotateObjectIDs(
+            annotate_labels_idxs=annotate_labels_idxs,
+            init=True,
+        )
     win.run(block=block, showMaximised=showMaximised, screenToWindowRatio=0.8)
     return win
 

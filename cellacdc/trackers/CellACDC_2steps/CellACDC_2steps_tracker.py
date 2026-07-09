@@ -136,8 +136,8 @@ class tracker:
             lost_IDs_search_range=10,
             unique_ID: Integer=None,
             specific_IDs: NotGUIParam=None,
-            dont_return_tracked_lab=False,
-            return_assignments=False,
+            dont_return_tracked_lab: NotGUIParam=False,
+            return_assignments: NotGUIParam=False,
         ):
         """Track two consecutive frames in two steps. First step based on 
         `overlap_threshold` and second step tracks only lost objects to new 
