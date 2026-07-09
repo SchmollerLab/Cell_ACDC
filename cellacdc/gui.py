@@ -13996,9 +13996,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def clearObjsFreehandRegion(self):
         self.logger.info('Clearing objects inside freehand region...')
         
-        # Store undo state before modifying stuff
-        self.storeUndoRedoStates(False, storeImage=False, storeOnlyZoom=True)
-        
         posData = self.data[self.pos_i]
         zRange = None
         if self.isSegm3D:
@@ -14011,7 +14008,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
             else:
                 zRange = (0, posData.SizeZ)
-            
+        
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(
+            False, 
+            storeImage=False, 
+            storeOnlyZoom=True, 
+            zRange=zRange
+        )
+
         regionSlice = self.freeRoiItem.slice(zRange=zRange)
         mask = self.freeRoiItem.mask()
         
@@ -14057,6 +14062,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.logger.warning(
                     'None of the objects are touching the freehand region'
                 )
+            self.freeRoiItem.clear()
             return
         
         self.deleteIDmiddleClick(clearIDs, False, False)
@@ -15689,7 +15695,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             0, {'id': undoId, 'cca_df': cca_df.copy()}
         )
 
-    def addCurrentState(self, storeImage=False, storeOnlyZoom=False):
+    def addCurrentState(
+            self, 
+            storeImage=False, 
+            storeOnlyZoom=False,
+            zRange: tuple[int, int] | None=None
+        ): 
         posData = self.data[self.pos_i]
         if posData.cca_df is not None:
             cca_df = posData.cca_df.copy()
@@ -15708,7 +15719,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             if self.isSegm3D:
                 z = self.z_lab(checkIfProj=True)
-                if z is None:
+                if zRange is not None:
+                    z_slice = slice(zRange[0], zRange[1])
+                    crop_slice = (z_slice, *crop_slice)
+                    labels = posData.lab[crop_slice].copy()
+                elif z is None:
                     z_slice = slice(0, len(posData.lab))
                     crop_slice = (z_slice, *crop_slice)
                     labels = posData.lab[crop_slice].copy()
@@ -15821,7 +15836,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     # @exec_time
     def storeUndoRedoStates(
-            self, UndoFutFrames, storeImage=False, storeOnlyZoom=False
+            self, 
+            UndoFutFrames, 
+            storeImage=False, 
+            storeOnlyZoom=False,
+            zRange=None
         ):
         posData = self.data[self.pos_i]
         if UndoFutFrames:
@@ -15838,7 +15857,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.UndoCount = 0
         self.undoAction.setEnabled(True)
         self.addCurrentState(
-            storeImage=storeImage, storeOnlyZoom=storeOnlyZoom
+            storeImage=storeImage, 
+            storeOnlyZoom=storeOnlyZoom,
+            zRange=zRange
         )
         
     def storeUndoRedoCca(self, frame_i, cca_df, undoId):
