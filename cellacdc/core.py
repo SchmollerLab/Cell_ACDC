@@ -51,7 +51,6 @@ from . import io
 from . import measurements
 from . import favourite_func_metrics_csv_path
 from . import default_index_cols
-from . import regionprops
 
 from ._types import (
     ChannelsDict
@@ -1278,6 +1277,8 @@ def add_cca_info_from_parentID_col(
     return acdc_df
 
 def cca_df_to_acdc_df(cca_df, rp, acdc_df=None):
+    from . import regionprops
+    
     if acdc_df is None:
         IDs = []
         is_cell_dead_li = []
@@ -3238,51 +3239,6 @@ def insert_missing_objects(
         pbar.close()
         
     return segm_dst
-    
-### out of date
-# def process_lab(task):
-#     i, lab = task
-#     # Assuming this function processes each lab independently
-#     data_dict = {}
-#     rp = skimage.measure.regionprops(lab)
-#     IDs = [obj.label for obj in rp]
-#     data_dict['IDs'] = IDs
-#     data_dict['regionprops'] = rp
-#     data_dict['IDs_idxs'] = {ID: idx for idx, ID in enumerate(IDs)}
-    
-#     return i, data_dict, IDs  # Return index, data_dict, and IDs
-
-# def parallel_count_objects(posData, logger_func):
-#     benchmark = True
-#     #futile attempt to use multiprocessing to speed things up
-#     logger_func('Counting total number of segmented objects...')
-    
-#     allIDs = set()
-#     seg_data = posData.segm_data
-    
-#     # Initialize empty data dictionary to avoid recalculating each time
-#     tasks = [(i, lab) for i, lab in enumerate(seg_data)]
-
-#     if benchmark:
-#         t0 = time.perf_counter()
-#     # Process in batches to optimize memory usage and control parallelism
-#     with ThreadPoolExecutor() as executor:
-#         futures = [executor.submit(process_lab, task) for task in tasks]
-        
-#         # Process results as they are completed
-#         for future in tqdm(as_completed(futures), total=len(futures), ncols=100):
-#             i, data_dict, IDs = future.result()
-#             posData.allData_li[i] = myutils.get_empty_stored_data_dict() # or directly assign if it's mutable
-#             posData.allData_li[i]['IDs'] = data_dict['IDs']
-#             posData.allData_li[i]['regionprops'] = data_dict['regionprops']
-#             posData.allData_li[i]['IDs_idxs'] = data_dict['IDs_idxs']
-#             allIDs.update(IDs)
-    
-#     if benchmark:
-#         t1 = time.perf_counter()
-#         logger_func(f'Counting objects took {(t1 - t0)*1000:.2f} ms')
-
-#     return allIDs, posData
 
 def check_file_time_proximity(file1, file2, max_seconds=300, logger_func=print):
     if not os.path.isfile(file1):
@@ -3352,6 +3308,8 @@ def verify_add_data_segm_proximity(posData: 'load.loadData', logger_func=print):
 #     >5 hrs
 # please update this if you try to optimize again
 def count_objects_and_init_rps(posData: 'load.loadData', logger_func=print):
+    from . import regionprops
+    
     allIDs = set()
 
     segm_data = posData.segm_data

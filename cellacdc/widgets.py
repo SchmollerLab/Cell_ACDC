@@ -78,7 +78,6 @@ from . import fonts
 from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER
 from . import _base_widgets
-from . import regionprops
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
@@ -8401,6 +8400,8 @@ class ImShow(QBaseWindow):
         return lab
 
     def _get2DlabContoursOverlay(self, imageItem):
+        from . import regionprops
+        
         overlay_lab = self._get2DlabOverlay(imageItem)
         H, W = imageItem.image.shape[:2]
         overlay = np.zeros((H, W, 4), dtype=np.uint8)

@@ -95,7 +95,6 @@ from .help import welcome, about
 from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
     normal_division_lineage_tree)#, reorg_sister_cells_for_export)
 from . import debugutils
-from . import regionprops
 from . import exec_time
 from .plot import imshow
 from . import gui_utils
@@ -268,7 +267,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             getattr(self, key).setToolTip(tooltip)
             getattr(self, key)._tooltip = tooltip
 
-    def run(self, module='acdc_gui', logs_path=None):        
+    def run(self, module='acdc_gui', logs_path=None): 
+        from . import regionprops as acdc_regionprops
+        
+        self._acdcRegionProps = acdc_regionprops._acdcRegionProps
+               
         self.setWindowIcon()
         self.setWindowTitle()
         
@@ -5749,7 +5752,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         expandedLab[self.currentLab2D>0] = 0
 
         # Get coords of the dilated/eroded object
-        expandedObj = regionprops.acdcRegionprops(
+        expandedObj = self._acdcRegionProps(
             expandedLab, precache_centroids=False)[0]
         expandedObj_bbox = expandedObj.bbox
         expandedObjCoords = (expandedObj.coords[:,-2], expandedObj.coords[:,-1])
@@ -9447,7 +9450,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             rp = posData.allData_li[frame_i]['regionprops']
             if rp is None:
                 lab = posData.segm_data[frame_i]
-                rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+                rp = self._acdcRegionProps(lab, precache_centroids=False)
                 posData.allData_li[frame_i]['regionprops'] = rp
             if searchedID in rp.IDs:
                 frame_i_found = frame_i
@@ -10642,7 +10645,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xxA, yyA = xx[::n], yy[::n]
             rr, cc = skimage.draw.polygon(yyA, xxA)
             self.autoContObjMask[rr, cc] = 1
-            rp = regionprops.acdcRegionprops(
+            rp = self._acdcRegionProps(
                 self.autoContObjMask, precache_centroids=False
             )
             if not rp:
@@ -14326,7 +14329,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 regionLab = transformation.clear_objects_not_in_mask(
                     regionLab, mask
                 )
-                regionRp = regionprops.acdcRegionprops(
+                regionRp = self._acdcRegionProps(
                     regionLab, precache_centroids=False
                 )
                 for obj in regionRp:
@@ -14342,7 +14345,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             regionLab[..., ~mask] = 0
         
-        regionRp = regionprops.acdcRegionprops(
+        regionRp = self._acdcRegionProps(
             regionLab, precache_centroids=False
         )
         clearIDs = [obj.label for obj in regionRp]
@@ -14566,7 +14569,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 rp = posData.allData_li[frame_i]['regionprops']
                 if rp is None:
                     lab = posData.segm_data[frame_i]
-                    rp = regionprops.acdcRegionprops(
+                    rp = self._acdcRegionProps(
                         lab, precache_centroids=False
                     )
                     posData.allData_li[frame_i]['regionprops'] = rp
@@ -14620,7 +14623,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         numObjectsCurrentZslice = None
         if 'In current z-slice' in activeCategories:
             numObjectsCurrentZslice = len(
-                regionprops.acdcRegionprops(
+                self._acdcRegionProps(
                     self.currentLab2D, precache_centroids=False
                 )
             )
@@ -14634,7 +14637,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 numObjectsAllPos += len(IDs)
             else:
                 lab = _posData.segm_data[0]
-                rp = regionprops.acdcRegionprops(
+                rp = self._acdcRegionProps(
                     lab, precache_centroids=False
                 )
                 numObjs = len(rp)
@@ -18207,7 +18210,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for frame_i in range(startFrameNum-1, stopFrameNum):
             lab = posData.segm_data[frame_i]
             allData_li_frame = posData.allData_li[frame_i]
-            allData_li_frame['regionprops'] = regionprops.acdcRegionprops(
+            allData_li_frame['regionprops'] = self._acdcRegionProps(
                     lab, precache_centroids=False
                 )
             if allData_li_frame['labels'] is not None:
@@ -18554,7 +18557,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         posData = self.data[self.pos_i]
         lab_mask = (self.currentLab2D>0).astype(np.uint8)
-        rp = regionprops.acdcRegionprops(lab_mask, precache_centroids=False)
+        rp = self._acdcRegionProps(lab_mask, precache_centroids=False)
         if not rp:
             Y, X = lab_mask.shape
             xRange = -0.5, X+0.5
@@ -21402,7 +21405,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 posData.lab = posData.segm_data[posData.frame_i]
             else:
                 posData.lab = np.zeros_like(posData.segm_data[0])
-            rp = regionprops.acdcRegionprops(posData.lab, precache_centroids=False)
+            rp = self._acdcRegionProps(posData.lab, precache_centroids=False)
             posData.rp = rp
             posData.IDs = []
             posData.allData_li[posData.frame_i]['regionprops'] = rp
@@ -22378,7 +22381,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if rp is not None and rp.is3D:
                     return rp.get_projection_lab_sorted(slicing=slicing)
 
-                rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+                rp = self._acdcRegionProps(lab, precache_centroids=False)
                 return rp.get_projection_lab_sorted(slicing=slicing)
         else:
             return lab
@@ -22557,7 +22560,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     shape = (posData.SizeY, posData.SizeX)
                 labels = np.zeros(shape, dtype=np.uint32)
-                rp = regionprops.acdcRegionprops(labels, precache_centroids=False)
+                rp = self._acdcRegionProps(labels, precache_centroids=False)
                 if frame_i == posData.frame_i:
                     posData.rp = rp
                     posData.IDs = []
@@ -22662,7 +22665,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         posData.rp = posData.allData_li[posData.frame_i]['regionprops']
         if posData.rp is None:
-            posData.rp = regionprops.acdcRegionprops(labels, precache_centroids=False)
+            posData.rp = self._acdcRegionProps(labels, precache_centroids=False)
         # get stored IDs
         self.setManualBackgroundLab()
         
@@ -22706,7 +22709,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Requested frame was already visited. Load from RAM.
         never_visited = False
         posData.lab = self.get_labels_array(from_store=True)
-        # posData.rp = regionprops.acdcRegionprops(posData.lab, precache_centroids=False)
+        # posData.rp = self._acdcRegionProps(posData.lab, precache_centroids=False)
         posData.rp = posData.allData_li[posData.frame_i]['regionprops']
         df = posData.allData_li[posData.frame_i]['acdc_df']
         if df is None:
@@ -22761,7 +22764,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
         
         if posData.rp is None: #
-            rp = regionprops.acdcRegionprops(posData.lab, precache_centroids=False)
+            rp = self._acdcRegionProps(posData.lab, precache_centroids=False)
             posData.rp = rp
             posData.allData_li[posData.frame_i]['regionprops'] = rp
         self.update_rp_metadata(draw=False)
@@ -24126,7 +24129,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             printl(f'''Warning: posData.rp is None for pos {self.pos_i}, 
                    frame {posData.frame_i}. Recomputing rp from labels.''')
             
-            posData.rp = regionprops.acdcRegionprops(
+            posData.rp = self._acdcRegionProps(
                 curr_lab, precache_centroids=False
             )
         
@@ -24445,7 +24448,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
                     lab = posData.segm_data[i]
-                    rp = regionprops.acdcRegionprops(
+                    rp = self._acdcRegionProps(
                         lab, precache_centroids=False
                     )
                     keepLab = self._keepObjects(lab=lab, rp=rp)
@@ -28308,7 +28311,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.initManualBackgroundImage()
         
         contours = []
-        for obj in regionprops.acdcRegionprops(
+        for obj in self._acdcRegionProps(
             posData.manualBackgroundLab, precache_centroids=False
         ):
             obj_contours = self.getObjContours(
@@ -28393,7 +28396,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if posData.manualBackgroundLab is None:
             self.initManualBackgroundImage()
         
-        for obj in regionprops.acdcRegionprops(
+        for obj in self._acdcRegionProps(
             posData.manualBackgroundLab, precache_centroids=False
         ):
             textItem = pg.TextItem(text='', color='r', anchor=(0.5, 0.5))
@@ -28778,7 +28781,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 lab = posData.lab
             else:
                 lab = posData.allData_li[frame_i]['labels']
-            rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+            rp = self._acdcRegionProps(lab, precache_centroids=False)
             if frame_i == posData.frame_i:
                 posData.rp = rp
             posData.allData_li[frame_i]['regionprops'] = rp
@@ -29036,7 +29039,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lab = self.get_2Dlab(lab)
             if delMask is not None:
                 delMask = self.get_2Dlab(delMask)
-            rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+            rp = self._acdcRegionProps(lab, precache_centroids=False)
         else: 
             if frame_i==posData.frame_i:
                 rp = posData.rp
@@ -29178,7 +29181,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             imageItem, contoursItem, gradItem = items
             contoursItem.clear()
             if drawMode == 'Draw contours':
-                for obj in regionprops.acdcRegionprops(
+                for obj in self._acdcRegionProps(
                     ol_lab, precache_centroids=False
                 ):
                     contours = self.getObjContours(
@@ -29389,7 +29392,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             frame_i=prev_frame_i,
             return_copy=False
         )
-        rp = regionprops.acdcRegionprops(
+        rp = self._acdcRegionProps(
             prev_lab, precache_centroids=False
         )
         posData.allData_li[prev_frame_i]['regionprops'] = rp
@@ -29572,7 +29575,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             maxID = max(posData.IDs, default=1)
         for obj in rp:
             lab_obj = skimage.measure.label(obj.image)
-            rp_lab_obj = regionprops.acdcRegionprops(
+            rp_lab_obj = self._acdcRegionProps(
                 lab_obj, precache_centroids=False
             )
             if len(rp_lab_obj)<=1:
@@ -30046,7 +30049,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for obj in prev_rp:
             if obj.label not in tracked_lost_IDs:
                 continue
-            if isinstance(prev_rp, regionprops.acdcRegionprops):
+            if isinstance(prev_rp, self._acdcRegionProps):
                 ID = obj.label
                 centroid = prev_rp.get_centroid(ID, exact=True)
             else:
@@ -33263,7 +33266,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         
         zoomLab = skimage.segmentation.clear_border(lab[zoomSlice])
-        zoomRp = regionprops.acdcRegionprops(
+        zoomRp = self._acdcRegionProps(
             zoomLab, precache_centroids=False
         )
         zoomIDs = [obj.label for obj in zoomRp]

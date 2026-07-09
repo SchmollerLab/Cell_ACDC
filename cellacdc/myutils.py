@@ -55,7 +55,7 @@ from . import _warnings
 from . import urls
 from . import qrc_resources_path
 from . import settings_folderpath
-from . import regionprops
+
 from .models._cellpose_base import min_target_versions_cp
 
 if GUI_INSTALLED:
