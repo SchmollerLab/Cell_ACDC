@@ -270,7 +270,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def run(self, module='acdc_gui', logs_path=None): 
         from . import regionprops as acdc_regionprops
         
-        self._acdcRegionProps = acdc_regionprops._acdcRegionProps
+        self._acdcRegionProps = acdc_regionprops.acdcRegionProps
         self._acdc_regionprops = acdc_regionprops
                
         self.setWindowIcon()
