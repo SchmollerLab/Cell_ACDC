@@ -914,11 +914,16 @@ class VolumeRendererWindow(QMainWindow):
     def _set_gl_blend_states(self):
         from .gl_blend import volume_gl_state
 
+        first_visibile = False
         for c, (channel, channel_data) in enumerate(self._channels_data.items()):
             blending = "translucent_no_depth" if c == 0 else "additive"
             node = channel_data.node
             node.order = c
             node.opacity = channel_data.opacity_slider.value()
+            if not first_visibile:
+                first_visibile = channel_data.toolbutton.isChecked()
+            else:
+                first_visibile = False
             node.set_gl_state(**volume_gl_state(blending, first_visible=c==0))    
     
     def _set_single_channel(self, single: bool):
@@ -1027,6 +1032,12 @@ class VolumeRendererWindow(QMainWindow):
             )
             return
         
+        if lab.ndim == 2:
+            if SizeZ is None:
+                SizeZ = self._SizeZ
+        
+            lab = np.array([lab]*SizeZ)
+        
         if self._data_shape is None:
             self._data_shape = lab.shape
         
@@ -1044,12 +1055,6 @@ class VolumeRendererWindow(QMainWindow):
             raise ValueError(
                 f'Labels array is 2D but SizeZ not set.'
             )
-        
-        if lab.ndim == 2:
-            if SizeZ is None:
-                SizeZ = self._SizeZ
-        
-            lab = np.array([lab]*SizeZ)
         
         if lab.ndim != 3:
             raise ValueError(
@@ -1112,8 +1117,8 @@ class VolumeRendererWindow(QMainWindow):
         if voxel_size is None:
             voxel_size = (1.0, 1.0, 1.0)
         
-        if self._downsample_strides:
-            self._downsample_strides = (1.0, 1.0, 1.0)
+        if self._downsample_strides is None:
+            self._downsample_strides = (1, 1, 1)
         
         self._voxel_size = voxel_size
         

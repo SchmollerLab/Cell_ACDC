@@ -503,6 +503,9 @@ def get_auto_contrast_percentile(
     p_lo = float(np.percentile(flat, low_pct))
     p_hi = float(np.percentile(flat, high_pct))
     span = vmax_raw - vmin_raw
+    if span <= 0:
+        return 0.0, 1.0
+    
     lo = max(0.0, min(1.0, (p_lo - vmin_raw) / span))
     hi = max(0.0, min(1.0, (p_hi - vmin_raw) / span))
     if hi <= lo:
