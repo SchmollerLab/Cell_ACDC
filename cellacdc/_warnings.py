@@ -464,18 +464,26 @@ def warnAskAboutSaveSingleMotherBudPairsCcaDf(
     )
     msg = widgets.myMessageBox(wrapText=False)
     txt = html_utils.paragraph(f"""
-        Cell-ACDC detected <b>unsaved cell cycle annotations</b> generated with the 
+        Cell-ACDC detected <b>partial cell cycle annotations</b> generated with the 
         "Annotate one mother-bud pair at the time" tool.<br><br>
         Do you want to discard these information or save partially annotated 
         frames?
     """)
+    
+    detailsText = html_utils.paragraph(f"""
+        In order to have fully annotated frames, you need to make sure you 
+        visit the frames with "Cell cycle analysis" mode, without the 
+        "Annotate one mother-bud pair at the time" tool active.
+    """)
 
     _, savePartiallyAnnotatedButton = msg.warning(
-        qparent, 'Unsaved cell cycle annotations', txt,
+        qparent, 'Partial cell cycle annotations', txt,
         buttonsTexts=(
             widgets.noPushButton('Discard partially annotated frames'),
             widgets.savePushButton('Save partially annotated frames')
-        )
+        ),
+        detailsText=detailsText,
+        details_expanded=False
     )
     
     return msg.cancel, msg.clickedButton==savePartiallyAnnotatedButton

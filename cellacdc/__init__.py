@@ -475,7 +475,7 @@ base_cca_dict = {
     'corrected_on_frame_i': -1,
     'will_divide': 0,
     'daughter_disappears_before_division': 0,
-    'disappears_before_division': 0
+    'disappears_before_division': 0,
 }
 cca_df_colnames = list(base_cca_dict.keys())
 

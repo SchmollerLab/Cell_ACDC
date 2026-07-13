@@ -19469,7 +19469,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         
         self.resetCcaFuture(cca_frame_i_to_restore+1)
-    
+
     def setNavigateScrollBarMaximum(self):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -21321,6 +21321,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.store_data(
                         enforce=True, autosave=False, store_cca_df_copy=True
                     )
+
+                self.initSingleMotherBudPairPartialCcaInfo()
 
                 # Ask whether to resume from last frame
                 if last_tracked_num>1:
@@ -23265,8 +23267,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if global_cca_df is None:
             return
         
-        if self._debug:
-            global_cca_df.to_csv('global_cca_df_with_single_moth_bud_pair.csv')
         global_cca_df = load._fix_will_divide(global_cca_df)
         
         self.storeFromConcatCcaDf(global_cca_df)
@@ -23378,6 +23378,34 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             cca_df.loc[bud_mask, 'disappears_before_division'] = 0
         
         self.store_data()
+    
+    def initSingleMotherBudPairPartialCcaInfo(self):
+        partial_cca_start_frame_i = None
+        posData = self.data[self.pos_i]
+        for frame_i in range(posData.SizeT):
+            acdc_df = posData.allData_li[frame_i]['acdc_df']
+            if acdc_df is None:
+                break
+            
+            if 'is_single_mother_bud_annotation' not in acdc_df.columns:
+                continue
+            
+            mask = acdc_df['is_single_mother_bud_annotation'] == 1.0
+            if mask.any():
+                if partial_cca_start_frame_i is None:
+                    partial_cca_start_frame_i = frame_i
+                
+                moth_bud_pairs_cca = acdc_df[mask][cca_df_colnames]
+                posData.allData_li[frame_i]['moth_bud_pairs_cca'] = (
+                    moth_bud_pairs_cca
+                )
+
+        if partial_cca_start_frame_i is None:
+            return
+
+        self.resetCcaFuture(
+            partial_cca_start_frame_i-1
+        )
     
     def resetLin_tree_future(self):
         posData = self.data[self.pos_i]
@@ -33601,7 +33629,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.activateWindow()
                 return True
         
-        append_name_og_whitelist, proceed, do_not_save_og_whitelist = self.askSaveOriginalSegm(isQuickSave=isQuickSave)
+        append_name_og_whitelist, proceed, do_not_save_og_whitelist = (
+            self.askSaveOriginalSegm(isQuickSave=isQuickSave)
+        )
         if not proceed:
             self.cancelSavingInitialisation()
             self.setDisabled(False, keepDisabled=False)
@@ -33887,7 +33917,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for worker, thread in self.autoSaveActiveWorkers:
             worker.savedSegmData = posData.segm_data.copy()
 
+    def removeSavedSingleMotherBudPairCcaDf(self):
+        for frame_i in range(posData.SizeT):
+            moth_bud_pairs_cca = (
+                posData.allData_li[frame_i].get('moth_bud_pairs_cca', None)
+            )
+            if moth_bud_pairs_cca is not None:
+                break
+        else:
+            return
+        
+        self.resetCcaFuture(frame_i-1)
+
     def saveDataFinished(self):
+        self.removeSavedSingleMotherBudPairCcaDf()
         self.setDisabled(False, keepDisabled=False)
         self.activateWindow()
         if self.saveWin.aborted or self.worker.abort:

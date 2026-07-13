@@ -545,7 +545,7 @@ def _fix_will_divide(acdc_df):
     cca_df = acdc_df[cca_df_mask].reset_index()[required_cols]
     
     IDs_gen_num_will_divide = cca_functions.get_IDs_gen_num_will_divide(cca_df)
-    
+
     if not IDs_gen_num_will_divide:
         return acdc_df
     
@@ -589,7 +589,6 @@ def _add_missing_columns(acdc_df):
         return acdc_df
     
     last_index_cca_df = acdc_df[['cell_cycle_stage']].last_valid_index()
-    
     for col, default in base_cca_dict.items():
         if col == 'will_divide':
             # Already taken care by _add_will_divide_column

@@ -44,13 +44,18 @@ def get_obj_text_label_annot(
     return f'{annot_label} ({num_z_slices})'
 
 def get_obj_text_cca_annot(
-        obj, acdc_df: pd.DataFrame, is_tree_annot: bool    
+        obj, acdc_df: pd.DataFrame, is_tree_annot: bool,     
+        moth_bud_pairs_cca=None
     ) -> str:
     ID = obj.label
     try:
-        cca_df_obj = acdc_df.loc[ID]
+        cca_df_obj = moth_bud_pairs_cca.loc[ID].copy()
+        cca_df_obj['will_divide'] = 1.0
     except Exception as e:
-        return str(ID), None
+        try:
+            cca_df_obj = acdc_df.loc[ID]
+        except Exception as e:
+            return str(ID), None
     
     try:
         ccs = cca_df_obj['cell_cycle_stage']
@@ -80,7 +85,8 @@ def get_obj_text_cca_annot(
 def get_obj_text_annot_opts(
         obj, acdc_df: pd.DataFrame, is_cca_annot: bool, is_new_obj: bool, 
         add_num_zslices: bool, is_label_tree_annot: bool, 
-        is_gen_num_tree_annot: bool, frame_i: int
+        is_gen_num_tree_annot: bool, frame_i: int,
+        moth_bud_pairs_cca=None
     ) -> dict: 
     if acdc_df is None or not is_cca_annot:
         bold = False
@@ -93,7 +99,8 @@ def get_obj_text_annot_opts(
         )
     else:
         text, cca_df_obj = get_obj_text_cca_annot(
-            obj, acdc_df, is_gen_num_tree_annot
+            obj, acdc_df, is_gen_num_tree_annot, 
+            moth_bud_pairs_cca=moth_bud_pairs_cca
         )
         if cca_df_obj is None:
             if is_new_obj:
@@ -607,6 +614,10 @@ class TextAnnotations:
         if acdc_df is None and posData.cca_df is not None:
             acdc_df = posData.cca_df
         
+        moth_bud_pairs_cca = (
+            posData.allData_li[posData.frame_i].get('moth_bud_pairs_cca')
+        )
+
         rp = rp_func()
         for obj in rp:
             if labelsToSkip is not None:
@@ -628,9 +639,9 @@ class TextAnnotations:
             objOpts = get_obj_text_annot_opts(
                 obj, acdc_df, isCcaAnnot, isNewObject,
                 isAnnotateNumZslices, isLabelTreeAnnotation, 
-                isGenNumTreeAnnotation, posData.frame_i
+                isGenNumTreeAnnotation, posData.frame_i,
+                moth_bud_pairs_cca=moth_bud_pairs_cca
             )
-            
             
             objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
             objData['data'] = obj.label
