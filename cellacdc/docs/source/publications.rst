@@ -16,6 +16,8 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Serna, S. E., et al. <i>ABA-AA: A simple, reversible, and non-toxic anchor-away system for effective nuclear protein depletion</i>. <b>Cell Reports Methods</b> (2026) DOI: <a href="https://doi.org/10.1016/j.crmeth.2026.101517">10.1016/j.crmeth.2026.101517</a>.</li><br>
+
       <li>Moukham, H., et al. <i>SNF1/AMPK controls its own localization by phosphorylating its activating kinase Sak1</i>. <b>iScience</b> (2026) DOI: <a href="https://doi.org/10.1016/j.isci.2026.116357">10.1016/j.isci.2026.116357</a>.</li><br>
 
       <li>Vandal, E. S., et al. <i>The role of cell growth rate on accumulation of the mitotic cyclin Cdc13 in fission yeast</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.05.14.724355">10.64898/2026.05.14.724355</a>.</li><br>
