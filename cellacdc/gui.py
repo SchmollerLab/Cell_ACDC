@@ -1437,6 +1437,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.functionsNotTested3D.append(self.mergeIDsButton)
         self.widgetsWithShortcut['Merge objects'] = self.mergeIDsButton
 
+        self.mergeMultipleIDsButton = QToolButton(self)
+        self.mergeMultipleIDsButton.setIcon(QIcon(":merge-multiple-IDs.svg"))
+        self.mergeMultipleIDsButton.setCheckable(True)
+        self.mergeMultipleIDsButton.setShortcut('Shift+M')
+        self.mergeMultipleIDsButton.action = editToolBar.addWidget(
+            self.mergeMultipleIDsButton
+        )
+        self.checkableButtons.append(self.mergeMultipleIDsButton)
+        self.checkableQButtonsGroup.addButton(self.mergeMultipleIDsButton)
+        self.widgetsWithShortcut['Merge multiple objects'] = (
+            self.mergeMultipleIDsButton
+        )
+        self.toolsActiveInProj3Dsegm.add(self.mergeMultipleIDsButton)
+
         self.keepIDsButton = QToolButton(self)
         self.keepIDsButton.setIcon(QIcon(":keep_objects.svg"))
         self.keepIDsButton.setCheckable(True)
@@ -2252,6 +2266,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.keptIDsLineEdit.sigEnterPressed.connect(self.applyKeepObjects)
         self.keptIDsLineEdit.sigIDsChanged.connect(self.updateKeepIDs)
         self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
+
+        self.mergeIDsToolbar = widgets.MergeIDsToolbar(
+            "Merge multiple IDs controls", self
+        )
+        self.addToolBar(Qt.TopToolBarArea, self.mergeIDsToolbar)
+        self.mergeIDsToolbar.setVisible(False)
+        self.controlToolBars.append(self.mergeIDsToolbar)
         
         # closeToolbarAction = QAction(
         #     QIcon(":cancelButton.svg"), "Close toolbar...", self
@@ -3452,11 +3473,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.autoAssignBud_YeastMate
         )
         self.keepIDsButton.toggled.connect(self.keepIDs_cb)
+        self.mergeMultipleIDsButton.toggled.connect(
+            self.mergeMultipleIDs_cb
+        )
 
         self.whitelistIDsButton.toggled.connect(self.whitelistIDs_cb)
 
         self.whitelistIDsToolbar.sigWhitelistChanged.connect(
             self.whitelistIDsChanged
+        )
+        self.whitelistIDsToolbar.onlyCurrentZsliceCheckbox.toggled.connect(
+            self.updateWhitelistIDsFromRoi
+        )
+        self.whitelistIDsToolbar.sigRoiToggled.connect(
+            self.whitelistIDsRoiToggled
+        )
+
+        self.mergeIDsToolbar.sigIDsChanged.connect(
+            self.mergeMultipleIDsChanged
+        )
+        self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.toggled.connect(
+            self.updateMergeMultipleIDsFromRoi
+        )
+        self.mergeIDsToolbar.sigRoiToggled.connect(
+            self.mergeMultipleIDsRoiToggled
+        )
+        self.mergeIDsToolbar.sigAccept.connect(
+            self.acceptMergeMultipleIDs
         )
 
         self.whitelistIDsToolbar.sigWhitelistAccepted.connect(
@@ -4657,6 +4700,122 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.labelRoiZdepthSpinbox.value() == 0:
             self.labelRoiZdepthSpinbox.setValue(posData.SizeZ)
         self.labelRoiZdepthSpinbox.setMaximum(posData.SizeZ+1)
+
+    def gui_createMergeIDsRoiItem(self):
+        Y, X = self.currentLab2D.shape
+        pen = pg.mkPen((255, 165, 0), width=3)
+        self.mergeIDsRoiItem = widgets.ROI(
+            (0, 0), (0, 0),
+            maxBounds=QRectF(QRect(0, 0, X, Y)),
+            scaleSnap=True,
+            translateSnap=True,
+            pen=pen,
+            hoverPen=pen
+        )
+        self.mergeIDsRoiItem.addScaleHandle([1, 0.5], [0, 0.5])
+        self.mergeIDsRoiItem.addScaleHandle([0, 0.5], [1, 0.5])
+        self.mergeIDsRoiItem.addScaleHandle([0.5, 0], [0.5, 1])
+        self.mergeIDsRoiItem.addScaleHandle([0.5, 1], [0.5, 0])
+        self.mergeIDsRoiItem.addScaleHandle([1, 1], [0, 0])
+        self.mergeIDsRoiItem.addScaleHandle([0, 0], [1, 1])
+        self.mergeIDsRoiItem.addScaleHandle([0, 1], [1, 0])
+        self.mergeIDsRoiItem.addScaleHandle([1, 0], [0, 1])
+        self._isMergeIDsRoiConnected = False
+        self._isMergeIDsRoiVisible = False
+        self.connectMergeMultipleIDsRoi()
+
+    def connectMergeMultipleIDsRoi(self):
+        if self._isMergeIDsRoiConnected:
+            return
+        self.mergeIDsRoiItem.sigRegionChanged.connect(
+            self.updateMergeMultipleIDsFromRoi
+        )
+        self._isMergeIDsRoiConnected = True
+
+    def disconnectMergeMultipleIDsRoi(self):
+        if not self._isMergeIDsRoiConnected:
+            return
+        try:
+            self.mergeIDsRoiItem.sigRegionChanged.disconnect(
+                self.updateMergeMultipleIDsFromRoi
+            )
+        except Exception:
+            pass
+        self._isMergeIDsRoiConnected = False
+
+    def showMergeMultipleIDsRoi(self):
+        self.connectMergeMultipleIDsRoi()
+        if not self._isMergeIDsRoiVisible:
+            self.ax1.addItem(self.mergeIDsRoiItem)
+            self._isMergeIDsRoiVisible = True
+
+    def hideMergeMultipleIDsRoi(self):
+        self.disconnectMergeMultipleIDsRoi()
+        if not self._isMergeIDsRoiVisible:
+            return
+        try:
+            self.ax1.removeItem(self.mergeIDsRoiItem)
+        except Exception:
+            pass
+        self._isMergeIDsRoiVisible = False
+
+    def gui_createWhitelistIDsRoiItem(self):
+        Y, X = self.currentLab2D.shape
+        pen = pg.mkPen((0, 170, 255), width=3)
+        self.whitelistIDsRoiItem = widgets.ROI(
+            (0, 0), (0, 0),
+            maxBounds=QRectF(QRect(0, 0, X, Y)),
+            scaleSnap=True,
+            translateSnap=True,
+            pen=pen,
+            hoverPen=pen
+        )
+        self.whitelistIDsRoiItem.addScaleHandle([1, 0.5], [0, 0.5])
+        self.whitelistIDsRoiItem.addScaleHandle([0, 0.5], [1, 0.5])
+        self.whitelistIDsRoiItem.addScaleHandle([0.5, 0], [0.5, 1])
+        self.whitelistIDsRoiItem.addScaleHandle([0.5, 1], [0.5, 0])
+        self.whitelistIDsRoiItem.addScaleHandle([1, 1], [0, 0])
+        self.whitelistIDsRoiItem.addScaleHandle([0, 0], [1, 1])
+        self.whitelistIDsRoiItem.addScaleHandle([0, 1], [1, 0])
+        self.whitelistIDsRoiItem.addScaleHandle([1, 0], [0, 1])
+        self._isWhitelistIDsRoiConnected = False
+        self._isWhitelistIDsRoiVisible = False
+        self.connectWhitelistIDsRoi()
+
+    def connectWhitelistIDsRoi(self):
+        if self._isWhitelistIDsRoiConnected:
+            return
+        self.whitelistIDsRoiItem.sigRegionChanged.connect(
+            self.updateWhitelistIDsFromRoi
+        )
+        self._isWhitelistIDsRoiConnected = True
+
+    def disconnectWhitelistIDsRoi(self):
+        if not self._isWhitelistIDsRoiConnected:
+            return
+        try:
+            self.whitelistIDsRoiItem.sigRegionChanged.disconnect(
+                self.updateWhitelistIDsFromRoi
+            )
+        except Exception:
+            pass
+        self._isWhitelistIDsRoiConnected = False
+
+    def showWhitelistIDsRoi(self):
+        self.connectWhitelistIDsRoi()
+        if not self._isWhitelistIDsRoiVisible:
+            self.ax1.addItem(self.whitelistIDsRoiItem)
+            self._isWhitelistIDsRoiVisible = True
+
+    def hideWhitelistIDsRoi(self):
+        self.disconnectWhitelistIDsRoi()
+        if not self._isWhitelistIDsRoiVisible:
+            return
+        try:
+            self.ax1.removeItem(self.whitelistIDsRoiItem)
+        except Exception:
+            pass
+        self._isWhitelistIDsRoiVisible = False
     
     def gui_createOverlayColors(self):
         fluoChannels = [ch for ch in self.ch_names if ch != self.user_ch_name]
@@ -6916,55 +7075,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     centroid = posData.rp.get_centroid(ID)
                     ydata, xdata = self.getObjCentroid(centroid)
                     ydata, xdata = int(ydata), int(xdata)
-            
+
             xx, yy = self.mergeObjsTempLine.getData()
-            IDs_to_merge = lab2D[yy.astype(int), xx.astype(int)]
-            for ID in IDs_to_merge:
-                if ID == 0:
-                    continue
-                obj = posData.rp.get_obj_from_ID(ID)
-                
-                posData.lab[obj.slice][obj.image] = self.firstID
-            
+            IDs_to_merge = [
+                self.firstID,
+                *sorted(
+                    {
+                        int(ID) for ID in lab2D[yy.astype(int), xx.astype(int)]
+                        if ID > 0
+                    } - {self.firstID}
+                )
+            ]
+
             self.mergeObjsTempLine.setData([], [])
             self.clickObjYc, self.clickObjXc = None, None
-            
-            bbox = self.update_rp_get_bbox(specific_IDs=IDs_to_merge,use_bbox=True) # use old IDs to get bbox
-            specific_IDs = list(IDs_to_merge) + [self.firstID]
-            self.update_rp(specific_IDs=specific_IDs,preloaded_bbox=bbox) # update with new IDs
-            ask_back_prop = True
-
-            if posData.frame_i == 0:
-                ask_back_prop = False
-                prev_IDs = []
-            else:
-                prev_IDs = (
-                    posData.allData_li[posData.frame_i-1]['regionprops'].IDs)
-
-            if  all(ID not in prev_IDs for ID in IDs_to_merge):
-                ask_back_prop = False
-            
-            if not self.isFrameCcaAnnotated() and ask_back_prop:
-                proceed = self.askPropagateChangePast(f'Merge IDs {IDs_to_merge}')
-                if proceed:
-                    self.propagateMergeObjsPast(IDs_to_merge)
-                    self.whitelistPropagateIDs(only_future_frames=False, update_lab=True) # in the update_rp() call, this should also be done
-
-            # Repeat tracking
-            self.tracking(
-                enforce=True, assign_unique_new_IDs=False,
-                separateByLabel=False
-            )
-
-            if self.isSnapshot:
-                self.fixCcaDfAfterEdit('Merge IDs')
-                self.updateAllImages()
-            else:
-                self.warnEditingWithCca_df('Merge IDs')
+            self.mergeSelectedIDs(IDs_to_merge, target_id=self.firstID)
             
             if not self.mergeIDsButton.findChild(QAction).isChecked():
                 self.mergeIDsButton.setChecked(False)
-            self.store_data()
 
     @exception_handler
     def gui_mouseReleaseEventImg1(self, event):
@@ -7354,6 +7482,45 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     handle.roi = roi
                     handles.append(handle)
         return handles
+
+    def gui_isHoveringRoiHandle(self, roi):
+        if roi is None:
+            return False
+        try:
+            handles = roi.getHandles()
+        except Exception:
+            return False
+
+        for handle in handles:
+            try:
+                if handle.currentPen == handle.hoverPen:
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def gui_isActiveInterceptRoi(self, roi):
+        if roi is None:
+            return False
+        if roi is getattr(self, 'mergeIDsRoiItem', None):
+            return getattr(self, '_isMergeIDsRoiVisible', False)
+        if roi is getattr(self, 'whitelistIDsRoiItem', None):
+            return getattr(self, '_isWhitelistIDsRoiVisible', False)
+        return True
+
+    def gui_isClickInsideRoi(self, roi, event):
+        if roi is None:
+            return False
+        try:
+            ymin, xmin, ymax, xmax = roi.bbox()
+        except Exception:
+            return False
+
+        if xmin == xmax or ymin == ymax:
+            return False
+
+        x, y = event.pos().x(), event.pos().y()
+        return xmin <= x <= xmax and ymin <= y <= ymax
     
     @exception_handler
     def gui_mousePressRightImage(self, event):
@@ -7432,6 +7599,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         unknownLineageButtonON = self.unknownLineageButton.isChecked()
         drawClearRegionON = self.drawClearRegionButton.isChecked()
         zoomRectON = self.zoomRectButton.isChecked()
+
+        activeRois = []
+        if self.whitelistIDsButton.isChecked():
+            activeRois.append(getattr(self, 'whitelistIDsRoiItem', None))
+        if self.mergeMultipleIDsButton.isChecked():
+            activeRois.append(getattr(self, 'mergeIDsRoiItem', None))
+        if self.labelRoiButton.isChecked() and self.labelRoiIsRectRadioButton.isChecked():
+            activeRois.append(getattr(self, 'labelRoiItem', None))
+        if self.zoomRectButton.isChecked():
+            activeRois.append(getattr(self, 'zoomRectItem', None))
+
+        activeRois = [roi for roi in activeRois if self.gui_isActiveInterceptRoi(roi)]
+
+        if any(self.gui_isHoveringRoiHandle(roi) for roi in activeRois):
+            event.ignore()
+            return
+
+        if left_click and any(
+            self.gui_isClickInsideRoi(roi, event) for roi in activeRois
+        ):
+            event.ignore()
+            return
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -14728,6 +14917,207 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateAllImages()
 
         # QTimer.singleShot(300, self.autoRange)
+
+    def mergeMultipleIDs_cb(self, checked):
+        if checked:
+            self.uncheckLeftClickButtons(None)
+            self.mergeIDsToolbar.setVisible(True)
+            self.mergeIDsToolbar.setOnlyCurrentZsliceEnabled(self.isSegm3D)
+            self.mergeIDsToolbar.roiToggle.blockSignals(True)
+            self.mergeIDsToolbar.roiToggle.setChecked(True)
+            self.mergeIDsToolbar.roiToggle.blockSignals(False)
+            self.mergeMultipleIDsRoiToggled(True)
+            return
+        # unchecked branch,cleanup
+        selected_ids = getattr(self, '_mergeMultipleIDsSelection', set())
+        if selected_ids:
+            self.removeHighlightLabelID(IDs=selected_ids)
+        self._mergeMultipleIDsSelection = set()
+        self.clearHighlightedText()
+        self.mergeIDsToolbar.setVisible(False)
+        self.mergeIDsToolbar.setIDs([])
+        self.mergeIDsToolbar.mergeLineEdit.setInstructionsText()
+        self.mergeIDsToolbar.roiToggle.blockSignals(True)
+        self.mergeIDsToolbar.roiToggle.setChecked(True)
+        self.mergeIDsToolbar.roiToggle.blockSignals(False)
+        self.mergeIDsRoiItem.blockSignals(True)
+        self.mergeIDsRoiItem.setPos((0, 0))
+        self.mergeIDsRoiItem.setSize((0, 0))
+        self.mergeIDsRoiItem.blockSignals(False)
+        self.hideMergeMultipleIDsRoi()
+
+    def mergeMultipleIDsRoiToggled(self, checked):
+        if not self.mergeMultipleIDsButton.isChecked():
+            return
+
+        if checked:
+            self.resetMergeMultipleIDsRoi()
+            self.showMergeMultipleIDsRoi()
+            self.updateMergeMultipleIDsFromRoi()
+            return
+
+        self.hideMergeMultipleIDsRoi()
+
+    def resetMergeMultipleIDsRoi(self):
+        ymin, ymax, xmin, xmax = self.getViewRange()
+        width = max(1, xmax - xmin)
+        height = max(1, ymax - ymin)
+        self.mergeIDsRoiItem.blockSignals(True)
+        self.mergeIDsRoiItem.setPos((xmin, ymin))
+        self.mergeIDsRoiItem.setSize((width, height))
+        self.mergeIDsRoiItem.blockSignals(False)
+
+    def getMergeMultipleIDsLab2D(self):
+        posData = self.data[self.pos_i]
+        if self.isSegm3D and not self.mergeIDsToolbar.isOnlyCurrentZslice():
+            return self.get_2Dlab(posData.lab, force_z=False)
+        return self.get_2Dlab(posData.lab)
+
+    def getMergeMultipleIDsFromRoi(self):
+        roi_slice = self.mergeIDsRoiItem.slice()
+        roi_lab = self.getMergeMultipleIDsLab2D()[roi_slice]
+        IDs = np.unique(roi_lab)
+        IDs = IDs[IDs > 0]
+        return sorted(IDs.astype(int).tolist())
+
+    def updateMergeMultipleIDsFromRoi(self):
+        if not self.mergeMultipleIDsButton.isChecked():
+            return
+        if not self.mergeIDsToolbar.roiToggle.isChecked():
+            return
+        IDs = self.getMergeMultipleIDsFromRoi()
+        self.mergeIDsToolbar.setIDs(IDs)
+
+    def mergeMultipleIDsChanged(self, IDs):
+        if not self.mergeMultipleIDsButton.isChecked():
+            return
+
+        posData = self.data[self.pos_i]
+        previous_ids = getattr(self, '_mergeMultipleIDsSelection', set())
+        has_missing_ids = any(ID not in posData.IDs for ID in IDs)
+        valid_ids = {ID for ID in IDs if ID in posData.IDs}
+
+        for ID in previous_ids - valid_ids:
+            self.removeHighlightLabelID(IDs=[ID])
+        for ID in valid_ids - previous_ids:
+            self.highlightLabelID(ID)
+
+        self._mergeMultipleIDsSelection = valid_ids
+
+        if has_missing_ids:
+            self.mergeIDsToolbar.mergeLineEdit.warnNotExistingID()
+        else:
+            self.mergeIDsToolbar.mergeLineEdit.setInstructionsText()
+
+    def acceptMergeMultipleIDs(self, IDs):
+        if not self.mergeMultipleIDsButton.isChecked():
+            return
+
+        posData = self.data[self.pos_i]
+        valid_ids = [ID for ID in IDs if ID in posData.IDs]
+        if len(valid_ids) < 2:
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                'Select at least two existing IDs before merging.'
+            )
+            msg.warning(self, 'Not enough IDs selected', txt)
+            return
+
+        target_id = valid_ids[0]
+        self.removeHighlightLabelID(IDs=valid_ids)
+        self._mergeMultipleIDsSelection = set()
+        self.storeUndoRedoStates(False)
+        self.mergeSelectedIDs(valid_ids, target_id=target_id)
+        self.mergeMultipleIDsButton.setChecked(False)
+
+    def mergeSelectedIDs(self, IDs_to_merge, target_id=None):
+        posData = self.data[self.pos_i]
+        unique_ids = []
+        seen = set()
+        for ID in IDs_to_merge:
+            if ID <= 0 or ID in seen:
+                continue
+            if ID not in posData.IDs:
+                continue
+            seen.add(ID)
+            unique_ids.append(int(ID))
+
+        if len(unique_ids) < 2:
+            return False
+
+        if target_id is None:
+            target_id = unique_ids[0]
+        elif target_id not in unique_ids:
+            unique_ids.insert(0, target_id)
+
+        self.firstID = target_id
+
+        only_current_zslice = (
+            self.isSegm3D and self.mergeIDsToolbar.isOnlyCurrentZslice()
+        )
+
+        if only_current_zslice:
+            lab2D = self.getMergeMultipleIDsLab2D().copy()
+            source_ids = [ID for ID in unique_ids if ID != target_id]
+            merge_mask = np.isin(lab2D, source_ids)
+            if not np.any(merge_mask):
+                return False
+            lab2D[merge_mask] = target_id
+            self.set_2Dlab(lab2D)
+            self.currentLab2D = self.get_2Dlab(posData.lab)
+            self.update_rp()
+        else:
+            for ID in unique_ids:
+                if ID == target_id:
+                    continue
+                obj = posData.rp.get_obj_from_ID(ID, warn=False)
+                if obj is None:
+                    continue
+                posData.lab[obj.slice][obj.image] = target_id
+
+            bbox = self.update_rp_get_bbox(
+                specific_IDs=unique_ids, use_bbox=True
+            )
+            self.update_rp(
+                specific_IDs=unique_ids + [target_id],
+                preloaded_bbox=bbox
+            )
+
+        ask_back_prop = True
+        if only_current_zslice:
+            ask_back_prop = False
+        elif posData.frame_i == 0:
+            ask_back_prop = False
+            prev_IDs = []
+        else:
+            prev_IDs = posData.allData_li[posData.frame_i-1]['regionprops'].IDs
+
+        if ask_back_prop and all(ID not in prev_IDs for ID in unique_ids):
+            ask_back_prop = False
+
+        if not self.isFrameCcaAnnotated() and ask_back_prop:
+            proceed = self.askPropagateChangePast(f'Merge IDs {unique_ids}')
+            if proceed:
+                self.propagateMergeObjsPast(unique_ids)
+                self.whitelistPropagateIDs(
+                    only_future_frames=False, update_lab=True
+                )
+
+        self.tracking(
+            enforce=True, assign_unique_new_IDs=False,
+            separateByLabel=False
+        )
+
+        if self.isSnapshot:
+            self.fixCcaDfAfterEdit('Merge IDs')
+            self.updateAllImages()
+        else:
+            self.warnEditingWithCca_df('Merge IDs')
+
+        self.store_data()
+        if self.mergeMultipleIDsButton.isChecked():
+            self.updateMergeMultipleIDsFromRoi()
+        return True
     
     def get_curr_lab(self, curr_lab: np.ndarray|None = None, frame_i: int|None = None):
         """Get the current labels for the position data. Hirarchically checks:
@@ -20267,6 +20657,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setMetricsFunc()
 
         self.gui_createLabelRoiItem()
+        self.gui_createWhitelistIDsRoiItem()
+        self.gui_createMergeIDsRoiItem()
         self.gui_createZoomRectItem()
 
         self.titleLabel.setText(
@@ -22368,7 +22760,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             idx_x = min(idx, posData.SizeX-1)
             return (slice(None), slice(None), idx_x)
                 
-    def get_2Dlab(self, lab, force_z=True):
+    def get_2Dlab(self, lab=None, force_z=True):
         if self.isSegm3D:
             if force_z:
                 return lab[self.z_lab()]
@@ -24301,7 +24693,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             IDs = posData.IDs
         
         for ID in IDs:
-            obj = posData.rp.get_obj_from_ID(ID)
+            obj = posData.rp.get_obj_from_ID(ID, warn=False)
+            if obj is None:
+                continue
             self.textAnnot[ax].removeHighlightObject(obj)
     
     def updateKeepIDs(self, IDs):

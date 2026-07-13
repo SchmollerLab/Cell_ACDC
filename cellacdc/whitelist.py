@@ -1071,6 +1071,7 @@ class WhitelistGUIElements:
 
             self.setAllTextAnnotations()
             self.updateAllImages()
+            self.updateWhitelistIDsFromRoi()
 
         elif switch_to_seg:
             self.viewOriginalLabels = False
@@ -1094,6 +1095,8 @@ class WhitelistGUIElements:
                 self.whitelistUpdateLab(frame_i=i) #has update_rp and store data
                 self.setAllTextAnnotations()
                 self.updateAllImages()
+
+            self.updateWhitelistIDsFromRoi()
 
     def whitelistSetViewOGIDsToggle(self, checked: bool):
         """Set the view original labels toggle button to checked or unchecked.
@@ -1852,15 +1855,70 @@ class WhitelistGUIElements:
             self.disconnectLeftClickButtons()
             self.uncheckLeftClickButtons(self.whitelistIDsButton)
             self.connectLeftClickButtons()
+            # self.whitelistIDsToolbar.setOnlyCurrentZsliceEnabled(self.isSegm3D)
+            self.whitelistIDsToolbar.roiToggle.blockSignals(True)
+            self.whitelistIDsToolbar.roiToggle.setChecked(True)
+            self.whitelistIDsToolbar.roiToggle.blockSignals(False)
+            self.whitelistIDsRoiToggled(True)
             
         self.whitelistIDsToolbar.setVisible(checked)
         self.whitelistHighlightIDs(checked)
         self.whitelistIDsUpdateText()
         self.whitelistUpdateTempLayer()
+        if checked and self.whitelistIDsToolbar.roiToggle.isChecked():
+            self.updateWhitelistIDsFromRoi()
 
         if not checked:
+            self.whitelistIDsToolbar.roiToggle.blockSignals(True)
+            self.whitelistIDsToolbar.roiToggle.setChecked(True)
+            self.whitelistIDsToolbar.roiToggle.blockSignals(False)
+            self.whitelistIDsRoiItem.blockSignals(True)
+            self.whitelistIDsRoiItem.setPos((0, 0))
+            self.whitelistIDsRoiItem.setSize((0, 0))
+            self.whitelistIDsRoiItem.blockSignals(False)
+            self.hideWhitelistIDsRoi()
             self.setLostNewOldPrevIDs()
             self.updateAllImages()
+
+    def whitelistIDsRoiToggled(self, checked: bool):
+        if not self.whitelistIDsButton.isChecked():
+            return
+
+        if checked:
+            self.resetWhitelistIDsRoi()
+            self.showWhitelistIDsRoi()
+            self.updateWhitelistIDsFromRoi()
+            return
+
+        self.hideWhitelistIDsRoi()
+
+    def resetWhitelistIDsRoi(self):
+        ymin, ymax, xmin, xmax = self.getViewRange()
+        width = max(1, xmax - xmin)
+        height = max(1, ymax - ymin)
+        self.whitelistIDsRoiItem.blockSignals(True)
+        self.whitelistIDsRoiItem.setPos((xmin, ymin))
+        self.whitelistIDsRoiItem.setSize((width, height))
+        self.whitelistIDsRoiItem.blockSignals(False)
+
+    def getWhitelistIDsLab2D(self):
+        posData = self.data[self.pos_i]
+        return self.get_2Dlab(posData.lab, force_z=False)
+
+    def getWhitelistIDsFromRoi(self):
+        roi_slice = self.whitelistIDsRoiItem.slice()
+        roi_lab = self.getWhitelistIDsLab2D()[roi_slice]
+        IDs = np.unique(roi_lab)
+        IDs = IDs[IDs > 0]
+        return sorted(IDs.astype(int).tolist())
+
+    def updateWhitelistIDsFromRoi(self, checked=None):
+        if not self.whitelistIDsButton.isChecked():
+            return
+        if not self.whitelistIDsToolbar.roiToggle.isChecked():
+            return
+        IDs = self.getWhitelistIDsFromRoi()
+        self.whitelistIDsToolbar.setIDs(IDs)
 
     def whitelistHighlightIDs(self, checked:bool=True):
         """Highlights the IDs in the current frame based on the whitelist.

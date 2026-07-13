@@ -11155,6 +11155,7 @@ class WhitelistIDsToolbar(ToolBar):
     sigViewOGIDs = Signal(bool)
     sigWhitelistAccepted = Signal(list)
     sigAddNewIDs = Signal(bool)
+    sigRoiToggled = Signal(bool)
     sigLoadOGLabs = Signal()
     sigTrackOGagainstPreviousFrame = Signal(bool)
     
@@ -11174,6 +11175,20 @@ class WhitelistIDsToolbar(ToolBar):
         # accept button
         self.acceptButton = self.addButton(':greenTick.svg')
         self.acceptButton.triggered.connect(self.accept)
+
+        self.roiToggle = self.addButton(':ROI.svg', checkable=True)
+        self.roiToggle.setChecked(True)
+        self.roiToggle.setToolTip(
+            'Show or hide the ROI used to collect overlapping IDs'
+        )
+        self.roiToggle.toggled.connect(self.sigRoiToggled.emit)
+
+        self.onlyCurrentZsliceCheckbox = QCheckBox('Only current z-slice')
+        self.onlyCurrentZsliceCheckbox.setToolTip(
+            'When active on 3D data, collect IDs only on the currently '
+            'displayed z-slice instead of across the projected object'
+        )
+        self.addWidget(self.onlyCurrentZsliceCheckbox)
 
         # add a view OG toggle
         self.viewOGToggle = self.addButton(':eye.svg', checkable=True)
@@ -11229,6 +11244,9 @@ class WhitelistIDsToolbar(ToolBar):
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.addWidget(spacer)
 
+    def setIDs(self, IDs):
+        self.whitelistLineEdit.setText(IDs)
+
     def emitWhitelistChanged(self, whitelist):
         self.sigWhitelistChanged.emit(whitelist)
 
@@ -11258,6 +11276,12 @@ class WhitelistIDsToolbar(ToolBar):
             object to add.<br>
             You can also write directly into the <code>Whitelist IDs</code> widget<br>
             and separate the IDs by commas.<br><br>
+
+            You can also use the ROI button to collect all IDs overlapping a region.<br>
+            Hide the ROI with the eye button to keep editing the IDs manually.<br><br>
+
+            On 3D data, you can enable <code>Only current z-slice</code> to collect IDs
+            only from the displayed slice.<br><br>
             
             After adding the IDs, click on the "Accept" button to remove the 
             non-whitelisted objects.<br>
@@ -11274,6 +11298,88 @@ class WhitelistIDsToolbar(ToolBar):
         """
         )
         msg.information(self, 'White list IDs', txt)
+
+class MergeIDsToolbar(ToolBar):
+    sigIDsChanged = Signal(list)
+    sigAccept = Signal(list)
+    sigRoiToggled = Signal(bool)
+
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+
+        mergeLineEditLabel = QLabel('IDs to merge: ')
+        self.addWidget(mergeLineEditLabel)
+
+        self.mergeLineEdit = WhitelistLineEdit(
+            mergeLineEditLabel, parent=self
+        )
+        self.mergeLineEdit.sigEnterPressed.connect(self.accept)
+        self.mergeLineEdit.sigIDsChanged.connect(self.sigIDsChanged.emit)
+        self.addWidget(self.mergeLineEdit)
+
+        self.acceptButton = self.addButton(':greenTick.svg')
+        self.acceptButton.setToolTip(
+            'Merge all listed IDs into the first ID in the list'
+        )
+        self.acceptButton.triggered.connect(self.accept)
+
+        self.roiToggle = self.addButton(':ROI.svg', checkable=True)
+        self.roiToggle.setChecked(True)
+        self.roiToggle.setToolTip(
+            'Show or hide the ROI used to collect overlapping IDs'
+        )
+        self.roiToggle.toggled.connect(self.sigRoiToggled.emit)
+
+        self.onlyCurrentZsliceCheckbox = QCheckBox('Only current z-slice')
+        self.onlyCurrentZsliceCheckbox.setToolTip(
+            'When active on 3D data, collect and merge IDs only on the '
+            'currently displayed z-slice instead of across the projected object'
+        )
+        self.addWidget(self.onlyCurrentZsliceCheckbox)
+
+        self.infoButton = self.addButton(':info.svg')
+        self.infoButton.triggered.connect(self.showInfo)
+
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.addWidget(spacer)
+
+    def setIDs(self, IDs):
+        self.mergeLineEdit.setText(IDs)
+
+    def setOnlyCurrentZsliceEnabled(self, enabled):
+        self.onlyCurrentZsliceCheckbox.setVisible(enabled)
+        self.onlyCurrentZsliceCheckbox.setEnabled(enabled)
+        if not enabled:
+            self.onlyCurrentZsliceCheckbox.setChecked(False)
+
+    def isOnlyCurrentZslice(self):
+        return self.onlyCurrentZsliceCheckbox.isChecked()
+
+    def accept(self):
+        try:
+            IDs = self.mergeLineEdit.IDs
+        except AttributeError as e:
+            if "has no attribute 'IDs'" in str(e):
+                IDs = list()
+            else:
+                raise
+        self.sigAccept.emit(IDs)
+
+    def showInfo(self):
+        msg = myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            Move and resize the ROI on the image to collect the overlapping IDs.<br><br>
+
+            The IDs inside the ROI are listed in the toolbar and can be edited manually.<br><br>
+
+            Use the eye button to hide the ROI and type the IDs manually.<br><br>
+
+            On 3D data, you can enable <code>Only current z-slice</code> to apply the merge only to the displayed slice.<br><br>
+
+            Click the green tick button to merge all listed IDs into the first ID in the list.
+        """)
+        msg.information(self, 'Merge multiple IDs', txt)
 
 class MagicPromptsToolbar(ToolBar):
     sigPromptTypeChanged = Signal(object, str)

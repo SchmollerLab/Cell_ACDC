@@ -231,6 +231,12 @@
     :height: 16px
     :width: 16px
 
+.. |mergeMultipleIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/merge-multiple-IDs.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/merge-multiple-IDs.svg
+    :alt: mergeMultipleIDsButton icon
+    :height: 16px
+    :width: 16px
+
 .. |keepIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/keep_objects.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/keep_objects.svg
     :alt: keepIDsButton icon
@@ -461,6 +467,8 @@ Edit tools: Segmentation and tracking
 * **Manual bud separation (** |separateBudButton| **"S"):** Separate mother-bud fused together or separate objects that have the same ID. Right-click to attempt automatic separation or Shift+right-click to skip automatic attemp and go straight to manual mode.
 * **Merge IDs (** |mergeIDsButton| **"M"):** Merge/fuse two objects together. 
     * Usage: right-click on one of the two objects, keep the button clicked and release on the second object to merge (drag-and-drop).
+* **Merge multiple IDs (** |mergeMultipleIDsButton| **"Shift+M"):** Merge/fuse multiple objects together.
+    * Usage: right-click on one of the multiple objects, either type in IDs in the text box in the toolbar or use the ROI selection to select multiple objects. Then click on the "Check mark" button in the toolbar to merge all selected objects. Use the ROI icon to hide/show a ROI. Check 'Only current z-slice' to only merge in current z-slice.
 * **Select objects to keep (** |keepIDsButton| **"K"):** Select the objects to keep. Press "Enter" to confirm selection or "Esc" to clear the selection. After confirming, all the NON selected objects will be deleted. Left-click on objects to keep.
 * **Select objects to add to the tracking whitelist (** |whitelistIDsButton| **"Ctr+K"):** Select objects to add to a tracking whitelist. Only objects in this list will be kept and tracked over time. You can add additional objects to the list an any point in time. Left-click on objects to add them to the whitelist.
 * **Remove object from analysis (** |binCellButton| **):** Annotate that a cell is removed from downstream analysis. ``is_cell_excluded`` set to ``True`` in ``acdc_output.csv`` table. Done by right-clicking.
