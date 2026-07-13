@@ -50,7 +50,9 @@ dependencies = [
     "boto3",
     "requests",
     "setuptools-scm",
-    "matplotlib"
+    "matplotlib",
+    "sympy",
+    "imagecodecs",
 ]
 dynamic = [
     "version",
