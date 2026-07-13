@@ -3702,15 +3702,8 @@ class loadData:
         self.whitelist = whitelist.Whitelist(
             total_frames=self.SizeT,
         )
-        whitelist_path_legacy = self.segm_npz_path.replace(
+        whitelist_path = self.segm_npz_path.replace(
             '.npz', '_whitelistIDs.json')
-        segm_filename = os.path.basename(self.segm_npz_path).replace('.npz', '')
-        segm_add_data_folder = os.path.join(self.images_path, segm_filename)
-        os.makedirs(segm_add_data_folder, exist_ok=True)
-        whitelist_path = os.path.join(segm_add_data_folder, 'whitelistIDs.json')
-        if os.path.exists(whitelist_path_legacy):
-            # move to new path
-            shutil.move(whitelist_path_legacy, whitelist_path)
         new_centroids_path = self.segm_npz_path.replace('.npz', '_new_centroids.json')
         success = self.whitelist.load(
             whitelist_path, new_centroids_path, self.segm_data, self.allData_li,
