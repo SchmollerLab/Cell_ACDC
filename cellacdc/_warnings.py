@@ -439,3 +439,43 @@ def warnAskTransparencyModeNeededForExport(
     )
     
     return msg.cancel, msg.clickedButton==yesButton
+
+def warnEditCcaDisabledInAnnotSingleMothBudMode(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        Cell cycle annotations <b>cannot be edited</b> when <code>Annotate one mother-bud pair at the time</code> mode is active.<br><br>Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Cannot edit cell cycle annotations', txt, 
+    )
+    return msg.cancel
+
+def warnAskAboutSaveSingleMotherBudPairsCcaDf(
+        mainWin, qparent=None
+    ):
+    if qparent is None:
+        qparent = mainWin
+        
+    from . import widgets
+    mainWin.logger.info(
+        '[WARNING]: asking user what to do with cell cycle annotations from the '
+        '"Annotate one mother-bud pair at the time" tool...'
+    )
+    msg = widgets.myMessageBox(wrapText=False)
+    txt = html_utils.paragraph(f"""
+        Cell-ACDC detected <b>unsaved cell cycle annotations</b> generated with the 
+        "Annotate one mother-bud pair at the time" tool.<br><br>
+        Do you want to discard these information or save partially annotated 
+        frames?
+    """)
+
+    _, savePartiallyAnnotatedButton = msg.warning(
+        qparent, 'Unsaved cell cycle annotations', txt,
+        buttonsTexts=(
+            widgets.noPushButton('Discard partially annotated frames'),
+            widgets.savePushButton('Save partially annotated frames')
+        )
+    )
+    
+    return msg.cancel, msg.clickedButton==savePartiallyAnnotatedButton

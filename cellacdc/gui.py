@@ -227,6 +227,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         from .config import parser_args
         self.debug = parser_args['debug']
+        self._debug = self.debug
 
         self.buttonToRestore = buttonToRestore
         self.launcherSlot = launcherSlot
@@ -11005,6 +11006,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         """
         posData = self.data[self.pos_i]
 
+        if self.annotateSingleMotherBudPairButton.isChecked():
+            mothID = self.annotateSingleMothBudPairState['mother_ID']
+            budID = self.annotateSingleMothBudPairState['bud_ID']
+            if ID != mothID and ID != budID:
+                warn_text = (f'[WARNING]: Only the mother-bud pair {mothID}-{budID} can be annotated')
+                htmlTxt = f'<font color="orange">{warn_text}</font>'
+                self.titleLabel.setText(htmlTxt)
+                self.logger.info(warn_text)
+                self.blinker = qutils.QControlBlink(
+                    self.annotateSingleMotherBudPairButton, 
+                    qparent=self
+                )
+                self.blinker.start()
+                return
+
         # Store cca_df for undo action
         undoId = uuid.uuid4()
         self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
@@ -13196,6 +13212,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return self.getDisplayedImg1()
         
     def manualEditCca(self, checked=True):
+        if self.annotateSingleMotherBudPairButton.isChecked():
+            self.blinker = qutils.QControlBlink(
+                self.annotateSingleMotherBudPairButton, 
+                qparent=self
+            )
+            self.blinker.start()
+            _warnings.warnEditCcaDisabledInAnnotSingleMothBudMode(qparent=self)
+            return
+
         posData = self.data[self.pos_i]
         editCcaWidget = apps.editCcaTableWidget(
             posData.cca_df, posData.SizeT, current_frame_i=posData.frame_i,
@@ -13895,19 +13920,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if frame_to_restore is None:
                 return            
             
-            self.store_single_mother_bud_pair_data()
+            self.storeSingleMotherBudPairData()
             
             self.logger.info(
                 f'Restoring view to frame n. {posData.frame_i+1}...'
             )
-            posData.frame_i = frame_to_restore
             last_cca_frame_i_to_restore = (
                 self.annotateSingleMothBudPairState['last_cca_frame_i']
             )
+
             self.annotateSingleMotherBudPairRestoreLastCcaFrame(
                 last_cca_frame_i_to_restore
             )
+
+            posData.frame_i = frame_to_restore
             self.get_data()
+
             self.updateAllImages()
             self.updateScrollbars()
             self.ax1.sigRangeChanged.disconnect()
@@ -21553,7 +21581,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         # data_frame_i['manually_edited_lab']['zoom_slice'] = zoom_slice
 
-    def store_single_mother_bud_pair_data(self, cca_df=None):
+    def storeSingleMotherBudPairData(self, cca_df=None):
         posData = self.data[self.pos_i]
         data_frame_i = posData.allData_li[posData.frame_i]
         
@@ -21565,7 +21593,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         mothID = self.annotateSingleMothBudPairState.get('mother_ID')
         if mothID is None:
-            return        
+            return
         
         budID = self.annotateSingleMothBudPairState['bud_ID']
         single_moth_bud_pair_cca = cca_df.loc[[mothID, budID]].copy()
@@ -22069,6 +22097,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         return prev_cca_df
     
+    def addCcaInfoFromSingleMotherBudPairs(self, cca_df):
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        moth_bud_pairs_cca = (
+            posData.allData_li[frame_i].get('moth_bud_pairs_cca', None)
+        )
+        if moth_bud_pairs_cca is None:
+            return cca_df
+
+        if cca_df is None:
+            return moth_bud_pairs_cca
+
+        if 'cell_cycle_stage' not in cca_df.columns:
+            return moth_bud_pairs_cca
+
+        # Get the other cells that have not been annotated in the future 
+        # with the annotate single mother-bud pair tool from previous frame
+        cca_df = pd.concat([cca_df, moth_bud_pairs_cca])
+        cca_df = cca_df[~cca_df.index.duplicated(keep="last")]
+
+        return cca_df
+
     def autoCca_df(self, enforceAll=False):
         """
         Assign each bud to a mother with scipy linear sum assignment
@@ -22088,7 +22138,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if mode.find('Cell cycle') == -1:
             return notEnoughG1Cells, proceed
 
-
         # Make sure that this is a visited frame in segmentation tracking mode
         if posData.allData_li[posData.frame_i]['labels'] is None:
             proceed = self.warnFrameNeverVisitedSegmMode()
@@ -22098,7 +22147,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         cca_df = self.getSingleMotherBudPairCca_df()
         if cca_df is not None:
             posData.cca_df = cca_df
-            self.store_single_mother_bud_pair_data(cca_df=cca_df)
+            self.storeSingleMotherBudPairData(cca_df=cca_df)
             return notEnoughG1Cells, proceed
         
         # Determine if this is the last visited frame for repeating
@@ -22107,6 +22156,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # by going previous and we want to check if this cell could be a
         # "better" mother for those non manually corrected buds
         curr_df = posData.allData_li[posData.frame_i]['acdc_df']
+
         isLastVisitedAgain = self.isLastVisitedAgainCca(
             curr_df, enforceAll=enforceAll
         )
@@ -22165,15 +22215,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return notEnoughG1Cells, proceed
         
         if posData.cca_df is None:
-            posData.cca_df = prev_cca_df.copy()
+            posData.cca_df = prev_cca_df[self.cca_df_colnames]
         else:
-            posData.cca_df = curr_df[self.cca_df_colnames].copy()
+            posData.cca_df = curr_df[self.cca_df_colnames]
         
         if missingIDs:
             # Add missing IDs from previous cca_df
             posData.cca_df.loc[missingIDs] = prev_cca_df.loc[missingIDs]
         
         posData.cca_df = posData.cca_df.dropna()
+        posData.cca_df = self.addCcaInfoFromSingleMotherBudPairs(posData.cca_df)
+        posData.cca_df = posData.cca_df[self.cca_df_colnames].copy()
         
         # concatenate new IDs found in past frames (before frame_i-1)
         if found_cca_df_IDs is not None:
@@ -23358,12 +23410,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if cca_df is not None:
             cca_df = cca_df.dropna()
-        else:
-            moth_bud_pairs_cca = (
-                posData.allData_li[i].get('moth_bud_pairs_cca', None)
-            )
-            if moth_bud_pairs_cca is not None:
-                cca_df = moth_bud_pairs_cca
         
         if return_df:
             return cca_df
@@ -23530,74 +23576,48 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.allData_li[i]['cca_df'] = cca_df.copy()
         
         if self.annotateSingleMotherBudPairButton.isChecked():
-            self.store_single_mother_bud_pair_data(cca_df=cca_df)
+            self.storeSingleMotherBudPairData(cca_df=cca_df)
         
         if autosave:
             self.enqAutosave()
             self.enqCcaIntegrityChecker()
 
-    # def lin_tree_to_acdc_df(self, force_all=False, ignore=set(), force=set(), specific=set()):
-    #     """
-    #     Syncs the lineage tree DataFrame with the acdc_df DataFrame. By default, it will only try to sync frames which have not been synced before. 
-    #     This can be changed using the optional arguments.
-
-    #     Parameters
-    #     ----------
-    #     force_all : bool, optional 
-    #         If True, forces synchronization for all frames. Defaults to False.
-    #     ignore : set, optional
-    #         Set of frames to ignore during synchronization. Defaults to set().
-    #     force : set, optional
-    #         Set of frames to force synchronization. Defaults to set().
-    #     specific : set, optional
-    #         Set of frames to specifically synchronize. In this case it will ignore all other inputs and sync those no matter what. Defaults to set().
-    #     """
-
-    #     if self.lineage_tree is None:
-    #         return
+    def detectSingleMotherBudPairsCcaDf(self, isQuickSave=False):
+        if isQuickSave:
+            return True
         
-    #     # df_for_sync = []
-    #     # lineage_copy = self.lineage_tree.lineage_list.copy()
-    #     lin_tree_set = self.lineage_tree.frames_for_dfs.copy()
+        posData = self.data[self.pos_i]
+        for frame_i in range(posData.SizeT):
+            moth_bud_pairs_cca = (
+                posData.allData_li[frame_i].get('moth_bud_pairs_cca', None)
+            )
+            if moth_bud_pairs_cca is not None:
+                break
+        else:
+            return True
+        
+        cancel, saveSingleMothBudPairCcaInfo = (
+            _warnings.warnAskAboutSaveSingleMotherBudPairsCcaDf(self)
+        )
+        if cancel:
+            return False
 
-    #     if not force_all and not specific:
-    #         dont_sync = self.already_synced_lin_tree
-    #         dont_sync = {frame for frame in dont_sync if not frame in force}
-    #         dont_sync.update(ignore)
+        if not saveSingleMothBudPairCcaInfo:
+            return True
 
-    #         lin_tree_set = lin_tree_set.difference(dont_sync)
+        for frame_i in range(posData.SizeT):
+            moth_bud_pairs_cca = (
+                posData.allData_li[frame_i].get('moth_bud_pairs_cca', None)
+            )
+            if moth_bud_pairs_cca is None:
+                continue
 
-    #     if specific:
-    #         lin_tree_set = lin_tree_set.intersection(specific)
-
-
-    #     if lin_tree_set == []:
-    #         return
-
-    #     posData = self.data[self.pos_i]
-
-    #     lin_tree_colnames = None
-    #     self.store_data(autosave=False)
-    #     for frame_i in lin_tree_set:
-    #         acdc_df = posData.allData_li[frame_i]['acdc_df']
-
-    #         lin_tree_df = self.lineage_tree.export_df(frame_i)
-    #         if lin_tree_colnames is None:
-    #             lin_tree_colnames = lin_tree_df.columns
-
-    #         acdc_df.loc[lin_tree_df.index, lin_tree_colnames] = lin_tree_df[lin_tree_colnames]
-            
-    #         try:
-    #             try:
-    #                 if (acdc_df['generation_num'] == 2).all() and not (acdc_df['generation_num_tree'].isna().all()): # check if generation_num is all just the default value and if yes, replace it with the tree values
-    #                     acdc_df['generation_num'] = acdc_df['generation_num_tree']
-    #             except KeyError:
-    #                 acdc_df['generation_num'] = acdc_df['generation_num_tree']
-    #         except Exception as e:
-    #             self.logger.error(f'Error while syncing generation_num from lineage tree: {e} \n please save and restart')
-
-    #         posData.allData_li[frame_i]['acdc_df'] = acdc_df
-    #         self.already_synced_lin_tree.add(frame_i)
+            moth_bud_pairs_cca['is_single_mother_bud_annotation'] = 1.0
+            self.store_cca_df(
+                frame_i=frame_i, cca_df=moth_bud_pairs_cca, autosave=False
+            )
+        
+        return True
 
     def turnOffAutoSaveWorker(self):
         self.autoSaveToggle.setChecked(False)
@@ -30961,7 +30981,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return
             else:
                 self.store_data(autosave=False)
-
+                
         self._openFolder(
             exp_path=exp_path, imageFilePath=imageFilePath
         )
@@ -33560,6 +33580,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         mode = self.modeComboBox.currentText()
         if mode == 'Cell cycle analysis':
+            proceed = self.detectSingleMotherBudPairsCcaDf(isQuickSave=isQuickSave)
+            if not proceed:
+                self.cancelSavingInitialisation()
+                self.setDisabled(False, keepDisabled=False)
+                self.activateWindow()
+                return True
+
             proceed = self.askSaveLastVisitedCcaMode(isQuickSave=isQuickSave)
             if not proceed:
                 self.cancelSavingInitialisation()

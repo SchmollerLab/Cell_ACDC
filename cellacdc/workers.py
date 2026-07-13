@@ -6479,7 +6479,7 @@ class saveDataWorker(QObject):
             elif mode == 'Cell cycle analysis':
                 self.progress.emit(
                     'Saved cell cycle annotations until frame '
-                    f'number {self.mainWin.last_cca_frame_i+1}'
+                    f'number {self.mainWin.save_cca_until_frame_i+1}'
                 )
             # self.progressBar.emit(1)
         if self.mainWin.isSnapshot:
