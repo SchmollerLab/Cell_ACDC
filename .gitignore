@@ -17,6 +17,7 @@ test_shorten_data.py
 note.txt
 cellacdc/q_debug.py
 cellacdc/_q_debug.py
+global_cca_df_with_single_moth_bud_pair.csv
 
 env_dependencies_issues.txt
 not_installed_requirements.txt
