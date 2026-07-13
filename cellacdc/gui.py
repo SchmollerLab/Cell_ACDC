@@ -33918,6 +33918,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             worker.savedSegmData = posData.segm_data.copy()
 
     def removeSavedSingleMotherBudPairCcaDf(self):
+        posData = self.data[self.pos_i]
         for frame_i in range(posData.SizeT):
             moth_bud_pairs_cca = (
                 posData.allData_li[frame_i].get('moth_bud_pairs_cca', None)
