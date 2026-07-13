@@ -95,7 +95,6 @@ from .help import welcome, about
 from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
     normal_division_lineage_tree)#, reorg_sister_cells_for_export)
 from . import debugutils
-from . import regionprops
 from . import exec_time
 from .plot import imshow
 from . import gui_utils
@@ -268,7 +267,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             getattr(self, key).setToolTip(tooltip)
             getattr(self, key)._tooltip = tooltip
 
-    def run(self, module='acdc_gui', logs_path=None):        
+    def run(self, module='acdc_gui', logs_path=None): 
+        from . import regionprops as acdc_regionprops
+        
+        self._acdcRegionProps = acdc_regionprops.acdcRegionprops
+        self._acdc_regionprops = acdc_regionprops
+               
         self.setWindowIcon()
         self.setWindowTitle()
         
@@ -414,14 +418,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.isEditActionsConnected = False
 
         self.readRecentPaths()
-
         self.initShortcuts()
         self.show()
         QTimer.singleShot(100, self.resizeRangeWelcomeText)
         # self.installEventFilter(self)
         
         self.logger.info('GUI ready.')
-        
+    
     def initGlobalAttr(self):
         self.setOverlayColors()
 
@@ -4188,7 +4191,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         resetAction = self.bottomLayoutContextMenu.addAction(
             'Reset default height'
         )
-        resetAction.triggered.connect(self.resizeGui)
+        resetAction.triggered.connect(self.resetBottomLayoutHeight)
         retainSpaceAction = self.bottomLayoutContextMenu.addAction(
             'Retain space of hidden sliders'
         )
@@ -5115,7 +5118,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             delID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if delID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 delID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -5155,8 +5158,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.applyFutFrames_DelID = applyFutFrames
             includeUnvisited = posData.includeUnvisitedInfo['Delete ID']
 
+            zProjHow = self.zProjComboBox.currentText()
+            isZslice = zProjHow == 'single z-slice'
+            del_shift = shift_regardless and isZslice 
+
             delID_mask = self.deleteIDmiddleClick(
-                delIDs, applyFutFrames, includeUnvisited, shift=shift_regardless
+                delIDs, applyFutFrames, includeUnvisited, shift=del_shift
             )
             if delID_mask.ndim == 3:
                 delID_mask = delID_mask[self.z_lab()]
@@ -5189,7 +5196,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x)
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
+                    )
                 sepID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -5285,7 +5293,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 clickedBkgrID = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -5335,7 +5343,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 mergeID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -5393,7 +5401,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 mergeID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -5425,7 +5433,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 editID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -5492,7 +5500,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 keepID_win = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -5524,7 +5532,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 binID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -5605,7 +5613,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 ripID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -5750,7 +5758,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         expandedLab[self.currentLab2D>0] = 0
 
         # Get coords of the dilated/eroded object
-        expandedObj = regionprops.acdcRegionprops(
+        expandedObj = self._acdcRegionProps(
             expandedLab, precache_centroids=False)[0]
         expandedObj_bbox = expandedObj.bbox
         expandedObjCoords = (expandedObj.coords[:,-2], expandedObj.coords[:,-1])
@@ -7156,7 +7164,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 mothID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -7874,7 +7882,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 keepID_win = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -7906,7 +7914,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 keepID_win = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -8153,7 +8161,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 divID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -8196,7 +8204,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 budID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -8245,7 +8253,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 unknownID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -8275,7 +8283,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab), y, x
+                    self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
                 clickedBkgrDialog = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -9448,7 +9456,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             rp = posData.allData_li[frame_i]['regionprops']
             if rp is None:
                 lab = posData.segm_data[frame_i]
-                rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+                rp = self._acdcRegionProps(lab, precache_centroids=False)
                 posData.allData_li[frame_i]['regionprops'] = rp
             if searchedID in rp.IDs:
                 frame_i_found = frame_i
@@ -10068,7 +10076,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 f'Enter here the ID {text}'
             )
             nearest_ID = core.nearest_nonzero_2D(
-                self.get_2Dlab(posData.lab), xdata, ydata
+                self.get_2Dlab(posData.lab,force_z=False), xdata, ydata
             )
             clickedBkgrID = apps.QLineEditDialog(
                 title='Clicked on background',
@@ -10643,7 +10651,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xxA, yyA = xx[::n], yy[::n]
             rr, cc = skimage.draw.polygon(yyA, xxA)
             self.autoContObjMask[rr, cc] = 1
-            rp = regionprops.acdcRegionprops(
+            rp = self._acdcRegionProps(
                 self.autoContObjMask, precache_centroids=False
             )
             if not rp:
@@ -12271,11 +12279,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateROIpreview(roi)
 
         
-    def _getROIDelIDs(self, roi, lab, hidden_IDs):
+    def _getROIDelIDs(self, roi, lab, hidden_IDs):        
         mask, bbox = self.getRoiCoords(roi, return_mask=True)
         cutout = np.where(mask, lab[bbox[0]:bbox[1], bbox[2]:bbox[3]], 0)   # same shape as mask, non-roi pixels set to 0
             
-        touching_IDs = set(regionprops.find_IDs(cutout))
+        touching_IDs = set(self._acdc_regionprops.find_IDs(cutout))
         to_hide_IDs = touching_IDs - set(hidden_IDs)
         to_restore_IDs = set(hidden_IDs) - touching_IDs
         
@@ -12493,7 +12501,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         curr_lab = posData.lab
         if not removing_roi:
-            touching_IDs = set(regionprops.find_IDs(cutout))
+            touching_IDs = set(self._acdc_regionprops.find_IDs(cutout))
             
             backed_up_masks_new = []
             backed_up_masks_coords_new = []
@@ -14292,9 +14300,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def clearObjsFreehandRegion(self):
         self.logger.info('Clearing objects inside freehand region...')
         
-        # Store undo state before modifying stuff
-        self.storeUndoRedoStates(False, storeImage=False, storeOnlyZoom=True)
-        
         posData = self.data[self.pos_i]
         zRange = None
         if self.isSegm3D:
@@ -14307,7 +14312,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
             else:
                 zRange = (0, posData.SizeZ)
-            
+        
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(
+            False, 
+            storeImage=False, 
+            storeOnlyZoom=True, 
+            zRange=zRange
+        )
+
         regionSlice = self.freeRoiItem.slice(zRange=zRange)
         mask = self.freeRoiItem.mask()
         
@@ -14322,7 +14335,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 regionLab = transformation.clear_objects_not_in_mask(
                     regionLab, mask
                 )
-                regionRp = regionprops.acdcRegionprops(
+                regionRp = self._acdcRegionProps(
                     regionLab, precache_centroids=False
                 )
                 for obj in regionRp:
@@ -14338,7 +14351,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             regionLab[..., ~mask] = 0
         
-        regionRp = regionprops.acdcRegionprops(
+        regionRp = self._acdcRegionProps(
             regionLab, precache_centroids=False
         )
         clearIDs = [obj.label for obj in regionRp]
@@ -14353,6 +14366,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.logger.warning(
                     'None of the objects are touching the freehand region'
                 )
+            self.freeRoiItem.clear()
             return
         
         self.deleteIDmiddleClick(clearIDs, False, False)
@@ -14561,7 +14575,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 rp = posData.allData_li[frame_i]['regionprops']
                 if rp is None:
                     lab = posData.segm_data[frame_i]
-                    rp = regionprops.acdcRegionprops(
+                    rp = self._acdcRegionProps(
                         lab, precache_centroids=False
                     )
                     posData.allData_li[frame_i]['regionprops'] = rp
@@ -14615,7 +14629,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         numObjectsCurrentZslice = None
         if 'In current z-slice' in activeCategories:
             numObjectsCurrentZslice = len(
-                regionprops.acdcRegionprops(
+                self._acdcRegionProps(
                     self.currentLab2D, precache_centroids=False
                 )
             )
@@ -14629,7 +14643,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 numObjectsAllPos += len(IDs)
             else:
                 lab = _posData.segm_data[0]
-                rp = regionprops.acdcRegionprops(
+                rp = self._acdcRegionProps(
                     lab, precache_centroids=False
                 )
                 numObjs = len(rp)
@@ -15287,7 +15301,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             self.restoreAnnotOptions_ax2()
 
-
     def resizeBottomLayoutLineClicked(self, event):
         pass
         
@@ -15295,9 +15308,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not self.img1BottomGroupbox.isVisible():
             return
         newBottomLayoutHeight = self.bottomScrollArea.minimumHeight() - event.y()
+        if newBottomLayoutHeight <= 0:
+            newBottomLayoutHeight = 1
+        
         self.bottomScrollArea.setFixedHeight(newBottomLayoutHeight)
     
     def resizeBottomLayoutLineReleased(self):
+        bottomLayoutHeight = max(1, self.bottomScrollArea.height())
+        self.df_settings.at['bottomLayoutHeight', 'value'] = str(
+            bottomLayoutHeight
+        )
+        self.df_settings.to_csv(self.settings_csv_path)
+        
         QTimer.singleShot(100, self.autoRange)
     
     def mousePressEvent(self, event) -> None:
@@ -15988,7 +16010,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             0, {'id': undoId, 'cca_df': cca_df.copy()}
         )
 
-    def addCurrentState(self, storeImage=False, storeOnlyZoom=False):
+    def addCurrentState(
+            self, 
+            storeImage=False, 
+            storeOnlyZoom=False,
+            zRange: tuple[int, int] | None=None
+        ): 
         posData = self.data[self.pos_i]
         if posData.cca_df is not None:
             cca_df = posData.cca_df.copy()
@@ -16007,7 +16034,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             if self.isSegm3D:
                 z = self.z_lab(checkIfProj=True)
-                if z is None:
+                if zRange is not None:
+                    z_slice = slice(zRange[0], zRange[1])
+                    crop_slice = (z_slice, *crop_slice)
+                    labels = posData.lab[crop_slice].copy()
+                elif z is None:
                     z_slice = slice(0, len(posData.lab))
                     crop_slice = (z_slice, *crop_slice)
                     labels = posData.lab[crop_slice].copy()
@@ -16120,7 +16151,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     # @exec_time
     def storeUndoRedoStates(
-            self, UndoFutFrames, storeImage=False, storeOnlyZoom=False
+            self, 
+            UndoFutFrames, 
+            storeImage=False, 
+            storeOnlyZoom=False,
+            zRange=None
         ):
         posData = self.data[self.pos_i]
         if UndoFutFrames:
@@ -16137,7 +16172,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.UndoCount = 0
         self.undoAction.setEnabled(True)
         self.addCurrentState(
-            storeImage=storeImage, storeOnlyZoom=storeOnlyZoom
+            storeImage=storeImage, 
+            storeOnlyZoom=storeOnlyZoom,
+            zRange=zRange
         )
         
     def storeUndoRedoCca(self, frame_i, cca_df, undoId):
@@ -18179,7 +18216,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for frame_i in range(startFrameNum-1, stopFrameNum):
             lab = posData.segm_data[frame_i]
             allData_li_frame = posData.allData_li[frame_i]
-            allData_li_frame['regionprops'] = regionprops.acdcRegionprops(
+            allData_li_frame['regionprops'] = self._acdcRegionProps(
                     lab, precache_centroids=False
                 )
             if allData_li_frame['labels'] is not None:
@@ -18526,7 +18563,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         posData = self.data[self.pos_i]
         lab_mask = (self.currentLab2D>0).astype(np.uint8)
-        rp = regionprops.acdcRegionprops(lab_mask, precache_centroids=False)
+        rp = self._acdcRegionProps(lab_mask, precache_centroids=False)
         if not rp:
             Y, X = lab_mask.shape
             xRange = -0.5, X+0.5
@@ -20359,7 +20396,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             maxXRange=maxXRange
         )
         self.bottomScrollArea._resizeVertical()
-        QTimer.singleShot(200, self.autoRange)
+        self.setBottomLayoutHeight()
+    
+    def resetBottomLayoutHeight(self):
+        self.bottomScrollArea._resizeVertical()
+        self.resizeBottomLayoutLineReleased()
+        self.resizeGui()
     
     def setVisible3DsegmWidgets(self):
         self.annotNumZslicesCheckbox.setVisible(self.isSegm3D)
@@ -21369,7 +21411,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 posData.lab = posData.segm_data[posData.frame_i]
             else:
                 posData.lab = np.zeros_like(posData.segm_data[0])
-            rp = regionprops.acdcRegionprops(posData.lab, precache_centroids=False)
+            rp = self._acdcRegionProps(posData.lab, precache_centroids=False)
             posData.rp = rp
             posData.IDs = []
             posData.allData_li[posData.frame_i]['regionprops'] = rp
@@ -22345,7 +22387,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if rp is not None and rp.is3D:
                     return rp.get_projection_lab_sorted(slicing=slicing)
 
-                rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+                rp = self._acdcRegionProps(lab, precache_centroids=False)
                 return rp.get_projection_lab_sorted(slicing=slicing)
         else:
             return lab
@@ -22524,7 +22566,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     shape = (posData.SizeY, posData.SizeX)
                 labels = np.zeros(shape, dtype=np.uint32)
-                rp = regionprops.acdcRegionprops(labels, precache_centroids=False)
+                rp = self._acdcRegionProps(labels, precache_centroids=False)
                 if frame_i == posData.frame_i:
                     posData.rp = rp
                     posData.IDs = []
@@ -22629,7 +22671,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         posData.rp = posData.allData_li[posData.frame_i]['regionprops']
         if posData.rp is None:
-            posData.rp = regionprops.acdcRegionprops(labels, precache_centroids=False)
+            posData.rp = self._acdcRegionProps(labels, precache_centroids=False)
         # get stored IDs
         self.setManualBackgroundLab()
         
@@ -22673,7 +22715,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Requested frame was already visited. Load from RAM.
         never_visited = False
         posData.lab = self.get_labels_array(from_store=True)
-        # posData.rp = regionprops.acdcRegionprops(posData.lab, precache_centroids=False)
+        # posData.rp = self._acdcRegionProps(posData.lab, precache_centroids=False)
         posData.rp = posData.allData_li[posData.frame_i]['regionprops']
         df = posData.allData_li[posData.frame_i]['acdc_df']
         if df is None:
@@ -22728,7 +22770,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
         
         if posData.rp is None: #
-            rp = regionprops.acdcRegionprops(posData.lab, precache_centroids=False)
+            rp = self._acdcRegionProps(posData.lab, precache_centroids=False)
             posData.rp = rp
             posData.allData_li[posData.frame_i]['regionprops'] = rp
         self.update_rp_metadata(draw=False)
@@ -23171,7 +23213,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if global_cca_df is None:
             return
         
-        global_cca_df.to_csv('global_cca_df_with_single_moth_bud_pair.csv')
+        if self._debug:
+            global_cca_df.to_csv('global_cca_df_with_single_moth_bud_pair.csv')
         global_cca_df = load._fix_will_divide(global_cca_df)
         
         self.storeFromConcatCcaDf(global_cca_df)
@@ -24093,7 +24136,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             printl(f'''Warning: posData.rp is None for pos {self.pos_i}, 
                    frame {posData.frame_i}. Recomputing rp from labels.''')
             
-            posData.rp = regionprops.acdcRegionprops(
+            posData.rp = self._acdcRegionProps(
                 curr_lab, precache_centroids=False
             )
         
@@ -24412,7 +24455,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
                     lab = posData.segm_data[i]
-                    rp = regionprops.acdcRegionprops(
+                    rp = self._acdcRegionProps(
                         lab, precache_centroids=False
                     )
                     keepLab = self._keepObjects(lab=lab, rp=rp)
@@ -28275,7 +28318,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.initManualBackgroundImage()
         
         contours = []
-        for obj in regionprops.acdcRegionprops(
+        for obj in self._acdcRegionProps(
             posData.manualBackgroundLab, precache_centroids=False
         ):
             obj_contours = self.getObjContours(
@@ -28360,7 +28403,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if posData.manualBackgroundLab is None:
             self.initManualBackgroundImage()
         
-        for obj in regionprops.acdcRegionprops(
+        for obj in self._acdcRegionProps(
             posData.manualBackgroundLab, precache_centroids=False
         ):
             textItem = pg.TextItem(text='', color='r', anchor=(0.5, 0.5))
@@ -28745,7 +28788,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 lab = posData.lab
             else:
                 lab = posData.allData_li[frame_i]['labels']
-            rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+            rp = self._acdcRegionProps(lab, precache_centroids=False)
             if frame_i == posData.frame_i:
                 posData.rp = rp
             posData.allData_li[frame_i]['regionprops'] = rp
@@ -29003,7 +29046,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lab = self.get_2Dlab(lab)
             if delMask is not None:
                 delMask = self.get_2Dlab(delMask)
-            rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+            rp = self._acdcRegionProps(lab, precache_centroids=False)
         else: 
             if frame_i==posData.frame_i:
                 rp = posData.rp
@@ -29145,7 +29188,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             imageItem, contoursItem, gradItem = items
             contoursItem.clear()
             if drawMode == 'Draw contours':
-                for obj in regionprops.acdcRegionprops(
+                for obj in self._acdcRegionProps(
                     ol_lab, precache_centroids=False
                 ):
                     contours = self.getObjContours(
@@ -29356,7 +29399,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             frame_i=prev_frame_i,
             return_copy=False
         )
-        rp = regionprops.acdcRegionprops(
+        rp = self._acdcRegionProps(
             prev_lab, precache_centroids=False
         )
         posData.allData_li[prev_frame_i]['regionprops'] = rp
@@ -29539,7 +29582,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             maxID = max(posData.IDs, default=1)
         for obj in rp:
             lab_obj = skimage.measure.label(obj.image)
-            rp_lab_obj = regionprops.acdcRegionprops(
+            rp_lab_obj = self._acdcRegionProps(
                 lab_obj, precache_centroids=False
             )
             if len(rp_lab_obj)<=1:
@@ -30013,7 +30056,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for obj in prev_rp:
             if obj.label not in tracked_lost_IDs:
                 continue
-            if isinstance(prev_rp, regionprops.acdcRegionprops):
+            if isinstance(prev_rp, self._acdcRegionProps):
                 ID = obj.label
                 centroid = prev_rp.get_centroid(ID, exact=True)
             else:
@@ -30830,6 +30873,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             action.setDisabled(True)
         
         return True
+    
+    def setBottomLayoutHeight(self):
+        if 'bottomLayoutHeight' in self.df_settings.index:
+            bottomLayoutHeight = int(
+                self.df_settings.at['bottomLayoutHeight', 'value']
+            )
+            self.bottomScrollArea.setFixedHeight(bottomLayoutHeight)
     
     def reinitPointsLayers(self):
         for toolbar in self.pointsLayersToolbars:
@@ -33223,7 +33273,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         
         zoomLab = skimage.segmentation.clear_border(lab[zoomSlice])
-        zoomRp = regionprops.acdcRegionprops(
+        zoomRp = self._acdcRegionProps(
             zoomLab, precache_centroids=False
         )
         zoomIDs = [obj.label for obj in zoomRp]

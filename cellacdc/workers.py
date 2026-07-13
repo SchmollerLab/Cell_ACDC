@@ -44,7 +44,6 @@ from . import cca_df_colnames_with_tree
 from . import cli
 from .utils import resize
 from . import segm_utils
-from . import regionprops
 DEBUG = False
 
 def worker_exception_handler(func):
@@ -273,6 +272,8 @@ class SegForLostIDsWorker(QObject):
     
     @worker_exception_handler
     def run(self):
+        from . import regionprops
+        
         posData = self.guiWin.data[self.guiWin.pos_i]
         frame_i = posData.frame_i
 
@@ -445,29 +446,6 @@ class SegForLostIDsWorker(QObject):
             new_labs.append(posData.lab.copy())
             self.signals.progressBar.emit(1)
             
-            # if self._debug:
-            #     print(f'Model {model_idx}:')
-            #     print('Displaying curr_img and curr_lab:')
-            #     display_info = {
-            #         'title': f'Model {model_idx}, input image and lab',
-            #         'images': [curr_img, posData.lab],
-            #         'img_titles': ['curr_img', ' posData.lab after model and tracking'],
-            #     }
-            #     # self.sigShowImageDebug.emit(display_info)
-            #     for i, imgs in imgs_to_show.items():
-            #         display_info = {
-            #             'title': f'Model {model_idx}, bbox {i}',
-            #             'images': imgs,
-            #             'img_titles': [
-            #                 'box_curr_img', 'box_curr_lab', 'box_curr_lab_other_IDs_grown', 
-            #                 'box_curr_img (after filling)', 'box_model_lab'
-            #             ],
-            #             'img_seg_pairs': {
-            #                 0: 1,
-            #                 3: 4
-            #             }
-            #         }
-            #         # self.sigShowImageDebug.emit(display_info)
         global_areas = [obj.area for obj in posData.rp]
         global_area_mean = np.mean(global_areas) if len(global_areas) > 0 else None
         

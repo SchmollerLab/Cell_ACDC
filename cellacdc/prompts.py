@@ -109,7 +109,7 @@ class select_channel_name:
                 break
         
         chNames_found = False
-        channel_names = None
+        channel_names = []
         basename = None
         if metadata_csv_path is not None:
             channel_names = self._get_available_channels_from_metadata(
