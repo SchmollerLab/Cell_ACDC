@@ -23213,7 +23213,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if global_cca_df is None:
             return
         
-        global_cca_df.to_csv('global_cca_df_with_single_moth_bud_pair.csv')
+        if self._debug:
+            global_cca_df.to_csv('global_cca_df_with_single_moth_bud_pair.csv')
         global_cca_df = load._fix_will_divide(global_cca_df)
         
         self.storeFromConcatCcaDf(global_cca_df)
