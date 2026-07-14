@@ -3160,7 +3160,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if not checked:
             self._volume_renderer.close()
+            volume_renderer = getattr(self, '_volume_renderer', None)
             self._volume_renderer = None
+            if volume_renderer is not None:
+                volume_renderer.force_close()
             return
         
         posData = self.data[self.pos_i]

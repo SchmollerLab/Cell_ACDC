@@ -924,7 +924,8 @@ class VolumeRendererWindow(QMainWindow):
                 first_visibile = channel_data.toolbutton.isChecked()
             else:
                 first_visibile = False
-            node.set_gl_state(**volume_gl_state(blending, first_visible=c==0))    
+            gl_stage = volume_gl_state(blending, first_visible=first_visibile)
+            node.set_gl_state(**gl_stage)
     
     def _set_single_channel(self, single: bool):
         if single:

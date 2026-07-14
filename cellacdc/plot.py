@@ -51,12 +51,20 @@ PyQtGraphScatterPlotSymbolToVispyMapper = {
     'd': 'diamond',
     't': 'triangle_up', 
     't1': 'triangle_down',
+    't2': 'triangle_down',
+    't3': 'triangle_down',
+    'p': 'diamond',
+    'h': 'diamond',
     'arrow_up': 'arrow',
     '+': 'cross',
     'x': 'x',
     'star': 'star',
     '|': 'vbar',
-    '_': 'hbar'
+    '_': 'hbar',
+    'arrow_right': 'arrow',
+    'arrow_down': 'arrow',
+    'arrow_left': 'arrow',
+    'crosshair': 'cross',
 }
 
 
