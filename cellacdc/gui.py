@@ -1430,7 +1430,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.mergeIDsButton = QToolButton(self)
         self.mergeIDsButton.setIcon(QIcon(":merge-multiple-IDs.svg"))
         self.mergeIDsButton.setCheckable(True)
-        self.mergeIDsButton.setShortcut('Shift+M')
+        self.mergeIDsButton.setShortcut('M')
         self.mergeIDsButton.action = editToolBar.addWidget(
             self.mergeIDsButton
         )
@@ -10109,7 +10109,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 f'Enter here the ID {text}'
             )
             nearest_ID = core.nearest_nonzero_2D(
-                self.get_2Dlab(posData.lab,force_z=False), xdata, ydata
+                self.get_2Dlab(posData.lab,force_z=False), ydata, xdata
             )
             clickedBkgrID = apps.QLineEditDialog(
                 title=f'{action.capitalize()} on background',
@@ -14355,7 +14355,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 action='released the mouse button'
             )
         
-        self.logger.info('Merging objects inside freehand region...')
+        self.logger.info(
+            'Adding IDs from freehand region to whitelist...')
         
         posData = self.data[self.pos_i]
         zRange = None
@@ -14478,9 +14479,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             zRange=zRange
         )
         
+        zProjHow = self.zProjComboBox.currentText()
+        isZslice = zProjHow == 'single z-slice'
         only_current_zslice = (
-            self.isSegm3D and self.mergeIDsToolbar.isOnlyCurrentZslice()
+            self.isSegm3D 
+            and self.mergeIDsToolbar.isOnlyCurrentZslice()
+            and isZslice
         )
+        if only_current_zslice:
+            z_slice = self.z_lab()
+            zRange = (z_slice, z_slice+1)
         
         sourceIDs = self.getIDsFreeRoiItem(
             onlyEnclosed=onlyEnclosed, 
@@ -14929,7 +14937,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         targetID = valid_ids[0]
-        self.mergeSelectedIDs(valid_ids, targetID=targetID)
+        self.mergeSelectedIDs(valid_ids, target_id=targetID)
     
     def mergeSelectedIDs(self, IDs_to_merge, target_id=None):
         posData = self.data[self.pos_i]
@@ -33003,7 +33011,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return "", True, True
 
         posData = self.data[self.pos_i]
-        if not posData.whitelist:
+        if posData.whitelist is not None:
             return "", True, True
         
         help_txt = html_utils.paragraph(f"""

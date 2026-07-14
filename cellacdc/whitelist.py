@@ -1071,7 +1071,6 @@ class WhitelistGUIElements:
 
             self.setAllTextAnnotations()
             self.updateAllImages()
-            self.updateWhitelistIDsFromRoi()
 
         elif switch_to_seg:
             self.viewOriginalLabels = False
@@ -1095,8 +1094,6 @@ class WhitelistGUIElements:
                 self.whitelistUpdateLab(frame_i=i) #has update_rp and store data
                 self.setAllTextAnnotations()
                 self.updateAllImages()
-
-            self.updateWhitelistIDsFromRoi()
 
     def whitelistSetViewOGIDsToggle(self, checked: bool):
         """Set the view original labels toggle button to checked or unchecked.
