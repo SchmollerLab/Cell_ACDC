@@ -1072,6 +1072,7 @@ class WhitelistGUIElements:
             self.setAllTextAnnotations()
             self.updateAllImages()
             self.updateWhitelistIDsFromRoi()
+            self.updateWhitelistIDsFromRoi()
 
         elif switch_to_seg:
             self.viewOriginalLabels = False
@@ -1095,6 +1096,8 @@ class WhitelistGUIElements:
                 self.whitelistUpdateLab(frame_i=i) #has update_rp and store data
                 self.setAllTextAnnotations()
                 self.updateAllImages()
+
+            self.updateWhitelistIDsFromRoi()
 
             self.updateWhitelistIDsFromRoi()
 
@@ -1855,11 +1858,18 @@ class WhitelistGUIElements:
             self.disconnectLeftClickButtons()
             self.uncheckLeftClickButtons(self.whitelistIDsButton)
             self.connectLeftClickButtons()
+            # self.whitelistIDsToolbar.setOnlyCurrentZsliceEnabled(self.isSegm3D)
+            self.whitelistIDsToolbar.roiToggle.blockSignals(True)
+            self.whitelistIDsToolbar.roiToggle.setChecked(True)
+            self.whitelistIDsToolbar.roiToggle.blockSignals(False)
+            self.whitelistIDsRoiToggled(True)
             
         self.whitelistIDsToolbar.setVisible(checked)
         self.whitelistHighlightIDs(checked)
         self.whitelistIDsUpdateText()
         self.whitelistUpdateTempLayer()
+        if checked and self.whitelistIDsToolbar.roiToggle.isChecked():
+            self.updateWhitelistIDsFromRoi()
 
         if not checked:
             self.updateAllImages()

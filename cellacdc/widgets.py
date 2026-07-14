@@ -11187,6 +11187,7 @@ class WhitelistIDsToolbar(ToolBar):
     sigViewOGIDs = Signal(bool)
     sigWhitelistAccepted = Signal(list)
     sigAddNewIDs = Signal(bool)
+    sigRoiToggled = Signal(bool)
     sigLoadOGLabs = Signal()
     sigTrackOGagainstPreviousFrame = Signal(bool)
     
@@ -11311,6 +11312,12 @@ class WhitelistIDsToolbar(ToolBar):
             object to add.<br>
             You can also write directly into the <code>Whitelist IDs</code> widget<br>
             and separate the IDs by commas.<br><br>
+
+            You can also use the ROI button to collect all IDs overlapping a region.<br>
+            Hide the ROI with the eye button to keep editing the IDs manually.<br><br>
+
+            On 3D data, you can enable <code>Only current z-slice</code> to collect IDs
+            only from the displayed slice.<br><br>
 
             You can also use the ROI button to collect all IDs overlapping a region.<br>
             Hide the ROI with the eye button to keep editing the IDs manually.<br><br>

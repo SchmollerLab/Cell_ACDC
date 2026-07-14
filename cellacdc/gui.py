@@ -4674,6 +4674,122 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.labelRoiZdepthSpinbox.value() == 0:
             self.labelRoiZdepthSpinbox.setValue(posData.SizeZ)
         self.labelRoiZdepthSpinbox.setMaximum(posData.SizeZ+1)
+
+    def gui_createMergeIDsRoiItem(self):
+        Y, X = self.currentLab2D.shape
+        pen = pg.mkPen((255, 165, 0), width=3)
+        self.mergeIDsRoiItem = widgets.ROI(
+            (0, 0), (0, 0),
+            maxBounds=QRectF(QRect(0, 0, X, Y)),
+            scaleSnap=True,
+            translateSnap=True,
+            pen=pen,
+            hoverPen=pen
+        )
+        self.mergeIDsRoiItem.addScaleHandle([1, 0.5], [0, 0.5])
+        self.mergeIDsRoiItem.addScaleHandle([0, 0.5], [1, 0.5])
+        self.mergeIDsRoiItem.addScaleHandle([0.5, 0], [0.5, 1])
+        self.mergeIDsRoiItem.addScaleHandle([0.5, 1], [0.5, 0])
+        self.mergeIDsRoiItem.addScaleHandle([1, 1], [0, 0])
+        self.mergeIDsRoiItem.addScaleHandle([0, 0], [1, 1])
+        self.mergeIDsRoiItem.addScaleHandle([0, 1], [1, 0])
+        self.mergeIDsRoiItem.addScaleHandle([1, 0], [0, 1])
+        self._isMergeIDsRoiConnected = False
+        self._isMergeIDsRoiVisible = False
+        self.connectMergeMultipleIDsRoi()
+
+    def connectMergeMultipleIDsRoi(self):
+        if self._isMergeIDsRoiConnected:
+            return
+        self.mergeIDsRoiItem.sigRegionChanged.connect(
+            self.updateMergeMultipleIDsFromRoi
+        )
+        self._isMergeIDsRoiConnected = True
+
+    def disconnectMergeMultipleIDsRoi(self):
+        if not self._isMergeIDsRoiConnected:
+            return
+        try:
+            self.mergeIDsRoiItem.sigRegionChanged.disconnect(
+                self.updateMergeMultipleIDsFromRoi
+            )
+        except Exception:
+            pass
+        self._isMergeIDsRoiConnected = False
+
+    def showMergeMultipleIDsRoi(self):
+        self.connectMergeMultipleIDsRoi()
+        if not self._isMergeIDsRoiVisible:
+            self.ax1.addItem(self.mergeIDsRoiItem)
+            self._isMergeIDsRoiVisible = True
+
+    def hideMergeMultipleIDsRoi(self):
+        self.disconnectMergeMultipleIDsRoi()
+        if not self._isMergeIDsRoiVisible:
+            return
+        try:
+            self.ax1.removeItem(self.mergeIDsRoiItem)
+        except Exception:
+            pass
+        self._isMergeIDsRoiVisible = False
+
+    def gui_createWhitelistIDsRoiItem(self):
+        Y, X = self.currentLab2D.shape
+        pen = pg.mkPen((0, 170, 255), width=3)
+        self.whitelistIDsRoiItem = widgets.ROI(
+            (0, 0), (0, 0),
+            maxBounds=QRectF(QRect(0, 0, X, Y)),
+            scaleSnap=True,
+            translateSnap=True,
+            pen=pen,
+            hoverPen=pen
+        )
+        self.whitelistIDsRoiItem.addScaleHandle([1, 0.5], [0, 0.5])
+        self.whitelistIDsRoiItem.addScaleHandle([0, 0.5], [1, 0.5])
+        self.whitelistIDsRoiItem.addScaleHandle([0.5, 0], [0.5, 1])
+        self.whitelistIDsRoiItem.addScaleHandle([0.5, 1], [0.5, 0])
+        self.whitelistIDsRoiItem.addScaleHandle([1, 1], [0, 0])
+        self.whitelistIDsRoiItem.addScaleHandle([0, 0], [1, 1])
+        self.whitelistIDsRoiItem.addScaleHandle([0, 1], [1, 0])
+        self.whitelistIDsRoiItem.addScaleHandle([1, 0], [0, 1])
+        self._isWhitelistIDsRoiConnected = False
+        self._isWhitelistIDsRoiVisible = False
+        self.connectWhitelistIDsRoi()
+
+    def connectWhitelistIDsRoi(self):
+        if self._isWhitelistIDsRoiConnected:
+            return
+        self.whitelistIDsRoiItem.sigRegionChanged.connect(
+            self.updateWhitelistIDsFromRoi
+        )
+        self._isWhitelistIDsRoiConnected = True
+
+    def disconnectWhitelistIDsRoi(self):
+        if not self._isWhitelistIDsRoiConnected:
+            return
+        try:
+            self.whitelistIDsRoiItem.sigRegionChanged.disconnect(
+                self.updateWhitelistIDsFromRoi
+            )
+        except Exception:
+            pass
+        self._isWhitelistIDsRoiConnected = False
+
+    def showWhitelistIDsRoi(self):
+        self.connectWhitelistIDsRoi()
+        if not self._isWhitelistIDsRoiVisible:
+            self.ax1.addItem(self.whitelistIDsRoiItem)
+            self._isWhitelistIDsRoiVisible = True
+
+    def hideWhitelistIDsRoi(self):
+        self.disconnectWhitelistIDsRoi()
+        if not self._isWhitelistIDsRoiVisible:
+            return
+        try:
+            self.ax1.removeItem(self.whitelistIDsRoiItem)
+        except Exception:
+            pass
+        self._isWhitelistIDsRoiVisible = False
     
     def gui_createOverlayColors(self):
         fluoChannels = [ch for ch in self.ch_names if ch != self.user_ch_name]
@@ -7284,6 +7400,45 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     handle.roi = roi
                     handles.append(handle)
         return handles
+
+    def gui_isHoveringRoiHandle(self, roi):
+        if roi is None:
+            return False
+        try:
+            handles = roi.getHandles()
+        except Exception:
+            return False
+
+        for handle in handles:
+            try:
+                if handle.currentPen == handle.hoverPen:
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def gui_isActiveInterceptRoi(self, roi):
+        if roi is None:
+            return False
+        if roi is getattr(self, 'mergeIDsRoiItem', None):
+            return getattr(self, '_isMergeIDsRoiVisible', False)
+        if roi is getattr(self, 'whitelistIDsRoiItem', None):
+            return getattr(self, '_isWhitelistIDsRoiVisible', False)
+        return True
+
+    def gui_isClickInsideRoi(self, roi, event):
+        if roi is None:
+            return False
+        try:
+            ymin, xmin, ymax, xmax = roi.bbox()
+        except Exception:
+            return False
+
+        if xmin == xmax or ymin == ymax:
+            return False
+
+        x, y = event.pos().x(), event.pos().y()
+        return xmin <= x <= xmax and ymin <= y <= ymax
 
     def gui_isHoveringRoiHandle(self, roi):
         if roi is None:
@@ -20579,6 +20734,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setMetricsFunc()
 
         self.gui_createLabelRoiItem()
+        self.gui_createWhitelistIDsRoiItem()
+        self.gui_createMergeIDsRoiItem()
         self.gui_createZoomRectItem()
 
         self.titleLabel.setText(
@@ -22681,6 +22838,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return (slice(None), slice(None), idx_x)
                 
     def get_2Dlab(self, lab=None, force_z=True):
+    def get_2Dlab(self, lab=None, force_z=True):
         if self.isSegm3D:
             if force_z:
                 return lab[self.z_lab()]
@@ -24613,6 +24771,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             IDs = posData.IDs
         
         for ID in IDs:
+            obj = posData.rp.get_obj_from_ID(ID, warn=False)
+            if obj is None:
+                continue
             obj = posData.rp.get_obj_from_ID(ID, warn=False)
             if obj is None:
                 continue

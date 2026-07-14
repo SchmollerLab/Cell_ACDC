@@ -232,6 +232,12 @@
     :height: 16px
     :width: 16px
 
+.. |mergeMultipleIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/merge-multiple-IDs.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/merge-multiple-IDs.svg
+    :alt: mergeMultipleIDsButton icon
+    :height: 16px
+    :width: 16px
+
 .. |keepIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/keep_objects.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/keep_objects.svg
     :alt: keepIDsButton icon
