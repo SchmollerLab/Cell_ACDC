@@ -3102,7 +3102,7 @@ class ToolBar(QToolBar):
         try:
             self._logLabel.setText(html_utils.span(msg, color='r'))   
         except Exception as err:
-            print(msg)
+            pass
             
         try:
             self._log_func(msg)
@@ -11315,8 +11315,7 @@ class WhitelistIDsToolbar(ToolBar):
             You can also use the ROI button to collect all IDs overlapping a region.<br>
             Toggle the ROI button off to keep editing the IDs manually.<br><br>
 
-            On 3D data, you can enable <code>Only current z-slice</code> to collect IDs
-            only from the displayed slice.<br><br>
+            On 3D data, the ROI collects IDs across the entire volume.<br><br>
             
             After adding the IDs, click on the "Accept" button to remove the 
             non-whitelisted objects.<br>

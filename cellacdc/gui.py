@@ -7982,9 +7982,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 current_whitelist
             )
 
-            if not posData.whitelist:
-                posData.whitelist[posData.frame_i] = current_whitelist
-
             self.whitelistUpdateTempLayer()
 
         elif (right_click or left_click) and canDrawWhitelistIDsRoi:
@@ -14343,18 +14340,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.freeRoiItem.clear()
             return
         
-        right_click = event.button() == Qt.MouseButton.RightButton
         self.freeRoiItem.closeCurve()
-        x, y = event.pos().x(), event.pos().y()
-        xdata, ydata = int(x), int(y)
-        targetID = None
-        if right_click:
-            targetID = self.getClickedID(
-                xdata, ydata, 
-                text='for the merged object.',
-                action='released the mouse button'
-            )
-        
         self.logger.info(
             'Adding IDs from freehand region to whitelist...')
         
@@ -14941,6 +14927,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def mergeSelectedIDs(self, IDs_to_merge, target_id=None):
         posData = self.data[self.pos_i]
+        zRange = None
+        if self.isSegm3D:
+            zRange = (0, posData.SizeZ)
+            
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(
+            False, 
+            storeImage=False, 
+            storeOnlyZoom=True, 
+            zRange=zRange
+        )
+    
         unique_ids = []
         seen = set()
         for ID in IDs_to_merge:
@@ -33011,7 +33009,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return "", True, True
 
         posData = self.data[self.pos_i]
-        if posData.whitelist is not None:
+        if not posData.whitelist:
             return "", True, True
         
         help_txt = html_utils.paragraph(f"""
