@@ -14414,24 +14414,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         regionSlice = self.freeRoiItem.slice(zRange=zRange)
         mask = self.freeRoiItem.mask()
         regionLab = posData.lab[(...,) + regionSlice].copy()
-        if onlyEnclosed:
-            if regionLab.ndim == 2:
-                regionLab = transformation.clear_objects_not_in_mask(
-                    regionLab, mask
-                )
-                regionRp = self._acdcRegionProps(
-                    regionLab, precache_centroids=False
-                )
-                for obj in regionRp:
-                    if np.all(mask[obj.slice][obj.image]):
-                        continue
-                    
-                    regionLab[obj.slice][obj.image] = 0
+        if regionLab.ndim == 3:
+            mask3d = np.zeros(regionLab.shape, dtype=bool)
+            if zRange is None:
+                mask3d[:] = mask
             else:
-                for z, regionLab_z in enumerate(regionLab):
-                    regionLab[z] = transformation.clear_objects_not_in_mask(
-                        regionLab_z, mask
-                    )
+                mask3d[zRange[0]:zRange[1]] = mask
+            mask = mask3d
+            
+        if onlyEnclosed:
+            regionLab = transformation.clear_objects_not_in_mask(
+                regionLab, mask
+            )
         else:
             regionLab[..., ~mask] = 0
         
@@ -14480,7 +14474,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             onlyEnclosed=onlyEnclosed, 
             zRange=zRange
         )
-        
+
         if not sourceIDs:
             if onlyEnclosed:
                 logger_func(
