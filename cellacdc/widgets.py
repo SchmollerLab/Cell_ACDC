@@ -2266,9 +2266,9 @@ class alphaNumericLineEdit(QLineEdit):
         text = self.text()
         if self.formatter is not None:
             text = self.formatter(text)
-        if self.ignore_file_ext is not False:
-            text = text.rstrip(self.ignore_file_ext)
-
+        ext = self.ignore_file_ext
+        if isinstance(ext, str) and ext and text.endswith(ext):
+            text = text[:-len(ext)]
         return re.findall(fr'{self.invalidPattern}', text)
     
     def keyPressEvent(self, event: QKeyEvent):

@@ -5664,8 +5664,8 @@ class QDialogSelectModel(QDialog):
         self.listBox = self.modelSelector.listBox
         mainLayout.addWidget(self.modelSelector)
 
-        self.addSaveSelectionRow = add_save_func
-        if self.addSaveSelectionRow:
+        self.add_save_func = add_save_func
+        if add_save_func:
             saveLayout = QGridLayout()
 
             saveNameLabel = QLabel('Save selection as (optional):')
@@ -5932,7 +5932,7 @@ class QDialogSelectModel(QDialog):
         return modelOrderView.items()
 
     def saveSelectionName(self):
-        if not self.addSaveSelectionRow:
+        if not self.add_save_func:
             return ''
 
         return self.saveSelectionNameLineEdit.text().strip()
@@ -5947,20 +5947,19 @@ class QDialogSelectModel(QDialog):
         formatted = self.recipe_prefix + "_" + formatted + f".{self.recipe_ext}"
         return formatted
 
-    def warnInvalidSaveNameChars(self):
-        if not self.addSaveSelectionRow:
+    def warnInvalidSaveNameChars(self, characters: set[str]):
+        if not self.add_save_func:
             return
 
-        formatted = self.formattedSaveSelectionName()
         warning_text = FilenameEntryFormatter.invalid_chars_warning_text(
-            formatted
+            characters
         )
         self.saveSelectionPreviewLabel.setText(warning_text)
         self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px; color: red;')
         self.saveSelectionNameLineEdit.setStyleSheet('border: 2px solid red;')
 
     def updateSaveSelectionPreview(self, text):
-        if not self.addSaveSelectionRow:
+        if not self.add_save_func:
             return
 
         if self.saveSelectionNameLineEdit.invalidCharacters():
@@ -5988,7 +5987,7 @@ class QDialogSelectModel(QDialog):
         self.saveSelectionPreviewLabel.setText(preview_text)
 
     def checkSaveSelectionName(self):
-        if not self.addSaveSelectionRow:
+        if not self.add_save_func:
             self.selectionSaveName = ''
             self.selectionSaveNameFormatted = ''
             return True
