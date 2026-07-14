@@ -1265,19 +1265,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.widgetsWithShortcut['Magic prompts'] = self.magicPromptsToolButton
         
-        self.drawClearRegionButton = QToolButton(self)
-        self.drawClearRegionButton.setCheckable(True)
-        self.drawClearRegionButton.setIcon(QIcon(":clear_freehand_region.svg"))
+        self.clearFreehandRoiButton = QToolButton(self)
+        self.clearFreehandRoiButton.setCheckable(True)
+        self.clearFreehandRoiButton.setIcon(QIcon(":clear_freehand_region.svg"))
         self.widgetsWithShortcut['Clear freehand region'] = (
-            self.drawClearRegionButton
+            self.clearFreehandRoiButton
         )
-        self.toolsActiveInProj3Dsegm.add(self.drawClearRegionButton)
+        self.toolsActiveInProj3Dsegm.add(self.clearFreehandRoiButton)
         
-        self.checkableButtons.append(self.drawClearRegionButton)
-        self.LeftClickButtons.append(self.drawClearRegionButton)
+        self.checkableButtons.append(self.clearFreehandRoiButton)
+        self.LeftClickButtons.append(self.clearFreehandRoiButton)
         
         self.drawClearRegionAction = editToolBar.addWidget(
-            self.drawClearRegionButton
+            self.clearFreehandRoiButton
         )
 
         self.widgetsWithShortcut['Annotate mother/daughter pairing'] = (
@@ -1428,14 +1428,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.widgetsWithShortcut['Separate objects'] = self.separateBudButton
 
         self.mergeIDsButton = QToolButton(self)
-        self.mergeIDsButton.setIcon(QIcon(":merge-IDs.svg"))
+        self.mergeIDsButton.setIcon(QIcon(":merge-multiple-IDs.svg"))
         self.mergeIDsButton.setCheckable(True)
-        self.mergeIDsButton.setShortcut('M')
-        self.mergeIDsButton.action = editToolBar.addWidget(self.mergeIDsButton)
-        self.checkableButtons.append(self.mergeIDsButton)
+        self.mergeIDsButton.setShortcut('Shift+M')
+        self.mergeIDsButton.action = editToolBar.addWidget(
+            self.mergeIDsButton
+        )
+        self.widgetsWithShortcut['Merge objects'] = (
+            self.mergeIDsButton
+        )
+        self.toolsActiveInProj3Dsegm.add(self.mergeIDsButton)
+        
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
-        # self.functionsNotTested3D.append(self.mergeIDsButton)
-        self.widgetsWithShortcut['Merge objects'] = self.mergeIDsButton
+        self.checkableButtons.append(self.mergeIDsButton)
+        self.LeftClickButtons.append(self.mergeIDsButton)
 
         self.keepIDsButton = QToolButton(self)
         self.keepIDsButton.setIcon(QIcon(":keep_objects.svg"))
@@ -2252,6 +2258,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.keptIDsLineEdit.sigEnterPressed.connect(self.applyKeepObjects)
         self.keptIDsLineEdit.sigIDsChanged.connect(self.updateKeepIDs)
         self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
+
+        self.mergeIDsToolbar = widgets.MergeIDsToolbar(
+            "Merge multiple IDs controls", self, log_func=self.logger.info
+        )
+        self.addToolBar(Qt.TopToolBarArea, self.mergeIDsToolbar)
+        self.mergeIDsToolbar.setVisible(False)
+        self.controlToolBars.append(self.mergeIDsToolbar)
         
         # closeToolbarAction = QAction(
         #     QIcon(":cancelButton.svg"), "Close toolbar...", self
@@ -2352,13 +2365,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.controlToolBars.append(self.copyLostObjToolbar)
         
         # Copy lost object contour toolbar
-        self.drawClearRegionToolbar = widgets.DrawClearRegionToolbar(
+        self.clearFreehandRoiToolbar = widgets.ClearRegionToolbar(
             "Draw freehand region and clear objects controls", self
         )
         
-        self.addToolBar(Qt.TopToolBarArea, self.drawClearRegionToolbar)
-        self.drawClearRegionToolbar.setVisible(False)
-        self.controlToolBars.append(self.drawClearRegionToolbar)
+        self.addToolBar(Qt.TopToolBarArea, self.clearFreehandRoiToolbar)
+        self.clearFreehandRoiToolbar.setVisible(False)
+        self.controlToolBars.append(self.clearFreehandRoiToolbar)
 
         try:
             addNewIDToggleState = self.df_settings.at['addNewIDsWhitelistToggle', 'value'] == 'Yes'
@@ -3435,14 +3448,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.delObjsOutSegmMaskAction.triggered.connect(
             self.delObjsOutSegmMaskActionTriggered
         )
-        self.mergeIDsButton.toggled.connect(self.mergeObjs_cb)
         self.brushButton.toggled.connect(self.Brush_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.curvToolButton.toggled.connect(self.curvTool_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
         self.magicPromptsToolButton.toggled.connect(self.magicPrompts_cb)
-        self.drawClearRegionButton.toggled.connect(self.drawClearRegion_cb)
+        self.clearFreehandRoiButton.toggled.connect(self.clearFreehandRoi_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
         self.moveLabelToolButton.toggled.connect(self.moveLabelButtonToggled)
         self.editCcaToolAction.triggered.connect(
@@ -3452,11 +3464,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.autoAssignBud_YeastMate
         )
         self.keepIDsButton.toggled.connect(self.keepIDs_cb)
+        self.mergeIDsButton.toggled.connect(self.mergeIDs_cb)
 
         self.whitelistIDsButton.toggled.connect(self.whitelistIDs_cb)
 
         self.whitelistIDsToolbar.sigWhitelistChanged.connect(
             self.whitelistIDsChanged
+        )
+
+        self.mergeIDsToolbar.sigAccept.connect(
+            self.acceptMergeMultipleIDs
         )
 
         self.whitelistIDsToolbar.sigWhitelistAccepted.connect(
@@ -5394,38 +5411,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             x, y = event.pos().x(), event.pos().y()
             self.startMovingLabel(x, y)
 
-        # Merge IDs
-        elif right_click and self.mergeIDsButton.isChecked():
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
-            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
-            if ID == 0:
-                nearest_ID = core.nearest_nonzero_2D(
-                    self.get_2Dlab(posData.lab,force_z=False), y, x
-                )
-                mergeID_prompt = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter here first ID that you want to merge',
-                    parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID),
-                    isInteger=True
-                )
-                mergeID_prompt.exec_()
-                if mergeID_prompt.cancel:
-                    self.mergeObjsTempLine.setData([], [])
-                    return
-                else:
-                    ID = mergeID_prompt.EntryID
-
-            # Store undo state before modifying stuff
-            self.storeUndoRedoStates(False)
-            self.firstID = ID
-            
-            centroid = posData.rp.get_centroid(ID) # maybe use 2D centroid here?
-            yc, xc = self.getObjCentroid(centroid)
-            self.clickObjYc, self.clickObjXc = int(yc), int(xc)
-
         # Edit ID
         elif right_click and self.editIDbutton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -5851,6 +5836,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def gui_mouseDragEventImg1(self, event):
         x, y = event.pos().x(), event.pos().y()
         
+        whitelistIDsON = self.whitelistIDsButton.isChecked()
+        drawWhitelistRegionON = (
+            whitelistIDsON and self.whitelistIDsToolbar.isRoiToggled()
+        )
+        
         if hasattr(self, 'scaleBar'):
             if self.scaleBarDialog is not None:
                 self.scaleBarDialog.locCombobox.setCurrentText('Custom')
@@ -6022,7 +6012,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.freeRoiItem.addPoint(xdata, ydata)
         
         # Draw freehand clear region --> draw region
-        elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
+        elif self.isMouseDragImg1 and self.clearFreehandRoiButton.isChecked():
+            self.freeRoiItem.addPoint(xdata, ydata)
+        
+        # Draw freehand merge region --> draw region
+        elif self.isMouseDragImg1 and self.mergeIDsButton.isChecked():
+            self.freeRoiItem.addPoint(xdata, ydata)
+        
+        # Draw freehand whitelist IDs region --> draw region
+        elif self.isMouseDragImg1 and drawWhitelistRegionON:
             self.freeRoiItem.addPoint(xdata, ydata)
         
         # Label ROI dragging mouse --> draw ROI
@@ -6407,12 +6405,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         if drawMothBudLine:
             self.drawTempMothBudLine(event, posData)
-
-        drawMergeObjsLine = (
-            self.mergeIDsButton.isChecked() and not event.isExit()
-        )
-        if drawMergeObjsLine:
-            self.drawTempMergeObjsLine(event, posData, modifiers)
 
         # Temporarily draw spline curve
         # see https://stackoverflow.com/questions/33962717/interpolating-a-closed-curve-using-scipy
@@ -6889,83 +6881,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if not self.moveLabelToolButton.findChild(QAction).isChecked():
                 self.moveLabelToolButton.setChecked(False)
 
-        # Merge IDs
-        elif self.mergeIDsButton.isChecked():
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
-            lab2D = self.get_2Dlab(posData.lab, force_z=False)
-            ID = lab2D[ydata, xdata]
-            if ID == 0:
-                nearest_ID = core.nearest_nonzero_2D(
-                    lab2D, y, x
-                )
-                mergeID_prompt = apps.QLineEditDialog(
-                    title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                         'Enter ID that you want to merge with ID '
-                         f'{self.firstID}',
-                    parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID),
-                    isInteger=True
-                )
-                mergeID_prompt.exec_()
-                if mergeID_prompt.cancel:
-                    return
-                else:
-                    ID = mergeID_prompt.EntryID
-                    centroid = posData.rp.get_centroid(ID)
-                    ydata, xdata = self.getObjCentroid(centroid)
-                    ydata, xdata = int(ydata), int(xdata)
-            
-            xx, yy = self.mergeObjsTempLine.getData()
-            IDs_to_merge = lab2D[yy.astype(int), xx.astype(int)]
-            for ID in IDs_to_merge:
-                if ID == 0:
-                    continue
-                obj = posData.rp.get_obj_from_ID(ID)
-                
-                posData.lab[obj.slice][obj.image] = self.firstID
-            
-            self.mergeObjsTempLine.setData([], [])
-            self.clickObjYc, self.clickObjXc = None, None
-            
-            bbox = self.update_rp_get_bbox(specific_IDs=IDs_to_merge,use_bbox=True) # use old IDs to get bbox
-            specific_IDs = list(IDs_to_merge) + [self.firstID]
-            self.update_rp(specific_IDs=specific_IDs,preloaded_bbox=bbox) # update with new IDs
-            ask_back_prop = True
-
-            if posData.frame_i == 0:
-                ask_back_prop = False
-                prev_IDs = []
-            else:
-                prev_IDs = (
-                    posData.allData_li[posData.frame_i-1]['regionprops'].IDs)
-
-            if  all(ID not in prev_IDs for ID in IDs_to_merge):
-                ask_back_prop = False
-            
-            if not self.isFrameCcaAnnotated() and ask_back_prop:
-                proceed = self.askPropagateChangePast(f'Merge IDs {IDs_to_merge}')
-                if proceed:
-                    self.propagateMergeObjsPast(IDs_to_merge)
-                    self.whitelistPropagateIDs(only_future_frames=False, update_lab=True) # in the update_rp() call, this should also be done
-
-            # Repeat tracking
-            self.tracking(
-                enforce=True, assign_unique_new_IDs=False,
-                separateByLabel=False
-            )
-
-            if self.isSnapshot:
-                self.fixCcaDfAfterEdit('Merge IDs')
-                self.updateAllImages()
-            else:
-                self.warnEditingWithCca_df('Merge IDs')
-            
-            if not self.mergeIDsButton.findChild(QAction).isChecked():
-                self.mergeIDsButton.setChecked(False)
-            self.store_data()
-
     @exception_handler
     def gui_mouseReleaseEventImg1(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
@@ -6977,6 +6892,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
             return
+        
+        whitelistIDsON = self.whitelistIDsButton.isChecked()
+        drawWhitelistRegionON = (
+            whitelistIDsON and self.whitelistIDsToolbar.isRoiToggled()
+        )
         
         Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
         x, y = event.pos().x(), event.pos().y()
@@ -7276,7 +7196,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.BudMothTempLine.setData([], [])
         
         # Draw clear region mouse release
-        elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
+        elif self.isMouseDragImg1 and self.clearFreehandRoiButton.isChecked():
             self.isMouseDragImg1 = False
             self.freeRoiItem.closeCurve()
             self.clearObjsFreehandRegion()
@@ -7285,6 +7205,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         elif self.isMouseDragImg1 and self.zoomRectButton.isChecked():
             self.isMouseDragImg1 = False
             self.zoomRectDone()
+        
+        # Draw merge region mouse release
+        elif self.isMouseDragImg1 and self.mergeIDsButton.isChecked():
+            self.isMouseDragImg1 = False
+            self.mergeObjsFreehandRegion(event)
+        
+        # Draw freehand whitelist IDs region mouse release
+        elif self.isMouseDragImg1 and drawWhitelistRegionON:
+            self.isMouseDragImg1 = False
+            self.whiteListIDsFreehandRegion(event)
 
     def gui_clickedDelRoi(self, event, left_click, right_click):
         posData = self.data[self.pos_i]
@@ -7354,6 +7284,45 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     handle.roi = roi
                     handles.append(handle)
         return handles
+
+    def gui_isHoveringRoiHandle(self, roi):
+        if roi is None:
+            return False
+        try:
+            handles = roi.getHandles()
+        except Exception:
+            return False
+
+        for handle in handles:
+            try:
+                if handle.currentPen == handle.hoverPen:
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def gui_isActiveInterceptRoi(self, roi):
+        if roi is None:
+            return False
+        if roi is getattr(self, 'mergeIDsRoiItem', None):
+            return getattr(self, '_isMergeIDsRoiVisible', False)
+        if roi is getattr(self, 'whitelistIDsRoiItem', None):
+            return getattr(self, '_isWhitelistIDsRoiVisible', False)
+        return True
+
+    def gui_isClickInsideRoi(self, roi, event):
+        if roi is None:
+            return False
+        try:
+            ymin, xmin, ymax, xmax = roi.bbox()
+        except Exception:
+            return False
+
+        if xmin == xmax or ymin == ymax:
+            return False
+
+        x, y = event.pos().x(), event.pos().y()
+        return xmin <= x <= xmax and ymin <= y <= ymax
     
     @exception_handler
     def gui_mousePressRightImage(self, event):
@@ -7430,8 +7399,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         findNextMotherButtonON = self.findNextMotherButton.isChecked()
         unknownLineageButtonON = self.unknownLineageButton.isChecked()
-        drawClearRegionON = self.drawClearRegionButton.isChecked()
+        drawClearRegionON = self.clearFreehandRoiButton.isChecked()
         zoomRectON = self.zoomRectButton.isChecked()
+        drawMergeRegionON = self.mergeIDsButton.isChecked()
+        drawWhitelistRegionON = (
+            whitelistIDsON and self.whitelistIDsToolbar.isRoiToggled()
+        )
+        addToWhitelistByClick = (
+            whitelistIDsON and not self.whitelistIDsToolbar.isRoiToggled()
+        )
+
+        activeRois = []
+        if self.labelRoiButton.isChecked() and self.labelRoiIsRectRadioButton.isChecked():
+            activeRois.append(getattr(self, 'labelRoiItem', None))
+        if self.zoomRectButton.isChecked():
+            activeRois.append(getattr(self, 'zoomRectItem', None))
+
+        activeRois = [roi for roi in activeRois if self.gui_isActiveInterceptRoi(roi)]
+
+        if any(self.gui_isHoveringRoiHandle(roi) for roi in activeRois):
+            event.ignore()
+            return
+
+        if left_click and any(
+            self.gui_isClickInsideRoi(roi, event) for roi in activeRois
+        ):
+            event.ignore()
+            return
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -7459,7 +7453,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and not middle_click and not keepObjON and not separateON
             and not manualBackgroundON and not drawClearRegionON
             and addPointsByClickingButton is None and not whitelistIDsON
-            and not zoomRectON
+            and not zoomRectON and not drawMergeRegionON
+            and not drawWhitelistRegionON
         )
         if isPanImageClick:
             dragImgLeft = True
@@ -7528,6 +7523,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not magicPromptsON and not zoomRectON
+            and not drawMergeRegionON and not drawWhitelistRegionON
         )
         canBrush = (
             brushON and not curvToolON and not rulerON
@@ -7535,6 +7531,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None and not drawClearRegionON
             and not magicPromptsON and not zoomRectON
+            and not drawMergeRegionON and not drawWhitelistRegionON
         )
         canErase = (
             eraserON and not curvToolON and not rulerON
@@ -7543,6 +7540,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not magicPromptsON and not zoomRectON
+            and not drawMergeRegionON and not drawWhitelistRegionON
         )
         canRuler = (
             rulerON and not curvToolON and not brushON
@@ -7551,6 +7549,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not magicPromptsON and not zoomRectON
+            and not drawMergeRegionON and not drawWhitelistRegionON
         )
         canWand = (
             wandON and not curvToolON and not brushON
@@ -7559,6 +7558,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not magicPromptsON and not zoomRectON
+            and not drawMergeRegionON and not drawWhitelistRegionON
         )
         canPolyLine = (
             polyLineRoiON and not wandON and not curvToolON and not brushON
@@ -7566,7 +7566,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
             and not drawClearRegionON and not magicPromptsON
-            and not zoomRectON
+            and not zoomRectON and not drawMergeRegionON
+            and not drawWhitelistRegionON
         )
         canLabelRoi = (
             labelRoiON and not wandON and not curvToolON and not brushON
@@ -7575,7 +7576,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not whitelistIDsON and not magicPromptsON
-            and not zoomRectON
+            and not zoomRectON and not drawMergeRegionON
+            and not drawWhitelistRegionON
         )
         canKeep = (
             keepObjON and not wandON and not curvToolON and not brushON
@@ -7584,16 +7586,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not whitelistIDsON and not magicPromptsON
-            and not zoomRectON
+            and not zoomRectON and not drawMergeRegionON
+            and not drawWhitelistRegionON
         )
         canWhitelistIDs = (
-            whitelistIDsON and not wandON and not curvToolON and not brushON
+            addToWhitelistByClick and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not keepObjON and not magicPromptsON
-            and not zoomRectON
+            and not zoomRectON and not drawMergeRegionON
+            and not drawWhitelistRegionON
+        )
+        canDrawWhitelistIDsRoi = (
+            drawWhitelistRegionON and not wandON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+            and not polyLineRoiON and not labelRoiON 
+            and addPointsByClickingButton is None
+            and not manualBackgroundON and not drawClearRegionON
+            and not keepObjON and not magicPromptsON
+            and not zoomRectON and not drawMergeRegionON
+            and not addToWhitelistByClick
         )
         canAddPoint = (
             (pointsLayerON or magicPromptsON)
@@ -7602,7 +7616,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON  and not keepObjON
             and not manualBackgroundON and not drawClearRegionON
-            and not zoomRectON
+            and not zoomRectON and not drawMergeRegionON
+            and not drawWhitelistRegionON
         )
         canAddManualBackgroundObj = (
             manualBackgroundON and not wandON and not curvToolON and not brushON
@@ -7611,7 +7626,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and addPointsByClickingButton is None
             and not keepObjON and not drawClearRegionON
             and not magicPromptsON and not whitelistIDsON
-            and not zoomRectON
+            and not zoomRectON and not drawMergeRegionON
+            and not drawWhitelistRegionON
         )
         canDrawClearRegion = (
             drawClearRegionON and not wandON and not curvToolON and not brushON
@@ -7620,7 +7636,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and addPointsByClickingButton is None
             and not polyLineRoiON and not magicPromptsON
             and not whitelistIDsON and not zoomRectON
+            and not drawMergeRegionON and not drawWhitelistRegionON
         )
+        canDrawMergeRegion = (
+            drawMergeRegionON and not wandON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+            and not labelRoiON and not manualBackgroundON
+            and addPointsByClickingButton is None
+            and not polyLineRoiON and not magicPromptsON
+            and not whitelistIDsON and not zoomRectON
+            and not drawClearRegionON and not drawWhitelistRegionON
+        )
+        
         canZoomRect = (
             zoomRectON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
@@ -7628,6 +7655,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
             and not wandON and not whitelistIDsON and not magicPromptsON
+            and not drawMergeRegionON and not drawWhitelistRegionON
         )
         
         # Enable dragging of the image window or the scalebar
@@ -7816,6 +7844,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             self.isMouseDragImg1 = True
         
+        elif (left_click or right_click) and canDrawMergeRegion:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            self.freeRoiItem.addPoint(xdata, ydata)
+            
+            self.isMouseDragImg1 = True
+        
         elif left_click and canRuler or canPolyLine:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
@@ -7931,17 +7966,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     ID = keepID_win.EntryID
             
             posData = self.data[self.pos_i]
-
-            if not posData.whitelist:
-                wl_init = False
-                if not hasattr(self, 'tempWhitelistIDs'):
-                    self.tempWhitelistIDs = set() # not updated, only use in this context
-                    current_whitelist = self.tempWhitelistIDs
-                else:
-                    current_whitelist = self.tempWhitelistIDs
-            else:
-                wl_init = True
-                current_whitelist = posData.whitelist.get(posData.frame_i)
+            
+            current_whitelist = (
+                self.whitelistIDsToolbar.whitelistLineEdit.values()
+            )
 
             if ID in current_whitelist:
                 current_whitelist.remove(ID)
@@ -7953,14 +7981,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.whitelistIDsToolbar.whitelistLineEdit.setText(
                 current_whitelist
             )
-            
-            if wl_init:
+
+            if not posData.whitelist:
                 posData.whitelist[posData.frame_i] = current_whitelist
-            else:
-                self.tempWhitelistIDs = current_whitelist
 
             self.whitelistUpdateTempLayer()
 
+        elif (right_click or left_click) and canDrawWhitelistIDsRoi:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            self.freeRoiItem.addPoint(xdata, ydata)
+            
+            self.isMouseDragImg1 = True
+        
         elif right_click and copyContourON:
             hoverLostID = self.ax1_lostObjScatterItem.hoverLostID
             self.copyLostObjectMask(hoverLostID)
@@ -10067,19 +10100,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         return roiImg, labelRoiSlice
     
-    def getClickedID(self, xdata, ydata, text=''):
+    def getClickedID(self, xdata, ydata, text='', action='clicked'):
         posData = self.data[self.pos_i]
         ID = self.get_2Dlab(posData.lab)[ydata, xdata]
         if ID == 0:
             msg = (
-                'You clicked on the background.\n'
+                f'You {action} on the background.\n'
                 f'Enter here the ID {text}'
             )
             nearest_ID = core.nearest_nonzero_2D(
                 self.get_2Dlab(posData.lab,force_z=False), xdata, ydata
             )
             clickedBkgrID = apps.QLineEditDialog(
-                title='Clicked on background',
+                title=f'{action.capitalize()} on background',
                 msg=msg, parent=self, allowedValues=posData.IDs,
                 defaultTxt=str(nearest_ID),
                 isInteger=True
@@ -13396,7 +13429,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.brushAutoFillAction.setVisible(enabled)
         self.brushAutoHideAction.setVisible(enabled)
         self.brushEraserToolBar.setVisible(enabled)        
-        self.disableNonFunctionalButtons()
+        self.setNonFunctionalButtonsDisabled()
 
     def reload_cb(self):
         posData = self.data[self.pos_i]
@@ -13559,7 +13592,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.clearGhost()
                 self.editLin_TreeBar.setVisible(True)
         
-        self.disableNonFunctionalButtons()
+        self.setNonFunctionalButtonsDisabled()
 
     def disableEditingViewPlaneNotXY(self):
         posData = self.data[self.pos_i]
@@ -13621,7 +13654,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         button.setDisabled(True)
         button = self.editToolBar.widgetForAction(self.manualTrackingAction)
         button.setDisabled(True)
-        self.disableNonFunctionalButtons()
+        self.setNonFunctionalButtonsDisabled()
         self.reinitLastSegmFrameAction.setVisible(False)
 
     def launchSlideshow(self):
@@ -13737,12 +13770,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
         self.magicPromptsToolButton.toggled.connect(self.magicPrompts_cb)
-        self.drawClearRegionButton.toggled.connect(self.drawClearRegion_cb)
+        self.clearFreehandRoiButton.toggled.connect(self.clearFreehandRoi_cb)
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
         self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
         self.manualBackgroundButton.toggled.connect(self.manualBackground_cb)
         self.whitelistIDsButton.toggled.connect(self.whitelistIDs_cb)
         self.zoomRectButton.toggled.connect(self.zoomRectActionToggled)
+        self.mergeIDsButton.toggled.connect(self.mergeIDs_cb)
         self.connectLeftClickButtonsPointsLayersToolbar()
 
     def brushSize_cb(self, value):
@@ -14208,23 +14242,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.labelRoiStartFrameNoSpinbox.setValue(posData.frame_i+1)
         self.labelRoiStopFrameNoSpinbox.setValue(posData.SizeT)
 
-    def drawClearRegion_cb(self, checked):
+    def clearFreehandRoi_cb(self, checked):
         posData = self.data[self.pos_i]
         if checked:
             self.disconnectLeftClickButtons()
-            self.uncheckLeftClickButtons(self.drawClearRegionButton)
+            self.uncheckLeftClickButtons(self.clearFreehandRoiButton)
             self.connectLeftClickButtons()
 
-        self.drawClearRegionToolbar.setVisible(checked)
+        self.clearFreehandRoiToolbar.setVisible(checked)
         
         if not self.isSegm3D:
-            self.drawClearRegionToolbar.setZslicesControlEnabled(False)
+            self.clearFreehandRoiToolbar.setZslicesControlEnabled(False)
             return
         
         if not checked:
             return
         
-        self.drawClearRegionToolbar.setZslicesControlEnabled(
+        self.clearFreehandRoiToolbar.setZslicesControlEnabled(
             True, SizeZ=posData.SizeZ
         )
     
@@ -14297,40 +14331,103 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.ax1.removeItem(self.labelRoiItem)
             self.updateLabelRoiCircularCursor(None, None, False)
     
-    def clearObjsFreehandRegion(self):
-        self.logger.info('Clearing objects inside freehand region...')
+    def whiteListIDsFreehandRegion(self, event):
+        modifiers = QGuiApplication.keyboardModifiers()
+        alt = modifiers == Qt.AltModifier
+        if alt:
+            self.freeRoiItem.clear()
+            return
+        
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Viewer':
+            self.freeRoiItem.clear()
+            return
+        
+        right_click = event.button() == Qt.MouseButton.RightButton
+        self.freeRoiItem.closeCurve()
+        x, y = event.pos().x(), event.pos().y()
+        xdata, ydata = int(x), int(y)
+        targetID = None
+        if right_click:
+            targetID = self.getClickedID(
+                xdata, ydata, 
+                text='for the merged object.',
+                action='released the mouse button'
+            )
+        
+        self.logger.info('Merging objects inside freehand region...')
         
         posData = self.data[self.pos_i]
         zRange = None
         if self.isSegm3D:
-            zProjHow = self.zProjComboBox.currentText()
-            isZslice = zProjHow == 'single z-slice'
-            if isZslice:
-                z_slice = self.z_lab()
-                zRange = self.drawClearRegionToolbar.zRange(
-                    z_slice, posData.SizeZ
-                )
-            else:
-                zRange = (0, posData.SizeZ)
+            zRange = (0, posData.SizeZ)
         
-        # Store undo state before modifying stuff
-        self.storeUndoRedoStates(
-            False, 
-            storeImage=False, 
-            storeOnlyZoom=True, 
+        onlyEnclosed = event.button() == Qt.MouseButton.LeftButton
+        sourceIDs = self.getIDsFreeRoiItem(
+            onlyEnclosed=onlyEnclosed, 
             zRange=zRange
         )
+        
+        current_whitelist = (
+            self.whitelistIDsToolbar.whitelistLineEdit.values()
+        )
+        for ID in sourceIDs:
+            current_whitelist.add(ID)
+            self.highlightLabelID(ID)
+        
+        self.whitelistIDsToolbar.whitelistLineEdit.setText(
+            current_whitelist
+        )
 
+        if posData.whitelist is not None:
+            posData.whitelist[posData.frame_i] = current_whitelist
+
+        self.whitelistUpdateTempLayer()
+        self.freeRoiItem.clear()
+    
+    
+    def mergeObjsFreehandRegion(self, event):
+        modifiers = QGuiApplication.keyboardModifiers()
+        alt = modifiers == Qt.AltModifier
+        if alt:
+            self.freeRoiItem.clear()
+            return
+        
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Viewer':
+            self.freeRoiItem.clear()
+            return
+        
+        right_click = event.button() == Qt.MouseButton.RightButton
+        
+        self.freeRoiItem.closeCurve()
+        x, y = event.pos().x(), event.pos().y()
+        xdata, ydata = int(x), int(y)
+        targetID = None
+        if right_click:
+            targetID = self.getClickedID(
+                xdata, ydata, 
+                text='for the merged object.',
+                action='released the mouse button'
+            )
+        
+        self.logger.info('Merging objects inside freehand region...')
+        
+        onlyEnclosed = event.button() == Qt.MouseButton.LeftButton
+        sourceIDs = self.applyTargetIDtoFreehandRegion(
+            targetID=targetID, 
+            onlyEnclosed=onlyEnclosed,
+            logger_func=self.mergeIDsToolbar.log
+        )
+    
+        self.mergeIDsToolbar.setIDs(sourceIDs)
+    
+    def getIDsFreeRoiItem(self, onlyEnclosed=False, zRange=None):
+        posData = self.data[self.pos_i]
         regionSlice = self.freeRoiItem.slice(zRange=zRange)
         mask = self.freeRoiItem.mask()
-        
         regionLab = posData.lab[(...,) + regionSlice].copy()
-        
-        clearBorders = (
-            self.drawClearRegionToolbar
-            .clearOnlyEnclosedObjsRadioButton.isChecked()
-        )
-        if clearBorders:
+        if onlyEnclosed:
             if regionLab.ndim == 2:
                 regionLab = transformation.clear_objects_not_in_mask(
                     regionLab, mask
@@ -14354,27 +14451,105 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         regionRp = self._acdcRegionProps(
             regionLab, precache_centroids=False
         )
-        clearIDs = [obj.label for obj in regionRp]
+        sourceIDs = [obj.label for obj in regionRp]
         
-        if not clearIDs:
-            if clearBorders:
-                self.logger.warning(
+        return sourceIDs
+    
+    def applyTargetIDtoFreehandRegion(
+            self, 
+            targetID=None, 
+            onlyEnclosed=False,
+            logger_func=None,
+            updateImages=True
+        ):
+        if logger_func is None:
+            logger_func = self.logger.info
+        
+        posData = self.data[self.pos_i]
+        zRange = None
+        if self.isSegm3D:
+            zRange = (0, posData.SizeZ)
+        
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(
+            False, 
+            storeImage=False, 
+            storeOnlyZoom=True, 
+            zRange=zRange
+        )
+        
+        only_current_zslice = (
+            self.isSegm3D and self.mergeIDsToolbar.isOnlyCurrentZslice()
+        )
+        
+        sourceIDs = self.getIDsFreeRoiItem(
+            onlyEnclosed=onlyEnclosed, 
+            zRange=zRange
+        )
+        
+        if not sourceIDs:
+            if onlyEnclosed:
+                logger_func(
                     'None of the objects in the freehand region are '
                     'fully enclosed'
                 )
             else:
-                self.logger.warning(
+                logger_func(
                     'None of the objects are touching the freehand region'
                 )
             self.freeRoiItem.clear()
             return
         
-        self.deleteIDmiddleClick(clearIDs, False, False)
-        self.update_cca_df_deletedIDs(posData, clearIDs)
+        if targetID is None:
+            targetID = min(sourceIDs)
         
+        if targetID == 0:
+            self.deleteIDmiddleClick(sourceIDs, False, False)
+            self.update_cca_df_deletedIDs(posData, sourceIDs)
+        else:
+            self.mergeSelectedIDs(sourceIDs, target_id=targetID)
+            
         self.freeRoiItem.clear()
+            
+        if updateImages:
+            self.updateAllImages()
         
-        self.updateAllImages()
+        return sourceIDs
+    
+    def clearObjsFreehandRegion(self):
+        self.logger.info('Clearing objects inside freehand region...')
+        
+        posData = self.data[self.pos_i]
+        zRange = None
+        if self.isSegm3D:
+            zProjHow = self.zProjComboBox.currentText()
+            isZslice = zProjHow == 'single z-slice'
+            if isZslice:
+                z_slice = self.z_lab()
+                zRange = self.clearFreehandRoiToolbar.zRange(
+                    z_slice, posData.SizeZ
+                )
+            else:
+                zRange = (0, posData.SizeZ)
+        
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(
+            False, 
+            storeImage=False, 
+            storeOnlyZoom=True, 
+            zRange=zRange
+        )
+        
+        clearBorders = (
+            self.clearFreehandRoiToolbar
+            .clearOnlyEnclosedObjsRadioButton.isChecked()
+        )
+        
+        self.applyTargetIDtoFreehandRegion(
+            targetID=0, 
+            onlyEnclosed=clearBorders,
+            logger_func=self.clearFreehandRoiToolbar.log
+        )
     
     def labelRoiWorkerFinished(self):
         self.logger.info('Magic labeller closed.')
@@ -14728,6 +14903,123 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateAllImages()
 
         # QTimer.singleShot(300, self.autoRange)
+
+    def mergeIDs_cb(self, checked):
+        posData = self.data[self.pos_i]
+        if checked:
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.mergeIDsButton)
+            self.connectLeftClickButtons()
+            self.mergeIDsToolbar.setOnlyCurrentZsliceEnabled(self.isSegm3D)
+        
+        self.mergeIDsToolbar.setVisible(checked)
+
+    def acceptMergeMultipleIDs(self, IDs):
+        if not self.mergeIDsButton.isChecked():
+            return
+
+        posData = self.data[self.pos_i]
+        valid_ids = [ID for ID in IDs if ID in posData.IDs]
+        if len(valid_ids) < 2:
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                'Select at least two existing IDs before merging.'
+            )
+            msg.warning(self, 'Not enough IDs selected', txt)
+            return
+
+        targetID = valid_ids[0]
+        self.mergeSelectedIDs(valid_ids, targetID=targetID)
+    
+    def mergeSelectedIDs(self, IDs_to_merge, target_id=None):
+        posData = self.data[self.pos_i]
+        unique_ids = []
+        seen = set()
+        for ID in IDs_to_merge:
+            if ID <= 0 or ID in seen:
+                continue
+            if ID not in posData.IDs:
+                continue
+            seen.add(ID)
+            unique_ids.append(int(ID))
+
+        if len(unique_ids) < 2:
+            return False
+
+        if target_id is None:
+            target_id = unique_ids[0]
+        elif target_id not in unique_ids:
+            unique_ids.insert(0, target_id)
+
+        self.firstID = target_id
+
+        zProjHow = self.zProjComboBox.currentText()
+        isZslice = zProjHow == 'single z-slice'
+        only_current_zslice = (
+            self.isSegm3D 
+            and self.mergeIDsToolbar.isOnlyCurrentZslice()
+            and isZslice
+        )
+
+        if only_current_zslice:
+            lab2D = self.currentLab2D
+            source_ids = [ID for ID in unique_ids if ID != target_id]
+            merge_mask = np.isin(self.currentLab2D, source_ids)
+            if not np.any(merge_mask):
+                return False
+            self.currentLab2D[merge_mask] = target_id
+            self.set_2Dlab(self.currentLab2D)
+            self.update_rp()
+        else:
+            for ID in unique_ids:
+                if ID == target_id:
+                    continue
+                obj = posData.rp.get_obj_from_ID(ID, warn=False)
+                if obj is None:
+                    continue
+                posData.lab[obj.slice][obj.image] = target_id
+
+            bbox = self.update_rp_get_bbox(
+                specific_IDs=unique_ids, use_bbox=True
+            )
+            self.update_rp(
+                specific_IDs=unique_ids + [target_id],
+                preloaded_bbox=bbox
+            )
+
+        ask_back_prop = True
+        if only_current_zslice:
+            ask_back_prop = False
+        elif posData.frame_i == 0:
+            ask_back_prop = False
+            prev_IDs = []
+        else:
+            prev_IDs = posData.allData_li[posData.frame_i-1]['regionprops'].IDs
+
+        if ask_back_prop and all(ID not in prev_IDs for ID in unique_ids):
+            ask_back_prop = False
+
+        if not self.isFrameCcaAnnotated() and ask_back_prop:
+            proceed = self.askPropagateChangePast(f'Merge IDs {unique_ids}')
+            if proceed:
+                self.propagateMergeObjsPast(unique_ids)
+                self.whitelistPropagateIDs(
+                    only_future_frames=False, update_lab=True
+                )
+
+        self.tracking(
+            enforce=True, assign_unique_new_IDs=False,
+            separateByLabel=False
+        )
+
+        if self.isSnapshot:
+            self.fixCcaDfAfterEdit('Merge IDs')
+            self.updateAllImages()
+        else:
+            self.warnEditingWithCca_df('Merge IDs')
+
+        self.store_data()
+        return True
     
     def get_curr_lab(self, curr_lab: np.ndarray|None = None, frame_i: int|None = None):
         """Get the current labels for the position data. Hirarchically checks:
@@ -14879,10 +15171,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         self.ax1_viewRange = self.ax1.viewRange()
         self.isRangeReset = False
-    
-    def mergeObjs_cb(self, checked):
-        if not checked:
-            self.mergeObjsTempLine.setData([], [])
     
     def Brush_cb(self, checked):
         if checked:
@@ -19658,7 +19946,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.createOverlayLabelsContextMenu(existingSegmEndNames)
         self.overlayLabelsButtonAction.setVisible(True)
         self.createOverlayLabelsItems(existingSegmEndNames)
-        self.disableNonFunctionalButtons()
+        self.setNonFunctionalButtonsDisabled()
 
         self.isH5chunk = (
             posData.ext == '.h5'
@@ -19701,44 +19989,68 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             toolButton.setDisabled(enabled)  
             action.setDisabled(enabled) 
             
-    def disableNonFunctionalButtons(self):
-        if not self.isSegm3D:
-            return 
-
-        disabledTooltip = (
-            'Disabled for 3D. If this sounds useful, please contact us '
-            'so we can implement it!'
-        )
-
-        def addDisabledTooltip(widget):
-            if widget is None:
-                return
-            currentTooltip = widget.toolTip()
-            if disabledTooltip in currentTooltip:
-                return
-            newTooltip = (
-                f'{disabledTooltip}\n\n{currentTooltip}'
-                if currentTooltip else disabledTooltip
+    def setNonFunctionalButtonsDisabled(self):
+        if self.isSegm3D:
+            disabledTooltip = (
+                'Disabled for 3D. If this sounds useful, please contact us '
+                'so we can implement it!'
             )
-            widget.setToolTip(newTooltip)
 
-        for item in self.functionsNotTested3D:
-            if hasattr(item, 'action'):
-                toolButton = item
-                action = toolButton.action
-                toolButton.setDisabled(True)
-            elif hasattr(item, 'toolbar'):
-                toolbar = item.toolbar
-                action = item
-                toolButton = toolbar.widgetForAction(action)
-                toolButton.setDisabled(True)
-            else:
-                action = item
-                toolButton = None
+            def addDisabledTooltip(widget):
+                if widget is None:
+                    return
+                currentTooltip = widget.toolTip()
+                if disabledTooltip in currentTooltip:
+                    return
+                newTooltip = (
+                    f'{disabledTooltip}\n\n{currentTooltip}'
+                    if currentTooltip else disabledTooltip
+                )
+                widget.setToolTip(newTooltip)
 
-            action.setDisabled(True)
-            addDisabledTooltip(action)
-            addDisabledTooltip(toolButton)
+            for item in self.functionsNotTested3D:
+                if hasattr(item, 'action'):
+                    toolButton = item
+                    action = toolButton.action
+                    toolButton.setDisabled(True)
+                elif hasattr(item, 'toolbar'):
+                    toolbar = item.toolbar
+                    action = item
+                    toolButton = toolbar.widgetForAction(action)
+                    toolButton.setDisabled(True)
+                else:
+                    action = item
+                    toolButton = None
+
+                action.setDisabled(True)
+                addDisabledTooltip(action)
+                addDisabledTooltip(toolButton)
+        else:
+            def restoreTooltip(widget):
+                if widget is None:
+                    return
+                try:
+                    widget.setToolTip(widget._tooltip)
+                except Exception as err:
+                    pass
+                
+            for item in self.functionsNotTested3D:
+                if hasattr(item, 'action'):
+                    toolButton = item
+                    action = toolButton.action
+                    toolButton.setDisabled(False)
+                elif hasattr(item, 'toolbar'):
+                    toolbar = item.toolbar
+                    action = item
+                    toolButton = toolbar.widgetForAction(action)
+                    toolButton.setDisabled(False)
+                else:
+                    action = item
+                    toolButton = None
+
+                action.setDisabled(False)
+                restoreTooltip(action)
+                restoreTooltip(toolButton)
 
     @exception_handler
     def startLoadDataWorker(
@@ -20274,7 +20586,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             color=self.titleColor
         )
 
-        self.disableNonFunctionalButtons()
+        self.setNonFunctionalButtonsDisabled()
         self.setVisible3DsegmWidgets()
 
         if len(self.data) == 1 and posData.SizeZ > 1 and posData.SizeT == 1:
@@ -22368,7 +22680,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             idx_x = min(idx, posData.SizeX-1)
             return (slice(None), slice(None), idx_x)
                 
-    def get_2Dlab(self, lab, force_z=True):
+    def get_2Dlab(self, lab=None, force_z=True):
         if self.isSegm3D:
             if force_z:
                 return lab[self.z_lab()]
@@ -24301,7 +24613,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             IDs = posData.IDs
         
         for ID in IDs:
-            obj = posData.rp.get_obj_from_ID(ID)
+            obj = posData.rp.get_obj_from_ID(ID, warn=False)
+            if obj is None:
+                continue
             self.textAnnot[ax].removeHighlightObject(obj)
     
     def updateKeepIDs(self, IDs):

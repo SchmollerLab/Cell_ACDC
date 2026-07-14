@@ -1071,6 +1071,7 @@ class WhitelistGUIElements:
 
             self.setAllTextAnnotations()
             self.updateAllImages()
+            self.updateWhitelistIDsFromRoi()
 
         elif switch_to_seg:
             self.viewOriginalLabels = False
@@ -1094,6 +1095,8 @@ class WhitelistGUIElements:
                 self.whitelistUpdateLab(frame_i=i) #has update_rp and store data
                 self.setAllTextAnnotations()
                 self.updateAllImages()
+
+            self.updateWhitelistIDsFromRoi()
 
     def whitelistSetViewOGIDsToggle(self, checked: bool):
         """Set the view original labels toggle button to checked or unchecked.
@@ -1859,8 +1862,11 @@ class WhitelistGUIElements:
         self.whitelistUpdateTempLayer()
 
         if not checked:
-            self.setLostNewOldPrevIDs()
             self.updateAllImages()
+
+    def getWhitelistIDsLab2D(self):
+        posData = self.data[self.pos_i]
+        return self.get_2Dlab(posData.lab, force_z=False)
 
     def whitelistHighlightIDs(self, checked:bool=True):
         """Highlights the IDs in the current frame based on the whitelist.
