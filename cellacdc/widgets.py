@@ -2241,11 +2241,14 @@ class alphaNumericLineEdit(QLineEdit):
     sigInvalidCharacterPressed = Signal(str)
     sigInvalidCharactersEntered = Signal(object)
     
-    def __init__(self, parent=None, additionalChars='', onlyWarn=False):
+    def __init__(self, parent=None, additionalChars='', onlyWarn=False, 
+                 formatter: callable = None, ignore_file_ext=False):
         super().__init__(parent)
         self.validPattern = fr'^[a-zA-Z0-9{additionalChars}_\-]+$'
         self.invalidPattern = fr'[^a-zA-Z0-9{additionalChars}_\-]'
-        
+        self.formatter = formatter
+        self.ignore_file_ext = ignore_file_ext
+
         if not onlyWarn:
             regExp = QRegularExpression(self.validPattern)
             self.setValidator(QRegularExpressionValidator(regExp))
@@ -2260,7 +2263,13 @@ class alphaNumericLineEdit(QLineEdit):
         self.sigInvalidCharactersEntered.emit(set(invalidCharacters))
     
     def invalidCharacters(self):
-        return re.findall(fr'{self.invalidPattern}', self.text())
+        text = self.text()
+        if self.formatter is not None:
+            text = self.formatter(text)
+        if self.ignore_file_ext is not False:
+            text = text.rstrip(self.ignore_file_ext)
+
+        return re.findall(fr'{self.invalidPattern}', text)
     
     def keyPressEvent(self, event: QKeyEvent):
         if not event.text():

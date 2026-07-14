@@ -74,7 +74,8 @@ from . import _warnings, issues_url
 from . import measurements, printl
 from . import colors, annotate
 from . import user_manual_url
-from . import recentPaths_path, settings_folderpath, settings_csv_path
+from . import (recentPaths_path, settings_folderpath, settings_csv_path, 
+               seg_for_lost_IDs_settings_path)
 from . import favourite_func_metrics_csv_path
 from . import qutils, autopilot, QtScoped
 from . import _palettes
@@ -8523,8 +8524,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         displayed_input_label = 'Displayed image'
 
-        recipe_json_path = os.path.join(
-            settings_folderpath, 'segmentation_for_lostIDs_recipe.json'
+        last_recipe_json_path = os.path.join(
+            seg_for_lost_IDs_settings_path, '.last_segmentation_for_lostIDs_recipe.json'
         )
 
         try:
@@ -8536,7 +8537,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         except KeyError:
             prev_models = []
 
-        has_last_recipe = bool(prev_models) and os.path.exists(recipe_json_path)
+        has_last_recipe = bool(prev_models) and os.path.exists(last_recipe_json_path)
         seg_for_lost_ids_info = (
             '<b>Segmentation for lost IDs settings</b><br><br>'
             'Use this dialog to define the segmentation workflow used for '
@@ -8559,6 +8560,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             '<b>Load last recipe...</b><br>'
             'Loads the complete saved recipe from disk, including model order and '
             'all model-specific settings (when available).<br><br>'
+            '<b>Choose from saved recipes...</b><br>'
+            'Lets you pick any saved recipe JSON file from disk and load it.<br><br>'
             '<b>Add custom model...</b><br>'
             'Lets you register an additional local custom model and include it in '
             'the sequence.<br><br>'
@@ -8571,6 +8574,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lastSelection=prev_models,
             addSelectLastSelectionButton=bool(prev_models),
             addSelectLastRecipeButton=has_last_recipe,
+            addSelectSavedRecipeButton=True,
+            add_save_func=True,
+            recipes_path=seg_for_lost_IDs_settings_path,
+            recipe_prefix='segmentation_for_lostIDs_recipe',
+            recipe_ext_label='JSON',
+            recipe_ext='json',
             custom_title='Select model(s) for segmentation of lost IDs',
             info_label=seg_for_lost_ids_info,
         )
@@ -8579,10 +8588,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.logger.info('Seg for lost IDs cancelled.')
             return
 
-        if getattr(win, 'loadLastRecipe', False):
+        save_name = None
+        if getattr(win, 'selectionSaveNameFormatted', False):
+            save_name = win.selectionSaveNameFormatted
+
+        recipe_to_load_path = None
+        if getattr(win, 'loadSavedRecipe', False):
+            recipe_to_load_path = win.selectedRecipeFilepath
+            self.logger.info(
+                'Loading selected segmentation recipe for lost IDs...'
+            )
+        elif getattr(win, 'loadLastRecipe', False):
+            recipe_to_load_path = last_recipe_json_path
             self.logger.info('Loading last segmentation recipe for lost IDs...')
+
+        if recipe_to_load_path is not None:
             try:
-                with open(recipe_json_path, 'r') as f:
+                with open(recipe_to_load_path, 'r') as f:
                     recipe_data = json.load(f)
                 model_settings = []
                 for entry in recipe_data['models']:
@@ -8611,9 +8633,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     ', '.join(restored_models)
                 )
                 self.df_settings.to_csv(self.settings_csv_path)
-                self.logger.info('Last segmentation recipe loaded successfully.')
+                self.logger.info('Segmentation recipe loaded successfully.')
             except Exception as e:
-                self.logger.error(f'Failed to load last recipe: {e}')
+                self.logger.error(
+                    f'Failed to load segmentation recipe: {e}'
+                )
             return
 
         selected_models = win.selectedModel
@@ -8843,8 +8867,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     for ms in model_settings
                 ]
             }
-            with open(recipe_json_path, 'w') as f:
+            os.makedirs(seg_for_lost_IDs_settings_path, exist_ok=True)
+            with open(last_recipe_json_path, 'w') as f:
                 json.dump(recipe_data, f, indent=2, default=str)
+            
+            # save if requested
+            if save_name:
+                save_path = os.path.join(
+                    seg_for_lost_IDs_settings_path, save_name
+                )
+                with open(save_path, 'w') as f:
+                    json.dump(recipe_data, f, indent=2, default=str)
         except Exception as e:
             self.logger.warning(f'Could not save recipe to disk: {e}')
 
@@ -8986,7 +9019,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.getChData(requ_ch={image_channel_name})
 
-        _, filename = self.getPathFromChName(image_channel_name, posData)
+        _, filename = self.getPathAndFilenameNoExtFromChName(image_channel_name, posData)
         fluo_data = posData.fluo_data_dict.get(filename)
         if posData.SizeT > 1:
             fluo_img_data = fluo_data[posData.frame_i]
