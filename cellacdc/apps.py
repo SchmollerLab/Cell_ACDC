@@ -5957,6 +5957,28 @@ class QDialogSelectModel(QDialog):
         self.saveSelectionPreviewLabel.setText(warning_text)
         self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px; color: red;')
         self.saveSelectionNameLineEdit.setStyleSheet('border: 2px solid red;')
+        
+    def warnIfInvalidSaveName(self):
+        if not self.add_save_func:
+            return
+        
+        if not self.formattedSaveSelectionName():
+            self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px;')
+            self.saveSelectionNameLineEdit.setStyleSheet('')
+            return
+        
+        path = os.path.join(self.recipes_path, self.formattedSaveSelectionName())
+        if not os.path.exists(path):
+            self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px;')
+            self.saveSelectionNameLineEdit.setStyleSheet('')
+            return
+        
+        warning_text = html_utils.paragraph(
+            '<span style="color: yellow;">Save name already exists!</span>'
+        )
+        self.saveSelectionPreviewLabel.setText(warning_text)
+        self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px; color: yellow;')
+        self.saveSelectionNameLineEdit.setStyleSheet('border: 2px solid yellow;')
 
     def updateSaveSelectionPreview(self, text):
         if not self.add_save_func:
@@ -5985,6 +6007,8 @@ class QDialogSelectModel(QDialog):
             )
 
         self.saveSelectionPreviewLabel.setText(preview_text)
+        
+        self.warnIfInvalidSaveName()
 
     def checkSaveSelectionName(self):
         if not self.add_save_func:
