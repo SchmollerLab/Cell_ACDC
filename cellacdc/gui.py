@@ -7984,9 +7984,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 current_whitelist
             )
 
-            if not posData.whitelist:
-                posData.whitelist[posData.frame_i] = current_whitelist
-
             self.whitelistUpdateTempLayer()
 
         elif (right_click or left_click) and canDrawWhitelistIDsRoi:
@@ -8795,8 +8792,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
             segment_params = [
-                arg for arg in segment_params if arg[0] != 'diameter'
-            ]
+                arg for arg in segment_params
+            ] 
 
             initLastParams = True
             if model_name == 'thresholding':
@@ -9005,6 +9002,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self._thread.start()
 
     def onSegForLostIDsImportModel(self, model_name):
+        # get model 
         model = myutils.import_segment_module(model_name)
         if model is None:
             raise ModuleNotFoundError(
@@ -9096,8 +9094,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
-            
-        if hasattr(self, "wait_worker_loop"):
+
+        if hasattr(self, "wait_worker_loop") and self.wait_worker_loop is not None:
             self.wait_worker_loop.exit()
         
     def showImageDebug(self, display_info):
@@ -14392,18 +14390,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.freeRoiItem.clear()
             return
         
-        right_click = event.button() == Qt.MouseButton.RightButton
         self.freeRoiItem.closeCurve()
-        x, y = event.pos().x(), event.pos().y()
-        xdata, ydata = int(x), int(y)
-        targetID = None
-        if right_click:
-            targetID = self.getClickedID(
-                xdata, ydata, 
-                text='for the merged object.',
-                action='released the mouse button'
-            )
-        
         self.logger.info(
             'Adding IDs from freehand region to whitelist...')
         
@@ -14477,24 +14464,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         regionSlice = self.freeRoiItem.slice(zRange=zRange)
         mask = self.freeRoiItem.mask()
         regionLab = posData.lab[(...,) + regionSlice].copy()
-        if onlyEnclosed:
-            if regionLab.ndim == 2:
-                regionLab = transformation.clear_objects_not_in_mask(
-                    regionLab, mask
-                )
-                regionRp = self._acdcRegionProps(
-                    regionLab, precache_centroids=False
-                )
-                for obj in regionRp:
-                    if np.all(mask[obj.slice][obj.image]):
-                        continue
-                    
-                    regionLab[obj.slice][obj.image] = 0
+        if regionLab.ndim == 3:
+            mask3d = np.zeros(regionLab.shape, dtype=bool)
+            if zRange is None:
+                mask3d[:] = mask
             else:
-                for z, regionLab_z in enumerate(regionLab):
-                    regionLab[z] = transformation.clear_objects_not_in_mask(
-                        regionLab_z, mask
-                    )
+                mask3d[zRange[0]:zRange[1]] = mask
+            mask = mask3d
+            
+        if onlyEnclosed:
+            regionLab = transformation.clear_objects_not_in_mask(
+                regionLab, mask
+            )
         else:
             regionLab[..., ~mask] = 0
         
@@ -14543,7 +14524,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             onlyEnclosed=onlyEnclosed, 
             zRange=zRange
         )
-        
+
         if not sourceIDs:
             if onlyEnclosed:
                 logger_func(
@@ -14990,6 +14971,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def mergeSelectedIDs(self, IDs_to_merge, target_id=None):
         posData = self.data[self.pos_i]
+        zRange = None
+        if self.isSegm3D:
+            zRange = (0, posData.SizeZ)
+            
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(
+            False, 
+            storeImage=False, 
+            storeOnlyZoom=True, 
+            zRange=zRange
+        )
+    
         unique_ids = []
         seen = set()
         for ID in IDs_to_merge:
@@ -22466,7 +22459,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
         moth_bud_pairs_cca = (
-            posData.allData_li[frame_i].get('moth_bud_pairs_cca', None)
+            posData.allData_li[frame_i].pop('moth_bud_pairs_cca', None)
         )
         if moth_bud_pairs_cca is None:
             return cca_df
@@ -23977,14 +23970,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if isQuickSave:
             return True
         
+        last_moth_bud_pairs_cca_frame_i = None
         posData = self.data[self.pos_i]
         for frame_i in range(posData.SizeT):
             moth_bud_pairs_cca = (
                 posData.allData_li[frame_i].get('moth_bud_pairs_cca', None)
             )
             if moth_bud_pairs_cca is not None:
-                break
+                last_moth_bud_pairs_cca_frame_i = frame_i
         else:
+            return True
+        
+        if last_moth_bud_pairs_cca_frame_i is None:
+            return True
+        
+        last_cca_frame_i = self.get_last_cca_frame_i()
+        if last_cca_frame_i >= last_moth_bud_pairs_cca_frame_i:
+            # Mother-bud pairs info is stale --> ignore
             return True
         
         cancel, saveSingleMothBudPairCcaInfo = (
@@ -29444,10 +29446,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i if frame_i is None else frame_i
 
-            if frame_i==posData.frame_i:
-                rp = posData.rp
-            else:
-                rp = posData.allData_li[frame_i]['regionprops']
+        if frame_i==posData.frame_i:
+            rp = posData.rp
+        else:
+            rp = posData.allData_li[frame_i]['regionprops']
 
         if shift and self.isSegm3D:
             lab2D = self.get_2Dlab(lab)
@@ -29466,21 +29468,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not is_any_id_present:
             return lab, delMask
 
-        if delMask is None: 
+        if delMask is None:
             delMask = np.zeros(lab.shape, dtype=bool)
         else:
             delMask[:] = False
         
         if shift and self.isSegm3D:
             delMask2D = self.get_2Dlab(delMask)
-        
+
         for _delID in delID:
             if _delID not in rp.IDs_set:
                 continue
             obj = rp.get_obj_from_ID(_delID)
-            if shift and self.isSegm3D:
-                delMask2D[obj.slice][obj.image] = True
-            else:
             delMask[obj.slice][obj.image] = True
 
         if shift and self.isSegm3D:
@@ -29558,7 +29557,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for _delID in delIDs:
             self.clearObjContour(ID=_delID, ax=0)     
             self.clearObjContour(ID=_delID, ax=1)  
-            if z_slice is None:
+        if z_slice is None:
             self.removeObjectFromRp(delIDs,posData.lab)
         
         if shift and self.isSegm3D:
@@ -30212,7 +30211,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         assignments = self.trackFrame(
             prev_lab, prev_rp, posData.lab, posData.rp, posData.IDs,
             assign_unique_new_IDs=True, specific_IDs=subsetIDs,
-            dont_return_tracked_lab=True
+            dont_return_tracked_lab=True, return_assignments=True
         )
         # I think assignments already avoids merging
         assignments_new = dict()
