@@ -23185,11 +23185,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             proceed_cca, never_visited = self._get_data_visited(
                 posData, lin_tree_init=lin_tree_init, debug=debug
             )
-        
-        if debug:
-            printl(posData.allData_li[posData.frame_i]['labels'] is None)
-            from cellacdc.plot import imshow
-            imshow(posData.lab)
 
         if posData.rp is None: #
             rp = self._acdcRegionProps(posData.lab, precache_centroids=False)
@@ -29525,11 +29520,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     lab, _ = self.deleteIDFromLab(
                         lab, delIDs, frame_i=i, delMask=delMask, shift=shift
                     )
-
-                    printl(i, delIDs)
-                    from cellacdc.plot import imshow
-                    imshow(lab)
-
                     # Store change
                     posData.allData_li[i]['labels'] = lab
                     # Get the rest of the stored metadata based on the new lab
