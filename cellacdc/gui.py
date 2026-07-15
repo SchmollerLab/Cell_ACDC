@@ -5180,7 +5180,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
             del_shift = shift_regardless and isZslice 
-
+            
             delID_mask = self.deleteIDmiddleClick(
                 delIDs, applyFutFrames, includeUnvisited, shift=del_shift
             )
@@ -5636,7 +5636,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             self.current_frame_i = posData.frame_i
 
-            # Apply Edit ID to future frames if requested
+            # Apply annotate cell as dead to future frames if requested
             if applyFutFrames:
                 # Store current data before going to future frames
                 self.store_data()
@@ -8436,8 +8436,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.getDistanceListMissingIDsCachedFrame != frame_i:
             self.distanceListMissingIDs = dict()
             self.getDistanceListMissingIDsCachedFrame = frame_i
-            # self.store_data(autosave=False)
-            # self.get_data()
 
         if ID not in self.distanceListMissingIDs.keys():
             prev_rp = posData.allData_li[frame_i-1]['regionprops']
@@ -9688,6 +9686,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # Get the rest of the stored metadata based on the new lab
             posData.frame_i = frame_i
             self.get_data()
+            self.update_rp(deletionIDs=delIDs)
             self.store_data(autosave=False)
         
         # Back to current frame
@@ -9760,18 +9759,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if msg.clickedButton == disableTrackingButton:
                 self.logger.info('Disabling real time tracking...')
                 self.realTimeTrackingToggle.setChecked(False)
-                # posData = self.data[self.pos_i]
-                # current_frame_i = posData.frame_i
-                # for frame_i in range(self.start_n-1, self.stop_n):
-                #     posData.frame_i = frame_i
-                #     self.get_data()
-                #     self.store_data(autosave=frame_i==self.stop_n-1)
-                # posData.last_tracked_i = frame_i
-                # self.setNavigateScrollBarMaximum()
 
-                # # Back to current frame
-                # posData.frame_i = current_frame_i
-                # self.get_data()
         posData = self.data[self.pos_i]
         self.updateAllImages()
         self.titleLabel.setText('Done', color='w')
@@ -14657,7 +14645,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 frame_i = start_frame_i + i
                 lab = posData.allData_li[frame_i]['labels']
                 store = True
-                if lab is None: # no rp update here?
+                if lab is None:
                     if frame_i >= len(posData.segm_data):
                         lab = np.zeros_like(posData.segm_data[0])
                         posData.segm_data = np.append(
@@ -14673,8 +14661,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if store:
                     posData.frame_i = frame_i
                     posData.allData_li[frame_i]['labels'] = lab.copy()
-                    # no rp update here?
                     self.get_data()
+                    self.update_rp()
                     self.store_data(autosave=False)
             
             # Back to current frame
@@ -16262,14 +16250,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.get_data()
 
     def propagateChange(
-            self, modID, modTxt, doNotShow, UndoFutFrames,
-            applyFutFrames, applyTrackingB=False, force=False
+            self, 
+            affectedIDs: list[int] | set[int] | int, 
+            modTxt, 
+            doNotShow, 
+            UndoFutFrames,
+            applyFutFrames, 
+            applyTrackingB=False, 
+            force=False
         ):
         """
         This function determines whether there are already visited future frames
         that contains "modID". If so, it triggers a pop-up asking the user
         what to do (propagate change to future frames o not)
         """
+        if isinstance(affectedIDs, int):
+            affectedIDs = {affectedIDs}
+        
+        if isinstance(affectedIDs, list) or isinstance(affectedIDs, tuple):
+            affectedIDs = set(affectedIDs)
+        
         posData = self.data[self.pos_i]
         # Do not check the future for the last frame
         if posData.frame_i+1 == posData.SizeT:
@@ -16277,7 +16277,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return False, False, None, doNotShow
 
         includeUnvisited = posData.includeUnvisitedInfo.get(modTxt, False)
-        areFutureIDs_affected = []
+        areFutureIDs_affected = False
         # Get number of future frames already visited and check if future
         # frames has an ID affected by the change
         last_tracked_i_found = False
@@ -16292,16 +16292,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     # Stop at last visited frame since includeUnvisited = False
                     break
                 else:
-                    IDs = posData.allData_li[i]['regionprops'].IDs
+                    IDs = posData.allData_li[i]['regionprops'].IDs_set
             else:
-                IDs = posData.allData_li[i]['regionprops'].IDs            
-            if modID in IDs:
-                areFutureIDs_affected.append(True)
+                IDs = posData.allData_li[i]['regionprops'].IDs_set            
+            
+            if areFutureIDs_affected:
+                continue
+            
+            if affectedIDs.intersection(IDs):
+                areFutureIDs_affected = True
         
         if not last_tracked_i_found:
             # All frames have been visited in segm&track mode
             last_tracked_i = posData.SizeT - 1
-
+        
         if last_tracked_i == posData.frame_i and not includeUnvisited:
             # No future frames to propagate the change to
             return False, False, None, doNotShow
@@ -16358,7 +16362,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 posData.includeUnvisitedInfo[modTxt] = True
 
             if applyFutFrames and not UndoFutFrames and modTxt == 'Edit ID':
-                self.whitelistSyncIDsOG(frame_is=range(posData.frame_i, endFrame_i+1))
+                self.whitelistSyncIDsOG(
+                    frame_is=range(posData.frame_i, endFrame_i+1)
+                )
+                
         return UndoFutFrames, applyFutFrames, endFrame_i, doNotShowAgain
 
     def addCcaState(self, frame_i, cca_df, undoId):
@@ -17374,6 +17381,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         posData.allData_li[posData.frame_i]['labels'] = lab
         self.get_data()
+        self.update_rp()
         self.store_data(autosave=False)
         self.updateAllImages()
         
@@ -19034,7 +19042,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             posData.allData_li[posData.frame_i]['labels'] = lab
             self.get_data()
-
+            self.update_rp()
+            
     def preprocessDialogRecipeChanged(self, recipe):# why does this need the recepie as an arg
         recipe = self.preprocessDialog.recipe()
         if recipe is None:
@@ -19197,7 +19206,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.preprocessEnqueueCurrentImage(recipe)
     
     def next_pos(self):
-        self.store_data(debug=True, autosave=False)
+        self.store_data(autosave=False)
         prev_pos_i = self.pos_i
         if self.pos_i < self.num_pos-1:
             self.pos_i += 1
@@ -19712,7 +19721,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             og_frame = posData.frame_i
             posData.frame_i = self.original_df_lin_tree_i
             self.get_data()
-            self.logger.info('Lineage tree changes were not propagated, going back to original frame.')
+            self.logger.info(
+                'Lineage tree changes were not propagated, '
+                'going back to original frame.'
+            )
             self.askLineageTreeChanges()
             self.store_data(autosave=False)
             posData.frame_i = og_frame
@@ -21670,7 +21682,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 delROIshapes = [[] for _ in range(posData.SizeT)]
                 for i in range(last_tracked_num):
                     posData.frame_i = i
-                    self.get_data(debug=True)
+                    self.get_data()
                     self.store_data(
                         enforce=True, autosave=False, store_cca_df_copy=True
                     )
@@ -21993,10 +22005,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         allData_li = posData.allData_li[posData.frame_i]
         
-
         allData_li['regionprops'] = posData.rp
         allData_li['labels'] = posData.lab.copy()
-        allData_li['regionprops'].IDs = posData.IDs
         allData_li['manualBackgroundLab'] = (
             posData.manualBackgroundLab
         )
@@ -23176,6 +23186,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 posData, lin_tree_init=lin_tree_init, debug=debug
             )
         
+        if debug:
+            printl(posData.allData_li[posData.frame_i]['labels'] is None)
+            from cellacdc.plot import imshow
+            imshow(posData.lab)
+
         if posData.rp is None: #
             rp = self._acdcRegionProps(posData.lab, precache_centroids=False)
             posData.rp = rp
@@ -24389,8 +24404,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             size = (cutout[0][1] - cutout[0][0]) * (cutout[1][1] - cutout[1][0])
         return size / single_timepoint_segm_size
     
-    def update_rp_get_bbox(self, custom_bbox=None, use_bbox=False, use_curr_view=False,
-                  specific_IDs=None, add_frac_custom_bbox=0.05):
+    def update_rp_get_bbox(
+            self, custom_bbox=None, use_bbox=False, use_curr_view=False,
+            specific_IDs=None, add_frac_custom_bbox=0.05):
         """
         Returns an expanded bounding box (bbox) for the given IDs or custom_bbox.
         Returns False if not enough cells or cutout is too large.
@@ -24483,7 +24499,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self, draw=True, debug=False, # og stuff
             assignments=None, deletionIDs=None, # very quick upates, rp labels are changed but rest is same
             specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
-            wl_update=True, wl_track_og_curr=False,wl_update_lab=False, # wl stuff
+            is_unvisited=False,
+            wl_update=True, wl_track_og_curr=False, wl_update_lab=False, # wl stuff
         ):
         """Updates posData.rp
 
@@ -24524,15 +24541,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                              'use_curr_view or use_bbox, preloaded_bbox can be used '
                              'at a time')
         
-        if not isinstance(specific_IDs, (list, set, np.ndarray)) and specific_IDs is not None:
+        if (
+                not isinstance(specific_IDs, (list, set, np.ndarray)) 
+                and specific_IDs is not None
+            ):
             specific_IDs = [specific_IDs]
         elif specific_IDs is not None and len(specific_IDs) == 0:
             specific_IDs = None
 
-        
-        # posData.rp is an acdcRegionprops instance here.
-        # if rp is None (can sometimes happen appearantly???)
-        curr_lab = posData.lab if posData.lab is not None else posData.allData_li[posData.frame_i]['labels']
+        if is_unvisited:
+            curr_lab = posData.segm_data[posData.frame_i]
+        elif posData.lab is None:
+            curr_lab = posData.allData_li[posData.frame_i]['labels']
+        else:
+            curr_lab = posData.lab
+
         if posData.rp is None:
             printl(f'''Warning: posData.rp is None for pos {self.pos_i}, 
                    frame {posData.frame_i}. Recomputing rp from labels.''')
@@ -24797,8 +24820,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = i
                     self.get_data()
+                    self.update_rp()
                     self.store_data(autosave=False)
                 
+                # Back to current frame
                 posData.frame_i = self.current_frame_i
                 self.get_data()
 
@@ -24854,6 +24879,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = i
                     self.get_data()
+                    self.update_rp()
                     self.store_data(autosave=False)
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
@@ -24863,6 +24889,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     )
                     keepLab = self._keepObjects(lab=lab, rp=rp)
                     posData.segm_data[i] = keepLab
+                    self.update_rp(is_unvisited=True)
                 
                 pbar.update()
             pbar.close()
@@ -28231,15 +28258,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.addMissingIDs_cca_df(posData)
             self.updateAllImages()
             self.store_data()
-        # if action is not None:
-        #     if action.removeAnnot:
-        #         self.store_data()
-        #         posData.frame_i -= 1
-        #         self.get_data()
-        #         if lineage_tree_present:
-        #             self.resetLin_tree_future()
-        #         self.resetCcaFuture(posData.frame_i)
-        #         self.next_frame()
         
         if get_answer:
             return msg.clickedButton == removeAnnotButton
@@ -29003,18 +29021,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         prev_lab = posData.allData_li[posData.frame_i-1]['labels']
         if prev_lab is None:
             return
-        
-        # if not hasattr(self, 'lostObjContoursImage'):
-        #     self.store_data()
-        #     posData.frame_i -= 1
-        #     self.get_data()
-        #     self.store_data()
-        #     posData.frame_i += 1
-        #     self.get_data()
-        #     self.updateLostNewCurrentIDs()
-        #     self.updateLostContoursImage(ax=0)
-        #     self.updateLostContoursImage(ax=1)
-        #     self.updateLostNewCurrentIDs()
             
         yy, xx, _ = np.nonzero(self.lostObjContoursImage)
         lostObjsContourMask = np.zeros(self.currentLab2D.shape, dtype=bool)
@@ -29461,7 +29467,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         is_any_id_present = False
         for _delID in delID:
-            if _delID in rp.IDs:
+            if _delID in rp.IDs_set:
                 is_any_id_present = True
                 break
         
@@ -29472,9 +29478,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             delMask = np.zeros(lab.shape, dtype=bool)
         else:
             delMask[:] = False
-
+        
         for _delID in delID:
-            if _delID not in rp.IDs:
+            if _delID not in rp.IDs_set:
                 continue
             obj = rp.get_obj_from_ID(_delID)
             delMask[obj.slice][obj.image] = True
@@ -29491,14 +29497,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     @disableWindow
     def deleteIDmiddleClick(
-            self, delIDs: Iterable, applyFutFrames, includeUnvisited,
+            self, 
+            delIDs: Iterable, 
+            applyFutFrames, 
+            includeUnvisited,
             shift=False
         ):
         self.clearHighlightedID()
 
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
-
+        
         # Apply Delete ID to future frames if requested
         if applyFutFrames:
             delMask = np.zeros(posData.lab.shape, dtype=bool)
@@ -29510,25 +29519,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if lab is None and not includeUnvisited:
                     self.enqAutosave()
                     break
-
+                
                 if lab is not None:
                     # Visited frame
                     lab, _ = self.deleteIDFromLab(
                         lab, delIDs, frame_i=i, delMask=delMask, shift=shift
                     )
 
+                    printl(i, delIDs)
+                    from cellacdc.plot import imshow
+                    imshow(lab)
+
                     # Store change
                     posData.allData_li[i]['labels'] = lab
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = i
-                    self.get_data()
+                    self.get_data(debug=True)
+                    self.update_rp(deletionIDs=delIDs)
                     self.store_data(autosave=False)
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
-                    lab = posData.segm_data[i]
-                    lab, _ = self.deleteIDFromLab(
+                    posData.frame_i = i
+                    posData.segm_data[i], _ = self.deleteIDFromLab(
                         lab, delIDs, frame_i=i, delMask=delMask, shift=shift
                     )
+                    self.update_rp(is_unvisited=True, deletionIDs=delIDs)
 
         # Back to current frame
         if applyFutFrames:

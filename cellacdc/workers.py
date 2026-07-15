@@ -2551,9 +2551,12 @@ class PostProcessSegmWorker(QObject):
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = frame_i
                     mainWin.get_data()
+                    mainWin.update_rp()
                     mainWin.store_data(autosave=False)
                 else:
+                    posData.frame_i = frame_i
                     posData.segm_data[frame_i] = lab
+                    mainWin.update_rp(is_unvisited=True)
 
                 self.signals.progressBar.emit(1)
             
