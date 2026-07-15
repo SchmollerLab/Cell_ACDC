@@ -8947,7 +8947,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def onSegForLostInit(self):
         self.logger.info('Settings for segmentation for lost IDs not set.')
         self.SegForLostIDsSetSettings()
-        self.SegForLostIDsWaitCond.wakeAll()
+        self._ackSegForLostIDsWorker('ask_init')
+
+    def _ackSegForLostIDsWorker(self, ack_key):
+        try:
+            self.SegForLostIDsMutex.lock()
+            self.SegForLostIDsWorker.ack(ack_key)
+            self.SegForLostIDsWaitCond.wakeAll()
+        except Exception:
+            pass
+        finally:
+            try:
+                self.SegForLostIDsMutex.unlock()
+            except Exception:
+                pass
 
     def startSegForLostIDsWorker(self):
         self.SegForLostIDsMutex = QMutex()
@@ -9002,14 +9015,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self._thread.start()
 
     def onSegForLostIDsImportModel(self, model_name):
-        # get model 
-        model = myutils.import_segment_module(model_name)
-        if model is None:
-            raise ModuleNotFoundError(
-                f'{model_name} install failed'
-            )
-
-        self.SegForLostIDsWaitCond.wakeAll()
+        # Preflight import on GUI thread; worker retries and handles failures.
+        try:
+            myutils.import_segment_module(model_name)
+        except Exception:
+            pass
+        finally:
+            self._ackSegForLostIDsWorker('import_model')
 
     def SegForLostIDsWorkerAskInstallGPU(self, model_name, use_gpu):
         result = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
@@ -9017,21 +9029,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         dont_force_cpu = myutils.check_gpu_available(
             model_name, use_gpu, do_not_warn=True)
         self.SegForLostIDsWorker.dont_force_cpu = dont_force_cpu
-        self.SegForLostIDsWaitCond.wakeAll()
+        self._ackSegForLostIDsWorker('ask_install_gpu')
 
     def onSigStoreDataSegForLostIDsWorker(self, autosave):
         self.onSigStoreData(
             self.SegForLostIDsWaitCond, autosave=autosave)
+        self._ackSegForLostIDsWorker('store_data')
         
     def onSigUpdateRPSegForLostIDsWorker(self, wl_update, wl_track_og_curr):
         self.onSigUpdateRP(self.SegForLostIDsWaitCond,
                            wl_update=wl_update, 
                            wl_track_og_curr=wl_track_og_curr)
+        self._ackSegForLostIDsWorker('update_rp')
 
     def onSigTrackManuallyAddedObjectSegForLostIDsWorker(self, added_IDs, isNewID, wl_update, wl_track_og_curr):
         assignments = self.trackManuallyAddedObject(added_IDs, isNewID, wl_update=wl_update, wl_track_og_curr=wl_track_og_curr)
         self.SegForLostIDsWorker.assignments = assignments
-        self.SegForLostIDsWaitCond.wakeAll()
+        self._ackSegForLostIDsWorker('track_manually_added')
 
     def onSigGetInputImgSegForLostIDsWorker(self, image_channel_name):
         displayed_input_label = 'Displayed image'
@@ -9043,7 +9057,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ):
             img = self.getDisplayedImg1()
             self.SegForLostIDsWorker.inputImgForSegForLostIDs = img
-            self.SegForLostIDsWaitCond.wakeAll()
+            self._ackSegForLostIDsWorker('get_input_img')
             return
 
         self.getChData(requ_ch={image_channel_name})
@@ -9056,7 +9070,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             fluo_img_data = fluo_data
 
         self.SegForLostIDsWorker.inputImgForSegForLostIDs = fluo_img_data
-        self.SegForLostIDsWaitCond.wakeAll()
+        self._ackSegForLostIDsWorker('get_input_img')
 
         
     def onSigStoreData(
@@ -9173,7 +9187,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self._debug_imshow_windows.append(win)
         
         try:
-            self.SegForLostIDsWorker.waitCond.wakeAll()
+            self._ackSegForLostIDsWorker('image_debug')
         except:
             pass
     
@@ -29485,7 +29499,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if shift and self.isSegm3D:
             lab2D[delMask2D] = 0
         else:
-        lab[delMask] = 0
+            lab[delMask] = 0
         
         if shift and self.isSegm3D:
             self.set_2Dlab(lab2D)

@@ -290,7 +290,6 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
             preproc_recipe=preproc_recipe,
             posData=posData,
         )
-
         if debug:
             imgs_to_show[i].append(box_model_lab.copy())
 
@@ -328,7 +327,6 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
         curr_lab[box_x_min:box_x_max, box_y_min:box_y_max][positive_mask] = box_curr_lab_other_IDs[positive_mask]
         if export_bbox_for_training:
             bboxs_for_debug[-1].append(box_curr_lab_other_IDs.copy())
-
     if export_bbox_for_training:
         frame_i = posData.frame_i
 
