@@ -50,7 +50,6 @@ def get_obj_text_cca_annot(
     ID = obj.label
     try:
         cca_df_obj = moth_bud_pairs_cca.loc[ID].copy()
-        cca_df_obj['will_divide'] = 1.0
     except Exception as e:
         try:
             cca_df_obj = acdc_df.loc[ID]

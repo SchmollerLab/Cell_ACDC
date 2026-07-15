@@ -22415,7 +22415,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
         moth_bud_pairs_cca = (
-            posData.allData_li[frame_i].get('moth_bud_pairs_cca', None)
+            posData.allData_li[frame_i].pop('moth_bud_pairs_cca', None)
         )
         if moth_bud_pairs_cca is None:
             return cca_df
@@ -23926,14 +23926,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if isQuickSave:
             return True
         
+        last_moth_bud_pairs_cca_frame_i = None
         posData = self.data[self.pos_i]
         for frame_i in range(posData.SizeT):
             moth_bud_pairs_cca = (
                 posData.allData_li[frame_i].get('moth_bud_pairs_cca', None)
             )
             if moth_bud_pairs_cca is not None:
-                break
+                last_moth_bud_pairs_cca_frame_i = frame_i
         else:
+            return True
+        
+        if last_moth_bud_pairs_cca_frame_i is None:
+            return True
+        
+        last_cca_frame_i = self.get_last_cca_frame_i()
+        if last_cca_frame_i >= last_moth_bud_pairs_cca_frame_i:
+            # Mother-bud pairs info is stale --> ignore
             return True
         
         cancel, saveSingleMothBudPairCcaInfo = (
