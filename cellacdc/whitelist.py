@@ -1859,8 +1859,11 @@ class WhitelistGUIElements:
         self.whitelistUpdateTempLayer()
 
         if not checked:
-            self.setLostNewOldPrevIDs()
             self.updateAllImages()
+
+    def getWhitelistIDsLab2D(self):
+        posData = self.data[self.pos_i]
+        return self.get_2Dlab(posData.lab, force_z=False)
 
     def whitelistHighlightIDs(self, checked:bool=True):
         """Highlights the IDs in the current frame based on the whitelist.

@@ -1027,7 +1027,8 @@ class KeepIDsLineEdit(ValidLineEdit):
         elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
             self.sigEnterPressed.emit()
     
-    def onTextChanged(self, text):
+    def values(self) -> set:
+        text = self.text()
         IDs = []
         rangesMatch = re.findall(r'(\d+-\d+)', text)
         if rangesMatch:
@@ -1040,6 +1041,10 @@ class KeepIDsLineEdit(ValidLineEdit):
         if IDsMatch:
             for ID in IDsMatch:
                 IDs.append(int(ID))
+        return set(IDs)
+    
+    def onTextChanged(self, text):
+        IDs = self.values()
         self.IDs = sorted(list(set(IDs)))
         self.sigIDsChanged.emit(self.IDs)
     
@@ -3076,6 +3081,8 @@ class ToolBarSeparator:
 
 class ToolBar(QToolBar):
     def __init__(self, *args, **kwargs) -> None:
+        self._log_func = kwargs.pop('log_func', None)
+        
         super().__init__(*args, **kwargs)
         
         self.widgetsWithShortcut = {}
@@ -3085,7 +3092,32 @@ class ToolBar(QToolBar):
                 self.extendButton = child
                 self.extendButton.setIcon(QIcon(":expand.svg"))
                 break
+        
+        self._logLabelAdded = False
+    
+    def showEvent(self, event):
+        if self._log_func is None:
+            return super().showEvent(event)
+        
+        if self._logLabelAdded:
+            return super().showEvent(event)
+        
+        self.addSeparator()
+        self._logLabel = self.addLabel()
+        self._logLabelAdded = True
+        return super().showEvent(event)
 
+    def log(self, msg):
+        try:
+            self._logLabel.setText(html_utils.span(msg, color='r'))   
+        except Exception as err:
+            print(msg)
+            
+        try:
+            self._log_func(msg)
+        except Exception as err:
+            print(msg)
+                 
     def addSeparator(self, width=5):
         separator = ToolBarSeparator(width=width, toolbar=self)
         return separator
@@ -3256,7 +3288,7 @@ class CopyLostObjectToolbar(ToolBar):
             self.maxOverlapNumberControl.value()
         )
 
-class DrawClearRegionToolbar(ToolBar):
+class ClearRegionToolbar(ToolBar):
     def __init__(self, *args) -> None:
         super().__init__(*args)
         
@@ -11148,7 +11180,7 @@ class RescaleImageJroisGroupbox(QGroupBox):
         }
         return sizes
 
-class WhitelistLineEdit(KeepIDsLineEdit):
+class IDsLineEdit(KeepIDsLineEdit):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -11173,7 +11205,7 @@ class WhitelistIDsToolbar(ToolBar):
         whitelistLineEditLabel = QLabel('Whitelist IDs: ')
         self.addWidget(whitelistLineEditLabel)
         
-        self.whitelistLineEdit = WhitelistLineEdit(
+        self.whitelistLineEdit = IDsLineEdit(
             whitelistLineEditLabel, parent=self
         )
         self.whitelistLineEdit.sigEnterPressed.connect(self.accept)
@@ -11183,6 +11215,18 @@ class WhitelistIDsToolbar(ToolBar):
         # accept button
         self.acceptButton = self.addButton(':greenTick.svg')
         self.acceptButton.triggered.connect(self.accept)
+        
+        self.addSeparator()
+        
+        self.roiToggle = self.addButton(':ROI.svg', checkable=True)
+        self.roiToggle.setChecked(False)
+        self.roiToggle.setToolTip(
+            'Select IDs by drawing a freehand ROI.\n\n'
+            'Draw with the mouse left button to include all objects '
+            'fully enclosed in the ROI.\n\n'
+            'Draw with the mouse right button to include all objects '
+            'touched by the ROI.'
+        )
 
         # add a view OG toggle
         self.viewOGToggle = self.addButton(':eye.svg', checkable=True)
@@ -11238,6 +11282,15 @@ class WhitelistIDsToolbar(ToolBar):
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.addWidget(spacer)
 
+    def isRoiToggled(self):
+        return self.roiToggle.isChecked()
+    
+    def setIDs(self, IDs):
+        if not IDs:
+            return
+        
+        self.whitelistLineEdit.setText(IDs)
+
     def emitWhitelistChanged(self, whitelist):
         self.sigWhitelistChanged.emit(whitelist)
 
@@ -11267,6 +11320,12 @@ class WhitelistIDsToolbar(ToolBar):
             object to add.<br>
             You can also write directly into the <code>Whitelist IDs</code> widget<br>
             and separate the IDs by commas.<br><br>
+
+            You can also use the ROI button to collect all IDs overlapping a region.<br>
+            Toggle the ROI button off to keep editing the IDs manually.<br><br>
+
+            On 3D data, you can enable <code>Only current z-slice</code> to collect IDs
+            only from the displayed slice.<br><br>
             
             After adding the IDs, click on the "Accept" button to remove the 
             non-whitelisted objects.<br>
@@ -11283,6 +11342,89 @@ class WhitelistIDsToolbar(ToolBar):
         """
         )
         msg.information(self, 'White list IDs', txt)
+
+class MergeIDsToolbar(ToolBar):
+    sigIDsChanged = Signal(list)
+    sigAccept = Signal(list)
+    sigRoiToggled = Signal(bool)
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        mergeLineEditLabel = self.addLabel('IDs to merge: ')
+
+        self.mergeLineEdit = IDsLineEdit(
+            mergeLineEditLabel, parent=self
+        )
+        self.mergeLineEdit.sigEnterPressed.connect(self.accept)
+        self.mergeLineEdit.sigIDsChanged.connect(self.sigIDsChanged.emit)
+        self.addWidget(self.mergeLineEdit)
+
+        self.acceptButton = self.addButton(':greenTick.svg')
+        self.acceptButton.setToolTip(
+            'Merge all listed IDs into the first ID in the list'
+        )
+        self.acceptButton.triggered.connect(self.accept)
+        
+        self.addSeparator()
+
+        self.onlyCurrentZsliceCheckbox = QCheckBox('Only current z-slice')
+        self.onlyCurrentZsliceCheckbox.setToolTip(
+            'When active on 3D data, collect and merge IDs only on the '
+            'currently displayed z-slice instead of across the entire volume'
+        )
+        self.addWidget(self.onlyCurrentZsliceCheckbox)
+
+        self.infoButton = self.addButton(':info.svg')
+        self.infoButton.triggered.connect(self.showInfo)
+        
+        self.addSeparator()
+
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.addWidget(spacer)
+    
+    def setIDs(self, IDs):
+        if not IDs:
+            return
+        
+        self.mergeLineEdit.setText(IDs)
+
+    def setOnlyCurrentZsliceEnabled(self, enabled):
+        self.onlyCurrentZsliceCheckbox.setVisible(enabled)
+        self.onlyCurrentZsliceCheckbox.setEnabled(enabled)
+        if not enabled:
+            self.onlyCurrentZsliceCheckbox.setChecked(False)
+
+    def isOnlyCurrentZslice(self):
+        return self.onlyCurrentZsliceCheckbox.isChecked()
+
+    def accept(self):
+        try:
+            IDs = self.mergeLineEdit.IDs
+        except AttributeError as e:
+            if "has no attribute 'IDs'" in str(e):
+                IDs = list()
+            else:
+                raise
+        self.sigAccept.emit(IDs)
+
+    def showInfo(self):
+        msg = myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            With this tool, you can merge multiple objects by drawing a freehand 
+            ROI.<br><br>
+            By drawing with the mouse <b>right button</b>, all objects touched by the 
+            ROI will be merged.<br>
+            In this mode, the resulting ID will be the last you released the 
+            mouse button on.<br><br>
+            By drawing with the mouse <b>left button</b>, all objects fully enclosed by the ROI will be merged.<br>
+            In this mode, the resulting ID will be the smallest in the selection.<br><br>
+            When working with 3D segmentation masks, you can choose whether to 
+            merge across the entire volume<br>
+            or only on the displayed z-slice.
+        """)
+        msg.information(self, 'Merge multiple IDs', txt)
 
 class MagicPromptsToolbar(ToolBar):
     sigPromptTypeChanged = Signal(object, str)

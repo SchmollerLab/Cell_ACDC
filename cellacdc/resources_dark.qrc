@@ -110,6 +110,8 @@
     <file alias="zoom_rect.svg">resources/icons/zoom_rect_dark.svg</file>
     <file alias="reinitLastSegm.svg">resources/icons/reinitLastSegm_dark.svg</file>
     <file alias="merge-IDs.svg">resources/icons/merge-IDs_dark.svg</file>
+    <file alias="merge-multiple-IDs.svg">resources/icons/merge-multiple-IDs_dark.svg</file>
+    <file alias="ROI.svg">resources/icons/ROI.svg</file>
     <file alias="overlay.svg">resources/icons/overlay1_dark.svg</file>
     <file alias="magic-prompts.svg">resources/icons/magic-prompts_dark.svg</file>
     <file alias="select-list.svg">resources/icons/select-list_dark.svg</file>
