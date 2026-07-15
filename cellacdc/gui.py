@@ -24286,14 +24286,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         objOpts = self.getObjTextAnnotOpts(obj, 'Draw only IDs', ax=1)
         return objOpts
     
-    def removeObjectFromRp(self, delID):
+    def removeObjectFromRp(self, delID, lab):
         posData = self.data[self.pos_i]
         if not isinstance(delID, (list, set, tuple)):
-            delIDs = [delID]
+            delIDs = set([delID])
         else:
-            delIDs = list(delID)
+            delIDs = set(delID)
             
-        posData.rp.update_regionprops_via_deletions(set(delIDs))
+        posData.rp.update_regionprops_via_deletions(delIDs, lab)
         posData.IDs = posData.rp.IDs
     
     def instructHowDeleteID(self):
@@ -24564,7 +24564,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.rp.update_regionprops_via_assignments(assignments, curr_lab)
         elif deletionIDs is not None:
             # (delID1, delID2, ...)
-            posData.rp.update_regionprops_via_deletions(deletionIDs)
+            posData.rp.update_regionprops_via_deletions(deletionIDs, curr_lab)
         elif local_rp_update:
             # first get current view
             if preloaded_bbox is None:
@@ -29444,18 +29444,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i if frame_i is None else frame_i
 
-        if shift and self.isSegm3D:
-            lab3D = lab
-            delMask3D = delMask
-            lab = self.get_2Dlab(lab)
-            if delMask is not None:
-                delMask = self.get_2Dlab(delMask)
-            rp = self._acdcRegionProps(lab, precache_centroids=False)
-        else: 
             if frame_i==posData.frame_i:
                 rp = posData.rp
             else:
                 rp = posData.allData_li[frame_i]['regionprops']
+
+        if shift and self.isSegm3D:
+            lab2D = self.get_2Dlab(lab)
+            rp = rp.get_slice_rp(self.zSliceScrollBar.sliderPosition(), 
+                                         self.switchPlaneCombobox.depthAxes())
 
         if isinstance(delID, int):
             delID = [delID]
@@ -29474,19 +29471,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             delMask[:] = False
         
+        if shift and self.isSegm3D:
+            delMask2D = self.get_2Dlab(delMask)
+        
         for _delID in delID:
             if _delID not in rp.IDs_set:
                 continue
             obj = rp.get_obj_from_ID(_delID)
+            if shift and self.isSegm3D:
+                delMask2D[obj.slice][obj.image] = True
+            else:
             delMask[obj.slice][obj.image] = True
+
+        if shift and self.isSegm3D:
+            lab2D[delMask2D] = 0
+        else:
         lab[delMask] = 0
         
         if shift and self.isSegm3D:
-            self.set_2Dlab(lab, lab3D=lab3D)
-            lab = lab3D
-            if delMask3D is not None:
-                self.set_2Dlab(delMask, lab3D=delMask3D)
-                delMask = delMask3D
+            self.set_2Dlab(lab2D)
+            if delMask2D is not None:
+                self.set_2Dlab(delMask2D, lab3D=delMask)
         
         return lab, delMask
     
@@ -29509,6 +29514,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # Store current data before going to future frames
             self.store_data()
             segmSizeT = len(posData.segm_data)
+
+            local_rp_update = shift and self.isSegm3D
+
             for i in range(posData.frame_i+1, segmSizeT):
                 lab = posData.allData_li[i]['labels']
                 if lab is None and not includeUnvisited:
@@ -29525,7 +29533,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = i
                     self.get_data(debug=True)
-                    self.update_rp(deletionIDs=delIDs)
+                    self.update_rp(deletionIDs=delIDs if not local_rp_update else None)
                     self.store_data(autosave=False)
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
@@ -29533,7 +29541,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     posData.segm_data[i], _ = self.deleteIDFromLab(
                         lab, delIDs, frame_i=i, delMask=delMask, shift=shift
                     )
-                    self.update_rp(is_unvisited=True, deletionIDs=delIDs)
+                    self.update_rp(is_unvisited=True, deletionIDs=delIDs if not local_rp_update else None)
 
         # Back to current frame
         if applyFutFrames:
@@ -29551,7 +29559,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.clearObjContour(ID=_delID, ax=0)     
             self.clearObjContour(ID=_delID, ax=1)  
             if z_slice is None:
-                self.removeObjectFromRp(_delID)    
+            self.removeObjectFromRp(delIDs,posData.lab)
         
         if shift and self.isSegm3D:
             self.update_rp()

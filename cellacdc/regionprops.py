@@ -656,8 +656,9 @@ class acdcRegionprops:
         if not self._has_initialized_slice_rps():
             return
 
-        for _, _, rp in self._iter_initialized_slice_rps():
-            rp.update_regionprops_via_deletions(IDs_to_delete)
+        for slicing, slice_number, rp in self._iter_initialized_slice_rps():
+            lab_slice = self._get_lab_slice(self.lab, slice_number, slicing)
+            rp.update_regionprops_via_deletions(IDs_to_delete, lab_slice)
 
     def _sync_initialized_proj_rps_via_deletions(self, IDs_to_delete):
         if not self._has_initialized_proj_rps():
@@ -669,7 +670,7 @@ class acdcRegionprops:
                 rp, lab_proj, IDs_to_delete
             )
             self._proj_labs[slicing][kind] = lab_proj
-            rp.update_regionprops_via_deletions(IDs_to_delete)
+            rp.update_regionprops_via_deletions(IDs_to_delete, lab_proj)
 
     def _sync_initialized_slice_rps_via_update(self, specific_IDs_update_centroids=None):
         if not self._has_initialized_slice_rps():
@@ -1071,7 +1072,7 @@ class acdcRegionprops:
         self._sync_initialized_proj_rps_via_assignments(active_assignments)
 
     def update_regionprops_via_deletions(
-            self, IDs_to_delete: set[int]
+            self, IDs_to_delete: set[int], lab
     ):
         """If the lab is completely the same, but only some IDs have been deleted
 
@@ -1079,10 +1080,18 @@ class acdcRegionprops:
         ----------
         IDs_to_delete : set[int]
             IDs to delete
+        lab : np.ndarray, optional
+            Updated label image. When provided, regionprops objects are rebound
+            to this image so properties such as ``image`` stay consistent after
+            the deletion.
         """
         IDs_to_delete = set(IDs_to_delete).intersection(self.IDs_set)
         if not IDs_to_delete:
+            self._set_label_image(lab)
+            self._sync_initialized_slice_rps_via_deletions(set())
+            self._sync_initialized_proj_rps_via_deletions(set())
             return
+        self._set_label_image(lab)
         self._rp = [obj for obj in self._rp if obj.label not in IDs_to_delete]
         self.set_attributes(deleted_IDs=IDs_to_delete) # for updating the IDs to indx, centroid mapper
         self._sync_initialized_slice_rps_via_deletions(IDs_to_delete)

@@ -283,7 +283,8 @@ def test_slice_regionprops_follow_assignments_and_deletions():
     assert rp.get_proj_rp('max', 'z').get_obj_from_ID(9, warn=False) is not None
     assert rp.get_slice_rp(1, 'z').get_obj_from_ID(2, warn=False) is None
 
-    rp.update_regionprops_via_deletions({9})
+    lab[lab == 9] = 0
+    rp.update_regionprops_via_deletions({9}, lab)
     assert rp.get_slice_rp(1, 'z').get_obj_from_ID(9, warn=False) is None
     assert rp.get_slice_rp(2, 'y').get_obj_from_ID(9, warn=False) is None
     assert rp.get_slice_rp(3, 'x').get_obj_from_ID(9, warn=False) is None
