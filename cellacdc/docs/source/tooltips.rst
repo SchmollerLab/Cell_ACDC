@@ -225,8 +225,9 @@
     :height: 16px
     :width: 16px
 
-.. |mergeIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/merge-IDs.svg
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/merge-IDs.svg
+
+.. |mergeIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/merge-multiple-IDs.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/merge-multiple-IDs.svg
     :alt: mergeIDsButton icon
     :height: 16px
     :width: 16px
@@ -261,9 +262,9 @@
     :height: 16px
     :width: 16px
 
-.. |drawClearRegionButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/clear_freehand_region.svg
+.. |clearFreehandRoiButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/clear_freehand_region.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/clear_freehand_region.svg
-    :alt: drawClearRegionButton icon
+    :alt: clearFreehandRoiButton icon
     :height: 16px
     :width: 16px
 
@@ -458,9 +459,9 @@ Edit tools: Segmentation and tracking
 * **Move object mask (** |moveLabelToolButton| **"P"):** Right-click drag and drop a labels to move it around.
 * **Expand/Shrink object mask (** |expandLabelToolButton| **"E"):** Leave mouse cursor on the label you want to expand/shrink and press arrow up/down on the keyboard to expand/shrink the mask.
 * **Edit ID (** |editIDbutton| **"N"):** Manually change ID of a cell by right-clicking on cell. When working with 3D segmentation masks, the default behaviour is to edit the ID in all z-slices. To edit the ID only on the viewed z-slice, hold "Shift" while right-clicking.
-* **Manual bud separation (** |separateBudButton| **"S"):** Separate mother-bud fused together or separate objects that have the same ID. Right-click to attempt automatic separation or Shift+right-click to skip automatic attemp and go straight to manual mode.
-* **Merge IDs (** |mergeIDsButton| **"M"):** Merge/fuse two objects together. 
-    * Usage: right-click on one of the two objects, keep the button clicked and release on the second object to merge (drag-and-drop).
+* **Manual bud separation (** |separateBudButton| **"S"):** Separate mother-bud fused together or separate objects that have the same ID. Right-click to attempt automatic separation or Shift+right-click to skip automatic attempt and go straight to manual mode.
+* **Merge IDs (** |mergeIDsButton| **"M"):** Merge multiple objects together. 
+    * Usage: Draw a freehand region to merge all objects present in that region. Drawing with right button will merge all objects touched by the ROI, while drawing with the left button will merge only objects fully enclosed by the ROI. Once activated, additional options will appear in a new toolbar. Check 'Only current z-slice' to only merge in current z-slice. Note that you don't need to close the ROI manually, it will be automatically closed once you release the mouse button.
 * **Select objects to keep (** |keepIDsButton| **"K"):** Select the objects to keep. Press "Enter" to confirm selection or "Esc" to clear the selection. After confirming, all the NON selected objects will be deleted. Left-click on objects to keep.
 * **Select objects to add to the tracking whitelist (** |whitelistIDsButton| **"Ctr+K"):** Select objects to add to a tracking whitelist. Only objects in this list will be kept and tracked over time. You can add additional objects to the list an any point in time. Left-click on objects to add them to the whitelist.
 * **Remove object from analysis (** |binCellButton| **):** Annotate that a cell is removed from downstream analysis. ``is_cell_excluded`` set to ``True`` in ``acdc_output.csv`` table. Done by right-clicking.
@@ -476,7 +477,7 @@ Edit tools: Segmentation and tracking
     * Add custom poly-line deletion ROI. Every ID touched by the ROI will be automatically deleted.
     * Moving and reshaping the ROI will restore deleted IDs if they are not touched by it anymore. 
     * To delete the ROI ``right-click on it --> remove``.
-* **Clear freehand region (** |drawClearRegionButton| **"O"):** Draw a freehand region and clear all objects present in the region. Once activated, additional options will appear in a new toolbar.
+* **Clear freehand region (** |clearFreehandRoiButton| **"O"):** Draw a freehand region and clear all objects present in the region. Once activated, additional options will appear in a new toolbar.
 * **Delete bordering objects (** |delBorderObjAction| **):** Remove segmented objects touching the border of the image. This tool can be set to run automatically when visiting a new frame. To enable this, go to ``Settings (top ribbon) --> Delete bordering objects tool --> Apply when visiting new frame``. If this feature is enabled, the button will have a green background.
 * **Delete newly segmented objects (** |delNewObjAction| **):** Remove newly segmented objects. This tool can be set to run automatically when visiting a new frame. To enable this, go to ``Settings (top ribbon) --> Delete newly segmented objects tool --> Apply when visiting new frame``. If this feature is enabled, the button will have a green background.
 * **Repeat tracking (** |repeatTrackingAction| **"Shift+T"):** Repeat tracking on current frame. Tracking method can be changed in ``Tracking --> Select real-time tracking algorithm``
