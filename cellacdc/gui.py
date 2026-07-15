@@ -30167,7 +30167,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         assignments = self.trackFrame(
             prev_lab, prev_rp, posData.lab, posData.rp, posData.IDs,
             assign_unique_new_IDs=True, specific_IDs=subsetIDs,
-            dont_return_tracked_lab=True
+            dont_return_tracked_lab=True, return_assignments=True
         )
         # I think assignments already avoids merging
         assignments_new = dict()
