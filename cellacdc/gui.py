@@ -33092,7 +33092,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return "", True, True
 
         posData = self.data[self.pos_i]
-        if posData.whitelist is not None:
+        if posData.whitelist is None:
             return "", True, True
         
         help_txt = html_utils.paragraph(f"""
