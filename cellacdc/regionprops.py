@@ -1080,7 +1080,7 @@ class acdcRegionprops:
         ----------
         IDs_to_delete : set[int]
             IDs to delete
-        lab : np.ndarray : np.ndarray
+        lab : np.ndarray
             Updated label image. When provided, regionprops objects are rebound
             to this image so properties such as ``image`` stay consistent after
             the deletion.

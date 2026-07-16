@@ -29627,7 +29627,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lab[delMask] = 0
         
         if single_slice_del_in_3D:
-            self.set_2Dlab(lab2D)
+            self.set_2Dlab(lab2D, lab3D=lab)
             if delMask2D is not None:
                 self.set_2Dlab(delMask2D, lab3D=delMask)
         

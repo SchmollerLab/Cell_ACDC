@@ -230,9 +230,8 @@ class SegForLostIDsWorker(QObject):
             while self._acks[ack_key] == prev_ack:
                 self.waitCond.wait(self.mutex)
             self.mutex.unlock()
-        except:
+        finally:
             self.mutex.unlock()
-            raise
 
     def ack(self, ack_key):
         self._acks[ack_key] += 1
