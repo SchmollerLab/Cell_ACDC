@@ -3159,7 +3159,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.launch3dViewerAction.blockSignals(False)
         
         if not checked:
-            self._volume_renderer.close()
             volume_renderer = getattr(self, '_volume_renderer', None)
             self._volume_renderer = None
             if volume_renderer is not None:

@@ -91,13 +91,13 @@ class VolumeRendererWindow(QMainWindow):
 
     Usage (minimal)::
 
-        renderer = VolumeRenderer3DWindow()
+        renderer = VolumeRendererWindow()
         renderer.set_volume(zstack_array)   # (Z, Y, X) numpy array
         renderer.run()
 
-    The window hides (rather than closes) when the user presses X so the GPU
-    state is preserved for re-display.  Pass ``hide_on_close=False`` to
-    destroy on close instead.
+    If ``hide_on_close=True``, the window hides (rather than closes) when the user
+    presses X so the GPU state is preserved for re-display.  Set it to ``False``
+    to destroy on close instead.
     """
     sigClose = Signal(object)
     sigUpdate = Signal()
@@ -289,7 +289,7 @@ class VolumeRendererWindow(QMainWindow):
         display_mode_buttonsgroup = QButtonGroup(self)
         
         self._display_mode_show_all_rb = QRadioButton(
-            'Show all objets', self
+            'Show all objects', self
         )
         self._display_mode_hide_unselected_rb = QRadioButton(
             'Hide unselected', self
@@ -772,10 +772,10 @@ class VolumeRendererWindow(QMainWindow):
             
             _raw_volume = volume.copy()
             _off_focus_volume = skimage.filters.gaussian(_raw_volume, sigma=1.2)
-            _off_focus_volume *= (
-                np.percentile(_raw_volume, 99.9) 
-                / np.percentile(_off_focus_volume, 99.9)
-            )
+            p_raw = np.percentile(_raw_volume, 99.9)
+            p_blur = np.percentile(_off_focus_volume, 99.9)
+            if p_blur > 0:
+                _off_focus_volume *= (p_raw / p_blur)
             _off_focus_volume *= 0.8
 
             channel_data = _ChannelData(
@@ -914,17 +914,19 @@ class VolumeRendererWindow(QMainWindow):
     def _set_gl_blend_states(self):
         from .gl_blend import volume_gl_state
 
-        first_visibile = False
+        first_visible = False
+        first_visible_found = False
         for c, (channel, channel_data) in enumerate(self._channels_data.items()):
             blending = "translucent_no_depth" if c == 0 else "additive"
             node = channel_data.node
             node.order = c
             node.opacity = channel_data.opacity_slider.value()
-            if not first_visibile:
-                first_visibile = channel_data.toolbutton.isChecked()
+            if not first_visible_found:
+                first_visible = channel_data.toolbutton.isChecked()
+                first_visible_found = True
             else:
-                first_visibile = False
-            gl_stage = volume_gl_state(blending, first_visible=first_visibile)
+                first_visible = False
+            gl_stage = volume_gl_state(blending, first_visible=first_visible)
             node.set_gl_state(**gl_stage)
     
     def _set_single_channel(self, single: bool):
@@ -1314,7 +1316,7 @@ class VolumeRendererWindow(QMainWindow):
             )
         )
         
-        context_menu.sigEditPropertes.connect(
+        context_menu.sigEditProperties.connect(
             partial(
                 self._edit_points_layer_properties, points_layer=points_layer
             )

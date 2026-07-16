@@ -12175,7 +12175,7 @@ class warnVisualCppRequired(myMessageBox):
         return super().closeEvent(event)
 
 class PointsLayerContextMenu(QMenu):
-    sigEditPropertes = Signal()
+    sigEditProperties = Signal()
     sigRemove = Signal()
     
     def __init__(self, parent=None):
@@ -12193,7 +12193,7 @@ class PointsLayerContextMenu(QMenu):
         removeAction.triggered.connect(self.emitSigRemoveAction)
     
     def emitSigEditProperties(self):
-        self.sigEditPropertes.emit()
+        self.sigEditProperties.emit()
     
     def emitSigRemoveAction(self):
         self.sigRemove.emit()
