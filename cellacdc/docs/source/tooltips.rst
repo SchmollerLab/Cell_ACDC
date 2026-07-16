@@ -493,11 +493,14 @@ Edit tools: Cell cycle analysis
 * **Manually edit cell cycle annotations table (** |editCcaToolAction| **"Ctrl+Shift+P"):** Manually edit cell cycle annotations table.
 * **Re-initialize cell cycle annotations table (** |reInitCcaAction| **):** Re-initialize cell cycle annotations table from this frame onward. NOTE: This will erase all the already annotated future frames information (from the current session not the saved information).
 * **Annotate one mother-bud pair at the time (** |annotateSingleMotherBudPairButton| **"Y"):**
-    1. Activate to annotate a single mother-bud pair at the time.
-    2. Annotate past and future frames
-    3. Deactivate to go back to the frame you were annotating before activating this tool.
-
-    NOTE: When annotating future frames, the other cells will not be displayed and they will be ignored. 
+    1. Hover with the mouse cursor on a mother of bud cell in S phase.
+    2. Activate with the shortcut to start the process.
+    3. Annotate past and future frames of the selected pair.
+    4. Deactivate to go back to the frame you were annotating before activating this tool.
+    
+    The button will turn orange if there are future frames annotated with this tool that have not been visited in "Cell cycle analysis" mode yet.
+    
+    NOTE: When annotating future frames, the other cells will be ignored. 
 
 Edit tools: Normal division: Lineage tree
 -----------------------------------------

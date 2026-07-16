@@ -113,6 +113,7 @@ if os.name == 'nt':
         pass
 
 GREEN_HEX = _palettes.green()
+ORANGE_HEX = _palettes.orange()
 
 RP_OPT_NUM_CELLS_MIN = 30 # th for trying to do local updates to regionprops, rp becomes slow for high num of cells
 RP_OPT_PERC_CUTOUT_MAX = 0.3 # th for trying to do local updates to regionprops, 
@@ -10877,13 +10878,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         # Store in the past frames that division has been annotated
         for past_frame_i in range(frame_i-1, -1, -1):
-            past_cca_df = self.get_cca_df(frame_i=past_frame_i, return_df=True)
+            past_cca_df = self.get_cca_df(
+                frame_i=past_frame_i, return_df=True
+            )
             if past_cca_df is None:
-                return
+                break
             
             if ID not in past_cca_df.index:
                 # ID is a bud and is not emerged yet here
-                return
+                break
             
             if frame_i-1 == past_frame_i:
                 # Get generation number at first iteration
@@ -10891,7 +10894,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 
             if past_cca_df.at[ID, 'generation_num'] != gen_num:
                 # ID is a mother and the cell cycle is finished here
-                return
+                break
             
             past_cca_df.at[ID, 'will_divide'] = 1
             past_cca_df.at[relID, 'will_divide'] = 1
@@ -10899,6 +10902,43 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.store_cca_df(
                 cca_df=past_cca_df, frame_i=past_frame_i, autosave=False
             )
+        
+        # Update will_divide in stored mother-bud pairs temp cca
+        for past_frame_i in range(frame_i, -1, -1):
+            moth_bud_pairs_cca = (
+                posData.allData_li[past_frame_i].get('moth_bud_pairs_cca')
+            )
+            
+            if moth_bud_pairs_cca is None:
+                continue
+            
+            if ID not in moth_bud_pairs_cca.index:
+                # ID is a bud and is not emerged yet here
+                break
+            
+            prev_moth_bud_pairs_cca = (
+                posData.allData_li[past_frame_i-1].get('moth_bud_pairs_cca')
+            )
+            if prev_moth_bud_pairs_cca is None:
+                # There is no stored info before --> stop
+                break
+            
+            if ID not in prev_moth_bud_pairs_cca.index:
+                # Division has been annotated on a cell that does not have 
+                # previous info in the past
+                break
+            
+            if frame_i-1 == past_frame_i:
+                # Get generation number at first iteration
+                gen_num = prev_moth_bud_pairs_cca.at[ID, 'generation_num']
+                
+            if prev_moth_bud_pairs_cca.at[ID, 'generation_num'] != gen_num:
+                # ID is a mother and the cell cycle is finished here
+                break
+            
+            prev_moth_bud_pairs_cca.at[ID, 'will_divide'] = 1
+            prev_moth_bud_pairs_cca.at[relID, 'will_divide'] = 1
+            
 
     def annotateDivisionFutureFramesSwapMothers(
             self, cca_df_at_future_division, mothIDofDisappearedBud, frame_i
@@ -10938,8 +10978,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         wrongBudID = relativeIDofMothID
         
+        moth_bud_pair_cca = (
+            posData.allData_li[frame_i].get('moth_bud_pairs_cca')
+        )
+        
         self.annotateDivision(
-            cca_df_at_future_division, mothIDofDisappearedBud, wrongBudID, 
+            cca_df_at_future_division, 
+            mothIDofDisappearedBud, 
+            wrongBudID, 
+            moth_bud_pair_cca,
             frame_i=frame_i
         )
         cca_df_at_future_division.at[
@@ -10966,7 +11013,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             self.store_cca_df(frame_i=future_i, cca_df=cca_df_i, autosave=False)            
     
-    def annotateDivision(self, cca_df, ID, relID, frame_i=None):
+    def annotateDivision(
+            self, 
+            cca_df: pd.DataFrame, 
+            ID: int, 
+            relID: int, 
+            moth_bud_pair_cca: pd.DataFrame | None,
+            frame_i=None
+        ):
         # Correct as follows:
         # For frame_i > 0 --> assign to G1 and +1 on generation number
         # For frame == 0 --> reinitialize to unknown cells
@@ -11002,9 +11056,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             cca_df.at[relID, 'relationship'] = 'mother'
         
         store = True
+        
+        if moth_bud_pair_cca is None:
+            return store
+        
+        if ID not in moth_bud_pair_cca.index:
+            return store
+        
+        moth_bud_pair_cca.loc[ID] = cca_df.loc[ID]
+        moth_bud_pair_cca.loc[relID] = cca_df.loc[relID]
+        
         return store
 
-    def undoDivisionAnnotation(self, cca_df, ID, relID):
+    def undoDivisionAnnotation(
+            self, 
+            cca_df: pd.DataFrame, 
+            ID: int, 
+            relID: int, 
+            moth_bud_pair_cca: pd.DataFrame | None,
+            frame_i=None
+        ):
         # Correct as follows:
         # If G1 then correct to S and -1 on generation number
         store = False
@@ -11023,6 +11094,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         cca_df.at[ID, 'will_divide'] = 0
         cca_df.at[relID, 'will_divide'] = 0
         store = True
+        
+        if moth_bud_pair_cca is None:
+            return store
+        
+        if ID not in moth_bud_pair_cca.index:
+            return store
+        
+        moth_bud_pair_cca.loc[ID] = cca_df.loc[ID]
+        moth_bud_pair_cca.loc[relID] = cca_df.loc[relID]
+        
         return store
 
     def undoBudMothAssignment(self, ID):
@@ -11110,11 +11191,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
                 return
         
+        moth_bud_pair_cca = (
+            posData.allData_li[posData.frame_i].get('moth_bud_pairs_cca')
+        )
+        
         if clicked_ccs == 'S':
-            self.annotateDivision(posData.cca_df, ID, relID)
+            self.annotateDivision(posData.cca_df, ID, relID, moth_bud_pair_cca)
             self.store_cca_df()
         else:
-            self.undoDivisionAnnotation(posData.cca_df, ID, relID)
+            self.undoDivisionAnnotation(
+                posData.cca_df, ID, relID, moth_bud_pair_cca
+            )
             self.store_cca_df()
 
         # Update cell cycle info LabelItems
@@ -11141,14 +11228,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if ID not in IDs:
                 # For some reason ID disappeared from this frame
                 continue
-
+            
+            moth_bud_pair_cca = (
+                posData.allData_li[future_i].get('moth_bud_pairs_cca')
+            )
+            
             ccs = cca_df_i.at[ID, 'cell_cycle_stage']
             relID = cca_df_i.at[ID, 'relative_ID']
             if clicked_ccs == 'S':
                 if ccs == 'G1':
                     # Cell is in G1 in the future again so stop annotating
                     break
-                self.annotateDivision(cca_df_i, ID, relID)
+                self.annotateDivision(cca_df_i, ID, relID, moth_bud_pair_cca)
                 self.store_cca_df(
                     frame_i=future_i, cca_df=cca_df_i, autosave=False
                 )
@@ -11156,13 +11247,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # Cell is in S in the future again so stop undoing (break)
                 # also leave a 1 frame duration G1 to avoid a continuous
                 # S phase
-                self.annotateDivision(cca_df_i, ID, relID)
+                self.annotateDivision(cca_df_i, ID, relID, moth_bud_pair_cca)
                 self.store_cca_df(
                     frame_i=future_i, cca_df=cca_df_i, autosave=False
                 )
                 break
             else:
-                self.undoDivisionAnnotation(cca_df_i, ID, relID)
+                self.undoDivisionAnnotation(
+                    cca_df_i, ID, relID, moth_bud_pair_cca
+                )
                 self.store_cca_df(
                     frame_i=future_i, cca_df=cca_df_i, autosave=False
                 )
@@ -11173,7 +11266,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if ID not in cca_df_i.index or relID not in cca_df_i.index:
                 # Bud did not exist at frame_i = i
                 break
-
+            
+            moth_bud_pair_cca = (
+                posData.allData_li[past_i].get('moth_bud_pairs_cca')
+            )
+            
             self.storeUndoRedoCca(past_i, cca_df_i, undoId)
             ccs = cca_df_i.at[ID, 'cell_cycle_stage']
             relID = cca_df_i.at[ID, 'relative_ID']
@@ -11181,7 +11278,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # We correct only those frames in which the ID was in 'G1'
                 break
             else:
-                store = self.undoDivisionAnnotation(cca_df_i, ID, relID)
+                store = self.undoDivisionAnnotation(
+                    cca_df_i, ID, relID, moth_bud_pair_cca
+                )
                 self.store_cca_df(
                     frame_i=past_i, cca_df=cca_df_i, autosave=False
                 )
@@ -13176,6 +13275,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             # Reset all future frames
             self.resetCcaFuture(posData.frame_i+1)
+            self.resetSingleMotherBudPairsCcaInfo(posData.frame_i+1)
             if posData.frame_i == 0:
                 # Reset everything since we are on first frame
                 posData.cca_df = self.getBaseCca_df()
@@ -13938,6 +14038,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def annotateSingleMotherBudPair_cb(self, checked):
         posData = self.data[self.pos_i]
         self.modeComboBox.setDisabled(checked)
+        self.assignBudMothButton.setDisabled(checked)
         if checked:
             self.store_data()
             
@@ -13987,15 +14088,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if frame_to_restore is None:
                 return            
             
-            self.storeSingleMotherBudPairData()
-            
             self.logger.info(
-                f'Restoring view to frame n. {posData.frame_i+1}...'
+                f'Restoring view to frame n. {frame_to_restore+1}...'
             )
             last_cca_frame_i_to_restore = (
                 self.annotateSingleMothBudPairState['last_cca_frame_i']
             )
-
+            
             self.annotateSingleMotherBudPairRestoreLastCcaFrame(
                 last_cca_frame_i_to_restore
             )
@@ -19818,7 +19917,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.resetCcaFuture(cca_frame_i_to_restore+1)
 
-    def setNavigateScrollBarMaximum(self):
+    def setNavigateScrollBarMaximum(self, last_cca_frame_i=None):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         if mode == 'Segmentation and Tracking':
@@ -19835,12 +19934,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             self.updateLastCheckedFrameWidgets(self.navSpinBox.maximum()-1)
         elif mode == 'Cell cycle analysis':
-            if posData.frame_i > self.last_cca_frame_i:
+            if last_cca_frame_i is not None:
+                self.navigateScrollBar.setMaximum(last_cca_frame_i+1)
+                self.navSpinBox.setMaximum(last_cca_frame_i+1)
+            elif posData.frame_i > self.last_cca_frame_i:
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
                 self.navSpinBox.setMaximum(posData.frame_i+1)
             else:
                 self.navigateScrollBar.setMaximum(self.last_cca_frame_i+1)
                 self.navSpinBox.setMaximum(self.last_cca_frame_i+1)
+            
             self.lastTrackedFrameLabel.setText(
                 f'Last cc annot. frame n. = {self.navSpinBox.maximum()}'
             )
@@ -21955,25 +22058,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         # data_frame_i['manually_edited_lab']['zoom_slice'] = zoom_slice
 
-    def storeSingleMotherBudPairData(self, cca_df=None):
-        posData = self.data[self.pos_i]
-        data_frame_i = posData.allData_li[posData.frame_i]
-        
-        if cca_df is None:
-            cca_df = data_frame_i['acdc_df']
-        
+    def storeSingleMotherBudPairData(self, cca_df):
         if cca_df is None:
             return
         
+        posData = self.data[self.pos_i]
+        data_frame_i = posData.allData_li[posData.frame_i]        
         mothID = self.annotateSingleMothBudPairState.get('mother_ID')
         if mothID is None:
             return
         
         budID = self.annotateSingleMothBudPairState['bud_ID']
-        single_moth_bud_pair_cca = cca_df.loc[[mothID, budID]].copy()
+        current_moth_bud_pair_cca = cca_df.loc[[mothID, budID]].copy()
         stored_moth_bud_pairs_cca = data_frame_i.get('moth_bud_pairs_cca')
         if stored_moth_bud_pairs_cca is None:
-            data_frame_i['moth_bud_pairs_cca'] = single_moth_bud_pair_cca
+            data_frame_i['moth_bud_pairs_cca'] = current_moth_bud_pair_cca
         else:
             if mothID in stored_moth_bud_pairs_cca.index:
                 stored_moth_bud_pairs_cca = stored_moth_bud_pairs_cca.drop(
@@ -21986,8 +22085,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
                 
             data_frame_i['moth_bud_pairs_cca'] = pd.concat(
-                [stored_moth_bud_pairs_cca, single_moth_bud_pair_cca],
+                [stored_moth_bud_pairs_cca, current_moth_bud_pair_cca],
             ).drop_duplicates()
+        
+        self.annotateSingleMotherBudPairButton.setStyleSheet(
+            f'background-color: {ORANGE_HEX}'
+        )
     
     @exception_handler
     def store_data(
@@ -22197,10 +22300,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return True, automaticallyDividedIDs
 
         for IDgone in ScellsIDsGone:
+            moth_bud_pair_cca = (
+                posData.allData_li[posData.frame_i-1].get('moth_bud_pairs_cca')
+            )
             relID = prev_cca_df.at[IDgone, 'relative_ID']
             self.annotateDisappearedBeforeDivision(relID, IDgone, prev_cca_df)
             self.annotateDivision(
-                prev_cca_df, IDgone, relID, frame_i=posData.frame_i-1
+                prev_cca_df, IDgone, relID, moth_bud_pair_cca, 
+                frame_i=posData.frame_i-1
             )
             self.annotateDivisionCurrentFrameRelativeIDgone(relID)
             automaticallyDividedIDs.append(relID)
@@ -22469,13 +22576,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         return prev_cca_df
     
-    def addCcaInfoFromSingleMotherBudPairs(self, cca_df):
+    def addCcaInfoFromSingleMotherBudPairs(
+            self, 
+            cca_df: pd.DataFrame, 
+            dict_getter: Literal['pop', 'get'] ='pop'
+        ):
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
-        moth_bud_pairs_cca = (
-            posData.allData_li[frame_i].pop('moth_bud_pairs_cca', None)
-        )
+        data_dict = posData.allData_li[frame_i]
+        getter = getattr(data_dict, dict_getter)
+        moth_bud_pairs_cca = getter('moth_bud_pairs_cca', None)
         if moth_bud_pairs_cca is None:
+            self.annotateSingleMotherBudPairButton.setStyleSheet(
+                'background-color: none'
+            )
             return cca_df
 
         if cca_df is None:
@@ -22519,7 +22633,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         cca_df = self.getSingleMotherBudPairCca_df()
         if cca_df is not None:
             posData.cca_df = cca_df
-            self.storeSingleMotherBudPairData(cca_df=cca_df)
+            self.storeSingleMotherBudPairData(cca_df)
             return notEnoughG1Cells, proceed
         
         # Determine if this is the last visited frame for repeating
@@ -23673,7 +23787,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.last_cca_frame_i = from_frame_i-1
         self.ccaCheckerStopChecking()
         
-        self.setNavigateScrollBarMaximum() 
+        self.setNavigateScrollBarMaximum(last_cca_frame_i=from_frame_i-1) 
         for i in range(from_frame_i, posData.SizeT):
             posData.allData_li[i].pop('cca_df', None)
             posData.allData_li[i].pop('cca_df_checker', None)
@@ -23696,6 +23810,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
         
         self.resetWillDivideInfo()
+        
+    def resetSingleMotherBudPairsCcaInfo(self, from_frame_i):
+        posData = self.data[self.pos_i]
+        data_dict = posData.allData_li[from_frame_i-1]
+        moth_bud_pairs_cca = data_dict.get('moth_bud_pairs_cca', None)
+        if moth_bud_pairs_cca is not None:
+            moth_bud_pairs_cca['will_divide'] = 0
+        
+        for i in range(from_frame_i, posData.SizeT):
+            data_dict = posData.allData_li[i]
+            data_dict.pop('moth_bud_pairs_cca', None)
         
     def removeCcaAnnotationsCurrentFrame(self):
         posData = self.data[self.pos_i]
@@ -23791,7 +23916,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             df = df.drop(columns=lineage_tree_cols, errors='ignore')
             posData.allData_li[i]['acdc_df'] = df
     
-    def get_cca_df(self, frame_i=None, return_df=False, debug=False):
+    def get_cca_df(
+            self, frame_i=None, 
+            return_df=False, 
+            debug=False, 
+            include_single_mother_bud_pairs=False
+        ):
         # cca_df is None unless the metadata contains cell cycle annotations
         # NOTE: cell cycle annotations are either from the current session
         # or loaded from HDD in "initPosAttr" with a .question to the user
@@ -23808,6 +23938,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if cca_df is not None:
             cca_df = cca_df.dropna()
+        
+        if include_single_mother_bud_pairs:
+            self.addCcaInfoFromSingleMotherBudPairs(cca_df, dict_getter='get')
         
         if return_df:
             return cca_df
@@ -23974,44 +24107,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.allData_li[i]['cca_df'] = cca_df.copy()
         
         if self.annotateSingleMotherBudPairButton.isChecked():
-            self.storeSingleMotherBudPairData(cca_df=cca_df)
-        
+            self.storeSingleMotherBudPairData(cca_df)
+
         if autosave:
             self.enqAutosave()
             self.enqCcaIntegrityChecker()
 
     def detectSingleMotherBudPairsCcaDf(self, isQuickSave=False):
-        if isQuickSave:
-            return True
-        
-        last_moth_bud_pairs_cca_frame_i = None
-        posData = self.data[self.pos_i]
-        for frame_i in range(posData.SizeT):
-            moth_bud_pairs_cca = (
-                posData.allData_li[frame_i].get('moth_bud_pairs_cca', None)
-            )
-            if moth_bud_pairs_cca is not None:
-                last_moth_bud_pairs_cca_frame_i = frame_i
-        else:
-            return True
-        
-        if last_moth_bud_pairs_cca_frame_i is None:
-            return True
-        
-        last_cca_frame_i = self.get_last_cca_frame_i()
-        if last_cca_frame_i >= last_moth_bud_pairs_cca_frame_i:
-            # Mother-bud pairs info is stale --> ignore
-            return True
-        
-        cancel, saveSingleMothBudPairCcaInfo = (
-            _warnings.warnAskAboutSaveSingleMotherBudPairsCcaDf(self)
+        annotateSingleMotherBudPairButtonColor = (
+            self.annotateSingleMotherBudPairButton.palette()
+            .button().color().name()
         )
-        if cancel:
-            return False
-
-        if not saveSingleMothBudPairCcaInfo:
+        if annotateSingleMotherBudPairButtonColor != ORANGE_HEX:
             return True
+        
+        if not isQuickSave:
+            cancel, saveSingleMothBudPairCcaInfo = (
+                _warnings.warnAskAboutSaveSingleMotherBudPairsCcaDf(self)
+            )
+            if cancel:
+                return False
 
+            if not saveSingleMothBudPairCcaInfo:
+                return True
+
+        posData = self.data[self.pos_i]
         for frame_i in range(posData.SizeT):
             moth_bud_pairs_cca = (
                 posData.allData_li[frame_i].get('moth_bud_pairs_cca', None)
@@ -30735,6 +30855,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         try:
             color = self.defaultToolBarButtonColor
             self.overlayButton.setStyleSheet(f'background-color: {color}')
+            self.annotateSingleMotherBudPairButton.setStyleSheet(
+                f'background-color: {color}'
+            )
         except AttributeError:
             # traceback.print_exc()
             pass
@@ -34298,21 +34421,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for worker, thread in self.autoSaveActiveWorkers:
             worker.savedSegmData = posData.segm_data.copy()
 
-    def removeSavedSingleMotherBudPairCcaDf(self):
-        posData = self.data[self.pos_i]
-        for frame_i in range(posData.SizeT):
-            moth_bud_pairs_cca = (
-                posData.allData_li[frame_i].get('moth_bud_pairs_cca', None)
-            )
-            if moth_bud_pairs_cca is not None:
-                break
-        else:
-            return
-        
-        self.resetCcaFuture(frame_i-1)
-
     def saveDataFinished(self):
-        self.removeSavedSingleMotherBudPairCcaDf()
         self.setDisabled(False, keepDisabled=False)
         self.activateWindow()
         if self.saveWin.aborted or self.worker.abort:

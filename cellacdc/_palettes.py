@@ -200,6 +200,9 @@ def green():
     else:
         return '#607a2f'
 
+def orange():
+    return '#ffa500'
+
 def TreeWidgetStyleSheet():
     scheme = get_color_scheme()
     if scheme == 'light':
