@@ -14631,7 +14631,9 @@ class ShortcutEditorDialog(QBaseDialog):
             delObjectKey='',
             delObjectButton: Literal['Middle click', 'Left click']='Middle click',
             zoomOutKeyValue: int=None,
-            parent=None
+            parent=None,
+            mouseBindings: dict=None,
+            widgetsPercistantShortcuts: dict=None
         ):
         self.cancel = True
         super().__init__(parent)
@@ -14652,7 +14654,8 @@ class ShortcutEditorDialog(QBaseDialog):
         button = widgets.PushButton(self, flat=True)
         button.setIcon(QIcon(":del_obj_click.svg"))
         self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
-            allowModifiers=True, notAllowedModifier=Qt.AltModifier
+            allowModifiers=True, notAllowedModifier=Qt.AltModifier,
+            allowMouseButtons=True
         )
         if delObjectKey is not None:
             self.delObjShortcutLineEdit.setText(delObjectKey)
@@ -14684,6 +14687,39 @@ class ShortcutEditorDialog(QBaseDialog):
         self.shortcutLineEdits[name] = self.zoomShortcutLineEdit
         
         row += 1
+        
+        keep_at_beginning = ['Next', 'Previous']
+
+        grouped_keys = {
+            'keep_at_beginning': [],
+            'other': [],
+            '(lineage tree)': [],
+        }
+
+        grouped_keys = {
+            'keep_at_beginning': [],
+            'other': [],
+            '(lineage tree)': [],
+        }
+
+        for key in widgetsWithShortcut.keys():
+            if key in keep_at_beginning:
+                grouped_keys['keep_at_beginning'].append(key)
+            elif '(lineage tree)' in key:
+                grouped_keys['(lineage tree)'].append(key)
+            else:
+                grouped_keys['other'].append(key)
+
+        widgetsWithShortcut_sorted = {}
+        for group, group_list in grouped_keys.items():
+            sorted_keys = natsorted(group_list)
+            widgetsWithShortcut_sorted.update({
+                k: widgetsWithShortcut[k]
+                for k in sorted_keys
+            })
+
+        widgetsWithShortcut = widgetsWithShortcut_sorted
+
         for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=row):
             button = widgets.PushButton(self, flat=True)
             try:
@@ -14691,17 +14727,40 @@ class ShortcutEditorDialog(QBaseDialog):
             except:
                 pass
             label = QLabel(f'{name}:')
-            shortcutLineEdit = widgets.ShortcutLineEdit()
-            if hasattr(widget, 'keyPressShortcut'):
+            shortcutLineEdit = widgets.ShortcutLineEdit(allowMouseButtons=True)
+            if mouseBindings is not None and name in mouseBindings:
+                mouse_button = mouseBindings[name]
+                shortcutLineEdit.setText(f'Mouse {mouse_button.name}')
+                isShortcutKeyPress = False
+                isShortcutMouseButton = True
+            elif hasattr(widget, 'keyPressShortcut'):
                 shortcutLineEdit.key = widget.keyPressShortcut
                 shortcut = widgets.KeySequenceFromText(widget.keyPressShortcut)
                 isShortcutKeyPress = True
+                isShortcutMouseButton = False
             else:
                 shortcut = widget.shortcut()
                 isShortcutKeyPress = False
-            shortcutLineEdit.setText(shortcut.toString())
-            shortcutLineEdit.textChanged.connect(self.checkDuplicateShortcuts)
+                isShortcutMouseButton = False
+                
+            if isShortcutMouseButton: # always false wehn mouseBindings is None
+                mouse_button = mouseBindings[name]
+                shortcutLineEdit.setText(f'Mouse {mouse_button.name}')
+            else:
+                shortcutLineEdit.setText(shortcut.toString())
+                
+            shortcutLineEdit.textChanged.connect(self.shortcutChanged)
             shortcutLineEdit.isShortcutKeyPress = isShortcutKeyPress
+            shortcutLineEdit.isShortcutMouseButton = isShortcutMouseButton
+            # trigger when clicked
+            shortcutLineEdit.clicked.connect(
+                self.setShortcutLineEditEventFilter
+            )
+            # clean up when focus is lost
+            shortcutLineEdit.editingFinished.connect(
+                self.releaseShortcutLineEditEventFilter
+            )
+            
             entriesLayout.addWidget(button, row, 0)
             entriesLayout.addWidget(label, row, 1)
             entriesLayout.addWidget(shortcutLineEdit, row, 2)
@@ -14725,10 +14784,42 @@ class ShortcutEditorDialog(QBaseDialog):
 
         self.setFont(fonts.font)
         self.setLayout(mainLayout)
+        
+    def setShortcutLineEditEventFilter(self):
+        sender = self.sender()
+        previous = getattr(self, '_activeShortcutLineEdit', None)
+        if previous is not None and previous is not sender:
+            QApplication.instance().removeEventFilter(previous)
+            previous.isRecording = False
+
+        QApplication.instance().installEventFilter(sender)
+        sender.isRecording = True
+        self._activeShortcutLineEdit = sender
+
+    def releaseShortcutLineEditEventFilter(self):
+        sender = self.sender()
+        QApplication.instance().removeEventFilter(sender)
+        sender.isRecording = False
+        if getattr(self, '_activeShortcutLineEdit', None) is sender:
+            self._activeShortcutLineEdit = None
+        
+    def shortcutChanged(self, text):
+        sender = self.sender()
+        self.checkDuplicateShortcuts(text, sender=sender)
     
-    def checkDuplicateShortcuts(self, text):
+    def updateMouseBindings(self, text, sender=None):
+        if sender is None:
+            sender = self.sender()
+        if text.startswith('Mouse '):
+            sender.isShortcutMouseButton = True
+        else:
+            sender.isShortcutMouseButton = False
+    
+    def checkDuplicateShortcuts(self, text, sender=None):
+        if sender is None:
+            sender = self.sender()
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
-            if shortcutLineEdit == self.sender():
+            if shortcutLineEdit == sender:
                 continue
             if shortcutLineEdit.text() != text:
                 continue
@@ -14753,9 +14844,15 @@ class ShortcutEditorDialog(QBaseDialog):
         
         self.shortcutLineEdits.pop('Zoom out')
         self.cancel = False
+        self.mouseBindings = dict()
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
             text = shortcutLineEdit.text()
-            if shortcutLineEdit.isShortcutKeyPress:
+            if shortcutLineEdit.isShortcutMouseButton:
+                button_name = text.split('Mouse ')[-1]
+                button = Qt.MouseButton[button_name]
+                self.mouseBindings[name] = button
+                self.customShortcuts[name] = (text, button)
+            elif shortcutLineEdit.isShortcutKeyPress:
                 self.customShortcuts[name] = (text, shortcutLineEdit.key)
             else:
                 self.customShortcuts[name] = (
@@ -14770,6 +14867,14 @@ class ShortcutEditorDialog(QBaseDialog):
         self.zoomOutKeyValue = self.zoomShortcutLineEdit.key
         
         self.close()
+        
+    def closeEvent(self, event):
+        active = getattr(self, '_activeShortcutLineEdit', None)
+        if active is not None:
+            QApplication.instance().removeEventFilter(active)
+            active.isRecording = False
+            self._activeShortcutLineEdit = None
+        super().closeEvent(event)
     
     def showEvent(self, event) -> None:
         self.resize(int(self.width()*1.2), self.height())

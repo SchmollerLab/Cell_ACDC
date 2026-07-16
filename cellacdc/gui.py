@@ -100,7 +100,7 @@ from . import exec_time
 from .plot import imshow
 from . import gui_utils
 from . import gui_combine
-
+from .config import STANDARD_MOUSE_BUTTONS
 np.seterr(invalid='ignore')
 
 if os.name == 'nt':
@@ -338,6 +338,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.whyNavigateDisabled = set()
         self.autoSaveTimer = QTimer()
         self.dirtyPointsLayerTableEndNames = set()
+        self.mouseBindings = dict()
+        self.defaultMouseShortcuts = dict()
+        self.widgetsPersistentShortcut = dict()
         
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
@@ -1474,10 +1477,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.binCellButton = QToolButton(self)
         self.binCellButton.setIcon(QIcon(":bin.svg"))
         self.binCellButton.setCheckable(True)
-        # self.binCellButton.setShortcut('R')
         self.binCellButton.action = editToolBar.addWidget(self.binCellButton)
         self.checkableButtons.append(self.binCellButton)
         self.checkableQButtonsGroup.addButton(self.binCellButton)
+        self.binCellButton.setShortcut('Ctrl+E')
+        self.widgetsWithShortcut['Exclude cell from analysis'] = self.binCellButton
         # self.functionsNotTested3D.append(self.binCellButton)
 
         self.manualTrackingButton = QToolButton(self)
@@ -2700,8 +2704,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.reloadAction = QAction(
         #     QIcon(":reload.svg"), "Reload segmentation file", self
         # )
+        
         self.nextAction = QAction('Next', self)
+        self.defaultMouseShortcuts['Next'] = Qt.MouseButton.XButton2
+        self.widgetsWithShortcut['Next'] = self.nextAction
+        self.widgetsPersistentShortcut['Next'] = Qt.Key_Right
+
         self.prevAction = QAction('Previous', self)
+        self.defaultMouseShortcuts['Previous'] = Qt.MouseButton.XButton1
+        self.widgetsWithShortcut['Previous'] = self.prevAction
+        self.widgetsPersistentShortcut['Previous'] = Qt.Key_Left
+        
         self.showInExplorerAction = QAction(
             QIcon(":drawer.svg"), f"&{self.openFolderText}", self
         )
@@ -2720,8 +2733,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.quickSaveAction.setShortcut('Ctrl+S')
         self.undoAction.setShortcut('Ctrl+Z')
         self.redoAction.setShortcut('Ctrl+Y')
-        self.nextAction.setShortcut(Qt.Key_Right)
-        self.prevAction.setShortcut(Qt.Key_Left)
+
         self.addAction(self.nextAction)
         self.addAction(self.prevAction)
         # Help tips
@@ -3079,6 +3091,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.imgGradLabelsAlphaUpAction = QAction(self)
         # self.imgGradLabelsAlphaUpAction.setVisible(False)
         # self.imgGradLabelsAlphaUpAction.setShortcut('Ctrl+Up')
+        
+        self.MaxProjToggleAction = QAction(self)
+        self.MaxProjToggleAction.triggered.connect(
+            self.maxProjToggleActionTriggered
+        )
+        # hide action
+        self.MaxProjToggleAction.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self.addAction(self.MaxProjToggleAction)
+        # self.MaxProjToggleAction.setVisible(False)
+        self.MaxProjToggleAction.setShortcut('Alt+X')
+        self.widgetsWithShortcut['Toggle max z projection'] = self.MaxProjToggleAction
     
     def gui_updateSwitchColorSchemeActionText(self):
         if self._colorScheme == 'dark':
@@ -7419,6 +7442,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             activeRois.append(getattr(self, 'zoomRectItem', None))
 
         activeRois = [roi for roi in activeRois if self.gui_isActiveInterceptRoi(roi)]
+        
+        # check that no other button was clicked
+        
+        click_shortcut_action = ''
+        if event.button() not in STANDARD_MOUSE_BUTTONS:
+            for name, button in self.mouseBindings.items():
+                if button == event.button():
+                    click_shortcut_action = name
+                    self.mousePressEvent(event)
+                    break
+                    
 
         if any(self.gui_isHoveringRoiHandle(roi) for roi in activeRois):
             event.ignore()
@@ -7676,8 +7710,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             event.ignore()
             return
 
-        isAllowedActionViewer = (canAddPoint or canRuler)
-        
+        isAllowedActionViewer = (
+            canAddPoint 
+            or canRuler
+            or click_shortcut_action == "Previous"
+            or click_shortcut_action == "Next"
+        )
         if mode == 'Viewer' and not isAllowedActionViewer:
             self.startBlinkingModeCB()
             event.ignore()
@@ -15778,6 +15816,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             pos = self.resizeBottomLayoutLine.mapFromGlobal(event.globalPos())
             if pos.y()>=0:
                 self.gui_raiseBottomLayoutContextMenu(event)
+        if event.button() not in STANDARD_MOUSE_BUTTONS:
+            for name, button in self.mouseBindings.items():
+                if not button == event.button():
+                    continue
+                action = self.widgetsWithShortcut[name]
+                success = False
+                if not success:
+                    try:
+                        action.click()
+                        success = True
+                    except:
+                        pass
+                if not success:
+                    try:
+                        action.trigger()
+                        success = True
+                    except:
+                        pass
+                return
         return super().mousePressEvent(event)
         
     def zoomBottomLayoutActionTriggered(self, checked):
@@ -16015,6 +16072,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if ev.key() == Qt.Key_End:
             self.onKeyEnd()
+            
+        for name, key in self.widgetsPersistentShortcut.items():
+            if not key == ev.key():
+                continue
+            action = self.widgetsWithShortcut[name]
+            success = False
+            if not success:
+                try:
+                    action.click()
+                    success = True
+                except:
+                    pass
+            if not success:
+                try:
+                    action.trigger()
+                    success = True
+                except:
+                    pass
+            break
         
         modifiers = ev.modifiers()
         isAltModifier = modifiers == Qt.AltModifier
@@ -21319,7 +21395,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.setOverlayLabelsItems()
             self.drawPointsLayers(computePointsLayers=False)
             self.zSliceScrollBarStartedMoving = False
-            self.highlightSearchedID(self.highlightedID, force=True) 
+            self.highlightSearchedID(self.highlightedID, force=True)
+            
+    def maxProjToggleActionTriggered(self):
+        posData = self.data[self.pos_i]
+        if posData.SizeZ <= 1:
+            return
+        
+        zProjHow_curr = self.zProjComboBox.currentText()
+        if not hasattr(self, 'setMaxProjToggleOld') and zProjHow_curr == 'single z-slice':
+            self.setMaxProjToggleOld = 'max z-projection'
+
+
+        if zProjHow_curr == 'single z-slice':
+            self.zProjComboBox.setCurrentText(self.setMaxProjToggleOld)
+        else:
+            self.setMaxProjToggleOld = zProjHow_curr
+            self.zProjComboBox.setCurrentText('single z-slice')
 
     def zSliceScrollBarReleased(self):
         self.clearTempBrushImage()
@@ -27192,16 +27284,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         shortcuts = {}
         for name, widget in self.widgetsWithShortcut.items():
             if name not in cp.options('keyboard.shortcuts'):
-                if hasattr(widget, 'keyPressShortcut'):
-                    key = widget.keyPressShortcut
-                    shortcut = widgets.KeySequenceFromText(key)
+                if name in self.defaultMouseShortcuts:
+                    button = self.defaultMouseShortcuts[name]
+                    shortcut_text = f'Mouse {button.name}' # for easier finding keep this pattern
+                    self.mouseBindings[name] = button
+                    shortcut = button
                 else:
-                    shortcut = widget.shortcut()
-                shortcut_text = shortcut.toString()
+                    if hasattr(widget, 'keyPressShortcut'):
+                        key = widget.keyPressShortcut
+                        shortcut = widgets.KeySequenceFromText(key)
+                    else:
+                        shortcut = widget.shortcut()
+                    shortcut_text = shortcut.toString()
                 cp['keyboard.shortcuts'][name] = shortcut_text
             else:
                 shortcut_text = cp['keyboard.shortcuts'][name]
-                shortcut = widgets.KeySequenceFromText(shortcut_text)
+                if shortcut_text.startswith('Mouse '):
+                    button_name = shortcut_text.split('Mouse ')[-1]
+                    button = Qt.MouseButton[button_name]
+                    self.mouseBindings[name] = button
+                    shortcut = button
+                else:
+                    shortcut = widgets.KeySequenceFromText(shortcut_text)
             
             shortcuts[name] = (shortcut_text, shortcut)
         self.setShortcuts(shortcuts, save=False)
@@ -27211,7 +27315,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def setShortcuts(self, shortcuts: dict, save=True):
         for name, (text, shortcut) in shortcuts.items():
             widget = self.widgetsWithShortcut[name]
-            if shortcut is None:
+            if shortcut is None or text.startswith('Mouse '):
                 shortcut = QKeySequence()
             if hasattr(widget, 'keyPressShortcut'):
                 widget.keyPressShortcut = shortcut
@@ -27300,12 +27404,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             delObjectKey=delObjKeySequenceText,
             delObjectButton=delObjButtonText,
             zoomOutKeyValue=self.zoomOutKeyValue,
-            parent=self
+            parent=self,
+            mouseBindings=self.mouseBindings,
         )
         win.exec_()
         if win.cancel:
             return
 
+        self.mouseBindings = win.mouseBindings
         self.delObjAction = win.delObjAction
         self.zoomOutKeyValue = win.zoomOutKeyValue
         self.setShortcuts(win.customShortcuts)
