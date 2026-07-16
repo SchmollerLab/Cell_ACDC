@@ -5668,7 +5668,7 @@ class QDialogSelectModel(QDialog):
         if add_save_func:
             saveLayout = QGridLayout()
 
-            saveNameLabel = QLabel('Save selection as (optional):')
+            saveNameLabel = QLabel('Save recipe as (optional):')
             self.saveSelectionNameLineEdit = widgets.alphaNumericLineEdit(
                 onlyWarn=True, formatter=self.formattedSaveSelectionName,
                 ignore_file_ext=f".{recipe_ext}"
