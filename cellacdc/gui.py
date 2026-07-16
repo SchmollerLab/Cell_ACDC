@@ -29585,7 +29585,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             rp = posData.allData_li[frame_i]['regionprops']
 
-        if shift and self.isSegm3D:
+        single_slice_del_in_3D = shift and self.isSegm3D
+
+        if single_slice_del_in_3D:
             lab2D = self.get_2Dlab(lab)
             rp = rp.get_slice_rp(self.zSliceScrollBar.sliderPosition(), 
                                          self.switchPlaneCombobox.depthAxes())
@@ -29607,21 +29609,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             delMask[:] = False
         
-        if shift and self.isSegm3D:
+        if single_slice_del_in_3D:
             delMask2D = self.get_2Dlab(delMask)
 
         for _delID in delID:
             if _delID not in rp.IDs_set:
                 continue
             obj = rp.get_obj_from_ID(_delID)
+            if single_slice_del_in_3D:
+                delMask2D[obj.slice][obj.image] = True
+            else:
             delMask[obj.slice][obj.image] = True
 
-        if shift and self.isSegm3D:
+        if single_slice_del_in_3D:
             lab2D[delMask2D] = 0
         else:
             lab[delMask] = 0
         
-        if shift and self.isSegm3D:
+        if single_slice_del_in_3D:
             self.set_2Dlab(lab2D)
             if delMask2D is not None:
                 self.set_2Dlab(delMask2D, lab3D=delMask)
@@ -29658,21 +29663,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 
                 if lab is not None:
                     # Visited frame
+
+                    # Get the rest of the stored metadata based on the new lab
+                    posData.frame_i = i
+                    self.get_data()
                     lab, _ = self.deleteIDFromLab(
                         lab, delIDs, frame_i=i, delMask=delMask, shift=shift
                     )
                     # Store change
-                    posData.allData_li[i]['labels'] = lab
-                    # Get the rest of the stored metadata based on the new lab
-                    posData.frame_i = i
-                    self.get_data(debug=True)
+                    posData.lab = lab
                     self.update_rp(deletionIDs=delIDs if not local_rp_update else None)
                     self.store_data(autosave=False)
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
                     posData.frame_i = i
                     posData.segm_data[i], _ = self.deleteIDFromLab(
-                        lab, delIDs, frame_i=i, delMask=delMask, shift=shift
+                        posData.segm_data[i], delIDs, frame_i=i, delMask=delMask, shift=shift
                     )
                     self.update_rp(is_unvisited=True, deletionIDs=delIDs if not local_rp_update else None)
 
@@ -30785,7 +30791,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 break
             
             posData.segm_data[i] = posData.allData_li[i]['labels']
+            rp_old = posData.allData_li[i]['regionprops']
             posData.allData_li[i] = myutils.get_empty_stored_data_dict()
+            posData.allData_li[i]['regionprops'] = rp_old
             
             posData.tracked_lost_centroids[i] = set()
             posData.acdcTracker2stepsAnnotInfo.pop(i, None)            
