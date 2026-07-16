@@ -29619,7 +29619,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if single_slice_del_in_3D:
                 delMask2D[obj.slice][obj.image] = True
             else:
-            delMask[obj.slice][obj.image] = True
+                delMask[obj.slice][obj.image] = True
 
         if single_slice_del_in_3D:
             lab2D[delMask2D] = 0

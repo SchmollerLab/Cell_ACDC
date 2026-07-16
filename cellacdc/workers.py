@@ -225,10 +225,14 @@ class SegForLostIDsWorker(QObject):
         """
         self.mutex.lock()
         prev_ack = self._acks[ack_key]
-        signal.emit(*args)
-        while self._acks[ack_key] == prev_ack:
-            self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
+        try:
+            signal.emit(*args)
+            while self._acks[ack_key] == prev_ack:
+                self.waitCond.wait(self.mutex)
+            self.mutex.unlock()
+        except:
+            self.mutex.unlock()
+            raise
 
     def ack(self, ack_key):
         self._acks[ack_key] += 1
@@ -245,7 +249,7 @@ class SegForLostIDsWorker(QObject):
         )
 
     def emitGetSegForLostIDsInputImg(self, image_channel_name):
-        self._emit_and_wait(
+        self._emit_and_wait( # emit and waiting is handled here
             'get_input_img', self.sigGetSegForLostIDsInputImg, image_channel_name
         )
         img = self.inputImgForSegForLostIDs

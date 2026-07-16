@@ -1072,7 +1072,7 @@ class acdcRegionprops:
         self._sync_initialized_proj_rps_via_assignments(active_assignments)
 
     def update_regionprops_via_deletions(
-            self, IDs_to_delete: set[int], lab
+            self, IDs_to_delete: set[int], lab: np.ndarray
     ):
         """If the lab is completely the same, but only some IDs have been deleted
 
@@ -1080,7 +1080,7 @@ class acdcRegionprops:
         ----------
         IDs_to_delete : set[int]
             IDs to delete
-        lab : np.ndarray, optional
+        lab : np.ndarray : np.ndarray
             Updated label image. When provided, regionprops objects are rebound
             to this image so properties such as ``image`` stay consistent after
             the deletion.
