@@ -1042,7 +1042,6 @@ class bioFormatsWorker(QObject):
     
     @worker_exception_handler
     def run(self):
-        raw_src_path = self.raw_src_path
         exp_dst_path = self.exp_dst_path
         
         if self.bioformats_backend == 'python-bioformats':
@@ -1055,6 +1054,11 @@ class bioFormatsWorker(QObject):
         self.isCriticalError = False
         self.useSymLink = False
         for p, filename in enumerate(self.rawFilenames):
+            # Move files to raw_microscopy_files folder
+            raw_src_path = self.move_to_raw_microscopy_files_folder(
+                self.raw_src_path, filename    
+            )
+
             pos_n = p + self.start_pos_n
             if self.rawDataStruct == 0:
                 if not self.overWriteMetadata:
@@ -1110,12 +1114,12 @@ class bioFormatsWorker(QObject):
             else:
                 break
 
-            # Move files to raw_microscopy_files folder
-            self.move_to_raw_microscopy_files_folder(
-                self.raw_src_path, filename    
-            )
-
         if self.rawDataStruct == 2:
+            for filename in self.rawFilenames:
+                raw_src_path = self.move_to_raw_microscopy_files_folder(
+                    self.raw_src_path, filename    
+                )
+
             filename = self.rawFilenames[0]
             if not self.overWriteMetadata:
                 cancel = self.readMetadata(raw_src_path, filename)
@@ -1144,11 +1148,6 @@ class bioFormatsWorker(QObject):
                     self.cancelled = True
                     break
 
-            for filename in self.rawFilenames:
-                self.move_to_raw_microscopy_files_folder(
-                    self.raw_src_path, filename    
-                )
-
         if self.bioformats_backend == 'python-bioformats':
             javabridge.kill_vm()
         self.finished.emit()
@@ -1158,13 +1157,13 @@ class bioFormatsWorker(QObject):
         foldername = os.path.basename(raw_src_path)
         
         if self.cancelled:
-            return
+            return raw_src_path
         
         if foldername == 'raw_microscopy_files':
-            return
+            return raw_src_path
         
         if not self.move_raw_microscopy_files:
-            return
+            return raw_src_path
         
         rawFilePath = os.path.join(self.raw_src_path, filename)
         raw_path = os.path.join(raw_src_path, 'raw_microscopy_files')
@@ -1173,8 +1172,10 @@ class bioFormatsWorker(QObject):
         dst = os.path.join(raw_path, filename)
         try:
             shutil.move(rawFilePath, dst)
+            return raw_path
         except PermissionError as e:
             self.progress.emit(e)
+            return raw_src_path
 
 class createDataStructWin(QMainWindow):
     def __init__(
