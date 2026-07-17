@@ -216,47 +216,62 @@ class SegForLostIDsWorker(QObject):
         self._debug = debug
         self.inputImgForSegForLostIDs = None
         self.assignments = {}
+        self._acks = defaultdict(int)
+
+    def _emit_and_wait(self, ack_key, signal, *args):
+        """Emit a signal and wait until the GUI slot acknowledges it.
+
+        This prevents missed wake-ups when wakeAll() happens before wait().
+        """
+        self.mutex.lock()
+        prev_ack = self._acks[ack_key]
+        try:
+            signal.emit(*args)
+            while self._acks[ack_key] == prev_ack:
+                self.waitCond.wait(self.mutex)
+        finally:
+            self.mutex.unlock()
+
+    def ack(self, ack_key):
+        self._acks[ack_key] += 1
 
     def emitSigAskInit(self):
-        self.mutex.lock()
-        self.sigAskInit.emit()
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
+        self._emit_and_wait('ask_init', self.sigAskInit)
     
     def emitSigStoreData(self, autosave):
-        self.mutex.lock()
-        self.sigStoreData.emit(autosave)
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
+        self._emit_and_wait('store_data', self.sigStoreData, autosave)
     
     def emitSigUpdateRP(self, wl_update, wl_track_og_curr):
-        self.mutex.lock()
-        self.sigUpdateRP.emit(wl_update, wl_track_og_curr)
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
+        self._emit_and_wait(
+            'update_rp', self.sigUpdateRP, wl_update, wl_track_og_curr
+        )
 
     def emitGetSegForLostIDsInputImg(self, image_channel_name):
-        self.mutex.lock()
-        self.sigGetSegForLostIDsInputImg.emit(image_channel_name)
-        self.waitCond.wait(self.mutex)
+        self._emit_and_wait( # emit and waiting is handled here
+            'get_input_img', self.sigGetSegForLostIDsInputImg, image_channel_name
+        )
         img = self.inputImgForSegForLostIDs
         self.inputImgForSegForLostIDs = None
-        self.mutex.unlock()
         return img
         
     def emitSigAskInstallGPU(self, base_model_name, use_gpu):
-        self.mutex.lock()
-        self.sigSegForLostIDsWorkerAskInstallGPU.emit(base_model_name,
-                                                     use_gpu)
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
+        self._emit_and_wait(
+            'ask_install_gpu',
+            self.sigSegForLostIDsWorkerAskInstallGPU,
+            base_model_name,
+            use_gpu,
+        )
     
     def emitTrackManuallyAddedObject(self, IDs, isLost, wl_update, wl_track_og_curr):
         self.assignments = {}
-        self.mutex.lock()
-        self.sigTrackManuallyAddedObject.emit(IDs, isLost, wl_update, wl_track_og_curr)
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
+        self._emit_and_wait(
+            'track_manually_added',
+            self.sigTrackManuallyAddedObject,
+            IDs,
+            isLost,
+            wl_update,
+            wl_track_og_curr,
+        )
         return self.assignments
               
     def pause(self):
@@ -265,10 +280,7 @@ class SegForLostIDsWorker(QObject):
         self.mutex.unlock()
         
     def emitSigImageDebug(self, display_info):
-        self.mutex.lock()
-        self.sigShowImageDebug.emit(display_info)
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
+        self._emit_and_wait('image_debug', self.sigShowImageDebug, display_info)
     
     @worker_exception_handler
     def run(self):
@@ -305,6 +317,9 @@ class SegForLostIDsWorker(QObject):
         # iteratively go through models, keeping found labs and only feeding remaining lost IDs to the next model
         for model_idx, model_settings_i in enumerate(model_settings):
             base_model_name = model_settings_i['base_model_name']
+            # self.logger.info(
+            #     f'[SegForLostIDs] Model {model_idx+1}/{n_models}: {base_model_name}'
+            # )
             init_kwargs_new = dict(model_settings_i['init_kwargs_new'])
             effective_init_kwargs = dict(init_kwargs_new)
             image_channel_name = init_kwargs_new.pop(
@@ -335,6 +350,7 @@ class SegForLostIDsWorker(QObject):
             use_gpu = effective_init_kwargs.get('device_type', 'cpu').lower() != 'cpu'
             use_gpu = use_gpu or effective_init_kwargs.get('use_gpu', False)
 
+            # self.logger.info('[SegForLostIDs] Checking GPU availability...')
             self.emitSigAskInstallGPU(base_model_name, use_gpu)
 
             if not self.gpu_go:
@@ -349,10 +365,11 @@ class SegForLostIDsWorker(QObject):
 
             try:
                 self.logger.info(f'Importing {base_model_name}...')
-                self.mutex.lock()
-                self.sigSegForLostIDsImportModel.emit(base_model_name)
-                self.waitCond.wait(self.mutex)
-                self.mutex.unlock()
+                self._emit_and_wait(
+                    'import_model',
+                    self.sigSegForLostIDsImportModel,
+                    base_model_name,
+                )
                 acdcSegment = myutils.import_segment_module(base_model_name)
             except (IndexError, ImportError, KeyError):
                 self.logger.warning(
@@ -367,6 +384,7 @@ class SegForLostIDsWorker(QObject):
                 return
 
             effective_init_kwargs.pop('image_channel_name', None)
+            # self.logger.info('[SegForLostIDs] Initializing segmentation model...')
             model = myutils.init_segm_model(acdcSegment, posData, effective_init_kwargs)
             if model is None:
                 self.logger.info('Segmentation model was not initialized correctly!')
@@ -381,7 +399,9 @@ class SegForLostIDsWorker(QObject):
                 except Exception:
                     pass
 
+            # self.logger.info('[SegForLostIDs] Fetching input image...')
             curr_img = self.emitGetSegForLostIDsInputImg(image_channel_name)
+            # self.logger.info('[SegForLostIDs] Input image ready.')
             if curr_img is None:
                 self.signals.critical.emit(
                     (self, 'Could not get input image for SegForLostIDsWorker')
@@ -401,6 +421,7 @@ class SegForLostIDsWorker(QObject):
             # 'img_titles': [f'posData.lab ({model_idx}) right before running single_cell_seg']
             #     })
             
+            # self.logger.info('[SegForLostIDs] Running single-cell segmentation...')
             out = segm_utils.single_cell_seg(
                 model, prev_lab, posData.lab, curr_img,
                 missing_IDs, new_unique_ID,
@@ -422,6 +443,7 @@ class SegForLostIDsWorker(QObject):
                 new_lab, assigned_IDs, IDs_bboxs, bboxs, imgs_to_show = out
             else:
                 new_lab, assigned_IDs, IDs_bboxs, bboxs = out
+            # self.logger.info('[SegForLostIDs] single-cell segmentation done.')
 
             bboxs_list.append(bboxs)
             posData.lab = new_lab
@@ -2551,9 +2573,11 @@ class PostProcessSegmWorker(QObject):
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = frame_i
                     mainWin.get_data()
+                    mainWin.update_rp()
                     mainWin.store_data(autosave=False)
                 else:
-                    posData.segm_data[frame_i] = lab
+                    posData.segm_data[frame_i] = processed_lab
+                    mainWin.update_rp(frame_i=frame_i)
 
                 self.signals.progressBar.emit(1)
             

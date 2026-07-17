@@ -267,3 +267,4 @@ dmypy.json
 .pyre/
 uv.lock
 .serena/
+cellacdc/volume_renderer/_demos/
