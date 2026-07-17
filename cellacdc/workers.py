@@ -229,7 +229,6 @@ class SegForLostIDsWorker(QObject):
             signal.emit(*args)
             while self._acks[ack_key] == prev_ack:
                 self.waitCond.wait(self.mutex)
-            self.mutex.unlock()
         finally:
             self.mutex.unlock()
 
@@ -2577,9 +2576,8 @@ class PostProcessSegmWorker(QObject):
                     mainWin.update_rp()
                     mainWin.store_data(autosave=False)
                 else:
-                    posData.frame_i = frame_i
-                    posData.segm_data[frame_i] = lab
-                    mainWin.update_rp(is_unvisited=True)
+                    posData.segm_data[frame_i] = processed_lab
+                    mainWin.update_rp(frame_i=frame_i)
 
                 self.signals.progressBar.emit(1)
             

@@ -502,6 +502,8 @@ Edit tools: Cell cycle analysis
     
     NOTE: When annotating future frames, the other cells will be ignored. 
 
+    Last annotated frame n. = n.a.
+
 Edit tools: Normal division: Lineage tree
 -----------------------------------------
 * **Find mother for a new Cell ID (** |findNextMotherButton| **"F"):** Find mother for a new Cell ID. Right-click on the new cell to find its mother. Repeated right click to cycle through candidates. Shift right click to cycle back.

@@ -14184,6 +14184,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.annotateSingleMothBudPairState['last_cca_frame_i'] = (
                 self.navigateScrollBar.maximum()-1
             )
+            self.annotateSingleMothBudPairState['last_annot_frame_i'] = (
+                -1
+            )
             
             self.warnLostCellsAction.setChecked(False)
             self.annotLostObjsToggle.setChecked(False)
@@ -14223,7 +14226,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.annotateSingleMothBudPairState['doAnnotateLostObjs']
             )
             
-            self.annotateSingleMothBudPairState = {}
+            self.annotateSingleMothBudPairState = {
+                'last_annot_frame_i': 
+                    self.annotateSingleMothBudPairState['last_annot_frame_i'],
+            }
             
             QTimer.singleShot(150, self.autoRange)
 
@@ -16513,9 +16519,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             force=False
         ):
         """
-        This function determines whether there are already visited future frames
-        that contains "modID". If so, it triggers a pop-up asking the user
-        what to do (propagate change to future frames o not)
+        This function determines whether any already visited future frames contain
+        one of the IDs in ``affectedIDs``. If so, it triggers a pop-up asking the
+        user whether to propagate the change to future frames.
         """
         if isinstance(affectedIDs, int):
             affectedIDs = {affectedIDs}
@@ -22250,10 +22256,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             data_frame_i['moth_bud_pairs_cca'] = pd.concat(
                 [stored_moth_bud_pairs_cca, current_moth_bud_pair_cca],
             ).drop_duplicates()
-        
+    
         self.annotateSingleMotherBudPairButton.setStyleSheet(
             f'background-color: {ORANGE_HEX}'
         )
+        last_annot_frame_i = (
+            self.annotateSingleMothBudPairState.get('last_annot_frame_i', -1)
+        )
+        if posData.frame_i > last_annot_frame_i:
+            toolTip = self.annotateSingleMotherBudPairButton.toolTip()
+            toolTip = re.sub(
+                r'Last annotated frame n. = [A-Za-z0-9\.]+',
+                f'Last annotated frame n. = {posData.frame_i+1}',
+                toolTip
+            )
+            self.annotateSingleMotherBudPairButton.setToolTip(toolTip)
+            self.annotateSingleMothBudPairState['last_annot_frame_i'] = (
+                posData.frame_i
+            )
     
     @exception_handler
     def store_data(
@@ -22752,6 +22772,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if moth_bud_pairs_cca is None:
             self.annotateSingleMotherBudPairButton.setStyleSheet(
                 'background-color: none'
+            )
+            self.annotateSingleMothBudPairState['last_annot_frame_i'] = (
+                -1
             )
             return cca_df
 
@@ -24793,14 +24816,59 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self, draw=True, debug=False, # og stuff
             assignments=None, deletionIDs=None, # very quick upates, rp labels are changed but rest is same
             specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
-            is_unvisited=False,
+            frame_i=None,
             wl_update=True, wl_track_og_curr=False, wl_update_lab=False, # wl stuff
         ):
-        """Updates posData.rp
+        """Update regionprops and related GUI/tracking metadata.
+
+        This method supports full updates and optimized updates for specific
+        scenarios (ID assignments, deletions, or local cutout-based refresh).
+        It can operate on the current frame or on a provided frame index.
 
         Parameters
         ----------
-        
+        draw : bool, optional
+            If ``True``, redraw annotations/metadata after updating regionprops.
+            Default is ``True``.
+        debug : bool, optional
+            Reserved debug flag (currently not used directly in this method).
+        assignments : dict, optional
+            Mapping ``{old_ID: new_ID}`` used for fast regionprops updates when
+            relabeling objects.
+        deletionIDs : sequence of int, optional
+            IDs to remove from regionprops using the deletion fast path.
+        specific_IDs : int or sequence of int, optional
+            Restrict updates to these IDs where supported.
+        use_curr_view : bool, optional
+            If ``True``, perform a local update in the currently visible area.
+        use_bbox : bool, optional
+            If ``True``, perform a local update using an automatically computed
+            bounding box around ``specific_IDs``, based on bbox of specific_IDs.
+        preloaded_bbox : tuple or bool, optional
+            Precomputed bbox for local updates. If ``False``, force full update.
+            If ``None``, bbox is computed when local update mode is active.
+            Can be calculated using update_rp_get_bbox
+        frame_i : int, optional
+            Frame index to update. If ``None``, use the current frame.
+        wl_update : bool, optional
+            If ``True``, update the tracking whitelist after regionprops update.
+        wl_track_og_curr : bool, optional
+            Forwarded to :meth:`whitelistPropagateIDs` as ``track_og_curr``.
+            If not deleted lab should be tracked against curr
+        wl_update_lab : bool, optional
+            Forwarded to :meth:`whitelistPropagateIDs` as ``update_lab``.
+
+        Raises
+        ------
+        ValueError
+            If mutually exclusive update modes are requested together:
+            ``use_curr_view`` and ``use_bbox`` both ``True``, or more than one
+            of ``assignments``, ``deletionIDs``, and local-update mode provided.
+
+        Notes
+        -----
+        Updates ``posData.IDs`` when operating on the current frame and, when
+        enabled, propagates whitelist additions/removals for tracking.
         """
         #updating rp is very clostly, as it deletes all the cashed
         if use_curr_view and use_bbox:
@@ -24809,21 +24877,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         local_rp_update = bool(use_curr_view or use_bbox or preloaded_bbox)
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
-        if wl_update:
-            if self.whitelistOriginalIDs is None:
-                old_IDs = (posData.allData_li[posData.frame_i]['regionprops'].IDs.copy()
-                if posData.allData_li[posData.frame_i]['regionprops'] is not None
-                else set()
-                )
-            else:
-                old_IDs = self.whitelistOriginalIDs.copy()
-                self.whitelistOriginalIDs = None
-        elif self.whitelistOriginalIDs is None:
-            self.whitelist_old_IDs = (
-                posData.allData_li[posData.frame_i]['regionprops'].IDs.copy()
-            if posData.allData_li[posData.frame_i]['regionprops'] is not None
-            else set()
-            )
         
         # check if only one of assignments, deletionIDs or only_current_view is given
         if sum([assignments is not None, 
@@ -24843,52 +24896,85 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         elif specific_IDs is not None and len(specific_IDs) == 0:
             specific_IDs = None
 
-        if is_unvisited:
-            curr_lab = posData.segm_data[posData.frame_i]
-        elif posData.lab is None:
-            curr_lab = posData.allData_li[posData.frame_i]['labels']
-        else:
-            curr_lab = posData.lab
+        curr_frame = posData.frame_i
+        if frame_i is None:
+            frame_i = curr_frame
 
-        if posData.rp is None:
-            printl(f'''Warning: posData.rp is None for pos {self.pos_i}, 
-                   frame {posData.frame_i}. Recomputing rp from labels.''')
+        lab = None
+        rp = None
+        on_curr_frame = False
+        unvisited = False
+        if curr_frame == frame_i:
+            lab = posData.lab
+            rp = posData.rp
+            on_curr_frame = True
+
+        if lab is None:
+            lab = posData.allData_li[frame_i]['labels']
+
+        if lab is None:
+            unvisited = True
+            lab = posData.segm_data[frame_i]
+
+        if rp is None:
+            rp = posData.allData_li[frame_i]['regionprops']
+
+        if rp is None:
+            printl(f'''Warning: rp is None for pos {self.pos_i}, 
+                   frame {frame_i}, Recomputing rp from labels.''')
             
-            posData.rp = self._acdcRegionProps(
-                curr_lab, precache_centroids=False
+            rp = self._acdcRegionProps(
+                lab, precache_centroids=False
             )
+        
+        if wl_update and not unvisited:
+            if self.whitelistOriginalIDs is None:
+                old_IDs = rp.IDs.copy()
+            else:
+                old_IDs = self.whitelistOriginalIDs.copy()
+                self.whitelistOriginalIDs = None
+        elif self.whitelistOriginalIDs is None:
+            self.whitelist_old_IDs = rp.IDs.copy()
         
         if assignments is not None:
             # {old_ID: new_ID, ...}
-            posData.rp.update_regionprops_via_assignments(assignments, curr_lab)
+            rp.update_regionprops_via_assignments(assignments, lab)
         elif deletionIDs is not None:
             # (delID1, delID2, ...)
-            posData.rp.update_regionprops_via_deletions(deletionIDs, curr_lab)
+            rp.update_regionprops_via_deletions(deletionIDs, lab)
         elif local_rp_update:
             # first get current view
             if preloaded_bbox is None:
-                preloaded_bbox = self.update_rp_get_bbox(use_bbox=use_bbox, use_curr_view=use_curr_view,
-                                       specific_IDs=specific_IDs)
+                preloaded_bbox = self.update_rp_get_bbox(use_bbox=use_bbox, 
+                                                         use_curr_view=use_curr_view,
+                                                         specific_IDs=specific_IDs)
             if preloaded_bbox is not False:
-                posData.rp.update_regionprops_via_cutout(
-                    curr_lab, cutout_bbox=preloaded_bbox, specific_IDs=specific_IDs
+                rp.update_regionprops_via_cutout(
+                    lab, cutout_bbox=preloaded_bbox, specific_IDs=specific_IDs
                 )
                 # if ID touches border but is not in specific_IDs, it will not be updated,
                 # so be careful!
             else:
-                posData.rp.update_regionprops(
-                    curr_lab
+                rp.update_regionprops(
+                    lab
                 )
         else:
-            posData.rp.update_regionprops(
-                curr_lab,
+            rp.update_regionprops(
+                lab,
                 specific_IDs_update_centroids=specific_IDs if preloaded_bbox is not False else None, # since sometimes I preload
             )
-        posData.IDs = posData.rp.IDs
-        
-        self.update_rp_metadata(draw=draw)        
 
-        if not wl_update:
+        if on_curr_frame:
+            posData.rp = rp
+        else:
+            posData.allData_li[frame_i]['regionprops'] = rp
+            
+        if on_curr_frame:
+            posData.IDs = rp.IDs
+        
+        self.update_rp_metadata(draw=draw, frame_i = frame_i)        
+
+        if not (wl_update and not unvisited):
             return
 
         # Update tracking whitelist
@@ -24896,7 +24982,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             accepted_lost_centroids = set()
         else:
             accepted_lost_centroids = self.getTrackedLostIDs()
-        new_IDs = posData.IDs
+        new_IDs = rp.IDs
         added_IDs = set(new_IDs) - set(old_IDs)
         removed_IDs = (
             set(old_IDs) 
@@ -24908,7 +24994,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             IDs_to_add=added_IDs, IDs_to_remove=removed_IDs,
             curr_frame_only=True, IDs_curr=new_IDs,
             track_og_curr=wl_track_og_curr,
-            curr_lab=curr_lab, curr_rp=posData.rp,
+            curr_lab=lab, curr_rp=rp,
             update_lab=wl_update_lab
         )
 
@@ -25183,7 +25269,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     )
                     keepLab = self._keepObjects(lab=lab, rp=rp)
                     posData.segm_data[i] = keepLab
-                    self.update_rp(is_unvisited=True)
+                    self.update_rp(frame_i=i)
                 
                 pbar.update()
             pbar.close()
@@ -25238,10 +25324,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.img2.setLookupTable(lut)
 
     # @exec_time
-    def update_rp_metadata(self, draw=True):
+    def update_rp_metadata(self, draw=True, frame_i=None):
         posData = self.data[self.pos_i]
         # Add to rp dynamic metadata (e.g. cells annotated as dead)
-        for i, obj in enumerate(posData.rp):
+        if frame_i is None:
+            frame_i = posData.frame_i
+
+        if frame_i == posData.frame_i:
+            rp = posData.rp
+        else:
+            rp = posData.allData_li[frame_i]['regionprops']
+        
+        if rp is None:
+            return
+
+        for i, obj in enumerate(rp):
             ID = obj.label
             obj.excluded = ID in posData.binnedIDs
             obj.dead = ID in posData.ripIDs
@@ -29798,7 +29895,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             rp = posData.rp
         else:
             rp = posData.allData_li[frame_i]['regionprops']
-
+        if rp is None:
+            rp = self._acdcRegionProps(lab, precache_centroids=False)
         single_slice_del_in_3D = shift and self.isSegm3D
 
         if single_slice_del_in_3D:
@@ -29890,11 +29988,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.store_data(autosave=False)
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
-                    posData.frame_i = i
                     posData.segm_data[i], _ = self.deleteIDFromLab(
                         posData.segm_data[i], delIDs, frame_i=i, delMask=delMask, shift=shift
                     )
-                    self.update_rp(is_unvisited=True, deletionIDs=delIDs if not local_rp_update else None)
+                    self.update_rp(frame_i=i, deletionIDs=delIDs if not local_rp_update else None)
 
         # Back to current frame
         if applyFutFrames:
@@ -33525,6 +33622,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return True
         
         last_cca_frame_i = self.navigateScrollBar.maximum()-1
+        last_moth_bud_pair_frame_i = (
+            self.annotateSingleMothBudPairState.get('last_annot_frame_i', -1)
+        )
+
+        if last_moth_bud_pair_frame_i > last_cca_frame_i:
+            last_cca_frame_i = last_moth_bud_pair_frame_i
+            
         # Ask to save last visited frame or not
         txt = html_utils.paragraph(f"""
             You annotated the cell cycle stages up 
