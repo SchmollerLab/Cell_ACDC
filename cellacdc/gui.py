@@ -24780,7 +24780,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if on_curr_frame:
             posData.IDs = rp.IDs
         
-        self.update_rp_metadata(draw=draw)        
+        self.update_rp_metadata(draw=draw, frame_i = frame_i)        
 
         if not (wl_update and not unvisited):
             return
@@ -25132,10 +25132,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.img2.setLookupTable(lut)
 
     # @exec_time
-    def update_rp_metadata(self, draw=True):
+    def update_rp_metadata(self, draw=True, frame_i=None):
         posData = self.data[self.pos_i]
         # Add to rp dynamic metadata (e.g. cells annotated as dead)
-        for i, obj in enumerate(posData.rp):
+        if frame_i is None:
+            frame_i = posData.frame_i
+
+        if frame_i == posData.frame_i:
+            rp = posData.rp
+        else:
+            rp = posData.allData_li[frame_i]['regionprops']
+        
+        if rp is None:
+            return
+
+        for i, obj in enumerate(rp):
             ID = obj.label
             obj.excluded = ID in posData.binnedIDs
             obj.dead = ID in posData.ripIDs
@@ -29641,7 +29652,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             rp = posData.rp
         else:
             rp = posData.allData_li[frame_i]['regionprops']
-
+        if rp is None:
+            rp = self._acdcRegionProps(lab, precache_centroids=False)
         single_slice_del_in_3D = shift and self.isSegm3D
 
         if single_slice_del_in_3D:
