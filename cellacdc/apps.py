@@ -52,7 +52,8 @@ pg.setConfigOption('imageAxisOrder', 'row-major')
 from qtpy import QtCore
 from qtpy.QtGui import (
     QIcon, QFontMetrics, QKeySequence, QFont, QRegularExpressionValidator, 
-    QCursor, QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor
+    QCursor, QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor,
+    QTextDocument
 )
 from qtpy.QtCore import (
     Qt, QSize, QEvent, Signal, QEventLoop, QTimer, QRegularExpression
@@ -14633,10 +14634,18 @@ class ShortcutEditorDialog(QBaseDialog):
             zoomOutKeyValue: int=None,
             parent=None,
             mouseBindings: dict=None,
-            widgetsPercistantShortcuts: dict=None
+            hard_shortcuts: dict=None
         ):
         self.cancel = True
         super().__init__(parent)
+
+        
+        # convert hard_shortcuts keys using widgets.KeySequenceFromText and to_string
+        self.new_hard_shortcuts = {}
+        for shortcut, name in hard_shortcuts.items():
+            shortcut = widgets.KeySequenceFromText(shortcut)
+            shortcut_str = shortcut.toString()
+            self.new_hard_shortcuts[name] = shortcut_str
 
         self.setWindowTitle('Customize keyboard shortcuts')
 
@@ -14650,7 +14659,20 @@ class ShortcutEditorDialog(QBaseDialog):
         scrollAreaWidget = QWidget()
         entriesLayout = QGridLayout()
         
+        conflict_prefix = 'Conflict with '
+        all_names = list(widgetsWithShortcut.keys()) + list(self.new_hard_shortcuts.keys())
+        longest_name = max(all_names, key=len)
+        self.conflict_text_formatter = lambda name: f'<font color="red">{conflict_prefix}{name}</font>'
+        longest_conflict_text = self.conflict_text_formatter(longest_name)
+
+        doc = QTextDocument()
+        warnConflictLabel = QLabel(longest_conflict_text)
+        doc.setDefaultFont(warnConflictLabel.font())
+        doc.setHtml(longest_conflict_text)
+        max_warn_width = int(doc.idealWidth() + 10)
+        
         row = 0
+        name = 'Delete object'
         button = widgets.PushButton(self, flat=True)
         button.setIcon(QIcon(":del_obj_click.svg"))
         self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
@@ -14668,6 +14690,10 @@ class ShortcutEditorDialog(QBaseDialog):
         entriesLayout.addWidget(
             self.delObjButtonCombobox, row, 3, alignment=Qt.AlignLeft
         )
+        warnConflictLabel = QLabel('')
+        self.delObjShortcutLineEdit.warnConflictLabel = warnConflictLabel
+        entriesLayout.addWidget(warnConflictLabel, row, 4)
+        warnConflictLabel.setMinimumWidth(max_warn_width)
         
         row += 1
         name = 'Zoom out'
@@ -14685,9 +14711,14 @@ class ShortcutEditorDialog(QBaseDialog):
         entriesLayout.addWidget(label, row, 1)
         entriesLayout.addWidget(self.zoomShortcutLineEdit, row, 2)
         self.shortcutLineEdits[name] = self.zoomShortcutLineEdit
+        warnConflictLabel = QLabel('')
+        self.zoomShortcutLineEdit.warnConflictLabel = warnConflictLabel
+        entriesLayout.addWidget(warnConflictLabel, row, 4)
+        warnConflictLabel.setMinimumWidth(max_warn_width)
         
         row += 1
         
+        # sort dicitonaries
         keep_at_beginning = ['Next', 'Previous']
 
         grouped_keys = {
@@ -14696,30 +14727,18 @@ class ShortcutEditorDialog(QBaseDialog):
             '(lineage tree)': [],
         }
 
+        widgetsWithShortcut = self._groupAndSortShortcuts(
+            widgetsWithShortcut, keep_at_beginning, grouped_keys
+        )
+
         grouped_keys = {
             'keep_at_beginning': [],
             'other': [],
-            '(lineage tree)': [],
         }
-
-        for key in widgetsWithShortcut.keys():
-            if key in keep_at_beginning:
-                grouped_keys['keep_at_beginning'].append(key)
-            elif '(lineage tree)' in key:
-                grouped_keys['(lineage tree)'].append(key)
-            else:
-                grouped_keys['other'].append(key)
-
-        widgetsWithShortcut_sorted = {}
-        for group, group_list in grouped_keys.items():
-            sorted_keys = natsorted(group_list)
-            widgetsWithShortcut_sorted.update({
-                k: widgetsWithShortcut[k]
-                for k in sorted_keys
-            })
-
-        widgetsWithShortcut = widgetsWithShortcut_sorted
-
+        self.new_hard_shortcuts = self._groupAndSortShortcuts(
+            self.new_hard_shortcuts, keep_at_beginning, grouped_keys
+        )
+            
         for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=row):
             button = widgets.PushButton(self, flat=True)
             try:
@@ -14765,11 +14784,25 @@ class ShortcutEditorDialog(QBaseDialog):
             entriesLayout.addWidget(label, row, 1)
             entriesLayout.addWidget(shortcutLineEdit, row, 2)
             self.shortcutLineEdits[name] = shortcutLineEdit
+            
+            warnConflictLabel = QLabel('')
+            self.shortcutLineEdits[name].warnConflictLabel = warnConflictLabel
+            entriesLayout.addWidget(warnConflictLabel, row, 4)
+            warnConflictLabel.setMinimumWidth(max_warn_width)
+            
+        for row, (name, shortcut) in enumerate(self.new_hard_shortcuts.items(), start=row):
+            button = widgets.PushButton(self, flat=True)
+            label = QLabel(f'{name}:')
+            lineEditTxt = QLabel(shortcut)
+            entriesLayout.addWidget(button, row, 0)
+            entriesLayout.addWidget(label, row, 1)
+            entriesLayout.addWidget(lineEditTxt, row, 2)
         
         entriesLayout.setColumnStretch(0, 0)
         entriesLayout.setColumnStretch(1, 0)
         entriesLayout.setColumnStretch(2, 1)
         entriesLayout.setColumnStretch(3, 0)
+        entriesLayout.setColumnStretch(4, 0)
 
         scrollAreaWidget.setLayout(entriesLayout)
         scrollArea.setWidget(scrollAreaWidget)
@@ -14784,6 +14817,29 @@ class ShortcutEditorDialog(QBaseDialog):
 
         self.setFont(fonts.font)
         self.setLayout(mainLayout)
+
+    def _groupAndSortShortcuts(self, shortcuts_dict, keep_at_beginning, grouped_keys):
+        for key in shortcuts_dict.keys():
+            found = False
+            if key in keep_at_beginning:
+                grouped_keys['keep_at_beginning'].append(key)
+            else:
+                for group_key in grouped_keys.keys():
+                    if group_key in key:
+                        grouped_keys[group_key].append(key)
+                        found = True
+                        break
+                if not found:
+                    grouped_keys['other'].append(key)
+
+        widgetsWithShortcut_sorted = {}
+        for group, group_list in grouped_keys.items():
+            sorted_keys = natsorted(group_list)
+            widgetsWithShortcut_sorted.update({
+                k: shortcuts_dict[k]
+                for k in sorted_keys
+            })
+        return widgetsWithShortcut_sorted
         
     def setShortcutLineEditEventFilter(self):
         sender = self.sender()
@@ -14818,12 +14874,35 @@ class ShortcutEditorDialog(QBaseDialog):
     def checkDuplicateShortcuts(self, text, sender=None):
         if sender is None:
             sender = self.sender()
+            
+        warnConflictLabel = getattr(sender, 'warnConflictLabel', None)
+        if warnConflictLabel is not None:
+            warnConflictLabel.setText('')
+            
+        if text == '':
+            return
+            
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
             if shortcutLineEdit == sender:
                 continue
             if shortcutLineEdit.text() != text:
                 continue
             shortcutLineEdit.setText('')
+            warnConflictLabel = getattr(shortcutLineEdit, 'warnConflictLabel', None)
+            if warnConflictLabel is not None:
+                warnConflictLabel.setText(
+                    self.conflict_text_formatter(name)
+                )
+            break
+        for name, shortcut_txt in self.new_hard_shortcuts.items():
+            if shortcut_txt == text:
+                sender.setText('')
+                warnConflictLabel = getattr(sender, 'warnConflictLabel', None)
+                if warnConflictLabel is not None:
+                    warnConflictLabel.setText(
+                        self.conflict_text_formatter(name)
+                    )
+                break
     
     def warnInvalidKeySequenceDelObjWithLeftClick(self):
         txt = html_utils.paragraph(

@@ -123,6 +123,36 @@ RP_OPT_PERC_CUTOUT_MAX = 0.3 # th for trying to do local updates to regionprops,
 custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
 shortcut_filepath = os.path.join(settings_folderpath, 'shortcuts.ini')
 
+# Hard-coded shortcuts that are reserved for non-customizable actions.
+FORBIDDEN_SHORTCUTS = {
+    'Ctrl+Shift+N': 'New Window',
+    'Ctrl+N': 'New Segmentation File',
+    'Ctrl+O': 'Load Folder',
+    'Shift+P': 'Load Different Position',
+    'Ctrl+Shift+S': 'Save as',
+    'Ctrl+Shift+V': 'Export to Video',
+    'Ctrl+Shift+I': 'Export to Image',
+    'Ctrl+Alt+S': 'Save',
+    'Ctrl+S': 'Save Only Segmentation Masks',
+    'Ctrl+Z': 'Undo',
+    'Ctrl+Y': 'Redo',
+    'Ctrl+Shift+A': 'Autopilot',
+    'Ctrl+F': 'Find ID',
+    'Ctrl+T': 'Track current frame with real-time tracker',
+    'Alt+Shift+T': 'Track multiple frames with selected tracker',
+    'Ctrl+K': 'Customize keyboard shortcuts',
+    'Ctrl+M': 'Show mirrored cursor on images',
+    'Ctrl+Shift+P': 'Edit cell cycle annotations',
+    'Ctrl+P': 'View cell cycle annotations',
+    'Shift+S': 'Randomly shuffle colormap',
+    'Alt+Shift+S': 'Greedily shuffle colormap',
+    'Alt+Shift+P': 'Pre-processing',
+    'Alt+Shift+C': 'Combine channels and segmentation files',
+    'Ctrl+L': 'Relabel IDs sequentially',
+    'Left': 'Go to previous frame',
+    'Right': 'Go to next frame',
+}
+
 _font = QFont()
 _font.setPixelSize(11)
 
@@ -27406,6 +27436,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             zoomOutKeyValue=self.zoomOutKeyValue,
             parent=self,
             mouseBindings=self.mouseBindings,
+            hard_shortcuts=FORBIDDEN_SHORTCUTS
         )
         win.exec_()
         if win.cancel:
