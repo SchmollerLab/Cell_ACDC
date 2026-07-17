@@ -302,17 +302,29 @@ class tracker:
             )
         
         assignments_step_2 = dict(zip(IDs_to_track, tracked_IDs_2nd_step))
-        for current_ID, tracked_ID in list(assignments_step_1.items()):
-            final_tracked_ID = assignments_step_2.get(tracked_ID)
-            if final_tracked_ID is not None:
-                assignments_step_1[current_ID] = final_tracked_ID
+        # Compose mappings only for IDs that exist in the current frame.
+        # This avoids leaking intermediate IDs introduced at step 1
+        # into the returned assignments dictionary.
+        current_frame_IDs = {obj.label for obj in curr_rp}
+        if specific_IDs is not None:
+            current_frame_IDs.intersection_update(specific_IDs)
 
-        for current_ID, tracked_ID in assignments_step_2.items():
-            assignments_step_1.setdefault(current_ID, tracked_ID)
+        merged_assignments = {}
+        for current_ID in current_frame_IDs:
+            tracked_ID = assignments_step_1.get(current_ID, current_ID)
+
+            # Follow second-step remaps transitively and guard against loops.
+            visited = set()
+            while tracked_ID in assignments_step_2 and tracked_ID not in visited:
+                visited.add(tracked_ID)
+                tracked_ID = assignments_step_2[tracked_ID]
+
+            if tracked_ID != current_ID:
+                merged_assignments[current_ID] = tracked_ID
 
         return _format_tracking_result(
             tracked_lab_2nd_step,
-            assignments_step_1,
+            merged_assignments,
             to_track_tracked_objs_2nd_step,
             return_assignments,
             dont_return_tracked_lab,

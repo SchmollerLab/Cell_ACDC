@@ -1461,6 +1461,47 @@ class EditPointsLayerAppearanceDialog(QBaseDialog):
         self.keySequence = shortcutWidget.widget.keySequence
         self.close()
 
+
+class FilenameEntryFormatter:
+    @staticmethod
+    def format_entry_text(text: str) -> str:
+        text = to_alphanumeric(text or '')
+        text = text.replace(' ', '_')
+        return text.replace('.', '_')
+
+    @staticmethod
+    def build_filename_preview(basename: str, text: str, ext: str) -> str:
+        if not text:
+            return f'{basename}{ext}'
+
+        text = text.replace(' ', '_')
+        if basename:
+            if basename.endswith('_'):
+                return f'{basename}{text}{ext}'
+            return f'{basename}_{text}{ext}'
+
+        return f'{text}{ext}'
+
+    @staticmethod
+    def invalid_chars_warning_text(characters: set[str]) -> str:
+        statement = 'is <b>not a valid</b> character'
+        if len(characters) > 1:
+            statement = 'are <b>not valid</b> characters'
+
+        characters_str = ''.join(characters)
+        characters_str = html.escape(characters_str)
+        warning_text = html_utils.span(f"""
+            WARNING: "<code>{characters_str}</code>" {statement}.<br>
+        """)
+        return (
+            f'{warning_text}'
+            '<i>Valid characters are letters, numbers, underscore, and dash.</i>'
+        )
+
+    @staticmethod
+    def is_valid_name(name: str) -> bool:
+        return bool(name) and is_alphanumeric_filename(name)
+
 class filenameDialog(QDialog):
     def __init__(
             self, ext='.npz', basename='', title='Insert file name',
@@ -1518,8 +1559,7 @@ class filenameDialog(QDialog):
 
         self.lineEdit = widgets.alphaNumericLineEdit(onlyWarn=True)
         self.lineEdit.setAlignment(Qt.AlignCenter)
-        defaultEntry = to_alphanumeric(defaultEntry)
-        defaultEntry = defaultEntry.replace('.', '_')
+        defaultEntry = FilenameEntryFormatter.format_entry_text(defaultEntry)
         self.lineEdit.setText(defaultEntry)
 
         extLabel = QLabel(ext)
@@ -1612,18 +1652,8 @@ class filenameDialog(QDialog):
         return self.lineEdit.text()
     
     def warnInvalidCharactersEntered(self, characters: set[str]):
-        statement = 'is <b>not a valid</b> character'
-        if len(characters) > 1:
-            statement = 'are <b>not valid</b> characters'
-            
-        characters_str = ''.join(characters)
-        characters_str = html.escape(characters_str)
-        warning_text = html_utils.span(f"""
-            WARNING: "<code>{characters_str}</code>" {statement}.<br> 
-        """)
-        warning_text = (
-            f'{warning_text}'
-            '<i>Valid characters are letters, numbers, underscore, and dash.</i>'
+        warning_text = FilenameEntryFormatter.invalid_chars_warning_text(
+            characters
         )
         self.warningInvalidCharLabel.setText(warning_text)
 
@@ -1651,18 +1681,12 @@ class filenameDialog(QDialog):
     def updateFilename(self, text):
         if self.lineEdit.invalidCharacters():
             return
-        
-        if not text:
-            self.filenameLabel.setText(f'{self.basename}{self.ext}')
-        else:
-            text = text.replace(' ', '_')
-            if self.basename:
-                if self.basename.endswith('_'):
-                    self.filenameLabel.setText(f'{self.basename}{text}{self.ext}')
-                else:
-                    self.filenameLabel.setText(f'{self.basename}_{text}{self.ext}')
-            else:
-                self.filenameLabel.setText(f'{text}{self.ext}')
+
+        self.filenameLabel.setText(
+            FilenameEntryFormatter.build_filename_preview(
+                self.basename, text, self.ext
+            )
+        )
         
         self.warningInvalidCharLabel.setText('')
 
@@ -5576,14 +5600,28 @@ class QDialogSelectModel(QDialog):
             allowMultiSelection=False, lastSelection=None,
             addSelectLastSelectionButton=False,
             addSelectLastRecipeButton=False,
+            addSelectSavedRecipeButton=False,
+            add_save_func=False,
+            recipes_path='',
+            recipe_prefix='',
+            recipe_ext_label=None,
+            recipe_ext=None,
             custom_title=None,
             info_label='',
         ):
         self.cancel = True
         self.loadLastRecipe = False
+        self.loadSavedRecipe = False
+        self.selectedRecipeFilepath = None
+        self.selectionSaveName = ''
+        self.selectionSaveNameFormatted = ''
         super().__init__(parent)
         self.setWindowTitle('Select model')
         self.info_label = info_label
+        self.recipes_path = recipes_path
+        self.recipe_prefix = recipe_prefix
+        self.recipe_ext_label = recipe_ext_label
+        self.recipe_ext = recipe_ext
 
         self.allowMultiSelection = allowMultiSelection
         self.lastSelection = []
@@ -5626,6 +5664,36 @@ class QDialogSelectModel(QDialog):
         self.listBox = self.modelSelector.listBox
         mainLayout.addWidget(self.modelSelector)
 
+        self.add_save_func = add_save_func
+        if add_save_func:
+            saveLayout = QGridLayout()
+
+            saveNameLabel = QLabel('Save recipe as (optional):')
+            self.saveSelectionNameLineEdit = widgets.alphaNumericLineEdit(
+                onlyWarn=True, formatter=self.formattedSaveSelectionName,
+                ignore_file_ext=f".{recipe_ext}"
+            )
+            self.saveSelectionNameLineEdit.setAlignment(Qt.AlignCenter)
+            self.saveSelectionNameLineEdit.textChanged.connect(
+                self.updateSaveSelectionPreview
+            )
+            self.saveSelectionNameLineEdit.sigInvalidCharactersEntered.connect(
+                self.warnInvalidSaveNameChars
+            )
+
+            self.saveSelectionPreviewLabel = QLabel('')
+            self.saveSelectionPreviewLabel.setTextFormat(Qt.RichText)
+            self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px;')
+
+            saveLayout.addWidget(saveNameLabel, 0, 0)
+            saveLayout.addWidget(self.saveSelectionNameLineEdit, 0, 1)
+            saveLayout.addWidget(self.saveSelectionPreviewLabel, 1, 0, 1, 2)
+            saveLayout.setColumnStretch(1, 1)
+
+            mainLayout.addSpacing(6)
+            mainLayout.addLayout(saveLayout)
+            self.updateSaveSelectionPreview('')
+
         if not allowMultiSelection:
             self.listBox.itemDoubleClicked.connect(self.ok_cb)
 
@@ -5641,16 +5709,22 @@ class QDialogSelectModel(QDialog):
             skipSegmButton = widgets.SkipPushButton('Skip segmentation')
             bottomLayout.addWidget(skipSegmButton)
             skipSegmButton.clicked.connect(self.skipSegm)
-        if addSelectLastSelectionButton and allowMultiSelection:
+        if addSelectLastSelectionButton:
             selectLastSelButton = widgets.reloadPushButton('Load last selection...')
             selectLastSelButton.clicked.connect(self.selectLastSelection)
             selectLastSelButton.setEnabled(bool(self.lastSelection))
             bottomLayout.addWidget(selectLastSelButton)
-        if addSelectLastRecipeButton and allowMultiSelection:
+        if addSelectLastRecipeButton:
             selectLastRecipeButton = widgets.reloadPushButton('Load last recipe...')
             selectLastRecipeButton.clicked.connect(self.selectLastRecipe)
             selectLastRecipeButton.setEnabled(bool(self.lastSelection))
             bottomLayout.addWidget(selectLastRecipeButton)
+        if addSelectSavedRecipeButton:
+            selectSavedRecipeButton = widgets.OpenFilePushButton(
+                'Choose from saved recipes...'
+            )
+            selectSavedRecipeButton.clicked.connect(self.selectSavedRecipe)
+            bottomLayout.addWidget(selectSavedRecipeButton)
         if allowMultiSelection:
             addCustomModelButton = widgets.addPushButton('Add custom model...')
             addCustomModelButton.clicked.connect(self.addCustomModel)
@@ -5690,6 +5764,102 @@ class QDialogSelectModel(QDialog):
         self.cancel = False
         self.loadLastRecipe = True
         self.selectedModel = self.lastSelection.copy()
+        self.close()
+
+    def recipeIniFileSelected(
+            self, ini_filepath, selectRecipeWin=None, sender=None
+        ):
+        selectRecipeWin.clickedButton = sender
+        selectRecipeWin.selectedIniFilepath = ini_filepath
+        selectRecipeWin.cancel = False
+        selectRecipeWin.close()
+
+    def selectRecipeFilepath(self, recipes_path, recipe_prefix, ext_label, ext):
+        availableRecipes = []
+        displayNameToFilenameMapper = {}
+        ext = ext.lstrip('.')
+        if os.path.exists(recipes_path):
+            for file in myutils.listdir(recipes_path):
+                if not file.startswith(recipe_prefix):
+                    continue
+
+                if not file.lower().endswith(f'.{ext.lower()}'):
+                    continue
+
+                parts = file.split(f'{recipe_prefix}_', 1)
+                if len(parts) != 2:
+                    continue
+
+                endname = parts[1]
+                filepath = os.path.join(recipes_path, file)
+                modified_on = datetime.datetime.fromtimestamp(
+                    os.path.getmtime(filepath)
+                ).strftime(r'%Y/%m/%d %H:%M')
+                availableRecipes.append((endname, modified_on))
+                displayNameToFilenameMapper[endname] = file
+
+        if not availableRecipes:
+            import qtpy.compat
+            filepath = qtpy.compat.getopenfilename(
+                parent=self,
+                caption=f'Select {ext_label} file to load recipe',
+                filters=f'{ext_label} (*.{ext});;All Files (*)'
+            )[0]
+            return filepath or None
+
+        browseButton = widgets.browseFileButton(
+            f'Select {ext_label} file...',
+            title=f'Select {ext_label} file to load recipe',
+            openFolder=False,
+            start_dir=myutils.getMostRecentPath(),
+            ext={ext_label: f'.{ext}'}
+        )
+        selectRecipeWin = QTreeDialog(
+            availableRecipes,
+            headerLabels=['Name', 'Date Modified'],
+            title='Select recipe',
+            infoText='Select recipe to load:<br>',
+            parent=self,
+            path_to_browse=recipes_path,
+            additional_buttons=(browseButton,)
+        )
+        browseButton.sigPathSelected.connect(
+            partial(
+                self.recipeIniFileSelected,
+                selectRecipeWin=selectRecipeWin,
+                sender=browseButton
+            )
+        )
+        selectRecipeWin.exec_()
+        if selectRecipeWin.cancel:
+            return None
+
+        if selectRecipeWin.clickedButton == browseButton:
+            return selectRecipeWin.selectedIniFilepath
+
+        selected_endname = selectRecipeWin.selectedText
+        filename = displayNameToFilenameMapper.get(selected_endname)
+        if filename is None:
+            return None
+
+        return os.path.join(recipes_path, filename)
+
+    def selectSavedRecipe(self):
+        if not self.recipes_path:
+            return
+
+        filepath = self.selectRecipeFilepath(
+            self.recipes_path,
+            self.recipe_prefix,
+            self.recipe_ext_label,
+            self.recipe_ext,
+        )
+        if filepath is None:
+            return
+
+        self.cancel = False
+        self.loadSavedRecipe = True
+        self.selectedRecipeFilepath = filepath
         self.close()
 
     def _runAddCustomModelWorkflow(self):
@@ -5761,8 +5931,115 @@ class QDialogSelectModel(QDialog):
 
         return modelOrderView.items()
 
+    def saveSelectionName(self):
+        if not self.add_save_func:
+            return ''
+
+        return self.saveSelectionNameLineEdit.text().strip()
+
+    def formattedSaveSelectionName(self, raw_name=None):
+        if raw_name is None:
+            raw_name = self.saveSelectionName()
+        if not raw_name:
+            return ''
+
+        formatted = FilenameEntryFormatter.format_entry_text(raw_name)
+        formatted = self.recipe_prefix + "_" + formatted + f".{self.recipe_ext}"
+        return formatted
+
+    def warnInvalidSaveNameChars(self, characters: set[str]):
+        if not self.add_save_func:
+            return
+
+        warning_text = FilenameEntryFormatter.invalid_chars_warning_text(
+            characters
+        )
+        self.saveSelectionPreviewLabel.setText(warning_text)
+        self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px; color: red;')
+        self.saveSelectionNameLineEdit.setStyleSheet('border: 2px solid red;')
+        
+    def warnIfInvalidSaveName(self):
+        if not self.add_save_func:
+            return
+        
+        if not self.formattedSaveSelectionName():
+            self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px;')
+            self.saveSelectionNameLineEdit.setStyleSheet('')
+            return
+        
+        path = os.path.join(self.recipes_path, self.formattedSaveSelectionName())
+        if not os.path.exists(path):
+            self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px;')
+            self.saveSelectionNameLineEdit.setStyleSheet('')
+            return
+        
+        warning_text = html_utils.paragraph(
+            '<span style="color: yellow;">Save name already exists!</span>'
+        )
+        self.saveSelectionPreviewLabel.setText(warning_text)
+        self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px; color: yellow;')
+        self.saveSelectionNameLineEdit.setStyleSheet('border: 2px solid yellow;')
+
+    def updateSaveSelectionPreview(self, text):
+        if not self.add_save_func:
+            return
+
+        if self.saveSelectionNameLineEdit.invalidCharacters():
+            self.saveSelectionNameLineEdit.setStyleSheet('border: 2px solid red;')
+            return
+
+        self.saveSelectionNameLineEdit.setStyleSheet('')
+        self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px;')
+
+        formatted = self.formattedSaveSelectionName()
+        if not text.strip():
+            preview_text = html_utils.paragraph(
+                '<i>Leave empty to skip saving this selection.</i>'
+            )
+        elif not FilenameEntryFormatter.is_valid_name(formatted):
+            preview_text = html_utils.paragraph(
+                '<span style="color: red;">Invalid save name.</span>'
+            )
+            self.saveSelectionNameLineEdit.setStyleSheet('border: 2px solid red;')
+        else:
+            preview_text = html_utils.paragraph(
+                f'Formatted save name preview: <code>{formatted}</code>'
+            )
+
+        self.saveSelectionPreviewLabel.setText(preview_text)
+        
+        self.warnIfInvalidSaveName()
+
+    def checkSaveSelectionName(self):
+        if not self.add_save_func:
+            self.selectionSaveName = ''
+            self.selectionSaveNameFormatted = ''
+            return True
+
+        if self.saveSelectionNameLineEdit.invalidCharacters():
+            return False
+
+        save_name = self.saveSelectionName()
+        if not save_name:
+            self.selectionSaveName = ''
+            self.selectionSaveNameFormatted = ''
+            return True
+
+        formatted = self.formattedSaveSelectionName()
+        if not FilenameEntryFormatter.is_valid_name(formatted):
+            self.saveSelectionNameLineEdit.setStyleSheet('border: 2px solid red;')
+            return False
+
+        self.selectionSaveName = save_name
+        self.selectionSaveNameFormatted = formatted
+        return True
+
     def ok_cb(self, event=None):
         self.clickedButton = self.sender()
+
+        valid_save_name = self.checkSaveSelectionName()
+        if not valid_save_name:
+            return
 
         if self.allowMultiSelection:
             if not self.selectionSequence:
@@ -16812,12 +17089,27 @@ class PreProcessParamsWidget(QWidget):
 
     def selectRecipeFilepath(self, recipes_path, recipe_prefix, ext_label, ext):
         availableRecipes = []
+        displayNameToFilenameMapper = {}
+        ext = ext.lstrip('.')
         if os.path.exists(recipes_path):
             for file in myutils.listdir(recipes_path):
                 if not file.startswith(recipe_prefix):
                     continue
-                endname = file.split(f'{recipe_prefix}_')[1]
-                availableRecipes.append(endname)
+
+                if not file.lower().endswith(f'.{ext.lower()}'):
+                    continue
+
+                parts = file.split(f'{recipe_prefix}_', 1)
+                if len(parts) != 2:
+                    continue
+
+                endname = parts[1]
+                filepath = os.path.join(recipes_path, file)
+                modified_on = datetime.datetime.fromtimestamp(
+                    os.path.getmtime(filepath)
+                ).strftime(r'%Y/%m/%d %H:%M')
+                availableRecipes.append((endname, modified_on))
+                displayNameToFilenameMapper[endname] = file
         
         if not availableRecipes:
             import qtpy.compat
@@ -16835,14 +17127,14 @@ class PreProcessParamsWidget(QWidget):
             start_dir=myutils.getMostRecentPath(),
             ext={ext_label: f'.{ext}'}
         )
-        selectRecipeWin = widgets.QDialogListbox(
-            'Select recipe',
-            'Select recipe to load:\n',
+        selectRecipeWin = QTreeDialog(
             availableRecipes,
-            multiSelection=False,
-            allowEmptySelection=False,
+            headerLabels=['Name', 'Date Modified'],
+            title='Select recipe',
+            infoText='Select recipe to load:<br>',
             parent=self,
-            additionalButtons=(browseButton,)
+            path_to_browse=recipes_path,
+            additional_buttons=(browseButton,)
         )
         browseButton.sigPathSelected.connect(
             partial(
@@ -16857,9 +17149,12 @@ class PreProcessParamsWidget(QWidget):
 
         if selectRecipeWin.clickedButton == browseButton:
             return selectRecipeWin.selectedIniFilepath
-        
-        selected_endname = selectRecipeWin.selectedItemsText[0]
-        filename = f'{recipe_prefix}_{selected_endname}'
+
+        selected_endname = selectRecipeWin.selectedText
+        filename = displayNameToFilenameMapper.get(selected_endname)
+        if filename is None:
+            return None
+
         return os.path.join(recipes_path, filename)
     
     def selectAndLoadRecipe(self):
