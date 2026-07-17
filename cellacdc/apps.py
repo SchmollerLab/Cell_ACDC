@@ -14901,6 +14901,7 @@ class ShortcutEditorDialog(QBaseDialog):
     def shortcutChanged(self, text):
         sender = self.sender()
         self.checkDuplicateShortcuts(text, sender=sender)
+        self.updateMouseBindings(text, sender=sender)
     
     def updateMouseBindings(self, text, sender=None):
         if sender is None:
