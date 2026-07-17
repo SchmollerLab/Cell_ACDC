@@ -14039,6 +14039,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.annotateSingleMothBudPairState['last_cca_frame_i'] = (
                 self.navigateScrollBar.maximum()-1
             )
+            self.annotateSingleMothBudPairState['last_annot_frame_i'] = (
+                -1
+            )
             
             self.warnLostCellsAction.setChecked(False)
             self.annotLostObjsToggle.setChecked(False)
@@ -14078,7 +14081,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.annotateSingleMothBudPairState['doAnnotateLostObjs']
             )
             
-            self.annotateSingleMothBudPairState = {}
+            self.annotateSingleMothBudPairState = {
+                'last_annot_frame_i': 
+                    self.annotateSingleMothBudPairState['last_annot_frame_i'],
+            }
             
             QTimer.singleShot(150, self.autoRange)
 
@@ -22027,10 +22033,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             data_frame_i['moth_bud_pairs_cca'] = pd.concat(
                 [stored_moth_bud_pairs_cca, current_moth_bud_pair_cca],
             ).drop_duplicates()
-        
+    
         self.annotateSingleMotherBudPairButton.setStyleSheet(
             f'background-color: {ORANGE_HEX}'
         )
+        last_annot_frame_i = (
+            self.annotateSingleMothBudPairState.get('last_annot_frame_i', -1)
+        )
+        if posData.frame_i > last_annot_frame_i:
+            toolTip = self.annotateSingleMotherBudPairButton.toolTip()
+            toolTip = re.sub(
+                r'Last annotated frame n. = [A-Za-z0-9\.]+',
+                f'Last annotated frame n. = {posData.frame_i+1}',
+                toolTip
+            )
+            self.annotateSingleMotherBudPairButton.setToolTip(toolTip)
+            self.annotateSingleMothBudPairState['last_annot_frame_i'] = (
+                posData.frame_i
+            )
     
     @exception_handler
     def store_data(
@@ -22531,6 +22551,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if moth_bud_pairs_cca is None:
             self.annotateSingleMotherBudPairButton.setStyleSheet(
                 'background-color: none'
+            )
+            self.annotateSingleMothBudPairState['last_annot_frame_i'] = (
+                -1
             )
             return cca_df
 
@@ -33245,6 +33268,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return True
         
         last_cca_frame_i = self.navigateScrollBar.maximum()-1
+        last_moth_bud_pair_frame_i = (
+            self.annotateSingleMothBudPairState.get('last_annot_frame_i', -1)
+        )
+
+        if last_moth_bud_pair_frame_i > last_cca_frame_i:
+            last_cca_frame_i = last_moth_bud_pair_frame_i
+            
         # Ask to save last visited frame or not
         txt = html_utils.paragraph(f"""
             You annotated the cell cycle stages up 
