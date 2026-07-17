@@ -1649,9 +1649,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
     def gui_editRightClickMenuButtons(self):
         for name, button in self.widgetsWithShortcut.items():
-            print(f"Setting up right-click menu for button: {name}")
-            # if name in FORBIDDEN_SHORTCUTS.values():
-            #     continue
             self._setupRightClickMenuOnButton(button)
             menu = button.rightClickMenu
             action = QAction('Set shortcut...', self)
@@ -1689,8 +1686,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             else:    
                 for w in widgets:
                     self._installRightClickFilter(w, menu)
-
-        self._installRightClickFilter(target, menu)
+        else:
+            self._installRightClickFilter(target, menu)
 
     def _installRightClickFilter(self, widget: QWidget, menu: QMenu):
         if getattr(widget, 'installedEventFilter', False):
@@ -15898,19 +15895,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if not button == event.button():
                     continue
                 action = self.widgetsWithShortcut[name]
-                success = False
-                if not success:
-                    try:
-                        action.click()
-                        success = True
-                    except:
-                        pass
-                if not success:
-                    try:
-                        action.trigger()
-                        success = True
-                    except:
-                        pass
+                if hasattr(action, 'click'):
+                    action.click()
+                elif hasattr(action, 'trigger'):
+                    action.trigger()
                 return
         return super().mousePressEvent(event)
         
@@ -16155,18 +16143,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             action = self.widgetsWithShortcut[name]
             success = False
-            if not success:
-                try:
-                    action.click()
-                    success = True
-                except:
-                    pass
-            if not success:
-                try:
-                    action.trigger()
-                    success = True
-                except:
-                    pass
+            if hasattr(action, 'click'):
+                action.click()
+            elif hasattr(action, 'trigger'):
+                action.trigger()
             break
         
         modifiers = ev.modifiers()

@@ -14973,7 +14973,10 @@ class ShortcutEditorDialog(QBaseDialog):
             text = shortcutLineEdit.text()
             if shortcutLineEdit.isShortcutMouseButton:
                 button_name = text.split('Mouse ')[-1]
-                button = Qt.MouseButton[button_name]
+                button = getattr(Qt.MouseButton, button_name, None)
+                if button is None:
+                    printl(f'Warning: could not find mouse button for {button_name}')
+                    continue
                 self.mouseBindings[name] = button
                 self.customShortcuts[name] = (text, button)
             elif shortcutLineEdit.isShortcutKeyPress:

@@ -3829,7 +3829,6 @@ def QKeyEventToString(event: QKeyEvent, notAllowedModifier=None):
 
 class ShortcutLineEdit(QLineEdit):
     clicked = Signal()
-    editingFinished = Signal()
     def __init__(
             self, parent=None, allowModifiers=False, notAllowedModifier=None,
             allowMouseButtons=False
@@ -3844,7 +3843,7 @@ class ShortcutLineEdit(QLineEdit):
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.MouseButtonPress:
             button = event.button()
-            if button not in STANDARD_MOUSE_BUTTONS:
+            if self._allowMouseButtons and button not in STANDARD_MOUSE_BUTTONS:
                 self.setText(f'Mouse {button.name}')
                 return True  # consume: don't let it reach the widget under the cursor
         return super().eventFilter(obj, event)  # False for everything else -> passes through normally
@@ -3898,9 +3897,9 @@ class ShortcutLineEdit(QLineEdit):
         super().focusInEvent(event)
         self.clicked.emit()  # or call your filter-install logic directly
 
-    def focusOutEvent(self, event):
-        self.editingFinished.emit()  # or call your filter-release logic directly
-        super().focusOutEvent(event)
+    # def focusOutEvent(self, event):
+    #     self.editingFinished.emit()  # or call your filter-release logic directly
+    #     super().focusOutEvent(event)
         
     def sizeHint(self):
         size_hint = super().sizeHint()
