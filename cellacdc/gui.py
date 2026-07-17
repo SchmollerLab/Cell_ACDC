@@ -25077,7 +25077,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     )
                     keepLab = self._keepObjects(lab=lab, rp=rp)
                     posData.segm_data[i] = keepLab
-                    self.update_rp(frame_i=i, is_unvisited=True)
+                    self.update_rp(frame_i=i)
                 
                 pbar.update()
             pbar.close()
