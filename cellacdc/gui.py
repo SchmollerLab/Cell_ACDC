@@ -124,34 +124,6 @@ custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
 shortcut_filepath = os.path.join(settings_folderpath, 'shortcuts.ini')
 
 # Hard-coded shortcuts that are reserved for non-customizable actions.
-FORBIDDEN_SHORTCUTS = {
-    'Ctrl+Shift+N': 'New Window',
-    'Ctrl+N': 'New Segmentation File',
-    'Ctrl+O': 'Load Folder',
-    'Shift+P': 'Load Different Position',
-    'Ctrl+Shift+S': 'Save as',
-    'Ctrl+Shift+V': 'Export to Video',
-    'Ctrl+Shift+I': 'Export to Image',
-    'Ctrl+Alt+S': 'Save',
-    'Ctrl+S': 'Save Only Segmentation Masks',
-    'Ctrl+Z': 'Undo',
-    'Ctrl+Y': 'Redo',
-    'Ctrl+Shift+A': 'Autopilot',
-    'Ctrl+F': 'Find ID',
-    'Ctrl+T': 'Track current frame with real-time tracker',
-    'Alt+Shift+T': 'Track multiple frames with selected tracker',
-    'Ctrl+K': 'Customize keyboard shortcuts',
-    'Ctrl+M': 'Show mirrored cursor on images',
-    'Ctrl+Shift+P': 'Edit cell cycle annotations',
-    'Ctrl+P': 'View cell cycle annotations',
-    'Shift+S': 'Randomly shuffle colormap',
-    'Alt+Shift+S': 'Greedily shuffle colormap',
-    'Alt+Shift+P': 'Pre-processing',
-    'Alt+Shift+C': 'Combine channels and segmentation files',
-    'Ctrl+L': 'Relabel IDs sequentially',
-    'Left': 'Go to previous frame',
-    'Right': 'Go to next frame',
-}
 
 _font = QFont()
 _font.setPixelSize(11)
@@ -235,6 +207,20 @@ def resetViewRange(func):
         QTimer.singleShot(200, self.resetRange)
         return result
     return inner_function
+
+class RightClickMenuFilter(QObject):
+    """Install on any widget to show a custom QMenu on right-click,
+    without altering the widget's normal left-click behavior."""
+    
+    def eventFilter(self, obj, event):
+        if (event.type() == QEvent.MouseButtonPress 
+                and event.button() == Qt.RightButton):
+            menu = getattr(obj, 'rightClickMenu', None)
+            if menu is not None:
+                menu.exec_(QCursor.pos())
+                return True  # swallow the event — don't let it fall through
+                             # to the button's normal press handling
+        return False  # everything else: pass through untouched
       
 class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
              gui_combine.CombineGuiElements, 
@@ -428,6 +414,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.gui_createQuickSettingsWidgets()
         self.setTooltips()
         self.gui_populateToolSettingsMenu()
+        self.gui_editRightClickMenuButtons()
 
         self.autoSaveGarbageWorkers = []
         self.autoSaveActiveWorkers = []
@@ -1659,6 +1646,60 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.annotateToolbar.addAction(self.addCustomAnnotationAction)
         self.annotateToolbar.addAction(self.viewAllCustomAnnotAction)
         self.annotateToolbar.setVisible(False)
+        
+    def gui_editRightClickMenuButtons(self):
+        for name, button in self.widgetsWithShortcut.items():
+            print(f"Setting up right-click menu for button: {name}")
+            # if name in FORBIDDEN_SHORTCUTS.values():
+            #     continue
+            self._setupRightClickMenuOnButton(button)
+            menu = button.rightClickMenu
+            action = QAction('Set shortcut...', self)
+            action.triggered.connect(
+                lambda z, name=name: self.editShortcuts_cb(highlighted_shortcut=name)
+            )
+            menu.addAction(action)
+            
+        for name, button in self.keepToolActiveNames.items():
+            self._setupRightClickMenuOnButton(button)
+            menu = button.rightClickMenu
+            action = self.keepToolActiveActions[name]
+            menu.addAction(action)
+            
+        for name, button in self.applyToolNewFrameButtons.items():
+            self._setupRightClickMenuOnButton(button)
+            menu = button.rightClickMenu
+            action = self.applyToolNewFrameActions[name]
+            menu.addAction(action)
+            
+    def _setupRightClickMenuOnButton(self, target):
+        if hasattr(target, 'rightClickMenu') and target.rightClickMenu is not None:
+            return
+        
+        menu = QMenu(self)
+        target.rightClickMenu = menu
+        if isinstance(target, QAction):
+            widgets = None
+            if hasattr(target, 'associatedWidgets'):
+                widgets = target.associatedWidgets()
+            elif hasattr(target, 'widgetsforAction'):
+                widgets = target.widgetsforAction()
+            if widgets is None:
+                printl("Warning: Could not find associated widgets for QAction", target)
+            else:    
+                for w in widgets:
+                    self._installRightClickFilter(w, menu)
+
+        self._installRightClickFilter(target, menu)
+
+    def _installRightClickFilter(self, widget: QWidget, menu: QMenu):
+        if getattr(widget, 'installedEventFilter', False):
+            return
+        if not hasattr(self, '_rightClickFilterObj'):
+            self._rightClickFilterObj = RightClickMenuFilter()
+        widget.installEventFilter(self._rightClickFilterObj)
+        widget.installedEventFilter = True
+        widget.rightClickMenu = menu
 
     def gui_createLazyLoader(self):
         if not self.lazyLoader is None:
@@ -2537,7 +2578,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             keepToolActiveNames[toolName] = button
         
         keepToolActiveNames = dict(natsorted(keepToolActiveNames.items()))
-        
+        self.keepToolActiveNames = keepToolActiveNames
         applyToNewFrameNames = {
             'Segmenting for lost IDs': self.segForLostIDsButton,
             'Delete bordering objects': self.delBorderObjAction.button,
@@ -27407,7 +27448,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         with open(shortcut_filepath, 'w') as ini:
             cp.write(ini)
     
-    def editShortcuts_cb(self):
+    def editShortcuts_cb(self, highlighted_shortcut=None):
+        if hasattr(self, 'showingShortcutEditorDialog') and self.showingShortcutEditorDialog:
+            return
+        self.showingShortcutEditorDialog = True
+            
         if is_mac:
             delObjKeySequenceText = 'Ctrl'
             delObjButtonText = 'Left click'
@@ -27428,6 +27473,35 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 'Left click' if delObjQtButton == Qt.MouseButton.LeftButton
                 else 'Middle click'
             )
+
+        hard_shortcuts = {
+            'Ctrl+Shift+N': ('New Window', self.newWindowAction),
+            'Ctrl+N': ('New Segmentation File', self.newAction),
+            'Ctrl+O': ('Load Folder', self.openFolderAction),
+            'Shift+P': ('Load Different Position', self.loadPosAction),
+            'Ctrl+Shift+S': ('Save as', self.saveAsAction),
+            'Ctrl+Shift+V': ('Export to Video', self.exportToVideoAction),
+            'Ctrl+Shift+I': ('Export to Image', self.exportToImageAction),
+            'Ctrl+Alt+S': ('Save', self.saveAction),
+            'Ctrl+S': ('Save Only Segmentation Masks', self.quickSaveAction),
+            'Ctrl+Z': ('Undo', self.undoAction),
+            'Ctrl+Y': ('Redo', self.redoAction),
+            'Ctrl+Shift+A': ('Autopilot', self.autoPilotButton),
+            'Ctrl+F': ('Find ID', self.findIdAction),
+            'Ctrl+T': ('Track current frame with real-time tracker', self.repeatTrackingMenuAction),
+            'Alt+Shift+T': ('Track multiple frames with selected tracker', self.repeatTrackingVideoAction),
+            'Ctrl+K': ('Customize keyboard shortcuts', self.editShortcutsAction),
+            'Ctrl+M': ('Show mirrored cursor on images', self.showMirroredCursorAction),
+            'Ctrl+Shift+P': ('Edit cell cycle annotations', self.manuallyEditCcaAction),
+            'Ctrl+P': ('View cell cycle annotations', self.viewCcaTableAction),
+            'Shift+S': ('Randomly shuffle colormap', self.shuffleCmapAction),
+            'Alt+Shift+S': ('Greedily shuffle colormap', self.greedyShuffleCmapAction),
+            'Alt+Shift+P': ('Pre-processing', self.preprocessAction),
+            'Alt+Shift+C': ('Combine channels and segmentation files', self.combineChannelsAction),
+            'Ctrl+L': ('Relabel IDs sequentially', self.relabelSequentialAction),
+            'Left': 'Go to previous frame',
+            'Right': 'Go to next frame',
+        }
             
         win = apps.ShortcutEditorDialog(
             self.widgetsWithShortcut, 
@@ -27436,16 +27510,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             zoomOutKeyValue=self.zoomOutKeyValue,
             parent=self,
             mouseBindings=self.mouseBindings,
-            hard_shortcuts=FORBIDDEN_SHORTCUTS
+            hard_shortcuts=hard_shortcuts,
+            highlighted_shortcut=highlighted_shortcut
         )
         win.exec_()
         if win.cancel:
+            self.showingShortcutEditorDialog = False
             return
 
         self.mouseBindings = win.mouseBindings
         self.delObjAction = win.delObjAction
         self.zoomOutKeyValue = win.zoomOutKeyValue
         self.setShortcuts(win.customShortcuts)
+        self.showingShortcutEditorDialog = False
             
     def toggleOverlayColorButton(self, checked=True):
         self.mousePressColorButton(None)

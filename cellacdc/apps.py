@@ -101,6 +101,8 @@ POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
 BACKGROUND_RGBA = _palettes.get_disabled_colors()['Button']
+LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
+
 
 class ArgWidget:
     def __init__(self, name, type, widget, defaultVal, valueSetter, valueGetter, changeSig=None):
@@ -14634,7 +14636,8 @@ class ShortcutEditorDialog(QBaseDialog):
             zoomOutKeyValue: int=None,
             parent=None,
             mouseBindings: dict=None,
-            hard_shortcuts: dict=None
+            hard_shortcuts: dict=None,
+            highlighted_shortcut: str=None
         ):
         self.cancel = True
         super().__init__(parent)
@@ -14654,15 +14657,16 @@ class ShortcutEditorDialog(QBaseDialog):
         self.customShortcuts = {}
         self.shortcutLineEdits = {}
 
-        scrollArea = QScrollArea(self)
+        scrollArea = widgets.ScrollArea(self)
         scrollArea.setWidgetResizable(True)
+        self.scrollArea = scrollArea
         scrollAreaWidget = QWidget()
         entriesLayout = QGridLayout()
         
         conflict_prefix = 'Conflict with '
         all_names = list(widgetsWithShortcut.keys()) + list(self.new_hard_shortcuts.keys())
         longest_name = max(all_names, key=len)
-        self.conflict_text_formatter = lambda name: f'<font color="red">{conflict_prefix}{name}</font>'
+        self.conflict_text_formatter = lambda name: f'<font color="red">{conflict_prefix}{name if not isinstance(name, tuple) else name[0]}</font>'
         longest_conflict_text = self.conflict_text_formatter(longest_name)
 
         doc = QTextDocument()
@@ -14694,7 +14698,9 @@ class ShortcutEditorDialog(QBaseDialog):
         self.delObjShortcutLineEdit.warnConflictLabel = warnConflictLabel
         entriesLayout.addWidget(warnConflictLabel, row, 4)
         warnConflictLabel.setMinimumWidth(max_warn_width)
-        
+        self.delObjShortcutLineEdit.name = name
+        self.shortcutLineEdits[name] = self.delObjShortcutLineEdit
+                
         row += 1
         name = 'Zoom out'
         button = widgets.PushButton(self, flat=True)
@@ -14711,6 +14717,7 @@ class ShortcutEditorDialog(QBaseDialog):
         entriesLayout.addWidget(label, row, 1)
         entriesLayout.addWidget(self.zoomShortcutLineEdit, row, 2)
         self.shortcutLineEdits[name] = self.zoomShortcutLineEdit
+        self.zoomShortcutLineEdit.name = name
         warnConflictLabel = QLabel('')
         self.zoomShortcutLineEdit.warnConflictLabel = warnConflictLabel
         entriesLayout.addWidget(warnConflictLabel, row, 4)
@@ -14720,7 +14727,10 @@ class ShortcutEditorDialog(QBaseDialog):
         
         # sort dicitonaries
         keep_at_beginning = ['Next', 'Previous']
+        if highlighted_shortcut is not None:
+            keep_at_beginning.insert(0, highlighted_shortcut)
 
+        # used for organizing the shortcuts into groups based on their names
         grouped_keys = {
             'keep_at_beginning': [],
             'other': [],
@@ -14730,6 +14740,19 @@ class ShortcutEditorDialog(QBaseDialog):
         widgetsWithShortcut = self._groupAndSortShortcuts(
             widgetsWithShortcut, keep_at_beginning, grouped_keys
         )
+        
+        # based on name, only check uniquness within these groups
+        # and the forbidden ones
+        exclusivity_groups = {
+            '(lineage tree)': [],
+            'other': [],
+        }
+        
+        exclusivity_groups['(lineage tree)'] = grouped_keys['(lineage tree)']
+        exclusivity_groups['other'] = grouped_keys['other'] + grouped_keys['keep_at_beginning']
+        self.exclusivity_groups_reverse = {
+            name: group for group, names in exclusivity_groups.items() for name in names
+        }
 
         grouped_keys = {
             'keep_at_beginning': [],
@@ -14783,6 +14806,7 @@ class ShortcutEditorDialog(QBaseDialog):
             entriesLayout.addWidget(button, row, 0)
             entriesLayout.addWidget(label, row, 1)
             entriesLayout.addWidget(shortcutLineEdit, row, 2)
+            shortcutLineEdit.name = name
             self.shortcutLineEdits[name] = shortcutLineEdit
             
             warnConflictLabel = QLabel('')
@@ -14790,9 +14814,21 @@ class ShortcutEditorDialog(QBaseDialog):
             entriesLayout.addWidget(warnConflictLabel, row, 4)
             warnConflictLabel.setMinimumWidth(max_warn_width)
             
-        for row, (name, shortcut) in enumerate(self.new_hard_shortcuts.items(), start=row):
+            if highlighted_shortcut is not None and name == highlighted_shortcut:
+                shortcutLineEdit.setStyleSheet(LINEEDIT_WARNING_STYLESHEET)
+            
+        row += 1
+        for row, (what, shortcut) in enumerate(self.new_hard_shortcuts.items(), start=row):
             button = widgets.PushButton(self, flat=True)
-            label = QLabel(f'{name}:')
+            if isinstance(what, str):
+                label = QLabel(f'{what}:')
+            else:
+                (name, widget) = what
+                try:
+                    button.setIcon(widget.icon())
+                except:
+                    pass
+                label = QLabel(f'{name}:')
             lineEditTxt = QLabel(shortcut)
             entriesLayout.addWidget(button, row, 0)
             entriesLayout.addWidget(label, row, 1)
@@ -14820,26 +14856,29 @@ class ShortcutEditorDialog(QBaseDialog):
 
     def _groupAndSortShortcuts(self, shortcuts_dict, keep_at_beginning, grouped_keys):
         for key in shortcuts_dict.keys():
+            actual_key = key
+            if isinstance(key, tuple):
+                key = key[0]
             found = False
             if key in keep_at_beginning:
-                grouped_keys['keep_at_beginning'].append(key)
+                grouped_keys['keep_at_beginning'].append(actual_key)
             else:
                 for group_key in grouped_keys.keys():
                     if group_key in key:
-                        grouped_keys[group_key].append(key)
+                        grouped_keys[group_key].append(actual_key)
                         found = True
                         break
                 if not found:
-                    grouped_keys['other'].append(key)
+                    grouped_keys['other'].append(actual_key)
 
-        widgetsWithShortcut_sorted = {}
+        widgets_with_shortcut_sorted = {}
         for group, group_list in grouped_keys.items():
-            sorted_keys = natsorted(group_list)
-            widgetsWithShortcut_sorted.update({
+            sorted_keys = natsorted(group_list, key=lambda x: x[0] if isinstance(x, tuple) else x)
+            widgets_with_shortcut_sorted.update({
                 k: shortcuts_dict[k]
                 for k in sorted_keys
             })
-        return widgetsWithShortcut_sorted
+        return widgets_with_shortcut_sorted
         
     def setShortcutLineEditEventFilter(self):
         sender = self.sender()
@@ -14882,7 +14921,12 @@ class ShortcutEditorDialog(QBaseDialog):
         if text == '':
             return
             
+        name = sender.name
+        group_updated = self.exclusivity_groups_reverse.get(name, 'other')
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
+            group = self.exclusivity_groups_reverse.get(name, 'other')
+            if group != group_updated:
+                continue    
             if shortcutLineEdit == sender:
                 continue
             if shortcutLineEdit.text() != text:
@@ -14922,6 +14966,7 @@ class ShortcutEditorDialog(QBaseDialog):
             return
         
         self.shortcutLineEdits.pop('Zoom out')
+        self.shortcutLineEdits.pop('Delete object')
         self.cancel = False
         self.mouseBindings = dict()
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
@@ -14956,7 +15001,8 @@ class ShortcutEditorDialog(QBaseDialog):
         super().closeEvent(event)
     
     def showEvent(self, event) -> None:
-        self.resize(int(self.width()*1.2), self.height())
+        minimumWidth = self.scrollArea.minimumWidthNoScrollbar()
+        self.resize(int(minimumWidth * 1.1), self.height())
         self.move(self.x(), 100)
 
 class SelectAcdcDfVersionToRestore(QBaseDialog):

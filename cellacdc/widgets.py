@@ -3901,6 +3901,12 @@ class ShortcutLineEdit(QLineEdit):
     def focusOutEvent(self, event):
         self.editingFinished.emit()  # or call your filter-release logic directly
         super().focusOutEvent(event)
+        
+    def sizeHint(self):
+        size_hint = super().sizeHint()
+        width = int(size_hint.width() * 1.5)
+        size_hint.setWidth(width)
+        return size_hint
 
 class selectStartStopFrames(QGroupBox):
     def __init__(self, SizeT, currentFrameNum=0, parent=None):
