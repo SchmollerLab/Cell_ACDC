@@ -229,7 +229,6 @@ class SegForLostIDsWorker(QObject):
             signal.emit(*args)
             while self._acks[ack_key] == prev_ack:
                 self.waitCond.wait(self.mutex)
-            self.mutex.unlock()
         finally:
             self.mutex.unlock()
 
