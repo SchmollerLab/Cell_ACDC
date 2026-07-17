@@ -24777,6 +24777,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 lab,
                 specific_IDs_update_centroids=specific_IDs if preloaded_bbox is not False else None, # since sometimes I preload
             )
+
+        if on_curr_frame:
+            posData.rp = rp
+        else:
+            posData.allData_li[frame_i]['regionprops'] = rp
+            
         if on_curr_frame:
             posData.IDs = rp.IDs
         
