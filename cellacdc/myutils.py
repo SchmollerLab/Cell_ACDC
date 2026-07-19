@@ -2436,31 +2436,38 @@ def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
     return rois
 
 def from_imagej_rois_to_segm_data(
-        TZYX_shape, ID_to_roi_mapper, rescale_rois_sizes, 
-        repeat_2d_rois_zslices_range
+        TZYX_shape, 
+        ID_to_roi_mapper, 
+        rescale_rois_sizes, 
+        repeat_2d_rois_zslices_range: tuple[int, int] | None
     ):
     SizeT, SizeZ, SizeY, SizeX = TZYX_shape
     segm_data = np.zeros(TZYX_shape, dtype=np.uint32)
     for ID, roi in ID_to_roi_mapper.items():
         name = roi.name
-        name_parts = name.split('-')
+        is_3d_roi = (
+            roi.z_position > 0 or
+            roi.position > 0
+        )
         zz = [0]
-        if len(name_parts) == 2 and SizeZ > 1:
+        if repeat_2d_rois_zslices_range is not None and SizeZ > 1:
             # 2D roi in 3D segm data --> place 2D roi on each z-slice
             zz = range(*repeat_2d_rois_zslices_range)
-        
-        elif len(name_parts) > 2 and SizeZ > 1:
-            # 2D roi from a 3D roi --> place at requested z-slice
-            zz = [int(name_parts[-3])]
+        elif SizeZ > 1:
+            if roi.z_position > 0:
+                z = roi.z_position - 1
+            else:
+                # Fallback to position if z_position not encoded
+                z = roi.position - 1
+            zz = [z]
         
         tt = [0]*len(zz)
         if SizeT > 1:
-            tt = [roi.t_position]*len(zz)
+            tt = [roi.t_position - 1]*len(zz)
         
-        y0, x0 = roi.top, roi.left
-        contours = roi.integer_coordinates + (x0, y0)
-        xx = contours[:, 0]
-        yy = contours[:, 1]
+        coordinates = roi.coordinates()
+        xx = coordinates[:, 0]
+        yy = coordinates[:, 1]
         if rescale_rois_sizes is not None:        
             rescale_z = rescale_rois_sizes['Z']
             rescale_y = rescale_rois_sizes['Y']
