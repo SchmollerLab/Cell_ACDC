@@ -1,19 +1,23 @@
-import os
+"""Promptable segmentation via micro-sam (domain-adapted SAM for microscopy)."""
+
 from collections import defaultdict
 
-from cellacdc.promptable_models.utils import build_combined_mask, log_mask_selection
+from cellacdc.promptable_models.utils import build_combined_mask
 
 import numpy as np
 import cv2
 
-from segment_anything import sam_model_registry, SamPredictor
-
 from cellacdc import myutils
-from cellacdc.models.segment_anything import model_types, sam_models_path
+from micro_sam.util import get_sam_model, get_device, precompute_image_embeddings
+from micro_sam.prompt_based_segmentation import segment_from_points
 
 
 class AvailableModels:
-    values = list(model_types.keys())
+    # Light microscopy first, then vanilla
+    values = [
+        "vit_b_lm", "vit_t_lm", "vit_l_lm",
+        "vit_b", "vit_t", "vit_l", "vit_h",
+    ]
 
 
 class NotParam:
@@ -21,19 +25,18 @@ class NotParam:
 
 
 class Model:
-    def __init__(self, model_type: AvailableModels = "Large", gpu: bool = False):
-        """Promptable Segment Anything model.
+    def __init__(self, model_type: AvailableModels = "vit_b_lm", gpu: bool = True):
+        """Promptable micro-sam model (domain-adapted for microscopy).
 
         Parameters
         ----------
         model_type : AvailableModels, optional
-            SAM model variant to use. Default is "Large".
+            Model variant. Default is "vit_b_lm" (light microscopy).
         gpu : bool, optional
-            Whether to run on GPU if available. Default is False.
+            Whether to run on GPU if available. Default is True.
         """
         if gpu:
             from cellacdc import is_mac_arm64
-
             if is_mac_arm64:
                 device = "cpu"
             else:
@@ -41,13 +44,10 @@ class Model:
         else:
             device = "cpu"
 
-        model_key, sam_checkpoint = model_types[model_type]
-        sam_checkpoint = os.path.join(sam_models_path, sam_checkpoint)
-        sam = sam_model_registry[model_key](checkpoint=sam_checkpoint)
-        sam.to(device=device)
+        self.model = get_sam_model(model_type=model_type, device=get_device(device))
 
-        self.model = SamPredictor(sam)
-        self._embedded_img = None
+        self._image_embeddings = None
+        self._embedded_shape = None
 
         self.prompt_ids_image_mapper = {}
         self.prompts = defaultdict(list)
@@ -82,14 +82,11 @@ class Model:
 
     def _set_image(self, image):
         img_rgb = self._to_rgb(image)
-        try:
-            init_embeddings = not np.allclose(img_rgb, self._embedded_img)
-        except Exception:
-            init_embeddings = True
-
-        if init_embeddings:
-            self.model.set_image(img_rgb)
-            self._embedded_img = img_rgb
+        if self._embedded_shape is None or self._embedded_shape != img_rgb.shape:
+            self._image_embeddings = precompute_image_embeddings(
+                self.model, img_rgb, ndim=2, verbose=False,
+            )
+            self._embedded_shape = img_rgb.shape
 
     def _collect_prompts(self, prompt_id, treat_other_objects_as_background):
         pos_prompts = self.prompts.get(prompt_id, [])
@@ -210,17 +207,16 @@ class Model:
                         continue
 
                     self._set_image(prompt_image[z])
-                    multimask_output = len(point_coords) == 1
-                    masks, scores, _ = self.model.predict(
-                        point_coords=point_coords,
-                        point_labels=point_labels,
-                        multimask_output=multimask_output,
+                    # micro-sam expects points (y, x); we have [x, y]
+                    points_yx = point_coords[:, ::-1].astype(np.float64)
+                    mask = segment_from_points(
+                        self.model,
+                        points_yx,
+                        point_labels,
+                        image_embeddings=self._image_embeddings,
+                        use_best_multimask=True,
                     )
-                    mask_idx = np.argmax(scores) if multimask_output else 0
-                    if multimask_output:
-                        log_mask_selection(prompt_id, masks, scores, mask_idx, z_slice=z)
-                    mask = masks[mask_idx].astype(bool)
-                    obj_mask[z][mask] = True
+                    obj_mask[z] = np.asarray(mask).squeeze().astype(bool)
             else:
                 point_coords, point_labels, num_pos = self._points_for_slice(
                     prompts, None
@@ -229,17 +225,15 @@ class Model:
                     continue
 
                 self._set_image(prompt_image)
-                multimask_output = len(point_coords) == 1
-                masks, scores, _ = self.model.predict(
-                    point_coords=point_coords,
-                    point_labels=point_labels,
-                    multimask_output=multimask_output,
+                points_yx = point_coords[:, ::-1].astype(np.float64)
+                mask = segment_from_points(
+                    self.model,
+                    points_yx,
+                    point_labels,
+                    image_embeddings=self._image_embeddings,
+                    use_best_multimask=True,
                 )
-                mask_idx = np.argmax(scores) if multimask_output else 0
-                if multimask_output:
-                    log_mask_selection(prompt_id, masks, scores, mask_idx)
-                mask = masks[mask_idx].astype(bool)
-                obj_mask[mask] = True
+                obj_mask[:] = np.asarray(mask).squeeze().astype(bool)
 
             if not np.any(obj_mask):
                 continue
@@ -269,4 +263,4 @@ class Model:
 
 
 def url_help():
-    return "https://github.com/facebookresearch/segment-anything"
+    return "https://computational-cell-analytics.github.io/micro-sam/"
