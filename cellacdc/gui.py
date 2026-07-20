@@ -13441,6 +13441,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # Reset all future frames
             self.resetCcaFuture(posData.frame_i+1)
             self.resetSingleMotherBudPairsCcaInfo(posData.frame_i+1)
+            self.resetWillDivideInfo()
             if posData.frame_i == 0:
                 # Reset everything since we are on first frame
                 posData.cca_df = self.getBaseCca_df()
@@ -22004,6 +22005,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.store_data(
                         enforce=True, autosave=False, store_cca_df_copy=True
                     )
+                    to_print = []
+                    try:
+                        to_print.append(posData.cca_df[['will_divide']])
+                    except Exception as err:
+                        pass
+                    
+                    try:
+                        to_print.append(
+                            posData.allData_li[posData.frame_i]['acdc_df'][cca_df_colnames].iloc[:, :-2]
+                        )
+                    except Exception as err:
+                        pass
 
                 self.initSingleMotherBudPairPartialCcaInfo()
 
@@ -23969,11 +23982,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         cca_dfs = []
         keys = []
         for frame_i in range(0, posData.SizeT):
-            cca_df = self.get_cca_df(frame_i=frame_i, return_df=True)
+            cca_df = self.get_cca_df(
+                frame_i=frame_i, 
+                return_df=True,
+                include_single_mother_bud_pairs=True
+            )
             if cca_df is None:
                 break
-            
-            
 
             cca_dfs.append(cca_df)
             keys.append(frame_i)
@@ -24001,8 +24016,42 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if global_cca_df is None:
             return
         
+        posData = self.data[self.pos_i]
         global_cca_df = load._fix_will_divide(global_cca_df)
+        global_cca_df = global_cca_df.reset_index().set_index(
+            ['Cell_ID', 'generation_num']
+        )
+
+        # Get will_divide info from stored single mother-bud pair data
+        for frame_i in range(0, posData.SizeT):
+            moth_bud_pairs_cca = (
+                posData.allData_li[frame_i].get('moth_bud_pairs_cca')
+            )
+            if moth_bud_pairs_cca is None:
+                continue
+            
+            will_divide_mask = moth_bud_pairs_cca['will_divide'] > 0
+            mbp_cca_df_will_divide = moth_bud_pairs_cca[will_divide_mask]
+            if mbp_cca_df_will_divide.empty:
+                continue
+            
+            mbp_cca_df_will_divide = (
+                mbp_cca_df_will_divide.reset_index()
+                .set_index(['Cell_ID', 'generation_num'])
+            )
+            index_IDs_gen_num_will_divide = (
+                global_cca_df.index.intersection(mbp_cca_df_will_divide.index)
+            )
+            if index_IDs_gen_num_will_divide.empty:
+                continue
+
+            global_cca_df.loc[index_IDs_gen_num_will_divide, 'will_divide'] = (
+                1
+            )
         
+        global_cca_df = global_cca_df.reset_index().set_index(
+            ['frame_i', 'Cell_ID']
+        )
         self.storeFromConcatCcaDf(global_cca_df)
     
     def ccaCheckerStopChecking(self):
