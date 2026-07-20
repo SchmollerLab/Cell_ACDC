@@ -3522,7 +3522,7 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                     rois = roifile.roiread(rois_filepath)
                     if not isinstance(rois, list):
                         rois = [rois]
-                    self.IDsToRoisMapper = {i+i: roi for roi in enumerate(rois)}
+                    self.IDsToRoisMapper = {i+i: roi for i, roi in enumerate(rois)}
                 else:
                     # Use same ID of previous position
                     rois = roifile.roiread(rois_filepath)
@@ -3538,8 +3538,7 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                 segm_data = myutils.from_imagej_rois_to_segm_data(
                     TZYX_shape, self.IDsToRoisMapper, self.rescaleRoisSizes, 
                     self.repeatRoisZslicesRange
-                )
-                
+                ) 
                 
                 segm_filepath = (rois_filepath
                     .replace('imagej_rois', 'segm')
