@@ -76,7 +76,7 @@ from . import QtScoped
 from . import prompts
 from . import fonts
 from .acdc_regex import float_regex
-from .config import PREPROCESS_MAPPER
+from .config import PREPROCESS_MAPPER, STANDARD_MOUSE_BUTTONS
 from . import _base_widgets
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
@@ -3828,14 +3828,26 @@ def QKeyEventToString(event: QKeyEvent, notAllowedModifier=None):
     return keySequenceText
 
 class ShortcutLineEdit(QLineEdit):
+    clicked = Signal()
     def __init__(
-            self, parent=None, allowModifiers=False, notAllowedModifier=None
+            self, parent=None, allowModifiers=False, notAllowedModifier=None,
+            allowMouseButtons=False
         ):
         self.keySequence = None
         super().__init__(parent)
         self._allowModifiers = allowModifiers
         self._notAllowedModifier = notAllowedModifier
         self.setAlignment(Qt.AlignCenter)
+        self._allowMouseButtons = allowMouseButtons
+        
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.MouseButtonPress:
+            button = event.button()
+            if self._allowMouseButtons and button not in STANDARD_MOUSE_BUTTONS:
+                btn_name = QtScoped.mouse_button_name(button)
+                self.setText(f'Mouse {btn_name}')
+                return True  # consume: don't let it reach the widget under the cursor
+        return super().eventFilter(obj, event)  # False for everything else -> passes through normally
     
     def text(self):
         text = macShortcutToWindows(super().text())
@@ -3847,6 +3859,9 @@ class ShortcutLineEdit(QLineEdit):
         
         super().setText(text)
         if not text:
+            self.keySequence = None
+            return
+        if 'Mouse ' in text:
             self.keySequence = None
             return
         try:
@@ -3871,7 +3886,31 @@ class ShortcutLineEdit(QLineEdit):
                 self.setText('')
             else:
                 self.setText(self.text().rstrip('+').strip())
+                
+    # catch mouse press events
+    def mousePressEvent(self, event):
+        button = event.button()
+
+        if button in STANDARD_MOUSE_BUTTONS or not self._allowMouseButtons:
+            super().mousePressEvent(event)
+        else:
+            # covers XButton1, XButton2, and any further extra buttons
+            btn_name = QtScoped.mouse_button_name(button)
+            self.setText(f'Mouse {btn_name}')
             
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.clicked.emit()  # or call your filter-install logic directly
+
+    # def focusOutEvent(self, event):
+    #     self.editingFinished.emit()  # or call your filter-release logic directly
+    #     super().focusOutEvent(event)
+        
+    def sizeHint(self):
+        size_hint = super().sizeHint()
+        width = int(size_hint.width() * 1.5)
+        size_hint.setWidth(width)
+        return size_hint
 
 class selectStartStopFrames(QGroupBox):
     def __init__(self, SizeT, currentFrameNum=0, parent=None):
