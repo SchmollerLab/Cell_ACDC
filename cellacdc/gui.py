@@ -1482,7 +1482,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.whitelistIDsButton.action = editToolBar.addWidget(
             self.whitelistIDsButton
         )
-        self.whitelistIDsButton.setShortcut('Ctrl+K')
+        self.whitelistIDsButton.setShortcut('Ctrl+Shift+W')
         self.checkableButtons.append(self.whitelistIDsButton)
         self.checkableQButtonsGroup.addButton(self.whitelistIDsButton)
         self.LeftClickButtons.append(self.whitelistIDsButton)
@@ -1648,8 +1648,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.annotateToolbar.setVisible(False)
         
     def gui_editRightClickMenuButtons(self):
+        NAMES_TO_IGNORE_ERROR = (
+            "Toggle max z projection",
+            "Previous",
+            "Next"
+        )
+        
+        
         for name, button in self.widgetsWithShortcut.items():
-            self._setupRightClickMenuOnButton(button)
+            if name in NAMES_TO_IGNORE_ERROR:
+                continue
+            res = self._setupRightClickMenuOnButton(button)
+            if res[0] is False or res[1] != 1:
+                print(f"Error setting up right click menu for: {name}")
+                print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
             action = QAction('Set shortcut...', self)
             action.triggered.connect(
@@ -1658,36 +1670,54 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             menu.addAction(action)
             
         for name, button in self.keepToolActiveNames.items():
-            self._setupRightClickMenuOnButton(button)
+            if name in NAMES_TO_IGNORE_ERROR:
+                continue
+            res = self._setupRightClickMenuOnButton(button)
+            if res[0] is False or res[1] != 1:
+                print(f"Error setting up right click menu for: {name}")
+                print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
             action = self.keepToolActiveActions[name]
             menu.addAction(action)
             
         for name, button in self.applyToolNewFrameButtons.items():
-            self._setupRightClickMenuOnButton(button)
+            if name in NAMES_TO_IGNORE_ERROR:
+                continue
+            res = self._setupRightClickMenuOnButton(button)
+            if res[0] is False or res[1] != 1:
+                print(f"Error setting up right click menu for: {name}")
+                print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
             action = self.applyToolNewFrameActions[name]
             menu.addAction(action)
             
     def _setupRightClickMenuOnButton(self, target):
         if hasattr(target, 'rightClickMenu') and target.rightClickMenu is not None:
-            return
+            return True, 1
         
         menu = QMenu(self)
         target.rightClickMenu = menu
+        widgets = None
         if isinstance(target, QAction):
-            widgets = None
             if hasattr(target, 'associatedWidgets'):
                 widgets = target.associatedWidgets()
             elif hasattr(target, 'widgetsforAction'):
                 widgets = target.widgetsforAction()
-            if widgets is None:
-                printl("Warning: Could not find associated widgets for QAction", target)
+            elif hasattr(target, 'associatedObjects'):
+                objects = target.associatedObjects()
+                widgets = [
+                    obj for obj in objects
+                    if isinstance(obj, QToolButton) and obj is not self
+                    and obj is not target.parent
+                    ]
+            if widgets is None or len(widgets) == 0:
+                return False, len(widgets)
             else:    
                 for w in widgets:
                     self._installRightClickFilter(w, menu)
         else:
             self._installRightClickFilter(target, menu)
+        return True, len(widgets) if widgets is not None else 1
 
     def _installRightClickFilter(self, widget: QWidget, menu: QMenu):
         if getattr(widget, 'installedEventFilter', False):

@@ -14667,6 +14667,7 @@ class ShortcutEditorDialog(QBaseDialog):
         all_names = list(widgetsWithShortcut.keys()) + list(self.new_hard_shortcuts.keys())
         longest_name = max(all_names, key=len)
         self.conflict_text_formatter = lambda name: f'<font color="red">{conflict_prefix}{name if not isinstance(name, tuple) else name[0]}</font>'
+        self.conflict_text_formatter = lambda name: f'<font color="red">{conflict_prefix}{name if not isinstance(name, tuple) else name[0]}</font>'
         longest_conflict_text = self.conflict_text_formatter(longest_name)
 
         doc = QTextDocument()
@@ -14919,33 +14920,52 @@ class ShortcutEditorDialog(QBaseDialog):
         if warnConflictLabel is not None:
             warnConflictLabel.setText('')
             
+            
+        if hasattr(sender, 'conflictWith'):
+            conflictWith = getattr(sender, 'conflictWith')
+            if conflictWith is not None:
+                for name_other, shortcutLineEdit in self.shortcutLineEdits.items():
+                    if name_other == conflictWith:
+                        warnConflictLabel_other = getattr(shortcutLineEdit, 'warnConflictLabel', None)
+                        if warnConflictLabel_other is not None:
+                            warnConflictLabel_other.setText('')
+                        shortcutLineEdit.conflictWith = None
+                
+        sender.conflictWith = None
+            
         if text == '':
             return
             
         name = sender.name
         group_updated = self.exclusivity_groups_reverse.get(name, 'other')
-        for name, shortcutLineEdit in self.shortcutLineEdits.items():
-            group = self.exclusivity_groups_reverse.get(name, 'other')
+        for name_other, shortcutLineEdit in self.shortcutLineEdits.items():
+            group = self.exclusivity_groups_reverse.get(name_other, 'other')
             if group != group_updated:
                 continue    
             if shortcutLineEdit == sender:
                 continue
             if shortcutLineEdit.text() != text:
                 continue
-            shortcutLineEdit.setText('')
+            # shortcutLineEdit.setText('')
             warnConflictLabel = getattr(shortcutLineEdit, 'warnConflictLabel', None)
             if warnConflictLabel is not None:
                 warnConflictLabel.setText(
                     self.conflict_text_formatter(name)
                 )
+            warnConflictLabel_sender = getattr(sender, 'warnConflictLabel', None)
+            if warnConflictLabel_sender is not None:
+                warnConflictLabel_sender.setText(
+                    self.conflict_text_formatter(name_other)
+                )
+            sender.conflictWith = name_other
             break
-        for name, shortcut_txt in self.new_hard_shortcuts.items():
+        for name_other, shortcut_txt in self.new_hard_shortcuts.items():
             if shortcut_txt == text:
-                sender.setText('')
+                # sender.setText('')
                 warnConflictLabel = getattr(sender, 'warnConflictLabel', None)
                 if warnConflictLabel is not None:
                     warnConflictLabel.setText(
-                        self.conflict_text_formatter(name)
+                        self.conflict_text_formatter(name_other)
                     )
                 break
     
