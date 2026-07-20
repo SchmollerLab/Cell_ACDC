@@ -3844,7 +3844,8 @@ class ShortcutLineEdit(QLineEdit):
         if event.type() == QEvent.Type.MouseButtonPress:
             button = event.button()
             if self._allowMouseButtons and button not in STANDARD_MOUSE_BUTTONS:
-                self.setText(f'Mouse {button.name}')
+                btn_name = QtScoped.mouse_button_name(button)
+                self.setText(f'Mouse {btn_name}')
                 return True  # consume: don't let it reach the widget under the cursor
         return super().eventFilter(obj, event)  # False for everything else -> passes through normally
     
@@ -3858,6 +3859,9 @@ class ShortcutLineEdit(QLineEdit):
         
         super().setText(text)
         if not text:
+            self.keySequence = None
+            return
+        if 'Mouse ' in text:
             self.keySequence = None
             return
         try:
@@ -3891,7 +3895,8 @@ class ShortcutLineEdit(QLineEdit):
             super().mousePressEvent(event)
         else:
             # covers XButton1, XButton2, and any further extra buttons
-            self.setText(f'Mouse {button.name}')
+            btn_name = QtScoped.mouse_button_name(button)
+            self.setText(f'Mouse {btn_name}')
             
     def focusInEvent(self, event):
         super().focusInEvent(event)

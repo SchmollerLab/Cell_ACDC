@@ -96,6 +96,7 @@ from . import io
 from . import cca_functions
 from . import path
 from . import fonts
+from . import QtScoped
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -14667,7 +14668,6 @@ class ShortcutEditorDialog(QBaseDialog):
         all_names = list(widgetsWithShortcut.keys()) + list(self.new_hard_shortcuts.keys())
         longest_name = max(all_names, key=len)
         self.conflict_text_formatter = lambda name: f'<font color="red">{conflict_prefix}{name if not isinstance(name, tuple) else name[0]}</font>'
-        self.conflict_text_formatter = lambda name: f'<font color="red">{conflict_prefix}{name if not isinstance(name, tuple) else name[0]}</font>'
         longest_conflict_text = self.conflict_text_formatter(longest_name)
 
         doc = QTextDocument()
@@ -14701,19 +14701,22 @@ class ShortcutEditorDialog(QBaseDialog):
         warnConflictLabel.setMinimumWidth(max_warn_width)
         self.delObjShortcutLineEdit.name = name
         self.shortcutLineEdits[name] = self.delObjShortcutLineEdit
+        self.delObjShortcutLineEdit.textChanged.connect(self.shortcutChanged)
+        self.delObjShortcutLineEdit.clicked.connect(self.setShortcutLineEditEventFilter)
+        self.delObjShortcutLineEdit.editingFinished.connect(self.releaseShortcutLineEditEventFilter)
                 
         row += 1
         name = 'Zoom out'
         button = widgets.PushButton(self, flat=True)
         label = QLabel('Zoom out:')
-        self.zoomShortcutLineEdit = widgets.ShortcutLineEdit()
+        self.zoomShortcutLineEdit = widgets.ShortcutLineEdit(allowMouseButtons=True)
         if zoomOutKeyValue is not None:
             zoomOutKeySequence = widgets.KeySequenceFromText(zoomOutKeyValue)
             self.zoomShortcutLineEdit.setText(zoomOutKeySequence.toString())
             self.zoomShortcutLineEdit.key = zoomOutKeyValue
-        self.zoomShortcutLineEdit.textChanged.connect(
-            self.checkDuplicateShortcuts
-        )
+        self.zoomShortcutLineEdit.textChanged.connect(self.shortcutChanged)
+        self.zoomShortcutLineEdit.clicked.connect(self.setShortcutLineEditEventFilter)
+        self.zoomShortcutLineEdit.editingFinished.connect(self.releaseShortcutLineEditEventFilter)
         entriesLayout.addWidget(button, row, 0)
         entriesLayout.addWidget(label, row, 1)
         entriesLayout.addWidget(self.zoomShortcutLineEdit, row, 2)
@@ -14773,7 +14776,8 @@ class ShortcutEditorDialog(QBaseDialog):
             shortcutLineEdit = widgets.ShortcutLineEdit(allowMouseButtons=True)
             if mouseBindings is not None and name in mouseBindings:
                 mouse_button = mouseBindings[name]
-                shortcutLineEdit.setText(f'Mouse {mouse_button.name}')
+                btn_name = QtScoped.mouse_button_name(mouse_button)
+                shortcutLineEdit.setText(f'Mouse {btn_name}')
                 isShortcutKeyPress = False
                 isShortcutMouseButton = True
             elif hasattr(widget, 'keyPressShortcut'):
@@ -14786,9 +14790,10 @@ class ShortcutEditorDialog(QBaseDialog):
                 isShortcutKeyPress = False
                 isShortcutMouseButton = False
                 
-            if isShortcutMouseButton: # always false wehn mouseBindings is None
+            if isShortcutMouseButton: # always false else mouseBindings is None
                 mouse_button = mouseBindings[name]
-                shortcutLineEdit.setText(f'Mouse {mouse_button.name}')
+                btn_name = QtScoped.mouse_button_name(mouse_button)
+                shortcutLineEdit.setText(f'Mouse {btn_name}')
             else:
                 shortcutLineEdit.setText(shortcut.toString())
                 

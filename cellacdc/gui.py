@@ -1711,7 +1711,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     and obj is not target.parent
                     ]
             if widgets is None or len(widgets) == 0:
-                return False, len(widgets)
+                return False, len(widgets) if widgets is not None else 0
             else:    
                 for w in widgets:
                     self._installRightClickFilter(w, menu)
@@ -27458,13 +27458,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
             self.delObjToolAction.setChecked(True)
             self.delObjAction = delObjKeySequence, delObjQtButton
-              
         shortcuts = {}
         for name, widget in self.widgetsWithShortcut.items():
             if name not in cp.options('keyboard.shortcuts'):
                 if name in self.defaultMouseShortcuts:
                     button = self.defaultMouseShortcuts[name]
-                    shortcut_text = f'Mouse {button.name}' # for easier finding keep this pattern
+                    if PYQT6:
+                        btn_name = button.name
+                    else:
+                        btn_name = QtScoped.mouse_button_name(button)
+                    shortcut_text = f'Mouse {btn_name}' # for easier finding keep this pattern
                     self.mouseBindings[name] = button
                     shortcut = button
                 else:
@@ -27479,7 +27482,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 shortcut_text = cp['keyboard.shortcuts'][name]
                 if shortcut_text.startswith('Mouse '):
                     button_name = shortcut_text.split('Mouse ')[-1]
-                    button = Qt.MouseButton[button_name]
+                    if PYQT6:
+                        button = Qt.MouseButton[button_name]
+                    else:
+                        button =  getattr(Qt, button_name)
                     self.mouseBindings[name] = button
                     shortcut = button
                 else:
