@@ -61,3 +61,23 @@ def QStyleSC_ScrollBarSubLine():
         return QStyle.SubControl.SC_ScrollBarSubLine
     else:
         return QStyle.SC_ScrollBarSubLine
+    
+    
+if not PYQT6:
+    mouse_button_names_mapper = {
+        getattr(Qt, name): name
+        for name in dir(Qt)
+        if not name.startswith('_')
+        and isinstance(getattr(Qt, name), int)
+        and (name.lower().startswith('xbutton')
+            or name.lower().startswith('extrabutton')
+            or name.lower().startswith('leftbutton')
+            or name.lower().startswith('rightbutton')
+            or name.lower().startswith('middlebutton'))
+    }
+
+def mouse_button_name(button):
+    if PYQT6:
+        return button.name
+    else:
+        return mouse_button_names_mapper.get(button, str(button))

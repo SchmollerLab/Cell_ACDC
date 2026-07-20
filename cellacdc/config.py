@@ -280,3 +280,11 @@ def preprocess_ini_items_to_recipe(ini_items):
 
 PREPROCESS_MAPPER = preprocessing_mapper()
 PREPROCESS_INIT_MAPPER = preprocessing_init_func_mapper()
+if GUI_INSTALLED:
+    from qtpy.QtCore import Qt
+    STANDARD_MOUSE_BUTTONS = (
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.RightButton,
+        Qt.MouseButton.MiddleButton,
+        Qt.MouseButton.NoButton,
+    )
