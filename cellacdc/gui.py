@@ -16533,7 +16533,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         one of the IDs in ``affectedIDs``. If so, it triggers a pop-up asking the
         user whether to propagate the change to future frames.
         """
-        if isinstance(affectedIDs, int):
+        if isinstance(affectedIDs, (int, np.uint32)):
             affectedIDs = {affectedIDs}
         
         if isinstance(affectedIDs, list) or isinstance(affectedIDs, tuple):
