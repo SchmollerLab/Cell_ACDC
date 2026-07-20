@@ -2479,7 +2479,7 @@ def from_imagej_rois_to_segm_data(
             
             xx = np.clip(np.round(xx * factor_x).astype(int), 0, SizeX-1)
             yy = np.clip(np.round(yy * factor_y).astype(int), 0, SizeY-1)
-            
+
         for t, z in zip(tt, zz):
             if rescale_rois_sizes is not None:
                 z = round(z*factor_z)
@@ -2488,6 +2488,8 @@ def from_imagej_rois_to_segm_data(
             
             rr, cc = skimage.draw.polygon(yy, xx)
             segm_data[t, z, rr, cc] = ID
+
+        printl(ID)
     
     return np.squeeze(segm_data)
             

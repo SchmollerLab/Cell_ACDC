@@ -310,12 +310,14 @@ class NewThreadMultipleExpBaseUtil(QDialog):
                 )
             _posData = load.loadData(filePath, chName)
             _posData.getBasenameAndChNames()
+
             if with_text == 'segm':
                 found_files = load.get_segm_files(_posData.images_path)
             else:
                 found_files = load.get_files_with(
                     _posData.images_path, with_text, ext=ext
                 )
+
             _existingEndnames = load.get_endnames(
                 _posData.basename, found_files
             )

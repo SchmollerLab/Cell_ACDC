@@ -906,18 +906,30 @@ def get_segm_endnames_from_exp_path(exp_path, pos_foldernames=None):
     
     return existingEndNames
 
-def get_files_with(images_path: os.PathLike, with_text: str, ext: str=None):
+def get_files_with(
+        images_path: os.PathLike, 
+        with_text: str, 
+        ext: str | tuple[str]=None
+    ):
     ls = myutils.listdir(images_path)
     found_files = []
     for file in ls:
         if file.find(with_text) == -1:
             continue
         
-        if ext is not None and not file.endswith(ext):
+        if ext is None:
+            found_files.append(file)
             continue
         
-        found_files.append(file)
-    
+        _, file_ext = os.path.splitext(file)
+        if isinstance(ext, tuple) and file_ext in ext:
+            found_files.append(file)
+            continue
+        
+        if isinstance(ext, str) and file_ext == ext:
+            found_files.append(file)
+            continue
+
     return found_files
 
 def load_segmInfo_df(pos_path):

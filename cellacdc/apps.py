@@ -18333,6 +18333,8 @@ class ImageJRoisToSegmManager(QBaseDialog):
         mainLayout = QVBoxLayout()
         
         rois = roifile.roiread(rois_filepath)
+        if not isinstance(rois, list):
+            rois = [rois]
         self.rois = {roi.name: roi for roi in rois}
         
         roisNamesTreeWidget = widgets.TreeWidget()

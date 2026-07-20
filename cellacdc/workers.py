@@ -3470,7 +3470,7 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
             tot_pos = len(pos_foldernames)
 
             abort = self.emitSelectFilesWithText(
-                exp_path, pos_foldernames, 'imagej_rois', ext='.zip'
+                exp_path, pos_foldernames, 'imagej_rois', ext=('.zip', '.roi')
             )
             if abort:
                 self.signals.finished.emit(self)
@@ -3493,7 +3493,10 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                 ls = myutils.listdir(images_path)
                 rois_filepaths = [
                     os.path.join(images_path, f) for f in ls 
-                    if f.endswith(f'{endFilenameRoi}.zip')
+                    if (
+                        f.endswith(f'{endFilenameRoi}.zip')
+                        or f.endswith(f'{endFilenameRoi}.roi')
+                    )
                 ]
                 
                 if not rois_filepaths:
@@ -3522,18 +3525,19 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                     rois = roifile.roiread(rois_filepath)
                     if not isinstance(rois, list):
                         rois = [rois]
-                    self.IDsToRoisMapper = {i+i: roi for i, roi in enumerate(rois)}
+                    self.IDsToRoisMapper = {
+                        i+1: roi for i, roi in enumerate(rois)
+                    }
                 else:
                     # Use same ID of previous position
                     rois = roifile.roiread(rois_filepath)
                     if not isinstance(rois, list):
                         rois = [rois]
-                    IDsToRoisMapper = {i+i: roi for i, roi in enumerate(rois)}
                     self.IDsToRoisMapper = {
-                        ID: IDsToRoisMapper[ID] 
-                        for ID in self.IDsToRoisMapper.keys()
+                        ID: rois[i]
+                        for i, ID in enumerate(self.IDsToRoisMapper.keys())
                     }
-                
+
                 self.logger.log('Generating segm mask from ROIs...')
                 segm_data = myutils.from_imagej_rois_to_segm_data(
                     TZYX_shape, self.IDsToRoisMapper, self.rescaleRoisSizes, 
@@ -3543,6 +3547,7 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                 segm_filepath = (rois_filepath
                     .replace('imagej_rois', 'segm')
                     .replace('.zip', '.npz')
+                    .replace('.roi', '.npz')
                 )
                 self.logger.log(f'Saving segm mask to "{segm_filepath}"...')
                 io.savez_compressed(segm_filepath, segm_data)
