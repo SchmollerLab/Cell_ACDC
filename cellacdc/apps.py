@@ -18098,12 +18098,18 @@ class ImageJRoisToSegmManager(QBaseDialog):
         mainLayout.addWidget(widgets.QHLine())
         mainLayout.addSpacing(5)
         
-        gridLayout = None
-        self.lowZspinbox = None
+        self.repeatRoiZstackGroupbox = None
         
         SizeT, SizeZ, SizeY, SizeX = TZYX_shape
         if SizeZ > 1:
-            gridLayout = QGridLayout()
+            self.repeatRoiZstackGroupbox = QGroupBox()
+            repeatRoiZstackLayout = QGridLayout()
+            self.repeatRoiZstackGroupbox.setCheckable(True)
+            self.repeatRoiZstackGroupbox.setTitle(
+                'ROI is 2D'
+            )
+            self.repeatRoiZstackGroupbox.setChecked(False)
+            self.repeatRoiZstackGroupbox.setLayout(repeatRoiZstackLayout)
             self.lowZspinbox = widgets.SpinBox()
             self.lowZspinbox.setMinimum(0)
             self.lowZspinbox.setMaximum(SizeZ-1)
@@ -18113,16 +18119,17 @@ class ImageJRoisToSegmManager(QBaseDialog):
             self.highZspinbox.setMaximum(SizeZ-1)
             self.highZspinbox.setValue(SizeZ-1)
             
-            gridLayout.addWidget(QLabel('Repeat 2D ROIs over z-range: '), 1, 0)
+            repeatRoiZstackLayout.addWidget(
+                QLabel('Repeat 2D ROIs over z-range: '), 1, 0)
             
-            gridLayout.addWidget(QLabel('Start z-slice'), 0, 1)
-            gridLayout.addWidget(self.lowZspinbox, 1, 1)
+            repeatRoiZstackLayout.addWidget(QLabel('Start z-slice'), 0, 1)
+            repeatRoiZstackLayout.addWidget(self.lowZspinbox, 1, 1)
             
-            gridLayout.addWidget(QLabel('Stop z-slice'), 0, 2)
-            gridLayout.addWidget(self.highZspinbox, 1, 2)
+            repeatRoiZstackLayout.addWidget(QLabel('Stop z-slice'), 0, 2)
+            repeatRoiZstackLayout.addWidget(self.highZspinbox, 1, 2)
         
-        if gridLayout is not None:
-            mainLayout.addLayout(gridLayout)
+        if self.repeatRoiZstackGroupbox is not None:
+            mainLayout.addWidget(self.repeatRoiZstackGroupbox)
             mainLayout.addSpacing(5)
             mainLayout.addWidget(widgets.QHLine())
             mainLayout.addSpacing(10)
@@ -18181,10 +18188,12 @@ class ImageJRoisToSegmManager(QBaseDialog):
         
         self.rescaleSizes = self.rescaleRoisGroupbox.inputOutputSizes()
         self.repeatRoisZslicesRange = None
-        if self.lowZspinbox is not None:
-            self.repeatRoisZslicesRange = (
-                self.lowZspinbox.value(), self.highZspinbox.value()+1
-            )
+        if self.repeatRoiZstackGroupbox is not None:
+            if self.repeatRoiZstackGroupbox.isChecked():
+                self.repeatRoisZslicesRange = (
+                    self.lowZspinbox.value(), 
+                    self.highZspinbox.value()+1
+                )
         
         self.cancel = False
         self.close()

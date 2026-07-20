@@ -3477,6 +3477,7 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                 return
             
             self.askRoiPreferences = True
+            self.repeatRoisZslicesRange = None
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
                     self.signals.finished.emit(self)
@@ -3509,20 +3510,24 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                     is_multi_pos = len(pos_foldernames) > 1
                     self.logger.log('Loading image data to get image shape...')
                     TZYX_shape = load.get_tzyx_shape(images_path)
-                    abort = self.emitSelectRoisProps(
+                    cancel = self.emitSelectRoisProps(
                         rois_filepath, TZYX_shape, is_multi_pos
                     )
-                    if abort:
+                    if cancel:
                         self.signals.finished.emit(self)
                         return
                     
                     self.askRoiPreferences = not self.useSamePropsForNextPos
                 elif self.areAllRoisSelected:
                     rois = roifile.roiread(rois_filepath)
-                    self.IDsToRoisMapper = {i+i: roi for roi in enumerate(rois)}
+                    if not isinstance(rois, list):
+                        rois = [rois]
+                    self.IDsToRoisMapper = {i+i: roi for i, roi in enumerate(rois)}
                 else:
                     # Use same ID of previous position
                     rois = roifile.roiread(rois_filepath)
+                    if not isinstance(rois, list):
+                        rois = [rois]
                     IDsToRoisMapper = {i+i: roi for i, roi in enumerate(rois)}
                     self.IDsToRoisMapper = {
                         ID: IDsToRoisMapper[ID] 
@@ -3533,8 +3538,7 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                 segm_data = myutils.from_imagej_rois_to_segm_data(
                     TZYX_shape, self.IDsToRoisMapper, self.rescaleRoisSizes, 
                     self.repeatRoisZslicesRange
-                )
-                
+                ) 
                 
                 segm_filepath = (rois_filepath
                     .replace('imagej_rois', 'segm')

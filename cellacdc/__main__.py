@@ -30,7 +30,7 @@ if cellacdc_installation_path != site_packages:
             exit()
         print('*'*60)
         input(
-            '[WARNING]: Cell-ACDC had to clean-up and older installation. '
+            '[WARNING]: Cell-ACDC had to clean up an older installation. '
             'Please, re-start the software. Thank you for your patience! '
             '(Press any key to exit). '
         )
