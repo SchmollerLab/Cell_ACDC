@@ -2488,8 +2488,6 @@ def from_imagej_rois_to_segm_data(
             
             rr, cc = skimage.draw.polygon(yy, xx)
             segm_data[t, z, rr, cc] = ID
-
-        printl(ID)
     
     return np.squeeze(segm_data)
             
