@@ -102,6 +102,9 @@ instructions/Screenshots
 UserManual/*
 !UserManual/Cell-ACDC_User_Manual.pdf
 
+cellacdc/volume_renderer/_demos/data/*
+!cellacdc/volume_renderer/_demos/data/.gitkeep
+
 # Ignore models folder but keep the folder with placeholder.txt dummy file
 models/*
 !models/placeholder.txt

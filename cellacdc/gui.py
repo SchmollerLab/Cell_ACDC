@@ -971,6 +971,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ImageMenu.addAction(self.greedyShuffleCmapAction)
         ImageMenu.addAction(self.zoomToObjsAction)
         ImageMenu.addAction(self.zoomOutAction)
+        self.ImageMenu = ImageMenu
 
         # Segment menu
         SegmMenu = menuBar.addMenu("&Segment")
@@ -1109,6 +1110,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.slideshowButton.setCheckable(True)
         self.slideshowButton.setShortcut('Ctrl+W')
         navigateToolBar.addWidget(self.slideshowButton)
+        
+        self.launch3dViewerAction = QAction(
+            'Launch 3D viewer for the currently visualised volume', self
+        )
+        self.launch3dViewerAction.setIcon(QIcon(":3d.svg"))
+        self.launch3dViewerAction.setCheckable(True)
+        navigateToolBar.addAction(self.launch3dViewerAction)
+        
+        self.ImageMenu.addAction(self.launch3dViewerAction)
         
         navigateToolBar.addAction(self.autoPilotButton)
         
@@ -3300,6 +3310,98 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def zProjLockViewToggled(self, checked):
         self.updateZproj(self.zProjComboBox.currentText())
     
+    def launch3dViewerToggled(self, checked):
+        self.logger.info('Launching 3D volume viewer...')
+        
+        myutils.check_install_package(
+            'PyOpenGL',
+            import_pkg_name='OpenGL',
+            pypi_name='PyOpenGL',
+            parent=self,
+        )
+        
+        myutils.check_install_package(
+            'VisPy',
+            import_pkg_name='vispy',
+            pypi_name='vispy',
+            parent=self,
+        )
+        
+        self.launch3dViewerAction.blockSignals(True)
+        self.launch3dViewerAction.setChecked(checked)
+        self.launch3dViewerAction.blockSignals(False)
+        
+        if not checked:
+            volume_renderer = getattr(self, '_volume_renderer', None)
+            self._volume_renderer = None
+            if volume_renderer is not None:
+                volume_renderer.force_close()
+            return
+        
+        posData = self.data[self.pos_i]
+        
+        volumes = {
+            self.user_ch_name: posData.img_data[posData.frame_i]
+        }
+        lut_items_states = {
+            self.user_ch_name: self.imgGrad.super_saveState()
+        }
+        
+        ol_data = posData.ol_data
+        if ol_data is None:
+            ol_data = {}
+
+        for filename, ol_image_data in ol_data.items():
+            volume = ol_image_data[posData.frame_i]
+
+            channel_name = myutils.get_chname_from_basename(
+                filename, posData.basename, remove_ext=False
+            )
+            volumes[channel_name] = volume
+            
+            overlayItems = self.overlayLayersItems[channel_name]
+            lutItem = overlayItems[1]
+            lut_items_states[channel_name] = lutItem.super_saveState()
+
+        voxel_size = (
+            posData.PhysicalSizeZ, posData.PhysicalSizeY, posData.PhysicalSizeX
+        )
+        
+        from cellacdc.volume_renderer.canvas import VolumeRendererWindow
+        
+        self._volume_renderer = VolumeRendererWindow(
+            app=self.app, 
+            parent=self,
+            version=self._version,
+            hide_on_close=False,
+            logger_func=self.logger.info
+        )
+        self._volume_renderer.set_volumes(
+            volumes,
+            lut_items_states=lut_items_states,
+            voxel_size=voxel_size,
+        )
+        self._volume_renderer.set_labels(
+            posData.lab,
+            gradient_item_state=self.labelsGrad.item.saveState(),
+            SizeZ=posData.SizeZ
+        ) 
+        
+        self.addPointsLayersToVolumeViewer(self._volume_renderer)
+        
+        self._volume_renderer.sigClose.connect(self.onClose3dViewer)
+        self._volume_renderer.sigUpdate.connect(self.onUpdate3dViewer)
+        self._volume_renderer.run(block=False)
+        self._volume_renderer.raise_()
+        self._volume_renderer.activateWindow()
+
+    def onClose3dViewer(self, *args, **kwargs):
+        self.launch3dViewerAction.setChecked(False)
+    
+    def onUpdate3dViewer(self):
+        self.launch3dViewerAction.setChecked(False)
+        self.launch3dViewerAction.setChecked(True)
+    
     def rescaleIntensExportToVideoDialog(self, how, channel, setImage=True):
         if channel == self.user_ch_name:
             lutItem = self.imgGrad
@@ -3545,6 +3647,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.autoPilotButton.toggled.connect(self.autoPilotToggled)
         self.skipToNewIdAction.triggered.connect(self.skipForwardToNewID)        
         self.slideshowButton.toggled.connect(self.launchSlideshow)
+        self.launch3dViewerAction.toggled.connect(
+            self.launch3dViewerButton.setChecked
+        )
+
         
         self.copyLostObjButton.toggled.connect(self.copyLostObjContour_cb)
         self.manualAnnotPastButton.toggled.connect(
@@ -3682,8 +3788,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         #     self.labelsGrad.fontSizeMenu, self.setFontSizeActionChecked
         # )
 
-        self.labelsGrad.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
-        self.labelsGrad.greedyShuffleCmapAction.triggered.connect(
+        self.labelsGrad.sigShuffleCmap.connect(self.shuffle_cmap)
+        self.labelsGrad.sigGreeedyShuffleCmap.connect(
             self.greedyShuffleCmap
         )
         self.labelsGrad.permanentGreedyCmapAction.toggled.connect(
@@ -4129,6 +4235,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.switchPlaneCombobox.setToolTip(
             'Switch viewed plane'
         )
+        
+        self.launch3dViewerButton = widgets.threeDPushButton()
+        self.launch3dViewerButton.setToolTip(
+            'Launch 3D viewer for the currently visualised volume'
+        )
+        self.launch3dViewerButton.setCheckable(True)
 
         self.zSliceOverlay_SB = widgets.ScrollBar(Qt.Horizontal)
         _z_label = QLabel('Overlay z-slice  ')
@@ -4215,6 +4327,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         bottomLeftLayout.addWidget(self.zProjComboBox, row, 3)
         bottomLeftLayout.addWidget(self.zProjLockViewButton, row, 4)
         bottomLeftLayout.addWidget(self.switchPlaneCombobox, row, 5)
+        bottomLeftLayout.addWidget(self.launch3dViewerButton, row, 6)
         self.zSliceSpinbox.connectValueChanged(self.onZsliceSpinboxValueChange)
         self.zSliceSpinbox.editingFinished.connect(self.zSliceScrollBarReleased)
 
@@ -4443,6 +4556,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Add actions to view menu
         self.viewMenu.addAction(self.labelsGrad.showLabelsImgAction)
         self.viewMenu.addAction(self.labelsGrad.showRightImgAction)
+        
+        self.viewMenu.addAction(self.launch3dViewerAction)
         
         # Right image histogram
         self.imgGradRight = widgets.baseHistogramLUTitem(
@@ -13399,6 +13514,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.switchPlaneCombobox.show()
             self.switchPlaneCombobox.setDisabled(False)
             self.SizeZlabel.show()
+            self.launch3dViewerButton.show()
+            self.launch3dViewerButton.setDisabled(False)
+            self.launch3dViewerAction.setDisabled(False)
         else:
             myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=False)
             myutils.setRetainSizePolicy(self.zProjComboBox, retain=False)
@@ -13414,6 +13532,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.SizeZlabel.hide()
             self.switchPlaneCombobox.hide()
             self.switchPlaneCombobox.setDisabled(True)
+            self.launch3dViewerButton.hide()
+            self.launch3dViewerButton.setDisabled(True)
+            self.launch3dViewerAction.setDisabled(True)
         
         self.imgGrad.rescaleAcrossZstackAction.setDisabled(not enabled)
         for ch, overlayItems in self.overlayLayersItems.items():
@@ -21428,6 +21549,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.zProjComboBox.currentTextChanged.disconnect()
                 self.zProjComboBox.activated.disconnect()
                 self.switchPlaneCombobox.sigPlaneChanged.disconnect()
+                self.launch3dViewerButton.toggled.disconnect()
                 self.zProjLockViewButton.toggled.disconnect()
             except Exception as e:
                 pass
@@ -21443,6 +21565,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.switchViewedPlane
             )
             self.zProjLockViewButton.toggled.connect(self.zProjLockViewToggled)
+            self.launch3dViewerButton.toggled.connect(
+                self.launch3dViewerToggled
+            )
 
         posData = self.data[self.pos_i]
         if posData.SizeT == 1:
@@ -25547,17 +25672,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return fluo_data, bkgrData
 
     def setOverlayColors(self):
-        self.overlayRGBs = [
-            (255, 255, 0),
-            (252, 72, 254),
-            (49, 222, 134),
-            (22, 108, 27)
-        ]
-        self.overlayCmap = matplotlib.colormaps['hsv']
-        self.overlayRGBs.extend(
-            [tuple([round(c*255) for c in self.overlayCmap(i)][:3]) 
-            for i in np.linspace(0,1,8)]
-        )
+        self.overlayRGBs = colors.overlay_rgbs.copy()
 
     def getFileExtensions(self, images_path):
         alignedFound = any([f.find('_aligned.np')!=-1
@@ -26388,6 +26503,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             np.array(action.penColor)/255, 0.3
         )
         action.pointSize = pointSize
+        action.symbol = symbol
         action.zRadius = zRadius
         action.button = toolButton
         action.scatterItem = scatterItem
@@ -26746,6 +26862,44 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     action.pointsData[self.pos_i][posData.frame_i]['id'].append(
                         obj.label
                     )
+    
+    def addPointsLayersToVolumeViewer(self, volume_renderer):
+        from cellacdc.plot import PyQtGraphScatterPlotSymbolToVispyMapper
+        
+        posData = self.data[self.pos_i]
+        for toolbar in self.pointsLayersToolbars:
+            for action in toolbar.actions()[1:]:
+                if not hasattr(action, 'layerTypeIdx'):
+                    continue
+
+                if action.layerTypeIdx < 2:
+                    self.getCentroidsPointsData(action)
+                
+                frames = action.pointsData.get(self.pos_i, set())
+                if posData.frame_i not in frames:
+                    continue
+                
+                framePointsData = action.pointsData[self.pos_i][posData.frame_i]
+                xx, yy, zz = [], [], []
+                for z, z_data in framePointsData.items():
+                    xx.extend(z_data['x'])
+                    yy.extend(z_data['y'])
+                    zz.extend([z]*len(z_data['x']))
+                
+                color = np.array(action.penColor)/255
+                vispy_symbol = (
+                    PyQtGraphScatterPlotSymbolToVispyMapper[action.symbol]
+                )
+                points_zyx = np.column_stack((zz, yy, xx))
+                volume_renderer.add_points_layer(
+                    str(id(action.button)),
+                    points=points_zyx,
+                    color=color,
+                    size=action.pointSize,
+                    opacity=1.0,
+                    symbol=vispy_symbol,
+                    visible=action.button.isChecked()
+                )
     
     def drawPointsLayers(self, computePointsLayers=True):
         posData = self.data[self.pos_i]
@@ -27216,7 +27370,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         self.updateOverlayZslice
                     )
             if zProjHow == 'single z-slice':
-                self.overlay_z_label.setText(f'Overlay z-slice  {z+1:02}/{posData.SizeZ}')
+                self.overlay_z_label.setText(
+                    f'Overlay z-slice  {z+1:02}/{posData.SizeZ}')
                 ol_img = img[z].copy()
             elif zProjHow == 'max z-projection':
                 ol_img = img.max(axis=0)

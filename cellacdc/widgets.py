@@ -1,5 +1,5 @@
 from collections import defaultdict, deque
-from typing import Dict, List, Union, Iterable, Sequence
+from typing import Dict, List, Union, Iterable, Sequence, get_args
 import os
 import sys
 import operator
@@ -2241,6 +2241,12 @@ class pgScatterSymbolsCombobox(QComboBox):
         ]
         self.addItems(symbols)
 
+class VisPyMarkersSymbolsCombobox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        symbols = get_args(plot.VisPyMarkerSymbols)
+        self.addItems(symbols)
 
 class alphaNumericLineEdit(QLineEdit):
     sigInvalidCharacterPressed = Signal(str)
@@ -3437,6 +3443,7 @@ class ToolButtonCustomColor(rightClickToolButton):
         super().__init__(parent=parent)
         if not isinstance(color, QColor):
             color = pg.mkColor(color)
+
         self.symbol = symbol
         self.setColor(color)
 
@@ -3464,15 +3471,15 @@ class ToolButtonCustomColor(rightClickToolButton):
 
     def paintEvent(self, event):
         QToolButton.paintEvent(self, event)
-        p = QPainter(self)
-        w, h = self.width(), self.height()
-        sf = 0.6
-        p.scale(w*sf, h*sf)
-        p.translate(0.5/sf, 0.5/sf)
-        symbol = pg.graphicsItems.ScatterPlotItem.Symbols[self.symbol]
-        pen = pg.mkPen(color=self.penColor, width=2)
-        brush = pg.mkBrush(color=self.brushColor)
         try:
+            p = QPainter(self)
+            w, h = self.width(), self.height()
+            sf = 0.6
+            p.scale(w*sf, h*sf)
+            p.translate(0.5/sf, 0.5/sf)
+            symbol = plot.PyQtGraphScatterPlotSymbolPathMatter[self.symbol]
+            pen = pg.mkPen(color=self.penColor, width=2)
+            brush = pg.mkBrush(color=self.brushColor)
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
             p.setPen(pen)
             p.setBrush(brush)
@@ -3528,8 +3535,9 @@ class PointsLayerToolButton(ToolButtonCustomColor):
     def __init__(self, symbol, color='r', parent=None):
         super().__init__(symbol, color=color, parent=parent)
         self.sigRightClick.connect(self.showContextMenu)
+        self.initContextMenu()
     
-    def showContextMenu(self, event):
+    def initContextMenu(self):
         contextMenu = QMenu(self)
         contextMenu.addSeparator()
 
@@ -3546,8 +3554,11 @@ class PointsLayerToolButton(ToolButtonCustomColor):
         showIdsAction.setChecked(True)
         contextMenu.addAction(showIdsAction)
         showIdsAction.toggled.connect(self.emitShowIdsToggled)
-
-        contextMenu.exec(event.globalPos())
+        
+        self._contextMenu = contextMenu
+    
+    def showContextMenu(self, event):
+        self._contextMenu.exec(event.globalPos())
     
     def emitRemove(self):
         self.sigRemove.emit(self)
@@ -5351,12 +5362,14 @@ class BaseGradientEditorItemLabels(pg.GradientEditorItem):
 class baseHistogramLUTitem(pg.HistogramLUTItem):
     sigAddColormap = Signal(object, str)
     sigRescaleIntes = Signal(object)
+    sigGradientChanged = Signal(object)
 
     def __init__(self, name='image', axisLabel='', parent=None, **kwargs):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
 
         super().__init__(**kwargs)
 
+        self._defaultState = super().saveState()
         self.labelStyle = {'color': '#ffffff', 'font-size': '11px'}
 
         if axisLabel:
@@ -5466,6 +5479,10 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
     
     def onShowCustomCmapsMenu(self):
         self.customCmapsMenu.show()
+        
+    def gradientChanged(self):
+        super().gradientChanged()
+        self.sigGradientChanged.emit(self)
     
     def customCmapsMenuTriggered(self, action):
         cmap = action.cmap
@@ -5497,6 +5514,9 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
     def sortTicks(self, ticks):
         sortedTicks = sorted(ticks, key=operator.itemgetter(0))
         return sortedTicks
+    
+    def resetState(self):
+        self.restoreState(self._defaultState)
     
     def getInvertedGradients(self):
         invertedGradients = {}
@@ -5668,6 +5688,33 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
             if action.text() == how:
                 action.setChecked(True)
                 return
+    
+    def setColormap(
+            self, 
+            cmap: colors.AcdcColorMap
+        ) -> None:
+        if isinstance(cmap, str):
+            self.gradient.loadPreset(cmap)
+            return
+        
+        lut = []
+        for color in cmap:
+            qcolor = pg.mkColor(color)
+            rgba_float = qcolor.getRgbF()
+            rgba_uint = [int(c*255) for c in rgba_float]
+            lut.append(rgba_uint)
+        
+        ncolors = len(lut)
+        positions = np.linspace(0, 1, len(lut))
+        state = {
+            "mode": "rgb",
+            "ticks": [
+                (float(pos), tuple(color))
+                for pos, color in zip(positions, lut)
+            ]
+        }
+        
+        self.gradient.restoreState(state)
 
 class ROI(pg.ROI):
     def __init__(
@@ -5863,7 +5910,6 @@ class ToggleVisibilityCheckBox(QCheckBox):
 
 class myHistogramLUTitem(baseHistogramLUTitem):
     sigGradientMenuEvent = Signal(object)
-    sigGradientChanged = Signal(object)
     sigTickColorAccepted = Signal(object)
     sigAddScaleBar = Signal(bool)
     sigAddTimestamp = Signal(bool)
@@ -6025,10 +6071,6 @@ class myHistogramLUTitem(baseHistogramLUTitem):
     def emitAddTimestamp(self):
         self.sigAddTimestamp.emit(self.addTimestampAction.isChecked())
     
-    def gradientChanged(self):
-        super().gradientChanged()
-        self.sigGradientChanged.emit(self)
-    
     def gradientMenuEventFilter(self, object, event):
         if event.type() == QEvent.Type.MouseMove:
             hoveredAction = self.gradient.menu.actionAt(event.pos())
@@ -6124,6 +6166,9 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         self.invertBwAction.setChecked(checked)
 
         self.restoreColormap(df)
+    
+    def super_saveState(self):
+        return super().saveState()
     
     def saveState(self, df):
         # remove previous state
@@ -6428,11 +6473,10 @@ class overlayLabelsGradientWidget(pg.GradientWidget):
     def updateImageOpacity(self, value):
         self.imageItem.setOpacity(value)
 
-class labelsGradientWidget(pg.GradientWidget):
-    sigShowRightImgToggled = Signal(bool)
-    sigShowLabelsImgToggled = Signal(bool)
-    sigShowNextFrameToggled = Signal(bool)
-
+class BaseLabelsGradientWidget(pg.GradientWidget):
+    sigShuffleCmap = Signal()
+    sigGreeedyShuffleCmap = Signal()
+    
     def __init__( self, *args, parent=None, orientation='right', **kargs):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
         
@@ -6463,9 +6507,22 @@ class labelsGradientWidget(pg.GradientWidget):
         self.saveColormapAction.triggered.connect(
             self.saveColormap
         )
+        
+        self.menu.addSeparator()
+        
+        # Shuffle colors action
+        self.shuffleCmapAction =  QAction(
+            'Randomly shuffle colormap (Shift+S)', self
+        )
+        self.menu.addAction(self.shuffleCmapAction)
+
+        self.greedyShuffleCmapAction = QAction(
+            'Greedily shuffle colormap (Alt+Shift+S)', self
+        )
+        self.menu.addAction(self.greedyShuffleCmapAction)
 
         self.addCustomGradients()
-
+        
         # Background color button
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel('Background color: '))
@@ -6478,6 +6535,91 @@ class labelsGradientWidget(pg.GradientWidget):
         act.setDefaultWidget(widget)
         act.triggered.connect(self.colorButton.click)
         self.menu.addAction(act)
+        
+        self.shuffleCmapAction.triggered.connect(self.sigShuffleCmap.emit)
+        self.greedyShuffleCmapAction.triggered.connect(
+            self.sigGreeedyShuffleCmap.emit
+        )
+    
+    def onShowCustomCmapsMenu(self):
+        self.customCmapsMenu.show()
+        
+    def customCmapsMenuTriggered(self, action):
+        cmap = action.cmap
+        self.item.colorMapMenuClicked(cmap)
+        self.item.showTicks(True)
+    
+    def saveColormap(self):
+        cmapName = self._askNameColormap()
+        if cmapName is None:
+            return
+        
+        cp = config.ConfigParser()
+        if os.path.exists(custom_cmaps_filepath):
+            cp.read(custom_cmaps_filepath)
+        
+        SECTION = f'{self.name}.{cmapName}'
+        cp[SECTION] = {}
+
+        state = self.item.saveState()
+        for key, value in state.items():
+            if key != 'ticks':
+                continue
+            for t, tick in enumerate(value):
+                pos, rgb = tick
+                rgb = ','.join([str(c) for c in rgb])
+                val = f'{pos},{rgb}'
+                cp[SECTION][f'tick_{t}_pos_rgb'] = val
+        
+        with open(custom_cmaps_filepath, mode='w') as file:
+            cp.write(file)
+        
+        self.addCustomGradient(cmapName, state, restore=False)
+    
+    def addCustomGradients(self):
+        try:
+            CustomGradients = getCustomGradients(name='labels')
+            if not CustomGradients:
+                return
+            for gradient_name, gradient_ticks in CustomGradients.items():
+                self.addCustomGradient(gradient_name, gradient_ticks)
+        except Exception as e:
+            printl(traceback.format_exc())
+            pass
+    
+    def _askNameColormap(self):
+        inputWin = apps.QInput(parent=self._parent, title='Colormap name')
+        inputWin.askText('Insert a name for the colormap: ', allowEmpty=False)
+        if inputWin.cancel:
+            return
+        cmapName = inputWin.answer
+        return cmapName
+
+    def addCustomGradient(self, gradient_name, gradient_ticks, restore=True):
+        currentState = self.item.saveState()
+        self.originalLength = self.item.length
+        self.item.length = 100
+        if restore:
+            self.item.restoreState(gradient_ticks)
+        gradient = self.item.getGradient()
+        action = CustomGradientMenuAction(gradient, gradient_name, self.item)
+        # action.triggered.connect(self.item.contextMenuClicked)
+        action.delButton.clicked.connect(self.removeCustomGradient)
+        action.cmap = colors.pg_ticks_to_colormap(gradient_ticks['ticks'])
+        # self.item.menu.insertAction(self.saveColormapAction, action)
+        self.customCmapsMenu.addAction(action)
+        self.item.length = self.originalLength
+        self.item.restoreState(currentState)
+        GradientsLabels[gradient_name] = gradient_ticks
+
+class labelsGradientWidget(BaseLabelsGradientWidget):
+    sigShowRightImgToggled = Signal(bool)
+    sigShowLabelsImgToggled = Signal(bool)
+    sigShowNextFrameToggled = Signal(bool)
+
+    def __init__( self, *args, parent=None, orientation='right', **kargs):
+        super().__init__(
+            *args, parent=parent, orientation=orientation, **kargs)
 
         # Font size menu action
         self.fontSizeMenu =  QMenu('Text font size', self)
@@ -6496,17 +6638,6 @@ class labelsGradientWidget(pg.GradientWidget):
         act.triggered.connect(self.textColorButton.click)
         self.menu.addAction(act)   
         self.menu.addSeparator()  
-
-        # Shuffle colors action
-        self.shuffleCmapAction =  QAction(
-            'Randomly shuffle colormap   (Shift+S)', self
-        )
-        self.menu.addAction(self.shuffleCmapAction)
-
-        self.greedyShuffleCmapAction = QAction(
-            'Greedily shuffle colormap  (Alt+Shift+S)', self
-        )
-        self.menu.addAction(self.greedyShuffleCmapAction)
         
         self.permanentGreedyCmapAction = QAction(
             'Always use greedy colormap', self
@@ -6535,7 +6666,8 @@ class labelsGradientWidget(pg.GradientWidget):
         self.menu.addAction(self.showNextFrameAction)
 
         # Default settings
-        self.defaultSettingsAction = QAction('Restore default settings...', self)
+        self.defaultSettingsAction = QAction(
+            'Restore default settings...', self)
         self.menu.addAction(self.defaultSettingsAction)
 
         self.menu.addSeparator()
@@ -6543,31 +6675,6 @@ class labelsGradientWidget(pg.GradientWidget):
         self.showRightImgAction.toggled.connect(self.showRightImageToggled)
         self.showLabelsImgAction.toggled.connect(self.showLabelsImageToggled)
         self.showNextFrameAction.toggled.connect(self.showNextFrameToggled)
-    
-    def onShowCustomCmapsMenu(self):
-        self.customCmapsMenu.show()
-    
-    def customCmapsMenuTriggered(self, action):
-        cmap = action.cmap
-        self.item.colorMapMenuClicked(cmap)
-        self.item.showTicks(True)
-    
-    def addCustomGradient(self, gradient_name, gradient_ticks, restore=True):
-        currentState = self.item.saveState()
-        self.originalLength = self.item.length
-        self.item.length = 100
-        if restore:
-            self.item.restoreState(gradient_ticks)
-        gradient = self.item.getGradient()
-        action = CustomGradientMenuAction(gradient, gradient_name, self.item)
-        # action.triggered.connect(self.item.contextMenuClicked)
-        action.delButton.clicked.connect(self.removeCustomGradient)
-        action.cmap = colors.pg_ticks_to_colormap(gradient_ticks['ticks'])
-        # self.item.menu.insertAction(self.saveColormapAction, action)
-        self.customCmapsMenu.addAction(action)
-        self.item.length = self.originalLength
-        self.item.restoreState(currentState)
-        GradientsLabels[gradient_name] = gradient_ticks
     
     def removeCustomGradient(self):
         button = self.sender()
@@ -6578,52 +6685,6 @@ class labelsGradientWidget(pg.GradientWidget):
         cp.remove_section(f'labels.{action.name}')
         with open(custom_cmaps_filepath, mode='w') as file:
             cp.write(file)
-    
-    def addCustomGradients(self):
-        try:
-            CustomGradients = getCustomGradients(name='labels')
-            if not CustomGradients:
-                return
-            for gradient_name, gradient_ticks in CustomGradients.items():
-                self.addCustomGradient(gradient_name, gradient_ticks)
-        except Exception as e:
-            printl(traceback.format_exc())
-            pass
-    
-    def _askNameColormap(self):
-        inputWin = apps.QInput(parent=self._parent, title='Colormap name')
-        inputWin.askText('Insert a name for the colormap: ', allowEmpty=False)
-        if inputWin.cancel:
-            return
-        cmapName = inputWin.answer
-        return cmapName
-    
-    def saveColormap(self):
-        cmapName = self._askNameColormap()
-        if cmapName is None:
-            return
-        
-        cp = config.ConfigParser()
-        if os.path.exists(custom_cmaps_filepath):
-            cp.read(custom_cmaps_filepath)
-        
-        SECTION = f'{self.name}.{cmapName}'
-        cp[SECTION] = {}
-
-        state = self.item.saveState()
-        for key, value in state.items():
-            if key != 'ticks':
-                continue
-            for t, tick in enumerate(value):
-                pos, rgb = tick
-                rgb = ','.join([str(c) for c in rgb])
-                val = f'{pos},{rgb}'
-                cp[SECTION][f'tick_{t}_pos_rgb'] = val
-        
-        with open(custom_cmaps_filepath, mode='w') as file:
-            cp.write(file)
-        
-        self.addCustomGradient(cmapName, state, restore=False)
     
     def isRightImageVisible(self):
         return (
@@ -7041,6 +7102,8 @@ class sliderWithSpinBox(QWidget):
         if isFloat is not None and isFloat:
             self._isFloat = True
 
+        self._normalize_factor = kwargs.get('normalize_factor', 1.0)
+        
         self.slider = QSlider(Qt.Horizontal, self)
 
         if self._normalize or self._isFloat:
@@ -7089,7 +7152,6 @@ class sliderWithSpinBox(QWidget):
         
         self.setLayout(layout)
 
-        
         if maximum_on_label is not None:
             self.setMaximum(maximum_on_label)
             self.labelMaximum.setText(f'/{maximum_on_label}')
@@ -7108,8 +7170,8 @@ class sliderWithSpinBox(QWidget):
         if self._normalize:
             valueInt = int(value*self.slider.maximum())
         elif self._isFloat:
-            valueInt = int(value)
-        
+            valueInt = int(value*self._normalize_factor)
+
         self.spinBox.valueChanged.disconnect()
         self.spinBox.setValue(value)
         self.spinBox.valueChanged.connect(self.spinboxValueChanged)
@@ -7124,18 +7186,30 @@ class sliderWithSpinBox(QWidget):
             self.sigValueChange.emit(self.value())
             self.valueChanged.emit(self.value())
 
-    def setMaximum(self, max, including_spinbox=False):
-        self.slider.setMaximum(max)
+    def setMaximum(self, max_val, including_spinbox=False):
+        max_val_int = max_val
+        if isinstance(max_val, float):
+            max_val_int = int(max_val*self._normalize_factor)
+            
+        self.slider.setMaximum(max_val_int)
         if including_spinbox:
-            self.spinBox.setMaximum(max)
+            self.spinBox.setMaximum(max_val)
 
     def setSingleStep(self, step):
         self.spinBox.setSingleStep(step)
 
-    def setMinimum(self, min, including_spinbox=False):
-        self.slider.setMinimum(min)
+    def setMinimum(self, min_val, including_spinbox=False):
+        min_val_int = min_val
+        if isinstance(min_val, float):
+            min_val_int = int(min_val*self._normalize_factor)
+            
+        self.slider.setMinimum(min_val_int)
         if including_spinbox:
-            self.spinBox.setMinimum(min)
+            self.spinBox.setMinimum(min_val)
+
+    def setRange(self, min_val, max_val, including_spinbox=False):
+        self.setMinimum(min_val, including_spinbox=including_spinbox)
+        self.setMaximum(max_val, including_spinbox=including_spinbox)
 
     def setSingleStep(self, step):
         self.spinBox.setSingleStep(step)
@@ -7150,13 +7224,16 @@ class sliderWithSpinBox(QWidget):
         self.slider.setTickInterval(interval)
 
     def sliderValueChanged(self, val):
-        self.spinBox.valueChanged.disconnect()
+        self.spinBox.blockSignals(True)
         if self._normalize:
             valF = val/self.slider.maximum()
             self.spinBox.setValue(valF)
+        elif self._isFloat:
+            val_float = val / self._normalize_factor
+            self.spinBox.setValue(val_float)
         else:
             self.spinBox.setValue(val)
-        self.spinBox.valueChanged.connect(self.spinboxValueChanged)
+        self.spinBox.blockSignals(False)
         self.sigValueChange.emit(self.value())
         self.valueChanged.emit(self.value())
 
@@ -7164,8 +7241,8 @@ class sliderWithSpinBox(QWidget):
         if self._normalize:
             val = int(val*self.slider.maximum())
         elif self._isFloat:
-            val = int(val)
-
+            val = int(val*self._normalize_factor)
+        
         self.slider.valueChanged.disconnect()
         self.slider.setValue(val)
         self.slider.valueChanged.connect(self.sliderValueChanged)
@@ -12661,3 +12738,44 @@ class ModelSelectionWidget(QWidget):
         item = QListWidgetItem(model_name)
         self.listBox.insertItem(self.listBox.count() - 1, item)
         return item
+
+
+class PointsLayerContextMenu(QMenu):
+    sigEditProperties = Signal()
+    sigRemove = Signal()
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        editPropertiesAction = QAction('Edit properties...', self)
+        self.addAction(editPropertiesAction)
+        
+        self.addSeparator()
+        
+        removeAction =  QAction('Remove points layer', self)
+        self.addAction(removeAction)
+        
+        editPropertiesAction.triggered.connect(self.emitSigEditProperties)
+        removeAction.triggered.connect(self.emitSigRemoveAction)
+    
+    def emitSigEditProperties(self):
+        self.sigEditProperties.emit()
+    
+    def emitSigRemoveAction(self):
+        self.sigRemove.emit()
+        
+class DummyWidget:
+    def __init__(self, *args, **kwargs):
+        pass
+    
+    def setValue(self, *args, **kwargs):
+        pass
+    
+    def setText(self, *args, **kwargs):
+        pass
+    
+    def text(self):
+        return
+    
+    def value(self):
+        return

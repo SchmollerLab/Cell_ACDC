@@ -5812,3 +5812,21 @@ def separate_fluo_segment_channels(channels):
         else:
             channels_to_load.append(ch)
     return segms_to_load, channels_to_load, current_segm
+
+def download_3d_renderer_demo_data():
+    from cellacdc.volume_renderer import data_path
+    
+    url = 'https://hmgubox2.helmholtz-muenchen.de/public.php/dav/files/5maWLyHRX4Lrk7x/?accept=zip'
+    file_size = 66398550
+    
+    dst_zip_filepath = os.path.join(data_path, 'mtHINESS_Sample_Position.zip')
+    exp_folderpath = dst_zip_filepath.replace('.zip', '')
+    
+    if os.path.exists(exp_folderpath):
+        return exp_folderpath
+
+    download_url(url, dst_zip_filepath, file_size=file_size)
+    extract_zip(dst_zip_filepath, data_path)   
+    
+    return exp_folderpath
+    
