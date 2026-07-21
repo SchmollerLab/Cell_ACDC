@@ -23032,7 +23032,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # by going previous and we want to check if this cell could be a
         # "better" mother for those non manually corrected buds
         curr_df = posData.allData_li[posData.frame_i]['acdc_df']
-
         isLastVisitedAgain = self.isLastVisitedAgainCca(
             curr_df, enforceAll=enforceAll
         )
@@ -24117,7 +24116,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             cca_df = self.get_cca_df(
                 frame_i=frame_i, 
                 return_df=True,
-                include_single_mother_bud_pairs=True
             )
             if cca_df is None:
                 break
@@ -24385,7 +24383,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self, frame_i=None, 
             return_df=False, 
             debug=False, 
-            include_single_mother_bud_pairs=False
         ):
         # cca_df is None unless the metadata contains cell cycle annotations
         # NOTE: cell cycle annotations are either from the current session
@@ -24403,9 +24400,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if cca_df is not None:
             cca_df = cca_df.dropna()
-        
-        if include_single_mother_bud_pairs:
-            self.addCcaInfoFromSingleMotherBudPairs(cca_df, dict_getter='get')
         
         if return_df:
             return cca_df
@@ -29830,7 +29824,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if enforceAll:
             return False
-        
+
         lastVisited = False
         posData.new_IDs = [
             ID for ID in posData.new_IDs
