@@ -8,6 +8,9 @@ from skimage.measure._regionprops_utils import (
 )
 import traceback as traceback
 
+from . import GUI_INSTALLED
+
+msg = ''
 try:
     from cellacdc.precompiled.precompiled_functions import (
         find_all_objects_2D,
@@ -17,20 +20,34 @@ try:
     )
     _CYTHON_FIND_OBJECTS = True
     _CYTHON_OBJECT_PROJECTIONS = True
-    print('regionprops: imported precompiled find-objects helpers.')
+    msg = 'regionprops: imported precompiled find-objects helpers.'
 except Exception:
     _CYTHON_FIND_OBJECTS = False
     _CYTHON_OBJECT_PROJECTIONS = False
-    print('[WARNING]: regionprops could not import precompiled find-objects helpers, falling back to scipy.ndimage.find_objects.')
+    msg = (
+        '[WARNING]: regionprops could not import precompiled '
+        'find-objects helpers, falling back to scipy.ndimage.find_objects.'
+    )
 
 try:
     from cellacdc.precompiled.precompiled_functions import most_common_projection_3D
     _CYTHON_MOST_COMMON_PROJECTION = True
-    print('regionprops: imported precompiled most-common projection helper.')
+    msg = 'regionprops: imported precompiled most-common projection helper.'
 except Exception:
     _CYTHON_MOST_COMMON_PROJECTION = False
-    print('[WARNING]: regionprops could not import precompiled most-common projection helper, falling back to NumPy implementation.')
-    
+    msg = (
+        '[WARNING]: regionprops could not import precompiled most-common '
+        'projection helper, falling back to NumPy implementation.'
+    )
+
+if msg and GUI_INSTALLED:
+    from qtpy.QtCore import QCoreApplication
+    app = QCoreApplication.instance()
+    try:
+        app.mainWindow.logger.info(msg)
+    except Exception as err:
+        pass
+
 # WARNING: Developers have already used
 #     14 hrs
 # to optimize this.

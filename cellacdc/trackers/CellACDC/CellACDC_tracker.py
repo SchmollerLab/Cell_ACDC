@@ -8,7 +8,7 @@ from skimage.measure import regionprops
 from cellacdc.regionprops import acdcRegionprops
 from skimage.segmentation import relabel_sequential
 
-from cellacdc import core, printl, debugutils
+from cellacdc import core, printl, debugutils, GUI_INSTALLED
 
 try:
     from cellacdc.precompiled.precompiled_functions import (
@@ -16,10 +16,21 @@ try:
         calc_IoA_matrix_3D as _calc_IoA_matrix_3D_cython,
     )
     _HAS_CYTHON_IOA = True
-    print('tracking: imported precompiled IoA helpers.')
+    msg = 'tracking: imported precompiled IoA helpers.'
 except ImportError:
     _HAS_CYTHON_IOA = False
-    print('[WARNING]: tracking could not import precompiled IoA helpers, falling back to NumPy implementation.')
+    msg = (
+        '[WARNING]: tracking could not import precompiled IoA helpers, '
+        'falling back to NumPy implementation.'
+    )
+
+if msg and GUI_INSTALLED:
+    from qtpy.QtCore import QCoreApplication
+    app = QCoreApplication.instance()
+    try:
+        app.mainWindow.logger.info(msg)
+    except Exception as err:
+        pass
 
 DEBUG = False
 
