@@ -245,6 +245,13 @@ class SegForLostIDsWorker(QObject):
         self._emit_and_wait(
             'update_rp', self.sigUpdateRP, wl_update, wl_track_og_curr
         )
+        
+    def emitSigSegForLostIDsImportModel(self, base_model_name):
+        self._emit_and_wait(
+            'import_model',
+            self.sigSegForLostIDsImportModel,
+            base_model_name,
+        )
 
     def emitGetSegForLostIDsInputImg(self, image_channel_name):
         self._emit_and_wait( # emit and waiting is handled here
@@ -365,11 +372,7 @@ class SegForLostIDsWorker(QObject):
 
             try:
                 self.logger.info(f'Importing {base_model_name}...')
-                self._emit_and_wait(
-                    'import_model',
-                    self.sigSegForLostIDsImportModel,
-                    base_model_name,
-                )
+                self.emitSigSegForLostIDsImportModel(base_model_name)
                 acdcSegment = myutils.import_segment_module(base_model_name)
             except (IndexError, ImportError, KeyError):
                 self.logger.warning(

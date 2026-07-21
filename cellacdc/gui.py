@@ -19958,7 +19958,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         f"Warning: {name} has no click or trigger method"
                     )
 
-                if self.wait_worker_loop is not None and tool_button.start_event_loop:
+                if hasattr(self, "wait_worker_loop") and self.wait_worker_loop is not None and tool_button.start_event_loop:
                     self.wait_worker_loop.exec_()
                     
 
@@ -30873,8 +30873,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return assignments
             
     def trackFrameCustomTracker(
-            self, prev_lab, currentLab, specific_IDs=None, unique_ID=None,
-            return_assignments=True, dont_return_tracked_lab=False
+            self, prev_lab, curr_lab, prev_rp, curr_rp, specific_IDs=None, unique_ID=None,
+            return_assignments=True, dont_return_tracked_lab=False,
+            
         ):
         if unique_ID is None:
             unique_ID = self.setBrushID()
@@ -30889,7 +30890,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         kwargs = {k: v for k, v in kwargs_total.items() if k in self.realTimeTracker_kwargs}
         tracked_result = self.realTimeTracker.track_frame(
-            prev_lab, currentLab,
+            prev_lab, curr_lab,
             **kwargs,
         )
         return tracked_result
@@ -30918,7 +30919,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
         else:
             tracked_result = self.trackFrameCustomTracker(
-                prev_lab, curr_lab, specific_IDs=specific_IDs, unique_ID=unique_ID,
+                prev_lab, curr_lab, prev_rp, curr_rp, specific_IDs=specific_IDs, unique_ID=unique_ID,
                 dont_return_tracked_lab=dont_return_tracked_lab, return_assignments=return_assignments
             )
 
