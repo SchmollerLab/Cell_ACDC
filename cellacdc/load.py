@@ -543,9 +543,8 @@ def _fix_will_divide(acdc_df):
     
     cca_df_mask = ~acdc_df['cell_cycle_stage'].isna()
     cca_df = acdc_df[cca_df_mask].reset_index()[required_cols]
-    
-    IDs_gen_num_will_divide = cca_functions.get_IDs_gen_num_will_divide(cca_df)
 
+    IDs_gen_num_will_divide = cca_functions.get_IDs_gen_num_will_divide(cca_df)
     if not IDs_gen_num_will_divide:
         return acdc_df
     
@@ -560,22 +559,7 @@ def _fix_will_divide(acdc_df):
     
     cca_df_index = cca_df_mask[cca_df_mask].index
     acdc_df.loc[cca_df_index, 'will_divide'] = cca_df['will_divide']
-    
-    # IDs_will_divide_wrong = (
-    #     cca_functions.get_IDs_gen_num_will_divide_wrong(cca_df)
-    # )
-    # if IDs_will_divide_wrong:
-    #     cca_df = cca_df.reset_index().set_index(['Cell_ID', 'generation_num'])   
-    #     cca_df.loc[IDs_will_divide_wrong, 'will_divide'] = 0
-    #     cca_df = cca_df.reset_index()
-    #     acdc_df = acdc_df.reset_index()
 
-    #     cca_df = cca_df.set_index(['frame_i', 'Cell_ID'])
-    #     acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
-        
-    #     cca_df_index = cca_df_mask[cca_df_mask].index
-    #     acdc_df.loc[cca_df_index, 'will_divide'] = cca_df['will_divide']
-    
     return acdc_df
 
 def _add_missing_columns(acdc_df):
@@ -922,18 +906,30 @@ def get_segm_endnames_from_exp_path(exp_path, pos_foldernames=None):
     
     return existingEndNames
 
-def get_files_with(images_path: os.PathLike, with_text: str, ext: str=None):
+def get_files_with(
+        images_path: os.PathLike, 
+        with_text: str, 
+        ext: str | tuple[str]=None
+    ):
     ls = myutils.listdir(images_path)
     found_files = []
     for file in ls:
         if file.find(with_text) == -1:
             continue
         
-        if ext is not None and not file.endswith(ext):
+        if ext is None:
+            found_files.append(file)
             continue
         
-        found_files.append(file)
-    
+        _, file_ext = os.path.splitext(file)
+        if isinstance(ext, tuple) and file_ext in ext:
+            found_files.append(file)
+            continue
+        
+        if isinstance(ext, str) and file_ext == ext:
+            found_files.append(file)
+            continue
+
     return found_files
 
 def load_segmInfo_df(pos_path):

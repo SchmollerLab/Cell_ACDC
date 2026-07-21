@@ -1146,6 +1146,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             elif saveDataWorker is not None:
                 rp = posData.allData_li[frame_i]['regionprops']
                 acdc_df = posData.allData_li[frame_i]['acdc_df']
+                acdc_df = saveDataWorker.addSingleMotherBudPairCcaInfo(
+                    acdc_df, posData, frame_i
+                )
                 if acdc_df is None:
                     continue
             else:

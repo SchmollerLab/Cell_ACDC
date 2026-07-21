@@ -16,37 +16,73 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Serna, S. E., et al. <i>ABA-AA: A simple, reversible, and non-toxic anchor-away system for effective nuclear protein depletion</i>. <b>Cell Reports Methods</b> (2026) DOI: <a href="https://doi.org/10.1016/j.crmeth.2026.101517">10.1016/j.crmeth.2026.101517</a>.</li><br>
+
       <li>Moukham, H., et al. <i>SNF1/AMPK controls its own localization by phosphorylating its activating kinase Sak1</i>. <b>iScience</b> (2026) DOI: <a href="https://doi.org/10.1016/j.isci.2026.116357">10.1016/j.isci.2026.116357</a>.</li><br>
+
       <li>Vandal, E. S., et al. <i>The role of cell growth rate on accumulation of the mitotic cyclin Cdc13 in fission yeast</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.05.14.724355">10.64898/2026.05.14.724355</a>.</li><br>
+
       <li>Kim, J., et al. <i>A Fkh1/2 binding site array in the WHI5 promoter drives sub-scaling transcription</i>. <b>Cell Reports</b> (2026) DOI: <a href="https://doi.org/10.1016/j.celrep.2026.117304">10.1016/j.celrep.2026.117304</a>.</li><br>
+
       <li>Benedikt, A. et al. <i>Retrograde signalling mediates cellular adaptation to mitochondrial DNA copy number alterations</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.04.22.720057">10.64898/2026.04.22.720057</a>.</li><br>
+
       <li>Lanz, M. C., et al. <i>Cell enlargement drives aging-associated proteome remodeling and shortens replicative lifespan</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.02.15.706013">10.64898/2026.02.15.706013</a>.</li><br>
+
       <li>Lambiase, A., et al. <i>Acteoside exerts neuroprotective effects by preventing α-synuclein aggregation and oxidative stress in models of Parkinson’s disease</i>. <b>Neurotherapeutics</b> (2025) DOI: <a href="https://doi.org/10.1016/j.neurot.2025.e00825">10.1016/j.neurot.2025.e00825</a>.</li><br>
+
+      <li>Pabst, F. R., et al. <i>Methionine synthase reductase regulates heterochromatin independently of methionine synthesis through mitochondrial homeostasis</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.64898/2025.12.19.695597">10.64898/2025.12.19.695597</a>.</li><br>
+
       <li>Wunder, T., et al. <i>Conserved and Lineage-Specific Roles of KEA-Mediated Ion Homeostasis in Chlamydomonas</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.64898/2025.12.03.692059">10.64898/2025.12.03.692059</a>.</li><br>
+
       <li>Gao, X., et al. <i>Yeast growth is controlled by the proportional scaling of mRNA and ribosome concentrations</i>. <b>arXiv</b> (2025) DOI: <a href="https://doi.org/10.48550/arXiv.2508.14997">10.48550/arXiv.2508.14997</a>.</li><br>
+
       <li>Garrigós, V., et al. <i>Tsa1-Mediated Regulation of PKA Tunes Trehalose Metabolism in Saccharomyces cerevisiae</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.11.26.690464">10.1101/2025.11.26.690464</a>.</li><br>
+
       <li>Muñoz-Barrera, M., et al. <i>HLH-30/TFEB is necessary for chromatin reorganization and maintenance of cell quiescence during starvation in C. elegans</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.31.685810">10.1101/2025.10.31.685810</a>.</li><br>
+
       <li>Kim, J., et al. <i>A Fkh1/2 binding site array in the WHI5 promoter drives sub-scaling transcription</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.10.681508">10.1101/2025.10.10.681508</a>.</li><br>
+
       <li>Akanksha, A., et al. <i>Microfluidic analysis of salt-stress-mediated antibiotic tolerance in Mycobacterium smegmatis</i>. <b>Lab on a Chip</b> (2025) DOI: <a href="https://doi.org/10.1039/D5LC00713E">10.1039/D5LC00713E</a>.</li><br>
+
       <li>Saydee-Onwubiko, U. N., et al. <i>Apoptosis promotes fertility in C. elegans by maintaining functional germline morphology</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.22.683972">10.1101/2025.10.22.683972</a>.</li><br>
+
       <li>Proulx-Giraldeau, F. , et al. <i>Division Asymmetry Drives Cell Size Variability in Budding Yeast</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.22.683920">10.1101/2025.10.22.683920</a>.</li><br>
+
       <li>Kukhtevich, I. , et al. <i>The origin of septin ring size control in budding yeast</i>. <b>The EMBO Journal</b> (2025) DOI: <a href="https://doi.org/10.1038/s44318-025-00571-5">10.1038/s44318-025-00571-5</a>.</li><br>
+
       <li>Conti, M. M. , et al. <i>Dynamic phosphorylation of Hcm1 promotes fitness in chronic stress</i>. <b>PLOS Genetics</b> (2025) DOI: <a href="https://doi.org/10.1371/journal.pgen.1011874">10.1371/journal.pgen.1011874</a>.</li><br>
+
       <li>Dengler, L. , et al. <i>When mitochondria fall apart: Unbalanced mitochondrial segregation triggers loss of mtDNA in the absence of mitochondrial fusion</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.05.13.653688">10.1101/2025.05.13.653688</a>.</li><br>
+
       <li>Seshadri, A. , et al. <i>Exonuclease action of replicative polymerase gamma drives damage-induced mitochondrial DNA clearance</i>. <b>EMBO Reports</b> (2025) DOI: <a href="https://doi.org/10.1038/s44319-025-00380-1">10.1038/s44319-025-00380-1</a>.</li><br>
+
       <li>Al-Refaie, N. , et al. <i>Fasting shapes chromatin architecture through an mTOR/RNA Pol I axis</i>. <b>Nat. Cell Biol.</b> 1–15 (2024) DOI: <a href="https://doi.org/10.1038/s41556-024-01512-w">10.1038/s41556-024-01512-w</a>.</li><br>
+
       <li>Lanz, M. C. , et al. <i>Genome dilution by cell growth drives starvation-like proteome remodeling in mammalian and yeast cells</i>. <b>Nat. Struct. Mol. Biol.</b> (2024) DOI: <a href="https://doi.org/10.1038/s41594-024-01353-z">10.1038/s41594-024-01353-z</a>.</li><br>
+
       <li>Xiao, J., Turner, J. J., Kõivomägi, M. & Skotheim, J. M. <i>Whi5 hypo- and hyper-phosphorylation dynamics control cell-cycle entry and progression</i>. <b>Curr. Biol.</b> 34, 2434-2447.e5 (2024).DOI: <a href="https://doi.org/10.1016/j.cub.2024.04.052">10.1016/j.cub.2024.04.052</a>.</li><br>
+
       <li>Vitacolonna, M. , et al. <i>A multiparametric analysis including single-cell and subcellular feature assessment reveals differential behavior of spheroid cultures on distinct ultra-low attachment plate types</i>. <b>Front. Bioeng. Biotechnol.</b> 12, (2024) DOI: <a href="https://doi.org/10.3389/fbioe.2024.1422235">10.3389/fbioe.2024.1422235</a>.</li><br>
+
       <li>Roussou, R. , et al. <i>Real-time assessment of mitochondrial DNA heteroplasmy dynamics at the single-cell level</i>. <b>EMBO J.</b> 43, 5340–5359 (2024) DOI: <a href="https://doi.org/10.1038/s44318-024-00183-5">10.1038/s44318-024-00183-5</a>.</li><br>
+
       <li>Padovani, F. , et al. <i>SpotMAX: a generalist framework for multi-dimensional automatic spot detection and quantification</i>. <b>bioRxiv</b> (2024) DOI: <a href="https://doi.org/10.1101/2024.10.22.619610">10.1101/2024.10.22.619610</a>.</li><br>
+
       <li>Kukhtevich, I. , et al. <i>The origin of septin ring size control in budding yeast</i>. <b>bioRxiv</b> (2024) DOI: <a href="https://doi.org/10.1101/2024.07.30.605628">10.1101/2024.07.30.605628</a>.</li><br>
+
       <li>Chatzitheodoridou, D., Bureik, D., Padovani, F., Nadimpalli, K. V. & Schmoller, K. M. <i>Decoupled transcript and protein concentrations ensure histone homeostasis in different nutrients</i>. <b>EMBO J.</b> 43, 5141–5168 (2024) DOI: <a href="https://doi.org/10.1038/s44318-024-00227-w">10.1038/s44318-024-00227-w</a>.</li><br>
+
       <li>Chadha, Y., Kukhtevich, I. V., Padovani, F., Schneider, R. & Schmoller, K. M. <i>Single-cell imaging reveals a key role of Bck2 in budding yeast cell size adaptation to nutrient challenges</i>. <b>bioRxiv</b> (2024) DOI: <a href="https://doi.org/10.1101/2024.10.04.616606">10.1101/2024.10.04.616606</a>.</li><br>
+
       <li>Seel, A. , et al. <i>Regulation with cell size ensures mitochondrial DNA homeostasis during cell growth</i>. <b>Nat. Struct. Mol. Biol.</b> 30, 1549–1560 (2023) DOI: <a href="https://doi.org/10.1038/s41594-023-01091-8">10.1038/s41594-023-01091-8</a>.</li><br>
+
       <li>Piñeiro López, C., Rodrigues Neves, A. R., Čavka, I., Gros, O. J. & Köhler, S. <i>Segmentation of C. elegans germline nuclei</i>. <b>MicroPubl Biol.</b> (2023) DOI: <a href="https://doi.org/10.17912/MICROPUB.BIOLOGY.001062">10.17912/MICROPUB.BIOLOGY.001062</a>.</li><br>
+
       <li>Freitag, M. , et al. <i>Single-molecule experiments reveal the elbow as an essential folding guide in SMC coiled-coil arms</i>. <b>Biophys. J.</b> 121, 4702–4713 (2022) DOI: <a href="https://doi.org/10.1016/j.bpj.2022.10.017">10.1016/j.bpj.2022.10.017</a>.</li><br>
+
       <li>Kukhtevich, I. V. , et al. <i>Quantitative RNA imaging in single live cells reveals age-dependent asymmetric inheritance</i>. <b>Cell Rep.</b> 41, (2022) DOI: <a href="https://doi.org/10.1016/j.celrep.2022.111656">10.1016/j.celrep.2022.111656</a>.</li><br>
+
       <li>Padovani, F., Mairhörmann, B., Falter-Braun, P., Lengefeld, J. & Schmoller, K. M. <i>Segmentation, tracking and cell cycle analysis of live-cell imaging data with Cell-ACDC</i>. <b>BMC Biol.</b> 20, 174 (2022) DOI: <a href="https://doi.org/10.1186/s12915-022-01372-6">10.1186/s12915-022-01372-6</a>.</li><br>
+
       <li>Schuh, L. , et al. <i>Altered expression response upon repeated gene repression in single yeast cells</i>. <b>PLOS Comput. Biol.</b> 18, e1010640 (2022) DOI: <a href="https://doi.org/10.1371/journal.pcbi.1010640">10.1371/journal.pcbi.1010640</a>.</li>
     </ol>

@@ -637,9 +637,21 @@ class customAnnotationDialog(QDialog):
             self.loop.exec_()
 
 class _PointsLayerAppearanceGroupbox(QGroupBox):
-    def __init__(self, *args):
+    sigValueChanged = Signal(object)
+    
+    def __init__(
+            self, 
+            *args, 
+            backend: Literal['pyqtgraph', 'vispy']='pyqtgraph',
+            is_3d=False,
+            add_opacity_slider=False
+        ):
         super().__init__(*args)
 
+        self._backend = backend
+        self._add_opacity_slider = add_opacity_slider
+        self._is_3d = is_3d
+        
         self.setTitle('Points appearance')
 
         layout = widgets.FormLayout()
@@ -650,12 +662,18 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
             <b>Symbol</b> used to draw the points.
         """)
         symbolInfoTxt = (f'{html_utils.paragraph(symbolInfoTxt)}')
+        if backend == 'pyqtgraph':
+            symbolCombobox = widgets.pgScatterSymbolsCombobox()
+        elif backend == 'vispy':
+            symbolCombobox = widgets.VisPyMarkersSymbolsCombobox()
+            
         self.symbolWidget = widgets.formWidget(
-            widgets.pgScatterSymbolsCombobox(), addInfoButton=True,
+            symbolCombobox, addInfoButton=True,
             labelTextLeft='Symbol: ', parent=self, infoTxt=symbolInfoTxt,
             stretchWidget=False
         )
         layout.addFormWidget(self.symbolWidget, row=row)
+        symbolCombobox.currentTextChanged.connect(self.emitSigValueChanged)
         '----------------------------------------------------------------------' 
 
         '----------------------------------------------------------------------' 
@@ -668,6 +686,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         layout.addFormWidget(self.colorWidget, align=Qt.AlignLeft, row=row)
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
+        self.colorButton.sigColorChanging.connect(self.emitSigValueChanged)
         '----------------------------------------------------------------------' 
 
         '----------------------------------------------------------------------' 
@@ -679,24 +698,15 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
             labelTextLeft='Size: ', parent=self
         )
         layout.addFormWidget(self.sizeWidget, row=row)
+        self.sizeSpinBox.valueChanged.connect(self.emitSigValueChanged)
         '----------------------------------------------------------------------' 
         
         '----------------------------------------------------------------------' 
-        row += 1
-        zHeightTooltip = (
-            'If "Z-depth" is greater than 1, the points will be annotated '
-            'in all the z-slices in the range `z - (Z-depth/2) < z < z + (Z-depth/2)`\n'
-            'where `z` is the center z-slice of the added point.'
-        )
-        self.zHeightSpinBox = widgets.OddSpinBox()
-        self.zHeightSpinBox.setValue(1)
-        self.zHeightSpinBox.setMinimum(1)
-        self.zHeightWidget = widgets.formWidget(
-            self.zHeightSpinBox, stretchWidget=True,
-            labelTextLeft='Z-depth: ', parent=self,
-            toolTip=zHeightTooltip
-        )
-        layout.addFormWidget(self.zHeightWidget, row=row)
+        self.zHeightSpinBox = widgets.DummyWidget()
+        if not is_3d:
+            row += 1
+            self.addZheightSpinbox(row)
+            layout.addFormWidget(self.zHeightWidget, row=row)
         '----------------------------------------------------------------------'
 
         '----------------------------------------------------------------------' 
@@ -711,15 +721,66 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         )
         layout.addFormWidget(self.shortcutWidget, row=row)
         '----------------------------------------------------------------------'
+        
+        '----------------------------------------------------------------------' 
+        self.opacitySlider = widgets.DummyWidget()
+        if add_opacity_slider:
+            row += 1
+            self.opacitySlider = widgets.sliderWithSpinBox(
+                title_loc='in_line', 
+                isFloat=True, 
+                parent=self,
+                normalize_factor=20
+            )
+            self.opacitySlider.setValue(0.3)
+            self.opacitySlider.setRange(0.0, 1.0)
+            self.opacitySlider.setSingleStep(0.05)
+            self.opacitySlider.setDecimals(2)
+            self.opacityWidget = widgets.formWidget(
+                self.opacitySlider, stretchWidget=True,
+                labelTextLeft='Opacity: ', parent=self
+            )
+            layout.addFormWidget(self.opacityWidget, row=row)
+            self.opacitySlider.valueChanged.connect(self.emitSigValueChanged)
+        '----------------------------------------------------------------------' 
 
         self.setLayout(layout)
     
-    def restoreState(self, state):
-        self.shortcutWidget.widget.setText(state['shortcut'])
-        self.colorButton.setColor(state['color'])
-        self.symbolWidget.widget.setCurrentText(state['symbol'])
-        self.sizeSpinBox.setValue(state['pointSize'])
-        self.zHeightSpinBox.setValue(state['zHeight'])
+    def emitSigValueChanged(self, *args):
+        self.sigValueChanged.emit(self.state())
+    
+    def addZheightSpinbox(self, row: int):
+        zHeightTooltip = (
+            'If "Z-depth" is greater than 1, the points will be annotated '
+            'in all the z-slices in the range '
+            '`z - (Z-depth/2) < z < z + (Z-depth/2)`\n'
+            'where `z` is the center z-slice of the added point.'
+        )
+        self.zHeightSpinBox = widgets.OddSpinBox()
+        self.zHeightSpinBox.setValue(1)
+        self.zHeightSpinBox.setMinimum(1)
+        self.zHeightWidget = widgets.formWidget(
+            self.zHeightSpinBox, stretchWidget=True,
+            labelTextLeft='Z-depth: ', parent=self,
+            toolTip=zHeightTooltip
+        )
+        self.zHeightSpinBox.valueChanged.connect(self.emitSigValueChanged)
+    
+    def restoreState(self, state: dict):
+        key_widget_setter_mapper = {
+            'shortcut': self.shortcutWidget.widget.setText,
+            'color': self.colorButton.setColor,
+            'symbol': self.symbolWidget.widget.setCurrentText,
+            'pointSize': self.sizeSpinBox.setValue,
+            'zHeight': self.zHeightSpinBox.setValue,
+            'opacity': self.opacitySlider.setValue
+        }
+        for key, setter in key_widget_setter_mapper.items():
+            value = state.get(key)
+            if value is None:
+                continue
+            
+            setter(value)
     
     def selectColor(self):
         color = self.colorButton.color()
@@ -740,9 +801,14 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
             'symbol': self.symbolWidget.widget.currentText(), 
             'color': (r,g,b),
             'pointSize': self.sizeSpinBox.value(),
-            'zHeight': self.zHeightSpinBox.value(),
             'shortcut': self.shortcutWidget.widget.text()
         }
+        if not self._is_3d:
+            _state['zHeight'] = self.zHeightSpinBox.value()
+        
+        if self._add_opacity_slider:
+            _state['opacity'] = self.opacitySlider.value()
+        
         return _state
 
 class AddPointsLayerDialog(QBaseDialog):
@@ -1415,19 +1481,38 @@ class AddPointsLayerDialog(QBaseDialog):
 
 class EditPointsLayerAppearanceDialog(QBaseDialog):
     sigClosed = Signal()
+    sigValueChanged = Signal(object)
 
-    def __init__(self, parent=None):
+    def __init__(
+            self, 
+            backend: Literal['pyqtgraph', 'vispy']='pyqtgraph', 
+            is_3d=False,
+            add_opacity_slider=False,
+            hide_on_close=False,
+            title='Points Layer Properties',
+            parent=None
+        ):
         self.cancel = True
         super().__init__(parent)
 
         self._parent = parent
+        self._backend = backend
+        self._is_3d = is_3d
+        self._add_opacity_slider = add_opacity_slider
+        self._hide_on_close = hide_on_close
 
-        self.setWindowTitle('Custom annotation')
+        self.setWindowTitle(title)
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         mainLayout = QVBoxLayout()
 
-        self.appearanceGroupbox = _PointsLayerAppearanceGroupbox()
+        self.appearanceGroupbox = _PointsLayerAppearanceGroupbox(
+            backend=backend, 
+            is_3d=is_3d, 
+            add_opacity_slider=add_opacity_slider
+        )
+        
+        self.appearanceGroupbox.sigValueChanged.connect(self.emitValueChanged)
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
@@ -1442,12 +1527,23 @@ class EditPointsLayerAppearanceDialog(QBaseDialog):
 
         self.setFont(fonts.font)
     
+    def emitValueChanged(self, *args):
+        self.sigValueChanged.emit(self.appearanceGroupbox.state())
+    
     def restoreState(self, state):
         self.appearanceGroupbox.restoreState(state)
     
     def closeEvent(self, event):
-        super().closeEvent(event)
+        if self._hide_on_close:
+            event.ignore()
+            self.hide()
+        else:
+            super().closeEvent(event)
         self.sigClosed.emit()
+    
+    def force_close(self):
+        self._hide_on_close = False
+        self.close()
     
     def state(self):
         _state = self.appearanceGroupbox.state()
@@ -1456,14 +1552,27 @@ class EditPointsLayerAppearanceDialog(QBaseDialog):
     def ok_cb(self):
         self.cancel = False
         symbol = self.appearanceGroupbox.symbolWidget.widget.currentText()
-        self.symbol = re.findall(r"\'(.+)\'", symbol)[0]
+        self.symbol = symbol
+        if self._backend == 'pyqtgraph':
+            self.symbol = re.findall(r"\'(.+)\'", symbol)[0]
         self.color = self.appearanceGroupbox.colorButton.color()
         self.pointSize = self.appearanceGroupbox.sizeSpinBox.value()
-        self.zHeight = self.appearanceGroupbox.zHeightSpinBox.value()
+        
+        self.zHeight = None
+        if not self._is_3d:
+            self.zHeight = self.appearanceGroupbox.zHeightSpinBox.value()
+        
+        self.opacity = 1.0
+        if self._add_opacity_slider:
+            self.opacity = self.appearanceGroupbox.opacitySlider.value()
+        
         shortcutWidget = self.appearanceGroupbox.shortcutWidget
         self.shortcut = shortcutWidget.widget.text()
         self.keySequence = shortcutWidget.widget.keySequence
-        self.close()
+        if self._hide_on_close:
+            self.hide()
+        else:
+            self.close()
 
 
 class FilenameEntryFormatter:
@@ -18333,6 +18442,8 @@ class ImageJRoisToSegmManager(QBaseDialog):
         mainLayout = QVBoxLayout()
         
         rois = roifile.roiread(rois_filepath)
+        if not isinstance(rois, list):
+            rois = [rois]
         self.rois = {roi.name: roi for roi in rois}
         
         roisNamesTreeWidget = widgets.TreeWidget()
