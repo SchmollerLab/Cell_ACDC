@@ -327,9 +327,9 @@ class normal_division_tracker:
             unique_ID=unique_ID,
             specific_IDs=specific_IDs,
             return_assignments=return_assignments,
-            dont_return_tracked_lab=dont_return_tracked_lab,
+            dont_return_tracked_lab=dont_return_tracked_lab if not self._annot_obj_2nd_step else True
         )
-        if dont_return_tracked_lab:
+        if dont_return_tracked_lab or not self._annot_obj_2nd_step:
             IoA_matrix, self.assignments, self.tracked_IDs = out
         else:
             self.tracked_lab, IoA_matrix, self.assignments, self.tracked_IDs = out
@@ -337,18 +337,23 @@ class normal_division_tracker:
         if lost_IDs_search_range is None:
             return
         
-        lab_for_rp_update = lab if dont_return_tracked_lab else self.tracked_lab
         # if isinstance(self.rp, acdcRegionprops):
         #     updated_rp = self.rp.copy().update_regionprops_via_assignments( # .copy() not properly implemented
         #         assignments=self.assignments,
         #         lab=lab_for_rp_update,
         #     )
         # else:
-        updated_rp = acdcRegionprops(lab_for_rp_update, precache_centroids=False)
+        updated_rp = acdcRegionprops(self.tracked_lab, precache_centroids=False)
         
         
-        mothers = {mother for mother, _ in self.mother_daughters}
-        daughters = {daughter for _, daughters in self.mother_daughters for daughter in daughters}
+        mothers = {self.IDs_prev[mother] for mother, _ in self.mother_daughters}
+        daughters = set()
+        for _, daughter_idxs in self.mother_daughters:
+            daughter_IDs = IoA_index_daughter_to_ID(
+                daughter_idxs, self.assignments, self.IDs_curr_untracked
+            )
+            if daughter_IDs:
+                daughters.update(daughter_IDs)
             
         selected_tracked_IDs = None
         if specific_IDs is not None:
@@ -1159,14 +1164,11 @@ class tracker:
             were matched according to the second step (based on search range). 
             Default is True
         PhysicalSizeX : float, optional
-            Pixel size in the x-direction in 'micrometre/pixel'. This will be 
-            ignored if `search_range_unit` is `pixels`. Default is 1.0
+            Pixel size in the x-direction in 'micrometre/pixel'. Default is 1.0
         PhysicalSizeY : float, optional
-            Pixel size in the y-direction in 'micrometre/pixel'. This will be 
-            ignored if `search_range_unit` is `pixels`. Default is 1.0.
+            Pixel size in the y-direction in 'micrometre/pixel'. Default is 1.0.
         PhysicalSizeZ : float, optional
-            Pixel size in the z-direction in 'micrometre/pixel'. This will be 
-            ignored if `search_range_unit` is `pixels`. Default is 1.0. 
+            Pixel size in the z-direction in 'micrometre/pixel'. Default is 1.0. 
         """
         self._annot_obj_2nd_step = annotate_objects_tracked_second_step
         self._voxel_zyx_size = (PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX)
@@ -1195,9 +1197,9 @@ class tracker:
         - min_daughter (int, optional): Minimum number of daughter cells. Used for determining if a cell has divided. Defaults to 2.
         - max_daughter (int, optional): Maximum number of daughter cells. Used for determining if a cell has divided. Defaults to 2.
         - record_lineage (bool, optional): Flag to record and save lineage. Defaults to True.
-        - lost_IDs_search_range (float, optional): Maximum distance in pixels a cell can move
+        - lost_IDs_search_range (float, optional): Maximum distance a cell can move
           between consecutive frames to still be matched to a lost ID in the 2nd tracking step.
-          If None, the 2nd step is skipped entirely. Defaults to None.
+          If 0, the 2nd step is skipped entirely. Defaults to 0.
         
         Returns:
         - list: Tracked video frames.
@@ -1207,7 +1209,7 @@ class tracker:
             record_lineage = True
             
         if lost_IDs_search_range == 0:
-            lost_IDs_search_range = None
+            lost_IDs_search_range = None  # 2nd step is skipped entirely
         
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
 
