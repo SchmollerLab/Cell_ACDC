@@ -17,6 +17,7 @@ test_shorten_data.py
 note.txt
 cellacdc/q_debug.py
 cellacdc/_q_debug.py
+global_cca_df_with_single_moth_bud_pair.csv
 
 env_dependencies_issues.txt
 not_installed_requirements.txt
@@ -25,6 +26,13 @@ requirements_new.txt
 **/_test*.py
 **/weights_location_path.txt
 **/_test
+
+# cython generated files
+*.pyd
+*.so
+!cellacdc/precompiled/
+!cellacdc/precompiled/*.pyd
+!cellacdc/precompiled/*.so
 
 # Test output plots
 tests/_plots/
@@ -36,7 +44,6 @@ setup.cfg
 
 # Starting from pip 21.3 setup.py is not needed anymore
 # and we rely only on setup.cfg for env
-setup.py
 environment.yml
 # requirements.txt
 conda_env_list_commands.txt
@@ -263,3 +270,4 @@ dmypy.json
 .pyre/
 uv.lock
 .serena/
+cellacdc/volume_renderer/_demos/

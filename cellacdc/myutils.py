@@ -55,6 +55,7 @@ from . import _warnings
 from . import urls
 from . import qrc_resources_path
 from . import settings_folderpath
+
 from .models._cellpose_base import min_target_versions_cp
 
 if GUI_INSTALLED:
@@ -345,6 +346,7 @@ class Logger(logging.Logger):
             QLogWidget: 'QPlainTextEdit'=None
         ):
         super().__init__(f'{name}-{module}', level=level)
+        self.propagate = False  # prevent UnicodeEncodeError via root StreamHandler
         self._stdout = sys.stdout
         self._stderr = StdErr(logger=self)
         sys.stderr = self._stderr
@@ -369,8 +371,13 @@ class Logger(logging.Logger):
         log_to_file : bool, optional
             If True, call `info` method with `text`. Default is True
         """     
-        if write_to_stdout:   
-            self._stdout.write(text)
+        if write_to_stdout:
+            try:
+                self._stdout.write(text)
+            except UnicodeEncodeError:
+                self._stdout.write(text.encode(
+                    self._stdout.encoding, errors='replace'
+                ).decode(self._stdout.encoding))
         
         if self._q_log_widget is not None:
             try:
@@ -392,8 +399,11 @@ class Logger(logging.Logger):
         
         if not text:
             return 
-        
-        self.debug(text)
+
+        try:
+            self.debug(text)
+        except UnicodeEncodeError:
+            self.debug(text.encode('ascii', errors='replace').decode('ascii'))
 
     def close(self):
         for handler in self.handlers:
@@ -639,7 +649,7 @@ def setupLogger(
     log_filename = f'{date_time}_{module}_{id}_stdout.log'
     log_path = os.path.join(logs_path, log_filename)
 
-    output_file_handler = logging.FileHandler(log_path, mode='w')
+    output_file_handler = logging.FileHandler(log_path, mode='w', encoding='utf-8')
 
     # Format your logs (optional)
     formatter = logging.Formatter(
@@ -1066,22 +1076,6 @@ def showInExplorer(path):
     else:
         os.startfile(path)
 
-def exec_time(func):
-    @wraps(func)
-    def inner_function(self, *args, **kwargs):
-        t0 = time.perf_counter()
-        if func.__code__.co_argcount==1 and func.__defaults__ is None:
-            result = func(self)
-        elif func.__code__.co_argcount>1 and func.__defaults__ is None:
-            result = func(self, *args)
-        else:
-            result = func(self, *args, **kwargs)
-        t1 = time.perf_counter()
-        s = f'{func.__name__} execution time = {(t1-t0)*1000:.3f} ms'
-        printl(s, is_decorator=True)
-        return result
-    return inner_function
-
 def setRetainSizePolicy(widget, retain=True):
     sp = widget.sizePolicy()
     sp.setRetainSizeWhenHidden(retain)
@@ -1130,22 +1124,61 @@ def get_chname_from_basename(filename, basename, remove_ext=True):
         
     return chName
 
+def _edge_ids_2d(lab):
+    border_labels = np.r_[
+        lab[0, :],
+        lab[-1, :],
+        lab[:, 0],
+        lab[:, -1],
+    ]
+    return np.unique(border_labels[border_labels != 0])
+
+def _edge_ids_3d(lab):
+    face_labels = np.r_[
+        lab[ 0, :, :].ravel(),    # z min
+        lab[-1, :, :].ravel(),   # z max
+        lab[:,  0, :].ravel(),    # y min
+        lab[:, -1, :].ravel(),   # y max
+        lab[:, :,  0].ravel(),    # x min
+        lab[:, :, -1].ravel(),   # x max
+    ]
+    ids = np.unique(face_labels)
+    return ids[ids != 0]
+
+def get_edge_ids(lab):
+    if lab.ndim == 2:
+        return _edge_ids_2d(lab)
+    elif lab.ndim == 3:
+        return _edge_ids_3d(lab)
+    else:
+        raise ValueError('Label array must be either 2D or 3D.')
+    
+def clear_border(lab, return_edge_ids=False):
+    # probably faster than skimage since it avoids relabeling...
+    # assumes continous unique IDs, which we have. Modifies inplace!
+    edge_ids = get_edge_ids(lab)
+    lab[np.isin(lab, edge_ids)] = 0
+    if return_edge_ids:
+        return edge_ids
+
 def getBaseAcdcDf(rp):
     zeros_list = [0]*len(rp)
     nones_list = [None]*len(rp)
     minus1_list = [-1]*len(rp)
-    IDs = []
-    xx_centroid = []
-    yy_centroid = []
-    zz_centroid = []
-    for obj in rp:
-        xc, yc = obj.centroid[-2:]
-        IDs.append(obj.label)
-        xx_centroid.append(xc)
-        yy_centroid.append(yc)
-        if len(obj.centroid) == 3:
-            zc = obj.centroid[0]
-            zz_centroid.append(zc)
+    IDs = [0]*len(rp)
+    xx_centroid = [0]*len(rp)
+    yy_centroid = [0]*len(rp)
+    zz_centroid = [0]*len(rp)
+    
+    for i, obj in enumerate(rp):
+        centroid = obj.centroid
+        xc, yc = centroid[-2:]
+        IDs[i] = obj.label
+        xx_centroid[i] = xc
+        yy_centroid[i] = yc
+        if len(centroid) == 3:
+            zc = centroid[0]
+            zz_centroid[i] = zc
             
     df = pd.DataFrame(
         {
@@ -1157,7 +1190,7 @@ def getBaseAcdcDf(rp):
             'was_manually_edited': minus1_list
         }
     ).set_index('Cell_ID')
-    if zz_centroid:
+    if len(centroid) == 3:
         df['z_centroid'] = zz_centroid
         
     return df
@@ -1724,7 +1757,7 @@ def download_java():
 
 def get_model_path(model_name, create_temp_dir=True):
     if model_name == 'Automatic thresholding':
-        model_name == 'thresholding'
+        model_name = 'thresholding'
         
     model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
     
@@ -2356,7 +2389,7 @@ def lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=None, z=None):
     rp = skimage.measure.regionprops(lab2D)
     rois = []
     for obj in rp:
-        cont = core.get_obj_contours(obj)
+        cont = core.get_obj_contours(obj=obj)
         yc, xc = obj.centroid
         x_str = str((int(xc))).zfill(ndigits)
         y_str = str((int(yc))).zfill(ndigits)
@@ -2403,31 +2436,38 @@ def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
     return rois
 
 def from_imagej_rois_to_segm_data(
-        TZYX_shape, ID_to_roi_mapper, rescale_rois_sizes, 
-        repeat_2d_rois_zslices_range
+        TZYX_shape, 
+        ID_to_roi_mapper, 
+        rescale_rois_sizes, 
+        repeat_2d_rois_zslices_range: tuple[int, int] | None
     ):
     SizeT, SizeZ, SizeY, SizeX = TZYX_shape
     segm_data = np.zeros(TZYX_shape, dtype=np.uint32)
     for ID, roi in ID_to_roi_mapper.items():
         name = roi.name
-        name_parts = name.split('-')
+        is_3d_roi = (
+            roi.z_position > 0 or
+            roi.position > 0
+        )
         zz = [0]
-        if len(name_parts) == 2 and SizeZ > 1:
+        if repeat_2d_rois_zslices_range is not None and SizeZ > 1:
             # 2D roi in 3D segm data --> place 2D roi on each z-slice
             zz = range(*repeat_2d_rois_zslices_range)
-        
-        elif len(name_parts) > 2 and SizeZ > 1:
-            # 2D roi from a 3D roi --> place at requested z-slice
-            zz = [int(name_parts[-3])]
+        elif SizeZ > 1:
+            if roi.z_position > 0:
+                z = roi.z_position - 1
+            else:
+                # Fallback to position if z_position not encoded
+                z = roi.position - 1
+            zz = [z]
         
         tt = [0]*len(zz)
         if SizeT > 1:
-            tt = [roi.t_position]*len(zz)
+            tt = [roi.t_position - 1]*len(zz)
         
-        y0, x0 = roi.top, roi.left
-        contours = roi.integer_coordinates + (x0, y0)
-        xx = contours[:, 0]
-        yy = contours[:, 1]
+        coordinates = roi.coordinates()
+        xx = coordinates[:, 0]
+        yy = coordinates[:, 1]
         if rescale_rois_sizes is not None:        
             rescale_z = rescale_rois_sizes['Z']
             rescale_y = rescale_rois_sizes['Y']
@@ -2439,7 +2479,7 @@ def from_imagej_rois_to_segm_data(
             
             xx = np.clip(np.round(xx * factor_x).astype(int), 0, SizeX-1)
             yy = np.clip(np.round(yy * factor_y).astype(int), 0, SizeY-1)
-            
+
         for t, z in zip(tt, zz):
             if rescale_rois_sizes is not None:
                 z = round(z*factor_z)
@@ -3034,12 +3074,13 @@ def is_pkg_version_within_range(
 
 def check_install_cellpose(
         version: Literal['2.0', '3.0', '4.0', 'any'] = '2.0', 
-        version_to_install_if_missing: Literal['2.0', '3.0', '4.0'] = '4.0'
+        version_to_install_if_missing: Literal['2.0', '3.0', '4.0'] = '4.0',
+        parent=None
     ):
     if isinstance(version, int):
         version = f'{version}.0'
         
-    check_install_torch()
+    check_install_torch(qparent=parent)
 
     if version == 'any':
         try:
@@ -3058,12 +3099,39 @@ def check_install_cellpose(
 
     min_version = min_target_versions_cp[str(major_version)]
     
+    py_version = f'{sys.version_info.major}.{sys.version_info.minor}'
+    install_deps_separately = True if major_version <= 3 and py_version >= '3.13' else False
+    
     check_install_package(
         'cellpose', 
         max_version=f'{next_version}.0',
         min_version=min_version,
         include_lower_version=True,
+        install_dependencies=not install_deps_separately,
+        parent= parent
     )
+    
+    if install_deps_separately:
+        check_install_package(
+            'fastremap',
+            parent=parent
+        )
+        check_install_package(
+            'numba',
+            parent=parent
+        )
+        check_install_package(
+            'roifile',
+            parent=parent
+        )
+        check_install_package(
+            'imagecodecs',
+            parent=parent
+        )
+        check_install_package(
+            'fill_voids',
+            parent=parent
+        )
 
     purge_module('cellpose')
 
@@ -3782,7 +3850,7 @@ def _install_package_cli_msg(
         f'{install_command}\n'
     )
     logger_func(txt)
-    
+
     while True:
         answer = try_input_install_package(pkg_name, install_command)
         if not answer or answer.lower() == 'y':
@@ -4138,14 +4206,32 @@ def init_tracker(
     else:
         return tracker, track_params
 
-def import_segment_module(model_name):
+def import_segment_module(model_name, parent=None):
+    original_model_name = model_name
+    if model_name == 'Automatic thresholding':
+        model_name = 'thresholding'
+
     try:
         acdcSegment = import_module(f'cellacdc.models.{model_name}.acdcSegment')
     except ModuleNotFoundError as e:
+        # Do not mask missing dependencies imported by the module itself.
+        expected_missing_module = f'cellacdc.models.{model_name}'
+        if e.name != expected_missing_module:
+            raise
+
         # Check if custom model
         cp = config.ConfigParser()
         cp.read(models_list_file_path)
-        model_path = cp[model_name]['path']
+        model_key = None
+        for key in (original_model_name, model_name):
+            if key in cp:
+                model_key = key
+                break
+
+        if model_key is None:
+            raise
+
+        model_path = cp[model_key]['path']
         spec = importlib.util.spec_from_file_location('acdcSegment', model_path)
         acdcSegment = importlib.util.module_from_spec(spec)
         sys.modules['acdcSegment'] = acdcSegment
@@ -4225,11 +4311,12 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     pip_prefix = pip_prefix.replace('install -y', 'uninstall')
     txt_cuda = html_utils.paragraph(f"""
         Check out these instructions {cellpose_href}, and {torch_href}.<br>
-        First, uninstall the CPU version of PyTorch with the following command:
-        <copiable>{pip_prefix} uninstall torch</copiable>
-        <br>Then, install the CUDA version required by your GPU with the following 
-        command (in this case 12.8):
-        <copiable>{pip_prefix} torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128</copiable>
+        First, uninstall the CPU version of PyTorch with the following command:<br><br>
+        <code>{pip_prefix} uninstall torch</code>.<br><br>
+        Then, install the CUDA version required by your GPU with the follwing 
+        command (in this case 12.8):<br><br>
+        <code>{pip_prefix} torch torchvision torchaudio --index-url 
+        https://download.pytorch.org/whl/cu128</code>
         <br>
         """)
     
@@ -5145,10 +5232,13 @@ def get_empty_stored_data_dict():
             'labels': None,
             'acdc_df': None,
             'delROIs_info': {
-                    'rois': [], 'delMasks': [], 'delIDsROI': [], 'state': []
+                    'rois': [], 'delMasks': [], 'delIDsROI': [], 'state': [],
+                    'delMasksCoords': []
+                    
                 },
             'IDs': [],
-            'manually_edited_lab': {'lab': {}, 'zoom_slice': None}
+            'manually_edited_lab': {'lab': {}, 'zoom_slice': None},
+            'single_moth_bud_pair_cca': None,
         }
 
 def iterate_along_axes(arr, axes, arr_ndim=None):
@@ -5499,7 +5589,7 @@ def get_obj_by_label(rp, target_label):
             return obj
     return None
 
-def find_distances_ID(rps, point=None, ID=None):
+def find_distances_ID(rps, point=None, ID=None, relevant_IDs=None):
     """
     Calculate the distances between a given point and the centroids of a list of regionprops.
 
@@ -5529,7 +5619,7 @@ def find_distances_ID(rps, point=None, ID=None):
 
     if ID is not None and point is None:
         try:
-            point = [rp.centroid for rp in rps if rp.label == ID][0]
+            point = rps.get_centroid(ID)
         except IndexError:
             raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
 
@@ -5541,12 +5631,15 @@ def find_distances_ID(rps, point=None, ID=None):
     
     point = point[::-1] # rp are in (y, x) format (or (z, y, x) for 3D data) so I need to reverse order
     point = np.array([point])
-    centroids = np.array([rp.centroid for rp in rps])
+    if relevant_IDs is not None:
+        centroids = np.array([rps.get_centroid(obj.label) for obj in rps if obj.label in relevant_IDs])
+    else:
+        centroids = np.array([rps.get_centroid(obj.label) for obj in rps]) # here RPS is a list and not a regionprops object
     diff = point[:, np.newaxis] - centroids
     dist_matrix = np.linalg.norm(diff, axis=2)
     return dist_matrix
 
-def sort_IDs_dist(rps, point=None, ID=None):
+def sort_IDs_dist(rps, point=None, ID=None, relevant_IDs=None):
     """Sorts the IDs of regionprops based on their distances to a given point.
 
     Parameters
@@ -5578,7 +5671,7 @@ def sort_IDs_dist(rps, point=None, ID=None):
     """
     if ID is not None and point is None:
         try:
-            point = [rp.centroid for rp in rps if rp.label == ID][0]
+            point = rps.get_centroid(ID)
         except IndexError:
             raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
 
@@ -5589,12 +5682,14 @@ def sort_IDs_dist(rps, point=None, ID=None):
         raise ValueError('Only one of ID or point must be provided.')
     
 
-    IDs = [rp.label for rp in rps]
+    IDs = rps.IDs
+    if relevant_IDs is not None:
+        IDs = [ID for ID in IDs if ID in relevant_IDs]
     if len(IDs) == 0:
         return []
     elif len(IDs) == 1:
         return IDs
-    dist_matrix = find_distances_ID(rps, point=point)        
+    dist_matrix = find_distances_ID(rps, point=point, relevant_IDs=relevant_IDs)        
     dist_matrix = np.squeeze(dist_matrix)
 
     sorted_ids = sorted(zip(dist_matrix, IDs))

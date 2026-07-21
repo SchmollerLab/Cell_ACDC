@@ -485,9 +485,26 @@ If you want to try out experimental features (and, if you have time, maybe repor
 
 
 Updating Cell-ACDC installed from source
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To update Cell-ACDC installed from source, open a terminal window, navigate to the 
 Cell-ACDC folder with the command ``cd Cell_ACDC`` and run ``git pull``.
 
 Since you installed with the ``-e`` flag, pulling with ``git`` is enough.
+
+
+
+Compile Cython extensions
+-------------------------
+
+Some of the functions in Cell-ACDC are implemented in Cython, which allows them 
+to run much faster. However, Cython functions need to be compiled before they 
+can be used. We provide pre-compiled versions of the Cython extensions for
+Windows, macOS and Linux, but if you want to compile them yourself, 
+you can do so by activating your ``acdc`` environment, installing 
+Cython and setuptools with the command ``pip install Cython setuptools``,
+and running the following command in the terminal from the Cell_ACDC folder:
+
+.. code-block:: 
+
+    python precompile_functions.py build_ext --inplace --build-temp build/temp

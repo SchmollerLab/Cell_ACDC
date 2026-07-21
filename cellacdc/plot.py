@@ -15,6 +15,7 @@ import matplotlib.colors
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import seaborn as sns
 
+from . import debugutils
 from tqdm import tqdm
 
 from . import GUI_INSTALLED
@@ -27,7 +28,7 @@ if GUI_INSTALLED:
     
 from . import printl
 from . import _core, error_below, error_close
-from . import _run, core, myutils
+from . import _run, core, myutils, regionprops as acdc_regionprops
 
 VisPyMarkerSymbols = Literal[
     'disc', 
@@ -156,7 +157,10 @@ def imshow(
         show_duplicated_cursor=True, 
         selectable_images=False,
         infer_rgb=True,
-        print_call_stack: bool=False
+        print_call_stack: bool=False,
+        show_contours: bool=False,
+        show_IDs: bool=False,
+        win_stay_on_top: bool=True,
     ):
     if print_call_stack:
         myutils.print_call_stack()
@@ -203,6 +207,7 @@ def imshow(
         infer_rgb=infer_rgb,
         figure_title=figure_title,
         selectable_images=selectable_images,
+        win_stay_on_top=win_stay_on_top,
     )
     win.setWindowTitle(window_title)
     if app is not None:
@@ -223,7 +228,9 @@ def imshow(
         labels_overlays_luts=labels_overlays_luts,
         luts=luts, 
         autoLevels=autoLevels, 
-        autoLevelsOnScroll=autoLevelsOnScroll
+        autoLevelsOnScroll=autoLevelsOnScroll,
+        show_contours=show_contours,
+        show_IDs=show_IDs,
     )
     if points_coords_df is not None:
         win.drawPointsFromDf(points_coords_df, points_groups=points_groups) 
@@ -234,10 +241,11 @@ def imshow(
         win.setPointsData(points_data)
     if show_duplicated_cursor:
         win.setupDuplicatedCursors()
-    win.annotateObjectIDs(
-        annotate_labels_idxs=annotate_labels_idxs, 
-        init=True,
-    )
+    if annotate_labels_idxs is not None:
+        win.annotateObjectIDs(
+            annotate_labels_idxs=annotate_labels_idxs,
+            init=True,
+        )
     win.run(block=block, showMaximised=showMaximised, screenToWindowRatio=0.8)
     return win
 
@@ -861,19 +869,22 @@ def plt_contours(
         clear_borders=True, obj_contours_kwargs=None
     ):
     if rp is None:
-        rp = skimage.measure.regionprops(lab)
+        rp = acdc_regionprops.acdcRegionprops(lab, precache_centroids=False)
 
     if plot_kwargs is None:
         plot_kwargs = {}
     
     if obj_contours_kwargs is None:
         obj_contours_kwargs = {}
+    elif 'include_internal' in obj_contours_kwargs:
+        obj_contours_kwargs = obj_contours_kwargs.copy()
+        obj_contours_kwargs['all'] = obj_contours_kwargs.pop('include_internal')
     
     for obj in rp:
         if only_IDs is not None and obj.label not in only_IDs:
             continue
         
-        contours = core.get_obj_contours(obj, **obj_contours_kwargs)
+        contours = core.get_obj_contours(obj=obj, **obj_contours_kwargs)
         if not isinstance(contours, list):
             contours = [contours]        
         

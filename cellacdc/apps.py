@@ -52,7 +52,8 @@ pg.setConfigOption('imageAxisOrder', 'row-major')
 from qtpy import QtCore
 from qtpy.QtGui import (
     QIcon, QFontMetrics, QKeySequence, QFont, QRegularExpressionValidator, 
-    QCursor, QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor
+    QCursor, QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor,
+    QTextDocument
 )
 from qtpy.QtCore import (
     Qt, QSize, QEvent, Signal, QEventLoop, QTimer, QRegularExpression
@@ -94,17 +95,15 @@ from . import _base_widgets
 from . import io
 from . import cca_functions
 from . import path
+from . import fonts
+from . import QtScoped
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
 BACKGROUND_RGBA = _palettes.get_disabled_colors()['Button']
+LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 
-font = QFont()
-font.setPixelSize(12)
-italicFont = QFont()
-italicFont.setPixelSize(12)
-italicFont.setItalic(True)
 
 class ArgWidget:
     def __init__(self, name, type, widget, defaultVal, valueSetter, valueGetter, changeSig=None):
@@ -904,7 +903,7 @@ class AddPointsLayerDialog(QBaseDialog):
 
         self.setLayout(mainLayout)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def addCentroidsSection(self, row, layout, **kwargs):
         sectionWidgets = []
@@ -1526,7 +1525,7 @@ class EditPointsLayerAppearanceDialog(QBaseDialog):
 
         self.setLayout(mainLayout)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def emitValueChanged(self, *args):
         self.sigValueChanged.emit(self.appearanceGroupbox.state())
@@ -1574,6 +1573,47 @@ class EditPointsLayerAppearanceDialog(QBaseDialog):
             self.hide()
         else:
             self.close()
+
+
+class FilenameEntryFormatter:
+    @staticmethod
+    def format_entry_text(text: str) -> str:
+        text = to_alphanumeric(text or '')
+        text = text.replace(' ', '_')
+        return text.replace('.', '_')
+
+    @staticmethod
+    def build_filename_preview(basename: str, text: str, ext: str) -> str:
+        if not text:
+            return f'{basename}{ext}'
+
+        text = text.replace(' ', '_')
+        if basename:
+            if basename.endswith('_'):
+                return f'{basename}{text}{ext}'
+            return f'{basename}_{text}{ext}'
+
+        return f'{text}{ext}'
+
+    @staticmethod
+    def invalid_chars_warning_text(characters: set[str]) -> str:
+        statement = 'is <b>not a valid</b> character'
+        if len(characters) > 1:
+            statement = 'are <b>not valid</b> characters'
+
+        characters_str = ''.join(characters)
+        characters_str = html.escape(characters_str)
+        warning_text = html_utils.span(f"""
+            WARNING: "<code>{characters_str}</code>" {statement}.<br>
+        """)
+        return (
+            f'{warning_text}'
+            '<i>Valid characters are letters, numbers, underscore, and dash.</i>'
+        )
+
+    @staticmethod
+    def is_valid_name(name: str) -> bool:
+        return bool(name) and is_alphanumeric_filename(name)
 
 class filenameDialog(QDialog):
     def __init__(
@@ -1632,8 +1672,7 @@ class filenameDialog(QDialog):
 
         self.lineEdit = widgets.alphaNumericLineEdit(onlyWarn=True)
         self.lineEdit.setAlignment(Qt.AlignCenter)
-        defaultEntry = to_alphanumeric(defaultEntry)
-        defaultEntry = defaultEntry.replace('.', '_')
+        defaultEntry = FilenameEntryFormatter.format_entry_text(defaultEntry)
         self.lineEdit.setText(defaultEntry)
 
         extLabel = QLabel(ext)
@@ -1697,7 +1736,7 @@ class filenameDialog(QDialog):
         layout.addLayout(buttonsLayout)
 
         self.setLayout(layout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         if defaultEntry:
             self.updateFilename(defaultEntry)
@@ -1726,18 +1765,8 @@ class filenameDialog(QDialog):
         return self.lineEdit.text()
     
     def warnInvalidCharactersEntered(self, characters: set[str]):
-        statement = 'is <b>not a valid</b> character'
-        if len(characters) > 1:
-            statement = 'are <b>not valid</b> characters'
-            
-        characters_str = ''.join(characters)
-        characters_str = html.escape(characters_str)
-        warning_text = html_utils.span(f"""
-            WARNING: "<code>{characters_str}</code>" {statement}.<br> 
-        """)
-        warning_text = (
-            f'{warning_text}'
-            '<i>Valid characters are letters, numbers, underscore, and dash.</i>'
+        warning_text = FilenameEntryFormatter.invalid_chars_warning_text(
+            characters
         )
         self.warningInvalidCharLabel.setText(warning_text)
 
@@ -1765,18 +1794,12 @@ class filenameDialog(QDialog):
     def updateFilename(self, text):
         if self.lineEdit.invalidCharacters():
             return
-        
-        if not text:
-            self.filenameLabel.setText(f'{self.basename}{self.ext}')
-        else:
-            text = text.replace(' ', '_')
-            if self.basename:
-                if self.basename.endswith('_'):
-                    self.filenameLabel.setText(f'{self.basename}{text}{self.ext}')
-                else:
-                    self.filenameLabel.setText(f'{self.basename}_{text}{self.ext}')
-            else:
-                self.filenameLabel.setText(f'{text}{self.ext}')
+
+        self.filenameLabel.setText(
+            FilenameEntryFormatter.build_filename_preview(
+                self.basename, text, self.ext
+            )
+        )
         
         self.warningInvalidCharLabel.setText('')
 
@@ -1965,7 +1988,7 @@ class TrackSubCellObjectsDialog(QBaseDialog):
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def createThirdSegmToggled(self, checked):
         self.appendTextWidget.setDisabled(not checked)
@@ -3135,9 +3158,7 @@ class QDialogMetadataXML(QDialog):
         self.imageViewer = None
         super().__init__(parent)
         self.setWindowTitle(title)
-        font = QFont()
-        font.setPixelSize(12)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         mainLayout = QVBoxLayout()
         entriesLayout = QGridLayout()
@@ -4031,7 +4052,7 @@ class CellACDCTrackerParamsWin(QDialog):
         layout.addLayout(buttonsLayout)
         layout.addStretch(1)
         self.setLayout(layout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
     def showInfo(self):
         msg = widgets.myMessageBox(wrapText=False)
@@ -4223,7 +4244,7 @@ class BayesianTrackerParamsWin(QDialog):
         layout.addLayout(buttonsLayout)
         layout.addStretch(1)
         self.setLayout(layout)
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def selectFeatures(self):
         features = measurements.get_btrack_features()
@@ -4449,7 +4470,7 @@ class DeltaTrackerParamsWin(QDialog):
         layout.addLayout(buttonsLayout)
         layout.addStretch(1)
         self.setLayout(layout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
     def methodChanged(self, method):
         if method == 'mothermachine':
@@ -4674,7 +4695,7 @@ class QDialogCombobox(QDialog):
         self.loop = None
 
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
     def ok_cb(self, checked=False):
         self.cancel = False
@@ -4850,7 +4871,7 @@ class MultiTimePointFilePattern(QBaseDialog):
 
         self.setLayout(mainLayout)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def segmFolderpathSelected(self, path):
         self.segmFolderPathEntry.setText(path)
@@ -5050,7 +5071,7 @@ class QDialogAutomaticThresholding(QBaseDialog):
         cancelButton.clicked.connect(self.close)
 
         self.setLayout(layout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         self.configPars = self.loadLastSelection()
 
@@ -5211,7 +5232,7 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
         )
 
         self.setLayout(self.mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def saveSelection(self):
         saved_selections = io.get_saved_moth_bud_tot_selections()
@@ -5616,7 +5637,7 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         self.mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(self.mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def ok_cb(self):
         self.cancel = False
@@ -5686,50 +5707,110 @@ class SelectPromptableModelDialog(QBaseDialog):
         self.model_name = self.listBox.currentItem().text()
         self.close()
 
-
 class QDialogSelectModel(QDialog):
     def __init__(
-            self, parent=None, addSkipSegmButton=False, customFirst=''
+            self, parent=None, addSkipSegmButton=False, customFirst='',
+            allowMultiSelection=False, lastSelection=None,
+            addSelectLastSelectionButton=False,
+            addSelectLastRecipeButton=False,
+            addSelectSavedRecipeButton=False,
+            add_save_func=False,
+            recipes_path='',
+            recipe_prefix='',
+            recipe_ext_label=None,
+            recipe_ext=None,
+            custom_title=None,
+            info_label='',
         ):
         self.cancel = True
+        self.loadLastRecipe = False
+        self.loadSavedRecipe = False
+        self.selectedRecipeFilepath = None
+        self.selectionSaveName = ''
+        self.selectionSaveNameFormatted = ''
         super().__init__(parent)
         self.setWindowTitle('Select model')
+        self.info_label = info_label
+        self.recipes_path = recipes_path
+        self.recipe_prefix = recipe_prefix
+        self.recipe_ext_label = recipe_ext_label
+        self.recipe_ext = recipe_ext
+
+        self.allowMultiSelection = allowMultiSelection
+        self.lastSelection = []
+        for m in (lastSelection or []):
+            if not isinstance(m, str):
+                continue
+            if m == 'thresholding':
+                m = 'Automatic thresholding'
+            self.lastSelection.append(m)
 
         mainLayout = QVBoxLayout()
-        topLayout = QVBoxLayout()
-        bottomLayout = QHBoxLayout()
-
         self.mainLayout = mainLayout
 
+        title = custom_title or 'Select model to use for segmentation: '
+
+        titleContainer = QWidget(self)
+        titleLayout = QGridLayout(titleContainer)
+        titleLayout.setContentsMargins(0, 0, 0, 0)
+        titleLayout.setSpacing(0)
         label = QLabel(html_utils.paragraph(
-            'Select model to use for segmentation: '
+            title
         ))
-        # padding: top, left, bottom, right
         label.setStyleSheet("padding:0px 0px 3px 0px;")
-        topLayout.addWidget(label, alignment=Qt.AlignCenter)
+        titleLayout.addWidget(label, 0, 0, Qt.AlignCenter)
+        if info_label:
+            moreInfoButton = widgets.infoPushButton()
+            moreInfoButton.clicked.connect(self.showInfoLabel)
+            moreInfoButton.setSizePolicy(
+                QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+            )
+            titleLayout.addWidget(moreInfoButton, 0, 0, Qt.AlignTop | Qt.AlignRight)
+        mainLayout.addWidget(titleContainer)
 
-        listBox = widgets.listWidget()
-        models = myutils.get_list_of_models()
+        self.modelSelector = widgets.ModelSelectionWidget(
+            parent=self,
+            customFirst=customFirst,
+            allowMultiSelection=allowMultiSelection,
+        )
+        # Convenience aliases kept for backward compatibility
+        self.listBox = self.modelSelector.listBox
+        mainLayout.addWidget(self.modelSelector)
 
-        if customFirst:
-            try:
-                idx = models.index(customFirst)
-                models.insert(0, models.pop(idx))
-            except ValueError:
-                print(f'Warning: {customFirst} not found in models list.')
-                pass
+        self.add_save_func = add_save_func
+        if add_save_func:
+            saveLayout = QGridLayout()
 
-        listBox.setFont(font)
-        listBox.addItems(models)
-        addCustomModelItem = QListWidgetItem('Add custom model...')
-        addCustomModelItem.setFont(italicFont)
-        listBox.addItem(addCustomModelItem)
-        listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        listBox.setCurrentRow(0)
-        self.listBox = listBox
-        listBox.itemDoubleClicked.connect(self.ok_cb)
-        topLayout.addWidget(listBox)
+            saveNameLabel = QLabel('Save recipe as (optional):')
+            self.saveSelectionNameLineEdit = widgets.alphaNumericLineEdit(
+                onlyWarn=True, formatter=self.formattedSaveSelectionName,
+                ignore_file_ext=f".{recipe_ext}"
+            )
+            self.saveSelectionNameLineEdit.setAlignment(Qt.AlignCenter)
+            self.saveSelectionNameLineEdit.textChanged.connect(
+                self.updateSaveSelectionPreview
+            )
+            self.saveSelectionNameLineEdit.sigInvalidCharactersEntered.connect(
+                self.warnInvalidSaveNameChars
+            )
 
+            self.saveSelectionPreviewLabel = QLabel('')
+            self.saveSelectionPreviewLabel.setTextFormat(Qt.RichText)
+            self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px;')
+
+            saveLayout.addWidget(saveNameLabel, 0, 0)
+            saveLayout.addWidget(self.saveSelectionNameLineEdit, 0, 1)
+            saveLayout.addWidget(self.saveSelectionPreviewLabel, 1, 0, 1, 2)
+            saveLayout.setColumnStretch(1, 1)
+
+            mainLayout.addSpacing(6)
+            mainLayout.addLayout(saveLayout)
+            self.updateSaveSelectionPreview('')
+
+        if not allowMultiSelection:
+            self.listBox.itemDoubleClicked.connect(self.ok_cb)
+
+        bottomLayout = QHBoxLayout()
         cancelButton = widgets.cancelPushButton('Cancel')
         okButton = widgets.okPushButton(' Ok ')
         okButton.setShortcut(Qt.Key_Enter)
@@ -5741,53 +5822,387 @@ class QDialogSelectModel(QDialog):
             skipSegmButton = widgets.SkipPushButton('Skip segmentation')
             bottomLayout.addWidget(skipSegmButton)
             skipSegmButton.clicked.connect(self.skipSegm)
+        if addSelectLastSelectionButton:
+            selectLastSelButton = widgets.reloadPushButton('Load last selection...')
+            selectLastSelButton.clicked.connect(self.selectLastSelection)
+            selectLastSelButton.setEnabled(bool(self.lastSelection))
+            bottomLayout.addWidget(selectLastSelButton)
+        if addSelectLastRecipeButton:
+            selectLastRecipeButton = widgets.reloadPushButton('Load last recipe...')
+            selectLastRecipeButton.clicked.connect(self.selectLastRecipe)
+            selectLastRecipeButton.setEnabled(bool(self.lastSelection))
+            bottomLayout.addWidget(selectLastRecipeButton)
+        if addSelectSavedRecipeButton:
+            selectSavedRecipeButton = widgets.OpenFilePushButton(
+                'Choose from saved recipes...'
+            )
+            selectSavedRecipeButton.clicked.connect(self.selectSavedRecipe)
+            bottomLayout.addWidget(selectSavedRecipeButton)
+        if allowMultiSelection:
+            addCustomModelButton = widgets.addPushButton('Add custom model...')
+            addCustomModelButton.clicked.connect(self.addCustomModel)
+            bottomLayout.addWidget(addCustomModelButton)
         bottomLayout.addWidget(okButton)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
 
-        mainLayout.addLayout(topLayout)
         mainLayout.addLayout(bottomLayout)
         self.setLayout(mainLayout)
 
-        # Connect events
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
 
-        self.setStyleSheet(LISTWIDGET_STYLESHEET)
-    
+
+    @property
+    def selectionSequence(self):
+        return self.modelSelector.selectionSequence
+
+    @property
+    def modelItemsMap(self):
+        return self.modelSelector.modelItemsMap
+
     def skipSegm(self):
         self.cancel = False
         self.selectedModel = 'skip_segmentation'
         self.close()
-    
+
+    def selectLastSelection(self):
+        if not self.lastSelection:
+            return
+        self.modelSelector.setSelectionFromList(self.lastSelection)
+
+    def selectLastRecipe(self):
+        if not self.lastSelection:
+            return
+        self.selectLastSelection()
+        self.cancel = False
+        self.loadLastRecipe = True
+        self.selectedModel = self.lastSelection.copy()
+        self.close()
+
+    def recipeIniFileSelected(
+            self, ini_filepath, selectRecipeWin=None, sender=None
+        ):
+        selectRecipeWin.clickedButton = sender
+        selectRecipeWin.selectedIniFilepath = ini_filepath
+        selectRecipeWin.cancel = False
+        selectRecipeWin.close()
+
+    def selectRecipeFilepath(self, recipes_path, recipe_prefix, ext_label, ext):
+        availableRecipes = []
+        displayNameToFilenameMapper = {}
+        ext = ext.lstrip('.')
+        if os.path.exists(recipes_path):
+            for file in myutils.listdir(recipes_path):
+                if not file.startswith(recipe_prefix):
+                    continue
+
+                if not file.lower().endswith(f'.{ext.lower()}'):
+                    continue
+
+                parts = file.split(f'{recipe_prefix}_', 1)
+                if len(parts) != 2:
+                    continue
+
+                endname = parts[1]
+                filepath = os.path.join(recipes_path, file)
+                modified_on = datetime.datetime.fromtimestamp(
+                    os.path.getmtime(filepath)
+                ).strftime(r'%Y/%m/%d %H:%M')
+                availableRecipes.append((endname, modified_on))
+                displayNameToFilenameMapper[endname] = file
+
+        if not availableRecipes:
+            import qtpy.compat
+            filepath = qtpy.compat.getopenfilename(
+                parent=self,
+                caption=f'Select {ext_label} file to load recipe',
+                filters=f'{ext_label} (*.{ext});;All Files (*)'
+            )[0]
+            return filepath or None
+
+        browseButton = widgets.browseFileButton(
+            f'Select {ext_label} file...',
+            title=f'Select {ext_label} file to load recipe',
+            openFolder=False,
+            start_dir=myutils.getMostRecentPath(),
+            ext={ext_label: f'.{ext}'}
+        )
+        selectRecipeWin = QTreeDialog(
+            availableRecipes,
+            headerLabels=['Name', 'Date Modified'],
+            title='Select recipe',
+            infoText='Select recipe to load:<br>',
+            parent=self,
+            path_to_browse=recipes_path,
+            additional_buttons=(browseButton,)
+        )
+        browseButton.sigPathSelected.connect(
+            partial(
+                self.recipeIniFileSelected,
+                selectRecipeWin=selectRecipeWin,
+                sender=browseButton
+            )
+        )
+        selectRecipeWin.exec_()
+        if selectRecipeWin.cancel:
+            return None
+
+        if selectRecipeWin.clickedButton == browseButton:
+            return selectRecipeWin.selectedIniFilepath
+
+        selected_endname = selectRecipeWin.selectedText
+        filename = displayNameToFilenameMapper.get(selected_endname)
+        if filename is None:
+            return None
+
+        return os.path.join(recipes_path, filename)
+
+    def selectSavedRecipe(self):
+        if not self.recipes_path:
+            return
+
+        filepath = self.selectRecipeFilepath(
+            self.recipes_path,
+            self.recipe_prefix,
+            self.recipe_ext_label,
+            self.recipe_ext,
+        )
+        if filepath is None:
+            return
+
+        self.cancel = False
+        self.loadSavedRecipe = True
+        self.selectedRecipeFilepath = filepath
+        self.close()
+
+    def _runAddCustomModelWorkflow(self):
+        modelFilePath = addCustomModelMessages(self)
+        if modelFilePath is None:
+            return None
+
+        myutils.store_custom_model_path(modelFilePath)
+        modelName = os.path.basename(os.path.dirname(modelFilePath))
+        self.modelSelector.registerCustomModel(modelName)
+        return modelName
+
+    def addCustomModel(self):
+        modelName = self._runAddCustomModelWorkflow()
+        if modelName is None:
+            return
+
+        if self.allowMultiSelection:
+            self.modelSelector.addModelSelection(modelName)
+        else:
+            item = QListWidgetItem(modelName)
+            self.listBox.addItem(item)
+            self.listBox.setCurrentItem(item)
+
+    def showInfoLabel(self):
+        if not self.info_label:
+            return
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = html_utils.paragraph(self.info_label)
+        msg.information(self, 'More info', txt)
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key_Escape:
             event.ignore()
             return
-            
         super().keyPressEvent(event)
 
-    def ok_cb(self, event):
+    def askSelectedModelsOrder(self, selected_models):
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Order selected models')
+        dialog.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+
+        layout = QVBoxLayout(dialog)
+        infoTxt = html_utils.paragraph(
+            'Drag and drop to change the order of the selected models.<br>'
+            'The top model will run first.'
+        )
+        layout.addWidget(QLabel(infoTxt))
+
+        modelOrderView = widgets.ReorderableListView(
+            selected_models, parent=dialog, isSingleSelection=True
+        )
+        layout.addWidget(modelOrderView)
+
+        buttonsLayout = QHBoxLayout()
+        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton('Ok')
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+        layout.addLayout(buttonsLayout)
+
+        cancelButton.clicked.connect(dialog.reject)
+        okButton.clicked.connect(dialog.accept)
+
+        if dialog.exec_() != QDialog.Accepted:
+            return None
+
+        return modelOrderView.items()
+
+    def saveSelectionName(self):
+        if not self.add_save_func:
+            return ''
+
+        return self.saveSelectionNameLineEdit.text().strip()
+
+    def formattedSaveSelectionName(self, raw_name=None):
+        if raw_name is None:
+            raw_name = self.saveSelectionName()
+        if not raw_name:
+            return ''
+
+        formatted = FilenameEntryFormatter.format_entry_text(raw_name)
+        formatted = self.recipe_prefix + "_" + formatted + f".{self.recipe_ext}"
+        return formatted
+
+    def warnInvalidSaveNameChars(self, characters: set[str]):
+        if not self.add_save_func:
+            return
+
+        warning_text = FilenameEntryFormatter.invalid_chars_warning_text(
+            characters
+        )
+        self.saveSelectionPreviewLabel.setText(warning_text)
+        self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px; color: red;')
+        self.saveSelectionNameLineEdit.setStyleSheet('border: 2px solid red;')
+        
+    def warnIfInvalidSaveName(self):
+        if not self.add_save_func:
+            return
+        
+        if not self.formattedSaveSelectionName():
+            self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px;')
+            self.saveSelectionNameLineEdit.setStyleSheet('')
+            return
+        
+        path = os.path.join(self.recipes_path, self.formattedSaveSelectionName())
+        if not os.path.exists(path):
+            self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px;')
+            self.saveSelectionNameLineEdit.setStyleSheet('')
+            return
+        
+        warning_text = html_utils.paragraph(
+            '<span style="color: yellow;">Save name already exists!</span>'
+        )
+        self.saveSelectionPreviewLabel.setText(warning_text)
+        self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px; color: yellow;')
+        self.saveSelectionNameLineEdit.setStyleSheet('border: 2px solid yellow;')
+
+    def updateSaveSelectionPreview(self, text):
+        if not self.add_save_func:
+            return
+
+        if self.saveSelectionNameLineEdit.invalidCharacters():
+            self.saveSelectionNameLineEdit.setStyleSheet('border: 2px solid red;')
+            return
+
+        self.saveSelectionNameLineEdit.setStyleSheet('')
+        self.saveSelectionPreviewLabel.setStyleSheet('font-size: 11px;')
+
+        formatted = self.formattedSaveSelectionName()
+        if not text.strip():
+            preview_text = html_utils.paragraph(
+                '<i>Leave empty to skip saving this selection.</i>'
+            )
+        elif not FilenameEntryFormatter.is_valid_name(formatted):
+            preview_text = html_utils.paragraph(
+                '<span style="color: red;">Invalid save name.</span>'
+            )
+            self.saveSelectionNameLineEdit.setStyleSheet('border: 2px solid red;')
+        else:
+            preview_text = html_utils.paragraph(
+                f'Formatted save name preview: <code>{formatted}</code>'
+            )
+
+        self.saveSelectionPreviewLabel.setText(preview_text)
+        
+        self.warnIfInvalidSaveName()
+
+    def checkSaveSelectionName(self):
+        if not self.add_save_func:
+            self.selectionSaveName = ''
+            self.selectionSaveNameFormatted = ''
+            return True
+
+        if self.saveSelectionNameLineEdit.invalidCharacters():
+            return False
+
+        save_name = self.saveSelectionName()
+        if not save_name:
+            self.selectionSaveName = ''
+            self.selectionSaveNameFormatted = ''
+            return True
+
+        formatted = self.formattedSaveSelectionName()
+        if not FilenameEntryFormatter.is_valid_name(formatted):
+            self.saveSelectionNameLineEdit.setStyleSheet('border: 2px solid red;')
+            return False
+
+        self.selectionSaveName = save_name
+        self.selectionSaveNameFormatted = formatted
+        return True
+
+    def ok_cb(self, event=None):
         self.clickedButton = self.sender()
-        self.cancel = False
-        item = self.listBox.currentItem()
+
+        valid_save_name = self.checkSaveSelectionName()
+        if not valid_save_name:
+            return
+
+        if self.allowMultiSelection:
+            if not self.selectionSequence:
+                return
+
+            selected_models = list(self.selectionSequence)
+            if len(selected_models) > 1:
+                ordered_models = self.askSelectedModelsOrder(selected_models)
+                if ordered_models is None:
+                    return
+                selected_models = ordered_models
+
+            self.selectedModel = selected_models
+            self.cancel = False
+            self.close()
+            return
+
+        selected_items = self.listBox.selectedItems()
+        if not selected_items:
+            return
+
+        selected_models = [item.text() for item in selected_items]
+        if len(selected_models) > 1:
+            ordered_models = self.askSelectedModelsOrder(selected_models)
+            if ordered_models is None:
+                return
+            self.selectedModel = ordered_models
+            self.cancel = False
+            self.close()
+            return
+
+        item = selected_items[0]
         model = item.text()
         if model == 'Add custom model...':
-            modelFilePath = addCustomModelMessages(self)
-            if modelFilePath is None:
+            modelName = self._runAddCustomModelWorkflow()
+            if modelName is None:
                 return
-            myutils.store_custom_model_path(modelFilePath)
-            modelName = os.path.basename(os.path.dirname(modelFilePath))
             item = QListWidgetItem(modelName)
             self.listBox.addItem(item)
             self.listBox.setCurrentItem(item)
         elif model == 'Automatic thresholding':
-            self.selectedModel = 'thresholding'
+            self.selectedModel = model
+            self.cancel = False
             self.close()
         else:
             self.selectedModel = model
+            self.cancel = False
             self.close()
 
-    def cancel_cb(self, event):
+    def cancel_cb(self, event=None):
         self.cancel = True
         self.selectedModel = None
         self.close()
@@ -5834,7 +6249,7 @@ class ViewTextDialog(QBaseDialog):
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
 class startStopFramesDialog(QBaseDialog):
     def __init__(
@@ -5869,7 +6284,7 @@ class startStopFramesDialog(QBaseDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
 
     def ok_cb(self):
         if self.selectFramesGroupbox.warningLabel.text():
@@ -6295,7 +6710,8 @@ class QDialogMetadata(QDialog):
         self.addAdditionalValues(additionalValues)
 
         self.setLayout(mainLayout)
-        self.setFont(font)
+        if font is not None:
+            self.setFont(font)
         # self.setModal(True)
     
     def showWhySizeTisGrayed(self):
@@ -6832,9 +7248,7 @@ class randomWalkerDialog(QDialog):
         seeHereLabel.setTextFormat(Qt.RichText)
         seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
         seeHereLabel.setOpenExternalLinks(True)
-        font = QFont()
-        font.setPixelSize(12)
-        seeHereLabel.setFont(font)
+        seeHereLabel.setFont(fonts.font)
         seeHereLabel.setStyleSheet("padding:12px 0px 0px 0px;")
         paramsLayout.addWidget(seeHereLabel, row, 0, 1, 2)
 
@@ -7221,7 +7635,7 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
         layout.addLayout(buttonsLayout, 2, 1)
 
         self.setLayout(layout)
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def copyErrorMessage(self):
         cb = QApplication.clipboard()
@@ -7553,7 +7967,7 @@ class PostProcessSegmDialog(QBaseDialog):
         # self.img.setCurrentPosIndex(self.pos_i)
         # self.img.minMaxValuesMapper = self.mainWin.img1.minMaxValuesMapper
         self.origLab = self.posData.lab.copy()
-        self.origRp = skimage.measure.regionprops(self.origLab)
+        self.origRp = skimage.measure.regionprops(self.origLab) # why seperate rp here?
         self.origObjs = {obj.label:obj for obj in self.origRp}
 
     def valueChanged(self, value):
@@ -7567,7 +7981,6 @@ class PostProcessSegmDialog(QBaseDialog):
         ccaAnnotRemoved = self.mainWin.removeCcaAnnotationsCurrentFrame()
         if ccaAnnotRemoved:
             self.mainWin.updateAllImages()
-
 
         if origLab is None:
             origLab = self.origLab.copy()
@@ -8139,7 +8552,7 @@ class imageViewer(QMainWindow):
         if alphaScrollBar is None:
             alphaScrollBar = QScrollBar(Qt.Horizontal)
         label = QLabel(f'Alpha {channelName}')
-        label.setFont(font)
+        label.setFont(fonts.font)
         label.hide()
         alphaScrollBar.imageItem = imageItem
         alphaScrollBar.label = label
@@ -8694,7 +9107,7 @@ class selectPositionsMultiExp(QBaseDialog):
             QAbstractItemView.SelectionMode.ExtendedSelection
         )
         self.treeWidget.setHeaderHidden(True)
-        self.treeWidget.setFont(font)
+        self.treeWidget.setFont(fonts.font)
         for exp_path, positions in expPaths.items():
             pathLevels = exp_path.split(os.sep)
             posFoldersInfo = None
@@ -9631,7 +10044,7 @@ class QLineEditDialog(QDialog):
             entryWidget.setText(defaultTxt)
             if not self.allowText:
                 entryWidget.textChanged[str].connect(self.onTextChanged)
-        entryWidget.setFont(font)
+        entryWidget.setFont(fonts.font)
         entryWidget.setAlignment(Qt.AlignCenter)
 
         self.entryWidget = entryWidget
@@ -9639,7 +10052,7 @@ class QLineEditDialog(QDialog):
         if allowedValues is not None:
             notValidLabel = QLabel()
             notValidLabel.setStyleSheet('color: red')
-            notValidLabel.setFont(font)
+            notValidLabel.setFont(fonts.font)
             notValidLabel.setAlignment(Qt.AlignCenter)
             self.notValidLabel = notValidLabel
 
@@ -9892,7 +10305,7 @@ class EditIDDialog(QDialog):
         self.clickedID = clickedID
         self.cancel = True
         self.how = None
-        self.mergeWithExistingID = True
+        self.mergeWithExistingID = False
         self.doNotAskAgainExistingID = doNotShowAgain
         self.allIDs = allIDs
         if allIDs is None:
@@ -10039,7 +10452,10 @@ class EditIDDialog(QDialog):
         if msg.cancel:
             return False
         self.doNotAskAgainExistingID = doNotAskAgainCheckbox.isChecked()
-        self.mergeWithExistingID = msg.clickedButton ==  mergeButton
+        if msg.clickedButton == swapButton:
+            self.mergeWithExistingID = False
+        else:
+            self.mergeWithExistingID = True
         return True
 
     def assignNewIDclicked(self):
@@ -10060,6 +10476,8 @@ class EditIDDialog(QDialog):
                 proceed = self._warnExistingID(self.clickedID, ID)
                 if not proceed:
                     return
+                if not self.mergeWithExistingID:
+                    how.append((ID, self.clickedID))
                 valid = True
             else:
                 valid = True
@@ -10168,7 +10586,7 @@ class QtSelectItems(QDialog):
         listBox.addItems(items)
         listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         listBox.setCurrentRow(0)
-        listBox.setFont(font)
+        listBox.setFont(fonts.font)
         topLayout.addWidget(listBox)
         listBox.hide()
         self.ListBox = listBox
@@ -10190,7 +10608,7 @@ class QtSelectItems(QDialog):
         if showInFileManagerPath is not None:
             showInFileManagerButton.clicked.connect(self.showInFileManager)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
 
     def setAllSelected(self, selected: bool):
         for i in range(self.ListBox.count()):
@@ -11094,9 +11512,7 @@ class QDialogZsliceAbsent(QDialog):
 
         self.setLayout(mainLayout)
 
-        font = QFont()
-        font.setPixelSize(12)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         # self.setModal(True)
     
@@ -11957,7 +12373,7 @@ class QDialogModelParams(QDialog):
             printl(traceback.format_exc())
         
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
         # self.setModal(True)
     
     def warningNoSegmRecipes(self):
@@ -13164,7 +13580,7 @@ class combineMetricsEquationDialog(QBaseDialog):
 
         metricsTreeWidget = QTreeWidget()
         metricsTreeWidget.setHeaderHidden(True)
-        metricsTreeWidget.setFont(font)
+        metricsTreeWidget.setFont(fonts.font)
         self.metricsTreeWidget = metricsTreeWidget
 
         for chName in allChNames:
@@ -13355,7 +13771,7 @@ class combineMetricsEquationDialog(QBaseDialog):
         testButton.clicked.connect(self.test_cb)
 
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         self.setStyleSheet(TREEWIDGET_STYLESHEET)
 
@@ -13616,7 +14032,7 @@ class stopFrameDialog(QBaseDialog):
             _spinBox = QSpinBox()
             _spinBox.setMaximum(214748364)
             _spinBox.setAlignment(Qt.AlignCenter)
-            _spinBox.setFont(font)
+            _spinBox.setFont(fonts.font)
             if posData.acdc_df is not None:
                 _val = posData.acdc_df.index.get_level_values(0).max()+1
             else:
@@ -13735,7 +14151,7 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         for i, (acdc_df_endname, acdc_df) in enumerate(acdcDfs.items()):
             metricsTreeWidget = QTreeWidget()
             metricsTreeWidget.setHeaderHidden(True)
-            metricsTreeWidget.setFont(font)
+            metricsTreeWidget.setFont(fonts.font)
 
             classified_metrics = measurements.classify_acdc_df_colnames(
                 acdc_df, allChNames
@@ -13923,7 +14339,7 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         # self.newColNameLineEdit.editingFinished.connect(self.equationChanged)
 
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         self.setStyleSheet(TREEWIDGET_STYLESHEET)
     
@@ -14111,7 +14527,7 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
 
         row += 1
         self.equationsList = widgets.TreeWidget()
-        self.equationsList.setFont(font)
+        self.equationsList.setFont(fonts.font)
         self.equationsList.setHeaderLabels(['Metric', 'Expression'])
         self.equationsList.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -14328,10 +14744,21 @@ class ShortcutEditorDialog(QBaseDialog):
             delObjectKey='',
             delObjectButton: Literal['Middle click', 'Left click']='Middle click',
             zoomOutKeyValue: int=None,
-            parent=None
+            parent=None,
+            mouseBindings: dict=None,
+            hard_shortcuts: dict=None,
+            highlighted_shortcut: str=None
         ):
         self.cancel = True
         super().__init__(parent)
+
+        
+        # convert hard_shortcuts keys using widgets.KeySequenceFromText and to_string
+        self.new_hard_shortcuts = {}
+        for shortcut, name in hard_shortcuts.items():
+            shortcut = widgets.KeySequenceFromText(shortcut)
+            shortcut_str = shortcut.toString()
+            self.new_hard_shortcuts[name] = shortcut_str
 
         self.setWindowTitle('Customize keyboard shortcuts')
 
@@ -14340,16 +14767,31 @@ class ShortcutEditorDialog(QBaseDialog):
         self.customShortcuts = {}
         self.shortcutLineEdits = {}
 
-        scrollArea = QScrollArea(self)
+        scrollArea = widgets.ScrollArea(self)
         scrollArea.setWidgetResizable(True)
+        self.scrollArea = scrollArea
         scrollAreaWidget = QWidget()
         entriesLayout = QGridLayout()
         
+        conflict_prefix = 'Conflict with '
+        all_names = list(widgetsWithShortcut.keys()) + list(self.new_hard_shortcuts.keys())
+        longest_name = max(all_names, key=len)
+        self.conflict_text_formatter = lambda name: f'<font color="red">{conflict_prefix}{name if not isinstance(name, tuple) else name[0]}</font>'
+        longest_conflict_text = self.conflict_text_formatter(longest_name)
+
+        doc = QTextDocument()
+        warnConflictLabel = QLabel(longest_conflict_text)
+        doc.setDefaultFont(warnConflictLabel.font())
+        doc.setHtml(longest_conflict_text)
+        max_warn_width = int(doc.idealWidth() + 10)
+        
         row = 0
+        name = 'Delete object'
         button = widgets.PushButton(self, flat=True)
         button.setIcon(QIcon(":del_obj_click.svg"))
         self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
-            allowModifiers=True, notAllowedModifier=Qt.AltModifier
+            allowModifiers=True, notAllowedModifier=Qt.AltModifier,
+            allowMouseButtons=True
         )
         if delObjectKey is not None:
             self.delObjShortcutLineEdit.setText(delObjectKey)
@@ -14362,25 +14804,77 @@ class ShortcutEditorDialog(QBaseDialog):
         entriesLayout.addWidget(
             self.delObjButtonCombobox, row, 3, alignment=Qt.AlignLeft
         )
-        
+        warnConflictLabel = QLabel('')
+        self.delObjShortcutLineEdit.warnConflictLabel = warnConflictLabel
+        entriesLayout.addWidget(warnConflictLabel, row, 4)
+        warnConflictLabel.setMinimumWidth(max_warn_width)
+        self.delObjShortcutLineEdit.name = name
+        self.shortcutLineEdits[name] = self.delObjShortcutLineEdit
+        self.delObjShortcutLineEdit.textChanged.connect(self.shortcutChanged)
+        self.delObjShortcutLineEdit.clicked.connect(self.setShortcutLineEditEventFilter)
+        self.delObjShortcutLineEdit.editingFinished.connect(self.releaseShortcutLineEditEventFilter)
+                
         row += 1
         name = 'Zoom out'
         button = widgets.PushButton(self, flat=True)
         label = QLabel('Zoom out:')
-        self.zoomShortcutLineEdit = widgets.ShortcutLineEdit()
+        self.zoomShortcutLineEdit = widgets.ShortcutLineEdit(allowMouseButtons=True)
         if zoomOutKeyValue is not None:
             zoomOutKeySequence = widgets.KeySequenceFromText(zoomOutKeyValue)
             self.zoomShortcutLineEdit.setText(zoomOutKeySequence.toString())
             self.zoomShortcutLineEdit.key = zoomOutKeyValue
-        self.zoomShortcutLineEdit.textChanged.connect(
-            self.checkDuplicateShortcuts
-        )
+        self.zoomShortcutLineEdit.textChanged.connect(self.shortcutChanged)
+        self.zoomShortcutLineEdit.clicked.connect(self.setShortcutLineEditEventFilter)
+        self.zoomShortcutLineEdit.editingFinished.connect(self.releaseShortcutLineEditEventFilter)
         entriesLayout.addWidget(button, row, 0)
         entriesLayout.addWidget(label, row, 1)
         entriesLayout.addWidget(self.zoomShortcutLineEdit, row, 2)
         self.shortcutLineEdits[name] = self.zoomShortcutLineEdit
+        self.zoomShortcutLineEdit.name = name
+        warnConflictLabel = QLabel('')
+        self.zoomShortcutLineEdit.warnConflictLabel = warnConflictLabel
+        entriesLayout.addWidget(warnConflictLabel, row, 4)
+        warnConflictLabel.setMinimumWidth(max_warn_width)
         
         row += 1
+        
+        # sort dicitonaries
+        keep_at_beginning = ['Next', 'Previous']
+        if highlighted_shortcut is not None:
+            keep_at_beginning.insert(0, highlighted_shortcut)
+
+        # used for organizing the shortcuts into groups based on their names
+        grouped_keys = {
+            'keep_at_beginning': [],
+            'other': [],
+            '(lineage tree)': [],
+        }
+
+        widgetsWithShortcut = self._groupAndSortShortcuts(
+            widgetsWithShortcut, keep_at_beginning, grouped_keys
+        )
+        
+        # based on name, only check uniquness within these groups
+        # and the forbidden ones
+        exclusivity_groups = {
+            '(lineage tree)': [],
+            'other': [],
+        }
+        
+        exclusivity_groups['(lineage tree)'] = grouped_keys['(lineage tree)']
+        exclusivity_groups['other'] = grouped_keys['other'] + grouped_keys['keep_at_beginning']
+        self.exclusivity_groups_reverse = {
+            name: group for group, names in exclusivity_groups.items() for name in names
+        }
+
+        grouped_keys = {
+            'keep_at_beginning': [],
+            'other': [],
+        }
+        self.new_hard_shortcuts = self._groupAndSortShortcuts(
+            self.new_hard_shortcuts, keep_at_beginning, grouped_keys
+        )
+            
         for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=row):
             button = widgets.PushButton(self, flat=True)
             try:
@@ -14388,26 +14882,78 @@ class ShortcutEditorDialog(QBaseDialog):
             except:
                 pass
             label = QLabel(f'{name}:')
-            shortcutLineEdit = widgets.ShortcutLineEdit()
-            if hasattr(widget, 'keyPressShortcut'):
+            shortcutLineEdit = widgets.ShortcutLineEdit(allowMouseButtons=True)
+            if mouseBindings is not None and name in mouseBindings:
+                mouse_button = mouseBindings[name]
+                btn_name = QtScoped.mouse_button_name(mouse_button)
+                shortcutLineEdit.setText(f'Mouse {btn_name}')
+                isShortcutKeyPress = False
+                isShortcutMouseButton = True
+            elif hasattr(widget, 'keyPressShortcut'):
                 shortcutLineEdit.key = widget.keyPressShortcut
                 shortcut = widgets.KeySequenceFromText(widget.keyPressShortcut)
                 isShortcutKeyPress = True
+                isShortcutMouseButton = False
             else:
                 shortcut = widget.shortcut()
                 isShortcutKeyPress = False
-            shortcutLineEdit.setText(shortcut.toString())
-            shortcutLineEdit.textChanged.connect(self.checkDuplicateShortcuts)
+                isShortcutMouseButton = False
+                
+            if isShortcutMouseButton: # always false else mouseBindings is None
+                mouse_button = mouseBindings[name]
+                btn_name = QtScoped.mouse_button_name(mouse_button)
+                shortcutLineEdit.setText(f'Mouse {btn_name}')
+            else:
+                shortcutLineEdit.setText(shortcut.toString())
+                
+            shortcutLineEdit.textChanged.connect(self.shortcutChanged)
             shortcutLineEdit.isShortcutKeyPress = isShortcutKeyPress
+            shortcutLineEdit.isShortcutMouseButton = isShortcutMouseButton
+            # trigger when clicked
+            shortcutLineEdit.clicked.connect(
+                self.setShortcutLineEditEventFilter
+            )
+            # clean up when focus is lost
+            shortcutLineEdit.editingFinished.connect(
+                self.releaseShortcutLineEditEventFilter
+            )
+            
             entriesLayout.addWidget(button, row, 0)
             entriesLayout.addWidget(label, row, 1)
             entriesLayout.addWidget(shortcutLineEdit, row, 2)
+            shortcutLineEdit.name = name
             self.shortcutLineEdits[name] = shortcutLineEdit
+            
+            warnConflictLabel = QLabel('')
+            self.shortcutLineEdits[name].warnConflictLabel = warnConflictLabel
+            entriesLayout.addWidget(warnConflictLabel, row, 4)
+            warnConflictLabel.setMinimumWidth(max_warn_width)
+            
+            if highlighted_shortcut is not None and name == highlighted_shortcut:
+                shortcutLineEdit.setStyleSheet(LINEEDIT_WARNING_STYLESHEET)
+            
+        row += 1
+        for row, (what, shortcut) in enumerate(self.new_hard_shortcuts.items(), start=row):
+            button = widgets.PushButton(self, flat=True)
+            if isinstance(what, str):
+                label = QLabel(f'{what}:')
+            else:
+                (name, widget) = what
+                try:
+                    button.setIcon(widget.icon())
+                except:
+                    pass
+                label = QLabel(f'{name}:')
+            lineEditTxt = QLabel(shortcut)
+            entriesLayout.addWidget(button, row, 0)
+            entriesLayout.addWidget(label, row, 1)
+            entriesLayout.addWidget(lineEditTxt, row, 2)
         
         entriesLayout.setColumnStretch(0, 0)
         entriesLayout.setColumnStretch(1, 0)
         entriesLayout.setColumnStretch(2, 1)
         entriesLayout.setColumnStretch(3, 0)
+        entriesLayout.setColumnStretch(4, 0)
 
         scrollAreaWidget.setLayout(entriesLayout)
         scrollArea.setWidget(scrollAreaWidget)
@@ -14420,16 +14966,122 @@ class ShortcutEditorDialog(QBaseDialog):
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
         self.setLayout(mainLayout)
+
+    def _groupAndSortShortcuts(self, shortcuts_dict, keep_at_beginning, grouped_keys):
+        for key in shortcuts_dict.keys():
+            actual_key = key
+            if isinstance(key, tuple):
+                key = key[0]
+            found = False
+            if key in keep_at_beginning:
+                grouped_keys['keep_at_beginning'].append(actual_key)
+            else:
+                for group_key in grouped_keys.keys():
+                    if group_key in key:
+                        grouped_keys[group_key].append(actual_key)
+                        found = True
+                        break
+                if not found:
+                    grouped_keys['other'].append(actual_key)
+
+        widgets_with_shortcut_sorted = {}
+        for group, group_list in grouped_keys.items():
+            sorted_keys = natsorted(group_list, key=lambda x: x[0] if isinstance(x, tuple) else x)
+            widgets_with_shortcut_sorted.update({
+                k: shortcuts_dict[k]
+                for k in sorted_keys
+            })
+        return widgets_with_shortcut_sorted
+        
+    def setShortcutLineEditEventFilter(self):
+        sender = self.sender()
+        previous = getattr(self, '_activeShortcutLineEdit', None)
+        if previous is not None and previous is not sender:
+            QApplication.instance().removeEventFilter(previous)
+            previous.isRecording = False
+
+        QApplication.instance().installEventFilter(sender)
+        sender.isRecording = True
+        self._activeShortcutLineEdit = sender
+
+    def releaseShortcutLineEditEventFilter(self):
+        sender = self.sender()
+        QApplication.instance().removeEventFilter(sender)
+        sender.isRecording = False
+        if getattr(self, '_activeShortcutLineEdit', None) is sender:
+            self._activeShortcutLineEdit = None
+        
+    def shortcutChanged(self, text):
+        sender = self.sender()
+        self.checkDuplicateShortcuts(text, sender=sender)
+        self.updateMouseBindings(text, sender=sender)
     
-    def checkDuplicateShortcuts(self, text):
-        for name, shortcutLineEdit in self.shortcutLineEdits.items():
-            if shortcutLineEdit == self.sender():
+    def updateMouseBindings(self, text, sender=None):
+        if sender is None:
+            sender = self.sender()
+        if text.startswith('Mouse '):
+            sender.isShortcutMouseButton = True
+        else:
+            sender.isShortcutMouseButton = False
+    
+    def checkDuplicateShortcuts(self, text, sender=None):
+        if sender is None:
+            sender = self.sender()
+            
+        warnConflictLabel = getattr(sender, 'warnConflictLabel', None)
+        if warnConflictLabel is not None:
+            warnConflictLabel.setText('')
+            
+            
+        if hasattr(sender, 'conflictWith'):
+            conflictWith = getattr(sender, 'conflictWith')
+            if conflictWith is not None:
+                for name_other, shortcutLineEdit in self.shortcutLineEdits.items():
+                    if name_other == conflictWith:
+                        warnConflictLabel_other = getattr(shortcutLineEdit, 'warnConflictLabel', None)
+                        if warnConflictLabel_other is not None:
+                            warnConflictLabel_other.setText('')
+                        shortcutLineEdit.conflictWith = None
+                
+        sender.conflictWith = None
+            
+        if text == '':
+            return
+            
+        name = sender.name
+        group_updated = self.exclusivity_groups_reverse.get(name, 'other')
+        for name_other, shortcutLineEdit in self.shortcutLineEdits.items():
+            group = self.exclusivity_groups_reverse.get(name_other, 'other')
+            if group != group_updated:
+                continue    
+            if shortcutLineEdit == sender:
                 continue
             if shortcutLineEdit.text() != text:
                 continue
-            shortcutLineEdit.setText('')
+            # shortcutLineEdit.setText('')
+            warnConflictLabel = getattr(shortcutLineEdit, 'warnConflictLabel', None)
+            if warnConflictLabel is not None:
+                warnConflictLabel.setText(
+                    self.conflict_text_formatter(name)
+                )
+            warnConflictLabel_sender = getattr(sender, 'warnConflictLabel', None)
+            if warnConflictLabel_sender is not None:
+                warnConflictLabel_sender.setText(
+                    self.conflict_text_formatter(name_other)
+                )
+            sender.conflictWith = name_other
+            break
+        for name_other, shortcut_txt in self.new_hard_shortcuts.items():
+            if shortcut_txt == text:
+                # sender.setText('')
+                warnConflictLabel = getattr(sender, 'warnConflictLabel', None)
+                if warnConflictLabel is not None:
+                    warnConflictLabel.setText(
+                        self.conflict_text_formatter(name_other)
+                    )
+                break
     
     def warnInvalidKeySequenceDelObjWithLeftClick(self):
         txt = html_utils.paragraph(
@@ -14449,10 +15101,20 @@ class ShortcutEditorDialog(QBaseDialog):
             return
         
         self.shortcutLineEdits.pop('Zoom out')
+        self.shortcutLineEdits.pop('Delete object')
         self.cancel = False
+        self.mouseBindings = dict()
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
             text = shortcutLineEdit.text()
-            if shortcutLineEdit.isShortcutKeyPress:
+            if shortcutLineEdit.isShortcutMouseButton:
+                button_name = text.split('Mouse ')[-1]
+                button = getattr(Qt.MouseButton, button_name, None)
+                if button is None:
+                    printl(f'Warning: could not find mouse button for {button_name}')
+                    continue
+                self.mouseBindings[name] = button
+                self.customShortcuts[name] = (text, button)
+            elif shortcutLineEdit.isShortcutKeyPress:
                 self.customShortcuts[name] = (text, shortcutLineEdit.key)
             else:
                 self.customShortcuts[name] = (
@@ -14467,9 +15129,18 @@ class ShortcutEditorDialog(QBaseDialog):
         self.zoomOutKeyValue = self.zoomShortcutLineEdit.key
         
         self.close()
+        
+    def closeEvent(self, event):
+        active = getattr(self, '_activeShortcutLineEdit', None)
+        if active is not None:
+            QApplication.instance().removeEventFilter(active)
+            active.isRecording = False
+            self._activeShortcutLineEdit = None
+        super().closeEvent(event)
     
     def showEvent(self, event) -> None:
-        self.resize(int(self.width()*1.2), self.height())
+        minimumWidth = self.scrollArea.minimumWidthNoScrollbar()
+        self.resize(int(minimumWidth * 1.1), self.height())
         self.move(self.x(), 100)
 
 class SelectAcdcDfVersionToRestore(QBaseDialog):
@@ -14547,7 +15218,7 @@ class SelectAcdcDfVersionToRestore(QBaseDialog):
         
         self.setLayout(mainLayout)
         
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def ok_cb(self):
         self.cancel = False
@@ -14763,7 +15434,7 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
 
         self.setLayout(self._layout)
 
-        # self.setFont(font)
+        # self.setFont(fonts.font)
 
         self.addButton.clicked.connect(self.addFeatureField)
 
@@ -15046,7 +15717,7 @@ class ScaleBarPropertiesDialog(QBaseDialog):
         mainLayout.addStretch()
         
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
         
         self.unitCombobox.currentTextChanged.connect(self.updateLengthUnit)
         self.colorButton.clicked.disconnect()
@@ -15165,7 +15836,7 @@ class SetColumnNamesDialog(QBaseDialog):
         
         self.setLayout(mainLayout)
 
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def _warnNonUniqueCategories(self, category_1, category_2):
         txt = html_utils.paragraph(f"""
@@ -15226,7 +15897,7 @@ class CombineFeaturesCalculator(QBaseDialog):
         
         metricsTreeWidget = QTreeWidget()
         metricsTreeWidget.setHeaderHidden(True)
-        metricsTreeWidget.setFont(font)
+        metricsTreeWidget.setFont(fonts.font)
         self.metricsTreeWidget = metricsTreeWidget
         
         for groupName, features in features_groups.items():
@@ -15271,7 +15942,7 @@ class CombineFeaturesCalculator(QBaseDialog):
         
         metricsTreeWidget.itemDoubleClicked.connect(self.addFeatureName)
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
 
         self.setStyleSheet(TREEWIDGET_STYLESHEET)
     
@@ -15557,7 +16228,7 @@ class QInput(QBaseDialog):
 
         self.buttonsLayout = buttonsLayout
 
-        self.setFont(font)
+        self.setFont(fonts.font)
         self.setLayout(self.mainLayout)
     
     def askText(self, prompt, infoText='', allowEmpty=False):
@@ -16027,7 +16698,7 @@ class TimestampPropertiesDialog(QBaseDialog):
         mainLayout.addStretch()
         
         self.setLayout(mainLayout)
-        self.setFont(font)
+        self.setFont(fonts.font)
         
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
@@ -16786,12 +17457,27 @@ class PreProcessParamsWidget(QWidget):
 
     def selectRecipeFilepath(self, recipes_path, recipe_prefix, ext_label, ext):
         availableRecipes = []
+        displayNameToFilenameMapper = {}
+        ext = ext.lstrip('.')
         if os.path.exists(recipes_path):
             for file in myutils.listdir(recipes_path):
                 if not file.startswith(recipe_prefix):
                     continue
-                endname = file.split(f'{recipe_prefix}_')[1]
-                availableRecipes.append(endname)
+
+                if not file.lower().endswith(f'.{ext.lower()}'):
+                    continue
+
+                parts = file.split(f'{recipe_prefix}_', 1)
+                if len(parts) != 2:
+                    continue
+
+                endname = parts[1]
+                filepath = os.path.join(recipes_path, file)
+                modified_on = datetime.datetime.fromtimestamp(
+                    os.path.getmtime(filepath)
+                ).strftime(r'%Y/%m/%d %H:%M')
+                availableRecipes.append((endname, modified_on))
+                displayNameToFilenameMapper[endname] = file
         
         if not availableRecipes:
             import qtpy.compat
@@ -16809,14 +17495,14 @@ class PreProcessParamsWidget(QWidget):
             start_dir=myutils.getMostRecentPath(),
             ext={ext_label: f'.{ext}'}
         )
-        selectRecipeWin = widgets.QDialogListbox(
-            'Select recipe',
-            'Select recipe to load:\n',
+        selectRecipeWin = QTreeDialog(
             availableRecipes,
-            multiSelection=False,
-            allowEmptySelection=False,
+            headerLabels=['Name', 'Date Modified'],
+            title='Select recipe',
+            infoText='Select recipe to load:<br>',
             parent=self,
-            additionalButtons=(browseButton,)
+            path_to_browse=recipes_path,
+            additional_buttons=(browseButton,)
         )
         browseButton.sigPathSelected.connect(
             partial(
@@ -16831,9 +17517,12 @@ class PreProcessParamsWidget(QWidget):
 
         if selectRecipeWin.clickedButton == browseButton:
             return selectRecipeWin.selectedIniFilepath
-        
-        selected_endname = selectRecipeWin.selectedItemsText[0]
-        filename = f'{recipe_prefix}_{selected_endname}'
+
+        selected_endname = selectRecipeWin.selectedText
+        filename = displayNameToFilenameMapper.get(selected_endname)
+        if filename is None:
+            return None
+
         return os.path.join(recipes_path, filename)
     
     def selectAndLoadRecipe(self):
@@ -17753,6 +18442,8 @@ class ImageJRoisToSegmManager(QBaseDialog):
         mainLayout = QVBoxLayout()
         
         rois = roifile.roiread(rois_filepath)
+        if not isinstance(rois, list):
+            rois = [rois]
         self.rois = {roi.name: roi for roi in rois}
         
         roisNamesTreeWidget = widgets.TreeWidget()
@@ -17777,12 +18468,18 @@ class ImageJRoisToSegmManager(QBaseDialog):
         mainLayout.addWidget(widgets.QHLine())
         mainLayout.addSpacing(5)
         
-        gridLayout = None
-        self.lowZspinbox = None
+        self.repeatRoiZstackGroupbox = None
         
         SizeT, SizeZ, SizeY, SizeX = TZYX_shape
         if SizeZ > 1:
-            gridLayout = QGridLayout()
+            self.repeatRoiZstackGroupbox = QGroupBox()
+            repeatRoiZstackLayout = QGridLayout()
+            self.repeatRoiZstackGroupbox.setCheckable(True)
+            self.repeatRoiZstackGroupbox.setTitle(
+                'ROI is 2D'
+            )
+            self.repeatRoiZstackGroupbox.setChecked(False)
+            self.repeatRoiZstackGroupbox.setLayout(repeatRoiZstackLayout)
             self.lowZspinbox = widgets.SpinBox()
             self.lowZspinbox.setMinimum(0)
             self.lowZspinbox.setMaximum(SizeZ-1)
@@ -17792,16 +18489,17 @@ class ImageJRoisToSegmManager(QBaseDialog):
             self.highZspinbox.setMaximum(SizeZ-1)
             self.highZspinbox.setValue(SizeZ-1)
             
-            gridLayout.addWidget(QLabel('Repeat 2D ROIs over z-range: '), 1, 0)
+            repeatRoiZstackLayout.addWidget(
+                QLabel('Repeat 2D ROIs over z-range: '), 1, 0)
             
-            gridLayout.addWidget(QLabel('Start z-slice'), 0, 1)
-            gridLayout.addWidget(self.lowZspinbox, 1, 1)
+            repeatRoiZstackLayout.addWidget(QLabel('Start z-slice'), 0, 1)
+            repeatRoiZstackLayout.addWidget(self.lowZspinbox, 1, 1)
             
-            gridLayout.addWidget(QLabel('Stop z-slice'), 0, 2)
-            gridLayout.addWidget(self.highZspinbox, 1, 2)
+            repeatRoiZstackLayout.addWidget(QLabel('Stop z-slice'), 0, 2)
+            repeatRoiZstackLayout.addWidget(self.highZspinbox, 1, 2)
         
-        if gridLayout is not None:
-            mainLayout.addLayout(gridLayout)
+        if self.repeatRoiZstackGroupbox is not None:
+            mainLayout.addWidget(self.repeatRoiZstackGroupbox)
             mainLayout.addSpacing(5)
             mainLayout.addWidget(widgets.QHLine())
             mainLayout.addSpacing(10)
@@ -17860,10 +18558,12 @@ class ImageJRoisToSegmManager(QBaseDialog):
         
         self.rescaleSizes = self.rescaleRoisGroupbox.inputOutputSizes()
         self.repeatRoisZslicesRange = None
-        if self.lowZspinbox is not None:
-            self.repeatRoisZslicesRange = (
-                self.lowZspinbox.value(), self.highZspinbox.value()+1
-            )
+        if self.repeatRoiZstackGroupbox is not None:
+            if self.repeatRoiZstackGroupbox.isChecked():
+                self.repeatRoisZslicesRange = (
+                    self.lowZspinbox.value(), 
+                    self.highZspinbox.value()+1
+                )
         
         self.cancel = False
         self.close()
@@ -19435,7 +20135,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
         
         self.setAcceptDrops(True)
         
-        self.setFont(font)
+        self.setFont(fonts.font)
     
     def dragEnterEvent(self, event):
         event.acceptProposedAction()
@@ -19475,12 +20175,59 @@ class SelectFoldersToAnalyse(QBaseDialog):
         return expPathsPosFoldernamesMapper
     
     def ok_cb(self):
-        self.cancel = False
+        #verify all selected folders have Images folder:
+        faultyFolders = []
+        for path, selected_pos in self.expFolderToPosFoldernamesMapper().items():
+            if selected_pos == ['']:
+                images_path = myutils.get_images_folderpath(path)
+                if images_path is None or not os.path.exists(images_path):
+                    faultyFolders.append(path)
+                    
+            else:
+                for pos in selected_pos:
+                    pos_path = os.path.join(path, pos)
+                    images_path = myutils.get_images_folderpath(pos_path)
+                    if images_path is None or not os.path.exists(images_path):
+                        faultyFolders.append(pos_path)
+        
+        if faultyFolders:
+            self.warnNoAllValid(faultyFolders)
+            return
+            
         self.paths = self.pathsList()
         self.selectedExpFolderToPosFoldernamesMapper = (
             self.expFolderToPosFoldernamesMapper()
         )
+        if not self.selectedExpFolderToPosFoldernamesMapper:
+            self.warnEmptySelection()
+            return
+        self.cancel = False
+
         self.close()
+        
+    def warnNoAllValid(self, faultyFolders=None):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            Some of the selected folders (see below) do not contain an Images folder.<br><br>
+            Please, make sure to select Position folders, the Images folder inside Position folders, or any folder containing Position folders as sub-directories.<br><br>
+            Thank you for your patience!<br><br>
+            Selected folders:
+            <ul>
+                {''.join(f'<li>{folder}</li>' for folder in faultyFolders)}
+            </ul>
+        """)
+        msg.warning(
+            self, 'Some folders are not valid', txt
+        )
+    
+    def warnEmptySelection(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            No folder was selected.<br><br>
+            """)
+        msg.warning(
+            self, 'No folder selected', txt
+        )
     
     def warnNoValidPathsFound(self, selected_path):
         msg = widgets.myMessageBox(wrapText=False)
@@ -19562,11 +20309,11 @@ class SelectFoldersToAnalyse(QBaseDialog):
         myutils.addToRecentPaths(selected_path)
         
         folder_type = myutils.determine_folder_type(selected_path)     
-        is_pos_folder, is_images_folder, folder_path = folder_type 
+        is_pos_folder, is_images_folder, folder_path = folder_type
         if is_pos_folder:
             paths = [selected_path]
         elif is_images_folder:
-            paths = [os.path.dirname(selected_path)]
+            paths = [os.path.dirname(selected_path) if selected_path.endswith('Images') else selected_path]
         elif self.scanTree:
             print(f'Scanning selected folder "{selected_path}"...')
             exp_paths = path.get_posfolderpaths_walk(selected_path)

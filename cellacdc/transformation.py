@@ -362,7 +362,11 @@ def correct_img_dimension(image, input_dims: List[str], output_dims: List[str]):
     
     return image
 
-def clear_objects_not_in_mask(lab, mask):
+def clear_objects_not_in_mask(
+        lab: np.ndarray, 
+        mask: np.ndarray,
+        rp=None
+    ):
     """Clear objects in lab that are not fully contained in mask.
 
     Parameters
@@ -371,6 +375,8 @@ def clear_objects_not_in_mask(lab, mask):
         Labeled image.
     mask : np.ndarray
         Boolean mask.
+    rp : cellacdc.regionprops.acdcRegionprops
+        Region properties. If `None`, it will be calculated. Default is `None`
 
     Returns
     -------
@@ -381,10 +387,13 @@ def clear_objects_not_in_mask(lab, mask):
 
     """
     lab_cleared = lab.copy()
-    rp = skimage.measure.regionprops(lab)
+    if rp is None:
+        rp = skimage.measure.regionprops(lab)
     for obj in rp:
-        if np.all(mask[obj.slice][obj.image]):
+        is_obj_fully_enclosed = np.all(mask[obj.slice][obj.image])
+        if is_obj_fully_enclosed:
             continue
+        
         lab_cleared[obj.slice][obj.image] = 0
         
     return lab_cleared

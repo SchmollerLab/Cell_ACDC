@@ -44,6 +44,7 @@ from . import recentPaths_path
 from . import urls
 from . import io
 from .help import about
+from . import fonts
 
 if os.name == 'nt':
     try:
@@ -373,7 +374,7 @@ class dataPrepWin(QMainWindow):
         navigateToolbar.addAction(self.interpAction)
 
         self.ROIshapeComboBox = QComboBox()
-        self.ROIshapeComboBox.setFont(apps.font)
+        self.ROIshapeComboBox.setFont(fonts.font)
         self.ROIshapeComboBox.SizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.ROIshapeComboBox.addItems(['  256x256  '])
         ROIshapeLabel = QLabel(html_utils.paragraph(

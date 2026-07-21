@@ -26,7 +26,8 @@ from functools import partial
 import skimage
 import skimage.io
 import skimage.measure    
-    
+from copy import deepcopy
+
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -42,8 +43,9 @@ from . import sorted_cols
 from . import io
 from . import core
 from . import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, ACDC_IMAGE_EXTENSIONS
-
+from . import fonts
 from . import GUI_INSTALLED
+from . import acdc_regex
 
 if GUI_INSTALLED:
     from qtpy import QtGui
@@ -58,6 +60,7 @@ if GUI_INSTALLED:
     from . import qrc_resources_path, qrc_resources_light_path
     from . import qrc_resources_dark_path
     from . import whitelist
+    from pyqtgraph import Point
 
 acdc_df_bool_cols = [
     'is_cell_dead',
@@ -517,8 +520,7 @@ def _fix_corrected_assignment_i(acdc_df: pd.DataFrame):
 
 def _fix_will_divide(acdc_df):
     """Resetting annotaions in GUI sometimes does not fully reset `will_divide` 
-    column. Here we set `will_divide` back to 0 for those cells whose 
-    next generation does not exist (division was not annotated)
+    column. Here we reset `will_divide`
 
     Parameters
     ----------
@@ -534,19 +536,21 @@ def _fix_will_divide(acdc_df):
     if 'cell_cycle_stage' not in acdc_df.columns:
         return acdc_df
     
-    required_cols = ['frame_i', 'Cell_ID', 'generation_num', 'will_divide']
+    required_cols = [
+        'frame_i', 'Cell_ID', 'generation_num', 'will_divide', 'relationship',
+        'relative_ID'
+    ]
     
     cca_df_mask = ~acdc_df['cell_cycle_stage'].isna()
     cca_df = acdc_df[cca_df_mask].reset_index()[required_cols]
-    
-    IDs_will_divide_wrong = (
-        cca_functions.get_IDs_gen_num_will_divide_wrong(cca_df)
-    )
-    if not IDs_will_divide_wrong:
+
+    IDs_gen_num_will_divide = cca_functions.get_IDs_gen_num_will_divide(cca_df)
+    if not IDs_gen_num_will_divide:
         return acdc_df
     
-    cca_df = cca_df.reset_index().set_index(['Cell_ID', 'generation_num'])   
-    cca_df.loc[IDs_will_divide_wrong, 'will_divide'] = 0
+    cca_df['will_divide'] = 0.0
+    cca_df = cca_df.reset_index().set_index(['Cell_ID', 'generation_num'])
+    cca_df.loc[IDs_gen_num_will_divide, 'will_divide'] = 1.0
     cca_df = cca_df.reset_index()
     acdc_df = acdc_df.reset_index()
 
@@ -555,7 +559,7 @@ def _fix_will_divide(acdc_df):
     
     cca_df_index = cca_df_mask[cca_df_mask].index
     acdc_df.loc[cca_df_index, 'will_divide'] = cca_df['will_divide']
-    
+
     return acdc_df
 
 def _add_missing_columns(acdc_df):
@@ -569,7 +573,6 @@ def _add_missing_columns(acdc_df):
         return acdc_df
     
     last_index_cca_df = acdc_df[['cell_cycle_stage']].last_valid_index()
-    
     for col, default in base_cca_dict.items():
         if col == 'will_divide':
             # Already taken care by _add_will_divide_column
@@ -903,18 +906,30 @@ def get_segm_endnames_from_exp_path(exp_path, pos_foldernames=None):
     
     return existingEndNames
 
-def get_files_with(images_path: os.PathLike, with_text: str, ext: str=None):
+def get_files_with(
+        images_path: os.PathLike, 
+        with_text: str, 
+        ext: str | tuple[str]=None
+    ):
     ls = myutils.listdir(images_path)
     found_files = []
     for file in ls:
         if file.find(with_text) == -1:
             continue
         
-        if ext is not None and not file.endswith(ext):
+        if ext is None:
+            found_files.append(file)
             continue
         
-        found_files.append(file)
-    
+        _, file_ext = os.path.splitext(file)
+        if isinstance(ext, tuple) and file_ext in ext:
+            found_files.append(file)
+            continue
+        
+        if isinstance(ext, str) and file_ext == ext:
+            found_files.append(file)
+            continue
+
     return found_files
 
 def load_segmInfo_df(pos_path):
@@ -1371,6 +1386,7 @@ class loadData:
         self.loadLastEntriesMetadata()
         self.attempFixBasenameBug()
         self.non_aligned_ext = '.tif'
+        self.segmMetadata = None
         if filename_ext.endswith('aligned.npz'):
             for file in myutils.listdir(self.images_path):
                 if file.endswith(f'{user_ch_name}.h5'):
@@ -1721,7 +1737,13 @@ class loadData:
         for frame_i in range(len(self.segm_data)):
             lab = self.allData_li[frame_i]['labels']
             if lab is not None:
-                IDsFrame = self.allData_li[frame_i]['IDs']
+                if hasattr(self.allData_li[frame_i]['regionprops'], 'IDs'):
+                    IDsFrame = self.allData_li[frame_i]['regionprops'].IDs
+                else:
+                    IDsFrame = [
+                        obj.label 
+                        for obj in self.allData_li[frame_i]['regionprops']
+                    ]
                 
                 if uniqueIDsVisited is not None:
                     uniqueIDsVisited.update(IDsFrame)
@@ -1941,6 +1963,8 @@ class loadData:
             new_endname='',
             labelBoolSegm=None,
             load_whitelistIDs=False,
+            load_segm_info_ini=False,
+            loadTrackedLostCentroids=False
         ):
         self.segmFound = False if load_segm_data else None
         self.acdc_df_found = False if load_acdc_df else None
@@ -2144,6 +2168,13 @@ class loadData:
 
         if load_whitelistIDs:
             self.loadWhitelist()
+            
+        if load_segm_info_ini:
+            self.readSegmMetadataIni()
+            
+        if loadTrackedLostCentroids:
+            self.trackedLostCentroidsPath()
+            self.loadTrackedLostCentroids()
     
     def checkAndFixZsliceSegmInfo(self):
         if not hasattr(self, 'segmInfo_df'):
@@ -2373,6 +2404,7 @@ class loadData:
         cca_dfs_auto_attr = hasattr(tracker, 'cca_dfs_auto')
 
         if hasattr(tracker, 'tracked_lost_centroids'):
+            self.trackedLostCentroidsPath()
             self.saveTrackedLostCentroids(tracker.tracked_lost_centroids)
 
         if not cca_dfs_attr and not cca_dfs_auto_attr:
@@ -2397,14 +2429,14 @@ class loadData:
             rp = skimage.measure.regionprops(lab)
             for obj in rp:
                 centroid = obj.centroid
-                yc, xc = obj.centroid[-2:]
+                yc, xc = centroid[-2:]
                 acdc_df.at[(frame_i, obj.label), 'x_centroid'] = int(xc)
                 acdc_df.at[(frame_i, obj.label), 'y_centroid'] = int(yc)
 
                 if len(centroid) == 3:
                     if 'z_centroid' not in acdc_df.columns:
                         acdc_df['z_centroid'] = 0
-                    zc = obj.centroid[0]
+                    zc = centroid[0]
                     acdc_df.at[(frame_i, obj.label), 'z_centroid'] = int(zc)                
 
         if not save:
@@ -3134,6 +3166,7 @@ class loadData:
         self.raw_postproc_segm_path = f'{base_path}segm_raw_postproc'
         self.post_proc_mot_metrics = f'{base_path}post_proc_mot_metrics'
         self.segm_hyperparams_ini_path = f'{base_path}segm_hyperparams.ini'
+        self.segm_metadata_ini_path = f'{base_path}segm_metadata_data.ini'
         self.custom_annot_json_path = f'{base_path}custom_annot_params.json'
         self.custom_combine_metrics_path = (
             f'{base_path}custom_combine_metrics.ini'
@@ -3157,6 +3190,7 @@ class loadData:
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
         if not hasattr(self, 'img_data'):
             self.segm_data = None
+            self.single_timepoint_size = None
             return
 
         Y, X = self.img_data.shape[-2:]
@@ -3168,7 +3202,16 @@ class loadData:
             elif SizeT > 1:
                 self.segm_data = np.zeros((SizeT, Y, X), int)
             else:
-                self.segm_data = np.zeros((Y, X), int)
+                self.segm_data = np.zeros((Y, X), int)        
+
+    def getSingleTimepointSegmSize(self):
+        if hasattr(self, 'single_timepoint_size') and self.single_timepoint_size is not None:
+            return self.single_timepoint_size
+        if self.SizeT > 1:
+            self.single_timepoint_size = np.prod(self.segm_data.shape[1:])
+        else: # not sure if time axis is present but would be 1 anyways
+            self.single_timepoint_size = np.prod(self.segm_data.shape)
+        return self.single_timepoint_size
 
     def loadAllImgPaths(self):
         tif_paths = []
@@ -3260,7 +3303,7 @@ class loadData:
             self.SizeT, self.SizeZ, self.TimeIncrement,
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
-            parent=self.parent, font=apps.font, imgDataShape=self.img_data_shape,
+            parent=self.parent, font=fonts.font, imgDataShape=self.img_data_shape,
             posData=self, singlePos=singlePos, askSegm3D=askSegm3D,
             additionalValues=self._additionalMetadataValues,
             forceEnableAskSegm3D=forceEnableAskSegm3D, 
@@ -3425,6 +3468,164 @@ class loadData:
         elif signals is not None:
             raise FileNotFoundError(err_title)
         
+    def delROIInfoPaths(self):
+        self.delROIs_info_path = self.segm_npz_path.replace('segm', 'delROIs_info').replace('.npz', '.json')
+        self.delROIs_cutout_path = self.segm_npz_path.replace('segm', 'delROIs_cutouts')
+        
+    def saveROIInfo(self):
+        def _serialize_state_value(val):
+            if hasattr(val, 'tolist'):  # numpy array
+                return [round(float(v), 3) for v in val.tolist()]
+            if hasattr(val, 'x') and callable(val.x) and hasattr(val, 'y'):
+                # pg.Point / QPointF
+                return [round(float(val.x()), 3), round(float(val.y()), 3)]
+            if isinstance(val, (list, tuple)):
+                return [_serialize_state_value(v) for v in val]
+            if isinstance(val, bool):
+                return val           # store real JSON booleans, not "True"/"False"
+            if isinstance(val, float):
+                return round(val, 4)
+            if isinstance(val, (int, str)) or val is None:
+                return val
+            return str(val)
+
+        def _serialize_slice(s):
+            return [s.start, s.stop, s.step]
+
+        def _serialize_coords(coords):
+            """coords is a tuple/list of slice objects, one per dimension."""
+            return [_serialize_slice(s) for s in coords]
+
+        self.delROIInfoPaths()
+        save_dict_info = {}
+        save_dict_masks = {}
+        for frame_i in range(self.SizeT):
+
+            frame_dict = {}
+            all_data_li_frame = self.allData_li[frame_i] if self.allData_li is not None and len(self.allData_li) > frame_i else None
+            if all_data_li_frame is None:
+                continue
+            delROIs_info = all_data_li_frame.get('delROIs_info')
+            if delROIs_info is None:
+                continue
+            for idx, roi in enumerate(delROIs_info['rois']):
+                roi_key = str(roi.key)
+                delMasks = delROIs_info['delMasks'][idx]
+                
+                delIDsROI = delROIs_info['delIDsROI'][idx].copy()
+                delMasksCoords = deepcopy(delROIs_info['delMasksCoords'][idx])
+                state = deepcopy(delROIs_info['state'][idx])
+                for key, val in state.items():
+                    state[key] = _serialize_state_value(val)
+                mask_keys = []
+                for ID_idx, ID in enumerate(delIDsROI):
+                    key = f'{frame_i};;{roi_key};;{ID}'
+                    save_dict_masks[key] = delMasks[ID_idx]
+                    mask_keys.append(key)
+
+                    delIDsROI[ID_idx] = str(ID)
+
+                frame_dict[roi_key] = {
+                    'delIDsROI': delIDsROI,
+                    'delMasksCoords': [_serialize_coords(coords) for coords in delMasksCoords],
+                    'state': state,
+                    'mask_keys': mask_keys
+                }
+            save_dict_info[frame_i] = frame_dict
+
+        with open(self.delROIs_info_path, 'w') as f:
+            json.dump(save_dict_info, f, indent=2)
+        np.savez_compressed(self.delROIs_cutout_path, **save_dict_masks)
+        
+    def loadROIInfo(self):
+        def _str_to_point(s):
+            """'Point(105.000000, 88.000000)' -> pg.Point(105.0, 88.0)"""
+            m = acdc_regex.POINT_RE.match(s.strip())
+            if m is None:
+                raise ValueError(f'Could not parse Point from {s!r}')
+            return Point(float(m.group(1)), float(m.group(2))) if GUI_INSTALLED else (float(m.group(1)), float(m.group(2)))
+
+        def _str_to_points_list(s):
+            """'[Point(1.0, 2.0), Point(3.0, 4.0)]' -> [pg.Point(1.0, 2.0), pg.Point(3.0, 4.0)]"""
+            return [Point(float(x), float(y)) if GUI_INSTALLED else (float(x), float(y)) for x, y in acdc_regex.POINT_RE.findall(s)]
+
+        def _deserialize_roi_state(state):
+            """Reverse the str-ification done in saveROIInfo so the dict is
+            suitable for ROI.setState()."""
+            new_state = {}
+            for key, val in state.items():
+                if key in ('pos', 'size'):
+                    if isinstance(val, str):
+                        new_state[key] = _str_to_point(val)
+                    elif isinstance(val, (list, tuple)) and len(val) == 2:
+                        new_state[key] = Point(float(val[0]), float(val[1])) if GUI_INSTALLED else (float(val[0]), float(val[1]))
+                    else:
+                        raise ValueError(f'Unexpected value for {key}: {val!r}')
+                elif key == 'angle':
+                    new_state[key] = float(val)
+                elif key == 'closed':
+                    if isinstance(val, str):
+                        new_state[key] = val.lower() == 'true'
+                    else:
+                        new_state[key] = bool(val)
+                elif key == 'points':
+                    if isinstance(val, str):
+                        new_state[key] = _str_to_points_list(val)
+                    elif isinstance(val, (list, tuple)):
+                        new_state[key] = [Point(float(x), float(y)) if GUI_INSTALLED else (float(x), float(y)) for x, y in val]
+                    else:
+                        raise ValueError(f'Unexpected value for points: {val!r}')
+                else:
+                    raise ValueError(f'Unexpected key in ROI state: {key}')
+            return new_state
+
+        self.delROIInfoPaths()
+        if not os.path.exists(self.delROIs_info_path) or not os.path.exists(self.delROIs_cutout_path):
+            return
+        
+        with open(self.delROIs_info_path, 'r') as f:
+            save_dict_info = json.load(f)
+        save_dict_masks = np.load(self.delROIs_cutout_path, allow_pickle=True)
+
+        ROI_key_frame_lookup = {}
+        
+        for frame_i_str, frame_dict in save_dict_info.items():
+            frame_i = int(frame_i_str)
+            all_data_li_frame = self.allData_li[frame_i] if self.allData_li is not None and len(self.allData_li) > frame_i else None
+            if all_data_li_frame is None:
+                continue
+            delROIs_info = {
+                'rois': [],
+                'delIDsROI': [],
+                'delMasks': [],
+                'delMasksCoords': [],
+                'state': []
+            }
+            for roi_key, roi_data in frame_dict.items():
+                delIDsROI = [int(ID) for ID in roi_data['delIDsROI']]
+                delMasksCoords = [tuple(slice(*s) for s in coords) for coords in roi_data['delMasksCoords']]
+                state = _deserialize_roi_state(roi_data['state'])
+                mask_keys = roi_data['mask_keys']
+                delMasks = [save_dict_masks[key] for key in mask_keys]
+
+                delROIs_info['rois'].append(roi_key)
+                delROIs_info['delIDsROI'].append(delIDsROI)
+                delROIs_info['delMasks'].append(delMasks)
+                delROIs_info['delMasksCoords'].append(delMasksCoords)
+                delROIs_info['state'].append(state)
+                
+                if roi_key not in ROI_key_frame_lookup:
+                    ROI_key_frame_lookup[roi_key] = []
+                ROI_key_frame_lookup[roi_key].append(frame_i)
+
+            all_data_li_frame['delROIs_info'] = delROIs_info
+        
+        save_dict_masks.close()
+        return ROI_key_frame_lookup
+
+    def trackedLostCentroidsPath(self):
+        self.tracked_lost_centroids_json_path = self.segm_npz_path.replace('segm', 'tracked_lost_centroids').replace('.npz', '.json')
+        
     def saveTrackedLostCentroids(self, tracked_lost_centroids_list=None, _tracked_lost_centroids_list=None):
 
         if not (self.tracked_lost_centroids or tracked_lost_centroids_list or _tracked_lost_centroids_list):
@@ -3496,7 +3697,8 @@ class loadData:
         self.whitelist = whitelist.Whitelist(
             total_frames=self.SizeT,
         )
-        whitelist_path = self.segm_npz_path.replace('.npz', '_whitelistIDs.json')
+        whitelist_path = self.segm_npz_path.replace(
+            '.npz', '_whitelistIDs.json')
         new_centroids_path = self.segm_npz_path.replace('.npz', '_new_centroids.json')
         success = self.whitelist.load(
             whitelist_path, new_centroids_path, self.segm_data, self.allData_li,
@@ -3507,7 +3709,96 @@ class loadData:
         if not success:
             self.whitelist = None
             
-
+    def readSegmMetadataIni(self):
+        if not os.path.exists(self.segm_metadata_ini_path):
+            return None
+        
+        cp = config.ConfigParser()
+        cp.read(self.segm_metadata_ini_path)
+        # one entry for each segmentation file
+        self.segmMetadata = {}
+        for segm_file in cp.sections():
+            sizeX = cp.getint(segm_file, 'sizeX', fallback=None)
+            sizeY = cp.getint(segm_file, 'sizeY', fallback=None)
+            sizeT = cp.getint(segm_file, 'SizeT', fallback=None)
+            sizeZ = cp.getint(segm_file, 'SizeZ', fallback=None)
+            is_3D = sizeZ > 1 if sizeZ is not None else False
+            last_modified_date = cp.get(segm_file, 'last_modified_date', fallback=None)
+            acdc_df_segm = cp.get(segm_file, 'acdc_df_segm', fallback=None)
+            acdc_df_save_date = cp.get(segm_file, 'acdc_df_save_date', fallback=None)
+            self.segmMetadata[segm_file] = {
+                'SizeT': sizeT,
+                'SizeZ': sizeZ,
+                'is_3D': is_3D,
+                'last_modified_date': last_modified_date,
+                'acdc_df_segm': acdc_df_segm,
+                'acdc_df_save_date': acdc_df_save_date,
+                'sizeX': sizeX,
+                'sizeY': sizeY,
+            }
+            
+    def saveSegmMetadataIni(self):
+        # need to be called in more locations, will be full yimplemented in workflow gui
+        cp = config.ConfigParser()
+        for segm_file, metadata in self.segmMetadata.items():
+            cp[segm_file] = {}
+            cp[segm_file]['SizeT'] = str(metadata.get('SizeT', ''))
+            cp[segm_file]['SizeZ'] = str(metadata.get('SizeZ', ''))
+            cp[segm_file]['last_modified_date'] = str(metadata.get('last_modified_date', ''))
+            cp[segm_file]['acdc_df_segm'] = str(metadata.get('acdc_df_segm', ''))
+            cp[segm_file]['sizeX'] = str(metadata.get('sizeX', ''))
+            cp[segm_file]['sizeY'] = str(metadata.get('sizeY', ''))
+            cp[segm_file]['acdc_df_save_date'] = str(
+                metadata.get('acdc_df_save_date', '')
+            )
+        
+        with open(self.segm_metadata_ini_path, 'w') as configfile:
+            cp.write(configfile)
+            
+    def updateSegmMetadata(self, segm_file=None, SizeT=None, SizeZ=None,
+                           acdc_df_segm=None, last_modified_date=None,
+                           sizeY=None, sizeX=None, all=False, acdc_df_save_date=None):
+        if segm_file is None:
+            segm_file = os.path.basename(self.segm_npz_path)
+            
+        if self.segmMetadata is None:
+            self.segmMetadata = {}
+        segm_metadata = self.segmMetadata.get(segm_file, {})
+        if SizeT is not None or all:
+            if SizeT is True or SizeT is None:
+                SizeT = self.SizeT
+            segm_metadata['SizeT'] = SizeT
+        if SizeZ is not None or all:
+            if SizeZ is True or SizeZ is None:
+                SizeZ = self.SizeZ if self.isSegm3D else 1
+            segm_metadata['SizeZ'] = SizeZ
+            segm_metadata['is_3D'] = SizeZ > 1
+        if acdc_df_segm is not None or all:
+            if acdc_df_segm is True or acdc_df_segm is None:
+                acdc_df_segm = os.path.basename(self.acdc_output_csv_path) #  for future if we allow multpiple outputs
+            # clear other segm metadata entries with acdc_df info to avoid confusion
+            for info in self.segmMetadata.values():
+                if info.get('acdc_df_segm', '') == acdc_df_segm:
+                    info['acdc_df_segm'] = None
+            segm_metadata['acdc_df_segm'] = acdc_df_segm
+        if last_modified_date is not None or all:
+            if last_modified_date is True or last_modified_date is None: # explicitly in this cane set curr datetime
+                last_modified_date = datetime.now()
+            segm_metadata['last_modified_date'] = last_modified_date
+        if sizeY is not None or all:
+            if sizeY is True or sizeY is None:
+                sizeY = self.SizeY
+            segm_metadata['sizeY'] = sizeY
+        if sizeX is not None or all:
+            if sizeX is True or sizeX is None:
+                sizeX = self.SizeX
+            segm_metadata['sizeX'] = sizeX
+        if acdc_df_save_date is not None or all:
+            if acdc_df_save_date is True or acdc_df_save_date is None:
+                acdc_df_save_date = datetime.now()
+            segm_metadata['acdc_df_save_date'] = acdc_df_save_date
+        self.segmMetadata[segm_file] = segm_metadata
+            
 class select_exp_folder:
     def __init__(self):
         self.exp_path = None

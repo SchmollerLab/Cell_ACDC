@@ -7,6 +7,7 @@ import concurrent.futures
 from functools import partial
 from collections import defaultdict, deque
 import itertools
+from copy import deepcopy
 
 from typing import Union, List, Dict, Callable, Any, Tuple, Iterable
 
@@ -43,7 +44,6 @@ from . import cca_df_colnames_with_tree
 from . import cli
 from .utils import resize
 from . import segm_utils
-
 DEBUG = False
 
 def worker_exception_handler(func):
@@ -178,7 +178,7 @@ class FindNextNewIdWorker(QObject):
         for frame_i, data_dict in enumerate(self.posData.allData_li):
             lab = data_dict['labels']
             rp = data_dict['regionprops']
-            IDs = data_dict['IDs']
+            IDs = data_dict['regionprops'].IDs
             if lab is None:
                 lab = self.posData.segm_data[frame_i]
                 rp = skimage.measure.regionprops(lab)
@@ -198,15 +198,12 @@ class FindNextNewIdWorker(QObject):
 
 class SegForLostIDsWorker(QObject):
     sigAskInit = Signal()
-    sigAskInstallModel = Signal(str)
-    sigshowImageDebug = Signal(object)
+    sigShowImageDebug = Signal(object)
     sigStoreData = Signal(bool)
     sigUpdateRP = Signal(bool, bool)
-    # sigGetData = Signal()
-    # sigGet2Dlab = Signal()
-    # sigGetTrackedLostIDs = Signal()
-    # sigGetBrushID = Signal()
+    sigGetSegForLostIDsInputImg = Signal(str)
     sigSegForLostIDsWorkerAskInstallGPU = Signal(str, bool)
+    sigSegForLostIDsImportModel = Signal(str)
     sigTrackManuallyAddedObject = Signal(object, object, bool, bool)
 
     def __init__(self, guiWin, mutex, waitCond, debug=False):
@@ -217,76 +214,85 @@ class SegForLostIDsWorker(QObject):
         self.mutex = mutex
         self.waitCond = waitCond
         self._debug = debug
+        self.inputImgForSegForLostIDs = None
+        self.assignments = {}
+        self._acks = defaultdict(int)
+
+    def _emit_and_wait(self, ack_key, signal, *args):
+        """Emit a signal and wait until the GUI slot acknowledges it.
+
+        This prevents missed wake-ups when wakeAll() happens before wait().
+        """
+        self.mutex.lock()
+        prev_ack = self._acks[ack_key]
+        try:
+            signal.emit(*args)
+            while self._acks[ack_key] == prev_ack:
+                self.waitCond.wait(self.mutex)
+        finally:
+            self.mutex.unlock()
+
+    def ack(self, ack_key):
+        self._acks[ack_key] += 1
 
     def emitSigAskInit(self):
-        self.mutex.lock()
-        self.sigAskInit.emit()
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
-    
-    def emitSigShowImageDebug(self, img):
-        # self.mutex.lock()
-        self.sigshowImageDebug.emit(img)
-        # self.waitCond.wait(self.mutex)
-        # self.mutex.unlock()
+        self._emit_and_wait('ask_init', self.sigAskInit)
     
     def emitSigStoreData(self, autosave):
-        self.mutex.lock()
-        self.sigStoreData.emit(autosave)
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
+        self._emit_and_wait('store_data', self.sigStoreData, autosave)
     
-    def emitSigUpdateRP(self, wl_track_og_curr, wl_update):
-        self.mutex.lock()
-        self.sigUpdateRP.emit(wl_track_og_curr, wl_update)
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
+    def emitSigUpdateRP(self, wl_update, wl_track_og_curr):
+        self._emit_and_wait(
+            'update_rp', self.sigUpdateRP, wl_update, wl_track_og_curr
+        )
+        
+    def emitSigSegForLostIDsImportModel(self, base_model_name):
+        self._emit_and_wait(
+            'import_model',
+            self.sigSegForLostIDsImportModel,
+            base_model_name,
+        )
 
-    # def emitSigGetData(self):
-    #     self.mutex.lock()
-    #     self.sigGetData.emit()
-    #     self.waitCond.wait(self.mutex)
-    #     self.mutex.unlock()
-
-    def emitSigAskInstallModel(self, model_name):
+    def emitGetSegForLostIDsInputImg(self, image_channel_name):
+        self._emit_and_wait( # emit and waiting is handled here
+            'get_input_img', self.sigGetSegForLostIDsInputImg, image_channel_name
+        )
+        img = self.inputImgForSegForLostIDs
+        self.inputImgForSegForLostIDs = None
+        return img
+        
+    def emitSigAskInstallGPU(self, base_model_name, use_gpu):
+        self._emit_and_wait(
+            'ask_install_gpu',
+            self.sigSegForLostIDsWorkerAskInstallGPU,
+            base_model_name,
+            use_gpu,
+        )
+    
+    def emitTrackManuallyAddedObject(self, IDs, isLost, wl_update, wl_track_og_curr):
+        self.assignments = {}
+        self._emit_and_wait(
+            'track_manually_added',
+            self.sigTrackManuallyAddedObject,
+            IDs,
+            isLost,
+            wl_update,
+            wl_track_og_curr,
+        )
+        return self.assignments
+              
+    def pause(self):
         self.mutex.lock()
-        self.sigAskInstallModel.emit(model_name)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         
-    def emitSigAskInstallGPU(self, base_model_name, use_gpu):
-        self.mutex.lock()
-        self.sigSegForLostIDsWorkerAskInstallGPU.emit(base_model_name,
-                                                     use_gpu)
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
+    def emitSigImageDebug(self, display_info):
+        self._emit_and_wait('image_debug', self.sigShowImageDebug, display_info)
     
-    # def emitGet2Dlab(self):
-    #     self.mutex.lock()
-    #     self.sigGet2Dlab.emit()
-    #     self.waitCond.wait(self.mutex)
-    #     self.mutex.unlock()
-    
-    # def emitGetTrackedLostIDs(self):
-    #     self.mutex.lock()
-    #     self.sigGetTrackedLostIDs.emit()
-    #     self.waitCond.wait(self.mutex)
-    #     self.mutex.unlock()
-    
-    # def emitGetBrushID(self):
-    #     self.mutex.lock()
-    #     self.sigGetBrushID.emit()
-    #     self.waitCond.wait(self.mutex)
-    #     self.mutex.unlock()
-    
-    def emitTrackManuallyAddedObject(self, IDs, isLost, wl_update, wl_track_og_curr):
-        self.mutex.lock()
-        self.sigTrackManuallyAddedObject.emit(IDs, isLost, wl_update, wl_track_og_curr)
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
-
     @worker_exception_handler
     def run(self):
+        from . import regionprops
+        
         posData = self.guiWin.data[self.guiWin.pos_i]
         frame_i = posData.frame_i
 
@@ -298,36 +304,77 @@ class SegForLostIDsWorker(QObject):
             return
 
         self.logger.info('Segmentation for lost IDs started.')
-        model_name = 'local_seg'
-        base_model_name = self.guiWin.SegForLostIDsSettings['base_model_name']
-        idx = self.guiWin.modelNames.index(model_name)
-        acdcSegment = self.guiWin.acdcSegment_li[idx]
-        
-        init_kwargs = self.guiWin.SegForLostIDsSettings['win'].init_kwargs
-        
-        use_gpu = init_kwargs.get('device_type', 'cpu') != 'cpu'
-        use_gpu = use_gpu or init_kwargs.get('use_gpu', False)
-        
-        self.emitSigAskInstallGPU(base_model_name, use_gpu)
-        
-        if not self.gpu_go:
-            self.signals.finished.emit(self)
-            return
-        
-        if not self.dont_force_cpu:
-            if 'device' in init_kwargs:
-                init_kwargs['device'] = 'cpu'
-            if 'use_gpu' in init_kwargs:
-                init_kwargs['use_gpu'] = False
 
-        if acdcSegment is None or base_model_name != self.guiWin.local_seg_base_model_name:
+        model_settings = self.guiWin.SegForLostIDsSettings['models_settings']
+
+        n_models = len(model_settings)
+        total_steps = 2 * n_models
+        self.signals.initProgressBar.emit(total_steps)
+        
+        assigned_IDs = []
+        original_lab = posData.lab.copy()
+        IDs_bboxs_list = []
+        bboxs_list = []
+        new_labs = []
+        newly_assigned_IDs_list = []
+        
+        prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
+        prev_IDs = posData.allData_li[frame_i-1]['regionprops'].IDs_set
+        
+        # iteratively go through models, keeping found labs and only feeding remaining lost IDs to the next model
+        for model_idx, model_settings_i in enumerate(model_settings):
+            base_model_name = model_settings_i['base_model_name']
+            # self.logger.info(
+            #     f'[SegForLostIDs] Model {model_idx+1}/{n_models}: {base_model_name}'
+            # )
+            init_kwargs_new = dict(model_settings_i['init_kwargs_new'])
+            effective_init_kwargs = dict(init_kwargs_new)
+            image_channel_name = init_kwargs_new.pop(
+                'image_channel_name', 'Displayed image'
+            )
+            args_new = model_settings_i['args_new']
+            init_kwargs = model_settings_i.get('init_kwargs', {})
+            effective_init_kwargs.update(init_kwargs)
+            model_kwargs = model_settings_i.get('model_kwargs', {})
+            preproc_recipe = model_settings_i.get('preproc_recipe', None)
+            applyPostProcessing = model_settings_i.get('applyPostProcessing', False)
+            standardPostProcessKwargs = model_settings_i.get('standardPostProcessKwargs', {})
+            customPostProcessFeatures = model_settings_i.get('customPostProcessFeatures', None)
+            customPostProcessGroupedFeatures = model_settings_i.get('customPostProcessGroupedFeatures', None)
+
+            # Fall back to reading from the live win object when available
+            win = model_settings_i.get('win')
+            if win is not None:
+                init_kwargs = win.init_kwargs
+                effective_init_kwargs.update(init_kwargs)
+                model_kwargs = win.model_kwargs
+                preproc_recipe = win.preproc_recipe
+                applyPostProcessing = win.applyPostProcessing
+                standardPostProcessKwargs = win.standardPostProcessKwargs
+                customPostProcessFeatures = win.customPostProcessFeatures
+                customPostProcessGroupedFeatures = win.customPostProcessGroupedFeatures
+
+            use_gpu = effective_init_kwargs.get('device_type', 'cpu').lower() != 'cpu'
+            use_gpu = use_gpu or effective_init_kwargs.get('use_gpu', False)
+
+            # self.logger.info('[SegForLostIDs] Checking GPU availability...')
+            self.emitSigAskInstallGPU(base_model_name, use_gpu)
+
+            if not self.gpu_go:
+                self.signals.finished.emit(self)
+                return
+
+            if not self.dont_force_cpu:
+                if 'device' in effective_init_kwargs:
+                    effective_init_kwargs = dict(effective_init_kwargs, device='cpu')
+                if 'use_gpu' in effective_init_kwargs:
+                    effective_init_kwargs = dict(effective_init_kwargs, use_gpu=False)
+
             try:
                 self.logger.info(f'Importing {base_model_name}...')
-                self.emitSigAskInstallModel(base_model_name)
+                self.emitSigSegForLostIDsImportModel(base_model_name)
                 acdcSegment = myutils.import_segment_module(base_model_name)
-                self.guiWin.acdcSegment_li[idx] = acdcSegment
-                self.guiWin.local_seg_base_model_name = base_model_name
-            except (IndexError, ImportError, KeyError) as e:
+            except (IndexError, ImportError, KeyError):
                 self.logger.warning(
                     f'Cannot import {base_model_name} model. '
                     'Please install it first.'
@@ -339,134 +386,159 @@ class SegForLostIDsWorker(QObject):
                 self.signals.finished.emit(self)
                 return
 
-        win = self.guiWin.SegForLostIDsSettings['win']
-        init_kwargs_new = self.guiWin.SegForLostIDsSettings['init_kwargs_new']
-        args_new = self.guiWin.SegForLostIDsSettings['args_new']
+            effective_init_kwargs.pop('image_channel_name', None)
+            # self.logger.info('[SegForLostIDs] Initializing segmentation model...')
+            model = myutils.init_segm_model(acdcSegment, posData, effective_init_kwargs)
+            if model is None:
+                self.logger.info('Segmentation model was not initialized correctly!')
+                self.signals.critical.emit(
+                    (self, 'Segmentation model was not initialized correctly!')
+                )
+                self.signals.finished.emit(self)
+                return
+            if self._debug:
+                try:
+                    model.setupLogger(self.guiWin.logger)
+                except Exception:
+                    pass
 
-        model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new)
-        if model is None:
-            self.logger.info('Segmentation model was not initialized correctly!')
-            self.signals.critical.emit(
-                (self, 'Segmentation model was not initialized correctly!')
-            )
-            self.signals.finished.emit(self)
-            return
-        if self._debug:
-            try:
-                model.setupLogger(self.guiwin.logger)
-            except Exception as e:
-                pass
+            # self.logger.info('[SegForLostIDs] Fetching input image...')
+            curr_img = self.emitGetSegForLostIDsInputImg(image_channel_name)
+            # self.logger.info('[SegForLostIDs] Input image ready.')
+            if curr_img is None:
+                self.signals.critical.emit(
+                    (self, 'Could not get input image for SegForLostIDsWorker')
+                )
+                self.signals.finished.emit(self)
+                return
 
-        assigned_IDs = []
-        missing_IDs_global = set()
-        original_lab = posData.lab.copy()
-        IDs_bboxs_list = []
-        bboxs_list = []
-
-        curr_img = self.guiWin.getDisplayedImg1()
-        prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
-        prev_IDs = set(posData.allData_li[frame_i-1]['IDs'])
-
-        # should probably not paly so much with posData.lab, instead handle stuff myself
-        self.signals.initProgressBar.emit(2 * args_new['max_iterations'])
-        new_labs = np.zeros([args_new['max_iterations'], *posData.lab.shape], dtype=np.uint32)
-        for i in range(args_new['max_iterations']):            
-            curr_lab = self.guiWin.get_2Dlab(posData.lab)
             tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
             new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
 
-            missing_IDs = prev_IDs - set(posData.IDs) - set(tracked_lost_IDs)
-            missing_IDs_global.update(missing_IDs)
+            missing_IDs = prev_IDs - posData.rp.IDs_set - set(tracked_lost_IDs)
 
             assigned_IDs_prev = assigned_IDs.copy()
+            # self.sigShowImageDebug.emit({
+            # 'title': f'posData.lab  ({model_idx}) right before running single_cell_seg',
+            # 'images': [posData.lab.copy()],
+            # 'img_titles': [f'posData.lab ({model_idx}) right before running single_cell_seg']
+            #     })
+            
+            # self.logger.info('[SegForLostIDs] Running single-cell segmentation...')
             out = segm_utils.single_cell_seg(
-                model, prev_lab, curr_lab, curr_img, 
+                model, prev_lab, posData.lab, curr_img,
                 missing_IDs, new_unique_ID,
-                win, posData,
+                posData,
                 distance_filler_growth=args_new['distance_filler_growth'],
                 overlap_threshold=args_new['overlap_threshold'],
                 padding=args_new['padding'],
+                fill_other_cells_with_background=args_new['fill_other_cells_with_background'],
+                model_kwargs=model_kwargs,
+                preproc_recipe=preproc_recipe,
+                applyPostProcessing=applyPostProcessing,
+                standardPostProcessKwargs=standardPostProcessKwargs,
+                customPostProcessFeatures=customPostProcessFeatures,
+                customPostProcessGroupedFeatures=customPostProcessGroupedFeatures,
+                debug=self._debug,
+                sigShowImageFunc = self.emitSigImageDebug
             )
-            new_lab, assigned_IDs, IDs_bboxs, bboxs = out
-                    
-            IDs_bboxs_list.append(IDs_bboxs)
+            if self._debug:
+                new_lab, assigned_IDs, IDs_bboxs, bboxs, imgs_to_show = out
+            else:
+                new_lab, assigned_IDs, IDs_bboxs, bboxs = out
+            # self.logger.info('[SegForLostIDs] single-cell segmentation done.')
+
             bboxs_list.append(bboxs)
             posData.lab = new_lab
             self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
             newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
-            self.emitTrackManuallyAddedObject(newly_assigned_IDs, True, False, False)
-            new_labs[i] = posData.lab.copy()
+            assignments = self.emitTrackManuallyAddedObject(
+                newly_assigned_IDs, True, False, False
+            )
+            if assignments is None:
+                assignments = {} 
+
+            # update assigned_IDs based on assignments made during tracking
+            for i, ID in enumerate(assigned_IDs):
+                if ID in assignments:
+                    assigned_IDs[i] = assignments[ID]
+
+
+            IDs_bboxs_list.append(IDs_bboxs)
+            newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
+            newly_assigned_IDs_list.append(newly_assigned_IDs)
+
+            new_labs.append(posData.lab.copy())
             self.signals.progressBar.emit(1)
             
-        if self._debug:
-            originals = []
-            models = []
-
-        posData.lab = original_lab.copy()
-
-        global_area_mean = np.mean([obj.area for obj in posData.rp])
-        for IDs_bboxs, bboxs in zip(IDs_bboxs_list, bboxs_list):
-            model_lab = new_labs[i]
-            if self._debug:
-                originals.append(original_lab.copy())
-                models.append(posData.lab.copy())
-
-            for IDs, bbox in zip(IDs_bboxs, bboxs):
-
-                box_x_min, box_x_max, box_y_min, box_y_max = bbox          
-                original_bbox_lab = original_lab[box_x_min:box_x_max, box_y_min:box_y_max]
-                original_bbox_lab_cleared_borders = skimage.segmentation.clear_border(original_bbox_lab)
-                box_model_lab = model_lab[box_x_min:box_x_max, box_y_min:box_y_max]
-
-                # original_bbox_lab[np.isin(original_bbox_lab, IDs)] = 0 should be a given. If not seg for lost IDs this recommended
-
-                box_model_lab = skimage.segmentation.clear_border(box_model_lab, buffer_size=1)
-
-                rp_model_lab = skimage.measure.regionprops(box_model_lab)
-                rp_original_lab = skimage.measure.regionprops(original_bbox_lab)
-                rp_original_lab_cleared = skimage.measure.regionprops(original_bbox_lab_cleared_borders)
-
-                original_IDs = [obj.label for obj in rp_original_lab]
-                areas = [obj.area for obj in rp_original_lab_cleared]
-                if len(areas) > 0:
-                    area_mean = np.mean(areas)
-                else:
-                    area_mean = global_area_mean
-                if args_new['allow_only_tracked_cells']:
-                    filtered_IDs = [obj.label for obj in rp_model_lab 
-                            if obj.area > (1 - args_new['size_perc_diff']) * area_mean
-                            and obj.area < (1 + args_new['size_perc_diff']) * area_mean
-                            and obj.label not in original_IDs
-                            and obj.label in missing_IDs_global]
-                else:
-                    filtered_IDs = [obj.label for obj in rp_model_lab 
-                            if obj.area > (1 - args_new['size_perc_diff']) * area_mean
-                            and obj.area < (1 + args_new['size_perc_diff']) * area_mean
-                            and obj.label not in original_IDs]
+        global_areas = [obj.area for obj in posData.rp]
+        global_area_mean = np.mean(global_areas) if len(global_areas) > 0 else None
         
-                if self._debug or DEBUG:
-                    filtered_sizes = [(obj.label, obj.area) for obj in rp_model_lab if obj.label in filtered_IDs]
-                    self.logger.info(f"Filtered sizes: {filtered_sizes}")
-                for label in filtered_IDs:
-                    original_bbox_lab[box_model_lab == label] = label # here the stuff should be tracked, so we keep the ID!
-                
-                # original_lab[box_x_min:box_x_max, box_y_min:box_y_max] = original_bbox_lab
+        for i, (IDs_bboxs, bboxs) in enumerate(zip(IDs_bboxs_list, bboxs_list)):
+            args_new = model_settings[i]['args_new']
+            model_lab = new_labs[i]
+            current_model_new_IDs = newly_assigned_IDs_list[i]
+
+            if not current_model_new_IDs:
+                self.signals.progressBar.emit(1)
+                continue
             
-            self.signals.progressBar.emit(1)
+            for j, (IDs_prev_bbox, bbox) in enumerate(zip(IDs_bboxs, bboxs)):
+                box_x_min, box_x_max, box_y_min, box_y_max = bbox
     
+                
+                model_bbox_lab = model_lab[box_x_min:box_x_max, box_y_min:box_y_max]
+                model_bbox_lab_cleared = skimage.segmentation.clear_border(model_bbox_lab, buffer_size=1)
+                model_lab_rp = regionprops.acdcRegionprops(model_bbox_lab_cleared, precache_centroids=False)
+
+                original_bbox_lab = original_lab[box_x_min:box_x_max, box_y_min:box_y_max] # deepcopy(original_lab[box_x_min:box_x_max, box_y_min:box_y_max])
+                # original_bbox_lab_cleared_borders = skimage.segmentation.clear_border(original_bbox_lab)
+                # original_lab_rp = regionprops.acdcRegionprops(original_bbox_lab_cleared_borders, precache_centroids=False)
+
+
+                # areas = [obj.area for obj in original_lab_rp]
+                # if len(areas) > 0:
+                #     area_mean = np.mean(areas)
+                # elif global_area_mean is not None:
+                #     area_mean = global_area_mean
+                # else:
+                #     model_areas = [obj.area for obj in model_lab_rp]
+                #     area_mean = np.mean(model_areas) if len(model_areas) > 0 else None
+
+                area_mean = global_area_mean
+                
+                skip_size_filter = area_mean is None
+                if not skip_size_filter:
+                    min_area = (1 - args_new['size_perc_diff']) * area_mean
+                    max_area = (1 + args_new['size_perc_diff']) * area_mean
+
+                filtered_IDs = []
+                for obj in model_lab_rp:
+                    if obj.label not in current_model_new_IDs: # make sure its an ID actually found by model and not prev model
+                        continue
+                    if not skip_size_filter and not (obj.area > min_area and obj.area < max_area):
+                        continue
+                    if args_new['allow_only_tracked_cells'] and obj.label not in prev_IDs:
+                        continue
+
+                    filtered_IDs.append(obj.label)
+
+                if filtered_IDs:
+                    mask = np.isin(model_bbox_lab, filtered_IDs)
+                    # make sure to not overwrite any existing IDs in the original lab
+                    mask = np.logical_and(mask, original_bbox_lab == 0)
+                    original_bbox_lab[mask] = model_bbox_lab[mask]
+                    # original_lab[box_x_min:box_x_max, box_y_min:box_y_max] = original_bbox_lab
+
+            self.signals.progressBar.emit(1)
+
         posData.lab = original_lab
-
-        # if self._debug:
-        #     originals = np.concatenate(originals, axis=0)
-        #     models = np.concatenate(models, axis=0)
-        #     self.emitSigShowImageDebug(originals)
-        #     self.emitSigShowImageDebug(models)
-
-        self.emitSigUpdateRP(wl_track_og_curr=True, wl_update=True)
+        
+        self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
         self.emitSigStoreData(autosave=True)
 
         self.logger.info('Segmentation for lost IDs done.')
-                
+
         self.signals.finished.emit(self)
 
 class AlignDataWorker(QObject):
@@ -842,7 +914,7 @@ class AutoSaveWorker(QObject):
         self.stopSaving = False
         self.isSaving = False
         self.isPaused = False
-        self.dataQ = deque(maxlen=5)
+        self.dataQ = deque(maxlen=2)
         self.isAutoSaveON = False
         self.isAutoSaveAnnotON = True
         self.debug = False
@@ -1167,7 +1239,7 @@ class segmWorker(QObject):
         self.finished.emit(lab, exec_time)
 
 class segmVideoWorker(QObject):
-    finished = Signal(float)
+    finished = Signal(float, int, int)
     debug = Signal(object)
     critical = Signal(object)
     progressBar = Signal(int)
@@ -1262,7 +1334,7 @@ class segmVideoWorker(QObject):
             self.progressBar.emit(1)
         t1 = time.perf_counter()
         exec_time = t1-t0
-        self.finished.emit(exec_time)
+        self.finished.emit(exec_time, self.startFrameNum, self.stopFrameNum)
 
 class ComputeMetricsWorker(QObject):
     progressBar = Signal(int, int, float)
@@ -2504,9 +2576,11 @@ class PostProcessSegmWorker(QObject):
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = frame_i
                     mainWin.get_data()
+                    mainWin.update_rp()
                     mainWin.store_data(autosave=False)
                 else:
-                    posData.segm_data[frame_i] = lab
+                    posData.segm_data[frame_i] = processed_lab
+                    mainWin.update_rp(frame_i=frame_i)
 
                 self.signals.progressBar.emit(1)
             
@@ -3399,13 +3473,14 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
             tot_pos = len(pos_foldernames)
 
             abort = self.emitSelectFilesWithText(
-                exp_path, pos_foldernames, 'imagej_rois', ext='.zip'
+                exp_path, pos_foldernames, 'imagej_rois', ext=('.zip', '.roi')
             )
             if abort:
                 self.signals.finished.emit(self)
                 return
             
             self.askRoiPreferences = True
+            self.repeatRoisZslicesRange = None
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
                     self.signals.finished.emit(self)
@@ -3421,7 +3496,10 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                 ls = myutils.listdir(images_path)
                 rois_filepaths = [
                     os.path.join(images_path, f) for f in ls 
-                    if f.endswith(f'{endFilenameRoi}.zip')
+                    if (
+                        f.endswith(f'{endFilenameRoi}.zip')
+                        or f.endswith(f'{endFilenameRoi}.roi')
+                    )
                 ]
                 
                 if not rois_filepaths:
@@ -3438,36 +3516,41 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                     is_multi_pos = len(pos_foldernames) > 1
                     self.logger.log('Loading image data to get image shape...')
                     TZYX_shape = load.get_tzyx_shape(images_path)
-                    abort = self.emitSelectRoisProps(
+                    cancel = self.emitSelectRoisProps(
                         rois_filepath, TZYX_shape, is_multi_pos
                     )
-                    if abort:
+                    if cancel:
                         self.signals.finished.emit(self)
                         return
                     
                     self.askRoiPreferences = not self.useSamePropsForNextPos
                 elif self.areAllRoisSelected:
                     rois = roifile.roiread(rois_filepath)
-                    self.IDsToRoisMapper = {i+i: roi for roi in enumerate(rois)}
+                    if not isinstance(rois, list):
+                        rois = [rois]
+                    self.IDsToRoisMapper = {
+                        i+1: roi for i, roi in enumerate(rois)
+                    }
                 else:
                     # Use same ID of previous position
                     rois = roifile.roiread(rois_filepath)
-                    IDsToRoisMapper = {i+i: roi for i, roi in enumerate(rois)}
+                    if not isinstance(rois, list):
+                        rois = [rois]
                     self.IDsToRoisMapper = {
-                        ID: IDsToRoisMapper[ID] 
-                        for ID in self.IDsToRoisMapper.keys()
+                        ID: rois[i]
+                        for i, ID in enumerate(self.IDsToRoisMapper.keys())
                     }
-                
+
                 self.logger.log('Generating segm mask from ROIs...')
                 segm_data = myutils.from_imagej_rois_to_segm_data(
                     TZYX_shape, self.IDsToRoisMapper, self.rescaleRoisSizes, 
                     self.repeatRoisZslicesRange
-                )
-                
+                ) 
                 
                 segm_filepath = (rois_filepath
                     .replace('imagej_rois', 'segm')
                     .replace('.zip', '.npz')
+                    .replace('.roi', '.npz')
                 )
                 self.logger.log(f'Saving segm mask to "{segm_filepath}"...')
                 io.savez_compressed(segm_filepath, segm_data)
@@ -5185,7 +5268,7 @@ class CcaIntegrityCheckerWorker(QObject):
                 # There are no annotations at frame_i --> stop
                 break
             
-            IDs = data_dict['IDs']
+            IDs = data_dict['regionprops'].IDs
             checker = core.CcaIntegrityChecker(cca_df, lab, IDs)
             
             for checkpoint in checkpoints:
@@ -6142,6 +6225,7 @@ class saveDataWorker(QObject):
         self.addMetricsErrors = {}
         self.regionPropsErrors = {}
         self.abort = False
+        self.saveSMBPCcaInfo = False
     
     def checkAbort(self):
         if self.saveWin.aborted:
@@ -6191,6 +6275,35 @@ class saveDataWorker(QObject):
         self.progressBar.emit(1, -1, exec_time)
         self.time_last_pbar_update = t
     
+    def addSingleMotherBudPairCcaInfo(
+            self, 
+            acdc_df_frame_i: pd.DataFrame, 
+            posData: load.loadData,
+            frame_i: int
+        ):
+        acdc_df_frame_i['is_single_mother_bud_annotation'] = 0
+
+        if not self.saveSMBPCcaInfo:
+            return acdc_df_frame_i
+        
+        moth_bud_pairs_cca = (
+            posData.allData_li[frame_i].get('moth_bud_pairs_cca', None)
+        )
+        if moth_bud_pairs_cca is None:
+            return acdc_df_frame_i
+
+        try:
+            idx = moth_bud_pairs_cca.index
+            acdc_df_frame_i.loc[idx, cca_df_colnames] = (
+                moth_bud_pairs_cca.loc[idx, cca_df_colnames]
+            )
+            if acdc_df_frame_i['cell_cycle_stage'].isna().any():
+                acdc_df_frame_i.loc[idx, 'is_single_mother_bud_annotation'] = 1
+        except Exception as err:
+            printl(traceback.format_exc())
+
+        return acdc_df_frame_i
+
     def saveAcdcDf(self, posData: load.loadData, end_i):
         acdc_dfs_li = []
         keys = []
@@ -6209,6 +6322,10 @@ class saveDataWorker(QObject):
             if acdc_df is None:
                 continue
             
+            acdc_df = self.addSingleMotherBudPairCcaInfo(
+                acdc_df, posData, frame_i
+            )
+
             acdc_dfs_li.append(acdc_df)
             keys.append((frame_i, posData.TimeIncrement*frame_i))
         
@@ -6221,7 +6338,7 @@ class saveDataWorker(QObject):
             last_cca_frame_i=self.mainWin.save_cca_until_frame_i
         )
     
-    def saveSegmData(self, posData, end_i, saved_segm_data):
+    def saveSegmData(self, posData: load.loadData, end_i, saved_segm_data):
         self.progress.emit(f'Saving segmentation data for {posData.relPath}...')
         
         
@@ -6264,6 +6381,13 @@ class saveDataWorker(QObject):
         io.savez_compressed(
             posData.segm_npz_path, np.squeeze(saved_segm_data)
         )
+        
+        # save information about the segmention
+        posData.updateSegmMetadata(all=True)
+        posData.saveSegmMetadataIni()
+        
+        # save rp info about segm
+        self.progress.emit(f'Saving additional data for {posData.relPath}...')
         posData.segm_data = saved_segm_data
         # Allow single 2D/3D image
         if posData.SizeT == 1:
@@ -6303,7 +6427,11 @@ class saveDataWorker(QObject):
             posData.saveCustomAnnotationParams()
             current_frame_i = posData.frame_i
 
+            posData.trackedLostCentroidsPath()
             posData.saveTrackedLostCentroids()
+            
+            
+            posData.saveROIInfo()
 
             if not self.mainWin.isSnapshot:
                 last_tracked_i = self.mainWin.last_tracked_i
@@ -6421,7 +6549,7 @@ class saveDataWorker(QObject):
             elif mode == 'Cell cycle analysis':
                 self.progress.emit(
                     'Saved cell cycle annotations until frame '
-                    f'number {self.mainWin.last_cca_frame_i+1}'
+                    f'number {self.mainWin.save_cca_until_frame_i+1}'
                 )
             # self.progressBar.emit(1)
         if self.mainWin.isSnapshot:

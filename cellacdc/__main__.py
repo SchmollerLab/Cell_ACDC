@@ -30,7 +30,7 @@ if cellacdc_installation_path != site_packages:
             exit()
         print('*'*60)
         input(
-            '[WARNING]: Cell-ACDC had to clean-up and older installation. '
+            '[WARNING]: Cell-ACDC had to clean up an older installation. '
             'Please, re-start the software. Thank you for your patience! '
             '(Press any key to exit). '
         )
@@ -159,10 +159,13 @@ def run_gui():
     win.logger.info(f'Welcome to Cell-ACDC v{version}')
     win.logger.info('**********************************************')
     win.logger.info('----------------------------------------------')
-    win.logger.info('NOTE: If application is not visible, it is probably minimized\n'
-        'or behind some other open windows.')
+    win.logger.info(
+        'NOTE: If application is not visible, it is probably minimized\n'
+        'or behind some other open windows.'
+    )
     win.logger.info('----------------------------------------------')
     splashScreen.close()
     # splashScreenApp.quit()
     # modernWin.show()
+    app.mainWindow = win
     app.exec_()

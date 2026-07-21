@@ -43,13 +43,14 @@ def warnTooManyNewItems(mainWin, numItems, qparent):
         Creating <b>high resolution</b> text annotations 
         for these many objects could take a <b>long time</b>.<br><br>
         We recommend <b>deactivating text annotations</b> or <b>switching to low resolution</b> annotations.<br><br>
-        You can still try to activate them or switch to high resolution later.<br><br>
+        You can still try to switch to activate them or switch to high resolution later.<br><br>
         What do you want to do?
     """)
 
-    switchToLowResButton, deactivateAnnotButton = msg.warning(
+    _, switchToLowResButton, deactivateAnnotButton = msg.warning(
         qparent, 'Too many objects', txt,
         buttonsTexts=(
+            'Cancel', 
             widgets.reloadPushButton(' Switch to low resolution '), 
             widgets.noPushButton(' Deactivate text annotations ')              
         )
@@ -226,6 +227,34 @@ def warnPromptSegmentPointsLayerNotInit(qparent=None):
     msg = widgets.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Points layer not initialized', txt, 
+    )
+    return msg.cancel
+
+def warnNoIDsInS(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        <b>None</b> of the IDs present at this frame 
+        <b>are in 'S' phase</b>.<br><br>
+        This tool can be used only for mother-bud pairs.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'No cells in "S" phase', txt, 
+    )
+    return msg.cancel
+
+def warnSelectedIDisNotInS(ID, qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        The selected ID {ID} <b>cell cycle stage is not 'S'</b>!<br><br>
+        Make sure you are hovering a cell ID in 'S' (mother of bud), 
+        when activating this mode.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Selected ID not in S', txt, 
     )
     return msg.cancel
 
@@ -410,3 +439,52 @@ def warnAskTransparencyModeNeededForExport(
     )
     
     return msg.cancel, msg.clickedButton==yesButton
+
+def warnEditCcaDisabledInAnnotSingleMothBudMode(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        Cell cycle annotations <b>cannot be edited</b> when <code>Annotate one mother-bud pair at the time</code> mode is active.<br><br>Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Cannot edit cell cycle annotations', txt, 
+    )
+    return msg.cancel
+
+def warnAskAboutSaveSingleMotherBudPairsCcaDf(
+        mainWin, qparent=None
+    ):
+    if qparent is None:
+        qparent = mainWin
+        
+    from . import widgets
+    mainWin.logger.info(
+        '[WARNING]: asking user what to do with cell cycle annotations from the '
+        '"Annotate one mother-bud pair at the time" tool...'
+    )
+    msg = widgets.myMessageBox(wrapText=False)
+    txt = html_utils.paragraph(f"""
+        Cell-ACDC detected <b>partial cell cycle annotations</b> generated with the 
+        "Annotate one mother-bud pair at the time" tool.<br><br>
+        Do you want to save only fully annnotated frames or also partially annotated 
+        ones?
+    """)
+    
+    detailsText = (
+        'In order to not have partially annotated frames, '
+        'you need to make sure you '
+        'visit the frames with "Cell cycle analysis" mode, without the '
+        '"Annotate one mother-bud pair at the time" tool active.'
+    )
+
+    _, savePartiallyAnnotatedButton = msg.warning(
+        qparent, 'Partial cell cycle annotations', txt,
+        buttonsTexts=(
+            widgets.noPushButton('Save only fully annotated frames'),
+            widgets.savePushButton('Save partially annotated frames')
+        ),
+        detailsText=detailsText,
+        details_expanded=False
+    )
+    
+    return msg.cancel, msg.clickedButton==savePartiallyAnnotatedButton

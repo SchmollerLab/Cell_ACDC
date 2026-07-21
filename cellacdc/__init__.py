@@ -432,6 +432,7 @@ favourite_func_metrics_csv_path = os.path.join(
 recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
 preproc_recipes_path = os.path.join(settings_folderpath, 'preprocessing_recipes')
 combine_channels_recipes_path = os.path.join(settings_folderpath, 'combine_channels')
+seg_for_lost_IDs_settings_path = os.path.join(settings_folderpath, 'seg_for_lost_IDs')
 segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
@@ -475,7 +476,7 @@ base_cca_dict = {
     'corrected_on_frame_i': -1,
     'will_divide': 0,
     'daughter_disappears_before_division': 0,
-    'disappears_before_division': 0
+    'disappears_before_division': 0,
 }
 cca_df_colnames = list(base_cca_dict.keys())
 
@@ -810,6 +811,19 @@ single_pos_index_cols = (
     'experiment_folderpath', 
     'Position_n'
 )
+
+precompiled_import_success = False
+try:
+    from cellacdc.precompiled.precompiled_functions import (
+        find_all_objects_2D,
+        find_all_objects_3D,
+        calc_IoA_matrix_2D,
+        calc_IoA_matrix_3D,
+        most_common_projection_3D,
+    )
+    precompiled_import_success = True
+except Exception:
+    pass
 
 valid_image_data_ends = (
     '_aligned.npz', 

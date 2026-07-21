@@ -13,6 +13,26 @@ import cellacdc.workers
 import cellacdc.core
 
 from ..CellACDC import CellACDC_tracker
+from ..CellACDC.CellACDC_tracker import _normalize_specific_IDs
+
+from cellacdc._types import NotGUIParam
+
+def _format_tracking_result(
+        tracked_lab,
+        assignments,
+        to_track_tracked_objs_2nd_step,
+        return_assignments,
+        dont_return_tracked_lab,
+    ):
+    add_info = {
+        'assignments': assignments,
+        'to_track_tracked_objs_2nd_step': to_track_tracked_objs_2nd_step,
+    }
+
+    if dont_return_tracked_lab:
+        return add_info
+
+    return tracked_lab, add_info # always return extra info
 
 class SearchRangeUnits:
     values = ['pixels', 'micrometre']
@@ -114,11 +134,14 @@ class tracker:
             overlap_threshold=0.4,
             search_range_unit: SearchRangeUnits='pixels',
             lost_IDs_search_range=10,
-            unique_ID: Integer=None
+            unique_ID: Integer=None,
+            specific_IDs: NotGUIParam=None,
+            dont_return_tracked_lab: NotGUIParam=False,
+            return_assignments: NotGUIParam=False,
         ):
         """Track two consecutive frames in two steps. First step based on 
         `overlap_threshold` and second step tracks only lost objects to new 
-        objects detemined at first step.
+        objects determined at first step.
 
         Parameters
         ----------
@@ -148,20 +171,30 @@ class tracker:
             If not None, uses this as starting ID for all the untracked objects.
             If None, this will be calculated based on the two input frames.
         """        
+        specific_IDs = _normalize_specific_IDs(specific_IDs)
         to_track_tracked_objs_2nd_step = None
         
         prev_rp = skimage.measure.regionprops(prev_frame_lab)
         curr_rp = skimage.measure.regionprops(current_frame_lab)
         
-        tracked_lab_1st_step = CellACDC_tracker.track_frame(
+        tracked_lab_1st_step, add_info = CellACDC_tracker.track_frame(
             prev_frame_lab, 
             prev_rp, 
             current_frame_lab, 
             curr_rp, 
             IoA_thresh=overlap_threshold, 
-            return_prev_IDs=False, 
-            unique_ID=unique_ID
+            return_prev_IDs=False,
+            unique_ID=unique_ID,
+            specific_IDs=specific_IDs,
+            return_assignments=True,
         )
+        assignments_step_1 = add_info['assignments']
+        selected_tracked_IDs = None
+        if specific_IDs is not None:
+            selected_tracked_IDs = {
+                assignments_step_1.get(curr_ID, curr_ID)
+                for curr_ID in specific_IDs
+            }
         
         prev_rp_mapper = {obj.label: obj for obj in prev_rp}
         
@@ -176,27 +209,43 @@ class tracker:
         }
         
         if not lost_rp_mapper:
-            return tracked_lab_1st_step, to_track_tracked_objs_2nd_step
+            return _format_tracking_result(
+                tracked_lab_1st_step,
+                assignments_step_1,
+                to_track_tracked_objs_2nd_step,
+                return_assignments,
+                dont_return_tracked_lab,
+            )
         
         new_rp_mapper = {
             obj.label: obj for obj in tracked_rp_1st_step 
+            if (
+                selected_tracked_IDs is None
+                or obj.label in selected_tracked_IDs
+            )
             if prev_rp_mapper.get(obj.label) is None
         }
-        
+
         if not new_rp_mapper:
-            return tracked_lab_1st_step, to_track_tracked_objs_2nd_step
+            return _format_tracking_result(
+                tracked_lab_1st_step,
+                assignments_step_1,
+                to_track_tracked_objs_2nd_step,
+                return_assignments,
+                dont_return_tracked_lab,
+            )
         
         ndim = current_frame_lab.ndim
         lost_IDs_coords = np.zeros((len(lost_rp_mapper), ndim))
         lost_IDs_idx_to_obj_mapper = {}
         for lost_idx, lost_obj in enumerate(lost_rp_mapper.values()):
-            lost_IDs_coords[lost_idx] = lost_obj.centroid
+            lost_IDs_coords[lost_idx] = lost_obj.centroid # we have overwritten RP so its always cached
             lost_IDs_idx_to_obj_mapper[lost_idx] = lost_obj
         
         new_IDs_coords = np.zeros((len(new_rp_mapper), ndim))
         new_IDs_idx_to_obj_mapper = {}
         for new_idx, new_obj in enumerate(new_rp_mapper.values()):
-            new_IDs_coords[new_idx] = new_obj.centroid
+            new_IDs_coords[new_idx] = new_obj.centroid # we have overwritten RP so its always cached
             new_IDs_idx_to_obj_mapper[new_idx] = new_obj
         
         if search_range_unit == 'micrometre':
@@ -229,21 +278,57 @@ class tracker:
                 tracked_objs_2nd_step.append(lost_IDs_idx_to_obj_mapper[i])
         
         if not IDs_to_track:
-            return tracked_lab_1st_step, to_track_tracked_objs_2nd_step
+            return _format_tracking_result(
+                tracked_lab_1st_step,
+                assignments_step_1,
+                to_track_tracked_objs_2nd_step,
+                return_assignments,
+                dont_return_tracked_lab,
+            )
         
-        tracked_lab_2nd_step = cellacdc.core.lab_replace_values(
-            tracked_lab_1st_step, 
-            tracked_rp_1st_step,
-            IDs_to_track, 
-            tracked_IDs_2nd_step
-        )
+        if not dont_return_tracked_lab:
+            tracked_lab_2nd_step = cellacdc.core.lab_replace_values(
+                tracked_lab_1st_step, 
+                tracked_rp_1st_step,
+                IDs_to_track, 
+                tracked_IDs_2nd_step
+            )
+        else:
+            tracked_lab_2nd_step = None
         
         if self._annot_obj_2nd_step:
             to_track_tracked_objs_2nd_step = (
                 objs_to_track, tracked_objs_2nd_step
             )
         
-        return tracked_lab_2nd_step, to_track_tracked_objs_2nd_step
+        assignments_step_2 = dict(zip(IDs_to_track, tracked_IDs_2nd_step))
+        # Compose mappings only for IDs that exist in the current frame.
+        # This avoids leaking intermediate IDs introduced at step 1
+        # into the returned assignments dictionary.
+        current_frame_IDs = {obj.label for obj in curr_rp}
+        if specific_IDs is not None:
+            current_frame_IDs.intersection_update(specific_IDs)
+
+        merged_assignments = {}
+        for current_ID in current_frame_IDs:
+            tracked_ID = assignments_step_1.get(current_ID, current_ID)
+
+            # Follow second-step remaps transitively and guard against loops.
+            visited = set()
+            while tracked_ID in assignments_step_2 and tracked_ID not in visited:
+                visited.add(tracked_ID)
+                tracked_ID = assignments_step_2[tracked_ID]
+
+            if tracked_ID != current_ID:
+                merged_assignments[current_ID] = tracked_ID
+
+        return _format_tracking_result(
+            tracked_lab_2nd_step,
+            merged_assignments,
+            to_track_tracked_objs_2nd_step,
+            return_assignments,
+            dont_return_tracked_lab,
+        )
     
     def updateGuiProgressBar(self, signals):
         if signals is None:

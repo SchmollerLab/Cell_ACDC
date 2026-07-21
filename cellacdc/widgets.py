@@ -13,7 +13,7 @@ import traceback
 import logging
 import textwrap
 import random
-
+import cv2
 from functools import partial
 from math import ceil
 
@@ -21,6 +21,7 @@ import html
 
 import skimage.draw
 import skimage.morphology
+import skimage.segmentation
 
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 import matplotlib.pyplot as plt
@@ -73,9 +74,9 @@ from . import urls
 from . import _core, core
 from . import QtScoped
 from . import prompts
-from . import plot
+from . import fonts
 from .acdc_regex import float_regex
-from .config import PREPROCESS_MAPPER
+from .config import PREPROCESS_MAPPER, STANDARD_MOUSE_BUTTONS
 from . import _base_widgets
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
@@ -87,8 +88,7 @@ PROGRESSBAR_QCOLOR = _palettes.QProgressBarColor()
 PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR = _palettes.QProgressBarHighlightedTextColor()
 TEXT_COLOR = _palettes.text_float_rgba()
 
-font = QFont()
-font.setPixelSize(12)
+font = fonts.font
 
 custom_cmaps_filepath = os.path.join(settings_folderpath, 'custom_colormaps.ini')
 
@@ -1027,7 +1027,8 @@ class KeepIDsLineEdit(ValidLineEdit):
         elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
             self.sigEnterPressed.emit()
     
-    def onTextChanged(self, text):
+    def values(self) -> set:
+        text = self.text()
         IDs = []
         rangesMatch = re.findall(r'(\d+-\d+)', text)
         if rangesMatch:
@@ -1040,6 +1041,10 @@ class KeepIDsLineEdit(ValidLineEdit):
         if IDsMatch:
             for ID in IDsMatch:
                 IDs.append(int(ID))
+        return set(IDs)
+    
+    def onTextChanged(self, text):
+        IDs = self.values()
         self.IDs = sorted(list(set(IDs)))
         self.sigIDsChanged.emit(self.IDs)
     
@@ -1084,7 +1089,7 @@ class _ReorderableListModel(QAbstractListModel):
 
     def __init__(self, items, parent=None):
         QAbstractItemModel.__init__(self, parent)
-        self.nodes = items
+        self.nodes = list(items)
         self.lastDroppedItems = []
         self.pendingRemoveRowsAfterDrop = False
 
@@ -1295,7 +1300,7 @@ class ReorderableListView(QListView):
         self.setStyleSheet(styleSheet)
     
     def setItems(self, items):
-        self._model.nodes = items
+        self._model.nodes = list(items)
     
     def items(self):
         return self._model.nodes
@@ -1473,10 +1478,9 @@ class QDialogListbox(QDialog):
     
     def ok_cb(self, checked=False):
         self.clickedButton = self.sender()
-        self.cancel = False
         selectedItems = self.listBox.selectedItems()
-        self.selectedItemsText = [item.text() for item in selectedItems]
-        if not self.allowSingleSelection and len(self.selectedItemsText) < 2:
+        selectedItemsText = [item.text() for item in selectedItems]
+        if not self.allowSingleSelection and len(selectedItemsText) < 2:
             msg = myMessageBox(wrapText=False, showCentered=False)
             txt = html_utils.paragraph(
                 'You need to <b>select two or more items</b>.<br><br>'
@@ -1486,9 +1490,12 @@ class QDialogListbox(QDialog):
             msg.warning(self, 'Select two or more items', txt)
             return
         
-        if not self.allowEmptySelection and not self.selectedItemsText:
+        if not self.allowEmptySelection and not selectedItemsText:
             self.warnSelectionEmpty()
             return
+
+        self.cancel = False
+        self.selectedItemsText = selectedItemsText
         
         self.sigSelectionConfirmed.emit(self.selectedItemsText)
         self.close()
@@ -2245,11 +2252,14 @@ class alphaNumericLineEdit(QLineEdit):
     sigInvalidCharacterPressed = Signal(str)
     sigInvalidCharactersEntered = Signal(object)
     
-    def __init__(self, parent=None, additionalChars='', onlyWarn=False):
+    def __init__(self, parent=None, additionalChars='', onlyWarn=False, 
+                 formatter: callable = None, ignore_file_ext=False):
         super().__init__(parent)
         self.validPattern = fr'^[a-zA-Z0-9{additionalChars}_\-]+$'
         self.invalidPattern = fr'[^a-zA-Z0-9{additionalChars}_\-]'
-        
+        self.formatter = formatter
+        self.ignore_file_ext = ignore_file_ext
+
         if not onlyWarn:
             regExp = QRegularExpression(self.validPattern)
             self.setValidator(QRegularExpressionValidator(regExp))
@@ -2264,7 +2274,13 @@ class alphaNumericLineEdit(QLineEdit):
         self.sigInvalidCharactersEntered.emit(set(invalidCharacters))
     
     def invalidCharacters(self):
-        return re.findall(fr'{self.invalidPattern}', self.text())
+        text = self.text()
+        if self.formatter is not None:
+            text = self.formatter(text)
+        ext = self.ignore_file_ext
+        if isinstance(ext, str) and ext and text.endswith(ext):
+            text = text[:-len(ext)]
+        return re.findall(fr'{self.invalidPattern}', text)
     
     def keyPressEvent(self, event: QKeyEvent):
         if not event.text():
@@ -3071,6 +3087,8 @@ class ToolBarSeparator:
 
 class ToolBar(QToolBar):
     def __init__(self, *args, **kwargs) -> None:
+        self._log_func = kwargs.pop('log_func', None)
+        
         super().__init__(*args, **kwargs)
         
         self.widgetsWithShortcut = {}
@@ -3080,7 +3098,32 @@ class ToolBar(QToolBar):
                 self.extendButton = child
                 self.extendButton.setIcon(QIcon(":expand.svg"))
                 break
+        
+        self._logLabelAdded = False
+    
+    def showEvent(self, event):
+        if self._log_func is None:
+            return super().showEvent(event)
+        
+        if self._logLabelAdded:
+            return super().showEvent(event)
+        
+        self.addSeparator()
+        self._logLabel = self.addLabel()
+        self._logLabelAdded = True
+        return super().showEvent(event)
 
+    def log(self, msg):
+        try:
+            self._logLabel.setText(html_utils.span(msg, color='r'))   
+        except Exception as err:
+            pass
+            
+        try:
+            self._log_func(msg)
+        except Exception as err:
+            print(msg)
+                 
     def addSeparator(self, width=5):
         separator = ToolBarSeparator(width=width, toolbar=self)
         return separator
@@ -3251,7 +3294,7 @@ class CopyLostObjectToolbar(ToolBar):
             self.maxOverlapNumberControl.value()
         )
 
-class DrawClearRegionToolbar(ToolBar):
+class ClearRegionToolbar(ToolBar):
     def __init__(self, *args) -> None:
         super().__init__(*args)
         
@@ -3796,14 +3839,26 @@ def QKeyEventToString(event: QKeyEvent, notAllowedModifier=None):
     return keySequenceText
 
 class ShortcutLineEdit(QLineEdit):
+    clicked = Signal()
     def __init__(
-            self, parent=None, allowModifiers=False, notAllowedModifier=None
+            self, parent=None, allowModifiers=False, notAllowedModifier=None,
+            allowMouseButtons=False
         ):
         self.keySequence = None
         super().__init__(parent)
         self._allowModifiers = allowModifiers
         self._notAllowedModifier = notAllowedModifier
         self.setAlignment(Qt.AlignCenter)
+        self._allowMouseButtons = allowMouseButtons
+        
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.MouseButtonPress:
+            button = event.button()
+            if self._allowMouseButtons and button not in STANDARD_MOUSE_BUTTONS:
+                btn_name = QtScoped.mouse_button_name(button)
+                self.setText(f'Mouse {btn_name}')
+                return True  # consume: don't let it reach the widget under the cursor
+        return super().eventFilter(obj, event)  # False for everything else -> passes through normally
     
     def text(self):
         text = macShortcutToWindows(super().text())
@@ -3815,6 +3870,9 @@ class ShortcutLineEdit(QLineEdit):
         
         super().setText(text)
         if not text:
+            self.keySequence = None
+            return
+        if 'Mouse ' in text:
             self.keySequence = None
             return
         try:
@@ -3839,7 +3897,31 @@ class ShortcutLineEdit(QLineEdit):
                 self.setText('')
             else:
                 self.setText(self.text().rstrip('+').strip())
+                
+    # catch mouse press events
+    def mousePressEvent(self, event):
+        button = event.button()
+
+        if button in STANDARD_MOUSE_BUTTONS or not self._allowMouseButtons:
+            super().mousePressEvent(event)
+        else:
+            # covers XButton1, XButton2, and any further extra buttons
+            btn_name = QtScoped.mouse_button_name(button)
+            self.setText(f'Mouse {btn_name}')
             
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.clicked.emit()  # or call your filter-install logic directly
+
+    # def focusOutEvent(self, event):
+    #     self.editingFinished.emit()  # or call your filter-release logic directly
+    #     super().focusOutEvent(event)
+        
+    def sizeHint(self):
+        size_hint = super().sizeHint()
+        width = int(size_hint.width() * 1.5)
+        size_hint.setWidth(width)
+        return size_hint
 
 class selectStartStopFrames(QGroupBox):
     def __init__(self, SizeT, currentFrameNum=0, parent=None):
@@ -6806,7 +6888,7 @@ class MainPlotItem(pg.PlotItem):
     def __init__(
             self, parent=None, name=None, labels=None, title=None, 
             viewBox=None, axisItems=None, enableMenu=True, 
-            showWelcomeText=False, **kargs
+            showWelcomeText=False, ax_number=0, **kargs
         ):
         super().__init__(
             parent, name, labels, title, viewBox, axisItems, enableMenu, 
@@ -6832,7 +6914,16 @@ class MainPlotItem(pg.PlotItem):
         self._baseImageItem = None
         self._imageItems = []
         self.highlightingRectItemsColor = None
-    
+        self.ax_number = ax_number
+        
+    def __eq__(self, other):
+        if isinstance(other, int):
+            return self.ax_number == other
+        return NotImplemented
+        
+    def __hash__(self):
+        return id(self)
+        
     def addHighlightingRectItems(self, color=None):
         self.highlightingRectItems = {
             'left': RectItem(QRectF()),
@@ -8370,19 +8461,22 @@ class ImShow(QBaseWindow):
             link_scrollbars=True, 
             infer_rgb=True, 
             figure_title='',
-            selectable_images=False
+            selectable_images=False,
+            win_stay_on_top=True,
         ):
         super().__init__(parent=parent)
         self._linkedScrollbars = link_scrollbars
         self._infer_rgb = infer_rgb
         self._figure_title = figure_title
-        self._selectable_images = True
+        self._selectable_images = selectable_images
         self.selected_idx = None
 
         self._autoLevels = True
 
         self.textItems = []
         self.group_to_idx_mapper = {'': 0}
+        if not win_stay_on_top:
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, False)
     
     def _getGraphicsScrollbar(self, idx, image, imageItem, maximum):
         proxy = QGraphicsProxyWidget(imageItem)
@@ -8408,6 +8502,11 @@ class ImShow(QBaseWindow):
         overlayLab = self._get2DlabOverlay(imageItem)
         if overlayLab is not None:
             imageItem.labImageItem.setImage(overlayLab, autoLevels=False)
+            if hasattr(imageItem, 'labContoursImageItem'):
+                contours_overlay = self._get2DlabContoursOverlay(imageItem)
+                imageItem.labContoursImageItem.setImage(
+                    contours_overlay, autoLevels=False
+                )
         
         self.setPointsVisible(imageItem)
 
@@ -8456,6 +8555,32 @@ class ImShow(QBaseWindow):
                 lab = lab[scrollbar.value()]
         
         return lab
+
+    def _get2DlabContoursOverlay(self, imageItem):
+        from . import regionprops
+        
+        overlay_lab = self._get2DlabOverlay(imageItem)
+        H, W = imageItem.image.shape[:2]
+        overlay = np.zeros((H, W, 4), dtype=np.uint8)
+        color = (255, 0, 0, 255) # RED
+        thickness = 1
+        if overlay_lab is None:
+            return None
+
+        contours = []
+        rp = regionprops.acdcRegionprops(overlay_lab,precache_centroids=False)
+        for obj in rp:
+            contours_obj = core.get_obj_contours(
+                obj,
+                all_external=True,
+            )
+            contours.extend(contours_obj)
+        try:
+            cv2.drawContours(overlay, contours, -1, color, thickness) 
+        except:
+            import pdb; pdb.set_trace()
+        return overlay
+        
     
     def isObjVisible(self, obj, imageItem):
         if len(obj.centroid) == 2:
@@ -8479,6 +8604,11 @@ class ImShow(QBaseWindow):
         overlayLab = self._get2DlabOverlay(imageItem)
         if overlayLab is not None:
             imageItem.labImageItem.setImage(overlayLab, autoLevels=False)
+            if hasattr(imageItem, 'labContoursImageItem'):
+                contours_overlay = self._get2DlabContoursOverlay(imageItem)
+                imageItem.labContoursImageItem.setImage(
+                    contours_overlay, autoLevels=False
+                )
         self.setPointsVisible(imageItem)
         if not self._linkedScrollbars:
             return
@@ -8703,7 +8833,9 @@ class ImShow(QBaseWindow):
             luts=None, 
             labels_overlays_luts=None,
             autoLevels=True, 
-            autoLevelsOnScroll=False
+            autoLevelsOnScroll=False,
+            show_contours=False,
+            show_IDs=False,
         ):
         from .plot import matplotlib_cmap_to_lut
         
@@ -8741,6 +8873,8 @@ class ImShow(QBaseWindow):
                 f'while number of labels_overaly is {len(labels_overlays)}. '
                 'Pass `None` if you do not need overlaid labeles.'
             )
+
+        annotate_labels_idxs = []
         
         for i, (image, imageItem) in enumerate(zip(images, self.ImageItems)):
             if luts is not None:
@@ -8808,9 +8942,26 @@ class ImShow(QBaseWindow):
             
             imageItem.lab = lab_overlay
             imageItem.labImageItem = labImageItem
+            imageItem.labels_overlays_lut = labels_overlays_lut
             
             overlayLab = self._get2DlabOverlay(imageItem)
             labImageItem.setImage(overlayLab, autoLevels=False)
+
+            if show_contours:
+                labContoursImageItem = pg.ImageItem()
+                labContoursImageItem.setOpacity(1.0)
+                plot.addImageItem(labContoursImageItem)
+                imageItem.labContoursImageItem = labContoursImageItem
+                contours_overlay = self._get2DlabContoursOverlay(imageItem)
+                labContoursImageItem.setImage(contours_overlay, autoLevels=False)
+
+            annotate_labels_idxs.append(i)
+
+        if show_IDs and annotate_labels_idxs:
+            self.annotateObjectIDs(
+                annotate_labels_idxs=annotate_labels_idxs,
+                init=True,
+            )
 
         # Share axis between images with same X, Y shape
         all_shapes = [image.shape[-2:] for image in images]
@@ -8830,11 +8981,15 @@ class ImShow(QBaseWindow):
     
     def _getDefaultLabelsOverlayLut(self, lab_overlay):
         IDs = [obj.label for obj in skimage.measure.regionprops(lab_overlay)]
+        if not IDs:
+            return np.zeros((1, 4), dtype=np.uint8)
         n_objs = len(IDs)
-        lut = np.zeros((n_objs+1, 4), dtype=np.uint8)
+        max_id = max(IDs)
+        lut = np.zeros((max_id + 1, 4), dtype=np.uint8)
         rgbas = colors.plt_colormap_to_pg_lut('tab20', ncolors=n_objs)
         np.random.shuffle(rgbas)
-        lut[1:] = rgbas
+        for i, label_id in enumerate(IDs):
+            lut[label_id] = rgbas[i]
         return lut
     
     def _createPointsScatterItem(self, xx, yy, group, colors=None, data=None):
@@ -11141,7 +11296,7 @@ class RescaleImageJroisGroupbox(QGroupBox):
         }
         return sizes
 
-class WhitelistLineEdit(KeepIDsLineEdit):
+class IDsLineEdit(KeepIDsLineEdit):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -11166,7 +11321,7 @@ class WhitelistIDsToolbar(ToolBar):
         whitelistLineEditLabel = QLabel('Whitelist IDs: ')
         self.addWidget(whitelistLineEditLabel)
         
-        self.whitelistLineEdit = WhitelistLineEdit(
+        self.whitelistLineEdit = IDsLineEdit(
             whitelistLineEditLabel, parent=self
         )
         self.whitelistLineEdit.sigEnterPressed.connect(self.accept)
@@ -11176,6 +11331,18 @@ class WhitelistIDsToolbar(ToolBar):
         # accept button
         self.acceptButton = self.addButton(':greenTick.svg')
         self.acceptButton.triggered.connect(self.accept)
+        
+        self.addSeparator()
+        
+        self.roiToggle = self.addButton(':ROI.svg', checkable=True)
+        self.roiToggle.setChecked(False)
+        self.roiToggle.setToolTip(
+            'Select IDs by drawing a freehand ROI.\n\n'
+            'Draw with the mouse left button to include all objects '
+            'fully enclosed in the ROI.\n\n'
+            'Draw with the mouse right button to include all objects '
+            'touched by the ROI.'
+        )
 
         # add a view OG toggle
         self.viewOGToggle = self.addButton(':eye.svg', checkable=True)
@@ -11231,6 +11398,15 @@ class WhitelistIDsToolbar(ToolBar):
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.addWidget(spacer)
 
+    def isRoiToggled(self):
+        return self.roiToggle.isChecked()
+    
+    def setIDs(self, IDs):
+        if not IDs:
+            return
+        
+        self.whitelistLineEdit.setText(IDs)
+
     def emitWhitelistChanged(self, whitelist):
         self.sigWhitelistChanged.emit(whitelist)
 
@@ -11260,6 +11436,11 @@ class WhitelistIDsToolbar(ToolBar):
             object to add.<br>
             You can also write directly into the <code>Whitelist IDs</code> widget<br>
             and separate the IDs by commas.<br><br>
+
+            You can also use the ROI button to collect all IDs overlapping a region.<br>
+            Toggle the ROI button off to keep editing the IDs manually.<br><br>
+
+            On 3D data, the ROI collects IDs across the entire volume.<br><br>
             
             After adding the IDs, click on the "Accept" button to remove the 
             non-whitelisted objects.<br>
@@ -11276,6 +11457,89 @@ class WhitelistIDsToolbar(ToolBar):
         """
         )
         msg.information(self, 'White list IDs', txt)
+
+class MergeIDsToolbar(ToolBar):
+    sigIDsChanged = Signal(list)
+    sigAccept = Signal(list)
+    sigRoiToggled = Signal(bool)
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        mergeLineEditLabel = self.addLabel('IDs to merge: ')
+
+        self.mergeLineEdit = IDsLineEdit(
+            mergeLineEditLabel, parent=self
+        )
+        self.mergeLineEdit.sigEnterPressed.connect(self.accept)
+        self.mergeLineEdit.sigIDsChanged.connect(self.sigIDsChanged.emit)
+        self.addWidget(self.mergeLineEdit)
+
+        self.acceptButton = self.addButton(':greenTick.svg')
+        self.acceptButton.setToolTip(
+            'Merge all listed IDs into the first ID in the list'
+        )
+        self.acceptButton.triggered.connect(self.accept)
+        
+        self.addSeparator()
+
+        self.onlyCurrentZsliceCheckbox = QCheckBox('Only current z-slice')
+        self.onlyCurrentZsliceCheckbox.setToolTip(
+            'When active on 3D data, collect and merge IDs only on the '
+            'currently displayed z-slice instead of across the entire volume'
+        )
+        self.addWidget(self.onlyCurrentZsliceCheckbox)
+
+        self.infoButton = self.addButton(':info.svg')
+        self.infoButton.triggered.connect(self.showInfo)
+        
+        self.addSeparator()
+
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.addWidget(spacer)
+    
+    def setIDs(self, IDs):
+        if not IDs:
+            return
+        
+        self.mergeLineEdit.setText(IDs)
+
+    def setOnlyCurrentZsliceEnabled(self, enabled):
+        self.onlyCurrentZsliceCheckbox.setVisible(enabled)
+        self.onlyCurrentZsliceCheckbox.setEnabled(enabled)
+        if not enabled:
+            self.onlyCurrentZsliceCheckbox.setChecked(False)
+
+    def isOnlyCurrentZslice(self):
+        return self.onlyCurrentZsliceCheckbox.isChecked()
+
+    def accept(self):
+        try:
+            IDs = self.mergeLineEdit.IDs
+        except AttributeError as e:
+            if "has no attribute 'IDs'" in str(e):
+                IDs = list()
+            else:
+                raise
+        self.sigAccept.emit(IDs)
+
+    def showInfo(self):
+        msg = myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            With this tool, you can merge multiple objects by drawing a freehand 
+            ROI.<br><br>
+            By drawing with the mouse <b>right button</b>, all objects touched by the 
+            ROI will be merged.<br>
+            In this mode, the resulting ID will be the last you released the 
+            mouse button on.<br><br>
+            By drawing with the mouse <b>left button</b>, all objects fully enclosed by the ROI will be merged.<br>
+            In this mode, the resulting ID will be the smallest in the selection.<br><br>
+            When working with 3D segmentation masks, you can choose whether to 
+            merge across the entire volume<br>
+            or only on the displayed z-slice.
+        """)
+        msg.information(self, 'Merge multiple IDs', txt)
 
 class MagicPromptsToolbar(ToolBar):
     sigPromptTypeChanged = Signal(object, str)
@@ -12173,6 +12437,308 @@ class warnVisualCppRequired(myMessageBox):
             self.screenShotWin.close()
             
         return super().closeEvent(event)
+    
+    
+class MultiPickListWidget(QWidget):
+    """Generic list widget with multi-pick (repeated-selection) support.
+
+    Each pickable row shows ``-  count  +`` controls.  Left-clicking adds
+    one instance; right-clicking or Ctrl+left-click removes one.  The same
+    item can appear multiple times in :attr:`selectionSequence`.
+
+    Parameters
+    ----------
+    items:
+        Initial list of item labels.
+    excludedItems:
+        Labels that are shown in the list but *not* given +/- controls
+        (e.g. placeholder entries like "Add custom model…").  Click events
+        on these are silently ignored.
+    parent:
+        Optional parent widget.
+    """
+
+    sigSelectionChanged = Signal(list)  # emits selectionSequence on every change
+
+    def __init__(self, items=None, excludedItems=None, parent=None):
+        super().__init__(parent)
+
+        self._excludedItems = set(excludedItems or [])
+        self._itemsMap = {}          # label → QListWidgetItem
+        self._countMap = defaultdict(int)
+        self._countLabelMap = {}
+        self.selectionSequence = []
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.listBox = listWidget(isMultipleSelection=False)
+        self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+
+        for label in (items or []):
+            self._addListItem(label)
+
+        if self._itemsMap:
+            self.listBox.setCurrentRow(0)
+
+        self.listBox.itemClicked.connect(self._onItemClicked)
+        self.listBox.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.listBox.customContextMenuRequested.connect(self._onRightClick)
+
+        # self.listBox.setStyleSheet(LISTWIDGET_STYLESHEET)
+        # self.setStyleSheet(LISTWIDGET_STYLESHEET)
+        layout.addWidget(self.listBox)
+        
+
+    @property
+    def itemsMap(self):
+        """Dict mapping label → QListWidgetItem for all pickable items."""
+        return dict(self._itemsMap)
+
+    def currentItemName(self):
+        """Return the label of the currently highlighted item, or ``None``."""
+        item = self.listBox.currentItem()
+        return item.text() if item is not None else None
+
+    def addSelection(self, label):
+        """Add one instance of *label* to the selection."""
+        if label not in self._itemsMap:
+            return
+        self.selectionSequence.append(label)
+        self._countMap[label] += 1
+        self._updateCountLabel(label)
+        self.listBox.setCurrentItem(self._itemsMap[label])
+        self.sigSelectionChanged.emit(list(self.selectionSequence))
+
+    def removeSelection(self, label):
+        """Remove the last instance of *label* from the selection."""
+        if self._countMap.get(label, 0) <= 0:
+            return
+        for i in range(len(self.selectionSequence) - 1, -1, -1):
+            if self.selectionSequence[i] == label:
+                self.selectionSequence.pop(i)
+                break
+        self._countMap[label] = max(0, self._countMap[label] - 1)
+        self._updateCountLabel(label)
+        self.sigSelectionChanged.emit(list(self.selectionSequence))
+
+    def resetSelection(self):
+        """Clear all selections and reset all counters to zero."""
+        self.selectionSequence = []
+        self._countMap = defaultdict(int)
+        for label in self._countLabelMap:
+            self._updateCountLabel(label)
+        self.sigSelectionChanged.emit([])
+
+    def setSelectionFromList(self, labels):
+        """Set the selection to *labels* (duplicates supported)."""
+        self.resetSelection()
+        for label in labels:
+            self.addSelection(label)
+
+    def registerItem(self, label, insertBeforeLabel=None):
+        """Dynamically add a new pickable item.
+
+        Parameters
+        ----------
+        label:
+            Text for the new item.
+        insertBeforeLabel:
+            If given, insert the new item immediately before this label.
+            If not found or not given, the item is appended.
+
+        Returns the created ``QListWidgetItem``.
+        """
+        if label in self._itemsMap:
+            return self._itemsMap[label]
+
+        item = QListWidgetItem(label)
+
+        if insertBeforeLabel is not None:
+            target = self._itemsMap.get(insertBeforeLabel)
+            if target is None:
+                for row in range(self.listBox.count()):
+                    row_item = self.listBox.item(row)
+                    if row_item is not None and row_item.text() == insertBeforeLabel:
+                        target = row_item
+                        break
+            if target is not None:
+                row = self.listBox.row(target)
+                self.listBox.insertItem(row, item)
+            else:
+                self.listBox.addItem(item)
+        else:
+            self.listBox.addItem(item)
+
+        self._itemsMap[label] = item
+        self._addCounterWidget(label, item)
+        return item
+
+    def _addListItem(self, label):
+        """Create a QListWidgetItem and, if pickable, attach a counter widget."""
+        item = QListWidgetItem(label)
+        self.listBox.addItem(item)
+        if label not in self._excludedItems:
+            self._itemsMap[label] = item
+            self._addCounterWidget(label, item)
+
+    def _addCounterWidget(self, label, item):
+        rowWidget = QWidget()
+        rowLayout = QHBoxLayout(rowWidget)
+        rowLayout.setContentsMargins(4, 0, 4, 0)
+        rowLayout.setSpacing(6)
+
+        nameLabelPlaceholder = QSpacerItem(2, 0)
+        minusBtn = QPushButton('-')
+        plusBtn = QPushButton('+')
+        countLabel = QLabel(str(self._countMap.get(label, 0)))
+
+        minusBtn.setFixedWidth(24)
+        plusBtn.setFixedWidth(24)
+        countLabel.setMinimumWidth(20)
+        countLabel.setAlignment(Qt.AlignCenter)
+
+        minusBtn.clicked.connect(lambda _, lbl=label: self.removeSelection(lbl))
+        plusBtn.clicked.connect(lambda _, lbl=label: self.addSelection(lbl))
+
+        rowLayout.addItem(nameLabelPlaceholder)
+        rowLayout.addStretch(1)
+        rowLayout.addWidget(minusBtn)
+        rowLayout.addWidget(countLabel)
+        rowLayout.addWidget(plusBtn)
+
+        self._countLabelMap[label] = countLabel
+        self._updateCountLabel(label)
+        self.listBox.setItemWidget(item, rowWidget)
+
+    def _updateCountLabel(self, label):
+        lbl = self._countLabelMap.get(label)
+        if lbl is not None:
+            count = self._countMap.get(label, 0)
+            lbl.setText(str(count))
+            if count <= 0:
+                lbl.setStyleSheet('color: gray;')
+            else:
+                lbl.setStyleSheet('')
+
+    def _onItemClicked(self, item):
+        label = item.text()
+        if label in self._excludedItems:
+            return
+        modifiers = QApplication.keyboardModifiers()
+        if modifiers & Qt.ControlModifier:
+            self.removeSelection(label)
+        else:
+            self.addSelection(label)
+
+    def _onRightClick(self, pos):
+        item = self.listBox.itemAt(pos)
+        if item is None:
+            return
+        label = item.text()
+        if label in self._excludedItems:
+            return
+        self.removeSelection(label)
+
+
+class ModelSelectionWidget(QWidget):
+    """List widget for selecting segmentation models.
+
+    Thin wrapper around :class:`MultiPickListWidget` that populates the list
+    with the installed models and adds a special "Add custom model…" entry.
+
+    ``sigSelectionChanged`` and ``selectionSequence`` are proxied from the
+    underlying :class:`MultiPickListWidget`.
+    """
+
+    _ADD_CUSTOM = 'Add custom model...'
+
+    sigSelectionChanged = Signal(list)
+
+    def __init__(self, parent=None, customFirst='', allowMultiSelection=False):
+        super().__init__(parent)
+
+        self.allowMultiSelection = allowMultiSelection
+
+        models = myutils.get_list_of_models()
+        if customFirst:
+            try:
+                models.insert(0, models.pop(models.index(customFirst)))
+            except ValueError:
+                pass
+
+        items = models + [self._ADD_CUSTOM]
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        if allowMultiSelection:
+            items = models
+            self._picker = MultiPickListWidget(
+                items=items,
+                excludedItems=[self._ADD_CUSTOM],
+                parent=self,
+            )
+            self._picker.listBox.setFont(font)
+            self._picker.sigSelectionChanged.connect(self.sigSelectionChanged)
+            self.listBox = self._picker.listBox
+            layout.addWidget(self._picker)
+        else:
+            self.listBox = listWidget(isMultipleSelection=False)
+            self.listBox.setFont(font)
+            self.listBox.addItems(models)
+            add_item = QListWidgetItem(self._ADD_CUSTOM)
+            add_item.setFont(fonts.italicFont)
+            self.listBox.addItem(add_item)
+            self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+            self.listBox.setCurrentRow(0)
+            self._picker = None
+            layout.addWidget(self.listBox)
+
+    # ------------------------------------------------------------------
+    # Proxy helpers (multi-selection mode only)
+    # ------------------------------------------------------------------
+
+    @property
+    def selectionSequence(self):
+        return self._picker.selectionSequence if self._picker is not None else []
+
+    @property
+    def modelItemsMap(self):
+        return self._picker.itemsMap if self._picker is not None else {}
+
+    def currentModelName(self):
+        if self._picker is not None:
+            return self._picker.currentItemName()
+        item = self.listBox.currentItem()
+        return item.text() if item is not None else None
+
+    def addModelSelection(self, name):
+        if self._picker is not None:
+            self._picker.addSelection(name)
+
+    def removeModelSelection(self, name):
+        if self._picker is not None:
+            self._picker.removeSelection(name)
+
+    def resetSelectionSequence(self):
+        if self._picker is not None:
+            self._picker.resetSelection()
+
+    def setSelectionFromList(self, models):
+        if self._picker is not None:
+            self._picker.setSelectionFromList(models)
+
+    def registerCustomModel(self, model_name):
+        """Add a newly registered custom model and return its item."""
+        if self._picker is not None:
+            return self._picker.registerItem(
+                model_name, insertBeforeLabel=self._ADD_CUSTOM
+            )
+        item = QListWidgetItem(model_name)
+        self.listBox.insertItem(self.listBox.count() - 1, item)
+        return item
+
 
 class PointsLayerContextMenu(QMenu):
     sigEditProperties = Signal()
