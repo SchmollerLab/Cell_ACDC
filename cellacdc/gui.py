@@ -31107,6 +31107,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             tracked_lost_IDs = add_info['mothers']
             self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
             assignments = add_info['assignments']
+            if add_info['to_track_tracked_objs_2nd_step'] is not None:
+                posData = self.data[self.pos_i]
+                posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = add_info['to_track_tracked_objs_2nd_step']                
         elif self._rtTrackerName == 'CellACDC_2steps':
             assignments = add_info['assignments']
             if add_info['to_track_tracked_objs_2nd_step'] is not None:

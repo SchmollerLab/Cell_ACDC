@@ -10,6 +10,8 @@ from cellacdc._types import NotGUIParam
 import copy
 import cellacdc.debugutils as debugutils
 from cellacdc.regionprops import acdcRegionprops as acdcRegionprops
+import scipy.optimize
+import cellacdc.core
 
 def reorg_sister_cells_for_export(lineage_tree_frame):
     """
@@ -202,12 +204,17 @@ class normal_division_tracker:
     """
 
     def __init__(self,
-                 segm_video,
-                 IoA_thresh_daughter,
-                 min_daughter,
-                 max_daughter,
-                 IoA_thresh,
-                 IoA_thresh_aggressive):
+                segm_video,
+                IoA_thresh_daughter,
+                min_daughter,
+                max_daughter,
+                IoA_thresh,
+                IoA_thresh_aggressive,
+                annotate_objects_tracked_second_step=True,
+                PhysicalSizeX=1.0,
+                PhysicalSizeY=1.0,
+                PhysicalSizeZ=1.0,
+                 ):
         """
         Initializes the normal_division_tracker object.
 
@@ -226,13 +233,18 @@ class normal_division_tracker:
         self.IoA_thresh = IoA_thresh
         self.IoA_thresh_aggressive = IoA_thresh_aggressive
         self.segm_video = segm_video
+        self._annot_obj_2nd_step = annotate_objects_tracked_second_step
+        self._pixel_yx_size = (PhysicalSizeY, PhysicalSizeX)
+        self._voxel_zyx_size = (PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX)
 
         self.tracked_video = np.zeros_like(segm_video)
         self.tracked_video[0] = segm_video[0]
 
     def track_frame(self, frame_i, lab=None, prev_lab=None, rp=None, prev_rp=None,
                     IDs=None, unique_ID=None, 
-                    return_assignments=False, specific_IDs=None, dont_return_tracked_lab=False):
+                    return_assignments=False, specific_IDs=None, dont_return_tracked_lab=False,
+                    lost_IDs_search_range=None,
+                    ):
         """
         Tracks a single frame in the video sequence.
 
@@ -242,8 +254,10 @@ class normal_division_tracker:
         - prev_lab (ndarray, optional): The segmented labels of the previous frame. Defaults to None.
         - rp (list, optional): The region properties of the current frame. Defaults to None.
         - prev_rp (list, optional): The region properties of the previous frame. Defaults to None.
+        - lost_IDs_search_range (float, optional): The search range for lost IDs. Defaults to None. 
+        Will perform 2nd step of tracking where cells in vicinity are tracked
         """
-
+        self.to_track_tracked_objs_2nd_step = None
         if lab is None:
             lab = self.segm_video[frame_i]
 
@@ -320,7 +334,125 @@ class normal_division_tracker:
         else:
             self.tracked_lab, IoA_matrix, self.assignments, self.tracked_IDs = out
             self.tracked_video[frame_i] = self.tracked_lab
+        if lost_IDs_search_range is None:
+            return
+        
+        lab_for_rp_update = lab if dont_return_tracked_lab else self.tracked_lab
+        # if isinstance(self.rp, acdcRegionprops):
+        #     updated_rp = self.rp.copy().update_regionprops_via_assignments( # .copy() not properly implemented
+        #         assignments=self.assignments,
+        #         lab=lab_for_rp_update,
+        #     )
+        # else:
+        updated_rp = acdcRegionprops(lab_for_rp_update, precache_centroids=False)
+        
+        
+        mothers = {mother for mother, _ in self.mother_daughters}
+        daughters = {daughter for _, daughters in self.mother_daughters for daughter in daughters}
+            
+        selected_tracked_IDs = None
+        if specific_IDs is not None:
+            selected_tracked_IDs = {
+                self.assignments.get(curr_ID, curr_ID)
+                for curr_ID in specific_IDs
+            }
+        
+        prev_rp_mapper = {obj.label: obj for obj in prev_rp if obj.label not in mothers}
 
+        lost_rp_mapper = {
+            obj.label: obj for obj in prev_rp
+            if obj.label not in self.tracked_IDs and obj.label not in daughters
+        }
+
+        if not lost_rp_mapper:
+            return
+
+        new_rp_mapper = {
+            obj.label: obj for obj in updated_rp
+            if (
+                selected_tracked_IDs is None
+                or obj.label in selected_tracked_IDs
+            )
+            if prev_rp_mapper.get(obj.label) is None
+        }
+
+        if not new_rp_mapper:
+            return
+
+        ndim = lab.ndim
+        lost_IDs_coords = np.zeros((len(lost_rp_mapper), ndim))
+        lost_IDs_idx_to_obj_mapper = {}
+        for lost_idx, lost_obj in enumerate(lost_rp_mapper.values()):
+            lost_IDs_coords[lost_idx] = lost_obj.centroid
+            lost_IDs_idx_to_obj_mapper[lost_idx] = lost_obj
+
+        new_IDs_coords = np.zeros((len(new_rp_mapper), ndim))
+        new_IDs_idx_to_obj_mapper = {}
+        for new_idx, new_obj in enumerate(new_rp_mapper.values()):
+            new_IDs_coords[new_idx] = new_obj.centroid
+            new_IDs_idx_to_obj_mapper[new_idx] = new_obj
+
+        diff = lost_IDs_coords[:, np.newaxis] - new_IDs_coords
+        dist_matrix = np.linalg.norm(diff, axis=2)
+
+        assignments = scipy.optimize.linear_sum_assignment(dist_matrix)
+        IDs_to_track = []
+        tracked_IDs_2nd_step = []
+        if self._annot_obj_2nd_step:
+            objs_to_track = []
+            tracked_objs_2nd_step = []
+        for i, j in zip(*assignments):
+            dist = dist_matrix[i, j]
+            if dist > lost_IDs_search_range:
+                continue
+
+            IDs_to_track.append(new_IDs_idx_to_obj_mapper[j].label)
+            tracked_IDs_2nd_step.append(lost_IDs_idx_to_obj_mapper[i].label)
+            if self._annot_obj_2nd_step:
+                objs_to_track.append(new_IDs_idx_to_obj_mapper[j])
+                tracked_objs_2nd_step.append(lost_IDs_idx_to_obj_mapper[i])
+
+        if not IDs_to_track:
+            return
+
+        # Only touch self.tracked_lab / write to the video array when it
+        # actually exists (dont_return_tracked_lab=False).
+        if not dont_return_tracked_lab:
+            self.tracked_lab = cellacdc.core.lab_replace_values(
+                self.tracked_lab,
+                updated_rp,
+                IDs_to_track,
+                tracked_IDs_2nd_step
+            )
+            self.tracked_video[frame_i] = self.tracked_lab
+
+        if self._annot_obj_2nd_step:
+            self.to_track_tracked_objs_2nd_step = (
+                objs_to_track, tracked_objs_2nd_step
+            )
+
+        assignments_step_2 = dict(zip(IDs_to_track, tracked_IDs_2nd_step))
+        current_frame_IDs = {obj.label for obj in self.rp}
+        if specific_IDs is not None:
+            current_frame_IDs.intersection_update(specific_IDs)
+
+        merged_assignments = {}
+        for current_ID in current_frame_IDs:
+            tracked_ID = self.assignments.get(current_ID, current_ID)
+
+            visited = set()
+            while tracked_ID in assignments_step_2 and tracked_ID not in visited:
+                visited.add(tracked_ID)
+                tracked_ID = assignments_step_2[tracked_ID]
+
+            if tracked_ID != current_ID:
+                merged_assignments[current_ID] = tracked_ID
+
+        self.assignments = merged_assignments
+        self.tracked_IDs = list(current_frame_IDs)
+
+        return
+        
 class normal_division_lineage_tree:
     """
     Class for tracking and managing cell lineage trees during normal cell division across multiple frames.
@@ -1010,12 +1142,35 @@ class tracker:
     - updateGuiProgressBar(): Updates the GUI progress bar. (Used for GUI communication)
     - save_output(): Signals to the rest of the programme that the lineage tree should be saved. (Used for module 2)
     """
-    def __init__(self):
-        """
-        Initializes the CellACDC_normal_division_tracker object.
-        """
-        pass
+    def __init__(self,
+                annotate_objects_tracked_second_step=True,
+                PhysicalSizeX=1.0,
+                PhysicalSizeY=1.0,
+                PhysicalSizeZ=1.0,
+                ):
+        """Initialize Cell-ACDC symm div tracker object.
 
+        Parameters
+        ----------
+        annotate_objects_tracked_second_step : bool, optional
+            If True, Cell-ACDC will draw a line on the GUI between the objects 
+            in previous frame that were lost in current frame according to the 
+            first step (based on overlap) and the objects in current frame that 
+            were matched according to the second step (based on search range). 
+            Default is True
+        PhysicalSizeX : float, optional
+            Pixel size in the x-direction in 'micrometre/pixel'. This will be 
+            ignored if `search_range_unit` is `pixels`. Default is 1.0
+        PhysicalSizeY : float, optional
+            Pixel size in the y-direction in 'micrometre/pixel'. This will be 
+            ignored if `search_range_unit` is `pixels`. Default is 1.0.
+        PhysicalSizeZ : float, optional
+            Pixel size in the z-direction in 'micrometre/pixel'. This will be 
+            ignored if `search_range_unit` is `pixels`. Default is 1.0. 
+        """
+        self._annot_obj_2nd_step = annotate_objects_tracked_second_step
+        self._voxel_zyx_size = (PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX)
+        
     def track(self,
               segm_video,
               IoA_thresh:float = 0.8,
@@ -1025,6 +1180,7 @@ class tracker:
               max_daughter:int = 2,
               record_lineage:bool = True,
               return_tracked_lost_centroids:bool = True,
+              lost_IDs_search_range:float = 0,
               signals = None,
         ):
         """
@@ -1039,6 +1195,9 @@ class tracker:
         - min_daughter (int, optional): Minimum number of daughter cells. Used for determining if a cell has divided. Defaults to 2.
         - max_daughter (int, optional): Maximum number of daughter cells. Used for determining if a cell has divided. Defaults to 2.
         - record_lineage (bool, optional): Flag to record and save lineage. Defaults to True.
+        - lost_IDs_search_range (float, optional): Maximum distance in pixels a cell can move
+          between consecutive frames to still be matched to a lost ID in the 2nd tracking step.
+          If None, the 2nd step is skipped entirely. Defaults to None.
         
         Returns:
         - list: Tracked video frames.
@@ -1046,6 +1205,9 @@ class tracker:
         if not record_lineage and return_tracked_lost_centroids:
             print('return_tracked_lost_centroids is set to True if record_lineage is True.')
             record_lineage = True
+            
+        if lost_IDs_search_range == 0:
+            lost_IDs_search_range = None
         
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
 
@@ -1058,7 +1220,11 @@ class tracker:
             if frame_i == 0:
                 tracker = normal_division_tracker(
                     segm_video, IoA_thresh_daughter, min_daughter, 
-                    max_daughter, IoA_thresh, IoA_thresh_aggressive
+                    max_daughter, IoA_thresh, IoA_thresh_aggressive,
+                    annotate_objects_tracked_second_step=self._annot_obj_2nd_step,
+                    PhysicalSizeX=self._voxel_zyx_size[2],
+                    PhysicalSizeY=self._voxel_zyx_size[1],
+                    PhysicalSizeZ=self._voxel_zyx_size[0],
                 )
                 if record_lineage or return_tracked_lost_centroids:
                     tree = normal_division_lineage_tree(
@@ -1072,11 +1238,11 @@ class tracker:
                 prev_rp = rp
                 continue
 
-            tracker.track_frame(frame_i)
+            tracker.track_frame(frame_i, lost_IDs_search_range=lost_IDs_search_range)
 
             if not record_lineage and not return_tracked_lost_centroids:
                 continue
-
+            
             mother_daughters = tracker.mother_daughters
             IDs_prev = tracker.IDs_prev
             assignments = tracker.assignments
@@ -1128,7 +1294,7 @@ class tracker:
         tracked_video = tracker.tracked_video
         pbar.close()
         return tracked_video
-
+    
     def track_frame(self,
                     previous_frame_labels,
                     current_frame_labels,
@@ -1138,10 +1304,13 @@ class tracker:
                     IoA_thresh_aggressive:float  = 0.5,
                     min_daughter:int = 2,
                     max_daughter:int = 2,
+                    lost_IDs_search_range: float = 0,
                     unique_ID: NotGUIParam =None,
                     return_assignments: NotGUIParam =False,
                     specific_IDs: NotGUIParam =None,
                     dont_return_tracked_lab: NotGUIParam =False,
+                    prev_rp: NotGUIParam=None,
+                    curr_rp: NotGUIParam=None,
                     ):
         """
         Tracks cell division in a single frame. (This is used for real time tracking in the GUI)
@@ -1154,6 +1323,9 @@ class tracker:
         - IoA_thresh_aggressive (float, optional): Aggressive IoA threshold. Used when the tracker thinks that a cell has NOT divided. Defaults to 0.5.
         - min_daughter (int, optional): Minimum number of daughter cells. Used for determining if a cell has divided. Defaults to 2.
         - max_daughter (int, optional): Maximum number of daughter cells. Used for determining if a cell has divided. Defaults to 2.
+        - lost_IDs_search_range (float, optional): Maximum distance in pixels a cell can move
+          between the two frames to still be matched to a lost ID in the 2nd tracking step.
+          If None, the 2nd step is skipped. Defaults to None.
 
         Returns:
         - tracked_video: Tracked video sequence.
@@ -1163,9 +1335,18 @@ class tracker:
         if not np.any(current_frame_labels):
             # Skip empty frames
             return current_frame_labels
+        
+        if lost_IDs_search_range == 0:
+            lost_IDs_search_range = None
 
         segm_video = [previous_frame_labels, current_frame_labels]
-        tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive)
+        tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, 
+                                          min_daughter, max_daughter, 
+                                          IoA_thresh, IoA_thresh_aggressive,
+                    annotate_objects_tracked_second_step=self._annot_obj_2nd_step,
+                    PhysicalSizeX=self._voxel_zyx_size[2],
+                    PhysicalSizeY=self._voxel_zyx_size[1],
+                    PhysicalSizeZ=self._voxel_zyx_size[0],)
         tracker.track_frame(
             1,
             IDs=IDs,
@@ -1173,24 +1354,30 @@ class tracker:
             return_assignments=return_assignments,
             specific_IDs=specific_IDs,
             dont_return_tracked_lab=dont_return_tracked_lab,
+            lost_IDs_search_range=lost_IDs_search_range,
+            prev_rp=prev_rp,
+            rp=curr_rp
         )
 
         mother_daughters_pairs = tracker.mother_daughters
         IDs_prev = tracker.IDs_prev
         mothers = {IDs_prev[pair[0]] for pair in mother_daughters_pairs}
         assignments = tracker.assignments
-
-        if dont_return_tracked_lab:
-            return assignments
-
-        tracked_lab = tracker.tracked_video[-1]
-        if not return_assignments:
-            return tracked_lab
-
+        if self._annot_obj_2nd_step:
+            to_track_tracked_objs_2nd_step = tracker.to_track_tracked_objs_2nd_step
         add_info = {
             'mothers': mothers,
-            'assignments': assignments
+            'assignments': assignments,
+            'to_track_tracked_objs_2nd_step': to_track_tracked_objs_2nd_step if self._annot_obj_2nd_step else None
         }
+
+        if dont_return_tracked_lab:
+            return add_info
+
+        tracked_lab = tracker.tracked_video[-1]
+        if not return_assignments and not self._annot_obj_2nd_step:
+            return tracked_lab, add_info
+
         return tracked_lab, add_info
 
     def updateGuiProgressBar(self, signals):
