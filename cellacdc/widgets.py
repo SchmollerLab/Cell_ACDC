@@ -3854,11 +3854,15 @@ class ShortcutLineEdit(QLineEdit):
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.MouseButtonPress:
             button = event.button()
-            if self._allowMouseButtons and button not in STANDARD_MOUSE_BUTTONS:
+            if (
+                    self._allowMouseButtons 
+                    and button not in STANDARD_MOUSE_BUTTONS
+                ):
                 btn_name = QtScoped.mouse_button_name(button)
                 self.setText(f'Mouse {btn_name}')
-                return True  # consume: don't let it reach the widget under the cursor
-        return super().eventFilter(obj, event)  # False for everything else -> passes through normally
+                return True  
+            
+        return super().eventFilter(obj, event) 
     
     def text(self):
         text = macShortcutToWindows(super().text())
