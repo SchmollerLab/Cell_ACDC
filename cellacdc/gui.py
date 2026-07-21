@@ -21131,6 +21131,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.initLoadedDelROI()
 
+        QTimer.singleShot(200, self.autoRange)
+
     def _createROIfromState(self, state, key):
         if 'points' in state and isinstance(state['points'], list) and len(state['points']) > 1:
             # normal poly line
@@ -22186,6 +22188,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def navigateSpinboxValueChanged(self, value):
         self.navigateScrollBar.setSliderPosition(value)
         if self.isSnapshot:
+            self.navigateScrollBarStartedMoving = True
             self.PosScrollBarMoved(value)
         else:
             self.navigateScrollBarStartedMoving = True
@@ -22219,11 +22222,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.navigateScrollBarStartedMoving = False
 
     def PosScrollBarReleased(self):
-        self.navigateScrollBarStartedMoving = True
-        if self.pos_i == self.navigateScrollBar.sliderPosition()-1:
+        if (
+                self.pos_i == self.navigateScrollBar.sliderPosition()-1
+                and self.navigateScrollBarStartedMoving
+            ):
             # Slider released without changing value --> do nothing
             return
         
+        self.navigateScrollBarStartedMoving = True
         self.pos_i = self.navigateScrollBar.sliderPosition()-1
         self.updateFramePosLabel()
         self.updatePos()
@@ -22289,9 +22295,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def framesScrollBarReleased(self, do_store_data=False):
         posData = self.data[self.pos_i]
         if (
-            posData.frame_i == self.navigateScrollBar.sliderPosition()-1
-            and self.navigateScrollBarStartedMoving
-        ):
+                posData.frame_i == self.navigateScrollBar.sliderPosition()-1
+                and self.navigateScrollBarStartedMoving
+            ):
             # Slider released without changing value --> do nothing
             return
         
