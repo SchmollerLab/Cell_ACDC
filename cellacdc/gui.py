@@ -11131,20 +11131,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ):
         posData = self.data[self.pos_i]
         prev_moth_bud_pairs_cca = (
-            posData.allData_li[past_frame_i-1].get('moth_bud_pairs_cca')
+            posData.allData_li[past_frame_i].get('moth_bud_pairs_cca')
         )
         if prev_moth_bud_pairs_cca is None:
             # There is no stored info before --> stop
             return
-        
+
         if ID not in prev_moth_bud_pairs_cca.index:
             # Division has been annotated on a cell that does not have 
             # previous info in the past
             return
-        
-        if current_frame_i-1 == past_frame_i:
-            # Get generation number at first iteration
-            gen_num = prev_moth_bud_pairs_cca.at[ID, 'generation_num']
             
         if prev_moth_bud_pairs_cca.at[ID, 'generation_num'] != gen_num:
             # ID is a mother and the cell cycle is finished here
@@ -11198,8 +11194,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ref_cca_df = moth_bud_pairs_cca
         elif cca_df is not None:
             ref_cca_df = cca_df
-        
+
         gen_num = ref_cca_df.at[ID, 'generation_num']
+
         # Store in the past frames that division has been annotated
         for past_frame_i in range(frame_i-1, -1, -1):
             prev_moth_bud_pairs_cca = self._getSMBPCcaDfWillDivide(
@@ -14329,7 +14326,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if checked:
             self.store_data()
             
-            self.annotateSingleMothBudPairState = {}
             mothIDbudID = self.getHoveredMotherBudIDs()
             
             if mothIDbudID is None:
@@ -14362,9 +14358,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.annotateSingleMothBudPairState['last_cca_frame_i'] = (
                 self.navigateScrollBar.maximum()-1
             )
-            self.annotateSingleMothBudPairState['last_annot_frame_i'] = (
-                -1
-            )
+            self.updateSingleMotherBudPairLastAnnotatedFrame()
             
             self.warnLostCellsAction.setChecked(False)
             self.annotLostObjsToggle.setChecked(False)
@@ -22451,10 +22445,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not hasattr(self, 'annotateSingleMothBudPairState'):
             return
         
+        last_smbp_annot_frame_i = (
+            self.annotateSingleMothBudPairState.get('last_annot_frame_i', -1)
+        )
+
         if frame_i is None:
-            frame_i = (
-                self.annotateSingleMothBudPairState.get('last_annot_frame_i', -1)
-            )
+            frame_i = last_smbp_annot_frame_i
 
         toolTip = self.annotateSingleMotherBudPairButton.toolTip()
         if frame_i <= 0:
@@ -24182,6 +24178,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         global_cca_df = global_cca_df.reset_index().set_index(
             ['frame_i', 'Cell_ID']
         )
+
+        incomplete_frames_mask = (
+            global_cca_df.isna()
+                .any(axis=1)
+                .groupby(level='frame_i')
+                .transform('any')
+        )
+        global_cca_df = global_cca_df[~incomplete_frames_mask]
+
         self.storeFromConcatCcaDf(global_cca_df)
     
     def ccaCheckerStopChecking(self):
@@ -24341,18 +24346,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if partial_cca_start_frame_i is None:
                 partial_cca_start_frame_i = frame_i
 
-            try:
-                moth_bud_pairs_cca = acdc_df[mask][cca_df_colnames]
-            except Exception as err:
-                if self._debug:
-                    printl(
-                        frame_i,
-                        acdc_df.columns, 
-                        acdc_df[['is_single_mother_bud_annotation']],
-                        acdc_df[mask][cca_df_colnames],
-                        sep='\n-----------------\n'
-                    )
-                continue
+            moth_bud_pairs_cca = acdc_df[mask][cca_df_colnames]
 
             posData.allData_li[frame_i]['moth_bud_pairs_cca'] = (
                 moth_bud_pairs_cca
@@ -32019,7 +32013,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.restoreDefaultColors()
         self.reinitStoredSegmModels()
         self.removeAxLimits()
-        self.updateSingleMotherBudPairLastAnnotatedFrame(-1)
+        self.updateSingleMotherBudPairLastAnnotatedFrame()
         self.curvToolButton.setChecked(False)
         
         self.wandControlsToolbar.setVisible(False)
