@@ -21132,6 +21132,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.initLoadedDelROI()
 
         QTimer.singleShot(200, self.autoRange)
+        QTimer.singleShot(500, self.autoRange)
 
     def _createROIfromState(self, state, key):
         if 'points' in state and isinstance(state['points'], list) and len(state['points']) > 1:
