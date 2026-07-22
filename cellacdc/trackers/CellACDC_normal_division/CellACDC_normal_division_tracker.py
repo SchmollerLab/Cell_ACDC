@@ -1338,7 +1338,7 @@ class tracker:
         - IoA_thresh_aggressive (float, optional): Aggressive IoA threshold. Used when the tracker thinks that a cell has NOT divided. Defaults to 0.5.
         - min_daughter (int, optional): Minimum number of daughter cells. Used for determining if a cell has divided. Defaults to 2.
         - max_daughter (int, optional): Maximum number of daughter cells. Used for determining if a cell has divided. Defaults to 2.
-        - lost_IDs_search_range (float, optional): Maximum distance in pixels a cell can move
+        - lost_IDs_search_range (float, optional): Maximum distance (in physical units, i.e. centroid deltas scaled by `PhysicalSizeX/Y/Z`) a cell can move
           between the two frames to still be matched to a lost ID in the 2nd tracking step.
           If None, the 2nd step is skipped. Defaults to None.
 
