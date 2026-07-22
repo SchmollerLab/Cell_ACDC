@@ -16,6 +16,8 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Smith, W., et al. <i>Proximity labeling at H3K9me3 reveals VRK-1 regulate global chromatin distribution in C. elegans</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.07.07.737140">10.64898/2026.07.07.737140</a>.</li><br>
+
       <li>Serna, S. E., et al. <i>ABA-AA: A simple, reversible, and non-toxic anchor-away system for effective nuclear protein depletion</i>. <b>Cell Reports Methods</b> (2026) DOI: <a href="https://doi.org/10.1016/j.crmeth.2026.101517">10.1016/j.crmeth.2026.101517</a>.</li><br>
 
       <li>Moukham, H., et al. <i>SNF1/AMPK controls its own localization by phosphorylating its activating kinase Sak1</i>. <b>iScience</b> (2026) DOI: <a href="https://doi.org/10.1016/j.isci.2026.116357">10.1016/j.isci.2026.116357</a>.</li><br>
@@ -39,6 +41,8 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
       <li>Garrigós, V., et al. <i>Tsa1-Mediated Regulation of PKA Tunes Trehalose Metabolism in Saccharomyces cerevisiae</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.11.26.690464">10.1101/2025.11.26.690464</a>.</li><br>
 
       <li>Muñoz-Barrera, M., et al. <i>HLH-30/TFEB is necessary for chromatin reorganization and maintenance of cell quiescence during starvation in C. elegans</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.31.685810">10.1101/2025.10.31.685810</a>.</li><br>
+
+      <li>Geetha, S. S., et al. <i>Bloom helicase contributes to successful crossover formation with both catalytic and structural roles in Caenorhabditis elegans meiosis</i>. <b> Nucleic Acids Res.</b> (2025) DOI: <a href="https://doi.org/10.1093/nar/gkaf1030">10.1093/nar/gkaf1030</a>.</li><br>
 
       <li>Kim, J., et al. <i>A Fkh1/2 binding site array in the WHI5 promoter drives sub-scaling transcription</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.10.681508">10.1101/2025.10.10.681508</a>.</li><br>
 
