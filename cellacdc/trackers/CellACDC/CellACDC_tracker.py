@@ -157,28 +157,24 @@ def assign(
         printl(f'IDs in previous frame: {IDs_prev}')
 
     for i, j in enumerate(max_IoA_col_idx):
-        if daughters_list is not None:
-            if i in daughters_list:
+        if daughters_list is not None and i in daughters_list:
+            continue
+
+        IoA_thresh_temp = IoA_thresh_aggr if (aggr_track and i in aggr_track) else IoA_thresh
+        max_IoU = IoA_matrix[i, j]
+        if max_IoU < IoA_thresh_temp:
+            continue
+
+        count = counts_dict[j]
+        if count > 1:
+            best_i_for_j = IoA_matrix[:, j].argmax() # assure no duplicates in tracked_IDs
+            if i != best_i_for_j:
                 continue
 
-        if aggr_track:
-            if i in aggr_track:
-                IoA_thresh_temp = IoA_thresh_aggr
-            else:
-                IoA_thresh_temp = IoA_thresh
-        else:
-            IoA_thresh_temp = IoA_thresh
-        max_IoU = IoA_matrix[i,j]
-        count = counts_dict[j]
-        if max_IoU >= IoA_thresh_temp:
-            tracked_ID = IDs_prev[j]
-            if count == 1:
-                old_ID = IDs_curr_untracked[i]
-            elif count > 1:
-                old_ID_idx = IoA_matrix[:,j].argmax()
-                old_ID = IDs_curr_untracked[old_ID_idx]
-            tracked_IDs.append(tracked_ID)
-            old_IDs.append(old_ID)
+        tracked_ID = IDs_prev[j]
+        old_ID = IDs_curr_untracked[i]
+        tracked_IDs.append(tracked_ID)
+        old_IDs.append(old_ID)
 
     return old_IDs, tracked_IDs
 

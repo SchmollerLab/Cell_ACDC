@@ -311,7 +311,7 @@ class normal_division_tracker:
             if subset_daughter_idxs:
                 self.mother_daughters.append((mother_idx, subset_daughter_idxs))
         
-        _dont_return_tracked_lab = dont_return_tracked_lab if lost_IDs_search_range is None else True
+        _dont_return_tracked_lab = dont_return_tracked_lab if lost_IDs_search_range is None else False
         out = track_frame_base(
             prev_lab,
             prev_rp,

@@ -30209,14 +30209,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if _delID in rp.IDs_set:
                 is_any_id_present = True
                 break
-        
-        if not is_any_id_present:
-            return lab, delMask
 
         if delMask is None:
             delMask = np.zeros(lab.shape, dtype=bool)
         else:
             delMask[:] = False
+            
+        if not is_any_id_present:
+            return lab, delMask
         
         if single_slice_del_in_3D:
             delMask2D = self.get_2Dlab(delMask)
