@@ -3,7 +3,7 @@ import numpy as np
 import time
 from .core import segm_model_segment, post_process_segm
 from .features import custom_post_process_segm
-from . import io, plot, regionprops, printl
+from . import io, plot, printl
 import inspect
 
 
@@ -218,9 +218,9 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
     Returns:
         curr_lab: current frame segmentation with the segmented cells
         assigned_IDs: list of IDs assigned to the newly segmented cells
-
-
     """
+    from . import regionprops
+
     if export_bbox_for_training:
         bboxs_for_debug = []
 
@@ -318,7 +318,10 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
         IDs_to_filter = [ID for ID, overlap_perc in overlaps if overlap_perc >= overlap_threshold]
         if IDs_to_filter:
             box_model_lab[np.isin(box_model_lab, IDs_to_filter)] = 0
-        rp_model_lab = regionprops.acdcRegionprops(box_model_lab,precache_centroids=False)
+        rp_model_lab = regionprops.acdcRegionprops(
+            box_model_lab,
+            precache_centroids=False
+        )
         for obj in rp_model_lab:
             box_curr_lab_other_IDs[obj.slice][obj.image] = new_unique_ID
             assigned_IDs.append(new_unique_ID)

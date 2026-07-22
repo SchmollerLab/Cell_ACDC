@@ -46,6 +46,7 @@ if msg and GUI_INSTALLED:
     try:
         app.mainWindow.logger.info(msg)
     except Exception as err:
+        traceback.print_exc()
         pass
 
 # WARNING: Developers have already used

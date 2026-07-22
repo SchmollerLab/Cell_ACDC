@@ -1,6 +1,4 @@
 import os
-from cellacdc.trackers.CellACDC.CellACDC_tracker import calc_Io_matrix
-from cellacdc.trackers.CellACDC.CellACDC_tracker import track_frame as track_frame_base
 from cellacdc.core import getBaseCca_df, printl
 from cellacdc.myutils import checked_reset_index, checked_reset_index_Cell_ID
 import numpy as np
@@ -9,7 +7,6 @@ import pandas as pd
 from cellacdc._types import NotGUIParam
 import copy
 import cellacdc.debugutils as debugutils
-from cellacdc.regionprops import acdcRegionprops as acdcRegionprops
 
 def reorg_sister_cells_for_export(lineage_tree_frame):
     """
@@ -243,6 +240,11 @@ class normal_division_tracker:
         - rp (list, optional): The region properties of the current frame. Defaults to None.
         - prev_rp (list, optional): The region properties of the previous frame. Defaults to None.
         """
+        from cellacdc.regionprops import acdcRegionprops
+        from cellacdc.trackers.CellACDC.CellACDC_tracker import calc_Io_matrix
+        from cellacdc.trackers.CellACDC.CellACDC_tracker import (
+            track_frame as track_frame_base
+        )
 
         if lab is None:
             lab = self.segm_video[frame_i]
@@ -513,7 +515,8 @@ class normal_division_lineage_tree:
         Raises:
             ValueError: If both lab and first_df are provided.
         """
-        print('Initializing lineage tree...')
+        from cellacdc.regionprops import acdcRegionprops
+
         if lab is not None and lab.any() and first_df:
             raise ValueError('Only one of lab and first_df can be provided.')
         
@@ -535,7 +538,6 @@ class normal_division_lineage_tree:
             return
         
         if lab is not None:
-
             rp = acdcRegionprops(lab, precache_centroids=False)
             labels = rp.IDs
             cca_df = pd.DataFrame({
@@ -671,6 +673,9 @@ class normal_division_lineage_tree:
         Returns:
             None
         """
+        from cellacdc.regionprops import acdcRegionprops
+        from cellacdc.trackers.CellACDC.CellACDC_tracker import calc_Io_matrix
+
         if rp is None:
             rp = acdcRegionprops(lab, precache_centroids=False)
 
@@ -679,11 +684,12 @@ class normal_division_lineage_tree:
 
         IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_Io_matrix(lab, prev_lab, rp, prev_rp)
         
-        _, self.mother_daughters = mother_daughter_assign(IoA_matrix, 
-                                                                   IoA_thresh_daughter=self.IoA_thresh_daughter, 
-                                                                   min_daughter=self.min_daughter, 
-                                                                   max_daughter=self.max_daughter
-                                                                   )
+        _, self.mother_daughters = mother_daughter_assign(
+            IoA_matrix, 
+            IoA_thresh_daughter=self.IoA_thresh_daughter, 
+            min_daughter=self.min_daughter, 
+            max_daughter=self.max_daughter
+        )
         # filter mothers which are actually tracked/present (could be after user correction in the GUI)
         filtered_mother_daughters = []
         for mother, daughters in self.mother_daughters:
@@ -1043,6 +1049,8 @@ class tracker:
         Returns:
         - list: Tracked video frames.
         """
+        from cellacdc.regionprops import acdcRegionprops
+        
         if not record_lineage and return_tracked_lost_centroids:
             print('return_tracked_lost_centroids is set to True if record_lineage is True.')
             record_lineage = True

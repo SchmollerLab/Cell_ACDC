@@ -28,7 +28,7 @@ if GUI_INSTALLED:
     
 from . import printl
 from . import _core, error_below, error_close
-from . import _run, core, myutils, regionprops as acdc_regionprops
+from . import _run, core, myutils
 
 VisPyMarkerSymbols = Literal[
     'disc', 
@@ -868,6 +868,8 @@ def plt_contours(
         ax, lab=None, rp=None, plot_kwargs=None, only_IDs=None, 
         clear_borders=True, obj_contours_kwargs=None
     ):
+    from cellacdc import regionprops as acdc_regionprops
+    
     if rp is None:
         rp = acdc_regionprops.acdcRegionprops(lab, precache_centroids=False)
 
