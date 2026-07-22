@@ -89,7 +89,6 @@ from . import io
 from . import whitelist
 from . import cli
 from . import is_mac
-from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import setupLogger, ArgSpec
 from .help import welcome, about
@@ -30949,6 +30948,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             assign_unique_new_IDs=True, specific_IDs=None, unique_ID=None,
             dont_return_tracked_lab=False, return_assignments=False,
         ):
+        from .trackers.CellACDC import CellACDC_tracker
+        
         if self.trackWithAcdcAction.isChecked():
             tracked_result = CellACDC_tracker.track_frame(
                 prev_lab, prev_rp, curr_lab, curr_rp,

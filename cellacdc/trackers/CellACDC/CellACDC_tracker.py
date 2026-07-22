@@ -1,11 +1,12 @@
 import os
+import traceback
+
 from typing import List
 
 from tqdm import tqdm
 
 import numpy as np
 from skimage.measure import regionprops
-from cellacdc.regionprops import acdcRegionprops
 from skimage.segmentation import relabel_sequential
 
 from cellacdc import core, printl, debugutils, GUI_INSTALLED
@@ -57,9 +58,17 @@ def _filter_subset_assignments(old_IDs, tracked_IDs, all_curr_IDs, specific_IDs)
 
     return filtered_old_IDs, filtered_tracked_IDs
 
-def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
-                   specific_IDs=None,
-                   denom:str='area_prev'):
+def calc_Io_matrix(
+        lab, 
+        prev_lab, 
+        rp, 
+        prev_rp, 
+        IDs_curr_untracked=None,
+        specific_IDs=None,
+        denom: str='area_prev'
+    ):
+    from cellacdc.regionprops import acdcRegionprops
+    
     specific_IDs = _normalize_specific_IDs(specific_IDs)
     if IDs_curr_untracked is None and isinstance(rp, acdcRegionprops):
         IDs_curr_untracked = rp.IDs
