@@ -75,9 +75,7 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
 
 .. tip:: 
 
-    Check out `here <https://youtu.be/u1cQ2MH5uEQ?si=-_hpBoJIccMRjrazs>`__ for a 
-    **video tutorial** introdcuing Cell-ACDC. It is a workshop we held at the 
-    I2K Conference 2024.
+    Check out our :doc:`Video Tutorials <video-tutorials>` page to find video tutorials that will help you get started with Cell-ACDC.
 
 .. carousel::
    :show_captions_below:
@@ -123,6 +121,7 @@ Contents
    overview
    installation
    getting-started
+   video-tutorials
    data-structure
    data-structure-fiji
    contributing
