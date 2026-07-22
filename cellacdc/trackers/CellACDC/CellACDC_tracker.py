@@ -41,7 +41,12 @@ def _normalize_specific_IDs(specific_IDs):
         return set(specific_IDs)
     return {specific_IDs}
 
-def _filter_subset_assignments(old_IDs, tracked_IDs, all_curr_IDs, specific_IDs):
+def _filter_subset_assignments(
+    old_IDs, 
+    tracked_IDs, 
+    all_curr_IDs, 
+    specific_IDs
+    ):
     if specific_IDs is None:
         return old_IDs, tracked_IDs
 
@@ -91,12 +96,16 @@ def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
         use_union = denom == 'union'
         curr_IDs_arr  = np.array(IDs_curr_untracked, dtype=np.uint32)
         prev_IDs_arr  = np.array(IDs_prev,           dtype=np.uint32)
-        prev_areas_arr = np.array([obj.area for obj in prev_rp], dtype=np.uint32)
+        prev_areas_arr = np.array(
+            [obj.area for obj in prev_rp], 
+            dtype=np.uint32
+            )
         if use_union:
             rp_mapper = {obj.label: obj for obj in rp}
             curr_areas_arr = np.array(
-                [rp_mapper[ID].area for ID in IDs_curr_untracked], dtype=np.uint32
-            )
+                [rp_mapper[ID].area for ID in IDs_curr_untracked], 
+                dtype=np.uint32
+                )
         else:
             curr_areas_arr = np.empty(0, dtype=np.uint32)
         lab_u32      = np.asarray(lab,      dtype=np.uint32)
@@ -160,7 +169,10 @@ def assign(
         if daughters_list is not None and i in daughters_list:
             continue
 
-        IoA_thresh_temp = IoA_thresh_aggr if (aggr_track and i in aggr_track) else IoA_thresh
+        IoA_thresh_temp = (IoA_thresh_aggr 
+                           if (aggr_track and i in aggr_track) 
+                           else IoA_thresh
+                           )
         max_IoU = IoA_matrix[i, j]
         if max_IoU < IoA_thresh_temp:
             continue
@@ -389,7 +401,8 @@ def track_frame(
         return_all=False, aggr_track=None, IoA_matrix=None, 
         IoA_thresh_aggr=None, IDs_prev=None, return_prev_IDs=False,
         mother_daughters=None, denom_overlap_matrix = 'area_prev',
-        return_assignments=False, specific_IDs=None, dont_return_tracked_lab=False
+        return_assignments=False, specific_IDs=None, 
+        dont_return_tracked_lab=False
     ):
     if not np.any(lab):
         # Skip empty frames
