@@ -467,20 +467,20 @@ def track_frame(
 
     # old_new_ids = dict(zip(old_IDs, tracked_IDs)) # for now not used, but could be useful in the future
     
-    if return_all and dont_return_tracked_lab:
+    add_info = {
+        'IoA_matrix': IoA_matrix,
+        'assignments': assignments,
+        'tracked_IDs': tracked_IDs,
+        # 'IDs_prev': IDs_prev,
+    }
+    
+    if dont_return_tracked_lab:
         # special case where we want to only get the assignments but need the rest too!
-        return IoA_matrix, assignments, tracked_IDs
-    elif return_all:
-        return tracked_lab, IoA_matrix, assignments, tracked_IDs # remove tracked_IDs and change code in CellACDC_tracker.py if causing problems
-    elif dont_return_tracked_lab:
-        return assignments
-    elif return_assignments:
-        add_info = {
-            'assignments': assignments,
-        }
-        return tracked_lab, add_info
-    else:
+        return add_info
+    elif not return_all and not return_assignments:
         return tracked_lab
+    else:
+        return tracked_lab, add_info
 
 class tracker:
     def __init__(self, **params):

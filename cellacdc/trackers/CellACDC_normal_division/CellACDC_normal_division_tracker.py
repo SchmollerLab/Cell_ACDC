@@ -234,8 +234,8 @@ class normal_division_tracker:
         self.IoA_thresh_aggressive = IoA_thresh_aggressive
         self.segm_video = segm_video
         self._annot_obj_2nd_step = annotate_objects_tracked_second_step
-        self._pixel_yx_size = (PhysicalSizeY, PhysicalSizeX)
-        self._voxel_zyx_size = (PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX)
+        self._pixel_yx_size = np.array((PhysicalSizeY, PhysicalSizeX))
+        self._voxel_zyx_size = np.array((PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX))
 
         self.tracked_video = np.zeros_like(segm_video)
         self.tracked_video[0] = segm_video[0]
@@ -311,6 +311,7 @@ class normal_division_tracker:
             if subset_daughter_idxs:
                 self.mother_daughters.append((mother_idx, subset_daughter_idxs))
         
+        _dont_return_tracked_lab = dont_return_tracked_lab if lost_IDs_search_range is None else True
         out = track_frame_base(
             prev_lab,
             prev_rp,
@@ -327,13 +328,18 @@ class normal_division_tracker:
             unique_ID=unique_ID,
             specific_IDs=specific_IDs,
             return_assignments=return_assignments,
-            dont_return_tracked_lab=dont_return_tracked_lab if not self._annot_obj_2nd_step else True
+            dont_return_tracked_lab=_dont_return_tracked_lab,
         )
-        if dont_return_tracked_lab or not self._annot_obj_2nd_step:
-            IoA_matrix, self.assignments, self.tracked_IDs = out
+        if _dont_return_tracked_lab:
+            add_info = out
         else:
-            self.tracked_lab, IoA_matrix, self.assignments, self.tracked_IDs = out
+            self.tracked_lab, add_info = out
             self.tracked_video[frame_i] = self.tracked_lab
+            
+        IoA_matrix = add_info['IoA_matrix']
+        self.assignments = add_info['assignments']
+        self.tracked_IDs = add_info['tracked_IDs']
+            
         if lost_IDs_search_range is None:
             return
         
@@ -396,9 +402,16 @@ class normal_division_tracker:
         for new_idx, new_obj in enumerate(new_rp_mapper.values()):
             new_IDs_coords[new_idx] = new_obj.centroid
             new_IDs_idx_to_obj_mapper[new_idx] = new_obj
+            
+        if ndim == 3:
+            voxel_size = self._voxel_zyx_size
+        else:
+            voxel_size = self._pixel_yx_size
 
         diff = lost_IDs_coords[:, np.newaxis] - new_IDs_coords
-        dist_matrix = np.linalg.norm(diff, axis=2)
+        diff_weighted = diff * voxel_size  # broadcasts over last axis
+
+        dist_matrix = np.linalg.norm(diff_weighted, axis=2)
 
         assignments = scipy.optimize.linear_sum_assignment(dist_matrix)
         IDs_to_track = []
