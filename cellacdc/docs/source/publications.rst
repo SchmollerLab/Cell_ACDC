@@ -4,12 +4,20 @@ Scientific publications where Cell-ACDC was used
 ================================================
 
 .. figure:: citations/citations_per_year.png
-    :width: 50%
-    :align: center
-    :alt: Citations per year from Google Scholar
-    :target: https://scholar.google.com/scholar?hl=en&as_sdt=2005&sciodt=0,5&cites=5370866519324948412&scipsc=&q=&scisbd=1
+  :width: 60%
+  :align: center
+  :alt: Citations per year from Google Scholar
+  :target: https://scholar.google.com/scholar?hl=en&as_sdt=2005&sciodt=0,5&cites=5370866519324948412&scipsc=&q=&scisbd=1
 
-    Citations per year. Data from `Google Scholar`_.
+  Citations per year. Data from `Google Scholar`_.
+
+.. figure:: citations/citations_using_acdc_per_year.png
+  :width: 60%
+  :align: center
+  :alt: Publications that used Cell-ACDC, per year
+
+  Publications that used Cell-ACDC, per year.
+  
 
 In the following publications, authors used Cell-ACDC to analyse microscopy data and obtain **biological insights**:
 
@@ -34,8 +42,6 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 
       <li>Pabst, F. R., et al. <i>Methionine synthase reductase regulates heterochromatin independently of methionine synthesis through mitochondrial homeostasis</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.64898/2025.12.19.695597">10.64898/2025.12.19.695597</a>.</li><br>
 
-      <li>Wunder, T., et al. <i>Conserved and Lineage-Specific Roles of KEA-Mediated Ion Homeostasis in Chlamydomonas</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.64898/2025.12.03.692059">10.64898/2025.12.03.692059</a>.</li><br>
-
       <li>Gao, X., et al. <i>Yeast growth is controlled by the proportional scaling of mRNA and ribosome concentrations</i>. <b>arXiv</b> (2025) DOI: <a href="https://doi.org/10.48550/arXiv.2508.14997">10.48550/arXiv.2508.14997</a>.</li><br>
 
       <li>Garrigós, V., et al. <i>Tsa1-Mediated Regulation of PKA Tunes Trehalose Metabolism in Saccharomyces cerevisiae</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.11.26.690464">10.1101/2025.11.26.690464</a>.</li><br>
@@ -43,8 +49,6 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
       <li>Muñoz-Barrera, M., et al. <i>HLH-30/TFEB is necessary for chromatin reorganization and maintenance of cell quiescence during starvation in C. elegans</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.31.685810">10.1101/2025.10.31.685810</a>.</li><br>
 
       <li>Geetha, S. S., et al. <i>Bloom helicase contributes to successful crossover formation with both catalytic and structural roles in Caenorhabditis elegans meiosis</i>. <b> Nucleic Acids Res.</b> (2025) DOI: <a href="https://doi.org/10.1093/nar/gkaf1030">10.1093/nar/gkaf1030</a>.</li><br>
-
-      <li>Kim, J., et al. <i>A Fkh1/2 binding site array in the WHI5 promoter drives sub-scaling transcription</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.10.681508">10.1101/2025.10.10.681508</a>.</li><br>
 
       <li>Akanksha, A., et al. <i>Microfluidic analysis of salt-stress-mediated antibiotic tolerance in Mycobacterium smegmatis</i>. <b>Lab on a Chip</b> (2025) DOI: <a href="https://doi.org/10.1039/D5LC00713E">10.1039/D5LC00713E</a>.</li><br>
 
@@ -55,8 +59,6 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
       <li>Kukhtevich, I. , et al. <i>The origin of septin ring size control in budding yeast</i>. <b>The EMBO Journal</b> (2025) DOI: <a href="https://doi.org/10.1038/s44318-025-00571-5">10.1038/s44318-025-00571-5</a>.</li><br>
 
       <li>Conti, M. M. , et al. <i>Dynamic phosphorylation of Hcm1 promotes fitness in chronic stress</i>. <b>PLOS Genetics</b> (2025) DOI: <a href="https://doi.org/10.1371/journal.pgen.1011874">10.1371/journal.pgen.1011874</a>.</li><br>
-
-      <li>Dengler, L. , et al. <i>When mitochondria fall apart: Unbalanced mitochondrial segregation triggers loss of mtDNA in the absence of mitochondrial fusion</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.05.13.653688">10.1101/2025.05.13.653688</a>.</li><br>
 
       <li>Seshadri, A. , et al. <i>Exonuclease action of replicative polymerase gamma drives damage-induced mitochondrial DNA clearance</i>. <b>EMBO Reports</b> (2025) DOI: <a href="https://doi.org/10.1038/s44319-025-00380-1">10.1038/s44319-025-00380-1</a>.</li><br>
 
@@ -71,8 +73,6 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
       <li>Roussou, R. , et al. <i>Real-time assessment of mitochondrial DNA heteroplasmy dynamics at the single-cell level</i>. <b>EMBO J.</b> 43, 5340–5359 (2024) DOI: <a href="https://doi.org/10.1038/s44318-024-00183-5">10.1038/s44318-024-00183-5</a>.</li><br>
 
       <li>Padovani, F. , et al. <i>SpotMAX: a generalist framework for multi-dimensional automatic spot detection and quantification</i>. <b>bioRxiv</b> (2024) DOI: <a href="https://doi.org/10.1101/2024.10.22.619610">10.1101/2024.10.22.619610</a>.</li><br>
-
-      <li>Kukhtevich, I. , et al. <i>The origin of septin ring size control in budding yeast</i>. <b>bioRxiv</b> (2024) DOI: <a href="https://doi.org/10.1101/2024.07.30.605628">10.1101/2024.07.30.605628</a>.</li><br>
 
       <li>Chatzitheodoridou, D., Bureik, D., Padovani, F., Nadimpalli, K. V. & Schmoller, K. M. <i>Decoupled transcript and protein concentrations ensure histone homeostasis in different nutrients</i>. <b>EMBO J.</b> 43, 5141–5168 (2024) DOI: <a href="https://doi.org/10.1038/s44318-024-00227-w">10.1038/s44318-024-00227-w</a>.</li><br>
 
@@ -90,3 +90,6 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 
       <li>Schuh, L. , et al. <i>Altered expression response upon repeated gene repression in single yeast cells</i>. <b>PLOS Comput. Biol.</b> 18, e1010640 (2022) DOI: <a href="https://doi.org/10.1371/journal.pcbi.1010640">10.1371/journal.pcbi.1010640</a>.</li>
     </ol>
+
+
+.. include:: _preprints_now_publication.rst

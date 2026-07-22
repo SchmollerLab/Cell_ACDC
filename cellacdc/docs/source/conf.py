@@ -23,7 +23,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinxcontrib.email',
     'sphinx_tabs.tabs',
-    'sphinx_carousel.carousel',
+    'sphinx_design',
     'sphinx_copybutton'
 ]
 
@@ -58,5 +58,6 @@ exclude_patterns = [
     'Thumbs.db', 
     '.DS_Store', 
     '_gui_packages.rst',
-    '_models_list.rst'
+    '_models_list.rst',
+    '_preprints_now_publication.rst'
 ]
