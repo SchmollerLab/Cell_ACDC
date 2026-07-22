@@ -77,40 +77,47 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
 
     Check out our :doc:`Video Tutorials <video-tutorials>` page to find video tutorials that will help you get started with Cell-ACDC.
 
-.. carousel::
-   :show_captions_below:
-   :show_controls:
-   :show_indicators:
+.. card-carousel:: 1
 
-   .. figure:: images/home_carousel/spheroid_Mario.png
+   .. card::
 
-      Sphereoid segmentation
+      .. figure:: images/home_carousel/spheroid_Mario.png
 
-      Segment and quantify the spheroid in 3D
+         Sphereoid segmentation
+
+         Segment and quantify the spheroid in 3D
+
+   .. card::
+      
+      .. figure:: images/home_carousel/yeast_Lisa.png
+
+         Yeast segmentation
+
+         Segment, track, and annotate cell cycle
    
-   .. figure:: images/home_carousel/yeast_Lisa.png
+   .. card::
+      
+      .. figure:: images/home_carousel/C_elegans_Nada.png
 
-      Yeast segmentation
+         Nuclei segmentation in *C. elegans*
 
-      Segment, track, and annotate cell cycle
+         Segment sub-set of nuclei in multi-cellular organisms
    
-   .. figure:: images/home_carousel/C_elegans_Nada.png
+   .. card::
+      
+      .. figure:: images/home_carousel/measurments_gui.png
 
-      Nuclei segmentation in *C. elegans*
+         Compute measurements 
 
-      Segment sub-set of nuclei in multi-cellular organisms
-   
-   .. figure:: images/home_carousel/measurments_gui.png
+         Easily compute several intesity and morphological measurements
 
-      Compute measurements 
+   .. card::
+      
+      .. figure:: images/home_carousel/acdc_launcher_utilities.png
 
-      Easily compute several intesity and morphological measurements
-   
-   .. figure:: images/home_carousel/acdc_launcher_utilities.png
+         Cell-ACDC launcher
 
-      Cell-ACDC launcher
-
-      Run batch-processing and utilities from the launcher
+         Run batch-processing and utilities from the launcher
    
 Contents
 --------

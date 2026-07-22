@@ -4,4 +4,4 @@ sphinx-copybutton==0.5.2
 readme-renderer==43.0
 sphinxcontrib-email
 sphinx-tabs
-sphinx-carousel
+sphinx_design
