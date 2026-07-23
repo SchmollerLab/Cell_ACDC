@@ -10,7 +10,6 @@ from skimage.measure import regionprops
 from skimage.segmentation import relabel_sequential
 
 from cellacdc import core, printl, debugutils, GUI_INSTALLED
-from cellacdc.regionprops import acdcRegionprops
 
 try:
     from cellacdc.precompiled.precompiled_functions import (
@@ -73,7 +72,8 @@ def calc_Io_matrix(
         specific_IDs=None,
         denom: str='area_prev'
     ):
-    
+    from cellacdc.regionprops import acdcRegionprops
+
     specific_IDs = _normalize_specific_IDs(specific_IDs)
     if IDs_curr_untracked is None and isinstance(rp, acdcRegionprops):
         IDs_curr_untracked = rp.IDs
@@ -413,6 +413,8 @@ def track_frame(
         return_assignments=False, specific_IDs=None, 
         dont_return_tracked_lab=False
     ):
+    from cellacdc.regionprops import acdcRegionprops
+    
     if not np.any(lab):
         # Skip empty frames
         return lab
