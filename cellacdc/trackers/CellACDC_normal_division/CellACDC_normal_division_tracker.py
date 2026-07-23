@@ -1,17 +1,18 @@
 import os
-from cellacdc.trackers.CellACDC.CellACDC_tracker import calc_Io_matrix
-from cellacdc.trackers.CellACDC.CellACDC_tracker import track_frame as track_frame_base
-from cellacdc.core import getBaseCca_df, printl
-from cellacdc.myutils import checked_reset_index, checked_reset_index_Cell_ID
-import numpy as np
-from tqdm import tqdm
-import pandas as pd
-from cellacdc._types import NotGUIParam
 import copy
-import cellacdc.debugutils as debugutils
-from cellacdc.regionprops import acdcRegionprops as acdcRegionprops
+
+from tqdm import tqdm
+
+import numpy as np
+import pandas as pd
+
 import scipy.optimize
-import cellacdc.core
+
+from cellacdc._types import NotGUIParam
+from cellacdc import printl
+from cellacdc.core import lab_replace_values, getBaseCca_df
+from cellacdc.myutils import checked_reset_index, checked_reset_index_Cell_ID
+import cellacdc.debugutils as debugutils
 
 def reorg_sister_cells_for_export(lineage_tree_frame):
     """
@@ -297,6 +298,12 @@ class normal_division_tracker:
         Defaults to None. 
         Will perform 2nd step of tracking where cells in vicinity are tracked
         """
+        from cellacdc.regionprops import acdcRegionprops
+        from cellacdc.trackers.CellACDC.CellACDC_tracker import calc_Io_matrix
+        from cellacdc.trackers.CellACDC.CellACDC_tracker import (
+            track_frame as track_frame_base
+        )
+
         self.to_track_tracked_objs_2nd_step = None
         if lab is None:
             lab = self.segm_video[frame_i]
@@ -385,15 +392,8 @@ class normal_division_tracker:
         if lost_IDs_search_range is None:
             return
         
-        # if isinstance(self.rp, acdcRegionprops):
-        #     updated_rp = self.rp.copy().update_regionprops_via_assignments( # .copy() not properly implemented
-        #         assignments=self.assignments,
-        #         lab=lab_for_rp_update,
-        #     )
-        # else:
         updated_rp = acdcRegionprops(self.tracked_lab, precache_centroids=False)
-        
-        
+      
         mothers = {self.IDs_prev[mother] for mother, _ in self.mother_daughters}
         daughters = set()
         for _, daughter_idxs in self.mother_daughters:
@@ -479,7 +479,7 @@ class normal_division_tracker:
         # Only touch self.tracked_lab / write to the video array when it
         # actually exists (dont_return_tracked_lab=False).
         if not dont_return_tracked_lab:
-            self.tracked_lab = cellacdc.core.lab_replace_values(
+            self.tracked_lab = lab_replace_values(
                 self.tracked_lab,
                 updated_rp,
                 IDs_to_track,
@@ -740,6 +740,9 @@ class normal_division_lineage_tree:
             ValueError: If both lab and first_df are provided.
         """
         print('Initializing lineage tree...')
+
+        from cellacdc.regionprops import acdcRegionprops
+
         if lab is not None and lab.any() and first_df:
             raise ValueError('Only one of lab and first_df can be provided.')
         
@@ -762,7 +765,6 @@ class normal_division_lineage_tree:
             return
         
         if lab is not None:
-
             rp = acdcRegionprops(lab, precache_centroids=False)
             labels = rp.IDs
             cca_df = pd.DataFrame({
@@ -912,6 +914,9 @@ class normal_division_lineage_tree:
         Returns:
             None
         """
+        from cellacdc.regionprops import acdcRegionprops
+        from cellacdc.trackers.CellACDC.CellACDC_tracker import calc_Io_matrix
+
         if rp is None:
             rp = acdcRegionprops(lab, precache_centroids=False)
 
@@ -1353,6 +1358,8 @@ class tracker:
         Returns:
         - list: Tracked video frames.
         """
+        from cellacdc.regionprops import acdcRegionprops
+
         if not record_lineage and return_tracked_lost_centroids:
             print('return_tracked_lost_centroids is set to True if record_lineage is True.')
             record_lineage = True
