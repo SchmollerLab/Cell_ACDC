@@ -14740,7 +14740,8 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
 
 class ShortcutEditorDialog(QBaseDialog):
     def __init__(
-            self, widgetsWithShortcut: dict, 
+            self, 
+            widgetsWithShortcut: dict, 
             delObjectKey='',
             delObjectButton: Literal['Middle click', 'Left click']='Middle click',
             zoomOutKeyValue: int=None,
@@ -14752,8 +14753,9 @@ class ShortcutEditorDialog(QBaseDialog):
         self.cancel = True
         super().__init__(parent)
 
-        
-        # convert hard_shortcuts keys using widgets.KeySequenceFromText and to_string
+        if hard_shortcuts is None:
+            hard_shortcuts = {}
+            
         self.new_hard_shortcuts = {}
         for shortcut, name in hard_shortcuts.items():
             shortcut = widgets.KeySequenceFromText(shortcut)
@@ -14824,8 +14826,10 @@ class ShortcutEditorDialog(QBaseDialog):
             self.zoomShortcutLineEdit.setText(zoomOutKeySequence.toString())
             self.zoomShortcutLineEdit.key = zoomOutKeyValue
         self.zoomShortcutLineEdit.textChanged.connect(self.shortcutChanged)
-        self.zoomShortcutLineEdit.clicked.connect(self.setShortcutLineEditEventFilter)
-        self.zoomShortcutLineEdit.editingFinished.connect(self.releaseShortcutLineEditEventFilter)
+        self.zoomShortcutLineEdit.clicked.connect(
+            self.setShortcutLineEditEventFilter)
+        self.zoomShortcutLineEdit.editingFinished.connect(
+            self.releaseShortcutLineEditEventFilter)
         entriesLayout.addWidget(button, row, 0)
         entriesLayout.addWidget(label, row, 1)
         entriesLayout.addWidget(self.zoomShortcutLineEdit, row, 2)
@@ -14875,7 +14879,8 @@ class ShortcutEditorDialog(QBaseDialog):
             self.new_hard_shortcuts, keep_at_beginning, grouped_keys
         )
             
-        for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=row):
+        for items in enumerate(widgetsWithShortcut.items(), start=row):
+            row, (name, widget) = items
             button = widgets.PushButton(self, flat=True)
             try:
                 button.setIcon(widget.icon())
@@ -14933,7 +14938,8 @@ class ShortcutEditorDialog(QBaseDialog):
                 shortcutLineEdit.setStyleSheet(LINEEDIT_WARNING_STYLESHEET)
             
         row += 1
-        for row, (what, shortcut) in enumerate(self.new_hard_shortcuts.items(), start=row):
+        for items in enumerate(self.new_hard_shortcuts.items(), start=row):
+            row, (what, shortcut) = items
             button = widgets.PushButton(self, flat=True)
             if isinstance(what, str):
                 label = QLabel(f'{what}:')
@@ -14969,7 +14975,12 @@ class ShortcutEditorDialog(QBaseDialog):
         self.setFont(fonts.font)
         self.setLayout(mainLayout)
 
-    def _groupAndSortShortcuts(self, shortcuts_dict, keep_at_beginning, grouped_keys):
+    def _groupAndSortShortcuts(
+            self, 
+            shortcuts_dict, 
+            keep_at_beginning, 
+            grouped_keys
+        ):
         for key in shortcuts_dict.keys():
             actual_key = key
             if isinstance(key, tuple):

@@ -23,7 +23,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinxcontrib.email',
     'sphinx_tabs.tabs',
-    'sphinx_carousel.carousel',
+    'sphinx_design',
     'sphinx_copybutton'
 ]
 
@@ -33,7 +33,7 @@ intersphinx_mapping = {
 }
 intersphinx_disabled_domains = ['std']
 
-html_favicon = 'https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icon.ico'
+html_favicon = 'https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icon_v2.ico'
 
 templates_path = ['_templates']
 
@@ -58,5 +58,6 @@ exclude_patterns = [
     'Thumbs.db', 
     '.DS_Store', 
     '_gui_packages.rst',
-    '_models_list.rst'
+    '_models_list.rst',
+    '_preprints_now_publication.rst'
 ]

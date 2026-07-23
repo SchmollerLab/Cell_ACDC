@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import skimage.measure
-from . import printl, myutils, regionprops
 import json
 from typing import Set, List, Tuple
 import time
@@ -13,9 +12,10 @@ from . import (
     exception_handler, 
     disableWindow, 
     gui_utils,
-    exec_time
+    exec_time,
+    printl, 
+    myutils
 )
-from .trackers.CellACDC import CellACDC_tracker
 
 class Whitelist:
     """A class to manage the whitelist of IDs for a video.
@@ -93,7 +93,10 @@ class Whitelist:
             og_data = og_data[og_data.files[0]]
 
         self.originalLabs = og_data
-        self.originalLabsIDs = [{obj.label for obj in skimage.measure.regionprops(frame)} for frame in og_data]
+        self.originalLabsIDs = [
+            {obj.label for obj in skimage.measure.regionprops(frame)} 
+            for frame in og_data
+        ]
     
     def saveOGLabs(self, save_path:str):
         """Saves the original labels to a .npz file.
@@ -200,6 +203,8 @@ class Whitelist:
         ValueError
             If curr_rp is provided, frame_i must also be provided.
         """
+        from . import regionprops
+
         if self.new_centroids is not None:
             return
         
@@ -225,8 +230,9 @@ class Whitelist:
             if frame_i==i and curr_rp is not None:
                 rp = curr_rp
             else:
-                rp = regionprops.acdcRegionprops(self.originalLabs[i],
-                                                 precache_centroids=False)
+                rp = regionprops.acdcRegionprops(
+                    self.originalLabs[i], precache_centroids=False
+                )
 
             self.new_centroids.append({
                 tuple(map(int, rp.get_centroid(label))) for label in new_IDs
@@ -492,7 +498,10 @@ class Whitelist:
                 except KeyError:
                     pass
             if IDs is None:
-                IDs = {obj.label for obj in skimage.measure.regionprops(self.originalLabs[i])}
+                IDs = {
+                    obj.label 
+                    for obj in skimage.measure.regionprops(self.originalLabs[i])
+                }
             self.originalLabsIDs[i] = IDs
         
     def get(self,frame_i:int,try_create_new_whitelists:bool=False):
@@ -1066,8 +1075,12 @@ class WhitelistGUIElements:
                 self.store_data(autosave=False)
 
             if frame_i > 0:
-                missing_IDs = posData.IDs_set - posData.allData_li[frame_i-1]['regionprops'].IDs_set
-                self.trackManuallyAddedObject(missing_IDs,isNewID=True, wl_update=False)
+                missing_IDs = (
+                    posData.IDs_set 
+                    - posData.allData_li[frame_i-1]['regionprops'].IDs_set
+                )
+                self.trackManuallyAddedObject(
+                    missing_IDs,isNewID=True, wl_update=False)
 
             self.setAllTextAnnotations()
             self.updateAllImages()
@@ -1470,6 +1483,9 @@ class WhitelistGUIElements:
             Cannot provide both rp and lab when tracking against previous frame.
             Instead only provide rp and lab, and dont set against_prev.
         """
+        from . import regionprops
+        from .trackers.CellACDC import CellACDC_tracker
+
         posData = self.data[self.pos_i]
         if posData.whitelist is None:
             return
@@ -1534,7 +1550,9 @@ class WhitelistGUIElements:
         )
 
         posData.whitelist.originalLabs[frame_i] = og_lab
-        posData.whitelist.originalLabsIDs[frame_i] = {obj.label for obj in skimage.measure.regionprops(og_lab)}
+        posData.whitelist.originalLabsIDs[frame_i] = {
+            obj.label for obj in skimage.measure.regionprops(og_lab)
+        }
 
         if changed_frame:
             posData.frame_i = og_frame_i
@@ -1549,6 +1567,9 @@ class WhitelistGUIElements:
         against_prev : bool, optional
             if the original frame should be tracked against frame_i-1. 
         """
+        from . import regionprops
+        from .trackers.CellACDC import CellACDC_tracker
+
         posData = self.data[self.pos_i]
         if posData.whitelist is None:
             return

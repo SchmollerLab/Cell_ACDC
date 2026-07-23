@@ -89,7 +89,6 @@ from . import io
 from . import whitelist
 from . import cli
 from . import is_mac
-from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import setupLogger, ArgSpec
 from .help import welcome, about
@@ -11345,6 +11344,64 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         return store
 
+    def annotateDivisionMotherButPairCca(
+            self, 
+            ID: int, 
+            relID: int, 
+            frame_i: int,
+            division_frame_i: int,
+            clicked_ccs: str,
+        ):
+        posData = self.data[self.pos_i]
+        moth_bud_pair_cca = (
+            posData.allData_li[frame_i].get('moth_bud_pairs_cca')
+        )
+        if moth_bud_pair_cca is None:
+            return 
+        
+        if ID not in moth_bud_pair_cca.index:
+            return 
+        
+        current_relID = moth_bud_pair_cca.at[ID, 'relative_ID']
+        if current_relID != relID:
+            # Cell in the future changes relative ID
+            return
+        
+        ccs = moth_bud_pair_cca.at[ID, 'cell_cycle_stage']
+        if clicked_ccs != ccs:
+            # Cell in the future changes stage --> this stage is finished
+            return
+        
+        if clicked_ccs == 'S':
+            moth_bud_pair_cca.at[ID, 'cell_cycle_stage'] = 'G1'
+            moth_bud_pair_cca.at[relID, 'cell_cycle_stage'] = 'G1'
+            gen_num_clickedID = moth_bud_pair_cca.at[ID, 'generation_num']
+            moth_bud_pair_cca.at[ID, 'generation_num'] += 1
+            moth_bud_pair_cca.at[ID, 'division_frame_i'] = division_frame_i    
+            gen_num_relID = moth_bud_pair_cca.at[relID, 'generation_num']
+            moth_bud_pair_cca.at[relID, 'generation_num'] = gen_num_relID+1
+            moth_bud_pair_cca.at[relID, 'division_frame_i'] = division_frame_i
+            if gen_num_clickedID < gen_num_relID:
+                moth_bud_pair_cca.at[ID, 'relationship'] = 'mother'
+            else:
+                moth_bud_pair_cca.at[relID, 'relationship'] = 'mother'
+        else:
+            moth_bud_pair_cca.at[ID, 'cell_cycle_stage'] = 'S'
+            gen_num_clickedID = moth_bud_pair_cca.at[ID, 'generation_num']
+            moth_bud_pair_cca.at[ID, 'generation_num'] -= 1
+            moth_bud_pair_cca.at[ID, 'division_frame_i'] = -1
+            moth_bud_pair_cca.at[relID, 'cell_cycle_stage'] = 'S'
+            gen_num_relID = moth_bud_pair_cca.at[relID, 'generation_num']
+            moth_bud_pair_cca.at[relID, 'generation_num'] -= 1
+            moth_bud_pair_cca.at[relID, 'division_frame_i'] = -1
+            if gen_num_clickedID < gen_num_relID:
+                moth_bud_pair_cca.at[ID, 'relationship'] = 'bud'
+            else:
+                moth_bud_pair_cca.at[relID, 'relationship'] = 'bud'
+            moth_bud_pair_cca.at[ID, 'will_divide'] = 0
+            moth_bud_pair_cca.at[relID, 'will_divide'] = 0
+        
+    
     def undoDivisionAnnotation(
             self, 
             cca_df: pd.DataFrame, 
@@ -11497,8 +11554,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for future_i in range(posData.frame_i+1, posData.SizeT):
             cca_df_i = self.get_cca_df(frame_i=future_i, return_df=True)
             if cca_df_i is None:
-                # ith frame was not visited yet
-                break
+                # ith frame was not visited yet 
+                # --> check if moth_bud_pair_cca is present
+                self.annotateDivisionMotherButPairCca(
+                    ID, relID, future_i, posData.frame_i, clicked_ccs
+                )
+                continue
 
             self.storeUndoRedoCca(future_i, cca_df_i, undoId)
             IDs = cca_df_i.index
@@ -13799,15 +13860,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             action.setVisible(enabled)
             button.setEnabled(enabled)
 
-    # def setEnabledCcaToolbar(self, enabled=False):
-    #     self.manuallyEditCcaAction.setDisabled(False)
-    #     self.viewCcaTableAction.setDisabled(False)
-    #     self.ccaToolBar.setVisible(enabled)
-    #     for action in self.ccaToolBar.actions():
-    #         button = self.ccaToolBar.widgetForAction(action)
-    #         action.setVisible(enabled)
-    #         button.setEnabled(enabled)
-
     def setEnabledEditToolbarButton(self, enabled=False):
         for action in self.segmActions:
             action.setEnabled(enabled)
@@ -14365,6 +14417,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             self.ax1.sigRangeChanged.connect(self.highlightManualAnnotMode)
             self.ax1.setHighlighted(True, color='green')
+            
+            self.setEnabledCcaToolbar(False)
+            self.ccaToolBar.setVisible(True)
+            self.annotateSingleMotherBudPairButton.setEnabled(True)
+            self.annotateSingleMotherBudPairButton.action.setVisible(True)
         else:
             frame_to_restore = self.annotateSingleMothBudPairState.get(
                 'frame_i_to_restore'
@@ -14403,7 +14460,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.annotateSingleMothBudPairState['last_annot_frame_i'],
             }
             
-            QTimer.singleShot(150, self.autoRange)
+            self.setEnabledCcaToolbar(True)
+            
+            QTimer.singleShot(200, self.autoRange)
 
     def manualAnnotPast_cb(self, checked):
         posData = self.data[self.pos_i]
@@ -23096,7 +23155,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         posData.cca_df = posData.cca_df.dropna()
         posData.cca_df = self.addCcaInfoFromSingleMotherBudPairs(posData.cca_df)
-        posData.cca_df = posData.cca_df[self.cca_df_colnames].copy()
+        posData.cca_df = posData.cca_df[self.cca_df_colnames]
         
         # concatenate new IDs found in past frames (before frame_i-1)
         if found_cca_df_IDs is not None:
@@ -30889,6 +30948,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             assign_unique_new_IDs=True, specific_IDs=None, unique_ID=None,
             dont_return_tracked_lab=False, return_assignments=False,
         ):
+        from .trackers.CellACDC import CellACDC_tracker
+        
         if self.trackWithAcdcAction.isChecked():
             tracked_result = CellACDC_tracker.track_frame(
                 prev_lab, prev_rp, curr_lab, curr_rp,
