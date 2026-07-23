@@ -30268,14 +30268,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if _delID in rp.IDs_set:
                 is_any_id_present = True
                 break
-        
-        if not is_any_id_present:
-            return lab, delMask
 
         if delMask is None:
             delMask = np.zeros(lab.shape, dtype=bool)
         else:
             delMask[:] = False
+            
+        if not is_any_id_present:
+            return lab, delMask
         
         if single_slice_del_in_3D:
             delMask2D = self.get_2Dlab(delMask)
@@ -31168,11 +31168,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             tracked_lost_IDs = add_info['mothers']
             self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
             assignments = add_info['assignments']
+            if add_info['to_track_tracked_objs_2nd_step'] is not None:
+                posData = self.data[self.pos_i]
+                posData.acdcTracker2stepsAnnotInfo[
+                    posData.frame_i] = add_info[
+                        'to_track_tracked_objs_2nd_step']                
         elif self._rtTrackerName == 'CellACDC_2steps':
             assignments = add_info['assignments']
             if add_info['to_track_tracked_objs_2nd_step'] is not None:
                 posData = self.data[self.pos_i]
-                posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = add_info['to_track_tracked_objs_2nd_step']
+                posData.acdcTracker2stepsAnnotInfo[
+                    posData.frame_i] = add_info[
+                        'to_track_tracked_objs_2nd_step']
         elif self._rtTrackerName == 'Cell-ACDC':
             assignments = add_info['assignments']
             

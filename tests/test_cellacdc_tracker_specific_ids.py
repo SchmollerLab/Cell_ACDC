@@ -22,7 +22,7 @@ def test_track_frame_specific_ids_only_tracks_requested_current_ids():
         dtype=np.uint16,
     )
 
-    tracked_lab, assignments = CellACDC_tracker.track_frame(
+    tracked_lab, add_info = CellACDC_tracker.track_frame(
         prev_lab,
         regionprops(prev_lab),
         lab,
@@ -35,7 +35,7 @@ def test_track_frame_specific_ids_only_tracks_requested_current_ids():
     )
 
     np.testing.assert_array_equal(tracked_lab, lab)
-    assert assignments['assignments'] == {}
+    assert add_info['assignments'] == {}
 
 
 def test_track_frame_specific_ids_skips_merging_with_unrelated_current_labels():

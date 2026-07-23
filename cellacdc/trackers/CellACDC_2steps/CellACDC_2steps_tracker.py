@@ -17,6 +17,7 @@ from ..CellACDC.CellACDC_tracker import _normalize_specific_IDs
 
 from cellacdc._types import NotGUIParam
 
+
 def _format_tracking_result(
         tracked_lab,
         assignments,
@@ -138,6 +139,8 @@ class tracker:
             specific_IDs: NotGUIParam=None,
             dont_return_tracked_lab: NotGUIParam=False,
             return_assignments: NotGUIParam=False,
+            prev_rp: NotGUIParam=None,
+            curr_rp: NotGUIParam=None,
         ):
         """Track two consecutive frames in two steps. First step based on 
         `overlap_threshold` and second step tracks only lost objects to new 
@@ -174,8 +177,17 @@ class tracker:
         specific_IDs = _normalize_specific_IDs(specific_IDs)
         to_track_tracked_objs_2nd_step = None
         
-        prev_rp = skimage.measure.regionprops(prev_frame_lab)
-        curr_rp = skimage.measure.regionprops(current_frame_lab)
+        from cellacdc.regionprops import acdcRegionprops as acdcRegionprops
+        if prev_rp is None:
+            prev_rp = acdcRegionprops(
+                prev_frame_lab, 
+                precache_centroids=False
+                )
+        if curr_rp is None:
+            curr_rp = acdcRegionprops(
+                current_frame_lab, 
+                precache_centroids=False
+                )
         
         tracked_lab_1st_step, add_info = CellACDC_tracker.track_frame(
             prev_frame_lab, 
@@ -198,7 +210,10 @@ class tracker:
         
         prev_rp_mapper = {obj.label: obj for obj in prev_rp}
         
-        tracked_rp_1st_step = skimage.measure.regionprops(tracked_lab_1st_step)
+        tracked_rp_1st_step = acdcRegionprops(
+            tracked_lab_1st_step, 
+            precache_centroids=False
+            )
         tracked_rp_1st_step_mapper = {
             obj.label: obj for obj in tracked_rp_1st_step    
         }
@@ -315,7 +330,9 @@ class tracker:
 
             # Follow second-step remaps transitively and guard against loops.
             visited = set()
-            while tracked_ID in assignments_step_2 and tracked_ID not in visited:
+            while (tracked_ID in assignments_step_2 
+                   and tracked_ID not in visited
+                   ):
                 visited.add(tracked_ID)
                 tracked_ID = assignments_step_2[tracked_ID]
 

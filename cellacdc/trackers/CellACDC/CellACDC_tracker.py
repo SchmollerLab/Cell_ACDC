@@ -10,7 +10,6 @@ from skimage.measure import regionprops
 from skimage.segmentation import relabel_sequential
 
 from cellacdc import core, printl, debugutils, GUI_INSTALLED
-from cellacdc.regionprops import acdcRegionprops
 
 try:
     from cellacdc.precompiled.precompiled_functions import (
@@ -43,7 +42,12 @@ def _normalize_specific_IDs(specific_IDs):
         return set(specific_IDs)
     return {specific_IDs}
 
-def _filter_subset_assignments(old_IDs, tracked_IDs, all_curr_IDs, specific_IDs):
+def _filter_subset_assignments(
+    old_IDs, 
+    tracked_IDs, 
+    all_curr_IDs, 
+    specific_IDs
+    ):
     if specific_IDs is None:
         return old_IDs, tracked_IDs
 
@@ -68,7 +72,8 @@ def calc_Io_matrix(
         specific_IDs=None,
         denom: str='area_prev'
     ):
-    
+    from cellacdc.regionprops import acdcRegionprops
+
     specific_IDs = _normalize_specific_IDs(specific_IDs)
     if IDs_curr_untracked is None and isinstance(rp, acdcRegionprops):
         IDs_curr_untracked = rp.IDs
@@ -100,12 +105,16 @@ def calc_Io_matrix(
         use_union = denom == 'union'
         curr_IDs_arr  = np.array(IDs_curr_untracked, dtype=np.uint32)
         prev_IDs_arr  = np.array(IDs_prev,           dtype=np.uint32)
-        prev_areas_arr = np.array([obj.area for obj in prev_rp], dtype=np.uint32)
+        prev_areas_arr = np.array(
+            [obj.area for obj in prev_rp], 
+            dtype=np.uint32
+            )
         if use_union:
             rp_mapper = {obj.label: obj for obj in rp}
             curr_areas_arr = np.array(
-                [rp_mapper[ID].area for ID in IDs_curr_untracked], dtype=np.uint32
-            )
+                [rp_mapper[ID].area for ID in IDs_curr_untracked], 
+                dtype=np.uint32
+                )
         else:
             curr_areas_arr = np.empty(0, dtype=np.uint32)
         lab_u32      = np.asarray(lab,      dtype=np.uint32)
@@ -166,28 +175,27 @@ def assign(
         printl(f'IDs in previous frame: {IDs_prev}')
 
     for i, j in enumerate(max_IoA_col_idx):
-        if daughters_list is not None:
-            if i in daughters_list:
+        if daughters_list is not None and i in daughters_list:
+            continue
+
+        IoA_thresh_temp = (IoA_thresh_aggr 
+                           if (aggr_track and i in aggr_track) 
+                           else IoA_thresh
+                           )
+        max_IoU = IoA_matrix[i, j]
+        if max_IoU < IoA_thresh_temp:
+            continue
+
+        count = counts_dict[j]
+        if count > 1:
+            best_i_for_j = IoA_matrix[:, j].argmax() # assure no duplicates in tracked_IDs
+            if i != best_i_for_j:
                 continue
 
-        if aggr_track:
-            if i in aggr_track:
-                IoA_thresh_temp = IoA_thresh_aggr
-            else:
-                IoA_thresh_temp = IoA_thresh
-        else:
-            IoA_thresh_temp = IoA_thresh
-        max_IoU = IoA_matrix[i,j]
-        count = counts_dict[j]
-        if max_IoU >= IoA_thresh_temp:
-            tracked_ID = IDs_prev[j]
-            if count == 1:
-                old_ID = IDs_curr_untracked[i]
-            elif count > 1:
-                old_ID_idx = IoA_matrix[:,j].argmax()
-                old_ID = IDs_curr_untracked[old_ID_idx]
-            tracked_IDs.append(tracked_ID)
-            old_IDs.append(old_ID)
+        tracked_ID = IDs_prev[j]
+        old_ID = IDs_curr_untracked[i]
+        tracked_IDs.append(tracked_ID)
+        old_IDs.append(old_ID)
 
     return old_IDs, tracked_IDs
 
@@ -402,8 +410,11 @@ def track_frame(
         return_all=False, aggr_track=None, IoA_matrix=None, 
         IoA_thresh_aggr=None, IDs_prev=None, return_prev_IDs=False,
         mother_daughters=None, denom_overlap_matrix = 'area_prev',
-        return_assignments=False, specific_IDs=None, dont_return_tracked_lab=False
+        return_assignments=False, specific_IDs=None, 
+        dont_return_tracked_lab=False
     ):
+    from cellacdc.regionprops import acdcRegionprops
+    
     if not np.any(lab):
         # Skip empty frames
         return lab
@@ -476,20 +487,20 @@ def track_frame(
 
     # old_new_ids = dict(zip(old_IDs, tracked_IDs)) # for now not used, but could be useful in the future
     
-    if return_all and dont_return_tracked_lab:
+    add_info = {
+        'IoA_matrix': IoA_matrix,
+        'assignments': assignments,
+        'tracked_IDs': tracked_IDs,
+        # 'IDs_prev': IDs_prev,
+    }
+    
+    if dont_return_tracked_lab:
         # special case where we want to only get the assignments but need the rest too!
-        return IoA_matrix, assignments, tracked_IDs
-    elif return_all:
-        return tracked_lab, IoA_matrix, assignments, tracked_IDs # remove tracked_IDs and change code in CellACDC_tracker.py if causing problems
-    elif dont_return_tracked_lab:
-        return assignments
-    elif return_assignments:
-        add_info = {
-            'assignments': assignments,
-        }
-        return tracked_lab, add_info
-    else:
+        return add_info
+    elif not return_all and not return_assignments:
         return tracked_lab
+    else:
+        return tracked_lab, add_info
 
 class tracker:
     def __init__(self, **params):
