@@ -22349,12 +22349,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateAllImages()
 
         self.navSpinBox.setValueNoEmit(posData.frame_i+1)
-        if self.labelsGrad.showLabelsImgAction.isChecked():
-            self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
+        # if self.labelsGrad.showLabelsImgAction.isChecked():
+        #     self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
         self.updateLookuptable()
         self.updateFramePosLabel()
         self.updateViewerWindow()
-        self.updateTimestampFrame()
+        # self.updateTimestampFrame()
         self.updateHighlightedAxis()
         self.navigateScrollBarStartedMoving = False
 
