@@ -16336,6 +16336,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.typingEditID = False
         
     def eventFilter(self, obj, ev):
+        if not getattr(self, 'isDataLoaded', False):
+            return False
+
+        focus = QApplication.focusWidget()
+        if focus is not None and any(
+            focus.inherits(cls) for cls in (
+                'QLineEdit', 'QTextEdit', 'QPlainTextEdit', 'QAbstractSpinBox'
+            )
+        ):
+            return False
         if ev.type() == QEvent.Type.KeyPress:
             for name, key in self.widgetsPersistentShortcut.items():
                 if not key == ev.key():
@@ -22334,12 +22344,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.lab = posData.allData_li[posData.frame_i]['labels']
             posData.rp = posData.allData_li[posData.frame_i]['regionprops']
 
-        # self.setImageImg1()
-        if self.overlayButton.isChecked():
-            self.setOverlayImages()
-
-        if self.navigateScrollBarStartedMoving:
-            self.clearAllItems()
         posData.IDs = posData.rp.IDs
         self.updateLostNewCurrentIDs()
         self.updateAllImages()
