@@ -54,7 +54,7 @@ from qtpy.QtWidgets import (
     QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
     QScrollBar, QCheckBox, QToolButton, QSpinBox, QButtonGroup, QActionGroup, QFileDialog, QAbstractSlider, QMessageBox, QWidget, QGridLayout, 
     QDockWidget, QGraphicsProxyWidget, QVBoxLayout, QRadioButton, 
-    QSpacerItem, QScrollArea, QFormLayout, QGraphicsSceneMouseEvent 
+    QSpacerItem, QScrollArea, QFormLayout, QGraphicsSceneMouseEvent, QApplication
 )
 
 import pyqtgraph as pg
@@ -236,6 +236,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         """Initializer."""
 
         super().__init__(parent)
+        
+        QApplication.instance().installEventFilter(self)
 
         self._version = version
 
@@ -5062,8 +5064,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax2_lostObjScatterItem = self.gui_getLostObjScatterItem()
         self.ax2_lostTrackedScatterItem = self.gui_getTrackedLostObjScatterItem()
         
-        self.gui_createTextAnnotItems(allIDs) # here
-        self.gui_setTextAnnotColors()# here
+        self.gui_createTextAnnotItems(allIDs)
+        self.gui_setTextAnnotColors()
 
         self.setDisabledAnnotOptions(False)
 
@@ -16332,7 +16334,30 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def editingSpinboxValueTimerCallback(self):
         self.typingEditID = False
-    
+        
+    def eventFilter(self, obj, ev):
+        if not getattr(self, 'isDataLoaded', False):
+            return False
+
+        focus = QApplication.focusWidget()
+        if focus is not None and any(
+            focus.inherits(cls) for cls in (
+                'QLineEdit', 'QTextEdit', 'QPlainTextEdit', 'QAbstractSpinBox'
+            )
+        ):
+            return False
+        if ev.type() == QEvent.Type.KeyPress:
+            for name, key in self.widgetsPersistentShortcut.items():
+                if not key == ev.key():
+                    continue
+                action = self.widgetsWithShortcut[name]
+                if hasattr(action, 'click'):
+                    action.click()
+                elif hasattr(action, 'trigger'):
+                    action.trigger()
+                return True
+        return False
+        
     @exception_handler
     def keyPressEvent(self, ev):        
         ctrl = ev.modifiers() == Qt.ControlModifier
@@ -16371,17 +16396,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if ev.key() == Qt.Key_End:
             self.onKeyEnd()
-            
-        for name, key in self.widgetsPersistentShortcut.items():
-            if not key == ev.key():
-                continue
-            action = self.widgetsWithShortcut[name]
-            success = False
-            if hasattr(action, 'click'):
-                action.click()
-            elif hasattr(action, 'trigger'):
-                action.trigger()
-            break
         
         modifiers = ev.modifiers()
         isAltModifier = modifiers == Qt.AltModifier
@@ -22328,21 +22342,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.allData_li[posData.frame_i]['regionprops'] = rp
         else:
             posData.lab = posData.allData_li[posData.frame_i]['labels']
+            posData.rp = posData.allData_li[posData.frame_i]['regionprops']
 
-        self.setImageImg1()
-        if self.overlayButton.isChecked():
-            self.setOverlayImages()
-
-        if self.navigateScrollBarStartedMoving:
-            self.clearAllItems()
+        posData.IDs = posData.rp.IDs
+        self.updateLostNewCurrentIDs()
+        self.updateAllImages()
 
         self.navSpinBox.setValueNoEmit(posData.frame_i+1)
-        if self.labelsGrad.showLabelsImgAction.isChecked():
-            self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
+        # if self.labelsGrad.showLabelsImgAction.isChecked():
+        #     self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
         self.updateLookuptable()
         self.updateFramePosLabel()
         self.updateViewerWindow()
-        self.updateTimestampFrame()
+        # self.updateTimestampFrame()
         self.updateHighlightedAxis()
         self.navigateScrollBarStartedMoving = False
 
