@@ -10,6 +10,10 @@ import traceback as traceback
 
 from . import GUI_INSTALLED
 
+# print("\n=== cellacdc.regionprops imported ===")
+# traceback.print_stack(limit=20)
+# print("=====================================\n")
+
 msg = ''
 try:
     from cellacdc.precompiled.precompiled_functions import (

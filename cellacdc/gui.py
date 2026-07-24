@@ -285,12 +285,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             getattr(self, key).setToolTip(tooltip)
             getattr(self, key)._tooltip = tooltip
 
-    def run(self, module='acdc_gui', logs_path=None): 
-        from . import regionprops as acdc_regionprops
-        
-        self._acdcRegionProps = acdc_regionprops.acdcRegionprops
-        self._acdc_regionprops = acdc_regionprops
-               
+    def run(self, module='acdc_gui', logs_path=None):                
         self.setWindowIcon()
         self.setWindowTitle()
         
@@ -314,6 +309,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.log_path = log_path
         self.log_filename = log_filename
         self.logs_path = logs_path
+
+        from . import regionprops as acdc_regionprops
+        
+        self._acdcRegionProps = acdc_regionprops.acdcRegionprops
+        self._acdc_regionprops = acdc_regionprops
 
         self.initProfileModels()
         self.loadLastSessionSettings()
