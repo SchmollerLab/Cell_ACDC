@@ -198,7 +198,7 @@ def assign(
         tracked_ID = IDs_prev[j]
         
         if specific_IDs is not None:
-            if tracked_ID in static_IDs:
+            if tracked_ID in static_IDs: # make sure we dont merge with static IDs
                 continue
         old_ID = IDs_curr_untracked[i]
         tracked_IDs.append(tracked_ID)
