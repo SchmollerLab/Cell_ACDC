@@ -212,7 +212,6 @@ class normal_division_tracker:
     - segm_video (ndarray): The segmented video sequence.
     - tracked_video (ndarray): The tracked video sequence.
     - assignments (dict): Dictionary mapping IDs to assigned values.
-    - assignments (dict): Dictionary mapping IDs to assigned values.
     - IDs_prev (list): A list mapping index from IoA matrix to IDs. (Index in 
     list = Index in IoA matrix)
     - rp (list): The region properties of the current frame.
