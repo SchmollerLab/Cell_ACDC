@@ -3293,7 +3293,7 @@ def _subprocess_run_command(command, shell=True, callback='check_call'):
             f'[WARNING]: Command `{command}` failed. '
             f'Trying with `{commad_parts}`...'
         )
-        out = func(commad_parts, shell=shell)
+        out = func(commad_parts, shell=False)
     
     return out
 
@@ -3778,14 +3778,14 @@ def _install_pytorch_cli(
             cmd_list = [cmd.strip('"') for cmd in cmd_list]
             cmd_list = [cmd.strip("'") for cmd in cmd_list]
             cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
-            subprocess.check_call(cmd_list, shell=True)
+            subprocess.check_call(cmd_list, shell=False)
     else:
         cmd_list = shlex.split(selected_command)
         cmd_list = cmd_list[1:]
         cmd_list = [cmd.strip('"') for cmd in cmd_list]
         cmd_list = [cmd.strip("'") for cmd in cmd_list]
         cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
-        subprocess.check_call([sys.executable, *cmd_list], shell=True)
+        subprocess.check_call([sys.executable, *cmd_list], shell=False)
 
 def _get_pkg_command_pip_install(
         pkg_command, 
