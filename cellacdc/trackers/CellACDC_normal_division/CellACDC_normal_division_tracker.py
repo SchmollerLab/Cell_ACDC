@@ -212,6 +212,7 @@ class normal_division_tracker:
     - segm_video (ndarray): The segmented video sequence.
     - tracked_video (ndarray): The tracked video sequence.
     - assignments (dict): Dictionary mapping IDs to assigned values.
+    - assignments (dict): Dictionary mapping IDs to assigned values.
     - IDs_prev (list): A list mapping index from IoA matrix to IDs. (Index in 
     list = Index in IoA matrix)
     - rp (list): The region properties of the current frame.
@@ -413,6 +414,7 @@ class normal_division_tracker:
         daughters_tracked = set()
         for _, daughter_idxs in self.mother_daughters:
             daughter_IDs_tracked = IoA_index_daughter_to_ID(
+            daughter_IDs_tracked = IoA_index_daughter_to_ID(
                 daughter_idxs, self.assignments, self.IDs_curr_untracked
             )
             if daughter_IDs_tracked:
@@ -533,8 +535,12 @@ class normal_division_tracker:
         merged_assignments = {}
         for current_ID in current_frame_IDs:
             tracked_ID = assignments_step_1.get(current_ID, current_ID)
+            tracked_ID = assignments_step_1.get(current_ID, current_ID)
 
             visited = set()
+            while (tracked_ID in assignments_step_2 
+                   and tracked_ID not in visited
+                   ):
             while (tracked_ID in assignments_step_2 
                    and tracked_ID not in visited
                    ):
