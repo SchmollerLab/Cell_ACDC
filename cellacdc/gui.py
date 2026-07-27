@@ -9340,10 +9340,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
             wl_update=True, wl_track_og_curr=False,wl_update_lab=False, # wl stuff
         ):
-        self.update_rp(draw=True, debug=False, # og stuff
-                       assignments=None, deletionIDs=None, # very quick upates, rp labels are changed but rest is same
-                       specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
-                       wl_update=True, wl_track_og_curr=False,wl_update_lab=False, # wl stuff
+        self.update_rp(draw=draw, debug=debug, # og stuff
+                       assignments=assignments, deletionIDs=deletionIDs, # very quick upates, rp labels are changed but rest is same
+                       specific_IDs=specific_IDs, use_curr_view=use_curr_view, use_bbox=use_bbox, preloaded_bbox=preloaded_bbox, # for local updates to PR
+                       wl_update=wl_update, wl_track_og_curr=wl_track_og_curr,wl_update_lab=wl_update_lab, # wl stuff
                        )
         waitcond.wakeAll()
 
@@ -21688,26 +21688,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if self.switchPlaneCombobox.depthAxes() == 'z': 
                 posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.zSliceSpinbox.setValueNoEmit(z+1)
-            img = self._getImageupdateAllImages(None)
-            self.img1.setCurrentZsliceIndex(z)
-            self.img1.setImage(
-                img, next_frame_image=self.nextFrameImage(),
-                scrollbar_value=posData.frame_i+2
-            )
-            try:
-                self.setOverlayImages()
-            except Exception as err:
-                pass
+            # img = self._getImageupdateAllImages(None)
+            # self.img1.setCurrentZsliceIndex(z)
+            # self.img1.setImage(
+            #     img, next_frame_image=self.nextFrameImage(),
+            #     scrollbar_value=posData.frame_i+2
+            # )
+            # try:
+            #     self.setOverlayImages()
+            # except Exception as err:
+            #     pass
             
-            if self.labelsGrad.showLabelsImgAction.isChecked():
-                self.img2.setImage(posData.lab, z=z, autoLevels=False)
-            self.updateViewerWindow()
-            self.setTextAnnotZsliceScrolling()
-            self.setGraphicalAnnotZsliceScrolling()
-            self.setOverlayLabelsItems()
-            self.drawPointsLayers(computePointsLayers=False)
+            # if self.labelsGrad.showLabelsImgAction.isChecked():
+            #     self.img2.setImage(posData.lab, z=z, autoLevels=False)
+            # self.updateViewerWindow()
+            # self.setTextAnnotZsliceScrolling()
+            # self.setGraphicalAnnotZsliceScrolling()
+            # self.setOverlayLabelsItems()
+            # self.drawPointsLayers(computePointsLayers=False)
             self.zSliceScrollBarStartedMoving = False
-            self.highlightSearchedID(self.highlightedID, force=True)
+            # self.highlightSearchedID(self.highlightedID, force=True)
+            self.updateAllImages()
             
     def maxProjToggleActionTriggered(self):
         posData = self.data[self.pos_i]
@@ -22349,12 +22350,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateAllImages()
 
         self.navSpinBox.setValueNoEmit(posData.frame_i+1)
-        if self.labelsGrad.showLabelsImgAction.isChecked():
-            self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
+        # if self.labelsGrad.showLabelsImgAction.isChecked():
+        #     self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
         self.updateLookuptable()
         self.updateFramePosLabel()
         self.updateViewerWindow()
-        self.updateTimestampFrame()
+        # self.updateTimestampFrame()
         self.updateHighlightedAxis()
         self.navigateScrollBarStartedMoving = False
 
@@ -30030,7 +30031,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return rp_2D
 
     # @exec_time
-    def setAllTextAnnotations(self, labelsToSkip=None):
+    def setAllTextAnnotations(self, labelsToSkip=None, updateAllTextAnnotations=True):
         self.setLostNewOldPrevIDs()
         posData = self.data[self.pos_i]
         
@@ -30043,7 +30044,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             getCurrentZfunc=self.z_lab, 
             getObjCentroidFunc=self.getObjCentroid,
             rp_func=self.get2DRP,
-            rp3D=posData.rp
+            rp3D=posData.rp,
+            updateAllTextAnnotations=updateAllTextAnnotations
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
@@ -30052,7 +30054,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getObjCentroidFunc=self.getObjCentroid,
             rp_func=self.get2DRP,
-            rp3D=posData.rp
+            rp3D=posData.rp,
+            updateAllTextAnnotations=updateAllTextAnnotations
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
@@ -30187,7 +30190,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     @exception_handler
     def updateAllImages(
             self, image=None, computePointsLayers=True, computeContours=True,
-            updateLookuptable=True
+            updateLookuptable=True, updateAllTextAnnotations=True
         ):
         self.clearAllItems()
 
@@ -30213,7 +30216,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.update_rp()
 
         # Annotate ID and draw contours
-        self.setAllTextAnnotations()    
+        self.setAllTextAnnotations(updateAllTextAnnotations=updateAllTextAnnotations)    
         self.setAllContoursImages(
             compute=False
         )
