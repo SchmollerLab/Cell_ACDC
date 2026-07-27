@@ -22419,10 +22419,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # make rp remporarliy not stale anymore
         rp.update_regionprops_via_assignments(assignments, lab) 
-        tracked_lab, assignments_new = self.trackFrame(
+        assignments_new = self.trackFrame(
             nextLab, nextRp, lab, rp, rp.IDs,
             assign_unique_new_IDs=False, return_assignments=True,
-            specific_IDs=[newID], 
+            specific_IDs=[newID], dont_return_tracked_lab=True
         )
         # restore rp
         posData.rp.update_regionprops_via_assignments(reverse_assignments, lab)
@@ -30922,8 +30922,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 trackedID, assignments = self.trackNewIDtoNewIDsFutureFrame(added_ID, obj, assignments)
                 if trackedID is None:
                     self.clearAssignedObjsSecondStep()
-                    # update assignments
-                    
                     continue
                 posData.lab[obj.slice][obj.image] = trackedID
         
@@ -30962,6 +30960,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ):
         from .trackers.CellACDC import CellACDC_tracker
         
+        handle_specific_IDs_self  = False
+        return_assignments_og = return_assignments
+        dont_return_tracked_lab_og = dont_return_tracked_lab
+        if (
+            specific_IDs is not None
+            and (
+                self.trackWithYeazAction.isChecked()
+                or (
+                    self.realTimeTracker_kwargs is not None 
+                    and 'specific_IDs' not in self.realTimeTracker_kwargs
+                    )
+                )
+            ):
+            # Yeaz tracker or custom tracker without specific_IDs functionality
+            return_assignments = True
+            dont_return_tracked_lab = True
+            handle_specific_IDs_self = True
+            curr_lab_backup = curr_lab.copy()
+        
         if self.trackWithAcdcAction.isChecked():
             tracked_result = CellACDC_tracker.track_frame(
                 prev_lab, prev_rp, curr_lab, curr_rp,
@@ -30981,8 +30998,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
         else:
             tracked_result = self.trackFrameCustomTracker(
-                prev_lab, curr_lab, prev_rp, curr_rp, specific_IDs=specific_IDs, unique_ID=unique_ID,
-                dont_return_tracked_lab=dont_return_tracked_lab, return_assignments=return_assignments
+                prev_lab, curr_lab, prev_rp, curr_rp, 
+                specific_IDs=specific_IDs, unique_ID=unique_ID,
+                dont_return_tracked_lab=dont_return_tracked_lab, 
+                return_assignments=return_assignments
             )
 
         # Check if tracker also returns additional info
@@ -31001,7 +31020,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             tracked_lab = tracked_result
         
-        if not return_assignments and not dont_return_tracked_lab:
+        if (
+            not return_assignments_og 
+            and not dont_return_tracked_lab_og 
+            and not handle_specific_IDs_self
+            ):
             return tracked_lab
 
         # get assignments
@@ -31014,9 +31037,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     assignments[old_lab] = new_lab
                 except:
                     import pdb; pdb.set_trace()
-
-        if dont_return_tracked_lab:
+                    
+        if handle_specific_IDs_self:
+            # Filter assignments to only include specific_IDs
+            assignments = {old_ID: new_ID 
+                           for old_ID, new_ID in assignments.items()
+                           if old_ID in specific_IDs
+                           and new_ID not in curr_rp.IDs_set # avoid merging
+                           }
+                    
+        
+        if dont_return_tracked_lab_og:
             return assignments
+        
+        if handle_specific_IDs_self:
+            # apply assignments to tracked_lab
+            for old_ID, new_ID in assignments.items():
+                if old_ID == new_ID:
+                    continue # nothing to do
+                obj_curr = curr_rp.get_obj_from_ID(old_ID)
+                curr_lab_backup[obj_curr.slice][obj_curr.image] = new_ID
+            tracked_lab = curr_lab_backup
+                    
+        if not return_assignments_og and not dont_return_tracked_lab_og:
+            return tracked_lab
+
         return tracked_lab, assignments
     
     def clearAssignedObjsSecondStep(self):
@@ -31167,12 +31212,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         QTimer.singleShot(50, partial(
             self.statusBarLabel.setText, staturBarLabelText
         ))
-        if return_assignments and return_lab:
-            return tracked_lab, assignments
-        elif return_assignments:
+        if return_assignments:
             return assignments
-        elif return_lab:
-            return tracked_lab
 
     def handleAdditionalInfoRealTimeTracker(self, prev_rp, add_info):
         assignments = None
