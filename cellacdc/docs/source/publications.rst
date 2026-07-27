@@ -24,6 +24,8 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Narduzzi, G., et al. <i>Weak interactions drive selective proteome demixing and tune the differential response to environmental perturbations</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.07.22.739830">10.64898/2026.07.22.739830</a>.</li><br>
+
       <li>Smith, W., et al. <i>Proximity labeling at H3K9me3 reveals VRK-1 regulate global chromatin distribution in C. elegans</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.07.07.737140">10.64898/2026.07.07.737140</a>.</li><br>
 
       <li>Serna, S. E., et al. <i>ABA-AA: A simple, reversible, and non-toxic anchor-away system for effective nuclear protein depletion</i>. <b>Cell Reports Methods</b> (2026) DOI: <a href="https://doi.org/10.1016/j.crmeth.2026.101517">10.1016/j.crmeth.2026.101517</a>.</li><br>
