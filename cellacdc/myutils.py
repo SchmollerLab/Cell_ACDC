@@ -1,6 +1,7 @@
 import os
 import re
 import ast
+import shlex
 
 import typing
 from typing import Literal, List, Callable, Tuple, Dict
@@ -55,6 +56,7 @@ from . import _warnings
 from . import urls
 from . import qrc_resources_path
 from . import settings_folderpath
+from . import cellacdc_installation_path
 
 from .models._cellpose_base import min_target_versions_cp
 
@@ -1061,7 +1063,9 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
     return 'ND'  
 
 def get_git_branch_name():
-    command = 'git rev-parse --abbrev-ref HEAD'
+    command = (
+        f'git -C "{cellacdc_installation_path}" rev-parse --abbrev-ref HEAD'
+    )
     output = _subprocess_run_command(
         command, shell=False, callback='check_output'
     )
@@ -3284,11 +3288,12 @@ def _subprocess_run_command(command, shell=True, callback='check_call'):
     try:
         out = func(command, shell=shell)
     except Exception as err:
+        commad_parts = shlex.split(command)
         print(
             f'[WARNING]: Command `{command}` failed. '
-            f'Trying with `{command.split()}`...'
+            f'Trying with `{commad_parts}`...'
         )
-        out = func(command.split(), shell=shell)
+        out = func(commad_parts, shell=shell)
     
     return out
 
@@ -3767,15 +3772,16 @@ def _install_pytorch_cli(
     
     if selected_command.startswith('conda'):
         try:
-            subprocess.check_call([selected_command], shell=True)
+            subprocess.check_call([commad_parts], shell=True)
         except Exception as err:
-            cmd_list = selected_command.split()
+            cmd_list = shlex.split(commad_parts)
             cmd_list = [cmd.strip('"') for cmd in cmd_list]
             cmd_list = [cmd.strip("'") for cmd in cmd_list]
             cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
             subprocess.check_call(cmd_list, shell=True)
     else:
-        cmd_list = selected_command.split()[1:]
+        cmd_list = shlex.split(commad_parts)
+        cmd_list = cmd_list[1:]
         cmd_list = [cmd.strip('"') for cmd in cmd_list]
         cmd_list = [cmd.strip("'") for cmd in cmd_list]
         cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
@@ -4071,7 +4077,7 @@ def run_fiji_command(command=None, logger_func=print):
         return False
 
     separator = '-'*100
-    commands = (command, command.split())
+    commands = (command, shlex.split(command))
     for args in commands:
         logger_func(
             f'{separator}\n'
