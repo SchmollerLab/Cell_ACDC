@@ -3772,15 +3772,15 @@ def _install_pytorch_cli(
     
     if selected_command.startswith('conda'):
         try:
-            subprocess.check_call([commad_parts], shell=True)
+            subprocess.check_call([selected_command], shell=True)
         except Exception as err:
-            cmd_list = shlex.split(commad_parts)
+            cmd_list = shlex.split(selected_command)
             cmd_list = [cmd.strip('"') for cmd in cmd_list]
             cmd_list = [cmd.strip("'") for cmd in cmd_list]
             cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
             subprocess.check_call(cmd_list, shell=True)
     else:
-        cmd_list = shlex.split(commad_parts)
+        cmd_list = shlex.split(selected_command)
         cmd_list = cmd_list[1:]
         cmd_list = [cmd.strip('"') for cmd in cmd_list]
         cmd_list = [cmd.strip("'") for cmd in cmd_list]
