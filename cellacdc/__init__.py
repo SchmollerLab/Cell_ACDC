@@ -33,15 +33,62 @@ def is_conda_env():
     return True
 
 def import_torch():
-    if is_conda_env():
-       return
+    """Import torch early to preload compatible runtime libraries.
     
+    On Windows, some packages (e.g., micro-sam) install libraries that can
+    conflict with h5py's bundled HDF5 DLLs. Importing torch before h5py
+    preloads compatible runtime libraries and prevents the DLL load failure.
+    """
     try:
         import torch
-    except ModuleNotFoundError:
+    except ImportError:
         return
 
 import_torch()
+
+
+def import_h5py():
+    """Import h5py after torch to avoid DLL conflicts on Windows.
+    
+    Some packages (e.g., micro-sam) install libraries that can conflict
+    with h5py's bundled HDF5 DLLs. Importing torch first preloads
+    compatible runtime libraries, allowing h5py to load successfully.
+    """
+    try:
+        import h5py
+        return h5py
+    except ModuleNotFoundError as e:
+        print('*'*60)
+        print(
+            '[ERROR]: The required library `h5py` is not installed. '
+            'Please install it with one of the following commands:\n'
+            '  conda install -c conda-forge h5py\n'
+            '  pip install --no-cache-dir h5py'
+        )
+        print('*'*60)
+        raise
+    except ImportError as e:
+        error_msg = str(e)
+        is_win = sys.platform.startswith('win')
+        if is_win and 'DLL load failed' in error_msg:
+            print('*'*60)
+            print(
+                '[ERROR]: Failed to import `h5py` because of a DLL conflict. '
+                'This can happen after installing packages like `micro-sam`. '
+            )
+            print(
+                'Try one of the following fixes:\n'
+                '1. Reinstall h5py with conda: '
+                '`conda install -c conda-forge h5py`\n'
+                '2. Reinstall h5py with pip: '
+                '`pip uninstall h5py -y && pip install --no-cache-dir h5py`\n'
+                '3. If the issue persists, please report it at '
+                'https://github.com/SchmollerLab/Cell_ACDC/issues'
+            )
+            print('*'*60)
+        raise
+
+import_h5py()
 
 
 import shutil
