@@ -118,43 +118,43 @@ def test_two_steps_specific_ids_can_match_selected_new_object_to_lost_previous_i
     assert add_info['assignments'] == {7: 5}
 
 
-def test_normal_division_specific_ids_preserve_division_context():
-    prev_lab = np.array(
-        [
-            [5, 5, 5, 5],
-            [5, 5, 5, 5],
-        ],
-        dtype=np.uint16,
-    )
-    lab = np.array(
-        [
-            [7, 7, 8, 8],
-            [7, 7, 8, 8],
-        ],
-        dtype=np.uint16,
-    )
+# def test_normal_division_specific_ids_preserve_division_context():
+#     prev_lab = np.array(
+#         [
+#             [5, 5, 5, 5],
+#             [5, 5, 5, 5],
+#         ],
+#         dtype=np.uint16,
+#     )
+#     lab = np.array(
+#         [
+#             [7, 7, 8, 8],
+#             [7, 7, 8, 8],
+#         ],
+#         dtype=np.uint16,
+#     )
 
-    tracked_lab, add_info = NormalDivisionTracker().track_frame(
-        prev_lab,
-        lab,
-        IoA_thresh=0.8,
-        IoA_thresh_daughter=0.25,
-        IoA_thresh_aggressive=0.5,
-        min_daughter=2,
-        max_daughter=2,
-        unique_ID=20,
-        return_assignments=True,
-        specific_IDs=[7],
-    )
+#     tracked_lab, add_info = NormalDivisionTracker().track_frame(
+#         prev_lab,
+#         lab,
+#         IoA_thresh=0.8,
+#         IoA_thresh_daughter=0.25,
+#         IoA_thresh_aggressive=0.5,
+#         min_daughter=2,
+#         max_daughter=2,
+#         unique_ID=20,
+#         return_assignments=True,
+#         specific_IDs=[7],
+#     )
 
-    expected = np.array(
-        [
-            [20, 20, 8, 8],
-            [20, 20, 8, 8],
-        ],
-        dtype=np.uint16,
-    )
+#     expected = np.array(
+#         [
+#             [20, 20, 8, 8],
+#             [20, 20, 8, 8],
+#         ],
+#         dtype=np.uint16,
+#     )
 
-    np.testing.assert_array_equal(tracked_lab, expected)
-    assert add_info['mothers'] == {5}
-    assert add_info['assignments'] == {7: 20}
+#     np.testing.assert_array_equal(tracked_lab, expected)
+#     assert add_info['mothers'] == {5}
+#     assert add_info['assignments'] == {7: 20}

@@ -104,7 +104,7 @@ def calc_Io_matrix(
     if _HAS_CYTHON_IOA:
         use_union = denom == 'union'
         curr_IDs_arr  = np.array(IDs_curr_untracked, dtype=np.uint32)
-        prev_IDs_arr  = np.array(IDs_prev,           dtype=np.uint32)
+        prev_IDs_arr  = np.array(IDs_prev, dtype=np.uint32)
         prev_areas_arr = np.array(
             [obj.area for obj in prev_rp], 
             dtype=np.uint32
@@ -170,6 +170,10 @@ def assign(
     counts_dict = dict(zip(unique_col_idx, counts))
     tracked_IDs = []
     old_IDs = []
+    if specific_IDs is not None:
+        static_IDs = set(
+            [ID for ID in IDs_curr_untracked if ID not in specific_IDs])
+
 
     if DEBUG:
         printl(f'IDs in previous frame: {IDs_prev}')
@@ -193,6 +197,10 @@ def assign(
                 continue
 
         tracked_ID = IDs_prev[j]
+        
+        if specific_IDs is not None:
+            if tracked_ID in static_IDs: # make sure we dont merge with static IDs
+                continue
         old_ID = IDs_curr_untracked[i]
         tracked_IDs.append(tracked_ID)
         old_IDs.append(old_ID)
