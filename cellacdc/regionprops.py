@@ -1231,7 +1231,7 @@ class acdcRegionprops:
             cutout_bbox=cutout_bbox,
         )
             
-    def get_centroid(self, ID, exact=False):
+    def get_centroid(self, ID, exact=False, as_ints=False):
         if exact and ID not in self._centroid_IDs_exact:
             obj = self.get_obj_from_ID(ID)
             centroid = obj.centroid
@@ -1243,6 +1243,8 @@ class acdcRegionprops:
                 return None
             self._centroid_mapper[ID] = centroid
             self._centroid_IDs_exact.add(ID)
+            if as_ints:
+                centroid = tuple(int(c) for c in centroid)
             return centroid
         
         centroid = self._centroid_mapper.get(ID, None)

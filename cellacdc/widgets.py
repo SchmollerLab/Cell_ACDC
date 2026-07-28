@@ -12783,3 +12783,57 @@ class DummyWidget:
     
     def value(self):
         return
+    
+class FadingTrackItem(pg.GraphicsObject):
+    def __init__(self, points, frames, color=(255, 100, 0), n_fade=15,
+                 max_width=4, min_width=1, max_alpha=255, min_alpha=20):
+        super().__init__()
+        self.points = points
+        self.frames = frames
+        self.color = color
+        self.n_fade = max(n_fade, 1)
+        self.max_width, self.min_width = max_width, min_width
+        self.max_alpha, self.min_alpha = max_alpha, min_alpha
+        self._generate_picture()
+
+    def _generate_picture(self):
+        self.picture = QPicture()
+        painter = QPainter(self.picture)
+        n = len(self.points)
+        if n < 2:
+            painter.end()
+            return
+
+        head_frame = self.frames[-1]  # most recent frame in this track
+
+        for i in range(n - 1):
+            f0, f1 = self.frames[i], self.frames[i + 1]
+            if f1 - f0 > 1:
+                # gap in tracking -- don't draw a line across it
+                continue
+
+            dist_from_head = head_frame - f1
+            frac = max(0.0, 1.0 - dist_from_head / self.n_fade)
+
+            alpha = int(self.min_alpha + frac * (self.max_alpha - self.min_alpha))
+            width = self.min_width + frac * (self.max_width - self.min_width)
+
+            pen = QPen(QColor(*self.color, alpha))
+            pen.setWidthF(width)
+            pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+
+            x0, y0 = self.points[i]
+            x1, y1 = self.points[i + 1]
+            painter.drawLine(QPointF(x0, y0), QPointF(x1, y1))
+        painter.end()
+
+    def paint(self, painter, *args):
+        painter.drawPicture(0, 0, self.picture)
+
+    def boundingRect(self):
+        if not self.points:
+            return QRectF()
+        xs = [p[0] for p in self.points]
+        ys = [p[1] for p in self.points]
+        return QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
