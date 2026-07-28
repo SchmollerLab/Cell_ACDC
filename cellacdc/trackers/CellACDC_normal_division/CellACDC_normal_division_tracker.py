@@ -1388,7 +1388,7 @@ class tracker:
               max_daughter:int = 2,
               record_lineage:bool = True,
               return_tracked_lost_centroids:bool = True,
-              lost_IDs_search_range:float = 0,
+              lost_IDs_search_range:float = 10,
               signals = None,
         ):
         """
@@ -1413,7 +1413,8 @@ class tracker:
         Defaults to True.
         - lost_IDs_search_range (float, optional): Maximum distance a cell 
         can move between consecutive frames to still be matched to a lost ID in 
-        the 2nd tracking step. If 0, the 2nd step is skipped entirely. Defaults to 0.
+        the 2nd tracking step. If 0, the 2nd step is skipped entirely. 
+        Defaults to 10.
         
         Returns:
         - list: Tracked video frames.

@@ -171,7 +171,8 @@ def assign(
     tracked_IDs = []
     old_IDs = []
     if specific_IDs is not None:
-        static_IDs = [ID for ID in IDs_curr_untracked if ID not in specific_IDs]
+        static_IDs = set(
+            [ID for ID in IDs_curr_untracked if ID not in specific_IDs])
 
 
     if DEBUG:

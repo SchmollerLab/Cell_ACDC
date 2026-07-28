@@ -237,7 +237,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         super().__init__(parent)
         
-        QApplication.instance().installEventFilter(self)
+        app.installEventFilter(self)
 
         self._version = version
 
@@ -21679,35 +21679,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if singleMove:
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         elif action == SliderMove:
-            if self.zSliceScrollBarStartedMoving and self.isSegm3D:
-                self.clearAx1Items(onlyHideText=True)
-                self.clearAx2Items(onlyHideText=True)
             posData = self.data[self.pos_i]
             idx = (posData.filename, posData.frame_i)
             z = self.zSliceScrollBar.sliderPosition()
             if self.switchPlaneCombobox.depthAxes() == 'z': 
                 posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.zSliceSpinbox.setValueNoEmit(z+1)
-            # img = self._getImageupdateAllImages(None)
-            # self.img1.setCurrentZsliceIndex(z)
-            # self.img1.setImage(
-            #     img, next_frame_image=self.nextFrameImage(),
-            #     scrollbar_value=posData.frame_i+2
-            # )
-            # try:
-            #     self.setOverlayImages()
-            # except Exception as err:
-            #     pass
-            
-            # if self.labelsGrad.showLabelsImgAction.isChecked():
-            #     self.img2.setImage(posData.lab, z=z, autoLevels=False)
-            # self.updateViewerWindow()
-            # self.setTextAnnotZsliceScrolling()
-            # self.setGraphicalAnnotZsliceScrolling()
-            # self.setOverlayLabelsItems()
-            # self.drawPointsLayers(computePointsLayers=False)
             self.zSliceScrollBarStartedMoving = False
-            # self.highlightSearchedID(self.highlightedID, force=True)
             self.updateAllImages()
             
     def maxProjToggleActionTriggered(self):
@@ -22348,14 +22326,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData.IDs = posData.rp.IDs
         self.updateLostNewCurrentIDs()
         self.updateAllImages()
-
-        self.navSpinBox.setValueNoEmit(posData.frame_i+1)
-        # if self.labelsGrad.showLabelsImgAction.isChecked():
-        #     self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
-        self.updateLookuptable()
         self.updateFramePosLabel()
         self.updateViewerWindow()
-        # self.updateTimestampFrame()
         self.updateHighlightedAxis()
         self.navigateScrollBarStartedMoving = False
 
@@ -30031,7 +30003,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return rp_2D
 
     # @exec_time
-    def setAllTextAnnotations(self, labelsToSkip=None, updateAllTextAnnotations=True):
+    def setAllTextAnnotations(
+            self, 
+            labelsToSkip=None, 
+            updateAllTextAnnotations=True
+        ):
         self.setLostNewOldPrevIDs()
         posData = self.data[self.pos_i]
         
@@ -30216,7 +30192,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.update_rp()
 
         # Annotate ID and draw contours
-        self.setAllTextAnnotations(updateAllTextAnnotations=updateAllTextAnnotations)    
+        self.setAllTextAnnotations(
+            updateAllTextAnnotations=updateAllTextAnnotations
+        )    
         self.setAllContoursImages(
             compute=False
         )
@@ -30966,16 +30944,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         handle_specific_IDs_self  = False
         return_assignments_og = return_assignments
         dont_return_tracked_lab_og = dont_return_tracked_lab
-        if (
+        does_it_have_specific_IDs_kwarg = (
             specific_IDs is not None
             and (
                 self.trackWithYeazAction.isChecked()
                 or (
                     self.realTimeTracker_kwargs is not None 
                     and 'specific_IDs' not in self.realTimeTracker_kwargs
-                    )
                 )
-            ):
+            )
+        )
+        if does_it_have_specific_IDs_kwarg:
             # Yeaz tracker or custom tracker without specific_IDs functionality
             return_assignments = True
             dont_return_tracked_lab = True
@@ -31056,6 +31035,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if handle_specific_IDs_self:
             # apply assignments to tracked_lab
             for old_ID, new_ID in assignments.items():
+                if old_ID not in specific_IDs:
+                    continue
+
                 if old_ID == new_ID:
                     continue # nothing to do
                 obj_curr = curr_rp.get_obj_from_ID(old_ID)
