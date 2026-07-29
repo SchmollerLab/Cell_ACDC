@@ -18,6 +18,7 @@ from functools import partial
 from tqdm import tqdm
 from natsort import natsorted
 from typing import Literal, Iterable, Dict, Any, List, Union, Tuple, Set
+from itertools import combinations
 
 import time
 import cv2
@@ -427,8 +428,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.gui_createGraphicsPlots()
         self.gui_addGraphicsItems()
 
-        self.gui_createImg1Widgets()
-        self.gui_createLabWidgets()
+        self.gui_createBottomWidgets()
+        self.gui_createImg2Widgets()
         self.gui_createBottomWidgetsToBottomLayout()
 
         mainContainer = QWidget()
@@ -2061,21 +2062,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.resizeBottomLayoutLineReleased
         )
 
-        # row += 1
-        # mainLayout.addItem(QSpacerItem(5,5), row+1, col, 1, 2)
-
-        # row, col = 1, 2
-        # mainLayout.addLayout(
-        #     self.bottomLayout, row, col, 1, 2, alignment=Qt.AlignLeft
-        # )
-
         row += 1
         mainLayout.addWidget(self.bottomScrollArea, row, col, 1, 2)
         mainLayout.setRowStretch(row, 0)
-
-        # row, col = 2, 1
-        # mainLayout.addWidget(self.terminal, row, col, 1, 4)
-        # self.terminal.hide()
 
         return mainLayout
 
@@ -3823,44 +3812,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
 
         # Drawing mode
-        self.drawIDsContComboBox.currentIndexChanged.connect(
-            self.drawIDsContComboBox_cb
-        )
-        self.drawIDsContComboBox.activated.connect(self.clearComboBoxFocus)
-
-        self.annotateRightHowCombobox.currentIndexChanged.connect(
-            self.annotateRightHowCombobox_cb
-        )
-        self.annotateRightHowCombobox.activated.connect(self.clearComboBoxFocus)
-
-        self.showTreeInfoCheckbox.toggled.connect(self.setAnnotInfoMode)
-        self.showCellTracksCheckbox.toggled.connect(self.showCellTracksCheckbox_cb)
-
-        # Left
-        self.annotIDsCheckbox.clicked.connect(self.annotOptionClicked)
-        self.annotCcaInfoCheckbox.clicked.connect(self.annotOptionClicked)
-        self.annotContourCheckbox.clicked.connect(self.annotOptionClicked)
-        self.annotSegmMasksCheckbox.clicked.connect(self.annotOptionClicked)
-        self.drawMothBudLinesCheckbox.clicked.connect(self.annotOptionClicked)
-        self.drawNothingCheckbox.clicked.connect(self.annotOptionClicked)
-        self.annotNumZslicesCheckbox.clicked.connect(self.annotOptionClicked)
-
-        # Right 
-        self.annotIDsCheckboxRight.clicked.connect(
-            self.annotOptionClickedRight)
-        self.annotCcaInfoCheckboxRight.clicked.connect(
-            self.annotOptionClickedRight)
-        self.annotContourCheckboxRight.clicked.connect(
-            self.annotOptionClickedRight)
-        self.annotSegmMasksCheckboxRight.clicked.connect(
-            self.annotOptionClickedRight)
-        self.drawMothBudLinesCheckboxRight.clicked.connect(
-            self.annotOptionClickedRight)
-        self.drawNothingCheckboxRight.clicked.connect(
-            self.annotOptionClickedRight)
-        self.annotNumZslicesCheckboxRight.clicked.connect(
-            self.annotOptionClickedRight
-        )
+        # self.showObjTracksCheckbox.toggled.connect(self.showObjTracksCheckbox_cb)
         
         self.segmentToolAction.triggered.connect(self.segmentToolActionTriggered)
 
@@ -3877,10 +3829,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.imgGrad.gradient.sigGradientChangeFinished.connect(
             self.imgGradLUTfinished_cb
         )
-
-        # self.normalizeQActionGroup.triggered.connect(
-        #     self.normaliseIntensitiesActionTriggered
-        # )
         self.imgPropertiesAction.triggered.connect(self.editImgProperties)
 
         self.relabelSequentialAction.triggered.connect(
@@ -4081,137 +4029,107 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.updateAllImages()
     
-    def gui_createImg1Widgets(self):
-        # Toggle contours/ID combobox
-        self.drawIDsContComboBoxSegmItems = [
-            'Draw IDs and contours',
-            'Draw IDs and overlay segm. masks',
-            'Draw only cell cycle info',
-            'Draw cell cycle info and contours',
-            'Draw cell cycle info and overlay segm. masks',
-            'Draw only mother-bud lines',
-            'Draw only IDs',
-            'Draw only contours',
-            'Draw only overlay segm. masks',
-            'Draw nothing'
-        ]
-        self.drawIDsContComboBox = widgets.ComboBox()
-        self.drawIDsContComboBox.setFont(_font)
-        self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
-        self.drawIDsContComboBox.setVisible(False)
-
-        self.annotIDsCheckbox = widgets.CheckBox(
-            'IDs', keyPressCallback=self.resetFocus)
-        self.annotCcaInfoCheckbox = widgets.CheckBox(
-            'Cell cycle info', keyPressCallback=self.resetFocus)
-        self.annotNumZslicesCheckbox = widgets.CheckBox(
-            'No. z-slices/object', keyPressCallback=self.resetFocus)
-
-        self.annotContourCheckbox = widgets.CheckBox(
-            'Contours', keyPressCallback=self.resetFocus)
-        self.annotSegmMasksCheckbox = widgets.CheckBox(
-            'Segm. masks', keyPressCallback=self.resetFocus)
-
-        self.drawMothBudLinesCheckbox = widgets.CheckBox(
-            'Only mother-daughter line', keyPressCallback=self.resetFocus
+    def gui_setupAnnotationOptionsLayout(self, ax: int):  
+        nameToLayouytLocMapper = {
+            'Contours': (0, 0, 1, 1), # (row, col, rowSpan, colSpan)
+            'Segm. masks': (1, 0, 1, 1),
+            'Separator_1': (0, 1, 2, 1),
+            'IDs': (0, 2, 1, 1),
+            'Lineage info': (1, 2, 1, 1),
+            'Cell cycle info': (0, 3, 1, 1),
+            'Mother-daughter line': (1, 3, 1, 1),
+            'Separator_2': (0, 4, 2, 1),
+            'Object tracks': (0, 5, 1, 1),
+            'Do not annotate': (1, 5, 1, 1)
+        }
+        mutuallyExclusiveGroups = (
+            ('Contours', 'Segm. masks'),
+            ('IDs', 'Lineage info', 'Cell cycle info')
         )
+        container = QWidget()
+        layout = QGridLayout()
+        container.setLayout(layout)
+        for name, loc in nameToLayouytLocMapper.items():
+            if name.startswith('Separator'):
+                checkbox = None
+                widget = widgets.QVLine()
+            else:
+                checkbox = widgets.CheckBox(
+                    name, keyPressCallback=self.resetFocus
+                )
+                widget = checkbox
 
-        self.drawNothingCheckbox = widgets.CheckBox(
-            'Do not annotate', keyPressCallback=self.resetFocus
+            row, col, rowSpan, colSpan = loc
+            layout.addWidget(widget, row, col, rowSpan, colSpan)
+
+            if checkbox is None:
+                continue
+
+            self.annotOptionsCheckboxes[ax][name] = checkbox
+
+        for mutuallyExclusiveGroup in mutuallyExclusiveGroups:
+            for name1, name2 in combinations(mutuallyExclusiveGroup, 2):
+                checkbox1 = self.annotOptionsCheckboxes[ax][name1]
+                checkbox2 = self.annotOptionsCheckboxes[ax][name2]
+                checkbox1.setExclusiveOnCheckCheckbox(checkbox2)
+                checkbox2.setExclusiveOnCheckCheckbox(checkbox1)
+
+        doNotAnnotateCheckbox = (
+            self.annotOptionsCheckboxes[ax]['Do not annotate']
         )
+        for checkbox in self.annotOptionsCheckboxes[ax].values():
+            if checkbox == doNotAnnotateCheckbox:
+                continue
+            
+            checkbox.setExclusiveOnCheckCheckbox(doNotAnnotateCheckbox)
+            doNotAnnotateCheckbox.setExclusiveOnCheckCheckbox(checkbox)
 
-        self.annotOptionsWidget = QWidget()
-        annotOptionsLayout = QGridLayout()
+        layout.setColumnStretch(layout.columnCount(), 1)
+        layout.setContentsMargins(0, 0, 0, 5)
 
-        # Show tree info checkbox
-        self.showTreeInfoCheckbox = widgets.CheckBox(
-            'Show tree info', keyPressCallback=self.resetFocus
-        )
-        self.showTreeInfoCheckbox.setFont(_font)
-        sp = self.showTreeInfoCheckbox.sizePolicy()
-        sp.setRetainSizeWhenHidden(True)
-        self.showTreeInfoCheckbox.setSizePolicy(sp)
-        self.showTreeInfoCheckbox.hide()
+        self.annotOptionsCheckboxes[ax]['layout'] = layout
+        self.annotOptionsCheckboxes[ax]['container'] = container
+
+    def annotIDsCheckbox(self, ax: int):
+        return self.annotOptionsCheckboxes[ax]['IDs']
+    
+    def annotContourCheckbox(self, ax: int):
+        return self.annotOptionsCheckboxes[ax]['Contours']
+    
+    def annotObjectTracksCheckbox(self, ax: int):
+        return self.annotOptionsCheckboxes[ax]['Object tracks']
+    
+    def annotCellCycleInfoCheckbox(self, ax: int):
+        return self.annotOptionsCheckboxes[ax]['Cell cycle info']
+    
+    def annotOverlaySegmMaskCheckbox(self, ax: int):
+        return self.annotOptionsCheckboxes[ax]['Segm. masks']
+    
+    def annotMotherDaughterLineCheckbox(self, ax: int):
+        return self.annotOptionsCheckboxes[ax]['Mother-daughter line']
+
+    def isOverlaySegmMaskChecked(self, ax: int):
+        if ax == 1 and not self.labelsGrad.showRightImgAction.isChecked():
+            return False
         
-        # Show cell tracks checkbox
-        self.showCellTracksCheckbox = widgets.CheckBox(
-            'Show cell tracks', keyPressCallback=self.resetFocus
-        )
-        self.showCellTracksCheckbox.setFont(_font)
-        sp = self.showCellTracksCheckbox.sizePolicy()
-        sp.setRetainSizeWhenHidden(True)
-        self.showCellTracksCheckbox.setSizePolicy(sp)
-        self.showCellTracksCheckbox.hide()
-        # add right click menu and tooltip
-        self.showCellTracksCheckbox.setToolTip(
-            'Show cell tracks (right click for options)'
-        )
-        
+        return self.annotOverlaySegmMaskCheckbox(ax).isChecked()
+    
+    def isContoursChecked(self, ax: int):
+        return self.annotContourCheckbox(ax).isChecked()
 
-        annotOptionsLayout.addWidget(self.showTreeInfoCheckbox, 0, 0)
-        annotOptionsLayout.addWidget(self.showCellTracksCheckbox, 0, 1)
-        annotOptionsLayout.addWidget(QLabel(' | '), 0, 2)
-        annotOptionsLayout.addWidget(self.annotIDsCheckbox, 0, 3)
-        annotOptionsLayout.addWidget(self.annotCcaInfoCheckbox, 0, 4)
-        annotOptionsLayout.addWidget(self.drawMothBudLinesCheckbox, 0, 5)
-        annotOptionsLayout.addWidget(self.annotNumZslicesCheckbox, 0, 6)
-        # annotOptionsLayout.addWidget(QLabel(' | '), 0, 7)
-        annotOptionsLayout.addWidget(self.annotContourCheckbox, 1, 0)
-        annotOptionsLayout.addWidget(self.annotSegmMasksCheckbox, 1, 1)
-        annotOptionsLayout.addWidget(QLabel(' | '), 1, 2)
-        annotOptionsLayout.addWidget(self.drawNothingCheckbox, 1, 3)
-        annotOptionsLayout.addWidget(self.drawIDsContComboBox, 1, 4)
-        self.annotOptionsLayout = annotOptionsLayout
+    def isObjectTracksChecked(self, ax: int):
+        return self.annotObjectTracksCheckbox(ax).isChecked()
 
-        # Toggle highlight z+-1 objects combobox
-        self.highlightZneighObjCheckbox = widgets.CheckBox(
-            'Highlight objects in neighbouring z-slices', 
-            keyPressCallback=self.resetFocus
-        )
-        self.highlightZneighObjCheckbox.setFont(_font)
-        self.highlightZneighObjCheckbox.hide()
+    def isCellCycleInfoChecked(self, ax: int):
+        return self.annotCellCycleInfoCheckbox(ax).isChecked()
 
-        annotOptionsLayout.addWidget(self.highlightZneighObjCheckbox, 1, 5)
-        self.annotOptionsWidget.setLayout(annotOptionsLayout)
+    def isMotherDaughterLineChecked(self, ax: int):
+        return self.annotMotherDaughterLineCheckbox(ax).isChecked()
 
-        # Annotations options right image
-        self.annotIDsCheckboxRight = widgets.CheckBox(
-            'IDs', keyPressCallback=self.resetFocus)
-        self.annotCcaInfoCheckboxRight = widgets.CheckBox(
-            'Cell cycle info', keyPressCallback=self.resetFocus)
-        self.annotNumZslicesCheckboxRight = widgets.CheckBox(
-            'No. z-slices/object', keyPressCallback=self.resetFocus
-        )
-
-        self.annotContourCheckboxRight = widgets.CheckBox(
-            'Contours', keyPressCallback=self.resetFocus)
-        self.annotSegmMasksCheckboxRight = widgets.CheckBox(
-            'Segm. masks', keyPressCallback=self.resetFocus)
-
-        self.drawMothBudLinesCheckboxRight = widgets.CheckBox(
-            'Only mother-daughter line', keyPressCallback=self.resetFocus
-        )
-
-        self.drawNothingCheckboxRight = widgets.CheckBox(
-            'Do not annotate', keyPressCallback=self.resetFocus)
-
-        self.annotOptionsWidgetRight = QWidget()
-        annotOptionsLayoutRight = QGridLayout()
-
-        # annotOptionsLayoutRight.addWidget(QLabel('       '), 0, 0)
-        # annotOptionsLayoutRight.addWidget(QLabel(' | '), 0, 1)
-        annotOptionsLayoutRight.addWidget(self.annotIDsCheckboxRight, 0, 0)
-        annotOptionsLayoutRight.addWidget(self.annotCcaInfoCheckboxRight, 0, 1)
-        annotOptionsLayoutRight.addWidget(self.drawMothBudLinesCheckboxRight, 0, 2)
-        annotOptionsLayoutRight.addWidget(self.annotNumZslicesCheckboxRight, 0, 3)
-        # annotOptionsLayoutRight.addWidget(QLabel(' | '), 0, 6)
-        annotOptionsLayoutRight.addWidget(self.annotContourCheckboxRight, 1, 0)
-        annotOptionsLayoutRight.addWidget(self.annotSegmMasksCheckboxRight, 1, 1)
-        annotOptionsLayoutRight.addWidget(QLabel(' | '), 1, 2)
-        annotOptionsLayoutRight.addWidget(self.drawNothingCheckboxRight, 1, 3)
-        self.annotOptionsLayoutRight = annotOptionsLayoutRight
-        
-        self.annotOptionsWidgetRight.setLayout(annotOptionsLayoutRight)
+    def gui_createBottomWidgets(self):
+        self.annotOptionsCheckboxes = defaultdict(dict)
+        self.gui_setupAnnotationOptionsLayout(0)
+        self.gui_setupAnnotationOptionsLayout(1)
 
         # Frames scrollbar
         self.navigateScrollBar = widgets.navigateQScrollBar(Qt.Horizontal)
@@ -4275,24 +4193,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.zProjOverlay_CB.setCurrentIndex(4)
         self.zSliceOverlay_SB.setDisabled(True)
 
-        self.img1BottomGroupbox = self.gui_getImg1BottomWidgets()
+        self.img1BottomGroupbox = self.gui_createImg1BottomWidgets()
     
-    def gui_getImg1BottomWidgets(self):
+    def gui_createImg1BottomWidgets(self):
         bottomLeftLayout = QGridLayout()
         self.bottomLeftLayout = bottomLeftLayout
         container = QGroupBox('Navigate and annotate left image')
 
         row = 0
-        bottomLeftLayout.addWidget(self.annotOptionsWidget, row, 0, 1, 4)
-        # bottomLeftLayout.addWidget(
-        #     self.drawIDsContComboBox, row, 1, 1, 2,
-        #     alignment=Qt.AlignCenter
-        # )
-
-        # bottomLeftLayout.addWidget(
-        #     self.showTreeInfoCheckbox, row, 0, 1, 1,
-        #     alignment=Qt.AlignCenter
-        # )
+        bottomLeftLayout.addWidget(
+            self.annotOptionsCheckboxes[0]['container'], row, 1, 1, 4
+        )
 
         row += 1
         navWidgetsLayout = QHBoxLayout()
@@ -4367,7 +4278,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         container.setLayout(bottomLeftLayout)
         return container
 
-    def gui_createLabWidgets(self):
+    def gui_createImg2Widgets(self):
         bottomRightLayout = QVBoxLayout()
         self.rightBottomGroupbox = widgets.GroupBox(
             'Annotate right image independent of left image', 
@@ -4377,23 +4288,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.rightBottomGroupbox.setChecked(False)
         self.rightBottomGroupbox.hide()
 
-        self.annotateRightHowCombobox = widgets.ComboBox()
-        self.annotateRightHowCombobox.setFont(_font)
-        self.annotateRightHowCombobox.addItems(self.drawIDsContComboBoxSegmItems)
-        self.annotateRightHowCombobox.setCurrentIndex(
-            self.drawIDsContComboBox.currentIndex()
-        )
-        self.annotateRightHowCombobox.setVisible(False)
-
-        self.annotOptionsLayoutRight.addWidget(self.annotateRightHowCombobox,
-            1, 4)
-
         self.rightImageFramesScrollbar = widgets.ScrollBarWithNumericControl(
             labelText='Frame n. '
         )
         self.rightImageFramesScrollbar.setVisible(False)
         
-        bottomRightLayout.addWidget(self.annotOptionsWidgetRight)
+        bottomRightLayout.addLayout(self.annotOptionsCheckboxes[1]['layout'])
         bottomRightLayout.addWidget(self.rightImageFramesScrollbar)
         bottomRightLayout.addStretch(1)
 
@@ -4404,10 +4304,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def rightImageControlsToggled(self, checked):
         if self.isDataLoading:
             return
-        if checked:
-            self.annotateRightHowCombobox.setCurrentText(
-                self.drawIDsContComboBox.currentText()
-            )
+
         self.updateAllImages()
     
     def setFocusGraphics(self):
@@ -5459,8 +5356,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.setAllTextAnnotations()
             self.setAllContoursImages(compute=False)
 
-            how = self.drawIDsContComboBox.currentText()
-            if how.find('overlay segm. masks') != -1:
+            if self.isOverlaySegmMaskChecked(0):
                 self.labelsLayerImg1.image[delID_mask] = 0
                 self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
             
@@ -9485,7 +9381,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.bottomLayoutContextMenu.popup(event.globalPos())
     
     def areContoursRequested(self, ax):
-        if ax == 0 and self.annotContourCheckbox.isChecked():
+        if ax == 0 and self.isContoursChecked(0):
             return True
 
         if ax == 1:
@@ -9493,21 +9389,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return False
 
             isRightDifferentAnnot = self.rightBottomGroupbox.isChecked()
-            areContRequestedRight = self.annotContourCheckboxRight.isChecked()
+            areContRequestedRight = self.isContoursChecked(1)
            
             if isRightDifferentAnnot and areContRequestedRight:
                 return True
             
-            areContRequestedLeft = self.annotContourCheckbox.isChecked()
+            areContRequestedLeft = self.isContoursChecked(0)
             if not isRightDifferentAnnot and areContRequestedLeft:
                 return True
         return False
     
     def areMothBudLinesRequested(self, ax):
         if ax == 0:
-            if self.annotCcaInfoCheckbox.isChecked():
+            if self.isCellCycleInfoChecked(0):
                 return True
-            if self.drawMothBudLinesCheckbox.isChecked():
+            if self.isMotherDaughterLineChecked(0):
                 return True
         else:
             if not self.labelsGrad.showRightImgAction.isChecked():
@@ -9515,16 +9411,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             isRightDifferentAnnot = self.rightBottomGroupbox.isChecked()
             areLinesRequestedRight = (
-                self.annotCcaInfoCheckboxRight.isChecked()
-                or self.drawMothBudLinesCheckboxRight.isChecked()
+                self.isCellCycleInfoChecked(1)
+                or self.isMotherDaughterLineChecked(1)
             )
             
             if isRightDifferentAnnot and areLinesRequestedRight:
                 return True
         
             areLinesRequestedLeft = (
-                self.drawMothBudLinesCheckbox.isChecked()
-                or self.annotCcaInfoCheckbox.isChecked()
+                self.isCellCycleInfoChecked(0)
+                or self.isMotherDaughterLineChecked(0)
             )
             if not isRightDifferentAnnot and areLinesRequestedLeft:
                 return True
@@ -12846,16 +12742,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def updateROIpreview(self, roi):
         if not self.draggingDelROI:
             return
-
-        for i, ax in enumerate([self.ax1, self.ax2]):
-            if i == 0:
-                how = self.drawIDsContComboBox.currentText()
-                contour_shown_1 = 'contours' in how
-                label_shown_1 = 'overlay segm. masks' in how
-            else:
-                how = self.getAnnotateHowRightImage()
-                contour_shown_2 = 'contours' in how
-                label_shown_2 = 'overlay segm. masks' in how
         
         hidden_IDs = self.delROIpreviewDelIDsObjDict.keys()
         lab = self.delROIoriginalLab
@@ -12872,29 +12758,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.delROIpreviewDelIDsObjDict[ID] = obj
             curr_lab_view[obj.slice][obj.image] = 0
         
-        if contour_shown_1:
+        if self.isContoursChecked(0):
             self.updateContoursImage(ax=0, delROIsIDs=hidden_IDs)
-        if contour_shown_2:
+        if self.isContoursChecked(1):
             self.updateContoursImage(ax=1, delROIsIDs=hidden_IDs)
                     
         for ID in to_restore_IDs:
             obj = self.delROIpreviewDelIDsObjDict.pop(ID)
             curr_lab_view[obj.slice][obj.image] = ID
 
-            if contour_shown_1:
+            if self.isContoursChecked(0):
                 self.addObjContourToContoursImage(
                     obj=obj, ax=0
                 )
-            if contour_shown_2:
+            if self.isContoursChecked(1):
                 self.addObjContourToContoursImage(
                     obj=obj, ax=1
                 )
 
-        if label_shown_1:
+        if self.isOverlaySegmMaskChecked(0):
             self.labelsLayerImg1.setImage(
                curr_lab_view, autoLevels=False
             )
-        if label_shown_2:
+        if self.isOverlaySegmMaskChecked(1):
             self.labelsLayerRightImg.setImage(
                 curr_lab_view, autoLevels=False
             )
@@ -13804,68 +13690,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
         self.get_data()
         self.updateAllImages()
-    
-    def annotateRightHowCombobox_cb(self, idx):
-        how = self.annotateRightHowCombobox.currentText()
-        saveSettings = True
-        if hasattr(self.annotateRightHowCombobox, 'saveSettings'):
-            saveSettings = self.annotateRightHowCombobox.saveSettings
-
-        if saveSettings:
-            self.df_settings.at['how_draw_right_annotations', 'value'] = how
-            self.df_settings.to_csv(self.settings_csv_path)
-
-        mode = self.modeComboBox.currentText()
-        isCcaAnnot = (
-            self.annotCcaInfoCheckboxRight.isChecked() and 
-            mode != 'Normal division: Lineage tree'
-        )
-        isIDAnnot = (self.annotIDsCheckboxRight.isChecked() or (
-            self.annotCcaInfoCheckboxRight.isChecked() and
-            mode == 'Normal division: Lineage tree'
-        ))
-        self.textAnnot[1].setCcaAnnot(
-            isCcaAnnot
-        )
-
-        self.textAnnot[1].setLabelAnnot(
-            isIDAnnot
-        )
-        if not self.isDataLoading:
-            self.updateAllImages()
-
-    def drawIDsContComboBox_cb(self, idx):
-        how = self.drawIDsContComboBox.currentText()
-        saveSettings = True
-        if hasattr(self.drawIDsContComboBox, 'saveSettings'):
-            saveSettings = self.drawIDsContComboBox.saveSettings
-        
-        if saveSettings:
-            self.df_settings.at['how_draw_annotations', 'value'] = how
-            self.df_settings.to_csv(self.settings_csv_path)
-
-        mode = self.modeComboBox.currentText()
-        isCcaAnnot = (
-            self.annotCcaInfoCheckbox.isChecked() and 
-            mode != 'Normal division: Lineage tree'
-        )
-        isIDAnnot = (self.annotIDsCheckbox.isChecked() or (
-            self.annotCcaInfoCheckbox.isChecked() and
-            mode == 'Normal division: Lineage tree'
-        ))
-        self.textAnnot[0].setCcaAnnot(
-            isCcaAnnot
-        )
-
-        self.textAnnot[0].setLabelAnnot(
-            isIDAnnot
-        )
-
-        if not self.isDataLoading:
-            self.updateAllImages()
-
-        if self.eraserButton.isChecked():
-            self.setTempImg1Eraser(None, init=True)
 
     def mousePressColorButton(self, event):
         posData = self.data[self.pos_i]
@@ -14201,7 +14025,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.img1.minMaxValuesMapper
             )
             self.slideshowWin.img.setCurrentPosIndex(self.pos_i)
-            h = self.drawIDsContComboBox.size().height()
+            h = self.navSpinBox.size().height()
             self.slideshowWin.framesScrollBar.setFixedHeight(h)
             self.slideshowWin.overlayButton.setChecked(
                 self.overlayButton.isChecked()
@@ -15407,10 +15231,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def keepIDs_cb(self, checked):
         if checked:
             self.highlightedLab = np.zeros_like(self.currentLab2D)
-            if self.annotCcaInfoCheckbox.isChecked():
-                self.annotCcaInfoCheckbox.setChecked(False)
-                self.annotIDsCheckbox.setChecked(True)
-                self.setDrawAnnotComboboxText()
+            if self.isCellCycleInfoChecked(0):
+                self.annotOptionsCheckboxes[ax]['IDs'].setChecked(True)
             self.uncheckLeftClickButtons(None)
             self.initKeepObjLabelsLayers()      
             self.setAllIDs()
@@ -16028,6 +15850,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.enableSizeSpinbox(checked)
     
     def storeCurrentAnnotOptions_ax1(self, return_value=False):
+        # TODO: see issue #1156
+        return
+    
         if self.annotOptionsToRestore is not None:
             return
         
@@ -16038,7 +15863,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'annotContourCheckbox',
             'annotSegmMasksCheckbox',
             'drawMothBudLinesCheckbox',
-            'annotNumZslicesCheckbox',
             'drawNothingCheckbox',
         ]
         annotOptions = {}
@@ -16050,6 +15874,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.annotOptionsToRestore = annotOptions
         
     def storeCurrentAnnotOptions_ax2(self):
+        # TODO: see issue #1156
+        return
+
         if self.annotOptionsToRestoreRight is not None:
             return
         
@@ -16059,8 +15886,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'annotContourCheckboxRight',
             'annotSegmMasksCheckboxRight',
             'drawMothBudLinesCheckboxRight',
-            'annotNumZslicesCheckboxRight',
-            'drawNothingCheckboxRight',
         ]
         self.annotOptionsToRestoreRight = {}
         for checkboxName in checkboxes:
@@ -16099,40 +15924,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.annotOptionsToRestoreRight = None
 
     def setDrawNothingAnnotations(self):
-        self.storeCurrentAnnotOptions_ax1()
-        self.storeCurrentAnnotOptions_ax2()
-        self.drawNothingCheckbox.setChecked(True)
-        self.annotOptionClicked(
-            sender=self.drawNothingCheckbox, saveSettings=False)
-        self.drawNothingCheckboxRight.setChecked(True)
-        self.annotOptionClickedRight(
-            sender=self.drawNothingCheckboxRight, saveSettings=False
-        )
+        # TODO: see issue #1156
+        ...
     
     def restoreAnnotationsOptions(self):
         self.restoreAnnotOptions_ax1()
         self.restoreAnnotOptions_ax2()
     
     def onDoubleSpaceBar(self):
-        how = self.drawIDsContComboBox.currentText()
-        if how.find('nothing') == -1:
-            self.storeCurrentAnnotOptions_ax1()
-            self.drawNothingCheckbox.setChecked(True)
-            self.annotOptionClicked(
-                sender=self.drawNothingCheckbox, saveSettings=False
-            )
-        else:
-            self.restoreAnnotOptions_ax1()
-        
-        how = self.annotateRightHowCombobox.currentText()
-        if how.find('nothing') == -1:
-            self.storeCurrentAnnotOptions_ax2()
-            self.drawNothingCheckboxRight.setChecked(True)
-            self.annotOptionClickedRight(
-                sender=self.drawNothingCheckboxRight, saveSettings=False
-            )
-        else:
-            self.restoreAnnotOptions_ax2()
+        # TODO: see issue # 1156
+        ...
 
     def resizeBottomLayoutLineClicked(self, event):
         pass
@@ -16392,13 +16193,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 elif hasattr(action, 'trigger'):
                     action.trigger()
                 return True
-            
-        # handle right click on checkbox
-        if obj is self.showCellTracksCheckbox \
-            and ev.type() == QEvent.Type.MouseButtonPress \
-            and ev.button() == Qt.MouseButton.RightButton: 
-            self._showCellTracksCheckboxRightClickMenu(ev.pos())
-            return True
 
         return False
         
@@ -16506,8 +16300,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.labelRoiButton.isChecked() 
             and self.labelRoiIsCircularRadioButton.isChecked()
         )
-        how = self.drawIDsContComboBox.currentText()
-        isOverlaySegm = how.find('overlay segm. masks') != -1
+        isOverlaySegmLeft = self.isOverlaySegmMaskChecked(0)
         if ev.key()==Qt.Key_Up and not isCtrlModifier:
             self.keyUpCallback(
                 isBrushActive, isWandActive, isExpandLabelActive, 
@@ -16530,7 +16323,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # Alt is pressed while cursor is on images --> set SizeAllCursor
             if self.xHoverImg is not None and not isCursorSizeAll:
                 self.app.setOverrideCursor(Qt.SizeAllCursor)
-        elif isCtrlModifier and isOverlaySegm:
+        elif isCtrlModifier and isOverlaySegmLeft:
             if ev.key() == Qt.Key_Up:
                 val = self.imgGrad.labelsAlphaSlider.value()
                 delta = 5/self.imgGrad.labelsAlphaSlider.maximum()
@@ -16642,15 +16435,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         self.doubleKeyTimeElapsed = True
         self.countKeyPress = 0
-
-        # # Spacebar single press --> toggle next visualization
-        # currentIndex = self.drawIDsContComboBox.currentIndex()
-        # nItems = self.drawIDsContComboBox.count()
-        # nextIndex = currentIndex+1
-        # if nextIndex < nItems:
-        #     self.drawIDsContComboBox.setCurrentIndex(nextIndex)
-        # else:
-        #     self.drawIDsContComboBox.setCurrentIndex(0)
 
     def updateBrushCursorOnShiftRelease(self):        
         xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
@@ -19249,14 +19033,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.checkIfAutoSegm()
         
         QTimer.singleShot(200, self.resizeGui)
+
     def activateAnnotations(self):
-        if self.annotContourCheckbox.isChecked():
-            return
-        if self.annotSegmMasksCheckbox.isChecked():
+        if self.annotContourCheckbox(0).isChecked():
             return
         
-        self.annotSegmMasksCheckbox.setChecked(True)
-        self.setDrawAnnotComboboxText()
+        if self.annotOverlaySegmMaskCheckbox(0).isChecked():
+            return
+        
+        self.annotOverlaySegmMaskCheckbox(0).setChecked(True)
 
     # @exec_time
     def getDisplayedImg1(self):
@@ -21135,7 +20920,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.navSizeLabel.setText(f'/{posData.SizeT}')
 
         self.enableZstackWidgets(posData.SizeZ > 1)
-        # self.showHighlightZneighCheckbox()
         
         self.exportToVideoAction.setDisabled(
             posData.SizeZ == 1 and posData.SizeT == 1
@@ -21174,7 +20958,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if isNextFrameActive:
             self.rightBottomGroupbox.show()
             self.rightBottomGroupbox.setChecked(True)
-            self.drawNothingCheckboxRight.click()  
 
         self.readSavedCustomAnnot()
         self.addCustomAnnotButtonAllLoadedPos()
@@ -21229,8 +21012,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax1.vb.menu = self.imgGrad.gradient.menu
         self.ax2.vb.menu = self.labelsGrad.menu
 
-        QTimer.singleShot(200, self.resizeGui)
-
         self.isDataLoaded = True
         self.isDataLoading = False
         
@@ -21242,8 +21023,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.initLoadedDelROI()
 
-        QTimer.singleShot(200, self.autoRange)
-        QTimer.singleShot(500, self.autoRange)
+        QTimer.singleShot(100, self.resizeGuiAndAutoRange)
 
     def _createROIfromState(self, state, key):
         if 'points' in state and isinstance(state['points'], list) and len(state['points']) > 1:
@@ -21335,124 +21115,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.resizeGui()
     
     def setVisible3DsegmWidgets(self):
-        self.annotNumZslicesCheckbox.setVisible(self.isSegm3D)
-        self.annotNumZslicesCheckboxRight.setVisible(self.isSegm3D)
-        if not self.isSegm3D:
-            self.annotNumZslicesCheckbox.setChecked(False)
-            self.annotNumZslicesCheckboxRight.setChecked(False)
-    
-    def showHighlightZneighCheckbox(self):
-        if self.isSegm3D:
-            layout = self.bottomLeftLayout
-            # layout.addWidget(self.annotOptionsWidget, 0, 1, 1, 2)
-            # # layout.removeWidget(self.drawIDsContComboBox)
-            # # layout.addWidget(self.drawIDsContComboBox, 0, 1, 1, 1,
-            # #     alignment=Qt.AlignCenter
-            # # )
-            # layout.addWidget(self.highlightZneighObjCheckbox, 0, 2, 1, 2,
-            #     alignment=Qt.AlignRight
-            # )
-            self.highlightZneighObjCheckbox.show()
-            self.highlightZneighObjCheckbox.setChecked(True)
-            self.highlightZneighObjCheckbox.toggled.connect(
-                self.highlightZneighLabels_cb
-            )
+        pass
+
+    def resizeGuiAndAutoRange(self):
+        self.resizeGui()
+        QTimer.singleShot(200, self.autoRange)
             
-    def restoreSavedSettings(self):
-        if 'how_draw_annotations' in self.df_settings.index:
-            how = self.df_settings.at['how_draw_annotations', 'value']
-            self.drawIDsContComboBox.setCurrentText(how)
-        else:
-            self.drawIDsContComboBox.setCurrentText('Draw IDs and contours')
-        
-        if 'how_draw_right_annotations' in self.df_settings.index:
-            how = self.df_settings.at['how_draw_right_annotations', 'value']
-            self.annotateRightHowCombobox.setCurrentText(how)
-        else:
-            self.annotateRightHowCombobox.setCurrentText(
-                'Draw IDs and overlay segm. masks'
-            )
-        
+    def restoreSavedSettings(self):        
         if 'addNewIDsWhitelistToggle' in self.df_settings.index:
             self.addNewIDsWhitelistToggle = (
                 self.df_settings.at['addNewIDsWhitelistToggle', 'value']
                 ) == 'Yes'
         else:
             self.addNewIDsWhitelistToggle = True
-        
-        self.drawAnnotCombobox_to_options()
-        self.drawIDsContComboBox_cb(0)
-        self.annotateRightHowCombobox_cb(0)
-    
-    def uncheckAnnotOptions(self, left=True, right=True):
-        # Left
-        if left:
-            self.annotIDsCheckbox.setChecked(False)
-            self.annotCcaInfoCheckbox.setChecked(False)
-            self.annotContourCheckbox.setChecked(False)
-            self.annotSegmMasksCheckbox.setChecked(False)
-            self.drawMothBudLinesCheckbox.setChecked(False)
-            self.drawNothingCheckbox.setChecked(False)
-            self.showCellTracksCheckbox.setChecked(False)
-        # Right 
-        if right:
-            self.annotIDsCheckboxRight.setChecked(False)
-            self.annotCcaInfoCheckboxRight.setChecked(False)
-            self.annotContourCheckboxRight.setChecked(False)
-            self.annotSegmMasksCheckboxRight.setChecked(False)
-            self.drawMothBudLinesCheckboxRight.setChecked(False)
-            self.drawNothingCheckboxRight.setChecked(False)
 
     def setDisabledAnnotOptions(self, disabled):
-        # Left
-        self.annotIDsCheckbox.setDisabled(disabled)
-        self.annotCcaInfoCheckbox.setDisabled(disabled)
-        self.annotContourCheckbox.setDisabled(disabled)
-        # self.annotSegmMasksCheckbox.setDisabled(disabled)
-        self.drawMothBudLinesCheckbox.setDisabled(disabled)
-        # self.drawNothingCheckbox.setDisabled(disabled)
-        self.showCellTracksCheckbox.setDisabled(disabled)
-
-        # Right 
-        self.annotIDsCheckboxRight.setDisabled(disabled)
-        self.annotCcaInfoCheckboxRight.setDisabled(disabled)
-        self.annotContourCheckboxRight.setDisabled(disabled)
-        # self.annotSegmMasksCheckboxRight.setDisabled(disabled)
-        self.drawMothBudLinesCheckboxRight.setDisabled(disabled)
-        # self.drawNothingCheckboxRight.setDisabled(disabled)
-        
-    def drawAnnotCombobox_to_options(self):
-        self.uncheckAnnotOptions()
-
-        # Left
-        how = self.drawIDsContComboBox.currentText()
-        if how.find('IDs') != -1:
-            self.annotIDsCheckbox.setChecked(True)
-        if how.find('cell cycle info') != -1:
-            self.annotCcaInfoCheckbox.setChecked(True) 
-        if how.find('contours') != -1:
-            self.annotContourCheckbox.setChecked(True) 
-        if how.find('segm. masks') != -1:
-            self.annotSegmMasksCheckbox.setChecked(True) 
-        if how.find('mother-bud lines') != -1:
-            self.drawMothBudLinesCheckbox.setChecked(True) 
-        if how.find('nothing') != -1:
-            self.drawNothingCheckbox.setChecked(True)
-        
-        # Right
-        how = self.annotateRightHowCombobox.currentText()
-        if how.find('IDs') != -1:
-            self.annotIDsCheckboxRight.setChecked(True)
-        if how.find('cell cycle info') != -1:
-            self.annotCcaInfoCheckboxRight.setChecked(True) 
-        if how.find('contours') != -1:
-            self.annotContourCheckboxRight.setChecked(True) 
-        if how.find('segm. masks') != -1:
-            self.annotSegmMasksCheckboxRight.setChecked(True) 
-        if how.find('mother-bud lines') != -1:
-            self.drawMothBudLinesCheckboxRight.setChecked(True) 
-        if how.find('nothing') != -1:
-            self.drawNothingCheckboxRight.setChecked(True)
+        names = (
+            'IDs',
+            'Cell cycle info',
+            'Contours',
+            'Mother-daughter line',
+            'Object tracks'
+        )
+        for ax in (0, 1):
+            for name in names:
+                self.annotOptionsCheckboxes[ax][name].setDisabled(disabled)
 
     def setStatusBarLabel(self, log=True):
         self.statusbar.clearMessage()
@@ -21475,7 +21162,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.labelsGrad.showLabelsImgAction.isChecked():
             self.ax2.autoRange()
         self.ax1.autoRange()
-        
+
     def resetRange(self):
         if self.ax1_viewRange is None:
             return
@@ -21492,10 +21179,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.isSnapshot:
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
-            try:
-                self.drawIDsContComboBox.currentIndexChanged.disconnect()
-            except Exception as e:
-                pass
             
             self.imgGrad.rescaleAcrossTimeAction.setDisabled(True)
             self.repeatTrackingAction.setDisabled(True)
@@ -21505,20 +21188,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.modeComboBox.addItems(['Snapshot'])
             self.modeComboBox.setDisabled(True)
             self.modeMenu.menuAction().setVisible(False)
-            self.drawIDsContComboBox.clear()
-            self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
-            self.drawIDsContComboBox.setCurrentIndex(1)
             self.modeToolBar.setVisible(False)
             self.skipToNewIdAction.setVisible(False)
             self.skipToNewIdAction.setDisabled(True)
             self.modeComboBox.setCurrentText('Snapshot')
             self.annotateToolbar.setVisible(True)
             self.labelsGrad.showNextFrameAction.setDisabled(True)
-            self.drawIDsContComboBox.currentIndexChanged.connect(
-                self.drawIDsContComboBox_cb
-            )
-            self.showTreeInfoCheckbox.hide()
-            self.showCellTracksCheckbox.hide()
 
             self.rightImageFramesScrollbar.setVisible(False)
             self.rightImageFramesScrollbar.setDisabled(True)
@@ -21557,21 +21232,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             try:
                 self.modeComboBox.activated.disconnect()
                 self.modeComboBox.sigTextChanged.disconnect()
-                self.drawIDsContComboBox.currentIndexChanged.disconnect()
             except Exception as e:
                 pass
                 # traceback.print_exc()
             self.modeComboBox.clear()
             self.modeComboBox.addItems(self.modeItems)
-            self.drawIDsContComboBox.clear()
-            self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             self.modeComboBox.sigTextChanged.connect(self.changeMode)
             self.modeComboBox.activated.connect(self.clearComboBoxFocus)
-            self.drawIDsContComboBox.currentIndexChanged.connect(
-                                                    self.drawIDsContComboBox_cb)
             self.modeComboBox.setCurrentText('Viewer')
-            self.showTreeInfoCheckbox.show()
-            self.showCellTracksCheckbox.show()
             
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
@@ -24951,16 +24619,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return zc, yc 
         else:
             return obj_centroid
-    
-    def getAnnotateHowRightImage(self):
-        if not self.labelsGrad.showRightImgAction.isChecked():
-            return 'nothing'
-        
-        if self.rightBottomGroupbox.isChecked():
-            how = self.annotateRightHowCombobox.currentText()
-        else:
-            how = self.drawIDsContComboBox.currentText()
-        return how
 
     def getObjOptsSegmLabels(self, obj):
         if not self.labelsGrad.showLabelsImgAction.isChecked():
@@ -25727,7 +25385,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 binnedIDs_yy.append(y)
                 if updateLabel:
                     self.getObjOptsSegmLabels(obj)
-                    how = self.drawIDsContComboBox.currentText()
             
             if obj.dead:
                 ID = obj.label
@@ -25736,7 +25393,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 ripIDs_yy.append(y)
                 if updateLabel:
                     self.getObjOptsSegmLabels(obj)
-                    how = self.drawIDsContComboBox.currentText()
         
         self.ax2_binnedIDs_ScatterPlot.setData(binnedIDs_xx, binnedIDs_yy)
         self.ax2_ripIDs_ScatterPlot.setData(ripIDs_xx, ripIDs_yy)
@@ -27596,14 +27252,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not hasattr(self, 'currentLab2D'):
             return
 
-        how = self.drawIDsContComboBox.currentText()
-        isOverlaySegmLeftActive = how.find('overlay segm. masks') != -1
-
-        how_ax2 = self.getAnnotateHowRightImage()
-        isOverlaySegmRightActive = (
-            how_ax2.find('overlay segm. masks') != -1
-            and self.labelsGrad.showRightImgAction.isChecked()
-        )
+        isOverlaySegmLeftActive = self.isOverlaySegmMaskChecked(0)
+        isOverlaySegmRightActive = self.isOverlaySegmMaskChecked(1)
 
         isOverlaySegmActive = (
             isOverlaySegmLeftActive or isOverlaySegmRightActive
@@ -28107,12 +27757,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if updateImages:
             self.updateAllImages()
     
-    def highlightZneighLabels_cb(self, checked):
-        if checked:
-            pass
-        else:
-            pass
-    
     def setTwoImagesLayout(self, isTwoImages):
         self.isTwoImageLayout = isTwoImages
         if isTwoImages:
@@ -28146,8 +27790,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.imgGradRight, row=1, col=self.plotsCol+2
             )
             self.rightBottomGroupbox.show()
-            self.rightBottomGroupbox.setChecked(True)
-            self.drawNothingCheckboxRight.click()            
+            self.rightBottomGroupbox.setChecked(True)         
             if not self.isDataLoading:
                 self.updateAllImages()
         else:
@@ -28223,12 +27866,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setBottomLayoutStretch()
 
     def setAnnotOptionsRightImageLabelsDisabled(self, disabled):
-        self.annotContourCheckboxRight.setDisabled(disabled)
-        self.annotSegmMasksCheckboxRight.setDisabled(disabled)
+        self.annotContourCheckbox(1).setDisabled(disabled)
+        self.annotOverlaySegmMaskCheckbox(1).setDisabled(disabled)
         if disabled:
-            self.annotSegmMasksCheckboxRight.setChecked(False)
-            self.annotSegmMasksCheckboxRight.setChecked(False)
-            self.annotIDsCheckboxRight.setChecked(True)
+            self.annotOverlaySegmMaskCheckbox(1).setChecked(False)
+            self.annotIDsCheckbox(1).setChecked(True)
     
     def moveDelRoisToLeft(self):
         # Move del ROIs to the left image
@@ -28563,15 +28205,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def initTempLayerBrush(self, ID, ax=0):
         posData = self.data[self.pos_i]
-        if ax == 0:
-            how = self.drawIDsContComboBox.currentText()
-        else:
-            how = self.getAnnotateHowRightImage()
-        
         self.hideItemsHoverBrush(ID=ID, force=True)
         Y, X = self.img1.image.shape[:2]
         tempImage = np.zeros((Y, X), dtype=np.uint32)
-        if how.find('contours') != -1:
+        if self.isContoursChecked(ax):
             # Keep the currently edited object visible while painting.
             rp_2D = self.get2DRP()
             obj = rp_2D.get_obj_from_ID(ID, warn=False) # new IDs would spam errors
@@ -28669,16 +28306,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def setTempImg1Eraser(self, mask, init=False, toLocalSlice=None, ax=0):
         if init:
             self.erasedLab = np.zeros_like(self.currentLab2D)
-
-        if ax == 0:
-            how = self.drawIDsContComboBox.currentText()
-        else:
-            how = self.getAnnotateHowRightImage()
         
         if ax == 1 and not self.labelsGrad.showRightImgAction.isChecked():
             return
         
-        if how.find('contours') != -1:
+        if self.isContoursChecked(ax):
             self.clearObjFromMask(
                 self.contoursImage, mask, toLocalSlice=toLocalSlice
             )
@@ -28698,7 +28330,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             imageItem = self.getContoursImageItem(ax)
             if imageItem is not None:
                 imageItem.setImage(self.contoursImage)
-        elif how.find('overlay segm. masks') != -1:
+        elif self.isOverlaySegmMaskChecked(ax):
             labelsImage = self.getLabelsLayerImage(ax=ax)
             self.clearObjFromMask(labelsImage, mask, toLocalSlice=toLocalSlice)           
             if ax == 0:
@@ -28741,25 +28373,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             imageItem.setImage(self.contoursImage)
     
     def setTempImgExpandLabel(self, prevCoords, expandedObjCoords, ax=0):
-        if ax == 0:
-            how = self.drawIDsContComboBox.currentText()
-        else:
-            how = self.getAnnotateHowRightImage()
-
-        if how.find('overlay segm. masks') != -1:
+        if self.isOverlaySegmMaskChecked(ax):
             self._setTempImgExpandLabelSegmMasks(
                 prevCoords, expandedObjCoords, ax=ax
             )
         else:
             self._setTempImgExpandLabelContours(prevCoords, ax=ax)
 
-    def setTempImg1MoveLabel(self, ax=0):
-        if ax == 0:
-            how = self.drawIDsContComboBox.currentText()
-        else:
-            how = self.getAnnotateHowRightImage()
-        
-        if how.find('contours') != -1:
+    def setTempImg1MoveLabel(self, ax=0):        
+        if self.isContoursChecked(ax):
             moveMask = np.ascontiguousarray(
                 (self.currentLab2D == self.movingID), dtype=np.uint8
             )
@@ -28772,7 +28394,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 color = self.contLineColor
                 cv2.drawContours(self.contoursImage, contours, -1, color, thickness)
                 imageItem.setImage(self.contoursImage)
-        elif how.find('overlay segm. masks') != -1:
+        elif self.isOverlaySegmMaskChecked(ax):
             if ax == 0:
                 self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
                 self.highLightIDLayerImg1.image[:] = 0
@@ -29234,13 +28856,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return lut
     
     def grayOutOverlaySegm(self, ax=0):
-        if ax == 0:
-            how = self.drawIDsContComboBox.currentText()
-        else:
-            how = self.getAnnotateHowRightImage()
-        
-        isOverlaySegmActive = how.find('segm. masks') != -1
-        if not isOverlaySegmActive:
+        if not self.isOverlaySegmMaskChecked(ax):
             return
         
         grayedLut = self.grayOutHighlightedLabels()
@@ -29344,10 +28960,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.textAnnot[0].grayOutAnnotations()
             self.textAnnot[1].grayOutAnnotations()
 
-        how_ax1 = self.drawIDsContComboBox.currentText()
-        how_ax2 = self.getAnnotateHowRightImage()
-        isOverlaySegm_ax1 = how_ax1.find('segm. masks') != -1 
-        isOverlaySegm_ax2 = how_ax2.find('segm. masks') != -1
+        isOverlaySegm_ax1 = self.isOverlaySegmMaskChecked(0)
+        isOverlaySegm_ax2 = self.isOverlaySegmMaskChecked(1)
         alpha = self.imgGrad.labelsAlphaSlider.value()
         
         if isOverlaySegm_ax1 or isOverlaySegm_ax2:
@@ -31456,7 +31070,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         self.annotateCellMovementSettings = win.settings
-        self.showCellTracksCheckbox.setChecked(True)
         self.annotateCellMovement()
         
         self.df_settings.at[
@@ -31488,7 +31101,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def onSetAnnotateCellMovementSettingsSigValuesChanged(self, settings):
         self.annotateCellMovement(settings=settings)
         
-    def showCellTracksCheckbox_cb(self, checked):
+    def showObjTracksCheckbox_cb(self, checked):
         self.annotateCellMovement()
         self.df_settings.at[
             'showCellTracks', 'value'
@@ -31499,7 +31112,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.clearCellTracks()
         self.ax1_movementAgainstPrevLinesItem.setData([], [])
         self.movementAgainstPrevScatterItem.clear()
-        if self.showCellTracksCheckbox.isChecked() is False:
+        if not self.isObjectTracksChecked(0):
             return
         
         if settings is None:
@@ -31594,17 +31207,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             y2, x2 = self.getObjCentroid(obj.centroid)
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
             self.ax1_movementAgainstPrevLinesItem.addPoints(xx, yy)
-    
-    def _showCellTracksCheckboxRightClickMenu(self, point):
-        menu = QMenu(self)
-        editSettingsAction = menu.addAction('Edit track settings...')
-        toggleAction = menu.addAction('Toggle track visibility')
-
-        action = menu.exec_(self.showCellTracksCheckbox.mapToGlobal(point))
-        if action == editSettingsAction:
-            self.setAnnotateCellMovementSettings()
-        elif action == toggleAction:
-            self.showCellTracksCheckbox.setChecked(not self.showCellTracksCheckbox.isChecked())
                                 
     def setTrackedLostCentroids(self, prev_rp, tracked_lost_IDs):
         """Store centroids of those IDs the tracker decided is fine to lose 
@@ -32467,23 +32069,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def reinitWidgetsPos(self):
         pass
-        # try:
-        #     # self.highlightZneighObjCheckbox will be connected in 
-        #     # self.showHighlightZneighCheckbox()
-        #     self.highlightZneighObjCheckbox.toggled.disconnect()
-        # except Exception as e:
-        #     pass
-        # layout = self.bottomLeftLayout
-        # self.highlightZneighObjCheckbox.hide()
-        # try:
-        #     layout.removeWidget(self.highlightZneighObjCheckbox)
-        # except Exception as e:
-        #     pass
-        # self.highlightZneighObjCheckbox.hide()
-        # # layout.addWidget(
-        # #     self.drawIDsContComboBox, 0, 1, 1, 2,
-        # #     alignment=Qt.AlignCenter
-        # # )
 
     def reinitCustomAnnot(self):
         buttons = list(self.customAnnotDict.keys())
@@ -33383,6 +32968,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setAllTextAnnotations()
     
     def annotOptionClicked(self, clicked=True, sender=None, saveSettings=True):
+        # TODO: see issue #1156
+        return
+
         if sender is None:
             sender = self.sender()
         # First manually set exclusive with uncheckable
@@ -33424,49 +33012,37 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.annotContourCheckbox.setChecked(False)
             self.annotSegmMasksCheckbox.setChecked(False)
             self.drawMothBudLinesCheckbox.setChecked(False)
-            self.annotNumZslicesCheckbox.setChecked(False)
         else:
-            self.drawNothingCheckbox.setChecked(False)
-        
-        if sender == self.annotNumZslicesCheckbox:
-            self.annotIDsCheckbox.setChecked(True)
             self.drawNothingCheckbox.setChecked(False)
         
         self.setDrawAnnotComboboxText(saveSettings=saveSettings)
 
     def setDisabledAnnotCheckBoxesLeft(self, disabled):
-        self.annotIDsCheckbox.setDisabled(disabled)
-        self.annotCcaInfoCheckbox.setDisabled(disabled)
-        self.annotContourCheckbox.setDisabled(disabled)
-        self.annotSegmMasksCheckbox.setDisabled(disabled)
-        self.drawMothBudLinesCheckbox.setDisabled(disabled)
-        self.annotNumZslicesCheckbox.setDisabled(disabled)
-        self.drawNothingCheckbox.setDisabled(disabled)
-    
+        for checkbox in self.annotOptionsCheckboxes[0].values():
+            checkbox.setDisabled(disabled)
+
     def setEnabledAnnotCheckBoxesLeftZdepthAxes(self):
         if not self.isSegm3D:
             return
+
+        self.annotIDsCheckbox(0).setDisabled(False)
+        self.annotContourCheckbox(0).setDisabled(False)
+        self.annotIDsCheckbox(0).setChecked(True)
+        self.annotContourCheckbox(0).setChecked(True)
         
-        self.annotIDsCheckbox.setDisabled(False)
-        self.annotContourCheckbox.setDisabled(False)
-        self.annotIDsCheckbox.setChecked(True)
-        self.annotContourCheckbox.setChecked(True)
-        
-        self.annotOptionClicked(
-            sender=self.annotIDsCheckbox, saveSettings=False)
+        # self.annotOptionClicked(
+        #     sender=self.annotIDsCheckbox, saveSettings=False)
     
     def setDisabledAnnotCheckBoxesRight(self, disabled):
-        self.annotIDsCheckboxRight.setDisabled(disabled)
-        self.annotCcaInfoCheckboxRight.setDisabled(disabled)
-        self.annotContourCheckboxRight.setDisabled(disabled)
-        self.annotSegmMasksCheckboxRight.setDisabled(disabled)
-        self.drawMothBudLinesCheckboxRight.setDisabled(disabled)
-        self.annotNumZslicesCheckboxRight.setDisabled(disabled)
-        self.drawNothingCheckboxRight.setDisabled(disabled)
+        for checkbox in self.annotOptionsCheckboxes[1].values():
+            checkbox.setDisabled(disabled)
     
     def annotOptionClickedRight(
             self, clicked=True, sender=None, saveSettings=True
         ):
+        # TODO: see issue #1156
+        return
+    
         if sender is None:
             sender = self.sender()
         # First manually set exclusive with uncheckable
@@ -33508,12 +33084,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.annotContourCheckboxRight.setChecked(False)
             self.annotSegmMasksCheckboxRight.setChecked(False)
             self.drawMothBudLinesCheckboxRight.setChecked(False)
-            self.annotNumZslicesCheckboxRight.setChecked(False)
         else:
-            self.drawNothingCheckboxRight.setChecked(False)
-        
-        if sender == self.annotNumZslicesCheckboxRight:
-            self.annotIDsCheckboxRight.setChecked(True)
             self.drawNothingCheckboxRight.setChecked(False)
 
         self.setDrawAnnotComboboxTextRight(saveSettings=saveSettings)
@@ -33535,28 +33106,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return True
         
         if deactivateAnnot:
-            self.annotCcaInfoCheckbox.blockSignals(True)
-            self.annotIDsCheckbox.blockSignals(True)
-            self.annotCcaInfoCheckbox.setChecked(False)
-            self.annotIDsCheckbox.setChecked(False)
-            self.annotCcaInfoCheckbox.blockSignals(False)
-            self.annotIDsCheckbox.blockSignals(False)
-
-            self.annotCcaInfoCheckboxRight.blockSignals(True)
-            self.annotIDsCheckboxRight.blockSignals(True)
-            self.annotCcaInfoCheckboxRight.setChecked(False)
-            self.annotIDsCheckboxRight.setChecked(False)
-            self.annotCcaInfoCheckboxRight.blockSignals(False)
-            self.annotIDsCheckboxRight.blockSignals(False)
-
-            self.textAnnot[0].setCcaAnnot(False)
-            self.textAnnot[0].setLabelAnnot(False)
-            self.textAnnot[1].setCcaAnnot(False)
-            self.textAnnot[1].setLabelAnnot(False)
+            self.annotIDsCheckbox(0).setChecked(False)
+            self.annotIDsCheckbox(1).setChecked(False)
             return True
 
     
     def setAnnotOptionsCcaMode(self):
+        # TODO: see issue #
+        return
+    
         self.prevAnnotOptions = self.storeCurrentAnnotOptions_ax1(
             return_value=True
         )
@@ -33566,88 +33124,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setDrawAnnotComboboxText()
     
     def setAnnotOptionsLin_treeMode(self):
-        # self.prevAnnotOptions = self.storeCurrentAnnotOptions_ax1(
-        #     return_value=True
-        # )
+        # TODO: see issue #
+        return
+    
         self.annotCcaInfoCheckbox.setChecked(True)
         self.annotIDsCheckbox.setChecked(False)
         self.drawMothBudLinesCheckbox.setChecked(False)
         self.setDrawAnnotComboboxText()
-        self.showTreeInfoCheckbox.setChecked(True)
-    
-    def setDrawAnnotComboboxText(self, saveSettings=True):
-        if self.annotIDsCheckbox.isChecked():
-            if self.annotContourCheckbox.isChecked():
-                t = 'Draw IDs and contours'
-            elif self.annotSegmMasksCheckbox.isChecked():
-                t = 'Draw IDs and overlay segm. masks'
-            else:
-                t = 'Draw only IDs'
-        
-        elif self.annotCcaInfoCheckbox.isChecked():
-            if self.annotContourCheckbox.isChecked():
-                t = 'Draw cell cycle info and contours'
-            elif self.annotSegmMasksCheckbox.isChecked():
-                t = 'Draw cell cycle info and overlay segm. masks'
-            else:
-                t = 'Draw only cell cycle info'
-        
-        elif self.annotSegmMasksCheckbox.isChecked():
-            t = 'Draw only overlay segm. masks'
-
-        elif self.annotContourCheckbox.isChecked():
-            t = 'Draw only contours'
-        
-        elif self.drawMothBudLinesCheckbox.isChecked():
-            t = 'Draw only mother-bud lines'
-        
-        elif self.drawNothingCheckbox.isChecked():
-            t = 'Draw nothing'
-        else:
-            t = 'Draw nothing'
-
-        if t == self.drawIDsContComboBox.currentText():
-            self.drawIDsContComboBox_cb(0)
-        
-        self.drawIDsContComboBox.saveSettings = saveSettings
-        self.drawIDsContComboBox.setCurrentText(t)
-
-    def setDrawAnnotComboboxTextRight(self, saveSettings=True):
-        if self.annotIDsCheckboxRight.isChecked():
-            if self.annotContourCheckboxRight.isChecked():
-                t = 'Draw IDs and contours'
-            elif self.annotSegmMasksCheckboxRight.isChecked():
-                t = 'Draw IDs and overlay segm. masks'
-            else:
-                t = 'Draw only IDs'
-        
-        elif self.annotCcaInfoCheckboxRight.isChecked():
-            if self.annotContourCheckboxRight.isChecked():
-                t = 'Draw cell cycle info and contours'
-            elif self.annotSegmMasksCheckboxRight.isChecked():
-                t = 'Draw cell cycle info and overlay segm. masks'
-            else:
-                t = 'Draw only cell cycle info'
-        
-        elif self.annotSegmMasksCheckboxRight.isChecked():
-            t = 'Draw only overlay segm. masks'
-
-        elif self.annotContourCheckboxRight.isChecked():
-            t = 'Draw only contours'
-        
-        elif self.drawMothBudLinesCheckboxRight.isChecked():
-            t = 'Draw only mother-bud lines'
-        
-        elif self.drawNothingCheckboxRight.isChecked():
-            t = 'Draw nothing'
-        else:
-            t = 'Draw nothing'
-
-        if t == self.annotateRightHowCombobox.currentText():
-            self.annotateRightHowCombobox_cb(0)
-        
-        self.annotateRightHowCombobox.saveSettings = saveSettings
-        self.annotateRightHowCombobox.setCurrentText(t)
         
     def getOverlayItems(self, channelName, index):
         imageItem = widgets.OverlayImageItem()
@@ -35953,11 +35436,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.zProjComboBox.setFont(newFont)
         self.t_label.setFont(newFont)
         self.zProjOverlay_CB.setFont(newFont)
-        self.annotateRightHowCombobox.setFont(newFont)
-        self.drawIDsContComboBox.setFont(newFont)
-        self.showTreeInfoCheckbox.setFont(newFont)
-        self.showCellTracksCheckbox.setFont(newFont)
-        self.highlightZneighObjCheckbox.setFont(newFont)
         self.navSpinBox.setFont(newFont)
         self.zSliceSpinbox.setFont(newFont)
         self.SizeZlabel.setFont(newFont)
@@ -35969,12 +35447,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.img1.alphaScrollbar.label.setFont(newFont)
         except Exception as e:
             pass
-        for i in range(self.annotOptionsLayout.count()):
-            widget = self.annotOptionsLayout.itemAt(i).widget()
-            widget.setFont(newFont)
-        for i in range(self.annotOptionsLayoutRight.count()):
-            widget = self.annotOptionsLayoutRight.itemAt(i).widget()
-            widget.setFont(newFont)
+
+        for ax in (0, 1):
+            annotOptionsLayout = self.annotOptionsCheckboxes[ax]['layout']
+            for i in range(annotOptionsLayout.count()):
+                widget = annotOptionsLayout.itemAt(i).widget()
+                widget.setFont(newFont)
         try:
             for channel, items in self.overlayLayersItems.items():
                 alphaScrollbar = items[2]
@@ -36007,14 +35485,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 f'height: {self.newCheckBoxesHeight}px'
             '}'
         )
-        for i in range(self.annotOptionsLayout.count()):
-            widget = self.annotOptionsLayout.itemAt(i).widget()
-            if isinstance(widget, QCheckBox):
-                widget.setStyleSheet(checkBoxStyleSheet)
-        for i in range(self.annotOptionsLayoutRight.count()):
-            widget = self.annotOptionsLayoutRight.itemAt(i).widget()
-            if isinstance(widget, QCheckBox):
-                widget.setStyleSheet(checkBoxStyleSheet)
+        for ax in (0, 1):
+            annotOptionsLayout = self.annotOptionsCheckboxes[ax]['layout']
+            for i in range(annotOptionsLayout.count()):
+                widget = annotOptionsLayout.itemAt(i).widget()
+                if isinstance(widget, QCheckBox):
+                    widget.setStyleSheet(checkBoxStyleSheet)
+
         self.zSliceCheckbox.setStyleSheet(checkBoxStyleSheet)
 
     def resizeEvent(self, event):

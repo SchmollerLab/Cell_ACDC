@@ -1757,10 +1757,14 @@ class GroupBox(QGroupBox):
         self.keyPressCallback()
 
 class CheckBox(QCheckBox):
+    sigToggled = Signal(bool)
+
     def __init__(self, *args, keyPressCallback=None):
         super().__init__(*args)
         self.keyPressCallback = None
         self.setFocusPolicy(Qt.NoFocus)
+        self.toggled.connect(self.onToggled)
+        self._exclusiveCheckboxes: list[QCheckBox] = []
     
     def keyPressEvent(self, event) -> None:
         event.ignore()
@@ -1768,6 +1772,22 @@ class CheckBox(QCheckBox):
             return
 
         self.keyPressCallback()
+    
+    def setExclusiveOnCheckCheckbox(self, checkbox: QCheckBox):
+        # Keep a list of checkboxes that needs to be unchecked when the `self`
+        # checkbox is checked --> see `onToggled` method
+        self._exclusiveCheckboxes.append(checkbox)
+    
+    def onToggled(self, checked: bool):
+        for checkbox in self._exclusiveCheckboxes:
+            if not checked:
+                continue
+
+            checkbox.blockSignals(True)
+            checkbox.setChecked(not checked)
+            checkbox.blockSignals(False)
+        
+        self.sigToggled.emit(checked)
 
 class ScrollArea(QScrollArea):
     sigLeaveEvent = Signal()
