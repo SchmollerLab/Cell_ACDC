@@ -1757,10 +1757,14 @@ class GroupBox(QGroupBox):
         self.keyPressCallback()
 
 class CheckBox(QCheckBox):
+    sigToggled = Signal(bool, object)
+
     def __init__(self, *args, keyPressCallback=None, rightclick_menu=None):
         super().__init__(*args)
         self.keyPressCallback = keyPressCallback
         self.setFocusPolicy(Qt.NoFocus)
+        self.toggled.connect(self.onToggled)
+        self._exclusiveCheckboxes: list[QCheckBox] = []
         self.rightclick_menu = rightclick_menu
     
     def keyPressEvent(self, event) -> None:
@@ -1769,6 +1773,22 @@ class CheckBox(QCheckBox):
             return
 
         self.keyPressCallback()
+    
+    def setExclusiveOnCheckCheckbox(self, checkbox: QCheckBox):
+        # Keep a list of checkboxes that needs to be unchecked when the `self`
+        # checkbox is checked --> see `onToggled` method
+        self._exclusiveCheckboxes.append(checkbox)
+    
+    def onToggled(self, checked: bool):
+        for checkbox in self._exclusiveCheckboxes:
+            if not checked:
+                continue
+
+            checkbox.blockSignals(True)
+            checkbox.setChecked(not checked)
+            checkbox.blockSignals(False)
+        
+        self.sigToggled.emit(checked, self)
         
     def contextMenuEvent(self, event) -> None:
         if self.rightclick_menu is not None:
