@@ -1746,7 +1746,7 @@ class VerticalResizeHline(QFrame):
 class GroupBox(QGroupBox):
     def __init__(self, *args, keyPressCallback=None):
         super().__init__(*args)
-        self.keyPressCallback = None
+        self.keyPressCallback = keyPressCallback
         self.setFocusPolicy(Qt.NoFocus)
     
     def keyPressEvent(self, event) -> None:
@@ -1757,10 +1757,11 @@ class GroupBox(QGroupBox):
         self.keyPressCallback()
 
 class CheckBox(QCheckBox):
-    def __init__(self, *args, keyPressCallback=None):
+    def __init__(self, *args, keyPressCallback=None, rightclick_menu=None):
         super().__init__(*args)
-        self.keyPressCallback = None
+        self.keyPressCallback = keyPressCallback
         self.setFocusPolicy(Qt.NoFocus)
+        self.rightclick_menu = rightclick_menu
     
     def keyPressEvent(self, event) -> None:
         event.ignore()
@@ -1768,6 +1769,11 @@ class CheckBox(QCheckBox):
             return
 
         self.keyPressCallback()
+        
+    def contextMenuEvent(self, event) -> None:
+        if self.rightclick_menu is not None:
+            self.rightclick_menu.exec_(event.globalPos())
+            
 
 class ScrollArea(QScrollArea):
     sigLeaveEvent = Signal()

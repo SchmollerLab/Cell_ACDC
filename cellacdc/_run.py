@@ -262,7 +262,7 @@ def _setup_gui_libraries(caller_name='Cell-ACDC', exit_at_end=True):
     try:
         import pyqtgraph
         version = pyqtgraph.__version__.split('.')
-        pg_major, pg_minor, pg_patch = [int(val) for val in version]
+        pg_major, pg_minor, pg_patch = [int(val) for val in version if val.isnumeric()]
         # if pg_major < 1:
         #     raise ModuleNotFoundError('pyqtgraph must be upgraded')
         if pg_minor < 13:

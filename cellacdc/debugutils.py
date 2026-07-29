@@ -8,7 +8,7 @@ import psutil
 import time
 import functools
 
-_LINE_BENCHMARK_TRACE_LIMIT = 10000
+_LINE_BENCHMARK_TRACE_LIMIT = 500000
 
 _LINE_BENCHMARK_STATS = defaultdict(
     lambda: {

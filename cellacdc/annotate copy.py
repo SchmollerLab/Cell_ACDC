@@ -183,6 +183,7 @@ class TextAnnotationsImageItem(pg.ImageItem):
     def grayOutAnnotations(self, IDsToSkip=None):
         self.setOpacity(0.3)
     
+    @debugutils.line_benchmark
     def addObjAnnot(self, pos, draw=True, **objOpts):
         if objOpts['bold']:
             font = self.fontBold
@@ -253,8 +254,119 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         sizes = getattr(self, sizes_attr)
         for text in texts:
             sizes[text] = int(np.round(self.fontSize*current_max_scale/scales[text]))
-    
+
+    def applyIncrementalUpdate(self, wanted):
+        """
+        wanted: dict of key -> (pos, objOpts) describing everything that
+        should be visible this frame.
+
+        Diffs against the previous frame instead of clearData()+setData(),
+        so:
+          - positions of already-existing, unchanged-style points are
+            written directly into self.data (no atlas lookup at all)
+          - only points whose text/color/bold actually changed get their
+            symbol/size/pen/brush recomputed and their sourceRect reset
+            (forcing exactly one atlas lookup for that row)
+          - only genuinely new/removed objects trigger array
+            growth/shrink
+        """
+        if not hasattr(self, '_annotIndex'):
+            self._resetIncrementalState()
+            
+        if not self.isVisible():
+            self.setVisible(True)
+
+        prevKeys = set(self._annotIndex.keys())
+        newKeys = set(wanted.keys())
+
+        removedKeys = prevKeys - newKeys
+        addedKeys = newKeys - prevKeys
+        keptKeys = prevKeys & newKeys
+
+        # --- position/style updates for rows that already exist ---
+        for key in keptKeys:
+            idx, prevOpts = self._annotIndex[key]
+            pos, objOpts = wanted[key]
+
+            # cheap: just move the point, no atlas involvement
+            self.data['x'][idx] = pos[0]
+            self.data['y'][idx] = pos[1]
+
+            if objOpts != prevOpts:
+                # appearance actually changed -> re-derive style fields and
+                # force only THIS row's atlas rect to be recomputed
+                newVals = self.addObjAnnot(pos, draw=False, **objOpts)
+                for field in ('symbol', 'size', 'pen', 'brush'):
+                    self.data[field][idx] = newVals[field]
+                self.data['sourceRect'][idx] = (0, 0, 0, 0)
+                self._annotIndex[key] = (idx, objOpts)
+
+        # --- drop rows no longer wanted ---
+        if removedKeys:
+            removeIdxs = {self._annotIndex[k][0] for k in removedKeys}
+            keepMask = np.ones(len(self.data), dtype=bool)
+            for idx in removeIdxs:
+                keepMask[idx] = False
+
+            self.data = self.data[keepMask]
+
+            # indices shift after deletion -> remap bookkeeping
+            oldToNew = {}
+            newIdx = 0
+            for oldIdx, keep in enumerate(keepMask):
+                if keep:
+                    oldToNew[oldIdx] = newIdx
+                    newIdx += 1
+
+            for key in list(self._annotIndex.keys()):
+                if key in removedKeys:
+                    del self._annotIndex[key]
+                    continue
+                idx, opts = self._annotIndex[key]
+                self._annotIndex[key] = (oldToNew[idx], opts)
+
+        # --- append newly added rows (their sourceRect starts at 0
+        #     automatically, so only these get a fresh atlas lookup) ---
+        for key in addedKeys:
+            pos, objOpts = wanted[key]
+            pointOpts = self.addObjAnnot(pos, draw=False, **objOpts)
+            pointOpts['data'] = key[1]
+            print("################################")
+            print("len(self.data):", len(self.data))
+            print("len(self.points()):", len(self.points()))
+            print("len(self.fragmentAtlas._coords):", len(self.fragmentAtlas._coords))
+            pointOpts['sourceRect'] = None
+
+            self.addPoints([pointOpts])
+            print("len(self.data):", len(self.data))
+            print("len(self.points()):", len(self.points()))
+            print("len(self.fragmentAtlas._coords):", len(self.fragmentAtlas._coords))
+            print()
+            self._annotIndex[key] = (len(self.data) - 1, objOpts)
+
+        # keep bookkeeping lists in sync for other code (highlighterItem,
+        # grayOutAnnotations, highlightObject/removeHighlightObject all
+        # rely on len(self.data)/self.texts)
+        ordered = sorted(self._annotIndex.items(), key=lambda kv: kv[1][0])
+        self.texts = [wanted[key][1]['text'] if key in wanted
+                      else opts['text'] for key, (idx, opts) in ordered]
+        self.annotData = list(self.data)
+
+        self.invalidate()
+        self.updateSpots()
+        self.update()
+
+    def _resetIncrementalState(self):
+        self._annotIndex = {}
+
+    def clear(self):
+        self.setVisible(False)
+        # debugutils.print_call_stack()
+        # super().clear()
+        # self._resetIncrementalState()
+
     def clearData(self):
+        self._resetIncrementalState()
         self.setData([], [])
         self.annotData = []
         self.texts = []
@@ -465,6 +577,7 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         
         return pointOpts      
     
+    @debugutils.line_benchmark
     def addObjAnnot(self, pos, draw=False, anchor=None, **objOpts):        
         text = objOpts['text']
         bold = objOpts['bold']
@@ -566,6 +679,7 @@ class TextAnnotations:
         if hasattr(self.item, 'highlighterItem'):
             ax.removeItem(self.item.highlighterItem)
     
+    @debugutils.line_benchmark
     def addObjAnnotation(self, obj, color_name, text, bold, rp=None, getObjCentroidFunc=None):
         objOpts = {
             'text': text,
@@ -584,24 +698,15 @@ class TextAnnotations:
         objData = self.item.addObjAnnot(pos, draw=True, **objOpts)
         self.item.appendData(objData, objOpts['text'])
     
+    @debugutils.line_benchmark
     def setAnnotations(self, **kwargs):
         if self.isDisabled():
-            self.item.setVisible(False)
             return
-
-        if isinstance(self.item, TextAnnotationsImageItem):
-            self.item.clearImage()
-            self.item.setOpacity(1.0)
-            self.item.highlighterItem.setData([], [])
-
-        annotData = []
-        texts = []
         
         labelsToSkip = kwargs.get('labelsToSkip')
         posData = kwargs['posData']
         delROIsIDs = kwargs.get('delROIsIDs', [])
         isObjVisibleFunc = kwargs.get('isVisibleCheckFunc')
-        highlightedID = kwargs.get('highlightedID')
         annotateLost = kwargs.get('annotateLost')
         getObjCentroidFunc = kwargs.get('getObjCentroidFunc')
         isCcaAnnot = self.isCcaAnnot()
@@ -625,11 +730,17 @@ class TextAnnotations:
             posData.allData_li[posData.frame_i].get('moth_bud_pairs_cca')
         )
 
+        # --- Build the desired annotation set for this frame ---
+        # Every entry that SHOULD be visible right now, keyed uniquely.
+        # We diff this against last frame's set instead of clearing and
+        # rebuilding, so unchanged rows keep their cached atlas sourceRect
+        # (see ScatterPlotItem.updateSpots / useCache).
+        wanted = {}
+
         rp = rp_func()
         for obj in rp:
-            if labelsToSkip is not None:
-                if labelsToSkip.get(obj.label, False):
-                    continue
+            if labelsToSkip is not None and labelsToSkip.get(obj.label, False):
+                continue
             
             obj3D = rp3D.get_obj_from_ID(obj.label)
             if obj3D is not None and not isObjVisibleFunc(obj3D.bbox):
@@ -639,11 +750,12 @@ class TextAnnotations:
                 continue
                 
             yc, xc = rp.get_centroid(obj.label)
-                
             pos = (int(xc), int(yc))
             
             isNewObject = obj.label in posData.new_IDs
             if not isNewObject and not updateAllTextAnnotations:
+                # not being updated this frame -> not "wanted", will be
+                # dropped just like in the original full-rebuild version
                 continue
             
             objOpts = get_obj_text_annot_opts(
@@ -652,83 +764,56 @@ class TextAnnotations:
                 isGenNumTreeAnnotation, posData.frame_i,
                 moth_bud_pairs_cca=moth_bud_pairs_cca
             )
-            
-            objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
-            objData['data'] = obj.label
-            annotData.append(objData)
-            texts.append(objOpts['text'])
+            wanted[('obj', obj.label)] = (pos, objOpts)
 
         if posData.trackedLostIDs and annotateLost:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-            if prev_rp is None:
-                prev_rp = ()
-            
-            for obj in prev_rp:
-                if obj.label not in posData.trackedLostIDs:
-                    continue
+            if prev_rp is not None:
+                for obj in prev_rp:
+                    if obj.label not in posData.trackedLostIDs:
+                        continue
+                    if obj.label in delROIsIDs:
+                        continue
+                    if not isObjVisibleFunc(obj.bbox):
+                        continue
 
-                if obj.label in delROIsIDs:
-                    continue
-                
-                if not isObjVisibleFunc(obj.bbox):
-                    continue
-
-                objOpts = {
-                    'text': f'{obj.label}',
-                    'color_name': 'tracked_lost_object',
-                    'bold': False,
-                }
-                centroid = prev_rp.get_centroid(obj.label)
-                yc, xc = getObjCentroidFunc(centroid)
-                pos = (int(xc), int(yc))
-                objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
-                annotData.append(objData)
-                texts.append(objOpts['text'])
-
+                    objOpts = {
+                        'text': f'{obj.label}',
+                        'color_name': 'tracked_lost_object',
+                        'bold': False,
+                    }
+                    centroid = prev_rp.get_centroid(obj.label)
+                    yc, xc = getObjCentroidFunc(centroid)
+                    pos = (int(xc), int(yc))
+                    wanted[('trackedLost', obj.label)] = (pos, objOpts)
 
         if posData.lost_IDs and annotateLost:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-            if prev_rp is None:
-                prev_rp = ()
-            for obj in prev_rp:
-                if obj.label not in posData.lost_IDs:
-                    continue
-                
-                if obj.label in delROIsIDs:
-                    continue
-                
-                if not isObjVisibleFunc(obj.bbox):
-                    continue
-                
-                objOpts = {
-                    'text': f'{obj.label}?',
-                    'color_name': 'lost_object',
-                    'bold': False,
-                }
-                centroid = prev_rp.get_centroid(obj.label)
-                yc, xc = getObjCentroidFunc(centroid)
-                try:
-                    pos = (int(xc), int(yc))
-                except Exception as err:
-                    printl("""WARNING: Could not annotate lost object, failed 
-                           to get position. Skipping annotation.""")
-                    # Sometimes xc or yc can be nan, causing an error when 
-                    # converting to int --> skip annotation in this case
-                    continue
-                objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
-                annotData.append(objData)
-                texts.append(objOpts['text'])
+            if prev_rp is not None:
+                for obj in prev_rp:
+                    if obj.label not in posData.lost_IDs:
+                        continue
+                    if obj.label in delROIsIDs:
+                        continue
+                    if not isObjVisibleFunc(obj.bbox):
+                        continue
+                    
+                    objOpts = {
+                        'text': f'{obj.label}?',
+                        'color_name': 'lost_object',
+                        'bold': False,
+                    }
+                    centroid = prev_rp.get_centroid(obj.label)
+                    yc, xc = getObjCentroidFunc(centroid)
+                    try:
+                        pos = (int(xc), int(yc))
+                    except Exception:
+                        printl("""WARNING: Could not annotate lost object, failed 
+                               to get position. Skipping annotation.""")
+                        continue
+                    wanted[('lost', obj.label)] = (pos, objOpts)
 
-        if not annotData:
-            self.item.annotData = []
-            self.item.texts = []
-            self.item.setVisible(False)
-            return
-
-        self.item.annotData = annotData
-        self.item.texts = texts
-        self.item.setVisible(True)
-        self.item.draw()
+        self.item.applyIncrementalUpdate(wanted)
     
     def highlightObject(self, obj, rp=None, getObjCentroidFunc=None):
         self.item.highlightObject(obj, rp=rp, getObjCentroidFunc=getObjCentroidFunc)

@@ -5100,6 +5100,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.gui_addCreatedAxesItems()
         self.gui_add_ax_cursors()
+        
         self.progressWin.workerFinished = True
         self.progressWin.close()
         self.progressWin = None
@@ -21241,6 +21242,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.gui_createAutoSaveWorker()
         
         self.initLoadedDelROI()
+        
+        # self.gui_initFragmentsAtlas()
+
 
         QTimer.singleShot(200, self.autoRange)
         QTimer.singleShot(500, self.autoRange)
@@ -22603,7 +22607,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         allData_li = posData.allData_li[posData.frame_i]
         
-        allData_li['regionprops'] = posData.rp
+        if hasattr(posData, 'rp'):
+            allData_li['regionprops'] = posData.rp
+        else:
+            rp = self._acdcRegionProps(posData.lab, precache_centroids=False)
+            allData_li['regionprops'] = rp
         allData_li['labels'] = posData.lab.copy()
         allData_li['manualBackgroundLab'] = (
             posData.manualBackgroundLab
@@ -30219,7 +30227,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 QAbstractSlider.SliderAction.SliderSingleStepSub
             )
     
-    @exception_handler
+    @debugutils.line_benchmark
     def updateAllImages(
             self, image=None, computePointsLayers=True, computeContours=True,
             updateLookuptable=True, updateAllTextAnnotations=True
@@ -31495,6 +31503,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ] = checked
         self.df_settings.to_csv(self.settings_csv_path)
         
+    @debugutils.line_benchmark
     def annotateCellMovement(self, settings=None):
         self.clearCellTracks()
         self.ax1_movementAgainstPrevLinesItem.setData([], [])
@@ -31505,6 +31514,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if settings is None:
             self.initannotateCellMovementSettings()
             settings = self.annotateCellMovementSettings
+            
         if settings['against_prev'] is True:
             self.annotateCellMovementAgainstPrev()
             return

@@ -167,6 +167,10 @@ class TextAnnotationsImageItem(pg.ImageItem):
         self.highlighterItem.setData([], [])
         self.texts = []
         self.annotData = []
+
+    def beginFrameData(self):
+        # For image-based annotations, frame preparation and clear are equivalent.
+        self.clearData()
     
     def update(self):
         pass
@@ -214,6 +218,61 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         self.texts = []
         self.annotData = []
         self._anchor = anchor
+        self._poolCapacity = 0
+        self._poolActiveCount = 0
+        self._poolSignatures = []
+        self._poolData = []
+        self._hiddenBrush = pg.mkBrush((0, 0, 0, 0))
+        self._hiddenPen = pg.mkPen((0, 0, 0, 0), width=0)
+
+    def _initialPoolCapacity(self, numObjects):
+        numObjects = int(numObjects)
+        if numObjects <= 0:
+            return 1
+        extra = max(1, int(np.ceil(numObjects*0.1)))
+        return numObjects + extra
+
+    def _hiddenPointOpts(self):
+        symbol = self.getObjTextAnnotSymbol('?', bold=False)
+        size = self.sizesRegular.get('?', self.fontSize)
+        return {
+            'pos': (0, 0),
+            'symbol': symbol,
+            'size': size,
+            'brush': self._hiddenBrush,
+            'pen': self._hiddenPen,
+            'data': None,
+        }
+
+    def _ensurePoolCapacity(self, required):
+        required = int(required)
+        if required <= self._poolCapacity:
+            return
+
+        addCount = required - self._poolCapacity
+        newPoints = [self._hiddenPointOpts() for _ in range(addCount)]
+        super().addPoints(newPoints)
+
+        points = self.points()
+        for idx in range(self._poolCapacity, required):
+            points[idx].setVisible(False)
+
+        self._poolSignatures.extend([None]*addCount)
+        self._poolData.extend([None]*addCount)
+        self._poolCapacity = required
+
+    def _initPool(self, numObjects):
+        targetCapacity = self._initialPoolCapacity(numObjects)
+        if self._poolCapacity > 0:
+            self._ensurePoolCapacity(targetCapacity)
+            return
+
+        super().setData([], [])
+        self._poolCapacity = 0
+        self._poolActiveCount = 0
+        self._poolSignatures = []
+        self._poolData = []
+        self._ensurePoolCapacity(targetCapacity)
 
     def _rebuildSizes(self, bold=False):
         if bold:
@@ -255,7 +314,24 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
             sizes[text] = int(np.round(self.fontSize*current_max_scale/scales[text]))
     
     def clearData(self):
-        self.setData([], [])
+        active = self._poolActiveCount
+        if active > 0:
+            data = self.data
+            data['visible'][:active] = False
+            data['sourceRect'][:active] = 0
+            self.updateSpots(data[:active])
+
+            for idx in range(active):
+                self._poolSignatures[idx] = None
+                self._poolData[idx] = None
+
+        self._poolActiveCount = 0
+        self.setVisible(False)
+        self.annotData = []
+        self.texts = []
+
+    def beginFrameData(self):
+        # Prepare next frame payload without triggering render updates.
         self.annotData = []
         self.texts = []
     
@@ -264,7 +340,52 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         self.texts.append(text)
     
     def draw(self):
-        super().setData(self.annotData)
+        required = len(self.annotData)
+        self._ensurePoolCapacity(required)
+        data = self.data
+        prevActive = self._poolActiveCount
+        touched = max(required, prevActive)
+        hasUpdates = False
+
+        for idx, pointOpts in enumerate(self.annotData):
+            signature = (
+                pointOpts['pos'], pointOpts['symbol'], pointOpts['size'],
+                pointOpts['brush'], pointOpts['pen'], pointOpts.get('data')
+            )
+            if signature != self._poolSignatures[idx]:
+                x, y = pointOpts['pos']
+                data['x'][idx] = x
+                data['y'][idx] = y
+                data['symbol'][idx] = pointOpts['symbol']
+                data['brush'][idx] = pointOpts['brush']
+                data['pen'][idx] = pointOpts['pen']
+                data['size'][idx] = pointOpts['size']
+                data['data'][idx] = pointOpts.get('data')
+                data['sourceRect'][idx] = 0
+                hasUpdates = True
+                self._poolSignatures[idx] = signature
+                self._poolData[idx] = pointOpts.get('data')
+            if not data['visible'][idx]:
+                data['visible'][idx] = True
+                data['sourceRect'][idx] = 0
+                hasUpdates = True
+
+        for idx in range(required, prevActive):
+            if data['visible'][idx]:
+                data['visible'][idx] = False
+                data['sourceRect'][idx] = 0
+                hasUpdates = True
+            self._poolSignatures[idx] = None
+            self._poolData[idx] = None
+
+        if hasUpdates and touched > 0:
+            self.updateSpots(data[:touched])
+
+        self._poolActiveCount = required
+        self.setVisible(required > 0)
+        
+    def clear(self):
+        self.setVisible(False)
 
     def initFonts(self, fontSize):
         self.fontSize = fontSize
@@ -279,6 +400,7 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         pass
 
     def initSymbols(self, allIDs, onlyIDs=False):
+        allIDs = list(allIDs)
         annotTexts = ['?']
         for ID in allIDs:
             annotTexts.append(str(ID))
@@ -298,6 +420,9 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         else:
             # Symbols never created --> create now
             self.createSymbols(annotTexts)
+
+        # Preallocate spots once with 10% headroom to avoid frequent reallocations.
+        self._initPool(len(allIDs))
     
     def addSymbols(self, annotTexts, includeBold=True):
         if includeBold:
@@ -384,44 +509,37 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         return symbol
 
     def grayOutAnnotations(self, IDsToSkip=None):
-        brushes = [self._brushes['grayed'] for _ in range(len(self.data))]
-        pens = [self._pens['grayed'] for _ in range(len(self.data))]
-        if IDsToSkip is not None:
-            pointItems = self.points()
-            for idx, objData in enumerate(self.data):
-                ID = objData['data']
-                doNotGray = IDsToSkip.get(ID, False)
-                if not doNotGray:
-                    continue
-                pointItem = pointItems[idx]
-                brush = pointItem.brush()
-                pen = pointItem.pen()
-                brushes[idx] = brush
-                pens[idx] = pen
-        self.setBrush(brushes)
-        self.setPen(pens)
+        data = self.data
+        hasUpdates = False
+        for idx in range(self._poolActiveCount):
+            ID = self._poolData[idx]
+            doNotGray = IDsToSkip is not None and IDsToSkip.get(ID, False)
+            if doNotGray:
+                pointOpts = self.annotData[idx]
+                brush = pointOpts['brush']
+                pen = pointOpts['pen']
+            else:
+                brush = self._brushes['grayed']
+                pen = self._pens['grayed']
+
+            if data['brush'][idx] is not brush or data['pen'][idx] is not pen:
+                data['brush'][idx] = brush
+                data['pen'][idx] = pen
+                data['sourceRect'][idx] = 0
+                hasUpdates = True
+
+        if hasUpdates and self._poolActiveCount > 0:
+            self.updateSpots(data[:self._poolActiveCount])
 
     def highlightObject(self, obj, rp=None, getObjCentroidFunc=None):
         ID = obj.label
         objIdx = None
-        for idx, objData in enumerate(self.data):
-            if ID == objData['data']:
+        for idx in range(self._poolActiveCount):
+            if ID == self._poolData[idx]:
                 objIdx = idx
                 break
         if objIdx is None:
-            objOpts = {
-                'text': str(ID), 'bold': True, 'color_name': 'new_object'
-            }
-            if rp is not None:
-                centroid = rp.get_centroid(obj.label)
-            else:
-                centroid = obj.centroid
-            if getObjCentroidFunc is not None:
-                yc, xc = getObjCentroidFunc(centroid)
-            else:
-                yc, xc = centroid[-2:]
-            pos = (int(xc), int(yc))
-            self.addObjAnnot(pos, draw=True, **objOpts)
+            # Keep pool consistency: only highlight points currently present.
             return
         
         pointItem = self.points()[objIdx]
@@ -434,8 +552,8 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
     def removeHighlightObject(self, obj):
         ID = obj.label
         objIdx = None
-        for idx, objData in enumerate(self.data):
-            if ID == objData['data']:
+        for idx in range(self._poolActiveCount):
+            if ID == self._poolData[idx]:
                 objIdx = idx
                 break
         if objIdx is None:
@@ -498,6 +616,88 @@ class TextAnnotations:
         self._isLabelTreeAnnotation = False
         self._isGenNumTreeAnnotation = False
         self._isGenNumTreeAnnotation = False
+        self._symbolsPreinitPosDataId = None
+        self._symbolsPreinitFrameCount = None
+
+    def _iter_all_frames_symbol_texts(self, posData):
+        texts = set()
+
+        allIDs = getattr(posData, 'allIDs', None)
+        if allIDs:
+            for ID in allIDs:
+                texts.add(str(ID))
+                texts.add(f'{ID}?')
+
+        for frameData in posData.allData_li:
+            acdc_df = frameData.get('acdc_df')
+            if acdc_df is None:
+                continue
+
+            for ID in acdc_df.index:
+                texts.add(str(ID))
+                texts.add(f'{ID}?')
+
+            if 'Cell_ID_tree' in acdc_df.columns:
+                for val in acdc_df['Cell_ID_tree'].dropna().unique():
+                    texts.add(str(val))
+
+            requiredCols = {
+                'cell_cycle_stage', 'generation_num', 'is_history_known'
+            }
+            if not requiredCols.issubset(set(acdc_df.columns)):
+                continue
+
+            for _, row in acdc_df.iterrows():
+                ccs = row.get('cell_cycle_stage')
+                if pd.isna(ccs):
+                    continue
+
+                gen_num = row.get('generation_num')
+                if pd.isna(gen_num):
+                    continue
+
+                try:
+                    gen_num_int = int(gen_num)
+                    gen_txt = 'ND' if gen_num_int == -1 else str(gen_num_int)
+                except Exception:
+                    gen_txt = str(gen_num)
+
+                texts.add(f'{ccs}-{gen_txt}')
+
+                gen_tree = row.get('generation_num_tree', None)
+                if gen_tree is not None and not pd.isna(gen_tree):
+                    texts.add(f'{ccs}-{gen_tree}')
+
+                is_history_known = row.get('is_history_known', True)
+                if not bool(is_history_known):
+                    texts.add(f'{ccs}-{gen_txt}?')
+                    if gen_tree is not None and not pd.isna(gen_tree):
+                        texts.add(f'{ccs}-{gen_tree}?')
+
+        return texts
+
+    def _preinitSymbolsAllFrames(self, posData):
+        if not isinstance(self.item, TextAnnotationsScatterItem):
+            return
+
+        posDataId = id(posData)
+        frameCount = len(posData.allData_li)
+        if (
+            self._symbolsPreinitPosDataId == posDataId
+            and self._symbolsPreinitFrameCount == frameCount
+        ):
+            return
+
+        try:
+            texts = self._iter_all_frames_symbol_texts(posData)
+            if texts:
+                self.item.addSymbols(list(texts), includeBold=True)
+        except Exception:
+            # Symbol warm-up is best-effort and must never interrupt rendering.
+            pass
+
+        self._symbolsPreinitPosDataId = posDataId
+        self._symbolsPreinitFrameCount = frameCount
     
     def initFonts(self, fontSize):
         self.fontSize = fontSize
@@ -586,19 +786,13 @@ class TextAnnotations:
     
     def setAnnotations(self, **kwargs):
         if self.isDisabled():
-            self.item.setVisible(False)
             return
-
-        if isinstance(self.item, TextAnnotationsImageItem):
-            self.item.clearImage()
-            self.item.setOpacity(1.0)
-            self.item.highlighterItem.setData([], [])
-
-        annotData = []
-        texts = []
         
         labelsToSkip = kwargs.get('labelsToSkip')
         posData = kwargs['posData']
+        self._preinitSymbolsAllFrames(posData)
+        self.item.beginFrameData()
+
         delROIsIDs = kwargs.get('delROIsIDs', [])
         isObjVisibleFunc = kwargs.get('isVisibleCheckFunc')
         highlightedID = kwargs.get('highlightedID')
@@ -655,13 +849,13 @@ class TextAnnotations:
             
             objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
             objData['data'] = obj.label
-            annotData.append(objData)
-            texts.append(objOpts['text'])
+            self.item.appendData(objData, objOpts['text'])
 
         if posData.trackedLostIDs and annotateLost:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
             if prev_rp is None:
-                prev_rp = ()
+                self.item.draw()
+                return
             
             for obj in prev_rp:
                 if obj.label not in posData.trackedLostIDs:
@@ -682,14 +876,14 @@ class TextAnnotations:
                 yc, xc = getObjCentroidFunc(centroid)
                 pos = (int(xc), int(yc))
                 objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
-                annotData.append(objData)
-                texts.append(objOpts['text'])
+                self.item.appendData(objData, objOpts['text'])
 
 
         if posData.lost_IDs and annotateLost:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
             if prev_rp is None:
-                prev_rp = ()
+                self.item.draw()
+                return
             for obj in prev_rp:
                 if obj.label not in posData.lost_IDs:
                     continue
@@ -716,20 +910,10 @@ class TextAnnotations:
                     # converting to int --> skip annotation in this case
                     continue
                 objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
-                annotData.append(objData)
-                texts.append(objOpts['text'])
+                self.item.appendData(objData, objOpts['text'])
 
-        if not annotData:
-            self.item.annotData = []
-            self.item.texts = []
-            self.item.setVisible(False)
-            return
-
-        self.item.annotData = annotData
-        self.item.texts = texts
-        self.item.setVisible(True)
         self.item.draw()
-    
+            
     def highlightObject(self, obj, rp=None, getObjCentroidFunc=None):
         self.item.highlightObject(obj, rp=rp, getObjCentroidFunc=getObjCentroidFunc)
     

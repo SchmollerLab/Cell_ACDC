@@ -41,8 +41,7 @@ def find_all_objects_2D(np.uint32_t[:, :] label_img):
             if j + 1 > ce[label]: ce[label] = <unsigned int>(j + 1)
 
     if max_label == 0:
-        return [], []
-
+        return np.array([], dtype=np.uint32), np.empty((0, 4), dtype=np.uint32)
     # Collect present labels into compact numpy arrays (avoids per-label tuple allocation)
     cdef unsigned int n_labels = 0
     for lbl in range(1, max_label + 1):
@@ -106,7 +105,7 @@ def find_all_objects_3D(np.uint32_t[:, :, :] label_img):
                 if k + 1 > ce[label]: ce[label] = <unsigned int>(k + 1)
 
     if max_label == 0:
-        return [], []
+        return np.array([], dtype=np.uint32), np.empty((0, 6), dtype=np.uint32)
 
     # Collect present labels into compact numpy arrays (avoids per-label tuple allocation)
     cdef unsigned int n_labels = 0
@@ -491,3 +490,103 @@ def calc_IoA_matrix_3D(
             IoA_matrix[ci, pi] = I_val / denom_val
 
     return IoA_matrix
+
+
+def calc_centroids_2D(
+        np.uint32_t[:, :] label_img,
+        np.uint32_t[:] labels,
+        np.uint32_t[:, :] bboxes,
+):
+    """Bulk centroid computation restricted to each object's bbox.
+
+    Parameters
+    ----------
+    label_img : (Y, X) uint32 label image.
+    labels    : (n,) uint32 object labels.
+    bboxes    : (n, 4) uint32 -> (row_start, row_stop, col_start, col_stop),
+                same layout as returned by find_all_objects_2D.
+
+    Returns
+    -------
+    centroids : (n, 2) float64 -> (mean_row, mean_col), in `label_img` coords.
+    """
+    cdef Py_ssize_t n_labels = labels.shape[0]
+    cdef Py_ssize_t n, i, j
+    cdef Py_ssize_t r0, r1, c0, c1
+    cdef unsigned int label
+    cdef double sum_i, sum_j
+    cdef unsigned long long count
+
+    cdef np.ndarray[np.float64_t, ndim=2] centroids = np.empty((n_labels, 2), dtype=np.float64)
+
+    for n in range(n_labels):
+        label = labels[n]
+        r0 = <Py_ssize_t>bboxes[n, 0]
+        r1 = <Py_ssize_t>bboxes[n, 1]
+        c0 = <Py_ssize_t>bboxes[n, 2]
+        c1 = <Py_ssize_t>bboxes[n, 3]
+
+        sum_i = 0.0
+        sum_j = 0.0
+        count = 0
+
+        for i in range(r0, r1):
+            for j in range(c0, c1):
+                if label_img[i, j] == label:
+                    sum_i += <double>i
+                    sum_j += <double>j
+                    count += 1
+
+        centroids[n, 0] = sum_i / count
+        centroids[n, 1] = sum_j / count
+
+    return centroids
+
+
+def calc_centroids_3D(
+        np.uint32_t[:, :, :] label_img,
+        np.uint32_t[:] labels,
+        np.uint32_t[:, :] bboxes,
+):
+    """Bulk centroid computation restricted to each object's bbox (3D).
+
+    bboxes : (n, 6) uint32 -> (z0, z1, r0, r1, c0, c1), same layout as
+             returned by find_all_objects_3D.
+    """
+    cdef Py_ssize_t n_labels = labels.shape[0]
+    cdef Py_ssize_t n, i, j, k
+    cdef Py_ssize_t z0, z1, r0, r1, c0, c1
+    cdef unsigned int label
+    cdef double sum_i, sum_j, sum_k
+    cdef unsigned long long count
+
+    cdef np.ndarray[np.float64_t, ndim=2] centroids = np.empty((n_labels, 3), dtype=np.float64)
+
+    for n in range(n_labels):
+        label = labels[n]
+        z0 = <Py_ssize_t>bboxes[n, 0]
+        z1 = <Py_ssize_t>bboxes[n, 1]
+        r0 = <Py_ssize_t>bboxes[n, 2]
+        r1 = <Py_ssize_t>bboxes[n, 3]
+        c0 = <Py_ssize_t>bboxes[n, 4]
+        c1 = <Py_ssize_t>bboxes[n, 5]
+
+        sum_i = 0.0
+        sum_j = 0.0
+        sum_k = 0.0
+        count = 0
+
+        for i in range(z0, z1):
+            for j in range(r0, r1):
+                for k in range(c0, c1):
+                    if label_img[i, j, k] == label:
+                        sum_i += <double>i
+                        sum_j += <double>j
+                        sum_k += <double>k
+                        count += 1
+
+        centroids[n, 0] = sum_i / count
+        centroids[n, 1] = sum_j / count
+        centroids[n, 2] = sum_k / count
+
+    return centroids
