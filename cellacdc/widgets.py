@@ -1757,7 +1757,7 @@ class GroupBox(QGroupBox):
         self.keyPressCallback()
 
 class CheckBox(QCheckBox):
-    sigToggled = Signal(bool)
+    sigToggled = Signal(bool, object)
 
     def __init__(self, *args, keyPressCallback=None):
         super().__init__(*args)
@@ -1787,7 +1787,7 @@ class CheckBox(QCheckBox):
             checkbox.setChecked(not checked)
             checkbox.blockSignals(False)
         
-        self.sigToggled.emit(checked)
+        self.sigToggled.emit(checked, self)
 
 class ScrollArea(QScrollArea):
     sigLeaveEvent = Signal()

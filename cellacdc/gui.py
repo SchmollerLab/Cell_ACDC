@@ -4030,17 +4030,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateAllImages()
     
     def gui_setupAnnotationOptionsLayout(self, ax: int):  
+         # (row, col, rowSpan, colSpan, slot)
         nameToLayouytLocMapper = {
-            'Contours': (0, 0, 1, 1), # (row, col, rowSpan, colSpan)
-            'Segm. masks': (1, 0, 1, 1),
-            'Separator_1': (0, 1, 2, 1),
-            'IDs': (0, 2, 1, 1),
-            'Lineage info': (1, 2, 1, 1),
-            'Cell cycle info': (0, 3, 1, 1),
-            'Mother-daughter line': (1, 3, 1, 1),
-            'Separator_2': (0, 4, 2, 1),
-            'Object tracks': (0, 5, 1, 1),
-            'Do not annotate': (1, 5, 1, 1)
+            'Contours': (0, 0, 1, 1, 'onContoursChecked'),
+            'Segm. masks': (1, 0, 1, 1, 'onOverlaySegmMask'),
+            'Separator_1': (0, 1, 2, 1, None),
+            'IDs': (0, 2, 1, 1, 'onIDsChecked'),
+            'Lineage info': (1, 2, 1, 1, 'onLineageInfo'),
+            'Cell cycle info': (0, 3, 1, 1, 'onCellCycleInfo'),
+            'Mother-daughter line': (1, 3, 1, 1, 'onMotherDaughterLine'),
+            'Separator_2': (0, 4, 2, 1, None),
+            'Object tracks': (0, 5, 1, 1, 'onObjectTracksChecked'),
+            'Do not annotate': (1, 5, 1, 1, 'onDoNotAnnotateChecked')
         }
         mutuallyExclusiveGroups = (
             ('Contours', 'Segm. masks'),
@@ -4049,7 +4050,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         container = QWidget()
         layout = QGridLayout()
         container.setLayout(layout)
-        for name, loc in nameToLayouytLocMapper.items():
+        for name, info in nameToLayouytLocMapper.items():
             if name.startswith('Separator'):
                 checkbox = None
                 widget = widgets.QVLine()
@@ -4059,13 +4060,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
                 widget = checkbox
 
-            row, col, rowSpan, colSpan = loc
+            row, col, rowSpan, colSpan, slot = info
             layout.addWidget(widget, row, col, rowSpan, colSpan)
 
             if checkbox is None:
                 continue
 
             self.annotOptionsCheckboxes[ax][name] = checkbox
+            checkbox.sigToggled.connect(
+                partial(getattr(self, slot), ax=ax)
+            )
 
         for mutuallyExclusiveGroup in mutuallyExclusiveGroups:
             for name1, name2 in combinations(mutuallyExclusiveGroup, 2):
@@ -4089,6 +4093,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.annotOptionsCheckboxes[ax]['layout'] = layout
         self.annotOptionsCheckboxes[ax]['container'] = container
+
+    def annotLineageInfoCheckbox(self, ax: int):
+        return self.annotOptionsCheckboxes[ax]['Lineage info']
 
     def annotIDsCheckbox(self, ax: int):
         return self.annotOptionsCheckboxes[ax]['IDs']
@@ -4125,6 +4132,38 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def isMotherDaughterLineChecked(self, ax: int):
         return self.annotMotherDaughterLineCheckbox(ax).isChecked()
+
+    def onContoursChecked(self, checked, checkbox, ax=0):
+        if checked:
+            self.updateContoursImage(ax=ax, delROIsIDs=None, compute=False)
+        else:
+            imageItem = self.getContoursImageItem(ax, force=True)
+            if imageItem is None:
+                return
+            
+            imageItem.clear()
+
+    def onOverlaySegmMask(self, checked, checkbox, ax=0):
+        ...
+
+    def onIDsChecked(self, checked, checkbox, ax=0):
+        ...
+
+    def onLineageInfo(self, checked, checkbox, ax=0):
+        ...
+
+    def onCellCycleInfo(self, checked, checkbox, ax=0):
+        ...
+
+    def onMotherDaughterLine(self, checked, checkbox, ax=0):
+        ...
+
+    def onObjectTracksChecked(self, checked, checkbox, ax=0):
+        ...
+
+    def onDoNotAnnotateChecked(self, checked, checkbox, ax=0):
+        ...
+
 
     def gui_createBottomWidgets(self):
         self.annotOptionsCheckboxes = defaultdict(dict)
@@ -4293,7 +4332,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.rightImageFramesScrollbar.setVisible(False)
         
-        bottomRightLayout.addLayout(self.annotOptionsCheckboxes[1]['layout'])
+        bottomRightLayout.addWidget(self.annotOptionsCheckboxes[1]['container'])
         bottomRightLayout.addWidget(self.rightImageFramesScrollbar)
         bottomRightLayout.addStretch(1)
 
@@ -9389,14 +9428,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return False
 
             isRightDifferentAnnot = self.rightBottomGroupbox.isChecked()
-            areContRequestedRight = self.isContoursChecked(1)
-           
+            areContRequestedRight = self.isContoursChecked(1)           
             if isRightDifferentAnnot and areContRequestedRight:
                 return True
             
             areContRequestedLeft = self.isContoursChecked(0)
             if not isRightDifferentAnnot and areContRequestedLeft:
                 return True
+            
         return False
     
     def areMothBudLinesRequested(self, ax):
