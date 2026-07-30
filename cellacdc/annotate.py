@@ -657,7 +657,7 @@ class TextAnnotations:
             objData['data'] = obj.label
             annotData.append(objData)
             texts.append(objOpts['text'])
-            
+
         if posData.trackedLostIDs and annotateLost:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
             if prev_rp is None:

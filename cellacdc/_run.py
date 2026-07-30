@@ -645,7 +645,8 @@ def _setup_numpy(caller_name='Cell-ACDC'):
     if not numpy_versions:
         print(
             f'[WARNING]: Could not find NumPy version requirements for Numba. '
-            'Please, install the latest version of NumPy manually.'
+            'Please, install the latest NumPy version supported by Numba '
+            'manually.'
         )
         return
     

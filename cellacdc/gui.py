@@ -4161,12 +4161,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def onLineageInfo(self, checked, checkbox, ax=0):
         self.setAnnotInfoMode(checked)
-        if checked:
-            self.setAllTextAnnotations()
-        else:
-            self.textAnnot[ax].clear()
 
     def onCellCycleInfo(self, checked, checkbox, ax=0):
+        printl(f'Cell cycle checked = {checked}')
         self.textAnnot[ax].setCcaAnnot(checked)
         if checked:
             self.setAllTextAnnotations()
@@ -4259,7 +4256,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         row = 0
         bottomLeftLayout.addWidget(
-            self.annotOptionsCheckboxes[0]['container'], row, 1, 1, 4
+            self.annotOptionsCheckboxes[0]['container'], row, 0, 1, 3
         )
 
         row += 1
@@ -9459,8 +9456,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def areMothBudLinesRequested(self, ax):
         if ax == 0:
-            if self.isCellCycleInfoChecked(0):
-                return True
             if self.isMotherDaughterLineChecked(0):
                 return True
         else:
@@ -9468,18 +9463,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return False
             
             isRightDifferentAnnot = self.rightBottomGroupbox.isChecked()
-            areLinesRequestedRight = (
-                self.isCellCycleInfoChecked(1)
-                or self.isMotherDaughterLineChecked(1)
-            )
+            areLinesRequestedRight = self.isMotherDaughterLineChecked(1)
             
             if isRightDifferentAnnot and areLinesRequestedRight:
                 return True
         
-            areLinesRequestedLeft = (
-                self.isCellCycleInfoChecked(0)
-                or self.isMotherDaughterLineChecked(0)
-            )
+            areLinesRequestedLeft = self.isMotherDaughterLineChecked(0)
             if not isRightDifferentAnnot and areLinesRequestedLeft:
                 return True
         return False
@@ -27955,21 +27944,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ):
             # Equally share space between the two control groupboxes
             self.bottomLayout.setStretch(1, 1)
-            self.bottomLayout.setStretch(2, 5)
+            self.bottomLayout.setStretch(2, 7)
             self.bottomLayout.setStretch(3, 1)
-            self.bottomLayout.setStretch(4, 5)
+            self.bottomLayout.setStretch(4, 7)
             self.bottomLayout.setStretch(5, 1)
         elif self.labelsGrad.showLabelsImgAction.isChecked():
             # Left control takes only left space
             self.bottomLayout.setStretch(1, 1)
-            self.bottomLayout.setStretch(2, 5)
-            self.bottomLayout.setStretch(3, 5)
+            self.bottomLayout.setStretch(2, 7)
+            self.bottomLayout.setStretch(3, 7)
             self.bottomLayout.setStretch(4, 1)
             self.bottomLayout.setStretch(5, 1)
         else:
             # Left control takes all the space
             self.bottomLayout.setStretch(1, 3)
-            self.bottomLayout.setStretch(2, 10)
+            self.bottomLayout.setStretch(2, 14)
             self.bottomLayout.setStretch(3, 1)
             self.bottomLayout.setStretch(4, 1)
             self.bottomLayout.setStretch(5, 1)
