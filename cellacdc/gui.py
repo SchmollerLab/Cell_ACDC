@@ -4028,20 +4028,34 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         self.updateAllImages()
+           
+    def _createCellTracksCheckboxRightClickMenu(self, parent):
+        menu = QMenu(self)
+        editSettingsAction = menu.addAction('Edit track settings...')
+        toggleAction = menu.addAction('Toggle track visibility')
+
+        editSettingsAction.triggered.connect(
+            self.setAnnotateCellMovementSettings
+        )
+        # toggleAction.triggered.connect(
+        #     parent.setCheckState(not parent.isChecked()
+        #     )
+        # )
     
     def gui_setupAnnotationOptionsLayout(self, ax: int):  
          # (row, col, rowSpan, colSpan, slot)
         nameToLayouytLocMapper = {
-            'Contours': (0, 0, 1, 1, 'onContoursChecked'),
-            'Segm. masks': (1, 0, 1, 1, 'onOverlaySegmMask'),
-            'Separator_1': (0, 1, 2, 1, None),
-            'IDs': (0, 2, 1, 1, 'onIDsChecked'),
-            'Lineage info': (1, 2, 1, 1, 'onLineageInfo'),
-            'Cell cycle info': (0, 3, 1, 1, 'onCellCycleInfo'),
-            'Mother-daughter line': (1, 3, 1, 1, 'onMotherDaughterLine'),
-            'Separator_2': (0, 4, 2, 1, None),
-            'Object tracks': (0, 5, 1, 1, 'onObjectTracksChecked'),
-            'Do not annotate': (1, 5, 1, 1, 'onDoNotAnnotateChecked')
+            'Contours': (0, 0, 1, 1, 'onContoursChecked', None),
+            'Segm. masks': (1, 0, 1, 1, 'onOverlaySegmMask', None),
+            'Separator_1': (0, 1, 2, 1, None, None),
+            'IDs': (0, 2, 1, 1, 'onIDsChecked', None),
+            'Lineage info': (1, 2, 1, 1, 'onLineageInfo', None),
+            'Cell cycle info': (0, 3, 1, 1, 'onCellCycleInfo', None),
+            'Mother-daughter line': (1, 3, 1, 1, 'onMotherDaughterLine', None),
+            'Separator_2': (0, 4, 2, 1, None, None),
+            'Object tracks': (0, 5, 1, 1, 'onObjectTracksChecked', 
+                              self._createCellTracksCheckboxRightClickMenu),
+            'Do not annotate': (1, 5, 1, 1, 'onDoNotAnnotateChecked', None),
         }
         mutuallyExclusiveGroups = (
             ('Contours', 'Segm. masks'),
@@ -4051,16 +4065,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         layout = QGridLayout()
         container.setLayout(layout)
         for name, info in nameToLayouytLocMapper.items():
+            row, col, rowSpan, colSpan, slot, rcMenu = info
+
             if name.startswith('Separator'):
                 checkbox = None
                 widget = widgets.QVLine()
             else:
                 checkbox = widgets.CheckBox(
-                    name, keyPressCallback=self.resetFocus
+                    name, keyPressCallback=self.resetFocus,
+                    rightclick_menu_func=rcMenu
                 )
                 widget = checkbox
 
-            row, col, rowSpan, colSpan, slot = info
             layout.addWidget(widget, row, col, rowSpan, colSpan)
 
             if checkbox is None:
@@ -4177,7 +4193,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ...
 
     def onObjectTracksChecked(self, checked, checkbox, ax=0):
-        ...
+        self.annotateCellMovement()
 
     def onDoNotAnnotateChecked(self, checked, checkbox, ax=0):
         ...
@@ -31263,21 +31279,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         max_alpha = (settings['max_alpha_perc'] / 100) * 255
         min_alpha= (settings['min_alpha_perc'] / 100) * 255
         n_fade = settings['n_fade']
-        
-        for track_id, track in centroids.items():
+
+        tracks = []
+        for track in centroids.values():
             frames = sorted(track.keys())
             points = [(track[f][1], track[f][0]) for f in frames]
-            item = widgets.FadingTrackItem(
-                points, frames, color=color, n_fade=n_fade, max_width=max_width, 
+            tracks.append((points, frames))
+
+        if not self.tracksPlotItem:
+            item = widgets.FadingTracksItem(
+                color=color, n_fade=n_fade, max_width=max_width,
                 min_width=min_width, max_alpha=max_alpha, min_alpha=min_alpha
-                )
+            )
             self.ax1.addItem(item)
             self.tracksPlotItem.append(item)
+        else:
+            item = self.tracksPlotItem[0]
+            item.setAppearance(
+                color=color, n_fade=n_fade, max_width=max_width,
+                min_width=min_width, max_alpha=max_alpha, min_alpha=min_alpha
+            )
+
+        item.setTracks(tracks)
             
     def clearCellTracks(self):
         for item in self.tracksPlotItem:
-            self.ax1.removeItem(item)
-        self.tracksPlotItem = []
+            item.clear()
+            item.hide()
             
     def annotateCellMovementAgainstPrev(self):        
         posData = self.data[self.pos_i]
