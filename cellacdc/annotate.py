@@ -652,12 +652,12 @@ class TextAnnotations:
                 isGenNumTreeAnnotation, posData.frame_i,
                 moth_bud_pairs_cca=moth_bud_pairs_cca
             )
-            
+
             objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
             objData['data'] = obj.label
             annotData.append(objData)
             texts.append(objOpts['text'])
-
+            
         if posData.trackedLostIDs and annotateLost:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
             if prev_rp is None:

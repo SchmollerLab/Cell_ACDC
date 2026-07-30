@@ -4144,16 +4144,34 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             imageItem.clear()
 
     def onOverlaySegmMask(self, checked, checkbox, ax=0):
-        ...
+        if checked:
+            self.setOverlaySegmMasks()
+        else:
+            if ax == 0:
+                self.labelsLayerImg1.clear()
+            else:
+                self.labelsLayerRightImg.clear()
 
     def onIDsChecked(self, checked, checkbox, ax=0):
-        ...
+        self.textAnnot[ax].setLabelAnnot(checked)
+        if checked:
+            self.setAllTextAnnotations()
+        else:
+            self.textAnnot[ax].clear()
 
     def onLineageInfo(self, checked, checkbox, ax=0):
-        ...
+        self.setAnnotInfoMode(checked)
+        if checked:
+            self.setAllTextAnnotations()
+        else:
+            self.textAnnot[ax].clear()
 
     def onCellCycleInfo(self, checked, checkbox, ax=0):
-        ...
+        self.textAnnot[ax].setCcaAnnot(checked)
+        if checked:
+            self.setAllTextAnnotations()
+        else:
+            self.textAnnot[ax].clear()
 
     def onMotherDaughterLine(self, checked, checkbox, ax=0):
         ...

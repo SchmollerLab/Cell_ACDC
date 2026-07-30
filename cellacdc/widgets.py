@@ -1784,15 +1784,18 @@ class CheckBox(QCheckBox):
             if not checked:
                 continue
 
-            checkbox.blockSignals(True)
-            checkbox.setChecked(not checked)
-            checkbox.blockSignals(False)
+            checkbox.setChecked(False)
         
         self.sigToggled.emit(checked, self)
         
     def contextMenuEvent(self, event) -> None:
         if self.rightclick_menu is not None:
             self.rightclick_menu.exec_(event.globalPos())
+    
+    def setCheckedNoSignal(self, checked: bool):
+        self.blockSignals(True)
+        self.setChecked(checked)
+        self.blockSignals(False)
             
 
 class ScrollArea(QScrollArea):
