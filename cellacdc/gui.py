@@ -112,6 +112,28 @@ if os.name == 'nt':
     except Exception as e:
         pass
 
+ # (row, col, rowSpan, colSpan, slot)
+CHECKBOX_OPTION_NAME_TO_LAYOUT_LOC_MAPPER = {
+    'Contours': (0, 0, 1, 1, 'onContoursChecked'),
+    'Segm. masks': (1, 0, 1, 1, 'onOverlaySegmMask'),
+    'Separator_1': (0, 1, 2, 1, None),
+    'IDs': (0, 2, 1, 1, 'onIDsChecked'),
+    'Lineage info': (1, 2, 1, 1, 'onLineageInfo'),
+    'Cell cycle info': (0, 3, 1, 1, 'onCellCycleInfo'),
+    'Mother-daughter line': (1, 3, 1, 1, 'onMotherDaughterLine'),
+    'Separator_2': (0, 4, 2, 1, None),
+    'Object tracks': (0, 5, 1, 1, 'onObjectTracksChecked'),
+    'Do not annotate': (1, 5, 1, 1, 'onDoNotAnnotateChecked')
+}
+CHECKBOX_OPTION_MUTUALLY_EXCLUSIVE_GROUPS = (
+    ('Contours', 'Segm. masks'),
+    ('IDs', 'Lineage info', 'Cell cycle info')
+)
+CHECKBOX_OPTION_DEFAULT_VALUES = {
+    0: {'Contours', 'IDs'},
+    1: {'Segm. masks', 'IDs'}
+}
+
 GREEN_HEX = _palettes.green()
 ORANGE_HEX = _palettes.orange()
 
@@ -4030,27 +4052,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateAllImages()
     
     def gui_setupAnnotationOptionsLayout(self, ax: int):  
-         # (row, col, rowSpan, colSpan, slot)
-        nameToLayouytLocMapper = {
-            'Contours': (0, 0, 1, 1, 'onContoursChecked'),
-            'Segm. masks': (1, 0, 1, 1, 'onOverlaySegmMask'),
-            'Separator_1': (0, 1, 2, 1, None),
-            'IDs': (0, 2, 1, 1, 'onIDsChecked'),
-            'Lineage info': (1, 2, 1, 1, 'onLineageInfo'),
-            'Cell cycle info': (0, 3, 1, 1, 'onCellCycleInfo'),
-            'Mother-daughter line': (1, 3, 1, 1, 'onMotherDaughterLine'),
-            'Separator_2': (0, 4, 2, 1, None),
-            'Object tracks': (0, 5, 1, 1, 'onObjectTracksChecked'),
-            'Do not annotate': (1, 5, 1, 1, 'onDoNotAnnotateChecked')
-        }
-        mutuallyExclusiveGroups = (
-            ('Contours', 'Segm. masks'),
-            ('IDs', 'Lineage info', 'Cell cycle info')
-        )
         container = QWidget()
         layout = QGridLayout()
         container.setLayout(layout)
-        for name, info in nameToLayouytLocMapper.items():
+        for name, info in CHECKBOX_OPTION_NAME_TO_LAYOUT_LOC_MAPPER.items():
             if name.startswith('Separator'):
                 checkbox = None
                 widget = widgets.QVLine()
@@ -4071,7 +4076,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 partial(getattr(self, slot), ax=ax)
             )
 
-        for mutuallyExclusiveGroup in mutuallyExclusiveGroups:
+        for mutuallyExclusiveGroup in CHECKBOX_OPTION_MUTUALLY_EXCLUSIVE_GROUPS:
             for name1, name2 in combinations(mutuallyExclusiveGroup, 2):
                 checkbox1 = self.annotOptionsCheckboxes[ax][name1]
                 checkbox2 = self.annotOptionsCheckboxes[ax][name2]
@@ -4430,6 +4435,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Reset default height'
         )
         resetAction.triggered.connect(self.resetBottomLayoutHeight)
+        resetAnnotOptionsAction = self.bottomLayoutContextMenu.addAction(
+            'Reset default annotation options'
+        )
+        resetAnnotOptionsAction.triggered.connect(
+            self.resetDefaultAnnotationOptions
+        )
         retainSpaceAction = self.bottomLayoutContextMenu.addAction(
             'Retain space of hidden sliders'
         )
@@ -21147,7 +21158,49 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def resizeGuiAndAutoRange(self):
         self.resizeGui()
         QTimer.singleShot(200, self.autoRange)
-            
+    
+    def resetDefaultAnnotationOptions(self, *args):
+        index_to_drop = []
+        for ax, checkboxes in self.annotOptionsCheckboxes.items():
+            for name, checkbox in checkboxes.items():
+                try:
+                    checkbox.setChecked(False)
+                except Exception as err:
+                    continue
+
+                self.df_settings.at[f'{name};;{ax}', 'value'] = (
+                    'checked' if name in CHECKBOX_OPTION_DEFAULT_VALUES[ax] 
+                    else 'not_checked'
+                )
+        
+        self.df_settings.to_csv(self.settings_csv_path)
+        self.restoreSavedAnnotationOptions()
+
+    def restoreSavedAnnotationOptions(self):
+        for ax, checkboxes in self.annotOptionsCheckboxes.items():
+            for name, checkbox in checkboxes.items():
+                try:
+                    checkbox.setChecked(False)
+                except Exception as err:
+                    continue
+
+                try:
+                    checked = (
+                        self.df_settings.at[f'{name};;{ax}', 'value'] 
+                        == 'checked'
+                    )
+                    checkbox.setChecked(checked)
+                    continue
+                except Exception as err:
+                    pass
+
+                try:
+                    checked = name in CHECKBOX_OPTION_DEFAULT_VALUES[ax]
+                    checkbox.setChecked(checked)
+                    continue
+                except Exception as err:
+                    pass
+
     def restoreSavedSettings(self):        
         if 'addNewIDsWhitelistToggle' in self.df_settings.index:
             self.addNewIDsWhitelistToggle = (
@@ -21155,6 +21208,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 ) == 'Yes'
         else:
             self.addNewIDsWhitelistToggle = True
+        
+        self.restoreSavedAnnotationOptions()
 
     def setDisabledAnnotOptions(self, disabled):
         names = (
@@ -32033,6 +32088,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.scaleBar.removeFromAxis(self.ax1)
         except Exception as e:
             pass
+        
+        if self.isDataLoaded:
+            self.saveAnnotationOptions()
 
         self.lineage_tree = None
         self.getDistanceListMissingIDsCachedFrame = None
@@ -35173,6 +35231,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
         self.onEscape()
         self.saveWindowGeometry()
+        self.saveAnnotationOptions()
         
         if self.newWindows:
             cancel = self.askCloseAllWindows()
@@ -35252,6 +35311,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         settings = QSettings('schmollerlab', 'acdc_gui')
         settings.setValue("geometry", self.saveGeometry())
         # settings.setValue("windowState", self.saveState())
+    
+    def saveAnnotationOptions(self):
+        self.storeCurrentAnnotationsOptions()
+        for ax, states in self.annotOptionsToRestore.items():
+            for name, checked in states.items():
+                self.df_settings.at[f'{name};;{ax}', 'value'] = (
+                    'checked' if checked else 'not_checked'
+                )
+                self.df_settings.to_csv(settings_csv_path)
 
     def storeDefaultAndCustomColors(self):
         c = self.overlayButton.palette().button().color().name()
