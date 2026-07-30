@@ -21081,9 +21081,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.initLoadedDelROI()
         
-        # self.gui_initFragmentsAtlas()
-
-
         QTimer.singleShot(100, self.resizeGuiAndAutoRange)
 
     def _createROIfromState(self, state, key):
@@ -21533,6 +21530,46 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             100, partial(self._setViewRangeSwitchPlane, previousPlane)
         )
         
+    # def gui_preinitAnnotations(self):
+    #     og_frame = self.data[self.pos_i].frame_i
+    #     print('Pre-initializing annotations for all frames and positions...')
+    #     for posData in self.data:
+    #         og_frame = self.data[self.pos_i].frame_i
+    #         pbar = tqdm(desc='Pre-initializing annotations', total=posData.SizeT, ncols=100)
+    #         for frame_i in range(posData.SizeT):
+    #             lab = posData.allData_li[frame_i]['labels']
+    #             if lab is None:
+    #                 lab = posData.segm_data[frame_i]
+    #             rp = posData.allData_li[frame_i]['regionprops']
+    #             if rp is None:
+    #                 rp =  self._acdcRegionProps(lab)
+    #                 posData.allData_li[frame_i]['regionprops'] = rp
+                    
+    #             posData.rp = rp
+    #             posData.lab = lab
+    #             self.setLostNewOldPrevIDs()
+    #             posData.frame_i = frame_i
+    #             for ax in self.textAnnot.values():
+    #                 ax.setAnnotations(
+    #                     posData=posData,
+    #                     isVisibleCheckFunc=self._trueFunction,
+    #                     highlightedID=self.highlightedID, 
+    #                     annotateLost=True,
+    #                     getObjCentroidFunc=self.getObjCentroid,
+    #                     rp_func=self.get2DRP,
+    #                     rp3D=posData.rp,
+    #                     updateAllTextAnnotations=True
+    #                 )
+    #                 ax.update()
+    #             pbar.update(1)
+    #         posData.frame_i = og_frame
+    #         posData.rp = posData.allData_li[og_frame]['regionprops']
+    #         posData.lab = posData.allData_li[og_frame]['labels']
+    #         pbar.close()
+        
+    # def _trueFunction(self, *args, **kwargs):
+    #     return True
+    
     def switchViewedPlane(self, previousPlane, currentPlane):
         posData = self.data[self.pos_i]
         self.xRangePrev, self.yRangePrev = self.ax1.viewRange()

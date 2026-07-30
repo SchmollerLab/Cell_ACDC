@@ -488,7 +488,16 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         if draw:
             self.addPoints([pointOpts])
         
-        return pointOpts        
+        return pointOpts
+    
+    def _maybeRebuildAtlas(self, threshold=4, minlen=10000):
+        n = len(self.fragmentAtlas)
+        if (n > minlen) and (n > threshold * len(self.data)):
+            self.fragmentAtlas.rebuild(
+                list(zip(*self._style(['symbol', 'size', 'pen', 'brush'])))
+            )
+            self.data['sourceRect'] = 0
+            self.updateSpots()
 
 class TextAnnotations:
     def __init__(self):
@@ -806,3 +815,6 @@ class TextAnnotations:
     
     def update(self):
         self.item.update()
+        
+    def clear(self):
+        self.item.setVisible(False)
