@@ -652,7 +652,7 @@ class TextAnnotations:
                 isGenNumTreeAnnotation, posData.frame_i,
                 moth_bud_pairs_cca=moth_bud_pairs_cca
             )
-
+            
             objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
             objData['data'] = obj.label
             annotData.append(objData)
