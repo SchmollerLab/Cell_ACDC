@@ -3812,7 +3812,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         self.labelsGrad.sigShowLabelsImgToggled.connect(self.showLabelImageItem)
         self.labelsGrad.sigShowRightImgToggled.connect(self.showRightImageItem)
-        self.labelsGrad.sigShowNextFrameToggled.connect(self.showNextFrameImageItem)
+        self.labelsGrad.sigShowNextFrameToggled.connect(
+            self.showNextFrameImageItem
+        )
         
         self.labelsGrad.defaultSettingsAction.triggered.connect(
             self.restoreDefaultSettings
@@ -4056,13 +4058,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         layout = QGridLayout()
         container.setLayout(layout)
         for name, info in CHECKBOX_OPTION_NAME_TO_LAYOUT_LOC_MAPPER.items():
+            row, col, rowSpan, colSpan, slot = info
+
             if name.startswith('Separator'):
                 checkbox = None
                 widget = widgets.QVLine()
             else:
                 checkbox = widgets.CheckBox(
-                    name, keyPressCallback=self.resetFocus,
-                    rightclick_menu_func=rcMenu
+                    name, keyPressCallback=self.resetFocus
                 )
                 widget = checkbox
 
@@ -4378,7 +4381,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.isDataLoading:
             return
 
-        self.updateAllImages()
+        linked = not checked
+        for name, checkbox in self.annotOptionsCheckboxes[0].items():
+            try:
+                isChecked = checkbox.isChecked()
+            except AttributeError:
+                continue
+            
+            rightCheckbox = self.annotOptionsCheckboxes[1][name]
+            if linked:
+                rightCheckbox.setChecked(isChecked)
+            
+            checkbox.setLinkedCheckbox(rightCheckbox, linked)
     
     def setFocusGraphics(self):
         self.graphLayout.setFocus()
@@ -4431,6 +4445,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             actions.append(action)
             self.bottomLayoutContextMenu.zoomActionGroup.addAction(action)
         zoomMenu.addActions(actions)
+        editObjectTrackSettingsAction = self.bottomLayoutContextMenu.addAction(
+            'Edit object track settings..'
+        )
+        editObjectTrackSettingsAction.triggered.connect(
+            self.setAnnotateCellMovementSettings 
+        )
         resetAction = self.bottomLayoutContextMenu.addAction(
             'Reset default height'
         )
@@ -5067,8 +5087,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.gui_createTextAnnotItems(allIDs)
         self.gui_setTextAnnotColors()
-
-        self.setDisabledAnnotOptions(False)
 
         self.progressWin.mainPbar.setMaximum(0)
         self.gui_addOverlayLayerItems()
@@ -15933,6 +15951,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.storeCurrentAnnotOptions(1)
 
     def storeCurrentAnnotOptions(self, ax: int):
+        if not hasattr(self, 'annotOptionsToRestore'):
+            return
+        
         for name, checkbox in self.annotOptionsCheckboxes[ax].items():
             try:
                 isChecked = checkbox.isChecked()
@@ -15940,7 +15961,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
 
             self.annotOptionsToRestore[ax][name] = isChecked
-    
+
     def restoreAnnotOptions(self, ax: int, options=None):
         if options is None and not hasattr(self, 'annotOptionsToRestore'):
             return
@@ -21208,18 +21229,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.restoreSavedAnnotationOptions()
 
-    def setDisabledAnnotOptions(self, disabled):
-        names = (
-            'IDs',
-            'Cell cycle info',
-            'Contours',
-            'Mother-daughter line',
-            'Object tracks'
-        )
-        for ax in (0, 1):
-            for name in names:
-                self.annotOptionsCheckboxes[ax][name].setDisabled(disabled)
-
     def setStatusBarLabel(self, log=True):
         self.statusbar.clearMessage()
         posData = self.data[self.pos_i]
@@ -21610,17 +21619,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             # Disable annotations on a plane that is not yz
             self.setDoNotAnnotate(True)
-            self.setDisabledAnnotCheckBoxesLeft(True)
-            self.setDisabledAnnotCheckBoxesRight(True)
+            self.setDisabledAnnotCheckBoxes(0, True)
+            self.setDisabledAnnotCheckBoxes(1, True)
             self.setEnabledAnnotCheckBoxesLeftZdepthAxes()
             self.overlayButtonPrevState = self.overlayButton.isChecked()
             self.overlayButton.setChecked(False)
             self.overlayButton.setDisabled(True)
         else:
             self.zProjComboBox.setDisabled(False)
-            self.restoreAnnotationsOptions()
-            self.setDisabledAnnotCheckBoxesLeft(False)
-            self.setDisabledAnnotCheckBoxesRight(False)
+            self.setDisabledAnnotCheckBoxes(0, False)
+            self.setDisabledAnnotCheckBoxes(1, False)
             self.overlayButton.setDisabled(False)
             if self.overlayButtonPrevState:
                 self.overlayButton.setChecked(self.overlayButtonPrevState)
@@ -27912,8 +27920,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.graphLayout.addItem(
                 self.imgGradRight, row=1, col=self.plotsCol+2
             )
+            self.storeCurrentAnnotOptions(1)
             self.rightBottomGroupbox.show()
-            self.rightBottomGroupbox.setChecked(True)         
+            self.rightBottomGroupbox.setChecked(True)     
+            self.annotDoNotAnntoateCheckbox(1).setChecked(True)   
+            self.setDisabledAnnotCheckBoxes(1, True) 
             if not self.isDataLoading:
                 self.updateAllImages()
         else:
@@ -27945,6 +27956,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.imgGradRight, row=1, col=self.plotsCol+2
             )
             self.rightBottomGroupbox.show()
+            self.setDisabledAnnotCheckBoxes(1, False)
+            self.restoreAnnotOptions(1)
             if not self.isDataLoading:
                 self.updateAllImages()
         else:
@@ -31148,7 +31161,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'min_alpha_perc': 10,
         }
         
-    def setAnnotateCellMovementSettings(self):
+    def setAnnotateCellMovementSettings(self, *args):
         self.initannotateCellMovementSettings()
         win = apps.AnnotateCellMovementSettingsDialog(
             settings=self.annotateCellMovementSettings,
@@ -33081,10 +33094,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     break
         self.setAllTextAnnotations()
 
-    def setDisabledAnnotCheckBoxesLeft(self, disabled):
-        for checkbox in self.annotOptionsCheckboxes[0].values():
-            checkbox.setDisabled(disabled)
-
     def setEnabledAnnotCheckBoxesLeftZdepthAxes(self):
         if not self.isSegm3D:
             return
@@ -33094,9 +33103,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.annotIDsCheckbox(0).setChecked(True)
         self.annotContourCheckbox(0).setChecked(True)
     
-    def setDisabledAnnotCheckBoxesRight(self, disabled):
-        for checkbox in self.annotOptionsCheckboxes[1].values():
-            checkbox.setDisabled(disabled)
+    def setDisabledAnnotCheckBoxes(self, ax: int, disabled: bool, debug=False):
+        self.annotOptionsCheckboxes[ax]['container'].setDisabled(disabled)
 
     def checkHandleTooManyNewItems(self):
         posData = self.data[self.pos_i]

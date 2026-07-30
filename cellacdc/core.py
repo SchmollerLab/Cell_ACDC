@@ -3042,7 +3042,7 @@ def _compute_all_obj_to_obj_contour_dist_pairs(
 def convexity_defects(img, eps_percent):
     img = img.astype(np.uint8)
     contours, _ = cv2.findContours(img,2,1)
-    cnt = contours[0]
+    cnt = max(contours, key=cv2.contourArea)
     cnt = cv2.approxPolyDP(cnt,eps_percent*cv2.arcLength(cnt,True),True) # see https://www.programcreek.com/python/example/89457/cv22.convexityDefects
     hull = cv2.convexHull(cnt,returnPoints = False) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
     defects = cv2.convexityDefects(cnt,hull) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
@@ -3100,6 +3100,9 @@ def split_along_convexity_defects(
 
     if len(defects) != 2:
         return lab, success, []
+
+    if defects.ndim == 3:
+        defects = defects[:, 0, :]
 
     defects_points = [0]*len(defects)
     for i, defect in enumerate(defects):

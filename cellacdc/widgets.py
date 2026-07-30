@@ -1766,6 +1766,7 @@ class CheckBox(QCheckBox):
         self.setFocusPolicy(Qt.NoFocus)
         self.toggled.connect(self.onToggled)
         self._exclusiveCheckboxes: list[QCheckBox] = []
+        self._linkedCheckboxes: dict[str, QCheckBox] = {}
         if rightclick_menu_func is not None:
             self.rightclick_menu = rightclick_menu_func(self)
     
@@ -1788,6 +1789,9 @@ class CheckBox(QCheckBox):
 
             checkbox.setChecked(False)
         
+        for checkbox in self._linkedCheckboxes.values():
+            checkbox.setChecked(checked)
+        
         self.sigToggled.emit(checked, self)
         
     def contextMenuEvent(self, event) -> None:
@@ -1799,6 +1803,12 @@ class CheckBox(QCheckBox):
         self.blockSignals(True)
         self.setChecked(checked)
         self.blockSignals(False)
+    
+    def setLinkedCheckbox(self, checkbox: QCheckBox, linked: bool):
+        if linked:
+            self._linkedCheckboxes[checkbox.text()] = checkbox
+        else:
+            self._linkedCheckboxes.pop(checkbox.text(), None)
             
 
 class ScrollArea(QScrollArea):
