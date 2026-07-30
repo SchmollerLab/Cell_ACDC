@@ -1,7 +1,7 @@
 import inspect, os, datetime, sys, traceback
 import atexit
 import linecache
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 import gc
 import psutil
@@ -9,6 +9,18 @@ import time
 import functools
 
 _LINE_BENCHMARK_TRACE_LIMIT = 500000
+
+_CALL_STACK_BENCHMARK_TRACE_LIMIT = 500000
+
+_CALL_STACK_BENCHMARK_STATS = defaultdict(
+    lambda: {
+        'count': 0,
+        'tracked_count': 0,
+        'untracked_count': 0,
+        'call_stack_depth': None,
+        'stack_counts': Counter(),
+    }
+)
 
 _LINE_BENCHMARK_STATS = defaultdict(
     lambda: {
@@ -45,6 +57,56 @@ def _get_benchmark_line_snippet(filename, lineno, max_chars=30):
         line = line.ljust(max_chars)
         return line
     return f'{line[:max_chars-3]}...'
+
+def _capture_call_stack_key(call_stack_depth=None):
+    stack = traceback.extract_stack()[:-1]
+
+    module_file = os.path.abspath(__file__)
+    while stack:
+        frame = stack[-1]
+        if (
+            os.path.abspath(frame.filename) == module_file
+            and frame.name in ('wrapper', '_capture_call_stack_key')
+        ):
+            stack.pop()
+            continue
+        break
+
+    if call_stack_depth is not None:
+        stack = stack[-call_stack_depth:]
+
+    return tuple(
+        f'{os.path.basename(frame.filename)}:{frame.name}:{frame.lineno}'
+        for frame in stack
+    )
+
+def _print_call_stack_benchmark_session_stats():
+    if not _CALL_STACK_BENCHMARK_STATS:
+        return
+
+    print('\nCall stack benchmark session summary:')
+    for func_name, stats in sorted(_CALL_STACK_BENCHMARK_STATS.items()):
+        total_count = stats['count']
+        tracked_count = stats['tracked_count']
+        untracked_count = stats['untracked_count']
+        if total_count == 0:
+            continue
+
+        depth = stats['call_stack_depth']
+        depth_str = 'full' if depth is None else str(depth)
+        print(
+            f'{func_name}: n={total_count} | '
+            f'tracked={tracked_count} | '
+            f'untracked={untracked_count} | '
+            f'depth={depth_str}'
+        )
+
+        if not stats['stack_counts']:
+            continue
+
+        for stack_key, count in stats['stack_counts'].most_common(10):
+            stack_path = ' <- '.join(stack_key) if stack_key else '<empty stack>'
+            print(f'  n={count}: {stack_path}')
 
 def _print_line_benchmark_session_stats():
     if not _LINE_BENCHMARK_STATS:
@@ -94,6 +156,7 @@ def _print_line_benchmark_session_stats():
             )
 
 atexit.register(_print_line_benchmark_session_stats)
+atexit.register(_print_call_stack_benchmark_session_stats)
 
 def showRefGraph(object_str:str, debug:bool=True):
     """Save a reference graph of the given object type.
@@ -393,6 +456,45 @@ def line_benchmark(func):
             line_stat['max_time'] = max(line_stat['max_time'], dt)
 
         return result
+
+    return wrapper
+
+def call_stack_benchmark(func=None, *, call_stack_depth=8):
+    """Collect and summarize the most common call stacks for a function.
+
+    Parameters
+    ----------
+    func : callable, optional
+        Decorated function.
+    call_stack_depth : int | None, optional
+        Number of frames (from the call site backwards) used to identify
+        a stack signature. If `None`, the full stack is tracked.
+    """
+    if call_stack_depth is not None and call_stack_depth < 1:
+        raise ValueError('call_stack_depth must be >= 1 or None')
+
+    if func is None:
+        return lambda wrapped: call_stack_benchmark(
+            wrapped,
+            call_stack_depth=call_stack_depth,
+        )
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        stats_key = f'{func.__module__}.{func.__qualname__}'
+        stats = _CALL_STACK_BENCHMARK_STATS[stats_key]
+        stats['count'] += 1
+        stats['call_stack_depth'] = call_stack_depth
+
+        if stats['tracked_count'] >= _CALL_STACK_BENCHMARK_TRACE_LIMIT:
+            stats['untracked_count'] += 1
+            return func(*args, **kwargs)
+
+        stack_key = _capture_call_stack_key(call_stack_depth)
+        stats['stack_counts'][stack_key] += 1
+        stats['tracked_count'] += 1
+
+        return func(*args, **kwargs)
 
     return wrapper
 
