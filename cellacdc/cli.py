@@ -1771,6 +1771,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 logger_func=self.logger.exception
             )
             if rp_errors:
+                rp_errors['frame_number'] = frame_i + 1
                 print('\n')
                 err_message = (
                     'WARNING: Some objects had the following errors:\n'
