@@ -35,7 +35,7 @@ from qtpy.QtCore import (
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
-    QIODevice, QItemSelection, PYQT6, QRectF
+    QIODevice, QItemSelection, PYQT6, QRectF, QLineF
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
@@ -78,6 +78,7 @@ from . import fonts
 from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER, STANDARD_MOUSE_BUTTONS
 from . import _base_widgets
+from . import debugutils
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
@@ -1759,13 +1760,14 @@ class GroupBox(QGroupBox):
 class CheckBox(QCheckBox):
     sigToggled = Signal(bool, object)
 
-    def __init__(self, *args, keyPressCallback=None, rightclick_menu=None):
+    def __init__(self, *args, keyPressCallback=None, rightclick_menu_func=None):
         super().__init__(*args)
         self.keyPressCallback = keyPressCallback
         self.setFocusPolicy(Qt.NoFocus)
         self.toggled.connect(self.onToggled)
         self._exclusiveCheckboxes: list[QCheckBox] = []
-        self.rightclick_menu = rightclick_menu
+        if rightclick_menu_func is not None:
+            self.rightclick_menu = rightclick_menu_func(self)
     
     def keyPressEvent(self, event) -> None:
         event.ignore()
@@ -1789,6 +1791,7 @@ class CheckBox(QCheckBox):
         self.sigToggled.emit(checked, self)
         
     def contextMenuEvent(self, event) -> None:
+        print('contextMenuEvent')
         if self.rightclick_menu is not None:
             self.rightclick_menu.exec_(event.globalPos())
     
@@ -12834,6 +12837,8 @@ class FadingTrackItem(pg.GraphicsObject):
             return
 
         head_frame = self.frames[-1]  # most recent frame in this track
+        point_cache = {}
+        pen_cache = {}
 
         for i in range(n - 1):
             f0, f1 = self.frames[i], self.frames[i + 1]
@@ -12847,14 +12852,28 @@ class FadingTrackItem(pg.GraphicsObject):
             alpha = int(self.min_alpha + frac * (self.max_alpha - self.min_alpha))
             width = self.min_width + frac * (self.max_width - self.min_width)
 
-            pen = QPen(QColor(*self.color, alpha))
-            pen.setWidthF(width)
-            pen.setCapStyle(Qt.RoundCap)
+            pen_key = (alpha, width)
+            pen = pen_cache.get(pen_key)
+            if pen is None:
+                pen = QPen(QColor(*self.color, alpha))
+                pen.setWidthF(width)
+                pen.setCapStyle(Qt.RoundCap)
+                pen_cache[pen_key] = pen
             painter.setPen(pen)
 
             x0, y0 = self.points[i]
             x1, y1 = self.points[i + 1]
-            painter.drawLine(QPointF(x0, y0), QPointF(x1, y1))
+            p0_key = (x0, y0)
+            p1_key = (x1, y1)
+            p0 = point_cache.get(p0_key)
+            if p0 is None:
+                p0 = QPointF(x0, y0)
+                point_cache[p0_key] = p0
+            p1 = point_cache.get(p1_key)
+            if p1 is None:
+                p1 = QPointF(x1, y1)
+                point_cache[p1_key] = p1
+            painter.drawLine(p0, p1)
         painter.end()
 
     def paint(self, painter, *args):
@@ -12866,3 +12885,125 @@ class FadingTrackItem(pg.GraphicsObject):
         xs = [p[0] for p in self.points]
         ys = [p[1] for p in self.points]
         return QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+
+
+class FadingTracksItem(pg.GraphicsObject):
+    @debugutils.line_benchmark
+    def __init__(self, tracks=None, color=(255, 100, 0), n_fade=15,
+                 max_width=4, min_width=1, max_alpha=255, min_alpha=20):
+        super().__init__()
+        self.color = tuple(int(c) for c in color[:3])
+        self.n_fade = max(n_fade, 1)
+        self.max_width, self.min_width = max_width, min_width
+        self.max_alpha, self.min_alpha = int(max_alpha), int(min_alpha)
+        self.tracks = []
+        self._bounding_rect = QRectF()
+        self._pen_cache = {}
+        self._build_pen_cache()
+        self.setTracks([] if tracks is None else tracks)
+
+    def _build_pen_cache(self):
+        self._pen_cache = {}
+        max_dist = int(math.ceil(self.n_fade))
+        for dist_from_head in range(max_dist + 1):
+            frac = max(0.0, 1.0 - dist_from_head / self.n_fade)
+            alpha = int(self.min_alpha + frac * (self.max_alpha - self.min_alpha))
+            width = self.min_width + frac * (self.max_width - self.min_width)
+            pen = QPen(QColor(*self.color, alpha))
+            pen.setWidthF(width)
+            pen.setCapStyle(Qt.RoundCap)
+            self._pen_cache[dist_from_head] = pen
+
+        min_pen = QPen(QColor(*self.color, self.min_alpha))
+        min_pen.setWidthF(self.min_width)
+        min_pen.setCapStyle(Qt.RoundCap)
+        self._pen_cache['min'] = min_pen
+
+    def setAppearance(
+            self, color=None, n_fade=None, max_width=None, min_width=None,
+            max_alpha=None, min_alpha=None
+        ):
+        if color is not None:
+            self.color = tuple(int(c) for c in color[:3])
+        if n_fade is not None:
+            self.n_fade = max(n_fade, 1)
+        if max_width is not None:
+            self.max_width = max_width
+        if min_width is not None:
+            self.min_width = min_width
+        if max_alpha is not None:
+            self.max_alpha = int(max_alpha)
+        if min_alpha is not None:
+            self.min_alpha = int(min_alpha)
+        self._build_pen_cache()
+
+    def setTracks(self, tracks):
+        tracks = [] if tracks is None else tracks
+        self.prepareGeometryChange()
+        self.tracks = tracks
+        self._generate_picture()
+        self.setVisible(bool(tracks))
+        self.update()
+
+    def clear(self):
+        self.setTracks([])
+
+    # @debugutils.line_benchmark
+    def _generate_picture(self):
+        self.picture = QPicture()
+        painter = QPainter(self.picture)
+        bounding_left = None
+        bounding_top = None
+        bounding_right = None
+        bounding_bottom = None
+        lines_by_pen = {}
+
+        for points, frames in self.tracks:
+            n = len(points)
+            if n < 2:
+                continue
+
+            head_frame = frames[-1]
+
+            for i in range(n - 1):
+                f0, f1 = frames[i], frames[i + 1]
+                if f1 - f0 > 1:
+                    continue
+
+                dist_from_head = head_frame - f1
+                pen_key = (
+                    dist_from_head if dist_from_head in self._pen_cache else 'min'
+                )
+
+                x0, y0 = points[i]
+                x1, y1 = points[i + 1]
+                bounding_left = x0 if bounding_left is None else min(bounding_left, x0, x1)
+                bounding_top = y0 if bounding_top is None else min(bounding_top, y0, y1)
+                bounding_right = x0 if bounding_right is None else max(bounding_right, x0, x1)
+                bounding_bottom = y0 if bounding_bottom is None else max(bounding_bottom, y0, y1)
+
+                lines_by_pen.setdefault(pen_key, []).append(QLineF(x0, y0, x1, y1))
+
+        def pen_sort_key(key):
+            return float('inf') if key == 'min' else key
+
+        for pen_key in sorted(lines_by_pen.keys(), key=pen_sort_key, reverse=True):
+            painter.setPen(self._pen_cache[pen_key])
+            painter.drawLines(lines_by_pen[pen_key])
+
+        painter.end()
+        if bounding_left is None:
+            self._bounding_rect = QRectF()
+        else:
+            self._bounding_rect = QRectF(
+                bounding_left,
+                bounding_top,
+                bounding_right - bounding_left,
+                bounding_bottom - bounding_top,
+            )
+
+    def paint(self, painter, *args):
+        painter.drawPicture(0, 0, self.picture)
+
+    def boundingRect(self):
+        return self._bounding_rect

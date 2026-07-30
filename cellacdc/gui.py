@@ -4050,6 +4050,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         self.updateAllImages()
+           
+    def _createCellTracksCheckboxRightClickMenu(self, parent):
+        menu = QMenu(self)
+        editSettingsAction = menu.addAction('Edit track settings...')
+        toggleAction = menu.addAction('Toggle track visibility')
+
+        editSettingsAction.triggered.connect(
+            self.setAnnotateCellMovementSettings
+        )
+        # toggleAction.triggered.connect(
+        #     parent.setCheckState(not parent.isChecked()
+        #     )
+        # )
     
     def gui_setupAnnotationOptionsLayout(self, ax: int):  
         container = QWidget()
@@ -4061,11 +4074,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 widget = widgets.QVLine()
             else:
                 checkbox = widgets.CheckBox(
-                    name, keyPressCallback=self.resetFocus
+                    name, keyPressCallback=self.resetFocus,
+                    rightclick_menu_func=rcMenu
                 )
                 widget = checkbox
 
-            row, col, rowSpan, colSpan, slot = info
             layout.addWidget(widget, row, col, rowSpan, colSpan)
 
             if checkbox is None:
@@ -4190,7 +4203,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.updateViewBox(ax)
 
     def onObjectTracksChecked(self, checked, checkbox, ax=0):
-        ...
+        self.annotateCellMovement()
 
     def onDoNotAnnotateChecked(self, checked, checkbox, ax=0):
         # Placeholder function, might be useful in the future.
@@ -21058,9 +21071,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.initLoadedDelROI()
         
-        # self.gui_initFragmentsAtlas()
-
-
         QTimer.singleShot(100, self.resizeGuiAndAutoRange)
 
     def _createROIfromState(self, state, key):
@@ -21554,6 +21564,46 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             100, partial(self._setViewRangeSwitchPlane, previousPlane)
         )
         
+    # def gui_preinitAnnotations(self):
+    #     og_frame = self.data[self.pos_i].frame_i
+    #     print('Pre-initializing annotations for all frames and positions...')
+    #     for posData in self.data:
+    #         og_frame = self.data[self.pos_i].frame_i
+    #         pbar = tqdm(desc='Pre-initializing annotations', total=posData.SizeT, ncols=100)
+    #         for frame_i in range(posData.SizeT):
+    #             lab = posData.allData_li[frame_i]['labels']
+    #             if lab is None:
+    #                 lab = posData.segm_data[frame_i]
+    #             rp = posData.allData_li[frame_i]['regionprops']
+    #             if rp is None:
+    #                 rp =  self._acdcRegionProps(lab)
+    #                 posData.allData_li[frame_i]['regionprops'] = rp
+                    
+    #             posData.rp = rp
+    #             posData.lab = lab
+    #             self.setLostNewOldPrevIDs()
+    #             posData.frame_i = frame_i
+    #             for ax in self.textAnnot.values():
+    #                 ax.setAnnotations(
+    #                     posData=posData,
+    #                     isVisibleCheckFunc=self._trueFunction,
+    #                     highlightedID=self.highlightedID, 
+    #                     annotateLost=True,
+    #                     getObjCentroidFunc=self.getObjCentroid,
+    #                     rp_func=self.get2DRP,
+    #                     rp3D=posData.rp,
+    #                     updateAllTextAnnotations=True
+    #                 )
+    #                 ax.update()
+    #             pbar.update(1)
+    #         posData.frame_i = og_frame
+    #         posData.rp = posData.allData_li[og_frame]['regionprops']
+    #         posData.lab = posData.allData_li[og_frame]['labels']
+    #         pbar.close()
+        
+    # def _trueFunction(self, *args, **kwargs):
+    #     return True
+    
     def switchViewedPlane(self, previousPlane, currentPlane):
         posData = self.data[self.pos_i]
         self.xRangePrev, self.yRangePrev = self.ax1.viewRange()
@@ -31247,21 +31297,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         max_alpha = (settings['max_alpha_perc'] / 100) * 255
         min_alpha= (settings['min_alpha_perc'] / 100) * 255
         n_fade = settings['n_fade']
-        
-        for track_id, track in centroids.items():
+
+        tracks = []
+        for track in centroids.values():
             frames = sorted(track.keys())
             points = [(track[f][1], track[f][0]) for f in frames]
-            item = widgets.FadingTrackItem(
-                points, frames, color=color, n_fade=n_fade, max_width=max_width, 
+            tracks.append((points, frames))
+
+        if not self.tracksPlotItem:
+            item = widgets.FadingTracksItem(
+                color=color, n_fade=n_fade, max_width=max_width,
                 min_width=min_width, max_alpha=max_alpha, min_alpha=min_alpha
-                )
+            )
             self.ax1.addItem(item)
             self.tracksPlotItem.append(item)
+        else:
+            item = self.tracksPlotItem[0]
+            item.setAppearance(
+                color=color, n_fade=n_fade, max_width=max_width,
+                min_width=min_width, max_alpha=max_alpha, min_alpha=min_alpha
+            )
+
+        item.setTracks(tracks)
             
     def clearCellTracks(self):
         for item in self.tracksPlotItem:
-            self.ax1.removeItem(item)
-        self.tracksPlotItem = []
+            item.clear()
+            item.hide()
             
     def annotateCellMovementAgainstPrev(self):        
         posData = self.data[self.pos_i]
