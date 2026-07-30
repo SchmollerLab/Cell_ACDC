@@ -4050,19 +4050,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         self.updateAllImages()
-           
-    def _createCellTracksCheckboxRightClickMenu(self, parent):
-        menu = QMenu(self)
-        editSettingsAction = menu.addAction('Edit track settings...')
-        toggleAction = menu.addAction('Toggle track visibility')
-
-        editSettingsAction.triggered.connect(
-            self.setAnnotateCellMovementSettings
-        )
-        # toggleAction.triggered.connect(
-        #     parent.setCheckState(not parent.isChecked()
-        #     )
-        # )
     
     def gui_setupAnnotationOptionsLayout(self, ax: int):  
         container = QWidget()
@@ -29461,36 +29448,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # Object already cleared
             return
         return obj
-    
-    # def setLostObjectContour(self, obj):
-
-    #     allContours = self.getObjContours(
-    #         obj,
-    #         all_external=True,
-    #         include_internal=self.showAllContoursToggle.isChecked()
-    #     )
-    #     for objContours in allContours:
-    #         xx = objContours[:,0] + 0.5
-    #         yy = objContours[:,1] + 0.5
-    #         data = [obj.label]*len(xx)
-    #         self.ax1_lostObjScatterItem.addPoints(xx, yy, data=data)
-    #         self.ax2_lostObjScatterItem.addPoints(xx, yy)
-
-    # def setTrackedLostObjectContour(self, obj):
-    #     if self.isExportingVideo:
-    #         return
-        
-    #     allContours = self.getObjContours(
-    #         obj,
-    #         all_external=True,
-    #         include_internal=self.showAllContoursToggle.isChecked()
-    #     )
-    #     for objContours in allContours:
-    #         xx = objContours[:,0] + 0.5
-    #         yy = objContours[:,1] + 0.5
-    #         data = [obj.label]*len(xx)
-    #         self.ax1_lostTrackedScatterItem.addPoints(xx, yy, data=data)
-    #         self.ax2_lostTrackedScatterItem.addPoints(xx, yy)
     
     def updateLostContoursImage(self, ax, draw=True, delROIsIDs=None):
         if draw:
