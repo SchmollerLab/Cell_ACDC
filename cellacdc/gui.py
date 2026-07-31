@@ -21774,6 +21774,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax2_newMothBudLinesItem.setData([], [])
         self.ax2_oldMothBudLinesItem.setData([], [])
         self.ax2_lostObjScatterItem.setData([], [])
+        self.ax2_movementAgainstPrevLinesItem.setData([], [])
+        self.ax2_movementAgainstPrevScatterItem.setData([], [])
     
     def clearAx1Items(self, onlyHideText=False):
         self.ax1_binnedIDs_ScatterPlot.clear()
@@ -21792,11 +21794,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.textAnnot[0].clear()
         self.ax1_newMothBudLinesItem.setData([], [])
         self.ax1_oldMothBudLinesItem.setData([], [])
-        self.ax1_movementAgainstPrevLinesItem.setData([], [])
         self.ax1_lostObjScatterItem.setData([], [])
         self.ax1_lostTrackedScatterItem.setData([], [])
         self.ccaFailedScatterItem.setData([], [])
         self.yellowContourScatterItem.setData([], [])
+
+        self.ax1_movementAgainstPrevLinesItem.setData([], [])
         self.ax1_movementAgainstPrevScatterItem.setData([], [])
         self.clearObjTracks()
         
@@ -31215,11 +31218,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.annotateObjTrack(0, settings=settings)
         self.annotateObjTrack(1, settings=settings)
 
+    def getMovementAgainstPrevLinesItem(self, ax: int):
+        itemName = f'ax{ax+1}_movementAgainstPrevLinesItem'
+        return getattr(self, itemName)
+    
+    def getMovementAgainstPrevScatterItem(self, ax: int):
+        itemName = f'ax{ax+1}_movementAgainstPrevScatterItem'
+        return getattr(self, itemName)
+
     @debugutils.line_benchmark
     def annotateObjTrack(self, ax: int, settings=None):
         self.clearObjTracks()
-        self.ax1_movementAgainstPrevLinesItem.setData([], [])
-        self.ax1_movementAgainstPrevScatterItem.clear()
+        movementAgainstPrevLinesItem = self.getMovementAgainstPrevLinesItem(ax)
+        movementAgainstPrevScatterItem = (
+            self.getMovementAgainstPrevScatterItem(ax)
+        )
+        movementAgainstPrevLinesItem.setData([], [])
+        movementAgainstPrevScatterItem.clear()
         if not self.isObjectTracksChecked(ax):
             return
         
@@ -31302,7 +31317,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if frame_i == 0:
             return        
-        
+
+        movementAgainstPrevScatterItem = (
+            self.getMovementAgainstPrevScatterItem(ax)
+        )
         rp = posData.rp
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
         for ID in rp.IDs:
@@ -31322,12 +31340,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     continue
                 xx = objContours[:,0] + 0.5
                 yy = objContours[:,1] + 0.5
-                self.ax1_movementAgainstPrevScatterItem.addPoints(xx, yy)
+                movementAgainstPrevScatterItem.addPoints(xx, yy)
                 
             y1, x1 = self.getObjCentroid(obj_prev.centroid)
             y2, x2 = self.getObjCentroid(obj.centroid)
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
-            self.ax1_movementAgainstPrevLinesItem.addPoints(xx, yy)
+            movementAgainstPrevLinesItem.addPoints(xx, yy)
                                 
     def setTrackedLostCentroids(self, prev_rp, tracked_lost_IDs):
         """Store centroids of those IDs the tracker decided is fine to lose 
