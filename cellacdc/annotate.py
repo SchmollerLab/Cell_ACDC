@@ -761,19 +761,42 @@ class FadingTracksItem(pg.GraphicsObject):
             self, color=None, n_fade=None, max_width=None, min_width=None,
             max_alpha=None, min_alpha=None
         ):
+        changed = False
+
         if color is not None:
-            self.color = tuple(int(c) for c in color[:3])
+            new_color = tuple(int(c) for c in color[:3])
+            if new_color != self.color:
+                self.color = new_color
+                changed = True
+
         if n_fade is not None:
-            self.n_fade = max(n_fade, 1)
-        if max_width is not None:
+            new_n_fade = max(n_fade, 1)
+            if new_n_fade != self.n_fade:
+                self.n_fade = new_n_fade
+                changed = True
+
+        if max_width is not None and max_width != self.max_width:
             self.max_width = max_width
-        if min_width is not None:
+            changed = True
+
+        if min_width is not None and min_width != self.min_width:
             self.min_width = min_width
+            changed = True
+
         if max_alpha is not None:
-            self.max_alpha = int(max_alpha)
+            new_max_alpha = int(max_alpha)
+            if new_max_alpha != self.max_alpha:
+                self.max_alpha = new_max_alpha
+                changed = True
+
         if min_alpha is not None:
-            self.min_alpha = int(min_alpha)
-        self._build_pen_cache()
+            new_min_alpha = int(min_alpha)
+            if new_min_alpha != self.min_alpha:
+                self.min_alpha = new_min_alpha
+                changed = True
+
+        if changed:
+            self._build_pen_cache()
 
     def setTracks(self, tracks):
         tracks = [] if tracks is None else tracks
@@ -862,3 +885,13 @@ class FadingTracksItem(pg.GraphicsObject):
 
     def boundingRect(self):
         return self._bounding_rect
+    
+    def settingsDict(self):
+        return {
+            'color': self.color,
+            'n_fade': self.n_fade,
+            'max_width': self.max_width,
+            'min_width': self.min_width,
+            'max_alpha': self.max_alpha,
+            'min_alpha': self.min_alpha
+        }

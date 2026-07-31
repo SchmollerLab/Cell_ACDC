@@ -1073,7 +1073,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.settingsMenu.addAction(self.invertBwAction)
         self.settingsMenu.addAction(self.toggleColorSchemeAction)
         self.settingsMenu.addSeparator()
-        self.settingsMenu.addAction(self.pxModeAction)
+        # self.settingsMenu.addAction(self.pxModeAction)
+        editObjectTrackSettingsAction = self.settingsMenu.addAction(
+            'Edit object track settings...'
+        )
+        editObjectTrackSettingsAction.triggered.connect(
+            self.setAnnotateObjTrackSettings 
+        )
         self.settingsMenu.addAction(self.highLowResAction)
         self.settingsMenu.addAction(self.editShortcutsAction)
         self.settingsMenu.addAction(self.showMirroredCursorAction)
@@ -3022,21 +3028,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.gui_updateSwitchColorSchemeActionText()
         
-        self.pxModeAction = widgets.CheckableAction(
-            'Fixed size text annotations'
-        )
-        self.pxModeAction.setChecked(True)
-        pxModeTooltip = (
-            'When the text annotations are with fixed size they scale relative '
-            'to the object when zooming in/out (fixed size in pixels).\n'
-            'This is typically faster to render, but it makes annotations '
-            'smaller/larger when zooming in/out, respectively.\n\n'
-            'Try activating it to speed up the annotation of many objects '
-            'in high resolution mode.\n\n'
-            'After activating it, you might need to increase the font size '
-            'from the menu on the top menubar `Edit --> Font size`.'
-        )
-        self.pxModeAction.setToolTip(pxModeTooltip)
+        # self.pxModeAction = widgets.CheckableAction(
+        #     'Fixed size text annotations'
+        # )
+        # self.pxModeAction.setChecked(True)
+        # pxModeTooltip = (
+        #     'When the text annotations are with fixed size they scale relative '
+        #     'to the object when zooming in/out (fixed size in pixels).\n'
+        #     'This is typically faster to render, but it makes annotations '
+        #     'smaller/larger when zooming in/out, respectively.\n\n'
+        #     'Try activating it to speed up the annotation of many objects '
+        #     'in high resolution mode.\n\n'
+        #     'After activating it, you might need to increase the font size '
+        #     'from the menu on the top menubar `Edit --> Font size`.'
+        # )
+        # self.pxModeAction.setToolTip(pxModeTooltip)
         
         self.highLowResAction = widgets.CheckableAction(
             'High resolution text annotations'
@@ -3273,7 +3279,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.invertBwAction.toggled.connect(self.invertBw)
         self.toggleColorSchemeAction.triggered.connect(self.onToggleColorScheme)
-        self.pxModeAction.clicked.connect(self.pxModeActionToggled)
+        # self.pxModeAction.clicked.connect(self.pxModeActionToggled)
         self.editShortcutsAction.triggered.connect(self.editShortcuts_cb)
         self.editAutoSaveIntervalAction.triggered.connect(
             self.autoSaveIntervalEditButton.click
@@ -4896,9 +4902,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.ax1, penColor='r', textColor='r'
         )
         self.manualBackgroundImageItem = pg.ImageItem()
-        
-        self.tracksPlotItem = [None, None]
-    
+            
     def gui_createZoomRectItem(self):
         Y, X = self.currentLab2D.shape
         # Label ROI rectangle
@@ -5030,9 +5034,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return
             if switchToLowRes:
                 self.highLowResAction.setChecked(False)
-            else:
-                # Many items requires pxMode active to be fast enough
-                self.pxModeAction.setChecked(True)
+            # else:
+                # # Many items requires pxMode active to be fast enough
+                # self.pxModeAction.setChecked(True)
 
         self.logger.info(f'Creating graphical items...')
 
@@ -5056,6 +5060,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
             size=self.mothBudLineWeight, pen=None
         )
+        self.ax1_trackerMovementAgainstPrevLinesItem = pg.ScatterPlotItem(
+            symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
+            size=self.mothBudLineWeight, pen=None
+        )
+        self.tracksPlotItems = dict()
         self.ax1_lostObjScatterItem = self.gui_getLostObjScatterItem()
         self.yellowContourScatterItem = self.gui_getLostObjScatterItem()
         self.ax1_movementAgainstPrevScatterItem = self.gui_getLostObjScatterItem()
@@ -5106,12 +5115,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def gui_createTextAnnotItems(self, allIDs):
         self.textAnnot = {}
         isHighResolution = self.highLowResAction.isChecked()
-        pxMode = self.pxModeAction.isChecked()
+        # pxMode = self.pxModeAction.isChecked()
         for ax in range(2):
             ax_textAnnot = annotate.TextAnnotations()
             ax_textAnnot.initFonts(self.fontSize)
             ax_textAnnot.createItems(
-                isHighResolution, allIDs, pxMode=pxMode
+                isHighResolution, allIDs#, pxMode=pxMode
             )
             self.textAnnot[ax] = ax_textAnnot
     
@@ -5460,8 +5469,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.labelsLayerImg1.image[delID_mask] = 0
                 self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
             
-            how_ax2 = self.getAnnotateHowRightImage()
-            if how_ax2.find('overlay segm. masks') != -1:
+            ax1_segm_overlay = self.annotOverlaySegmMaskCheckbox(ax=1)
+            if ax1_segm_overlay:
                 self.labelsLayerRightImg.image[delID_mask] = 0
                 self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
             
@@ -8816,6 +8825,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax1.addItem(self.ccaFailedScatterItem)
         self.ax1.addItem(self.yellowContourScatterItem)
         self.ax1.addItem(self.ax1_movementAgainstPrevLinesItem)
+        self.ax1.addItem(self.ax1_trackerMovementAgainstPrevLinesItem)
+        self.ax1_trackerMovementAgainstPrevLinesItem.setZValue(1) # make sure it is on top of the other lines
         self.ax1.addItem(self.ax1_movementAgainstPrevScatterItem)
 
         self.ax2.addItem(self.ax2_contoursImageItem)
@@ -9545,18 +9556,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             self.labelRoiCircularRadiusSpinbox.setDisabled(True)
     
-    def pxModeActionToggled(self, checked):
-        self.df_settings.at['pxMode', 'value'] = int(checked)
-        self.df_settings.to_csv(self.settings_csv_path)
+    # def pxModeActionToggled(self, checked):
+    #     self.df_settings.at['pxMode', 'value'] = int(checked)
+    #     self.df_settings.to_csv(self.settings_csv_path)
         
-        if not self.isDataLoaded:
-            return
+    #     if not self.isDataLoaded:
+    #         return
         
-        if self.highLowResAction.isChecked():
-            for ax in range(2):
-                self.textAnnot[ax].setPxMode(checked)
+    #     if self.highLowResAction.isChecked():
+    #         for ax in range(2):
+    #             self.textAnnot[ax].setPxMode(checked)
         
-        self.updateAllImages()
+    #     self.updateAllImages()
     
     def relabelSequentialCallback(self): 
         mode = str(self.modeComboBox.currentText())
@@ -21801,6 +21812,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.yellowContourScatterItem.setData([], [])
 
         self.ax1_movementAgainstPrevLinesItem.setData([], [])
+        self.ax1_trackerMovementAgainstPrevLinesItem.setData([], [])
         self.ax1_movementAgainstPrevScatterItem.setData([], [])
         self.clearObjTracks()
         
@@ -28405,7 +28417,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if init:
             self.initTempLayerBrush(ID, ax=ax)
         
-        if self.annotContourCheckbox.isChecked():
+        contours = self.annotContourCheckbox(ax)
+        if contours:
             brushImage = self.brushImage
         else:
             brushImage = self.tempLayerImg1.image
@@ -28415,7 +28428,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             brushImage[toLocalSlice][mask] = ID
         
-        if self.annotContourCheckbox.isChecked():
+        if contours:
             brushMask = np.ascontiguousarray((brushImage > 0), dtype=np.uint8)
 
             objContour = core.get_obj_contours(
@@ -31124,7 +31137,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             y1, x1 = self.getObjCentroid(lostObj.centroid)
             y2, x2 = self.getObjCentroid(newObj.centroid)
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
-            self.ax1_movementAgainstPrevLinesItem.addPoints(xx, yy)
+            self.ax1_trackerMovementAgainstPrevLinesItem.addPoints(xx, yy)
             
     def initannotateObjTrackSettings(self):
         if hasattr(self, 'annotateObjTrackSettings'):
@@ -31231,10 +31244,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.initannotateObjTrackSettings()
             settings = self.annotateObjTrackSettings
 
-        # Keep one track item per axis and reuse it across updates.
-        if len(self.tracksPlotItem) < 2:
-            self.tracksPlotItem.extend([None] * (2 - len(self.tracksPlotItem)))
-
         to_annotate_ax = []
         for ax in [0, 1]:
             movementAgainstPrevLinesItem = self.getMovementAgainstPrevLinesItem(ax)
@@ -31244,17 +31253,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             movementAgainstPrevLinesItem.setData([], [])
             movementAgainstPrevScatterItem.clear()
 
-            item = self.tracksPlotItem[ax]
-            if item is not None and (
-                not self.isObjectTracksChecked(ax) or settings['against_prev']
-            ):
-                item.clear()
-                item.hide()
-
             if not self.isObjectTracksChecked(ax):
                 continue
             to_annotate_ax.append(ax)
             
+        self.clearObjTracks()
         if not to_annotate_ax:
             return
 
@@ -31306,34 +31309,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             frames = sorted(track.keys())
             points = [(track[f][1], track[f][0]) for f in frames]
             tracks.append((points, frames))
-
+            
+            
         for ax in to_annotate_ax:
-            item = self.tracksPlotItem[ax]
-            if item is None:
-                item = annotate.FadingTracksItem(
+            if ax in self.tracksPlotItems:
+                tracksPlotItem = self.tracksPlotItems[ax]
+                tracksPlotItem.setAppearance(
                     color=color, n_fade=n_fade, max_width=max_width,
                     min_width=min_width, max_alpha=max_alpha, min_alpha=min_alpha
                 )
-                if ax == 0:
-                    self.ax1.addItem(item)
-                elif ax == 1:
-                    self.ax2.addItem(item)
-                self.tracksPlotItem[ax] = item
             else:
-                item.setAppearance(
+                tracksPlotItem = annotate.FadingTracksItem(
                     color=color, n_fade=n_fade, max_width=max_width,
                     min_width=min_width, max_alpha=max_alpha, min_alpha=min_alpha
                 )
-
-            item.setTracks(tracks)
-            item.show()
+                self.tracksPlotItems[ax] = tracksPlotItem
+                if ax == 0:
+                    self.ax1.addItem(tracksPlotItem)
+                else:
+                    self.ax2.addItem(tracksPlotItem)
+            
+            tracksPlotItem.setTracks(tracks)
+            tracksPlotItem.show()
             
     def clearObjTracks(self):
-        for item in self.tracksPlotItem:
-            if item is None:
-                continue
-            item.clear()
-            item.hide()
+        for tracksPlotItem in self.tracksPlotItems.values():
+            # tracksPlotItem.clear()
+            tracksPlotItem.hide()
             
     def annotateObjTrackAgainstPrev(self, ax: int):        
         posData = self.data[self.pos_i]
@@ -34796,7 +34798,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.logger.info(
             f'Switching to {mode} for the text annnotations...'
         )
-        self.pxModeAction.setDisabled(not self.highLowResAction.isChecked())
+        # self.pxModeAction.setDisabled(not self.highLowResAction.isChecked())
         if not self.isDataLoaded:
             return
         
