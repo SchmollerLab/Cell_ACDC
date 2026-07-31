@@ -30161,6 +30161,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if shift and self.isSegm3D:
             self.update_rp()
 
+        self.annotateAllObjectTracks()
         self.store_data(autosave=False)
         self.whitelistPropagateIDs(IDs_to_remove=delIDs, curr_frame_only=(not applyFutFrames))
         return delID_mask
