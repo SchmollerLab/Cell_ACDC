@@ -20615,14 +20615,14 @@ class TestSegmModelInitalDialog(QBaseDialog):
         self.close()
         
         
-class AnnotateCellMovementSettingsDialog(QBaseDialog):
+class AnnotateObjTrackSettingsDialog(QBaseDialog):
     sigValuesChanged = Signal(dict)
     
     def __init__(self, settings: dict, parent=None):
         super().__init__(parent)
         self.cancel = True
 
-        self.setWindowTitle('Annotate cell movement settings')
+        self.setWindowTitle('Annotate object track settings')
 
         mainLayout = QVBoxLayout()
         formLayout = widgets.FormLayout()

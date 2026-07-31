@@ -4190,7 +4190,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.updateViewBox(ax)
 
     def onObjectTracksChecked(self, checked, checkbox, ax=0):
-        self.annotateObjTrack(ax)
+        self.annotateAllObjectTracks()
 
     def onDoNotAnnotateChecked(self, checked, checkbox, ax=0):
         # Placeholder function, might be useful in the future.
@@ -4897,7 +4897,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.manualBackgroundImageItem = pg.ImageItem()
         
-        self.tracksPlotItem = []
+        self.tracksPlotItem = [None, None]
     
     def gui_createZoomRectItem(self):
         Y, X = self.currentLab2D.shape
@@ -8824,8 +8824,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax2.addItem(self.ax2_oldMothBudLinesItem)
         self.ax2.addItem(self.ax2_newMothBudLinesItem)
         self.ax2.addItem(self.ax2_lostObjScatterItem)
-        self.ax1.addItem(self.ax2_movementAgainstPrevLinesItem)
-        self.ax1.addItem(self.ax2_movementAgainstPrevScatterItem)
+        self.ax2.addItem(self.ax2_movementAgainstPrevLinesItem)
+        self.ax2.addItem(self.ax2_movementAgainstPrevScatterItem)
 
         self.textAnnot[0].addToPlotItem(self.ax1)
         self.textAnnot[1].addToPlotItem(self.ax2)
@@ -13572,10 +13572,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         for ax in range(2):
             self.textAnnot[ax].changeFontSize(self.fontSize)
-        if self.highLowResAction.isChecked():
-            self.setAllTextAnnotations()
-        else:
-            self.updateAllImages()
+        self.setAllTextAnnotations()
+        # if self.highLowResAction.isChecked():
+        #     self.setAllTextAnnotations()
+        # else:
+        #     self.updateAllImages()
 
     def enableZstackWidgets(self, enabled):
         if enabled:
@@ -29946,7 +29947,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 QAbstractSlider.SliderAction.SliderSingleStepSub
             )
     
-    @debugutils.line_benchmark
     def updateAllImages(
             self, image=None, computePointsLayers=True, computeContours=True,
             updateLookuptable=True, updateAllTextAnnotations=True
@@ -31214,9 +31214,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def onSetAnnotateObjTrackSettingsSigValuesChanged(self, settings):
         self.annotateAllObjectTracks(settings=settings)
 
-    def annotateAllObjectTracks(self, settings=None):
-        self.annotateObjTrack(0, settings=settings)
-        self.annotateObjTrack(1, settings=settings)
+    # def annotateAllObjectTracks(self, settings=None):
+    #     self.annotateObjTrack(0, settings=settings)
+    #     self.annotateObjTrack(1, settings=settings)
 
     def getMovementAgainstPrevLinesItem(self, ax: int):
         itemName = f'ax{ax+1}_movementAgainstPrevLinesItem'
@@ -31226,24 +31226,41 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         itemName = f'ax{ax+1}_movementAgainstPrevScatterItem'
         return getattr(self, itemName)
 
-    @debugutils.line_benchmark
-    def annotateObjTrack(self, ax: int, settings=None):
-        self.clearObjTracks()
-        movementAgainstPrevLinesItem = self.getMovementAgainstPrevLinesItem(ax)
-        movementAgainstPrevScatterItem = (
-            self.getMovementAgainstPrevScatterItem(ax)
-        )
-        movementAgainstPrevLinesItem.setData([], [])
-        movementAgainstPrevScatterItem.clear()
-        if not self.isObjectTracksChecked(ax):
-            return
-        
+    def annotateAllObjectTracks(self, settings=None):
         if settings is None:
             self.initannotateObjTrackSettings()
             settings = self.annotateObjTrackSettings
+
+        # Keep one track item per axis and reuse it across updates.
+        if len(self.tracksPlotItem) < 2:
+            self.tracksPlotItem.extend([None] * (2 - len(self.tracksPlotItem)))
+
+        to_annotate_ax = []
+        for ax in [0, 1]:
+            movementAgainstPrevLinesItem = self.getMovementAgainstPrevLinesItem(ax)
+            movementAgainstPrevScatterItem = (
+                self.getMovementAgainstPrevScatterItem(ax)
+            )
+            movementAgainstPrevLinesItem.setData([], [])
+            movementAgainstPrevScatterItem.clear()
+
+            item = self.tracksPlotItem[ax]
+            if item is not None and (
+                not self.isObjectTracksChecked(ax) or settings['against_prev']
+            ):
+                item.clear()
+                item.hide()
+
+            if not self.isObjectTracksChecked(ax):
+                continue
+            to_annotate_ax.append(ax)
             
+        if not to_annotate_ax:
+            return
+
         if settings['against_prev'] is True:
-            self.annotateObjTrackAgainstPrev(ax)
+            for ax in to_annotate_ax:
+                self.annotateObjTrackAgainstPrev(ax)
             return
                 
         posData = self.data[self.pos_i]
@@ -31290,24 +31307,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             points = [(track[f][1], track[f][0]) for f in frames]
             tracks.append((points, frames))
 
-        if not self.tracksPlotItem:
-            item = widgets.FadingTracksItem(
-                color=color, n_fade=n_fade, max_width=max_width,
-                min_width=min_width, max_alpha=max_alpha, min_alpha=min_alpha
-            )
-            self.ax1.addItem(item)
-            self.tracksPlotItem.append(item)
-        else:
-            item = self.tracksPlotItem[0]
-            item.setAppearance(
-                color=color, n_fade=n_fade, max_width=max_width,
-                min_width=min_width, max_alpha=max_alpha, min_alpha=min_alpha
-            )
+        for ax in to_annotate_ax:
+            item = self.tracksPlotItem[ax]
+            if item is None:
+                item = annotate.FadingTracksItem(
+                    color=color, n_fade=n_fade, max_width=max_width,
+                    min_width=min_width, max_alpha=max_alpha, min_alpha=min_alpha
+                )
+                if ax == 0:
+                    self.ax1.addItem(item)
+                elif ax == 1:
+                    self.ax2.addItem(item)
+                self.tracksPlotItem[ax] = item
+            else:
+                item.setAppearance(
+                    color=color, n_fade=n_fade, max_width=max_width,
+                    min_width=min_width, max_alpha=max_alpha, min_alpha=min_alpha
+                )
 
-        item.setTracks(tracks)
+            item.setTracks(tracks)
+            item.show()
             
     def clearObjTracks(self):
         for item in self.tracksPlotItem:
+            if item is None:
+                continue
             item.clear()
             item.hide()
             
@@ -31321,6 +31345,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         movementAgainstPrevScatterItem = (
             self.getMovementAgainstPrevScatterItem(ax)
         )
+        movementAgainstPrevLinesItem = self.getMovementAgainstPrevLinesItem(ax)
         rp = posData.rp
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
         for ID in rp.IDs:

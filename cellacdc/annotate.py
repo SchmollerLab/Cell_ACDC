@@ -7,6 +7,8 @@ import pandas as pd
 from . import GUI_INSTALLED
 from . import cellacdc_path, printl, ignore_exception, debugutils
 
+import math
+
 if GUI_INSTALLED:
     from PIL import Image, ImageFont, ImageDraw
     from qtpy.QtGui import QFont
@@ -14,6 +16,9 @@ if GUI_INSTALLED:
     pg.setConfigOption('imageAxisOrder', 'row-major')
     
     from . import plot
+    
+    from qtpy.QtGui import QFont, QPicture, QPainter, QColor, QPen
+    from qtpy.QtCore import QRectF, QPointF, Qt, QLineF
 
 INVERTIBLE_COLOR_NAMES = [
     'label', 'S_phase_mother', 'G1_phase'
@@ -142,8 +147,8 @@ class TextAnnotationsImageItem(pg.ImageItem):
     
     def initFonts(self, fontSize):
         self.fontSize = fontSize
-        self.fontBold = ImageFont.truetype(font_path, fontSize)
-        self.fontRegular = ImageFont.truetype(font_bold_path, fontSize)
+        self.fontRegular = ImageFont.truetype(font_path, fontSize)
+        self.fontBold = ImageFont.truetype(font_bold_path, fontSize)
         self.highlighterItem = TextAnnotationsScatterItem(
             size=self.fontSize, pxMode=False
         )
@@ -207,142 +212,62 @@ class TextAnnotationsImageItem(pg.ImageItem):
     def colors(self):
         return self._colors
 
-class TextAnnotationsScatterItem(pg.ScatterPlotItem):
-    def __init__(self, *args, anchor=(0.5, 0.5), **kargs):
-        super().__init__(*args, **kargs)
-        self.initFonts(kargs.get('size', 10))
-        self.texts = []
-        self.annotData = []
+class TextAnnotationsScatterItem(pg.GraphicsObject):
+    """
+    Draws ID/annotation text directly with QPainter.drawText() into a
+    single cached QPicture, instead of building one unique vector-path
+    symbol per text label (as ScatterPlotItem's SymbolAtlas does).
+
+    This keeps the same public API as the old TextAnnotationsScatterItem
+    (addObjAnnot, appendData, draw, highlightObject, removeHighlightObject,
+    grayOutAnnotations, setColors, etc.) so it's a drop-in swap.
+    """
+    def __init__(self, size=10, pxMode=False, anchor=(0.5, 0.5)):
+        super().__init__()
+        self._pxMode = pxMode
         self._anchor = anchor
+        self.picture = QPicture()
+        self._boundingRect = QRectF()
+        self.annotData = []  # list of dicts: pos, text, bold, color_name, data(ID)
+        self.texts = []      # kept parallel to annotData for API compatibility
+        self.initFonts(size)
+        self.setPxMode(pxMode)
 
-    def _rebuildSizes(self, bold=False):
-        if bold:
-            self.sizesBold = plot.get_symbol_sizes(
-                self.scalesBold, self.symbolsBold, self.fontSize
-            )
-            self._maxScaleBold = max(self.scalesBold.values(), default=None)
-        else:
-            self.sizesRegular = plot.get_symbol_sizes(
-                self.scalesRegular, self.symbolsRegular, self.fontSize
-            )
-            self._maxScaleRegular = max(self.scalesRegular.values(), default=None)
-
-    def _updateSizesForTexts(self, texts, bold=False):
-        if not texts:
-            return
-
-        if bold:
-            scales = self.scalesBold
-            sizes_attr = 'sizesBold'
-            max_scale_attr = '_maxScaleBold'
-        else:
-            scales = self.scalesRegular
-            sizes_attr = 'sizesRegular'
-            max_scale_attr = '_maxScaleRegular'
-
-        current_max_scale = getattr(self, max_scale_attr, None)
-        if current_max_scale is None:
-            self._rebuildSizes(bold=bold)
-            return
-
-        added_max_scale = max(scales[text] for text in texts)
-        if added_max_scale > current_max_scale:
-            self._rebuildSizes(bold=bold)
-            return
-
-        sizes = getattr(self, sizes_attr)
-        for text in texts:
-            sizes[text] = int(np.round(self.fontSize*current_max_scale/scales[text]))
-    
-    def clearData(self):
-        self.setData([], [])
-        self.annotData = []
-        self.texts = []
-    
-    def appendData(self, data, text):
-        self.annotData.append(data)
-        self.texts.append(text)
-    
-    def draw(self):
-        super().setData(self.annotData)
+    # ---- setup / config, API-compatible no-ops where the atlas is gone ----
 
     def initFonts(self, fontSize):
         self.fontSize = fontSize
-        self.fontBold = QFont(FONT_FAMILY.lower())
+        self.fontBold = QFont(FONT_FAMILY)
         self.fontBold.setBold(True)
         self.fontBold.setPixelSize(fontSize)
 
-        self.fontRegular = QFont(FONT_FAMILY.lower())
+        self.fontRegular = QFont(FONT_FAMILY)
         self.fontRegular.setPixelSize(fontSize)
-    
+
     def init(self, *args):
         pass
 
     def initSymbols(self, allIDs, onlyIDs=False):
-        annotTexts = ['?']
-        for ID in allIDs:
-            annotTexts.append(str(ID))
-            if not onlyIDs:
-                annotTexts.append(f'{ID}?')
-            
-        if not onlyIDs:
-            for gen_num in range(20):
-                annotTexts.append(f'G1-{gen_num}')
-                annotTexts.append(f'G1-{gen_num}?')
-                annotTexts.append(f'S-{gen_num}')
-                annotTexts.append(f'S-{gen_num}?')
-        
-        if hasattr(self, 'symbolsBold'):
-            # Symbols already created in prev. session --> add missing ones
-            self.addSymbols(annotTexts)
-        else:
-            # Symbols never created --> create now
-            self.createSymbols(annotTexts)
-    
-    def addSymbols(self, annotTexts, includeBold=True):
-        if includeBold:
-            missing_bold = [
-                text for text in annotTexts if text not in self.symbolsBold
-            ]
-            if missing_bold:
-                symbolsBold, scalesBold = plot.texts_to_pg_scatter_symbols(
-                    missing_bold, font=self.fontBold, return_scales=True
-                )
-                self.symbolsBold.update(symbolsBold)
-                self.scalesBold.update(scalesBold)
-                self._updateSizesForTexts(missing_bold, bold=True)
+        # No pre-built symbol atlas needed with drawText() rendering.
+        pass
 
-        missing_regular = [
-            text for text in annotTexts if text not in self.symbolsRegular
-        ]
-        if missing_regular:
-            symbolsRegular, scalesRegular = plot.texts_to_pg_scatter_symbols(
-                missing_regular, font=self.fontRegular, return_scales=True
-            )
-            self.symbolsRegular.update(symbolsRegular)
-            self.scalesRegular.update(scalesRegular)
-            self._updateSizesForTexts(missing_regular, bold=False)
+    def addSymbols(self, annotTexts, includeBold=True):
+        pass
 
     def createSymbols(self, annotTexts, includeBold=True):
-        if includeBold:
-            self.symbolsBold, self.scalesBold = plot.texts_to_pg_scatter_symbols(
-                annotTexts, font=self.fontBold, return_scales=True
-            )
+        pass
 
-        self.symbolsRegular, scalesRegular = plot.texts_to_pg_scatter_symbols(
-            annotTexts, font=self.fontRegular, return_scales=True
-        )
-        self.scalesRegular = scalesRegular
-        self.initSizes(includeBold=includeBold)
-    
     def initSizes(self, includeBold=True):
-        if not hasattr(self, 'scalesBold'):
-            includeBold = False
-            
-        if includeBold:
-            self._rebuildSizes(bold=True)
-        self._rebuildSizes(bold=False)
-    
+        pass
+
+    def setPxMode(self, mode):
+        self._pxMode = mode
+        # This item renders many labels in one shared picture in data coordinates.
+        # Ignoring view transforms for the whole item breaks label positions.
+        self.setFlag(
+            pg.GraphicsObject.GraphicsItemFlag.ItemIgnoresTransformations, False
+        )
+
     def setColors(self, colors):
         self._colors = colors.copy()
         self._brushes = {}
@@ -350,155 +275,136 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         for name, color in self._colors.items():
             self._brushes[name] = pg.mkBrush(color)
             self._pens[name] = pg.mkPen(color[:3], width=1)
-    
+
     def pens(self):
         return self._pens
-    
+
     def brushes(self):
         return self._brushes
 
     def colors(self):
         return self._colors
 
-    def getObjTextAnnotSymbol(self, text, bold=False, initSizes=True):
-        if bold:
-            symbols = self.symbolsBold
-            font = self.fontBold
-            scales = self.scalesBold
-        else:
-            symbols = self.symbolsRegular
-            font = self.fontRegular
-            scales = self.scalesRegular
-        
-        symbol = symbols.get(text)
-        if symbol is not None:
-            return symbol
+    # ---- data management ----
 
-        symbol, scale = plot.text_to_pg_scatter_symbol(
-            text, font=font, return_scale=True
+    def clearData(self):
+        self.annotData = []
+        self.texts = []
+        self._generatePicture()
+
+    def appendData(self, data, text):
+        self.annotData.append(data)
+        self.texts.append(text)
+
+    def addObjAnnot(self, pos, draw=False, anchor=None, **objOpts):
+        objData = {
+            'pos': tuple(pos),
+            'text': objOpts['text'],
+            'bold': objOpts.get('bold', False),
+            'color_name': objOpts['color_name'],
+        }
+        if draw:
+            self.annotData.append(objData)
+            self.texts.append(objData['text'])
+            self._generatePicture()
+        return objData
+
+    def draw(self):
+        self._generatePicture()
+
+    # ---- rendering ----
+
+    def _generatePicture(self):
+        self.picture = QPicture()
+        painter = QPainter(self.picture)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        xs, ys = [], []
+        for idx, objData in enumerate(self.annotData):
+            text = objData.get('text')
+            if text is None and idx < len(self.texts):
+                text = self.texts[idx]
+
+            font = self.fontBold if objData.get('bold') else self.fontRegular
+            painter.setFont(font)
+            color = self._colors.get(objData.get('color_name'), (255, 255, 255, 255))
+            painter.setPen(QColor(*color))
+
+            x, y = objData['pos']
+            fm = painter.fontMetrics()
+            rect = fm.boundingRect(text)
+            # Center the text on (x, y), matching the 'mm' anchor used by
+            # the low-res PIL-based item.
+            draw_x = x - rect.width() / 2
+            draw_y = y + rect.height() / 2 - fm.descent()
+            painter.drawText(QPointF(draw_x, draw_y), text)
+
+            xs.extend([x - rect.width() / 2, x + rect.width() / 2])
+            ys.extend([y - rect.height() / 2, y + rect.height() / 2])
+
+        painter.end()
+
+        self._boundingRect = (
+            QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+            if xs else QRectF()
         )
-        symbols[text] = symbol
-        scales[text] = scale
-        if initSizes:
-            self._updateSizesForTexts([text], bold=bold)
-        return symbol
+        self.prepareGeometryChange()
+        self.update()
 
-    def grayOutAnnotations(self, IDsToSkip=None):
-        brushes = [self._brushes['grayed'] for _ in range(len(self.data))]
-        pens = [self._pens['grayed'] for _ in range(len(self.data))]
-        if IDsToSkip is not None:
-            pointItems = self.points()
-            for idx, objData in enumerate(self.data):
-                ID = objData['data']
-                doNotGray = IDsToSkip.get(ID, False)
-                if not doNotGray:
-                    continue
-                pointItem = pointItems[idx]
-                brush = pointItem.brush()
-                pen = pointItem.pen()
-                brushes[idx] = brush
-                pens[idx] = pen
-        self.setBrush(brushes)
-        self.setPen(pens)
+    def paint(self, painter, *args):
+        painter.drawPicture(0, 0, self.picture)
+
+    def boundingRect(self):
+        return self._boundingRect
+
+    # ---- highlight / gray-out ----
 
     def highlightObject(self, obj, rp=None, getObjCentroidFunc=None):
         ID = obj.label
-        objIdx = None
-        for idx, objData in enumerate(self.data):
-            if ID == objData['data']:
-                objIdx = idx
-                break
+        objIdx = next(
+            (i for i, d in enumerate(self.annotData) if d.get('data') == ID), None
+        )
         if objIdx is None:
-            objOpts = {
-                'text': str(ID), 'bold': True, 'color_name': 'new_object'
-            }
-            if rp is not None:
-                centroid = rp.get_centroid(obj.label)
-            else:
-                centroid = obj.centroid
-            if getObjCentroidFunc is not None:
-                yc, xc = getObjCentroidFunc(centroid)
-            else:
-                yc, xc = centroid[-2:]
-            pos = (int(xc), int(yc))
-            self.addObjAnnot(pos, draw=True, **objOpts)
+            centroid = rp.get_centroid(obj.label) if rp is not None else obj.centroid
+            yc, xc = (
+                getObjCentroidFunc(centroid) if getObjCentroidFunc is not None
+                else centroid[-2:]
+            )
+            objData = self.addObjAnnot(
+                (int(xc), int(yc)), draw=False,
+                text=str(ID), bold=True, color_name='new_object'
+            )
+            objData['data'] = ID
+            self.annotData.append(objData)
+            self.texts.append(objData['text'])
+            self._generatePicture()
             return
-        
-        pointItem = self.points()[objIdx]
-        symbol = self.getObjTextAnnotSymbol(str(ID), bold=True)
-        pointItem.setSymbol(symbol)
 
-        pointItem.setBrush(self._brushes['new_object'])
-        pointItem.setPen(self._pens['new_object'])
+        self.annotData[objIdx]['color_name'] = 'new_object'
+        self.annotData[objIdx]['bold'] = True
+        self._generatePicture()
 
     def removeHighlightObject(self, obj):
         ID = obj.label
-        objIdx = None
-        for idx, objData in enumerate(self.data):
-            if ID == objData['data']:
-                objIdx = idx
-                break
+        objIdx = next(
+            (i for i, d in enumerate(self.annotData) if d.get('data') == ID), None
+        )
         if objIdx is None:
             return
+        self.annotData[objIdx]['color_name'] = 'label'
+        self.annotData[objIdx]['bold'] = False
+        self._generatePicture()
 
-        pointItem = self.points()[objIdx]
-
-        default_symbol = self.getObjTextAnnotSymbol(str(ID), bold=False)
-        pointItem.setSymbol(default_symbol)
-
-        pointItem.setBrush(self._brushes['label'])
-        pointItem.setPen(self._pens['label'])
-    
-    def modifyPosAnchor(self, pointOpts, anchor, symbol):
-        if anchor is None:
-            return pointOpts
-        
-        xa, ya = anchor
-        if (xa, ya) == (0.5, 0.5):
-            return pointOpts
-        
-        br = symbol.boundingRect()
-        xf = br.width()*(anchor[0]-0.5)
-        yf = br.height()*(anchor[1]-0.5)
-        x, y = pointOpts['pos']
-        pointOpts['pos'] = (x-xf, y-yf)
-        
-        return pointOpts      
-    
-    def addObjAnnot(self, pos, draw=False, anchor=None, **objOpts):        
-        text = objOpts['text']
-        bold = objOpts['bold']
-        symbol = self.getObjTextAnnotSymbol(text, bold)
-
-        if bold:
-            size = self.sizesBold[text]
-        else:
-            size = self.sizesRegular[text]
-
-        color_name = objOpts['color_name']
-
-        pointOpts = {}
-        pointOpts['brush'] = self._brushes[color_name]
-        pointOpts['pen'] = self._pens[color_name]
-        pointOpts['symbol'] = symbol
-        pointOpts['size'] = size
-        pointOpts['pos'] = tuple(pos)
-        pointOpts = self.modifyPosAnchor(pointOpts, anchor, symbol)
-
-        if draw:
-            self.addPoints([pointOpts])
-        
-        return pointOpts
-    
-    def _maybeRebuildAtlas(self, threshold=4, minlen=10000):
-        n = len(self.fragmentAtlas)
-        if (n > minlen) and (n > threshold * len(self.data)):
-            self.fragmentAtlas.rebuild(
-                list(zip(*self._style(['symbol', 'size', 'pen', 'brush'])))
+    def grayOutAnnotations(self, IDsToSkip=None):
+        for objData in self.annotData:
+            doNotGray = (
+                IDsToSkip.get(objData.get('data'), False)
+                if IDsToSkip is not None else False
             )
-            self.data['sourceRect'] = 0
-            self.updateSpots()
-
+            if not doNotGray:
+                objData['color_name'] = 'grayed'
+        self._generatePicture()
+        
 class TextAnnotations:
     def __init__(self):
         self._isLabelAnnot = False
@@ -818,3 +724,141 @@ class TextAnnotations:
         
     def clear(self):
         self.item.setVisible(False)
+        
+        
+class FadingTracksItem(pg.GraphicsObject):
+    def __init__(self, tracks=None, color=(255, 100, 0), n_fade=15,
+                 max_width=4, min_width=1, max_alpha=255, min_alpha=20):
+        super().__init__()
+        self.color = tuple(int(c) for c in color[:3])
+        self.n_fade = max(n_fade, 1)
+        self.max_width, self.min_width = max_width, min_width
+        self.max_alpha, self.min_alpha = int(max_alpha), int(min_alpha)
+        self.tracks = []
+        self._bounding_rect = QRectF()
+        self._pen_cache = {}
+        self._build_pen_cache()
+        self.setTracks([] if tracks is None else tracks)
+
+    def _build_pen_cache(self):
+        self._pen_cache = {}
+        max_dist = int(math.ceil(self.n_fade))
+        for dist_from_head in range(max_dist + 1):
+            frac = max(0.0, 1.0 - dist_from_head / self.n_fade)
+            alpha = int(self.min_alpha + frac * (self.max_alpha - self.min_alpha))
+            width = self.min_width + frac * (self.max_width - self.min_width)
+            pen = QPen(QColor(*self.color, alpha))
+            pen.setWidthF(width)
+            pen.setCapStyle(Qt.RoundCap)
+            self._pen_cache[dist_from_head] = pen
+
+        min_pen = QPen(QColor(*self.color, self.min_alpha))
+        min_pen.setWidthF(self.min_width)
+        min_pen.setCapStyle(Qt.RoundCap)
+        self._pen_cache['min'] = min_pen
+
+    def setAppearance(
+            self, color=None, n_fade=None, max_width=None, min_width=None,
+            max_alpha=None, min_alpha=None
+        ):
+        if color is not None:
+            self.color = tuple(int(c) for c in color[:3])
+        if n_fade is not None:
+            self.n_fade = max(n_fade, 1)
+        if max_width is not None:
+            self.max_width = max_width
+        if min_width is not None:
+            self.min_width = min_width
+        if max_alpha is not None:
+            self.max_alpha = int(max_alpha)
+        if min_alpha is not None:
+            self.min_alpha = int(min_alpha)
+        self._build_pen_cache()
+
+    def setTracks(self, tracks):
+        tracks = [] if tracks is None else tracks
+        self.prepareGeometryChange()
+        self.tracks = tracks
+        self._generate_picture()
+        self.setVisible(bool(tracks))
+        self.update()
+
+    def clear(self):
+        self.setTracks([])
+
+    def _generate_picture(self):
+        self.picture = QPicture()
+        painter = QPainter(self.picture)
+        bounding_left = bounding_top = None
+        bounding_right = bounding_bottom = None
+
+        n_buckets = int(math.ceil(self.n_fade)) + 1
+        MIN_BUCKET = n_buckets  # extra slot for the 'min' fallback pen
+        buckets = [[] for _ in range(n_buckets + 1)]
+
+        for points, frames in self.tracks:
+            n = len(points)
+            if n < 2:
+                continue
+
+            head_frame = frames[-1]
+
+            for i in range(n - 1):
+                f0, f1 = frames[i], frames[i + 1]
+                if f1 - f0 > 1:
+                    continue
+
+                dist_from_head = head_frame - f1
+                bucket_idx = dist_from_head if dist_from_head < n_buckets else MIN_BUCKET
+
+                x0, y0 = points[i]
+                x1, y1 = points[i + 1]
+                bounding_left = x0 if bounding_left is None else min(bounding_left, x0, x1)
+                bounding_top = y0 if bounding_top is None else min(bounding_top, y0, y1)
+                bounding_right = x0 if bounding_right is None else max(bounding_right, x0, x1)
+                bounding_bottom = y0 if bounding_bottom is None else max(bounding_bottom, y0, y1)
+
+                buckets[bucket_idx].append(QLineF(x0, y0, x1, y1))
+
+        # draw tail-to-head (largest dist_from_head first) so the freshest
+        # segments paint on top
+        for bucket_idx in range(n_buckets, -1, -1):
+            lines = buckets[bucket_idx]
+            if not lines:
+                continue
+            pen_key = 'min' if bucket_idx == MIN_BUCKET else bucket_idx
+            painter.setPen(self._pen_cache[pen_key])
+            painter.drawLines(lines)
+
+        painter.end()
+        if bounding_left is None:
+            self._bounding_rect = QRectF()
+        else:
+            self._bounding_rect = QRectF(
+                bounding_left, bounding_top,
+                bounding_right - bounding_left, bounding_bottom - bounding_top,
+            )
+
+        # def pen_sort_key(key):
+        #     return float('inf') if key == 'min' else key
+
+        # for pen_key in sorted(lines_by_pen.keys(), key=pen_sort_key, reverse=True):
+        #     painter.setPen(self._pen_cache[pen_key])
+        #     painter.drawLines(lines_by_pen[pen_key])
+
+        # painter.end()
+        # if bounding_left is None:
+        #     self._bounding_rect = QRectF()
+        # else:
+        #     self._bounding_rect = QRectF(
+        #         bounding_left,
+        #         bounding_top,
+        #         bounding_right - bounding_left,
+        #         bounding_bottom - bounding_top,
+        #     )
+
+    def paint(self, painter, *args):
+        painter.drawPicture(0, 0, self.picture)
+
+    def boundingRect(self):
+        return self._bounding_rect
