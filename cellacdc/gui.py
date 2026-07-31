@@ -34932,21 +34932,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def warnErrorsCustomMetrics(self):
         win = apps.ComputeMetricsErrorsDialog(
-            self.worker.customMetricsErrors, self.logs_path, 
+            self._saveDataWorker.customMetricsErrors, self.logs_path, 
             log_type='custom_metrics', parent=self
         )
         win.exec_()
     
     def warnErrorsAddMetrics(self):
         win = apps.ComputeMetricsErrorsDialog(
-            self.worker.addMetricsErrors, self.logs_path, 
+            self._saveDataWorker.addMetricsErrors, self.logs_path, 
             log_type='standard_metrics', parent=self
         )
         win.exec_()
     
     def warnErrorsRegionProps(self):
         win = apps.ComputeMetricsErrorsDialog(
-            self.worker.regionPropsErrors, self.logs_path, 
+            self._saveDataWorker.regionPropsErrors, self.logs_path, 
             log_type='region_props', parent=self
         )
         win.exec_()
