@@ -3102,11 +3102,7 @@ def split_along_convexity_defects(
         return lab, success, []
 
     # This line is needed since opencv-python-headless > 5.0
-    if defects.ndim == 3:
-        defects = defects[:, 0, :]
     defects = np.asarray(defects).reshape(-1, 4)
-
-
     defects_points = [0]*len(defects)
     for i, defect in enumerate(defects):
         s,e,f,d = defect
