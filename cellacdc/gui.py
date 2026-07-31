@@ -3834,9 +3834,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.imgGrad.defaultSettingsAction.triggered.connect(
             self.restoreDefaultSettings
         )
-
-        # Drawing mode
-        # self.showObjTracksCheckbox.toggled.connect(self.showObjTracksCheckbox_cb)
         
         self.segmentToolAction.triggered.connect(self.segmentToolActionTriggered)
 
@@ -4193,7 +4190,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.updateViewBox(ax)
 
     def onObjectTracksChecked(self, checked, checkbox, ax=0):
-        self.annotateCellMovement()
+        self.annotateObjTrack(ax)
 
     def onDoNotAnnotateChecked(self, checked, checkbox, ax=0):
         # Placeholder function, might be useful in the future.
@@ -4446,10 +4443,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.bottomLayoutContextMenu.zoomActionGroup.addAction(action)
         zoomMenu.addActions(actions)
         editObjectTrackSettingsAction = self.bottomLayoutContextMenu.addAction(
-            'Edit object track settings..'
+            'Edit object track settings...'
         )
         editObjectTrackSettingsAction.triggered.connect(
-            self.setAnnotateCellMovementSettings 
+            self.setAnnotateObjTrackSettings 
         )
         resetAction = self.bottomLayoutContextMenu.addAction(
             'Reset default height'
@@ -5051,17 +5048,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
             size=self.mothBudLineWeight, pen=None
         )
-        self.ax1_movementAgainstPrevLinesItem = pg.ScatterPlotItem(
-            symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
-            size=self.mothBudLineWeight, pen=None
-        )
         self.ax1_newMothBudLinesItem = pg.ScatterPlotItem(
             symbol='s', pxMode=False, brush=self.newMothBudLineBrush,
             size=self.mothBudLineWeight, pen=None
         )
+        self.ax1_movementAgainstPrevLinesItem = pg.ScatterPlotItem(
+            symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
+            size=self.mothBudLineWeight, pen=None
+        )
         self.ax1_lostObjScatterItem = self.gui_getLostObjScatterItem()
         self.yellowContourScatterItem = self.gui_getLostObjScatterItem()
-        self.movementAgainstPrevScatterItem = self.gui_getLostObjScatterItem()
+        self.ax1_movementAgainstPrevScatterItem = self.gui_getLostObjScatterItem()
 
         self.ax1_lostTrackedScatterItem = self.gui_getTrackedLostObjScatterItem()
         self.greenContourScatterItem = self.gui_getTrackedLostObjScatterItem()
@@ -5082,8 +5079,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             symbol='s', pxMode=False, brush=self.newMothBudLineBrush,
             size=self.mothBudLineWeight, pen=None
         )
+        self.ax2_movementAgainstPrevLinesItem = pg.ScatterPlotItem(
+            symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
+            size=self.mothBudLineWeight, pen=None
+        )
         self.ax2_lostObjScatterItem = self.gui_getLostObjScatterItem()
         self.ax2_lostTrackedScatterItem = self.gui_getTrackedLostObjScatterItem()
+        self.ax2_movementAgainstPrevScatterItem = self.gui_getLostObjScatterItem()
         
         self.gui_createTextAnnotItems(allIDs)
         self.gui_setTextAnnotColors()
@@ -8808,13 +8810,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax1.addItem(self.ax1_lostObjImageItem)
         self.ax1.addItem(self.ax1_lostTrackedObjImageItem)
         self.ax1.addItem(self.ax1_oldMothBudLinesItem)
-        self.ax1.addItem(self.ax1_movementAgainstPrevLinesItem)
         self.ax1.addItem(self.ax1_newMothBudLinesItem)
         self.ax1.addItem(self.ax1_lostObjScatterItem)
         self.ax1.addItem(self.ax1_lostTrackedScatterItem)
         self.ax1.addItem(self.ccaFailedScatterItem)
         self.ax1.addItem(self.yellowContourScatterItem)
-        self.ax1.addItem(self.movementAgainstPrevScatterItem)
+        self.ax1.addItem(self.ax1_movementAgainstPrevLinesItem)
+        self.ax1.addItem(self.ax1_movementAgainstPrevScatterItem)
 
         self.ax2.addItem(self.ax2_contoursImageItem)
         self.ax2.addItem(self.ax2_lostObjImageItem)
@@ -8822,6 +8824,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax2.addItem(self.ax2_oldMothBudLinesItem)
         self.ax2.addItem(self.ax2_newMothBudLinesItem)
         self.ax2.addItem(self.ax2_lostObjScatterItem)
+        self.ax1.addItem(self.ax2_movementAgainstPrevLinesItem)
+        self.ax1.addItem(self.ax2_movementAgainstPrevScatterItem)
 
         self.textAnnot[0].addToPlotItem(self.ax1)
         self.textAnnot[1].addToPlotItem(self.ax2)
@@ -21793,8 +21797,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax1_lostTrackedScatterItem.setData([], [])
         self.ccaFailedScatterItem.setData([], [])
         self.yellowContourScatterItem.setData([], [])
-        self.movementAgainstPrevScatterItem.setData([], [])
-        self.clearCellTracks()
+        self.ax1_movementAgainstPrevScatterItem.setData([], [])
+        self.clearObjTracks()
         
         self.clearPointsLayers()
 
@@ -29998,7 +30002,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.highlightSearchedID(self.highlightedID, force=True) 
         self.updateTimestampFrame()
         
-        self.annotateCellMovement()
+        self.annotateAllObjectTracks()
         
         posData.visited = True
 
@@ -31119,38 +31123,38 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
             self.ax1_movementAgainstPrevLinesItem.addPoints(xx, yy)
             
-    def initannotateCellMovementSettings(self):
-        if hasattr(self, 'annotateCellMovementSettings'):
+    def initannotateObjTrackSettings(self):
+        if hasattr(self, 'annotateObjTrackSettings'):
             return
         if (self.df_settings is not None
-            and 'annotateCellMovementLength' in self.df_settings.index):
-            self.annotateCellMovementSettings = {
+            and 'annotateObjTrackLength' in self.df_settings.index):
+            self.annotateObjTrackSettings = {
                 'length': int(self.df_settings.at[
-                    'annotateCellMovementLength', 'value']),
+                    'annotateObjTrackLength', 'value']),
                 'against_prev': (self.df_settings.at[
-                    'annotateCellMovementAgainstPrev', 'value']) == 'True',
+                    'annotateObjTrackAgainstPrev', 'value']) == 'True',
                 'n_fade': int(self.df_settings.at[
-                    'annotateCellMovementNFade', 'value']),
+                    'annotateObjTrackNFade', 'value']),
                 'max_width': int(self.df_settings.at[
-                    'annotateCellMovementMaxWidth', 'value']),
+                    'annotateObjTrackMaxWidth', 'value']),
                 'min_width': int(self.df_settings.at[
-                    'annotateCellMovementMinWidth', 'value']),
+                    'annotateObjTrackMinWidth', 'value']),
                 'max_alpha_perc': int(self.df_settings.at[
-                    'annotateCellMovementMaxAlphaPerc', 'value']),
+                    'annotateObjTrackMaxAlphaPerc', 'value']),
                 'min_alpha_perc': int(self.df_settings.at[
-                    'annotateCellMovementMinAlphaPerc', 'value']),
+                    'annotateObjTrackMinAlphaPerc', 'value']),
             }
             color = self.df_settings.at[
-                'annotateCellMovementColor', 'value']
+                'annotateObjTrackColor', 'value']
             
             parts = color.lstrip('(').rstrip(')').split(',')
             parts = [int(p.strip()) for p in parts]
             
             
-            self.annotateCellMovementSettings['color'] = parts
+            self.annotateObjTrackSettings['color'] = parts
             return
       
-        self.annotateCellMovementSettings = {
+        self.annotateObjTrackSettings = {
             'length': 5,
             'against_prev': False,
             'color': (255, 100, 0),
@@ -31161,73 +31165,70 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'min_alpha_perc': 10,
         }
         
-    def setAnnotateCellMovementSettings(self, *args):
-        self.initannotateCellMovementSettings()
-        win = apps.AnnotateCellMovementSettingsDialog(
-            settings=self.annotateCellMovementSettings,
+    def setAnnotateObjTrackSettings(self, *args):
+        self.initannotateObjTrackSettings()
+        win = apps.AnnotateObjTrackSettingsDialog(
+            settings=self.annotateObjTrackSettings,
             parent=self,
         )
         win.sigValuesChanged.connect(
-            self.onSetAnnotateCellMovementSettingsSigValuesChanged
+            self.onSetAnnotateObjTrackSettingsSigValuesChanged
             )
         win.show(block=True)
         if win.cancel:
-            self.annotateCellMovement() # restore original
+            self.annotateAllObjectTracks() # restore original
             return
 
-        self.annotateCellMovementSettings = win.settings
-        self.annotateCellMovement()
+        self.annotateObjTrackSettings = win.settings
+        self.annotateAllObjectTracks()
         
         self.df_settings.at[
-            'annotateCellMovementLength', 'value'
-            ] = self.annotateCellMovementSettings['length']
+            'annotateObjTrackLength', 'value'
+            ] = self.annotateObjTrackSettings['length']
         self.df_settings.at[
-            'annotateCellMovementAgainstPrev', 'value'
-            ] = self.annotateCellMovementSettings['against_prev']
+            'annotateObjTrackAgainstPrev', 'value'
+            ] = self.annotateObjTrackSettings['against_prev']
         self.df_settings.at[
-            'annotateCellMovementColor', 'value'
-            ] = str(self.annotateCellMovementSettings['color'])
+            'annotateObjTrackColor', 'value'
+            ] = str(self.annotateObjTrackSettings['color'])
         self.df_settings.at[
-            'annotateCellMovementNFade', 'value'
-            ] = self.annotateCellMovementSettings['n_fade']
+            'annotateObjTrackNFade', 'value'
+            ] = self.annotateObjTrackSettings['n_fade']
         self.df_settings.at[
-            'annotateCellMovementMaxWidth', 'value'
-            ] = self.annotateCellMovementSettings['max_width']
+            'annotateObjTrackMaxWidth', 'value'
+            ] = self.annotateObjTrackSettings['max_width']
         self.df_settings.at[
-            'annotateCellMovementMinWidth', 'value'
-            ] = self.annotateCellMovementSettings['min_width']
+            'annotateObjTrackMinWidth', 'value'
+            ] = self.annotateObjTrackSettings['min_width']
         self.df_settings.at[
-            'annotateCellMovementMaxAlphaPerc', 'value'
-            ] = self.annotateCellMovementSettings['max_alpha_perc']
+            'annotateObjTrackMaxAlphaPerc', 'value'
+            ] = self.annotateObjTrackSettings['max_alpha_perc']
         self.df_settings.at[
-            'annotateCellMovementMinAlphaPerc', 'value'
-            ] = self.annotateCellMovementSettings['min_alpha_perc']
+            'annotateObjTrackMinAlphaPerc', 'value'
+            ] = self.annotateObjTrackSettings['min_alpha_perc']
         self.df_settings.to_csv(self.settings_csv_path)
         
-    def onSetAnnotateCellMovementSettingsSigValuesChanged(self, settings):
-        self.annotateCellMovement(settings=settings)
-        
-    def showObjTracksCheckbox_cb(self, checked):
-        self.annotateCellMovement()
-        self.df_settings.at[
-            'showCellTracks', 'value'
-            ] = checked
-        self.df_settings.to_csv(self.settings_csv_path)
-        
+    def onSetAnnotateObjTrackSettingsSigValuesChanged(self, settings):
+        self.annotateAllObjectTracks(settings=settings)
+
+    def annotateAllObjectTracks(self, settings=None):
+        self.annotateObjTrack(0, settings=settings)
+        self.annotateObjTrack(1, settings=settings)
+
     @debugutils.line_benchmark
-    def annotateCellMovement(self, settings=None):
-        self.clearCellTracks()
+    def annotateObjTrack(self, ax: int, settings=None):
+        self.clearObjTracks()
         self.ax1_movementAgainstPrevLinesItem.setData([], [])
-        self.movementAgainstPrevScatterItem.clear()
-        if not self.isObjectTracksChecked(0):
+        self.ax1_movementAgainstPrevScatterItem.clear()
+        if not self.isObjectTracksChecked(ax):
             return
         
         if settings is None:
-            self.initannotateCellMovementSettings()
-            settings = self.annotateCellMovementSettings
+            self.initannotateObjTrackSettings()
+            settings = self.annotateObjTrackSettings
             
         if settings['against_prev'] is True:
-            self.annotateCellMovementAgainstPrev()
+            self.annotateObjTrackAgainstPrev(ax)
             return
                 
         posData = self.data[self.pos_i]
@@ -31290,12 +31291,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         item.setTracks(tracks)
             
-    def clearCellTracks(self):
+    def clearObjTracks(self):
         for item in self.tracksPlotItem:
             item.clear()
             item.hide()
             
-    def annotateCellMovementAgainstPrev(self):        
+    def annotateObjTrackAgainstPrev(self, ax: int):        
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
         
@@ -31321,7 +31322,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     continue
                 xx = objContours[:,0] + 0.5
                 yy = objContours[:,1] + 0.5
-                self.movementAgainstPrevScatterItem.addPoints(xx, yy)
+                self.ax1_movementAgainstPrevScatterItem.addPoints(xx, yy)
                 
             y1, x1 = self.getObjCentroid(obj_prev.centroid)
             y2, x2 = self.getObjCentroid(obj.centroid)
