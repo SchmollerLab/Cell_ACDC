@@ -1157,10 +1157,10 @@ def get_endnames_from_basename(basename, filenames):
 def get_path_from_endname(end_name, images_path, ext=None):
     if ext is None:
         end_name, ext = myutils.remove_known_extension(end_name)
-    
+
     if os.path.exists(os.path.join(images_path, f'{end_name}{ext}')):
         return os.path.join(images_path, f'{end_name}{ext}')
-    
+
     basename = os.path.commonprefix(myutils.listdir(images_path))
     searched_file = f'{basename}{end_name}{ext}'
     for file in myutils.listdir(images_path):

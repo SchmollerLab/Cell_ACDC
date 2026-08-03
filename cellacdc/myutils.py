@@ -1276,6 +1276,7 @@ def listdir(path) -> List[str]:
         and not f == 'desktop.ini'
         and not f == 'recovery'
         and not f.endswith('.new.npz')
+        and not os.path.isdir(os.path.join(path, f))
     ])
 
 def setDefaultValueArgSpecsFromKwargs(

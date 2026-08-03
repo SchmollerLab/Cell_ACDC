@@ -64,6 +64,12 @@
     :height: 16px
     :width: 16px
 
+.. |launch3dViewerAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/3d.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/3d.svg
+    :alt: launch3dViewerAction icon
+    :height: 16px
+    :width: 16px
+
 .. |skipToNewIdAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/skip_forward_new_ID.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/skip_forward_new_ID.svg 
     :alt: skipToNewIdAction icon
@@ -396,14 +402,15 @@ View options
 * **Find ID (** |findIdAction| **"Ctrl+F"):** Find and highlight ID. Press "Esc" to clear highlighted object.
 * **Zoom to rectangle (** |zoomRectButton| **"Shift+Z"):** Draw a rectangular area with left-click in order to zoom to that area. Right-click to cycle back to previously zoomed areas.
 * **Open Slideshow (** |slideshowButton| **"Ctrl+W"):** Opens slideshow.
+* **Launch 3D Viewer (** |launch3dViewerAction| **):** Launch 3D viewer for the currently visualised volume.
 * **Auto-pilot (** |autoPilotButton| **"Ctrl+Shift+A"):** Press arrow up/down or Page Up/Page Down to navigate and view segmented objects one by one.
 * **Skip forward to new object (** |skipToNewIdAction| **"Page up"):** Skip forward to the frame where a new object appears.
 * **Pre-processes image (** |preprocessImageAction| **"Alt+Shift+P"):** Apply a custom pre-processing recipe to the image data. Shortcut: "Alt+Shift+P".
 * | **Overlay channels (** |overlayButton| **):** Right-click on the button to overlay additional channels. To overlay a different channel right-click on the colorbar on the left of the image. Use the colorbar ticks to adjust the selected channel's intensity. You can also adjust the opacity of the selected channel with the "Alpha <channel_name>" scrollbar below the image. 
-  | Note: This button has a green background if you successfully 'loaded fluorescence data'
+  | Note: This button has a green background if you successfully 'loaded fluorescence data'.
 * **View object count (** |countObjsButton| **"Ctrl+Shift+C"):** View object count in current frame and in entire video.
 * **Activate points layer (** |togglePointsLayerAction| **):** Activate points layer tools. You can add as many points layers as you want and customise their appearance. This can be used to visualize points from a table or add points with clicking and then use these points for models like Segment Anything (input prompts).
-* **Add contours from different segmentation file (** |overlayLabelsButton| **):** Add contours layer from another segmentation file
+* **Display additiona segmentation masks (** |overlayLabelsButton| **):** Display segmentation masks from an additional file. You can choose to draw as contours or overlay the masks with transparency. To do so, right-click on the colorbar that will appear on the lft hand side of the image.
 * **Ruler (** |rulerButton| **):** Draw a straight line and show its length. Length is displayed on the bottom-right corner.
 
 Edit tools: Segmentation and tracking
