@@ -1269,15 +1269,16 @@ def clipSelemMask(mask, shape, Yc, Xc, copy=True):
     return mask, mask_slice
 
 
-def listdir(path) -> List[str]:
-    return natsorted([
+def listdir(path, include_directories=True) -> List[str]:
+    items_list = natsorted([
         f for f in os.listdir(path)
         if not f.startswith('.')
         and not f == 'desktop.ini'
         and not f == 'recovery'
         and not f.endswith('.new.npz')
-        and not os.path.isdir(os.path.join(path, f))
+        and (include_directories or not os.path.isdir(os.path.join(path, f)))
     ])
+    return items_list
 
 def setDefaultValueArgSpecsFromKwargs(
         params: List[ArgSpec], 

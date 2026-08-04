@@ -410,7 +410,7 @@ View options
   | Note: This button has a green background if you successfully 'loaded fluorescence data'.
 * **View object count (** |countObjsButton| **"Ctrl+Shift+C"):** View object count in current frame and in entire video.
 * **Activate points layer (** |togglePointsLayerAction| **):** Activate points layer tools. You can add as many points layers as you want and customise their appearance. This can be used to visualize points from a table or add points with clicking and then use these points for models like Segment Anything (input prompts).
-* **Display additiona segmentation masks (** |overlayLabelsButton| **):** Display segmentation masks from an additional file. You can choose to draw as contours or overlay the masks with transparency. To do so, right-click on the colorbar that will appear on the lft hand side of the image.
+* **Display additional segmentation masks (** |overlayLabelsButton| **):** Display segmentation masks from an additional file. You can choose to draw as contours or overlay the masks with transparency. To do so, right-click on the colorbar that will appear on the left-hand side of the image.
 * **Ruler (** |rulerButton| **):** Draw a straight line and show its length. Length is displayed on the bottom-right corner.
 
 Edit tools: Segmentation and tracking

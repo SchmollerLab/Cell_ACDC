@@ -114,8 +114,6 @@ if os.name == 'nt':
 GREEN_HEX = _palettes.green()
 ORANGE_HEX = _palettes.orange()
 
-OVERLAY_LABLES_CONTOURS_THICKNESS = 2
-
 RP_OPT_NUM_CELLS_MIN = 30 # th for trying to do local updates to regionprops, rp becomes slow for high num of cells
 RP_OPT_PERC_CUTOUT_MAX = 0.3 # th for trying to do local updates to regionprops, 
                              # if region which we have to update is too large too 
@@ -27453,13 +27451,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         self.contoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
     
-    def initOverlayLabelsContoursImage(self):
+    def initOverlayLabelsContoursImages(self):
         posData = self.data[self.pos_i]
         z_slice = self.z_lab()
         img = posData.img_data[posData.frame_i]
         Y, X = img[z_slice].shape[-2:]
-            
-        self.overlayLabelsContoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
+        
+        self.overlayLabelsContoursImages = {}
+        for segmEndname in self.drawModeOverlayLabelsChannels.keys():
+            overlayLabelsContoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
+            self.overlayLabelsContoursImages[segmEndname] = (
+                overlayLabelsContoursImage
+            )
+
     
     def initLostObjContoursImage(self):
         posData = self.data[self.pos_i]
@@ -30413,17 +30417,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not self.overlayLabelsButton.isChecked():
             self.hideOverlayLabelsItems(specific=specific)
             return
-        
-        if not hasattr(self, 'overlayLabelsContoursImage'):
-            self.initOverlayLabelsContoursImage()
-        else:
-            self.overlayLabelsContoursImage[:] = 0
 
         if specific is None:
             specific = self.drawModeOverlayLabelsChannels.keys()
+        
+        if not hasattr(self, 'overlayLabelsContoursImages'):
+            self.initOverlayLabelsContoursImages()
 
         for segmEndname in specific:
             drawMode = self.drawModeOverlayLabelsChannels[segmEndname]
+            overlayLabelsContoursImage = (
+                self.overlayLabelsContoursImages[segmEndname]
+            )
+            overlayLabelsContoursImage[:] = 0
             ol_lab = self.getOverlayLabelsData(segmEndname)
             items = self.overlayLabelsItems[segmEndname]
             imageItem, contoursItem, gradItem = items
@@ -30438,13 +30444,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     )
                     contours.extend(contours_obj)
                 cv2.drawContours(
-                    self.overlayLabelsContoursImage, 
+                    overlayLabelsContoursImage, 
                     contours, 
                     -1, 
                     self.contLineColor, 
                     self.contLineWeight
                 )
-                contoursItem.setImage(self.overlayLabelsContoursImage)
+                contoursItem.setImage(overlayLabelsContoursImage)
             elif drawMode == 'Overlay labels':
                 imageItem.setImage(ol_lab, autoLevels=False)
         self.showOverlayLabelsItems(specific=specific)

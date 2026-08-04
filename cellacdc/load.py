@@ -1163,7 +1163,7 @@ def get_path_from_endname(end_name, images_path, ext=None):
 
     basename = os.path.commonprefix(myutils.listdir(images_path))
     searched_file = f'{basename}{end_name}{ext}'
-    for file in myutils.listdir(images_path):
+    for file in myutils.listdir(images_path, include_directories=False):
         filename, ext = os.path.splitext(file)
         if file == searched_file:
             return os.path.join(images_path, file), file
