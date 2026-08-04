@@ -20670,6 +20670,10 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             'This affects both line color and fade rendering.'
         )
         self.colorButton = widgets.myColorButton(color=(255, 100, 0))
+        try:
+            self.colorButton.clicked.disconnect()
+        except TypeError:
+            pass
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
         self.colorWidget = widgets.formWidget(

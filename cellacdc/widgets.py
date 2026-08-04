@@ -1760,15 +1760,17 @@ class GroupBox(QGroupBox):
 class CheckBox(QCheckBox):
     sigToggled = Signal(bool, object)
 
-    def __init__(self, *args, keyPressCallback=None, rightclick_menu_func=None):
+    def __init__(self, *args, keyPressCallback=None,
+                 # rightclick_menu_func=None
+                 ):
         super().__init__(*args)
         self.keyPressCallback = keyPressCallback
         self.setFocusPolicy(Qt.NoFocus)
         self.toggled.connect(self.onToggled)
         self._exclusiveCheckboxes: list[QCheckBox] = []
         self._linkedCheckboxes: dict[str, QCheckBox] = {}
-        if rightclick_menu_func is not None:
-            self.rightclick_menu = rightclick_menu_func(self)
+        # if rightclick_menu_func is not None:
+        #     self.rightclick_menu = rightclick_menu_func(self)
     
     def keyPressEvent(self, event) -> None:
         event.ignore()
@@ -1794,10 +1796,9 @@ class CheckBox(QCheckBox):
         
         self.sigToggled.emit(checked, self)
         
-    def contextMenuEvent(self, event) -> None:
-        print('contextMenuEvent')
-        if self.rightclick_menu is not None:
-            self.rightclick_menu.exec_(event.globalPos())
+    # def contextMenuEvent(self, event) -> None:
+    #     if self.rightclick_menu is not None:
+    #         self.rightclick_menu.exec_(event.globalPos())
     
     def setCheckedNoSignal(self, checked: bool):
         self.blockSignals(True)

@@ -31351,6 +31351,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         movementAgainstPrevLinesItem = self.getMovementAgainstPrevLinesItem(ax)
         rp = posData.rp
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
+        if rp is None or prev_rp is None:
+            self.logger.warning(
+                f"[WARNING] rp or prev rp could not be retrieved"
+            )
         for ID in rp.IDs:
             obj = rp.get_obj_from_ID(ID)
             obj_prev = prev_rp.get_obj_from_ID(ID, warn=False)
@@ -35393,7 +35397,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.df_settings.at[f'{name};;{ax}', 'value'] = (
                     'checked' if checked else 'not_checked'
                 )
-                self.df_settings.to_csv(settings_csv_path)
+                self.df_settings.to_csv(self.settings_csv_path)
 
     def storeDefaultAndCustomColors(self):
         c = self.overlayButton.palette().button().color().name()
