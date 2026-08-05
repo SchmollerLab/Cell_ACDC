@@ -20674,7 +20674,6 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             self.colorButton.clicked.disconnect()
         except TypeError:
             pass
-        self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
         self.colorWidget = widgets.formWidget(
             self.colorButton,
