@@ -5470,7 +5470,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
             
             ax1_segm_overlay = self.annotOverlaySegmMaskCheckbox(ax=1)
-            if ax1_segm_overlay:
+            if ax1_segm_overlay and self.labelsLayerRightImg.image is not None:
                 self.labelsLayerRightImg.image[delID_mask] = 0
                 self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
             
@@ -24713,7 +24713,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 mother_obj = prev_rp.get_obj_from_ID(lin_tree_df_ID['parent_ID_tree'])
 
                 emerg_frame_i = lin_tree_df_ID['emerg_frame_i']
-                isNew = emerg_frame_i == frame_i
+                isNew = False
 
                 self.drawObjLin_TreeMothBudLines(ax, curr_obj, mother_obj, isNew, ID=ID)
 
@@ -31024,10 +31024,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                   ) else None
         if (
             acdcTracker2stepsAnnotInfo is not None 
-            or not clearAssignedObjsSecondStep
             ):
             new_objs_1st_step, lost_objs_1st_step = acdcTracker2stepsAnnotInfo
-        else:
+        if clearAssignedObjsSecondStep:
             new_objs_1st_step, lost_objs_1st_step = [], []
             
         if self._rtTrackerName == 'CellACDC_normal_division':
@@ -31355,6 +31354,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.logger.warning(
                 f"[WARNING] rp or prev rp could not be retrieved"
             )
+            return
         for ID in rp.IDs:
             obj = rp.get_obj_from_ID(ID)
             obj_prev = prev_rp.get_obj_from_ID(ID, warn=False)
