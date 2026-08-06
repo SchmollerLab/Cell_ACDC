@@ -211,7 +211,10 @@ class normal_division_tracker:
     cells.
     - segm_video (ndarray): The segmented video sequence.
     - tracked_video (ndarray): The tracked video sequence.
-    - assignments (dict): Dictionary mapping IDs to assigned values.
+    - assignments (dict): A dictionary mapping untracked cell IDs to tracked 
+    cell IDs. (Only NEW cells are in this dictionary, so things the tracker 
+    could not assign to a cell in the previous frame and was given a new unique 
+    ID.)
     - IDs_prev (list): A list mapping index from IoA matrix to IDs. (Index in 
     list = Index in IoA matrix)
     - rp (list): The region properties of the current frame.
@@ -275,7 +278,7 @@ class normal_division_tracker:
 
     def track_frame(self, frame_i, lab=None, prev_lab=None, rp=None, prev_rp=None,
                     IDs=None, unique_ID=None, 
-                    return_assignments=False, 
+                    return_assignments=False, specific_IDs=None, 
                     dont_return_tracked_lab=False, lost_IDs_search_range=None,
                     ):
         """
@@ -316,14 +319,21 @@ class normal_division_tracker:
         if prev_rp is None:
             prev_rp = acdcRegionprops(prev_lab.copy(), precache_centroids=False)
 
-        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_Io_matrix(
+        full_IoA_matrix, full_curr_IDs, self.IDs_prev = calc_Io_matrix(
             lab,
             prev_lab,
             self.rp,
             prev_rp,
         )
+        IoA_matrix, self.IDs_curr_untracked, _ = calc_Io_matrix(
+            lab,
+            prev_lab,
+            self.rp,
+            prev_rp,
+            specific_IDs=specific_IDs,
+        )
         full_aggr_track, full_mother_daughters = mother_daughter_assign(
-            IoA_matrix,
+            full_IoA_matrix,
             IoA_thresh_daughter=self.IoA_thresh_daughter,
             min_daughter=self.min_daughter,
             max_daughter=self.max_daughter,
@@ -334,16 +344,16 @@ class normal_division_tracker:
             curr_ID: idx for idx, curr_ID in enumerate(self.IDs_curr_untracked)
         }
         self.aggr_track = [
-            subset_idx_mapper[self.IDs_curr_untracked[idx]]
+            subset_idx_mapper[full_curr_IDs[idx]]
             for idx in full_aggr_track
-            if self.IDs_curr_untracked[idx] in subset_idx_mapper
+            if full_curr_IDs[idx] in subset_idx_mapper
         ]
         self.mother_daughters = []
         for mother_idx, daughter_idxs in full_mother_daughters:
             subset_daughter_idxs = [
-                subset_idx_mapper[self.IDs_curr_untracked[idx]]
+                subset_idx_mapper[full_curr_IDs[idx]]
                 for idx in daughter_idxs
-                if self.IDs_curr_untracked[idx] in subset_idx_mapper
+                if full_curr_IDs[idx] in subset_idx_mapper
             ]
             if subset_daughter_idxs:
                 self.mother_daughters.append((mother_idx, subset_daughter_idxs))
@@ -365,8 +375,9 @@ class normal_division_tracker:
             return_all=True,
             mother_daughters=self.mother_daughters,
             unique_ID=unique_ID,
+            specific_IDs=specific_IDs,
             return_assignments=return_assignments,
-            dont_return_tracked_lab=_dont_return_tracked_lab, 
+            dont_return_tracked_lab=_dont_return_tracked_lab,
         )
         if _dont_return_tracked_lab:
             add_info = out
@@ -377,90 +388,47 @@ class normal_division_tracker:
         IoA_matrix = add_info['IoA_matrix']
         self.assignments = add_info['assignments']
         self.tracked_IDs = add_info['tracked_IDs']
-        assignments_step_1 = self.assignments.copy()
-        
-        # print("After step 1")
-        # print("IDs_prev:", self.IDs_prev)
-        # print("IDs_curr_untracked:", self.IDs_curr_untracked)
-        # print("mother_daughters:", self.mother_daughters)
-        # print("assignments before merge:", add_info["assignments"])
-        # print("assignments after merge:", self.assignments)
-
-        # for mother, daughters in self.mother_daughters:
-            # print(
-            #     "mother",
-            #     mother,
-            #     "mother ID",
-            #     self.IDs_prev[mother],
-            #     "daughter idx",
-            #     daughters,
-            #     "daughter seg IDs",
-            #     [self.IDs_curr_untracked[d] for d in daughters],
-            #     "daughter tracked IDs",
-            #     IoA_index_daughter_to_ID(
-            #         daughters,
-            #         self.assignments,
-            #         self.IDs_curr_untracked,
-            #     ),
-            #     )            
+            
         if lost_IDs_search_range is None:
             return
         
         updated_rp = acdcRegionprops(self.tracked_lab, precache_centroids=False)
       
         mothers = {self.IDs_prev[mother] for mother, _ in self.mother_daughters}
-        # daughters_curr = set()
-        daughters_tracked = set()
+        daughters = set()
         for _, daughter_idxs in self.mother_daughters:
-            daughter_IDs_tracked = IoA_index_daughter_to_ID(
+            daughter_IDs = IoA_index_daughter_to_ID(
                 daughter_idxs, self.assignments, self.IDs_curr_untracked
             )
-            if daughter_IDs_tracked:
-                daughters_tracked.update(daughter_IDs_tracked)
+            if daughter_IDs:
+                daughters.update(daughter_IDs)
             
-            # daughter_IDs_curr = IoA_index_daughter_to_ID(
-            #     daughter_idxs, None, self.IDs_curr_untracked
-            # )
-            # if daughter_IDs_curr:
-            #     daughters_curr.update(daughter_IDs_curr)
-                
         selected_tracked_IDs = None
-        # if specific_IDs is not None:
-        #     selected_tracked_IDs = {
-        #         self.assignments.get(curr_ID, curr_ID)
-        #         for curr_ID in specific_IDs
-        #     }
+        if specific_IDs is not None:
+            selected_tracked_IDs = {
+                self.assignments.get(curr_ID, curr_ID)
+                for curr_ID in specific_IDs
+            }
+        
+        prev_rp_mapper = {obj.label: obj for obj in prev_rp 
+                          if obj.label not in mothers}
 
-        # print("selected_tracked_IDs:", selected_tracked_IDs)
-        curr_IDs = updated_rp.IDs_set
         lost_rp_mapper = {
             obj.label: obj for obj in prev_rp
-            if obj.label not in curr_IDs # not in current frame, i.e. not tracked/lost
-            and obj.label not in mothers # not a mother cell
+            if obj.label not in self.tracked_IDs and obj.label not in daughters
         }
-        # print("curr_IDs:", curr_IDs)
-        # print("mothers:", mothers)
-        # print("prev_rp:", prev_rp.IDs_set)
-        # print("lost_rp_mapper:", lost_rp_mapper)
+
         if not lost_rp_mapper:
             return
 
-        IDs_prev = prev_rp.IDs_set
         new_rp_mapper = {
             obj.label: obj for obj in updated_rp
             if (
                 selected_tracked_IDs is None
-                or obj.label in selected_tracked_IDs # only consider selected IDs if provided
+                or obj.label in selected_tracked_IDs
             )
-            and obj.label not in daughters_tracked # not already tracked as a daughter
-            and obj.label not in IDs_prev # not in previous frame, i.e. not tracked/new
+            if prev_rp_mapper.get(obj.label) is None
         }
-        
-        # print("updated_rp:", updated_rp.IDs_set)
-        # print("selected_tracked_IDs:", selected_tracked_IDs)
-        # print("daughters_tracked:", daughters_tracked)
-        # print("IDs_prev:", IDs_prev)
-        # print("new_rp_mapper:", new_rp_mapper.keys())
 
         if not new_rp_mapper:
             return
@@ -506,7 +474,6 @@ class normal_division_tracker:
                 tracked_objs_2nd_step.append(lost_IDs_idx_to_obj_mapper[i])
 
         if not IDs_to_track:
-            # print("No IDs to track")
             return
 
         # Only touch self.tracked_lab / write to the video array when it
@@ -526,19 +493,16 @@ class normal_division_tracker:
             )
 
         assignments_step_2 = dict(zip(IDs_to_track, tracked_IDs_2nd_step))
-        current_frame_IDs = self.rp.IDs_set
-        # if specific_IDs is not None:
-        #     current_frame_IDs.intersection_update(specific_IDs)
+        current_frame_IDs = {obj.label for obj in self.rp}
+        if specific_IDs is not None:
+            current_frame_IDs.intersection_update(specific_IDs)
 
         merged_assignments = {}
         for current_ID in current_frame_IDs:
-            tracked_ID = assignments_step_1.get(current_ID, current_ID)
-            tracked_ID = assignments_step_1.get(current_ID, current_ID)
+            tracked_ID = self.assignments.get(current_ID, current_ID)
 
             visited = set()
-            while (tracked_ID in assignments_step_2 
-                   and tracked_ID not in visited
-                   ):
+            while tracked_ID in assignments_step_2 and tracked_ID not in visited:
                 visited.add(tracked_ID)
                 tracked_ID = assignments_step_2[tracked_ID]
 
@@ -546,31 +510,7 @@ class normal_division_tracker:
                 merged_assignments[current_ID] = tracked_ID
 
         self.assignments = merged_assignments
-        self.tracked_IDs = list(merged_assignments.keys())
-        # print("After step 2")
-        # print("IDs_prev:", self.IDs_prev)
-        # print("IDs_curr_untracked:", self.IDs_curr_untracked)
-        # print("mother_daughters:", self.mother_daughters)
-        # print("assignments before merge:", assignments_step_2)
-        # print("assignments after merge:", merged_assignments)
-
-        # for mother, daughters in self.mother_daughters:
-        #     print(
-        #         "mother",
-        #         mother,
-        #         "mother ID",
-        #         self.IDs_prev[mother],
-        #         "daughter idx",
-        #         daughters,
-        #         "daughter seg IDs",
-        #         [self.IDs_curr_untracked[d] for d in daughters],
-        #         "daughter tracked IDs",
-        #         IoA_index_daughter_to_ID(
-        #             daughters,
-        #             self.assignments,
-        #             self.IDs_curr_untracked,
-        #         ),
-        #         )       
+        self.tracked_IDs = list(current_frame_IDs)
 
         return
         
@@ -1388,7 +1328,7 @@ class tracker:
               max_daughter:int = 2,
               record_lineage:bool = True,
               return_tracked_lost_centroids:bool = True,
-              lost_IDs_search_range:float = 10,
+              lost_IDs_search_range:float = 0,
               signals = None,
         ):
         """
@@ -1413,8 +1353,7 @@ class tracker:
         Defaults to True.
         - lost_IDs_search_range (float, optional): Maximum distance a cell 
         can move between consecutive frames to still be matched to a lost ID in 
-        the 2nd tracking step. If 0, the 2nd step is skipped entirely. 
-        Defaults to 10.
+        the 2nd tracking step. If 0, the 2nd step is skipped entirely. Defaults to 0.
         
         Returns:
         - list: Tracked video frames.
@@ -1527,7 +1466,7 @@ class tracker:
                     lost_IDs_search_range: float = 0,
                     unique_ID: NotGUIParam =None,
                     return_assignments: NotGUIParam =False,
-                    # specific_IDs: NotGUIParam =None,
+                    specific_IDs: NotGUIParam =None,
                     dont_return_tracked_lab: NotGUIParam =False,
                     prev_rp: NotGUIParam=None,
                     curr_rp: NotGUIParam=None,
@@ -1579,7 +1518,7 @@ class tracker:
             IDs=IDs,
             unique_ID=unique_ID,
             return_assignments=return_assignments,
-            # specific_IDs=specific_IDs,
+            specific_IDs=specific_IDs,
             dont_return_tracked_lab=dont_return_tracked_lab,
             lost_IDs_search_range=lost_IDs_search_range,
             prev_rp=prev_rp,
