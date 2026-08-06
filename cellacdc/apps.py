@@ -9602,12 +9602,15 @@ will be applied (see below).<br><br>
                 <b>makes downstream analysis easier</b>.<br><br>
                 What do you want to do?
             """)
-            correctButtonText = ' Fine, let me correct. '
-            keepButtonText = ' Keep the generation number that I chose. '
-            buttonsTexts = (correctButtonText, keepButtonText)
+            correctButton = widgets.editPushButton(' Fine, let me correct. ')
+            keepButton = widgets.WarningButton(
+                ' Keep the generation number that I chose. '
+            )
+            buttonsTexts = (correctButton, keepButton)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             msg.warning(self, 'Recommendation', txt, buttonsTexts=buttonsTexts)
-            if msg.cancel or msg.clickedButton == correctButtonText:
+            printl(msg.cancel, msg.clickedButton == correctButton)
+            if msg.cancel or msg.clickedButton == correctButton:
                 return None
         elif any(check_buds_S):
             msg = widgets.myMessageBox(wrapText=False)

@@ -520,6 +520,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.timestampDialog = None
         self.scaleBarDialog = None
         self.countObjsWindow = None
+        self.editCcaWidget = None
         
         self.annotateSingleMothBudPairState = {}
         self.initLabelRoiModelDialog = None
@@ -19752,21 +19753,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if posData.frame_i != 0:
             return True
         
-        editCcaWidget = apps.editCcaTableWidget(
+        self.navigateScrollBar.setDisabled(True)
+        self.navSpinBox.setDisabled(True)
+
+        self.editCcaWidget = apps.editCcaTableWidget(
             posData.cca_df, posData.SizeT, parent=self,
             title='Initialize cell cycle annotations'
         )
-        editCcaWidget.sigApplyChangesFutureFrames.connect(
+        self.editCcaWidget.sigApplyChangesFutureFrames.connect(
             self.applyManualCcaChangesFutureFrames
         )
-        editCcaWidget.exec_()
-        if editCcaWidget.cancel:
+        self.editCcaWidget.exec_()
+        if self.editCcaWidget.cancel:
             self.resetNavigateFramesScrollbar()
+            self.editCcaWidget = None
+            self.navigateScrollBar.setDisabled(False)
+            self.navSpinBox.setDisabled(False)
             return False
         
         if posData.cca_df is not None:
             is_cca_same_as_stored = (
-                (posData.cca_df == editCcaWidget.cca_df).all(axis=None)
+                (posData.cca_df == self.editCcaWidget.cca_df).all(axis=None)
             )
             if not is_cca_same_as_stored:
                 reinit_cca = self.warnEditingWithCca_df(
@@ -19776,9 +19783,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if reinit_cca:
                     self.resetCcaFuture(0)
                     
-        posData.cca_df = editCcaWidget.cca_df
+        posData.cca_df = self.editCcaWidget.cca_df
         self.store_cca_df()
         
+        self.editCcaWidget = None
+        self.navigateScrollBar.setDisabled(False)
+        self.navSpinBox.setDisabled(False)
+
         return True
     
     def askInitLinTreeFirstFrame(self):
@@ -19814,6 +19825,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return False
     
     def next_frame(self, warn=True):        
+        if self.editCcaWidget is not None:
+            self.editCcaWidget.show()
+            self.editCcaWidget.raise_()
+            self.editCcaWidget.activateWindow()
+            self.logger.info(
+                '[WARNING]: dialogue to initialize cell cycle annotations '
+                'is open. Cannot navigate frames'
+            )
+            return
+
         proceed = self.checkIfFutureFrameManualAnnotPastFrames()
         if not proceed:
             return
@@ -29659,6 +29680,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if enforceAll:
             return False
+
+        try:
+            posData.new_IDs = [
+                ID for ID in posData.new_IDs
+                if curr_df.at[ID, 'is_history_known']
+                and curr_df.at[ID, 'cell_cycle_stage'] == 'S'
+            ]
+        except Exception as err:
+            printl(curr_df)
 
         lastVisited = False
         posData.new_IDs = [
