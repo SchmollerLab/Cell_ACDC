@@ -27142,12 +27142,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             self.countObjsWindow.sigShowEvent.connect(self.updateObjectCounts)
             self.countObjsWindow.sigUpdateCounts.connect(self.updateObjectCounts)
-        
+            self.countObjsWindow.sigClose.connect(self.countObjsWindowClosed)
         if checked:
             self.countObjsWindow.show()
         else:
             self.countObjsWindow.hide()
     
+    def countObjsWindowClosed(self, event):
+        event.ignore()
+        self.countObjsButton.setChecked(False)
+
     def showLabelRoiContextMenu(self, event):
         menu = QMenu(self.labelRoiButton)
         action = QAction('Re-initialize magic labeller model...')
@@ -27446,6 +27450,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         Y, X = img[z_slice].shape[-2:]
             
         self.contoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
+    
+    def initOverlayLabelsContoursImages(self):
+        posData = self.data[self.pos_i]
+        z_slice = self.z_lab()
+        img = posData.img_data[posData.frame_i]
+        Y, X = img[z_slice].shape[-2:]
+        
+        self.overlayLabelsContoursImages = {}
+        for segmEndname in self.drawModeOverlayLabelsChannels.keys():
+            overlayLabelsContoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
+            self.overlayLabelsContoursImages[segmEndname] = (
+                overlayLabelsContoursImage
+            )
+
     
     def initLostObjContoursImage(self):
         posData = self.data[self.pos_i]
@@ -29962,8 +29980,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def clearAnnotItems(self):
         self.textAnnot[0].clear()
         self.textAnnot[1].clear()
-        
-    def get2DRP(self, pos_i=None, frame_i=None, slice_i=None, zProjHow=None, depthAxes=None):
+
+    def get2DRP(
+            self, 
+            pos_i=None, 
+            frame_i=None, 
+            slice_i=None, 
+            zProjHow=None, 
+            depthAxes=None,
+        ):
         posData = self.data[self.pos_i if pos_i is None else pos_i]
         frame_i = posData.frame_i if frame_i is None else frame_i
 
@@ -30392,27 +30417,40 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not self.overlayLabelsButton.isChecked():
             self.hideOverlayLabelsItems(specific=specific)
             return
-        
+
         if specific is None:
             specific = self.drawModeOverlayLabelsChannels.keys()
+        
+        if not hasattr(self, 'overlayLabelsContoursImages'):
+            self.initOverlayLabelsContoursImages()
 
         for segmEndname in specific:
             drawMode = self.drawModeOverlayLabelsChannels[segmEndname]
+            overlayLabelsContoursImage = (
+                self.overlayLabelsContoursImages[segmEndname]
+            )
+            overlayLabelsContoursImage[:] = 0
             ol_lab = self.getOverlayLabelsData(segmEndname)
             items = self.overlayLabelsItems[segmEndname]
             imageItem, contoursItem, gradItem = items
-            contoursItem.clear()
+            contours = []
             if drawMode == 'Draw contours':
-                for obj in self._acdcRegionProps(
-                    ol_lab, precache_centroids=False
-                ):
-                    contours = self.getObjContours(
+                rp = self._acdcRegionProps(ol_lab, precache_centroids=False)
+                for obj in rp:
+                    contours_obj = self.getObjContours(
                         obj,
                         all_external=True,
                         include_internal=self.showAllContoursToggle.isChecked()
                     )
-                    for cont in contours:
-                        contoursItem.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
+                    contours.extend(contours_obj)
+                cv2.drawContours(
+                    overlayLabelsContoursImage, 
+                    contours, 
+                    -1, 
+                    self.contLineColor, 
+                    self.contLineWeight
+                )
+                contoursItem.setImage(overlayLabelsContoursImage)
             elif drawMode == 'Overlay labels':
                 imageItem.setImage(ol_lab, autoLevels=False)
         self.showOverlayLabelsItems(specific=specific)
@@ -30431,28 +30469,30 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if not self.isSegm3D:
                 zStackImg = self.data[0].SizeZ > 1
                 if zStackImg:
-                    selected_z_stack = self.zSliceScrollBar.sliderPosition()
+                    z_slice = self.zSliceScrollBar.sliderPosition()
                 else:
-                    selected_z_stack = 0
-                out = posData.ol_labels_data['combined segm.'][posData.frame_i][selected_z_stack]
+                    z_slice = 0
+                ol_labels_data = posData.ol_labels_data['combined segm.']
+                out = ol_labels_data[posData.frame_i][z_slice]
                 return out.astype(np.uint32)
         
-        if self.isSegm3D:
+        ol_labels_data = posData.ol_labels_data[segmEndname][posData.frame_i]
+        if ol_labels_data.ndim == 3:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
             if isZslice:
                 z = self.zSliceScrollBar.sliderPosition()
-                ol_lab = posData.ol_labels_data[segmEndname][posData.frame_i][z]
+                ol_lab = ol_labels_data[z]
                 if comb_seg:
                     ol_lab = ol_lab.astype(np.uint32)
                 return ol_lab
             else:
-                ol_lab = posData.ol_labels_data[segmEndname][posData.frame_i].max(axis=0)
+                ol_lab = ol_labels_data.max(axis=0)
                 if comb_seg:
                     ol_lab = ol_lab.astype(np.uint32)
                 return ol_lab
         else:
-            return posData.ol_labels_data[segmEndname][posData.frame_i]
+            return ol_labels_data
     
     def loadOverlayLabelsData(self, segmEndname, pos_i=None):
         if pos_i is None:
@@ -30464,6 +30504,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if segmEndname == 'combined segm.':
              posData.ol_labels_data['combined segm.'] = posData.combine_img_data
              return
+        
         filePath, filename = load.get_path_from_endname(
             segmEndname, posData.images_path
         )
@@ -30471,12 +30512,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         labelsData = np.load(filePath)['arr_0']
         if posData.SizeT == 1:
             labelsData = labelsData[np.newaxis]
+
         if self.isSegm3D and labelsData.ndim == 3:
             # 2D segm --> stack to 3D
             T, Y, X = labelsData.shape
             repeat = [labelsData]*posData.SizeZ
             labelsData = np.stack(repeat, axis=1)
-        
 
         posData.ol_labels_data[segmEndname] = labelsData
 
@@ -32488,28 +32529,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 action.setCheckable(True)
             action.toggled.connect(self.addOverlayLabelsToggled)
             self.overlayLabelsContextMenu.addAction(action)
-        
-        self.overlayLabelsContextMenu.addSeparator()
-        action = QAction('Edit appearance...', self.overlayLabelsContextMenu)
-        action.triggered.connect(self.editOverlayLabelsAppearance)
-        self.overlayLabelsContextMenu.addAction(action)
-    
-    def editOverlayLabelsAppearance(self, *args):
-        segmEndname = list(self.overlayLabelsItems.keys())[0]
-        contoursItem = self.overlayLabelsItems[segmEndname][1]
-        win = apps.OverlayLabelsAppearanceDialog(
-            scatterPlotItem=contoursItem, parent=self
-        )
-        win.exec_()
-        if win.cancel:
-            return
-        
-        brush = win.properties['brush']
-        pen = win.properties['pen']
-        for items in self.overlayLabelsItems.values():
-            imageItem, contoursItem, gradItem = items
-            contoursItem.setBrush(brush, update=False)
-            contoursItem.setPen(pen)
     
     def createOverlayLabelsItems(self, segmEndnames):
         selectActionGroup = QActionGroup(self)
@@ -32538,15 +32557,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             self.mainLayout.addWidget(gradItem, 0, 0)
 
-            contoursItem = pg.ScatterPlotItem()
-            color = colors.get_complementary_color(self.contLineColor)
-            r, g, b, a = colors.rgba_str_to_values(color)
-            qcolor = QColor(r, g, b, a)
-            contoursItem.setData(
-                [], [], symbol='s', pxMode=False, size=self.contLineWeight*2,
-                brush=pg.mkBrush(color=qcolor),
-                pen=pg.mkPen(width=3, color=qcolor), tip=None
-            )
+            contoursItem = pg.ImageItem()
 
             items = (imageItem, contoursItem, gradItem)
             self.overlayLabelsItems[segmEndname] = items
@@ -32568,6 +32579,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         drawMode = action.text()
         if segmEndname in self.drawModeOverlayLabelsChannels:
             self.drawModeOverlayLabelsChannels[segmEndname] = drawMode
+            items = self.overlayLabelsItems[segmEndname]
+            imageItem, contoursItem, gradItem = items
+            if drawMode == 'Draw contours':
+                imageItem.clear()
+            else:
+                contoursItem.clear()
             self.setOverlayLabelsItems()
     
     def overlayChannelToggled(self, checked):

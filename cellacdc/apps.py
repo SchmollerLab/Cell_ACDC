@@ -10253,7 +10253,7 @@ class NumericEntryDialog(QBaseDialog):
         ):
         super().__init__(parent=parent)
         self.setWindowTitle(title)
-        self.cancel = False
+        self.cancel = True
         mainLayout = QVBoxLayout()
         entryLayout = QHBoxLayout()
         cancelOkLayout = widgets.CancelOkButtonsLayout()
@@ -18877,6 +18877,7 @@ class ViewCcaTableWindow(pdDataFrameWidget):
 class ObjectCountDialog(QBaseDialog):
     sigShowEvent = Signal()
     sigUpdateCounts = Signal()
+    sigClose = Signal(object)
     
     def __init__(
             self, 
@@ -19032,6 +19033,9 @@ class ObjectCountDialog(QBaseDialog):
     def ok_cb(self):
         self.cancel = False
         self.close()
+    
+    def closeEvent(self, event):
+        self.sigClose.emit(event)
 
 class PreProcessRecipeDialog(QBaseDialog):
     sigApplyImage = Signal(object)
