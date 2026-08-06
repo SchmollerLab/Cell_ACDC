@@ -35,7 +35,7 @@ from qtpy.QtCore import (
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
-    QIODevice, QItemSelection, PYQT6, QRectF
+    QIODevice, QItemSelection, PYQT6, QRectF, QLineF
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
@@ -78,6 +78,7 @@ from . import fonts
 from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER, STANDARD_MOUSE_BUTTONS
 from . import _base_widgets
+from . import debugutils
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
@@ -1746,7 +1747,7 @@ class VerticalResizeHline(QFrame):
 class GroupBox(QGroupBox):
     def __init__(self, *args, keyPressCallback=None):
         super().__init__(*args)
-        self.keyPressCallback = None
+        self.keyPressCallback = keyPressCallback
         self.setFocusPolicy(Qt.NoFocus)
     
     def keyPressEvent(self, event) -> None:
@@ -1757,10 +1758,19 @@ class GroupBox(QGroupBox):
         self.keyPressCallback()
 
 class CheckBox(QCheckBox):
-    def __init__(self, *args, keyPressCallback=None):
+    sigToggled = Signal(bool, object)
+
+    def __init__(self, *args, keyPressCallback=None,
+                 # rightclick_menu_func=None
+                 ):
         super().__init__(*args)
-        self.keyPressCallback = None
+        self.keyPressCallback = keyPressCallback
         self.setFocusPolicy(Qt.NoFocus)
+        self.toggled.connect(self.onToggled)
+        self._exclusiveCheckboxes: list[QCheckBox] = []
+        self._linkedCheckboxes: dict[str, QCheckBox] = {}
+        # if rightclick_menu_func is not None:
+        #     self.rightclick_menu = rightclick_menu_func(self)
     
     def keyPressEvent(self, event) -> None:
         event.ignore()
@@ -1768,6 +1778,39 @@ class CheckBox(QCheckBox):
             return
 
         self.keyPressCallback()
+    
+    def setExclusiveOnCheckCheckbox(self, checkbox: QCheckBox):
+        # Keep a list of checkboxes that needs to be unchecked when the `self`
+        # checkbox is checked --> see `onToggled` method
+        self._exclusiveCheckboxes.append(checkbox)
+    
+    def onToggled(self, checked: bool):
+        for checkbox in self._exclusiveCheckboxes:
+            if not checked:
+                continue
+
+            checkbox.setChecked(False)
+        
+        for checkbox in self._linkedCheckboxes.values():
+            checkbox.setChecked(checked)
+        
+        self.sigToggled.emit(checked, self)
+        
+    # def contextMenuEvent(self, event) -> None:
+    #     if self.rightclick_menu is not None:
+    #         self.rightclick_menu.exec_(event.globalPos())
+    
+    def setCheckedNoSignal(self, checked: bool):
+        self.blockSignals(True)
+        self.setChecked(checked)
+        self.blockSignals(False)
+    
+    def setLinkedCheckbox(self, checkbox: QCheckBox, linked: bool):
+        if linked:
+            self._linkedCheckboxes[checkbox.text()] = checkbox
+        else:
+            self._linkedCheckboxes.pop(checkbox.text(), None)
+            
 
 class ScrollArea(QScrollArea):
     sigLeaveEvent = Signal()
@@ -12783,3 +12826,73 @@ class DummyWidget:
     
     def value(self):
         return
+    
+class FadingTrackItem(pg.GraphicsObject):
+    def __init__(self, points, frames, color=(255, 100, 0), n_fade=15,
+                 max_width=4, min_width=1, max_alpha=255, min_alpha=20):
+        super().__init__()
+        self.points = points
+        self.frames = frames
+        self.color = color
+        self.n_fade = max(n_fade, 1)
+        self.max_width, self.min_width = max_width, min_width
+        self.max_alpha, self.min_alpha = max_alpha, min_alpha
+        self._generate_picture()
+
+    def _generate_picture(self):
+        self.picture = QPicture()
+        painter = QPainter(self.picture)
+        n = len(self.points)
+        if n < 2:
+            painter.end()
+            return
+
+        head_frame = self.frames[-1]  # most recent frame in this track
+        point_cache = {}
+        pen_cache = {}
+
+        for i in range(n - 1):
+            f0, f1 = self.frames[i], self.frames[i + 1]
+            if f1 - f0 > 1:
+                # gap in tracking -- don't draw a line across it
+                continue
+
+            dist_from_head = head_frame - f1
+            frac = max(0.0, 1.0 - dist_from_head / self.n_fade)
+
+            alpha = int(self.min_alpha + frac * (self.max_alpha - self.min_alpha))
+            width = self.min_width + frac * (self.max_width - self.min_width)
+
+            pen_key = (alpha, width)
+            pen = pen_cache.get(pen_key)
+            if pen is None:
+                pen = QPen(QColor(*self.color, alpha))
+                pen.setWidthF(width)
+                pen.setCapStyle(Qt.RoundCap)
+                pen_cache[pen_key] = pen
+            painter.setPen(pen)
+
+            x0, y0 = self.points[i]
+            x1, y1 = self.points[i + 1]
+            p0_key = (x0, y0)
+            p1_key = (x1, y1)
+            p0 = point_cache.get(p0_key)
+            if p0 is None:
+                p0 = QPointF(x0, y0)
+                point_cache[p0_key] = p0
+            p1 = point_cache.get(p1_key)
+            if p1 is None:
+                p1 = QPointF(x1, y1)
+                point_cache[p1_key] = p1
+            painter.drawLine(p0, p1)
+        painter.end()
+
+    def paint(self, painter, *args):
+        painter.drawPicture(0, 0, self.picture)
+
+    def boundingRect(self):
+        if not self.points:
+            return QRectF()
+        xs = [p[0] for p in self.points]
+        ys = [p[1] for p in self.points]
+        return QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))

@@ -1524,7 +1524,7 @@ class tracker:
                     IoA_thresh_aggressive:float  = 0.5,
                     min_daughter:int = 2,
                     max_daughter:int = 2,
-                    lost_IDs_search_range: float = 0,
+                    lost_IDs_search_range: float = 30,
                     unique_ID: NotGUIParam =None,
                     return_assignments: NotGUIParam =False,
                     # specific_IDs: NotGUIParam =None,

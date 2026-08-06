@@ -9602,12 +9602,15 @@ will be applied (see below).<br><br>
                 <b>makes downstream analysis easier</b>.<br><br>
                 What do you want to do?
             """)
-            correctButtonText = ' Fine, let me correct. '
-            keepButtonText = ' Keep the generation number that I chose. '
-            buttonsTexts = (correctButtonText, keepButtonText)
+            correctButton = widgets.editPushButton(' Fine, let me correct. ')
+            keepButton = widgets.WarningButton(
+                ' Keep the generation number that I chose. '
+            )
+            buttonsTexts = (correctButton, keepButton)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             msg.warning(self, 'Recommendation', txt, buttonsTexts=buttonsTexts)
-            if msg.cancel or msg.clickedButton == correctButtonText:
+            printl(msg.cancel, msg.clickedButton == correctButton)
+            if msg.cancel or msg.clickedButton == correctButton:
                 return None
         elif any(check_buds_S):
             msg = widgets.myMessageBox(wrapText=False)
@@ -20617,3 +20620,259 @@ class TestSegmModelInitalDialog(QBaseDialog):
         self.is_timelapse = self.isTimelapseToggleFormWidget.value()
         
         self.close()
+        
+        
+class AnnotateObjTrackSettingsDialog(QBaseDialog):
+    sigValuesChanged = Signal(dict)
+    
+    def __init__(self, settings: dict, parent=None):
+        super().__init__(parent)
+        self.cancel = True
+
+        self.setWindowTitle('Annotate object track settings')
+
+        mainLayout = QVBoxLayout()
+        formLayout = widgets.FormLayout()
+
+        row = 0
+        lengthInfoTxt = html_utils.paragraph(
+            'Number of past frames to include when drawing each cell track. '
+            'Higher values show longer history and can add visual clutter.'
+        )
+        self.lengthSpinBox = widgets.SpinBox()
+        self.lengthSpinBox.setMinimum(1)
+        self.lengthSpinBox.setMaximum(999)
+        self.lengthWidget = widgets.formWidget(
+            self.lengthSpinBox,
+            labelTextLeft='Track length (frames): ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=lengthInfoTxt,
+        )
+        formLayout.addFormWidget(self.lengthWidget, row=row)
+
+        row += 1
+        againstPrevInfoTxt = html_utils.paragraph(
+            'When enabled, each object is linked only to its position in the '
+            'immediately previous frame. '
+            'When disabled, the full track history up to "Track length" is drawn. '
+            'Is mutually exclusive with all other options!'
+        )
+        self.againstPrevToggle = widgets.Toggle()
+        self.againstPrevWidget = widgets.formWidget(
+            self.againstPrevToggle,
+            labelTextLeft='Only against previous frame: ',
+            parent=self,
+            stretchWidget=False,
+            valueGetterName='isChecked',
+            addInfoButton=True,
+            infoTxt=againstPrevInfoTxt,
+        )
+        formLayout.addFormWidget(self.againstPrevWidget, row=row)
+
+        row += 1
+        colorInfoTxt = html_utils.paragraph(
+            'RGB color used for cell movement tracks. '
+            'This affects both line color and fade rendering.'
+        )
+        self.colorButton = widgets.myColorButton(color=(255, 100, 0))
+        try:
+            self.colorButton.clicked.disconnect()
+        except TypeError:
+            pass
+        self.colorButton.clicked.connect(self.selectColor)
+        self.colorWidget = widgets.formWidget(
+            self.colorButton,
+            labelTextLeft='Track color: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=colorInfoTxt,
+        )
+        formLayout.addFormWidget(self.colorWidget, row=row)
+
+        row += 1
+        fadeInfoTxt = html_utils.paragraph(
+            'Number of track segments over which fading out is applied. '
+            'Lower values create a longer "full boldness" trail.'
+        )
+        self.nFadeSpinBox = widgets.SpinBox()
+        self.nFadeSpinBox.setMinimum(1)
+        self.nFadeSpinBox.setMaximum(999)
+        self.nFadeWidget = widgets.formWidget(
+            self.nFadeSpinBox,
+            labelTextLeft='Full boldness trail (segments): ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=fadeInfoTxt,
+        )
+        formLayout.addFormWidget(self.nFadeWidget, row=row)
+
+        row += 1
+        maxWidthInfoTxt = html_utils.paragraph(
+            'Maximum line width for the newest part of each track. '
+            'Must be greater than or equal to "Min line width".'
+        )
+        self.maxWidthSpinBox = widgets.SpinBox()
+        self.maxWidthSpinBox.setMinimum(1)
+        self.maxWidthSpinBox.setMaximum(100)
+        self.maxWidthWidget = widgets.formWidget(
+            self.maxWidthSpinBox,
+            labelTextLeft='Max line width: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=maxWidthInfoTxt,
+        )
+        formLayout.addFormWidget(self.maxWidthWidget, row=row)
+
+        row += 1
+        minWidthInfoTxt = html_utils.paragraph(
+            'Minimum line width for the oldest visible track segments. '
+            'Automatically constrained to stay below or equal to "Max line width".'
+        )
+        self.minWidthSpinBox = widgets.SpinBox()
+        self.minWidthSpinBox.setMinimum(1)
+        self.minWidthSpinBox.setMaximum(100)
+        self.minWidthWidget = widgets.formWidget(
+            self.minWidthSpinBox,
+            labelTextLeft='Min line width: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=minWidthInfoTxt,
+        )
+        formLayout.addFormWidget(self.minWidthWidget, row=row)
+
+        row += 1
+        maxAlphaInfoTxt = html_utils.paragraph(
+            'Opacity of the newest track segments, in percent (0-100). '
+            '100 is fully opaque, 0 is fully transparent.'
+        )
+        self.maxAlphaSpinBox = widgets.SpinBox()
+        self.maxAlphaSpinBox.setRange(0, 100)
+        self.maxAlphaWidget = widgets.formWidget(
+            self.maxAlphaSpinBox,
+            labelTextLeft='Max alpha (%): ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=maxAlphaInfoTxt,
+        )
+        formLayout.addFormWidget(self.maxAlphaWidget, row=row)
+
+        row += 1
+        minAlphaInfoTxt = html_utils.paragraph(
+            'Opacity of the oldest visible track segments, in percent (0-100). '
+            'Automatically constrained to stay below or equal to "Max alpha".'
+        )
+        self.minAlphaSpinBox = widgets.SpinBox()
+        self.minAlphaSpinBox.setRange(0, 100)
+        self.minAlphaWidget = widgets.formWidget(
+            self.minAlphaSpinBox,
+            labelTextLeft='Min alpha (%): ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=minAlphaInfoTxt,
+        )
+        formLayout.addFormWidget(self.minAlphaWidget, row=row)
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        mainLayout.addLayout(formLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        self.setLayout(mainLayout)
+
+        self.lengthSpinBox.valueChanged.connect(self.emitValuesChanged)
+        self.againstPrevToggle.toggled.connect(self.emitValuesChanged)
+        self.nFadeSpinBox.valueChanged.connect(self.emitValuesChanged)
+        self.maxWidthSpinBox.valueChanged.connect(self._maxWidthChanged)
+        self.minWidthSpinBox.valueChanged.connect(self._minWidthChanged)
+        self.maxAlphaSpinBox.valueChanged.connect(self._maxAlphaChanged)
+        self.minAlphaSpinBox.valueChanged.connect(self._minAlphaChanged)
+        self.colorButton.sigColorChanging.connect(self.emitValuesChanged)
+
+        self._isSyncing = False
+        self.setValues(settings)
+
+    def setValues(self, settings: dict):
+        self.lengthSpinBox.setValue(int(settings['length']))
+        self.againstPrevToggle.setChecked(bool(settings['against_prev']))
+        self.colorButton.setColor(tuple(settings['color']))
+        self.nFadeSpinBox.setValue(int(settings['n_fade']))
+        self.maxWidthSpinBox.setValue(int(settings['max_width']))
+        self.minWidthSpinBox.setValue(int(settings['min_width']))
+        self.maxAlphaSpinBox.setValue(int(settings['max_alpha_perc']))
+        self.minAlphaSpinBox.setValue(int(settings['min_alpha_perc']))
+        self._syncRanges()
+
+    def values(self):
+        r, g, b, _ = self.colorButton.color().getRgb()
+        return {
+            'length': int(self.lengthSpinBox.value()),
+            'against_prev': bool(self.againstPrevToggle.isChecked()),
+            'color': (int(r), int(g), int(b)),
+            'n_fade': int(self.nFadeSpinBox.value()),
+            'max_width': int(self.maxWidthSpinBox.value()),
+            'min_width': int(self.minWidthSpinBox.value()),
+            'max_alpha_perc': int(self.maxAlphaSpinBox.value()),
+            'min_alpha_perc': int(self.minAlphaSpinBox.value()),
+        }
+
+    def _syncRanges(self):
+        if self._isSyncing:
+            return
+        self._isSyncing = True
+
+        if self.minWidthSpinBox.value() > self.maxWidthSpinBox.value():
+            self.minWidthSpinBox.setValue(self.maxWidthSpinBox.value())
+
+        if self.minAlphaSpinBox.value() > self.maxAlphaSpinBox.value():
+            self.minAlphaSpinBox.setValue(self.maxAlphaSpinBox.value())
+
+        self._isSyncing = False
+
+    def _maxWidthChanged(self, value):
+        self._syncRanges()
+        self.emitValuesChanged()
+
+    def _minWidthChanged(self, value):
+        self._syncRanges()
+        self.emitValuesChanged()
+
+    def _maxAlphaChanged(self, value):
+        self._syncRanges()
+        self.emitValuesChanged()
+
+    def _minAlphaChanged(self, value):
+        self._syncRanges()
+        self.emitValuesChanged()
+
+    def emitValuesChanged(self, *args):
+        self.sigValuesChanged.emit(self.values())
+
+    def selectColor(self):
+        color = self.colorButton.color()
+        self.colorButton.origColor = color
+        self.colorButton.colorDialog.setCurrentColor(color)
+        self.colorButton.colorDialog.setWindowFlags(
+            Qt.Window | Qt.WindowStaysOnTopHint
+        )
+        self.colorButton.colorDialog.open()
+        w = self.width()
+        left = self.pos().x()
+        colorDialogTop = self.colorButton.colorDialog.pos().y()
+        self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
+
+    def ok_cb(self):
+        self.cancel = False
+        self.settings = self.values()
+        self.sigValuesChanged.emit(self.settings)
+        self.close()
+    

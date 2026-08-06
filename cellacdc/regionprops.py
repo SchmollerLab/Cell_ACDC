@@ -21,6 +21,8 @@ try:
         find_all_objects_3D,
         object_projections_and_size_3D,
         object_projection_and_size_3D,
+        calc_centroids_2D,
+        calc_centroids_3D,
     )
     _CYTHON_FIND_OBJECTS = True
     _CYTHON_OBJECT_PROJECTIONS = True
@@ -135,26 +137,41 @@ def _acdc_regionprops_factory(
         if label_image.ndim == 2:
             out = find_all_objects_2D(img_uint32)
             labels, bboxes = out
+            # labels = np.array(labels, dtype=np.uint32)
+            # bboxes = np.array(bboxes, dtype=np.uint32)
+            centroids = calc_centroids_2D(img_uint32, labels, bboxes)
             for i in range(len(labels)):
                 sl = (slice(int(bboxes[i, 0]), int(bboxes[i, 1])),
-                      slice(int(bboxes[i, 2]), int(bboxes[i, 3])))
-                regions.append(acdcRegionProperties(
+                    slice(int(bboxes[i, 2]), int(bboxes[i, 3])))
+                region = acdcRegionProperties(
                     sl, int(labels[i]), label_image, intensity_image, cache,
                     spacing=spacing, extra_properties=extra_properties,
                     offset=offset_arr,
-                ))
+                )
+                centroid = centroids[i]
+                if offset_arr is not None:
+                    centroid = centroid + offset_arr
+                region._cache['centroid'] = tuple(centroid) 
+                # centroid is cached, in the main regionprops class, they will be retrieved from here
+                regions.append(region)
         else:
             out = find_all_objects_3D(img_uint32)
             labels, bboxes = out
+            centroids = calc_centroids_3D(img_uint32, labels, bboxes)
             for i in range(len(labels)):
                 sl = (slice(int(bboxes[i, 0]), int(bboxes[i, 1])),
-                      slice(int(bboxes[i, 2]), int(bboxes[i, 3])),
-                      slice(int(bboxes[i, 4]), int(bboxes[i, 5])))
-                regions.append(acdcRegionProperties(
+                    slice(int(bboxes[i, 2]), int(bboxes[i, 3])),
+                    slice(int(bboxes[i, 4]), int(bboxes[i, 5])))
+                region = acdcRegionProperties(
                     sl, int(labels[i]), label_image, intensity_image, cache,
                     spacing=spacing, extra_properties=extra_properties,
                     offset=offset_arr,
-                ))
+                )
+                centroid = centroids[i]
+                if offset_arr is not None:
+                    centroid = centroid + offset_arr
+                region._cache['centroid'] = tuple(centroid)
+                regions.append(region)
     else:
         objects = ndi.find_objects(label_image)
         for i, sl in enumerate(objects, start=1):
@@ -1231,18 +1248,20 @@ class acdcRegionprops:
             cutout_bbox=cutout_bbox,
         )
             
-    def get_centroid(self, ID, exact=False):
+    def get_centroid(self, ID, exact=False, as_ints=False):
         if exact and ID not in self._centroid_IDs_exact:
             obj = self.get_obj_from_ID(ID)
             centroid = obj.centroid
-            try:
-                int(centroid[0])
-            except (TypeError, ValueError):
-                print(f"Warning: Centroid for ID {ID} is not a valid coordinate: {centroid}. "
-                      f"Object size: {obj.bbox}. Returning None.")
-                return None
+            # try: # getting the last bit of performance ;)
+            #     int(centroid[0])
+            # except (TypeError, ValueError):
+            #     print(f"Warning: Centroid for ID {ID} is not a valid coordinate: {centroid}. "
+            #           f"Object size: {obj.bbox}. Returning None.")
+            #     return None
             self._centroid_mapper[ID] = centroid
             self._centroid_IDs_exact.add(ID)
+            if as_ints:
+                centroid = tuple(int(c) for c in centroid)
             return centroid
         
         centroid = self._centroid_mapper.get(ID, None)
@@ -1252,6 +1271,8 @@ class acdcRegionprops:
             bbox_centers_mapper = self._get_bbox_centers_mapper(objs=objs)
             self._centroid_mapper.update(bbox_centers_mapper)
             centroid = self._centroid_mapper.get(ID, None)
+        if as_ints and centroid is not None:
+            centroid = tuple(int(c) for c in centroid)
         return centroid
     
     def copy(self):
