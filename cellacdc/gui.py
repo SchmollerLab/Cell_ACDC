@@ -22193,8 +22193,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def framesScrollBarMoved(self, frame_n):
         if self.navigateScrollBarStartedMoving:
             mode = str(self.modeComboBox.currentText())
-            if mode != 'Viewer':
-                self.store_data(debug=False)
+            self.store_data(debug=False)
                 
         posData = self.data[self.pos_i]
         posData.frame_i = frame_n-1
@@ -22211,6 +22210,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.lab = posData.allData_li[posData.frame_i]['labels']
             posData.rp = posData.allData_li[posData.frame_i]['regionprops']
 
+        posData.cca_df = posData.allData_li[posData.frame_i]['acdc_df'][self.cca_df_colnames]
         posData.IDs = posData.rp.IDs
         self.updateLostNewCurrentIDs()
         self.updateAllImages()
