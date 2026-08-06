@@ -54,7 +54,7 @@ from qtpy.QtWidgets import (
     QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
     QScrollBar, QCheckBox, QToolButton, QSpinBox, QButtonGroup, QActionGroup, QFileDialog, QAbstractSlider, QMessageBox, QWidget, QGridLayout, 
     QDockWidget, QGraphicsProxyWidget, QVBoxLayout, QRadioButton, 
-    QSpacerItem, QScrollArea, QFormLayout, QGraphicsSceneMouseEvent, QApplication
+    QSpacerItem, QScrollArea, QFormLayout, QGraphicsSceneMouseEvent 
 )
 
 import pyqtgraph as pg
@@ -236,8 +236,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         """Initializer."""
 
         super().__init__(parent)
-        
-        app.installEventFilter(self)
 
         self._version = version
 
@@ -5064,8 +5062,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax2_lostObjScatterItem = self.gui_getLostObjScatterItem()
         self.ax2_lostTrackedScatterItem = self.gui_getTrackedLostObjScatterItem()
         
-        self.gui_createTextAnnotItems(allIDs)
-        self.gui_setTextAnnotColors()
+        self.gui_createTextAnnotItems(allIDs) # here
+        self.gui_setTextAnnotColors()# here
 
         self.setDisabledAnnotOptions(False)
 
@@ -9340,10 +9338,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
             wl_update=True, wl_track_og_curr=False,wl_update_lab=False, # wl stuff
         ):
-        self.update_rp(draw=draw, debug=debug, # og stuff
-                       assignments=assignments, deletionIDs=deletionIDs, # very quick upates, rp labels are changed but rest is same
-                       specific_IDs=specific_IDs, use_curr_view=use_curr_view, use_bbox=use_bbox, preloaded_bbox=preloaded_bbox, # for local updates to PR
-                       wl_update=wl_update, wl_track_og_curr=wl_track_og_curr,wl_update_lab=wl_update_lab, # wl stuff
+        self.update_rp(draw=True, debug=False, # og stuff
+                       assignments=None, deletionIDs=None, # very quick upates, rp labels are changed but rest is same
+                       specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
+                       wl_update=True, wl_track_og_curr=False,wl_update_lab=False, # wl stuff
                        )
         waitcond.wakeAll()
 
@@ -16334,30 +16332,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def editingSpinboxValueTimerCallback(self):
         self.typingEditID = False
-        
-    def eventFilter(self, obj, ev):
-        if not getattr(self, 'isDataLoaded', False):
-            return False
-
-        focus = QApplication.focusWidget()
-        if focus is not None and any(
-            focus.inherits(cls) for cls in (
-                'QLineEdit', 'QTextEdit', 'QPlainTextEdit', 'QAbstractSpinBox'
-            )
-        ):
-            return False
-        if ev.type() == QEvent.Type.KeyPress:
-            for name, key in self.widgetsPersistentShortcut.items():
-                if not key == ev.key():
-                    continue
-                action = self.widgetsWithShortcut[name]
-                if hasattr(action, 'click'):
-                    action.click()
-                elif hasattr(action, 'trigger'):
-                    action.trigger()
-                return True
-        return False
-        
+    
     @exception_handler
     def keyPressEvent(self, ev):        
         ctrl = ev.modifiers() == Qt.ControlModifier
@@ -16396,6 +16371,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if ev.key() == Qt.Key_End:
             self.onKeyEnd()
+            
+        for name, key in self.widgetsPersistentShortcut.items():
+            if not key == ev.key():
+                continue
+            action = self.widgetsWithShortcut[name]
+            success = False
+            if hasattr(action, 'click'):
+                action.click()
+            elif hasattr(action, 'trigger'):
+                action.trigger()
+            break
         
         modifiers = ev.modifiers()
         isAltModifier = modifiers == Qt.AltModifier
@@ -21679,14 +21665,35 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if singleMove:
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         elif action == SliderMove:
+            if self.zSliceScrollBarStartedMoving and self.isSegm3D:
+                self.clearAx1Items(onlyHideText=True)
+                self.clearAx2Items(onlyHideText=True)
             posData = self.data[self.pos_i]
             idx = (posData.filename, posData.frame_i)
             z = self.zSliceScrollBar.sliderPosition()
             if self.switchPlaneCombobox.depthAxes() == 'z': 
                 posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.zSliceSpinbox.setValueNoEmit(z+1)
+            img = self._getImageupdateAllImages(None)
+            self.img1.setCurrentZsliceIndex(z)
+            self.img1.setImage(
+                img, next_frame_image=self.nextFrameImage(),
+                scrollbar_value=posData.frame_i+2
+            )
+            try:
+                self.setOverlayImages()
+            except Exception as err:
+                pass
+            
+            if self.labelsGrad.showLabelsImgAction.isChecked():
+                self.img2.setImage(posData.lab, z=z, autoLevels=False)
+            self.updateViewerWindow()
+            self.setTextAnnotZsliceScrolling()
+            self.setGraphicalAnnotZsliceScrolling()
+            self.setOverlayLabelsItems()
+            self.drawPointsLayers(computePointsLayers=False)
             self.zSliceScrollBarStartedMoving = False
-            self.updateAllImages()
+            self.highlightSearchedID(self.highlightedID, force=True)
             
     def maxProjToggleActionTriggered(self):
         posData = self.data[self.pos_i]
@@ -22321,13 +22328,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.allData_li[posData.frame_i]['regionprops'] = rp
         else:
             posData.lab = posData.allData_li[posData.frame_i]['labels']
-            posData.rp = posData.allData_li[posData.frame_i]['regionprops']
 
-        posData.IDs = posData.rp.IDs
-        self.updateLostNewCurrentIDs()
-        self.updateAllImages()
+        self.setImageImg1()
+        if self.overlayButton.isChecked():
+            self.setOverlayImages()
+
+        if self.navigateScrollBarStartedMoving:
+            self.clearAllItems()
+
+        self.navSpinBox.setValueNoEmit(posData.frame_i+1)
+        if self.labelsGrad.showLabelsImgAction.isChecked():
+            self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
+        self.updateLookuptable()
         self.updateFramePosLabel()
         self.updateViewerWindow()
+        self.updateTimestampFrame()
         self.updateHighlightedAxis()
         self.navigateScrollBarStartedMoving = False
 
@@ -22392,10 +22407,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # make rp remporarliy not stale anymore
         rp.update_regionprops_via_assignments(assignments, lab) 
-        assignments_new = self.trackFrame(
+        tracked_lab, assignments_new = self.trackFrame(
             nextLab, nextRp, lab, rp, rp.IDs,
             assign_unique_new_IDs=False, return_assignments=True,
-            specific_IDs=[newID], dont_return_tracked_lab=True
+            specific_IDs=[newID], 
         )
         # restore rp
         posData.rp.update_regionprops_via_assignments(reverse_assignments, lab)
@@ -30028,11 +30043,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return rp_2D
 
     # @exec_time
-    def setAllTextAnnotations(
-            self, 
-            labelsToSkip=None, 
-            updateAllTextAnnotations=True
-        ):
+    def setAllTextAnnotations(self, labelsToSkip=None):
         self.setLostNewOldPrevIDs()
         posData = self.data[self.pos_i]
         
@@ -30045,8 +30056,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             getCurrentZfunc=self.z_lab, 
             getObjCentroidFunc=self.getObjCentroid,
             rp_func=self.get2DRP,
-            rp3D=posData.rp,
-            updateAllTextAnnotations=updateAllTextAnnotations
+            rp3D=posData.rp
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
@@ -30055,8 +30065,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getObjCentroidFunc=self.getObjCentroid,
             rp_func=self.get2DRP,
-            rp3D=posData.rp,
-            updateAllTextAnnotations=updateAllTextAnnotations
+            rp3D=posData.rp
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
@@ -30191,7 +30200,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     @exception_handler
     def updateAllImages(
             self, image=None, computePointsLayers=True, computeContours=True,
-            updateLookuptable=True, updateAllTextAnnotations=True
+            updateLookuptable=True
         ):
         self.clearAllItems()
 
@@ -30217,9 +30226,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.update_rp()
 
         # Annotate ID and draw contours
-        self.setAllTextAnnotations(
-            updateAllTextAnnotations=updateAllTextAnnotations
-        )    
+        self.setAllTextAnnotations()    
         self.setAllContoursImages(
             compute=False
         )
@@ -30944,6 +30951,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 trackedID, assignments = self.trackNewIDtoNewIDsFutureFrame(added_ID, obj, assignments)
                 if trackedID is None:
                     self.clearAssignedObjsSecondStep()
+                    # update assignments
+                    
                     continue
                 posData.lab[obj.slice][obj.image] = trackedID
         
@@ -30982,26 +30991,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ):
         from .trackers.CellACDC import CellACDC_tracker
         
-        handle_specific_IDs_self  = False
-        return_assignments_og = return_assignments
-        dont_return_tracked_lab_og = dont_return_tracked_lab
-        does_it_have_specific_IDs_kwarg = (
-            specific_IDs is not None
-            and (
-                self.trackWithYeazAction.isChecked()
-                or (
-                    self.realTimeTracker_kwargs is not None 
-                    and 'specific_IDs' not in self.realTimeTracker_kwargs
-                )
-            )
-        )
-        if does_it_have_specific_IDs_kwarg:
-            # Yeaz tracker or custom tracker without specific_IDs functionality
-            return_assignments = True
-            dont_return_tracked_lab = True
-            handle_specific_IDs_self = True
-            curr_lab_backup = curr_lab.copy()
-        
         if self.trackWithAcdcAction.isChecked():
             tracked_result = CellACDC_tracker.track_frame(
                 prev_lab, prev_rp, curr_lab, curr_rp,
@@ -31021,10 +31010,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
         else:
             tracked_result = self.trackFrameCustomTracker(
-                prev_lab, curr_lab, prev_rp, curr_rp, 
-                specific_IDs=specific_IDs, unique_ID=unique_ID,
-                dont_return_tracked_lab=dont_return_tracked_lab, 
-                return_assignments=return_assignments
+                prev_lab, curr_lab, prev_rp, curr_rp, specific_IDs=specific_IDs, unique_ID=unique_ID,
+                dont_return_tracked_lab=dont_return_tracked_lab, return_assignments=return_assignments
             )
 
         # Check if tracker also returns additional info
@@ -31043,11 +31030,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             tracked_lab = tracked_result
         
-        if (
-            not return_assignments_og 
-            and not dont_return_tracked_lab_og 
-            and not handle_specific_IDs_self
-            ):
+        if not return_assignments and not dont_return_tracked_lab:
             return tracked_lab
 
         # get assignments
@@ -31060,34 +31043,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     assignments[old_lab] = new_lab
                 except:
                     import pdb; pdb.set_trace()
-                    
-        if handle_specific_IDs_self:
-            # Filter assignments to only include specific_IDs
-            assignments = {old_ID: new_ID 
-                           for old_ID, new_ID in assignments.items()
-                           if old_ID in specific_IDs
-                           and new_ID not in curr_rp.IDs_set # avoid merging
-                           }
-                    
-        
-        if dont_return_tracked_lab_og:
+
+        if dont_return_tracked_lab:
             return assignments
-        
-        if handle_specific_IDs_self:
-            # apply assignments to tracked_lab
-            for old_ID, new_ID in assignments.items():
-                if old_ID not in specific_IDs:
-                    continue
-
-                if old_ID == new_ID:
-                    continue # nothing to do
-                obj_curr = curr_rp.get_obj_from_ID(old_ID)
-                curr_lab_backup[obj_curr.slice][obj_curr.image] = new_ID
-            tracked_lab = curr_lab_backup
-                    
-        if not return_assignments_og and not dont_return_tracked_lab_og:
-            return tracked_lab
-
         return tracked_lab, assignments
     
     def clearAssignedObjsSecondStep(self):
@@ -31238,8 +31196,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         QTimer.singleShot(50, partial(
             self.statusBarLabel.setText, staturBarLabelText
         ))
-        if return_assignments:
+        if return_assignments and return_lab:
+            return tracked_lab, assignments
+        elif return_assignments:
             return assignments
+        elif return_lab:
+            return tracked_lab
 
     def handleAdditionalInfoRealTimeTracker(self, prev_rp, add_info):
         assignments = None
