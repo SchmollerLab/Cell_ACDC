@@ -17,7 +17,7 @@ if GUI_INSTALLED:
     
     from . import plot
     
-    from qtpy.QtGui import QFont, QPicture, QPainter, QColor, QPen
+    from qtpy.QtGui import QFont, QPicture, QPainter, QColor, QPen, QImage, QTransform
     from qtpy.QtCore import QRectF, QPointF, Qt, QLineF
 
 INVERTIBLE_COLOR_NAMES = [
@@ -144,14 +144,18 @@ def get_obj_text_annot_opts(
 class TextAnnotationsImageItem(pg.ImageItem):
     def __init__(self, **kargs):
         super().__init__(**kargs)
+        self.texts = []
+        self.annotData = []
+        self.highlighterItem = None
     
     def initFonts(self, fontSize):
         self.fontSize = fontSize
         self.fontRegular = ImageFont.truetype(font_path, fontSize)
         self.fontBold = ImageFont.truetype(font_bold_path, fontSize)
-        self.highlighterItem = TextAnnotationsScatterItem(
-            size=self.fontSize, pxMode=False
-        )
+        if self.highlighterItem is None:
+            self.highlighterItem = TextAnnotationsScatterItem(
+                size=self.fontSize, pxMode=False
+            )
         self.highlighterItem.initFonts(fontSize)
         self.highlighterItem.initSymbols(range(10))
     
@@ -169,12 +173,17 @@ class TextAnnotationsImageItem(pg.ImageItem):
     def clearData(self):
         self.clearImage()
         self.setOpacity(1.0)
-        self.highlighterItem.setData([], [])
+        if self.highlighterItem is not None:
+            self.highlighterItem.clearData()
         self.texts = []
         self.annotData = []
+
+    def clear(self):
+        self.clearData()
+        self.setVisible(False)
     
     def update(self):
-        pass
+        super().update()
     
     def appendData(self, data, text):
         self.annotData.append(data)
@@ -204,7 +213,8 @@ class TextAnnotationsImageItem(pg.ImageItem):
 
     def setColors(self, colors):
         self._colors = colors.copy()
-        self.highlighterItem.setColors(colors)
+        if self.highlighterItem is not None:
+            self.highlighterItem.setColors(colors)
     
     def initSymbols(self, allIDs):
         pass
@@ -232,7 +242,12 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         self.texts = []      # kept parallel to annotData for API compatibility
         self.initFonts(size)
         self.setPxMode(pxMode)
-
+        self.zoom = None
+        self._zoomBucket = None
+        self._cachedScaleFactor = None
+        self.cached_picture = None
+        self._cached_view_rect = QRectF()
+        
     # ---- setup / config, API-compatible no-ops where the atlas is gone ----
 
     def initFonts(self, fontSize):
@@ -243,6 +258,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
 
         self.fontRegular = QFont(FONT_FAMILY)
         self.fontRegular.setPixelSize(fontSize)
+        self._invalidateCache()
 
     def init(self, *args):
         pass
@@ -275,6 +291,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         for name, color in self._colors.items():
             self._brushes[name] = pg.mkBrush(color)
             self._pens[name] = pg.mkPen(color[:3], width=1)
+        self._invalidateCache()
 
     def pens(self):
         return self._pens
@@ -314,6 +331,86 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
 
     # ---- rendering ----
 
+    def _invalidateCache(self):
+        self.zoom = None
+        self._zoomBucket = None
+        self.cached_picture = None
+        self._cached_view_rect = QRectF()
+
+    def _zoomBucketFor(self, target_zoom):
+        if target_zoom is None or target_zoom <= 0:
+            return None
+        rendered_font_px = max(self.fontSize / target_zoom, 1.0)
+        return max(int(round(rendered_font_px / 2.0) * 2), 1)
+
+    def _boundedCacheSize(self, width, height):
+        max_dim = 4096
+        max_pixels = 12_000_000
+        width = max(int(math.ceil(width)), 1)
+        height = max(int(math.ceil(height)), 1)
+
+        scale = min(max_dim / width, max_dim / height, 1.0)
+        if width * height > max_pixels:
+            scale = min(scale, math.sqrt(max_pixels / (width * height)))
+
+        width = max(int(math.ceil(width * scale)), 1)
+        height = max(int(math.ceil(height * scale)), 1)
+        return width, height
+
+    def _expandedCacheRect(self, exposed_rect):
+        if exposed_rect.isNull():
+            return QRectF()
+        x_margin = max(exposed_rect.width() * 0.25, 1.0)
+        y_margin = max(exposed_rect.height() * 0.25, 1.0)
+        expanded_rect = exposed_rect.adjusted(
+            -x_margin, -y_margin, x_margin, y_margin
+        )
+        return expanded_rect.intersected(self._boundingRect)
+
+    def _refreshCachedPicture(self, painter, target_zoom, source_rect, zoom_bucket):
+        if (
+            self._boundingRect.isNull()
+            or source_rect.isNull()
+            or target_zoom is None
+            or target_zoom <= 0
+        ):
+            self.cached_picture = None
+            self._cached_view_rect = QRectF()
+            self._zoomBucket = None
+            return
+
+        device_rect = painter.worldTransform().mapRect(source_rect)
+        width, height = self._boundedCacheSize(
+            abs(device_rect.width()), abs(device_rect.height())
+        )
+
+        cached_picture = QImage(
+            width, height, QImage.Format.Format_ARGB32_Premultiplied
+        )
+        cached_picture.fill(0)
+
+        cache_painter = QPainter(cached_picture)
+        if not cache_painter.isActive():
+            self.cached_picture = None
+            self._cached_view_rect = QRectF()
+            self._zoomBucket = None
+            return
+
+        cache_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        scale_x = width / source_rect.width()
+        scale_y = height / source_rect.height()
+        transform = QTransform()
+        transform.scale(scale_x, scale_y)
+        transform.translate(-source_rect.left(), -source_rect.top())
+        cache_painter.setWorldTransform(transform)
+        cache_painter.drawPicture(0, 0, self.picture)
+        cache_painter.end()
+
+        self.cached_picture = cached_picture
+        self._cached_view_rect = source_rect
+        self._zoomBucket = zoom_bucket
+        self.zoom = target_zoom
+
     def _generatePicture(self):
         self.picture = QPicture()
         painter = QPainter(self.picture)
@@ -348,11 +445,49 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
             if xs else QRectF()
         )
+        self._invalidateCache()
         self.prepareGeometryChange()
         self.update()
 
+    @debugutils.line_benchmark
     def paint(self, painter, *args):
-        painter.drawPicture(0, 0, self.picture)
+        if self.picture.isNull() or self._boundingRect.isNull():
+            return
+
+        viewbox = self.getViewBox()
+        target_zoom = viewbox.viewPixelSize()[0] if viewbox is not None else None
+        visible_rect = (
+            viewbox.viewRect().intersected(self._boundingRect)
+            if viewbox is not None else self._boundingRect
+        )
+        if visible_rect.isNull():
+            return
+
+        zoom_bucket = self._zoomBucketFor(target_zoom)
+        if (
+            self.cached_picture is None
+            or zoom_bucket is None
+            or self._zoomBucket != zoom_bucket
+            or not self._cached_view_rect.contains(visible_rect)
+        ):
+            cache_rect = self._expandedCacheRect(visible_rect)
+            self._refreshCachedPicture(painter, target_zoom, cache_rect, zoom_bucket)
+
+        if self.cached_picture is None:
+            painter.drawPicture(0, 0, self.picture)
+            return
+
+        cache_width = self.cached_picture.width()
+        cache_height = self.cached_picture.height()
+        source_rect = QRectF(
+            ((visible_rect.left() - self._cached_view_rect.left())
+             / self._cached_view_rect.width()) * cache_width,
+            ((visible_rect.top() - self._cached_view_rect.top())
+             / self._cached_view_rect.height()) * cache_height,
+            (visible_rect.width() / self._cached_view_rect.width()) * cache_width,
+            (visible_rect.height() / self._cached_view_rect.height()) * cache_height,
+        )
+        painter.drawImage(visible_rect, self.cached_picture, source_rect)
 
     def boundingRect(self):
         return self._boundingRect
@@ -422,8 +557,8 @@ class TextAnnotations:
     
     def clear(self):
         self.item.clear()
-        if hasattr(self.item, 'highlighterItem'):
-            self.item.highlighterItem.setData([], [])
+        if hasattr(self.item, 'highlighterItem') and self.item.highlighterItem is not None:
+            self.item.highlighterItem.clearData()
     
     def invertBlackAndWhite(self):
         invertedColors = {
@@ -507,7 +642,8 @@ class TextAnnotations:
         if isinstance(self.item, TextAnnotationsImageItem):
             self.item.clearImage()
             self.item.setOpacity(1.0)
-            self.item.highlighterItem.setData([], [])
+            if self.item.highlighterItem is not None:
+                self.item.highlighterItem.clearData()
 
         annotData = []
         texts = []
@@ -723,7 +859,13 @@ class TextAnnotations:
         self.item.update()
         
     def clear(self):
+        if hasattr(self.item, 'clearData'):
+            self.item.clearData()
+        elif hasattr(self.item, 'clear'):
+            self.item.clear()
         self.item.setVisible(False)
+        if hasattr(self.item, 'highlighterItem') and self.item.highlighterItem is not None:
+            self.item.highlighterItem.clearData()
         
         
 class FadingTracksItem(pg.GraphicsObject):

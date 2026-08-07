@@ -27504,6 +27504,68 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             return True
 
+            
+    # This funciton actually returns if its visible, not only on z slice
+    # def isObjVisible(self, obj_bbox, debug=False, z_slice=None):
+    #     if obj_bbox is None:
+    #         return False
+
+    #     cutout = self.ax1ViewRange(integers=True)
+    #     (x1, x2), (y1, y2) = cutout
+    #     view_x_min, view_x_max = min(x1, x2), max(x1, x2)
+    #     view_y_min, view_y_max = min(y1, y2), max(y1, y2)
+
+    #     if self.isSegm3D and len(obj_bbox) == 6:
+    #         depthAxes = self.switchPlaneCombobox.depthAxes()
+    #         min_z, min_y, min_x, max_z, max_y, max_x = obj_bbox
+    #         if depthAxes == 'z':
+    #             obj_x_min, obj_x_max = min_x, max_x
+    #             obj_y_min, obj_y_max = min_y, max_y
+    #         elif depthAxes == 'y':
+    #             obj_x_min, obj_x_max = min_x, max_x
+    #             obj_y_min, obj_y_max = min_z, max_z
+    #         else:
+    #             obj_x_min, obj_x_max = min_y, max_y
+    #             obj_y_min, obj_y_max = min_z, max_z
+    #     else:
+    #         min_y, min_x, max_y, max_x = obj_bbox
+    #         obj_x_min, obj_x_max = min_x, max_x
+    #         obj_y_min, obj_y_max = min_y, max_y
+
+    #     intersects_view = (
+    #         obj_x_max > view_x_min and view_x_max > obj_x_min
+    #         and obj_y_max > view_y_min and view_y_max > obj_y_min
+    #     )
+    #     if not intersects_view:
+    #         return False
+
+    #     if z_slice is None:
+    #         z_slice = self.z_lab()
+
+    #     if self.isSegm3D and len(obj_bbox) == 6:
+    #         zProjHow = self.zProjComboBox.currentText()
+    #         isZslice = zProjHow == 'single z-slice'
+    #         if not isZslice:
+    #             return True
+
+    #         depthAxes = self.switchPlaneCombobox.depthAxes()
+    #         min_z, min_y, min_x, max_z, max_y, max_x = obj_bbox
+
+    #         if depthAxes == 'z':
+    #             min_val, max_val = min_z, max_z
+    #             val = z_slice
+    #         elif depthAxes == 'y':
+    #             min_val, max_val = min_y, max_y
+    #             val = z_slice[-1]
+    #         else:
+    #             min_val, max_val = min_x, max_x
+    #             val = z_slice[-1]
+
+    #         return min_val <= val < max_val
+
+    #     return True
+
+
     def getObjImage(self, obj_image, obj_bbox, z_slice=None):
         if self.isSegm3D and len(obj_bbox)==6:
             zProjHow = self.zProjComboBox.currentText()
@@ -35791,6 +35853,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             (newX0, newX1), (newY0, newY1), emitSignal=False
         )
         
+    @debugutils.line_benchmark
     def viewRangeChanged(self, viewBox, viewRange, updateExportImageMask=True):
         # self.updateViewRangeExportToImage(viewRange) 
         self.updateValuesStatusBar()
