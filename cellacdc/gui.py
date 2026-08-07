@@ -22177,6 +22177,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.navigateScrollBar.setValueNoSignal(frame_i+1)
     
     def framesScrollBarActionTriggered(self, action):
+        print(action)
         if action == SliderSingleStepAdd:
             # Clicking on dialogs triggered by next_cb might trigger
             # pressEvent of navigateQScrollBar, avoid that
@@ -22223,7 +22224,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData.frame_i = self.navigateScrollBar.sliderPosition()-1
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
+        if do_store_data:
+            self.updateLostNewCurrentIDs()
+        self.updateLostNewCurrentIDs()
         self.updateAllImages()
+        if do_store_data: 
+            self.updateFramePosLabel()
+            self.updateViewerWindow()
+            self.updateHighlightedAxis()
 
     def unstore_data(self):
         posData = self.data[self.pos_i]
