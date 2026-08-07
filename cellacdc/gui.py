@@ -22177,7 +22177,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.navigateScrollBar.setValueNoSignal(frame_i+1)
     
     def framesScrollBarActionTriggered(self, action):
-        print(action)
         if action == SliderSingleStepAdd:
             # Clicking on dialogs triggered by next_cb might trigger
             # pressEvent of navigateQScrollBar, avoid that
@@ -31208,35 +31207,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def initannotateObjTrackSettings(self):
         if hasattr(self, 'annotateObjTrackSettings'):
             return
-        if (self.df_settings is not None
-            and 'annotateObjTrackLength' in self.df_settings.index):
-            self.annotateObjTrackSettings = {
-                'length': int(self.df_settings.at[
-                    'annotateObjTrackLength', 'value']),
-                'against_prev': (self.df_settings.at[
-                    'annotateObjTrackAgainstPrev', 'value']) == 'True',
-                'n_fade': int(self.df_settings.at[
-                    'annotateObjTrackNFade', 'value']),
-                'max_width': int(self.df_settings.at[
-                    'annotateObjTrackMaxWidth', 'value']),
-                'min_width': int(self.df_settings.at[
-                    'annotateObjTrackMinWidth', 'value']),
-                'max_alpha_perc': int(self.df_settings.at[
-                    'annotateObjTrackMaxAlphaPerc', 'value']),
-                'min_alpha_perc': int(self.df_settings.at[
-                    'annotateObjTrackMinAlphaPerc', 'value']),
-            }
-            color = self.df_settings.at[
-                'annotateObjTrackColor', 'value']
-            
-            parts = color.lstrip('(').rstrip(')').split(',')
-            parts = [int(p.strip()) for p in parts]
-            
-            
-            self.annotateObjTrackSettings['color'] = parts
-            return
-      
-        self.annotateObjTrackSettings = {
+
+        default_settings = {
             'length': 5,
             'against_prev': False,
             'color': (255, 100, 0),
@@ -31245,7 +31217,105 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'min_width': 1,
             'max_alpha_perc': 100,
             'min_alpha_perc': 10,
+            'against_prev_line_color': (255, 165, 0),
+            'against_prev_line_width': 2,
+            'against_prev_contour_color': (245, 184, 0),
+            'against_prev_contour_width': 2,
         }
+
+        def _parse_color_setting(value, default):
+            if value is None:
+                return tuple(default)
+            if isinstance(value, str):
+                parts = value.lstrip('(').rstrip(')').split(',')
+                parts = [int(p.strip()) for p in parts if p.strip()]
+                if len(parts) >= 3:
+                    return tuple(parts[:3])
+                return tuple(default)
+
+            try:
+                return tuple(int(v) for v in value[:3])
+            except Exception:
+                return tuple(default)
+
+        def _get_setting_value(index_name, default, cast=int):
+            if self.df_settings is None or index_name not in self.df_settings.index:
+                return default
+            value = self.df_settings.at[index_name, 'value']
+            if cast is bool:
+                return value == 'True' if isinstance(value, str) else bool(value)
+            try:
+                return cast(value)
+            except Exception:
+                return default
+
+        if (self.df_settings is not None
+            and 'annotateObjTrackLength' in self.df_settings.index):
+            self.annotateObjTrackSettings = {
+                'length': _get_setting_value(
+                    'annotateObjTrackLength', default_settings['length']
+                ),
+                'against_prev': _get_setting_value(
+                    'annotateObjTrackAgainstPrev',
+                    default_settings['against_prev'],
+                    cast=bool
+                ),
+                'n_fade': _get_setting_value(
+                    'annotateObjTrackNFade', default_settings['n_fade']
+                ),
+                'max_width': _get_setting_value(
+                    'annotateObjTrackMaxWidth', default_settings['max_width']
+                ),
+                'min_width': _get_setting_value(
+                    'annotateObjTrackMinWidth', default_settings['min_width']
+                ),
+                'max_alpha_perc': _get_setting_value(
+                    'annotateObjTrackMaxAlphaPerc',
+                    default_settings['max_alpha_perc']
+                ),
+                'min_alpha_perc': _get_setting_value(
+                    'annotateObjTrackMinAlphaPerc',
+                    default_settings['min_alpha_perc']
+                ),
+                'against_prev_line_width': _get_setting_value(
+                    'annotateObjTrackAgainstPrevLineWidth',
+                    default_settings['against_prev_line_width']
+                ),
+                'against_prev_contour_width': _get_setting_value(
+                    'annotateObjTrackAgainstPrevContourWidth',
+                    default_settings['against_prev_contour_width']
+                ),
+            }
+            color = self.df_settings.at['annotateObjTrackColor', 'value']
+            self.annotateObjTrackSettings['color'] = _parse_color_setting(
+                color, default=default_settings['color']
+            )
+            against_prev_line_color = _get_setting_value(
+                'annotateObjTrackAgainstPrevLineColor',
+                default_settings['against_prev_line_color'],
+                cast=str
+            )
+            self.annotateObjTrackSettings['against_prev_line_color'] = (
+                _parse_color_setting(
+                    against_prev_line_color,
+                    default=default_settings['against_prev_line_color']
+                )
+            )
+
+            against_prev_contour_color = _get_setting_value(
+                'annotateObjTrackAgainstPrevContourColor',
+                default_settings['against_prev_contour_color'],
+                cast=str
+            )
+            self.annotateObjTrackSettings['against_prev_contour_color'] = (
+                _parse_color_setting(
+                    against_prev_contour_color,
+                    default=default_settings['against_prev_contour_color']
+                )
+            )
+            return
+
+        self.annotateObjTrackSettings = dict(default_settings)
         
     def setAnnotateObjTrackSettings(self, *args):
         self.initannotateObjTrackSettings()
@@ -31288,6 +31358,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.df_settings.at[
             'annotateObjTrackMinAlphaPerc', 'value'
             ] = self.annotateObjTrackSettings['min_alpha_perc']
+        self.df_settings.loc[
+            'annotateObjTrackAgainstPrevLineColor', 'value'
+            ] = str(self.annotateObjTrackSettings['against_prev_line_color'])
+        self.df_settings.loc[
+            'annotateObjTrackAgainstPrevLineWidth', 'value'
+            ] = self.annotateObjTrackSettings['against_prev_line_width']
+        self.df_settings.loc[
+            'annotateObjTrackAgainstPrevContourColor', 'value'
+            ] = str(self.annotateObjTrackSettings['against_prev_contour_color'])
+        self.df_settings.loc[
+            'annotateObjTrackAgainstPrevContourWidth', 'value'
+            ] = self.annotateObjTrackSettings['against_prev_contour_width']
         self.df_settings.to_csv(self.settings_csv_path)
         
     def onSetAnnotateObjTrackSettingsSigValuesChanged(self, settings):
@@ -31304,6 +31386,34 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def getMovementAgainstPrevScatterItem(self, ax: int):
         itemName = f'ax{ax+1}_movementAgainstPrevScatterItem'
         return getattr(self, itemName)
+
+    def _setAgainstPrevAppearance(self, ax: int, settings: dict):
+        line_item = self.getMovementAgainstPrevLinesItem(ax)
+        contour_item = self.getMovementAgainstPrevScatterItem(ax)
+
+        line_color = tuple(settings['against_prev_line_color'])
+        contour_color = tuple(settings['against_prev_contour_color'])
+        line_width = max(1, int(settings['against_prev_line_width']))
+        contour_width = max(1, int(settings['against_prev_contour_width']))
+
+        appearance_key = (
+            line_color,
+            line_width,
+            contour_color,
+            contour_width,
+        )
+        cache = getattr(self, '_againstPrevAppearanceCache', {})
+        if cache.get(ax) == appearance_key:
+            return
+
+        line_item.setBrush(pg.mkBrush((*line_color, 255)))
+        line_item.setSize(line_width)
+
+        contour_item.setBrush(pg.mkBrush((*contour_color, 150)))
+        contour_item.setPen(pg.mkPen(contour_color, width=1))
+        contour_item.setSize(contour_width)
+        cache[ax] = appearance_key
+        self._againstPrevAppearanceCache = cache
 
     def annotateAllObjectTracks(self, settings=None):
         if settings is None:
@@ -31329,7 +31439,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if settings['against_prev'] is True:
             for ax in to_annotate_ax:
-                self.annotateObjTrackAgainstPrev(ax)
+                self.annotateObjTrackAgainstPrev(ax, settings=settings)
             return
                 
         posData = self.data[self.pos_i]
@@ -31403,7 +31513,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # tracksPlotItem.clear()
             tracksPlotItem.hide()
             
-    def annotateObjTrackAgainstPrev(self, ax: int):        
+    def annotateObjTrackAgainstPrev(self, ax: int, settings: dict=None):
+        self.initannotateObjTrackSettings()
+        settings = settings or self.annotateObjTrackSettings
+        self._setAgainstPrevAppearance(ax, settings)
+
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
         

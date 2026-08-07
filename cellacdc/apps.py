@@ -20653,30 +20653,11 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         formLayout.addFormWidget(self.lengthWidget, row=row)
 
         row += 1
-        againstPrevInfoTxt = html_utils.paragraph(
-            'When enabled, each object is linked only to its position in the '
-            'immediately previous frame. '
-            'When disabled, the full track history up to "Track length" is drawn. '
-            'Is mutually exclusive with all other options!'
-        )
-        self.againstPrevToggle = widgets.Toggle()
-        self.againstPrevWidget = widgets.formWidget(
-            self.againstPrevToggle,
-            labelTextLeft='Only against previous frame: ',
-            parent=self,
-            stretchWidget=False,
-            valueGetterName='isChecked',
-            addInfoButton=True,
-            infoTxt=againstPrevInfoTxt,
-        )
-        formLayout.addFormWidget(self.againstPrevWidget, row=row)
-
-        row += 1
         colorInfoTxt = html_utils.paragraph(
             'RGB color used for cell movement tracks. '
             'This affects both line color and fade rendering.'
         )
-        self.colorButton = widgets.myColorButton(color=(255, 100, 0))
+        self.colorButton = widgets.myColorButton(color=tuple(settings['color']))
         try:
             self.colorButton.clicked.disconnect()
         except TypeError:
@@ -20779,6 +20760,111 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             infoTxt=minAlphaInfoTxt,
         )
         formLayout.addFormWidget(self.minAlphaWidget, row=row)
+        
+        row += 1
+        againstPrevInfoTxt = html_utils.paragraph(
+            'When enabled, each object is linked only to its position in the '
+            'immediately previous frame. '
+            'When disabled, the full track history up to "Track length" is drawn. '
+            'Is mutually exclusive with all other options!'
+        )
+        self.againstPrevToggle = widgets.Toggle()
+        self.againstPrevWidget = widgets.formWidget(
+            self.againstPrevToggle,
+            labelTextLeft='Only against previous frame: ',
+            parent=self,
+            stretchWidget=False,
+            valueGetterName='isChecked',
+            addInfoButton=True,
+            infoTxt=againstPrevInfoTxt,
+        )
+        formLayout.addFormWidget(self.againstPrevWidget, row=row)
+
+        row += 1
+        againstPrevLineColorInfoTxt = html_utils.paragraph(
+            'RGB color of the line connecting each object to its previous-frame '
+            'position when "Only against previous frame" is enabled.'
+        )
+        self.againstPrevLineColorButton = widgets.myColorButton(
+            color=tuple(settings['against_prev_line_color'])
+        )
+        try:
+            self.againstPrevLineColorButton.clicked.disconnect()
+        except TypeError:
+            pass
+        self.againstPrevLineColorButton.clicked.connect(
+            lambda: self.selectColor(self.againstPrevLineColorButton)
+        )
+        self.againstPrevLineColorWidget = widgets.formWidget(
+            self.againstPrevLineColorButton,
+            labelTextLeft='Against-prev line color: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=againstPrevLineColorInfoTxt,
+        )
+        formLayout.addFormWidget(self.againstPrevLineColorWidget, row=row)
+
+        row += 1
+        againstPrevLineWidthInfoTxt = html_utils.paragraph(
+            'Thickness of the line connecting each object to its previous-frame '
+            'position when "Only against previous frame" is enabled.'
+        )
+        self.againstPrevLineWidthSpinBox = widgets.SpinBox()
+        self.againstPrevLineWidthSpinBox.setMinimum(1)
+        self.againstPrevLineWidthSpinBox.setMaximum(100)
+        self.againstPrevLineWidthWidget = widgets.formWidget(
+            self.againstPrevLineWidthSpinBox,
+            labelTextLeft='Against-prev line thickness: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=againstPrevLineWidthInfoTxt,
+        )
+        formLayout.addFormWidget(self.againstPrevLineWidthWidget, row=row)
+
+        row += 1
+        againstPrevContourColorInfoTxt = html_utils.paragraph(
+            'RGB color of previous-frame contours when "Only against previous '
+            'frame" is enabled.'
+        )
+        self.againstPrevContourColorButton = widgets.myColorButton(
+            color=tuple(settings['against_prev_contour_color'])
+        )
+        try:
+            self.againstPrevContourColorButton.clicked.disconnect()
+        except TypeError:
+            pass
+        self.againstPrevContourColorButton.clicked.connect(
+            lambda: self.selectColor(self.againstPrevContourColorButton)
+        )
+        self.againstPrevContourColorWidget = widgets.formWidget(
+            self.againstPrevContourColorButton,
+            labelTextLeft='Against-prev contour color: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=againstPrevContourColorInfoTxt,
+        )
+        formLayout.addFormWidget(self.againstPrevContourColorWidget, row=row)
+
+        row += 1
+        againstPrevContourWidthInfoTxt = html_utils.paragraph(
+            'Thickness of previous-frame contours when "Only against previous '
+            'frame" is enabled.'
+        )
+        self.againstPrevContourWidthSpinBox = widgets.SpinBox()
+        self.againstPrevContourWidthSpinBox.setMinimum(1)
+        self.againstPrevContourWidthSpinBox.setMaximum(100)
+        self.againstPrevContourWidthWidget = widgets.formWidget(
+            self.againstPrevContourWidthSpinBox,
+            labelTextLeft='Against-prev contour thickness: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=againstPrevContourWidthInfoTxt,
+        )
+        formLayout.addFormWidget(self.againstPrevContourWidthWidget, row=row)
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
@@ -20790,18 +20876,40 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.setLayout(mainLayout)
 
         self.lengthSpinBox.valueChanged.connect(self.emitValuesChanged)
-        self.againstPrevToggle.toggled.connect(self.emitValuesChanged)
+        self.againstPrevToggle.toggled.connect(self._againstPrevToggled)
         self.nFadeSpinBox.valueChanged.connect(self.emitValuesChanged)
         self.maxWidthSpinBox.valueChanged.connect(self._maxWidthChanged)
         self.minWidthSpinBox.valueChanged.connect(self._minWidthChanged)
         self.maxAlphaSpinBox.valueChanged.connect(self._maxAlphaChanged)
         self.minAlphaSpinBox.valueChanged.connect(self._minAlphaChanged)
         self.colorButton.sigColorChanging.connect(self.emitValuesChanged)
+        self.againstPrevLineColorButton.sigColorChanging.connect(self.emitValuesChanged)
+        self.againstPrevLineWidthSpinBox.valueChanged.connect(self.emitValuesChanged)
+        self.againstPrevContourColorButton.sigColorChanging.connect(self.emitValuesChanged)
+        self.againstPrevContourWidthSpinBox.valueChanged.connect(self.emitValuesChanged)
+
+        self._historyTrackWidgets = (
+            self.lengthWidget,
+            self.colorWidget,
+            self.nFadeWidget,
+            self.maxWidthWidget,
+            self.minWidthWidget,
+            self.maxAlphaWidget,
+            self.minAlphaWidget,
+        )
+        self._againstPrevOnlyWidgets = (
+            self.againstPrevLineColorWidget,
+            self.againstPrevLineWidthWidget,
+            self.againstPrevContourColorWidget,
+            self.againstPrevContourWidthWidget,
+        )
 
         self._isSyncing = False
         self.setValues(settings)
 
     def setValues(self, settings: dict):
+        settings = dict(settings)
+
         self.lengthSpinBox.setValue(int(settings['length']))
         self.againstPrevToggle.setChecked(bool(settings['against_prev']))
         self.colorButton.setColor(tuple(settings['color']))
@@ -20810,10 +20918,27 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.minWidthSpinBox.setValue(int(settings['min_width']))
         self.maxAlphaSpinBox.setValue(int(settings['max_alpha_perc']))
         self.minAlphaSpinBox.setValue(int(settings['min_alpha_perc']))
+        self.againstPrevLineColorButton.setColor(
+            tuple(settings['against_prev_line_color'])
+        )
+        self.againstPrevLineWidthSpinBox.setValue(
+            int(settings['against_prev_line_width'])
+        )
+        self.againstPrevContourColorButton.setColor(
+            tuple(settings['against_prev_contour_color'])
+        )
+        self.againstPrevContourWidthSpinBox.setValue(
+            int(settings['against_prev_contour_width'])
+        )
         self._syncRanges()
+        self._updateRelevantOptionsState()
 
     def values(self):
         r, g, b, _ = self.colorButton.color().getRgb()
+        line_r, line_g, line_b, _ = self.againstPrevLineColorButton.color().getRgb()
+        cont_r, cont_g, cont_b, _ = (
+            self.againstPrevContourColorButton.color().getRgb()
+        )
         return {
             'length': int(self.lengthSpinBox.value()),
             'against_prev': bool(self.againstPrevToggle.isChecked()),
@@ -20823,7 +20948,38 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             'min_width': int(self.minWidthSpinBox.value()),
             'max_alpha_perc': int(self.maxAlphaSpinBox.value()),
             'min_alpha_perc': int(self.minAlphaSpinBox.value()),
+            'against_prev_line_color': (
+                int(line_r), int(line_g), int(line_b)
+            ),
+            'against_prev_line_width': int(self.againstPrevLineWidthSpinBox.value()),
+            'against_prev_contour_color': (
+                int(cont_r), int(cont_g), int(cont_b)
+            ),
+            'against_prev_contour_width': (
+                int(self.againstPrevContourWidthSpinBox.value())
+            ),
         }
+
+    def _againstPrevToggled(self, checked):
+        self._updateRelevantOptionsState()
+        self.emitValuesChanged()
+
+    def _updateRelevantOptionsState(self):
+        is_against_prev = self.againstPrevToggle.isChecked()
+
+        def _set_row_disabled(form_widget, disabled):
+            form_widget.setDisabled(disabled)
+            # `formWidget.setDisabled` may not disable the inner control when the
+            # control is wrapped in a layout (stretchWidget=False).
+            try:
+                form_widget.widget.setDisabled(disabled)
+            except Exception:
+                pass
+
+        for widget in self._historyTrackWidgets:
+            _set_row_disabled(widget, is_against_prev)
+        for widget in self._againstPrevOnlyWidgets:
+            _set_row_disabled(widget, not is_against_prev)
 
     def _syncRanges(self):
         if self._isSyncing:
@@ -20857,18 +21013,19 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
     def emitValuesChanged(self, *args):
         self.sigValuesChanged.emit(self.values())
 
-    def selectColor(self):
-        color = self.colorButton.color()
-        self.colorButton.origColor = color
-        self.colorButton.colorDialog.setCurrentColor(color)
-        self.colorButton.colorDialog.setWindowFlags(
+    def selectColor(self, colorButton=None):
+        colorButton = self.colorButton if colorButton is None else colorButton
+        color = colorButton.color()
+        colorButton.origColor = color
+        colorButton.colorDialog.setCurrentColor(color)
+        colorButton.colorDialog.setWindowFlags(
             Qt.Window | Qt.WindowStaysOnTopHint
         )
-        self.colorButton.colorDialog.open()
+        colorButton.colorDialog.open()
         w = self.width()
         left = self.pos().x()
-        colorDialogTop = self.colorButton.colorDialog.pos().y()
-        self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
+        colorDialogTop = colorButton.colorDialog.pos().y()
+        colorButton.colorDialog.move(w+left+10, colorDialogTop)
 
     def ok_cb(self):
         self.cancel = False
