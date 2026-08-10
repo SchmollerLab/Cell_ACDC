@@ -16510,10 +16510,12 @@ class ExportToVideoParametersDialog(QBaseDialog):
                                                 minimum=0, maximum=51)
             gridLayout.addWidget(self.crf_widget, row, 1)
             info_txt = """
-            The range of the CRF scale is 0-51, where 0 is lossless (for 8 bit 
-            only, for 10 bit use -qp 0), 23 is the default, and 51 is worst 
-            quality possible. A lower value generally leads to higher quality, 
-            and a subjectively sane range is 17-28. Consider 17 or 18 to be 
+            The range of the Constant Rate Factor (CRF) scale is 0-51, where 0 is lossless, 23 is the default, and 51 is worst quality possible.
+            <br><br> 
+            A <b>lower value</b> generally leads to a <b>higher quality</b>, 
+            and a subjectively sane range is 17-28.
+            <br><br>
+            Consider 17 or 18 to be 
             visually lossless or nearly so; it should look the same or nearly 
             the same as the input but it isn't technically lossless.
             <br><br>
@@ -16522,8 +16524,7 @@ class ExportToVideoParametersDialog(QBaseDialog):
             to roughly twice the bitrate.
             <br><br>
             Choose the highest CRF value that still provides an acceptable 
-            quality. If the output looks good, then try a higher value. If it 
-            looks bad, choose a lower value.
+            quality. If the output looks good, but the video file size is too big for you, try a higher value. If it looks bad, choose a lower value.
             <br><br>
             For more information, see 
             <a href="https://trac.ffmpeg.org/wiki/Encode/H.264#crf">
@@ -16531,7 +16532,7 @@ class ExportToVideoParametersDialog(QBaseDialog):
             """
             infobutton = widgets.infoPushButton(
                 info_text=info_txt, 
-                info_title='CRF information'
+                info_title='Constant Rate Factor (CRF) information'
                 )
             gridLayout.addWidget(infobutton, row, 2)
         else:
