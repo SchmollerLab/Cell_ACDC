@@ -415,7 +415,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             return
 
         device_rect = painter.worldTransform().mapRect(source_rect)
-        width, height = abs(device_rect.width()), abs(device_rect.height())
+        width, height = int(abs(device_rect.width())), int(abs(device_rect.height()))
         
         # self._boundedCacheSize(
         #     abs(device_rect.width()), abs(device_rect.height())
