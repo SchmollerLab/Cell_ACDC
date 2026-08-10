@@ -34426,7 +34426,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         conversion_to_mp4_successful = True
         if self.exportToVideoPreferences['filepath'].endswith('.mp4'):
             try:
-                self.exportToVideoExporter.avi_to_mp4()
+                self.exportToVideoExporter.avi_to_mp4(
+                    crf=self.exportToVideoPreferences['crf']
+                    )
                 try:
                     os.remove(self.exportToVideoPreferences['avi_filepath'])
                 except Exception as err:
