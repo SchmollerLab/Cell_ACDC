@@ -129,6 +129,28 @@ CHECKBOX_OPTION_MUTUALLY_EXCLUSIVE_GROUPS = (
     ('Contours', 'Segm. masks'),
     ('IDs', 'Lineage info', 'Cell cycle info')
 )
+CHECKBOX_OPTION_TOOLTIPS = {
+    'Contours': '''Show contour outlines of segmentation masks. Customize 
+    appearance by right clicking on the image. By default, "internal" 
+    contours are not shown. This can be toggled by the option in the 
+    bottom left menu.''',
+    'Segm. masks': '''Show segmentation masks as a semi-transparent overlay. 
+    Customize by right clicking on the image.''',
+    'IDs': '''Show IDs of the current segmentation mask. Can be slow for many 
+    objects in a single frame''',
+    'Lineage info': '''Show information about the lineage for each displayed 
+    object, linked to the "Normal Division: Lineage Tree" mode.''',
+    'Cell cycle info': '''Show information about the lineage and cell cycle 
+    stage for each displayed object. Linked to the "Cell cycle analysis" mode 
+    for asymmetrically dividing cells.''',
+    'Mother-daughter line': '''Show lines between mothers and daughters, for both 
+    "Normal Division: Lineage Tree" and "Cell cycle analysis" mode. Customize 
+    by right clicking on the image.''',
+    'Object tracks': '''Show tracks of objects in current frame. Customize 
+    by right clicking on the bottom part of the GUI or through "Settings" in 
+    the top ribbon.'''
+}
+
 CHECKBOX_OPTION_DEFAULT_VALUES = {
     0: {'Contours', 'IDs'},
     1: {'Segm. masks', 'IDs'}
@@ -4078,6 +4100,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if checkbox is None:
                 continue
 
+            if name in CHECKBOX_OPTION_TOOLTIPS:
+                txt = CHECKBOX_OPTION_TOOLTIPS[name]
+                txt = html_utils.paragraph(txt)
+                checkbox.setToolTip(txt)
+
             self.annotOptionsCheckboxes[ax][name] = checkbox
             checkbox.sigToggled.connect(
                 partial(getattr(self, slot), ax=ax)
@@ -4176,7 +4203,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.updateViewBox(ax)
 
     def onLineageInfo(self, checked, checkbox, ax=0):
-        self.setAnnotInfoMode(checked)
+        self.textAnnot[ax].setLineageAnnot(checked)
+        if checked:
+            self.setAllTextAnnotations()
+        else:
+            self.textAnnot[ax].clear()
+            self.updateViewBox(ax)
 
     def onCellCycleInfo(self, checked, checkbox, ax=0):
         self.textAnnot[ax].setCcaAnnot(checked)
@@ -8788,6 +8820,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         acdc_df_frame.at[ID, 'parent_ID_tree'] = new_mother # update mother in the df, no need to propagate or stuff lile this
         # dont need to update alldata_li as acdc_df_frame is just a view
         self.drawAllLineageTreeLines()
+        self.setAllTextAnnotations()
 
     def annotate_unknown_lineage_action(self, posData, event, ydata, xdata):
         """
@@ -8814,6 +8847,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         acdc_df_frame = posData.allData_li[posData.frame_i]['acdc_df']
         acdc_df_frame.at[ID, 'parent_ID_tree'] = -1
         self.drawAllLineageTreeLines()
+        self.setAllTextAnnotations()
 
     def gui_addCreatedAxesItems(self):
         self.ax1.addItem(self.ax1_contoursImageItem)
@@ -33298,69 +33332,44 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lutItem.gradient.menu.addAction(action)
         lutItem.gradient.menu.addSeparator()
 
-        annotationMenu = lutItem.gradient.menu.addMenu('Annotations settings')
-        ID_menu = annotationMenu.addMenu('IDs')
-        self.annotSettingsIDmenu = QActionGroup(annotationMenu)
-        labID_action = QAction("Show label's ID")
-        labID_action.setCheckable(True)
-        labID_action.setChecked(True)
-        labID_action.toggled.connect(self.annotLabelIDtreeToggled)
-        treeID_action = QAction("Show tree's ID")
-        treeID_action.setCheckable(True)
-        treeID_action.toggled.connect(self.annotLabelIDtreeToggled)
-        self.annotSettingsIDmenu.addAction(labID_action)
-        self.annotSettingsIDmenu.addAction(treeID_action)
-        ID_menu.addAction(labID_action)
-        ID_menu.addAction(treeID_action)
+        # annotationMenu = lutItem.gradient.menu.addMenu('Annotations settings')
+        # ID_menu = annotationMenu.addMenu('IDs')
+        # self.annotSettingsIDmenu = QActionGroup(annotationMenu)
+        # labID_action = QAction("Show label's ID")
+        # labID_action.setCheckable(True)
+        # labID_action.setChecked(True)
+        # labID_action.toggled.connect(self.annotLabelIDtreeToggled)
+        # treeID_action = QAction("Show tree's ID")
+        # treeID_action.setCheckable(True)
+        # treeID_action.toggled.connect(self.annotLabelIDtreeToggled)
+        # self.annotSettingsIDmenu.addAction(labID_action)
+        # self.annotSettingsIDmenu.addAction(treeID_action)
+        # ID_menu.addAction(labID_action)
+        # ID_menu.addAction(treeID_action)
 
-        ID_menu = annotationMenu.addMenu('Generation number')
-        self.annotSettingsGenNumMenu = QActionGroup(annotationMenu)
-        gen_num_action = QAction("Show default generation number")
-        gen_num_action.setCheckable(True)
-        gen_num_action.setChecked(True)
-        gen_num_action.toggled.connect(self.annotGenNumTreeToggled)
-        tree_gen_num_action = QAction("Show tree generation number")
-        tree_gen_num_action.setCheckable(True)
-        tree_gen_num_action.toggled.connect(self.annotGenNumTreeToggled)
-        self.annotSettingsGenNumMenu.addAction(gen_num_action)
-        self.annotSettingsGenNumMenu.addAction(tree_gen_num_action)
-        ID_menu.addAction(gen_num_action)
-        ID_menu.addAction(tree_gen_num_action)
+        # ID_menu = annotationMenu.addMenu('Generation number')
+        # self.annotSettingsGenNumMenu = QActionGroup(annotationMenu)
+        # gen_num_action = QAction("Show default generation number")
+        # gen_num_action.setCheckable(True)
+        # gen_num_action.setChecked(True)
+        # gen_num_action.toggled.connect(self.annotGenNumTreeToggled)
+        # tree_gen_num_action = QAction("Show tree generation number")
+        # tree_gen_num_action.setCheckable(True)
+        # tree_gen_num_action.toggled.connect(self.annotGenNumTreeToggled)
+        # self.annotSettingsGenNumMenu.addAction(gen_num_action)
+        # self.annotSettingsGenNumMenu.addAction(tree_gen_num_action)
+        # ID_menu.addAction(gen_num_action)
+        # ID_menu.addAction(tree_gen_num_action)
 
-    def annotGenNumTreeToggled(self, checked):
-        self.textAnnot[0].setGenNumTreeAnnotationsEnabled(checked)
+    # def annotGenNumTreeToggled(self, checked):
+    #     self.textAnnot[0].setGenNumTreeAnnotationsEnabled(checked)
     
-    def annotLabelIDtreeToggled(self, checked):
-        self.textAnnot[0].setLabelTreeAnnotationsEnabled(checked)
+    # def annotLabelIDtreeToggled(self, checked):
+    #     self.textAnnot[0].setLabelTreeAnnotationsEnabled(checked)
 
     def setDoNotAnnotate(self, checked):
         self.annotDoNotAnntoateCheckbox(0).setChecked(checked)
         self.annotDoNotAnntoateCheckbox(1).setChecked(checked)
-
-    def setAnnotInfoMode(self, checked):
-        if checked:
-            for action in self.annotSettingsIDmenu.actions():
-                if action.text().find('tree') != -1:
-                    self.textAnnot[0].setLabelTreeAnnotationsEnabled(True)
-                    action.setChecked(True)
-                    break
-            for action in self.annotSettingsGenNumMenu.actions():
-                if action.text().find('tree') != -1:
-                    self.textAnnot[0].setGenNumTreeAnnotationsEnabled(True)
-                    action.setChecked(True)
-                    break
-        else:
-            for action in self.annotSettingsIDmenu.actions():
-                if action.text().find('tree') == -1:
-                    action.setChecked(False)
-                    self.textAnnot[0].setLabelTreeAnnotationsEnabled(False)
-                    break
-            for action in self.annotSettingsGenNumMenu.actions():
-                if action.text().find('tree') == -1:
-                    action.setChecked(False)
-                    self.textAnnot[0].setGenNumTreeAnnotationsEnabled(False)
-                    break
-        self.setAllTextAnnotations()
 
     def setEnabledAnnotCheckBoxesLeftZdepthAxes(self):
         if not self.isSegm3D:
@@ -33411,7 +33420,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             0: self.annotOptionsToRestore[0].copy(),
             1: self.annotOptionsToRestore[1].copy(),
         }
-        self.annotCellCycleInfoCheckbox(0).setChecked(True)
+        self.annotLineageInfoCheckbox(0).setChecked(True)
         self.annotIDsCheckbox(0).setChecked(False)
         self.annotMotherDaughterLineCheckbox(0).setChecked(True)
         

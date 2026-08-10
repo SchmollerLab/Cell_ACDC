@@ -31,17 +31,9 @@ font_bold_path = os.path.join(
 )
 
 def get_obj_text_label_annot(
-        obj, acdc_df: pd.DataFrame, is_tree_annot: bool, add_num_zslices: bool
+        obj, add_num_zslices: bool
     ) -> str:
-    if is_tree_annot and acdc_df is not None:
-        try:
-            annot_label = acdc_df.at[obj.label, 'Cell_ID_tree']
-        except Exception as err:
-            # print(traceback.format_exc())
-            annot_label = obj.label
-    else:
-        annot_label = obj.label
-    
+    annot_label = obj.label
     if not add_num_zslices:
         return str(annot_label)
     
@@ -49,62 +41,94 @@ def get_obj_text_label_annot(
     return f'{annot_label} ({num_z_slices})'
 
 def get_obj_text_cca_annot(
-        obj, acdc_df: pd.DataFrame, is_tree_annot: bool,     
-        moth_bud_pairs_cca=None
+        obj, acdc_df: pd.DataFrame,
+        moth_bud_pairs_cca=None,
+        is_tree_annot: bool=False,
     ) -> str:
-    ID = obj.label
-    try:
-        cca_df_obj = moth_bud_pairs_cca.loc[ID].copy()
-    except Exception as e:
-        try:
-            cca_df_obj = acdc_df.loc[ID]
-        except Exception as e:
-            return str(ID), None
     
-    try:
+    ID = obj.label
+    if not is_tree_annot:
+        if moth_bud_pairs_cca is not None and ID in moth_bud_pairs_cca.index:
+            cca_df_obj = moth_bud_pairs_cca.loc[ID]
+        elif ID in acdc_df.index:
+            cca_df_obj = acdc_df.loc[ID]
+        else:
+            return str(ID), None
+        
+        if 'cell_cycle_stage' not in cca_df_obj:
+            return str(ID), None
         ccs = cca_df_obj['cell_cycle_stage']
-    except Exception as err:
-        return str(ID), None 
 
-    try:
+        if 'generation_num' not in cca_df_obj:
+            return str(ID), None
         generation_num = int(cca_df_obj['generation_num'])
-    except Exception as e:
-        return str(ID), None
+    
+    else:
+        if ID not in acdc_df.index:
+            return str(ID), None
+        cca_df_obj = acdc_df.loc[ID]
+        
+        if 'Cell_ID_tree' in cca_df_obj:
+            displ_ID = cca_df_obj['Cell_ID_tree']
+        else:
+            displ_ID = ID
+        
+        if 'generation_num_tree' not in cca_df_obj:
+            return str(displ_ID), None
+        generation_num = cca_df_obj['generation_num_tree']
+        if generation_num is None or pd.isna(generation_num):
+            generation_num = -1
+        generation_num = int(generation_num)
     
     generation_num = 'ND' if generation_num==-1 else generation_num
-    if is_tree_annot:
-        try:
-            generation_num = cca_df_obj['generation_num_tree']
-        except Exception as e:
-            generation_num = generation_num
 
-    txt = f'{ccs}-{generation_num}'
+    if not is_tree_annot:
+        txt = f'{ccs}-{generation_num}'
+    else:
+        txt = f'{displ_ID} ({generation_num})'
 
     is_history_known = cca_df_obj['is_history_known']
-    if not is_history_known:
+    if pd.notna(is_history_known) and not is_history_known:
         txt = f'{txt}?'
 
     return txt, cca_df_obj
 
+def get_obj_color_cca_annot(cca_df_obj, frame_i):    
+    ccs = cca_df_obj['cell_cycle_stage']
+    relationship = cca_df_obj['relationship']
+    is_bud = relationship == 'bud'
+    emerg_frame_i = int(cca_df_obj['emerg_frame_i'])
+    bud_emerged_now = (emerg_frame_i == frame_i) and is_bud
+
+    bold = bud_emerged_now
+
+    # Check if it will divide to use orange instead of red
+    bud_will_divide = False
+    if ccs == 'S' and is_bud:
+        bud_will_divide = cca_df_obj['will_divide'] > 0
+
+    if bud_will_divide:
+        color_name = 'bud_will_divide'
+    elif ccs == 'S':
+        if relationship == 'mother':
+            color_name = 'S_phase_mother'
+        else:
+            color_name = 'S_phase_bud'
+    elif ccs == 'G1':
+        color_name = 'G1_phase'
+        
+    return color_name, bold
+
 def get_obj_text_annot_opts(
         obj, acdc_df: pd.DataFrame, is_cca_annot: bool, is_new_obj: bool, 
-        add_num_zslices: bool, is_label_tree_annot: bool, 
-        is_gen_num_tree_annot: bool, frame_i: int,
-        moth_bud_pairs_cca=None
+        add_num_zslices: bool, is_lineage_annot: bool, 
+        frame_i: int, moth_bud_pairs_cca=None
     ) -> dict: 
-    if acdc_df is None or not is_cca_annot:
-        bold = False
-        if is_new_obj:
-            color_name = 'new_object'
-        else:
-            color_name = 'label'
-        text = get_obj_text_label_annot(
-            obj, acdc_df, is_label_tree_annot, add_num_zslices
-        )
-    else:
+    if acdc_df is not None and is_cca_annot:
         text, cca_df_obj = get_obj_text_cca_annot(
-            obj, acdc_df, is_gen_num_tree_annot, 
-            moth_bud_pairs_cca=moth_bud_pairs_cca
+            obj, acdc_df,
+            moth_bud_pairs_cca=moth_bud_pairs_cca,
+            is_tree_annot=False
         )
         if cca_df_obj is None:
             if is_new_obj:
@@ -114,28 +138,36 @@ def get_obj_text_annot_opts(
             opts = {'text': text, 'color_name': color_name, 'bold': False}
             return opts
         
-        ccs = cca_df_obj['cell_cycle_stage']
-        relationship = cca_df_obj['relationship']
-        is_bud = relationship == 'bud'
-        emerg_frame_i = int(cca_df_obj['emerg_frame_i'])
-        bud_emerged_now = (emerg_frame_i == frame_i) and is_bud
-
-        bold = bud_emerged_now
-
-        # Check if it will divide to use orange instead of red
-        bud_will_divide = False
-        if ccs == 'S' and is_bud:
-            bud_will_divide = cca_df_obj['will_divide'] > 0
-
-        if bud_will_divide:
-            color_name = 'bud_will_divide'
-        elif ccs == 'S':
-            if relationship == 'mother':
-                color_name = 'S_phase_mother'
+        color_name, bold = get_obj_color_cca_annot(cca_df_obj, frame_i)
+            
+    elif acdc_df is not None and is_lineage_annot:
+        text, cca_df_obj = get_obj_text_cca_annot(
+            obj, acdc_df,
+            is_tree_annot=True
+        )
+        if cca_df_obj is None:
+            if is_new_obj:
+                color_name = 'new_object'
             else:
-                color_name = 'S_phase_bud'
-        elif ccs == 'G1':
-            color_name = 'G1_phase'
+                color_name = 'label'
+            opts = {'text': text, 'color_name': color_name, 'bold': False}
+            return opts
+        
+        bold = is_new_obj and (cca_df_obj['parent_ID_tree'] == -1)
+        if is_new_obj:
+            color_name = 'new_object'
+        else:
+            color_name = 'label'
+        
+    else:
+        bold = False
+        if is_new_obj:
+            color_name = 'new_object'
+        else:
+            color_name = 'label'
+        text = get_obj_text_label_annot(
+            obj, add_num_zslices
+        )
         
     opts = {'text': text, 'color_name': color_name, 'bold': bold}
 
@@ -594,9 +626,7 @@ class TextAnnotations:
         self._isLabelAnnot = False
         self._isCcaAnnot = False
         self._isAnnotateNumZslices = False
-        self._isLabelTreeAnnotation = False
-        self._isGenNumTreeAnnotation = False
-        self._isGenNumTreeAnnotation = False
+        self._isLineageAnnot = False
     
     def initFonts(self, fontSize):
         self.fontSize = fontSize
@@ -706,8 +736,7 @@ class TextAnnotations:
         getObjCentroidFunc = kwargs.get('getObjCentroidFunc')
         isCcaAnnot = self.isCcaAnnot()
         isAnnotateNumZslices = self.isAnnotateNumZslices()
-        isLabelTreeAnnotation = self.isLabelTreeAnnotation()
-        isGenNumTreeAnnotation = self.isGenNumTreeAnnotation()
+        isLineageAnnot = self.isLineageAnnot()
         rp_func = kwargs.get('rp_func')
         rp3D = kwargs.get('rp3D')
         updateAllTextAnnotations = kwargs.get('updateAllTextAnnotations', True)
@@ -748,8 +777,8 @@ class TextAnnotations:
             
             objOpts = get_obj_text_annot_opts(
                 obj, acdc_df, isCcaAnnot, isNewObject,
-                isAnnotateNumZslices, isLabelTreeAnnotation, 
-                isGenNumTreeAnnotation, posData.frame_i,
+                isAnnotateNumZslices, isLineageAnnot,
+                posData.frame_i,
                 moth_bud_pairs_cca=moth_bud_pairs_cca
             )
             
@@ -840,7 +869,7 @@ class TextAnnotations:
         self.item.grayOutAnnotations(IDsToSkip=IDsToSkip)
 
     def isDisabled(self):
-        _isEnabled = self._isLabelAnnot or self._isCcaAnnot
+        _isEnabled = self._isLabelAnnot or self._isCcaAnnot or self._isAnnotateNumZslices or self._isLineageAnnot
         return (not _isEnabled)
     
     def setColors(
@@ -889,17 +918,11 @@ class TextAnnotations:
     def isAnnotateNumZslices(self):
         return self._isAnnotateNumZslices
     
-    def setLabelTreeAnnotationsEnabled(self, isTreeAnnotations):
-        self._isLabelTreeAnnotation = isTreeAnnotations
+    def setLineageAnnot(self, isTreeAnnotations):
+        self._isLineageAnnot = isTreeAnnotations
     
-    def setGenNumTreeAnnotationsEnabled(self, isTreeAnnotations):
-        self._isGenNumTreeAnnotation = isTreeAnnotations
-    
-    def isLabelTreeAnnotation(self):
-        return self._isLabelTreeAnnotation
-
-    def isGenNumTreeAnnotation(self):
-        return self._isGenNumTreeAnnotation
+    def isLineageAnnot(self):
+        return self._isLineageAnnot
     
     def setPxMode(self, mode):
         self.item.setPxMode(mode)
