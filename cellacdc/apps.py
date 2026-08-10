@@ -9442,21 +9442,25 @@ class editCcaTableWidget(QDialog):
         return changes
 
     def applyToFutureFrames(self):        
-        txt = 'Enter <b>up to which frame</b> you want to apply the changes<br>'
+        txt = 'Enter <b>up to which frame number</b> you want to apply the changes<br>'
         win = NumericEntryDialog(
-            title='Stop frame', instructions=txt, parent=self, minValue=1, 
-            maxValue=self.SizeT, currentValue=self.current_frame_i
+            title='Stop frame', 
+            instructions=txt, 
+            parent=self, 
+            minValue=1, 
+            maxValue=self.SizeT, 
+            currentValue=self.current_frame_i+1
         )
         win.exec_()
         if win.cancel:
             return
         
-        stop_frame_i = win.value
+        stop_frame_n = win.value
         changes = self.getChanges()
         changes_format = myutils.format_cca_manual_changes(changes)
         detailsText = (
             f'Changes that will be applied from frame n. {self.current_frame_i+1}'
-            f' to frame n. {stop_frame_i+1}:\n\n{changes_format}'
+            f' to frame n. {stop_frame_n}:\n\n{changes_format}'
         )
         txt = html_utils.paragraph("""
 Use this feature with <b>caution</b>!<br><br>
@@ -9471,7 +9475,7 @@ will be applied (see below).<br><br>
         if msg.cancel:
             return
         
-        self.sigApplyChangesFutureFrames.emit(changes, stop_frame_i)     
+        self.sigApplyChangesFutureFrames.emit(changes, stop_frame_n)     
     
     def moreInfo(self, checked=True):
         desc = myutils.get_cca_colname_desc()
@@ -10278,6 +10282,9 @@ class NumericEntryDialog(QBaseDialog):
             entryLayout.addStretch(1)
             entryLayout.addWidget(self.entryWidget)
             entryLayout.addStretch(1)
+            entryLayout.setStretch(0, 1)
+            entryLayout.setStretch(1, 1)
+            entryLayout.setStretch(2, 1)
         
         mainLayout.addLayout(entryLayout)
         mainLayout.addSpacing(20)
