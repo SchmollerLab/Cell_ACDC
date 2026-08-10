@@ -22125,10 +22125,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.navigateScrollBar.setSliderPosition(value)
             self.navigateScrollBarStartedMoving = True
             self.PosScrollBarMoved(value)
-        # else:
-        #     self.navigateScrollBarStartedMoving = True
-        #     self.framesScrollBarMoved(value)
-    
+        else:
+            self.navigateScrollBar.setValueNoSignal(value)
+
     def navigateSpinboxEditingFinished(self):
         if self.isSnapshot:
             self.PosScrollBarReleased()
