@@ -22121,13 +22121,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setAllIDs()
 
     def navigateSpinboxValueChanged(self, value):
-        self.navigateScrollBar.setSliderPosition(value)
-        if self.isSnapshot:
+        if self.isSnapshot:        
+            self.navigateScrollBar.setSliderPosition(value)
             self.navigateScrollBarStartedMoving = True
             self.PosScrollBarMoved(value)
-        else:
-            self.navigateScrollBarStartedMoving = True
-            self.framesScrollBarMoved(value)
+        # else:
+        #     self.navigateScrollBarStartedMoving = True
+        #     self.framesScrollBarMoved(value)
     
     def navigateSpinboxEditingFinished(self):
         if self.isSnapshot:
@@ -35853,7 +35853,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             (newX0, newX1), (newY0, newY1), emitSignal=False
         )
         
-    @debugutils.line_benchmark
     def viewRangeChanged(self, viewBox, viewRange, updateExportImageMask=True):
         # self.updateViewRangeExportToImage(viewRange) 
         self.updateValuesStatusBar()

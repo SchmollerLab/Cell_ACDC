@@ -343,19 +343,25 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         rendered_font_px = max(self.fontSize / target_zoom, 1.0)
         return max(int(round(rendered_font_px / 2.0) * 2), 1)
 
-    def _boundedCacheSize(self, width, height):
-        max_dim = 4096
-        max_pixels = 12_000_000
-        width = max(int(math.ceil(width)), 1)
-        height = max(int(math.ceil(height)), 1)
+    # def _boundedCacheSize(self, width, height):
+    #     max_dim = 4096
+    #     max_pixels = 12_000_000
+    #     # Round up input dimensions (ensure positive integers)
+    #     width = max(int(math.ceil(width)), 1)
+    #     height = max(int(math.ceil(height)), 1)
 
-        scale = min(max_dim / width, max_dim / height, 1.0)
-        if width * height > max_pixels:
-            scale = min(scale, math.sqrt(max_pixels / (width * height)))
+    #     # Calculate scale factor to keep both dimensions ≤ 4096
+    #     scale = min(max_dim / width, max_dim / height, 1.0)
 
-        width = max(int(math.ceil(width * scale)), 1)
-        height = max(int(math.ceil(height * scale)), 1)
-        return width, height
+    #     # If total pixels exceed 12M, reduce scale further
+    #     if width * height > max_pixels:
+    #         scale = min(scale, math.sqrt(max_pixels / (width * height)))
+
+    #     # Apply the scale and ensure dimensions stay ≥ 1
+    #     width = max(int(math.ceil(width * scale)), 1)
+    #     height = max(int(math.ceil(height * scale)), 1)
+
+    #     return width, height
 
     def _expandedCacheRect(self, exposed_rect):
         if exposed_rect.isNull():
@@ -366,6 +372,35 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             -x_margin, -y_margin, x_margin, y_margin
         )
         return expanded_rect.intersected(self._boundingRect)
+
+    def _drawSubset(self, painter, source_rect):
+        if source_rect.isNull():
+            return
+
+        for objData in self.annotData:
+            text_rect = objData.get('_rect')
+            if text_rect is not None and not text_rect.intersects(source_rect):
+                continue
+
+            text = objData.get('text')
+            if text is None:
+                continue
+
+            font = self.fontBold if objData.get('bold') else self.fontRegular
+            painter.setFont(font)
+            color = self._colors.get(objData.get('color_name'), (255, 255, 255, 255))
+            painter.setPen(QColor(*color))
+
+            draw_pos = objData.get('_draw_pos')
+            if draw_pos is None:
+                x, y = objData['pos']
+                fm = painter.fontMetrics()
+                rect = fm.boundingRect(text)
+                draw_pos = QPointF(
+                    x - rect.width() / 2,
+                    y + rect.height() / 2 - fm.descent(),
+                )
+            painter.drawText(draw_pos, text)
 
     def _refreshCachedPicture(self, painter, target_zoom, source_rect, zoom_bucket):
         if (
@@ -380,9 +415,11 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             return
 
         device_rect = painter.worldTransform().mapRect(source_rect)
-        width, height = self._boundedCacheSize(
-            abs(device_rect.width()), abs(device_rect.height())
-        )
+        width, height = abs(device_rect.width()), abs(device_rect.height())
+        
+        # self._boundedCacheSize(
+        #     abs(device_rect.width()), abs(device_rect.height())
+        # )
 
         cached_picture = QImage(
             width, height, QImage.Format.Format_ARGB32_Premultiplied
@@ -403,7 +440,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         transform.scale(scale_x, scale_y)
         transform.translate(-source_rect.left(), -source_rect.top())
         cache_painter.setWorldTransform(transform)
-        cache_painter.drawPicture(0, 0, self.picture)
+        self._drawSubset(cache_painter, source_rect)
         cache_painter.end()
 
         self.cached_picture = cached_picture
@@ -436,6 +473,14 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             draw_y = y + rect.height() / 2 - fm.descent()
             painter.drawText(QPointF(draw_x, draw_y), text)
 
+            objData['_draw_pos'] = QPointF(draw_x, draw_y)
+            objData['_rect'] = QRectF(
+                draw_x,
+                draw_y - rect.height() + fm.descent(),
+                rect.width(),
+                rect.height(),
+            )
+
             xs.extend([x - rect.width() / 2, x + rect.width() / 2])
             ys.extend([y - rect.height() / 2, y + rect.height() / 2])
 
@@ -449,7 +494,6 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         self.prepareGeometryChange()
         self.update()
 
-    @debugutils.line_benchmark
     def paint(self, painter, *args):
         if self.picture.isNull() or self._boundingRect.isNull():
             return
