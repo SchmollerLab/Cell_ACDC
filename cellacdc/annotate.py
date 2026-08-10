@@ -414,12 +414,13 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             self._zoomBucket = None
             return
 
-        device_rect = painter.worldTransform().mapRect(source_rect)
+        # Expand the draw rect by one font-size in data units on each side so
+        # labels near the cache boundary are not clipped.
+        font_pad = self.fontSize * target_zoom
+        draw_rect = source_rect.adjusted(-font_pad, -font_pad, font_pad, font_pad)
+
+        device_rect = painter.worldTransform().mapRect(draw_rect)
         width, height = int(abs(device_rect.width())), int(abs(device_rect.height()))
-        
-        # self._boundedCacheSize(
-        #     abs(device_rect.width()), abs(device_rect.height())
-        # )
 
         cached_picture = QImage(
             width, height, QImage.Format.Format_ARGB32_Premultiplied
@@ -434,17 +435,17 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             return
 
         cache_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        scale_x = width / source_rect.width()
-        scale_y = height / source_rect.height()
+        scale_x = width / draw_rect.width()
+        scale_y = height / draw_rect.height()
         transform = QTransform()
         transform.scale(scale_x, scale_y)
-        transform.translate(-source_rect.left(), -source_rect.top())
+        transform.translate(-draw_rect.left(), -draw_rect.top())
         cache_painter.setWorldTransform(transform)
-        self._drawSubset(cache_painter, source_rect)
+        self._drawSubset(cache_painter, draw_rect)
         cache_painter.end()
 
         self.cached_picture = cached_picture
-        self._cached_view_rect = source_rect
+        self._cached_view_rect = draw_rect
         self._zoomBucket = zoom_bucket
         self.zoom = target_zoom
 
@@ -486,10 +487,14 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
 
         painter.end()
 
-        self._boundingRect = (
-            QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
-            if xs else QRectF()
-        )
+        if xs:
+            pad = max(2, self.fontSize // 4)
+            self._boundingRect = QRectF(
+                min(xs) - pad, min(ys) - pad,
+                max(xs) - min(xs) + 2 * pad, max(ys) - min(ys) + 2 * pad,
+            )
+        else:
+            self._boundingRect = QRectF()
         self._invalidateCache()
         self.prepareGeometryChange()
         self.update()
