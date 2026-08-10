@@ -159,34 +159,34 @@ class VideoExporter:
     def release(self):
         self.writer.release()
     
-    def avi_to_mp4(self):
-        avi_to_mp4(self._avi_filepath)
+    def avi_to_mp4(self, crf=18):
+        avi_to_mp4(self._avi_filepath, crf=crf)
 
-def avi_to_mp4(in_filepath_avi, out_filepath_mp4=None):
-    ffmep_exec_path = myutils.download_ffmpeg()
+def avi_to_mp4(in_filepath_avi, out_filepath_mp4=None, crf=18):
+    ffmpeg_exec_path = myutils.download_ffmpeg()
     
     if out_filepath_mp4 is None:
         out_filepath_mp4 = in_filepath_avi.replace('.avi', '.mp4')
     
-    ffmep_exec_path = ffmep_exec_path.replace('\\', '/')
+    ffmpeg_exec_path = ffmpeg_exec_path.replace('\\', '/')
     out_filepath_mp4 = out_filepath_mp4.replace('\\', '/')
     in_filepath_avi = in_filepath_avi.replace('\\', '/')
     
     args = [
         '-i', f'{in_filepath_avi}', '-c:v', 'libx264', 
-        '-crf', '18', '-an', f'{out_filepath_mp4}'
+        '-crf', str(crf), '-an', f'{out_filepath_mp4}'
     ]
     
-    _run_ffmpeg(ffmep_exec_path, args)
+    _run_ffmpeg(ffmpeg_exec_path, args)
 
-def _run_ffmpeg(ffmep_exec_path, command_args):
+def _run_ffmpeg(ffmpeg_exec_path, command_args):
     import subprocess, os
     
     command_args_no_quotes = [
         arg.replace('"', '').replace("'", '') for arg in command_args
     ]
     full_command = ' '.join(command_args_no_quotes)
-    full_command = f'{ffmep_exec_path} {full_command}'
+    full_command = f'{ffmpeg_exec_path} {full_command}'
     
     separator = '-'*100
     print(

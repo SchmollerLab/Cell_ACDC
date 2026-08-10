@@ -16503,6 +16503,40 @@ class ExportToVideoParametersDialog(QBaseDialog):
             self.saveFramesToggle, row, 1, alignment=Qt.AlignCenter
         )
         
+        if isTimelapseVideo:
+            row += 1
+            gridLayout.addWidget(QLabel('Video compression quality preset (crf)'), row, 0)
+            self.crf_widget = widgets.IntLineEdit(allowNegative=False, initial=23, 
+                                                minimum=0, maximum=51)
+            gridLayout.addWidget(self.crf_widget, row, 1)
+            info_txt = """
+            The range of the CRF scale is 0-51, where 0 is lossless (for 8 bit 
+            only, for 10 bit use -qp 0), 23 is the default, and 51 is worst 
+            quality possible. A lower value generally leads to higher quality, 
+            and a subjectively sane range is 17-28. Consider 17 or 18 to be 
+            visually lossless or nearly so; it should look the same or nearly 
+            the same as the input but it isn't technically lossless.
+            <br><br>
+            The range is exponential, so increasing the CRF value 
+            +6 results in roughly half the bitrate / file size, while -6 leads 
+            to roughly twice the bitrate.
+            <br><br>
+            Choose the highest CRF value that still provides an acceptable 
+            quality. If the output looks good, then try a higher value. If it 
+            looks bad, choose a lower value.
+            <br><br>
+            For more information, see 
+            <a href="https://trac.ffmpeg.org/wiki/Encode/H.264#crf">
+            this page</a>.
+            """
+            infobutton = widgets.infoPushButton(
+                info_text=info_txt, 
+                info_title='CRF information'
+                )
+            gridLayout.addWidget(infobutton, row, 2)
+        else:
+            self.crf_widget = None
+        
         gridLayout.setColumnStretch(0, 0)
         gridLayout.setColumnStretch(1, 1)
         gridLayout.setColumnStretch(2, 0)
@@ -16603,6 +16637,7 @@ class ExportToVideoParametersDialog(QBaseDialog):
             'save_pngs':  self.saveFramesToggle.isChecked(),
             'is_timelapse': self.isTimelapseVideo,
             'dpi': self.dpiWidget.value(),
+            'crf': self.crf_widget.value() if self.crf_widget is not None else None
         }
         return preferences
     

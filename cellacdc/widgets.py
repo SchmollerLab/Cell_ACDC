@@ -485,8 +485,36 @@ class viewPushButton(PushButton):
 
 class infoPushButton(PushButton):
     def __init__(self, *args, **kwargs):
+        """
+        Button for displaying info. Provide `info_text` in kwargs to display a 
+        message box with the info text when clicked.
+        Provide `info_title` in kwargs to set the title of the message box. If 
+        `info_text` is not provided, the button will not display any message 
+        box.
+        """
+        if 'info_text' in kwargs:
+            self.info_text = kwargs.pop('info_text')
+        else:
+            self.info_text = None
+        if 'info_title' in kwargs:
+            self.info_title = kwargs.pop('info_title')
+        else:
+            self.info_title = 'Information'
+
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':info.svg'))
+        if self.info_text is not None:
+            self.clicked.connect(self.show_info)
+
+        
+    def show_info(self):
+        if self.info_text is None:
+            return
+        msg = myMessageBox(parent=self.parent())
+        txt = html_utils.paragraph(self.info_text)
+        msg.information(
+            self, self.info_title, txt
+        )
 
 class threeDPushButton(PushButton):
     def __init__(self, *args, **kwargs):
@@ -4401,7 +4429,7 @@ class FloatLineEdit(QLineEdit):
             self.setValue(0)  
     
     def setDecimals(self, decimals):
-        self._decimals = 6
+        self._decimals = decimals
 
     def castMinMax(self, value: int):
         if value > self._maximum:
@@ -4456,15 +4484,17 @@ class IntLineEdit(QLineEdit):
 
     def __init__(
             self, *args, notAllowed=None, allowNegative=True, initial=None,
-            readOnly=False
+            readOnly=False, maximum=None, minimum=None
         ):
         QLineEdit.__init__(self, *args)
         self.notAllowed = notAllowed
         if readOnly:
             self.setReadOnly(readOnly)
 
-        self._maximum = np.inf
-        self._minimum = -np.inf
+        maximum = maximum if maximum is not None else np.inf
+        minimum = minimum if minimum is not None else -np.inf
+        self._maximum = maximum
+        self._minimum = minimum
         
         self._regExp = r'\d+'
         if allowNegative:
