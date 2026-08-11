@@ -288,6 +288,8 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         self.cached_picture = None
         self._cached_view_rect = QRectF()
         self._curr_zoom_bucket = None
+        self._rectsZoomBucket = None
+        self._pictureTargetZoom = None
         
     # ---- setup / config, API-compatible no-ops where the atlas is gone ----
 
@@ -450,21 +452,86 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             return
 
         for objData in self.annotData:
-            text_rect = objData.get('_rect')
-            if text_rect is not None and not text_rect.intersects(source_rect):
-                continue
-
             text = objData.get('text')
             if text is None:
                 continue
 
             font = self._font_for(objData, target_zoom=target_zoom)
             painter.setFont(font)
+            draw_pos, rect, fm = self._draw_pos_for(painter, objData, text)
+            text_rect = QRectF(
+                draw_pos.x(),
+                draw_pos.y() - rect.height() + fm.descent(),
+                rect.width(),
+                rect.height(),
+            )
+            if not text_rect.intersects(source_rect):
+                continue
+
             color = self._colors.get(objData.get('color_name'), (255, 255, 255, 255))
             painter.setPen(QColor(*color))
-
-            draw_pos, _, _ = self._draw_pos_for(painter, objData, text)
             painter.drawText(draw_pos, text)
+
+    def _textRectForObj(self, painter, objData, text, target_zoom=None):
+        painter.setFont(self._font_for(objData, target_zoom=target_zoom))
+        draw_pos, rect, fm = self._draw_pos_for(painter, objData, text)
+        return QRectF(
+            draw_pos.x(),
+            draw_pos.y() - rect.height() + fm.descent(),
+            rect.width(),
+            rect.height(),
+        )
+
+    def _doesAnyTextTouchCurrentBounds(self, painter, target_zoom=None):
+        if self._boundingRect.isNull():
+            return True
+
+        left = self._boundingRect.left()
+        right = self._boundingRect.right()
+        top = self._boundingRect.top()
+        bottom = self._boundingRect.bottom()
+        eps = 0.5
+
+        for idx, objData in enumerate(self.annotData):
+            text = objData.get('text')
+            if text is None and idx < len(self.texts):
+                text = self.texts[idx]
+            if not text:
+                continue
+
+            text_rect = self._textRectForObj(
+                painter, objData, text, target_zoom=target_zoom
+            )
+            touches_outline = (
+                text_rect.left() <= left + eps
+                or text_rect.right() >= right - eps
+                or text_rect.top() <= top + eps
+                or text_rect.bottom() >= bottom - eps
+            )
+            if touches_outline:
+                return True
+
+        return False
+
+    def _cachePaddingFor(self, painter, target_zoom=None):
+        # Use measured text extents so long labels are not clipped when
+        # the cache is generated for only a subset of the visible area.
+        max_half_width = 0.0
+        max_half_height = 0.0
+        for objData in self.annotData:
+            text = objData.get('text')
+            if not text:
+                continue
+
+            painter.setFont(self._font_for(objData, target_zoom=target_zoom))
+            rect = painter.fontMetrics().boundingRect(text)
+            max_half_width = max(max_half_width, rect.width() / 2)
+            max_half_height = max(max_half_height, rect.height() / 2)
+
+        base_pad = max(self._effective_font_size(target_zoom), 1.0)
+        x_pad = max(base_pad, max_half_width + 2.0)
+        y_pad = max(base_pad, max_half_height + 2.0)
+        return x_pad, y_pad
 
     def _refreshCachedPicture(self, painter, target_zoom, source_rect, zoom_bucket):
         if (
@@ -478,13 +545,27 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             self._zoomBucket = None
             return
 
-        # Expand the draw rect by one font-size in data units on each side so
-        # labels near the cache boundary are not clipped.
-        font_pad = self._effective_font_size(target_zoom)
-        draw_rect = source_rect.adjusted(-font_pad, -font_pad, font_pad, font_pad)
+        x_pad, y_pad = self._cachePaddingFor(painter, target_zoom=target_zoom)
+        draw_rect = source_rect.adjusted(-x_pad, -y_pad, x_pad, y_pad)
 
         device_rect = painter.worldTransform().mapRect(draw_rect)
-        width, height = int(abs(device_rect.width())), int(abs(device_rect.height()))
+        logical_width = abs(device_rect.width())
+        logical_height = abs(device_rect.height())
+        if logical_width <= 0 or logical_height <= 0:
+            self.cached_picture = None
+            self._cached_view_rect = QRectF()
+            self._zoomBucket = None
+            return
+
+        device = painter.device()
+        if device is not None and hasattr(device, 'devicePixelRatioF'):
+            dpr = float(device.devicePixelRatioF())
+        else:
+            dpr = 1.0
+        dpr = max(dpr, 1.0)
+
+        width = max(int(round(logical_width * dpr)), 1)
+        height = max(int(round(logical_height * dpr)), 1)
 
         cached_picture = QImage(
             width, height, QImage.Format.Format_ARGB32_Premultiplied
@@ -499,8 +580,8 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             return
 
         cache_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        scale_x = width / draw_rect.width()
-        scale_y = height / draw_rect.height()
+        scale_x = (logical_width * dpr) / draw_rect.width()
+        scale_y = (logical_height * dpr) / draw_rect.height()
         transform = QTransform()
         transform.scale(scale_x, scale_y)
         transform.translate(-draw_rect.left(), -draw_rect.top())
@@ -521,7 +602,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         painter = QPainter(self.picture)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        xs, ys = [], []
+        rects = []
         for idx, objData in enumerate(self.annotData):
             text = objData.get('text')
             if text is None and idx < len(self.texts):
@@ -532,9 +613,6 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             color = self._colors.get(objData.get('color_name'), (255, 255, 255, 255))
             painter.setPen(QColor(*color))
 
-            x, y = objData['pos']
-            fm = painter.fontMetrics()
-            rect = fm.boundingRect(text)
             # Center the text on (x, y), matching the 'mm' anchor used by
             # the low-res PIL-based item.
             draw_pos, rect, fm = self._draw_pos_for(painter, objData, text)
@@ -547,20 +625,20 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
                 rect.width(),
                 rect.height(),
             )
-
-            xs.extend([x - rect.width() / 2, x + rect.width() / 2])
-            ys.extend([y - rect.height() / 2, y + rect.height() / 2])
+            rects.append(objData['_rect'])
 
         painter.end()
 
-        if xs:
+        if rects:
             pad = max(2, self.fontSize // 4)
-            self._boundingRect = QRectF(
-                min(xs) - pad, min(ys) - pad,
-                max(xs) - min(xs) + 2 * pad, max(ys) - min(ys) + 2 * pad,
-            )
+            bounds = QRectF(rects[0])
+            for rect in rects[1:]:
+                bounds = bounds.united(rect)
+            self._boundingRect = bounds.adjusted(-pad, -pad, pad, pad)
         else:
             self._boundingRect = QRectF()
+        self._rectsZoomBucket = self._zoomBucketFor(target_zoom)
+        self._pictureTargetZoom = target_zoom
         self._invalidateCache()
         self.prepareGeometryChange()
         self.update()
@@ -571,6 +649,37 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
 
         viewbox = self.getViewBox()
         target_zoom = viewbox.viewPixelSize()[0] if viewbox is not None else None
+        zoom_bucket = self._zoomBucketFor(target_zoom)
+        bucket_changed = (
+            self._scaling
+            and zoom_bucket is not None
+            and self._rectsZoomBucket != zoom_bucket
+        )
+        if bucket_changed:
+            prev_bucket = self._rectsZoomBucket
+            is_zooming_out = (
+                prev_bucket is not None
+                and zoom_bucket < prev_bucket
+            )
+            touching = self._doesAnyTextTouchCurrentBounds(
+                painter, target_zoom=target_zoom
+            )
+            if is_zooming_out and touching:
+                # Rebuild only when zooming out pushes text against the
+                # current annotation bounds.
+                self._generatePicture(target_zoom=target_zoom)
+            else:
+                # No boundary risk at this bucket: avoid costly full redraw.
+                self._rectsZoomBucket = zoom_bucket
+                self._pictureTargetZoom = target_zoom
+
+        render_zoom = target_zoom
+        if self._scaling and self._pictureTargetZoom is not None:
+            # If we skipped picture regeneration, keep rendering text at the
+            # existing picture zoom to accept pixelation without geometry
+            # mismatches that can hide labels.
+            render_zoom = self._pictureTargetZoom
+
         visible_rect = (
             viewbox.viewRect().intersected(self._boundingRect)
             if viewbox is not None else self._boundingRect
@@ -578,7 +687,6 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         if visible_rect.isNull():
             return
 
-        zoom_bucket = self._zoomBucketFor(target_zoom)
         if (
             self.cached_picture is None
             or zoom_bucket is None
@@ -586,7 +694,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             or not self._cached_view_rect.contains(visible_rect)
         ):
             cache_rect = self._expandedCacheRect(visible_rect)
-            self._refreshCachedPicture(painter, target_zoom, cache_rect, zoom_bucket)
+            self._refreshCachedPicture(painter, render_zoom, cache_rect, zoom_bucket)
 
         if self.cached_picture is None:
             painter.drawPicture(0, 0, self.picture)
