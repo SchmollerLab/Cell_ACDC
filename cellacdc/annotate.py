@@ -82,7 +82,7 @@ def get_obj_text_cca_annot(
         generation_num = cca_df_obj['generation_num_tree']
         if generation_num is None or pd.isna(generation_num):
             generation_num = -1
-        generation_num = int(generation_num)
+        generation_num = int(float(generation_num))
     
     generation_num = 'ND' if generation_num==-1 else generation_num
 
@@ -275,6 +275,9 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         super().__init__()
         self._pxMode = pxMode
         self._scaling = scalingMode
+        self._exporting = False
+        self._exportTargetZoom = None
+        self._forcedExportZoom = None
         self._anchor = anchor
         self.picture = QPicture()
         self._boundingRect = QRectF()
@@ -334,6 +337,35 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         if self._scaling == scaling_new:
             return
         self._scaling = scaling_new
+        self._invalidateCache()
+
+    def setExportZoom(self, zoom):
+        if zoom is None:
+            self._forcedExportZoom = None
+            return
+        try:
+            zoom = float(zoom)
+        except (TypeError, ValueError):
+            self._forcedExportZoom = None
+            return
+        self._forcedExportZoom = zoom if zoom > 0 else None
+
+    def setExportMode(self, export, opts=None):
+        self._exporting = bool(export)
+        if not export:
+            self._exportTargetZoom = None
+            return
+
+        # Capture zoom before export rendering starts. During SVG item painting
+        # the viewbox can be unavailable, so this keeps scaling behavior stable.
+        self._exportTargetZoom = self._forcedExportZoom
+        if self._exportTargetZoom is None:
+            self._exportTargetZoom = self._currentViewZoom()
+
+        # Exporters provide a painter with a different transform stack than the
+        # interactive view. The cached subset/image path reconstructs that
+        # transform approximately and can shift or mis-scale text, so export
+        # should always use direct vector/text drawing instead.
         self._invalidateCache()
 
     def setColors(self, colors):
@@ -454,8 +486,8 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         )
         return expanded_rect.intersected(self._boundingRect)
 
-    def _drawSubset(self, painter, source_rect, target_zoom=None):
-        if source_rect.isNull():
+    def _drawSubset(self, painter, source_rect=None, target_zoom=None):
+        if source_rect is not None and source_rect.isNull():
             return
 
         for objData in self.annotData:
@@ -472,7 +504,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
                 rect.width(),
                 rect.height(),
             )
-            if not text_rect.intersects(source_rect):
+            if source_rect is not None and not text_rect.intersects(source_rect):
                 continue
 
             color = self._colors.get(objData.get('color_name'), (255, 255, 255, 255))
@@ -653,8 +685,25 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         self.update()
 
     def paint(self, painter, *args):
-        if self.picture.isNull() or self._boundingRect.isNull():
+        if self._boundingRect.isNull() or not self.annotData:
             return
+
+        if self._exporting:
+            target_zoom = None
+            if self._scaling:
+                target_zoom = self._exportTargetZoom
+                if target_zoom is None:
+                    target_zoom = self._currentViewZoom()
+
+            # Draw directly in export mode so font sizing is evaluated against
+            # the export painter state instead of replayed picture commands.
+            self._drawSubset(painter, source_rect=None, target_zoom=target_zoom)
+            return
+
+        if self.picture.isNull():
+            self._generatePicture()
+            if self.picture.isNull():
+                return
 
         viewbox = self.getViewBox()
         target_zoom = viewbox.viewPixelSize()[0] if viewbox is not None else None

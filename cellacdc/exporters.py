@@ -109,7 +109,10 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
     def export(self, filepath):     
         no_ext_filepath, ext = os.path.splitext(filepath)
         svg_filepath = f'{no_ext_filepath}.svg'    
-        svg_exporter = SVGExporter(self.item)                  
+        svg_exporter = SVGExporter(self.item)
+        svg_exporter.params['width'] = self.params['width']
+        svg_exporter.params['height'] = self.params['height']
+        svg_exporter.params['background'] = self.params['background']
         svg_exporter.export(svg_filepath)
         self.svg_to_image(svg_filepath, filepath)
         
@@ -140,6 +143,50 @@ class SVGExporter(pyqtgraph.exporters.SVGExporter):
     def __init__(self, item):
         super().__init__(item)
         self.parameters()['background'] = (0, 0, 0, 0)
+
+    def _current_view_zoom(self):
+        if hasattr(self.item, 'viewPixelSize'):
+            try:
+                zoom = self.item.viewPixelSize()[0]
+                return float(zoom)
+            except Exception:
+                pass
+
+        if hasattr(self.item, 'getViewBox'):
+            try:
+                viewbox = self.item.getViewBox()
+                if viewbox is not None:
+                    zoom = viewbox.viewPixelSize()[0]
+                    return float(zoom)
+            except Exception:
+                pass
+
+        return None
+
+    def _set_items_export_zoom(self, export_zoom):
+        for item in self.getPaintItems():
+            if hasattr(item, 'setExportZoom'):
+                item.setExportZoom(export_zoom)
+
+    def export(self, fileName=None, toBytes=False, copy=False):
+        # Mirror pyqtgraph ImageExporter resolution semantics: when exporting
+        # to a larger target than the on-screen view, reduce data-space zoom
+        # used by text so rendered pixel size remains consistent.
+        orig_target_rect = self.getTargetRect()
+        orig_width = float(orig_target_rect.width()) if orig_target_rect.width() else 0.0
+        requested_width = float(self.params['width'])
+        resolution_scale = (requested_width / orig_width) if orig_width > 0 else 1.0
+        current_zoom = self._current_view_zoom()
+
+        export_zoom = None
+        if current_zoom is not None and resolution_scale > 0:
+            export_zoom = current_zoom / resolution_scale
+
+        self._set_items_export_zoom(export_zoom)
+        try:
+            return super().export(fileName=fileName, toBytes=toBytes, copy=copy)
+        finally:
+            self._set_items_export_zoom(None)
 
 class VideoExporter:
     def __init__(self, avi_filepath, fps):
