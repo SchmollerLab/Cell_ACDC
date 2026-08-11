@@ -379,7 +379,8 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         return objData
 
     def draw(self):
-        self._generatePicture()
+        target_zoom = self._currentViewZoom() if self._scaling else self.zoom
+        self._generatePicture(target_zoom=target_zoom)
 
     # ---- rendering ----
 
@@ -390,7 +391,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         self._cached_view_rect = QRectF()
 
     def _effective_font_size(self, target_zoom):
-        if target_zoom is None or target_zoom <= 0:
+        if target_zoom is None:
             return self.fontSize
         if self._scaling:
             return max(self.fontSize * target_zoom, 1.0)
@@ -403,6 +404,12 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         font.setPixelSize(max(int(round(font_size)), 1))
         return font
 
+    def _currentViewZoom(self):
+        viewbox = self.getViewBox()
+        if viewbox is None:
+            return None
+        return viewbox.viewPixelSize()[0]
+
     def _draw_pos_for(self, painter, objData, text):
         x, y = objData['pos']
         fm = painter.fontMetrics()
@@ -414,7 +421,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
 
 
     def _zoomBucketFor(self, target_zoom):
-        if target_zoom is None or target_zoom <= 0:
+        if target_zoom is None:
             return None
         
         # if zoom becomes excessive, we don't want to zoom in too deep
@@ -538,7 +545,6 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             self._boundingRect.isNull()
             or source_rect.isNull()
             or target_zoom is None
-            or target_zoom <= 0
         ):
             self.cached_picture = None
             self._cached_view_rect = QRectF()
@@ -596,7 +602,10 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
 
     def _generatePicture(self, target_zoom=None):
         if target_zoom is None:
-            target_zoom = self.zoom
+            if self._scaling:
+                target_zoom = self._currentViewZoom()
+            if target_zoom is None:
+                target_zoom = self.zoom
 
         self.picture = QPicture()
         painter = QPainter(self.picture)
@@ -652,19 +661,20 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         zoom_bucket = self._zoomBucketFor(target_zoom)
         bucket_changed = (
             self._scaling
-            and zoom_bucket is not None
-            and self._rectsZoomBucket != zoom_bucket
+            and (
+                (zoom_bucket is not None and self._rectsZoomBucket != zoom_bucket)
+                or self._rectsZoomBucket is None
+            )
         )
         if bucket_changed:
             prev_bucket = self._rectsZoomBucket
             is_zooming_out = (
-                prev_bucket is not None
-                and zoom_bucket < prev_bucket
+                prev_bucket is None
+                or zoom_bucket < prev_bucket
             )
-            touching = self._doesAnyTextTouchCurrentBounds(
+            if is_zooming_out and self._doesAnyTextTouchCurrentBounds(
                 painter, target_zoom=target_zoom
-            )
-            if is_zooming_out and touching:
+            ):
                 # Rebuild only when zooming out pushes text against the
                 # current annotation bounds.
                 self._generatePicture(target_zoom=target_zoom)
