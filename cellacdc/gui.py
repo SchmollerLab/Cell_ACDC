@@ -24210,8 +24210,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
         
         if posData.frame_i == from_frame_i:
-            posData.cca_df = None
-            self.store_cca_df(autosave=False)
+            self.removeCcaAnnotationsCurrentFrame()
 
         self.resetWillDivideInfo()
         
