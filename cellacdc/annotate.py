@@ -277,6 +277,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         self._scaling = scalingMode
         self._exporting = False
         self._exportTargetZoom = None
+        self._exportViewRect = None
         self._forcedExportZoom = None
         self._anchor = anchor
         self.picture = QPicture()
@@ -354,6 +355,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         self._exporting = bool(export)
         if not export:
             self._exportTargetZoom = None
+            self._exportViewRect = None
             return
 
         # Capture zoom before export rendering starts. During SVG item painting
@@ -361,6 +363,14 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         self._exportTargetZoom = self._forcedExportZoom
         if self._exportTargetZoom is None:
             self._exportTargetZoom = self._currentViewZoom()
+
+        # Cache view-range bounds before export starts, since during SVG paint
+        # the viewbox may be unavailable.
+        viewbox = self.getViewBox()
+        if viewbox is not None:
+            self._exportViewRect = QRectF(viewbox.viewRect())
+        else:
+            self._exportViewRect = None
 
         # Exporters provide a painter with a different transform stack than the
         # interactive view. The cached subset/image path reconstructs that
@@ -490,6 +500,10 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         if source_rect is not None and source_rect.isNull():
             return
 
+        if source_rect is not None:
+            painter.save()
+            painter.setClipRect(source_rect, Qt.ClipOperation.IntersectClip)
+
         for objData in self.annotData:
             text = objData.get('text')
             if text is None:
@@ -510,6 +524,9 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             color = self._colors.get(objData.get('color_name'), (255, 255, 255, 255))
             painter.setPen(QColor(*color))
             painter.drawText(draw_pos, text)
+
+        if source_rect is not None:
+            painter.restore()
 
     def _textRectForObj(self, painter, objData, text, target_zoom=None):
         painter.setFont(self._font_for(objData, target_zoom=target_zoom))
@@ -695,9 +712,19 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
                 if target_zoom is None:
                     target_zoom = self._currentViewZoom()
 
+            export_source_rect = self._exportViewRect
+            if export_source_rect is None:
+                viewbox = self.getViewBox()
+                if viewbox is not None:
+                    export_source_rect = viewbox.viewRect()
+
             # Draw directly in export mode so font sizing is evaluated against
             # the export painter state instead of replayed picture commands.
-            self._drawSubset(painter, source_rect=None, target_zoom=target_zoom)
+            self._drawSubset(
+                painter,
+                source_rect=export_source_rect,
+                target_zoom=target_zoom,
+            )
             return
 
         if self.picture.isNull():

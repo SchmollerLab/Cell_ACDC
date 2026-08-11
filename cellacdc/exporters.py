@@ -19,9 +19,13 @@ from . import is_mac, is_win
 from . import acdc_ffmpeg_path
 
 class ImageExporter(pyqtgraph.exporters.ImageExporter):
-    def __init__(self, item, background=(0, 0, 0, 0), dpi=100, save_pngs=True):
+    def __init__(
+            self, item, background=(0, 0, 0, 0), dpi=100,
+            save_pngs=True, crop_outer_padding=True
+        ):
         super().__init__(item)
         self._save_pngs = save_pngs
+        self._crop_outer_padding = crop_outer_padding
         
         self._dpi = dpi
         
@@ -125,12 +129,13 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
         img_rgba = skimage.io.imread(filepath)    
         img_rgba = self.crop_from_mask(img_rgba)
         
-        img_rgba = transformation.crop_outer_padding(
-            img_rgba, value=(0, 0, 0, 255)
-        )
-        img_rgba = transformation.crop_outer_padding(
-            img_rgba, value=(255, 255, 255, 255)
-        )
+        if self._crop_outer_padding:
+            img_rgba = transformation.crop_outer_padding(
+                img_rgba, value=(0, 0, 0, 255)
+            )
+            img_rgba = transformation.crop_outer_padding(
+                img_rgba, value=(255, 255, 255, 255)
+            )
 
         if self._save_pngs:
             skimage.io.imsave(filepath, img_rgba, check_contrast=False)
@@ -194,13 +199,48 @@ class VideoExporter:
         self._avi_filepath = avi_filepath
         self._fps = fps
         self._fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        self._frame_size = None
+
+    def _pad_to_even_shape(self, img_bgr):
+        height, width = img_bgr.shape[:-1]
+        pad_right = width % 2
+        pad_bottom = height % 2
+        if pad_right == 0 and pad_bottom == 0:
+            return img_bgr
+
+        return cv2.copyMakeBorder(
+            img_bgr,
+            0,
+            pad_bottom,
+            0,
+            pad_right,
+            cv2.BORDER_CONSTANT,
+            value=(0, 0, 0)
+        )
+
+    def _match_writer_frame_size(self, img_bgr):
+        target_width, target_height = self._frame_size
+        height, width = img_bgr.shape[:2]
+        if (width, height) == (target_width, target_height):
+            return img_bgr
+
+        raise ValueError(
+            'Exported frame size changed during video export after even-size '
+            f'padding. Expected {(target_width, target_height)}, got '
+            f'{(width, height)}. Video frames must keep a constant size.'
+        )
     
     def add_frame(self, img_bgr):
+        img_bgr = self._pad_to_even_shape(img_bgr)
+
         if self.writer is None:
             height, width = img_bgr.shape[:-1]
+            self._frame_size = (width, height)
             self.writer = cv2.VideoWriter(
                 self._avi_filepath, self._fourcc, self._fps, (width, height)
             )
+
+        img_bgr = self._match_writer_frame_size(img_bgr)
         self.writer.write(img_bgr)
     
     def release(self):
@@ -232,7 +272,7 @@ def _run_ffmpeg(ffmpeg_exec_path, command_args):
     command_args_no_quotes = [
         arg.replace('"', '').replace("'", '') for arg in command_args
     ]
-    full_command = ' '.join(command_args_no_quotes)
+    full_command = ' '.join(command_args)
     full_command = f'{ffmpeg_exec_path} {full_command}'
     
     separator = '-'*100

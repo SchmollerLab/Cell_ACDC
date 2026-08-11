@@ -34360,7 +34360,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.exportToVideoImageExporter = exporters.ImageExporter(
             self.ax1, 
             save_pngs=preferences['save_pngs'], 
-            dpi=preferences['dpi']
+            dpi=preferences['dpi'],
+            crop_outer_padding=False,
         )
         self.exportToVideoExporter = exporters.VideoExporter(
             preferences['avi_filepath'], preferences['fps']
