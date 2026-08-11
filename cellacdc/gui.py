@@ -5146,7 +5146,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def gui_createTextAnnotItems(self, allIDs):
         self.textAnnot = {}
         isHighResolution = self.highLowResAction.isChecked()
-        scalingMode = self.scalingLabelsAction.isChecked()
+        # TextAnnotations' internal scaling flag counter-scales fonts to keep
+        # their screen size fixed, so it is the inverse of the UI toggle.
+        scalingMode = not self.scalingLabelsAction.isChecked()
         # pxMode = self.pxModeAction.isChecked()
         for ax in range(2):
             ax_textAnnot = annotate.TextAnnotations()
@@ -35058,7 +35060,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not self.isDataLoaded:
             return
         for annot in self.textAnnot.values():
-            annot.setScaling(self.scalingLabelsAction.isChecked())
+            annot.setScaling(not self.scalingLabelsAction.isChecked())
 
     def autoSaveClose(self):
         for worker, thread in self.autoSaveActiveWorkers:
