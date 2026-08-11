@@ -30,6 +30,10 @@ font_bold_path = os.path.join(
     cellacdc_path, 'resources', 'fonts', f'{FONT_FAMILY}-Bold.ttf'
 )
 
+ZOOM_BUCKET_PERC_CHANGE_THRESHOLD = 0.1 # 0.5 would be the lowest 
+# percentage where it would do something (every second step), but IDK if its 
+# really worth it
+
 def get_obj_text_label_annot(
         obj, add_num_zslices: bool
     ) -> str:
@@ -200,7 +204,10 @@ class TextAnnotationsImageItem(pg.ImageItem):
         self.pilDraw = ImageDraw.Draw(self.pilImage)
     
     def clearImage(self):
-        self.pilDraw.rectangle([(0,0), self.pilDraw.im.size], fill=(0,0,0,0))
+        try:
+            self.pilDraw.rectangle([(0,0), self.pilDraw.im.size], fill=(0,0,0,0))
+        except Exception as e:
+            pass
     
     def clearData(self):
         self.clearImage()
@@ -264,9 +271,10 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
     (addObjAnnot, appendData, draw, highlightObject, removeHighlightObject,
     grayOutAnnotations, setColors, etc.) so it's a drop-in swap.
     """
-    def __init__(self, size=10, pxMode=False, anchor=(0.5, 0.5)):
+    def __init__(self, size=10, pxMode=False, anchor=(0.5, 0.5), scalingMode=False):
         super().__init__()
         self._pxMode = pxMode
+        self._scaling = scalingMode
         self._anchor = anchor
         self.picture = QPicture()
         self._boundingRect = QRectF()
@@ -279,17 +287,20 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         self._cachedScaleFactor = None
         self.cached_picture = None
         self._cached_view_rect = QRectF()
+        self._curr_zoom_bucket = None
         
     # ---- setup / config, API-compatible no-ops where the atlas is gone ----
 
     def initFonts(self, fontSize):
         self.fontSize = fontSize
+        
         self.fontBold = QFont(FONT_FAMILY)
         self.fontBold.setBold(True)
         self.fontBold.setPixelSize(fontSize)
 
         self.fontRegular = QFont(FONT_FAMILY)
         self.fontRegular.setPixelSize(fontSize)
+        
         self._invalidateCache()
 
     def init(self, *args):
@@ -315,6 +326,13 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         self.setFlag(
             pg.GraphicsObject.GraphicsItemFlag.ItemIgnoresTransformations, False
         )
+
+    def setScaling(self, scaling):
+        scaling_new = bool(scaling)
+        if self._scaling == scaling_new:
+            return
+        self._scaling = scaling_new
+        self._invalidateCache()
 
     def setColors(self, colors):
         self._colors = colors.copy()
@@ -369,31 +387,53 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         self.cached_picture = None
         self._cached_view_rect = QRectF()
 
+    def _effective_font_size(self, target_zoom):
+        if target_zoom is None or target_zoom <= 0:
+            return self.fontSize
+        if self._scaling:
+            return max(self.fontSize * target_zoom, 1.0)
+        return self.fontSize
+
+    def _font_for(self, objData, target_zoom=None):
+        font_size = self._effective_font_size(target_zoom)
+        base_font = self.fontBold if objData.get('bold') else self.fontRegular
+        font = QFont(base_font)
+        font.setPixelSize(max(int(round(font_size)), 1))
+        return font
+
+    def _draw_pos_for(self, painter, objData, text):
+        x, y = objData['pos']
+        fm = painter.fontMetrics()
+        rect = fm.boundingRect(text)
+        return QPointF(
+            x - rect.width() / 2,
+            y + rect.height() / 2 - fm.descent(),
+        ), rect, fm
+
+
     def _zoomBucketFor(self, target_zoom):
         if target_zoom is None or target_zoom <= 0:
             return None
-        rendered_font_px = max(self.fontSize / target_zoom, 1.0)
-        return max(int(round(rendered_font_px / 2.0) * 2), 1)
-
-    # def _boundedCacheSize(self, width, height):
-    #     max_dim = 4096
-    #     max_pixels = 12_000_000
-    #     # Round up input dimensions (ensure positive integers)
-    #     width = max(int(math.ceil(width)), 1)
-    #     height = max(int(math.ceil(height)), 1)
-
-    #     # Calculate scale factor to keep both dimensions ≤ 4096
-    #     scale = min(max_dim / width, max_dim / height, 1.0)
-
-    #     # If total pixels exceed 12M, reduce scale further
-    #     if width * height > max_pixels:
-    #         scale = min(scale, math.sqrt(max_pixels / (width * height)))
-
-    #     # Apply the scale and ensure dimensions stay ≥ 1
-    #     width = max(int(math.ceil(width * scale)), 1)
-    #     height = max(int(math.ceil(height * scale)), 1)
-
-    #     return width, height
+        
+        # if zoom becomes excessive, we don't want to zoom in too deep
+        effective_font_size = self._effective_font_size(target_zoom)
+        effective_rendered_font_px = effective_font_size / target_zoom
+        if effective_rendered_font_px > 2500:
+            if self._curr_zoom_bucket is not None:
+                return self._curr_zoom_bucket
+            
+        rendered_font_px = self.fontSize / target_zoom
+        requested_bucket = max(int(round(rendered_font_px / 2.0) * 2), 1)
+        if self._curr_zoom_bucket is None:
+            self._curr_zoom_bucket = requested_bucket
+            return self._curr_zoom_bucket
+        
+        perc_change = abs(requested_bucket - self._curr_zoom_bucket) / self._curr_zoom_bucket
+        if perc_change > ZOOM_BUCKET_PERC_CHANGE_THRESHOLD:
+            self._curr_zoom_bucket = requested_bucket
+        return self._curr_zoom_bucket
+    # zoom buckets are basically for 2 step font size changes so they are 
+    # always even
 
     def _expandedCacheRect(self, exposed_rect):
         if exposed_rect.isNull():
@@ -405,7 +445,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         )
         return expanded_rect.intersected(self._boundingRect)
 
-    def _drawSubset(self, painter, source_rect):
+    def _drawSubset(self, painter, source_rect, target_zoom=None):
         if source_rect.isNull():
             return
 
@@ -418,20 +458,12 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             if text is None:
                 continue
 
-            font = self.fontBold if objData.get('bold') else self.fontRegular
+            font = self._font_for(objData, target_zoom=target_zoom)
             painter.setFont(font)
             color = self._colors.get(objData.get('color_name'), (255, 255, 255, 255))
             painter.setPen(QColor(*color))
 
-            draw_pos = objData.get('_draw_pos')
-            if draw_pos is None:
-                x, y = objData['pos']
-                fm = painter.fontMetrics()
-                rect = fm.boundingRect(text)
-                draw_pos = QPointF(
-                    x - rect.width() / 2,
-                    y + rect.height() / 2 - fm.descent(),
-                )
+            draw_pos, _, _ = self._draw_pos_for(painter, objData, text)
             painter.drawText(draw_pos, text)
 
     def _refreshCachedPicture(self, painter, target_zoom, source_rect, zoom_bucket):
@@ -448,7 +480,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
 
         # Expand the draw rect by one font-size in data units on each side so
         # labels near the cache boundary are not clipped.
-        font_pad = self.fontSize * target_zoom
+        font_pad = self._effective_font_size(target_zoom)
         draw_rect = source_rect.adjusted(-font_pad, -font_pad, font_pad, font_pad)
 
         device_rect = painter.worldTransform().mapRect(draw_rect)
@@ -473,7 +505,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         transform.scale(scale_x, scale_y)
         transform.translate(-draw_rect.left(), -draw_rect.top())
         cache_painter.setWorldTransform(transform)
-        self._drawSubset(cache_painter, draw_rect)
+        self._drawSubset(cache_painter, draw_rect, target_zoom=target_zoom)
         cache_painter.end()
 
         self.cached_picture = cached_picture
@@ -481,7 +513,10 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         self._zoomBucket = zoom_bucket
         self.zoom = target_zoom
 
-    def _generatePicture(self):
+    def _generatePicture(self, target_zoom=None):
+        if target_zoom is None:
+            target_zoom = self.zoom
+
         self.picture = QPicture()
         painter = QPainter(self.picture)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -492,7 +527,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             if text is None and idx < len(self.texts):
                 text = self.texts[idx]
 
-            font = self.fontBold if objData.get('bold') else self.fontRegular
+            font = self._font_for(objData, target_zoom=target_zoom)
             painter.setFont(font)
             color = self._colors.get(objData.get('color_name'), (255, 255, 255, 255))
             painter.setPen(QColor(*color))
@@ -502,14 +537,13 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             rect = fm.boundingRect(text)
             # Center the text on (x, y), matching the 'mm' anchor used by
             # the low-res PIL-based item.
-            draw_x = x - rect.width() / 2
-            draw_y = y + rect.height() / 2 - fm.descent()
-            painter.drawText(QPointF(draw_x, draw_y), text)
+            draw_pos, rect, fm = self._draw_pos_for(painter, objData, text)
+            painter.drawText(draw_pos, text)
 
-            objData['_draw_pos'] = QPointF(draw_x, draw_y)
+            objData['_draw_pos'] = draw_pos
             objData['_rect'] = QRectF(
-                draw_x,
-                draw_y - rect.height() + fm.descent(),
+                draw_pos.x(),
+                draw_pos.y() - rect.height() + fm.descent(),
                 rect.width(),
                 rect.height(),
             )
@@ -649,10 +683,10 @@ class TextAnnotations:
 
         self.setColors(**invertedColors)
 
-    def createItems(self, isHighResolution, allIDs, pxMode=False):
+    def createItems(self, isHighResolution, allIDs, pxMode=False, scalingMode=False):
         self._pxMode = pxMode
         if isHighResolution:
-            self._createHighResolutionItems(allIDs, pxMode=pxMode)
+            self._createHighResolutionItems(allIDs, pxMode=pxMode, scalingMode=scalingMode)
         else:
             self._createLowResolutionItem()        
         
@@ -660,9 +694,9 @@ class TextAnnotations:
         self.item = TextAnnotationsImageItem()
         self.setFontSize(self.fontSize, [])
     
-    def _createHighResolutionItems(self, allIDs, pxMode=False):
+    def _createHighResolutionItems(self, allIDs, pxMode=False, scalingMode=False):
         self.item = TextAnnotationsScatterItem(
-            size=self.fontSize, pxMode=pxMode
+            size=self.fontSize, pxMode=pxMode, scalingMode=scalingMode
         )
         self.setFontSize(self.fontSize, allIDs)
     
@@ -676,10 +710,10 @@ class TextAnnotations:
         self.item.initFonts(fontSize)
         self.item.initSizes()
   
-    def changeResolution(self, mode, allIDs, ax, img_shape):
+    def changeResolution(self, mode, allIDs, ax, img_shape, scalingMode=False):
         self.removeFromPlotItem(ax)
         highRes = True if mode == 'high' else False        
-        self.createItems(highRes, allIDs, pxMode=self._pxMode)
+        self.createItems(highRes, allIDs, pxMode=self._pxMode, scalingMode=scalingMode)
         self.initItem(img_shape)
         self.item.setColors(self.colors())
         self.item.clearData()
@@ -926,6 +960,11 @@ class TextAnnotations:
     
     def setPxMode(self, mode):
         self.item.setPxMode(mode)
+
+    def setScaling(self, scaling):
+        self._scaling = bool(scaling)
+        if hasattr(self.item, 'setScaling'):
+            self.item.setScaling(scaling)
     
     def update(self):
         self.item.update()

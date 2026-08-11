@@ -1104,6 +1104,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.setAnnotateObjTrackSettings 
         )
         self.settingsMenu.addAction(self.highLowResAction)
+        self.settingsMenu.addAction(self.scalingLabelsAction)
         self.settingsMenu.addAction(self.editShortcutsAction)
         self.settingsMenu.addAction(self.showMirroredCursorAction)
         self.settingsMenu.addSeparator()
@@ -3067,6 +3068,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # )
         # self.pxModeAction.setToolTip(pxModeTooltip)
         
+        self.scalingLabelsAction = widgets.CheckableAction(
+            'Scale text annotations with zoom'
+        )
+        scalingLabelsTooltip = (
+            'When activated, the text annotations scale when zooming in/out.\n'
+            'When deactivated, the text annotations have a fixed size, \n'
+            'and so zooming in/out does not change their size.'
+        )
+        self.scalingLabelsAction.setToolTip(scalingLabelsTooltip)
+        checked = self._get_setting_value('scalingLabels', True, cast=bool)
+        self.scalingLabelsAction.setChecked(checked)
+        
         self.highLowResAction = widgets.CheckableAction(
             'High resolution text annotations'
         )
@@ -3076,6 +3089,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Not recommended with a number of segmented objects > 500.\n\n'
         )
         self.highLowResAction.setToolTip(highLowResTooltip)
+        checked = self._get_setting_value('highLowRes', True, cast=bool)
+        self.highLowResAction.setChecked(checked)
         
         self.editAutoSaveIntervalAction = QAction(
             'Change autosave interval (minutes or frames)...', self
@@ -3293,6 +3308,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.annotLostObjsToggle.toggled.connect(self.annotLostObjsToggled)
         self.highLowResAction.clicked.connect(self.highLowResToggled)
+        self.scalingLabelsAction.clicked.connect(self.scalingLabelsToggled)
         self.showInExplorerAction.triggered.connect(self.showInExplorer_cb)
         self.exitAction.triggered.connect(self.close)
         self.undoAction.triggered.connect(self.undo)
@@ -5052,24 +5068,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         allIDs, posData = core.count_objects_and_init_rps(
             posData, self.logger.info)
-        
-        self.highLowResAction.setChecked(True)
-        numItems = len(allIDs)
-        if numItems > 1500:
-            cancel, switchToLowRes = _warnings.warnTooManyItems(
-                self, numItems, self.progressWin
-            )
-            if cancel:
-                self.progressWin.workerFinished = True
-                self.progressWin.close()
-                self.progressWin = None
-                self.loadingDataAborted()
-                return
-            if switchToLowRes:
-                self.highLowResAction.setChecked(False)
-            # else:
-                # # Many items requires pxMode active to be fast enough
-                # self.pxModeAction.setChecked(True)
 
         self.logger.info(f'Creating graphical items...')
 
@@ -5148,12 +5146,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def gui_createTextAnnotItems(self, allIDs):
         self.textAnnot = {}
         isHighResolution = self.highLowResAction.isChecked()
+        scalingMode = self.scalingLabelsAction.isChecked()
         # pxMode = self.pxModeAction.isChecked()
         for ax in range(2):
             ax_textAnnot = annotate.TextAnnotations()
             ax_textAnnot.initFonts(self.fontSize)
             ax_textAnnot.createItems(
-                isHighResolution, allIDs#, pxMode=pxMode
+                isHighResolution, allIDs, scalingMode=scalingMode#, pxMode=pxMode
             )
             self.textAnnot[ax] = ax_textAnnot
     
@@ -31299,6 +31298,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
             self.ax1_trackerMovementAgainstPrevLinesItem.addPoints(xx, yy)
             
+    def _get_setting_value(self, index_name, default, cast=int):
+        if self.df_settings is None or index_name not in self.df_settings.index:
+            return default
+        value = self.df_settings.at[index_name, 'value']
+        if cast is bool:
+            return value in ('Yes', 'True') if isinstance(value, str) else bool(value)
+        try:
+            return cast(value)
+        except Exception:
+            printl(f"Warning: Could not cast setting '{index_name}' value '{value}' to {cast}. Using default '{default}'.")
+            return default
+        
     def initannotateObjTrackSettings(self):
         if hasattr(self, 'annotateObjTrackSettings'):
             return
@@ -31333,50 +31344,39 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             except Exception:
                 return tuple(default)
 
-        def _get_setting_value(index_name, default, cast=int):
-            if self.df_settings is None or index_name not in self.df_settings.index:
-                return default
-            value = self.df_settings.at[index_name, 'value']
-            if cast is bool:
-                return value == 'True' if isinstance(value, str) else bool(value)
-            try:
-                return cast(value)
-            except Exception:
-                return default
-
         if (self.df_settings is not None
             and 'annotateObjTrackLength' in self.df_settings.index):
             self.annotateObjTrackSettings = {
-                'length': _get_setting_value(
+                'length': self._get_setting_value(
                     'annotateObjTrackLength', default_settings['length']
                 ),
-                'against_prev': _get_setting_value(
+                'against_prev': self._get_setting_value(
                     'annotateObjTrackAgainstPrev',
                     default_settings['against_prev'],
                     cast=bool
                 ),
-                'n_fade': _get_setting_value(
+                'n_fade': self._get_setting_value(
                     'annotateObjTrackNFade', default_settings['n_fade']
                 ),
-                'max_width': _get_setting_value(
+                'max_width': self._get_setting_value(
                     'annotateObjTrackMaxWidth', default_settings['max_width']
                 ),
-                'min_width': _get_setting_value(
+                'min_width': self._get_setting_value(
                     'annotateObjTrackMinWidth', default_settings['min_width']
                 ),
-                'max_alpha_perc': _get_setting_value(
+                'max_alpha_perc': self._get_setting_value(
                     'annotateObjTrackMaxAlphaPerc',
                     default_settings['max_alpha_perc']
                 ),
-                'min_alpha_perc': _get_setting_value(
+                'min_alpha_perc': self._get_setting_value(
                     'annotateObjTrackMinAlphaPerc',
                     default_settings['min_alpha_perc']
                 ),
-                'against_prev_line_width': _get_setting_value(
+                'against_prev_line_width': self._get_setting_value(
                     'annotateObjTrackAgainstPrevLineWidth',
                     default_settings['against_prev_line_width']
                 ),
-                'against_prev_contour_width': _get_setting_value(
+                'against_prev_contour_width': self._get_setting_value(
                     'annotateObjTrackAgainstPrevContourWidth',
                     default_settings['against_prev_contour_width']
                 ),
@@ -31385,7 +31385,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.annotateObjTrackSettings['color'] = _parse_color_setting(
                 color, default=default_settings['color']
             )
-            against_prev_line_color = _get_setting_value(
+            against_prev_line_color = self._get_setting_value(
                 'annotateObjTrackAgainstPrevLineColor',
                 default_settings['against_prev_line_color'],
                 cast=str
@@ -31397,7 +31397,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
             )
 
-            against_prev_contour_color = _get_setting_value(
+            against_prev_contour_color = self._get_setting_value(
                 'annotateObjTrackAgainstPrevContourColor',
                 default_settings['against_prev_contour_color'],
                 cast=str
@@ -33390,14 +33390,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return True
 
         out = _warnings.warnTooManyNewItems(self, num_objects, self)
-        cancel, switchToLowRes, deactivateAnnot = out
+        cancel, deactivateAnnot = out
         if cancel:
             return False
-
-        if switchToLowRes:
-            self.highLowResAction.setChecked(False)
-            self.changeTextResolution()
-            return True
         
         if deactivateAnnot:
             self.annotIDsCheckbox(0).setChecked(False)
@@ -35039,13 +35034,30 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         allIDs = posData.allIDs
         img_shape = self.img1.image.shape[:2]
-        self.textAnnot[0].changeResolution(mode, allIDs, self.ax1, img_shape)
-        self.textAnnot[1].changeResolution(mode, allIDs, self.ax2, img_shape)
+        scalingMode = not self.scalingLabelsAction.isChecked()
+        self.textAnnot[0].changeResolution(mode, allIDs, self.ax1, img_shape, 
+                                           scalingMode=scalingMode)
+        self.textAnnot[1].changeResolution(mode, allIDs, self.ax2, img_shape, 
+                                           scalingMode=scalingMode)
         self.updateAllImages()
     
     def highLowResToggled(self, clicked=True):
         self.changeTextResolution()
-    
+        self.df_settings.at[
+            'highLowRes', 'value'
+            ] = self.highLowResAction.isChecked()
+        self.df_settings.to_csv(self.settings_csv_path)
+        
+    def scalingLabelsToggled(self, clicked=True):
+        self.df_settings.at[
+            'scalingLabels', 'value'
+            ] = self.scalingLabelsAction.isChecked()
+        self.df_settings.to_csv(self.settings_csv_path)
+        if not self.isDataLoaded:
+            return
+        for annot in self.textAnnot.values():
+            annot.setScaling(self.scalingLabelsAction.isChecked())
+
     def autoSaveClose(self):
         for worker, thread in self.autoSaveActiveWorkers:
             worker._stop()
