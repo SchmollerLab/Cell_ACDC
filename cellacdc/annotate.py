@@ -891,7 +891,7 @@ class TextAnnotations:
         
         if acdc_df is None and posData.cca_df is not None:
             acdc_df = posData.cca_df
-        
+    
         moth_bud_pairs_cca = (
             posData.allData_li[posData.frame_i].get('moth_bud_pairs_cca')
         )

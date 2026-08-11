@@ -24209,6 +24209,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if from_frame_i in frames:
                 posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
         
+        if posData.frame_i == from_frame_i:
+            posData.cca_df = None
+            self.store_cca_df(autosave=False)
+
         self.resetWillDivideInfo()
         
     def resetSingleMotherBudPairsCcaInfo(self, from_frame_i):
@@ -28544,8 +28548,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if init:
             self.initTempLayerBrush(ID, ax=ax)
         
-        contours = self.annotContourCheckbox(ax)
-        if contours:
+        if self.isContoursChecked(ax):
             brushImage = self.brushImage
         else:
             brushImage = self.tempLayerImg1.image
@@ -28555,7 +28558,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             brushImage[toLocalSlice][mask] = ID
         
-        if contours:
+        if self.isContoursChecked(ax):
             brushMask = np.ascontiguousarray((brushImage > 0), dtype=np.uint8)
 
             objContour = core.get_obj_contours(
@@ -28987,7 +28990,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if (msg.clickedButton == removeAnnotButton) and cell_cycle_stage_present:
             self.resetFutureCcaColCurrentFrame()
-            self.resetCcaFuture(posData.frame_i+1)
+            self.resetCcaFuture(posData.frame_i)
             self.updateAllImages()
         elif (msg.clickedButton == removeAnnotButton) and lineage_tree_present:
             self.resetLin_tree_future()
@@ -35631,6 +35634,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # settings.setValue("windowState", self.saveState())
     
     def saveAnnotationOptions(self):
+        if not hasattr(self, 'annotOptionsToRestore'):
+            return
+        
         self.storeCurrentAnnotationsOptions()
         for ax, states in self.annotOptionsToRestore.items():
             for name, checked in states.items():
