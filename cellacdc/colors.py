@@ -464,6 +464,36 @@ def _norm_hsv_style(rgb, alpha_scale=1.0, calc_alpha=True):
 
 def combine_grayscale_images_with_alpha(
     base_img, images, alphas, luts=None, base_lut=None):
+    """Add functionality to have alpha-encoded
+        Steps:
+        - `Alpha scalings` (from GUI scale bars) are divided by the length to fix the maximum alpha of the overlay to 1
+        - `Images` are converted to RGBA; LUT is applied
+        - Scaled to 255 (it is assumed that up until that point they are normed to 0 1
+        - For each fluo channel
+            - `Alpha` is determined through HSV logic: for each pixel, the max of each component of RGB per pixel, scaled with `alpha scaling` and normed to 0 1 by dividing by 255
+            - Colour is normalised through HSV logic: the max component of RGB is determined for each pixel (recycled from alpha), then each component is divided by this and finally multiplied by 255 to restore the old norming
+        - `Total alpha` of the overlay is calculated by summing the `alpha` of the overlays; colour is determined by adding the colour of each fluos' RGB weighted with alpha
+        - Colour is again normed with HSV logic.
+        - Final RGB image: base image (also scaled with lut, normed) is combined with the composite RGB of the fluo channels based on `total alpha`
+
+    Parameters
+    ----------
+    base_img : array-like
+        Underlying base image (e.g. brightfield or phase contrast) to which the fluorescence channels will be added.
+    images : list of array-like
+        List of fluorescence channel images to be combined with the base image.
+    alphas : list of float
+        List of alpha scaling factors for each fluorescence channel.
+    luts : list of array-like, optional
+        List of lookup tables (LUTs) to apply to each fluorescence channel image, by default None
+    base_lut : array-like, optional
+        Lookup table (LUT) to apply to the base image, by default None
+
+    Returns
+    -------
+    np.ndarray
+        Combined RGB image with alpha blending applied.
+    """
     if _CYTHON_ALPHA_BLEND:
         return combine_grayscale_images_with_alpha_cy(
             base_img=base_img,
