@@ -27631,13 +27631,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             return obj_slice
     
-    def setOverlayImages(self, frame_i=None):
+    def setOverlayImages(self, frame_i=None, mode=None):
         if not self.overlayButton.isChecked():
             return
         
         posData = self.data[self.pos_i]
         if posData.ol_data is None:
             return
+        
+        if mode is None:
+            if self.overlayToolbar.isAlphaEncodedIntensity():
+                mode = 'intensity_to_alpha'
+            else:
+                mode = 'normal'
         
         rgba_imgs_info = {}
         for filename in posData.ol_data:
@@ -27685,7 +27691,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             alpha_values.append(alpha_val)
             images.append(ol_img)
             luts.append(lutItem.gradient.getLookupTable(256, alpha=255)/255)
-        
+                    
         weights = colors.hierarchical_weights(alpha_values)
         
         if self.baseLayerToolbutton.isChecked():
@@ -27706,6 +27712,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.imgGrad.gradient.getLookupTable(256, alpha=255)/255
             )
             luts.append(baseLut)
+            
+        if mode == 'intensity_to_alpha':
+            # get base image item lut
+            base_img = images.pop()
+            base_lut = luts.pop()
+            rgba_merge = colors.combine_grayscale_images_with_alpha(
+                base_img=base_img,
+                images=images,
+                alphas=alpha_values,
+                luts=luts,
+                base_lut=base_lut
+            )
+            self.rgbaImg1.setImage(rgba_merge)
+            return
         
         images_rgba = []
         for img, lut in zip(images, luts):

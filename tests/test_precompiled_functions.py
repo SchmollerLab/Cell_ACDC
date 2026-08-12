@@ -29,6 +29,7 @@ from cellacdc.precompiled.precompiled_functions import (
     calc_IoA_matrix_2D,
     calc_IoA_matrix_3D,
 )
+from cellacdc import colors as colors_mod
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -188,7 +189,8 @@ class TestFindAllObjects2D:
     def test_empty_image_returns_empty(self):
         empty = np.zeros((64, 64), dtype=np.uint32)
         result = find_all_objects_2D(empty)
-        assert result == ([], [])
+        assert result[0].size == 0
+        assert result[1].size == 0
 
     def test_single_pixel_object(self):
         img = np.zeros((10, 10), dtype=np.uint32)
@@ -253,7 +255,8 @@ class TestFindAllObjects3D:
     def test_empty_image_returns_empty(self):
         empty = np.zeros((8, 16, 16), dtype=np.uint32)
         result = find_all_objects_3D(empty)
-        assert result == ([], [])
+        assert result[0].size == 0
+        assert result[1].size == 0
 
     def test_single_voxel_object(self):
         img = np.zeros((8, 8, 8), dtype=np.uint32)
@@ -518,3 +521,66 @@ class TestCalcIoAMatrix3D:
     def test_dtype_is_float64(self, label_3d, label_3d_shifted):
         mat_cy, _, _ = _run_cython_ioa_3d(label_3d_shifted, label_3d, False)
         assert mat_cy.dtype == np.float64
+
+
+class TestCombineGrayscaleImagesWithAlphaParity:
+    def _run_both_paths(self, base_img, images, alphas, luts=None, base_lut=None):
+        prev_flag = colors_mod._CYTHON_ALPHA_BLEND
+        try:
+            colors_mod._CYTHON_ALPHA_BLEND = False
+            out_py = colors_mod.combine_grayscale_images_with_alpha(
+                base_img=base_img,
+                images=images,
+                alphas=list(alphas),
+                luts=luts,
+                base_lut=base_lut,
+            )
+
+            colors_mod._CYTHON_ALPHA_BLEND = True
+            out_cy = colors_mod.combine_grayscale_images_with_alpha(
+                base_img=base_img,
+                images=images,
+                alphas=list(alphas),
+                luts=luts,
+                base_lut=base_lut,
+            )
+        finally:
+            colors_mod._CYTHON_ALPHA_BLEND = prev_flag
+
+        return out_py, out_cy
+
+    def test_parity_without_luts(self):
+        rng = np.random.default_rng(0)
+        base = rng.uniform(0.01, 1.0, size=(32, 48)).astype(np.float32)
+        images = [
+            rng.uniform(0.01, 1.0, size=(32, 48)).astype(np.float32)
+            for _ in range(3)
+        ]
+        alphas = [0.2, 0.8, 0.5]
+
+        out_py, out_cy = self._run_both_paths(base, images, alphas)
+
+        assert out_py.dtype == np.uint8
+        assert out_cy.dtype == np.uint8
+        assert out_py.shape == out_cy.shape
+        np.testing.assert_array_equal(out_py, out_cy)
+
+    def test_parity_with_rgba_luts(self):
+        rng = np.random.default_rng(1)
+        base = rng.uniform(0.01, 1.0, size=(24, 36)).astype(np.float32)
+        images = [
+            rng.uniform(0.01, 1.0, size=(24, 36)).astype(np.float32)
+            for _ in range(2)
+        ]
+        alphas = [0.7, 0.3]
+
+        # Common GUI path: lookup tables are RGBA with shape (256, 4).
+        luts = [rng.uniform(0.0, 1.0, size=(256, 4)).astype(np.float32) for _ in images]
+        base_lut = rng.uniform(0.0, 1.0, size=(256, 4)).astype(np.float32)
+
+        out_py, out_cy = self._run_both_paths(base, images, alphas, luts=luts, base_lut=base_lut)
+
+        assert out_py.dtype == np.uint8
+        assert out_cy.dtype == np.uint8
+        assert out_py.shape == out_cy.shape
+        np.testing.assert_allclose(out_py, out_cy, rtol=0.0, atol=1.0)

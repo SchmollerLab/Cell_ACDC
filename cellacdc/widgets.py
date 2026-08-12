@@ -12194,6 +12194,17 @@ class OverlayToolbar(ToolBar):
             'only if you need to export images for figures.'
         )
         
+        self.alphaEncodedIntensityCheckbox = self.addCheckBox(
+            text='Alpha-encoded intensity (RGBA composite)'
+        )
+        self.alphaEncodedIntensityCheckbox.setToolTip(
+            'Activate to achieve alpha-encoded pixel-wise transparency where '
+            'the pixel intensity is encoded in the alpha channel, so that when '
+            r'a pixel is black, it is transparent, and when its 50% intensity, '
+            'it is 50% transparent, and when it is white, it is fully opaque. '
+            'This removes the "blackening" effect of true transparency mode. '
+        )
+        
         self.addSeparator()
         
         self.singleChannelCheckbox = self.addCheckBox(
@@ -12205,10 +12216,33 @@ class OverlayToolbar(ToolBar):
             'will display only that channel in the overlay.'
         )
         
-        self.transparencyCheckbox.toggled.connect(self.sigSetTranspacency.emit)
+        self.transparencyCheckbox.toggled.connect(self.transparencyToggled)
         self.singleChannelCheckbox.toggled.connect(
             self.sigSetSingleChannel.emit
         )
+        self.alphaEncodedIntensityCheckbox.toggled.connect(
+            self.alphaEncodedIntensityToggled)
+        
+        
+    def alphaEncodedIntensityToggled(self, checked):
+        traspChecked = self.transparencyCheckbox.isChecked()
+        if checked:
+            if not traspChecked:
+                self.transparencyCheckbox.setChecked(True) # emits the signal needed
+            else:
+                self.sigSetTranspacency.emit(traspChecked)
+        else:
+            self.sigSetTranspacency.emit(traspChecked)
+        
+    def transparencyToggled(self, checked):
+        alphaEncodedChecked = self.alphaEncodedIntensityCheckbox.isChecked()
+        if not checked:
+            if alphaEncodedChecked:
+                self.alphaEncodedIntensityCheckbox.setChecked(False)
+            else:
+                self.sigSetTranspacency.emit(checked)
+        else:
+            self.sigSetTranspacency.emit(checked)
     
     def setTransparent(self, transparent: bool):
         self.transparencyCheckbox.setChecked(transparent)
@@ -12218,6 +12252,9 @@ class OverlayToolbar(ToolBar):
     
     def isSingleChannel(self):
         return self.singleChannelCheckbox.isChecked()
+    
+    def isAlphaEncodedIntensity(self):
+        return self.alphaEncodedIntensityCheckbox.isChecked()
 
 class OverlayChannelToolButton(GradientToolButton):
     def __init__(

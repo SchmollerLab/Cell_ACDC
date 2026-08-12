@@ -11,7 +11,15 @@ from collections.abc import Callable, Sequence
 from typing import Literal
 import numpy as np
 
-from . import GUI_INSTALLED, printl
+from . import GUI_INSTALLED, printl, debugutils
+
+try:
+    from cellacdc.precompiled.precompiled_functions import (
+        combine_grayscale_images_with_alpha_cy,
+    )
+    _CYTHON_ALPHA_BLEND = True
+except Exception:
+    _CYTHON_ALPHA_BLEND = False
 
 if GUI_INSTALLED:
     from pyqtgraph.colormap import ColorMap
@@ -20,6 +28,7 @@ if GUI_INSTALLED:
     import matplotlib.pyplot as plt
     from matplotlib.colors import LinearSegmentedColormap
     import seaborn as sns
+    from cellacdc.plot import imshow
 
 try:
     import networkx as nx
@@ -423,6 +432,79 @@ def grayscale_apply_lut(image, lut):
     indices = np.clip((img * (N - 1)).astype(int), 0, N - 1)
     rgba = lut[indices]
     return rgba
+
+def _normalize_grayscale_image(image):
+    max_val, min_val = image.max(), image.min()
+    img = (image - min_val) / (max_val - min_val)
+    return img
+
+def _rgb_to_uint8_float(rgb_img):
+    rgb_img = np.asarray(rgb_img)
+    rgb_img *= 255.0
+    return rgb_img.astype(np.uint8)
+    # return rgb_img.astype(np.uint8)
+    max_val, min_val = rgb_img.max(), rgb_img.min()
+    rgb_img = (rgb_img - min_val) / (max_val - min_val) * 255.0
+    return rgb_img.astype(np.uint8)
+
+def _norm_alphas(alphas):
+    total = len(alphas)
+    for i, a in enumerate(alphas):
+        alphas[i] = a / total
+    return alphas
+
+def _norm_hsv_style(rgb, alpha_scale=1.0, calc_alpha=True):
+    max_val = np.max(rgb, axis=2, keepdims=True)
+    max_val = np.clip(max_val, 1e-6, None)  # Avoid division by zero
+    norm_rgb = (rgb / max_val) * 255.0
+    if not calc_alpha:
+        return norm_rgb, None
+    alpha = np.clip(max_val / 255.0 * alpha_scale, 0.0, 1.0)
+    return norm_rgb, alpha
+
+def combine_grayscale_images_with_alpha(
+    base_img, images, alphas, luts=None, base_lut=None):
+    # if _CYTHON_ALPHA_BLEND:
+    #     return combine_grayscale_images_with_alpha_cy(
+    #         base_img=base_img,
+    #         images=images,
+    #         alphas=alphas,
+    #         luts=luts,
+    #         base_lut=base_lut,
+    #     )
+
+    # Encode fluorescence intensity in alpha and keep RGB as hue-only.
+    alphas = _norm_alphas(alphas)
+    accumulated = np.zeros((*base_img.shape[:2], 3), dtype=np.float32)
+    total_alpha = np.zeros(base_img.shape[:2], dtype=np.float32)
+    for i, img in enumerate(images):
+        img = _normalize_grayscale_image(img)
+        if luts is not None:
+            lut = luts[i]
+            rgba_img = grayscale_apply_lut(img, lut)
+        else:
+            rgb_img = skimage.color.gray2rgb(img)
+            rgba_img = np.concatenate(
+                [rgb_img, np.ones_like(rgb_img[..., :1])], axis=-1
+            )
+        
+        rgb = _rgb_to_uint8_float(rgba_img[..., :3])
+        norm_rgb, alpha = _norm_hsv_style(rgb, alpha_scale=alphas[i], calc_alpha=True)
+        accumulated += alpha * norm_rgb
+        # alpha has shape h, w, 1, but total_alpha has shape h, w. We need to sum over the last axis.
+        total_alpha += alpha[..., 0]  # Sum over the last axis to get shape (h, w)
+
+    if base_lut is not None:
+        base_img = grayscale_apply_lut(base_img, base_lut)
+    else:
+        base_img = skimage.color.gray2rgb(base_img)
+
+    base_img = _rgb_to_uint8_float(base_img[..., :3])
+        
+    accumulated, _ = _norm_hsv_style(accumulated, alpha_scale=1.0, calc_alpha=False)
+    result = base_img * (1 - total_alpha[..., None]) + accumulated * total_alpha[..., None]
+
+    return np.clip(result, 0, 255).astype(np.uint8)
 
 def get_complementary_color(rgba_str: str) -> str:
     r, g, b, a = rgba_str_to_values(rgba_str)
