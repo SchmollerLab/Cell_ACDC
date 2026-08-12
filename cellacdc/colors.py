@@ -464,14 +464,14 @@ def _norm_hsv_style(rgb, alpha_scale=1.0, calc_alpha=True):
 
 def combine_grayscale_images_with_alpha(
     base_img, images, alphas, luts=None, base_lut=None):
-    # if _CYTHON_ALPHA_BLEND:
-    #     return combine_grayscale_images_with_alpha_cy(
-    #         base_img=base_img,
-    #         images=images,
-    #         alphas=alphas,
-    #         luts=luts,
-    #         base_lut=base_lut,
-    #     )
+    if _CYTHON_ALPHA_BLEND:
+        return combine_grayscale_images_with_alpha_cy(
+            base_img=base_img,
+            images=images,
+            alphas=alphas,
+            luts=luts,
+            base_lut=base_lut,
+        )
 
     # Encode fluorescence intensity in alpha and keep RGB as hue-only.
     alphas = _norm_alphas(alphas)
