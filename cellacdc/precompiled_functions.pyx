@@ -594,6 +594,7 @@ def calc_centroids_3D(
 
 def color_normalize_grayscale_image(image):
     """Normalize a 2-D grayscale image to [0, 1] as float32."""
+    return np.asarray(image, dtype=np.float32)
     cdef np.ndarray[np.float32_t, ndim=2] arr = np.asarray(image, dtype=np.float32)
     cdef Py_ssize_t h = arr.shape[0]
     cdef Py_ssize_t w = arr.shape[1]

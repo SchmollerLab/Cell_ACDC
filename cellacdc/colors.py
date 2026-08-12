@@ -434,9 +434,10 @@ def grayscale_apply_lut(image, lut):
     return rgba
 
 def _normalize_grayscale_image(image):
+    return image
     max_val, min_val = image.max(), image.min()
-    img = (image - min_val) / (max_val - min_val)
-    return img
+    image = (image - min_val) / (max_val - min_val)
+    return image
 
 def _rgb_to_uint8_float(rgb_img):
     rgb_img = np.asarray(rgb_img)
