@@ -505,10 +505,13 @@ def combine_grayscale_images_with_alpha(
         )
 
     # Encode fluorescence intensity in alpha and keep RGB as hue-only.
+    if not images:
+        base_rgb = grayscale_apply_lut(base_img, base_lut)[..., :3] if base_lut is not None else skimage.color.gray2rgb(base_img)
+        return _rgb_to_uint8_float(base_rgb)
+
     alphas = _norm_alphas(alphas)
     accumulated = np.zeros((*base_img.shape[:2], 3), dtype=np.float32)
     total_alpha = np.zeros(base_img.shape[:2], dtype=np.float32)
-    for i, img in enumerate(images):
         img = _normalize_grayscale_image(img)
         if luts is not None:
             lut = luts[i]
