@@ -1,5 +1,6 @@
 import os
 import sys
+
 from typing import List
 import traceback
 import tempfile
@@ -715,24 +716,35 @@ def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
         log_func(traceback.format_exc())
 
 def _copy_acdc_dfs_to_temp_archive(
-        zip_path, temp_zip_path, csv_names, compression_opts
+        zip_path, temp_zip_path, csv_names
     ):
-    if not os.path.exists(zip_path): 
+    if not os.path.exists(zip_path):
         return
-    
-    with zipfile.ZipFile(zip_path, mode='r') as zip:
+
+    with (
+            zipfile.ZipFile(zip_path, mode='r') as src_zip,
+            zipfile.ZipFile(
+                temp_zip_path,
+                mode='w',
+                compression=zipfile.ZIP_DEFLATED,
+            ) as dst_zip,
+        ):
         for csv_name in csv_names:
             with warnings.catch_warnings():
-                warnings.simplefilter("ignore") 
+                warnings.simplefilter("ignore")
                 acdc_df = pd.read_csv(
-                    zip.open(csv_name), dtype=acdc_df_str_cols
+                    src_zip.open(csv_name),
+                    dtype=acdc_df_str_cols,
                 )
+
             acdc_df = _ensure_acdc_df_latest_compatibility(acdc_df)
-            acdc_df = pd_bool_and_float_to_int_to_str(acdc_df, inplace=False)
-            compression_opts['archive_name'] = csv_name
-            acdc_df.to_csv(
-                temp_zip_path, compression=compression_opts
+            acdc_df = pd_bool_and_float_to_int_to_str(
+                acdc_df,
+                inplace=False,
             )
+
+            csv_data = acdc_df.to_csv().encode("utf-8")
+            dst_zip.writestr(csv_name, csv_data)
 
 def _store_acdc_df_archive(zip_path, acdc_df_to_store):
     csv_names = []
@@ -746,23 +758,26 @@ def _store_acdc_df_archive(zip_path, acdc_df_to_store):
         # Do not save duplicates within the same second
         return
     
-    if len(csv_names) > 20:
-        # Delete oldest df and resave remaining 19
+    if len(csv_names) >= 20:
         csv_names.pop(0)
-    
+
     zip_filename = os.path.basename(zip_path)
     temp_zip_filename = zip_filename.replace('.csv', '_temp.csv')
     temp_dirpath = tempfile.mkdtemp()
     temp_zip_path = os.path.join(temp_dirpath, temp_zip_filename)
-    compression_opts = {'method': 'zip', 'compresslevel': zipfile.ZIP_STORED}
     _copy_acdc_dfs_to_temp_archive(
-        zip_path, temp_zip_path, csv_names, compression_opts
+        zip_path, temp_zip_path, csv_names
     )
-        
     
-    compression_opts['archive_name'] = csv_name
     acdc_df = pd_bool_and_float_to_int_to_str(acdc_df_to_store, inplace=False)
-    acdc_df.to_csv(temp_zip_path, compression=compression_opts)
+    with zipfile.ZipFile(
+        temp_zip_path,
+        mode='a',
+        compression=zipfile.ZIP_DEFLATED,
+    ) as zip:
+        csv_data = acdc_df.to_csv().encode("utf-8")
+        zip.writestr(csv_name, csv_data)
+
     shutil.move(temp_zip_path, zip_path)
     shutil.rmtree(temp_dirpath)
 
