@@ -12653,11 +12653,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         prev_IDs = posData.allData_li[frame_i-1]['regionprops'].IDs
         curr_IDs = posData.IDs
-        new_IDs = list(set(curr_IDs) - set(prev_IDs))
+        
+        protected_new_IDs = self.protected_new_IDs.get(frame_i, [])
+        new_IDs = list(set(curr_IDs) - set(prev_IDs) - set(protected_new_IDs))
 
         lab = posData.lab
-        del_mask = np.isin(lab, new_IDs)
-        lab[del_mask] = 0
+        lab[np.isin(lab, new_IDs)] = 0
         posData.lab = lab
         
         self.update_rp(deletionIDs=new_IDs)
@@ -31242,7 +31243,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         if self._rtTrackerName == 'CellACDC_normal_division':
             tracked_lost_IDs = add_info['mothers']
+            protected_new_IDs = add_info['daughters']
             self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
+            protected_new_IDs_frame = self.protected_new_IDs.get(posData.frame_i, set())
+            protected_new_IDs_frame.update(protected_new_IDs)
+            self.protected_new_IDs[posData.frame_i] = protected_new_IDs_frame
             assignments = add_info['assignments']
             if add_info['to_track_tracked_objs_2nd_step'] is not None:
                 new_objs_1st_step_new, lost_objs_1st_step_new = add_info[
