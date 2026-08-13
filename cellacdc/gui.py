@@ -404,6 +404,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.defaultMouseShortcuts = dict()
         self.widgetsPersistentShortcut = dict()
         self.doubleSpaceBarState = False
+        self.protected_new_IDs = dict()
         
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
