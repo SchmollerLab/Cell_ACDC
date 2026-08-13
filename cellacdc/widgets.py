@@ -12200,7 +12200,7 @@ class OverlayToolbar(ToolBar):
         self.alphaEncodedIntensityCheckbox.setToolTip(
             'Activate to achieve alpha-encoded pixel-wise transparency where '
             'the pixel intensity is encoded in the alpha channel, so that when '
-            r'a pixel is black, it is transparent, and when its 50% intensity, '
+            'a pixel is black, it is transparent, and when it is at 50% intensity, '
             'it is 50% transparent, and when it is white, it is fully opaque. '
             'This removes the "blackening" effect of true transparency mode. '
         )
