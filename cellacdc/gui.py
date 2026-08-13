@@ -26980,6 +26980,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.rgbaImg1.setOpacity(opacity)
         
         if transparent:
+            self.rgbaImg1.setVisible(True)
             self.img1.setOpacity(0.001, applyToLinked=False)
             self.imgGrad.sigLookupTableChanged.connect(
                 self.updateTransparentOverlayRgba
@@ -26991,7 +26992,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for channel, items in self.overlayLayersItems.items():
             imageItem, lutItem, alphaSB = items[:3]
             if transparent:
-                alphaSB.valueChanged.disconnect()
                 alphaSB.valueChanged.connect(
                     self.updateTransparentOverlayRgba
                 )
@@ -27002,8 +27002,32 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.updateTransparentOverlayRgba
                 )
                 imageItem.setOpacity(0)
+        else:
+            self.rgbaImg1.clear()
+            self.rgbaImg1.setVisible(False)
+            self.img1.setOpacity(1.0, applyToLinked=False)
+            for channel, items in self.overlayLayersItems.items():
+                imageItem, lutItem, alphaSB = items[:3]
+                imageItem.setOpacity(1.0)
+                try:
+                    lutItem.sigLookupTableChanged.disconnect(
+                        self.updateTransparentOverlayRgba
+                    )
+                except:
+                    pass
+                try:
+                    lutItem.sigLevelsChanged.disconnect(
+                        self.updateTransparentOverlayRgba
+                    )
+                except:
+                    pass
+                try:
+                    alphaSB.valueChanged.disconnect(
+                        self.updateTransparentOverlayRgba
+                    )
+                except:
+                    pass
 
-        if not transparent:
             self.setOverlayItemsOpacities()
         
         self.setOverlayImages()
@@ -27681,7 +27705,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 imageItem.setImage(ol_img)
         
         if not self.overlayToolbar.isTransparent():
+            self.rgbaImg1.clear()
+            self.rgbaImg1.setVisible(False)
             return            
+
+        self.rgbaImg1.setVisible(True)
         
         alpha_values = []
         images = []
@@ -33697,6 +33725,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         lutItem.setGradient(gradient)
     
     def setOpacityOverlayLayersItems(self, value, imageItem=None, scrollbar=None):
+        if self.overlayToolbar.isTransparent():
+            return
+
         if scrollbar is None:
             scrollbar = imageItem.alphaScrollBar
 
@@ -33730,6 +33761,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             activeOverlayImageItems.append(imgItem)
         
+        if not alpha_values:
+            self.img1.setOpacity(1.0, applyToLinked=False)
+            return
+
         opacities = colors.hierarchical_weights(alpha_values)[::-1]
         
         for i, imgItem in enumerate(activeOverlayImageItems):

@@ -12225,24 +12225,20 @@ class OverlayToolbar(ToolBar):
         
         
     def alphaEncodedIntensityToggled(self, checked):
-        traspChecked = self.transparencyCheckbox.isChecked()
         if checked:
-            if not traspChecked:
-                self.transparencyCheckbox.setChecked(True) # emits the signal needed
-            else:
-                self.sigSetTranspacency.emit(traspChecked)
-        else:
-            self.sigSetTranspacency.emit(traspChecked)
+            self.transparencyCheckbox.blockSignals(True)
+            self.transparencyCheckbox.setChecked(True)
+            self.transparencyCheckbox.blockSignals(False)
+        transp_checked = self.transparencyCheckbox.isChecked()
+        self.sigSetTranspacency.emit(transp_checked)
         
     def transparencyToggled(self, checked):
-        alphaEncodedChecked = self.alphaEncodedIntensityCheckbox.isChecked()
         if not checked:
-            if alphaEncodedChecked:
-                self.alphaEncodedIntensityCheckbox.setChecked(False)
-            else:
-                self.sigSetTranspacency.emit(checked)
-        else:
-            self.sigSetTranspacency.emit(checked)
+            self.alphaEncodedIntensityCheckbox.blockSignals(True)
+            self.alphaEncodedIntensityCheckbox.setChecked(False)
+            self.alphaEncodedIntensityCheckbox.blockSignals(False)
+        
+        self.sigSetTranspacency.emit(checked)
     
     def setTransparent(self, transparent: bool):
         self.transparencyCheckbox.setChecked(transparent)
