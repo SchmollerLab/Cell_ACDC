@@ -469,7 +469,7 @@ def combine_grayscale_images_with_alpha(
         Steps:
         - `Alpha scalings` (from GUI scale bars) are divided by the length to fix the maximum alpha of the overlay to 1
         - `Images` are converted to RGBA; LUT is applied
-        - Scaled to 255 (it is assumed that up until that point they are normed to 0 1
+        - Scaled to 255 (it is assumed that up until that point they are normalized to 0-1)
         - For each fluo channel
             - `Alpha` is determined through HSV logic: for each pixel, the max of each component of RGB per pixel, scaled with `alpha scaling` and normed to 0 1 by dividing by 255
             - Colour is normalised through HSV logic: the max component of RGB is determined for each pixel (recycled from alpha), then each component is divided by this and finally multiplied by 255 to restore the old norming
